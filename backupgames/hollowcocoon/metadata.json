@@ -1,0 +1,8 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/gh/clshortfuse/renodx/renodx-metadata-schema.json",
+  "id": "hollowcocoon",
+  "title": "Hollow Cocoon",
+  "deploy": {
+    "steam_appid": 2414630
+  }
+}

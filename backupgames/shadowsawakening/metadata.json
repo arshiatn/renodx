@@ -1,0 +1,8 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/gh/clshortfuse/renodx/renodx-metadata-schema.json",
+  "id": "shadowsawakening",
+  "title": "Shadows: Awakening",
+  "deploy": {
+    "steam_appid": 585450
+  }
+}
