@@ -1,6 +1,0 @@
-#define TONEMAPPER_LAYOUT_EXTRA2
-#define TONEMAPPER_USE_BLOOM 1
-#define TONEMAPPER_USE_GLARE 1
-#define TONEMAPPER_EXTRA_TEXTURE_COUNT 2
-
-#include "tonemapper.hlsl"

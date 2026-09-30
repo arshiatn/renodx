@@ -1,8 +1,0 @@
-{
-  "id": "luma-framework",
-  "title": "Luma Framework",
-  "category": "related",
-  "maintainers": ["Pumbo"],
-  "compatibility": "working",
-  "urls": [{"kind": "mods", "label": "Mods list", "url": "https://github.com/Filoppi/Luma-Framework/wiki/Mods-List"}]
-}

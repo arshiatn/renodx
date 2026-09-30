@@ -1,8 +1,0 @@
-{
-  "$schema": "https://cdn.jsdelivr.net/gh/clshortfuse/renodx/renodx-metadata-schema.json",
-  "id": "sleepingdogsde",
-  "title": "Sleeping Dogs: Definitive Edition",
-  "deploy": {
-    "steam_appid": 307690
-  }
-}

@@ -1,5 +1,0 @@
-#ifndef BALDURSGATE3_COMMON_HLSLI
-#define BALDURSGATE3_COMMON_HLSLI
-#include "./shared.h"
-
-#endif  // BALDURSGATE3_COMMON_HLSLI

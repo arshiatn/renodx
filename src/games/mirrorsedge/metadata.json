@@ -1,7 +1,0 @@
-{
-  "id": "mirrorsedge",
-  "title": "Mirror's Edge",
-  "maintainers": ["XgarhontX"],
-  "compatibility": "working",
-  "urls": [{"kind": "nexus", "url": "https://www.nexusmods.com/mirrorsedge/mods/24"}]
-}

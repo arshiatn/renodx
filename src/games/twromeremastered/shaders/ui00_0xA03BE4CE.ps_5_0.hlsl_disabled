@@ -1,0 +1,31 @@
+// ---- Created with 3Dmigoto v1.3.16 on Thu Sep 24 06:19:03 2026
+Texture2D<float4> t0 : register(t0);
+
+SamplerState s0_s : register(s0);
+
+
+
+
+// 3Dmigoto declarations
+#define cmp -
+
+
+void main(
+  float4 v0 : SV_POSITION0,
+  float4 v1 : COLOR0,
+  float2 v2 : TEXCOORD0,
+  out float4 o0 : SV_TARGET0)
+{
+  float4 r0,r1;
+  uint4 bitmask, uiDest;
+  float4 fDest;
+
+  r0.xyzw = saturate(v1.xyzw);
+  r1.xyzw = t0.Sample(s0_s, v2.xy).xyzw;
+  r0.xyzw = r1.xyzw * r0.xyzw;
+  r1.x = cmp(r0.w < 0.00392156886);
+  if (r1.x != 0) discard;
+  o0.xyzw = saturate(r0.xyzw);
+  // o0.w = 0.1f;
+  return;
+}

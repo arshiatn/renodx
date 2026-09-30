@@ -1,0 +1,202 @@
+// ---- Created with 3Dmigoto v1.3.16 on Thu Sep 24 04:50:57 2026
+
+// ROME REMASTERED t00 - tonemapper.
+// Stock: decode 2.2 -> auto exposure (t1) -> Hable on luminance (textbook constants,
+// white point from auto exposure) -> gamma cb0[1].x -> LUT -> brightness -> vignette
+// -> 8-bit dither.
+// HDR 0: stock, then paper white.
+// HDR 1 (Extended): Musa's UC2 extended with its default pivot (third-derivative root,
+//        ~7% of white): stock Hable below, straight line above. LUT in a bounded proxy,
+//        user grading, Neutwo shoulder above 1.0 only. Brighter than SDR above the pivot.
+// HDR 2 (Psycho): Hable replaced by PsychoV30 (like Pharaoh's ACES). Scene-linear with
+//        SDR's mid grey pinned to 0.18, LUT in a bounded proxy, then PsychoV30.
+// HDR modes assume gamma 2.2 (in-game 50%).
+//
+// cb0 (traced): [0] screen w/h (uint), luma-in-alpha flag, brightness
+//               [1] gamma 2.2, white mult 1, exposure mult 4, shadow boost 2
+//               [2] 11, half screen w/h, vignette power 3
+//               [3] vignette radius 299.52, vignette strength 0.04   [4].w LUT strength
+
+Texture2D<float4> t3 : register(t3);
+
+Texture3D<float4> t2 : register(t2);
+
+struct t1_t {
+  float val[4];
+};
+StructuredBuffer<t1_t> t1 : register(t1);
+
+Texture2D<float4> t0 : register(t0);
+
+SamplerState s5_s : register(s5);
+
+cbuffer cb0 : register(b0)
+{
+  float4 cb0[5];
+}
+
+
+// 3Dmigoto declarations
+#define cmp -
+#include "../shared.h"
+#include "../psycho_test30.hlsli"
+#include "./common.hlsl"
+
+
+// Hable, textbook constants: A .15, B .50, C .10, D .20, E .02, F .30.
+#define HABLE_COEFFS 0.15f, 0.5f, 0.1f, 0.2f, 0.02f, 0.3f
+
+
+// Extended user grading (from Pharaoh). Identity at defaults.
+float3 ApplyExtendedUserGrading(float3 color)
+{
+  const float3 kLuminance = float3(0.212599993f, 0.715200007f, 0.0722000003f);
+  const float mid_gray = 0.18f;
+
+  float luminance = max(dot(color, kLuminance), 0.f);
+  float graded_luminance = luminance * SI.exposure_tpm;
+  graded_luminance = renodx::color::grade::Highlights(graded_luminance, SI.highlights_tpm, mid_gray);
+  graded_luminance = renodx::color::grade::Shadows(graded_luminance, SI.shadows_tpm, mid_gray);
+
+  if (SI.contrast_tpm != 1.f)
+  {
+    float normalized = max(graded_luminance / mid_gray, 0.f);
+    graded_luminance = pow(normalized, SI.contrast_tpm) * mid_gray;
+  }
+
+  float tonal_scale = luminance > 0.000001f ? graded_luminance / luminance : 1.f;
+  color *= tonal_scale;
+
+  // Luma-preserving saturation. 1.0 is identity.
+  float graded_y = dot(color, kLuminance);
+  return lerp(graded_y.xxx, color, SI.saturation_tpm);
+}
+
+
+// Extended peak: rolls everything above 1.0 into the headroom. At or below 1.0 untouched.
+float3 ApplyExtendedPeakShoulder(float3 color)
+{
+  float peak = max(HDR_PEAK, 1.0001f);
+  float max_channel = max(color.r, max(color.g, color.b));
+
+  if (max_channel > 1.f)
+  {
+    float headroom = peak - 1.f;
+    float excess = max_channel - 1.f;
+    float mapped_max = 1.f + renodx::tonemap::Neutwo(excess, headroom);
+    color *= mapped_max / max_channel;
+  }
+
+  return color;
+}
+
+
+void main(
+  float4 v0 : SV_POSITION0,
+  float2 v1 : TEXCOORD0,
+  out float4 o0 : SV_TARGET0)
+{
+  // Threshold the float setting so a stray value cannot produce a hybrid mode.
+  int hdr_mode = (HDR < 0.5f) ? 0 : ((HDR < 1.5f) ? 1 : 2);
+
+  float2 screen_size = (float2)asuint(cb0[0].xy);
+  int2 pixel = (int2)(uint2)(v1.xy * screen_size);
+
+  // Scene buffer is stored gamma-encoded.
+  float3 color = pow(max(t0.Load(int3(pixel, 0)).xyz, 0.f), 2.2f);
+  float y = dot(float3(0.212599993f, 0.715200007f, 0.0722000003f), color);
+
+  // t1 = auto exposure (0x6A1D2178): x exposure, y exp(-w/11), w adapted bright level.
+  float4 auto_exposure = float4(t1[0].val[0], t1[0].val[1], t1[0].val[2], t1[0].val[3]);
+
+  float3 sdr_linear = 0.f;
+  float3 hdr_color = 0.f;
+  if (y >= 9.99999975e-005f) {
+    float white_point = max(cb0[1].y * auto_exposure.x, auto_exposure.w);
+    float white_scale = 1.f / ApplyCurve(white_point, HABLE_COEFFS);
+
+    // Pixels below the adapted bright level get up to (1 + cb0[1].w * ...) more exposure.
+    float shadow_boost = cb0[1].w * (exp(-min(max(1.f, y), auto_exposure.w) / cb0[2].x) - auto_exposure.y) + 1.f;
+    shadow_boost = (1.f < auto_exposure.w) ? shadow_boost : 1.f;
+    float exposure = cb0[1].z * (shadow_boost * auto_exposure.x);
+
+    float sdr_y = ApplyCurve(exposure * y, HABLE_COEFFS) * white_scale;
+    sdr_linear = color * (sdr_y / y);
+
+    if (hdr_mode == 1) {
+      // Musa's default pivot.
+      float coeffs[6] = { HABLE_COEFFS };
+      Uncharted2::Config::Uncharted2ExtendedConfig uc2_config =
+          Uncharted2::Config::CreateUncharted2ExtendedConfig(coeffs, white_scale);
+      hdr_color = color * (Uncharted2::ApplyExtended(exposure * y, sdr_y, uc2_config) / y);
+    } else if (hdr_mode == 2) {
+      // Hable dropped. Scene-linear handoff, scaled so the exposed value stock maps to
+      // 0.18 (SDR mid grey) arrives at 0.18. Also samples the LUT where SDR does there.
+      float mid_grey_input = InverseUncharted2(0.18f, white_point, HABLE_COEFFS);
+      hdr_color = color * (exposure * 0.18f / max(mid_grey_input, 0.0001f));
+    }
+  }
+
+  // Vignette (stock): elliptical, darkens only beyond the inscribed ellipse.
+  float2 centred = v1.xy * 2.f - 1.f;
+  float2 dir = abs(centred) * screen_size;
+  dir *= rsqrt(dot(dir, dir));
+  float2 dir_scaled = cb0[2].zy * dir;
+  float edge_radius = (cb0[2].y * cb0[2].z) / sqrt(dot(dir_scaled, dir_scaled));
+  float centre_distance = length((float2)(asuint(cb0[0].xy) >> 1) * abs(centred));
+  float beyond_edge = centre_distance - edge_radius;
+  float vignette = min(1.f, cb0[3].y * pow(max(beyond_edge, 0.f) / cb0[3].x, cb0[2].w));
+  if (hdr_mode != 0) vignette = saturate(vignette * SI.vignette);  // slider, HDR only
+  float vignette_keep = 1.f - ((0.f < beyond_edge) ? vignette : 0.f);
+
+  static const float3 luma_weights = float3(0.212599993f, 0.715200007f, 0.0722000003f);
+
+  if (hdr_mode == 0)
+  {
+    float3 sdr = min(1.f, pow(sdr_linear, 1.f / cb0[1].x));
+    float3 lut = t2.Sample(s5_s, sdr).xyz;
+    sdr = cb0[4].w * (lut - sdr) + sdr;
+    sdr = cb0[0].w * sdr;
+    sdr = sdr * vignette_keep;
+
+    // 8-bit dither (stock): triangular inside (1/255, 254/255), rectangular at the ends.
+    float noise = t3.Load(int3((pixel + int2(35, 27)) & 63, 0)).x;
+    float triangular = ((noise < 0.5f) ? 1.f : -1.f) * sqrt(1.f - abs(noise * 2.f - 1.f)) + ((noise < 0.5f) ? -1.f : 1.f);
+    triangular *= 0.00392156886f;
+    float rectangular = noise * 0.00392156886f - 0.00196078443f;
+    bool3 in_range = (0.00392156886f < sdr) && (sdr < 0.996078432f);
+    float3 dither = in_range ? triangular.xxx : rectangular.xxx;
+    dither.y = -dither.y;
+    o0.xyz = saturate(sdr + dither);
+    o0.w = (cb0[0].z != 0) ? dot(luma_weights, o0.xyz) : 1.f;
+
+    // Undo the game's gamma, scene to paper white, encode for the 2.2 swapchain.
+    o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, cb0[1].x);
+    o0.xyz *= SI.diffuse_white_nits / SI.graphics_white_nits;
+    o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+    return;
+  }
+
+  // HDR: LUT on a bounded gamma-2.2 proxy, then undo the scale (Total War bridge).
+  float proxy_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, HDR_PEAK);
+  float3 proxy = renodx::color::gamma::EncodeSafe(hdr_color * proxy_scale);
+  float3 lut = t2.Sample(s5_s, saturate(proxy)).xyz;
+  proxy = cb0[4].w * (lut - proxy) + proxy;
+  float3 graded_shaped = renodx::color::gamma::DecodeSafe(proxy);
+  float3 graded_hdr = renodx::math::DivideSafe(graded_shaped, proxy_scale.xxx, graded_shaped);
+
+  if (hdr_mode == 1) {
+    graded_hdr = ApplyExtendedUserGrading(graded_hdr);
+    graded_hdr = ApplyExtendedPeakShoulder(graded_hdr);
+  } else {
+    graded_hdr = ApplyPsychoV30(graded_hdr);
+  }
+
+  o0.xyz = graded_hdr * (SI.diffuse_white_nits / SI.graphics_white_nits);
+  o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+
+  // Brightness/fade and vignette act on the encoded image, as in stock. No dither in FP16.
+  o0.xyz *= cb0[0].w * vignette_keep;
+  o0.w = (cb0[0].z != 0) ? saturate(dot(luma_weights, saturate(o0.xyz))) : 1.f;
+  return;
+}
