@@ -61,6 +61,7 @@ struct ShaderInjectData {
   // remains unchanged.
   // float auto_exposure_highlight_protection;     // 0: stock, 1: protected
   // float auto_exposure_highlight_headroom_stops; // 1 - 4 seems to work fine
+  float hue_shift;  // PsychoV30 highlight hue shift: 0 none, 1 Test30, 2 full
 };
 
 #define SI shader_injection
@@ -71,10 +72,12 @@ struct ShaderInjectData {
 // PsychoV30 keeps a fixed 1.0 exposure, 0.18 input/output anchors, full target
 // gamut projection, BT.2020 target volume, and automatic compression. The
 // compatibility-only parameters between purity and cone response stay neutral.
+// Last: highlight hue shift (SI.hue_shift).
 #define ApplyPsychoV30(color)                                               \
   renodx_custom::tonemap::psycho30::psychotm_test30(                             \
       (color), HDR_PEAK,  SI.exposure, SI.highlights, SI.shadows, SI.contrast,            \
-      SI.saturation, 1.f, 100.f, 1.f, 1.f, 0, SI.cone_response_exponent)
+      SI.saturation, 1.f, 100.f, 1.f, 1.f, 0, SI.cone_response_exponent,       \
+      0.18f, 0.18f, 1.f, 1, 1.f, 0.f, SI.hue_shift)
 
 
 // // For the modded auto exposure

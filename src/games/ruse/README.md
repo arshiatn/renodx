@@ -1,128 +1,189 @@
-# R.U.S.E. RenoDX — Direct colour and presentation update
+# RenoDX — R.U.S.E.
 
-For the 64-bit DX9 game. Keep Windows HDR and the game's **HDR** option on.
-This package contains source, not a compiled addon.
-
-## What changed
-
-- PsychoV30 Direct now decodes RGB channel values before Psycho, and derives
-  its gray anchor in that same decoded representation. This restores the
-  native decoded input colour ratios without an automatic cone multiplier.
-  The previous combination of raw RGB and an anchor-only correction could
-  look washed out. The visual result needs an in-game comparison.
-- A RUSE-only presentation guard suppresses the native DX9 Present after a
-  successful DX11 HDR proxy presentation. ReShade's native DX9 runtime runs
-  after the proxy; presenting both to the same window can expose the stale
-  native buffer and overlay trails. The guard records the actual DXGI result,
-  transfers the native VSync interval to the proxy, and falls back to native
-  presentation if the proxy fails, is occluded or has no shared image.
-  Hooks are removed on swapchain reset/destruction and addon detach. No shared
-  RenoDX framework files are changed. This is a workaround for the observed
-  corruption, with runtime confirmation still required.
-- UI brightness is now applied by 12 identified UI shaders at their final
-  backbuffer draws. Scene output and the HDR proxy use a fixed 203-nit reference.
-  The scene no longer divides by UI brightness, so a delayed proxy frame cannot
-  produce a scene-brightness pulse from mismatched UI values.
-- UI draws to offscreen textures and world buffers retain their native output.
-  The same shader can appear at several points in the frame; only a tracked
-  backbuffer draw gets the new UI gain.
-- Native UI RGB/alpha are bounded before brightness scaling. This prevents
-  those shaders' out-of-range output reaching the floating-point blend target.
-  Their original texture, colour and coverage calculations are retained.
-- The failing broad 10-bit-to-FP16 scene upgrade and Scene Precision setting
-  are removed. An old saved `RuseScenePrecision` value is ignored. The game keeps
-  its native scene/bloom targets; the HDR output intermediate remains FP16.
-- Source and destination GPU handoff waits are enabled for the DX9/DX11 proxy.
-  They can reduce shared-texture copy races and frame rate. These waits alone
-  did not fix the reported loading corruption; they remain enabled while
-  testing the presentation guard.
-- Settings are captured once per host frame, including known UI-only screens.
-  The nested DX11 presentation does not relatch them.
+Requires Windows HDR and the game's HDR option. Native scene targets keep
+their packed 10-bit format. RenoDX uses an FP16 backbuffer clone and a DX11
+HDR presentation proxy.
 
 ## Rendering modes
 
 | Mode | Behaviour |
 |---|---|
-| SDR | Native postprocess response and clipping, with Paper White scaling. |
-| HDR (Extended) | Native colour processing, gamma and brightness; maps range above SDR white into Peak. |
-| HDR (PsychoV30) | Native colour processing and gamma/brightness, then decode and PsychoV30. |
-| HDR (PsychoV30 Direct) | Native colour processing and channel decode, then PsychoV30 replaces the native luminance gamma/brightness response. |
+| SDR | Original scene response and clipped highlights, scaled by Paper White. |
+| PsychoV31 - Native Tone | Applies PsychoV31 after the game's gamma/brightness response. The Faithful to SDR preset selects this mode. |
+| PsychoV31 - Full Replacement | Replaces that gamma/brightness response with PsychoV31. Same response and grey calibration as the preceding build's last V31 mode. Default. |
 
-**Direct retains the game's grading:** blur, bloom, desaturation, colour tint,
-dominant colour and vignette. Both Psycho modes share their user controls and
-use the same unchanged PsychoV30 implementation. Their insertion points differ.
-Direct derives a decoded neutral input anchor from native Gamma and Brightness.
-For native neutral input `x`, the stock decoded output is
-`V(x) = (Brightness * x^Gamma)^2.2`. Direct solves `V(x) = 0.18`, then uses
-`x^2.2` as its input anchor because its RGB is also decoded with power 2.2.
-For positive colours the native gamma/brightness stage is a common RGB gain;
-decoding after that gain changes intensity but not decoded chromaticity. Thus
-both Psycho insertion points now have the same input colour ratios while their
-tonal responses can differ. Neither mode uses a pre-grading LUT bridge.
-Both use the Cone Response Exponent slider directly: 1.00 passes exactly 1.00.
-Direct is experimental: this preserves the native display-derived colour
-representation, and does not prove the earlier texture is physically
-scene-linear or reproduce the complete native tone response.
+Both Psycho modes retain the game's colour grading and each shader variant's
+bloom, vignette and directional blur. Native no-bloom variants remain without
+bloom. Existing processing and shared Psycho controls are unchanged. Extended
+and its separate grading controls have been removed.
+Psycho controls, Bloom and Vignette appear only in Advanced settings with a
+Psycho mode selected. Peak appears only in the Psycho modes.
 
-## Findings from the supplied battlefield dump
+The `rendering_mode` config key is retained: 0 SDR, 1 Native Tone, 2 Full
+Replacement. Settings loading clamps the former last V31 mode's index 3 to 2.
+The former V30 selections now use V31. Existing slider keys and defaults are
+retained. Both Recommended presets reset Psycho controls, Bloom and Vignette
+while preserving Peak, Paper White, UI brightness and output settings.
 
-| Shaders | Role indicated by the code | Action |
+The separate V30 library and calls are removed. The supplied V31 header and
+its SM3 workaround remain unchanged: compression 1.5, no flare, BT.709 source
+cage and BT.2020 target. Its framework helper dependencies remain necessary.
+
+## Postprocess variants
+
+All seven final postprocess shaders use `shaders/postprocess.hlsli`. The wrappers
+retain the native register bindings, blur kernels, bloom and packed scene-range
+restoration found in the dumped CSO/ASM:
+
+| Native sampling | Bloom | No bloom |
 |---|---|---|
-| `0x232EB5DF` | Final scene blur/bloom, grading and gamma/brightness | Keep the existing HDR replacement; remove its UI divisor. |
-| `0x48D24786`, `0xD43CA37B`, `0xA2BBD356`, `0x50BBDEEF`, `0x808A3141`, `0x075A442C`, `0xB2812F27` | HUD/textured/procedural interface draws shown after the scene shader | Add guarded UI scaling. |
-| `0xF543EFAC`, `0xC7A516D7` | Additional interface/solid-colour variants | Scale only their backbuffer draws. |
-| `0x33688E4E`, `0x5C455E4D`, `0xEB420492` | Scaleform colour/texture variants | Add guarded UI scaling; test menu/loading coverage. |
-| `0x3F5A412D`, `0x14E10CD4`, `0xA3E8FBAB` | Interface variants undoing native scene grading before later postprocessing | Leave unchanged. |
-| `0xAA46BD6F`, `0xEEDB7573` | Vertical/horizontal filters reading PreviousSceneMap | Leave unchanged; their formats/copy chain are not established. |
-| Other shaders | Scene lighting, water simulation, shadows, depth/blur and effects | No speculative replacements or resource upgrades. |
+| 17 taps, weighted | `0x232EB5DF` | `0x44550114` |
+| 13 taps, uniform | `0xC3EBA3CA` | `0x2D5EFDE2` |
+| 9 taps, uniform | `0xFB692F37` | `0x7E93D12F` |
+| Single tap | — | `0x0106B253` |
 
-The dump contains 70 files; the relevant postprocess/interface bodies were
-inspected. Shader names/math and the captured order identify useful roles,
-but do not prove texture formats, copy/resolve aliases,
-blend states or the loading screen's complete draw sequence. UI replacements
-preserve the decompiled declarations and computations, with `$` removed from
-identifier names for HLSL compatibility. Native CSOs remain the reference if
-a replacement has a compilation or constant/sampler binding discrepancy.
+The multi-tap families appear to correspond to high, medium and low quality;
+the exact setting-to-hash mapping still needs an in-game check. The single-tap
+shader has no native scene-range multiplier, directional blur or vignette.
+Psycho can only use the highlight headroom that reaches that shader. Keep the
+game's HDR option enabled. All three rendering modes are available in every
+variant.
 
-## Build and check
+## Gamma assumption
 
-Replace the existing `src/games/ruse` source folder with this one, rebuild, and
-restart the game. Remove the old addon binary before installing the new one;
-keep only one RUSE game addon active.
+Gamma 2.2 remains the mod's working decode/encode assumption; these shader dumps
+do not establish it as the game's display transfer function. The native final
+response uses `Gamma` at c5.x and `Brightness` at c6.x, operating on luminance:
 
-```bat
+```text
+output = Brightness * gradedRGB * pow(luma(gradedRGB), Gamma - 1)
+```
+
+On a neutral ramp this is `Brightness * x^Gamma`. It is a configurable tone
+response, not evidence of a fixed 2.2 display curve. DX9 sRGB sampler/write
+states and presentation/gamma-ramp conversions can also operate outside the
+shader and are absent from the dump.
+
+To settle this, capture the unmodified game's c5.x/c6.x, sampler sRGB states,
+render-target format, sRGB write state and any presentation/gamma-ramp
+conversion, then compare a known grey ramp. If another transfer function is
+confirmed, the scene decode, Full Replacement grey anchor, UI/video scaling
+and proxy decode must be changed together. No gamma change was guessed here.
+
+## Brightness and cutscenes
+
+Paper White scales the scene and cutscene video. UI brightness scales the
+HUD/text separately. The two video replacements retain their native
+three-texture YUV-to-RGB conversion and chroma UV scaling:
+
+| Shader | Native composition |
+|---|---|
+| `0x1D8E1FA8` | Y dimensions c0, chroma c1; vertex RGBA tint/fade. |
+| `0x66D7BE52` | Background/fade c0, Y dimensions c1, chroma c2; background blend including native alpha. |
+
+Both keep Y/U/V at s0/s1/s2 and share `shaders/video.hlsli`. Finished video
+keeps its original SDR contrast and colour; it does not receive a Psycho tone
+curve. Paper White is applied after the native tint/background composition.
+
+Video is clipped to the native range before Paper White scaling. The final
+proxy does not clip it back to the 203-nit reference. A white video pixel at
+Paper White 400 therefore targets 400 nits, provided Peak is at least 400.
+At Paper White 203 the gain is 1. UI brightness does not control video.
+
+Only draws targeting the backbuffer receive UI/video scaling. Offscreen draws
+and shaders without valid addon injection preserve their native output. UI
+and video gains are captured once per host frame. If another video pass is
+found, or this pass renders offscreen in a different cutscene, its final
+composition pass still needs to be identified.
+
+## Automatic loading-screen fix
+
+The confirmed native DX9 ReShade GUI block is now automatic; there is no
+compatibility slider. It prevents the stale startup banner and cursor trails
+after successful HDR proxy presentation. The DX11 proxy overlay remains
+available. Failed/occluded proxy frames and device recovery retain native
+presentation and GUI. This retains the conditions of ATN's successful test.
+The install log message is `R.U.S.E.: native DX9 GUI draw filter installed.`
+
+## Highlight Hue Shift
+
+Advanced → Psycho V31 → Highlight Hue Shift controls V31's direction blend in
+both Psycho modes:
+
+| Value | Fully weighted highlight direction |
+|---|---|
+| 1 | Bisector hue. |
+| 2 | Tonemapper's own per-cone response hue. Default. |
+
+The range is now 1–2: V31 already returned the same bisector result for every
+value below 1. Saved lower values load as 1 with the same V31 result.
+
+Intermediate values blend these directions using V31's shadow, mid-grey and
+highlight weights. The strongest highlight change is also gated by shoulder
+compression. It preserves opponent radius and cone sum before gamut/Yf-ceiling
+projection. It affects all hues; gamut constraints can also change brightness.
+The Full Replacement grey-anchor calibration is retained.
+
+## Build and verification
+
+Replace the whole `src/games/ruse` folder and rebuild with the game closed.
+Do not place dumped CSOs in that folder.
+
+```powershell
 cmake --preset clang-x64
 cmake --build --preset clang-x64-debug --target ruse
 ```
 
-Expected addon: `renodx-ruse.addon64`. Inspect the generated embeds for
-`0x232EB5DF`, the 12 UI hashes above, and both DX11 proxy shaders.
+Install `renodx-ruse.addon64`, keeping one R.U.S.E. addon in the game directory,
+and restart. Check that `embed/0x1D8E1FA8.h`, `embed/0x66D7BE52.h` and all seven
+postprocess hash headers are generated. There are now 21 game shader replacements.
 
-Completed checks: the actual addon body and current RenoDX vtable helper were
-compiled against a platform/API shim. Checks cover scene/UI snapshots, settings
-and ABI, native/Ex/swapchain presentation, VSync transfer, TEST calls, foreign
-devices, proxy failures, occlusion, reset, device loss, installation failure and
-teardown. Math checks cover the actual gray calibration and fallback, decoded
-colour ratios, unchanged native grading/Psycho code and final output gamut/peak.
-These are source and CPU checks. Windows FXC/SDK, the game, GPU copies, FPS and
-PS3 instruction limits were unavailable here.
+- Check loading before and after opening/closing the proxy overlay.
+- During video, compare Paper White 100, 203 and 400 with Peak at least 400.
+  Hold Paper White fixed and move UI brightness; only HUD/subtitles should change.
+- Check both video passes, their colour, black/background fades and transitions
+  into gameplay. Offscreen use of a video shader retains native output.
+- Switch low/medium/high settings and bloom on/off. Confirm the corresponding
+  postprocess replacement is active and retains its native effects.
+- Compare all three rendering modes and hue values 1, 1.5 and 2. Check SDR,
+  preset selection and slider visibility. A saved mode 3 must select Full
+  Replacement on upgrade.
 
-In game, vary UI from low to high while watching uncovered scenery; vary Paper
-White while watching opaque HUD elements. Check all four modes, world labels,
-menu/loading screens, text edges, fades and the cursor. Compare loading with
-the ReShade overlay closed and open, and test without DevKit too. Menus or UI
-shaders absent from the supplied dump may need additional coverage.
+The injection remains 24 floats (96 bytes), DX9 c200–c205. Former Extended
+grading fields are padding; existing active offsets are retained. Offset 84
+now holds the video gain. Rebuild shaders and addon together.
 
-If loading corruption persists, send `ReShade.log`, the RenoDX commit/branch,
-ReShade version, and a loading-frame draw/resource capture. Cursor trails and
-incomplete ReShade overlay widgets cannot be diagnosed conclusively from the
-game's battlefield pixel shaders. The supplied ReShade 6.8 log shows both game
-addon and DevKit loaded, two startup proxy configurations, and a same-window
-flip-swapchain warning, but no reported copy/Present failure. First test with
-only the rebuilt RUSE addon active, then compare with DevKit enabled.
-The current main framework lacks the Saboteur fork's `proxy_skip_host_present`
-setting; this package uses the existing vtable helper inside the game addon.
-Do not combine this guard with another native Present-suppression addon.
+This update checked all 250 dumped CSO hashes and matched the seven final
+postprocess opcode streams, constants and sampler bindings against ASM. All
+seven replacements preprocess with the c200–c205 injection. In 2016 CPU cases,
+the actual postprocess main bodies match an independent native-ASM evaluation
+of sampling, grading and response, including Psycho input/grey-anchor routing
+(maximum relative difference 1.2e-6). These include raw legacy mode 3 mapping
+to Full Replacement. Psycho calls were input/anchor spies in these checks;
+the tone library itself was not executed.
 
-DXVK remains an optional later comparison. Test this update on the currently
-working renderer first so its effect is clear.
+Both video shaders' actual conversion/composition assignments match their original
+CSO tokens in 10,000 float32 samples per shader, including vertex tint or
+background/fade alpha. The shared video output block passed the existing
+10,000-case Paper White/UI independence, alpha and offscreen/injection checks.
+GPU partial-precision rounding remains a runtime check.
+
+The actual addon body, compiled with an API shim, passed mode/default/preset
+and slider visibility checks, 1,000 frame sequences across all 21 callbacks,
+and the existing loading/presentation guard cases. The framework's actual
+settings read/clamp methods also verified saved mode 3 → 2 and hue below 1 → 1.
+
+The V31 header, shared injection offsets, postprocess sampling/grading,
+UI/proxy files and loading/presentation guards are retained. The existing
+loading fix remains automatic. Windows addon/FXC compilation and in-game
+quality/cutscene checks were not available here. ATN verified the loading fix
+in the preceding build.
+
+## PsychoV31 on SM3
+
+The supplied `psycho_test31.hlsli` is retained byte-for-byte, including its SM3
+`isnan`/`isinf` macros. The supplied base's notes report an FXC `isinf()` lowering
+issue, a comparison against ps_5_0 with maximum relative difference 1.5e-5, and
+about 2700 instruction slots for the earlier shader containing two tonemappers.
+These FXC results and the new shader's instruction count were not independently
+reproduced in this update.

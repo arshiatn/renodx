@@ -71,6 +71,7 @@ void ApplyResetPreset() {
       {"contrast", 1.f},
       {"purity_scale", 1.f},
       {"cone_response_exponent", 1.f},
+      {"hue_shift", 1.f},
       // {"current_adaptive_state_bt709", 0.18f},
       // {"current_background_state_bt709", 0.18f},
 
@@ -104,6 +105,7 @@ void ApplyPsychoRecommended() {
       {"contrast", 1.f},
       {"purity_scale", 1.f},
       {"cone_response_exponent", 1.f},
+      {"hue_shift", 2.f},
       // {"current_adaptive_state_bt709", 0.18f},
       // {"current_background_state_bt709", 0.18f},
 
@@ -130,6 +132,7 @@ void ApplyPsychoRecommended2500() {
       {"contrast", 1.f},
       {"purity_scale", 1.f},
       {"cone_response_exponent", 1.f},
+      {"hue_shift", 2.f},
       // {"current_adaptive_state_bt709", 0.18f},
       // {"current_background_state_bt709", 0.18f},
 
@@ -699,7 +702,7 @@ void OnDrawnResolve(reshade::api::command_list* cmd_list) {
 }
 
 // DLSS mod path: the game copies the 8-bit RT to the back buffer. Copy ours instead.
-// Registered after RenoDX, which drops that copy (8 -> 16-bit).
+// Registered after RenoDX, which drops that copy (8 -> 16-bit, or its 16-bit clone in HDR10).
 bool TryCopy(reshade::api::command_list* cmd_list, reshade::api::resource source, reshade::api::resource dest,
              const reshade::api::subresource_box* source_box = nullptr) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return false;
@@ -718,6 +721,9 @@ bool TryCopy(reshade::api::command_list* cmd_list, reshade::api::resource source
     height = data.height;
   }
   auto* dest_resource = reinterpret_cast<ID3D11Resource*>(dest.handle);
+  // HDR10: the back buffer is 10-bit, the game draws into RenoDX's 16-bit clone of it. Copy there.
+  const auto clone = renodx::utils::resource::upgrade::GetResourceClone(dest, {.require_enabled = true, .allow_create = false});
+  if (clone.handle != 0u) dest_resource = reinterpret_cast<ID3D11Resource*>(clone.handle);
   D3D11_TEXTURE2D_DESC desc = {};
   if (!GetDesc(dest_resource, &desc)) return false;
   if (desc.Width != width || desc.Height != height || desc.SampleDesc.Count != 1) return false;
@@ -1228,6 +1234,20 @@ void BuildRuntimeData() {
         .default_value = 1.00f,
         .label = "Cone Response Exponent",
         .section = "Psycho V30",
+        .min = 0.00f,
+        .max = 2.00f,
+        .format = "%.2f",
+        .is_enabled = IsPsychoMode,
+        .is_visible = IsPsychoMode,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "hue_shift",
+        .binding = &shader_injection.hue_shift,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.00f,
+        .label = "Hue Shift",
+        .section = "Psycho V30",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default (like my old addons), 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",

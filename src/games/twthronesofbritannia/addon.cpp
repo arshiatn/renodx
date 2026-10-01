@@ -59,7 +59,8 @@ bool IsHDRMode() {
 //     float vfx_blood_splash_brightness,
 //     float vfx_fog_brightness,
 //     float vfx_snow,
-//     float vfx_rain) {
+//     float vfx_rain,
+//     float hue_shift) {
 //   renodx::utils::settings::UpdateSettings({
 //       {"tonemapper", 1.f},
 //       {"exposure", exposure},
@@ -68,6 +69,7 @@ bool IsHDRMode() {
 //       {"contrast", contrast},
 //       {"purity_scale", purity_scale},
 //       {"cone_response_exponent", cone_response_exponent},
+//       {"hue_shift", hue_shift},
 //       {"bloom", bloom},
 //       {"godrays", godrays},
 //       {"vignette", vignette},
@@ -97,6 +99,7 @@ void ApplyResetPreset() {
       {"contrast", 1.f},
       {"purity_scale", 1.f},
       {"cone_response_exponent", 1.f},
+      {"hue_shift", 2.f},
 
       // Extra
       {"bloom", 1.f},
@@ -307,7 +310,8 @@ void BuildRuntimeData() {
     //           6.0f,  // vfx_blood_splash_brightness
     //           0.7f,  // vfx_fog_brightness
     //           1.5f,  // vfxsnow
-    //           1.5f   // vfxrain
+    //           1.5f,  // vfxrain
+    //           2.0f   // hue_shift
     //       );
     //     },
     // },
@@ -337,7 +341,8 @@ void BuildRuntimeData() {
     //           3.0f,  // vfx_blood_splash_brightness
     //           0.7f,  // vfx_fog_brightness
     //           1.3f,  // vfxsnow
-    //           1.3f   // vfxrain
+    //           1.3f,  // vfxrain
+    //           2.0f   // hue_shift
     //       );
     //     },
     // },
@@ -367,7 +372,8 @@ void BuildRuntimeData() {
     //           1.0f,  // vfx_blood_splash_brightness
     //           1.0f,  // vfx_fog_brightness
     //           1.0f,  // vfxsnow
-    //           1.0f   // vfxrain
+    //           1.0f,  // vfxrain
+    //           1.0f   // hue_shift
     //       );
     //     },
     // },
@@ -504,6 +510,20 @@ void BuildRuntimeData() {
         .default_value = 1.0f,
         .label = "Cone Response Exponent",
         .section = "Psycho V30",
+        .min = 0.00f,
+        .max = 2.00f,
+        .format = "%.2f",
+        .is_enabled = IsHDRMode,
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "hue_shift",
+        .binding = &shader_injection.hue_shift,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 2.0f,
+        .label = "Highlight Hue Shift",
+        .section = "Psycho V30",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default (like my old addons), 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",

@@ -39,7 +39,7 @@ constexpr char BUILD_TIME[] = __TIME__;
 namespace {
 
 ShaderInjectData shader_injection;
-static_assert(sizeof(ShaderInjectData) == 5 * 4 * sizeof(float), "Keep the DX9 c200-c204 injection layout in sync.");
+static_assert(sizeof(ShaderInjectData) == 6 * 4 * sizeof(float), "Keep the DX9 c200-c205 injection layout in sync.");
 // Capture controls once for all replaced draws in a host frame. Presentation
 // uses a fixed nit reference, so UI changes cannot rescale an older scene frame.
 ShaderInjectData frame_injection;
@@ -54,14 +54,17 @@ using D3D9PresentFn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, const RECT*
 using D3D9PresentExFn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9Ex*, const RECT*, const RECT*, HWND, const RGNDATA*, DWORD);
 using D3D9SwapchainPresentFn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DSwapChain9*, const RECT*, const RECT*, HWND, const RGNDATA*, DWORD);
 using DXGIPresentFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT);
+using D3D9DrawIndexedFn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, D3DPRIMITIVETYPE, INT, UINT, UINT, UINT, UINT);
 D3D9PresentFn original_present = nullptr;
 D3D9PresentExFn original_present_ex = nullptr;
 D3D9SwapchainPresentFn original_swapchain_present = nullptr;
 DXGIPresentFn original_proxy_present = nullptr;
+D3D9DrawIndexedFn original_draw_indexed = nullptr;
 renodx::utils::vtable::Slot<D3D9PresentFn> present_slot;
 renodx::utils::vtable::Slot<D3D9PresentExFn> present_ex_slot;
 renodx::utils::vtable::Slot<D3D9SwapchainPresentFn> swapchain_present_slot;
 renodx::utils::vtable::Slot<DXGIPresentFn> proxy_present_slot;
+renodx::utils::vtable::Slot<D3D9DrawIndexedFn> gui_draw_slot;
 IDirect3DDevice9* hooked_device = nullptr;
 IDirect3DDevice9Ex* hooked_device_ex = nullptr;
 IDirect3DSwapChain9* hooked_swapchain = nullptr;
@@ -72,12 +75,56 @@ thread_local bool proxy_present_started = false;
 thread_local bool proxy_present_finished = false;
 thread_local bool skip_host_present = false;
 thread_local UINT host_sync_interval = 1u;
+thread_local bool native_gui_phase = false;
 
 bool ConsumeHostPresentSkip() {
   if (presenting_host != hooked_device || !skip_host_present) return false;
   skip_host_present = false;
   // Preserve the game's device-loss/reset handling when the native device fails.
   return SUCCEEDED(presenting_host->TestCooperativeLevel());
+}
+
+bool ShouldIsolateNativeGui(reshade::api::effect_runtime* runtime) {
+  if (runtime->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
+  if (!skip_host_present || !proxy_present_finished) return false;
+  if (gui_draw_slot.installed_address == nullptr || hooked_device == nullptr) return false;
+  if (presenting_host != hooked_device
+      || reinterpret_cast<IDirect3DDevice9*>(runtime->get_device()->get_native()) != hooked_device) return false;
+  return SUCCEEDED(hooked_device->TestCooperativeLevel());
+}
+
+bool OnOpenReShadeOverlay(reshade::api::effect_runtime* runtime, bool open, reshade::api::input_source) {
+  return open && ShouldIsolateNativeGui(runtime);
+}
+
+void OnReShadeOverlay(reshade::api::effect_runtime* runtime) {
+  if (runtime->get_device()->get_api() != reshade::api::device_api::d3d9) return;
+  // ReShade emits this after building all windows, including the startup banner,
+  // and before submitting ImGui's indexed draws. Closing alone does not remove
+  // the banner or widgets already built for this frame; the native draw filter does.
+  native_gui_phase = presenting_host == hooked_device && hooked_device != nullptr
+                     && reinterpret_cast<IDirect3DDevice9*>(runtime->get_device()->get_native()) == hooked_device;
+  if (ShouldIsolateNativeGui(runtime)) {
+    runtime->open_overlay(false, reshade::api::input_source::none);
+  }
+}
+
+void OnReShadePresent(reshade::api::effect_runtime* runtime) {
+  if (runtime->get_device()->get_api() == reshade::api::device_api::d3d9) {
+    native_gui_phase = false;
+  }
+}
+
+HRESULT STDMETHODCALLTYPE DrawNativeIndexed(
+    IDirect3DDevice9* native, D3DPRIMITIVETYPE type, INT vertex_offset,
+    UINT first_vertex, UINT vertex_count, UINT first_index, UINT primitive_count) {
+  if (native == hooked_device && presenting_host == hooked_device && native_gui_phase) {
+    if (skip_host_present && proxy_present_finished
+        && SUCCEEDED(native->TestCooperativeLevel())) {
+      return D3D_OK;
+    }
+  }
+  return original_draw_indexed(native, type, vertex_offset, first_vertex, vertex_count, first_index, primitive_count);
 }
 
 HRESULT STDMETHODCALLTYPE PresentHost(
@@ -118,6 +165,7 @@ void UninstallPresentHooks() {
   skip_host_present = false;
   proxy_present_started = false;
   proxy_present_finished = false;
+  native_gui_phase = false;
   auto uninstall = []<typename Function>(renodx::utils::vtable::Slot<Function>* slot) {
     if (slot->installed_address == nullptr) return;
     try {
@@ -128,13 +176,15 @@ void UninstallPresentHooks() {
     }
   };
   uninstall(&proxy_present_slot);
+  uninstall(&gui_draw_slot);
   uninstall(&swapchain_present_slot);
   uninstall(&present_ex_slot);
   uninstall(&present_slot);
   if (present_slot.installed_address == nullptr
       && present_ex_slot.installed_address == nullptr
       && swapchain_present_slot.installed_address == nullptr
-      && proxy_present_slot.installed_address == nullptr) {
+      && proxy_present_slot.installed_address == nullptr
+      && gui_draw_slot.installed_address == nullptr) {
     hooked_device = nullptr;
     hooked_device_ex = nullptr;
     hooked_swapchain = nullptr;
@@ -152,6 +202,7 @@ void OnDestroyGameSwapchain(reshade::api::swapchain* swapchain, bool) {
 
 void OnFinishPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain) {
   if (swapchain->get_device()->get_api() == reshade::api::device_api::d3d9) {
+    native_gui_phase = false;
     presenting_host = nullptr;
     skip_host_present = false;
     proxy_present_started = false;
@@ -179,20 +230,11 @@ bool IsAdvancedSettings() {
   return current_settings_mode >= 1.f;
 }
 
-bool IsExtendedMode() {
-  return shader_injection.hdr == 1.f && current_settings_mode == 1;
+bool HasHDRScene() {
+  return shader_injection.hdr >= 1.f && shader_injection.hdr <= 2.f;
 }
 
 bool IsPsychoMode() {
-  return (shader_injection.hdr == 2.f || shader_injection.hdr == 3.f) && IsAdvancedSettings();
-}
-
-bool HasHDRScene() {
-  return shader_injection.hdr >= 1.f;
-}
-
-// Extra sliders: all HDR modes.
-bool IsHDRMode() {
   return HasHDRScene() && IsAdvancedSettings();
 }
 
@@ -202,10 +244,12 @@ bool OnFrameShaderDraw(reshade::api::command_list* cmd_list) {
     frame_injection = shader_injection;
     frame_injection.ui_scale = std::pow(
         std::max(frame_injection.graphics_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
+    frame_injection.video_scale = std::pow(
+        std::max(frame_injection.diffuse_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
     frame_latched = true;
   }
-  // The same UI shader can also draw world labels or offscreen UI textures.
-  // Scale only its final backbuffer draw, avoiding double scaling upstream.
+  // UI and video shaders can also draw into offscreen textures. Scale only
+  // their final backbuffer draw, avoiding double scaling upstream.
   frame_injection.ui_draw = (renodx::utils::swapchain::HasBackBufferRenderTarget(cmd_list) ? 1.f : 0.f);
   return true;
 }
@@ -236,6 +280,7 @@ void OnPresentFrame(
     return;
   }
   presenting_host = reinterpret_cast<IDirect3DDevice9*>(device->get_native());
+  native_gui_phase = false;
   skip_host_present = false;
   proxy_present_started = false;
   proxy_present_finished = false;
@@ -282,6 +327,19 @@ void OnPresentFrame(
         hooked_swapchain->Release();
       }
       reshade::log::message(reshade::log::level::info, "R.U.S.E.: native DX9 Present guard installed.");
+      gui_draw_slot = {
+          .object = hooked_device,
+          .index = 82u,
+          .original = &original_draw_indexed,
+          .replacement = &DrawNativeIndexed,
+      };
+      try {
+        renodx::utils::vtable::Install(&gui_draw_slot);
+        reshade::log::message(reshade::log::level::info, "R.U.S.E.: native DX9 GUI draw filter installed.");
+      } catch (const std::exception& error) {
+        // Keep the established Present guard if the optional GUI test hook fails.
+        reshade::log::message(reshade::log::level::warning, error.what());
+      }
     } catch (const std::exception& error) {
       reshade::log::message(reshade::log::level::warning, error.what());
       UninstallPresentHooks();
@@ -321,22 +379,16 @@ void OnPresentFrame(
 void ApplyResetPreset() {
   // Peak / Paper White / UI brightness, Settings Mode, and output settings are preserved.
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 1.f},
+      {"rendering_mode", 1.f},
 
-      // PsychoV30
+      // PsychoV31
       {"exposure", 1.f},
       {"highlights", 1.f},
       {"shadows", 1.f},
       {"contrast", 1.f},
       {"purity_scale", 1.f},
       {"cone_response_exponent", 1.f},
-
-      // HDR Extended / user grading
-      {"exposure_tpm", 1.f},
-      {"highlights_tpm", 1.f},
-      {"shadows_tpm", 1.f},
-      {"contrast_tpm", 1.f},
-      {"saturation_tpm", 1.f},
+      {"hue_shift", 2.f},
 
       // Extra
       {"bloom", 1.f},
@@ -345,16 +397,23 @@ void ApplyResetPreset() {
 }
 
 void ApplyPsychoRecommended() {
-  // Only PsychoV30 controls are changed. Peak / Paper White / UI brightness
+  // Only PsychoV31 controls are changed. Peak / Paper White / UI brightness
   // and unrelated controls are preserved.
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 2.f},
+      {"rendering_mode", 2.f},
+
+      // PsychoV31
       {"exposure", 1.f},
-      {"highlights", 1.f},
+      {"highlights", 1.60f},
       {"shadows", 1.f},
       {"contrast", 1.f},
       {"purity_scale", 1.f},
       {"cone_response_exponent", 1.f},
+      {"hue_shift", 2.f},
+
+      // Extra
+      {"bloom", 1.f},
+      {"vignette", 1.f},
   });
 }
 
@@ -399,7 +458,7 @@ void BuildRuntimeData() {
           .default_value = 203.f,
           .label = "Paper White",
           .section = "General",
-          .tooltip = "Brightness of the scene/game.",
+          .tooltip = "Brightness of the scene and cutscene video in nits.",
           .min = 1.f,
           .max = 500.f,
       },
@@ -414,50 +473,51 @@ void BuildRuntimeData() {
           .max = 500.f,
       },
       new renodx::utils::settings::Setting{
-          .key = "tonemapper",
+          // Settings loading clamps the former V31 index 3 to Full Replacement (2).
+          .key = "rendering_mode",
           .binding = &shader_injection.hdr,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
+          .default_value = 2.f,
           .label = "Rendering Mode",
           .section = "General",
           .tooltip = "Needs the in-game HDR setting on.\n"
                      "SDR: the game's original picture (no tonemapper, highlights clip).\n"
-                     "HDR (Extended): the original picture, clipped highlights restored up to Peak.\n"
-                     "HDR (PsychoV30): maps the graded image after native gamma/brightness.\n"
-                     "HDR (PsychoV30 Direct): replaces native luminance gamma/brightness; retains grading and decoded input colour ratios. Experimental.",
-          .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)", "HDR (PsychoV30 Direct)"},
+                     "PsychoV31 - Native Tone: applies PsychoV31 after the game's gamma/brightness response.\n"
+                     "PsychoV31 - Full Replacement: PsychoV31 replaces that response.\n"
+                     "All HDR modes retain the game's colour grading, bloom and vignette.",
+          .labels = {"SDR", "PsychoV31 - Native Tone", "PsychoV31 - Full Replacement"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "Recommended (PsychoV30)",
+          .label = "Recommended (Faithful to SDR's colors)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended Setting is PsychoV30\n"
-                     "Peak, Paper White, UI brightness, and unrelated controls are preserved.",
-          .on_change = []() {
-            ApplyPsychoRecommended();
-          },
-      },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "Reset Image Settings",
-          .section = "Presets",
-          .group = "preset-line-2",
-          .tooltip = "Resets both grading groups, Bloom and Vignette; selects Extended.\n"
+          .tooltip = "Resets Psycho controls, Bloom and Vignette; selects PsychoV31 - Native Tone.\n"
                      "Peak, Paper White, UI brightness, Settings Mode, and output settings are preserved.",
           .on_change = []() {
             ApplyResetPreset();
           },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Recommended (Full Replacement)",
+          .section = "Presets",
+          .group = "preset-line-1",
+          .tooltip = "Selects PsychoV31 - Full Replacement with neutral Psycho controls.\n"
+                     "Peak, Paper White, UI brightness, and unrelated controls are preserved.",
+          .on_change = []() {
+            ApplyPsychoRecommended();
+          },
+      },
 
-      // Psycho V30 //////////////////////////////////////////////////////////////////////////////
+      // Psycho V31 //////////////////////////////////////////////////////////////////////////////
       new renodx::utils::settings::Setting{
           .key = "exposure",
           .binding = &shader_injection.exposure,
           .value_type = renodx::utils::settings::SettingValueType::FLOAT,
           .default_value = 1.00f,
           .label = "Exposure",
-          .section = "Psycho V30",
+          .section = "Psycho V31",
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
@@ -470,7 +530,7 @@ void BuildRuntimeData() {
           .value_type = renodx::utils::settings::SettingValueType::FLOAT,
           .default_value = 1.00f,
           .label = "Highlights",
-          .section = "Psycho V30",
+          .section = "Psycho V31",
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
@@ -483,7 +543,7 @@ void BuildRuntimeData() {
           .value_type = renodx::utils::settings::SettingValueType::FLOAT,
           .default_value = 1.00f,
           .label = "Shadows",
-          .section = "Psycho V30",
+          .section = "Psycho V31",
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
@@ -496,7 +556,7 @@ void BuildRuntimeData() {
           .value_type = renodx::utils::settings::SettingValueType::FLOAT,
           .default_value = 1.00f,
           .label = "Contrast",
-          .section = "Psycho V30",
+          .section = "Psycho V31",
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
@@ -509,7 +569,7 @@ void BuildRuntimeData() {
           .value_type = renodx::utils::settings::SettingValueType::FLOAT,
           .default_value = 1.00f,
           .label = "Saturation / Purity",
-          .section = "Psycho V30",
+          .section = "Psycho V31",
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
@@ -522,8 +582,8 @@ void BuildRuntimeData() {
           .value_type = renodx::utils::settings::SettingValueType::FLOAT,
           .default_value = 1.00f,
           .label = "Cone Response Exponent",
-          .section = "Psycho V30",
-          .tooltip = "Psycho contrast response. Both Psycho modes use this slider value directly.",
+          .section = "Psycho V31",
+          .tooltip = "Multiplies Contrast to set PsychoV31's cone-response power.",
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
@@ -531,71 +591,21 @@ void BuildRuntimeData() {
           .is_visible = IsPsychoMode,
       },
 
-      // User Grading (HDR Extended) //////////////////////////////////////////////////////////////
       new renodx::utils::settings::Setting{
-          .key = "exposure_tpm",
-          .binding = &shader_injection.exposure_tpm,
+          .key = "hue_shift",
+          .binding = &shader_injection.hue_shift,
           .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-          .default_value = 1.0f,
-          .label = "Exposure",
-          .section = "User Grading",
-          .min = 0.00f,
-          .max = 2.00f,
+          .default_value = 2.f,
+          .label = "Highlight Hue Shift",
+          .section = "Psycho V31",
+          .tooltip = "Both PsychoV31 modes. 1 = bisector hue, 2 = cone-response hue (default).\n"
+                     "Intermediate values blend these hue directions according to colour brightness.\n"
+                     "Affects all hues; it does not select a fixed red/orange/yellow target.",
+          .min = 1.f,
+          .max = 2.f,
           .format = "%.2f",
-          .is_enabled = IsExtendedMode,
-          .is_visible = IsExtendedMode,
-      },
-      new renodx::utils::settings::Setting{
-          .key = "highlights_tpm",
-          .binding = &shader_injection.highlights_tpm,
-          .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-          .default_value = 1.00f,
-          .label = "Highlights",
-          .section = "User Grading",
-          .min = 0.00f,
-          .max = 2.00f,
-          .format = "%.2f",
-          .is_enabled = IsExtendedMode,
-          .is_visible = IsExtendedMode,
-      },
-      new renodx::utils::settings::Setting{
-          .key = "shadows_tpm",
-          .binding = &shader_injection.shadows_tpm,
-          .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-          .default_value = 1.0f,
-          .label = "Shadows",
-          .section = "User Grading",
-          .min = 0.00f,
-          .max = 2.00f,
-          .format = "%.2f",
-          .is_enabled = IsExtendedMode,
-          .is_visible = IsExtendedMode,
-      },
-      new renodx::utils::settings::Setting{
-          .key = "contrast_tpm",
-          .binding = &shader_injection.contrast_tpm,
-          .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-          .default_value = 1.0f,
-          .label = "Contrast",
-          .section = "User Grading",
-          .min = 0.00f,
-          .max = 2.00f,
-          .format = "%.2f",
-          .is_enabled = IsExtendedMode,
-          .is_visible = IsExtendedMode,
-      },
-      new renodx::utils::settings::Setting{
-          .key = "saturation_tpm",
-          .binding = &shader_injection.saturation_tpm,
-          .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-          .default_value = 1.0f,
-          .label = "Saturation / Purity",
-          .section = "User Grading",
-          .min = 0.00f,
-          .max = 2.00f,
-          .format = "%.2f",
-          .is_enabled = IsExtendedMode,
-          .is_visible = IsExtendedMode,
+          .is_enabled = IsPsychoMode,
+          .is_visible = IsPsychoMode,
       },
 
       // Extra //////////////////////////////////////////////////////////////////////////////////
@@ -609,8 +619,8 @@ void BuildRuntimeData() {
           .min = 0.f,
           .max = 2.f,
           .format = "%.2f",
-          .is_enabled = IsHDRMode,
-          .is_visible = IsHDRMode,
+          .is_enabled = IsPsychoMode,
+          .is_visible = IsPsychoMode,
       },
       new renodx::utils::settings::Setting{
           .key = "vignette",
@@ -622,8 +632,8 @@ void BuildRuntimeData() {
           .min = 0.f,
           .max = 2.f,
           .format = "%.2f",
-          .is_enabled = IsHDRMode,
-          .is_visible = IsHDRMode,
+          .is_enabled = IsPsychoMode,
+          .is_visible = IsPsychoMode,
       },
   };
 }
@@ -665,7 +675,7 @@ void ConfigureAddon() {
   BuildRuntimeData();
 
   // Shaders: DX9 has no constant buffers, the injection goes into pixel shader
-  // constants c200-c204 (shared.h). The game's shaders use the low registers.
+  // constants c200-c205 (shared.h). The game's shaders use the low registers.
   renodx::mods::shader::force_pipeline_cloning = true;
   renodx::mods::shader::expected_constant_buffer_space = 50;
   renodx::mods::shader::expected_constant_buffer_index = 13;
@@ -736,6 +746,9 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroyGameSwapchain);
   reshade::register_event<reshade::addon_event::present>(OnPresentFrame);
   reshade::register_event<reshade::addon_event::finish_present>(OnFinishPresent);
+  reshade::register_event<reshade::addon_event::reshade_open_overlay>(OnOpenReShadeOverlay);
+  reshade::register_event<reshade::addon_event::reshade_overlay>(OnReShadeOverlay);
+  reshade::register_event<reshade::addon_event::reshade_present>(OnReShadePresent);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   frame_injection = shader_injection;
@@ -758,6 +771,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::present>(OnPresentFrame);
   reshade::unregister_event<reshade::addon_event::finish_present>(OnFinishPresent);
   reshade::unregister_event<reshade::addon_event::present>(OnAfterProxyPresent);
+  reshade::unregister_event<reshade::addon_event::reshade_open_overlay>(OnOpenReShadeOverlay);
+  reshade::unregister_event<reshade::addon_event::reshade_overlay>(OnReShadeOverlay);
+  reshade::unregister_event<reshade::addon_event::reshade_present>(OnReShadePresent);
   UninstallPresentHooks();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &frame_injection);

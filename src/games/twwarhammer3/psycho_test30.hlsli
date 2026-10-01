@@ -784,6 +784,28 @@ float3 psycho30_ApplySignedConeResponseFallback(
              float3(response_power, response_power, response_power));
 }
 
+// Highlight hue shift (added by ATN, not part of upstream Test30).
+// The per-cone response hue shifts bright colours like SDR clipping does
+// (bright reds/oranges toward yellow). Test30 uses the bisector of source and response hue.
+// hue_shift: 0 = source hue, 1 = Test30 (default), 2 = response hue (like V31's
+// highlight default). Fades in from the input anchor to reference white.
+// Returns the response weight (source weight = 2 - it).
+float psycho30_HighlightHueShiftWeight(
+    float3 input_lms,
+    float3 anchor_in_lms,
+    float hue_shift) {
+  if (hue_shift == 1.f) return 1.f;
+  float anchor_yf = renodx::color::yf::from::LMS(anchor_in_lms);
+  float yf = renodx::color::yf::from::LMS(input_lms);
+  float t = 0.f;
+  if (yf > anchor_yf && anchor_yf > PSYCHO30_EPSILON) {
+    t = saturate(
+        log2(yf / anchor_yf)
+        / log2(PSYCHO30_HIGHLIGHT_GRADE_REFERENCE_WHITE / anchor_yf));
+  }
+  return lerp(1.f, clamp(hue_shift, 0.f, 2.f), psycho30_GradeQuinticUnitRamp(t));
+}
+
 // Build the selected response coordinate directly from normalized response u:
 // source q authors one A2 direction, finite-G u authors the other direction
 // and supplies radius, C0, and normalized physiological Yf. Equal normalized
@@ -796,7 +818,8 @@ float3 psycho30_MeanA2Response(
     float response_power,
     float response_h,
     out float response_yf,
-    out uint valid) {
+    out uint valid,
+    float hue_shift = 1.f) {
   float3 source_q = input_lms / anchor_in_lms;
   valid = all(source_q > float3(0.f, 0.f, 0.f)) ? 1u : 0u;
   if (valid == 0u) {
@@ -858,8 +881,9 @@ float3 psycho30_MeanA2Response(
     float inverse_source_radius = rsqrt(source_radius2);
     float inverse_response_radius = rsqrt(response_radius2);
     float response_radius = response_radius2 * inverse_response_radius;
-    float2 mean_direction = source_a2 * inverse_source_radius
-                            + response_a2 * inverse_response_radius;
+    float response_weight = psycho30_HighlightHueShiftWeight(input_lms, anchor_in_lms, hue_shift);
+    float2 mean_direction = source_a2 * inverse_source_radius * (2.f - response_weight)
+                            + response_a2 * inverse_response_radius * response_weight;
     float mean_radius2 = dot(mean_direction, mean_direction);
     if (mean_radius2 > PSYCHO30_EPSILON2) {
       authored_a2 = mean_direction
@@ -1261,7 +1285,8 @@ float3 psycho30_LinearA2Fallback(
     float target_rgb_peak,
     float response_power,
     float response_h,
-    float target_compression_strength) {
+    float target_compression_strength,
+    float hue_shift = 1.f) {
   float3 source_q = input_lms / anchor_in_lms;
   float3 response_lms = anchor_out_lms
                         * psycho30_ApplySignedConeResponseFallback(
@@ -1282,8 +1307,9 @@ float3 psycho30_LinearA2Fallback(
     float inverse_source_radius = rsqrt(source_radius2);
     float inverse_response_radius = rsqrt(response_radius2);
     float response_radius = response_radius2 * inverse_response_radius;
-    float2 midpoint = source_opponent * inverse_source_radius
-                      + response_opponent * inverse_response_radius;
+    float response_weight = psycho30_HighlightHueShiftWeight(input_lms, anchor_in_lms, hue_shift);
+    float2 midpoint = source_opponent * inverse_source_radius * (2.f - response_weight)
+                      + response_opponent * inverse_response_radius * response_weight;
     float midpoint_length2 = dot(midpoint, midpoint);
     if (midpoint_length2 > PSYCHO30_EPSILON2) {
       authored_lms = psycho30_LMSFromLinearA2Opponent(
@@ -1387,7 +1413,8 @@ float3 psychotm_test30(
     float gamut_compression = 1.f,                  // target-projection strength
     int gamut_compression_mode = 1,                 // 0 = BT.709, nonzero = BT.2020
     float adaptive_normalization = 1.f,             // positional compatibility placeholder
-    float compression = 0.f) {                      // positive manual h; 0 = auto
+    float compression = 0.f,                        // positive manual h; 0 = auto
+    float hue_shift = 1.f) {                        // highlights: 0 source, 1 Test30, 2 response hue (added)
   // -------------------------------------------------------------------------
   // Source signal and signed-domain policy.
   // -------------------------------------------------------------------------
@@ -1479,7 +1506,8 @@ float3 psychotm_test30(
       response_power,
       response_h,
       response_yf,
-      response_valid);
+      response_valid,
+      hue_shift);
   [branch]
   if (response_valid == 0u) {
     // Signed cone states use the separate defined-domain path.
@@ -1491,7 +1519,8 @@ float3 psychotm_test30(
         target_rgb_peak,
         response_power,
         response_h,
-        gamut_compression);
+        gamut_compression,
+        hue_shift);
     float3 fallback_bt709 = mul(
         PSYCHO30_LMS_TO_BT709_MAT,
         fallback_lms);

@@ -50,7 +50,8 @@ void ApplyHDRPreset(
     float auto_exposure_highlight_headroom_stops,
     float vfx_base_brightness,
     float vfx_weather,
-    float vfx_snow) {
+    float vfx_snow,
+    float hue_shift) {
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", 1.f},
       {"highlights", highlights},
@@ -58,6 +59,7 @@ void ApplyHDRPreset(
       {"contrast", 1.f},
       {"purity_scale", purity_scale},
       {"cone_response_exponent", 1.f},
+      {"hue_shift", hue_shift},
       {"bloom", bloom},
       {"lensflare", 1.f},
       {"distortion", 1.f},
@@ -221,11 +223,20 @@ void BuildRuntimeData() {
     },
         new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-        .label = "HDR Defaults",
+        .label = "Reset to default",
         .group = "preset-line-1",
         .tooltip = "Resets all image tuning to HDR defaults while preserving Peak, Paper White, UI brightness, Settings Mode, and output encoding.",
         .on_change = []() {
-          ApplyHDRPreset(1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f);
+          ApplyHDRPreset(1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f, 1.f);
+        },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Recommended: no VFX boost",
+        .group = "preset-line-1",
+        .tooltip = "Resets all image tuning to HDR defaults while preserving Peak, Paper White, UI brightness, Settings Mode, and output encoding.",
+        .on_change = []() {
+          ApplyHDRPreset(1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f);
         },
     },
     new renodx::utils::settings::Setting{
@@ -234,7 +245,7 @@ void BuildRuntimeData() {
         .group = "preset-line-1",
         .tooltip = "Balanced recommendation intended to work across all weather and lighting conditions. Display calibration is preserved.",
         .on_change = []() {
-          ApplyHDRPreset(1.f, 1.00f, 0.1f, 1.f, 4.f, 2.3f, 1.0f, 1.5f);
+          ApplyHDRPreset(1.f, 1.00f, 0.1f, 1.f, 4.f, 2.3f, 1.0f, 1.5f, 2.f);
         },
     },
     new renodx::utils::settings::Setting{
@@ -243,7 +254,7 @@ void BuildRuntimeData() {
         .group = "preset-line-2",
         .tooltip = "Recommendation for daytime scenes and dry weather. Display calibration is preserved.",
         .on_change = []() {
-          ApplyHDRPreset(1.f, 1.00f, 0.1f, 1.f, 4.f, 4.4f, 2.f, 1.5f);
+          ApplyHDRPreset(1.f, 1.00f, 0.1f, 1.f, 4.f, 4.4f, 2.f, 1.5f, 2.f);
         },
     },
     new renodx::utils::settings::Setting{
@@ -252,7 +263,7 @@ void BuildRuntimeData() {
         .group = "preset-line-2",
         .tooltip = "Recommendation for fog, snow, and nighttime scenes. Display calibration is preserved.",
         .on_change = []() {
-          ApplyHDRPreset(1.f, 1.00f, 0.1f, 1.f, 4.f, 1.8f, 0.7f, 1.5f);
+          ApplyHDRPreset(1.f, 1.00f, 0.1f, 1.f, 4.f, 1.8f, 0.7f, 1.5f, 2.f);
         },
     },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
@@ -385,6 +396,20 @@ void BuildRuntimeData() {
         .default_value = 1.0f,
         .label = "Cone Response Exponent",
         .section = "Psycho V30",
+        .min = 0.00f,
+        .max = 2.00f,
+        .format = "%.2f",
+        .is_enabled = IsHDRMode,
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "hue_shift",
+        .binding = &shader_injection.hue_shift,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.0f,
+        .label = "Highlight Hue Shift",
+        .section = "Psycho V30",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default, 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",
