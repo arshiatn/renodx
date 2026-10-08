@@ -1,0 +1,335 @@
+/*
+ * Copyright (C) 2026 ArshiaTN
+ * SPDX-License-Identifier: MIT
+ */
+
+#pragma once
+
+#include <windows.h>
+
+#include <algorithm>
+#include <charconv>
+#include <cstddef>
+#include <filesystem>
+#include <format>
+#include <string>
+#include <string_view>
+#include <system_error>
+
+// Opt-in control of the game's saved Screen Percentage (read at startup only).
+// Only the digits of one ini value change; Restore needs the value Apply wrote.
+namespace expeditionsrome::saved_scale {
+
+constexpr std::string_view SECTION = "[/Script/ExpeditionsRome.RomeUserSettings]";
+constexpr std::string_view KEY = "ScreenPercentage";
+constexpr int MINIMUM_PERCENTAGE = 1;
+constexpr int MAXIMUM_PERCENTAGE = 100;
+
+struct Settings {
+  bool ok = false;             // settings parsed; Apply possible
+  bool conflict = false;       // unreadable recovery record; touch nothing
+  bool owns_override = false;  // Restore can write the previous value back
+  int saved_percentage = 0;
+  std::string status;
+  std::filesystem::path settings_path;
+  std::filesystem::path backup_path;
+};
+
+struct Value {
+  int percentage = 0;
+  size_t begin = 0;  // byte range of the digits
+  size_t end = 0;
+};
+
+// Exact bytes; ok = false if missing or unreadable.
+inline std::string ReadBytes(const std::filesystem::path& path, bool* ok) {
+  *ok = false;
+  std::string bytes;
+  const HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file == INVALID_HANDLE_VALUE) return bytes;
+  LARGE_INTEGER size = {};
+  if (GetFileSizeEx(file, &size) && size.QuadPart >= 0 && size.QuadPart <= 16 * 1024 * 1024) {
+    bytes.resize(static_cast<size_t>(size.QuadPart));
+    DWORD read = 0;
+    *ok = bytes.empty() || (ReadFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr) && read == bytes.size());
+  }
+  CloseHandle(file);
+  if (!*ok) bytes.clear();
+  return bytes;
+}
+
+// Temp file + replace, so a failed write never leaves a partial file.
+inline bool WriteBytes(const std::filesystem::path& path, std::string_view bytes) {
+  auto temp = path;
+  temp += L".renodx-tmp";
+  const HANDLE file = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file == INVALID_HANDLE_VALUE) return false;
+  DWORD written = 0;
+  const bool wrote = WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr)
+                     && written == bytes.size() && FlushFileBuffers(file);
+  CloseHandle(file);
+  // ReplaceFileW keeps the existing file's attributes and security.
+  const bool replaced = wrote
+                        && (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES
+                                ? ReplaceFileW(path.c_str(), temp.c_str(), nullptr, REPLACEFILE_IGNORE_MERGE_ERRORS, nullptr, nullptr)
+                                : MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
+  if (!replaced) DeleteFileW(temp.c_str());
+  return replaced;
+}
+
+// Finds the single whole-number ScreenPercentage in the game's section. Returns an error or "".
+inline std::string Parse(std::string_view text, Value* value) {
+  if (text.starts_with("\xFF\xFE") || text.starts_with("\xFE\xFF")) return "UTF-16 settings are not supported";
+  const auto equals = [](std::string_view a, std::string_view b) {
+    return std::ranges::equal(a, b, [](char x, char y) {
+      return (x >= 'A' && x <= 'Z' ? x + 32 : x) == (y >= 'A' && y <= 'Z' ? y + 32 : y);
+    });
+  };
+  bool in_section = false;
+  int found = 0;
+  for (size_t start = (text.starts_with("\xEF\xBB\xBF") ? 3 : 0); start < text.size();) {
+    size_t stop = text.find('\n', start);
+    if (stop == std::string_view::npos) stop = text.size();
+    auto line = text.substr(start, stop - start);
+    if (line.ends_with('\r')) line.remove_suffix(1);
+    if (line.starts_with('[')) {
+      in_section = equals(line, SECTION);
+    } else if (in_section && line.size() > KEY.size() && line[KEY.size()] == '='
+               && equals(line.substr(0, KEY.size()), KEY)) {
+      const auto digits = line.substr(KEY.size() + 1);
+      int percentage = 0;
+      const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), percentage);
+      if (error != std::errc{} || end != digits.data() + digits.size() || digits[0] == '-') {
+        return std::format("{}={} is not a whole percentage", KEY, digits);
+      }
+      const auto begin = static_cast<size_t>(digits.data() - text.data());
+      *value = {.percentage = percentage, .begin = begin, .end = begin + digits.size()};
+      ++found;
+    }
+    start = stop + 1;
+  }
+  if (found == 0) return std::format("{} not found in {}", KEY, SECTION);
+  if (found > 1) return std::format("{} found {} times", KEY, found);
+  return {};
+}
+
+struct Record {
+  bool valid = false;
+  int original = 0;
+  int applied = 0;
+};
+
+// This process's last write. The game keeps the value it loaded at startup (or
+// last set in its menu) in memory and writes it back when it quits, so
+// OnProcessDetach writes ours again if exactly that value is found.
+struct Pending {
+  bool armed = false;
+  int game_value = 0;  // what the game holds in memory
+  int applied = 0;     // what this addon wrote last
+  std::filesystem::path settings_path;
+};
+inline Pending pending;
+
+class Controller {
+ public:
+  Controller() {
+    std::wstring local(MAX_PATH, L'\0');
+    DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", local.data(), static_cast<DWORD>(local.size()));
+    if (length > local.size()) {
+      local.resize(length);
+      length = GetEnvironmentVariableW(L"LOCALAPPDATA", local.data(), static_cast<DWORD>(local.size()));
+    }
+    if (length == 0 || length >= local.size()) return;
+    local.resize(length);
+    settings_path_ = std::filesystem::path(local) / L"ExpeditionsRome" / L"Saved" / L"Config" / L"WindowsNoEditor" / L"GameUserSettings.ini";
+    record_path_ = settings_path_;
+    record_path_ += L".renodx-aa.txt";
+    backup_path_ = settings_path_;
+    backup_path_ += L".renodx-aa.bak";
+  }
+
+  Settings Inspect() const {
+    Settings settings;
+    State state;
+    if (!Load(&settings, &state)) return settings;
+    const auto& record = state.record;
+    const int value = state.value.percentage;
+    settings.owns_override = Owned(state);
+    if (settings.owns_override) settings.backup_path = backup_path_;
+    if (WrittenBack(value)) {
+      settings.status = std::format("The game wrote {}% back; {}% is saved again when the game quits.", value, pending.applied);
+    } else if (record.valid && value == record.applied) {
+      settings.status = std::format("Saved {}% for the next launch (was {}%). Restart the game, then check Active input.",
+                                    record.applied, record.original);
+    } else if (record.valid) {
+      settings.status = std::format("The pending {}% was replaced (now {}%). Apply again if needed.", record.applied, value);
+    } else {
+      settings.status = std::format("Saved: {}%.", value);
+    }
+    return settings;
+  }
+
+  Settings Apply(int percentage) {
+    Settings settings;
+    State state;
+    if (!Load(&settings, &state)) return settings;
+    if (percentage < MINIMUM_PERCENTAGE || percentage > MAXIMUM_PERCENTAGE) {
+      settings.status = std::format("{}% is outside {}-{}%; nothing changed.", percentage, MINIMUM_PERCENTAGE, MAXIMUM_PERCENTAGE);
+      return settings;
+    }
+    // Keep the first original while this addon's value (or the game's write-back) is in the file.
+    const bool continuing = Owned(state) || (state.record.valid && state.value.percentage == state.record.original);
+    const int original = continuing ? state.record.original : state.value.percentage;
+    if (percentage == original) {
+      if (continuing) return Restore();
+      settings.status = std::format("{}% is already saved; nothing changed.", percentage);
+      return settings;
+    }
+    if (!continuing && !WriteBytes(backup_path_, state.text)) {
+      settings.status = "Could not write the recovery backup; nothing changed.";
+      return settings;
+    }
+    const int before = state.value.percentage;
+    if (!Write(&state, percentage)) {
+      settings.status = "Could not write the settings file; nothing changed.";
+      return settings;
+    }
+    if (!WriteBytes(record_path_, std::format("original={}\r\napplied={}\r\n", original, percentage))) {
+      Write(&state, before);
+      settings.status = "Could not write the recovery record; the change was undone.";
+      return settings;
+    }
+    Arm(before, percentage);
+    return Inspect();
+  }
+
+  Settings Restore() {
+    Settings settings;
+    State state;
+    if (!Load(&settings, &state)) return settings;
+    if (!state.record.valid) {
+      settings.status = std::format("Nothing to restore; saved: {}%.", state.value.percentage);
+      return settings;
+    }
+    // Only this addon's own value (or the game's write-back) is replaced; a menu choice stays.
+    const int before = state.value.percentage;
+    const bool restoring = Owned(state) || before == state.record.original;
+    if (restoring) {
+      if (before != state.record.original && !Write(&state, state.record.original)) {
+        settings.owns_override = true;
+        settings.backup_path = backup_path_;
+        settings.status = "Could not write the settings file; nothing changed.";
+        return settings;
+      }
+      Arm(before, state.record.original);
+    }
+    DeleteFileW(record_path_.c_str());
+    DeleteFileW(backup_path_.c_str());
+    settings.saved_percentage = state.value.percentage;
+    settings.status = restoring ? std::format("Restored: {}% is saved.", state.value.percentage)
+                                : std::format("Kept {}% from the game's menu.", state.value.percentage);
+    return settings;
+  }
+
+ private:
+  struct State {
+    std::string text;
+    Value value;
+    Record record;
+  };
+
+  std::filesystem::path settings_path_;
+  std::filesystem::path record_path_;
+  std::filesystem::path backup_path_;
+
+  // The game wrote its in-memory value over this process's last write.
+  static bool WrittenBack(int value) {
+    return pending.armed && value == pending.game_value && value != pending.applied;
+  }
+
+  // This addon's value is in the file, or the game's write-back of it.
+  static bool Owned(const State& state) {
+    return state.record.valid
+           && (state.value.percentage == state.record.applied
+               || (WrittenBack(state.value.percentage) && pending.applied == state.record.applied));
+  }
+
+  // The menu changes memory and file together, so any value other than this
+  // process's last write is what the game holds now.
+  void Arm(int before, int written) const {
+    if (!pending.armed || before != pending.applied) pending.game_value = before;
+    pending.applied = written;
+    pending.armed = true;
+    pending.settings_path = settings_path_;
+  }
+
+  bool Load(Settings* settings, State* state) const {
+    settings->settings_path = settings_path_;
+    if (settings_path_.empty()) {
+      settings->status = "LOCALAPPDATA is not set.";
+      return false;
+    }
+    bool read = false;
+    state->text = ReadBytes(settings_path_, &read);
+    if (!read) {
+      settings->status = "Settings file not found. Start the game once and save its video settings.";
+      return false;
+    }
+    if (const auto error = Parse(state->text, &state->value); !error.empty()) {
+      settings->status = error + "; nothing is changed.";
+      return false;
+    }
+    settings->saved_percentage = state->value.percentage;
+    if (GetFileAttributesW(record_path_.c_str()) != INVALID_FILE_ATTRIBUTES) {
+      bool record_read = false;
+      const auto record = ReadBytes(record_path_, &record_read);
+      const auto field = [&](std::string_view name) {
+        int number = 0;
+        const auto at = record.find(name);
+        if (at == std::string::npos) return 0;
+        const char* begin = record.data() + at + name.size();
+        const auto [end, error] = std::from_chars(begin, record.data() + record.size(), number);
+        return (error == std::errc{} && end != begin) ? number : 0;
+      };
+      state->record = {.valid = record_read, .original = field("original="), .applied = field("applied=")};
+      if (state->record.original < 1 || state->record.applied < 1) {
+        settings->conflict = true;
+        settings->status = std::format("Unreadable recovery record; check the settings, then delete {}.",
+                                       record_path_.filename().string());
+        return false;
+      }
+    }
+    settings->ok = true;
+    return true;
+  }
+
+  // Replaces only the digits, then reads the file back.
+  bool Write(State* state, int percentage) const {
+    auto text = state->text;
+    text.replace(state->value.begin, state->value.end - state->value.begin, std::to_string(percentage));
+    if (!WriteBytes(settings_path_, text)) return false;
+    bool read = false;
+    Value check;
+    auto written = ReadBytes(settings_path_, &read);
+    if (!read || !Parse(written, &check).empty() || check.percentage != percentage) return false;
+    state->text = std::move(written);
+    state->value = check;
+    return true;
+  }
+};
+
+// From DllMain detach, after the game's own config flush on exit.
+inline void OnProcessDetach() {
+  if (!pending.armed) return;
+  pending.armed = false;
+  bool read = false;
+  auto text = ReadBytes(pending.settings_path, &read);
+  Value value;
+  if (!read || !Parse(text, &value).empty() || value.percentage != pending.game_value
+      || value.percentage == pending.applied) return;
+  text.replace(value.begin, value.end - value.begin, std::to_string(pending.applied));
+  WriteBytes(pending.settings_path, text);
+}
+
+}  // namespace expeditionsrome::saved_scale

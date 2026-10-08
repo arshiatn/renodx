@@ -146,25 +146,20 @@ inline std::uint32_t GetEffectiveRowPitch(
     const reshade::api::resource_desc& destination_desc,
     const reshade::api::subresource_data& source_data,
     std::uint32_t subresource) {
-  const auto levels = std::max<std::uint32_t>(destination_desc.texture.levels, 1u);
-  const auto level = subresource % levels;
-  const auto width = std::max<std::uint32_t>(destination_desc.texture.width >> level, 1u);
-  return source_data.row_pitch != 0u
-             ? source_data.row_pitch
-             : reshade::api::format_row_pitch(destination_desc.texture.format, width);
+  return renodx::utils::resource::GetTexture2DUploadRowPitch(
+      destination_desc,
+      source_data,
+      subresource);
 }
 
 inline std::uint32_t GetEffectiveSlicePitch(
     const reshade::api::resource_desc& destination_desc,
     const reshade::api::subresource_data& source_data,
     std::uint32_t subresource) {
-  const auto levels = std::max<std::uint32_t>(destination_desc.texture.levels, 1u);
-  const auto level = subresource % levels;
-  const auto height = std::max<std::uint32_t>(destination_desc.texture.height >> level, 1u);
-  const auto row_pitch = GetEffectiveRowPitch(destination_desc, source_data, subresource);
-  return source_data.slice_pitch != 0u
-             ? source_data.slice_pitch
-             : reshade::api::format_slice_pitch(destination_desc.texture.format, row_pitch, height);
+  return renodx::utils::resource::GetTexture2DUploadSlicePitch(
+      destination_desc,
+      source_data,
+      subresource);
 }
 
 template <typename T>

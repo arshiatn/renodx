@@ -1,0 +1,12 @@
+{
+  "$schema": "https://clshortfuse.github.io/renodx/renodx-metadata-schema.json",
+  "id": "expeditionsrome_dlss",
+  "title": "Expeditions: Rome — experimental DLAA / DLSS",
+  "status": "experimental",
+  "summary": "Separate DLAA, DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance and custom 1-100% input scaling prototype with live render scale and preset choice; no HDR shader changes.",
+  "deploy": {
+    "game_exe": "ExpeditionsRome-Win64-Shipping.exe",
+    "api": "d3d11",
+    "architecture": ["x64"]
+  }
+}

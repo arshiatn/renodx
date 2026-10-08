@@ -377,7 +377,7 @@ void OnPresentFrame(
 }
 
 void ApplyResetPreset() {
-  // Peak / Paper White / UI brightness, Settings Mode, and output settings are preserved.
+  // Display/output settings and the independent Motion Blur/DOF controls are preserved.
   renodx::utils::settings::UpdateSettings({
       {"rendering_mode", 1.f},
 
@@ -393,18 +393,19 @@ void ApplyResetPreset() {
       // Extra
       {"bloom", 1.f},
       {"vignette", 1.f},
+      {"motion_blur",1.f},
+      {"depth_of_field",1.f},
   });
 }
 
 void ApplyPsychoRecommended() {
-  // Only PsychoV31 controls are changed. Peak / Paper White / UI brightness
-  // and unrelated controls are preserved.
+  // Display/output settings and the independent Motion Blur/DOF controls are preserved.
   renodx::utils::settings::UpdateSettings({
       {"rendering_mode", 2.f},
 
       // PsychoV31
       {"exposure", 1.f},
-      {"highlights", 1.60f},
+      {"highlights", 1.65f},
       {"shadows", 1.f},
       {"contrast", 1.f},
       {"purity_scale", 1.f},
@@ -414,6 +415,8 @@ void ApplyPsychoRecommended() {
       // Extra
       {"bloom", 1.f},
       {"vignette", 1.f},
+      {"motion_blur",0.f},
+      {"depth_of_field",1.f},
   });
 }
 
@@ -485,15 +488,15 @@ void BuildRuntimeData() {
                      "PsychoV31 - Native Tone: applies PsychoV31 after the game's gamma/brightness response.\n"
                      "PsychoV31 - Full Replacement: PsychoV31 replaces that response.\n"
                      "All HDR modes retain the game's colour grading, bloom and vignette.",
-          .labels = {"SDR", "PsychoV31 - Native Tone", "PsychoV31 - Full Replacement"},
+          .labels = {"SDR", "HDR (PsychoV31 - Native Tone)", "HDR (PsychoV31 - Full Replacement)"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "Recommended (Faithful to SDR's colors)",
+          .label = "Reset (Faithful to SDR)",
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Resets Psycho controls, Bloom and Vignette; selects PsychoV31 - Native Tone.\n"
-                     "Peak, Paper White, UI brightness, Settings Mode, and output settings are preserved.",
+                     "Peak, Paper White, UI, output, Motion Blur and Depth of Field are preserved.",
           .on_change = []() {
             ApplyResetPreset();
           },
@@ -502,9 +505,9 @@ void BuildRuntimeData() {
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Recommended (Full Replacement)",
           .section = "Presets",
-          .group = "preset-line-1",
+          .group = "preset-line-2",
           .tooltip = "Selects PsychoV31 - Full Replacement with neutral Psycho controls.\n"
-                     "Peak, Paper White, UI brightness, and unrelated controls are preserved.",
+                     "Peak, Paper White, UI, output, Motion Blur and Depth of Field are preserved.",
           .on_change = []() {
             ApplyPsychoRecommended();
           },
@@ -634,6 +637,36 @@ void BuildRuntimeData() {
           .format = "%.2f",
           .is_enabled = IsPsychoMode,
           .is_visible = IsPsychoMode,
+      },
+            new renodx::utils::settings::Setting{
+          .key = "motion_blur",
+          .binding = &shader_injection.motion_blur,
+          .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+          .default_value = 1.f,
+          .label = "Motion Blur",
+          .section = "Extra",
+          .tooltip = "0 = off, 1 = native strength. Intermediate values reduce the blur radius.\n"
+                     "Works in SDR and both Psycho modes. Has no effect when the game uses its single-tap path.",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = IsAdvancedSettings,
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "depth_of_field",
+          .binding = &shader_injection.depth_of_field,
+          .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+          .default_value = 1.f,
+          .label = "Depth of Field",
+          .section = "Extra",
+          .tooltip = "0 = off, 1 = native strength. Intermediate values reduce blur and its mask strength.\n"
+                     "Works in SDR and both Psycho modes where the game applies depth of field.",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = IsAdvancedSettings,
+          .is_visible = IsAdvancedSettings,
       },
   };
 }

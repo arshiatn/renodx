@@ -871,6 +871,31 @@ inline bool IsUploadSignatureTrackable(const reshade::api::resource_desc& desc) 
   return true;
 }
 
+inline uint32_t GetTexture2DUploadRowPitch(
+    const reshade::api::resource_desc& desc,
+    const reshade::api::subresource_data& data,
+    uint32_t subresource) {
+  const auto levels = std::max<uint32_t>(desc.texture.levels, 1u);
+  const auto level = subresource % levels;
+  const auto width = std::max<uint32_t>(desc.texture.width >> level, 1u);
+  return data.row_pitch != 0u
+             ? data.row_pitch
+             : reshade::api::format_row_pitch(desc.texture.format, width);
+}
+
+inline uint32_t GetTexture2DUploadSlicePitch(
+    const reshade::api::resource_desc& desc,
+    const reshade::api::subresource_data& data,
+    uint32_t subresource) {
+  const auto levels = std::max<uint32_t>(desc.texture.levels, 1u);
+  const auto level = subresource % levels;
+  const auto height = std::max<uint32_t>(desc.texture.height >> level, 1u);
+  const auto row_pitch = GetTexture2DUploadRowPitch(desc, data, subresource);
+  // A source slice pitch is not meaningful for 2D textures and can contain
+  // backend-specific data. Derive the byte span to avoid reading past the upload.
+  return reshade::api::format_slice_pitch(desc.texture.format, row_pitch, height);
+}
+
 inline bool IsFullSubresourceUpdate(
     const reshade::api::resource_desc& desc,
     uint32_t subresource,
@@ -910,12 +935,8 @@ inline std::optional<ResourceUploadSignature> BuildUploadSignature(
   const auto width = std::max<uint32_t>(desc.texture.width >> level, 1u);
   const auto height = std::max<uint32_t>(desc.texture.height >> level, 1u);
   const auto depth_or_layers = 1u;
-  const auto row_pitch = data.row_pitch != 0u
-                             ? data.row_pitch
-                             : reshade::api::format_row_pitch(desc.texture.format, width);
-  const auto slice_pitch = data.slice_pitch != 0u
-                               ? data.slice_pitch
-                               : reshade::api::format_slice_pitch(desc.texture.format, row_pitch, height);
+  const auto row_pitch = GetTexture2DUploadRowPitch(desc, data, subresource);
+  const auto slice_pitch = GetTexture2DUploadSlicePitch(desc, data, subresource);
   if (slice_pitch == 0u) return std::nullopt;
 
   return ResourceUploadSignature{

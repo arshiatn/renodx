@@ -76,9 +76,11 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
   float3 color = clamp(tex2Dlod(PrincipalMap, float4(v1, 0, 0)).rgb, 0.f, tap_max);
   float2 offset_map = tex2D(ShadowMap, v1).yz - 0.501960814f;
   float2 step_uv = (float2(offset_map.x, -offset_map.y) + v2) * kBlurStep;
-  // Preserve all native taps in SDR and for any nonzero displacement.
+  float motion_blur = injection_valid ? saturate(SI.motion_blur) : 1.f;
+  step_uv *= motion_blur;
+  // Off retains the centre sample. At 1, preserve the previous native tap path.
   [branch]
-  if (!hdr || any(step_uv != 0.f)) {
+  if (motion_blur > 0.f && (!hdr || any(step_uv != 0.f))) {
     float4 step4 = float4(step_uv, -step_uv);
     float4 tap_uv = v1.xyxy + step4;
     [unroll]

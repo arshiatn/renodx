@@ -715,6 +715,15 @@ foreach(FILE ${ADDON_FILES})
   add_dependencies(${ADDON} ${ADDON}-shaders)
   add_dependencies(${ADDON} detours)
   target_link_libraries(${ADDON} PRIVATE detours)
+  if(ADDON STREQUAL "expeditionsrome_dlss" OR ADDON STREQUAL "rysesonofrome_dlss")
+    # Shared RenoDX STL objects must match the installed Release addons, even
+    # when this target uses /MTd. NGX provides the matching Debug iterator-0 lib.
+    target_link_libraries(${ADDON} PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/external/DLSS/lib/Windows_x86_64/x64/nvsdk_ngx_s$<$<CONFIG:Debug>:_dbg_iterator0>.lib")
+    target_compile_definitions(${ADDON} PRIVATE
+      _ITERATOR_DEBUG_LEVEL=0
+      RENODX_NGX_RUNTIME_PATH=L"${CMAKE_CURRENT_SOURCE_DIR}/external/DLSS/lib/Windows_x86_64/rel")
+  endif()
   target_include_directories(${ADDON} SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/Detours/include)
   target_include_directories(${ADDON} SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/json/include)
   target_include_directories(${ADDON} SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/frozen/include)

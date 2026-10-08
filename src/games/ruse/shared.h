@@ -12,9 +12,9 @@ struct ShaderInjectData {
   float bloom;
   float vignette;
 
-  // Preserve the remaining injection offsets after removing the former grading group.
-  float reserved_0;
-  float reserved_1;
+  // Reuse padding without shifting existing injection offsets.
+  float motion_blur;
+  float depth_of_field;
   float reserved_2;
   float reserved_3;
   float reserved_4;

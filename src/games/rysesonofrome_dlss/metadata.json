@@ -1,0 +1,12 @@
+{
+  "$schema": "https://clshortfuse.github.io/renodx/renodx-metadata-schema.json",
+  "id": "rysesonofrome_dlss",
+  "title": "Ryse: Son of Rome — experimental DLAA / DLSS",
+  "status": "experimental",
+  "summary": "Separate DLAA prototype in place of the game's TAA; no HDR shader changes.",
+  "deploy": {
+    "game_exe": "Ryse.exe",
+    "api": "d3d11",
+    "architecture": ["x64"]
+  }
+}
