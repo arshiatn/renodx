@@ -25,7 +25,13 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
    system. RESULT (debugForClaude21, everything maxed): no test changes the soldier at all. But tests 4 / 5 were
    void: Detail distance 64x pins e_LodMax 0, and the attachment LOD clamp does max(lod, e_LodMin) then
    min(lod, e_LodMax) = 0. Next: ATN repeats e_LodMin 2 / e_CharLodMin 2 with Detail distance at 32x, standing
-   close. If still nothing, likely game logic swapping a nearby NPC's model (not a cvar). Then: fix that system,
+   close. ATN did: still nothing, so soldiers' model detail does not depend on LOD there (e_LodMax 0 at 64x is
+   useless for them: remove it, it costs fps). ATN's new reading: the arm armour does not grow, it does not SIT on
+   the arm until ~2-4 m (then it fits). Likely animation-side: distant characters update fewer bones (joint masking)
+   or attachments' simulation (pendulum; strings PA_PendulumType, Animation/PendulumSimWeight) only runs near.
+   Next test (memory writes, both console-refused, CryAnimation console static +0x2240930): ca_ForceUpdateSkeletons
+   +0xb8 (abs +0x22409e8, one reader +0x8ec58d) = 1, ca_UseJointMasking +0x144 (abs +0x2240a74, reader +0x933978) = 0.
+   If neither, park it (game logic). Then: fix that system,
    remove the test, and drop e_LodMax 0 (costs fps, did not
    help) and maybe the blend threshold if they change nothing. Also ask: Shadow distance shows no difference (ATN),
    remove it? Water is capped at 2x (4x ugly, 6x crashed ATN's PC, 8x+ crashed chapter 3).
