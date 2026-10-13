@@ -2893,8 +2893,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
   }
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("Finds which of the game's draws paint the pixel under the red cross, with their mesh (index\n"
-                      "count, buffers) and shaders. During the next frame, every draw, dispatch, clear and copy that\n"
-                      "changes it is saved to ryse_pixel_trace.txt next to the game's exe (one short hitch).");
+                      "count, buffers), shaders and skinning bones. During the next frame, every draw, dispatch, clear\n"
+                      "and copy that changes it is saved to ryse_pixel_trace.txt next to the game's exe (one short hitch).");
   }
   ImGui::TextWrapped("%s", rysesonofrome::pixel_trace::Status().c_str());
   if (ImGui::Button("Save the game's code for analysis (debug, about 55 MB)")) {

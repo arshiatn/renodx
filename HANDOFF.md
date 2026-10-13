@@ -16,31 +16,31 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
 Nothing of this conversation carries over except files: this HANDOFF, memory (`C:\Users\arshi\.claude\projects\
 D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{ryse,toa,exr}`), the repo (branch
 `atn-mods`, many uncommitted changes: never push upstream) and the zips in `Downloads`. ATN's rules above still hold.
-1. OPEN, Ryse DLSS v63 (`Downloads\rysesonofrome_dlss_v63.zip`): soldiers' armour / cloth snaps to a bigger, more
-   detailed shape within ~2-4 m at every setting (screenshots `Bin64\debugForClaude20`). Ruled out by ATN's tests:
-   model LOD clamp (v61, e_LodMax 0 written in memory at Detail 64x, log showed it found) and blend-shape culling
-   (v62, ca_vaBlendCullingThreshold divided). v63 adds Advanced "Armour test (temporary)" (ARMOUR_TESTS in
-   addon.cpp): ATN stands ~1 m from a soldier and tries each (blend shapes off, vertex animation off, tessellation
-   within 0.5 m, e_LodMin 2, e_CharLodMin 2); the one that makes the near armour look like the far one names the
-   system. RESULT (debugForClaude21, everything maxed): no test changes the soldier at all. But tests 4 / 5 were
-   void: Detail distance 64x pins e_LodMax 0, and the attachment LOD clamp does max(lod, e_LodMin) then
-   min(lod, e_LodMax) = 0. Next: ATN repeats e_LodMin 2 / e_CharLodMin 2 with Detail distance at 32x, standing
-   close. ATN did: still nothing, so soldiers' model detail does not depend on LOD there (e_LodMax 0 at 64x is
-   useless for them: remove it, it costs fps). ATN's new reading: the arm armour does not grow, it does not SIT on
-   the arm until ~2-4 m (then it fits). Likely animation-side: distant characters update fewer bones (joint masking)
-   or attachments' simulation (pendulum; strings PA_PendulumType, Animation/PendulumSimWeight) only runs near.
-   v64 (sent): Advanced "Max every character setting (test)" toggle (character_overrides: console cvars + memory
-   writes in the CryAnimation console object incl. ca_ForceUpdateSkeletons +0xb8, ca_UseJointMasking +0x144,
-   ca_ClothMaxChars +0x1cc, facial radius / framerate) and "Trace this pixel" (pixel_trace.hpp, ported from Tales,
-   with draw parameters, VB / IB, VS cbuffers): ATN traces the arm armour far and near, compares. e_LodMax 0 at
-   Detail 64x stays (ATN wants every model at full detail). Then: fix that system,
-   remove the test, and drop e_LodMax 0 (costs fps, did not
-   help) and maybe the blend threshold if they change nothing. Also ask: Shadow distance shows no difference (ATN),
-   remove it? Water is capped at 2x (4x ugly, 6x crashed ATN's PC, 8x+ crashed chapter 3).
+1. OPEN, Ryse DLSS v65 (`Downloads\rysesonofrome_dlss_v65.zip`, built, not yet run by ATN). Soldiers' arm armour does
+   not SIT on the arm until ~2-4 m from the camera (ATN; looks "bigger" up close). Ruled out (ATN tests, v61-v64):
+   model LOD (e_LodMax 0, e_LodMin 2, e_CharLodMin 2 change nothing), blend shapes, vertex animation, tessellation,
+   full skeleton updates / joint masking off ("Max every character setting (test)", Advanced). That toggle costs no fps
+   and fixes swords / armour going through cloth beyond 5 m: ATN wants it kept as a real option (memory
+   feedback_ryse_character_max.md), more CPU-heavy options later. e_LodMax 0 at Detail distance 64x stays (ATN).
+   v64 pixel trace (Advanced "Trace this pixel", pixel_trace.hpp; files `Bin64\debugForClaude22\far.txt / close.txt`):
+   far and near are the SAME draw (54876 indices from 20136, same VB / IB / textures); far vs 0x1DD1EFED / ps
+   0xB02408C9, near vs 0xC38FB39D / ps 0x3433A827 differ only by object motion blur output (decompiled in
+   `bin/cmd_Decompiler-1.3.16/dump_shader_ryse`). Skinning: CB_SkinQuat_Cur b9, 768 dual quaternions (row 0 = real
+   quaternion, row 1 = dual), 4 weights. So the POSE differs: some armour helper bone is only updated near.
+   v65: the trace also lists each painting draw's b9 bones ("Bones of #N", rotation xyzw | dual xyzw, up to the last
+   non-zero bone). NEXT: ATN traces the same soldier's arm armour far and near (rename the first file), sends both.
+   Compare per bone: rotation quaternion q (row 0) and translation t = 2 * (dual * conjugate(q)).xyz (row 1); idle
+   animation moves bones a little, the helpers that only update near jump (often far = parent's transform / bind pose).
+   Then find what drives them, candidates in the exe: pendulum / redirect attachments (strings PA_PendulumType, PA_FPS,
+   PA_RedirectToJoint; CDF parse +0x8e39ca, save +0x8e6547; attachment LOD +0x881950), pose modifiers
+   (AnimationPoseModifier_OperatorQueue, _PoseMatching, _LimbIk), Ryse correctives (cc_neckSimulation,
+   cc_groinSimulation; cvars flags 0x80, settable), "Animation/PendulumSimWeight" (+0xacc7c9, +0x1790673). Look for a
+   camera-distance gate (a compare of the character's distance with a few metres) and patch / pin it like the jitter.
+   Afterwards: turn "Max every character setting" into a saved option (in presets), remove the debug test UI.
    How the RE was done: rx.py (`python -I rx.py cvar NAME` = help text from the exe; `xref RVA`; `dis RVA`),
    names.py (string users), field_any.py / disp_scan.py (struct field readers); 3D engine CVars* global +0x2e25048,
-   CryAnimation console static +0x2240930; crash dumps with cdb (`C:\Program Files (x86)\Windows Kits\10\
-   Debuggers\x64\cdb.exe -z DUMP -c ".ecxr; kn 30; q"`).
+   CryAnimation console static +0x2240930 (found at runtime via FORCE_SKELETON_UPDATE); crash dumps with cdb
+   (`C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe -z DUMP -c ".ecxr; kn 30; q"`).
 2. NEXT PROJECT (ATN, after Ryse): an HDR addon for Total War: Shogun 2 (Complete Edition, released 2026-10-13).
    Start with the `setup-game-mod-dev` skill (`.agents/skills/`), new folder from `src/games/generic`, shader dump
    with 3Dmigoto (`bin/cmd_Decompiler-1.3.16`), then `swapchain-resource-analysis` / `handle-sdr-tonemap-lut`.
@@ -89,7 +89,7 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
   speed (r_TexturesStreamingMaxRequestedMB 2 / Jobs 32, e_StreamCgfMaxTasksInProgress 32 / MaxNewTasksPerUpdate 4),
   r_TexturesStreamingMipBias 0, e_GsmCacheLodOffset 3, e_DynamicLightsMaxEntityLights 16, e_FoliageWindActivationDist
   25, e_ParticlesLod 1, water extras (r_WaterRipplesResolution 256, caustics), r_BeamsMaxSlices 200 (max 300).
-- Ryse (HDR fix34, DLSS v64: v64 character test toggle + pixel trace; v63 armour test; v62 blend shape culling, water 2x max; v61 e_LodMax 0 at Detail 64x (armour LOD); v60 experimental folded into sliders, water 2x; v59 LOD / streaming cvars; v58 Water capped at 4x (8x/16x crashed chapter 3: the sea grid (X-1)(Y-1) x 12 bytes overflows a 4 MB buffer, from 2 dumps); v55 clearer Texture LOD bias labels/tooltip; v56 "Smooth shiny surfaces" option removed again in v57 (ATN: G-buffer filter always off, better highlights; armour shimmer identical without the HDR addon = game specular aliasing). HDR fix34: Recommended presets Bloom 0.5): done, ATN: "perfect". Expeditions: Rome (HDR v26, DLSS + graphics): ATN: "perfect".
+- Ryse (HDR fix34, DLSS v65: v65 trace saves skinning bones; v64 character test toggle + pixel trace; v63 armour test; v62 blend shape culling, water 2x max; v61 e_LodMax 0 at Detail 64x (armour LOD); v60 experimental folded into sliders, water 2x; v59 LOD / streaming cvars; v58 Water capped at 4x (8x/16x crashed chapter 3: the sea grid (X-1)(Y-1) x 12 bytes overflows a 4 MB buffer, from 2 dumps); v55 clearer Texture LOD bias labels/tooltip; v56 "Smooth shiny surfaces" option removed again in v57 (ATN: G-buffer filter always off, better highlights; armour shimmer identical without the HDR addon = game specular aliasing). HDR fix34: Recommended presets Bloom 0.5): done, ATN: "perfect". Expeditions: Rome (HDR v26, DLSS + graphics): ATN: "perfect".
 - Tales of Arise: HDR v30 (v27 NaN fix for Smooth Volumetric Light, v28 Along Sun Rays, v29 Soft removed, v30 no Sun Haze slider; v18 Motion Blur slider Advanced only; v19 16-bit scene buffers against sky banding; v20 Smooth Volumetric Light), DLAA + graphics v48 (zip `Downloads\talesofarise_dlss_v48.zip`). Confirmed by ATN: sun
   shadow resolution 6144 / 8192 (CSM atlas doubled to 16384) fixes the sun-move shimmer; "Keep characters behind the
   camera" (Arise.PF.Culling.ForceInFrustum 1) fixes characters fading in on fast turns. Untested: v34-v36

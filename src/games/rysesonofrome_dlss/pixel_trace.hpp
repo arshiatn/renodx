@@ -41,7 +41,9 @@
 // data (the vertex shader's constant buffers and buffers). During the next frame, before every draw, dispatch, clear
 // and copy, the texel at that position (scaled to each target's size) is copied from the targets of the command
 // before, so every command's result is known. Saved next to the exe as ryse_pixel_trace.txt: each command that
-// changed it, with its draw parameters, shaders, the target's format and size and its shaders' inputs.
+// changed it, with its draw parameters, shaders, the target's format and size and its shaders' inputs. v65: also the
+// skinning bones (vertex shader b9, CB_SkinQuat_Cur: 768 dual quaternions) of each draw that changed it, copied at the
+// draw: the armour's draw is the same far and near (same mesh, same skinning), so its pose is what differs.
 namespace rysesonofrome::pixel_trace {
 
 using Microsoft::WRL::ComPtr;
@@ -50,6 +52,10 @@ constexpr size_t MAX_SAMPLES = 20000;  // 1x1 staging copies per trace
 constexpr size_t NO_SAMPLE = std::numeric_limits<size_t>::max();
 constexpr UINT TRACED_SLOTS = 8;
 constexpr UINT TRACED_INPUTS = 16;
+constexpr UINT BONE_SLOT = 9;               // CB_SkinQuat_Cur
+// Bone buffer copies per trace (24 KB each), indexed draws only: the buffer stays bound for every later draw too, and
+// the soldier came after about 900 commands.
+constexpr size_t MAX_BONE_SAMPLES = 4096;
 
 struct Target {
   ComPtr<ID3D11Texture2D> texture;
@@ -66,6 +72,12 @@ struct Command {
   std::string description;  // kind and shaders
   std::string inputs;       // its shader's textures
   std::vector<Target> targets;
+  size_t bones = NO_SAMPLE;  // its BONE_SLOT copy (bone_samples)
+};
+
+struct BoneSample {
+  ComPtr<ID3D11Buffer> staging;
+  std::vector<uint8_t> bytes;
 };
 
 struct Sample {
@@ -82,6 +94,7 @@ struct State {
   std::array<float, 2> position = {};  // 0-1 of each target's width and height
   std::vector<Command> commands;
   std::vector<Sample> samples;
+  std::vector<BoneSample> bone_samples;
   std::map<std::pair<ID3D11Texture2D*, UINT>, size_t> latest;  // each texel's last sample
   uint32_t command_count = 0;
   std::string status = "No trace yet.";
@@ -329,7 +342,7 @@ inline std::string GeometryInputs(ID3D11DeviceContext* context) {
   return text;
 }
 
-inline void OnGraphics(reshade::api::command_list* cmd_list, const std::string& kind) {
+inline void OnGraphics(reshade::api::command_list* cmd_list, const std::string& kind, bool copy_bones = false) {
   const std::unique_lock lock(state.mutex);
   if (!state.tracing) return;
   ++state.command_count;  // every command, also those without a traced target
@@ -366,6 +379,27 @@ inline void OnGraphics(reshade::api::command_list* cmd_list, const std::string& 
   Record(context, std::format("{} vs 0x{:08X} ps 0x{:08X} | {}", kind, vertex, pixel, GeometryInputs(context)),
          "ps " + Inputs([&](ID3D11ShaderResourceView** views) { context->PSGetShaderResources(0, TRACED_INPUTS, views); }),
          std::move(targets));
+  // The bones this draw skins with, as they are now (the game maps the buffer again for the next character).
+  ComPtr<ID3D11Buffer> bones;
+  context->VSGetConstantBuffers(BONE_SLOT, 1, bones.GetAddressOf());
+  if (!copy_bones || bones == nullptr || state.bone_samples.size() >= MAX_BONE_SAMPLES) return;
+  D3D11_BUFFER_DESC desc = {};
+  bones->GetDesc(&desc);
+  const D3D11_BUFFER_DESC staging_desc = {
+      .ByteWidth = desc.ByteWidth,
+      .Usage = D3D11_USAGE_STAGING,
+      .BindFlags = 0,
+      .CPUAccessFlags = D3D11_CPU_ACCESS_READ,
+      .MiscFlags = 0,
+      .StructureByteStride = 0,
+  };
+  ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  BoneSample sample;
+  if (device == nullptr || FAILED(device->CreateBuffer(&staging_desc, nullptr, sample.staging.GetAddressOf()))) return;
+  context->CopyResource(sample.staging.Get(), bones.Get());
+  state.bone_samples.push_back(std::move(sample));
+  state.commands.back().bones = state.bone_samples.size() - 1;
 }
 
 inline void OnCompute(reshade::api::command_list* cmd_list, const char* kind) {
@@ -439,8 +473,10 @@ inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, 
 
 inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count, uint32_t first_index,
                           int32_t vertex_offset, uint32_t) {
-  OnGraphics(cmd_list, std::format("draw indexed {} indices x{} from {} vertex offset {}", index_count, instance_count,
-                                   first_index, vertex_offset));
+  OnGraphics(cmd_list,
+             std::format("draw indexed {} indices x{} from {} vertex offset {}", index_count, instance_count, first_index,
+                         vertex_offset),
+             true);
   return false;
 }
 
@@ -561,6 +597,7 @@ inline void Stop() {
   state.tracing = false;
   state.commands.clear();
   state.samples.clear();
+  state.bone_samples.clear();
   state.latest.clear();
 }
 
@@ -574,6 +611,7 @@ inline void OnPresent(reshade::api::command_queue* queue) {
     state.position = state.requested_position;
     state.commands.clear();
     state.samples.clear();
+    state.bone_samples.clear();
     state.latest.clear();
     state.command_count = 0;
     Events(true);
@@ -592,6 +630,16 @@ inline void OnPresent(reshade::api::command_queue* queue) {
     context->Unmap(sample.staging.Get(), 0);
     sample.staging.Reset();
   }
+  for (auto& sample : state.bone_samples) {
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (context == nullptr || FAILED(context->Map(sample.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) continue;
+    D3D11_BUFFER_DESC desc = {};
+    sample.staging->GetDesc(&desc);
+    sample.bytes.resize(desc.ByteWidth);
+    std::memcpy(sample.bytes.data(), mapped.pData, desc.ByteWidth);
+    context->Unmap(sample.staging.Get(), 0);
+    sample.staging.Reset();
+  }
   std::array<wchar_t, MAX_PATH> exe = {};
   GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
   const auto path = std::filesystem::path(exe.data()).parent_path() / "ryse_pixel_trace.txt";
@@ -603,21 +651,48 @@ inline void OnPresent(reshade::api::command_queue* queue) {
        << "shader's constant buffers and textures), the target it changed, its texel before -> after, and the pixel\n"
        << "shader's textures.\n\n";
   size_t changed = 0;
+  std::vector<const Command*> with_bones;  // commands that changed it and skin with bones
   for (const auto& command : state.commands) {
+    bool command_changed = false;
     for (const auto& target : command.targets) {
       if (target.before == NO_SAMPLE || target.after == NO_SAMPLE) continue;
       const auto& before = state.samples[target.before].bytes;
       const auto& after = state.samples[target.after].bytes;
       if (before == after) continue;
       ++changed;
+      command_changed = true;
       file << std::format("#{} {} | {} | {} -> {}", command.index, command.description, target.description,
                           Decode(target.format, before), Decode(target.format, after));
       if (!command.inputs.empty()) file << " | " << command.inputs;
       file << "\n";
     }
+    if (command_changed && command.bones != NO_SAMPLE) with_bones.push_back(&command);
+  }
+  // Each bone: its dual quaternion as the shader reads it (row 0: rotation x y z w, row 1: the dual part x y z w), up
+  // to the last non-zero one.
+  for (const Command* command : with_bones) {
+    const auto& bytes = state.bone_samples[command->bones].bytes;
+    const size_t count = bytes.size() / (8 * sizeof(float));
+    size_t used = 0;
+    for (size_t bone = 0; bone < count; ++bone) {
+      for (size_t value = 0; value < 8; ++value) {
+        float number = 0.f;
+        std::memcpy(&number, bytes.data() + (bone * 8 + value) * sizeof(float), sizeof(number));
+        if (number != 0.f) used = bone + 1;
+      }
+    }
+    file << std::format("\nBones of #{} (vs b{}, {} of {} used; rotation x y z w | dual x y z w):\n", command->index,
+                        BONE_SLOT, used, count);
+    for (size_t bone = 0; bone < used; ++bone) {
+      std::array<float, 8> values = {};
+      std::memcpy(values.data(), bytes.data() + bone * 8 * sizeof(float), sizeof(values));
+      file << std::format("{}: {:.5f} {:.5f} {:.5f} {:.5f} | {:.5f} {:.5f} {:.5f} {:.5f}\n", bone, values[0], values[1],
+                          values[2], values[3], values[4], values[5], values[6], values[7]);
+    }
   }
   state.commands.clear();
   state.samples.clear();
+  state.bone_samples.clear();
   state.latest.clear();
   state.status = std::format("Saved {} changes of the pixel to {}.", changed, path.string());
   renodx::utils::log::i("[Ryse pixel trace] ", state.status);

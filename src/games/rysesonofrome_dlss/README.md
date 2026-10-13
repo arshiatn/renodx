@@ -357,3 +357,15 @@ game's). ATN: the arm armour does not grow, it only sits on the arm within ~2-4 
   (index count, first index, vertex offset), vertex / index buffers (pointer, size, stride, offset), the vertex shader's
   constant buffer sizes and textures, and the pixel shader's textures. Far vs near on the arm armour: other mesh (index
   count / buffers), other skinning shader (vs hash), or the same draw with other bone data.
+
+## v65: the trace saves the skinning bones
+
+ATN's v64 traces (debugForClaude22, arm armour far / near): the same draw both times (54876 indices from 20136, same
+vertex / index buffers, same 2048 textures). The shaders differ (far vs 0x1DD1EFED / ps 0xB02408C9, near vs 0xC38FB39D
+/ ps 0x3433A827) only by object motion blur (the far pair also writes the velocity: CB_SkinQuat_Prev, o3); skinning
+and G-buffer output are the same. So the pose (the bone data) differs: some armour helper is not updated far away.
+"Max every character setting" (full skeleton updates, no joint masking) did not change it, but it fixed swords and
+armour going through cloth beyond 5 m at no fps cost (ATN: keep it). v65: for each draw that changes the pixel, the
+trace also copies the vertex shader's b9 (CB_SkinQuat_Cur, 768 dual quaternions, 24576 B) at the draw and lists every
+used bone (rotation x y z w | dual x y z w) after the commands. Far vs near: bones that differ far more than the idle
+animation are the helpers that only update near.
