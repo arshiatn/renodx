@@ -7,8 +7,37 @@ The game has no HDR option; RenoDX outputs HDR10/scRGB through a swap chain prox
 | Mode | What it does |
 |---|---|
 | SDR | The game's native tonemapper (Hable / Uncharted 2 filmic) and color chart, scaled by Paper White. |
-| HDR (Extended) | Default. UC2 Extended (Musa/Jon) on the game's Hable: Hable up to its knee (third derivative root), its tangent above it; the brightest channel rolls off to Peak (Neutwo). SDR's colors and hue for SDR's share of the light. |
+| HDR (Extended) | Default. UC2 Extended (Musa/Jon) on the game's Hable: Hable up to its knee (third derivative root), its tangent above it, per channel; **Hue Correction** (fix29, default 1, like Musa's Batman) moves the result's hue back to the scene's (OKLab, chroma kept), mostly in the mid tones; above 1 each channel rolls off to Peak on its own (Neutwo, fix32), as SDR clips each channel, so bright fire gets a yellow / white core. Until fix31 the brightest channel rolled off and the color kept its saturation: bright fire stayed a flat salmon orange ([1, 0.47, 0.25] at its core; PsychoV31 [1, 0.87, 0.77], SDR white). No "colors from SDR" since fix28 (below). |
 | HDR (PsychoV31) | Recommended preset (with Film Grain 0, Motion Blur (Camera) 0, Motion Blur (Objects) 1, Video Highlights 0.25). PsychoV31 replaces Hable, anchored on Hable's mid gray. Exposure, bloom, saturation / color balance, sun shafts and the color chart stay. Falls back to target-only, then Extended, where V31 returns black. |
+
+**Removed in fix28: "colors from SDR" (Extended).** Until fix27, Extended pulled its color toward SDR's:
+`MatchSDRColor` scaled the SDR color (Hable, saturated) to the HDR luminance and kept the HDR color only for
+the light HDR adds (`hdr_share = max(1 - y_sdr / y_hdr, the share that keeps the scaled SDR color below
+Peak)`), then `renodx::color::correct::HueOKLab(color, sdr_display, y_sdr_display / y_color)` matched SDR's
+displayed hue (after shafts, chart and the 2.2 emulation) for SDR's share. Why removed: SDR clips each channel
+at white, so bright fire turns yellow / white there; pulling HDR fire toward that, with the mix changing fast
+across a flame, looked broken (tester; PsychoV31's fire was fine). The same step was in Expeditions: Rome's old
+Extended (also removed). To bring it back: restore those two steps in `tonemap00` (`ApplyExtended(untonemapped,
+sdr, peak)` with `sdr = saturate(FilmCurve(untonemapped))`, both in the Extended branch and the PsychoV31
+fallback), as in the fix27 zip.
+
+```hlsl
+float3 MatchSDRColor(float3 sdr, float3 hdr, float peak) {
+  float y_sdr = renodx::color::y::from::BT709(sdr);
+  float y_hdr = renodx::color::y::from::BT709(hdr);
+  if (!(y_sdr > 0.f && y_hdr > 0.f)) return hdr;
+  if (y_hdr <= y_sdr) return sdr;
+  float3 scaled = sdr * (y_hdr / y_sdr);
+  float3 need = max(scaled - max(peak, hdr), 0.f) / max(scaled - hdr, 1e-10f);
+  float hdr_share = max(saturate(1.f - y_sdr / y_hdr), saturate(max(need.r, max(need.g, need.b))));
+  return lerp(scaled, hdr, hdr_share);
+}
+// Extended branch, after GammaSafe(ApplyShaftsAndChart(ApplyExtended(untonemapped, sdr, peak), shafts)):
+float3 sdr_display = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(sdr, shafts));
+float y_color = renodx::color::y::from::BT709(color);
+color = renodx::color::correct::HueOKLab(
+    color, sdr_display, (y_color > 0.f) ? saturate(renodx::color::y::from::BT709(sdr_display) / y_color) : 1.f);
+```
 
 HDR: sun shafts and lens flares use the stock screen blend (base + s x (1 - base), encoded) with
 (1 - base) replaced past 0.5 by a C1 exponential tail that never reaches 0 (`RyseScreen`). The stock
@@ -65,7 +94,7 @@ GetString, +0x38 Set(int), +0x40 Set(float)).
 | `tonemap00_0xB9B672AA` | HDRFinalPass: auto exposure, vignette, bloom, color balance, Hable, sun shafts, color chart. |
 | `smaa00_0xF2D692D1` | SMAA neighborhood blending, signed (wide-gamut negatives pass). |
 | `taa00_0x121C45E4` | TAA (SMAA 1TX style). |
-| `post00_0xD0B247FF`, `post01_0xB022AFEA`, `post02_0xC3A469C1`, `post03_0xCC6DF78E` | Film grain, with or without sharpening and lens flares (red-channel shift). `post.hlsli`. |
+| `post00_0xD0B247FF`, `post01_0xB022AFEA`, `post02_0xC3A469C1`, `post03_0xCC6DF78E` | Film grain, with or without sharpening and lens flares (red-channel shift). `post.hlsli`. Texel offsets (sharpening taps, lens flare shift, chromatic aberration) from t0's size, not PS_ScreenSize: the DLSS addon draws this pass again at the display size with the render size there (7x too strong at 14%, fix25). |
 | `upscale00_0xCD8548F6` | Native upscaling (Rendering Resolution below 100%). |
 | `mb00_0x799A5EB8` | Motion blur velocity pack (its own target; the TAA's velocity is untouched). Camera part (static scenery at that depth) and object part (object velocity minus it) scaled apart, before the stock length limit. |
 | `dof00_0x910E0E0C` | Depth of field composite (before the tonemap). Depth of Field slider. |
@@ -91,6 +120,24 @@ back buffer binds (current or older, kept after a resize) go to RenoDX's FP16 cl
 one, which the proxy presents. Logged as `[Ryse] back buffer unbound by Present ...`.
 Not yet seen in game.
 
+## Hotkeys (fix27)
+
+Polled at Present (GetAsyncKeyState) while the game window is in front; not saved, all shown again at
+the next start.
+
+- F6 or Caps Lock: HUD. The draws of Scaleform's text (`0x96675B77`) and flat shapes (`0x1B59F534`, in
+  OnDrawUi / OnDrawIndexedUi) are skipped, so the menus are hidden too; since fix32 not the execution skull (the
+  largest flat shape), which only F5 hides.
+- F7 or Tab: execution highlights on enemies (yellow / blue). Since fix33 every pixel shader with `VisionMtlParams`
+  in its constant buffers, found when the game creates it (OnInitPipelineHighlights, logged as "[Ryse UI] Execution
+  highlight shader"): seen `0xD2063417` (body), `0xF495DD17` (head), `0x6B40240A` (fix32 missed it); the shader
+  cache's permutations are not readable offline (CryEngine's packed format), so the name decides.
+- F5: the execution skull above enemies (not the key above Tab: the game's command key; not F8: Print on some
+  keyboards). It is the largest
+  `0x1B59F534` draw: 3744 indices far to 4401-4539 near at 4K, every other HUD shape at most 3219.
+  Draws from 3500 indices are skipped, the cut scaled by (back buffer height / 2160)^0.23 (the skull's
+  growth with size; untested below 4K). Found with the F9 logger (`RYSE_UI_DRAW_LOG`, off).
+
 ## Verification
 
 No shader compiler was available, so the HLSL was translated to C++ (HLSL-like vector
@@ -114,3 +161,4 @@ main menu was black/posterized (fixed above, not yet seen in game).
 - Extra sliders: Bloom, Vignette, Sun Shafts, Lens Flares, Chromatic Aberration, Film Grain,
   Sharpening (default 0), Motion Blur (Camera), Motion Blur (Objects), Depth of Field, Video Highlights
   (+ Video Dithering) (HDR only).
+fix34: both Recommended presets set Bloom to 0.5 (ATN).

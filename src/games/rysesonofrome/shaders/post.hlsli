@@ -98,14 +98,21 @@ void main(
   r0.x = r0.x * r0.z + r0.y;
   r0.y = 1 + -r0.x;
 
+  // Texel offsets from the size of the frame read (t0), which PS_ScreenSize.zw (0.5 / size) matches in the game's own
+  // draws. The DLSS addon draws this pass again at the display size, where PS_ScreenSize stays the render size: the
+  // offsets grew by display / render (7x at 14%).
+  uint frame_width, frame_height;
+  _tex0.GetDimensions(frame_width, frame_height);
+  const float2 half_texel = 0.5f / float2(frame_width, frame_height);
+
   float4 center = _tex0.Sample(_tex0_s, v1.xy);
   // HDR: the game's full-screen chromatic aberration (its CA_Sharpening pass 0xC53CE326, which runs only while
   // r_ChromaticAberration > 0; the game keeps it at 0): red scaled away from the screen center by
-  // 2 x amount x PS_ScreenSize.zw, blue toward it. Chromatic Aberration slider: 1 = amount 12, twice the strength
+  // 2 x amount x half a texel, blue toward it. Chromatic Aberration slider: 1 = amount 12, twice the strength
   // the game gives its lens flares' shift (r_FlaresChromaShift 6).
   [branch]
   if (hdr && SI.chromatic_aberration > 0.f) {
-    const float2 shift = 2.f * (12.f * SI.chromatic_aberration) * PS_ScreenSize.zw;
+    const float2 shift = 2.f * (12.f * SI.chromatic_aberration) * half_texel;
     const float2 from_center = v1.xy - 0.5f;
     center.x = _tex0.Sample(_tex0_s, from_center * (1.f + shift) + 0.5f).x;
     center.z = _tex0.Sample(_tex0_s, from_center * (1.f - shift) + 0.5f).z;
@@ -113,19 +120,19 @@ void main(
 
 #if RYSE_POST_SHARPEN
   // Sharpening taps.
-  r0.zw = -PS_ScreenSize.zw + v1.xy;
+  r0.zw = -half_texel + v1.xy;
   r1.xyz = _tex0.Sample(_tex0_s, r0.zw).xyz;
-  r2.xyzw = PS_ScreenSize.zwzw * float4(1,-1,-1,1) + v1.xyxy;
+  r2.xyzw = half_texel.xyxy * float4(1,-1,-1,1) + v1.xyxy;
   r3.xyz = _tex0.Sample(_tex0_s, r2.xy).xyz;
   r2.xyz = _tex0.Sample(_tex0_s, r2.zw).xyz;
-  r0.zw = PS_ScreenSize.zw + v1.xy;
+  r0.zw = half_texel + v1.xy;
   float3 tap3 = _tex0.Sample(_tex0_s, r0.zw).xyz;
 #endif
 
 #if RYSE_POST_LENS
   // Lens flares, red channel shifted from the center (r_FlaresChromaShift).
   float4 lens_uv;
-  lens_uv.xy = vLensOpticsParams.ww * PS_ScreenSize.zw;
+  lens_uv.xy = vLensOpticsParams.ww * half_texel;
   lens_uv.xy = lens_uv.xy * float2(2,2) + float2(1,1);
   lens_uv.zw = float2(-0.5,-0.5) + v1.xy;
   lens_uv.xy = lens_uv.zw * lens_uv.xy + float2(0.5,0.5);

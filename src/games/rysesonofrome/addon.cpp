@@ -8,13 +8,24 @@
 
 #define RENODX_MODS_SWAPCHAIN_VERSION 2
 #define DEBUG_LEVEL_0
+// F9 logs one frame of the HUD's flat-shape draws to ryse_ui_draws.txt (how the execution skull was found).
+// #define RYSE_UI_DRAW_LOG
 
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cmath>
+#include <cstddef>
 #include <cstdio>
+#include <cstring>
+#include <span>
+#include <format>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -24,6 +35,8 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/data.hpp"
+#include "../../utils/hash.hpp"
 #include "../../utils/settings.hpp"
 #include "./shared.h"
 
@@ -34,6 +47,10 @@ namespace {
 
 ShaderInjectData shader_injection;
 float current_settings_mode = 0.f;
+// Hotkeys (OnPresentHotkeys), not saved: the HUD shaders also draw the menus.
+std::atomic_bool hud_hidden = false;
+std::atomic_bool execution_highlights_hidden = false;
+std::atomic_bool execution_skull_hidden = false;
 
 bool IsAdvancedSettings() {
   return current_settings_mode >= 1.f;
@@ -61,6 +78,7 @@ void ApplyResetPreset() {
       {"ext_contrast", 1.f},
       {"ext_saturation", 1.f},
       {"ext_highlight_saturation", 1.f},
+      {"ext_hue_correction", 1.f},
       {"exposure", 1.f},
       {"highlights", 1.f},
       {"shadows", 1.f},
@@ -104,6 +122,12 @@ void BuildRuntimeData() {
       CustomShaderEntry(0x37ABF6CF),  // video00
       CustomShaderEntry(0xC1F889A4),  // video01 (alpha)
   };
+  // Not replaced; their draws skipped while the hotkeys hide them. Scaleform's text (0x96675B77) and flat shapes
+  // (0x1B59F534, in OnDrawUi / OnDrawIndexedUi: the execution skull is one of them): the HUD, also the menus. The
+  // execution highlights on enemies: highlight_shaders.
+  const auto keep_shader = [](reshade::api::command_list*) { return false; };
+  const auto draw_hud = [](reshade::api::command_list*) { return !hud_hidden; };
+  custom_shaders[0x96675B77] = {.crc32 = 0x96675B77, .on_replace = keep_shader, .on_draw = draw_hud};
 
   // 0-2 slider, 1 = the game's.
   auto slider = [](const std::string& key, float* binding, const std::string& label, const std::string& section,
@@ -133,6 +157,12 @@ void BuildRuntimeData() {
           .label = "Settings Mode",
           .labels = {"Simple", "Advanced"},
           .is_global = true,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Hotkeys (reset at start): F6 / Caps Lock: HUD (menus too). F7 / Tab: execution highlights.\n"
+                   "F5: execution skull. Controller: map them in Steam Input (e.g. back buttons).",
+          .section = "General",
       },
       new renodx::utils::settings::Setting{
           .key = "peak_white_nits",
@@ -185,16 +215,17 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV31), with all vanilla post processing, \n"
-                     "hidden chromatic aberration and Video Highlights at 0.25 enabled.\n"
+                     "hidden chromatic aberration, bloom at 0.5 and Video Highlights at 0.25 enabled.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
             renodx::utils::settings::UpdateSettings({
                 {"tonemapper", 2.f},
-                {"film_grain", 0.5f},
-                {"motion_blur_camera", 0.f},
-                {"motion_blur_object", 0.75f},
-                {"chromatic_aberration_strength", 0.3f},
+                {"film_grain", 0.25f},
+                {"motion_blur_camera", 0.20f},
+                {"motion_blur_object", 0.50f},
+                {"chromatic_aberration_strength", 0.35f},
+                {"bloom", 0.5f},
                 // {"sun_shafts", 0.5f},
                 {"video_highlights", 0.25f},
             });
@@ -206,7 +237,7 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV31), no film grain, no motion blur,\n"
-                     "no chromatic aberration. Video highlights at 0.25.\n"
+                     "no chromatic aberration. Bloom at 0.5, video highlights at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
@@ -215,6 +246,7 @@ void BuildRuntimeData() {
                 {"film_grain", 0.f},
                 {"motion_blur_camera", 0.f},
                 {"motion_blur_object", 0.f},
+                {"bloom", 0.5f},
                 // {"sun_shafts", 0.5f},
                 {"video_highlights", 0.25f},
             });
@@ -243,6 +275,21 @@ void BuildRuntimeData() {
       slider("ext_highlight_saturation", &shader_injection.ext_highlight_saturation, "Highlight Saturation",
              "Extended", "How much brighter colors desaturate. 0 = more, 1 = default, 2 = less.", IsExtendedMode,
              IsExtendedMode),
+      new renodx::utils::settings::Setting{
+          .key = "ext_hue_correction",
+          .binding = &shader_injection.ext_hue_correction,
+          .default_value = 1.f,
+          .label = "Hue Correction",
+          .section = "Extended",
+          .tooltip = "Keeps the scene's hue where the game's curve shifts it (mostly mid tones and dark colors).\n"
+                     "1 = full (default, like Musa's Batman), 0 = the curve's hue. Above Paper White colors still\n"
+                     "turn white like SDR (bright fire: yellow / white core).",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = IsExtendedMode,
+          .is_visible = IsExtendedMode,
+      },
 
       // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
       slider("exposure", &shader_injection.exposure, "Exposure", "PsychoV31", "", IsPsychoMode, IsPsychoMode),
@@ -329,6 +376,178 @@ void BuildRuntimeData() {
           .is_visible = IsAdvancedSettings,
       },
   };
+}
+
+// The execution skull above enemies: the largest 0x1B59F534 draw, missing from frames without it (F9 logs, 4K).
+// Scaleform triangulates it for its size on screen: 3744 indices far (scale 2.07e-6, alpha 0.5) to 4401-4539 near
+// (scale 4.2e-6), about size^0.23. The other HUD shapes stay at or below 3219 at 4K. The cut between, 3500 at 2160
+// lines, follows the same law with the back buffer height (lower resolutions: fewer triangles everywhere).
+uint32_t execution_skull_min_indices = 3500;  // render thread
+
+#ifdef RYSE_UI_DRAW_LOG
+// F9 appends the next frame's 0x1B59F534 draws (indices, VS cCompositeMat, PS cBitmapColorTransform) to
+// ryse_ui_draws.txt next to the exe (ReShade.log is replaced at every start). Render thread only.
+std::FILE* ui_log = nullptr;
+uint32_t logged_ui_draws = 0;
+#endif
+
+// The execution highlights on enemies (yellow / blue): every pixel shader with VisionMtlParams in its constant
+// buffers (seen: body 0xD2063417, head 0xF495DD17, 0x6B40240A), found as the game creates them, so the material
+// permutations not seen yet are covered too. Added on any thread, read on the render thread.
+renodx::utils::data::ParallelFlatHashMap<uint32_t, bool, std::shared_mutex> highlight_shaders;
+
+void OnInitPipelineHighlights(reshade::api::device*, reshade::api::pipeline_layout, uint32_t subobject_count,
+                              const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline) {
+  for (uint32_t index = 0; index < subobject_count; ++index) {
+    if (subobjects[index].type != reshade::api::pipeline_subobject_type::pixel_shader) continue;
+    const auto* shader = static_cast<const reshade::api::shader_desc*>(subobjects[index].data);
+    if (shader == nullptr || shader->code == nullptr) continue;
+    if (std::string_view(static_cast<const char*>(shader->code), shader->code_size).find("VisionMtlParams") == std::string_view::npos) {
+      continue;
+    }
+    const uint32_t hash = renodx::utils::hash::ComputeCRC32(static_cast<const uint8_t*>(shader->code), shader->code_size);
+    if (highlight_shaders.insert({hash, true}).second) {
+      reshade::log::message(reshade::log::level::info, std::format("[Ryse UI] Execution highlight shader 0x{:08X}", hash).c_str());
+    }
+  }
+}
+
+bool IsHiddenHighlight(reshade::api::command_list* cmd_list) {
+  return execution_highlights_hidden
+         && highlight_shaders.contains(renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader));
+}
+
+// Scaleform's flat shapes (0x1B59F534) while the HUD is hidden (the skull is indexed: OnDrawIndexedUi), the execution
+// highlights while they are.
+bool OnDrawUi(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
+  if (IsHiddenHighlight(cmd_list)) return true;
+  return hud_hidden
+         && renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader) == 0x1B59F534;
+}
+
+// The skull follows its own hotkey, every other flat shape the HUD's.
+bool OnDrawIndexedUi(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count,
+                     uint32_t first_index, int32_t vertex_offset, uint32_t) {
+  if (IsHiddenHighlight(cmd_list)) return true;
+  const bool skip = (index_count >= execution_skull_min_indices ? execution_skull_hidden.load() : hud_hidden.load());
+#ifdef RYSE_UI_DRAW_LOG
+  if (ui_log == nullptr && !skip) return false;
+#else
+  if (!skip) return false;
+#endif
+  if (renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader) != 0x1B59F534) {
+    return false;
+  }
+#ifdef RYSE_UI_DRAW_LOG
+  if (ui_log != nullptr) {
+    // b0 of both stages read back (stalls, one frame): VS cCompositeMat (4x4), PS cBitmapColorTransform (multiply,
+    // add) and cPremultiplyAlpha.
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+    ID3D11DeviceContext1* context1 = nullptr;
+    std::array<float, 16> vertex_constants = {};
+    std::array<float, 12> pixel_constants = {};
+    const auto read_constants = [&](bool vertex_stage, std::span<float> values) {
+      ID3D11Buffer* buffer = nullptr;
+      UINT first_constant = 0;
+      UINT constant_count = 0;
+      if (vertex_stage) {
+        context1->VSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
+      } else {
+        context1->PSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
+      }
+      if (buffer == nullptr) return;
+      D3D11_BUFFER_DESC desc = {};
+      buffer->GetDesc(&desc);
+      ID3D11Device* device = nullptr;
+      buffer->GetDevice(&device);
+      const D3D11_BUFFER_DESC staging_desc = {
+          .ByteWidth = desc.ByteWidth,
+          .Usage = D3D11_USAGE_STAGING,
+          .CPUAccessFlags = D3D11_CPU_ACCESS_READ,
+      };
+      ID3D11Buffer* staging = nullptr;
+      if (SUCCEEDED(device->CreateBuffer(&staging_desc, nullptr, &staging))) {
+        context->CopyResource(staging, buffer);
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        const size_t offset = size_t{first_constant} * 16;
+        if (offset < desc.ByteWidth && SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+          std::memcpy(values.data(), static_cast<const std::byte*>(mapped.pData) + offset,
+                      std::min(values.size_bytes(), desc.ByteWidth - offset));
+          context->Unmap(staging, 0);
+        }
+        staging->Release();
+      }
+      device->Release();
+      buffer->Release();
+    };
+    if (SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(&context1)))) {
+      read_constants(true, vertex_constants);
+      read_constants(false, pixel_constants);
+      context1->Release();
+    }
+    const auto& m = vertex_constants;
+    const auto& p = pixel_constants;
+    std::fprintf(ui_log,
+                 "%u: indices %u, instances %u, first index %u, base vertex %d | mat %g %g %g %g / %g %g %g %g / "
+                 "%g %g %g %g / %g %g %g %g | mul %g %g %g %g add %g %g %g %g pm %g\n",
+                 logged_ui_draws++, index_count, instance_count, first_index, vertex_offset, m[0], m[1], m[2], m[3],
+                 m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15], p[0], p[1], p[2], p[3],
+                 p[4], p[5], p[6], p[7], p[8]);
+  }
+#endif
+  return skip;
+}
+
+// Polled at Present, while the game window is in front.
+std::array<bool, 256> keys_down = {};
+
+// True at the Present where `key` went down.
+bool KeyWentDown(int key) {
+  const bool down = (GetAsyncKeyState(key) & 0x8000) != 0;
+  const bool went_down = down && !keys_down[key];
+  keys_down[key] = down;
+  return went_down;
+}
+
+void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+                      const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+#ifdef RYSE_UI_DRAW_LOG
+  if (ui_log != nullptr) {
+    std::fputs("frame end\n", ui_log);
+    std::fclose(ui_log);
+    ui_log = nullptr;
+  }
+#endif
+  const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
+  execution_skull_min_indices =
+      static_cast<uint32_t>(3500.f * std::pow(static_cast<float>(back_buffer.texture.height) / 2160.f, 0.23f));
+  if (GetForegroundWindow() != static_cast<HWND>(swapchain->get_hwnd())) return;
+#ifdef RYSE_UI_DRAW_LOG
+  if (KeyWentDown(VK_F9)) {
+    std::array<wchar_t, MAX_PATH> path = {};
+    const DWORD length = GetModuleFileNameW(nullptr, path.data(), MAX_PATH);
+    std::wstring file(path.data(), length);
+    file = file.substr(0, file.find_last_of(L'\\') + 1) + L"ryse_ui_draws.txt";
+    if (_wfopen_s(&ui_log, file.c_str(), L"a") == 0) {
+      logged_ui_draws = 0;
+      std::fprintf(ui_log, "frame start (F9, hud %s, highlights %s, skull %s)\n", (hud_hidden ? "hidden" : "shown"),
+                   (execution_highlights_hidden ? "hidden" : "shown"), (execution_skull_hidden ? "hidden" : "shown"));
+      reshade::log::message(reshade::log::level::info, "[Ryse UI] F9: logging one frame to ryse_ui_draws.txt");
+    }
+  }
+#endif
+  const bool hud_key = KeyWentDown(VK_F6);
+  if (KeyWentDown(VK_CAPITAL) || hud_key) {
+    hud_hidden = !hud_hidden;
+  }
+  const bool highlights_key = KeyWentDown(VK_F7);
+  if (KeyWentDown(VK_TAB) || highlights_key) {
+    execution_highlights_hidden = !execution_highlights_hidden;
+  }
+  // F5 only: the key above Tab is the game's command key, and F8 is Print on some keyboards.
+  if (KeyWentDown(VK_F5)) {
+    execution_skull_hidden = !execution_skull_hidden;
+  }
 }
 
 // RenoDX makes the swap chain flip model, where Present unbinds the back buffer from the pipeline
@@ -653,6 +872,10 @@ bool AttachAddon() {
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  reshade::register_event<reshade::addon_event::present>(OnPresentHotkeys);
+  reshade::register_event<reshade::addon_event::init_pipeline>(OnInitPipelineHighlights);
+  reshade::register_event<reshade::addon_event::draw>(OnDrawUi);
+  reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
 
   // After RenoDX (its back buffer clone exists, its target rewrites ran).
   reshade::register_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
@@ -672,6 +895,10 @@ void DetachAddon() {
   if (!attached) return;
 
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::unregister_event<reshade::addon_event::present>(OnPresentHotkeys);
+  reshade::unregister_event<reshade::addon_event::init_pipeline>(OnInitPipelineHighlights);
+  reshade::unregister_event<reshade::addon_event::draw>(OnDrawUi);
+  reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);

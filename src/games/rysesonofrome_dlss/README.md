@@ -56,8 +56,11 @@ Separate addon, independent of the HDR addon (`rysesonofrome`). Build target: `r
   (e_WaterTessellationAmount, -X, -Y, up to 16x). e_DecalsRange is refused (reads back 20; flags 0x800000), so
   it was dropped. Each option's first item, "In-game setting", is what the player set in the game; Nx = N times
   what the in-game graphics preset sets ("Engine quality" is now "Graphics preset (in-game)"). v33 choices: shadow
-  resolution 2x / 4x / 8x (16384, the maximum), cascades 6 / 7 / 8, shadow distance 1.5x-256x, draw distance
-  1.5x-256x, detail / tessellation / particles / decals 2x-256x, water 2x-16x, texture pool 2047 MB max (one check, +0x174015F,
+  resolution 2x / 4x / 8x (16384, the maximum; v43: character shadows stop at 8192, above it a tester saw bands
+  on characters), cascades 6 / 7 / 8, shadow distance 1.5x-256x, draw distance 1.5x-256x (v43: without
+  e_ViewDistRatioLights: shadows flickered in one area with it raised, whatever the shadow settings; v44: its own
+  Light distance option 1.5x-8x, and Shadow pool, e_ShadowsPoolSize taken out of Shadow resolution: matched, 2x or
+  4x (16384), never below Shadow resolution's factor so its larger light maps still fit), detail / tessellation / particles / decals 2x-256x, water 2x-16x, texture pool 2047 MB max (one check, +0x174015F,
   converts MB to bytes in a signed 32-bit int: negative from 2048 MB, so 3 / 4 GB left some textures unloaded and
   12 / 24 GB (0) all; ATN v34-v36 tests). Buttons: Reset (all In-game setting), Very High (graphics preset Very High, the rest about 2x),
   Recommended MAX (every option's last item, shadow resolution 4x: 8x costs a lot for no visible difference, ATN),
@@ -83,7 +86,9 @@ Separate addon, independent of the HDR addon (`rysesonofrome`). Build target: `r
   back with Off and at unload: r_TexNoAnisoAlphaTest 0 (anisotropic filtering also on foliage, fences, cloth; read
   while drawing, +0x18338EB; its ICVar refuses sets, flags 0x800100) and r_DeferredShadingFilterGBuffer 0 (no
   smoothing of normals / gloss against specular shimmer, which DLSS / DLAA calm; finer surface detail and highlights).
-  Both were options in v39; ATN: always better with DLSS / DLAA.
+  Both were options in v39; ATN: always better with DLSS / DLAA. Armour shimmer with DLAA (ATN) is
+  identical without the HDR addon: the game's specular aliasing, not FP16 targets. v56 had an option to keep the
+  filter on; removed in v57 (ATN: off gives much better highlights).
 - Debug: Advanced "Save the game's settings" writes every console variable with its value and flags
   (`Bin64\ryse_cvars.txt`), walking the console's name map (CXConsole +0xf8). The console comes from
   con_restricted's registration (pattern `CONSOLE_REGISTRATION`); the result also shows con_restricted and
@@ -126,11 +131,8 @@ Separate addon, independent of the HDR addon (`rysesonofrome`). Build target: `r
   (`0xD0B247FF`, `0xB022AFEA`, `0xC3A469C1`, `0xCC6DF78E`: sharpening, film grain, lens flares) is drawn first at the
   display size into `post_full` (its target's format), with `taa_full` as t0 (the game's t0 view), the addon's
   full-screen triangle (`0x52594504`, texture coordinates 0-1) and the game's pixel shader and other bindings (its
-  lens flares t5 are at the render size and filtered up); then the game's own at the render size. That redraw gets a
-  copy of the game's PER_BATCH (b0, c0-c5) with PS_ScreenSize (size, 0.5 / size; c3 with sharpening, else c2) set to
-  the display size: with the render size, its texel offsets (sharpening taps, the lens flares' red shift, the HDR
-  addon's chromatic aberration) grew by display / render, about 7x at 14% (v42; needs partial constant buffer
-  updates, D3D11.1, else logged and left as it was). The native upscale
+  lens flares t5 are at the render size and filtered up); then the game's own at the render size. Its PS_ScreenSize
+  stays the render size: the HDR addon's post shaders take their texel offsets from t0's size instead. The native upscale
   then copies `post_full` 1:1 instead (`0x52594503`, t1; stored values: the game's upscale decodes sRGB and encodes
   again), into the back buffer where the UI follows. Frames upscaled but not shown (no post or native upscale seen)
   show the game's own soft frame and are counted in the overlay.
@@ -171,3 +173,170 @@ Separate addon, independent of the HDR addon (`rysesonofrome`). Build target: `r
    and particles normal; no "Frames DLSS upscaled but the game showed its own" line; AA Off puts the game's own
    Rendering Resolution back.
 6. Quit the game with DLAA on: no crash dump in `%LOCALAPPDATA%\CrashDumps`.
+
+## v45: face-area LOD
+
+ATN (debugForClaude14): a vase switched to a lower model 2-3 m away with Detail distance 256x. Ryse picks a static
+object's LOD by its triangles' size on screen (`e_LodFaceArea`, threshold `e_LodFaceAreaTargetSize`; both in the
+code dump), which `e_LodRatio` does not move. Detail distance now also divides `e_LodFaceAreaTargetSize` (smaller is
+finer). Untested.
+
+## v46: light shadow flicker above Very High
+
+ATN (debugForClaude15, MAXED OUT: shadow resolution 8x, pool 4x, light distance 8x): light and shadow spots on the
+walls and flags changed frame to frame once the hall's torch side came into view. The shadows of lights share one
+pool (e_ShadowsPoolSize, 16384 at most) and each light's map is capped by e_ShadowsMaxTexRes, the sun's resolution:
+at 8x (16384) one near light could take the whole pool, and light distance 8x made many more lights cast shadows.
+Now: Shadow resolution stops at 4x (e_ShadowsMaxTexRes 8192, half the largest pool, as the game's 2048 / 4096), and
+Light distance divides e_ShadowsCastViewDistRatioLights by its factor (a light casts shadows within its view
+distance x that ratio: dump +0x18C7E9, +0x250632), so lights reach farther but as many cast shadows as in the game.
+Saved 8x reads as 4x. Untested.
+
+## v47: shadow trace (debug)
+
+v46 did not fix the flicker (ATN). Advanced -> "Trace the shadow maps for 300 frames" writes ryse_shadow_trace.txt
+next to the exe: a header with every graphics cvar (the game's value -> the addon's request -> what the game kept,
+so engine-side clamps show), then per frame every depth target drawn without a color target (sun cascades, the
+lights' pool, per-object shadows) with each viewport drawn into it and its draw count, and the share of the target
+used. Maps that come and go between frames with the camera still show what flickers.
+
+## v48: what the shadow trace showed (debugForClaude16)
+
+MAXED OUT vs Very High at the flickering spot, 300 frames each: the lights' shadow maps never changed (MAX: the same
+39 maps in the 16384 pool, 74% used; Very High: 38 maps in 8192, 66%), and draws per map changed as rarely in both.
+So the pool did not overflow; the flicker is not in the shadow maps. e_ShadowsCastViewDistRatioLights was refused
+(flags 0x800080, read back 1): removed from Light distance. Every other cvar kept the requested value. Shadow
+resolution stays at 4x max (4x maps fill 74% of the largest pool; 8x would need 4x that). Next suspect, from the
+two runs' differences: Light distance (8x vs the game's) with tiled deferred shading (r_DeferredShadingTiled 2,
+e_DynamicLightsMaxCount 512, e_DynamicLightsConsistentSortOrder 1).
+
+## v49: the flicker's cause, and an options measurement
+
+ATN: Light distance alone did not help, lowering Draw distance did. CLightEntity::GetMaxViewDist (dump +0x609D1) is
+max(e_ViewDistMin, size x e_ViewDistRatioLights x lod ratio): Draw distance 256x put e_ViewDistMin at 2560, so every
+light in the level was active and lights / shadows flickered. e_ViewDistMin now stops at 20 (Very High's); objects'
+distance comes from the ratios, which still scale (the minimum only matters for the smallest objects).
+Advanced -> "Measure every option's choices": each option's choices in turn (not the graphics preset and the texture
+pool), 60 frames to settle and 60 measured: scene draws / indices, shadow-map draws / indices, frame ms, in
+ryse_options_measure.txt. Where the numbers stop changing, higher choices draw nothing more.
+Not exposed yet (settable): e_MergedMeshesLodRatio 3, e_TerrainLodRatio 1, e_VegetationSpritesMinDistance 8,
+e_CoverageBufferResolution 128, r_SilhouettePOM 0.
+
+## v50: Light distance removed, caps from the measurement (debugForClaude17)
+
+ATN: with e_ViewDistMin capped (v49), any Light distance above the game's flickers -> the option is gone (the game's
+e_ViewDistRatioLights stays). Measurement at the game's start (outdoors, camera still), per choice: Detail distance
+2275 -> 3071 scene draws (13.1 -> 22.8 M indices), the same at 64x and 256x; Draw distance 3039 -> 3071, the same
+from 64x; Tessellation frame time 14.29 -> 14.42 ms by 4x, flat after; Shadow resolution 13.25 -> 14.51 ms (4x kept).
+Caps: Draw distance and Detail distance 64x, Tessellation 4x. No change in that scene (nothing to measure there):
+Shadow pool, cascades, Shadow distance, Particles, Water, Decals: kept until measured where they matter.
+Recommended MAX and MAXED OUT are now the same (every option's last item).
+
+## v51: everything up to 64x in powers of two, sliders
+
+ATN: every multiplying option ends at 64x with each power of two on the way (Shadow distance 1.5x / 2x ... 64x,
+Draw distance 1.5x / 2x / 3x / 4x ... 64x, Detail distance, Tessellation, Particles, Decals 2x ... 64x); Water stays
+at 16x, shadow resolution / pool at 4x, the texture pool at 2 GB. Old saved highest choices (256x) read as 64x.
+The options are sliders over their items, each showing its current item (as RenoDX's labelled settings;
+ImGui::SliderInt with the item as its format, AlwaysClamp | NoInput).
+
+## v52: five more options (ATN testing them)
+
+Grass detail distance (e_MergedMeshesLodRatio x: grass LOD distance x the ratio, +0x820B6), Terrain detail
+(e_TerrainLodRatio divided: terrain LOD from the screen error x the ratio, +0x150FA3), Trees as 3D models
+(e_VegetationSpritesMinDistance x: the sprite distance is at least it, +0x16ECA0), all to 64x; Occlusion culling
+accuracy (e_CoverageBufferResolution x, up to 1024: the engine clamps it there, +0x201FF3 / +0x2022A5); Parallax
+silhouettes (r_SilhouettePOM on). In no preset except MAXED OUT; two test buttons set only these five to the game's
+values or their highest.
+
+## v53: the five v52 options removed; Ultra and Extreme
+
+Measurement (debugForClaude18): every choice of the five gave the same scene / shadow draws and indices, frame time
+within noise (13.72-13.81 ms); ATN saw no difference either. Removed. (Trees as 3D models was also redundant: the
+sprite distance is max(the ratio's, the minimum), and Draw distance already scales the ratio.)
+Buttons: Reset, Very High, Ultra (distances / details 16x, shadow resolution 2x, pool 2x, 7 cascades, water 8x),
+Extreme (32x, 4x, 4x, 8, 16x), MAXED OUT (64x). Recommended MAX removed (it equalled MAXED OUT).
+
+## v54: five buttons
+
+Reset, Very High, Ultra (8x, shadow res 2x, pool 2x, 7 cascades, water 4x), Extreme (16x, 2x, pool 4x, 7, 8x),
+Insane (32x, 4x, 4x, 8, 16x), MAXED OUT (64x). GRAPHICS_PRESETS table + QualityOption::preset_choices. The shadow pool
+only reserves video memory (measured: frame time the same at every pool size).
+
+## v58: Water capped at 4x (chapter 3 crash)
+
+Water 8x / 16x (Extreme, Insane, MAXED OUT) crashed the game at the start of chapter 3 (tester, then ATN). Both crash
+dumps: the render thread's memcpy writes past a 4 MB (0x400000) buffer; the copy is (X - 1) x (Y - 1) x 12 bytes of
+the sea's grid (5532492 = 679^2 x 12 at 8x, 22162572 = 1359^2 x 12 at 16x; e_WaterTessellationAmountX / Y 85 at Very
+High). It fits up to X = Y = 592 (~7x). Water now ends at 4x (339^2 x 12 = 1.4 MB); Extreme / Insane / MAXED OUT use
+4x; a saved 8x / 16x loads as 4x (choices are clamped).
+
+## v59: more LOD / streaming cvars (ATN: "every LOD cvar"), experimental options
+
+Every cvar of the game (Bin64\ryse_cvars.txt, 3141) was checked with its help text from the exe (tool rx.py: the
+IConsole::Register calls). Flags 0x800000 are refused (left out). Already finest: e_LodMin 0, e_CharLodMin 0,
+e_ObjQuality 4, e_MaxViewDistSpecLerp 1, r_EnvCMResolution / r_EnvTexResolution at their maximum.
+- Draw distance: + e_ViewDistRatioCustom (players, AI), + e_MergedMeshesActiveDist (grass patches streamed in, up to
+  16x like the grass pools).
+- Detail distance: + ca_AttachmentCullingRation (attachments such as shields culled by size on screen).
+- New **Model streaming** (in the presets: Very High 2x, Ultra 8x, Extreme 16x, Insane / MAXED OUT 32x):
+  e_StreamCgfPoolSize ("Render mesh cache size in MB", 80: with our Detail distance the detailed models no longer fit,
+  likely why a tester's shield and rocks loaded late), max 2047 (MB << 20 in a signed 32-bit compare, +0x17630a /
+  +0x176457, as the texture pool); streaming limits e_StreamCgfMaxTasksInProgress (<= 256),
+  e_StreamCgfMaxNewTasksPerUpdate (<= 64), r_TexturesStreamingMaxRequestedMB (<= 64), r_TexturesStreamingMaxRequestedJobs
+  (<= 256): compared with counters, not array sizes.
+- **Experimental** (QualityOption::experimental: in no preset, Reset only, listed last): Texture streaming detail
+  (r_TexturesStreamingMipBias 0 / -1 / -2), Reflection distance (e_RecursionViewDistRatio x up to 1.0), Sun shadow
+  updates (e_GsmCacheLodOffset 3 / 5 / 8), Lights per object (e_DynamicLightsMaxEntityLights 16 / 32: a 32-bit light
+  mask, +0xf9a3), Foliage wind distance (e_FoliageWindActivationDist x), Water effects (ripples / caustics resolution
+  up to 4096, caustics distances), Light beams (r_BeamsMaxSlices 200 / 300). e_ParticlesLod left out (ATN: changes
+  particle counts).
+
+## v60: no chapter crashes (ATN, all maxed); experimental options folded into the sliders
+
+- ATN: every chapter runs with everything maxed (v59).
+- e_StreamCgfMaxTasksInProgress / e_StreamCgfMaxNewTasksPerUpdate are VF_CHEAT (flags 0x2): the game put them back
+  every frame, each time with "CXConsole::OnBeforeVarChange(): variable [...] is marked [VF_CHEAT]" in its console
+  (ATN's screenshot). Removed. New guard: a cvar the game puts back to its value right after a set 3 times is left
+  alone (QualityCvar::reverts, log warning, overlay "refused").
+- Water: 4x looked bad on the sea (ATN). Presets and MAXED OUT use 2x (QualityOption::maxed_choice); 4x and 6x (509^2
+  x 12 = 3.1 MB, under the 4 MB bank; 7x would not fit) stay to see them. Ripples / caustics resolution and caustics
+  distances joined it.
+- The v59 Experimental options are now in the sliders (ATN): Texture streaming (2 GB, sharper -1, sharpest -2:
+  r_TexturesStreamingMipBias as per-item values, QualityCvar::absolute / values; presets Very High 2 GB, Ultra /
+  Extreme sharper, Insane / MAXED OUT sharpest), Draw distance (+ e_RecursionViewDistRatio up to 1,
+  e_FoliageWindActivationDist up to 16x), Shadow cascades (+ e_GsmCacheLodOffset = the cascades: none cached), Detail
+  distance (+ e_DynamicLightsMaxEntityLights up to 32), Particles (+ r_BeamsMaxSlices up to 300).
+- Open: some soldiers' armour / shields only reach full detail within 2-3 m (ATN, everything maxed, Model streaming
+  32x after a chapter load). Not known yet whether it is the model (LOD) or the texture (streaming).
+
+## v61: armour / shields at full detail (Detail distance 64x)
+
+ATN: some soldiers' armour, cloth and shields snap to a more detailed model only within 2-3 m, with everything maxed
+(screenshots debugForClaude20). In the exe: attachments read "LodRatio" or "LodDistances" ("%f,%f,%f,%f,%f") from their
+CDF (+0x8e4cfd). The attachment LOD (+0x881950, vtable slot +0x128): ratio mode turns LodRatio into distances with the
+LOD params' e_LodFaceAreaTargetSize (+0x16a990, so our Detail distance scales it); LodDistances mode compares the camera
+distance with the authored metres as they are. Nothing scales those (e_AttachmentLodDistScale is passed in the LOD
+params, +0x17cfac, but this function does not use it). Both are then clamped to the params' e_LodMin / e_LodMax
+(+0x17cf72, 3D engine cvars +0x2fc / +0x41c). e_LodMax is VF_CHEAT, so Detail distance 64x writes 0 to it in memory
+(QualityCvar::engine_offset, from_choice 6; EngineCvars() shares the e_ForceDetailLevelForScreenRes pin's search):
+every model, armour and shields too, at its most detailed at any distance. Below 64x the game's e_LodMax (6) stays.
+
+## v62: Water 2x maximum; armour blend shapes (the real cause)
+
+- Water ends at 2x (ATN: 4x looked bad, 6x crashed the PC). QualityOption::maxed_choice removed (unused).
+- v61's e_LodMax 0 did not stop the armour switch at 2-3 m (ATN; the log showed e_LodMax found, 6). The switch is the
+  blend shapes: CryAnimation culls, every frame, each blend shape whose largest vertex move x weight projects to fewer
+  than ca_vaBlendCullingThreshold pixels (1; +0x8e0241: x 1 / (distance x tan(fov)) x screen height, flag at
+  +0x8e03bd). Armour morphs of a few millimetres fall under 1 pixel at about 3 m and the armour snaps to its smaller
+  base shape ("the armour on his arm gets bigger" up close). Detail distance now divides it (64x: 1/64 pixel).
+  The cvar lives in the CryAnimation console object (static at +0x2240930, field +0x1ec); flags 0, set through the
+  console. e_LodMax 0 stays at 64x (attachments with CDF "LodDistances").
+
+## v63: armour test (debug)
+
+v62 did not stop the armour growing within 2-4 m either (ATN; log: ca_vaBlendCullingThreshold found, set by Detail
+distance). Advanced debug combo **Armour test (temporary)**, not saved: each test overrides one cvar (the quality
+options skip it meanwhile; Off restores the value it found): ca_vaBlendEnable 0, ca_vaEnable 0,
+e_TessellationMaxDistance 0.5, e_LodMin 2, e_CharLodMin 2. Up close, the test that makes the armour look like it does
+from far away names the system (blend shapes, vertex animation, tessellation / displacement, model LOD, character LOD).

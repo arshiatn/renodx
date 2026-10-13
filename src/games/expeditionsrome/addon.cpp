@@ -50,7 +50,6 @@ void ApplyResetPreset() {
   // Peak / Paper White / UI, Settings Mode and output are kept.
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", 1.f},
-      {"ext_expansion", 1.f},
       {"ext_exposure", 1.f},
       {"ext_highlights", 1.f},
       {"ext_shadows", 1.f},
@@ -64,10 +63,12 @@ void ApplyResetPreset() {
       {"saturation", 1.f},
       {"highlight_saturation", 1.f},
       {"roll_off", 1.f},
-      {"game_shadows", 0.f},
+      // {"game_shadows", 0.f},
       {"bloom", 1.f},
       {"vignette", 1.f},
       {"sharpening", 0.f},
+      {"film_grain", 1.f},
+      {"chromatic_aberration", 1.f},
       {"godrays", 1.f},
       {"volumetric_fog", 1.f},
   });
@@ -120,11 +121,24 @@ void BuildRuntimeData() {
       UpgradeRTVShader(0xE6551133),         // copy00
       UpgradeRTVReplaceShader(0x4DF6E0CF),  // outline00 (post process material)
       UpgradeRTVReplaceShader(0x84B3F0E5),  // outline01 (outline00 with view-rect UV clamps)
+      // Tonemapper permutations (features in each file).
       UpgradeRTVReplaceShader(0x316D5B96),  // t00 (vignette)
       UpgradeRTVReplaceShader(0x70CBF75E),  // t01
+      UpgradeRTVReplaceShader(0x3BAE1754),  // t02
+      UpgradeRTVReplaceShader(0xC4ABB3CC),  // t03
+      UpgradeRTVReplaceShader(0x3D18E77B),  // t04
+      UpgradeRTVReplaceShader(0xA77C9003),  // t05
+      UpgradeRTVReplaceShader(0xB176941C),  // t06
+      UpgradeRTVReplaceShader(0xAAAEB4F0),  // t07
+      UpgradeRTVReplaceShader(0x2501C25F),  // t08
+      UpgradeRTVReplaceShader(0x37FDFDF2),  // t09
       UpgradeRTVReplaceShader(0x57737062),  // sharpen00 (CAS)
       UpgradeRTVReplaceShader(0xEDD3DA15),  // cutscene00 (Slate cutscene images)
-      CustomShaderEntry(0x61F067B4),         // lut00
+      CustomShaderEntry(0x61F067B4),         // lut00 (CombineLUTs)
+      CustomShaderEntry(0x3938E429),         // lut01 (+ 1 SDR LUT)
+      CustomShaderEntry(0xDF7A41F2),         // lut02 (+ 2 SDR LUTs)
+      CustomShaderEntry(0xB50332F4),         // lut03 (+ 3 SDR LUTs)
+      CustomShaderEntry(0x50964B52),         // lut04 (+ 4 SDR LUTs)
       CustomShaderEntry(0x1E796BD3),         // godrays01
       CustomShaderEntry(0xCDCA640F),         // fog07 (height + volumetric fog)
       CustomShaderEntry(0xBCD37CAF),         // fog08 (height + volumetric fog, directional)
@@ -198,11 +212,11 @@ void BuildRuntimeData() {
           .label = "Rendering Mode",
           .section = "General",
           .tooltip = "SDR: the game's native SDR tonemapper.\n"
-                     "HDR (Extended): keeps the game's native ACES Filmic tonemapper and extends its result into\n"
-                     "HDR (like TW Pharaoh Dynasties) As close as possible to the original SDR look (default).\n"
+                     "HDR (UE Extended): the game's Filmic tonemapper extended into HDR with UE Filmic Extended\n"
+                     "from RenoDX's UE Extended addon (by marat569), at that addon's defaults (default).\n"
                      "HDR (PsychoV31): replaces ACES tonemapper with PsychoV31, keeping the artist's\n"
                      "grading (white balance, color grading, fades). Recommended.",
-          .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV31)"},
+          .labels = {"SDR", "HDR (UE Extended)", "HDR (PsychoV31)"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -233,38 +247,23 @@ void BuildRuntimeData() {
           .label = "Reset",
           .section = "Presets",
           .group = "preset-line-2",
-          .tooltip = "Resets image controls to their defaults (HDR Extended) and sharpening to 0.\n"
+          .tooltip = "Resets image controls to their defaults (HDR UE Extended) and sharpening to 0.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyResetPreset(); },
       },
-      // Extended ////////////////////////////////////////////////////////////////////////////////////
-      new renodx::utils::settings::Setting{
-          .key = "ext_expansion",
-          .binding = &shader_injection.ext_expansion,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
-          .label = "Highlight Expansion",
-          .section = "Extended",
-          .tooltip = "On: the white point is 3.5 stops lower, so the highlights the Filmic curve squeezed\n"
-                     "come back out into HDR.\n"
-                     "Off: only what SDR clips comes back. No extra expansion.\n"
-                     "Below that point it is the SDR image either way.",
-          .labels = {"Off", "On"},
-          .is_enabled = IsExtendedMode,
-          .is_visible = IsExtendedMode,
-      },
-      slider("ext_exposure", &shader_injection.ext_exposure, "Exposure", "Extended", "", IsExtendedMode,
+      // UE Extended ////////////////////////////////////////////////////////////////////////////////////
+      slider("ext_exposure", &shader_injection.ext_exposure, "Exposure", "UE Extended", "", IsExtendedMode,
              IsExtendedMode),
-      slider("ext_highlights", &shader_injection.ext_highlights, "Highlights", "Extended", "", IsExtendedMode,
+      slider("ext_highlights", &shader_injection.ext_highlights, "Highlights", "UE Extended", "", IsExtendedMode,
              IsExtendedMode),
-      slider("ext_shadows", &shader_injection.ext_shadows, "Shadows", "Extended", "", IsExtendedMode,
+      slider("ext_shadows", &shader_injection.ext_shadows, "Shadows", "UE Extended", "", IsExtendedMode,
              IsExtendedMode),
-      slider("ext_contrast", &shader_injection.ext_contrast, "Contrast", "Extended",
+      slider("ext_contrast", &shader_injection.ext_contrast, "Contrast", "UE Extended",
              "1 = the game's own contrast.", IsExtendedMode, IsExtendedMode),
-      slider("ext_saturation", &shader_injection.ext_saturation, "Saturation / Purity", "Extended",
-             "1 = like SDR.", IsExtendedMode, IsExtendedMode),
+      slider("ext_saturation", &shader_injection.ext_saturation, "Saturation / Purity", "UE Extended",
+             "1 = the game's own saturation.", IsExtendedMode, IsExtendedMode),
       slider("ext_highlight_saturation", &shader_injection.ext_highlight_saturation, "Highlight Saturation",
-             "Extended", "How much brighter colors desaturate. 0 = more, 1 = default, 2 = less.", IsExtendedMode,
+             "UE Extended", "How much brighter colors desaturate. 0 = more, 1 = default, 2 = less.", IsExtendedMode,
              IsExtendedMode),
 
       // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
@@ -280,20 +279,21 @@ void BuildRuntimeData() {
       slider("roll_off", &shader_injection.roll_off, "Highlight Roll-off", "PsychoV31",
              "How soon highlights start to compress toward Peak.\n0 = latest, 1 = default, 2 = soonest.",
              IsPsychoMode, IsPsychoMode),
-      new renodx::utils::settings::Setting{
-          .key = "game_shadows",
-          .binding = &shader_injection.game_shadows,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 0.f,
-          .label = "Game Shadows (experimental)",
-          .section = "PsychoV31",
-          .tooltip = "Off: PsychoV31's own shadows.\n"
-                     "On: the game's darker shadows (Filmic toe of ACES) below mid gray, faded in over the stop\n"
-                     "below it. Not recommended",
-          .labels = {"Off", "On"},
-          .is_enabled = IsPsychoMode,
-          .is_visible = IsPsychoMode,
-      },
+      // Game Shadows (ATN, 2026-10-09: shadows look like SDR / Extended, colors desaturated). Off (0) without it.
+      // new renodx::utils::settings::Setting{
+      //     .key = "game_shadows",
+      //     .binding = &shader_injection.game_shadows,
+      //     .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+      //     .default_value = 0.f,
+      //     .label = "Game Shadows (experimental)",
+      //     .section = "PsychoV31",
+      //     .tooltip = "Off: PsychoV31's own shadows.\n"
+      //                "On: the game's darker shadows (Filmic toe of ACES) below mid gray, faded in over the stop\n"
+      //                "below it. Not recommended",
+      //     .labels = {"Off", "On"},
+      //     .is_enabled = IsPsychoMode,
+      //     .is_visible = IsPsychoMode,
+      // },
 
       // Extra (HDR only) /////////////////////////////////////////////////////////////////////////
       slider("bloom", &shader_injection.bloom, "Bloom", "Extra", "Bloom multiplier (incl. lens dirt). Probably needs in-game Post Processing on.",
@@ -308,7 +308,15 @@ void BuildRuntimeData() {
              "Only shadows High/Ultra should have volumetric fog on.",
              IsHDRMode, IsAdvancedSettings),
       slider("sharpening", &shader_injection.sharpening, "Sharpening", "Extra",
-             "Multiplier on the game's sharpening (CAS). Default is 1.0. Recommendation: 0", IsHDRMode, IsAdvancedSettings),
+             "Multiplier on the game's sharpening (CAS pass and tonemapper). Default is 1.0. Recommendation: 0",
+             IsHDRMode, IsAdvancedSettings),
+
+      // Extra (Probably not used): engine features in the shader dump that the game doesn't seem to use (ATN). ///
+      slider("film_grain", &shader_injection.film_grain, "Film Grain", "Extra (Probably not used)",
+             "Multiplier on the game's film grain (where the game uses it).", IsHDRMode, IsAdvancedSettings),
+      slider("chromatic_aberration", &shader_injection.chromatic_aberration, "Chromatic Aberration",
+             "Extra (Probably not used)", "Multiplier on the game's chromatic aberration (where the game uses it).",
+             IsHDRMode, IsAdvancedSettings),
   };
 }
 

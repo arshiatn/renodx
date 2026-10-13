@@ -3,7 +3,7 @@
 // Hable filmic (A, B, E, W = HDRFilmCurve; C 0.1, D 0.2, F 0.3), saturate, sRGB, sun shafts
 // screen-blended, 16^3 color chart (256x16, sRGB in and out). Alpha: _tex3.z.
 // SDR: stock. HDR (Extended): UC2 Extended on the game's Hable (Neutwo shoulder
-// to Peak, SDR's colors). HDR (PsychoV31): PsychoV31
+// to Peak). HDR (PsychoV31): PsychoV31
 // instead of Hable, anchored on Hable's mid gray. Both keep exposure, bloom, color balance,
 // sun shafts and the chart. sRGB-on-2.2 display emulation, gamma 2.2 encoded out. HDR: the shaft
 // value past 1 (stock saturate) as light, rolled off below Peak.
@@ -86,23 +86,11 @@ float3 ApplyShaftsAndChart(float3 color, float3 shafts)
   return (graded + normalized - inside) * scale;
 }
 
-// SDR's color at HDR luminance: the SDR color scaled to it, never darker than SDR. Only the light HDR
-// adds on top of SDR keeps the HDR color's saturation; also where the scaled SDR color would pass Peak.
-float3 MatchSDRColor(float3 sdr, float3 hdr, float peak)
-{
-  float y_sdr = renodx::color::y::from::BT709(sdr);
-  float y_hdr = renodx::color::y::from::BT709(hdr);
-  if (!(y_sdr > 0.f && y_hdr > 0.f)) return hdr;
-  if (y_hdr <= y_sdr) return sdr;
-  float3 scaled = sdr * (y_hdr / y_sdr);
-  float3 need = max(scaled - max(peak, hdr), 0.f) / max(scaled - hdr, 1e-10f);
-  float hdr_share = max(saturate(1.f - y_sdr / y_hdr), saturate(max(need.r, max(need.g, need.b))));
-  return lerp(scaled, hdr, hdr_share);
-}
-
 // HDR (Extended): UC2 Extended (Musa/Jon): Hable up to its knee (third derivative root), its tangent
-// there above it. A Neutwo shoulder to Peak above 1. Then SDR's color.
-float3 ApplyExtended(float3 untonemapped, float3 sdr, float peak)
+// there above it, per channel. Hue Correction toward the scene's hue (OKLab, chroma kept), as Musa's
+// Batman. A Neutwo shoulder per channel to Peak above 1 (fix32). (The "colors from SDR" step after it
+// was removed in fix28: README.)
+float3 ApplyExtended(float3 untonemapped, float peak)
 {
   float coeffs[6] = { HDRFilmCurve.x, HDRFilmCurve.y, 0.1f, 0.2f, HDRFilmCurve.z, 0.3f };
   float white_precompute = 1.f / renodx::tonemap::ApplyCurve(HDRFilmCurve.w, coeffs[0], coeffs[1], coeffs[2],
@@ -114,14 +102,16 @@ float3 ApplyExtended(float3 untonemapped, float3 sdr, float peak)
                                                                 coeffs[3], coeffs[4], coeffs[5]) > 0.f)) {
     uc2_config.pivot_point = HDRFilmCurve.w;
   }
-  float3 color = max(Uncharted2::ApplyExtended(untonemapped, FilmCurve(untonemapped), uc2_config), 0.f);
+  float3 color = Uncharted2::ApplyExtended(untonemapped, FilmCurve(untonemapped), uc2_config);
+  color = max(renodx::color::correct::Hue(color, untonemapped, SI.ext_hue_correction), 0.f);
 
-  float channel_max = renodx::math::Max(color);
-  [branch]
-  if (channel_max > 1.f) {
-    color *= (1.f + renodx::tonemap::Neutwo(channel_max - 1.f, max(peak, 1.0001f) - 1.f)) / channel_max;
-  }
-  return MatchSDRColor(sdr, color, peak);
+  // Above 1 each channel rolls off to Peak on its own, as SDR clips each channel: bright fire turns yellow /
+  // white at its core. (A brightest-channel roll-off kept its full orange saturation up to Peak: flat, salmon.)
+  const float shoulder = max(peak, 1.0001f) - 1.f;
+  const float3 over = max(color - 1.f, 0.f);
+  return min(color, 1.f)
+         + float3(renodx::tonemap::Neutwo(over.r, shoulder), renodx::tonemap::Neutwo(over.g, shoulder),
+                  renodx::tonemap::Neutwo(over.b, shoulder));
 }
 
 // HDR (PsychoV31): the game's grading and PsychoV31 only, anchored on Hable's mid gray. Extended
@@ -156,7 +146,7 @@ float3 ApplyPsychoV31(float3 untonemapped, float peak)
   [branch]
   if (failed) {
     float3 exposed = untonemapped * SI.exposure;
-    return ApplyExtended(exposed, saturate(FilmCurve(exposed)), peak);
+    return ApplyExtended(exposed, peak);
   }
 
   // Game Shadows: Hable's toe instead of V31's power law below mid gray, faded in over the stop
@@ -275,14 +265,7 @@ void main(
           SI.ext_saturation, SI.ext_highlight_saturation, 0.f, 0.18f, 0.18f,
           renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709);
     }
-    float3 sdr = saturate(FilmCurve(untonemapped));
-    color = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(ApplyExtended(untonemapped, sdr, peak), shafts));
-    // SDR's hue (as displayed) for SDR's share of the light; the light HDR adds keeps its own.
-    float3 sdr_display = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(sdr, shafts));
-    float y_color = renodx::color::y::from::BT709(color);
-    color = renodx::color::correct::HueOKLab(
-        color, sdr_display,
-        (y_color > 0.f) ? saturate(renodx::color::y::from::BT709(sdr_display) / y_color) : 1.f);
+    color = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(ApplyExtended(untonemapped, peak), shafts));
   } else {
     color = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(ApplyPsychoV31(r0.xyz, peak), shafts));
   }

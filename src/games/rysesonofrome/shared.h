@@ -38,6 +38,7 @@ struct ShaderInjectData {
   float ext_contrast;
   float ext_saturation;
   float ext_highlight_saturation;
+  float ext_hue_correction;  // hue toward the scene's (before the per-channel curve), 0-1 (Musa's Batman: 1)
 };
 
 #define SI  shader_injection

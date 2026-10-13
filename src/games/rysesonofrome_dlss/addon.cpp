@@ -17,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -24,6 +25,7 @@
 #include <format>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <numeric>
 #include <optional>
@@ -32,6 +34,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 
 #include "../../utils/command_action.hpp"
@@ -69,9 +72,6 @@ constexpr uint32_t SMAA_BLEND_SHADER = 0xF2D692D1;
 // the display size). DLSS upscaling: the post pass is drawn again at the display size from NVIDIA's result, and the
 // native upscale copies that 1:1 instead.
 constexpr std::array<uint32_t, 4> POST_SHADERS = {0xD0B247FF, 0xB022AFEA, 0xC3A469C1, 0xCC6DF78E};
-// Their PER_BATCH (b0) registers, at most c0-c5 (sharpening and lens flares: Time at c5). PS_ScreenSize (size,
-// 0.5 / size) is at c3 in the first two (sharpening: vParams first), else c2.
-constexpr uint32_t POST_CONSTANT_REGISTERS = 6;
 constexpr uint32_t UPSCALE_SHADER = 0xCD8548F6;
 
 // The game's Rendering Resolution (its menu: 50-100% in steps of 10; the cvars take any size): r_Width / r_Height with
@@ -223,8 +223,6 @@ struct Runtime {
   // view the post pass reads), and the post pass drawn from it (its target's format) for the native upscale.
   Texture taa_full;
   Texture post_full;
-  // The post pass's PER_BATCH with the display size (null without partial constant buffer updates).
-  ComPtr<ID3D11Buffer> post_constants;
   uint32_t width = 0;
   uint32_t height = 0;
   uint32_t output_width = 0;
@@ -338,45 +336,64 @@ std::string saved_cvars;  // overlay only
 // in autoexec.cfg) go one level further. The whitelist rejects the other cvars below in config files, so the addon
 // sets them through the console. A choice multiplies the in-game value (as its spec set it, read again whenever the
 // game sets one itself) or, absolute, replaces it; the first item (the in-game setting) restores it. Applied once the
-// game draws its world (its startup spec is set by then). Buttons: Reset (the in-game settings), Very High,
-// Recommended MAX (the highest, shadow resolution 4x), MAXED OUT (each option's last item).
+// game draws its world (its startup spec is set by then). Buttons: Reset (the in-game settings),
+// GRAPHICS_PRESETS (Very High, Ultra, Extreme, Insane), MAXED OUT (each option's last item).
 struct QualityCvar {
   const char* name;
   bool is_float;
   bool inverse = false;   // a factor divides it (smaller is finer)
   float max_value = 0.f;  // 0: none (D3D11 textures: 16384)
   float min_value = 0.f;  // 0: none
+  bool absolute = false;  // `values` per item instead of the option's (the first item: the in-game setting)
+  std::array<float, 10> values = {};
+  // Non-zero: written in the 3D engine's cvars object at this offset (EngineCvars), for VF_CHEAT cvars whose console
+  // sets the game puts back. `cvar` then points at the value.
+  size_t engine_offset = 0;
+  int from_choice = 0;  // the option's items below this one keep the in-game value
   void* cvar = nullptr;  // ICVar*
   bool looked_up = false;
   float game_value = 0.f;  // while set
   float requested = 0.f;
   float set_value = 0.f;  // as read back
   bool set = false;
+  int reverts = 0;  // the game put its value back right after a set (VF_CHEAT cvars, every frame)
 };
+// Reverts after which a cvar is left alone (refused).
+constexpr int CVAR_REFUSED_REVERTS = 3;
+// The buttons between Reset (the in-game settings) and MAXED OUT (each option's last item).
+struct GraphicsPreset {
+  const char* name;
+  const char* tooltip;
+};
+constexpr std::array<GraphicsPreset, 4> GRAPHICS_PRESETS = {{
+    {.name = "Very High", .tooltip = "The graphics preset at Very High, the other options at about 2x."},
+    {.name = "Ultra", .tooltip = "Distances and details 8x, shadow resolution 2x, shadow pool 2x, 7 sun cascades, water 2x, sharper textures, model streaming 8x."},
+    {.name = "Extreme", .tooltip = "Distances and details 16x, shadow resolution 2x, shadow pool 4x, 7 sun cascades, water 2x, sharper textures, model streaming 16x."},
+    {.name = "Insane", .tooltip = "Distances and details 32x, shadow resolution 4x, shadow pool 4x, 8 sun cascades, water 2x, sharpest textures, model streaming 32x."},
+}};
 struct QualityOption {
   const char* label;
   const char* key;  // ReShade.ini, section "Ryse Game Settings"
   const char* tooltip;
   const char* choices;  // combo items; the first: the in-game setting; the last: MAXED OUT's
   int choice_count;
-  int very_high_choice;    // the Very High button's
-  int recommended_choice;  // Recommended MAX's
+  std::array<int, GRAPHICS_PRESETS.size()> preset_choices;  // per GRAPHICS_PRESETS button
   std::array<float, 10> values;  // per item: a factor of the in-game value or, absolute, the value
   bool absolute = false;
+  int floor_option = -1;  // index of an option whose factor this one's never goes below (-1: none)
   std::vector<QualityCvar> cvars;
   int choice = 0;  // Present thread (the overlay runs in it)
 };
 // Cvars that read back unchanged are refused (e.g. e_DecalsRange, flags 0x800000; left out). Past the engine's caps
 // (the camera's far plane, LOD 0, the tessellation factor 64, every texture resident) higher factors change nothing.
-std::array<QualityOption, 11> quality_options = {{
+std::array<QualityOption, 13> quality_options = {{
     {.label = "Graphics preset (in-game)",
      .key = "EngineQuality",
      .tooltip = "The game's own graphics preset (its 14 quality groups, sys_spec_*, as in autoexec.cfg).\n"
                 "The game's menu goes up to High; Very High is one level above it, the highest the engine has.",
      .choices = "In-game setting\0" "High (the game's highest)\0" "Very High (above the game's High)\0",
      .choice_count = 3,
-     .very_high_choice = 2,
-     .recommended_choice = 2,
+     .preset_choices = {2, 2, 2, 2},
      .values = {0.f, 3.f, 4.f},
      .absolute = true,
      .cvars = {{.name = "sys_spec_Shading", .is_float = false}, {.name = "sys_spec_Shadows", .is_float = false},
@@ -389,124 +406,239 @@ std::array<QualityOption, 11> quality_options = {{
     {.label = "Shadow resolution",
      .key = "ShadowResolution",
      .tooltip = "Shadow map resolution of the sun, of lights and of characters (per-object shadows)\n"
-                "(e_ShadowsMaxTexRes 2048 at Very High, e_ShadowsPoolSize, e_ShadowsResScale,\n"
-                "e_ShadowsPerObjectTexRes 4096). Textures stop at 16384, the D3D11 limit. The heaviest option.",
-     .choices = "In-game setting\0" "2x (4096)\0" "4x (8192)\0" "8x (16384, the maximum)\0",
-     .choice_count = 4,
-     .very_high_choice = 1,
-     .recommended_choice = 2,
-     .values = {1.f, 2.f, 4.f, 8.f},
-     .cvars = {{.name = "e_ShadowsMaxTexRes", .is_float = false, .max_value = 16384.f},
-               {.name = "e_ShadowsPoolSize", .is_float = false, .max_value = 16384.f},
+                "(e_ShadowsMaxTexRes 2048 at Very High, e_ShadowsResScale, e_ShadowsPerObjectTexRes 4096,\n"
+                "up to 8192: above it, bands on characters). The light shadows' pool grows with it (Shadow\n"
+                "pool). The heaviest option. 4x is the maximum: the lights' maps then fill about 3/4 of the\n"
+                "largest pool; 8x would not fit.",
+     .choices = "In-game setting\0" "2x (4096)\0" "4x (8192, the maximum)\0",
+     .choice_count = 3,
+     .preset_choices = {1, 1, 1, 2},
+     .values = {1.f, 2.f, 4.f},
+     // e_ShadowsMaxTexRes also sizes the lights' maps in the pool: at 4x the hall's 39 maps fill 74% of the 16384
+     // pool (shadow trace); 8x would need four times that.
+     .cvars = {{.name = "e_ShadowsMaxTexRes", .is_float = false, .max_value = 8192.f},
                {.name = "e_ShadowsResScale", .is_float = true},
-               {.name = "e_ShadowsPerObjectTexRes", .is_float = false, .max_value = 16384.f}}},
+               // Above 8192 characters showed shadow bands (tester, 4x / 8x): likely self-shadowing, the game's bias
+               // tuned for its own sizes with 16-bit shadow depth (r_ShadowTexFormat 5).
+               {.name = "e_ShadowsPerObjectTexRes", .is_float = false, .max_value = 8192.f}}},
+    // The atlas the lights' shadow maps share. Fewer fit than cast shadows: the engine swaps which get one, frame to
+    // frame (flicker). Never below Shadow resolution's factor, so its larger light maps still fit.
+    {.label = "Shadow pool",
+     .key = "ShadowPool",
+     .tooltip = "Room for the shadows of lights such as torches and fires (e_ShadowsPoolSize, 4096 at Very\n"
+                "High). When more lights cast shadows than fit, their shadows flicker. Grows with Shadow\n"
+                "resolution at least. 16384 is the D3D11 maximum (a 16-bit 16384 x 16384 map, about 512 MB).",
+     .choices = "Matches Shadow resolution\0" "2x (8192)\0" "4x (16384, the maximum)\0",
+     .choice_count = 3,
+     .preset_choices = {0, 1, 2, 2},
+     .values = {1.f, 2.f, 4.f},
+     .floor_option = 1,
+     .cvars = {{.name = "e_ShadowsPoolSize", .is_float = false, .max_value = 16384.f}}},
     {.label = "Shadow cascades",
      .key = "ShadowCascades",
      .tooltip = "Number of sun shadow cascades (e_GsmLodsNum, 5 at Very High; each covers 3x the\n"
-                "distance of the one before): more of them keep distant shadows sharp. 8 is CryEngine's most.",
+                "distance of the one before): more of them keep distant shadows sharp. 8 is CryEngine's most.\n"
+                "Every cascade is also drawn again every frame (e_GsmCacheLodOffset, 3: the farther ones come\n"
+                "from a cache updated less often), so far shadows follow moving things.",
      .choices = "In-game setting\0" "6\0" "7\0" "8 (the maximum)\0",
      .choice_count = 4,
-     .very_high_choice = 1,
-     .recommended_choice = 3,
+     .preset_choices = {1, 2, 2, 3},
      .values = {0.f, 6.f, 7.f, 8.f},
      .absolute = true,
-     .cvars = {{.name = "e_GsmLodsNum", .is_float = false}}},
+     // "Makes first X GSM lods not cached" (its help text): X = the cascades, none cached.
+     .cvars = {{.name = "e_GsmLodsNum", .is_float = false}, {.name = "e_GsmCacheLodOffset", .is_float = false}}},
     {.label = "Shadow distance",
      .key = "ShadowDistance",
      .tooltip = "How far objects cast shadows (e_ShadowsCastViewDistRatio).",
-     .choices = "In-game setting\0" "1.5x\0" "2x\0" "4x\0" "8x\0" "16x\0" "64x\0" "256x\0",
+     .choices = "In-game setting\0" "1.5x\0" "2x\0" "4x\0" "8x\0" "16x\0" "32x\0" "64x (the maximum)\0",
      .choice_count = 8,
-     .very_high_choice = 2,
-     .recommended_choice = 7,
-     .values = {1.f, 1.5f, 2.f, 4.f, 8.f, 16.f, 64.f, 256.f},
+     .preset_choices = {2, 4, 5, 6},
+     .values = {1.f, 1.5f, 2.f, 4.f, 8.f, 16.f, 32.f, 64.f},
      .cvars = {{.name = "e_ShadowsCastViewDistRatio", .is_float = true}}},
     {.label = "Draw distance",
      .key = "DrawDistance",
-     .tooltip = "How far objects, vegetation, grass, details and lights are drawn, and the pools that\n"
-                "hold the grass and vegetation (e_ViewDistRatio*, e_ViewDistMin, e_MergedMeshes*,\n"
-                "e_VegetationSpritesDistanceRatio, e_ProcVegetation*; pools up to 16x).",
-     .choices = "In-game setting\0" "1.5x\0" "2x\0" "3x\0" "4x\0" "8x\0" "16x\0" "64x\0" "256x\0",
+     .tooltip = "How far objects, characters, vegetation, grass and details are drawn, how far grass is\n"
+                "loaded, how far objects show in reflections (water), how far plants move in strong wind, and\n"
+                "the pools that hold the grass and vegetation (e_ViewDistRatio*, e_ViewDistRatioCustom,\n"
+                "e_ViewDistMin up to 20, e_MergedMeshes*, e_VegetationSpritesDistanceRatio, e_ProcVegetation*,\n"
+                "e_RecursionViewDistRatio 0.1 up to 1, e_FoliageWindActivationDist 25 m; pools, grass loading\n"
+                "and wind up to 16x). 64x is the maximum: measured, more draws nothing more.\n"
+                "Lights stay at the game's distance: farther ones flickered.",
+     .choices = "In-game setting\0" "1.5x\0" "2x\0" "3x\0" "4x\0" "8x\0" "16x\0" "32x\0" "64x (the maximum)\0",
      .choice_count = 9,
-     .very_high_choice = 2,
-     .recommended_choice = 8,
-     .values = {1.f, 1.5f, 2.f, 3.f, 4.f, 8.f, 16.f, 64.f, 256.f},
+     .preset_choices = {2, 5, 6, 7},
+     .values = {1.f, 1.5f, 2.f, 3.f, 4.f, 8.f, 16.f, 32.f, 64.f},
      .cvars = {{.name = "e_ViewDistRatio", .is_float = true}, {.name = "e_ViewDistRatioVegetation", .is_float = true},
-               {.name = "e_ViewDistRatioDetail", .is_float = true}, {.name = "e_ViewDistRatioLights", .is_float = true},
-               {.name = "e_ViewDistMin", .is_float = true},
+               {.name = "e_ViewDistRatioDetail", .is_float = true},
+               // "View distance ratio for special marked objects (Players,AI,Vehicles)" (its help text).
+               {.name = "e_ViewDistRatioCustom", .is_float = true},
+               // Also every light's minimum view distance (CLightEntity::GetMaxViewDist: max(e_ViewDistMin, size x
+               // e_ViewDistRatioLights x lod ratio), dump +0x609D1): at 2560 every light in the level was active and
+               // lights and their shadows flickered (ATN). Kept at Very High's 20; for objects it only matters for
+               // the smallest ones, whose ratio distance is below it.
+               {.name = "e_ViewDistMin", .is_float = true, .max_value = 20.f},
                {.name = "e_MergedMeshesViewDistRatio", .is_float = true}, {.name = "e_MergedMeshesInstanceDist", .is_float = true},
                {.name = "e_MergedMeshesPool", .is_float = false, .max_value = 32384.f * 16.f},
+               // "Active distance up until merged mesh patches will be streamed in" (250); they fill the pool above.
+               {.name = "e_MergedMeshesActiveDist", .is_float = true, .max_value = 250.f * 16.f},
                {.name = "e_VegetationSpritesDistanceRatio", .is_float = true},
                {.name = "e_ProcVegetationMaxViewDistance", .is_float = false},
                {.name = "e_ProcVegetationMaxObjectsInChunk", .is_float = false, .max_value = 512.f * 16.f},
-               {.name = "e_ProcVegetationMaxSectorsInCache", .is_float = false, .max_value = 16.f * 16.f}}},
+               {.name = "e_ProcVegetationMaxSectorsInCache", .is_float = false, .max_value = 16.f * 16.f},
+               // "Set all view distances shorter by factor of X" in reflections; 1 is the full distance.
+               {.name = "e_RecursionViewDistRatio", .is_float = true, .max_value = 1.f},
+               // Wind activates foliage physics within it (CPU): up to 16x like the pools.
+               {.name = "e_FoliageWindActivationDist", .is_float = true, .max_value = 25.f * 16.f}}},
     {.label = "Detail distance (LOD)",
      .key = "DetailDistance",
      .tooltip = "How far the most detailed models, character attachments and detail textures are used,\n"
-                "and the resolution of far vegetation sprites (e_LodRatio, e_AttachmentLodDistScale,\n"
-                "r_DetailDistance, r_VegetationSpritesTexRes 64, up to 2048).",
-     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "64x\0" "256x\0",
+                "how far attachments (shields, weapons) are drawn, the resolution of far vegetation sprites and\n"
+                "the most lights on one object (e_LodRatio, e_AttachmentLodDistScale, ca_AttachmentCullingRation,\n"
+                "e_LodFaceAreaTargetSize: smaller is finer, r_DetailDistance, r_VegetationSpritesTexRes 64,\n"
+                "up to 2048, e_DynamicLightsMaxEntityLights 16, up to 32). Objects pick their detail by triangle\n"
+                "size on screen (e_LodFaceAreaTargetSize). Measured outdoors at the game's start, every object\n"
+                "was at full detail by 64x. Armour and cloth: their blend shapes (the shapes that fit them\n"
+                "to the body) are dropped when they move less than 1 pixel on screen, about 3 m away\n"
+                "(ca_vaBlendCullingThreshold 1, divided). 64x also keeps attachments with fixed switch\n"
+                "distances at full detail (e_LodMax 0: the most detailed model for everything).",
+     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "32x\0" "64x (the maximum, armour too)\0",
      .choice_count = 7,
-     .very_high_choice = 1,
-     .recommended_choice = 6,
-     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 64.f, 256.f},
+     .preset_choices = {1, 3, 4, 5},
+     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 32.f, 64.f},
      .cvars = {{.name = "e_LodRatio", .is_float = true}, {.name = "e_AttachmentLodDistScale", .is_float = true},
+               // "ration between size of attachment and distance to camera" (300): attachments smaller on screen
+               // are culled.
+               {.name = "ca_AttachmentCullingRation", .is_float = true},
+               {.name = "e_LodFaceAreaTargetSize", .is_float = true, .inverse = true},
                {.name = "r_DetailDistance", .is_float = true},
-               {.name = "r_VegetationSpritesTexRes", .is_float = false, .max_value = 2048.f}}},
+               // "Blend Shapes culling threshold" (1): each frame a blend shape whose largest move x weight projects
+               // below this many pixels is culled (+0x8e0241: x 1 / (distance x tan) x screen height); the armour
+               // then snaps to its smaller base shape (ATN: at 2-3 m, everything maxed).
+               {.name = "ca_vaBlendCullingThreshold", .is_float = true, .inverse = true},
+               {.name = "r_VegetationSpritesTexRes", .is_float = false, .max_value = 2048.f},
+               // The lights sorted by strength, the first min(count, this) set in a 32-bit mask (+0xf9a3).
+               {.name = "e_DynamicLightsMaxEntityLights", .is_float = false, .max_value = 32.f},
+               // Attachments (armour, shields) with "LodDistances" in their CDF switch LOD at those metres, compared
+               // with the camera distance unscaled (attachment LOD +0x881950: the distances passed, then clamped to
+               // the LOD params' e_LodMin / e_LodMax, built at +0x17cf72 from 3D engine cvars +0x2fc / +0x41c).
+               // e_LodMax is VF_CHEAT (the console's sets are put back): written in memory.
+               {.name = "e_LodMax", .is_float = false, .absolute = true, .values = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+                .engine_offset = 0x41c, .from_choice = 6}}},
     {.label = "Tessellation",
      .key = "Tessellation",
-     .tooltip = "Tessellation distance and density\n(e_TessellationMaxDistance, r_TessellationTriangleSize: smaller is denser).",
-     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "64x\0" "256x\0",
+     .tooltip = "Tessellation distance and density\n(e_TessellationMaxDistance, r_TessellationTriangleSize: smaller is denser).\n"
+                "Measured outdoors at the game's start, its cost stopped growing at 4x.",
+     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "32x\0" "64x (the maximum)\0",
      .choice_count = 7,
-     .very_high_choice = 1,
-     .recommended_choice = 6,
-     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 64.f, 256.f},
+     .preset_choices = {1, 3, 4, 5},
+     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 32.f, 64.f},
      .cvars = {{.name = "e_TessellationMaxDistance", .is_float = true},
                {.name = "r_TessellationTriangleSize", .is_float = true, .inverse = true}}},
     {.label = "Particles",
      .key = "Particles",
-     .tooltip = "How much of the screen particles may cover, the smallest particles drawn and their\n"
-                "tessellation (e_ParticlesMaxScreenFill, e_ParticlesMinDrawPixels, r_ParticlesTessellationTriSize).",
-     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "64x\0" "256x\0",
+     .tooltip = "How much of the screen particles may cover, the smallest particles drawn, their\n"
+                "tessellation and the slices of volumetric light beams (e_ParticlesMaxScreenFill,\n"
+                "e_ParticlesMinDrawPixels, r_ParticlesTessellationTriSize, r_BeamsMaxSlices 200, up to 300:\n"
+                "the game's maximum).",
+     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "32x\0" "64x (the maximum)\0",
      .choice_count = 7,
-     .very_high_choice = 1,
-     .recommended_choice = 6,
-     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 64.f, 256.f},
+     .preset_choices = {1, 3, 4, 5},
+     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 32.f, 64.f},
      .cvars = {{.name = "e_ParticlesMaxScreenFill", .is_float = true},
                {.name = "e_ParticlesMinDrawPixels", .is_float = true, .inverse = true},
-               {.name = "r_ParticlesTessellationTriSize", .is_float = false, .inverse = true, .min_value = 1.f}}},
+               {.name = "r_ParticlesTessellationTriSize", .is_float = false, .inverse = true, .min_value = 1.f},
+               {.name = "r_BeamsMaxSlices", .is_float = false, .max_value = 300.f}}},
     {.label = "Water",
      .key = "Water",
-     .tooltip = "Water surface tessellation (e_WaterTessellationAmount, e_WaterTessellationAmountX / Y).",
-     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0",
-     .choice_count = 5,
-     .very_high_choice = 1,
-     .recommended_choice = 4,
-     .values = {1.f, 2.f, 4.f, 8.f, 16.f},
+     .tooltip = "Water surface tessellation (e_WaterTessellationAmount, e_WaterTessellationAmountX / Y),\n"
+                "ripple resolution (r_WaterRipplesResolution 256), caustics resolution (r_WaterVolumeCausticsRes)\n"
+                "and caustics distances (r_WaterCausticsDistance, r_WaterVolumeCausticsMaxDist); resolutions up\n"
+                "to 4096, the game's maximum (they may need a level load). 2x is the maximum: 4x looked bad on\n"
+                "the sea and 6x crashed (ATN); from about 7x the sea's grid no longer fits the game's 4 MB buffer.",
+     .choices = "In-game setting\0" "2x (the maximum)\0",
+     .choice_count = 2,
+     // The render thread copies the sea's grid, (X - 1) x (Y - 1) vertices of 12 bytes, into a 4 MB buffer (ATN's
+     // chapter 3 crash dumps: memcpy of 5532492 bytes at 8x, 22162572 at 16x, from e_WaterTessellationAmountX / Y
+     // 85 at Very High). 4x looked bad on the sea, 6x (3.1 MB) crashed ATN's PC.
+     .preset_choices = {1, 1, 1, 1},
+     .values = {1.f, 2.f},
      .cvars = {{.name = "e_WaterTessellationAmount", .is_float = false},
                {.name = "e_WaterTessellationAmountX", .is_float = false},
-               {.name = "e_WaterTessellationAmountY", .is_float = false}}},
-    {.label = "Texture streaming pool",
+               {.name = "e_WaterTessellationAmountY", .is_float = false},
+               {.name = "r_WaterRipplesResolution", .is_float = false, .max_value = 4096.f},
+               {.name = "r_WaterVolumeCausticsRes", .is_float = false, .max_value = 4096.f},
+               {.name = "r_WaterCausticsDistance", .is_float = true},
+               {.name = "r_WaterVolumeCausticsMaxDist", .is_float = true}}},
+    {.label = "Texture streaming",
      .key = "TexturePool",
      .tooltip = "Video memory for streamed textures (r_TexturesStreamPoolSize, 1536 MB at Very High):\n"
-                "fewer blurry textures. May need a level load or a restart.\n"
-                "2 GB is the game's maximum: one of its checks keeps the size in bytes in a signed 32-bit\n"
-                "number, which turns negative from 2048 MB on (some or all textures then never load).",
-     .choices = "In-game setting\0" "2 GB (the maximum)\0",
-     .choice_count = 2,
-     .very_high_choice = 1,
-     .recommended_choice = 1,
-     .values = {1.f, 16.f},
-     .cvars = {{.name = "r_TexturesStreamPoolSize", .is_float = false, .max_value = 2047.f}}},
+                "fewer blurry textures. May need a level load or a restart. 2 GB is the game's maximum: one of\n"
+                "its checks keeps the size in bytes in a signed 32-bit number, which turns negative from 2048 MB\n"
+                "on (some or all textures then never load). Sharper / Sharpest also load the sharper texture\n"
+                "levels from farther away (r_TexturesStreamingMipBias 0, -1, -2; they need more of the pool).",
+     .choices = "In-game setting\0" "2 GB (the maximum)\0" "2 GB, sharper sooner\0" "2 GB, sharpest sooner\0",
+     .choice_count = 4,
+     .preset_choices = {1, 2, 2, 3},
+     .values = {1.f, 16.f, 16.f, 16.f},
+     .cvars = {{.name = "r_TexturesStreamPoolSize", .is_float = false, .max_value = 2047.f},
+               {.name = "r_TexturesStreamingMipBias", .is_float = true, .absolute = true, .values = {0.f, 0.f, -1.f, -2.f}}}},
+    {.label = "Model streaming",
+     .key = "ModelStreaming",
+     .tooltip = "Memory for detailed models and how fast textures load. The game keeps 80 MB of models\n"
+                "(e_StreamCgfPoolSize, its render mesh cache, at Very High): with Detail distance above the\n"
+                "game's, the detailed models may no longer fit. Also r_TexturesStreamingMaxRequestedMB up to 64\n"
+                "and r_TexturesStreamingMaxRequestedJobs up to 256. 2 GB of models is the game's maximum: it\n"
+                "keeps the size in bytes in a signed 32-bit number (as the texture pool).",
+     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "32x (2 GB of models, the maximum)\0",
+     .choice_count = 6,
+     .preset_choices = {1, 3, 4, 5},
+     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 32.f},
+     // The cache: MB << 20 in a signed 32-bit compare (+0x17630a, +0x176457). The texture limits are compared with
+     // counters, not array sizes. e_StreamCgfMaxTasksInProgress / MaxNewTasksPerUpdate are VF_CHEAT: the game puts
+     // them back every frame ("is marked [VF_CHEAT]" in its console, ATN v59), left out.
+     .cvars = {{.name = "e_StreamCgfPoolSize", .is_float = false, .max_value = 2047.f},
+               {.name = "r_TexturesStreamingMaxRequestedMB", .is_float = true, .max_value = 64.f},
+               {.name = "r_TexturesStreamingMaxRequestedJobs", .is_float = false, .max_value = 256.f}}},
     {.label = "Decals",
      .key = "Decals",
      .tooltip = "How long blood and impact marks stay (e_DecalsLifeTimeScale).",
-     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "64x\0" "256x\0",
+     .choices = "In-game setting\0" "2x\0" "4x\0" "8x\0" "16x\0" "32x\0" "64x (the maximum)\0",
      .choice_count = 7,
-     .very_high_choice = 1,
-     .recommended_choice = 6,
-     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 64.f, 256.f},
+     .preset_choices = {1, 3, 4, 5},
+     .values = {1.f, 2.f, 4.f, 8.f, 16.f, 32.f, 64.f},
      .cvars = {{.name = "e_DecalsLifeTimeScale", .is_float = true}}},
 }};
+
+// Debug (Advanced, temporary): which system grows the soldiers' armour within 2-4 m (ATN: at every setting, also
+// with v61's e_LodMax 0 and v62's blend-shape culling off). Each test overrides one cvar (the quality options leave it
+// alone meanwhile); the test that makes the near armour look like the far one names the system.
+struct ArmourTest {
+  const char* label;
+  const char* cvar;  // null: none
+  float value;
+};
+constexpr std::array<ArmourTest, 6> ARMOUR_TESTS = {{
+    {.label = "Off", .cvar = nullptr, .value = 0.f},
+    {.label = "Blend shapes off (ca_vaBlendEnable 0)", .cvar = "ca_vaBlendEnable", .value = 0.f},
+    {.label = "Vertex animation off (ca_vaEnable 0)", .cvar = "ca_vaEnable", .value = 0.f},
+    {.label = "Tessellation only within 0.5 m (e_TessellationMaxDistance 0.5)", .cvar = "e_TessellationMaxDistance", .value = 0.5f},
+    {.label = "Less detailed models (e_LodMin 2)", .cvar = "e_LodMin", .value = 2.f},
+    {.label = "Less detailed characters (e_CharLodMin 2)", .cvar = "e_CharLodMin", .value = 2.f},
+}};
+struct ArmourTestState {
+  int choice = 0;  // overlay
+  int applied = 0;
+  void* cvar = nullptr;  // ICVar* of the applied test
+  float game_value = 0.f;
+  std::string status;  // overlay
+} armour_test;  // Present thread (the overlay runs in it)
+
+// An option's `choice`th item.
+const char* ChoiceName(const QualityOption& option, int choice) {
+  const char* name = option.choices;
+  for (int index = 0; index < choice; ++index) name += std::strlen(name) + 1;
+  return name;
+}
 
 // Texture LOD bias below 100% (DLSS section): the game picks texture levels for its render resolution. Its anisotropic
 // samplers (its material textures; post passes filter linear or point, shadow maps compare) are bound again right after
@@ -524,7 +656,9 @@ thread_local bool creating_clone = false;  // the clone's own init_sampler
 // While DLSS / DLAA runs (AA mode not Off), renderer statics written directly (FindIntCvar; the game's values come
 // back with Off and at unload). r_TexNoAnisoAlphaTest 0: anisotropic filtering also on alpha-tested textures (foliage,
 // fences, cloth; read while drawing, +0x18338EB; its ICVar refuses sets, flags 0x800100). r_DeferredShadingFilterGBuffer
-// 0: no smoothing of normals and gloss against sparkling highlights (DLSS / DLAA calm them; fine surface detail stays).
+// 0: no smoothing of normals and gloss against sparkling highlights (DLSS / DLAA calm them; fine surface detail stays;
+// ATN: armour still shimmers a little with DLAA, the same without the HDR addon: the game's specular aliasing; the
+// filter's smoothing was an option in v56, removed: off gives much better highlights).
 struct RendererPin {
   const char* name;
   int value;  // while DLSS / DLAA runs
@@ -665,13 +799,111 @@ void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint
       DescribeTexture(target_resource.Get()), viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY, inputs));
 }
 
+// Debug (Advanced button): the game's shadow maps for SHADOW_TRACE_FRAMES frames, in ryse_shadow_trace.txt next to the
+// exe. Per frame, every depth target drawn without a color target (the sun's cascades, the lights' pool, per-object
+// shadows) with each viewport drawn into it (a shadow map or a cube face) and its draws. Maps that come and go from
+// frame to frame while the camera stands still are the flicker. The header lists each graphics cvar: the game's
+// value, the addon's and what the game kept.
+constexpr uint32_t SHADOW_TRACE_FRAMES = 300;
+struct ShadowTarget {
+  std::string description;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  std::map<std::array<int, 4>, uint32_t> draws_per_viewport;  // x, y, width, height
+};
+struct ShadowTrace {
+  std::mutex mutex;
+  std::ofstream file;
+  uint64_t frame = 0;
+  std::map<std::pair<uintptr_t, uint32_t>, ShadowTarget> targets;  // this frame; resource and array slice
+} shadow_trace;
+std::atomic<uint32_t> shadow_trace_frames = 0;  // frames left; 0: off
+std::string shadow_trace_result;                // overlay only
+
+// Debug (Advanced button): each option's choices in turn, the player standing still (not the graphics preset and the
+// texture pool: those reload). Per choice, after MEASURE_SETTLE_FRAMES frames, the averages over MEASURE_FRAMES frames
+// of the draws and indices into color targets (the scene) and into depth-only targets (shadow maps), and of the frame
+// time, in ryse_options_measure.txt next to the exe. Where they stop changing, a higher choice draws nothing more
+// (tessellation and shadow resolution show in the frame time only).
+constexpr uint32_t MEASURE_SETTLE_FRAMES = 60;
+constexpr uint32_t MEASURE_FRAMES = 60;
+struct DrawCounts {
+  std::atomic<uint64_t> scene_draws = 0;
+  std::atomic<uint64_t> scene_indices = 0;
+  std::atomic<uint64_t> shadow_draws = 0;
+  std::atomic<uint64_t> shadow_indices = 0;
+} draw_counts;  // added on the render thread, taken at Present
+std::atomic_bool counting_draws = false;
+struct OptionsMeasure {
+  bool active = false;
+  size_t option = 0;
+  int choice = 0;
+  uint32_t frame = 0;  // since the choice was applied
+  std::array<int, std::tuple_size_v<decltype(quality_options)>> saved_choices = {};
+  std::array<double, 5> sums = {};  // scene draws, scene indices, shadow draws, shadow indices, frame ms
+  std::chrono::steady_clock::time_point last_present;
+  std::ofstream file;
+  std::string result;  // overlay
+} options_measure;     // Present thread (the overlay runs in it)
+
+void CountDraw(reshade::api::command_list* cmd_list, uint32_t count) {
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  if (context == nullptr) return;
+  ComPtr<ID3D11RenderTargetView> color;
+  ComPtr<ID3D11DepthStencilView> depth;
+  context->OMGetRenderTargets(1, color.GetAddressOf(), depth.GetAddressOf());
+  if (!color && depth) {
+    draw_counts.shadow_draws.fetch_add(1, std::memory_order_relaxed);
+    draw_counts.shadow_indices.fetch_add(count, std::memory_order_relaxed);
+  } else {
+    draw_counts.scene_draws.fetch_add(1, std::memory_order_relaxed);
+    draw_counts.scene_indices.fetch_add(count, std::memory_order_relaxed);
+  }
+}
+
+void TraceShadowDraw(reshade::api::command_list* cmd_list) {
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  if (context == nullptr) return;
+  ComPtr<ID3D11RenderTargetView> color;
+  ComPtr<ID3D11DepthStencilView> depth;
+  context->OMGetRenderTargets(1, color.GetAddressOf(), depth.GetAddressOf());
+  if (color || !depth) return;
+  ComPtr<ID3D11Resource> resource;
+  depth->GetResource(resource.GetAddressOf());
+  D3D11_DEPTH_STENCIL_VIEW_DESC view = {};
+  depth->GetDesc(&view);
+  const uint32_t slice = (view.ViewDimension == D3D11_DSV_DIMENSION_TEXTURE2DARRAY ? view.Texture2DArray.FirstArraySlice : 0u);
+  D3D11_VIEWPORT viewport = {};
+  UINT viewport_count = 1;
+  context->RSGetViewports(&viewport_count, &viewport);
+  const std::lock_guard lock(shadow_trace.mutex);
+  auto& target = shadow_trace.targets[{reinterpret_cast<uintptr_t>(resource.Get()), slice}];
+  if (target.description.empty()) {
+    D3D11_TEXTURE2D_DESC desc = {};
+    if (ComPtr<ID3D11Texture2D> texture; SUCCEEDED(resource.As(&texture))) {
+      texture->GetDesc(&desc);
+    }
+    target.description = std::format("{} slice {} of {}", DescribeTexture(resource.Get()), slice, desc.ArraySize);
+    target.width = desc.Width;
+    target.height = desc.Height;
+  }
+  ++target.draws_per_viewport[{static_cast<int>(viewport.TopLeftX), static_cast<int>(viewport.TopLeftY),
+                               static_cast<int>(viewport.Width), static_cast<int>(viewport.Height)}];
+}
+
 bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t, uint32_t, uint32_t) {
   TraceDraw(cmd_list, "draw", vertex_count);
+  if (shadow_trace_frames.load(std::memory_order_relaxed) != 0) TraceShadowDraw(cmd_list);
+  if (counting_draws.load(std::memory_order_relaxed)) CountDraw(cmd_list, vertex_count);
   return false;
 }
 
 bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t, int32_t, uint32_t) {
   TraceDraw(cmd_list, "indexed", index_count);
+  if (shadow_trace_frames.load(std::memory_order_relaxed) != 0) TraceShadowDraw(cmd_list);
+  if (counting_draws.load(std::memory_order_relaxed)) CountDraw(cmd_list, index_count);
   return false;
 }
 
@@ -826,6 +1058,22 @@ void* FindGameConsole() {
     renodx::utils::log::i("[Ryse DLSS] The game's console: ", found.details);
   }
   return (found.console != nullptr ? *found.console : nullptr);
+}
+
+// The 3D engine's cvars object (VEGETATION_SCREEN_RES's code loads it), or null (not found, or not created yet).
+// Searched once: call from a present (the exe's code is only readable once the game runs).
+uint8_t* EngineCvars() {
+  auto& pin = screen_res_pin;
+  if (!pin.searched) {
+    pin.searched = true;
+    if (const uint8_t* site = rysesonofrome::engine_memory::FindPattern(VEGETATION_SCREEN_RES, &pin.details); site != nullptr) {
+      int32_t displacement;
+      std::memcpy(&displacement, site + 3, sizeof(displacement));
+      pin.cvars = reinterpret_cast<uint8_t* const*>(site + 7 + displacement);
+    }
+    renodx::utils::log::i("[Ryse DLSS] The 3D engine's cvars (e_ForceDetailLevelForScreenRes code): ", pin.details);
+  }
+  return (pin.cvars != nullptr ? *pin.cvars : nullptr);
 }
 
 // IConsole::GetCVar: the ICVar*, or null (no such cvar).
@@ -1238,21 +1486,6 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
         SetStatus("Game TAA: private resource creation failed");
         return {};
       }
-      // OnPostDraw copies the game's PER_BATCH range into it and updates one register: boxes on constant buffers.
-      D3D11_FEATURE_DATA_D3D11_OPTIONS options = {};
-      if (SUCCEEDED(device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options)))
-          && options.ConstantBufferPartialUpdate != FALSE) {
-        const D3D11_BUFFER_DESC post_constants_desc = {
-            .ByteWidth = POST_CONSTANT_REGISTERS * 16,
-            .Usage = D3D11_USAGE_DEFAULT,
-            .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
-        };
-        device->CreateBuffer(&post_constants_desc, nullptr, runtime.post_constants.GetAddressOf());
-      }
-      if (!runtime.post_constants) {
-        renodx::utils::log::i("[Ryse DLSS] No partial constant buffer updates: the post pass at the display size keeps the "
-                              "render size (larger sharpening, lens flare and chromatic aberration offsets).");
-      }
       runtime.device = device;
       runtime.width = width;
       runtime.height = height;
@@ -1544,57 +1777,6 @@ constexpr auto OnPostDraw = []<typename Context>(Context& command) -> command_ac
         .MaxDepth = 1.f,
     };
     const D3D11_RECT whole_scissor = {.right = static_cast<LONG>(full_desc.Width), .bottom = static_cast<LONG>(full_desc.Height)};
-
-    // The game's PER_BATCH has the render size in PS_ScreenSize: at the display size, every offset in texels (the
-    // sharpening taps, the lens flares' red shift, the HDR addon's chromatic aberration) grew by display / render. This
-    // draw gets a copy of it with the display size.
-    ComPtr<ID3D11Buffer> game_constants;
-    UINT game_first_constant = 0;
-    UINT game_constant_count = 0;
-    context->PSGetConstantBuffers1(0, 1, game_constants.GetAddressOf(), &game_first_constant, &game_constant_count);
-    bool game_binds_whole_buffer = false;
-    bool constants_replaced = false;
-    if (game_constants && runtime.post_constants) {
-      D3D11_BUFFER_DESC game_constants_desc = {};
-      game_constants->GetDesc(&game_constants_desc);
-      const uint32_t buffer_registers = game_constants_desc.ByteWidth / 16;
-      game_binds_whole_buffer = game_first_constant == 0
-                                && (game_constant_count == 0 || game_constant_count >= buffer_registers);
-      const uint32_t bound_registers = (game_binds_whole_buffer ? buffer_registers : game_constant_count);
-      const bool sharpening = command.matched_shader_hash == POST_SHADERS[0] || command.matched_shader_hash == POST_SHADERS[1];
-      const uint32_t screen_size_register = (sharpening ? 3u : 2u);
-      if (game_first_constant < buffer_registers) {
-        const uint32_t copied_registers =
-            std::min({POST_CONSTANT_REGISTERS, bound_registers, buffer_registers - game_first_constant});
-        if (copied_registers > screen_size_register) {
-          const D3D11_BOX copied = {
-              .left = game_first_constant * 16,
-              .top = 0,
-              .front = 0,
-              .right = (game_first_constant + copied_registers) * 16,
-              .bottom = 1,
-              .back = 1,
-          };
-          context->CopySubresourceRegion1(runtime.post_constants.Get(), 0, 0, 0, 0, game_constants.Get(), 0, &copied, 0);
-          const auto display_width = static_cast<float>(full_desc.Width);
-          const auto display_height = static_cast<float>(full_desc.Height);
-          const std::array<float, 4> screen_size = {display_width, display_height, .5f / display_width, .5f / display_height};
-          const D3D11_BOX screen_size_box = {
-              .left = screen_size_register * 16,
-              .top = 0,
-              .front = 0,
-              .right = (screen_size_register + 1) * 16,
-              .bottom = 1,
-              .back = 1,
-          };
-          context->UpdateSubresource1(runtime.post_constants.Get(), 0, &screen_size_box, screen_size.data(), 0, 0, 0);
-          ID3D11Buffer* buffers[] = {runtime.post_constants.Get()};
-          context->PSSetConstantBuffers(0, 1, buffers);
-          constants_replaced = true;
-        }
-      }
-    }
-
     ID3D11RenderTargetView* outputs[] = {runtime.post_full.rtv.Get()};
     ID3D11ShaderResourceView* inputs[] = {runtime.taa_full.srv.Get()};
     context->VSSetShader(runtime.fullscreen_shader.Get(), nullptr, 0);
@@ -1604,14 +1786,6 @@ constexpr auto OnPostDraw = []<typename Context>(Context& command) -> command_ac
     context->OMSetRenderTargets(1, outputs, nullptr);
     context->PSSetShaderResources(0, 1, inputs);
     context->Draw(3, 0);
-    if (constants_replaced) {
-      ID3D11Buffer* buffers[] = {game_constants.Get()};
-      if (game_binds_whole_buffer) {
-        context->PSSetConstantBuffers(0, 1, buffers);
-      } else {
-        context->PSSetConstantBuffers1(0, 1, buffers, &game_first_constant, &game_constant_count);
-      }
-    }
     {
       std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> pointers = {};
       for (uint32_t index = 0; index < pointers.size(); ++index) pointers[index] = game_targets[index].Get();
@@ -1793,6 +1967,67 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     trace_frame.store(present_frame.load());
     renodx::utils::log::i("[Ryse DLSS trace] frame ", present_frame.load(), ", mode ", AA_MODES[static_cast<size_t>(mode)].name);
   }
+  if (shadow_trace_frames.load() != 0) {
+    const std::lock_guard lock(shadow_trace.mutex);
+    for (const auto& [key, target] : shadow_trace.targets) {
+      uint64_t texels = 0;
+      std::string maps;
+      for (const auto& [viewport, draws] : target.draws_per_viewport) {
+        texels += static_cast<uint64_t>(viewport[2]) * static_cast<uint64_t>(viewport[3]);
+        maps += std::format(" [{},{} {}x{}: {}]", viewport[0], viewport[1], viewport[2], viewport[3], draws);
+      }
+      const double used = 100.0 * static_cast<double>(texels) / std::max(1.0, static_cast<double>(target.width) * target.height);
+      shadow_trace.file << std::format("frame {} | {} | {} maps, {:.1f}% |{}\n", shadow_trace.frame, target.description,
+                                       target.draws_per_viewport.size(), used, maps);
+    }
+    shadow_trace.targets.clear();
+    ++shadow_trace.frame;
+    if (shadow_trace_frames.fetch_sub(1) == 1) {
+      shadow_trace.file.close();
+      renodx::utils::log::i("[Ryse DLSS] Shadow trace written (ryse_shadow_trace.txt).");
+    }
+  }
+  if (options_measure.active) {
+    const auto now = std::chrono::steady_clock::now();
+    const std::array<double, 5> frame_values = {
+        static_cast<double>(draw_counts.scene_draws.exchange(0)), static_cast<double>(draw_counts.scene_indices.exchange(0)),
+        static_cast<double>(draw_counts.shadow_draws.exchange(0)), static_cast<double>(draw_counts.shadow_indices.exchange(0)),
+        std::chrono::duration<double, std::milli>(now - options_measure.last_present).count()};
+    options_measure.last_present = now;
+    if (++options_measure.frame > MEASURE_SETTLE_FRAMES) {
+      for (size_t index = 0; index < frame_values.size(); ++index) options_measure.sums[index] += frame_values[index];
+    }
+    if (options_measure.frame == MEASURE_SETTLE_FRAMES + MEASURE_FRAMES) {
+      auto& option = quality_options[options_measure.option];
+      const char* choice_name = ChoiceName(option, options_measure.choice);
+      const auto& sums = options_measure.sums;
+      options_measure.file << std::format("{} | {} | {:.0f} | {:.0f} | {:.0f} | {:.0f} | {:.2f}\n", option.label, choice_name,
+                                          sums[0] / MEASURE_FRAMES, sums[1] / MEASURE_FRAMES, sums[2] / MEASURE_FRAMES,
+                                          sums[3] / MEASURE_FRAMES, sums[4] / MEASURE_FRAMES);
+      options_measure.sums = {};
+      options_measure.frame = 0;
+      // The next choice, else the next option (its own choice back first).
+      if (++options_measure.choice < option.choice_count) {
+        option.choice = options_measure.choice;
+      } else {
+        option.choice = options_measure.saved_choices[options_measure.option];
+        options_measure.choice = 0;
+        do {
+          ++options_measure.option;
+        } while (options_measure.option < quality_options.size()
+                 && (std::string_view(quality_options[options_measure.option].key) == "EngineQuality"
+                     || std::string_view(quality_options[options_measure.option].key) == "TexturePool"));
+        if (options_measure.option < quality_options.size()) {
+          quality_options[options_measure.option].choice = 0;
+        } else {
+          options_measure.active = false;
+          counting_draws.store(false);
+          options_measure.file.close();
+          options_measure.result = "Done: ryse_options_measure.txt next to the exe. Your choices are back.";
+        }
+      }
+    }
+  }
   // The frame after the captured one ends here.
   if (const uint64_t captured = capture_frame.load(); captured != UINT64_MAX && closing_frame > captured) {
     capture_frame.store(UINT64_MAX);
@@ -1848,34 +2083,64 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   // Game settings above its highest (quality_options), once the game draws its world (the game's TAA was seen).
   if (void* console = (taa_frame.load(std::memory_order_relaxed) != UINT64_MAX ? FindGameConsole() : nullptr); console != nullptr) {
     const auto get = [](const QualityCvar& entry) {
+      if (entry.engine_offset != 0) {
+        if (entry.is_float) {
+          return std::atomic_ref<float>(*static_cast<float*>(entry.cvar)).load(std::memory_order_relaxed);
+        }
+        return static_cast<float>(std::atomic_ref<int>(*static_cast<int*>(entry.cvar)).load(std::memory_order_relaxed));
+      }
       if (entry.is_float) {
         return (*reinterpret_cast<float (***)(void*)>(entry.cvar))[CVAR_GET_FLOAT / sizeof(void*)](entry.cvar);
       }
       return static_cast<float>(GetCvar(entry.cvar));
     };
     const auto set = [](const QualityCvar& entry, float value) {
-      if (entry.is_float) {
+      if (entry.engine_offset != 0) {
+        if (entry.is_float) {
+          std::atomic_ref<float>(*static_cast<float*>(entry.cvar)).store(value, std::memory_order_relaxed);
+        } else {
+          std::atomic_ref<int>(*static_cast<int*>(entry.cvar)).store(static_cast<int>(value), std::memory_order_relaxed);
+        }
+      } else if (entry.is_float) {
         (*reinterpret_cast<void (***)(void*, float)>(entry.cvar))[CVAR_SET_FLOAT / sizeof(void*)](entry.cvar, value);
       } else {
         SetCvar(entry.cvar, static_cast<int>(value));
       }
     };
     for (auto& option : quality_options) {
-      const bool game_own = option.choice == 0;
-      const float value = option.values[option.choice];
+      const QualityOption* floor_source =
+          (option.floor_option >= 0 ? &quality_options[option.floor_option] : nullptr);
+      const bool game_own = option.choice == 0 && (floor_source == nullptr || floor_source->choice == 0);
+      float value = option.values[option.choice];
+      if (floor_source != nullptr) {
+        value = std::max(value, floor_source->values[floor_source->choice]);
+      }
       for (auto& entry : option.cvars) {
+        if (armour_test.applied != 0 && std::strcmp(entry.name, ARMOUR_TESTS[armour_test.applied].cvar) == 0) continue;
         if (!entry.looked_up) {
-          entry.looked_up = true;
-          entry.cvar = GetGameCvar(console, entry.name);
-          renodx::utils::log::i("[Ryse DLSS] ", entry.name, (entry.cvar != nullptr ? std::format(" = {}", get(entry)) : " not found"));
+          if (entry.engine_offset == 0) {
+            entry.looked_up = true;
+            entry.cvar = GetGameCvar(console, entry.name);
+          } else if (uint8_t* cvars = EngineCvars(); cvars != nullptr || screen_res_pin.cvars == nullptr) {
+            // Found (else the object is not created yet: again next present), or its code was not found.
+            entry.looked_up = true;
+            entry.cvar = (cvars != nullptr ? cvars + entry.engine_offset : nullptr);
+          }
+          if (entry.looked_up) {
+            renodx::utils::log::i("[Ryse DLSS] ", entry.name, (entry.cvar != nullptr ? std::format(" = {}", get(entry)) : " not found"));
+          }
         }
-        if (entry.cvar == nullptr) continue;
+        if (entry.cvar == nullptr || entry.reverts >= CVAR_REFUSED_REVERTS) continue;
         const float current = get(entry);
-        // The game set its own (its spec, e.g. its menu): the new game's value.
+        // The game set its own (its spec, e.g. its menu): the new game's value. Its own value back right after a
+        // set, again and again: refused (VF_CHEAT cvars are put back every frame, each time with a console error).
         if (entry.set && current != entry.set_value) {
+          if (entry.engine_offset == 0 && current == entry.game_value && ++entry.reverts >= CVAR_REFUSED_REVERTS) {
+            renodx::utils::log::w("[Ryse DLSS] ", entry.name, " refused: the game puts back ", current);
+          }
           entry.set = false;
         }
-        if (game_own) {
+        if (game_own || option.choice < entry.from_choice) {
           if (entry.set) {
             set(entry, entry.game_value);
             entry.set = false;
@@ -1886,7 +2151,9 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           entry.game_value = current;
         }
         float desired = value;
-        if (!option.absolute) {
+        if (entry.absolute) {
+          desired = entry.values[option.choice];
+        } else if (!option.absolute) {
           desired = (entry.inverse ? entry.game_value / value : entry.game_value * value);
         }
         if (entry.max_value > 0.f) {
@@ -1905,6 +2172,31 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           entry.set_value = get(entry);
           entry.set = true;
         }
+      }
+    }
+    if (auto& test = armour_test; test.choice != test.applied) {
+      const auto get_float = [](void* cvar) {
+        return (*reinterpret_cast<float (***)(void*)>(cvar))[CVAR_GET_FLOAT / sizeof(void*)](cvar);
+      };
+      const auto set_float = [](void* cvar, float value) {
+        (*reinterpret_cast<void (***)(void*, float)>(cvar))[CVAR_SET_FLOAT / sizeof(void*)](cvar, value);
+      };
+      if (test.cvar != nullptr) {
+        set_float(test.cvar, test.game_value);
+        test.cvar = nullptr;
+      }
+      test.applied = test.choice;
+      test.status.clear();
+      if (const char* name = ARMOUR_TESTS[test.applied].cvar; name != nullptr) {
+        test.cvar = GetGameCvar(console, name);
+        if (test.cvar != nullptr) {
+          test.game_value = get_float(test.cvar);
+          set_float(test.cvar, ARMOUR_TESTS[test.applied].value);
+          test.status = std::format("{}: {:g} -> {:g}", name, test.game_value, get_float(test.cvar));
+        } else {
+          test.status = std::format("{} not found", name);
+        }
+        renodx::utils::log::i("[Ryse DLSS] Armour test: ", test.status);
       }
     }
   }
@@ -2150,15 +2442,6 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
 
     // Vegetation detail at the display width while rendering below it (VEGETATION_SCREEN_RES).
     auto& pin = screen_res_pin;
-    if (!pin.searched && rendering.width != nullptr) {
-      pin.searched = true;
-      if (const uint8_t* site = rysesonofrome::engine_memory::FindPattern(VEGETATION_SCREEN_RES, &pin.details); site != nullptr) {
-        int32_t displacement;
-        std::memcpy(&displacement, site + 3, sizeof(displacement));
-        pin.cvars = reinterpret_cast<uint8_t* const*>(site + 7 + displacement);
-      }
-      renodx::utils::log::i("[Ryse DLSS] Vegetation detail screen width (e_ForceDetailLevelForScreenRes): ", pin.details);
-    }
     const bool below = rendering.controlling && rendering.target[0] > 0 && rendering.target[0] < static_cast<int>(display_width);
     // Texture LOD bias (biased_samplers): below the display width, log2(render / display width), minus 1 (Sharper) or
     // 2 (Sharpest).
@@ -2168,7 +2451,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
              - static_cast<float>(texture_lod_bias_choice - 1);
     }
     texture_lod_bias.store(bias, std::memory_order_relaxed);
-    if (uint8_t* cvars = (pin.cvars != nullptr ? *pin.cvars : nullptr); cvars != nullptr) {
+    if (uint8_t* cvars = (rendering.width != nullptr ? EngineCvars() : nullptr); cvars != nullptr) {
       const std::atomic_ref<int> value(*reinterpret_cast<int*>(cvars + SCREEN_RES_CVAR));
       const int current = value.load(std::memory_order_relaxed);
       if (below) {
@@ -2245,13 +2528,28 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::EndCombo();
   }
   if (ImGui::Combo("Texture LOD bias", &texture_lod_bias_choice,
-                   "Off\0" "Matched (the output resolution's levels)\0" "Sharper (one level more)\0" "Sharpest (two levels more)\0")) {
+                   "Off (the game's own)\0"
+                   "Matched (as sharp as at your output resolution)\0"
+                   "Sharper (one step sharper; NVIDIA's recommendation)\0"
+                   "Sharpest (two steps sharper; can shimmer)\0")) {
     reshade::set_config_value(nullptr, "Ryse AA", "TextureLodBias", texture_lod_bias_choice);
   }
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("Below 100%%, the game picks smaller texture levels for its lower render resolution.\n"
-                      "Matched: the levels of the output resolution instead (bias log2(render / display width)).\n"
-                      "Sharper / Sharpest: one / two levels more (can shimmer). Only DLSS below 100%%; DLAA is unaffected.");
+    // The bias each choice adds at the current mode's scale (the render width is rounded, so in game it can differ
+    // slightly).
+    std::string example;
+    if (const float scale = ModeScale(mode); mode != AAMode::OFF && scale < 1.f) {
+      const float matched = std::log2(scale);
+      example = std::format("\n\nAt {:g}% (bias added to the game's, lower = sharper): Off 0.0, Matched {:.1f}, Sharper {:.1f}, "
+                            "Sharpest {:.1f}.",
+                            std::round(scale * 100.f), matched, matched - 1.f, matched - 2.f);
+    }
+    ImGui::SetTooltip("How sharp textures are while DLSS renders below 100%%. The game renders fewer pixels and picks\n"
+                      "blurrier texture levels to match them.\n"
+                      "Matched: textures as sharp as at your output resolution.\n"
+                      "Sharper / Sharpest: one / two steps sharper than that (more detail, can shimmer).\n"
+                      "DLAA and Off are not affected.%s",
+                      example.c_str());
   }
   ImGui::TextWrapped("Changing the AA mode or render scale resizes the game's render targets: its auto exposure restarts "
                      "(too bright or too dark for a moment, then it settles) and textures reload.");
@@ -2337,10 +2635,17 @@ void OnOverlay(reshade::api::effect_runtime*) {
   ImGui::TextWrapped("Game settings above its High, applied live. In-game setting: what you set in the game. Nx: N "
                      "times what the in-game graphics preset sets (numbers in brackets: at Very High).");
   // A button that sets every option to the choice `pick` gives it, saved.
-  const auto preset_button = [](const char* label, const char* tooltip, int (*pick)(const QualityOption&)) {
+  // preset: -1 Reset, a GRAPHICS_PRESETS index, or GRAPHICS_PRESETS.size() for MAXED OUT.
+  const auto preset_button = [](const char* label, const char* tooltip, int preset) {
     if (ImGui::Button(label)) {
       for (auto& option : quality_options) {
-        option.choice = pick(option);
+        int choice = option.choice_count - 1;
+        if (preset < 0) {
+          choice = 0;
+        } else if (preset < static_cast<int>(GRAPHICS_PRESETS.size())) {
+          choice = option.preset_choices[preset];
+        }
+        option.choice = choice;
         reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
       }
     }
@@ -2348,21 +2653,19 @@ void OnOverlay(reshade::api::effect_runtime*) {
       ImGui::SetTooltip("%s", tooltip);
     }
   };
-  preset_button("Reset", "Every option back to the in-game setting.", [](const QualityOption&) { return 0; });
+  preset_button("Reset", "Every option back to the in-game setting.", -1);
+  for (int preset = 0; preset < static_cast<int>(GRAPHICS_PRESETS.size()); ++preset) {
+    ImGui::SameLine();
+    preset_button(GRAPHICS_PRESETS[preset].name, GRAPHICS_PRESETS[preset].tooltip, preset);
+  }
   ImGui::SameLine();
-  preset_button("Very High", "The graphics preset at Very High, the other options at about 2x.",
-                [](const QualityOption& option) { return option.very_high_choice; });
-  ImGui::SameLine();
-  preset_button("Recommended MAX",
-                "Every option at its highest, but shadow resolution at 4x\n"
-                "(8x costs a lot of performance for no visible difference).",
-                [](const QualityOption& option) { return option.recommended_choice; });
-  ImGui::SameLine();
-  preset_button("MAXED OUT", "Every option at its highest, shadow resolution 8x included.\nExpect a large performance cost.",
-                [](const QualityOption& option) { return option.choice_count - 1; });
+  preset_button("MAXED OUT", "Every option at its highest (distances and details 64x).",
+                static_cast<int>(GRAPHICS_PRESETS.size()));
   const bool world_seen = taa_frame.load(std::memory_order_relaxed) != UINT64_MAX;
   for (auto& option : quality_options) {
-    if (ImGui::Combo(option.label, &option.choice, option.choices)) {
+    // A slider over the items, showing the current one (as RenoDX's labelled settings).
+    if (ImGui::SliderInt(option.label, &option.choice, 0, option.choice_count - 1, ChoiceName(option, option.choice),
+                         ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
       reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
     }
     if (ImGui::IsItemHovered()) {
@@ -2374,6 +2677,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
       std::string value = "in-game";
       if (entry.looked_up && entry.cvar == nullptr) {
         value = "not found";
+      } else if (entry.reverts >= CVAR_REFUSED_REVERTS) {
+        value = "refused (the game puts its value back)";
       } else if (entry.set) {
         value = std::format("{:g} -> {:g}", entry.game_value, entry.set_value);
       } else if (!world_seen) {
@@ -2453,6 +2758,80 @@ void OnOverlay(reshade::api::effect_runtime*) {
     capture_result = "Waiting for an upscaled frame (a DLSS mode below 100%)";
   }
   if (!capture_result.empty()) ImGui::TextWrapped("%s", capture_result.c_str());
+  ImGui::BeginDisabled(shadow_trace_frames.load() != 0);
+  if (ImGui::Button("Trace the shadow maps for 300 frames (debug, ryse_shadow_trace.txt next to the exe)")) {
+    std::wstring exe(32768, L'\0');
+    exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+    const std::lock_guard lock(shadow_trace.mutex);
+    shadow_trace.file.open(std::filesystem::path(exe).parent_path() / L"ryse_shadow_trace.txt", std::ios::trunc);
+    if (shadow_trace.file) {
+      shadow_trace.file << "Graphics cvars: game's value -> the addon's request -> what the game kept\n";
+      for (const auto& option : quality_options) {
+        shadow_trace.file << std::format("{} (choice {}):\n", option.label, option.choice);
+        for (const auto& entry : option.cvars) {
+          if (entry.cvar == nullptr) {
+            shadow_trace.file << std::format("  {}: not found\n", entry.name);
+          } else if (entry.set) {
+            shadow_trace.file << std::format("  {}: {} -> {} -> {}\n", entry.name, entry.game_value, entry.requested, entry.set_value);
+          } else {
+            shadow_trace.file << std::format("  {}: the game's\n", entry.name);
+          }
+        }
+      }
+      shadow_trace.file << "\nPer frame: depth target | maps, share of the target | [x,y width x height: draws]\n";
+      shadow_trace.frame = 0;
+      shadow_trace.targets.clear();
+      shadow_trace_frames.store(SHADOW_TRACE_FRAMES);
+      shadow_trace_result = "Tracing: stand still where the shadows flicker for a few seconds.";
+    } else {
+      shadow_trace_result = "Could not create ryse_shadow_trace.txt next to the exe.";
+    }
+  }
+  ImGui::EndDisabled();
+  if (!shadow_trace_result.empty()) ImGui::TextWrapped("%s", shadow_trace_result.c_str());
+  ImGui::BeginDisabled(options_measure.active);
+  if (ImGui::Button("Measure every option's choices (debug, a few minutes, ryse_options_measure.txt)")) {
+    std::wstring exe(32768, L'\0');
+    exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+    options_measure.file.open(std::filesystem::path(exe).parent_path() / L"ryse_options_measure.txt", std::ios::trunc);
+    if (options_measure.file) {
+      options_measure.file << std::format("Averages over {} frames, {} frames after each choice. The other options as you set them.\n"
+                                          "Option | choice | scene draws | scene indices | shadow draws | shadow indices | frame ms\n",
+                                          MEASURE_FRAMES, MEASURE_SETTLE_FRAMES);
+      for (size_t index = 0; index < quality_options.size(); ++index) {
+        options_measure.saved_choices[index] = quality_options[index].choice;
+      }
+      // The first option measured: the graphics preset is skipped.
+      options_measure.option = 1;
+      options_measure.choice = 0;
+      options_measure.frame = 0;
+      options_measure.sums = {};
+      quality_options[options_measure.option].choice = 0;
+      draw_counts.scene_draws.store(0);
+      draw_counts.scene_indices.store(0);
+      draw_counts.shadow_draws.store(0);
+      draw_counts.shadow_indices.store(0);
+      options_measure.last_present = std::chrono::steady_clock::now();
+      options_measure.active = true;
+      counting_draws.store(true);
+      options_measure.result = "Measuring: stand still, do not touch anything until it says done.";
+    } else {
+      options_measure.result = "Could not create ryse_options_measure.txt next to the exe.";
+    }
+  }
+  ImGui::EndDisabled();
+  if (!options_measure.result.empty()) ImGui::TextWrapped("%s", options_measure.result.c_str());
+  if (ImGui::BeginCombo("Armour test (temporary)", ARMOUR_TESTS[armour_test.choice].label)) {
+    for (int index = 0; index < static_cast<int>(ARMOUR_TESTS.size()); ++index) {
+      if (ImGui::Selectable(ARMOUR_TESTS[index].label, armour_test.choice == index)) armour_test.choice = index;
+    }
+    ImGui::EndCombo();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Stand about 1 m from a soldier whose armour grows up close and try each test: the one that makes\n"
+                      "it look like it does from far away names the system. Off puts the game's value back.");
+  }
+  if (!armour_test.status.empty()) ImGui::TextWrapped("%s", armour_test.status.c_str());
   if (ImGui::Button("Save the game's code for analysis (debug, about 55 MB)")) {
     std::wstring exe(32768, L'\0');
     exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));

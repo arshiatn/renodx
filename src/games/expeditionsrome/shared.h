@@ -7,7 +7,7 @@ struct ShaderInjectData {
   float graphics_white_nits;
   float swap_chain_encoding;  // 0 HDR10, 1 scRGB
 
-  float hdr;  // 0 SDR, 1 HDR (Extended), 2 HDR (PsychoV31)
+  float hdr;  // 0 SDR, 1 HDR (Extended: UE Filmic Extended), 2 HDR (PsychoV31)
   float bloom;
   float vignette;
   float sharpening;
@@ -25,14 +25,16 @@ struct ShaderInjectData {
   float godrays;
   float volumetric_fog;  // multiplier (experimental)
 
-  // Extended
+  // Extended (PsychoV31 grading before the curve; all 1: skipped)
   float ext_exposure;
   float ext_highlights;
   float ext_shadows;
   float ext_contrast;
   float ext_saturation;
   float ext_highlight_saturation;
-  float ext_expansion;  // white point at the curve's top (0) or 3.5 stops lower (1)
+
+  float film_grain;            // tonemapper: grain intensity and jitter
+  float chromatic_aberration;  // tonemapper: scene color fringe
 };
 
 #define SI  shader_injection

@@ -715,7 +715,7 @@ foreach(FILE ${ADDON_FILES})
   add_dependencies(${ADDON} ${ADDON}-shaders)
   add_dependencies(${ADDON} detours)
   target_link_libraries(${ADDON} PRIVATE detours)
-  if(ADDON STREQUAL "expeditionsrome_dlss" OR ADDON STREQUAL "rysesonofrome_dlss")
+  if(ADDON STREQUAL "expeditionsrome_dlss" OR ADDON STREQUAL "rysesonofrome_dlss" OR ADDON STREQUAL "talesofarise_dlss")
     # Shared RenoDX STL objects must match the installed Release addons, even
     # when this target uses /MTd. NGX provides the matching Debug iterator-0 lib.
     target_link_libraries(${ADDON} PRIVATE

@@ -21,19 +21,24 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <format>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/state.hpp"
+#include "./code_patch.hpp"
 #include "./constant_mirror.hpp"
 #include "./constant_readback.hpp"
+#include "./engine_cvars.hpp"
 #include "./engine_scale.hpp"
 #include "./native_state.hpp"
 #include "./ngx_backend.hpp"
@@ -180,6 +185,17 @@ struct Diagnostics {
 } diagnostics;
 bool attached = false;
 
+// UE 4.26 keeps the jitter position in a signed byte (FSceneViewState +0x4AA, loaded with movsx). Past 128 positions
+// (8 * (output / input)^2: below 25% scale) it turns negative and Halton(position + 1 <= 0) is 0, so the jitter stops
+// for 127 of every 256 frames: DLSS pulses blurry/sharp. Loaded unsigned (movsx -> movzx), the pattern is right up to
+// UE's cap of 255 positions (below 18% it repeats early). Applied while the addon is loaded.
+constexpr std::array<std::string_view, 2> JITTER_POSITION_LOADS = {
+    "44 0F BE B6 ?? ?? 00 00 41 FF C6 45 3B F4",  // the jitter setup: load, +1, wrap at the pattern length
+    "CC 0F BE 81 ?? ?? 00 00 C3",                  // FSceneViewState::GetCurrentTemporalAASampleIndex
+};
+constexpr size_t SIGNED_LOAD_OPCODE = 2;  // 0F BE (movsx) -> 0F B6 (movzx)
+std::array<expeditionsrome::code_patch::CodePatch, JITTER_POSITION_LOADS.size()> jitter_position_patches;
+
 // Live render scale (engine_scale.hpp): the AA mode's percentage is written into
 // r.ScreenPercentage; Off or disabling puts the game's own value back.
 struct LiveScale {
@@ -200,6 +216,215 @@ struct LiveScale {
   std::string note;
 } live;
 constexpr uint32_t MAX_LIVE_RETRIES = 5;
+
+// Graphics presets: engine settings written live (engine_cvars.hpp) while a preset is chosen; "Game's own" puts the
+// game's values back. A preset only raises quality: higher-is-better settings take the larger of the game's value
+// and the preset's, lower-is-better ones (LOD scales, thresholds, cell sizes) the smaller. KEEP: the game's value.
+enum class Better : uint8_t { HIGHER,
+                              LOWER,
+                              EXACT };
+constexpr float KEEP = std::numeric_limits<float>::quiet_NaN();
+struct GraphicsSetting {
+  const char* group;
+  const wchar_t* name;
+  const char* label;
+  Better better;
+  // High, Ultra, Extreme, Insane; then one extra choice offered only in the setting's own list.
+  std::array<float, 5> values;
+  const char* tooltip = nullptr;  // shown above the cvar name
+  std::array<float, 2> more_extras = {KEEP, KEEP};  // further choices offered only in the setting's own list
+};
+constexpr std::array<const char*, 6> GRAPHICS_PRESETS = {"Game's own", "High", "Ultra", "Extreme", "Insane", "Max"};
+constexpr size_t INSANE_PRESET = 4;
+// Every setting at its best choice: the highest (the lowest where lower is better), the optional ones' values.
+constexpr size_t MAX_PRESET = 5;
+// In no preset at all, Game's own included (ATN: never reset by accident): shaders on load.
+constexpr std::wstring_view NO_PRESET_SETTING = L"r.CreateShadersOnLoad";
+constexpr const char* OPTIONAL_GROUP = "Optional (changes the look)";
+constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
+    {"Distance and detail", L"r.ViewDistanceScale", "Draw distance", Better::HIGHER, {1.5f, 2.f, 3.f, 20.f, KEEP},
+     "How far objects are drawn."},
+    {"Distance and detail", L"r.StaticMeshLODDistanceScale", "Object detail distance", Better::LOWER, {.75f, .5f, .25f, .01f, .0001f},
+     "How far objects keep their full detail (smaller: farther)."},
+    {"Distance and detail", L"foliage.LODDistanceScale", "Foliage detail distance", Better::HIGHER, {1.5f, 2.f, 4.f, 50.f, KEEP},
+     "How far trees and plants keep their full detail."},
+    {"Distance and detail", L"grass.CullDistanceScale", "Grass draw distance", Better::HIGHER, {KEEP, 1.5f, 2.f, 4.f, 10.f},
+     "How far grass is drawn."},
+    {"Distance and detail", L"r.SkeletalMeshLODRadiusScale", "Character detail distance", Better::LOWER, {.75f, .5f, .25f, .01f, KEEP},
+     "How far characters keep their full detail (smaller: farther)."},
+    {"Distance and detail", L"r.SkeletalMeshLODBias", "Highest character detail everywhere", Better::LOWER, {KEEP, KEEP, KEEP, -10.f, KEEP},
+     "-10: characters always at full detail."},
+    {"Distance and detail", L"r.DetailMode", "Detail mode (high)", Better::HIGHER, {2.f, 2.f, 2.f, 2.f, KEEP},
+     "2: every small detail object and effect is drawn."},
+    {"Distance and detail", L"r.ParticleLODBias", "Highest effect detail everywhere", Better::LOWER, {KEEP, KEEP, KEEP, -10.f, KEEP},
+     "-10: effects always at full detail."},
+    {"Distance and detail", L"r.ParticleLightQuality", "Particle lights", Better::HIGHER, {KEEP, 2.f, 2.f, 2.f, KEEP},
+     "2: lights from effects (sparks, fire) at full quality."},
+    {"Distance and detail", L"r.LightMaxDrawDistanceScale", "Light draw distance", Better::HIGHER, {1.5f, 2.f, 3.f, 5.f, KEEP},
+     "How far lights are drawn."},
+    {"Distance and detail", L"r.Streaming.UseAllMips", "All texture mips (VRAM)", Better::HIGHER, {KEEP, KEEP, KEEP, 1.f, KEEP},
+     "1: every texture at full resolution (uses more video memory)."},
+    {"Distance and detail", L"r.MaxAnisotropy", "Anisotropic filtering (textures loaded later)", Better::HIGHER, {KEEP, 16.f, 16.f, 16.f, KEEP},
+     "Texture sharpness at steep angles (textures loaded afterwards)."},
+    {"Distance and detail", L"r.LandscapeLODDistributionScale", "Terrain detail distance", Better::HIGHER, {KEEP, KEEP, 2.f, 15.f, KEEP},
+     "How far the terrain keeps its detail."},
+    {"Distance and detail", L"r.LandscapeLOD0DistributionScale", "Terrain full detail distance", Better::HIGHER, {KEEP, KEEP, 2.f, 15.f, KEEP},
+     "How far the terrain keeps its full detail."},
+    {"Distance and detail", L"r.LandscapeLODBias", "Terrain detail bias", Better::LOWER, {KEEP, KEEP, KEEP, -1.f, KEEP},
+     "-1: terrain one detail level finer everywhere."},
+    {"Distance and detail", L"r.Streaming.HLODStrategy", "Distant proxy textures (2: all mips)", Better::HIGHER, {KEEP, KEEP, KEEP, 2.f, KEEP},
+     "2: distant merged buildings with full-resolution textures."},
+    // Unreal adds a 4-texel border per side (limit 16376). In Tales of Arise (UE 4.21), shadow resolutions above 8192
+    // or texels per pixel 4, written live, crashed the game (a null shadow atlas), so no choice goes above 8192 / 3
+    // here either.
+    {"Shadows", L"r.Shadow.MaxResolution", "Light shadow resolution (point / spot)", Better::HIGHER, {4096.f, 4096.f, 8192.f, 8192.f, KEEP},
+     "Shadow sharpness of point and spot lights."},
+    {"Shadows", L"r.ShadowQuality", "Shadow filtering quality", Better::HIGHER, {KEEP, 4.f, 5.f, 5.f, KEEP},
+     "Smoothing of shadow edges."},
+    {"Shadows", L"r.Shadow.CSM.MaxCascades", "Sun shadow cascades", Better::HIGHER, {3.f, 4.f, 4.f, 4.f, KEEP},
+     "Layers of the sun's shadow: more of them keep shadows sharp at every distance."},
+    {"Shadows", L"r.Shadow.MaxCSMResolution", "Sun shadow resolution", Better::HIGHER, {4096.f, 4096.f, 4096.f, 4096.f, KEEP},
+     "Unreal puts all sun shadow cascades into one 8192 x 8192 texture and does not draw a cascade that does not fit\n"
+     "(its shadows vanish). So the resolution is limited by the cascade count: up to 4 cascades 4096, up to 9\n"
+     "cascades 2730, up to 16 cascades 2048."},
+    // The engine clamps it to 2.
+    {"Shadows", L"r.Shadow.DistanceScale", "Sun shadow distance", Better::HIGHER, {KEEP, 1.25f, 1.5f, 2.f, KEEP},
+     "How far the sun's shadows reach."},
+    {"Shadows", L"r.Shadow.RadiusThreshold", "Shadows of small objects", Better::LOWER, {.02f, .01f, .005f, .001f, KEEP},
+     "How small an object can be and still cast a shadow (smaller: more of them)."},
+    {"Shadows", L"r.Shadow.CSM.TransitionScale", "Sun shadow cascade blending", Better::HIGHER, {KEEP, 1.5f, 2.f, 2.f, KEEP},
+     "Smoother change between the sun shadow's layers."},
+    {"Shadows", L"r.Shadow.PreShadowResolutionFactor", "Pre-shadow resolution", Better::HIGHER, {KEEP, 1.f, 1.f, 1.f, KEEP},
+     "Sharpness of moving objects' shadows on the scenery."},
+    {"Shadows", L"r.Shadow.TexelsPerPixel", "Object shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
+     "Shadow sharpness of single objects such as characters."},
+    {"Shadows", L"r.Shadow.TexelsPerPixelSpotlight", "Spot light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
+     "Shadow sharpness from spot lights."},
+    {"Shadows", L"r.Shadow.TexelsPerPixelPointlight", "Point light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
+     "Shadow sharpness from point lights such as torches."},
+    {"Shadows", L"r.Shadow.TexelsPerPixelRectlight", "Rect light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
+     "Shadow sharpness from area lights."},
+    {"Shadows", L"r.Shadow.MinResolution", "Distant object shadow resolution", Better::HIGHER, {KEEP, KEEP, KEEP, KEEP, 64.f},
+     "Least resolution of distant objects' shadows."},
+    {"Shadows", L"r.Shadow.FadeResolution", "Distant object shadow fade", Better::LOWER, {KEEP, KEEP, KEEP, KEEP, 32.f},
+     "Resolution at which distant objects' shadows fade out (smaller: later)."},
+    {"Lighting and reflections", L"r.AmbientOcclusionLevels", "Ambient occlusion levels", Better::HIGHER, {KEEP, KEEP, 3.f, 3.f, KEEP},
+     "Detail levels of the ambient occlusion (shading in corners); 3 is the most."},
+    {"Lighting and reflections", L"r.AmbientOcclusionMipLevelFactor", "Ambient occlusion detail (0: full)", Better::LOWER, {KEEP, .4f, .2f, 0.f, KEEP},
+     "Detail of the ambient occlusion (0: full)."},
+    {"Lighting and reflections", L"r.AOQuality", "Distance field ambient occlusion quality", Better::HIGHER, {KEEP, KEEP, 2.f, 2.f, KEEP},
+     "Quality of the large-scale (distance field) ambient occlusion."},
+    {"Lighting and reflections", L"r.SSR.Quality", "Screen-space reflections", Better::HIGHER, {KEEP, 3.f, 4.f, 4.f, KEEP},
+     "Quality of reflections on shiny surfaces."},
+    // -1 (the game's): the post process volume's limit; 1: every roughness. Changes the look (ATN: wanted from Extreme).
+    {"Lighting and reflections", L"r.SSR.MaxRoughness", "Reflections on rough surfaces", Better::EXACT, {KEEP, KEEP, 1.f, 1.f, KEEP},
+     "1: screen-space reflections on rough surfaces too (the game's: the level's own limit). Shinier, slower."},
+    {"Lighting and reflections", L"r.SceneColorFormat", "Scene color precision (4: RGBA16F)", Better::HIGHER, {KEEP, 4.f, 4.f, 4.f, KEEP},
+     "4: 16-bit color for the scene (less banding)."},
+    {"Lighting and reflections", L"r.SSS.Quality", "Skin (subsurface scattering) quality", Better::HIGHER, {KEEP, 1.f, 1.f, 1.f, KEEP},
+     "Quality of light scattering in skin."},
+    {"Lighting and reflections", L"r.SSS.HalfRes", "Full-resolution skin (subsurface scattering)", Better::LOWER, {KEEP, 0.f, 0.f, 0.f, KEEP},
+     "0: light scattering in skin at full resolution."},
+    // Volumetric fog is the most expensive effect: in no preset, only the game's value or less (EXACT: these may go
+    // below the game's). Off is r.VolumetricFog 0; the grid settings clamp 0 to 1 (the most expensive).
+    {"Fog and effects", L"r.VolumetricFog", "Volumetric fog", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 0.f},
+     "0: off, much faster. The game's normal height fog stays; volumetric fog and its light shafts go."},
+    {"Fog and effects", L"r.VolumetricFog.GridPixelSize", "Volumetric fog cell size (larger: faster)", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 12.f},
+     "Pixels per fog cell. Larger: faster, blockier fog.", {16.f, KEEP}},
+    {"Fog and effects", L"r.VolumetricFog.GridSizeZ", "Volumetric fog depth slices (fewer: faster)", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 96.f},
+     "Fog slices into the distance. Fewer: faster, less fog detail in depth.", {64.f, KEEP}},
+    {"Fog and effects", L"r.VolumetricFog.HistoryMissSupersampleCount", "Volumetric fog samples on camera moves (fewer: faster)", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 2.f},
+     "Samples for fog the camera just revealed. Fewer: faster, noisier fog while turning.", {1.f, KEEP}},
+    {"Fog and effects", L"r.LightShaftDownSampleFactor", "Light shaft resolution divisor", Better::LOWER, {KEEP, KEEP, 1.f, 1.f, KEEP},
+     "Light shafts' resolution divisor (1: full resolution)."},
+    {"Fog and effects", L"r.MotionBlurQuality", "Motion blur quality", Better::HIGHER, {KEEP, 4.f, 4.f, 4.f, KEEP},
+     "Motion blur quality (its strength stays)."},
+    {"Fog and effects", L"r.DepthOfFieldQuality", "Depth of field quality", Better::HIGHER, {KEEP, KEEP, KEEP, 4.f, KEEP},
+     "Quality of the depth of field blur (its strength stays)."},
+    {"Fog and effects", L"r.FastBlurThreshold", "Bloom and blur quality", Better::HIGHER, {KEEP, KEEP, 100.f, 100.f, KEEP},
+     "Quality of bloom and blurs (100: highest)."},
+    {"Density (more than the game places)", L"grass.densityScale", "Grass density", Better::HIGHER, {KEEP, KEEP, KEEP, 10.f, 4.f},
+     "More grass than the game places."},
+    {"Density (more than the game places)", L"foliage.MaxTrianglesToRender", "Foliage triangle cap", Better::HIGHER, {KEEP, KEEP, KEEP, 1000000000.f, KEEP},
+     "Limit on drawn plant triangles (higher: none dropped)."},
+    // In no preset but Max: they change the game's look (ATN's old Engine.ini had them). EXACT: the game's value
+    // or this one. (Its distance field shadows / AO, contact and capsule shadows: the game has them at 1.)
+    {OPTIONAL_GROUP, L"r.AmbientOcclusionMaxQuality", "Ambient occlusion at its highest quality", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, -100.f},
+     "-100: ambient occlusion at its highest quality even where a level asks for less (100: the level's own)."},
+    {OPTIONAL_GROUP, L"r.LensFlareQuality", "Lens flare quality", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 3.f},
+     "3: higher quality (bokeh-shaped) lens flares; the game uses 2."},
+    // In no preset (a load-time trade-off, not quality): read when an area's shaders load.
+    {"Loading", L"r.CreateShadersOnLoad", "Shaders on load", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 1.f},
+     "1: creates all of an area's shaders while it loads, instead of the first time an effect or material appears on\n"
+     "screen. Fewer stutters when something new shows up for the first time (the typical DirectX 11 hitching).\n"
+     "Loading takes a bit longer and uses a bit more memory. Applies to areas loaded afterwards: load a save after\n"
+     "changing it. 0: the engine's default (also overrides an Engine.ini line).",
+     {0.f, KEEP}},
+});
+// Unreal puts all sun shadow cascades into one 8192 x 8192 atlas (1 << (GMaxTextureMipCount - 1), at most 14 mips;
+// read from the exe) and does not draw a cascade that does not fit: the sun's resolution is limited to what its
+// cascades leave. The cascades are applied first.
+constexpr size_t SettingIndex(std::wstring_view name) {
+  for (size_t index = 0; index < GRAPHICS_SETTINGS.size(); ++index) {
+    if (GRAPHICS_SETTINGS[index].name == name) return index;
+  }
+  return GRAPHICS_SETTINGS.size();
+}
+constexpr size_t SUN_SHADOW_CASCADES = SettingIndex(L"r.Shadow.CSM.MaxCascades");
+constexpr size_t SUN_SHADOW_RESOLUTION = SettingIndex(L"r.Shadow.MaxCSMResolution");
+// r.VolumetricFog 0 greys out the r.VolumetricFog.* settings.
+constexpr size_t VOLUMETRIC_FOG = SettingIndex(L"r.VolumetricFog");
+static_assert(SUN_SHADOW_CASCADES < SUN_SHADOW_RESOLUTION && SUN_SHADOW_RESOLUTION < GRAPHICS_SETTINGS.size());
+static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size());
+// Each setting's own choice (a slider, as Ryse's options): 0 the game's value, else one of its choices (its distinct
+// preset values and extras, with steps between them); the preset buttons set every choice. Saved per setting in
+// ReShade.ini, section GRAPHICS_SECTION, key the cvar name, by value (SaveChoice): steps move the indexes. (The old
+// "Rome Graphics Settings" section held indexes.)
+constexpr const char* GRAPHICS_SECTION = "Rome Graphics Values";
+
+struct GraphicsEntry {
+  expeditionsrome::engine_cvars::Cvar cvar;
+  std::string details;  // int / float and the game's value at the search, or why it is unusable
+  std::string key;      // the cvar name
+  std::vector<float> choices;
+  int choice = 0;
+  bool controlling = false;
+  float game_value = 0.f;
+  float written = 0.f;
+};
+struct Graphics {
+  expeditionsrome::engine_cvars::Console console;
+  bool searched = false;
+  bool available = false;
+  std::string status = "Searching the game's settings...";
+  std::array<GraphicsEntry, GRAPHICS_SETTINGS.size()> entries;
+} graphics;
+// "game" for the game's own value (not a number: it reads back as unset).
+void SaveChoice(const GraphicsEntry& entry) {
+  const std::string value = (entry.choice == 0 ? std::string("game") : std::format("{:g}", entry.choices[entry.choice - 1]));
+  reshade::set_config_value(nullptr, GRAPHICS_SECTION, entry.key.c_str(), value.c_str());
+}
+
+// Texture LOD bias below 100% (DLSS section). With temporal upscaling UE 4.26 biases material textures (599 of the
+// game's pixel shaders sample with View.MaterialTextureMipBias) by max(log2(scale) + r.ViewTextureMipBias.Offset,
+// r.ViewTextureMipBias.Min), read every frame (PreVisibilityFrameSetup); the game's -0.3 and -1 leave textures blurrier
+// than NVIDIA's log2(scale) - 1 below ~57%. While DLSS renders below 100%: offset 0 / -1 / -2 (Matched / Sharper /
+// Sharpest) and no minimum; otherwise the game's values.
+constexpr std::array<const wchar_t*, 2> TEXTURE_LOD_BIAS_CVARS = {L"r.ViewTextureMipBias.Offset", L"r.ViewTextureMipBias.Min"};
+constexpr float LOWEST_MIP_BIAS = -16.f;  // D3D11's lowest; no minimum in practice
+struct TextureLodBias {
+  std::array<expeditionsrome::engine_cvars::Cvar, TEXTURE_LOD_BIAS_CVARS.size()> cvars;
+  std::array<float, TEXTURE_LOD_BIAS_CVARS.size()> game_values = {};
+  bool controlling = false;
+  int choice = 2;  // 0 off (the game's), 1 matched, 2 sharper, 3 sharpest; Present thread (the overlay runs in it)
+} texture_lod_bias;
+void RestoreTextureLodBias() {
+  if (!texture_lod_bias.controlling) return;
+  for (size_t index = 0; index < TEXTURE_LOD_BIAS_CVARS.size(); ++index) {
+    texture_lod_bias.cvars[index].Set(texture_lod_bias.game_values[index]);
+  }
+  texture_lod_bias.controlling = false;
+}
 bool registered = false;
 
 struct Frame {
@@ -951,6 +1176,82 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     if (finder.phase() == Phase::FOUND) finder.Set(live.game_value);
     live.controlling = false;
   }
+
+  // Graphics settings: the console is searched once (after r.ScreenPercentage's search), then each setting is kept at
+  // its choice; a value the game sets again (its menu) becomes the one to restore.
+  if (!graphics.searched && !finder.Searching()) {
+    graphics.searched = true;
+    std::string details;
+    graphics.available = graphics.console.Start(&details);
+    graphics.status = (graphics.available ? "" : "Graphics settings unavailable: " + details + " (details in ReShade.log).");
+    if (graphics.available) {
+      renodx::utils::log::i("[Rome graphics] ", details, ".");
+    } else {
+      renodx::utils::log::w("[Rome graphics] ", details, ".");
+    }
+    for (size_t index = 0; graphics.available && index < GRAPHICS_SETTINGS.size(); ++index) {
+      auto& entry = graphics.entries[index];
+      entry.cvar = graphics.console.Find(GRAPHICS_SETTINGS[index].name, &entry.details);
+      renodx::utils::log::i("[Rome graphics] ", entry.key, ": ", entry.details, ".");
+    }
+    for (size_t index = 0; graphics.available && index < TEXTURE_LOD_BIAS_CVARS.size(); ++index) {
+      std::string details;
+      texture_lod_bias.cvars[index] = graphics.console.Find(TEXTURE_LOD_BIAS_CVARS[index], &details);
+      renodx::utils::log::i("[Rome DLSS texture LOD bias] ", std::filesystem::path(TEXTURE_LOD_BIAS_CVARS[index]).string(), ": ",
+                            details, ".");
+    }
+  }
+  bool wrote = false;
+  for (size_t index = 0; graphics.available && index < GRAPHICS_SETTINGS.size(); ++index) {
+    auto& entry = graphics.entries[index];
+    if (entry.cvar.values[0] == nullptr) continue;
+    const auto& setting = GRAPHICS_SETTINGS[index];
+    const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
+    const float current = entry.cvar.Get();
+    if (std::isnan(preset_value)) {
+      if (entry.controlling) {
+        entry.cvar.Set(entry.game_value);
+        wrote = true;
+      }
+      entry.controlling = false;
+      continue;
+    }
+    if (!entry.controlling || current != entry.written) entry.game_value = current;
+    entry.controlling = true;
+    float desired = preset_value;
+    if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, preset_value);
+    if (setting.better == Better::LOWER) desired = std::min(entry.game_value, preset_value);
+    if (index == SUN_SHADOW_RESOLUTION) {
+      const auto& cascades = graphics.entries[SUN_SHADOW_CASCADES];
+      float cascade_count = 10.f;  // not found: Unreal's limit
+      if (cascades.cvar.values[0] != nullptr) cascade_count = (cascades.controlling ? cascades.written : cascades.cvar.Get());
+      const float fitting = std::floor(8192.f / std::ceil(std::sqrt(std::max(cascade_count, 1.f))));
+      desired = std::min(desired, std::max(entry.game_value, fitting));
+    }
+    if (entry.cvar.is_int) desired = std::round(desired);
+    if (current != desired) {
+      entry.cvar.Set(desired);
+      wrote = true;
+    }
+    entry.written = desired;
+  }
+  if (wrote) graphics.console.Refresh();
+
+  const bool below_native = (mode == AAMode::DLSS_CUSTOM ? (live.custom < 100.f)
+                                                          : (mode != AAMode::OFF && AA_MODES[static_cast<size_t>(mode)].maximum_scale < 1.f));
+  const bool found = std::ranges::all_of(texture_lod_bias.cvars, [](const auto& cvar) { return cvar.values[0] != nullptr; });
+  if (found && below_native && texture_lod_bias.choice != 0) {
+    if (!texture_lod_bias.controlling) {
+      for (size_t index = 0; index < TEXTURE_LOD_BIAS_CVARS.size(); ++index) {
+        texture_lod_bias.game_values[index] = texture_lod_bias.cvars[index].Get();
+      }
+      texture_lod_bias.controlling = true;
+    }
+    texture_lod_bias.cvars[0].Set(-static_cast<float>(texture_lod_bias.choice - 1));
+    texture_lod_bias.cvars[1].Set(LOWEST_MIP_BIAS);
+  } else {
+    RestoreTextureLodBias();
+  }
 }
 
 void OnOverlay(reshade::api::effect_runtime*) {
@@ -990,6 +1291,35 @@ void OnOverlay(reshade::api::effect_runtime*) {
       }
     }
     ImGui::EndCombo();
+  }
+  const bool lod_bias_found = texture_lod_bias.cvars[0].values[0] != nullptr && texture_lod_bias.cvars[1].values[0] != nullptr;
+  ImGui::BeginDisabled(graphics.searched && !lod_bias_found);
+  if (ImGui::Combo("Texture LOD bias", &texture_lod_bias.choice,
+                   "Off (the game's own)\0"
+                   "Matched (as sharp as at your output resolution)\0"
+                   "Sharper (one step sharper; NVIDIA's recommendation)\0"
+                   "Sharpest (two steps sharper; can shimmer)\0")) {
+    reshade::set_config_value(nullptr, "Rome AA", "TextureLodBias", texture_lod_bias.choice);
+  }
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    // The bias each choice gives at the current mode's scale (the game's: its own offset and minimum).
+    std::string example;
+    const float percentage = (mode == AAMode::DLSS_CUSTOM ? live.custom : AA_MODES[static_cast<size_t>(mode)].live_percentage);
+    if (lod_bias_found && percentage > 0.f && percentage < 100.f) {
+      const float matched = std::log2(percentage / 100.f);
+      const auto& game = (texture_lod_bias.controlling
+                              ? texture_lod_bias.game_values
+                              : std::array<float, 2>{texture_lod_bias.cvars[0].Get(), texture_lod_bias.cvars[1].Get()});
+      example = std::format("\n\nAt {:g}% (bias, lower = sharper): Off {:.1f}, Matched {:.1f}, Sharper {:.1f}, Sharpest {:.1f}.",
+                            percentage, std::max(matched + game[0], game[1]), matched, matched - 1.f, matched - 2.f);
+    }
+    ImGui::SetTooltip("How sharp textures are while DLSS renders below 100%%. The game renders fewer pixels and picks\n"
+                      "blurrier texture levels to match them (at most one step blurrier than your output resolution).\n"
+                      "Matched: textures as sharp as at your output resolution.\n"
+                      "Sharper / Sharpest: one / two steps sharper than that (more detail, can shimmer).\n"
+                      "DLAA and Off are not affected.%s%s",
+                      example.c_str(), (graphics.searched && !lod_bias_found) ? "\n\nUnavailable: r.ViewTextureMipBias.* not found." : "");
   }
   if (bool replace = replace_taa.load(); ImGui::Checkbox("Replace the game's TAA pass (faster)", &replace)) {
     replace_taa.store(replace);
@@ -1038,10 +1368,15 @@ void OnOverlay(reshade::api::effect_runtime*) {
   const uint32_t phases = diagnostics.jitter_phases.load();
   const auto recommended = static_cast<uint32_t>(std::ceil(
       8.0 * std::pow(static_cast<double>(extents[2]) / std::max(extents[0], 1u), 2)));
-  // UE caps its jitter pattern at 255 positions; NVIDIA wants 8 * (output / input)^2.
-  if ((mode == AAMode::DLSS_CUSTOM && live.enabled && live.custom < 33.f)
-      || (completed != 0 && extents[2] != 0 && static_cast<float>(extents[0]) / static_cast<float>(extents[2]) < .32f)) {
-    ImGui::TextWrapped("Below Ultra Performance (33%%), the game's (UE's) jitter pattern gets too short for DLSS: the image can pulse blurry/sharp.");
+  // NVIDIA wants 8 * (output / input)^2 positions: UE's pattern has them down to 25% (signed position) or, with the
+  // jitter fix, 18% (its cap of 255).
+  const bool jitter_fixed = std::ranges::all_of(jitter_position_patches, &expeditionsrome::code_patch::CodePatch::applied);
+  const float lowest_scale = (jitter_fixed ? 18.f : 25.f);
+  if ((mode == AAMode::DLSS_CUSTOM && live.enabled && live.custom < lowest_scale)
+      || (completed != 0 && extents[2] != 0
+          && static_cast<float>(extents[0]) / static_cast<float>(extents[2]) < lowest_scale / 100.f - .005f)) {
+    ImGui::TextWrapped("Below %.0f%%, the game's (UE's) jitter pattern gets too short for DLSS: the image can pulse blurry/sharp.",
+                       lowest_scale);
   }
   if (mode != AAMode::OFF && status.starts_with("Stock TAA")) {
     ImGui::TextWrapped("In the game's graphics settings, keep Anti-Aliasing on Fast or Ultra and Temporal Upscaling on.");
@@ -1055,6 +1390,79 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::TextWrapped("nvngx_dlss.dll %u.%u.%u is older than %u.%u: presets M and L are not available, NVIDIA uses its default. Download the latest nvngx_dlss.dll.",
                        version[0], version[1], version[2], expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[0],
                        expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[1]);
+  }
+
+  ImGui::Separator();
+  ImGui::TextUnformatted("Graphics (applied live; a preset never lowers the game's own settings):");
+  for (size_t preset_index = 0; preset_index < GRAPHICS_PRESETS.size(); ++preset_index) {
+    if (preset_index != 0) ImGui::SameLine();
+    if (ImGui::Button(GRAPHICS_PRESETS[preset_index])) {
+      // Every setting but shaders on load gets the preset's value (KEEP: the game's), so none keeps an older choice.
+      for (size_t index = 0; index < GRAPHICS_SETTINGS.size(); ++index) {
+        const auto& setting = GRAPHICS_SETTINGS[index];
+        if (std::wstring_view(setting.name) == NO_PRESET_SETTING) continue;
+        auto& entry = graphics.entries[index];
+        float value = KEEP;
+        if (preset_index == MAX_PRESET && !entry.choices.empty()) {
+          switch (setting.better) {
+            case Better::HIGHER:
+              value = entry.choices.back();
+              break;
+            case Better::LOWER:
+              value = entry.choices.front();
+              break;
+            case Better::EXACT:
+              // Insane's value, else the optional ones' extra; the others (cheaper volumetric fog) the game's.
+              value = setting.values[INSANE_PRESET - 1];
+              if (std::isnan(value) && std::string_view(setting.group) == OPTIONAL_GROUP) {
+                value = setting.values[INSANE_PRESET];
+              }
+              break;
+          }
+        } else if (preset_index != 0) {
+          value = setting.values[preset_index - 1];
+        }
+        const auto found = std::ranges::find(entry.choices, value);
+        entry.choice = (found == entry.choices.end() ? 0 : static_cast<int>(found - entry.choices.begin()) + 1);
+        SaveChoice(entry);
+      }
+    }
+  }
+  if (!graphics.status.empty()) ImGui::TextWrapped("%s", graphics.status.c_str());
+  ImGui::TextWrapped("Some settings apply after loading a new area, anisotropic filtering to textures loaded afterwards. Insane and Max are very heavy and use a lot of VRAM. Max puts every setting at its highest, the optional ones too. Every preset keeps the game's volumetric fog: turning it off or lowering it is the biggest saving. Shaders on load is in no preset.");
+  const auto& volumetric_fog = graphics.entries[VOLUMETRIC_FOG].cvar;
+  const bool fog_off = volumetric_fog.values[0] != nullptr && volumetric_fog.Get() == 0.f;
+  const char* open_group = nullptr;
+  bool group_open = false;
+  for (size_t index = 0; index < GRAPHICS_SETTINGS.size(); ++index) {
+    const auto& setting = GRAPHICS_SETTINGS[index];
+    auto& entry = graphics.entries[index];
+    if (open_group == nullptr || std::string_view(open_group) != setting.group) {
+      open_group = setting.group;
+      group_open = ImGui::CollapsingHeader(setting.group);
+    }
+    if (!group_open) continue;
+    const bool usable = entry.cvar.values[0] != nullptr;
+    const float game_value = (entry.controlling ? entry.game_value : (usable ? entry.cvar.Get() : 0.f));
+    const std::string game_label = (usable ? std::format("Game's ({:g})", game_value) : std::string("Game's"));
+    ImGui::BeginDisabled(!usable || (fog_off && std::wstring_view(setting.name).starts_with(L"r.VolumetricFog.")));
+    const auto choice_label = [&](int choice) {
+      if (choice == 0) return game_label;
+      return std::format("{:g}", entry.choices[choice - 1]);
+    };
+    // A slider over the choices, showing the current one (as RenoDX's labelled settings).
+    if (ImGui::SliderInt(setting.label, &entry.choice, 0, static_cast<int>(entry.choices.size()), choice_label(entry.choice).c_str(),
+                         ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+      SaveChoice(entry);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip("%s%s%s%s", (setting.tooltip != nullptr ? setting.tooltip : ""), (setting.tooltip != nullptr ? "\n\n" : ""),
+                        entry.key.c_str(),
+                        (usable ? (entry.controlling ? std::format(": now {:g}", entry.cvar.Get()) : std::string(": the game's"))
+                                : std::string(": not found in this version of the game"))
+                            .c_str());
+    }
   }
   if (!advanced) return;
 
@@ -1083,8 +1491,13 @@ void OnOverlay(reshade::api::effect_runtime*) {
   ImGui::Text("Successful AA frames: %llu", static_cast<unsigned long long>(completed));
   if (completed != 0) {
     ImGui::Text("Temporal shader: 0x%08X", temporal_shader_hash);
-    ImGui::Text("Game jitter pattern: %s (NVIDIA recommends %u or more)",
-                phases != 0 ? std::to_string(phases).c_str() : "measuring", recommended);
+    if (texture_lod_bias.controlling) {
+      ImGui::Text("Texture LOD bias: log2(render scale) %+g (the game's: %+g, at least %g)", texture_lod_bias.cvars[0].Get(),
+                  texture_lod_bias.game_values[0], texture_lod_bias.game_values[1]);
+    }
+    ImGui::Text("Game jitter pattern: %s (NVIDIA recommends %u or more); jitter fix: %s",
+                phases != 0 ? std::to_string(phases).c_str() : "measuring", recommended,
+                jitter_fixed ? "on" : "not found (pattern correct down to 25%)");
     ImGui::Text("NVIDIA history resets: camera cuts %llu, skipped frames %llu, restarts %llu",
                 static_cast<unsigned long long>(diagnostics.camera_cuts.load()),
                 static_cast<unsigned long long>(diagnostics.skipped_frames.load()),
@@ -1124,7 +1537,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
 }  // namespace
 
 extern "C" __declspec(dllexport) const char* NAME = "RenoDX Expeditions: Rome DLAA / DLSS (experimental)";
-extern "C" __declspec(dllexport) const char* DESCRIPTION = "Native DLAA, DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance and custom 1-100% scaling with live render scale and preset choice. Independent of HDR, with stock TAA fallback.";
+extern "C" __declspec(dllexport) const char* DESCRIPTION = "Native DLAA, DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance and custom 1-100% scaling with live render scale and preset choice, and graphics settings beyond the game's menu. Independent of HDR, with stock TAA fallback.";
 
 extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (!registered) {
@@ -1139,6 +1552,43 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     requested_mode.store(static_cast<AAMode>(saved_mode));
   }
   reshade::get_config_value(nullptr, "Rome AA", "LiveScale", live.enabled);
+  if (int choice = 2; reshade::get_config_value(nullptr, "Rome AA", "TextureLodBias", choice)) {
+    texture_lod_bias.choice = std::clamp(choice, 0, 3);
+  }
+  for (size_t index = 0; index < GRAPHICS_SETTINGS.size(); ++index) {
+    const auto& setting = GRAPHICS_SETTINGS[index];
+    auto& entry = graphics.entries[index];
+    entry.key = std::filesystem::path(setting.name).string();
+    for (const auto& values : {std::span<const float>(setting.values), std::span<const float>(setting.more_extras)}) {
+      for (const float value : values) {
+        if (!std::isnan(value) && std::ranges::find(entry.choices, value) == entry.choices.end()) entry.choices.push_back(value);
+      }
+    }
+    std::ranges::sort(entry.choices);
+    // The slider's steps between neighbouring choices: every whole number across small gaps (cascades 6 -> 10), the
+    // 1-2-5 numbers across gaps of more than 2x (draw distance 3 -> 10: 5).
+    std::vector<float> steps;
+    for (size_t choice = 0; choice + 1 < entry.choices.size(); ++choice) {
+      const float low = entry.choices[choice];
+      const float high = entry.choices[choice + 1];
+      if (low == std::round(low) && high == std::round(high) && high - low <= 4.f && low <= 10.f) {
+        for (float value = low + 1.f; value < high; ++value) steps.push_back(value);
+      } else if (low > 0.f && high > low * 2.f) {
+        for (float decade = std::pow(10.f, std::floor(std::log10(low))); decade < high; decade *= 10.f) {
+          for (const float digit : {1.f, 2.f, 5.f}) {
+            if (const float value = decade * digit; value > low * 1.001f && value < high * .999f) steps.push_back(value);
+          }
+        }
+      }
+    }
+    entry.choices.insert(entry.choices.end(), steps.begin(), steps.end());
+    std::ranges::sort(entry.choices);
+    // The saved value's nearest choice ("game" does not read as a number: the game's value).
+    if (float saved = 0.f; !entry.choices.empty() && reshade::get_config_value(nullptr, GRAPHICS_SECTION, entry.key.c_str(), saved)) {
+      const auto nearest = std::ranges::min_element(entry.choices, {}, [saved](float choice) { return std::abs(choice - saved); });
+      entry.choice = static_cast<int>(nearest - entry.choices.begin()) + 1;
+    }
+  }
   dlss_library = expeditionsrome::dlss::FindDlssLibrary();
   if (dlss_library.folder.empty()) {
     renodx::utils::log::w("[Rome DLAA] nvngx_dlss.dll not found next to the addon or the game.");
@@ -1174,11 +1624,25 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
                                                                                                                                         : renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW),
                                                                                                 });
   }
+  for (size_t index = 0; index < JITTER_POSITION_LOADS.size(); ++index) {
+    auto& patch = jitter_position_patches[index];
+    patch = {};
+    if (uint8_t* site = expeditionsrome::code_patch::FindPattern(JITTER_POSITION_LOADS[index], &patch.details); site != nullptr) {
+      patch.address = site + SIGNED_LOAD_OPCODE;
+      patch.original = {0xBE};
+      patch.replacement = {0xB6};
+    }
+    if (expeditionsrome::code_patch::ApplyCodePatch(&patch, true)) {
+      renodx::utils::log::i("[Rome DLAA jitter] Jitter position read unsigned ", patch.details, ".");
+    } else {
+      renodx::utils::log::w("[Rome DLAA jitter] Jitter position load ", index, " not fixed: ", patch.details, ".");
+    }
+  }
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
   attached = true;
-  renodx::utils::log::i("[Rome DLAA] Native DLAA and DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance/Custom 1-100% (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations). Live render scale; preset choice. Runtime NVIDIA scale limits; exact CB readbacks and asynchronous phase timings; Release-compatible shared ABI.");
+  renodx::utils::log::i("[Rome DLAA] Native DLAA and DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance/Custom 1-100% (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations). Live render scale; preset choice; graphics settings. Runtime NVIDIA scale limits; exact CB readbacks and asynchronous phase timings; Release-compatible shared ABI.");
   return true;
 }
 
@@ -1196,6 +1660,13 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     reshade::unregister_event<reshade::addon_event::present>(OnPresent);
     reshade::unregister_event<reshade::addon_event::present>(expeditionsrome::dlss::temporal_capture::OnPresent);
     expeditionsrome::dlss::temporal_capture::Reset();
+    for (auto& entry : graphics.entries) {
+      if (entry.controlling) entry.cvar.Set(entry.game_value);
+      entry.controlling = false;
+    }
+    graphics.console.Refresh();
+    RestoreTextureLodBias();
+    for (auto& patch : jitter_position_patches) expeditionsrome::code_patch::ApplyCodePatch(&patch, false);
     Reset();
     attached = false;
   }

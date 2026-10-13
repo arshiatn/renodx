@@ -14,14 +14,84 @@ Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
    NVIDIA's DLSS GitHub) in `ExpeditionsRome\Binaries\Win64`, next to ReShade.
 2. In the game: Anti-Aliasing Fast or Ultra, Temporal Upscaling on.
 3. ReShade overlay -> Add-ons -> Rome DLAA: pick the AA mode. The render scale
-   follows it live; the preset defaults to L.
+   follows it live; the preset defaults to L. **Texture LOD bias** (Off /
+   Matched / Sharper (default) / Sharpest, as Ryse): see below.
+4. **Graphics**: Game's own / High / Ultra / Extreme / Maximum,
+   then any setting on its own. A preset never lowers what the game already
+   sets. Some settings apply after loading a new area. Volumetric fog (the most
+   expensive effect) is in no preset: Fog and effects -> Volumetric fog 0 turns
+   it off, its cell size / depth slices / samples only go lower than the game's.
+5. Windows display scaling above 100%: "ExpeditionsRome-Win64-Shipping.exe" (`ExpeditionsRome\Binaries\Win64`) ->
+   Properties -> Compatibility -> Change high DPI settings -> Override high DPI scaling behavior, scaled by Application.
+   Without it the game renders at the scaled size (4K at 175%: 2194x1234), Unreal's buffers are rounded up to 4 pixels
+   (2196x1236), and neither HDR (the tonemap output's aspect no longer matches the swap chain: it stays 8/10-bit and
+   clips) nor DLSS ("Stock TAA: unsupported source/output texture layout") applies.
 
 The overlay warns when `nvngx_dlss.dll` is missing or older than 310.5 (its file
 version; an NVIDIA app or Profile Inspector override may load another one). The
 log names the version and folder. Build: `cmake --build --preset
 clang-x64-release --target expeditionsrome_dlss`.
 
-## This build: Ultra Quality, preset E, live scale retry (not yet tested in game)
+## This build: graphics settings (not yet tested in game)
+
+Same as Tales of Arise's DLAA + Graphics addon (`talesofarise_dlss`), ported to
+this exe (`engine_cvars.hpp`, `GRAPHICS_SETTINGS` in `addon.cpp`, 47 settings).
+
+- Cvars by name through the engine's console manager: the singleton all 1722
+  `FindConsoleVariable` sites load (`48 8B 0D .. 48 8B 01 48 8D 15 .. 41 B0 ..
+  FF 90 A0 00 00 00`: UE 4.26 passes `bTrackFrequentCalls`, slot 0xA0 instead of
+  4.21's 0x90). Value layout read from this exe's cvar vtables: `AsVariableInt`
+  / `AsVariableFloat` slots 9 / 10 (`lea rax, [rcx+0x38]`), FConsoleVariableRef
+  `GetInt` / `GetFloat` slots 15 / 16 (MainValue at 0x40, the global's pointer
+  at 0x38); 4.21 had 7 / 8 and 13 / 14 (`IsVariableFloat` / `IsVariableString`
+  are new). Checked at runtime on `r.ScreenPercentage`.
+- Written directly (no change callbacks), raise-only (higher-is-better: max of
+  the game's and the choice; LOD scales, thresholds, cell sizes: min), the
+  game's value restored on "Game's own" and unload. Choices saved in
+  ReShade.ini, "Rome Graphics Settings", per cvar name.
+- Groups: Distance and detail, Shadows, Lighting and reflections (AO levels and
+  detail, DFAO, SSR, skin), Fog and effects (volumetric fog, light shafts, motion
+  blur, depth of field, bloom blur), Density (grass), Loading (Shaders on load).
+- Not in this exe: `fx.Niagara.QualityLevel`, `r.SkyAtmosphere.*`,
+  `r.SSR.HalfResSceneColor`, `r.ForceHighestMipOnCharacterTextures`. Left out:
+  `r.SSGI.Quality` (would turn SSGI on: no `r.SSGI.Enable` here),
+  `r.LensFlareQuality` 3 / `r.EmitterSpawnRateScale` (change the look),
+  `foliage.DensityScale` (UE uses it to thin foliage out; above 1 most likely no effect).
+- v5: volumetric fog only cheaper (ATN): `r.VolumetricFog` 0 (off; the grid
+  cvars clamp 0 to 1, the most expensive), `GridPixelSize` 12 / 16 (game 8),
+  `GridSizeZ` 96 / 64 (game 128), `HistoryMissSupersampleCount` 2 / 1 (game 4),
+  Better::EXACT, in no preset (GraphicsSetting::more_extras for a second
+  list-only value). Presets skip settings that are in no preset, except "Game's
+  own". The Recommended preset is gone (it only differed in fog).
+- No choice above 8192 shadow resolution or 3 texels per pixel: in Tales (UE
+  4.21) those crashed when written live (a null shadow atlas).
+- **Settings refresh (v3)**: Unreal keeps a cached copy of r.Shadow.MaxResolution,
+  r.Shadow.MaxCSMResolution, r.ViewDistanceScale, r.StaticMeshLODDistanceScale,
+  r.DetailMode, r.MaxAnisotropy (and r.MaterialQualityLevel), refreshed by
+  `ScalabilityCVarsSinkCallback` (exe+0x1FFF590; nothing else reads the shadow
+  resolutions or draw distance). Direct writes did not run it, so these applied
+  only when the game set a variable itself. Now each write raises
+  FConsoleManager's `bCallAllConsoleVariableSinks` (+0xCC, the byte
+  `CallAllConsoleVariableSinks`, vtable slot 8, tests every game-thread frame),
+  as setting a variable does.
+- **Sun shadow cascades vs resolution (v3, corrected in v4)**: all cascades
+  share one CSM atlas of `1 << (GMaxTextureMipCount - 1)` (exe+0x139CBAE);
+  GMaxTextureMipCount is min(log2(16384) + 1, 14) = 14 (exe+0xFD12C8), so the
+  atlas is **8192**. `FTextureLayout::AddElement` failing leaves a cascade
+  unallocated: not drawn. At 8192 only one cascade fits (ATN, v3: shadows only
+  on part of the screen, changing with the camera). The written resolution is
+  limited to `8192 / ceil(sqrt(cascades))` (never below the game's own);
+  presets use up to 4 cascades (game: 2) at 4096. ATN's old Engine.ini (10
+  cascades at 4096) only works if the sun has at most 4.
+- r.Shadow.DistanceScale is clamped to 2 by the engine (exe+0x1A3FFD8):
+  Beyond Maximum now says 2 instead of 3.
+- v6: presets High / Ultra / Extreme / Maximum (the old Maximum column dropped,
+  Beyond Maximum renamed). Volumetric fog 0 greys out the r.VolumetricFog.*
+  settings. Shaders on load EXACT 0 / 1 (the engine's default is 0).
+- The log lists each setting's type and the game's value at the search
+  (`[Rome graphics]`).
+
+## Previous build: Ultra Quality, preset E, live scale retry
 
 - **DLSS Ultra Quality (77%)** after DLAA in the menu. Not an NVIDIA SDK mode
   (NVIDIA removed it): NVIDIA's Quality model at 77% (2957x1664 at 4K). Saved
@@ -38,7 +108,7 @@ clang-x64-release --target expeditionsrome_dlss`.
   per-frame cost beyond the existing one read.
 - Status texts: "keep Fast or Ultra TAA" (Fast works too).
 
-## Previous build: Simple/Advanced, presets, DLL lookup, pulse diagnostics
+## Earlier build: Simple/Advanced, presets, DLL lookup, pulse diagnostics
 
 - **Settings mode** (top of the overlay, saved): **Simple** shows the AA mode,
   the Custom render scale, the DLSS preset, Replace TAA and a short status.
@@ -61,14 +131,30 @@ clang-x64-release --target expeditionsrome_dlss`.
   folder used. For a release: put NVIDIA's production `nvngx_dlss.dll`
   (`lib/Windows_x86_64/rel` of the DLSS SDK) next to the addon. Wine test of the
   lookup order passed.
+- **Texture LOD bias** (v14): with temporal upscaling UE 4.26 biases material
+  textures itself (`View.MaterialTextureMipBias`, `cb0[137].y` in 599 of the
+  game's pixel shaders): max(log2(scale) + `r.ViewTextureMipBias.Offset`,
+  `r.ViewTextureMipBias.Min`), computed every frame in PreVisibilityFrameSetup
+  (exe+0x1369008). The game's -0.3 / -1 stop at one
+  level, blurrier than NVIDIA's log2(scale) - 1 below about 57%. While DLSS
+  renders below 100% the addon writes Offset 0 / -1 / -2 (Matched / Sharper /
+  Sharpest) and Min -16; Off, DLAA, Custom 100% and unload put the game's values
+  back. Advanced shows the bias in use. Saved as `[Rome AA] TextureLodBias`.
 - **Blur/sharp pulsing at low scales**: UE 4.26 picks its TAAU jitter pattern
   length as 8 × (output/input)², NVIDIA's own formula, but caps it at 255
-  positions. Below about 18% the pattern is shorter than NVIDIA wants (800 at
-  10%), so it repeats too soon and the image can pulse with its period (255
-  frames, about 0.7 s at 350 FPS). Simple mode shows a fixed warning below
-  Ultra Performance (33%). Advanced shows the measured
-  **Game jitter pattern** and **NVIDIA history resets** (camera cuts, skipped
-  frames, restarts) to confirm that no addon reset causes it.
+  positions, and keeps the position in a signed byte (`FSceneViewState`
+  +0x4AA, loaded with `movsx`). Past 128 positions (below 25%) the position
+  turns negative, `Halton(position + 1 <= 0)` is 0 and the jitter stops for 127
+  of every 256 frames: the image pulses. **Jitter fix** (always while the addon
+  is loaded, restored on unload): both loads (the jitter setup, exe+0x1368EC0,
+  and `GetCurrentTemporalAASampleIndex`, exe+0x132D120 in the Steam build) read
+  it unsigned (`0F BE` -> `0F B6`, one byte each, patterns
+  `JITTER_POSITION_LOADS`; identical for up to 128 positions). Then the pattern
+  is right down to about 18%; below that it is shorter than NVIDIA wants (800
+  at 10%) and repeats too soon (255 frames). The warning shows below 18% (25%
+  if the fix was not found). Advanced shows the measured **Game jitter
+  pattern**, whether the jitter fix is on, and **NVIDIA history resets**
+  (camera cuts, skipped frames, restarts).
 
 ## Replacing the game's TAA pass (in game: faster, especially when CPU-bound)
 
@@ -715,3 +801,36 @@ this adapter explicitly uses independent active render and full output extents.
 Stock TAA/TAAU is retained until bypass can preserve permutation-specific
 alpha/history and safe fallback.
 No changes to the user's completed HDR shaders are planned.
+
+## Sliders (2026-10-11)
+
+Every graphics setting is a slider over its choices, showing the current one (as Ryse's options), with steps between
+neighbouring choices: every whole number across small gaps (cascades 6 -> 10: 7, 8, 9), the 1-2-5 numbers across gaps
+of more than 2x (draw distance 3 -> 20: 5, 10). Choices are saved by value in a new ReShade.ini section
+("... Graphics Values"; "game" = the game's), so added steps never change a saved choice; the old index section is
+not read (press a preset once).
+
+## Optional (changes the look) (2026-10-11)
+
+From ATN's old Engine.ini, in no preset (EXACT, the game's value or this one): r.AmbientOcclusionMaxQuality -100,
+r.AOApplyToStaticIndirect 1, r.DistanceFieldShadowing 1, r.DistanceFieldAO 1 (both nothing without mesh distance
+fields; r.GenerateMeshDistanceFields registers 0), r.ContactShadows 1 (registers 1), r.CapsuleShadows 1,
+r.LensFlareQuality 3 (registers 2), r.SSR.MaxRoughness 1 (registers -1).
+
+## Beyond MAX, tooltips (2026-10-11)
+
+"Beyond MAX (+different AO)" (own line): Maximum plus the Optional group's values (AO highest quality -100, AO on
+baked lighting, lens flare 3). r.SSR.MaxRoughness 1 moved into Maximum (Lighting and reflections). Removed from the
+Optional group: distance field shadows / AO, contact and capsule shadows (the game has them at 1). Every setting has
+a short tooltip.
+v10: "AO on baked lighting" (r.AOApplyToStaticIndirect) removed (a stylistic double darkening, ATN); the preset is
+"Beyond MAX" (Maximum + AO highest quality -100 + lens flare 3).
+v11: presets Game's own / High / Ultra / Extreme / Insane (old Maximum) / Max (old Beyond MAX), one line. Every
+preset sets every setting (KEEP: the game's) except the player's own (PLAYER_SETTINGS: volumetric fog's four, shaders
+on load; Game's own resets them too), so no older choice stays. Max: every setting's best choice (HIGHER: highest,
+LOWER: lowest, EXACT: Insane's value, else the optional one's): object detail 0.0001, grass 10, distant object
+shadows 64 / 32, AO -100, lens flare 3. Checked by simulating every preset on every row.
+v12: Reflections on rough surfaces (r.SSR.MaxRoughness 1) in Extreme, Insane and Max. Every preset, Game's own
+included, sets every setting but shaders on load (NO_PRESET_SETTING, in no preset so it is never reset by accident);
+volumetric fog gets the game's in every preset (Max's EXACT rule: Insane's value, else the optional ones' extra, else
+the game's). Simulated: 50 of 51 settings set by each preset, every value a valid choice.
