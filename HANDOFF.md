@@ -22,7 +22,11 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
    (v62, ca_vaBlendCullingThreshold divided). v63 adds Advanced "Armour test (temporary)" (ARMOUR_TESTS in
    addon.cpp): ATN stands ~1 m from a soldier and tries each (blend shapes off, vertex animation off, tessellation
    within 0.5 m, e_LodMin 2, e_CharLodMin 2); the one that makes the near armour look like the far one names the
-   system. Waiting for that answer. Then: fix that system, remove the test, and drop e_LodMax 0 (costs fps, did not
+   system. RESULT (debugForClaude21, everything maxed): no test changes the soldier at all. But tests 4 / 5 were
+   void: Detail distance 64x pins e_LodMax 0, and the attachment LOD clamp does max(lod, e_LodMin) then
+   min(lod, e_LodMax) = 0. Next: ATN repeats e_LodMin 2 / e_CharLodMin 2 with Detail distance at 32x, standing
+   close. If still nothing, likely game logic swapping a nearby NPC's model (not a cvar). Then: fix that system,
+   remove the test, and drop e_LodMax 0 (costs fps, did not
    help) and maybe the blend threshold if they change nothing. Also ask: Shadow distance shows no difference (ATN),
    remove it? Water is capped at 2x (4x ugly, 6x crashed ATN's PC, 8x+ crashed chapter 3).
    How the RE was done: rx.py (`python -I rx.py cvar NAME` = help text from the exe; `xref RVA`; `dis RVA`),
