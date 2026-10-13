@@ -340,3 +340,20 @@ distance). Advanced debug combo **Armour test (temporary)**, not saved: each tes
 options skip it meanwhile; Off restores the value it found): ca_vaBlendEnable 0, ca_vaEnable 0,
 e_TessellationMaxDistance 0.5, e_LodMin 2, e_CharLodMin 2. Up close, the test that makes the armour look like it does
 from far away names the system (blend shapes, vertex animation, tessellation / displacement, model LOD, character LOD).
+
+## v64: character test toggle and pixel trace (debug)
+
+v63's armour tests changed nothing (ATN, also e_LodMin / e_CharLodMin at Detail 32x, where e_LodMax stays the
+game's). ATN: the arm armour does not grow, it only sits on the arm within ~2-4 m. e_LodMax 0 at Detail 64x stays
+(ATN: every model at its most detailed, fps do not matter).
+- Advanced **Max every character setting (test)** (replaces the armour test, not saved): ca_vaBlendCullingThreshold 0,
+  ca_AttachmentCullingRation 1000000, e_LodMin 0, e_CharLodMin 0, ca_vaSkipVertexAnimationLOD 0 through the console
+  (the quality options skip them meanwhile); written in the CryAnimation console object (found from
+  ca_ForceUpdateSkeletons' reader, FORCE_SKELETON_UPDATE, field +0xb8): ca_ForceUpdateSkeletons 1,
+  ca_UseJointMasking 0 (+0x144), ca_ClothMaxChars 100 (+0x1cc), ca_FacialAnimationRadius 1000 (+0x194),
+  ca_FacialAnimationFramerate 240 (+0x128). Off restores.
+- Advanced **Trace this pixel for one frame** (pixel_trace.hpp, from the Tales DLAA addon): red cross, slider for its
+  position; ryse_pixel_trace.txt next to the exe lists every command that changed the pixel with its draw parameters
+  (index count, first index, vertex offset), vertex / index buffers (pointer, size, stride, offset), the vertex shader's
+  constant buffer sizes and textures, and the pixel shader's textures. Far vs near on the arm armour: other mesh (index
+  count / buffers), other skinning shader (vs hash), or the same draw with other bone data.

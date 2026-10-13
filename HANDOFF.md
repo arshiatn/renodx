@@ -29,9 +29,11 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
    useless for them: remove it, it costs fps). ATN's new reading: the arm armour does not grow, it does not SIT on
    the arm until ~2-4 m (then it fits). Likely animation-side: distant characters update fewer bones (joint masking)
    or attachments' simulation (pendulum; strings PA_PendulumType, Animation/PendulumSimWeight) only runs near.
-   Next test (memory writes, both console-refused, CryAnimation console static +0x2240930): ca_ForceUpdateSkeletons
-   +0xb8 (abs +0x22409e8, one reader +0x8ec58d) = 1, ca_UseJointMasking +0x144 (abs +0x2240a74, reader +0x933978) = 0.
-   If neither, park it (game logic). Then: fix that system,
+   v64 (sent): Advanced "Max every character setting (test)" toggle (character_overrides: console cvars + memory
+   writes in the CryAnimation console object incl. ca_ForceUpdateSkeletons +0xb8, ca_UseJointMasking +0x144,
+   ca_ClothMaxChars +0x1cc, facial radius / framerate) and "Trace this pixel" (pixel_trace.hpp, ported from Tales,
+   with draw parameters, VB / IB, VS cbuffers): ATN traces the arm armour far and near, compares. e_LodMax 0 at
+   Detail 64x stays (ATN wants every model at full detail). Then: fix that system,
    remove the test, and drop e_LodMax 0 (costs fps, did not
    help) and maybe the blend threshold if they change nothing. Also ask: Shadow distance shows no difference (ATN),
    remove it? Water is capped at 2x (4x ugly, 6x crashed ATN's PC, 8x+ crashed chapter 3).
@@ -87,7 +89,7 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
   speed (r_TexturesStreamingMaxRequestedMB 2 / Jobs 32, e_StreamCgfMaxTasksInProgress 32 / MaxNewTasksPerUpdate 4),
   r_TexturesStreamingMipBias 0, e_GsmCacheLodOffset 3, e_DynamicLightsMaxEntityLights 16, e_FoliageWindActivationDist
   25, e_ParticlesLod 1, water extras (r_WaterRipplesResolution 256, caustics), r_BeamsMaxSlices 200 (max 300).
-- Ryse (HDR fix34, DLSS v63: v63 armour test; v62 blend shape culling, water 2x max; v61 e_LodMax 0 at Detail 64x (armour LOD); v60 experimental folded into sliders, water 2x; v59 LOD / streaming cvars; v58 Water capped at 4x (8x/16x crashed chapter 3: the sea grid (X-1)(Y-1) x 12 bytes overflows a 4 MB buffer, from 2 dumps); v55 clearer Texture LOD bias labels/tooltip; v56 "Smooth shiny surfaces" option removed again in v57 (ATN: G-buffer filter always off, better highlights; armour shimmer identical without the HDR addon = game specular aliasing). HDR fix34: Recommended presets Bloom 0.5): done, ATN: "perfect". Expeditions: Rome (HDR v26, DLSS + graphics): ATN: "perfect".
+- Ryse (HDR fix34, DLSS v64: v64 character test toggle + pixel trace; v63 armour test; v62 blend shape culling, water 2x max; v61 e_LodMax 0 at Detail 64x (armour LOD); v60 experimental folded into sliders, water 2x; v59 LOD / streaming cvars; v58 Water capped at 4x (8x/16x crashed chapter 3: the sea grid (X-1)(Y-1) x 12 bytes overflows a 4 MB buffer, from 2 dumps); v55 clearer Texture LOD bias labels/tooltip; v56 "Smooth shiny surfaces" option removed again in v57 (ATN: G-buffer filter always off, better highlights; armour shimmer identical without the HDR addon = game specular aliasing). HDR fix34: Recommended presets Bloom 0.5): done, ATN: "perfect". Expeditions: Rome (HDR v26, DLSS + graphics): ATN: "perfect".
 - Tales of Arise: HDR v30 (v27 NaN fix for Smooth Volumetric Light, v28 Along Sun Rays, v29 Soft removed, v30 no Sun Haze slider; v18 Motion Blur slider Advanced only; v19 16-bit scene buffers against sky banding; v20 Smooth Volumetric Light), DLAA + graphics v48 (zip `Downloads\talesofarise_dlss_v48.zip`). Confirmed by ATN: sun
   shadow resolution 6144 / 8192 (CSM atlas doubled to 16384) fixes the sun-move shimmer; "Keep characters behind the
   camera" (Arise.PF.Culling.ForceInFrustum 1) fixes characters fading in on fast turns. Untested: v34-v36

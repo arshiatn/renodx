@@ -48,6 +48,7 @@
 #include "./native_state.hpp"
 #include "./ngx_backend.hpp"
 #include "./performance.hpp"
+#include "./pixel_trace.hpp"
 
 static_assert(_ITERATOR_DEBUG_LEVEL == 0, "DLSS must match the shared STL layout of Release RenoDX addons");
 
@@ -609,29 +610,49 @@ std::array<QualityOption, 13> quality_options = {{
      .cvars = {{.name = "e_DecalsLifeTimeScale", .is_float = true}}},
 }};
 
-// Debug (Advanced, temporary): which system grows the soldiers' armour within 2-4 m (ATN: at every setting, also
-// with v61's e_LodMax 0 and v62's blend-shape culling off). Each test overrides one cvar (the quality options leave it
-// alone meanwhile); the test that makes the near armour look like the far one names the system.
-struct ArmourTest {
-  const char* label;
-  const char* cvar;  // null: none
+// Debug (Advanced, temporary): every character / animation setting at its most, to see whether the soldiers' armour
+// that only fits within 2-4 m (ATN) can be fixed at all (v63's single tests: blend shapes, vertex animation,
+// tessellation, model and character LOD changed nothing). Console cvars through ICVar (the quality options leave them
+// alone meanwhile); those the console refuses written in the CryAnimation console object, found from
+// ca_ForceUpdateSkeletons' reader (FORCE_SKELETON_UPDATE: cmp [rip + field], 0 / or [character + 0xb28], 2). Off
+// puts the values back.
+constexpr std::string_view FORCE_SKELETON_UPDATE = "83 3D ?? ?? ?? ?? 00 74 07 80 8B 28 0B 00 00 02";
+constexpr size_t FORCE_SKELETON_UPDATE_FIELD = 0xb8;  // ca_ForceUpdateSkeletons in the CryAnimation console object
+struct CharacterOverride {
+  const char* name;
   float value;
-};
-constexpr std::array<ArmourTest, 6> ARMOUR_TESTS = {{
-    {.label = "Off", .cvar = nullptr, .value = 0.f},
-    {.label = "Blend shapes off (ca_vaBlendEnable 0)", .cvar = "ca_vaBlendEnable", .value = 0.f},
-    {.label = "Vertex animation off (ca_vaEnable 0)", .cvar = "ca_vaEnable", .value = 0.f},
-    {.label = "Tessellation only within 0.5 m (e_TessellationMaxDistance 0.5)", .cvar = "e_TessellationMaxDistance", .value = 0.5f},
-    {.label = "Less detailed models (e_LodMin 2)", .cvar = "e_LodMin", .value = 2.f},
-    {.label = "Less detailed characters (e_CharLodMin 2)", .cvar = "e_CharLodMin", .value = 2.f},
-}};
-struct ArmourTestState {
-  int choice = 0;  // overlay
-  int applied = 0;
-  void* cvar = nullptr;  // ICVar* of the applied test
+  bool is_float;
+  size_t animation_offset = 0;  // non-zero: written in the CryAnimation console object at this offset
+  void* cvar = nullptr;         // ICVar*, or the value's address
   float game_value = 0.f;
-  std::string status;  // overlay
-} armour_test;  // Present thread (the overlay runs in it)
+  bool set = false;
+};
+std::array<CharacterOverride, 10> character_overrides = {{
+    {.name = "ca_vaBlendCullingThreshold", .value = 0.f, .is_float = true},
+    {.name = "ca_AttachmentCullingRation", .value = 1000000.f, .is_float = true},
+    {.name = "e_LodMin", .value = 0.f, .is_float = false},
+    {.name = "e_CharLodMin", .value = 0.f, .is_float = false},
+    {.name = "ca_vaSkipVertexAnimationLOD", .value = 0.f, .is_float = false},
+    // "Always update all skeletons, even if not visible."
+    {.name = "ca_ForceUpdateSkeletons", .value = 1.f, .is_float = false, .animation_offset = FORCE_SKELETON_UPDATE_FIELD},
+    // "Use Joint Masking to speed up motion decoding."
+    {.name = "ca_UseJointMasking", .value = 0.f, .is_float = false, .animation_offset = 0x144},
+    // "max characters with cloth on screen" (10).
+    {.name = "ca_ClothMaxChars", .value = 100.f, .is_float = false, .animation_offset = 0x1cc},
+    // "Maximum distance at which facial animations are updated" (30).
+    {.name = "ca_FacialAnimationRadius", .value = 1000.f, .is_float = true, .animation_offset = 0x194},
+    // "Update facial system at a maximum framerate of n. This framerate falls off linearly to zero with the distance."
+    {.name = "ca_FacialAnimationFramerate", .value = 240.f, .is_float = false, .animation_offset = 0x128},
+}};
+struct CharacterTest {
+  bool on = false;  // overlay
+  bool applied = false;
+  bool searched = false;
+  uint8_t* animation_cvars = nullptr;  // the CryAnimation console object
+  std::string details;                 // where it was found, or why not
+  std::string status;                  // overlay
+} character_test;  // Present thread (the overlay runs in it)
+std::array<float, 2> traced_pixel = {50.f, 50.f};  // overlay: % of the screen's width and height (pixel_trace.hpp)
 
 // An option's `choice`th item.
 const char* ChoiceName(const QualityOption& option, int choice) {
@@ -1943,8 +1964,9 @@ void OnDestroyDevice(reshade::api::device* device) {
   if (matching) Reset();
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  rysesonofrome::pixel_trace::OnPresent(queue);
   const auto mode = requested_mode.load();
   bool changed;
   bool missed;
@@ -2116,7 +2138,11 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
         value = std::max(value, floor_source->values[floor_source->choice]);
       }
       for (auto& entry : option.cvars) {
-        if (armour_test.applied != 0 && std::strcmp(entry.name, ARMOUR_TESTS[armour_test.applied].cvar) == 0) continue;
+        if (std::ranges::any_of(character_overrides, [&](const CharacterOverride& override) {
+              return override.set && std::strcmp(override.name, entry.name) == 0;
+            })) {
+          continue;
+        }
         if (!entry.looked_up) {
           if (entry.engine_offset == 0) {
             entry.looked_up = true;
@@ -2174,30 +2200,56 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
         }
       }
     }
-    if (auto& test = armour_test; test.choice != test.applied) {
-      const auto get_float = [](void* cvar) {
-        return (*reinterpret_cast<float (***)(void*)>(cvar))[CVAR_GET_FLOAT / sizeof(void*)](cvar);
-      };
-      const auto set_float = [](void* cvar, float value) {
-        (*reinterpret_cast<void (***)(void*, float)>(cvar))[CVAR_SET_FLOAT / sizeof(void*)](cvar, value);
-      };
-      if (test.cvar != nullptr) {
-        set_float(test.cvar, test.game_value);
-        test.cvar = nullptr;
-      }
-      test.applied = test.choice;
-      test.status.clear();
-      if (const char* name = ARMOUR_TESTS[test.applied].cvar; name != nullptr) {
-        test.cvar = GetGameCvar(console, name);
-        if (test.cvar != nullptr) {
-          test.game_value = get_float(test.cvar);
-          set_float(test.cvar, ARMOUR_TESTS[test.applied].value);
-          test.status = std::format("{}: {:g} -> {:g}", name, test.game_value, get_float(test.cvar));
-        } else {
-          test.status = std::format("{} not found", name);
+    if (auto& test = character_test; test.on != test.applied) {
+      if (test.on && !test.searched) {
+        test.searched = true;
+        if (const uint8_t* site = rysesonofrome::engine_memory::FindPattern(FORCE_SKELETON_UPDATE, &test.details); site != nullptr) {
+          int32_t displacement;
+          std::memcpy(&displacement, site + 2, sizeof(displacement));
+          test.animation_cvars = const_cast<uint8_t*>(site) + 7 + displacement - FORCE_SKELETON_UPDATE_FIELD;
         }
-        renodx::utils::log::i("[Ryse DLSS] Armour test: ", test.status);
+        renodx::utils::log::i("[Ryse DLSS] The CryAnimation console object (ca_ForceUpdateSkeletons code): ", test.details);
       }
+      const auto read = [](const CharacterOverride& override) {
+        if (override.animation_offset != 0) {
+          if (override.is_float) return std::atomic_ref<float>(*static_cast<float*>(override.cvar)).load(std::memory_order_relaxed);
+          return static_cast<float>(std::atomic_ref<int>(*static_cast<int*>(override.cvar)).load(std::memory_order_relaxed));
+        }
+        return (*reinterpret_cast<float (***)(void*)>(override.cvar))[CVAR_GET_FLOAT / sizeof(void*)](override.cvar);
+      };
+      const auto write = [](const CharacterOverride& override, float value) {
+        if (override.animation_offset == 0) {
+          (*reinterpret_cast<void (***)(void*, float)>(override.cvar))[CVAR_SET_FLOAT / sizeof(void*)](override.cvar, value);
+        } else if (override.is_float) {
+          std::atomic_ref<float>(*static_cast<float*>(override.cvar)).store(value, std::memory_order_relaxed);
+        } else {
+          std::atomic_ref<int>(*static_cast<int*>(override.cvar)).store(static_cast<int>(value), std::memory_order_relaxed);
+        }
+      };
+      test.status.clear();
+      for (auto& override : character_overrides) {
+        if (!test.on) {
+          if (override.set) write(override, override.game_value);
+          override.set = false;
+          continue;
+        }
+        if (override.animation_offset != 0) {
+          override.cvar = (test.animation_cvars != nullptr ? test.animation_cvars + override.animation_offset : nullptr);
+        } else {
+          override.cvar = GetGameCvar(console, override.name);
+        }
+        if (override.cvar == nullptr) {
+          test.status += std::format("{}{}: not found", (test.status.empty() ? "" : ", "), override.name);
+          continue;
+        }
+        override.game_value = read(override);
+        write(override, override.value);
+        override.set = true;
+        test.status += std::format("{}{}: {:g} -> {:g}", (test.status.empty() ? "" : ", "), override.name,
+                                   override.game_value, read(override));
+      }
+      if (!test.status.empty()) renodx::utils::log::i("[Ryse DLSS] Character test: ", test.status);
+      test.applied = test.on;
     }
   }
 
@@ -2821,17 +2873,30 @@ void OnOverlay(reshade::api::effect_runtime*) {
   }
   ImGui::EndDisabled();
   if (!options_measure.result.empty()) ImGui::TextWrapped("%s", options_measure.result.c_str());
-  if (ImGui::BeginCombo("Armour test (temporary)", ARMOUR_TESTS[armour_test.choice].label)) {
-    for (int index = 0; index < static_cast<int>(ARMOUR_TESTS.size()); ++index) {
-      if (ImGui::Selectable(ARMOUR_TESTS[index].label, armour_test.choice == index)) armour_test.choice = index;
-    }
-    ImGui::EndCombo();
+  ImGui::Checkbox("Max every character setting (test)", &character_test.on);
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Every character and animation setting at its most, also the ones the game's console refuses:\n"
+                      "full skeleton updates, no joint masking, cloth on 100 characters, facial animation at any\n"
+                      "distance, no blend-shape or attachment culling, most detailed models. On: does the soldiers'\n"
+                      "armour fit from far away? Off puts the game's values back.");
+  }
+  if (!character_test.status.empty()) ImGui::TextWrapped("%s", character_test.status.c_str());
+  // Pixel trace (pixel_trace.hpp): a red cross marks the pixel.
+  ImGui::SliderFloat2("Traced pixel (% of width, height)", traced_pixel.data(), 0.f, 100.f, "%.1f%%");
+  const ImVec2 screen = ImGui::GetIO().DisplaySize;
+  const ImVec2 cross = {screen.x * traced_pixel[0] / 100.f, screen.y * traced_pixel[1] / 100.f};
+  ImDrawList* foreground = ImGui::GetForegroundDrawList(nullptr);
+  foreground->AddLine({cross.x - 12.f, cross.y}, {cross.x + 12.f, cross.y}, IM_COL32(255, 0, 0, 255), 2.f);
+  foreground->AddLine({cross.x, cross.y - 12.f}, {cross.x, cross.y + 12.f}, IM_COL32(255, 0, 0, 255), 2.f);
+  if (ImGui::Button("Trace this pixel for one frame")) {
+    rysesonofrome::pixel_trace::Request(traced_pixel[0] / 100.f, traced_pixel[1] / 100.f);
   }
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("Stand about 1 m from a soldier whose armour grows up close and try each test: the one that makes\n"
-                      "it look like it does from far away names the system. Off puts the game's value back.");
+    ImGui::SetTooltip("Finds which of the game's draws paint the pixel under the red cross, with their mesh (index\n"
+                      "count, buffers) and shaders. During the next frame, every draw, dispatch, clear and copy that\n"
+                      "changes it is saved to ryse_pixel_trace.txt next to the game's exe (one short hitch).");
   }
-  if (!armour_test.status.empty()) ImGui::TextWrapped("%s", armour_test.status.c_str());
+  ImGui::TextWrapped("%s", rysesonofrome::pixel_trace::Status().c_str());
   if (ImGui::Button("Save the game's code for analysis (debug, about 55 MB)")) {
     std::wstring exe(32768, L'\0');
     exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
@@ -3006,6 +3071,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
     reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
     reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+    rysesonofrome::pixel_trace::Stop();
     reshade::unregister_event<reshade::addon_event::draw>(OnDraw);
     reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
     reshade::unregister_event<reshade::addon_event::copy_resource>(OnTraceCopy);
