@@ -252,7 +252,7 @@ void main(
   const float3 shafts = SunShafts_SunCol.xyz * sunshaftsMap.Sample(sunshaftsMap_s, v3.xy).xyz
                         * HDRParams2.z * SI.sun_shafts;
 
-  float3 color;
+  float3 tonemapped;
   [branch]
   if (HDR < 2.f) {
     // HDR (Extended). V31 grading; all at 1: skipped, so below the white point it is SDR.
@@ -265,10 +265,11 @@ void main(
           SI.ext_saturation, SI.ext_highlight_saturation, 0.f, 0.18f, 0.18f,
           renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709);
     }
-    color = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(ApplyExtended(untonemapped, peak), shafts));
+    tonemapped = ApplyExtended(untonemapped, peak);
   } else {
-    color = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(ApplyPsychoV31(r0.xyz, peak), shafts));
+    tonemapped = ApplyPsychoV31(r0.xyz, peak);
   }
+  float3 color = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(tonemapped, shafts));
 
   // The shafts past 1 (near the sun), saturated by the stock, added on top (both HDR modes).
   color = RyseAddLight(color, max(shafts - 1.f, 0.f), RYSE_PEAK);

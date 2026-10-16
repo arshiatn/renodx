@@ -14,9 +14,11 @@ cbuffer PER_BATCH : register(b0) {
 cbuffer PassConstants : register(b12) {
   uint ColorEncoding;  // 0: the view decodes sRGB, 1: stored values are encoded (gamma 2.2 round trip)
   uint HasCamera;
+  uint DepthReversed;  // the camera's z / w falls with distance (reverse-Z)
   float4 CurrentUvX;  // this frame's camera, world -> uv: x, y, w coefficients (world x, y, z, 1)
   float4 CurrentUvY;
-  float4 CurrentUvW;
+  float4 CurrentUvW;  // also its clip w
+  float4 CurrentZ;    // its clip z
 }
 
 Texture2D<float4> LinearDepth : register(t2);  // x * far = view depth
@@ -33,6 +35,13 @@ float2 Uv(float4 x, float4 y, float4 w, float3 relative_position, double3 eye) {
   return clip.xy / clip.z;
 }
 
+// Depth (z / w) of a camera-relative position for a world -> clip z and w, as Uv().
+float Depth(float4 z, float4 w, float3 relative_position, double3 eye) {
+  const float2 origin = float2(eye.x * double2(z.x, w.x) + eye.y * double2(z.y, w.y) + eye.z * double2(z.z, w.z)
+                               + double2(z.w, w.w));
+  return (dot(z.xyz, relative_position) + origin.x) / (dot(w.xyz, relative_position) + origin.y);
+}
+
 // The uv shift of a world -> uv matrix's x / y part along w (view forward): the projection's jitter (and any off-center
 // shift), removed the same way for both frames.
 float2 Jitter(float4 x, float4 y, float4 w) {
@@ -47,11 +56,7 @@ void main(
     out float2 o1 : SV_Target1,
     out float4 o2 : SV_Target2) {
   const int3 pixel = int3(v0.xy, 0);
-
-  // Reverse-Z (near / view depth), DLSS flag DepthInverted.
   const float linear_depth = LinearDepth.Load(pixel).x;
-  const float view_depth = linear_depth * PS_NearFarClipDist.y;
-  o0 = (view_depth > PS_NearFarClipDist.x) ? (PS_NearFarClipDist.x / view_depth) : 1.f;
 
   // Motion in render pixels (previous - current), uv x texture size. Camera: the surface the game reconstructs for this
   // pixel (its view ray x depth) projected with the previous and this frame's camera, both without jitter. (v22 took
@@ -70,6 +75,17 @@ void main(
   const float2 current_jittered_uv = Uv(CurrentUvX, CurrentUvY, CurrentUvW, relative_position, eye);
   const bool camera = HasCamera != 0 && all(abs(current_jittered_uv - v1.xy) * texture_size < 1.f);
   const float2 current_uv = camera ? current_jittered_uv - Jitter(CurrentUvX, CurrentUvY, CurrentUvW) : v1.xy;
+
+  // DLSS depth, reverse-Z (flag DepthInverted): the depth buffer's value for the surface with this frame's camera.
+  // v99: PER_BATCH's PS_NearFarClipDist (near / view depth before) is not set for the game's TAA, which never reads it:
+  // every pixel had depth 1, the near plane (ATN debugForClaude38). Without the camera, that as before.
+  if (camera) {
+    const float depth = Depth(CurrentZ, CurrentUvW, relative_position, eye);
+    o0 = saturate((DepthReversed != 0) ? depth : (1.f - depth));
+  } else {
+    const float view_depth = linear_depth * PS_NearFarClipDist.y;
+    o0 = (view_depth > PS_NearFarClipDist.x) ? (PS_NearFarClipDist.x / view_depth) : 1.f;
+  }
   float2 motion = previous_uv - current_uv;
   const float2 packed_velocity = ObjectVelocity.Load(pixel).xy;
   if (packed_velocity.x != 0.f) {

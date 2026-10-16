@@ -1,0 +1,991 @@
+/*
+ * Copyright (C) 2026 ArshiaTN
+ * SPDX-License-Identifier: MIT
+ */
+
+#define ImTextureID ImU64
+
+#define RENODX_MODS_SWAPCHAIN_VERSION 2
+
+#include <d3d11.h>
+#include <wrl/client.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <format>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <deps/imgui/imgui.h>
+#include <include/reshade.hpp>
+
+#include <embed/shaders.h>
+
+#include "../../mods/shader.hpp"
+#include "../../mods/swapchain.hpp"
+#include "../../utils/platform.hpp"
+#include "../../utils/settings.hpp"
+#include "../../utils/swapchain.hpp"
+#include "../twshogun2_dlss/dlss_jitter.hpp"
+#include "./shared.h"
+#include "./vfx_effects.hpp"
+
+constexpr char BUILD_DATE[] = __DATE__;
+constexpr char BUILD_TIME[] = __TIME__;
+
+namespace {
+
+ShaderInjectData shader_injection;
+float current_settings_mode = 0.f;
+// VFX effect test (Advanced): 0 off, 1 hide the effect, 2 only the effect; the effect's number (vfx_effects.hpp).
+float vfx_test = 0.f;
+float vfx_test_effect = 1.f;
+
+bool IsAdvancedSettings() {
+  return current_settings_mode >= 1.f;
+}
+
+bool IsHDRMode() {
+  return shader_injection.hdr >= 1.f;
+}
+
+bool IsExtendedMode() {
+  return shader_injection.hdr == 1.f && IsAdvancedSettings();
+}
+
+bool IsPsychoMode() {
+  return shader_injection.hdr == 2.f && IsAdvancedSettings();
+}
+
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
+
+void ApplyResetPreset() {
+  // Peak / Paper White / UI, Settings Mode and output are kept.
+  renodx::utils::settings::UpdateSettings({
+      {"tonemapper", 1.f},
+      {"ext_exposure", 1.f},
+      {"ext_highlights", 1.f},
+      {"ext_shadows", 1.f},
+      {"ext_contrast", 1.f},
+      {"ext_saturation", 1.f},
+      {"ext_highlight_saturation", 1.f},
+      {"ext_highlight_hue_shift", 0.33f},
+      {"exposure", 1.f},
+      {"highlights", 1.f},
+      {"shadows", 1.f},
+      {"contrast", 1.f},
+      {"cone_response_exponent", 1.f},
+      {"saturation", 1.f},
+      {"highlight_saturation", 1.f},
+      {"roll_off", 1.f},
+      {"highlight_hue_shift", 0.42f},
+      {"bloom", 1.f},
+      {"lens_flare", 1.f},
+      {"vignette", 1.f},
+      {"heat_haze", 1.f},
+      {"depth_of_field", 1.f},
+      {"battle_fog", 1.f},
+      {"sun", 1.f},
+      {"foliage_glints", 1.f},
+      {"vfx_glow", 1.f},
+      {"vfx_big_fire", 1.f},
+      {"vfx_campfire", 1.f},
+      {"vfx_trails", 1.f},
+      {"vfx_firelight", 1.f},
+      {"vfx_smoke", 1.f},
+      {"vfx_smoke_opacity", 1.f},
+      {"video_autohdr", 0.f},
+      {"video_dithering", 1.f},
+  });
+}
+
+// The recommended presets (ATN's settings): HDR (PsychoV31), no lens flares, faint foliage glints, faint haze, brighter
+// VFX and videos.
+void ApplyRecommendedPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({
+      {"tonemapper", 2.f},
+      {"highlight_saturation", 0.75f},
+      {"lens_flare", 0.f},
+      {"foliage_glints", 0.15f},
+      {"video_autohdr", 0.25f},
+      {"heat_haze", 0.1f},
+      {"vfx_glow", 5.f},
+      {"vfx_big_fire", 1.f},
+      {"vfx_campfire", 15.f},
+      {"vfx_trails", 2.f},
+      {"vfx_firelight", 1.8f},
+      {"vfx_smoke", 2.f},
+      {"vfx_smoke_opacity", 1.f},
+      {"sun", 2.f},
+  });
+}
+
+renodx::mods::shader::CustomShaders custom_shaders;
+renodx::utils::settings::Settings settings;
+
+// Render scale (the DLSS addon draws the 3D passes into the top-left part of the full-size targets) ////////////////
+// The rendered fraction for the depth of field, the auto exposure and the tonemap's distortion lookup: a 3D pass's
+// viewport over its back-buffer-size target (others: shadows, half size, the UI are skipped). Passes before the capture
+// use the camera's g_viewport_dimensions instead (patched to the render size by the DLSS addon).
+namespace render_scale {
+
+std::atomic<uint32_t> back_buffer_width = 0;
+std::atomic<uint32_t> back_buffer_height = 0;
+
+void Set(float x, float y) {
+  shader_injection.render_scale_x = x;
+  shader_injection.render_scale_y = y;
+}
+
+bool OnDrawCapture(reshade::api::command_list* cmd_list) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return true;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  D3D11_VIEWPORT viewport = {};
+  UINT viewport_count = 1;
+  context->RSGetViewports(&viewport_count, &viewport);
+  if (viewport_count == 0 || viewport.Width <= 0.f || viewport.Height <= 0.f || viewport.TopLeftX != 0.f
+      || viewport.TopLeftY != 0.f) {
+    return true;
+  }
+  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
+  context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+  if (target == nullptr) return true;
+  Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+  target->GetResource(resource.GetAddressOf());
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+  if (FAILED(resource.As(&texture))) return true;
+  D3D11_TEXTURE2D_DESC desc = {};
+  texture->GetDesc(&desc);
+  if (desc.Width == 0 || desc.Width != back_buffer_width.load() || desc.Height != back_buffer_height.load()) return true;
+  const float x = viewport.Width / static_cast<float>(desc.Width);
+  const float y = viewport.Height / static_cast<float>(desc.Height);
+  if (x < 0.05f || y < 0.05f) return true;
+  Set(std::min(x, 1.f), std::min(y, 1.f));
+  return true;
+}
+
+}  // namespace render_scale
+
+// The sea's colour overlay (selection rings, firing arcs, wakes, bow waves: indicator ps30_main_to_overlay, wake,
+// seainteraction; drawn only there): the ocean reads it at the full-screen position (its decal projection), but with the
+// DLSS addon's render scale its draws went into the top-left part (ATN debug19, 33%: rings and wakes at a third of their
+// size in the top-left). Its draws use the whole back-buffer-size target, the game's viewport restored after each.
+namespace sea_overlay {
+
+D3D11_VIEWPORT game_viewport = {};
+bool restore = false;
+
+bool OnDraw(reshade::api::command_list* cmd_list) {
+  restore = false;
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return true;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  UINT viewport_count = 1;
+  context->RSGetViewports(&viewport_count, &game_viewport);
+  const uint32_t width = render_scale::back_buffer_width.load();
+  const uint32_t height = render_scale::back_buffer_height.load();
+  if (viewport_count == 0
+      || (game_viewport.Width >= static_cast<float>(width) && game_viewport.Height >= static_cast<float>(height))) {
+    return true;
+  }
+  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
+  context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+  if (target == nullptr) return true;
+  Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+  target->GetResource(resource.GetAddressOf());
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+  if (FAILED(resource.As(&texture))) return true;
+  D3D11_TEXTURE2D_DESC desc = {};
+  texture->GetDesc(&desc);
+  if (desc.Width != width || desc.Height != height) return true;
+  const D3D11_VIEWPORT full = {
+      .TopLeftX = 0.f,
+      .TopLeftY = 0.f,
+      .Width = static_cast<float>(desc.Width),
+      .Height = static_cast<float>(desc.Height),
+      .MinDepth = game_viewport.MinDepth,
+      .MaxDepth = game_viewport.MaxDepth,
+  };
+  context->RSSetViewports(1, &full);
+  restore = true;
+  return true;
+}
+
+void OnDrawn(reshade::api::command_list* cmd_list) {
+  if (!restore) return;
+  restore = false;
+  reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->RSSetViewports(1, &game_viewport);
+}
+
+}  // namespace sea_overlay
+
+void BuildRuntimeData() {
+  custom_shaders = {
+      CustomShaderEntry(0xEF060C7C),  // tonemap00 (hdr_to_screen)
+      CustomShaderEntry(0xBEDBEFD8),  // tonemap01 (hdr_to_screen, distortion)
+      CustomShaderEntry(0x3D56DB58),  // uiresolve00 (ui_resolve)
+      CustomShaderEntry(0x3208750E),  // hdrflare00 (hdr_lenseflare: bloom + flare ghosts)
+      CustomShaderEntry(0xD6708726),  // flare00 (lenseflare flare_0)
+      CustomShaderEntry(0x5C6F73D3),  // flare01
+      CustomShaderEntry(0x7645BCB0),  // flare02
+      CustomShaderEntry(0xE23F06FF),  // flare03
+      CustomShaderEntry(0x658E9237),  // vignette00 (lenseflare vignette)
+      CustomShaderEntry(0x77F0657A),  // doffocus00 (depth of field auto focus)
+      CustomShaderEntry(0x6449D186),  // dofblur00 (depth of field blur)
+      CustomShaderEntry(0x32876DB2),  // dofblur01 (depth of field masked blur)
+      CustomShaderEntry(0x962CEB71),  // ssrcopy00 (screen-space reflections onto the scene)
+      CustomShaderEntry(0x5EAD0FF6),  // highlight00 (gbuffer_highlight)
+      CustomShaderEntry(0x6531CCC3),  // dofblur02 (depth of field blur, 8-bit)
+      CustomShaderEntry(0xB25F26C7),  // dofcoc00 (depth of field circle of confusion + bokeh, through the heat haze)
+      CustomShaderEntry(0xB333A1B3),  // dofcoc01 (without bokeh)
+      CustomShaderEntry(0x34ECD06E),  // sss00 (sun shadow mask: screen-space shadows + cascades)
+      CustomShaderEntry(0x1B529672),  // sss01 (screen-space shadows without cascades)
+      CustomShaderEntry(0x78E88E1D),  // sss02 (cascades only, screen-space shadows off)
+      CustomShaderEntry(0x97624E56),  // ssrhiz00 (reflections' HiZ base level)
+      CustomShaderEntry(0x5C0AF498),  // ssrray00 (reflection rays)
+      CustomShaderEntry(0x13C66077),  // ssrfilter00 (hit buffer blur x)
+      CustomShaderEntry(0x073A6CF3),  // ssrfilter01 (hit buffer blur y)
+      CustomShaderEntry(0xF87ECE85),  // ssrresolve00 (reflection colour)
+      CustomShaderEntry(0xA00FE3A3),  // ssao00 (ambient occlusion line sweeps)
+      CustomShaderEntry(0x5CBF4FB6),  // pointlight00
+      CustomShaderEntry(0x57139F8D),  // pointlight01 (8-bit light accumulation)
+      CustomShaderEntry(0x70CAA144),  // particlelight00 (light from particles)
+      CustomShaderEntry(0xA583B6F4),  // ribbon00 (ribbon particles)
+      CustomShaderEntry(0x8233E11F),  // autoexposure00
+      CustomShaderEntry(0xA61D2853),  // fog00 (battle fog extinction)
+      CustomShaderEntry(0x4355E897),  // fog01 (battle fog haze)
+      CustomShaderEntry(0x3E33E81A),  // sun00 (sun disc)
+      CustomShaderEntry(0x8BCB52BB),  // video00 (sprite pixel_yuv: the videos)
+      CustomShaderEntry(0xAECABA3F),  // dissolve00 (rigidstandard alpha test G-buffer: fade pattern on the pixels)
+      CustomShaderEntry(0x557A56D5),  // dissolve01 (rigidvertexwind G-buffer)
+      CustomShaderEntry(0xED1BED93),  // sunlight00 (directional light: the sun)
+      CustomShaderEntry(0x5496DE73),  // sunlight01 (8-bit)
+      CustomShaderEntry(0xC3E0E939),  // sunlight02 (with the map overlay)
+      CustomShaderEntry(0xD5FDDE8F),  // sunlight03 (with the map overlay, 8-bit)
+      CustomShaderEntry(0x09117812),  // treevelocity00 (rigidleaf_v3 G-buffer: motion vectors)
+      CustomShaderEntry(0xB670BCA1),  // treevelocity01 (rigidleafwet_v3)
+      CustomShaderEntry(0x29EB778A),  // treevelocity02 (rigidbranch_v3)
+      CustomShaderEntry(0x3A9E203D),  // treevelocity03 (rigidbranchwet_v3)
+      CustomShaderEntry(0x3C9BC2F9),  // vfxoverlay00 (effects_overlay: the particles onto the scene)
+      CustomShaderEntry(0x40744308),  // vfxglow00 (volumetric particles, additive)
+      CustomShaderEntry(0xF70E8B73),  // vfxglow01 (volumetric particle splats, additive)
+      CustomShaderEntry(0x03F58817),  // projectiletrail00 (arrow, bullet and artillery trails)
+      CustomShaderEntry(0xBA0315BE),  // glowmesh00 (rigidglowcolour: burning buildings' fire panels)
+      CustomShaderEntry(0x546A3049),  // glowmesh01 (rigidglowtexture)
+      CustomShaderEntry(0xBDFF60D4),  // clothvelocity00 (cloth vertex shader: banners' motion vectors while paused)
+      CustomShaderEntry(0x40E181C2),  // flagvelocity00 (rigidtextureblendwind: wind-blown flags, the same while paused)
+      CustomShaderEntry(0xF45347E8),  // uifigure00 (variantweightedvtf ps30_main_ui: menu figures, clamped)
+      CustomShaderEntry(0xA406D4BE),  // uifigure01 (rigidstandard ps30_main_ui)
+      CustomShaderEntry(0xF7103E54),  // campaignwater00 (waterplane campaign high / medium / ultra: the map overlay)
+      CustomShaderEntry(0x630BA7A4),  // campaignwater01 (waterplane campaign low)
+  };
+
+  // Render scale: captured on the game's own reflections copy and battle fog (drawn every frame before the depth of
+  // field and the auto exposure), reset after the tonemaps.
+  for (const uint32_t hash : {0x962CEB71u, 0xA61D2853u, 0x4355E897u}) {
+    custom_shaders[hash].on_draw = render_scale::OnDrawCapture;
+  }
+  for (const uint32_t hash : {0xEF060C7Cu, 0xBEDBEFD8u}) {
+    custom_shaders[hash].on_drawn = [](reshade::api::command_list*) { render_scale::Set(1.f, 1.f); };
+  }
+  // The heat haze's distortion texture was drawn with DLSS's jitter (tonemap01 reads it there).
+  custom_shaders[0xBEDBEFD8].on_draw = [](reshade::api::command_list*) {
+    const auto jitter = twshogun2::dlss_jitter::Load();
+    shader_injection.render_jitter_x = jitter[0];
+    shader_injection.render_jitter_y = jitter[1];
+    return true;
+  };
+
+  // VFX: the effects overlay draws the additive particles' buffer (blend dest ONE), then the alpha-blended one (smoke,
+  // dust: dest source alpha, its transmittance).
+  custom_shaders[0x3C9BC2F9].on_draw = [](reshade::api::command_list* cmd_list) {
+    shader_injection.vfx_smoke_draw = 0.f;
+    if (shader_injection.hdr < 1.f || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return true;
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+    Microsoft::WRL::ComPtr<ID3D11BlendState> blend;
+    context->OMGetBlendState(blend.GetAddressOf(), nullptr, nullptr);
+    D3D11_BLEND_DESC desc = {};
+    if (blend != nullptr) {
+      blend->GetDesc(&desc);
+    }
+    const bool smoke = (desc.RenderTarget[0].BlendEnable != FALSE && desc.RenderTarget[0].DestBlend == D3D11_BLEND_SRC_ALPHA);
+    shader_injection.vfx_smoke_draw = (smoke ? 1.f : 0.f);
+    return true;
+  };
+
+  // The sea's colour overlay at full size (callbacks only, the game's shaders).
+  for (const uint32_t hash : {0xC57C222Du, 0xC8375A74u, 0x06701006u}) {
+    custom_shaders[hash] = {
+        .crc32 = hash,
+        .on_draw = sea_overlay::OnDraw,
+        .on_drawn = sea_overlay::OnDrawn,
+    };
+  }
+
+  // VFX effect test: one effect's fire & glow draws skipped, or all the others.
+  auto shown_in_test = [](uint32_t id) {
+    const bool selected = (id != 0 && id == twshogun2::vfx_effects::IdOf(static_cast<int>(vfx_test_effect)));
+    return (vfx_test == 1.f) ? !selected : selected;
+  };
+  // Fire & glow draws: the slider their effect follows (vfx_effects.hpp; set in the test).
+  auto brightness_of = [](uint32_t id) {
+    switch (twshogun2::vfx_effects::KindOf(id)) {
+      case twshogun2::vfx_effects::Kind::BIG_FIRE:
+        return shader_injection.vfx_big_fire;
+      case twshogun2::vfx_effects::Kind::CAMPFIRE:
+        return shader_injection.vfx_campfire;
+      default:
+        return shader_injection.vfx_glow;
+    }
+  };
+  // vfxglow00 / 01: the effect constants at their vertex shaders' b3 / b2, only looked up when the sliders differ or
+  // in the test.
+  for (const auto& [hash, slot] : {std::pair{0x40744308u, 3u}, std::pair{0xF70E8B73u, 2u}}) {
+    custom_shaders[hash].on_draw = [slot, shown_in_test, brightness_of](reshade::api::command_list* cmd_list) {
+      shader_injection.vfx_glow_draw = shader_injection.vfx_glow;
+      const bool split = (shader_injection.hdr >= 1.f
+                          && (shader_injection.vfx_big_fire != shader_injection.vfx_glow
+                              || shader_injection.vfx_campfire != shader_injection.vfx_glow));
+      if (!split && vfx_test == 0.f) return true;
+      const auto effect = twshogun2::vfx_effects::DrawnParticles(cmd_list, slot);
+      shader_injection.vfx_glow_draw = brightness_of(effect.id);
+      if (vfx_test == 0.f) return true;
+      if (effect.id != 0) {
+        twshogun2::vfx_effects::Drawn(effect);
+      }
+      return shown_in_test(effect.id);
+    };
+  }
+  for (const auto& [hash, id] : {std::pair{0xBA0315BEu, twshogun2::vfx_effects::GLOW_MESH_COLOR},
+                                 std::pair{0x546A3049u, twshogun2::vfx_effects::GLOW_MESH_TEXTURE}}) {
+    custom_shaders[hash].on_draw = [id, shown_in_test, brightness_of](reshade::api::command_list*) {
+      shader_injection.vfx_glow_draw = brightness_of(id);
+      if (vfx_test == 0.f) return true;
+      twshogun2::vfx_effects::Drawn({.id = id});
+      return shown_in_test(id);
+    };
+  }
+
+  // 0-2 slider, 1 = the game's.
+  auto slider = [](const std::string& key, float* binding, const std::string& label, const std::string& section,
+                   const std::string& tooltip, bool (*is_enabled)(), bool (*is_visible)(), float default_value = 1.f) {
+    return new renodx::utils::settings::Setting{
+        .key = key,
+        .binding = binding,
+        .default_value = default_value,
+        .label = label,
+        .section = section,
+        .tooltip = tooltip,
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_enabled = is_enabled,
+        .is_visible = is_visible,
+    };
+  };
+
+  // VFX (Extra (Experimental), HDR): 1 = the game's.
+  auto vfx = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
+                float max, const char* format = "%.1f") {
+    return new renodx::utils::settings::Setting{
+        .key = key,
+        .binding = binding,
+        .default_value = 1.f,
+        .label = label,
+        .section = "Extra (Experimental)",
+        .tooltip = tooltip + " 1 = the game's.",
+        .min = 0.f,
+        .max = max,
+        .format = format,
+        .is_enabled = IsHDRMode,
+        .is_visible = IsAdvancedSettings,
+    };
+  };
+
+  // VFX effect test (hidden; uncomment here and its settings below to use it again):
+  // // VFX effect test: the previous / next effect drawn in the last frame.
+  // auto test_step = [](const std::string& label, int step) {
+  //   return new renodx::utils::settings::Setting{
+  //       .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+  //       .label = label,
+  //       .section = "VFX Effect Test",
+  //       .group = "vfx-test-line",
+  //       .is_enabled = [] { return vfx_test != 0.f; },
+  //       .on_change = [step]() {
+  //         const auto effects = twshogun2::vfx_effects::Effects();
+  //         const int count = static_cast<int>(effects.size());
+  //         for (int offset = 1; offset <= count; ++offset) {
+  //           const int index = ((static_cast<int>(vfx_test_effect) - 1 + (step * offset)) % count + count) % count;
+  //           if (!effects[index].on_screen) continue;
+  //           renodx::utils::settings::UpdateSettings({{"vfx_test_effect", static_cast<float>(index + 1)}});
+  //           return;
+  //         }
+  //       },
+  //       .is_visible = IsAdvancedSettings,
+  //   };
+  // };
+  //
+  // // VFX effect test: the slider the selected effect follows.
+  // auto test_assign = [](const std::string& label, twshogun2::vfx_effects::Kind kind) {
+  //   return new renodx::utils::settings::Setting{
+  //       .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+  //       .label = label,
+  //       .section = "VFX Effect Test",
+  //       .group = "vfx-assign-line",
+  //       .tooltip = "The selected effect follows this slider (saved).",
+  //       .is_enabled = [] { return vfx_test != 0.f; },
+  //       .on_change = [kind]() {
+  //         if (const uint32_t id = twshogun2::vfx_effects::IdOf(static_cast<int>(vfx_test_effect)); id != 0) {
+  //           twshogun2::vfx_effects::SetKind(id, kind);
+  //         }
+  //       },
+  //       .is_visible = IsAdvancedSettings,
+  //   };
+  // };
+
+  // Highlight Hue Shift (as talesofarise): one amount per HDR mode, 0-1.
+  auto hue_shift = [](const std::string& key, float* binding, const std::string& section, float default_value,
+                      bool (*is_shown)()) {
+    return new renodx::utils::settings::Setting{
+        .key = key,
+        .binding = binding,
+        .default_value = default_value,
+        .label = "Highlight Hue Shift",
+        .section = section,
+        .tooltip = std::format("Bright colors take the game's SDR hues: fire more orange / yellow, less pink.\n"
+                               "0 = off, 1 = SDR hues. Default {:.2f}.",
+                               default_value),
+        .min = 0.f,
+        .max = 1.f,
+        .format = "%.2f",
+        .is_enabled = is_shown,
+        .is_visible = is_shown,
+    };
+  };
+
+  settings = {
+      new renodx::utils::settings::Setting{
+          .key = "SettingsMode",
+          .binding = &current_settings_mode,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .can_reset = false,
+          .label = "Settings Mode",
+          .labels = {"Simple", "Advanced"},
+          .is_global = true,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "The game's HDR sliders do nothing with this mod: use Peak, Paper White and UI below.",
+          .section = "General",
+          .is_visible = IsHdrOutput,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "peak_white_nits",
+          .binding = &shader_injection.peak_white_nits,
+          .default_value = 1000.f,
+          .can_reset = false,
+          .label = "Peak",
+          .section = "General",
+          .tooltip = "Brightest output in nits.",
+          .min = 400.f,
+          .max = 10000.f,
+          .is_visible = IsHdrOutput,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "diffuse_white_nits",
+          .binding = &shader_injection.diffuse_white_nits,
+          .default_value = 203.f,
+          .label = "Paper White",
+          .section = "General",
+          .tooltip = "Brightness of the game and videos in nits.",
+          .min = 1.f,
+          .max = 500.f,
+          .is_visible = IsHdrOutput,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "graphics_white_nits",
+          .binding = &shader_injection.graphics_white_nits,
+          .default_value = 203.f,
+          .label = "UI",
+          .section = "General",
+          .tooltip = "Brightness of the UI and HUD in nits.",
+          .min = 1.f,
+          .max = 500.f,
+          .is_visible = IsHdrOutput,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "tonemapper",
+          .binding = &shader_injection.hdr,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Rendering Mode",
+          .section = "General",
+          .tooltip = "SDR: the game's SDR.\n"
+                     "HDR (Extended): the game's own tone curve, extended into HDR. Default.\n"
+                     "HDR (PsychoV31): PsychoV31 instead of the game's curve.\n"
+                     "SDR output: HDR (Extended) keeps the game's curve, PsychoV31 is mapped to SDR.",
+          .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV31)"},
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Recommended",
+          .section = "Presets",
+          .group = "preset-line-1",
+          .tooltip = "HDR (PsychoV31), no lens flares, faint foliage glints, brighter sun, VFX and videos.\n"
+                     "Keeps Peak, Paper White, UI and output.",
+          .on_change = []() { ApplyRecommendedPreset(); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Recommended (SDR-like Contrast/Saturation)",
+          .section = "Presets",
+          .group = "preset-line-1",
+          .tooltip = "Recommended, with contrast and saturation closer to the game's SDR.\n"
+                     "Keeps Peak, Paper White, UI and output.",
+          .on_change = []() {
+            ApplyRecommendedPreset();
+            renodx::utils::settings::UpdateSettings({
+                {"highlights", 1.00f},
+                {"cone_response_exponent", 1.3f},
+                {"highlight_saturation", 1.00f},
+                {"roll_off", 2.00f},
+            });
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Reset",
+          .section = "Presets",
+          .group = "preset-line-2",
+          .tooltip = "All image settings back to their defaults (HDR Extended).\n"
+                     "Keeps Peak, Paper White, UI and output.",
+          .on_change = []() { ApplyResetPreset(); },
+      },
+
+      // Extended ////////////////////////////////////////////////////////////////////////////////////
+      slider("ext_exposure", &shader_injection.ext_exposure, "Exposure", "Extended", "", IsExtendedMode,
+             IsExtendedMode),
+      slider("ext_highlights", &shader_injection.ext_highlights, "Highlights", "Extended", "", IsExtendedMode,
+             IsExtendedMode),
+      slider("ext_shadows", &shader_injection.ext_shadows, "Shadows", "Extended", "", IsExtendedMode, IsExtendedMode),
+      slider("ext_contrast", &shader_injection.ext_contrast, "Contrast", "Extended", "1 = the game's.",
+             IsExtendedMode, IsExtendedMode),
+      slider("ext_saturation", &shader_injection.ext_saturation, "Saturation / Purity", "Extended", "1 = like SDR.",
+             IsExtendedMode, IsExtendedMode),
+      slider("ext_highlight_saturation", &shader_injection.ext_highlight_saturation, "Highlight Saturation",
+             "Extended", "How much bright colors lose saturation. 0 = more, 2 = less.", IsExtendedMode,
+             IsExtendedMode),
+      hue_shift("ext_highlight_hue_shift", &shader_injection.ext_highlight_hue_shift, "Extended", 0.33f,
+                IsExtendedMode),
+
+      // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
+      slider("exposure", &shader_injection.exposure, "Exposure", "PsychoV31", "", IsPsychoMode, IsPsychoMode),
+      slider("highlights", &shader_injection.highlights, "Highlights", "PsychoV31", "", IsPsychoMode, IsPsychoMode),
+      slider("shadows", &shader_injection.shadows, "Shadows", "PsychoV31", "", IsPsychoMode, IsPsychoMode),
+      slider("contrast", &shader_injection.contrast, "Contrast", "PsychoV31", "1 = PsychoV31's own. Keeps saturation.",
+             IsPsychoMode, IsPsychoMode),
+      slider("cone_response_exponent", &shader_injection.cone_response_exponent, "Cone Response Exponent", "PsychoV31",
+             "Like Contrast, but also changes saturation. 1 = PsychoV31's own.",
+             IsPsychoMode, IsPsychoMode),
+      slider("saturation", &shader_injection.saturation, "Saturation / Purity", "PsychoV31", "1 = PsychoV31's own.",
+             IsPsychoMode, IsPsychoMode),
+      slider("highlight_saturation", &shader_injection.highlight_saturation, "Highlight Saturation", "PsychoV31",
+             "Saturation of bright colors. 0 = less, 2 = more.", IsPsychoMode, IsPsychoMode),
+      slider("roll_off", &shader_injection.roll_off, "Highlight Roll-off", "PsychoV31",
+             "How early highlights compress toward Peak. 0 = latest, 2 = soonest.",
+             IsPsychoMode, IsPsychoMode),
+      hue_shift("highlight_hue_shift", &shader_injection.highlight_hue_shift, "PsychoV31", 0.42f, IsPsychoMode),
+
+      // Extra (HDR only) /////////////////////////////////////////////////////////////////////////
+      slider("bloom", &shader_injection.bloom, "Bloom", "Extra", "Glow around bright lights.", IsHDRMode, IsAdvancedSettings),
+      slider("lens_flare", &shader_injection.lens_flare, "Lens Flares", "Extra",
+             "Sun flares and ghosts around bright lights.", IsHDRMode, IsAdvancedSettings),
+      slider("vignette", &shader_injection.vignette, "Vignette", "Extra", "Darker screen edges.",
+             IsHDRMode, IsAdvancedSettings),
+      slider("heat_haze", &shader_injection.heat_haze, "Distortion and Haze", "Extra",
+             "Heat haze over fires and other distortion.", IsHDRMode, IsAdvancedSettings),
+      slider("depth_of_field", &shader_injection.depth_of_field, "Depth of Field", "Extra", "Depth of field blur strength.",
+             IsHDRMode, IsAdvancedSettings),
+      slider("battle_fog", &shader_injection.battle_fog, "Battle Fog", "Extra",
+             "Battlefield fog, haze and distance blur.", IsHDRMode, IsAdvancedSettings),
+      new renodx::utils::settings::Setting{
+          .key = "sun",
+          .binding = &shader_injection.sun,
+          .default_value = 1.f,
+          .label = "Sun",
+          .section = "Extra",
+          .tooltip = "Brightness of the sun disc (evenly bright, as in the game). 1 = the game's.",
+          .min = 0.f,
+          .max = 20.f,
+          .format = "%.1f",
+          .is_enabled = IsHDRMode,
+          .is_visible = IsAdvancedSettings,
+      },
+      slider("foliage_glints", &shader_injection.foliage_glints, "Foliage Sun Glints", "Extra",
+             "Sun shine on grass, flowers and leaves (flickering white specks). 0 = off.",
+             nullptr, nullptr),
+      vfx("vfx_glow", &shader_injection.vfx_glow, "VFX Brightness: Fire & Glow",
+          "Fire, sparks, explosions and muzzle flashes; not burning houses or campfires.", 10.f),
+      vfx("vfx_big_fire", &shader_injection.vfx_big_fire, "VFX Brightness: Big Fires",
+          "Burning buildings, castles and walls.", 10.f),
+      vfx("vfx_campfire", &shader_injection.vfx_campfire, "VFX Brightness: Campfires", "Campfire flames.", 50.f, "%.0f"),
+      vfx("vfx_trails", &shader_injection.vfx_trails, "VFX Brightness: Trails",
+          "Arrow, bullet and artillery trails.", 10.f),
+      vfx("vfx_firelight", &shader_injection.vfx_firelight, "VFX Brightness: Firelight",
+          "Light from fires, explosions, torches and lanterns.", 10.f),
+      vfx("vfx_smoke", &shader_injection.vfx_smoke, "VFX Brightness: Smoke & Dust",
+          "Lit smoke and dust. Black smoke stays black (see VFX Opacity).", 10.f),
+      vfx("vfx_smoke_opacity", &shader_injection.vfx_smoke_opacity, "VFX Opacity: Smoke & Dust",
+          "Thickness of smoke and dust, black smoke too.", 3.f),
+      new renodx::utils::settings::Setting{
+          .key = "video_autohdr",
+          .binding = &shader_injection.video_autohdr,
+          .default_value = 0.f,
+          .label = "Video AutoHDR",
+          .section = "Extra",
+          .tooltip = "Brighter highlights in the game's videos. 0 = off. High values can show banding.",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "video_dithering",
+          .binding = &shader_injection.video_dithering,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Video Dithering",
+          .section = "Extra",
+          .tooltip = "Hides banding in brightened videos.",
+          .labels = {"Off", "On"},
+          .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
+          .is_visible = IsAdvancedSettings,
+      },
+      // VFX effect test (hidden):
+      // new renodx::utils::settings::Setting{
+      //     .key = "vfx_test",
+      //     .binding = &vfx_test,
+      //     .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+      //     .default_value = 0.f,
+      //     .label = "VFX Effect Test",
+      //     .section = "VFX Effect Test",
+      //     .tooltip = "Find a fire or glow effect (hide it, or show only it), then set the slider it follows.",
+      //     .labels = {"Off", "Hide Effect", "Only Effect"},
+      //     .is_visible = IsAdvancedSettings,
+      // },
+      // new renodx::utils::settings::Setting{
+      //     .key = "vfx_test_effect",
+      //     .binding = &vfx_test_effect,
+      //     .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+      //     .default_value = 1.f,
+      //     .label = "Effect",
+      //     .section = "VFX Effect Test",
+      //     .tooltip = "Effects are numbered in the order they first appear.",
+      //     .min = 1.f,
+      //     .max = 200.f,
+      //     .is_enabled = [] { return vfx_test != 0.f; },
+      //     .is_visible = IsAdvancedSettings,
+      // },
+      // test_step("Previous on Screen", -1),
+      // test_step("Next on Screen", 1),
+      // new renodx::utils::settings::Setting{
+      //     .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+      //     .section = "VFX Effect Test",
+      //     .on_draw = [] {
+      //       const auto effects = twshogun2::vfx_effects::Effects();
+      //       const auto on_screen = std::ranges::count_if(effects, [](const auto& effect) { return effect.on_screen; });
+      //       std::string text = std::format("{} effects seen, {} on screen ({} read back).", effects.size(), on_screen,
+      //                                      twshogun2::vfx_effects::ReadBacks());
+      //       const int number = static_cast<int>(vfx_test_effect);
+      //       if (number >= 1 && number <= static_cast<int>(effects.size())) {
+      //         const auto& effect = effects[number - 1];
+      //         const bool glow_mesh = (effect.id == twshogun2::vfx_effects::GLOW_MESH_COLOR
+      //                                 || effect.id == twshogun2::vfx_effects::GLOW_MESH_TEXTURE);
+      //         text += (glow_mesh ? std::format("\nEffect {}: glow mesh, ID {}", number, effect.id)
+      //                            : std::format("\nEffect {}: ID {:08X}, emissive {:.2f} to {:.2f}", number, effect.id,
+      //                                          effect.emissive_min, effect.emissive_max));
+      //         text += (effect.on_screen ? "" : " (not on screen)");
+      //         switch (twshogun2::vfx_effects::KindOf(effect.id)) {
+      //           case twshogun2::vfx_effects::Kind::BIG_FIRE:
+      //             text += "\nFollows: Big Fires";
+      //             break;
+      //           case twshogun2::vfx_effects::Kind::CAMPFIRE:
+      //             text += "\nFollows: Campfires";
+      //             break;
+      //           default:
+      //             text += "\nFollows: Fire & Glow";
+      //             break;
+      //         }
+      //       }
+      //       ImGui::TextUnformatted(text.c_str());
+      //       return false;
+      //     },
+      //     .is_visible = [] { return IsAdvancedSettings() && vfx_test != 0.f; },
+      // },
+      // test_assign("Set as Fire & Glow", twshogun2::vfx_effects::Kind::FIRE_AND_GLOW),
+      // test_assign("Set as Big Fires", twshogun2::vfx_effects::Kind::BIG_FIRE),
+      // test_assign("Set as Campfires", twshogun2::vfx_effects::Kind::CAMPFIRE),
+  };
+}
+
+bool configured = false;
+bool attached = false;
+bool addon_registered = false;
+
+// The DLSS addon's graphics options for shaders here (its overlay, ReShade.ini [Shogun 2 DLSS]): read at attach, each
+// frame while ReShade's overlay is open (where they change) and as it closes. Not on reshade_overlay: an add-on with
+// that event makes ReShade build its overlay every frame, open or not.
+void ReadDlssAddonOptions() {
+  int ssr_resolution = 1;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSRResolution", ssr_resolution);
+  shader_injection.ssr_resolution = static_cast<float>(ssr_resolution);
+  int sss_samples = 0;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSSamples", sss_samples);
+  shader_injection.sss_samples = static_cast<float>(std::clamp(sss_samples, 0, 5));
+  int sss_stability = 0;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", sss_stability);
+  shader_injection.sss_stability = static_cast<float>(std::clamp(sss_stability, 0, 2));
+  int shadow_map_stability = 0;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ShadowMapStability", shadow_map_stability);
+  shader_injection.shadow_map_stability = static_cast<float>(std::clamp(shadow_map_stability, 0, 2));
+}
+
+std::atomic_bool overlay_open = false;
+
+bool OnOpenOverlay(reshade::api::effect_runtime*, bool open, reshade::api::input_source) {
+  overlay_open.store(open, std::memory_order_relaxed);
+  if (!open) {
+    ReadDlssAddonOptions();
+  }
+  return false;
+}
+
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*,
+               const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  if (overlay_open.load(std::memory_order_relaxed)) {
+    ReadDlssAddonOptions();
+  }
+  twshogun2::vfx_effects::OnPresent();
+}
+
+void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
+  const auto desc = swapchain->get_device()->get_resource_desc(swapchain->get_back_buffer(0));
+  render_scale::back_buffer_width = desc.texture.width;
+  render_scale::back_buffer_height = desc.texture.height;
+
+  auto peak = renodx::utils::swapchain::GetPeakNits(swapchain);
+  if (!peak.has_value()) {
+    peak = 1000.f;
+  }
+
+  for (auto& setting : settings) {
+    if (setting->binding != &shader_injection.peak_white_nits) continue;
+    setting->default_value = peak.value();
+    setting->max = std::max(peak.value(), setting->max);
+    setting->can_reset = true;
+    break;
+  }
+}
+
+// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
+void SetOutputEncoding(int encoding) {
+  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
+  if (encoding == 2) {
+    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
+    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
+  } else {
+    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
+  }
+}
+
+// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
+// before the swapchain mod's create_swapchain (registered after this).
+bool auto_output_pending = false;
+
+bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
+  if (!auto_output_pending) return false;
+  auto_output_pending = false;
+  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
+  const auto path = renodx::utils::platform::GetPathInfo(monitor);
+  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
+  SetOutputEncoding(windows_hdr ? 1 : 2);
+  return false;
+}
+
+void ConfigureAddon() {
+  if (configured) return;
+
+  BuildRuntimeData();
+
+  // Shaders cb
+  renodx::mods::shader::expected_constant_buffer_space = 50;
+  renodx::mods::shader::expected_constant_buffer_index = 13;
+  render_scale::Set(1.f, 1.f);
+
+  // Swapchain cb
+  renodx::mods::swapchain::expected_constant_buffer_index = 13;
+  renodx::mods::swapchain::expected_constant_buffer_space = 50;
+
+  renodx::mods::swapchain::use_resource_cloning = true;
+  renodx::mods::swapchain::force_borderless = false;
+  renodx::mods::swapchain::prevent_full_screen = true;
+
+  renodx::mods::swapchain::swap_chain_proxy_shaders = {
+      {
+          reshade::api::device_api::d3d11,
+          {
+              .vertex_shader = __swap_chain_proxy_vertex_shader_dx11,
+              .pixel_shader = __swap_chain_proxy_pixel_shader_dx11,
+          },
+      },
+  };
+
+  // The tonemap's output, the UI target and the frame after them: 8-bit (the game's HDR: 10-bit) at back-buffer
+  // aspect, upgraded at creation.
+  for (auto format : {
+           reshade::api::format::r8g8b8a8_typeless,
+           reshade::api::format::r8g8b8a8_unorm,
+           reshade::api::format::r8g8b8a8_unorm_srgb,
+           reshade::api::format::b8g8r8a8_typeless,
+           reshade::api::format::b8g8r8a8_unorm,
+           reshade::api::format::b8g8r8a8_unorm_srgb,
+           reshade::api::format::r10g10b10a2_typeless,
+           reshade::api::format::r10g10b10a2_unorm,
+       }) {
+    renodx::mods::swapchain::resource_upgrade_infos.push_back({
+        .old_format = format,
+        .new_format = reshade::api::format::r16g16b16a16_float,
+        .use_resource_view_cloning = true,
+        .aspect_ratio = renodx::mods::swapchain::SwapChainUpgradeTarget::BACK_BUFFER,
+        .usage_include = reshade::api::resource_usage::render_target,
+    });
+  }
+
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "SwapChainEncoding",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 3.f,
+        .label = "Output",
+        .section = "Output (Restart Required)",
+        .tooltip = "Auto: scRGB with Windows HDR on, else SDR. Default.\n"
+                   "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR.",
+        .labels = {"HDR10", "scRGB", "SDR", "Auto"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    const int value = static_cast<int>(setting->GetValue());
+    auto_output_pending = (value == 3);
+    SetOutputEncoding(auto_output_pending ? 1 : value);
+    settings.push_back(setting);
+  }
+
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::TEXT,
+      .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
+      .section = "About",
+      .is_visible = IsAdvancedSettings,
+  });
+
+  configured = true;
+}
+
+}  // namespace
+
+extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
+extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War: SHOGUN 2 by ATN";
+
+namespace {
+
+bool AttachAddon() {
+  if (attached) return true;
+
+  ConfigureAddon();
+
+  ReadDlssAddonOptions();
+  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::register_event<reshade::addon_event::reshade_open_overlay>(OnOpenOverlay);
+  reshade::register_event<reshade::addon_event::map_buffer_region>(twshogun2::vfx_effects::OnMapBufferRegion);
+  reshade::register_event<reshade::addon_event::unmap_buffer_region>(twshogun2::vfx_effects::OnUnmapBufferRegion);
+  reshade::register_event<reshade::addon_event::update_buffer_region>(twshogun2::vfx_effects::OnUpdateBufferRegion);
+  reshade::register_event<reshade::addon_event::update_buffer_region_command>(
+      twshogun2::vfx_effects::OnUpdateBufferRegionCommand);
+  reshade::register_event<reshade::addon_event::present>(OnPresent);
+  twshogun2::vfx_effects::LoadKinds();
+
+  renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  twshogun2::dlss_jitter::Use(DLL_PROCESS_ATTACH);
+  renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
+  renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+
+  attached = true;
+  return true;
+}
+
+void DetachAddon() {
+  if (!attached) return;
+
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::unregister_event<reshade::addon_event::reshade_open_overlay>(OnOpenOverlay);
+  reshade::unregister_event<reshade::addon_event::map_buffer_region>(twshogun2::vfx_effects::OnMapBufferRegion);
+  reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(twshogun2::vfx_effects::OnUnmapBufferRegion);
+  reshade::unregister_event<reshade::addon_event::update_buffer_region>(twshogun2::vfx_effects::OnUpdateBufferRegion);
+  reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(
+      twshogun2::vfx_effects::OnUpdateBufferRegionCommand);
+  reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+
+  renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
+  renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
+  renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+  twshogun2::dlss_jitter::Use(DLL_PROCESS_DETACH);
+
+  attached = false;
+}
+
+}  // namespace
+
+extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
+  if (!addon_registered) {
+    if (!reshade::register_addon(addon_module)) return false;
+    addon_registered = true;
+  }
+
+  return AttachAddon();
+}
+
+extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
+  DetachAddon();
+  if (addon_registered) {
+    reshade::unregister_addon(addon_module);
+    addon_registered = false;
+  }
+}
+
+BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
+  switch (fdw_reason) {
+    case DLL_PROCESS_ATTACH:
+      if (!reshade::register_addon(h_module)) return FALSE;
+      addon_registered = true;
+      break;
+
+    case DLL_PROCESS_DETACH:
+      // ReShade calls AddonUninit before an explicit unload. During process
+      // termination, avoid calling into ReShade or RenoDX under the loader lock.
+      if (lpv_reserved == nullptr && addon_registered) {
+        reshade::unregister_addon(h_module);
+        addon_registered = false;
+      }
+      break;
+  }
+
+  return TRUE;
+}

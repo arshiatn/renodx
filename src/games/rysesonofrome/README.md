@@ -59,6 +59,13 @@ HDR effects:
 - Lens flares HDR was tried (fix10/11) and removed: each flare sprite (AC3155D8, BE5D77E6, 92DFB7F1,
   3468E47B) goes through its own filmic curve x(ax + b) / (x(ax + 1.7) + c) and is saturated; no
   visible change in game.
+- Sun Glow (fix36, Extra slider) was tried and removed (fix37, ATN: doesn't look good). ATN saw the sun stay at
+  203-250 nits whatever Peak / Exposure / Highlights (chapter 3, debugForClaude37): the sky dome's sun (0x74F62697, 18)
+  is under an opaque sky texture (0x1C896707, about 0.2) and the shafts' mask is full around the sun, so the screen
+  blend pins it near white. It added, as light, what the blend cuts off past white (decode(max(base + s, 1)) -
+  decode(max(screen, 1))).
+- Video variants 0x0ABA0C5A (YUV) / 0x67F12AF3 (YUVA) are Scaleform's multiply mode (lerp(1, video, alpha), then
+  multiplied with the screen): a factor, not a color, so stock (no Paper White gain, no ITM).
 - Film Grain HDR was tried (fix10-12) and removed (not faithful: it moved the overlay's white to Peak).
   Grain is the stock overlay up to white.
 - Video Highlights (slider, default 0): inverse tone mapping (ITM) of the 8-bit SDR videos; luminance

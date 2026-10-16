@@ -12,31 +12,244 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
 - If the build can't write the addon (game or zombie `Ryse.exe` running), rename the old file aside and rebuild.
 - Shell heredocs eat backslashes (`\0`, `\\`): write edit scripts with the Write tool, then run them with python.
 
+## RESUME HERE (2026-10-16): Shogun 2 HDR v41 / DLSS v31, Ryse HDR fix37 / DLSS v101 (history below, newest at the end of this section)
+Game: D:\Games\Total War SHOGUN 2 Complete Edition (DX11). Every shader + the game's HLSL source extracted from
+data\shaders.pack: `bin\cmd_Decompiler-1.3.16\dump_shader_shogun2_pack` (README.txt; tools\shogun2). v1
+(`Downloads\twshogun2_v4.zip`; v4: menu Brightness fixed at x1 in all modes, Extra sliders Lens Flares / Vignette /
+Heat Haze / Radial Blur (README lists what's left: DOF, battle fog, sun; DLSS idea below); v3: Extended = UE Filmic Extended, Psycho contrast x the curve's 1.40, game
+gamma 2.0 emulated in HDR; film constants from data.pack *.lighting, mid gray 0.087 by the toe typo): proxy (the game's HDR stays on: it re-enables itself on HDR
+displays; harmless, only the two replaced shaders read it), tonemap 0xEF060C7C / 0xBEDBEFD8 (distortion) written from
+hdr_to_screen.hlsl (UE4 FilmToneMap in AP1 + 3-way grading; Extended = shoulder asymptote at Peak; PsychoV31),
+ui_resolve 0x3D56DB58 always the SDR copy. Mod README has the pipeline. Next: ATN's test of v4, DOF / fog / sun sliders; then ATN's idea: the game's "DLSS" is DLAA only
+(it has jitter + motion vectors): make it render below output and let DLSS upscale. Then Tales of Arise, then recheck the other Total War games for shader packs (memory project_roadmap).
+Addon not linked into the game folder (symlink needs admin).
+Shogun 2 DLSS RE (2026-10-14, tools\shogun2\sx.py on empire.retail.x64.dll, NGX 3.10.4 + FSR3 + XeSS static/imported):
+the game's DLSS = DLAA: feature create 0x1abc6f0 (Width/Height = OutWidth/OutHeight = display size from the
+object at 0x3457890 +0x10/+0x14, PerfQualityValue 5 = DLAA, flags 1 / 0x41 | 0x80), pass 0x1ad1580 (eval struct:
+Color rbx+0x298, Output rbx+0x2a0, render subrect = display size, MV scale -1 / 1), SDK evaluate helper 0x1abd950.
+No render scale anywhere (gfx_aa 5/6/7 = FSR/DLSS/XeSS as AA; FSR3's GetRenderResolutionFromQualityMode never
+called). Upscaling needs the engine to render smaller. ATN: do both (1: lower game resolution + 4K output, tonemap /
+UI re-run; 2: viewport-scaled render scale). Step 1 = `src/games/twshogun2_dlss` v1 (`Downloads\twshogun2_dlss_v1.zip`,
+untested): detours on create / evaluate (patterns in game_dlss.hpp), overlay status, one-frame trace
+(shogun2_frame_trace.txt). v1 trace (debug1): hooks work; jitter passed to DLSS = 0; everything before DLSS = 3D,
+everything after (bloom, tonemap, UI) display size: ATN's idea (UI at output, 3D upscaled) = option 2. v2
+(`Downloads\twshogun2_dlss_v2.zip`): trace adds camera constants (screen / viewport / origin / RT dims, jitter).
+v2 traces (debug2): TAA jitters, DLSS never (game bug). v3 (`Downloads\twshogun2_dlss_v3.zip`): jitter
+patch (+0x1a9101b test/je -> jmp +0x1a91075) while DLSS runs, overlay toggle + debug sign (ATN: clearly better,
+sign right). v4 (`Downloads\twshogun2_dlss_v4.zip`, untested): render scale (option 2, README v4: viewports /
+scissors / camera g_viewport_dimensions scaled until the DLSS evaluation, feature recreated with the render
+input, Halton jitter in render pixels). v4 test (debug3): works (33%: 1280x720 -> 4K); 77% failed (UltraQuality
+refused). v5 (DLSS: Quality from 65%; HDR twshogun2 v5: DOF blur / focus + tonemap distortion lookup scaled, render
+scale captured like WH3). ATN: if option 2 works, option 1 is not needed. v5 test (debug4): DOF fixed; river copy in the sky,
+extra shadows, fire. v6 (HDR: SSR copy, highlight, Bend SSS, AO sweep, point / particle lights, ribbons,
+auto exposure fixed for the render scale; sliders DOF / Battle Fog / Sun, Distortion; DLSS: custom 1-100%).
+Audit tool: tools\shogun2\scale_audit.py TRACE NAMES. HDR v7: all permutations (+ SSS without cascades,
+8-bit hashed DOF blur; videos at Paper White + Video AutoHDR); open: old AO path, SAT DOF blurs (README
+v7); own sharpening: ATN no. DLSS v7 (debug5 flicker below 100%): MVLowRes was never set by the game
+(flags immediates +0x143 / +0x15b of create), now set while scaled; texture LOD bias as Ryse.
+ATN: MV fix works. v8: DLSS folds the jitter into the camera's inverse matrices when they lack it (blurry shadows,
+rock acne at 33%; log line 'Camera inverses'); HDR Grass Fade (grass dither moved by the jitter; vanilla
+flicker where the grass ends). debug7: inverses 'kept' (already jittered); Grass Fade made DLSS smear grass
+(coverage changing every frame). v9 = both removed (code as v7). OPEN: softer shadows + rock stripes at 33%
+(asked ATN: AO off at 33% on the rocks); vanilla grass-end flicker (CPU grass distance, not changed).
+debug8: rock fixed with SSS on; SSS off broken = the game's cs_passthrough double half-pixel offset (sss02 fixes).
+SSR flicker at 33%: traced at half the render size; HDR v10 SSR Resolution Full = render size at <= 50%
+(ssr.hlsli). v11 adds Grass Distance Fade Stable (dissolve threshold per 0.5 m world cell, grass.hlsli).
+v12 adds Extended user grading (as Ryse; Hue Correction default 0).
+debug9: rock fixed; SSR Full great <= 50%; grass Stable had holes (v13 fixed: screen 25% + cell distance part);
+SSR Full now also 50-100% (F = render / min(render, display/2)). OPEN: flowering bush unstable with jitter
+(asked for a trace), SSR at DLAA (needs bigger buffers), shadows fatter at 33% (sampling).
+debug10: shadows thinner below 100% = the LOD bias on shadow-map leaves (DLSS v10: main view only); grass fade
+removed (HDR v14, no visible gain; popping is the CPU's grass placement / LODs); flowers / tree leaves: MVs
+and dissolve checked, open (asked: preset K, LOD bias Matched). HDR v15 / DLSS v11: DLSS presets (SetUI hook),
+SSR resolution in the DLSS overlay (HDR addon reads ReShade.ini). ATN: presets / LOD bias Off do not fix the
+leaves; v11 blurrier textures (sampler cache). DLSS v12 (README v12): Simple / Advanced overlay, LOD bias
+rebinds on main-view changes, Grass distance (scrub node +0xd0, update hook +0x1b15f20), Advanced "DLSS
+particle mask" off (game passes FSR reactive mask; leaves never write it), trace with 8 RTs + clears.
+debug11: particle mask off = no change; MVs bound (rt3) and jitter sign consistent (+0x19a42b4).
+HDR v16: dissolve00/01 (rigidstandard alpha test 0xAECABA3F, rigidvertexwind 0x557A56D5 G-buffer) fade
+pattern on SV_Position instead of the jittered clip position. DLSS v13: grass distance to 32x. NEXT: ATN's
+test of flowers / leaves; near plant LOD pops (no global plant LOD distance found yet; terrain force_lod
+is the terrain grid, force_render_lod a debug filter). ATN: v16 flowers still flicker. DLSS v14: Wind
+motion fix (prev_time_in_sec = last frame's time on the main camera; theory: scene prev time only set
+by its time update +0x1a968e0), Terrain detail Finest everywhere (enable_force_lod / force_lod).
+debug12: wind fix no effect (removed in v15). DLSS v15: Model detail distance (SelectLod +0x1b26470 / fade
++0x1b265b0 hooked, distance^2 / scale^2; grass clumps RMV2 LODs 25/50/100 m). Flowers flicker: still open.
+NEXT: ATN's test of model detail on grass pop-in; trees (tree_mesh / TREE_LOD_LIST) not found.
+debug13: white flickering specks on the meadow only facing the sun (SSR/SSS no matter) = foliage sun
+backscattering (step at dot(N,L) < 0). HDR v17: sunlight00-03 (directionallight 0xED1BED93 etc.) x Foliage
+Backlight (Extra): ATN only trees change. HDR v18: Foliage Sun Glints (sun specular) and Foliage Reflections
+(env reflectivity) on IS_FOLIAGE pixels. ATN: Sun Glints 0 removes the specks, the others are right at 1.
+HDR v19: only Sun Glints kept; Highlight Hue Shift (Tales) in both HDR modes (Ext 0.30 / V31 0.24), Hue Correction
+removed; SSRResolution read only while the overlay is open. DLSS v16: render sizes in whole display-aspect units
+(custom 99% flickered: rounded aspect -> motion_vectors.hlsl static MVs up to 0.6 px at the edges); debug14: bushes
+(rigidleaf_v3) and tree trunks (rigidbranch_v3) unstable, stones / grass stable -> Advanced "Capture DLSS inputs"
+(4 frames color / MV / depth raw .bin) + trace prints camera constants on every change. NEXT: ATN's capture at 33%
+paused at the bushes; decode the .bin (header w, h, DXGI format, texel bytes) and check tree MVs.
+debug15 (tools\shogun2\capture_decode.py): tree pixels MVs up to 1000 px while paused (grass 0) = tree PS read prev
+pos with w = 1, VS passes (s p, s), s = pos.w x (w0 + w1) != 1 (half weights). HDR v20: treevelocity00-03 fix; Fire &
+Glow / Smoke & Dust Brightness via effects_overlay (blend state per draw); SSR ray steps (x1/2/4), SSS samples
+120/240 (both compiled); Radial Blur removed; Recommended: glints 0, bloom 1. DLSS v17: particle resolution
+(vfx_enable_dynres off below 100%: smoke stuck on screen in heavy smoke), SSR/SSS options, particle mask test removed.
+ATN: plants FIXED. Particle resolution Full = 80 -> 30 fps. HDR v21: VFX sliders in Extra (Experimental), "VFX
+Brightness: Fire & Glow / Trails / Firelight / Smoke & Dust", "VFX Opacity: Smoke & Dust" (black smoke); SSS to 960,
+SSR to 16x; hue 0.45 / 0.38. DLSS v18: VFX dynres viewports / scissors / camera c38 (int(display x s), s 0.3-1)
+scaled to render x s (render_scale.hpp ScaledParticleSize); dynres back on by default. ATN: smoke stays in place
+below 100%, but blurry. HDR v22: banner flicker paused (debug16) = cloth VS passes the CPU's stale prev_position
+(clothvelocity00 0xBDFF60D4: current position while time == prev time); Trails slider + projectiletrail 0x03F58817,
+Fire & Glow + rigidglow 0xBA0315BE / 0x546A3049; Psycho highlight contrast 0.86 (contrast 1.40 had lifted highlights up
+to a stop; tools\shogun2\psycho_fit.py). HDR v23 (ATN): Psycho contrast match removed (own contrast, highlight
+contrast 1). HDR v24: Bloom only the bloom (hdrflare00; the tonemap's t1 holds bloom + flare ghosts), Recommended Lens
+Flares 0, Psycho Cone Response Exponent (power = contrast x cone, purity / contrast, as ruse), Firelight + point lights,
+VFX 0.1 steps. DLSS v20: particle minimum = 0.3 / render scale automatically, slider removed, Advanced shows the
+particles' lowest scale last frame. HDR v25 / DLSS v21: SSS to 3840 (bend_sss_gpu.hlsli loops dynamic, reads straight
+to groupshared: 463 slots), SSR to 64x. HDR v26 / DLSS v22: heat haze bilinear below 100% (debug17 mosaic = point-sampled
+render-size distortion), ATN's presets (HDR: Recommended + Recommended (SDR-like Saturation), Reset below; DLSS:
+Recommended (ATN's settings) / Reset), hue defaults 0.20 / 0.25, SSR ray steps removed. Open: SSR Full at 100% needs
+display-size SSR buffers (HiZ 1920x1080 R32G32 with mips, hit buffer R16G16) and doubled dispatches; offered to ATN.
+HDR v27 / DLSS v23: Shadow stability (SSS contrast 4 -> 2, then IgnoreEdgePixels; untested), preset renamed Native-like
+Saturation/Contrast, tooltips shortened. HDR v28 / DLSS v24: heat haze un-jittered below 100% (DLSS addon shares eval
+jitter via dlss_jitter.hpp cross_addon; tonemap01 B-spline read), Shadow softness (cascade tent 2.5 / 3.5 texels), heat
+haze slider in VFX. Untested: jitter sign (if the haze wobbles more, flip it in tonemap01). HDR v29: VFX Brightness:
+Dim Fire & Glow (vfxoverlay00 additive draw, brightness-dependent gain, pivot 2 scene-linear; ATN: too bright on
+house fires). HDR v30: depth of field cs_coc_bokeh (dofcoc00/01) also applied the heat haze (now x Heat Haze, x render
+scale); VFX Effect Test (vfx_effects.hpp: effect constants CRC32 per draw; ATN to report house fire IDs, then Fire &
+Glow per effect and Dim Fire & Glow removed); hue defaults Ext 0.33 / V31 0.42. HDR v31 / DLSS v25: ATN confirmed
+the haze fix; Burning Houses (9FC96955) / Campfires (FE957C04) / Fire & Glow per draw (SI.vfx_glow_draw), Distortion
+and Haze in Extra, Native-like preset removed; shadow map resolution (tweak shadow_resolution_multiplier) and shadow map
+stability (normal offset in sss.hlsli). Untested. HDR v32 / DLSS v26: effect ID = CRC of c0-c3 + c16-c20 (mid colours
+are leftovers from the previous effect: IDs changed with what was on screen, ATN); test buttons Set as Fire & Glow /
+Burning Houses / Campfires (ReShade.ini [Shogun 2 VFX effects]); Recommended heat haze 0.1, hue = Psycho default;
+Shadow softness removed; DLSS Recommended both shadow stabilities Steadier. HDR v33 / DLSS v27: ATN's IDs baked
+(Big Fires 1 FC75D250 DCB6C2CB FF972FE7, Campfires 73B8E4C8), Burning Houses -> Big Fires, Campfires 0-50, test
+settings commented out, cloth VS paused check |dt| < 1 ms (debug18 banner 700-1000 px with exact equality; trace now
+prints time - prev); DLSS: Particle resolution On/Off (Recommended Off), preset K default. DLSS v28: Particle
+resolution Off by default and in Reset (ATN). Ryse DLSS v98: raw DLSS input capture (dlss_capture.hpp, Advanced button,
+4 frames at DLAA too) for the paused flicker; tools\shogun2\capture_decode.py reads ryse_dlss_capture_* (R32 depth).
+Ryse DLSS v99 (debugForClaude38, paused): MVs ~0 (max 0.07 px, valid camera MVs), image jitter = told jitter within 0.02
+px (Lucas-Kanade, scratchpad ryse_lk.py), but DLSS depth = 1.0 on every pixel: 0x52594501 used PER_BATCH
+PS_NearFarClipDist, which the game's TAA 0x121C45E4 declares but never reads (unset). Now depth = clip z / w of the
+reconstructed surface with g_VS_ViewProjMatr (PassConstants 80 bytes: depth_reversed, current_z), reverse-Z measured on
+the CPU. ATN debugForClaude39: depth varies now (fixed), still armour flicker standing still = sub-pixel glints (16 px
+block max 0.2 -> 2.3 -> 0.2, 0.4 -> 11.4 in 1 of 4 frames; HDR addon values >> 1, SDR clamped at 1). v100: Highlight
+stability (Ryse AA HighlightStability 0/1/2, default 1): highlight_stability.hlsli compresses the max channel above a knee
+in 0x52594501 and expands it in the copy 0x52594502 (PassConstants.highlight_stability). v101: removed (ATN: brightness
+changes, not wanted). Open: armour glint flicker = sub-pixel specular aliasing x jitter; no Ryse specular AA cvar (only
+r_NormalsLength debug). Options offered: Jitter "The game's" while paused; G-buffer specular AA (roughness from normal
+variance) as a larger job. Shogun 2 (ATN 2026-10-16): DLSS addon "loads but does not work" after reordering addons:
+ReShade.log 00:24 shows all hooks installed but no "The game creates DLSS" / jitter on: the game's DLSS pass never ran
+(in-game AA not DLSS?); asked ATN to check.
+Shogun 2 HDR v34: cloth VS divides positions by w (UI unit banners have w != 1; debug19 time - prev = 0 yet 33000 px),
+sea colour overlay (indicator to_overlay C57C222D, seainteraction C8375A74, wake 06701006) drawn with a full viewport
+(ocean reads it by decal projection = full-screen UV; was 1/3 in the top-left at 33%), preset Recommended (SDR-like
+Contrast/Saturation) = Recommended + cone 1.25. Untested.
+Shogun 2 HDR v35: Output SDR (10-bit r10g10b10a2 + srgb_nonlinear, proxy passes the gamma 2.2 image, Peak / Paper White
+/ UI hidden, SHOGUN_SDR_OUTPUT / SHOGUN_PAPER_WHITE macros; Extended = game curve, PsychoV31 BT.709 at peak 1) and
+Output Auto (new default index 3: scRGB if Windows HDR is on for the window's monitor, else SDR; own create_swapchain
+handler registered before the swapchain mod's). Untested.
+CPU pass (ATN 2026-10-15: game CPU-bound, no debug work in the background): HDR v36: reshade_overlay event removed (any
+add-on with it makes ReShade build its ImGui frame every frame, overlay closed too; DLSS options now read on present
+while reshade_open_overlay says open, and on close), VFX test bookkeeping only after the test's first Drawn, map / unmap
+shared lock / atomic fast path, sea overlay viewport check first, DEBUG_LEVEL_0 off. DLSS v29: frame trace events
+registered only for the traced frame (frame_trace::internal::UseEvents), render_scale debug counts only when the overlay
+requests them, any_mapped fast path on unmap, texture_lod_bias tracks samplers only while bias != 0 (SetTracking at
+present seeds from PSGetSamplers). Untested.
+Shogun 2 HDR v37: Sun slider 0-20 (debug20: the flat sun top is the texture: models.pack (entries u64 offset, u32 size,
+u32 stored size, LZ4 block data) rigidmodels\skybox\sundisk1.dds DXT5 = even white disc, soft alpha edge; not a clip),
+SDR-like preset = Recommended + highlights 0.95, cone 1.34, roll-off 2. HDR v38: Recommended Sun 2, SDR-like cone 1.30.
+HDR v39 / DLSS v30: SSR ray steps back (SSRSteps 0-6, ssrray00 100 x 2^n; ATN: sea reflections), flagvelocity00
+(VS 0x40E181C2 rigidtextureblendwind: camp / castle flags, prev instance matrix stale while paused (debug21: 80-1500 px):
+paused -> prev = current position; dcl identical to the game's). Nexus text v4 (SSR ray steps, flags).
+HDR v40 / DLSS v31 (debug22): SSR ray steps removed again (no effect); uifigure00/01 (ps30_main_ui F45347E8 alpha 2,
+A406D4BE: saturate o0, UI RT upgraded); campaign overlay (4800x2700 roads / borders / rivers at full size) read with
+uv / min(viewport / screen, 1) in sunlight02/03 and campaignwater00/01 (F7103E54, 630BA7A4). Open: SSR missing in the
+last 16 SSR px (render 3776-3808) at 99% (debug22 sea battle ssr; not stretched, cause not found: asked ATN for 50%
+screenshots); campaign Psycho brighter: SDR 88-nit snow -> Psycho 235 / Extended 140 (own contrast), auto exposure runs.
+Nexus text v5 (no SSR ray steps; menu figures, campaign overlay).
+HDR v41: SSR right-edge strip = ssrresolve00's radiance lookup at coarse mips (up to 5, 32 px texels) averaging the
+unrendered area (debug23: ~32 render px at 99% and 50%, far-water band only): clamped half a coarsest texel inside the
+viewport below 100%. FotS campaign map (data_fots.pack bos_japan *.lighting) film_slope 0.52-0.68 (others 0.88):
+PsychoV31 response power x g_tone_mapping_film_slope / 0.88. ATN 2026-10-16: Shogun 2 DLSS engages again after restarts.
+Nexus text v3: Downloads\nexus_text_shogun2_v3.txt (SDR output, game's fake HDR / 80-peak sliders, sea battle line
+pending ATN's sea battle test). DLSS v19: Particle resolution minimum = dynres min variable (+0x2e7b744) set
+to share-of-display / render scale. SSS: samples are the reach (1 px each). NEXT: ATN's test; after Shogun 2: Ryse
+paused flicker with the same DLSS input capture (memory project_roadmap).
+Older: NEXT: ATN's v7 test + traces at lowest AO / DOF and on the campaign map at 33%.
+Tools: tools\shogun2\trace_phases.py / trace_summary.py.
+
 ## RESUME HERE (2026-10-13, ATN continues on another Claude account, same PC / Windows user)
 Nothing of this conversation carries over except files: this HANDOFF, memory (`C:\Users\arshi\.claude\projects\
 D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{ryse,toa,exr}`), the repo (branch
 `atn-mods`, many uncommitted changes: never push upstream) and the zips in `Downloads`. ATN's rules above still hold.
-1. OPEN, Ryse DLSS v65 (`Downloads\rysesonofrome_dlss_v65.zip`, built, not yet run by ATN). Soldiers' arm armour does
-   not SIT on the arm until ~2-4 m from the camera (ATN; looks "bigger" up close). Ruled out (ATN tests, v61-v64):
-   model LOD (e_LodMax 0, e_LodMin 2, e_CharLodMin 2 change nothing), blend shapes, vertex animation, tessellation,
-   full skeleton updates / joint masking off ("Max every character setting (test)", Advanced). That toggle costs no fps
-   and fixes swords / armour going through cloth beyond 5 m: ATN wants it kept as a real option (memory
-   feedback_ryse_character_max.md), more CPU-heavy options later. e_LodMax 0 at Detail distance 64x stays (ATN).
-   v64 pixel trace (Advanced "Trace this pixel", pixel_trace.hpp; files `Bin64\debugForClaude22\far.txt / close.txt`):
-   far and near are the SAME draw (54876 indices from 20136, same VB / IB / textures); far vs 0x1DD1EFED / ps
-   0xB02408C9, near vs 0xC38FB39D / ps 0x3433A827 differ only by object motion blur output (decompiled in
-   `bin/cmd_Decompiler-1.3.16/dump_shader_ryse`). Skinning: CB_SkinQuat_Cur b9, 768 dual quaternions (row 0 = real
-   quaternion, row 1 = dual), 4 weights. So the POSE differs: some armour helper bone is only updated near.
-   v65: the trace also lists each painting draw's b9 bones ("Bones of #N", rotation xyzw | dual xyzw, up to the last
-   non-zero bone). NEXT: ATN traces the same soldier's arm armour far and near (rename the first file), sends both.
-   Compare per bone: rotation quaternion q (row 0) and translation t = 2 * (dual * conjugate(q)).xyz (row 1); idle
-   animation moves bones a little, the helpers that only update near jump (often far = parent's transform / bind pose).
-   Then find what drives them, candidates in the exe: pendulum / redirect attachments (strings PA_PendulumType, PA_FPS,
-   PA_RedirectToJoint; CDF parse +0x8e39ca, save +0x8e6547; attachment LOD +0x881950), pose modifiers
-   (AnimationPoseModifier_OperatorQueue, _PoseMatching, _LimbIk), Ryse correctives (cc_neckSimulation,
-   cc_groinSimulation; cvars flags 0x80, settable), "Animation/PendulumSimWeight" (+0xacc7c9, +0x1790673). Look for a
-   camera-distance gate (a compare of the character's distance with a few metres) and patch / pin it like the jitter.
-   Afterwards: turn "Max every character setting" into a saved option (in presets), remove the debug test UI.
+1. DONE (ATN: "it fixes it", no fps cost on a 7950X3D), Ryse DLSS v70 (`Downloads\rysesonofrome_dlss_v70.zip`):
+   soldiers' arm armour not sitting until ~2-4 m = ANIMATION LOD. Soldiers' bodies (romn_lgnr*.cdf, 257 joints,
+   the armour's bone buffer) have 4 chrparams <Lod><JointList> lists (126/125/54/25 joints), heads 2 (87/16);
+   soldiers a few metres away run at animation LOD 2-19. No list keeps L/R_UpArmTwist1 (54, 97), parents of the
+   LGNR_*_lorica_shoulder01-04_HLP plates, nor the twist / shoulder / knee helpers: from LOD 1 they keep their
+   default pose. Code: the sampling commands' controller lookup +0x934a70 (sampling state = command buffer +
+   0x810: model +0, joint count +0x30, LOD +0x34, instance +0x50; lists at model +0x248, loader +0x95e850) gives
+   controllers only to listed joints. Fix: game setting "Character animation" (last quality option, key
+   CharacterAnimation, Full in every preset) patches je +0x934ba0 -> jmp (LOD_LIST_TEST) and sets the old "Max every
+   character setting" CryAnimation console object values (QualityCvar::animation_offset, AnimationCvars();
+   ca_ForceUpdateSkeletons 1, ca_UseJointMasking 0, ca_ClothMaxChars 100, ca_FacialAnimationRadius 1000,
+   ca_FacialAnimationFramerate 240). Debug toggles and skeleton_log.hpp removed (copy: tools/ryse/
+   skeleton_log_v69.hpp, Detours probes); the pixel trace stays. Dead ends on the way (v61-v68): model LOD, blend shapes, vertex animation,
+   tessellation, a character swap (none: body 257 + head 515 joint characters at every distance), skinning skips.
+   v72 (tested by ATN): "Screen-space reflections" (the game's trace ps 0xE0B7E115 drawn with the addon's
+   0x52594506: High / Very High / Ultra / Extreme = 4x steps per metre along 1/2/4/8x the game's ray, bisected exact
+   hits; the game's gloss blur kept: ATN rejected a "sharper" item), Experimental section (presets skip it), water
+   volume caustics, silhouette POM, terrain LOD / detail materials, rain wetness distance, grass bending / far
+   physics / branches / crowd, debris (README v72). Global illumination removed in v73 (no difference).
+   v97 (`Downloads\rysesonofrome_dlss_v97.zip`): Terrain sun shadows removed (bugged in some chapters), ATN's
+   setting leaves Skip taunts off. v96: v95's Near shadow sharpness removed (ATN: looked worse); cutscenes
+   use the gameplay cvars (README v96). AI aggression: ATN said leave it. NEXT: text fixes, then Shogun 2.
+   v94 (`Downloads\rysesonofrome_dlss_v94.zip`): High quality shadows + View-aligned shadows removed (cutscene
+   shadow mode: 8 cascades ending near 100 m; README v94). v93: Advanced "Save the enemy attack patterns" works
+   (saved at level load): Bin64\ryse_attack_patterns\Scripts\AI\AttackPatterns\enemyattackpatterns.xml
+   (CryXmlB; tools\ryse\cryxmlb.py IN OUT makes text). Sequences = "Blocking[Attacker:AttackType] Random(a-b)":
+   one attacker at a time, then a pause; group ones start a second after a delay; Seq_Agro_00..03 pause 1-2 /
+   0.5-1 / 0-0.5 / 0 s. ATN undecided on "more aggressive AI": plan = feed a rewritten XML to the loader
+   (shorter pauses, fewer Blocking) via ISystem::LoadXmlFromBuffer at level load.
+   v92: 6 Experimental switches (DOF bokeh, HQ shadows, view-aligned
+   shadows, SSII, grass tessellation, skip taunts via static_int), heading texts. AI attack patterns: Scripts/AI/
+   AttackPatterns/*.xml in encrypted Scripts.pak (next: dump through the game). v91: Detail limit folded into Detail distance
+   (e_LodMax 4/3/2/1/0 from 4x), short tooltips. v90: v89 hook removed (e_LodMax only reaches attachments, sticky
+   when raised until characters rebuild), Detail limit tooltip, settings heading in orange. v89: (SetFrameLodInfo hook bumps
+   the LOD info ID on min / max LOD changes). v88 + HDR fix35 (`rysesonofrome_fix35.zip`; v1.03): overlay texts (when
+   settings apply, Experimental switches warning); HDR: "Video Highlights" -> "Video AutoHDR" (key unchanged),
+   Recommended (All Post Processing On) sharpening 0.5. v87: ATN's setting blood 3x. v86: Experimental
+   heading text. v85 (README v85): release polish (counts to Advanced,
+   user tooltips, presets' Detail limit 3/2/1). v84: Detail limit (LOD) option, e_LodMax
+   6/3/2/1/0 (out of Detail distance 64x). v83: Particle memory Off / 16x, warning
+   text, Experimental Reset / ATN's setting buttons (atn_choice). v82 (tested: some blink at max sliders):
+   Particle memory option (Off / 8x / 16x;
+   off locks the particle sliders at in-game), Fire / Smoke / Other up to 4x, Experimental warning. v81 (tested: 65535
+   shown, some parts still dropped at high sliders): particle vertices set to 65535 in a hook
+   on the buffers' maker (the game re-applies 30720 after the device). v80 (tested: showed 30720): particle vertex counter (used of
+   buffer, not fitted), particle memory 16x at install (ATN's test; v79 grew on demand). v79 (tested: sliders go
+   much higher, memory 2-3x; keep 65535): light limit removed (never reached,
+   20-30% fps), particle pool grown on demand (alloc hook, up to 16x), particle vertices 15360 -> 65535 at device
+   creation, counters under Other particles. Next if still flickering: read the counters; vertex pool above 65535
+   needs proof that indices are relative (or a per-part clamp). v78 (tested: counter < 255, flicker stays, 20-30% fps):
+   Light limit 255 / 1024 / 4096, also per 8x8
+   tile (shader index clamps), light counter under the slider, v76 budget removed. v77 (tested: blinking from Fire
+   4-6x, per-tile 255): Experimental "Light limit" 1024 (arrays
+   moved, buffers made again, edited lighting cs tiled_lights_cs.h, WARP-tested). v76: plant motion removed (fixed 1/30 s spine
+   steps, ATN: "1 fps"), particle lights held under the 255 tiled lights by a stable per-particle rank (light list
+   hook). Raising 255 (arrays, buffers, cs in both addons) offered, not done. v75 (tested: no chapter crash;
+   README v75): chapter-change crash fixed (per-level
+   g_crowdEmotionUpdateTimer left out), extra particles add no lights (255 tiled lights limit), "Plant motion" (merged
+   meshes simulated every frame with a scaled time step; the game: every 4th-12th frame). v74 (tested): particles per
+   effect part by texture (README v74),
+   leg colliders removed (ATN: characters fly), cloth cutting renamed. v73 (tested): per-kind particle counts (particle_counts.hpp,
+   Detours hook on the emit count scale +0xf5e50; README v73), replacing e_ParticlesLod; Experimental: leg
+   colliders, physical hit reactions, explosion craters, deformable objects, terrain sun shadows; cloth cutting
+   explained (world physics cloth / ropes only). Soldiers' clothes: CryAnimation "[Character Cloth]" (sim + render
+   attachments, wrap skinning), no cut / tear code: not possible. Possible later: the game's equipment drop
+   (DropAttachment +0x15abf53, DetachEquipment, DroppedEquipment: helmets / shields) on more hits. Ask ATN: each experimental toggle, the particle
+   sliders, ryse_particle_effects.txt (Advanced button) to refine the kind words, reflections per tier.
+   Plants ~24 fps: merged-mesh grass, a 1/30 s fixed-step spine simulation run at 1/4-1/12 speed (README v76): left
+   as the game's. Trees: other systems (vegetation BendInfo per frame on the CPU, foliage ropes within 25 m).
    How the RE was done: rx.py (`python -I rx.py cvar NAME` = help text from the exe; `xref RVA`; `dis RVA`),
    names.py (string users), field_any.py / disp_scan.py (struct field readers); 3D engine CVars* global +0x2e25048,
    CryAnimation console static +0x2240930 (found at runtime via FORCE_SKELETON_UPDATE); crash dumps with cdb
@@ -261,6 +474,16 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
 - "New ones 3" (27 shaders after the higher settings, = the DevKit auto-dump): 20 lighting/material variants
   (irreg_kernel_2d: finer shadow filtering), 2 VS, motion blur gathers 0x2EC2DAAE / 0x3CB3A474 (read the replaced
   velocity pack 0x799A5EB8, no color clamp), SSDO 0xD1106E8B, CA_Sharpening 0xC53CE326. None need replacing.
+- "New ones 4" (2026-10-14, every chapter, 171 PS / 147 VS): no permutation of a replaced shader (signature match on
+  cbuffer/texture names over all 511 dumped PS). New: lens flare sprites 0x199D8C5B / 0x25C7B8E3 / 0xBC7D5AD9 /
+  0x1096988E (HDRParams curve + saturate, like the stock ones), materials, water, fog, rain, color chart builder
+  0x69A6ADE3. Older dumps hold multiply-blend video variants 0x0ABA0C5A (YUV) / 0x67F12AF3 (YUVA), not replaced.
+  Chapter 3 sun trace (debugForClaude37): sun disc 18 (sky 0x74F62697) under the cloud layer (0x1C896707, 0.2);
+  final ~(1.09, 1.09, 1.07); orange sun glow sprite 0x3468E47B (0.32, 0.11, 0.03) via post01. ATN's Peak was 10000.
+- HDR fix37 (`Downloads\rysesonofrome_fix37.zip`): Sun Glow removed again (ATN: doesn't look good).
+- HDR fix36 (removed in fix37): ATN: sun stays 203-250 nits whatever Peak / Exposure /
+  Highlights = the shafts' screen blend pinning the full-mask area at white. Extra slider Sun Glow (default 0)
+  adds what the blend cuts off past white as light (README). Video multiply variants: stock is right.
 - HDR fix17: Chromatic Aberration slider 0-2 (default 0; 1 = amount 6 = r_FlaresChromaShift), key
   chromatic_aberration_strength.
 - v31 test (debugForClaude10): ATN edited TESTING to shadows 32x, others 256x; shadow res stops at our 16384 cap and

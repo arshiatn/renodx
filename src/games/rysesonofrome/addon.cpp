@@ -215,7 +215,7 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV31), with all vanilla post processing, \n"
-                     "hidden chromatic aberration, bloom at 0.5 and Video Highlights at 0.25 enabled.\n"
+                     "hidden chromatic aberration, bloom at 0.5, sharpening at 0.5 and Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
@@ -226,6 +226,7 @@ void BuildRuntimeData() {
                 {"motion_blur_object", 0.50f},
                 {"chromatic_aberration_strength", 0.35f},
                 {"bloom", 0.5f},
+                {"sharpening", 0.5f},
                 // {"sun_shafts", 0.5f},
                 {"video_highlights", 0.25f},
             });
@@ -237,7 +238,7 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV31), no film grain, no motion blur,\n"
-                     "no chromatic aberration. Bloom at 0.5, video highlights at 0.25.\n"
+                     "no chromatic aberration. Bloom at 0.5, Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
@@ -350,7 +351,7 @@ void BuildRuntimeData() {
           .key = "video_highlights",
           .binding = &shader_injection.video_highlights,
           .default_value = 0.f,
-          .label = "Video Highlights",
+          .label = "Video AutoHDR",
           .section = "Extra",
           .tooltip = "Inverse tone mapping (ITM) for the game's videos (8-bit SDR):\n"
                      "makes their bright parts brighter.\n"
@@ -370,7 +371,7 @@ void BuildRuntimeData() {
           .label = "Video Dithering",
           .section = "Extra",
           .tooltip = "Fine noise that hides banding in the brightened videos.\n"
-                     "Only with Video Highlights above 0.",
+                     "Only with Video AutoHDR above 0.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return IsHDRMode() && shader_injection.video_highlights > 0.f; },
           .is_visible = IsAdvancedSettings,
