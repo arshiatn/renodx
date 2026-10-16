@@ -182,3 +182,8 @@ v48: pixel trace compares only the texel's bytes (v47 compared 16, the rest of t
 First trace (ATN, sky): scene color is R11G11B10, the sky is Unreal's sky sphere (ps 0x11039AD5): fixed in the HDR
 addon v19 (Scene buffers 16-bit).
 v49: less CPU. Constant mirror: until the TAA pass's constant buffers are watched, every map, update, copy, new and destroyed resource returns at once (no GetDesc, no lock).
+v50: Advanced "Trace one frame" (frame_trace.hpp, from the Shogun 2 DLSS addon): every draw, dispatch, clear and copy
+of the next frame with its shaders, targets (8 + depth), viewport, scissor, inputs and Unreal's view / buffer size (View
+uniform buffer c122 / c123, found in the bound constant buffers), into tales_frame_trace.txt next to the exe. For DLSS
+upscaling: at a render scale below 100%, which passes after the TAA run at the render size, where the spatial upscale
+(0x57192B01) is and in which formats. Its events are registered only for the traced frame.

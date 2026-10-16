@@ -43,6 +43,7 @@
 #include "./native_state.hpp"
 #include "./ngx_backend.hpp"
 #include "./performance.hpp"
+#include "./frame_trace.hpp"
 #include "./pixel_trace.hpp"
 #include "./engine_hooks.hpp"
 
@@ -1127,6 +1128,7 @@ void OnDestroyDevice(reshade::api::device* device) {
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
+  talesofarise::frame_trace::OnPresent();
   const auto mode = requested_mode.load();
   bool changed;
   bool missed;
@@ -1611,6 +1613,14 @@ void OnOverlay(reshade::api::effect_runtime*) {
                       "tales_pixel_trace.txt next to the game's exe (one short hitch).");
   }
   ImGui::TextWrapped("%s", talesofarise::pixel_trace::Status().c_str());
+  if (ImGui::Button("Trace one frame")) {
+    talesofarise::frame_trace::Request();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Every draw, dispatch, clear and copy of the next frame with its shaders, targets, sizes and\n"
+                      "formats, saved to tales_frame_trace.txt next to the game's exe (one short hitch).");
+  }
+  ImGui::TextWrapped("%s", talesofarise::frame_trace::Status().c_str());
   ImGui::Separator();
   if (!dlss_library.folder.empty()) {
     ImGui::TextWrapped("nvngx_dlss.dll %u.%u.%u %s (%s). An override in the NVIDIA app or Profile Inspector can load another version; the DLSS indicator shows the one in use.",
@@ -1764,6 +1774,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
     reshade::unregister_event<reshade::addon_event::present>(OnPresent);
     talesofarise::pixel_trace::Stop();
+    talesofarise::frame_trace::Stop();
     talesofarise::code_patch::ApplyCodePatch(&camera_jitter.patch, false);
     for (auto& entry : graphics.entries) {
       if (entry.controlling) entry.cvar.Set(entry.game_value);
