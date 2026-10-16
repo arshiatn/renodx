@@ -1194,6 +1194,10 @@ void TraceShadowDraw(reshade::api::command_list* cmd_list) {
                                static_cast<int>(viewport.Width), static_cast<int>(viewport.Height)}];
 }
 
+// OnDraw / OnDrawIndexed / OnTraceCopy / OnTraceCopyRegion are registered only while the frame trace, the shadow trace
+// or the options measurement runs (OnPresent): otherwise every draw and copy of the game went through them.
+bool debug_events = false;  // Present thread
+
 bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t, uint32_t, uint32_t) {
   TraceDraw(cmd_list, "draw", vertex_count);
   if (shadow_trace_frames.load(std::memory_order_relaxed) != 0) TraceShadowDraw(cmd_list);
@@ -2447,6 +2451,21 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       }
     }
   }
+  if (const bool wanted = trace_frame.load() == present_frame.load() || shadow_trace_frames.load() != 0 || counting_draws.load();
+      wanted != debug_events) {
+    debug_events = wanted;
+    if (wanted) {
+      reshade::register_event<reshade::addon_event::draw>(OnDraw);
+      reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
+      reshade::register_event<reshade::addon_event::copy_resource>(OnTraceCopy);
+      reshade::register_event<reshade::addon_event::copy_texture_region>(OnTraceCopyRegion);
+    } else {
+      reshade::unregister_event<reshade::addon_event::draw>(OnDraw);
+      reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
+      reshade::unregister_event<reshade::addon_event::copy_resource>(OnTraceCopy);
+      reshade::unregister_event<reshade::addon_event::copy_texture_region>(OnTraceCopyRegion);
+    }
+  }
   // The frame after the captured one ends here.
   if (const uint64_t captured = capture_frame.load(); captured != UINT64_MAX && closing_frame > captured) {
     capture_frame.store(UINT64_MAX);
@@ -3503,10 +3522,6 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
-  reshade::register_event<reshade::addon_event::draw>(OnDraw);
-  reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
-  reshade::register_event<reshade::addon_event::copy_resource>(OnTraceCopy);
-  reshade::register_event<reshade::addon_event::copy_texture_region>(OnTraceCopyRegion);
   reshade::register_event<reshade::addon_event::init_sampler>(OnInitSampler);
   reshade::register_event<reshade::addon_event::destroy_sampler>(OnDestroySampler);
   reshade::register_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);

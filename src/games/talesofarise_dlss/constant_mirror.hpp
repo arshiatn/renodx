@@ -48,6 +48,8 @@ inline std::unordered_map<ID3D11Buffer*, Snapshot> buffers;
 // from the start (40-63). Usage keeps UpdateSubresource buffers apart from
 // Map-written ones of the same size.
 inline std::array<std::atomic<uint64_t>, 4> watched = {};
+// Any entry in `watched`: until then every event returns at once (no GetDesc, no lock).
+inline std::atomic_bool watching = false;
 inline std::atomic<uint64_t> copied_bytes = 0;
 // Watched buffers mapped on this thread; every other Unmap returns without locking.
 inline thread_local std::array<ID3D11Buffer*, 4> open_maps = {};
@@ -78,6 +80,7 @@ inline uint32_t Needed(ID3D11Buffer* buffer) {
 inline void OnInitResource(reshade::api::device*, const reshade::api::resource_desc& desc,
                            const reshade::api::subresource_data* initial_data, reshade::api::resource_usage,
                            reshade::api::resource resource) {
+  if (!watching.load(std::memory_order_relaxed)) return;
   if (desc.type != reshade::api::resource_type::buffer || desc.buffer.size > MAX_BUFFER_BYTES
       || (desc.usage & reshade::api::resource_usage::constant_buffer) == 0) return;
   const uint32_t needed = Needed(Buffer(resource));
@@ -94,7 +97,7 @@ inline void OnInitResource(reshade::api::device*, const reshade::api::resource_d
 
 inline void OnMapBufferRegion(reshade::api::device*, reshade::api::resource resource, uint64_t offset, uint64_t,
                               reshade::api::map_access access, void** data) {
-  if (access == reshade::api::map_access::read_only) return;
+  if (!watching.load(std::memory_order_relaxed) || access == reshade::api::map_access::read_only) return;
   auto* buffer = Buffer(resource);
   const uint32_t needed = Needed(buffer);
   if (needed == 0) return;
@@ -128,6 +131,7 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
 // ReShade reports this for the immediate context only (deferred ones use update_buffer_region_command).
 inline bool OnUpdateBufferRegion(reshade::api::device*, const void* data, reshade::api::resource resource,
                                  uint64_t offset, uint64_t size) {
+  if (!watching.load(std::memory_order_relaxed)) return false;
   auto* buffer = Buffer(resource);
   const uint32_t needed = Needed(buffer);
   if (needed == 0) return false;
@@ -158,6 +162,7 @@ inline bool OnUpdateBufferRegion(reshade::api::device*, const void* data, reshad
 
 // GPU-side copies into a watched buffer are not visible on the CPU.
 inline void Invalidate(reshade::api::resource resource) {
+  if (!watching.load(std::memory_order_relaxed)) return;
   const std::lock_guard lock(mutex);
   const auto entry = buffers.find(Buffer(resource));
   if (entry == buffers.end()) return;
@@ -177,6 +182,7 @@ inline bool OnCopyBufferRegion(reshade::api::command_list*, reshade::api::resour
 }
 
 inline void OnDestroyResource(reshade::api::device*, reshade::api::resource resource) {
+  if (!watching.load(std::memory_order_relaxed)) return;
   const std::lock_guard lock(mutex);
   buffers.erase(Buffer(resource));
 }
@@ -201,6 +207,7 @@ inline void Watch(ID3D11Buffer* buffer, uint32_t needed_bytes) {
       const uint64_t needed = std::max<uint64_t>(value >> 40, needed_bytes);
       if (value != 0 && needed == (value >> 40)) return;
       if (entry.compare_exchange_weak(value, (needed << 40) | key)) {
+        internal::watching.store(true, std::memory_order_relaxed);
         renodx::utils::log::i("[Tales AA constants] Copying uploads of ", desc.ByteWidth, "-byte constant buffers (usage ",
                               static_cast<uint32_t>(desc.Usage), ", CPU access ", renodx::utils::log::AsHex(desc.CPUAccessFlags),
                               "), first ", needed, " bytes.");
@@ -252,6 +259,7 @@ inline void Use(DWORD reason) {
         internal::buffers.clear();
       }
       for (auto& entry : internal::watched) entry.store(0);
+      internal::watching.store(false);
       break;
   }
 }

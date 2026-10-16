@@ -7,7 +7,6 @@
 #define ImTextureID ImU64
 
 #define RENODX_MODS_SWAPCHAIN_VERSION 2
-#define DEBUG_LEVEL_0
 // F9 logs one frame of the HUD's flat-shape draws to ryse_ui_draws.txt (how the execution skull was found).
 // #define RYSE_UI_DRAW_LOG
 
@@ -501,6 +500,7 @@ bool OnDrawIndexedUi(reshade::api::command_list* cmd_list, uint32_t index_count,
 
 // Polled at Present, while the game window is in front.
 std::array<bool, 256> keys_down = {};
+bool ui_draw_events = false;  // OnDrawUi / OnDrawIndexedUi registered (Present thread)
 
 // True at the Present where `key` went down.
 bool KeyWentDown(int key) {
@@ -549,6 +549,21 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
   if (KeyWentDown(VK_F5)) {
     execution_skull_hidden = !execution_skull_hidden;
   }
+  // The draw events only while something is hidden (else every draw of the game went through them).
+  bool wanted = hud_hidden || execution_highlights_hidden || execution_skull_hidden;
+#ifdef RYSE_UI_DRAW_LOG
+  wanted = wanted || ui_log != nullptr;
+#endif
+  if (wanted != ui_draw_events) {
+    ui_draw_events = wanted;
+    if (wanted) {
+      reshade::register_event<reshade::addon_event::draw>(OnDrawUi);
+      reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
+    } else {
+      reshade::unregister_event<reshade::addon_event::draw>(OnDrawUi);
+      reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
+    }
+  }
 }
 
 // RenoDX makes the swap chain flip model, where Present unbinds the back buffer from the pipeline
@@ -560,12 +575,10 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
 namespace back_buffer_fix {
 struct Data {
   reshade::api::device* device = nullptr;
-  uint64_t immediate_context = 0u;
-  std::vector<uint64_t> old_buffers;  // earlier back buffers
+  std::vector<uint64_t> old_buffers;  // earlier back buffers, the newest last
   reshade::api::resource current = {0u};
   reshade::api::resource target = {0u};  // RenoDX's clone of the current back buffer, else itself
   reshade::api::resource_view rtv = {0u};
-  bool bound_back_buffer = false;  // the game's last binding on the immediate context
   std::vector<uint64_t> logged;
   int lines = 0;
 };
@@ -573,6 +586,23 @@ struct Data {
 Data data;
 std::mutex mutex;
 std::atomic_bool check_after_present = false;
+// Read without the mutex on every bind and draw (the mutex only for back buffer binds): the current and earlier back
+// buffers (data.current, data.old_buffers), the immediate context and the game's last binding on it.
+constexpr size_t MAX_BACK_BUFFERS = 16;
+std::array<std::atomic<uint64_t>, MAX_BACK_BUFFERS> back_buffers = {};
+std::atomic<uint64_t> immediate_context = 0u;
+std::atomic_bool bound_back_buffer = false;
+
+// Caller holds the mutex: back_buffers from data (the oldest earlier ones dropped beyond MAX_BACK_BUFFERS).
+void PublishBackBuffers() {
+  if (data.old_buffers.size() >= MAX_BACK_BUFFERS) {
+    data.old_buffers.erase(data.old_buffers.begin(), data.old_buffers.end() - (MAX_BACK_BUFFERS - 1));
+  }
+  size_t index = 0;
+  back_buffers[index++].store(data.current.handle, std::memory_order_relaxed);
+  for (const uint64_t buffer : data.old_buffers) back_buffers[index++].store(buffer, std::memory_order_relaxed);
+  while (index < MAX_BACK_BUFFERS) back_buffers[index++].store(0u, std::memory_order_relaxed);
+}
 
 // Caller holds the mutex.
 void Log(const char* text) {
@@ -596,11 +626,10 @@ void DestroyView() {
   data.target = {0u};
 }
 
-// Caller holds the mutex.
 bool IsBackBuffer(uint64_t resource) {
-  return resource != 0u
-         && (resource == data.current.handle
-             || std::find(data.old_buffers.begin(), data.old_buffers.end(), resource) != data.old_buffers.end());
+  return resource != 0u && std::ranges::any_of(back_buffers, [&](const std::atomic<uint64_t>& buffer) {
+           return buffer.load(std::memory_order_relaxed) == resource;
+         });
 }
 
 // Binds our view of the clone (else the current back buffer) to slot 0. Caller holds the mutex.
@@ -634,10 +663,11 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
   data.device = swapchain->get_device();
   data.current = swapchain->get_current_back_buffer();
   std::erase(data.old_buffers, data.current.handle);  // may reuse an old address
+  PublishBackBuffers();
   ID3D11DeviceContext* immediate = nullptr;
   reinterpret_cast<ID3D11Device*>(data.device->get_native())->GetImmediateContext(&immediate);
   if (immediate != nullptr) {
-    data.immediate_context = reinterpret_cast<uint64_t>(immediate);
+    immediate_context.store(reinterpret_cast<uint64_t>(immediate), std::memory_order_relaxed);
     immediate->Release();
   }
   char text[96];
@@ -656,8 +686,10 @@ void OnDestroySwapchain(reshade::api::swapchain*, bool) {
 void OnInitResource(
     reshade::api::device*, const reshade::api::resource_desc&, const reshade::api::subresource_data*,
     reshade::api::resource_usage, reshade::api::resource resource) {
+  if (!IsBackBuffer(resource.handle)) return;
   const std::scoped_lock lock(mutex);
   std::erase(data.old_buffers, resource.handle);
+  PublishBackBuffers();
 }
 
 void OnBindRenderTargets(
@@ -666,11 +698,13 @@ void OnBindRenderTargets(
   auto* device = cmd_list->get_device();
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   const uint64_t bound = (count != 0 && rtvs[0].handle != 0u) ? device->get_resource_from_view(rtvs[0]).handle : 0u;
+  const bool back_buffer = IsBackBuffer(bound);
+  if (cmd_list->get_native() == immediate_context.load(std::memory_order_relaxed)) {
+    bound_back_buffer.store(back_buffer, std::memory_order_relaxed);
+  }
+  if (!back_buffer) return;
 
   const std::scoped_lock lock(mutex);
-  const bool back_buffer = IsBackBuffer(bound);
-  if (cmd_list->get_native() == data.immediate_context) data.bound_back_buffer = back_buffer;
-  if (!back_buffer) return;
 
   ID3D11RenderTargetView* views[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
   const uint32_t view_count = std::min<uint32_t>(count, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT);
@@ -693,10 +727,7 @@ void CheckBound(reshade::api::command_list* cmd_list) {
   if (!check_after_present.load()) return;
   auto* device = cmd_list->get_device();
   if (device->get_api() != reshade::api::device_api::d3d11) return;
-  {
-    const std::scoped_lock lock(mutex);
-    if (cmd_list->get_native() != data.immediate_context) return;
-  }
+  if (cmd_list->get_native() != immediate_context.load(std::memory_order_relaxed)) return;
   if (!check_after_present.exchange(false)) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
 
@@ -714,7 +745,7 @@ void CheckBound(reshade::api::command_list* cmd_list) {
   while (count < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT && views[count] != nullptr) ++count;
   {
     const std::scoped_lock lock(mutex);
-    if (bound == 0u && data.bound_back_buffer) {
+    if (bound == 0u && bound_back_buffer.load(std::memory_order_relaxed)) {
       // Unbound by Present: the game still draws to its back buffer.
       if (BindTarget(device, context, views, count, dsv)) LogOnce(1u, "back buffer unbound by Present, game draws to", data.current.handle);
     } else if (IsBackBuffer(bound)) {
@@ -742,6 +773,9 @@ void OnDestroyDevice(reshade::api::device* device) {
   if (data.device != device) return;
   DestroyView();
   data = {};
+  PublishBackBuffers();
+  immediate_context.store(0u, std::memory_order_relaxed);
+  bound_back_buffer.store(false, std::memory_order_relaxed);
 }
 
 }  // namespace back_buffer_fix
@@ -875,8 +909,6 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   reshade::register_event<reshade::addon_event::present>(OnPresentHotkeys);
   reshade::register_event<reshade::addon_event::init_pipeline>(OnInitPipelineHighlights);
-  reshade::register_event<reshade::addon_event::draw>(OnDrawUi);
-  reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
 
   // After RenoDX (its back buffer clone exists, its target rewrites ran).
   reshade::register_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);

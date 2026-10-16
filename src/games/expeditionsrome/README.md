@@ -82,3 +82,5 @@ it had no visible effect in game. Uncaptured permutations,
 actual render-resource views, dynamic-resolution changes, videos, and full-game
 UI/post-process coverage still need in-game testing. Godrays were reported
 working in the menu by the user; other lighting paths are not yet confirmed.
+
+v27: less CPU: debug logging (DEBUG_LEVEL_0) off.

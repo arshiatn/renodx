@@ -834,3 +834,4 @@ v12: Reflections on rough surfaces (r.SSR.MaxRoughness 1) in Extreme, Insane and
 included, sets every setting but shaders on load (NO_PRESET_SETTING, in no preset so it is never reset by accident);
 volumetric fog gets the game's in every preset (Max's EXACT rule: Insane's value, else the optional ones' extra, else
 the game's). Simulated: 50 of 51 settings set by each preset, every value a valid choice.
+v16: less CPU. Constant mirror: until the TAA pass's constant buffers are watched, every map, update, copy, new and destroyed resource returns at once (no GetDesc, no lock).

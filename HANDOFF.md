@@ -177,6 +177,16 @@ paused flicker with the same DLSS input capture (memory project_roadmap).
 Older: NEXT: ATN's v7 test + traces at lowest AO / DOF and on the campaign map at 33%.
 Tools: tools\shogun2\trace_phases.py / trace_summary.py.
 
+## CPU pass (2026-10-16, roadmap 1c; untested): Ryse HDR fix38 / DLSS v102, Expeditions HDR v27 / DLSS v16, Tales HDR v31 / DLAA v49
+Same rules as Shogun 2 HDR v36 / DLSS v29. No addon had the reshade_overlay event. Ryse HDR: back_buffer_fix compared
+every render target bind with the back buffers under a mutex: now lock-free atomics (back_buffers, at most 16;
+immediate_context; bound_back_buffer), the mutex only for back buffer binds; HUD / skull / highlight draw events only
+while something is hidden. Ryse DLSS: frame / shadow trace and options measurement draw + copy events only while one
+runs. All three DLSS addons: constant_mirror returns at once until something is watched (atomic `watching`). All three
+HDR addons: DEBUG_LEVEL_0 off. Checked and already fine: particle counters (counting_frames), GPU timings (Advanced
+open only), Tales pixel trace (events per trace), engine hooks, per-frame cvar loops (cheap; a 30-frame throttle was
+tried and dropped: memory-written cvars could flicker if the game resets them).
+
 ## RESUME HERE (2026-10-13, ATN continues on another Claude account, same PC / Windows user)
 Nothing of this conversation carries over except files: this HANDOFF, memory (`C:\Users\arshi\.claude\projects\
 D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{ryse,toa,exr}`), the repo (branch

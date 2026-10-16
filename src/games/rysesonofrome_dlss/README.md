@@ -837,3 +837,10 @@ like a soft highlight. Steadier (default): above 1 (paper white); Steadiest: all
 ATN: not wanted (the image's brightness changed with it). The armour's glint flicker stays open: the glints are thinner
 than a pixel, so the camera jitter DLSS needs hits them in some frames and misses them in others (lighting, depth and
 motion are still). While paused, Jitter "The game's" stops the jitter (no flicker, a little softer).
+
+## v102: less CPU
+
+- The draw and copy events of the debug traces (frame trace, shadow trace, options measurement) are registered only
+  while one runs (before: every draw and copy of the game went through them).
+- Constant mirror: until the TAA pass's constant buffers are watched, every map, update, copy, new and destroyed
+  resource returns at once (no GetDesc, no lock).

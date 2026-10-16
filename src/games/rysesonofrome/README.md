@@ -169,3 +169,8 @@ main menu was black/posterized (fixed above, not yet seen in game).
   Sharpening (default 0), Motion Blur (Camera), Motion Blur (Objects), Depth of Field, Video Highlights
   (+ Video Dithering) (HDR only).
 fix34: both Recommended presets set Bloom to 0.5 (ATN).
+fix38: less CPU. Back buffer binds: the game's every render target bind compared its target with the back buffers under
+a mutex; now lock-free copies (back_buffer_fix::back_buffers, at most 16, the oldest earlier ones dropped; the
+immediate context and its last binding atomic): the mutex only when the back buffer is bound. A new resource checks the
+same copies before locking. The HUD / execution skull / highlight draw events are registered only while one of them is
+hidden (F5 / F6 / F7, Caps Lock, Tab), else every draw went through them. Debug logging (DEBUG_LEVEL_0) off.

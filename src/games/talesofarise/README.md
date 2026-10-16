@@ -109,3 +109,4 @@ preset): in lighting00 it scales the sun haze's light (r5.xzw, added after the t
 (r8.xyw, lerp from 1, max 0; the sky haze after it uses the same tint).
 v30: Sun Haze removed (ATN): above 1 a black disc grew around the sun (the shadow tint r8.xyw scaled below 0, clamped
 to black), below 1 the character flickered. lighting00 is v29's without it.
+v31: less CPU: debug logging (DEBUG_LEVEL_0) off.
