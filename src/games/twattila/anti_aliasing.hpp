@@ -98,6 +98,9 @@ struct Settings {
   int texture_lod_bias = 2;
   // DLAA / DLSS: the units', props' and cloth's own motion (object_motion.hpp redraws them); off, the camera's alone.
   bool object_motion = true;
+  // DLAA / DLSS's Debug View: 0 off, 1 the motion NVIDIA gets, 2 the objects' own (aa_dlaa_finish), 3 no camera motion
+  // (the objects' alone: aa_dlaa_prepare).
+  uint32_t debug_view = 0;
 };
 
 namespace internal {
@@ -114,6 +117,7 @@ struct ShaderSettings {
   float cmaa2_simple_shape_blur = 0.f;
   float padding = 0.f;
   std::array<float, 4> smaa_subsample_indices = {};
+  std::array<float, 4> dlaa_debug = {};  // the view, the input size
 };
 
 // aa.hlsli's aa_taa: the cameras in the game's register layout.
@@ -170,7 +174,7 @@ constexpr std::array<std::array<float, 4>, 4> SMAA_PRESETS = {{
 // CMAA2's presets' edge thresholds, low to ultra.
 constexpr std::array<float, 4> CMAA2_THRESHOLDS = {0.15f, 0.1f, 0.07f, 0.05f};
 constexpr UINT UAV_COUNT = 8;  // CMAA2's u0-u7
-constexpr UINT SRV_COUNT = 4;
+constexpr UINT SRV_COUNT = 5;  // DLAA's Debug View: t0-t4
 
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
@@ -893,6 +897,9 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     };
     native->UpdateSubresource(objects.taa_constants.Get(), 0, nullptr, &taa, 0, 0);
   }
+  // DLAA's input: DLSS, the render size.
+  const UINT input_width = (scaled ? runtime.render_width : objects.width);
+  const UINT input_height = (scaled ? runtime.render_height : objects.height);
   const ShaderSettings settings = {
       .metrics = {1.f / static_cast<float>(objects.width), 1.f / static_cast<float>(objects.height),
                   static_cast<float>(objects.width), static_cast<float>(objects.height)},
@@ -904,6 +911,8 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       .cmaa2_local_contrast = (sharp ? 0.15f : 0.1f),
       .cmaa2_simple_shape_blur = (sharp ? 0.07f : 0.1f),
       .smaa_subsample_indices = subsample_indices,
+      .dlaa_debug = {static_cast<float>(runtime.settings.debug_view), static_cast<float>(input_width),
+                     static_cast<float>(input_height), 0.f},
   };
   if (std::memcmp(&settings, &objects.uploaded, sizeof(ShaderSettings)) != 0) {
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
@@ -995,8 +1004,6 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     // NVIDIA's inputs into the shared textures (DLSS: the render size's top-left, its metrics for the preparation), its
     // DLAA / DLSS in the helper (the GPU waits for it), back into the result; no result (helper not ready or gone): the
     // frame as it is.
-    const UINT input_width = (scaled ? runtime.render_width : objects.width);
-    const UINT input_height = (scaled ? runtime.render_height : objects.height);
     if (scaled) {
       ShaderSettings input_settings = settings;
       input_settings.metrics = {1.f / static_cast<float>(input_width), 1.f / static_cast<float>(input_height),
@@ -1034,7 +1041,10 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     resolved = dlaa_bridge::Evaluate(native, input_width, input_height, runtime.jitter[0], -runtime.jitter[1], !continued,
                                      runtime.settings.dlaa_preset, reconstruct ? &reconstruction : nullptr);
     if (resolved) {
-      bind(objects.dlaa_finish.Get(), {dlaa_bridge::bridge.output.srv.Get(), objects.color_srv.Get()}, {objects.result_uav.Get()});
+      bind(objects.dlaa_finish.Get(),
+           {dlaa_bridge::bridge.output.srv.Get(), objects.color_srv.Get(), dlaa_bridge::bridge.motion.srv.Get(),
+            object_motion_view.Get(), depth_view},
+           {objects.result_uav.Get()});
       native->Dispatch(groups_x, groups_y, 1);
     }
     // Frame generation: the frame's DLAA inputs and camera (row vectors: the registers' matrices transposed; view =

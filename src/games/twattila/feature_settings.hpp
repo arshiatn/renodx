@@ -61,6 +61,7 @@ struct AaSliders {
   float frame_limit = 0.f;         // frame generation's Reflex limit, rendered frames per second (0: off)
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
   float object_motion = 1.f;       // DLAA's: units', props' and cloth's own motion
+  float debug_view = 0.f;          // DLAA's: off, motion vectors, object motion, no camera motion
 };
 
 inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
@@ -111,6 +112,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .frame_limit = static_cast<uint32_t>(std::clamp(sliders.frame_limit, 0.f, 240.f)),
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
       .object_motion = (sliders.object_motion != 0.f),
+      .debug_view = static_cast<uint32_t>(std::clamp(sliders.debug_view, 0.f, 3.f)),
   };
 }
 
@@ -389,6 +391,19 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .tooltip = "Soldiers, props and cloth tell DLSS how they move: sharper while they move.\n"
                    "Off: faster with many soldiers on screen (they can smear a little when moving).",
         .labels = {"Off", "On"},
+        .is_enabled = [sliders] { return sliders->method == 5.f; },
+    });
+    settings->push_back(new renodx::utils::settings::Setting{
+        .key = "AntiAliasingDebugView",
+        .binding = &sliders->debug_view,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "DLSS Debug View",
+        .section = AA_SECTION,
+        .tooltip = "Motion Vectors: the motion DLSS gets (colour: direction, brighter: faster).\n"
+                   "Object Motion: the soldiers', props' and cloth's own (grey: still, red: hidden).\n"
+                   "No Camera Motion: DLSS gets the objects' motion alone.",
+        .labels = {"Off", "Motion Vectors", "Object Motion", "No Camera Motion"},
         .is_enabled = [sliders] { return sliders->method == 5.f; },
     });
   }
