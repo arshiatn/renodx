@@ -2,6 +2,20 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+## v25 (2026-10-27, untested in game; the helper GPU-tested)
+
+- **Ray tracing** (Experimental, DLSS section, with DLSS): Ray-Traced Sun Shadows, Ambient Occlusion, Light Bounce and
+  Path Tracing through the helper DLSS uses (renodx-tw-dlaa64.exe helper19: the other TW games' module, rt_core.hpp /
+  rt_scene.hpp). The scene: the G-buffer's opaque meshes as the game's own vertex shaders draw them (their SV_Position
+  streamed out and made world positions again with the frame's camera, as WH3 has no capture versions; checked on the
+  GPU: back to the same positions within 6e-8), units every frame. Not in it yet: leaves (no alpha test without their
+  UVs), grass, billboards, decals, water and the tessellated terrain. The shadows go to the screen-space shadows'
+  occlusion, the AO into the AO the sun draws read, the Light Bounce's trace through rays. No reflections (no G-buffer
+  guides yet) and no Ray Reconstruction yet (its guides need WH3's G-buffer decoded: view-space normals in rt0, sRGB
+  base colour in rt1, material in rt2).
+- **Frame Rate Limit** (DLSS section, with frame generation): NVIDIA Reflex's cap for the rendered frames.
+- Frame generation stays off for two presents after a resize (Streamline's set-options race).
+
 ## v24 (2026-10-27)
 
 - **DLSS** (Graphics 1 of 2, DLSS section; keep in-game Anti-aliasing on TAA or TAA High): NVIDIA's DLSS replaces the
@@ -39,7 +53,6 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   moved with the camera, held within this frame's 3 x 3) and its 5 x 5 depth-aware denoiser, then the sun draws read the
   result); the bitmask's noise moves each frame with Temporal Smoothing. GPU test (tools\tw\warp_tests\ao_filter): noisy
   AO 0.144 -> 0.001, mean kept, sky untouched, also with the camera moving.
-
 
 ## v22 (2026-10-26)
 

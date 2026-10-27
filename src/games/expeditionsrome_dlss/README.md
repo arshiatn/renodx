@@ -906,3 +906,14 @@ ps b1 (UE 4.26 draws only directional lights as a rectangle; the other passes wi
 DLSS below 100% (the march is in the render's own pixels). In game at 10%: shadows behind feet on the planks, under
 a bag and in the grass; Off unchanged. The one-frame trace (`renodx_trace_now` next to the exe) also saves each traced
 shader's bytecode to `tales_frame_trace_shaders` (when the DevKit keeps it).
+
+v25: frame generation's frame rate limit, resize fix (frame_generation.hpp, shared with Tales, Ryse, Shogun 2):
+- **Frame rate limit** (frame generation settings, 0-240 fps; ReShade.ini FrameGenerationFrameLimit): NVIDIA Reflex's
+  cap for the rendered frames (frame generation multiplies them). A cap the game always reaches keeps the frame rate
+  steady: less VRR flicker on OLED displays (ATN's Ryse flicker with frame generation: PresentMon at 2x showed even
+  pacing, 11.6 ms between display changes with 0.66 ms deviation, so the flicker comes from the base rate's swings and
+  hitches, which the cap smooths).
+- Frame generation stays off for two presents after a resize: off and on in the same frame raced Present inside
+  Streamline (its "repeated slDLSSGSetOptions" warning at every resize; the screen could keep showing old frames after
+  the startup fullscreen switch).
+- Debug: ReShade.ini FrameGenerationReflexSleep=0 skips Reflex's sleep after each present (its markers stay).

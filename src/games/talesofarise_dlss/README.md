@@ -704,3 +704,13 @@ size; then:
   Frame generation's module is now shared with Expeditions', Ryse's and Shogun 2's DLSS addons: the camera's near / far
   and depth direction per game (Tales: as before), the motion's scale, the game's name in the log, CreateSwapChainForHwnd
   hooked too, the overlay settings in the module (DrawSettings / LoadSettings: the same keys). fg_test: unchanged.
+- v106 (untested in game): frame generation's frame rate limit, resize fix (the shared frame_generation.hpp):
+  - **Frame rate limit** (frame generation settings, 0-240 fps; ReShade.ini FrameGenerationFrameLimit): NVIDIA Reflex's
+    cap for the rendered frames (frame generation multiplies them). A cap the game always reaches keeps the frame rate
+    steady: less VRR flicker on OLED displays (ATN's Ryse flicker with frame generation: PresentMon at 2x showed even
+    pacing, 11.6 ms between display changes with 0.66 ms deviation, so the flicker comes from the base rate's swings and
+    hitches, which the cap smooths).
+  - Frame generation stays off for two presents after a resize: off and on in the same frame raced Present inside
+    Streamline (its "repeated slDLSSGSetOptions" warning at every resize; the screen could keep showing old frames after
+    the startup fullscreen switch).
+  - Debug: ReShade.ini FrameGenerationReflexSleep=0 skips Reflex's sleep after each present (its markers stay).

@@ -2,6 +2,29 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer2.addon64`.
 
+## v32 (2026-10-27, untested in game; the helper GPU-tested)
+
+- **Path Tracing** (Experimental, Anti-Aliasing section, with DLAA / DLSS): the ray-traced Light Bounce's rays become
+  paths (Path Tracing Bounces 1-4): a ray that meets a surface the camera does not see takes its light from a world
+  radiance cache (filled from the screen every frame), else from the sun and the game's own lighting learned from the
+  screen times the surface's colour, and goes on from there. The Light Bounce's resolve, denoiser and apply follow.
+- **Ray-Traced Reflections** and **Ray-Traced Specular Occlusion** (Experimental, with DLAA / DLSS and in-game Screen
+  Space Reflections on): GGX samples of each pixel's reflection (Ray-Traced Reflection Samples 1-8; mirrors one ray)
+  traced through the scene in the helper and kept over frames by world position. Where they meet a surface its light
+  replaces the screen-space march, which is then skipped (the environment_specular_light resolve cs 0x7E1CDD0A; its raycast and blurs are left out); the game's environment stays for the rest (the
+  sky). Specular occlusion dims the environment where something blocks it.
+- Fix: the Ray-Traced Light Bounce alone (without ray-traced sun shadows or AO) never got its textures.
+- **Frame Rate Limit** (Anti-Aliasing section, with frame generation): NVIDIA Reflex's cap for the rendered frames
+  (frame generation multiplies them). A cap the game always reaches keeps the frame rate steady: less VRR flicker on
+  OLED displays.
+- renodx-tw-dlaa64.exe **helper19** (in the zip, needed for the above): the paths and reflections as DXR 1.2 ray
+  generation shaders with shader execution reordering (DispatchRays), **RTX Mega Geometry** (NVAPI cluster operations:
+  the units built every frame as clusters into one cluster BLAS, in place of the refitted BLAS) and a **partitioned
+  TLAS** (each frame only the instances that changed are written); DXR 1.1 runs the same effects without them. GPU test
+  (tools\tw\rt_harness, the addon's bridge and the helper without the game): sun shadow, AO, a unit's shadow, mirror
+  reflections, the sky, specular occlusion and the path-traced bounce come out as expected in DXR 1.2 and 1.1, with and
+  without the NVAPI paths. NVIDIA NVAPI (MIT): NVAPI_LICENSE.txt.
+
 ## v31 (2026-10-27)
 
 - **DLSS below 100%: the game's own passes** (ATN: post-processing, shadows, reflections and our effects at DLSS):

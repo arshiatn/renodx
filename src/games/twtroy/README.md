@@ -2,6 +2,26 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twtroy.addon64`.
 
+## v31 (2026-10-27, untested in game; the helper GPU-tested)
+
+- **Path Tracing** (Experimental, Anti-Aliasing section, with DLAA / DLSS): the ray-traced Light Bounce's rays become
+  paths (Path Tracing Bounces 1-4): a ray that meets a surface the camera does not see takes its light from a world
+  radiance cache (filled from the screen every frame), else from the sun and the game's own lighting learned from the
+  screen times the surface's colour, and goes on from there. The Light Bounce's resolve, denoiser and apply follow.
+- Ray-traced reflections: not here (the game has no reflection pass for objects; its screen-space ones are
+  the water's, and water is not in the traced positions). Their settings are hidden.
+- Fix: the Ray-Traced Light Bounce alone (without ray-traced sun shadows or AO) never got its textures.
+- **Frame Rate Limit** (Anti-Aliasing section, with frame generation): NVIDIA Reflex's cap for the rendered frames
+  (frame generation multiplies them). A cap the game always reaches keeps the frame rate steady: less VRR flicker on
+  OLED displays.
+- renodx-tw-dlaa64.exe **helper19** (in the zip, needed for the above): the paths and reflections as DXR 1.2 ray
+  generation shaders with shader execution reordering (DispatchRays), **RTX Mega Geometry** (NVAPI cluster operations:
+  the units built every frame as clusters into one cluster BLAS, in place of the refitted BLAS) and a **partitioned
+  TLAS** (each frame only the instances that changed are written); DXR 1.1 runs the same effects without them. GPU test
+  (tools\tw\rt_harness, the addon's bridge and the helper without the game): sun shadow, AO, a unit's shadow, mirror
+  reflections, the sky, specular occlusion and the path-traced bounce come out as expected in DXR 1.2 and 1.1, with and
+  without the NVAPI paths. NVIDIA NVAPI (MIT): NVAPI_LICENSE.txt.
+
 ## v30 (2026-10-27)
 
 - **DLSS below 100%: the game's own passes** (ATN: post-processing, shadows, reflections and our effects at DLSS):

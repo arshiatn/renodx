@@ -443,3 +443,15 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
   found unchanged in Remastered CE 0.1.20's patched engine (checked offline against its 99 patches). ReShade and the
   addons go into the RemasteredCE folder.
 - Frame generation's camera from twattila/fg_camera.hpp (shared with Warhammer III); unchanged.
+
+## v54: frame generation's frame rate limit, resize fix
+
+- **Frame rate limit** (frame generation settings, 0-240 fps; ReShade.ini FrameGenerationFrameLimit): NVIDIA Reflex's
+  cap for the rendered frames (frame generation multiplies them). A cap the game always reaches keeps the frame rate
+  steady: less VRR flicker on OLED displays (ATN's Ryse flicker with frame generation: PresentMon at 2x showed even
+  pacing, 11.6 ms between display changes with 0.66 ms deviation, so the flicker comes from the base rate's swings and
+  hitches, which the cap smooths).
+- Frame generation stays off for two presents after a resize: off and on in the same frame raced Present inside
+  Streamline (its "repeated slDLSSGSetOptions" warning at every resize; the screen could keep showing old frames after
+  the startup fullscreen switch).
+- Debug: ReShade.ini FrameGenerationReflexSleep=0 skips Reflex's sleep after each present (its markers stay).

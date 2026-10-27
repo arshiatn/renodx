@@ -441,6 +441,40 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     - Fix: rt_scene::Configure in all 7 (Light Bounce alone never got RT textures before).
     - In-game test blocked: a Ryse.exe from the FG test (pid 4036) cannot be killed (access denied, needs a reboot) and
       SetCursorPos / input no longer reach games (WH2 menu ignored clicks / keys). Retest after ATN's reboot.
+      (Later: Ryse 4036 is alive in the background, tutorial, ~43 fps with DLAA, and ignores WM_CLOSE; injected input
+      reaches no game, SetCursorPos fails while a game is in front: likely the Claude app's input guard since the
+      computer-use request. Needs ATN: close Ryse / reboot.)
+    - FG (talesofarise_dlss/frame_generation.hpp, all 4 FG addons + WH3): Frame rate limit (Reflex frameLimitUs,
+      FrameGenerationFrameLimit 0-240), FG off for 2 presents after ResizeBuffers (Streamline "repeated
+      slDLSSGSetOptions" race at every resize = the stale frames after the startup fullscreen switch, not verified).
+      TW helper FG: bridge fg_frame_limit (was fg_padding), TW setting FrameGenerationFrameLimit, WH3 DlssFrameLimit.
+    - helper18 (frame limit), helper19 (build\tw_dlaa_helper19): + RTX Mega Geometry (NVAPI cluster ops: units as
+      85-triangle clusters -> CLAS -> one cluster BLAS, a record per cluster; RENODX_TW_NO_CLUSTERS) and partitioned
+      TLAS (instance index = record, units at MAX_INSTANCES; only changed instances written; RENODX_TW_NO_PTLAS);
+      pipelines made with NVAPI ENABLE_CLUSTER_SUPPORT. NVAPI R615 (MIT) in build\downloads\nvapi (build.ps1 adds it
+      when present). 5090 caps (driver 595.79): SER, OMM, clusters, PTLAS, spheres, LSS yes; DMM no. Harness: all
+      checks pass in DXR 1.2 / 1.1, clusters on / off, PTLAS on / off (PTLAS changes per-pixel noise only: means equal).
+      LSS / spheres: no geometry for them in these games (no strands / particles captured) - not used.
+    - rt_core.hpp split from rt_scene.hpp (game-agnostic: capture, positions, trace, bounce, reflections, occlusion,
+      AO apply; Host = camera / render size / guides / moving-mesh hooks; clip-space captures: the game's own VS
+      streamed out (SV_POSITION) + inverse VP in rt_vertices.cs, bytecode kept at init_pipeline; GPU check
+      scratchpad so_clip_test.cpp: back within 6e-8). rt_scene.hpp = TW glue (TW_HOST, AO pass, sun draws, reflection
+      draws, settings; AppendSettings section parameter).
+    - WH3 RT (v25): rt_scene with RT_HOST from taa_dlss (camera buffer tracked at upload, render size), 7 scene VS
+      (F0395CC4 8EE34EC5 474F97FB C0ED2883 5767F87C terrain, B8C567C3 / 2C45437C dynamic), sun draws +
+      SetExtraOcclusion; no guides (no reflections / RR). WH3 G-buffer for later RR: rt0 R10G10B10A2 view-space
+      normal (spheremap: xy = normalize(n.xy) * sqrt(n.z * 0.5 + 0.5), * 0.5 + 0.5), rt1 sRGB base colour, rt2 material
+      (x metal / spec mix, y z material map, w flags), rt3 RG16F velocity. WH3 DLSS below 100%: still off (needs the
+      post chain at display size).
+    - Zips (2026-10-27 ~15:10, Downloads): twattila_v77, twrome2_v35, twthronesofbritannia_v35, twtroy_v31,
+      twpharaohdynasties_v35, twwarhammer_v32, twwarhammer2_v32, twwarhammer3_v25 (all with helper19 + NVAPI_LICENSE),
+      rysesonofrome_dlss_v114, expeditionsrome_dlss_graphics_v25, twshogun2completeedition_dlss_v54,
+      talesofarise_dlss_v106. tools\tw\release_zip.py --helper now takes helper19 + NVAPI's licence.
+    - NEXT: Ryse RT in the HDR addon (rysesonofrome: G-buffer = 3x RGBA16F + depth, many VS permutations -> capture
+      any G-buffer draw; PER_FRAME VS b2 with offsets (constant mirror); trace at the first sunshadow draw (t0 linear
+      depth -> positions with linear mode), sun from the tiled lighting PER_BATCH c4 SunDir (0x897232B5); apply in
+      sunshadow00-04 (max with 1 - visibility), AO in GT-VBAO, PT through its GT-VBGI (TW light bounce passes));
+      Expeditions RT (UE 4.26), Shogun 2 RT; double-work check; restore; report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
