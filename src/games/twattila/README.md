@@ -2,6 +2,13 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v80 (2026-10-27, tested in game in battle replays)
+
+- renodx-tw-dlaa64.exe **helper22** rebuilt: ray tracing no longer stalls the game. The helper answers each ray
+  tracing request as soon as it has copied it and records it on a worker thread of its own (battle replay, 4K DLAA:
+  Ray-Traced Sun Shadows 72 -> 87 fps, as fast as without ray tracing; everything on: the game's CPU time 18 -> 12 ms
+  a frame).
+
 ## v79 (2026-10-27, batch 5, untested in game; the helper GPU-tested)
 
 - renodx-tw-dlaa64.exe **helper22** (in the zip; bridge v11, needs this addon): **ReSTIR GI v2** (compared with

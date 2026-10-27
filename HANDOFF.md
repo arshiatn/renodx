@@ -649,6 +649,29 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Double work: none new (point light shadows only on the light shaders without the game's point shadow maps;
           torch light only at path hits the screen and cache never saw; leaf / cloth light only past the shadow maps).
           NEXT: ATN tests batches 3-5 in game.
+23. (2026-10-27 evening) ATTILA-FIRST (ATN: all RT / PT work in Attila first, other games ported later). Claude tested
+    batches 3-5 in Attila itself:
+    - Why game input was "blocked" before: Steam ran as administrator, so the games did (UIPI). ATN restarted Steam
+      normally. TW reads the mouse through DirectInput: synthetic clicks never reach its UI (the launcher and the ReShade
+      overlay take them); keys work after [Microsoft.VisualBasic.Interaction]::AppActivate(pid) (PowerShell). Battles
+      without clicks: attila.exe game_startup_mode replay "2vs3.replay" ; used_mods.txt; (replays in
+      %AppData%\The Creative Assembly\Attila\replays: 2vs3 = day, open hills + river; auto_save = desert siege, haze);
+      campaign: the launcher's Continue Campaign. Overlay sliders drag unreliably: A/B by ReShade.ini edits + restart
+      (scratchpad attila_test\set_ini.py, run.ps1 = replay + PresentMon 10 s at 50 s).
+    - Without nvngx_dlss.dll next to the game DLAA falls back to the game's TAA (zips leave it out; README says so).
+    - Seen working: helper22 DXR 1.2, OMMs on leaves, PTLAS, Mega Geometry clusters, path tracing 960 x 540, RT
+      reflections; battlefog and the 8 point light shaders compile and replace; no artifacts (cyan units = their own
+      colours, teal = the river). Not checkable in these replays: point lights (day), fog shadows / leaf / cloth light
+      (subtle in open terrain and haze): ATN's eyes.
+    - PERF (2vs3 start view, 4K DLAA 100%): RT off 11.5 ms; sun only 13.9 ms; all on 21.2 ms (CPU 18.3 ms, GPU-side the
+      helper: trace 4.7-5.8 ms with AO 8 rays at 4K, paths 1.9 ms). Cause of the CPU cost: every RT request blocked the
+      game thread while the helper recorded (~2.4 ms) and waited on its slot ring. FIX (helper e2b7f376): requests of a
+      kind that ran last time are copied, answered at once (done_value = value + 1, evaluated 1) and recorded by a
+      worker thread in order; the first of a kind and anything opening / closing the scene stay synchronous (drained).
+      Now: sun only 11.5 ms (= RT off), all on CPU 12.5 ms (frame 21.3 ms, GPU-bound by the helper's trace).
+    - Zip: twattila_v80 (helper with the worker). Other games keep batch 5 zips until their port round.
+    - NEXT (Attila): RT-only sun shadows mode (replace the shadow maps where traced), smoke / billboard trees in the
+      scene, a night battle to see point light shadows, cheaper AO at 4K (rays / rate defaults).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
