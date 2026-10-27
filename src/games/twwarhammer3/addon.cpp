@@ -1965,7 +1965,7 @@ twattila::feature_settings::SssSliders sss_sliders;
 struct DlssSliders {
   float enabled = 0.f;
   float preset = 1.f;  // K, M, L
-  float frame_generation = 0.f;  // off, 2x, 3x, 4x (restart)
+  float frame_generation = 0.f;  // off, 2x-6x, Dynamic (restart to turn it on)
   float reflex_boost = 0.f;      // (restart)
   float frame_limit = 0.f;       // Reflex's, rendered frames per second (0: off)
   float ray_reconstruction = 0.f;  // NVIDIA's Ray Reconstruction (taa_dlss.hpp)
@@ -2131,6 +2131,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
       .ray_reconstruction = dlss_sliders.ray_reconstruction != 0.f,
   });
   talesofarise::frame_generation::frame_limit.store(static_cast<uint32_t>(std::clamp(dlss_sliders.frame_limit, 0.f, 240.f)));
+  // The multiplier applies live (turning frame generation on needs a restart): 0 Dynamic in the shared module.
+  if (const int choice = static_cast<int>(dlss_sliders.frame_generation); choice != 0) {
+    talesofarise::frame_generation::multiplier.store(choice >= 6 ? 0u : static_cast<uint32_t>(choice + 1));
+  }
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
@@ -2400,7 +2404,7 @@ void ConfigureAddon() {
       const int choice = static_cast<int>(dlss_sliders.frame_generation);
       reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "FrameGeneration", choice != 0);
       reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "FrameGenerationMultiplier",
-                                static_cast<uint32_t>(std::max(choice + 1, 2)));
+                                (choice >= 6 ? 0u : static_cast<uint32_t>(std::max(choice + 1, 2))));
       reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "ReflexBoost",
                                 dlss_sliders.reflex_boost != 0.f);
     };
@@ -2447,8 +2451,9 @@ void ConfigureAddon() {
             .default_value = 0.f,
             .label = "Frame Generation (Restart Required)",
             .section = twattila::feature_settings::DLSS_SECTION,
-            .tooltip = "NVIDIA's DLSS Frame Generation (RTX 40 and newer) on DLSS. Output becomes HDR10 with it.",
-            .labels = {"Off", "2x", "3x", "4x"},
+            .tooltip = "NVIDIA's DLSS Frame Generation (RTX 40 and newer) on DLSS. Output becomes HDR10 with it.\n"
+                       "5x, 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.",
+            .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
             .is_enabled = dlss_on,
             .on_change = write_frame_generation,
         },

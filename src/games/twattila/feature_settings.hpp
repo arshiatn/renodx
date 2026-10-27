@@ -56,7 +56,7 @@ struct AaSliders {
   float dlss_mode = 0.f;       // DLAA's scale: DLSS_MODE_SCALES, the last Custom (render_scale)
   float render_scale = 100.f;  // Custom, in percent (below 100: DLSS)
   float ray_reconstruction = 0.f;  // DLAA's: off, NVIDIA's preset, D, E, F
-  float frame_generation = 0.f;    // DLAA's: off, 2x, 3x, 4x
+  float frame_generation = 0.f;    // DLAA's: off, 2x-6x, Dynamic
   float reflex_boost = 0.f;
   float frame_limit = 0.f;         // frame generation's Reflex limit, rendered frames per second (0: off)
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
@@ -102,7 +102,10 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .ray_reconstruction = (sliders.ray_reconstruction != 0.f),
       // NVSDK_NGX_RayReconstruction_Hint_Render_Preset Default, D, E, F.
       .ray_reconstruction_preset = std::array<uint32_t, 5>{0u, 0u, 4u, 5u, 6u}[std::clamp(static_cast<int>(sliders.ray_reconstruction), 0, 4)],
-      .frame_generation = (sliders.frame_generation >= 1.f ? static_cast<uint32_t>(std::min(sliders.frame_generation, 3.f)) + 1u : 0u),
+      // 2-6 frames shown per rendered frame, 1 Dynamic (frame_generation.hpp), 0 off.
+      .frame_generation = (sliders.frame_generation >= 6.f   ? 1u
+                           : sliders.frame_generation >= 1.f ? static_cast<uint32_t>(sliders.frame_generation) + 1u
+                                                             : 0u),
       .reflex_boost = (sliders.reflex_boost != 0.f),
       .frame_limit = static_cast<uint32_t>(std::clamp(sliders.frame_limit, 0.f, 240.f)),
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
@@ -399,9 +402,10 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .label = "Frame Generation (Experimental)",
                                             .section = AA_SECTION,
                                             .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
+                                                       "5x, 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
                                                        "Needs DLAA, an RTX 40 or newer GPU, Output HDR10 or SDR, a windowed or borderless game,\n"
                                                        "and Streamline's files next to renodx-tw-dlaa64.exe.",
-                                            .labels = {"Off", "2x", "3x", "4x"},
+                                            .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
                                             .is_enabled = [sliders] { return sliders->method == 5.f; },
                                         },
                                         new renodx::utils::settings::Setting{

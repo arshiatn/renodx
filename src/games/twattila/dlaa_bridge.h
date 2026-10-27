@@ -123,7 +123,7 @@ struct Shared {
   uint64_t fg_hudless = 0;
   uint32_t fg_format = 0;  // DXGI_FORMAT
   uint32_t fg_request = 0;
-  uint32_t fg_multiplier = 0;  // frames presented per rendered frame (2-4); 0: off, the window hidden
+  uint32_t fg_multiplier = 0;  // frames presented per rendered frame (2-6; 1: Dynamic); 0: off, the window hidden
   uint32_t fg_inputs = 0;
   uint32_t fg_hudless_valid = 0;
   uint32_t fg_reflex_boost = 0;

@@ -172,7 +172,7 @@ class FrameGeneration12 {
     const auto game_window = reinterpret_cast<HWND>(static_cast<uintptr_t>(shared->fg_window));
     if (shared->fg_multiplier == 0 || !IsWindow(game_window)) {
       // Off: generation off, the window hidden (the game's image shows); its swap chain kept for later.
-      SetGeneration(0, false);
+      SetGeneration(0, false, false);
       if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
       SignalOnly(value);
       status_ = "Frame generation off";
@@ -244,9 +244,11 @@ class FrameGeneration12 {
     copy_queue_->Signal(own_fence_.Get(), slot.done);
     present_queue_->Wait(fence_.Get(), value + 1);
 
-    // What to generate: off on frames without the inputs (menus, loading), keeping its memory meanwhile.
-    const uint32_t frames = std::clamp(shared->fg_multiplier, 2u, (max_frames_ != 0 ? max_frames_ : 4u));
-    SetGeneration(inputs ? frames - 1 : 0, shared->fg_hudless_valid != 0);
+    // What to generate: off on frames without the inputs (menus, loading), keeping its memory meanwhile. Dynamic (1):
+    // up to the most, as many as the display's refresh rate takes (else 2x).
+    const bool dynamic = shared->fg_multiplier == 1 && dynamic_supported_;
+    const uint32_t frames = dynamic ? std::max(max_frames_, 2u) : std::clamp(shared->fg_multiplier, 2u, (max_frames_ != 0 ? max_frames_ : 4u));
+    SetGeneration(inputs ? frames - 1 : 0, shared->fg_hudless_valid != 0, dynamic);
     if (inputs) SetConstants(*shared, *token);
     Marker(sl::PCLMarker::eRenderSubmitEnd, token);
     Marker(sl::PCLMarker::ePresentStart, token);
@@ -337,13 +339,15 @@ class FrameGeneration12 {
     WaitFor(presented);
   }
 
-  // Frame generation's mode: `generated` frames per rendered frame (0: off), with the HUD-less image or not.
-  void SetGeneration(uint32_t generated, bool hudless) {
-    if (!set_options_ || (generated == applied_generated_ && hudless == applied_hudless_)) return;
+  // Frame generation's mode: `generated` frames per rendered frame (0: off; Dynamic: at most), with the HUD-less image
+  // or not.
+  void SetGeneration(uint32_t generated, bool hudless, bool dynamic) {
+    if (!set_options_ || (generated == applied_generated_ && hudless == applied_hudless_ && dynamic == applied_dynamic_)) return;
     applied_generated_ = generated;
     applied_hudless_ = hudless;
+    applied_dynamic_ = dynamic;
     sl::DLSSGOptions options = {};
-    options.mode = (generated != 0 ? sl::DLSSGMode::eOn : sl::DLSSGMode::eOff);
+    options.mode = (generated == 0 ? sl::DLSSGMode::eOff : dynamic ? sl::DLSSGMode::eDynamic : sl::DLSSGMode::eOn);
     options.numFramesToGenerate = std::max(generated, 1u);
     options.flags = sl::DLSSGFlags::eRetainResourcesWhenOff;
     options.hudLessBufferFormat = (hudless ? static_cast<uint32_t>(format_) : 0u);
@@ -407,7 +411,7 @@ class FrameGeneration12 {
     if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) return true;
     if (chain_) {
       // Generation off while the buffers change (NVIDIA: Present can deadlock otherwise).
-      SetGeneration(0, false);
+      SetGeneration(0, false, false);
       WaitIdle();
       const HRESULT resized = chain_->ResizeBuffers(0, width_, height_, format_, tearing_);
       if (SUCCEEDED(resized)) {
@@ -552,6 +556,7 @@ class FrameGeneration12 {
     sl::DLSSGState state = {};
     if (++presents_ % 30 != 0 || get_state_(VIEWPORT, state, nullptr) != sl::Result::eOk) return;
     max_frames_ = state.numFramesToGenerateMax + 1;
+    dynamic_supported_ = state.bIsDynamicMFGSupported == sl::Boolean::eTrue;
     if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) {
       status_ = "Frame generation: not generating (it takes no scRGB: set Output to HDR10 or SDR)";
     } else if (state.status != sl::DLSSGStatus::eOk) {
@@ -559,8 +564,8 @@ class FrameGeneration12 {
     } else if (!inputs) {
       status_ = "Frame generation: paused (DLAA is not running on this frame)";
     } else {
-      status_ = std::format("Frame generation: {} frames presented per rendered frame{}", state.numFramesActuallyPresented,
-                            (hudless ? "" : " (no HUD-less image: the UI can warp)"));
+      status_ = std::format("Frame generation: {}{} frames presented per rendered frame{}", (applied_dynamic_ ? "Dynamic, " : ""),
+                            state.numFramesActuallyPresented, (hudless ? "" : " (no HUD-less image: the UI can warp)"));
     }
   }
 
@@ -620,7 +625,9 @@ class FrameGeneration12 {
   uint32_t frame_limit_ = 0;  // Reflex's frame rate limit as last set (rendered frames per second; 0: none)
   uint32_t applied_generated_ = UINT32_MAX;
   bool applied_hudless_ = false;
+  bool applied_dynamic_ = false;
   uint32_t max_frames_ = 0;
+  bool dynamic_supported_ = false;  // Dynamic frame generation (DLSS 4.5, RTX 50)
   uint64_t presents_ = 0;
 };
 

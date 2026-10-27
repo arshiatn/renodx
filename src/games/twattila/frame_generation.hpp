@@ -36,7 +36,7 @@ namespace twattila::frame_generation {
 using Microsoft::WRL::ComPtr;
 
 struct Settings {
-  uint32_t multiplier = 0;  // frames presented per rendered frame (2-4); 0: off
+  uint32_t multiplier = 0;  // frames presented per rendered frame (2-6; 1: Dynamic, up to the display's refresh rate); 0: off
   bool reflex_boost = false;
   uint32_t frame_limit = 0;  // Reflex's frame rate limit, rendered frames per second (0: none)
 };
