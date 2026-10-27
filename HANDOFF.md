@@ -631,8 +631,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           spatial hash of cells by position and level (CACHE_ENTRIES 1M, CACHE_LEVELS 8), filled from the paths' unseen
           hits and the screen, resolved each frame, looked up at path vertices to end paths early). NRC needs NVIDIA's
           NRC library (RTXGI 2: binary, online training passes on tensor cores) wired into the paths; not done.
-    [ ] 11 WH3 DLSS below 100% (launch WH3 myself; trace build\ingame\traces\twwarhammer3_50.txt lines 800-921:
-          post-TAA 3D effects need a display-size depth, bloom chain + composite to display size, its upscale 1:1).
+    [-] 11 NOT DONE (needs in-game iteration; game input was blocked in batches 3-4): WH3 DLSS below 100%. Trace
+          twwarhammer3_50.txt 795-921 read again: the game's TAA (cs 6A8FC282, 240x135 groups) already writes display
+          size (a TAAU, 1:1 at 100%); after it the post-TAA 3D effects (vs 4F35D09F particles, E2AEBB32) draw at the render
+          viewport into 0x6a7605a0 with the render-size depth 0x6f454420, the bloom chain starts from a render-size
+          combine (ps E1A30AFC) and the composite (vs E0C2FF5F ps E2EE82F8) runs at display size reading the TAA output,
+          that layer (t2) and the bloom (t3) with render-scale UVs. Plan: viewports of the post-TAA draws to display size
+          with a display-size depth (upscaled render depth: max of the 2 x 2 at 50%) bound in place of 0x6f454420, the
+          combine + bloom at display size (view cloning, feedback_view_cloning), the composite's UV scale for t2 / t3 to
+          1; test with ATN at 50 / 67 / 77 %.
     [ ] 12 Release: 64 + 32-bit builds, patch notes, zips (helper22 if the helper changes), report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
