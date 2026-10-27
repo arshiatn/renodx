@@ -255,3 +255,14 @@ screen-to-shadow basis (sun_shadow_pcss.hlsli: CryEngine's vWBasisX / Y / Z are 
 in the cascade's space; the orthographic map's u and v rows are orthogonal with equal length in camera space, which
 gives the field of view's tangent, then texels per unit of depth), so every cascade gets the same world-size penumbra.
 In game at 3 degrees (an overcast scene): railing shadows on the floor softer, no acne or seams; 45 -> 43 fps.
+
+
+fix51 (ATN's batch 3, untested in game; the helper GPU-tested): **Ray tracing (Experimental)**, section "Ray Tracing
+(Experimental)": Ray-Traced Sun Shadows (softness 0-3 degrees), Ray-Traced Light Bounce (rays, range) and Path Tracing
+(bounces) through the Total War helper (renodx-tw-dlaa64.exe, D3D12\D3D12Core.dll next to the addon; restart after
+turning on; ray_tracing.hpp, twattila/rt_core.hpp). The scene: every G-buffer draw (three RGBA16F targets and the depth)
+streamed out through the game's own vertex shaders (alpha-tested foliage with its UV, tested against its diffuse alpha;
+characters every frame), the camera from VS PER_FRAME's uploads. Before the tiled lighting each pixel's world position
+(from the linear depth) and the sun go to the helper; the traced sun goes into the sun's shadow mask with the contact
+shadows (the darker; their screen-space march steps aside while the rays run), the Light Bounce's trace goes through
+rays (path traced when on).

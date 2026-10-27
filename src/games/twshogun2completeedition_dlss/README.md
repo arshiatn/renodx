@@ -455,3 +455,9 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
   Streamline (its "repeated slDLSSGSetOptions" warning at every resize; the screen could keep showing old frames after
   the startup fullscreen switch).
 - Debug: ReShade.ini FrameGenerationReflexSleep=0 skips Reflex's sleep after each present (its markers stay).
+
+
+## v55: ray tracing settings
+
+- "Ray Tracing (Experimental)" section: sun shadows (softness), ambient occlusion (range), Global Illumination through
+  rays (rays, range) and path tracing (bounces), written to ReShade.ini for the HDR addon (v62), which traces them.

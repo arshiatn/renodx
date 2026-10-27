@@ -601,3 +601,16 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   0x9147EB4E, sss01 0x1B529672 -> 0x7FA1D600. Both get this mod's (PCSS, stability, render scale) as on CE. Its
   other shader changes (particle and ribbon vertex shaders, blood decals, the grass source) are not ones this mod
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
+
+
+## v62: ray tracing (Experimental, untested in game; the helper GPU-tested)
+
+- Settings in the DLSS addon's overlay ("Ray Tracing"; ReShade.ini [Shogun 2 DLSS] RayTraced* / PathTracing*), read
+  here; restart after turning on the first effect. Needs an RTX GPU and the Total War helper (renodx-tw-dlaa64.exe,
+  D3D12\D3D12Core.dll) next to the addons (ray_tracing.hpp, twattila/rt_core.hpp).
+- The scene: every G-buffer draw of the main view (rt0-2 RGBA16F and the depth) streamed out through the game's own
+  vertex shaders (leaves alpha-tested against their diffuse alpha, units every frame), the camera from camera_VS_PS's
+  uploads.
+- At the frame's first sun light draw: the sun and the trace. Ray-traced sun shadows and ambient occlusion reach
+  sunlight00-03 at t40 / t41 (shaders/rt_sun.hlsli): the darker of each and the game's shadow mask / AO.
+- Ray-traced Global Illumination: the Light Bounce's (GT-VBGI's) trace through rays, path traced when on.

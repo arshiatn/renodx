@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+## v26 (2026-10-27, untested in game)
+
+- **Ray Reconstruction** (Experimental, DLSS section, with DLSS): NVIDIA's Ray Reconstruction in place of DLSS through
+  the helper, its guides from WH3's G-buffer at the frame's first sun light draw (rr_guides.cs: the view-space normal
+  from the upper 8 of each 10 bits turned to world space by inv_view, diffuse albedo = the colour x 0.96, specular
+  albedo 0.04 and roughness = 1 - the material channel's z, as the deferred sun light reads them: WH3 lights
+  dielectrics only), its camera from the uploaded projection and view-projection.
+- DLSS below 100% stays off: the game's post-processing would need to run at the display's size.
+
 ## v25 (2026-10-27, untested in game; the helper GPU-tested)
 
 - **Ray tracing** (Experimental, DLSS section, with DLSS): Ray-Traced Sun Shadows, Ambient Occlusion, Light Bounce and

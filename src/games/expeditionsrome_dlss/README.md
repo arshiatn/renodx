@@ -917,3 +917,22 @@ v25: frame generation's frame rate limit, resize fix (frame_generation.hpp, shar
   Streamline (its "repeated slDLSSGSetOptions" warning at every resize; the screen could keep showing old frames after
   the startup fullscreen switch).
 - Debug: ReShade.ini FrameGenerationReflexSleep=0 skips Reflex's sleep after each present (its markers stay).
+
+v26 (ATN's batch 3, untested in game; the helper GPU-tested): **Ray tracing (Experimental)**, a tree under the Contact
+shadows slider. Needs an RTX GPU and the Total War helper (renodx-tw-dlaa64.exe, D3D12\D3D12Core.dll) next to the
+addon; restart the game after turning on the first effect (ray_tracing.hpp, twattila/rt_core.hpp).
+- The scene: Unreal 4.26's depth prepass into the scene depth, streamed out through the game's own vertex shaders (the
+  shadow maps' and custom depth's other depth buffers stay out), in metres. Alpha-tested materials (a prepass pixel
+  shader that discards and samples t0 at a texture coordinate: foliage, cloth, fences) stream out their UV too and are
+  alpha-tested in the rays against t0's alpha; masks read another way (tiled) stay out. Characters (bone indices, or
+  the skin cache's vertex buffers) every frame. Checked offline on the game's dumped shaders (tools\expeditions\
+  classify_test.cpp): masks found in TEXCOORD0, tiled masks left out, characters solid and skinned.
+- Ray-traced sun shadows: the darker of the game's (its whole-scene shadows faded to the static ones with distance, as
+  its light shader does) and the rays', put into the light attenuation before the sun's deferred light draw: also past
+  the shadow maps' range. The Contact shadows step aside while it runs (no double work). Shadow softness 0-3 degrees.
+- Ray-traced ambient occlusion: the darker of the screen-space AO and the rays' (the sky and reflection pass reads it).
+- Ray-traced light bounce: the sun's light bouncing off what it hits, traced (or path traced) from the scene right after
+  the sun's light draw, resolved over frames and added times the diffuse colour (strength, rays, range).
+- Ray-traced reflections: in place of the screen-space reflections (their draw is left out; needs them on in the game):
+  the rays' light where they met a surface, the reflection captures and the sky for the rest. Samples 1-8.
+- Path tracing: the light bounce's and the reflections' rays go on bouncing (bounces 1-4).
