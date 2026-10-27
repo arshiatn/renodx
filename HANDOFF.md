@@ -515,6 +515,44 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     - NOT DONE: in-game tests of batch 3 (input to games blocked); WH3 DLSS below 100%; Tales Mega Geometry / PTLAS
       (few characters: little gain); LSS / spheres (no strands or particles in any RT scene); Shogun 2 RT reflections
       (needs its G-buffer guides and the ssrresolve patch); TW grass / billboards in RT.
+21. (ATN, 2026-10-27 ~16:00, BATCH 4: performance + missing features; tests after it) DONE 2026-10-27 ~17:30, all
+    untested in game (input to games blocked); local commits 8fff0147..85c37683 on atn-mods (never pushed).
+    - helper21 (build\tw_dlaa_helper21; tools\tw\release_zip.py ships it): bridge v9. FG Dynamic + 5x / 6x (TW 7, WH3).
+      RR as the only denoiser (bridge.reconstructing: Light Bounce denoiser, AO filter, reflection accumulation step
+      aside; Tales RAY_RECONSTRUCTION). Quarter-rate AO (RT_AMBIENT_QUARTER). RT presets Low-Ultra (TW / WH3). CPU fast
+      path (short keys). PTLAS opt-in (RENODX_TW_PTLAS): it stalled every request 0.3-0.8 s (helper19 in the batch-3
+      zips had it on!). RENODX_TW_GPU_TIMES: GPU / CPU phase times in the status line. Measured round trip without
+      PTLAS 0.15-0.2 ms a request: in-process D3D12 / earlier tracing / instancing not worth it.
+    - Local light shadows (bridge v9 RT_LOCAL_LIGHTS, rt_core SetLocalLights / LocalLightMask,
+      twattila/rt_local_lights.hlsli: t42 lit bits, b12 positions): up to 32 lights a trace, hard shadows, rays stop
+      0.5 m short of the light. Wired: Shogun 2 pointlight00 / 01 only (last frame's lights by brightness x reach^2 /
+      distance^2). Others need their light shaders patched (TW light volumes, Ryse tiled lights, Expeditions UE lights).
+    - ReSTIR GI (RT_PATH_REUSE, always with path tracing; RENODX_TW_NO_REUSE=1 off): rt_path.hlsli PathTraceTexel builds
+      reservoirs + temporal reuse (M <= 20x), ReuseTexel (rt_reuse.h, -D REUSE) spatial 5 neighbours + Jacobian + a
+      final visibility ray. Harness (tools\tw\rt_harness, args: frames samples path_flags; 17 = PT + reuse): bounce
+      noise 0.93 -> 0.26 at 1 path / texel, mean within noise.
+    - Ryse fix52: RT AO (contact shadow PS second target into DirectionalOccRT w: (1 - v) / SSDOParams.z, max blend),
+      RT reflections at t6 of the tiled lighting (restored on_drawn), SSR trace E0B7E115 skipped, guides 0x52C5E005,
+      KeepColor 0x52C5E006 at ps 0x3BA5B162 (R11G11B10 render-size copies). Ryse DLSS v115: OnLightingDispatch now
+      swaps its CS and replays (it bypassed before, so the HDR addon's on_drawn = Light Bounce never ran with the raised
+      light limit, default 512!).
+    - Shogun 2 v63 / DLSS v56: RT reflections in ssrresolve00 (rt_reflection.hlsli), march + blurs + HiZ + radiance /
+      hit mip chains skipped (generic mips only between HiZ and resolve), guides rt_guides.cs, KeepColor (t9 mip 0),
+      point light shadows. Settings in the DLSS overlay (RayTracedReflections / Samples, RayTracedLocalLights).
+    - TW grass in RT (RayTracedGrass, off): capture VS from make_wind_motion_vs.py mode world_uv_o3 (UV in o3) for
+      Attila / Thrones (grass00 / 01; Thrones from its own decompiles), Rome II (6), Troy, WH1 (2), WH2; not Pharaoh
+      (its grass motion shaders are vfx grass flames), not WH3.
+    - Zips (Downloads): twattila_v78, twrome2_v36, twthronesofbritannia_v36, twtroy_v32, twpharaohdynasties_v36,
+      twwarhammer_v33, twwarhammer2_v33, twwarhammer3_v27, rysesonofrome_fix52, rysesonofrome_dlss_v115,
+      expeditionsrome_dlss_graphics_v27, twshogun2completeedition_v63, twshogun2completeedition_dlss_v56,
+      talesofarise_dlss_v108 (helper21 where the helper ships; build32 for Attila / Rome II / Thrones).
+    - NOT DONE: WH3 DLSS below 100% (after the TAA WH3 draws 3D effects at the render size with the render-size depth,
+      then the bloom chain and composite before its own upscale: all would move to the display size with an upscaled
+      depth; needs in-game iteration; trace build\ingame\traces\twwarhammer3_50.txt lines 800-921); Tales Mega
+      Geometry (few characters, refit is cheap) and PTLAS (stall); smoke / particle RT shadows (soft billboards, skipped
+      as ATN allowed); NRC (needs NVIDIA's CUDA SDK); local light shadows outside Shogun 2; AMD.
+    - NEXT: ATN's tests of batches 3 + 4 (ASK: Ryse RT AO / reflections / Light Bounce with the light limit; Shogun 2
+      reflections + point light shadows; TW grass cost; PT noise with ReSTIR; helper21 smoothness vs helper19).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
