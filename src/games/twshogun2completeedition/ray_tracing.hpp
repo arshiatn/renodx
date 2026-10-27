@@ -16,10 +16,13 @@
 
 #include <include/reshade.hpp>
 
+#include <embed/shaders.h>
+
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../expeditionsrome_dlss/constant_mirror.hpp"
 #include "../talesofarise_dlss/matrix.hpp"
+#include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/rt_core.hpp"
 
@@ -29,9 +32,12 @@
 // own vertex shaders (those with bone inputs every frame). The camera: camera_VS_PS (view_projection c10-c13 as
 // uploaded, jittered as the scene was drawn; the position c0; the render size g_viewport_dimensions c38) from the
 // game's uploads (expeditionsrome_dlss/constant_mirror.hpp). At the frame's first sun light draw (sunlight00-03, the
-// addon's): the sun (lighting_VS_PS c0, from the sun) and the trace (its readable depth); the traced sun and ambient
-// visibility at t40 / t41 for those draws (shaders/rt_sun.hlsli: the darker of them and the game's shadow mask and
-// AO). The Light Bounce's trace goes through rays (path traced when on). Installed when an effect is on at launch.
+// addon's): the sun (lighting_VS_PS c0, from the sun), the G-buffer guides when the reflections or paths want them
+// (rt_guides) and the trace (its readable depth); the traced sun and ambient visibility at t40 / t41 for those draws
+// (shaders/rt_sun.hlsli: the darker of them and the game's shadow mask and AO). The traced reflections replace the
+// screen-space march's hit in its resolve (ssrresolve00, twattila/rt_reflection.hlsli; the march and its blurs left
+// out), whose lit scene is the helper's last frame's colour for the next frame (KeepColor). The Light Bounce's trace
+// goes through rays (path traced when on). Installed when an effect is on at launch.
 namespace twshogun2::ray_tracing {
 
 using Microsoft::WRL::ComPtr;
@@ -63,6 +69,12 @@ struct State {
   twattila::rt_scene::Settings settings;
   std::array<UINT, 2> render_size = {};
   std::array<UINT, 2> depth_size = {};  // the sun draws' depth's: the main view's (other views' G-buffers stay out)
+  uint64_t frame = 0;
+  uint64_t guides_frame = UINT64_MAX;  // the frame the guides were written in
+  ComPtr<ID3D11Device> device;
+  ComPtr<ID3DDeviceContextState> private_state;
+  ComPtr<ID3D11ComputeShader> guides;
+  bool failed = false;
 };
 static State state;
 
@@ -117,13 +129,18 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   D3D11_TEXTURE2D_DESC depth_texture_desc = {};
   if (FAILED(depth_resource.As(&depth_texture))) return false;
   depth_texture->GetDesc(&depth_texture_desc);
+  bool reflections = false;
+  bool guides = false;
   {
     const std::unique_lock lock(state.mutex);
     if (state.depth_size != std::array<UINT, 2>{depth_texture_desc.Width, depth_texture_desc.Height}) return false;
+    reflections = state.settings.reflections;
+    guides = reflections || state.settings.path_tracing;
   }
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (!twattila::dlaa_bridge::Prepare(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height, false, true)
+  if (!twattila::dlaa_bridge::Prepare(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height, guides, true,
+                                      DXGI_FORMAT_UNKNOWN, reflections)
       || !twattila::rt_scene::SceneCoverage(native, shader)) {
     return false;
   }
@@ -131,7 +148,50 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   return true;
 }
 
-// The frame's first sun light draw: the sun and the trace; every one: the traced visibilities bound (put back after).
+// The G-buffer guides for the reflections and paths from a sun draw's G-buffer (the three slots before its depth: normal,
+// colour, constants), once a frame, in the addon's own context state.
+inline void WriteGuides(ID3D11DeviceContext* native, UINT depth_slot) {
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  std::array<ComPtr<ID3D11ShaderResourceView>, 3> gbuffer;
+  for (UINT index = 0; index < gbuffer.size(); ++index) native->PSGetShaderResources(depth_slot - 3 + index, 1, gbuffer[index].GetAddressOf());
+  ComPtr<ID3D11DeviceContext1> native1;
+  if (!bridge.guides || !gbuffer[0] || !gbuffer[1] || !gbuffer[2] || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) {
+    return;
+  }
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  {
+    const std::unique_lock lock(state.mutex);
+    if (state.guides_frame == state.frame) return;
+    if (state.device != device) {
+      ComPtr<ID3D11Device1> device1;
+      const auto feature_level = device->GetFeatureLevel();
+      const UINT state_flags = ((device->GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0)
+                                   ? D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED
+                                   : 0;
+      state.device = device;
+      state.private_state.Reset();
+      state.guides.Reset();
+      state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
+                     || FAILED(device1->CreateDeviceContextState(state_flags, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1),
+                                                                 nullptr, state.private_state.GetAddressOf()))
+                     || FAILED(device->CreateComputeShader(__rt_guides.data(), __rt_guides.size(), nullptr, state.guides.GetAddressOf()));
+    }
+    if (state.failed) return;
+    state.guides_frame = state.frame;
+  }
+  const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());
+  ID3D11ShaderResourceView* views[] = {gbuffer[0].Get(), gbuffer[1].Get(), gbuffer[2].Get()};
+  ID3D11UnorderedAccessView* written[] = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(), bridge.normals.uav.Get(),
+                                          bridge.roughness.uav.Get()};
+  native->CSSetShader(state.guides.Get(), nullptr, 0);
+  native->CSSetShaderResources(0, 3, views);
+  native->CSSetUnorderedAccessViews(0, 4, written, nullptr);
+  native->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+}
+
+// The frame's first sun light draw: the sun, the guides and the trace; every one: the traced visibilities bound (put back
+// after).
 constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& draw = command.template GetCallbackData<SunDraw>();
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -165,6 +225,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
       twattila::rt_scene::WriteSun(native, {-sun[0] / length, -sun[1] / length, -sun[2] / length});
     }
   }
+  if (settings.reflections || settings.path_tracing) WriteGuides(native, draw.depth_slot);
   if (twattila::rt_scene::Camera camera; Camera(buffers[0].Get(), &camera)) twattila::rt_scene::Trace(native, depth.Get(), camera);
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
   const std::array<ID3D11ShaderResourceView*, 2> visibilities = {settings.sun_shadows ? sun : nullptr,
@@ -187,7 +248,10 @@ inline const twattila::rt_scene::Host HOST = {
       const std::unique_lock lock(internal::state.mutex);
       return internal::state.render_size;
     },
-    .guides_written = [] { return false; },
+    .guides_written = [] {
+      const std::unique_lock lock(internal::state.mutex);
+      return internal::state.guides_frame == internal::state.frame;
+    },
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
 };
@@ -197,8 +261,38 @@ inline void Update(const twattila::rt_scene::Settings& settings) {
   {
     const std::unique_lock lock(internal::state.mutex);
     internal::state.settings = settings;
+    ++internal::state.frame;
   }
   twattila::rt_scene::Update(settings);
+}
+
+// After the screen-space reflections' resolve (its t9: this frame's lit scene, with mips): the render pixels of its first
+// level are the helper's colour, last frame's light for the next frame's reflections and paths.
+inline void KeepColor(reshade::api::command_list* cmd_list) {
+  std::array<UINT, 2> render_size;
+  {
+    const std::unique_lock lock(internal::state.mutex);
+    if (!(internal::state.settings.reflections || internal::state.settings.path_tracing)) return;
+    render_size = internal::state.render_size;
+  }
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  if (native == nullptr || !bridge.color.texture || render_size[0] == 0 || render_size[0] > bridge.width || render_size[1] > bridge.height) {
+    return;
+  }
+  ComPtr<ID3D11ShaderResourceView> scene;
+  native->CSGetShaderResources(9, 1, scene.GetAddressOf());
+  if (!scene) return;
+  ComPtr<ID3D11Resource> resource;
+  scene->GetResource(resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> texture;
+  D3D11_TEXTURE2D_DESC desc = {};
+  if (FAILED(resource.As(&texture))) return;
+  texture->GetDesc(&desc);
+  if (desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT || desc.Width < render_size[0] || desc.Height < render_size[1]) return;
+  const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = render_size[0], .bottom = render_size[1], .back = 1};
+  native->CopySubresourceRegion(bridge.color.texture.Get(), 0, 0, 0, 0, resource.Get(), 0, &region);
 }
 
 inline void Install() {
@@ -220,6 +314,13 @@ inline void Uninstall() {
 
 // The game's device is going away: the addon's objects on it with it.
 inline void OnDestroyDevice(reshade::api::device* device) {
+  {
+    const std::unique_lock lock(internal::state.mutex);
+    internal::state.device.Reset();
+    internal::state.private_state.Reset();
+    internal::state.guides.Reset();
+    internal::state.failed = false;
+  }
   twattila::rt_scene::OnDestroyDevice(device);
   twattila::dlaa_bridge::Release();
 }

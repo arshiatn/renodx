@@ -250,6 +250,7 @@ struct GameDrawShaders {
   ComPtr<ID3D11Buffer> constants;
   int constants_quality = 0;  // the REFLECTION_QUALITIES item in `constants` (0: none yet)
   ComPtr<ID3D11ComputeShader> tiled_lights;
+  ComPtr<ID3D11ComputeShader> game_lighting;  // the game's cs while the addon's is swapped in for its dispatch
   bool failed = false;
 } game_draw_shaders;
 
@@ -2213,6 +2214,7 @@ void ReleaseGameDrawShaders() {
   game_draw_shaders.trace.Reset();
   game_draw_shaders.constants.Reset();
   game_draw_shaders.tiled_lights.Reset();
+  game_draw_shaders.game_lighting.Reset();
   game_draw_shaders.device.Reset();
 }
 
@@ -2277,7 +2279,8 @@ constexpr auto OnReflectionDraw = []<typename Context>(Context& command) -> comm
 };
 
 // The raised light limit (while particle_counts applies it): the game's tiled lighting dispatched with the addon's cs,
-// with the game's bindings (its cs put back after).
+// with the game's bindings: the cs swapped in and the dispatch replayed (the HDR addon's passes before and after it
+// still run), the game's cs put back after.
 constexpr auto OnLightingDispatch = []<typename Context>(Context& command) -> command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   if constexpr (!std::is_same_v<Arguments, command_action::DispatchArguments>) {
@@ -2291,12 +2294,19 @@ constexpr auto OnLightingDispatch = []<typename Context>(Context& command) -> co
     if (!context) return {};
     const std::unique_lock lock(game_draw_shaders.mutex);
     if (!PrepareGameDrawShaders(context.Get())) return {};
-    ComPtr<ID3D11ComputeShader> game_shader;
-    context->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
+    game_draw_shaders.game_lighting.Reset();
+    context->CSGetShader(game_draw_shaders.game_lighting.GetAddressOf(), nullptr, nullptr);
     context->CSSetShader(game_draw_shaders.tiled_lights.Get(), nullptr, 0);
-    context->Dispatch(command.arguments.group_count_x, command.arguments.group_count_y, command.arguments.group_count_z);
-    context->CSSetShader(game_shader.Get(), nullptr, 0);
-    return {.bypass = true};
+    return {
+        .replay = true,
+        .post_callback = [](Context& dispatched, const void*) {
+          const auto context = ImmediateContext(dispatched.cmd_list);
+          if (!context) return;
+          const std::unique_lock lock(game_draw_shaders.mutex);
+          context->CSSetShader(game_draw_shaders.game_lighting.Get(), nullptr, 0);
+          game_draw_shaders.game_lighting.Reset();
+        },
+    };
   }
 };
 

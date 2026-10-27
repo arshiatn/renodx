@@ -790,14 +790,22 @@ void OnOverlay(reshade::api::effect_runtime*) {
     checkbox("Ray-traced AO at a quarter rate", "RayTracedAOQuarter",
              "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
     ImGui::EndDisabled();
+    const bool reflections = checkbox("Ray-traced reflections", "RayTracedReflections",
+                                      "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
+                                      "Needs the game's screen-space reflections on.");
+    ImGui::BeginDisabled(!reflections);
+    count("Ray-traced reflection samples", "RayTracedReflectionSamples", 1, 8, "Rays per pixel on rough surfaces: less noise, heavier.");
+    ImGui::EndDisabled();
     const bool bounce = checkbox("Ray-traced Global Illumination", "RayTracedLightBounce",
                                  "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"
                                  "Needs the Global Illumination on.");
     ImGui::BeginDisabled(!bounce);
     count("Ray-traced GI rays", "RayTracedLightBounceRays", 4, 16, "Rays per texel: less noise, heavier.");
     slider("Ray-traced GI range", "RayTracedLightBounceRange", 10.f, 1.f, 50.f, "%.0f m", "How far its rays look for light.");
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(!bounce && !reflections);
     const bool path_tracing = checkbox("Path tracing", "PathTracing",
-                                       "The Global Illumination path traced: light bouncing several times, also from what is off screen. Heavy.");
+                                       "The Global Illumination's and the reflections' rays go on bouncing: lit by what the screen never saw. Heavy.");
     ImGui::BeginDisabled(!path_tracing);
     count("Path tracing bounces", "PathTracingBounces", 2, 4, "Bounces past the first. More: brighter shade, heavier.");
     ImGui::EndDisabled();

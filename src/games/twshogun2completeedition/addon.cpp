@@ -139,6 +139,10 @@ void ApplyRecommendedPreset() {
 
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
+// Ray tracing (Experimental, ray_tracing.hpp): its settings (the DLSS addon's, ReShade.ini RayTraced* / PathTracing*),
+// installed when an effect is on at launch.
+twattila::rt_scene::Settings ray_tracing_settings;
+bool ray_tracing_installed = false;
 
 // Render scale (the DLSS addon draws the 3D passes into the top-left part of the full-size targets) ////////////////
 // The rendered fraction for the depth of field, the auto exposure and the tonemap's distortion lookup: a 3D pass's
@@ -315,6 +319,21 @@ void BuildRuntimeData() {
     tw::line_sweep_ao::OnCollectDone(cmd_list);
     return false;
   };
+
+  // Reflections: the ray-traced ones in the resolve (ssrresolve00, twattila/rt_reflection.hlsli), its lit scene kept for
+  // the next frame's; while they replace the screen-space march, the march (ssrray00) and its blurs are left out.
+  custom_shaders[0xF87ECE85].on_draw = [](auto* cmd_list) {
+    if (ray_tracing_installed) twattila::rt_scene::BindReflections(cmd_list, true, true);
+    return true;
+  };
+  custom_shaders[0xF87ECE85].on_drawn = [](auto* cmd_list) {
+    if (!ray_tracing_installed) return;
+    twattila::rt_scene::BindReflections(cmd_list, true, false);
+    twshogun2::ray_tracing::KeepColor(cmd_list);
+  };
+  for (const uint32_t hash : {0x5C0AF498u, 0x13C66077u, 0x073A6CF3u}) {
+    custom_shaders[hash].on_draw = [](auto* cmd_list) { return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list); };
+  }
 
   // Render scale: captured on the game's own reflections copy and battle fog (drawn every frame before the depth of
   // field and the auto exposure), reset after the tonemaps.
@@ -868,10 +887,6 @@ constexpr std::array<twattila::light_bounce::SunDraw, 4> LIGHT_BOUNCE_DRAWS = {{
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
-// Ray tracing (Experimental, ray_tracing.hpp): its settings (the DLSS addon's, ReShade.ini RayTraced* / PathTracing*),
-// installed when an effect is on at launch.
-twattila::rt_scene::Settings ray_tracing_settings;
-bool ray_tracing_installed = false;
 
 // The DLSS addon's graphics options for shaders here (its overlay, ReShade.ini [Shogun 2 DLSS]): read at attach, each
 // frame while ReShade's overlay is open (where they change) and as it closes. Not on reshade_overlay: an add-on with
@@ -929,6 +944,9 @@ void ReadDlssAddonOptions() {
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAmbientOcclusion", ray_tracing.ambient_occlusion);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAOQuarter", ray_tracing.ambient_quarter);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedReflections", ray_tracing.reflections);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedReflectionSamples", ray_tracing.reflection_samples);
+  ray_tracing.reflection_samples = std::clamp(ray_tracing.reflection_samples, 1u, 8u);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounce", ray_tracing.light_bounce);
   read_float("RayTracedLightBounceRange", 10.f, 1.f, 50.f, &ray_tracing.light_bounce_range);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounceRays", ray_tracing.light_bounce_rays);
@@ -1150,7 +1168,8 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
-  ray_tracing_installed = ray_tracing_settings.sun_shadows || ray_tracing_settings.ambient_occlusion || ray_tracing_settings.light_bounce;
+  ray_tracing_installed = ray_tracing_settings.sun_shadows || ray_tracing_settings.ambient_occlusion || ray_tracing_settings.light_bounce
+                          || ray_tracing_settings.reflections;
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Install();
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);

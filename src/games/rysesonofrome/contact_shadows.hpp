@@ -23,7 +23,8 @@
 // array, t32 its light list, b0 its camera), the sun's shadow mask gets short screen-space shadows toward the sun: which
 // slice and channels are the sun's from the light list (0x52C5E001), then a full-screen pass (0x52C5E002 / 0x52C5E003)
 // max-blended into slice 0 of the mask (1 = shadow). With ray tracing's sun visibility (ray_tracing.hpp) the same pass
-// also writes its shadow, the darker. In the addon's own context state; the game's is put back after.
+// also writes its shadow, the darker; with its ambient visibility, the lighting's directional occlusion (t5) too, the
+// darker. In the addon's own context state; the game's is put back after.
 namespace rysesonofrome::contact_shadows {
 
 using Microsoft::WRL::ComPtr;
@@ -51,6 +52,8 @@ struct Objects {
   ComPtr<ID3D11RasterizerState> no_cull;
   ComPtr<ID3D11Resource> mask;  // the shadow mask array its slice-0 target is of
   ComPtr<ID3D11RenderTargetView> mask_target;
+  ComPtr<ID3D11Resource> occlusion;  // the directional occlusion its target is of
+  ComPtr<ID3D11RenderTargetView> occlusion_target;
   Settings uploaded = {.strength = -1.f};
   bool failed = false;
 };
@@ -79,7 +82,8 @@ inline bool Create(ID3D11Device* device) {
       .Usage = D3D11_USAGE_DEFAULT,
       .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
   };
-  D3D11_BLEND_DESC blend_desc = {};
+  // The mask's channels, the occlusion's w.
+  D3D11_BLEND_DESC blend_desc = {.IndependentBlendEnable = TRUE};
   blend_desc.RenderTarget[0] = {
       .BlendEnable = TRUE,
       .SrcBlend = D3D11_BLEND_ONE,
@@ -90,6 +94,8 @@ inline bool Create(ID3D11Device* device) {
       .BlendOpAlpha = D3D11_BLEND_OP_MAX,
       .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL,
   };
+  blend_desc.RenderTarget[1] = blend_desc.RenderTarget[0];
+  blend_desc.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALPHA;
   const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE};
   objects.failed =
       FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
@@ -110,10 +116,13 @@ inline bool Create(ID3D11Device* device) {
 }  // namespace internal
 
 // Before the tiled lighting's dispatch (its bindings set): the contact shadows (and the ray-traced sun's,
-// `sun_visibility`: 1 lit, at the depth's size; null: none) into the sun's shadow mask.
-inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings, ID3D11ShaderResourceView* sun_visibility = nullptr) {
+// `sun_visibility`: 1 lit, at the depth's size; null: none) into the sun's shadow mask, the ray-traced ambient
+// (`ambient_visibility`: 1 open; null: none) into its directional occlusion.
+inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings, ID3D11ShaderResourceView* sun_visibility = nullptr,
+                  ID3D11ShaderResourceView* ambient_visibility = nullptr) {
   using internal::objects;
-  if ((settings.strength <= 0.f && sun_visibility == nullptr) || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
+  if ((settings.strength <= 0.f && sun_visibility == nullptr && ambient_visibility == nullptr)
+      || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
     return;
   }
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -122,10 +131,12 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
   ComPtr<ID3D11ShaderResourceView> depth;
   ComPtr<ID3D11ShaderResourceView> mask_view;
+  ComPtr<ID3D11ShaderResourceView> occlusion_view;
   ComPtr<ID3D11ShaderResourceView> lights;
   ComPtr<ID3D11Buffer> camera;
   context->CSGetShaderResources(0, 1, depth.GetAddressOf());
   context->CSGetShaderResources(4, 1, mask_view.GetAddressOf());
+  if (ambient_visibility != nullptr) context->CSGetShaderResources(5, 1, occlusion_view.GetAddressOf());
   context->CSGetShaderResources(32, 1, lights.GetAddressOf());
   context->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
   if (!depth || !mask_view || !lights || !camera) return;
@@ -153,6 +164,32 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
     if (FAILED(device->CreateRenderTargetView(mask.Get(), &target_desc, objects.mask_target.GetAddressOf()))) return;
     objects.mask = mask;
   }
+  // The directional occlusion as a target, at the mask's size (made again when it changes).
+  ComPtr<ID3D11Resource> occlusion;
+  if (occlusion_view) occlusion_view->GetResource(occlusion.GetAddressOf());
+  ComPtr<ID3D11Texture2D> occlusion_texture;
+  D3D11_TEXTURE2D_DESC occlusion_desc = {};
+  if (occlusion && SUCCEEDED(occlusion.As(&occlusion_texture))) occlusion_texture->GetDesc(&occlusion_desc);
+  if ((occlusion_desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0 || occlusion_desc.Width != mask_desc.Width
+      || occlusion_desc.Height != mask_desc.Height) {
+    occlusion.Reset();
+  } else if (objects.occlusion != occlusion) {
+    // An array view as the mask's (render targets of one kind).
+    D3D11_SHADER_RESOURCE_VIEW_DESC occlusion_view_desc = {};
+    occlusion_view->GetDesc(&occlusion_view_desc);
+    D3D11_RENDER_TARGET_VIEW_DESC target_desc = {
+        .Format = occlusion_view_desc.Format,
+        .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY,
+    };
+    target_desc.Texture2DArray = {.MipSlice = 0, .FirstArraySlice = 0, .ArraySize = 1};
+    objects.occlusion.Reset();
+    objects.occlusion_target.Reset();
+    if (SUCCEEDED(device->CreateRenderTargetView(occlusion.Get(), &target_desc, objects.occlusion_target.GetAddressOf()))) {
+      objects.occlusion = occlusion;
+    } else {
+      occlusion.Reset();
+    }
+  }
   // Under the traced sun (its visibility given) the march steps aside: the rays have the contact detail.
   Settings used = settings;
   if (sun_visibility != nullptr) used.strength = 0.f;
@@ -176,18 +213,18 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
       .Height = static_cast<float>(mask_desc.Height),
       .MaxDepth = 1.f,
   };
-  ID3D11ShaderResourceView* inputs[] = {depth.Get(), objects.sun_srv.Get(), sun_visibility};
+  ID3D11ShaderResourceView* inputs[] = {depth.Get(), objects.sun_srv.Get(), sun_visibility, occlusion ? ambient_visibility : nullptr};
   ID3D11Buffer* constants[] = {camera.Get(), objects.constants.Get()};
-  ID3D11RenderTargetView* target = objects.mask_target.Get();
+  ID3D11RenderTargetView* targets[] = {objects.mask_target.Get(), occlusion ? objects.occlusion_target.Get() : nullptr};
   context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   context->VSSetShader(objects.vertex_shader.Get(), nullptr, 0);
   context->PSSetShader(objects.pixel_shader.Get(), nullptr, 0);
-  context->PSSetShaderResources(0, 3, inputs);
+  context->PSSetShaderResources(0, 4, inputs);
   context->PSSetConstantBuffers(0, 2, constants);
   context->RSSetState(objects.no_cull.Get());
   context->RSSetViewports(1, &viewport);
   context->OMSetBlendState(objects.max_blend.Get(), nullptr, 0xFFFFFFFF);
-  context->OMSetRenderTargets(1, &target, nullptr);
+  context->OMSetRenderTargets(2, targets, nullptr);
   context->Draw(3, 0);
 }
 

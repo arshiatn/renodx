@@ -6,7 +6,9 @@
 // Contact shadows (contact_shadows.hpp): a short march toward the sun through the scene's depth from each pixel; where
 // something covers the ray (in front of it by less than the thickness) the pixel is in shadow. Max-blended into the
 // sun's shadow mask slice before the tiled lighting (cs 0x897232B5) reads it (1 = shadow), in the sun's channels only.
-// With ray tracing (t2 bound: the traced sun's visibility, ray_tracing.hpp) its shadow too, the darker.
+// With ray tracing (t2 bound: the traced sun's visibility, ray_tracing.hpp) its shadow too, the darker. Its ambient
+// visibility (t3 bound) goes into the second target, the tiled lighting's directional occlusion (t5), max-blended into
+// its w (alpha written only), which it reads as 1 - w x SSDOParams.z: the darker of the two.
 // Its constants are the tiled lighting's own (b0) and the addon's (b1).
 cbuffer PerBatch : register(b0) {
   float4 frustum_top_left;     // the far plane's corners from the camera (world)
@@ -29,6 +31,7 @@ cbuffer ContactShadows : register(b1) {
 Texture2D<float> depth_texture : register(t0);  // linear depth / far
 Buffer<uint> sun : register(t1);                // shadow mask slice, channels (0x52C5E001)
 Texture2D<float> traced_sun : register(t2);     // the ray-traced sun's visibility (1 lit; unbound: none)
+Texture2D<float> traced_ambient : register(t3); // the ray-traced ambient visibility (1 open; unbound: none)
 
 // World position (from the camera) at uv and depth / far, as the tiled lighting rebuilds it.
 float3 FromCamera(float2 uv, float depth) {
@@ -36,13 +39,18 @@ float3 FromCamera(float2 uv, float depth) {
           + uv.y * (frustum_bottom_left.xyz - frustum_top_left.xyz)) * depth;
 }
 
-float4 main(float4 position : SV_Position) : SV_Target {
+void main(float4 position : SV_Position, out float4 shadow_mask : SV_Target0, out float4 occlusion : SV_Target1) {
+  shadow_mask = 0.f;
+  occlusion = 0.f;
+  const uint2 pixel = uint2(position.xy);
+  uint ambient_width, ambient_height;
+  traced_ambient.GetDimensions(ambient_width, ambient_height);
+  if (ambient_width != 0u && ssdo_parameters.z > 0.f) occlusion.a = (1.f - traced_ambient.Load(int3(pixel, 0))) / ssdo_parameters.z;
   const uint channels = sun[1];
   // Only slice 0's target is bound: a sun elsewhere (or none) gets nothing.
-  if (sun[0] != 0u || channels == 0u) return 0.f;
-  const uint2 pixel = uint2(position.xy);
+  if (sun[0] != 0u || channels == 0u) return;
   const float depth = depth_texture.Load(int3(pixel, 0));
-  if (!(depth < 0.999f)) return 0.f;
+  if (!(depth < 0.999f)) return;
   const float2 uv = (float2(pixel) + 0.5f) * screen_size.zw;
   const float3 across = frustum_top_right.xyz - frustum_top_left.xyz;
   const float3 down = frustum_bottom_left.xyz - frustum_top_left.xyz;
@@ -82,6 +90,6 @@ float4 main(float4 position : SV_Position) : SV_Target {
   uint traced_width, traced_height;
   traced_sun.GetDimensions(traced_width, traced_height);
   if (traced_width != 0u) value = max(value, 1.f - traced_sun.Load(int3(pixel, 0)));
-  return float4((channels & 1u) ? value : 0.f, (channels & 2u) ? value : 0.f, (channels & 4u) ? value : 0.f,
+  shadow_mask = float4((channels & 1u) ? value : 0.f, (channels & 2u) ? value : 0.f, (channels & 4u) ? value : 0.f,
                 (channels & 8u) ? value : 0.f);
 }

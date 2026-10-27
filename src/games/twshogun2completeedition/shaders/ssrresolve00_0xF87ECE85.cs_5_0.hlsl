@@ -4,6 +4,8 @@
 // 32 px texels, for long rays) also average the unrendered rest of the full-size texture: the distant sea's reflections
 // turned bright along the right edge, ~32 render px at any scale (ATN debug22 / 23). Below 100% the lookup stays half a
 // texel of its coarsest mip inside the rendered part.
+// RenoDX: the ray-traced reflections (twattila/rt_reflection.hlsli, ray_tracing.hpp): where bound, the rays' light in
+// place of the march's hit, the share of rays that met a surface its confidence.
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -70,6 +72,7 @@ RWTexture2D<float3> t_out_radiance : register(u0);
 // 3Dmigoto declarations
 #define cmp -
 #include "./ssr.hlsli"
+#include "../../twattila/rt_reflection.hlsli"
 
 
 [numthreads(32, 32, 1)]
@@ -91,6 +94,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
   r1.xy = (int2)r1.xy + int2(-1,-1);
   r1.zw = max(int2(0,0), (int2)r1.zw);
   r1.xy = min((int2)r1.zw, (int2)r1.xy);
+  const int2 rt_texel = r1.xy;
   r1.zw = float2(0,0);
   r2.xyzw = gbuffer_constants_texture.Load(r1.xyw).xyzw;
   r2.w = 255 * r2.w;
@@ -178,6 +182,9 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
       r0.xy = min(r0.xy, (g_viewport_dimensions.xy - 0.5f * exp2(ceil(r3.w))) * screen_size.zw);
     }
     r7.xyw = t_in_radiance.SampleLevel(s_trilinear_sampler_s, r0.xy, r3.w).xyz;
+    const bool rt_reflected = RtReflectionsBound();
+    const float4 rt_traced = rt_reflected ? t_rt_reflection.Load(int3(rt_texel, 0)) : 0.f;
+    if (rt_reflected) r7.xyw = rt_traced.rgb;
     r3.x = t_ssao.SampleLevel(s_ssao_s, r0.zw, 0).x;
     r0.y = (int)r3.y | 1;
     r0.x = 1;
@@ -264,6 +271,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r0.y = r1.y * r0.y;
     r0.xzw = r3.xyw * r0.xxx + -r1.xzw;
     r0.y = min(1, r0.y);
+    if (rt_reflected) r0.y = rt_traced.a;
     r0.xyz = r0.xzw * r0.yyy;
   } else {
     r0.xyz = float3(0,0,0);
