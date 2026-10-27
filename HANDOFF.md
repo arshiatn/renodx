@@ -553,6 +553,33 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       as ATN allowed); NRC (needs NVIDIA's CUDA SDK); local light shadows outside Shogun 2; AMD.
     - NEXT: ATN's tests of batches 3 + 4 (ASK: Ryse RT AO / reflections / Light Bounce with the light limit; Shogun 2
       reflections + point light shadows; TW grass cost; PT noise with ReSTIR; helper21 smoothness vs helper19).
+22. (ATN, 2026-10-27 ~18:00, BATCH 5, then ATN tests batches 3-5) STATUS LOG: tick items here and commit after every
+    step (ATN asked, so compaction loses nothing). Licences: MIT / Apache 2.0 / CC0 / anything free for commercial use,
+    also as references (credit + licence file in the zips). Steps (task list order):
+    [x] 1 Checklist + memory (feedback_progress_log.md).
+    [ ] 2 ReSTIR GI review against kajiya (Embark, MIT / Apache 2.0, rtdgi shaders) + RTXDI if its licence allows:
+          gaps known: no re-check of old samples when lighting changes, no normal test in temporal reuse, no firefly
+          clamp. PTLAS stall (0.3-0.8 s a request, helper19 / RENODX_TW_PTLAS=1): compare with nvpro-samples
+          (vk_partitioned_tlas, Apache 2.0) / NVAPI docs; GPU harness with RENODX_TW_GPU_TIMES.
+    [ ] 3 Accelerators: mesh instancing (one BLAS per unique mesh, transforms in the TLAS: needs object-space captures
+          + per-instance rows), Mega Geometry clusters in Tales (port helper's NVAPI cluster path), LSS (check: the
+          games' grass / hair are alpha cards, not strands).
+    [ ] 4 Local light shadows everywhere (point + spot, optional soft by the light's size, more than 32 lights):
+          TW 7 + WH3 light shaders, Ryse tiled lights (light list read back; DLSS addon's tiled CS copy reads t42 /
+          b12), Expeditions UE deferred lights, Tales. Many lights: wider masks / importance, ReSTIR DI judged here.
+    [ ] 5 Emissive surfaces / fire as light sources (beyond what the screen and cache saw) + light through leaves
+          (leaf hits transmit part of the sun in shadow rays).
+    [ ] 6 Translucent / coloured shadows (sails, banners, cloth, glass) + smoke / particle shadows (particles in the
+          RT scene as non-opaque, transmittance from their opacity).
+    [ ] 7 Volumetric shadows: the games' fog / light shafts shadowed by rays (froxel sun visibility from the helper).
+    [ ] 8 Refraction + caustics (water).
+    [ ] 9 Missing effects: RT reflections in Rome II, Troy, Pharaoh, WH3; specular occlusion where missing (Rome II /
+          Troy / Pharaoh show the option without effect; Ryse, Expeditions, Shogun 2, WH3); grass in RT for Pharaoh,
+          WH3, Shogun 2.
+    [ ] 10 NRC (RTXGI 2 SDK, licence check) or SHaRC.
+    [ ] 11 WH3 DLSS below 100% (launch WH3 myself; trace build\ingame\traces\twwarhammer3_50.txt lines 800-921:
+          post-TAA 3D effects need a display-size depth, bloom chain + composite to display size, its upscale 1:1).
+    [ ] 12 Release: 64 + 32-bit builds, patch notes, zips (helper22 if the helper changes), report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
