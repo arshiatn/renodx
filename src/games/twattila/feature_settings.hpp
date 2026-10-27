@@ -60,6 +60,7 @@ struct AaSliders {
   float reflex_boost = 0.f;
   float frame_limit = 0.f;         // frame generation's Reflex limit, rendered frames per second (0: off)
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
+  float object_motion = 1.f;       // DLAA's: units', props' and cloth's own motion
 };
 
 inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
@@ -109,6 +110,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .reflex_boost = (sliders.reflex_boost != 0.f),
       .frame_limit = static_cast<uint32_t>(std::clamp(sliders.frame_limit, 0.f, 240.f)),
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
+      .object_motion = (sliders.object_motion != 0.f),
   };
 }
 
@@ -376,6 +378,18 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                    "(more detail, can shimmer).",
         .labels = {"Off (the game's own)", "Matched", "Sharper", "Sharpest"},
         .is_enabled = [sliders] { return sliders->method == 5.f && RenderScale(*sliders) < 1.f; },
+    });
+    settings->push_back(new renodx::utils::settings::Setting{
+        .key = "AntiAliasingObjectMotion",
+        .binding = &sliders->object_motion,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Object Motion Vectors",
+        .section = AA_SECTION,
+        .tooltip = "Soldiers, props and cloth tell DLSS how they move: sharper while they move.\n"
+                   "Off: faster with many soldiers on screen (they can smear a little when moving).",
+        .labels = {"Off", "On"},
+        .is_enabled = [sliders] { return sliders->method == 5.f; },
     });
   }
   if (ray_reconstruction) {

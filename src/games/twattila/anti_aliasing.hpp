@@ -96,6 +96,8 @@ struct Settings {
   // DLSS: the textures' levels below 100% (texture_lod_bias.hpp): 0 the game's, 1 as sharp as at the display size, 2
   // one step sharper (NVIDIA's advice), 3 two.
   int texture_lod_bias = 2;
+  // DLAA / DLSS: the units', props' and cloth's own motion (object_motion.hpp redraws them); off, the camera's alone.
+  bool object_motion = true;
 };
 
 namespace internal {
@@ -1191,7 +1193,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   const bool temporal =
       (settings.method == Method::SMAA_T2X || settings.method == Method::TAA || settings.method == Method::DLAA);
   internal::temporal.store(temporal, std::memory_order_relaxed);
-  object_motion::SetActive(settings.method == Method::DLAA);
+  object_motion::SetActive(settings.method == Method::DLAA && settings.object_motion);
   frame_generation::Update({
       .multiplier = (settings.method == Method::DLAA ? settings.frame_generation : 0u),
       .reflex_boost = settings.reflex_boost,
