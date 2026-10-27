@@ -8,7 +8,8 @@
 // frame), per pixel from its world position: the sun's visibility (one ray toward the sun: 0 blocked, 1 lit; 1 for the
 // sky, surfaces facing away and frames without a sun; for soft shadows also the blocker's distance into sun_rays, which
 // rt_soft.cs_6_5.hlsl turns into penumbras) and the ambient visibility (cosine-weighted rays around the normal, as far
-// as the range: the share that escapes). Leaves are alpha-tested (their holes let light through).
+// as the range: the share that escapes; at a quarter rate one pixel of each 2 x 2 block, another each frame, traces for
+// the block). Leaves are alpha-tested (their holes let light through).
 // World units: metres, y up. Noise moves every frame, which DLAA / DLSS (or Ray Reconstruction) settle.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_trace.h -Vn RT_TRACE; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_TRACE_OMM.
 #include "./rt_scene.hlsli"
@@ -55,6 +56,9 @@ void main(uint3 id : SV_DispatchThreadID) {
   } else {
     visibility[id.xy] = sun_visibility;
   }
+  // At a quarter rate the block's other pixels leave their ambient to the one tracing this frame.
+  const bool quarter = (flags & AMBIENT_QUARTER) != 0u;
+  if (quarter && any(id.xy != (id.xy & ~1u) + uint2(frame & 1u, (frame >> 1) & 1u))) return;
   float ambient_visibility = 1.f;
   if ((flags & AMBIENT_OCCLUSION) != 0u && ambient_rays != 0u) {
     const float3 origin = position.xyz + normal * offset;
@@ -66,5 +70,13 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
     ambient_visibility = (float)escaped / ambient_rays;
   }
-  ambient[id.xy] = ambient_visibility;
+  if (!quarter) {
+    ambient[id.xy] = ambient_visibility;
+    return;
+  }
+  [unroll]
+  for (uint corner = 0u; corner < 4u; ++corner) {
+    const uint2 pixel = (id.xy & ~1u) + uint2(corner & 1u, corner >> 1);
+    if (pixel.x < width && pixel.y < height) ambient[pixel] = ambient_visibility;
+  }
 }

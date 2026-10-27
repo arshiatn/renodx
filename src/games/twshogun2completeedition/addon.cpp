@@ -928,6 +928,7 @@ void ReadDlssAddonOptions() {
   read_float("RayTracedShadowSoftness", 0.5f, 0.f, 3.f, &ray_tracing.sun_softness);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAmbientOcclusion", ray_tracing.ambient_occlusion);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAOQuarter", ray_tracing.ambient_quarter);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounce", ray_tracing.light_bounce);
   read_float("RayTracedLightBounceRange", 10.f, 1.f, 50.f, &ray_tracing.light_bounce_range);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounceRays", ray_tracing.light_bounce_rays);

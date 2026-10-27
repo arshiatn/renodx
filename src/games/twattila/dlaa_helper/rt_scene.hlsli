@@ -34,6 +34,7 @@ cbuffer Settings : register(b0) {
 
 static const uint SUN_SHADOWS = 1u;
 static const uint AMBIENT_OCCLUSION = 2u;
+static const uint AMBIENT_QUARTER = 4u;  // one pixel of each 2 x 2 block traces (another each frame) for the block
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 
 #if defined(OPACITY_MICROMAPS)

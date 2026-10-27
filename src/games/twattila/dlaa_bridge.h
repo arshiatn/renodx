@@ -45,6 +45,8 @@ constexpr uint32_t RT_FOLIAGE = 4;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;
+// The ambient visibility at a quarter of the rays: one pixel of each 2 x 2 block traced (another each frame) for the block.
+constexpr uint32_t RT_AMBIENT_QUARTER = 4;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -100,7 +102,7 @@ struct Shared {
   uint64_t rt_visibility = 0;
   uint64_t rt_ambient = 0;
   uint32_t rt_request = 0;
-  uint32_t rt_flags = 0;  // RT_SUN_SHADOWS, RT_AMBIENT_OCCLUSION
+  uint32_t rt_flags = 0;  // RT_SUN_SHADOWS, RT_AMBIENT_OCCLUSION, RT_AMBIENT_QUARTER
   float rt_ambient_range = 0.f;  // metres
   uint32_t rt_ambient_rays = 0;
   uint32_t rt_frame = 0;

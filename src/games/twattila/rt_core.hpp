@@ -59,6 +59,7 @@ struct Settings {
   bool units = true;  // the units in the scene (captured every frame)
   float ambient_range = 2.f;  // metres
   uint32_t ambient_rays = 2;
+  bool ambient_quarter = false;  // a quarter of the rays (one pixel of each 2 x 2 traced a frame, in turn)
   float sun_softness = 0.5f;  // degrees of the sun's disk (0: hard shadows)
   // The Light Bounce's light found with rays (light_bounce.hpp's trace replaced; it needs the Light Bounce on).
   bool light_bounce = false;
@@ -674,7 +675,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   }
   const dlaa_bridge::TraceRequest request = {
       .flags = (runtime.settings.sun_shadows ? dlaa_bridge::RT_SUN_SHADOWS : 0u)
-               | (runtime.settings.ambient_occlusion ? dlaa_bridge::RT_AMBIENT_OCCLUSION : 0u),
+               | (runtime.settings.ambient_occlusion ? dlaa_bridge::RT_AMBIENT_OCCLUSION : 0u)
+               | (runtime.settings.ambient_quarter ? dlaa_bridge::RT_AMBIENT_QUARTER : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,

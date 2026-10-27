@@ -787,6 +787,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                   "Faster: the game's SSAO off, the rays then alone.");
     ImGui::BeginDisabled(!ambient);
     slider("Ray-traced AO range", "RayTracedAmbientRange", 2.f, 0.25f, 5.f, "%.2f m", "How far its rays look for what shades a point.");
+    checkbox("Ray-traced AO at a quarter rate", "RayTracedAOQuarter",
+             "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
     ImGui::EndDisabled();
     const bool bounce = checkbox("Ray-traced Global Illumination", "RayTracedLightBounce",
                                  "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"

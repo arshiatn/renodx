@@ -1773,6 +1773,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::BeginDisabled(!ray_tracing.ambient_occlusion);
     slider("Ambient occlusion range", "RayTracedAmbientRange", &ray_tracing.ambient_range, .25f, 5.f, "%.2f m",
            "How far its rays look for what shades a point.");
+    checkbox("Ambient occlusion at a quarter rate", "RayTracedAOQuarter", &ray_tracing.ambient_quarter,
+             "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
     ImGui::EndDisabled();
     checkbox("Ray-traced light bounce", "RayTracedLightBounce", &ray_tracing.light_bounce,
              "Sunlight bouncing off what it hits onto what is near: lit ground brightens walls and shade.");
@@ -2023,6 +2025,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     reshade::get_config_value(nullptr, "Rome AA", "RayTracedShadowSoftness", ray_tracing.sun_softness);
     reshade::get_config_value(nullptr, "Rome AA", "RayTracedAmbientOcclusion", ray_tracing.ambient_occlusion);
     reshade::get_config_value(nullptr, "Rome AA", "RayTracedAmbientRange", ray_tracing.ambient_range);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedAOQuarter", ray_tracing.ambient_quarter);
     reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounce", ray_tracing.light_bounce);
     reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounceStrength", ray_traced_bounce_strength);
     reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounceRays", ray_tracing.light_bounce_rays);

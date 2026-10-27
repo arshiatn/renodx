@@ -63,6 +63,7 @@ struct Sliders {
   float ambient_occlusion = 0.f;   // off, on, alone (the game's and GT-VBAO's not drawn; Attila)
   float ambient_range = 2.f;       // metres
   float ambient_rays = 2.f;
+  float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
   float units = 1.f;
   float light_bounce = 0.f;
   float light_bounce_rays = 4.f;
@@ -82,6 +83,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .units = sliders.units != 0.f,
       .ambient_range = sliders.ambient_range,
       .ambient_rays = static_cast<uint32_t>(sliders.ambient_rays),
+      .ambient_quarter = sliders.ambient_quarter != 0.f,
       .sun_softness = sliders.sun_softness,
       .light_bounce = (sliders.light_bounce != 0.f || sliders.path_tracing != 0.f) && dlaa,
       .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),
@@ -364,6 +366,36 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
   const auto dlaa_on = [aa] { return aa->method == 5.f; };
   const std::vector<std::string> ambient_labels = ambient_alone ? std::vector<std::string>{"Off", "On", "Alone"}
                                                                 : std::vector<std::string>{"Off", "On"};
+  // Quality presets: the rays and passes of the effects that are on (which effects are on stays as it is).
+  using Values = std::vector<std::pair<std::string, float>>;
+  const auto preset = [](Values values) {
+    return [values = std::move(values)]() { renodx::utils::settings::UpdateSettings(values); };
+  };
+  const auto quality_button = [&](const char* label, const char* tooltip, Values values) {
+    return new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = label,
+        .section = section,
+        .group = "rt-quality",
+        .tooltip = tooltip,
+        .is_enabled = dlaa_on,
+        .on_change = preset(std::move(values)),
+    };
+  };
+  settings->insert(settings->end(), {
+      quality_button("Ray Tracing: Low", "Hard shadows, AO 1 ray at a quarter rate, bounce 2 rays, 1 path bounce, 1 reflection sample.",
+                     {{"RayTracedShadowSoftness", 0.f}, {"RayTracedAORays", 1.f}, {"RayTracedAOQuarter", 1.f},
+                      {"RayTracedLightBounceRays", 2.f}, {"PathTracingBounces", 1.f}, {"RayTracedReflectionSamples", 1.f}}),
+      quality_button("Medium", "AO 2 rays at a quarter rate, bounce 4 rays, 1 path bounce, 1 reflection sample.",
+                     {{"RayTracedShadowSoftness", 0.5f}, {"RayTracedAORays", 2.f}, {"RayTracedAOQuarter", 1.f},
+                      {"RayTracedLightBounceRays", 4.f}, {"PathTracingBounces", 1.f}, {"RayTracedReflectionSamples", 1.f}}),
+      quality_button("High", "AO 2 rays every pixel, bounce 4 rays, 2 path bounces, 1 reflection sample (the defaults).",
+                     {{"RayTracedShadowSoftness", 0.5f}, {"RayTracedAORays", 2.f}, {"RayTracedAOQuarter", 0.f},
+                      {"RayTracedLightBounceRays", 4.f}, {"PathTracingBounces", 2.f}, {"RayTracedReflectionSamples", 1.f}}),
+      quality_button("Ultra", "AO 4 rays every pixel, bounce 8 rays, 3 path bounces, 4 reflection samples.",
+                     {{"RayTracedShadowSoftness", 0.5f}, {"RayTracedAORays", 4.f}, {"RayTracedAOQuarter", 0.f},
+                      {"RayTracedLightBounceRays", 8.f}, {"PathTracingBounces", 3.f}, {"RayTracedReflectionSamples", 4.f}}),
+  });
   settings->insert(settings->end(), {
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
@@ -428,6 +460,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "More rays: less noise. Heavier.",
           .min = 1.f,
           .max = 8.f,
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->ambient_occlusion != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedAOQuarter",
+          .binding = &sliders->ambient_quarter,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced AO Rate",
+          .section = section,
+          .tooltip = "Quarter: one pixel of each 2 x 2 traced a frame, in turn (a quarter of the rays; DLAA / DLSS\n"
+                     "smooth it over frames). Faster, a little softer at edges.",
+          .labels = {"Every pixel", "Quarter"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->ambient_occlusion != 0.f; },
       },
       new renodx::utils::settings::Setting{
