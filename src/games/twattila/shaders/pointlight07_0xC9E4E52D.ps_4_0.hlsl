@@ -1,6 +1,7 @@
 // 0xC9E4E52D (pointlightlinearfalloff skinlm lowdef): deferred point lights, instanced (the light's position
 // and reach per instance: POSITION2, v3). Ray tracing: x the light's traced visibility
 // (twattila/rt_scene.hpp InstallPointLights; rt_local_lights.hlsli).
+#include "../render_scale.hlsli"
 #include "../rt_local_lights.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
@@ -77,7 +78,8 @@ void main(
   r0.zw = r0.xy * g_screen_size.zw + -g_viewport_offset_scale.xy;
   r0.xy = g_screen_size.zw * r0.xy;
   r0.zw = r0.zw / g_viewport_offset_scale.zw;
-  r1.xy = r0.zw * float2(2,-2) + float2(-1,1);
+  // Below 100% the view fills its share of the target (view_share.hpp patches the game's own).
+  r1.xy = (r0.zw / DrawRenderShare()) * float2(2,-2) + float2(-1,1);
   r2.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).xyzw;
   r1.z = r2.x;
   r1.w = 1;

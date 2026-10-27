@@ -1,6 +1,7 @@
 // 0xA6A0F887 (battlefog, shader model 3): the battle's height and distance fog, its colour the sun-lit fog colour
 // blended toward the sky's. Ray tracing: the sun-lit colour x the sun's visibility along the camera's ray
 // (twattila/rt_scene.hpp InstallFogShadows; rt_fog.hlsli).
+#include "../render_scale.hlsli"
 #include "../rt_fog.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
@@ -77,7 +78,8 @@ void main(
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
   r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
-  r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
+  // Below 100% the view fills its share of the target (view_share.hpp patches the game's own).
+  r1.xy = (r0.xy / DrawRenderShare()) * float2(2,-2) + float2(-1,1);
   r1.w = 1;
   r0.x = dot(r1.xyzw, inv_view_projection._m00_m10_m20_m30);
   r0.y = dot(r1.xyzw, inv_view_projection._m01_m11_m21_m31);

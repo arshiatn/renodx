@@ -1338,7 +1338,7 @@ inline void AddLocalLights(std::span<const LocalLight> lights) {
 }
 
 // For a light draw (its pixel shader with rt_local_lights.hlsli): this frame's lit bits at t42 and the traced lights'
-// positions at b12; false: none traced this frame (nothing bound).
+// positions at b9; false: none traced this frame (nothing bound).
 inline bool BindLocalLights(ID3D11DeviceContext* native) {
   ID3D11ShaderResourceView* mask = nullptr;
   ID3D11Buffer* constants = nullptr;
@@ -1349,7 +1349,7 @@ inline bool BindLocalLights(ID3D11DeviceContext* native) {
     constants = internal::runtime.objects.light_constants.Get();
   }
   native->PSSetShaderResources(42, 1, &mask);
-  native->PSSetConstantBuffers(12, 1, &constants);
+  native->PSSetConstantBuffers(9, 1, &constants);
   return true;
 }
 
@@ -1375,7 +1375,7 @@ inline void UnbindLocalLights(ID3D11DeviceContext* native) {
   ID3D11ShaderResourceView* no_mask = nullptr;
   ID3D11Buffer* no_constants = nullptr;
   native->PSSetShaderResources(42, 1, &no_mask);
-  native->PSSetConstantBuffers(12, 1, &no_constants);
+  native->PSSetConstantBuffers(9, 1, &no_constants);
 }
 
 // A scene draw's pixel shader (the one bound; host.scene_draw's): its alpha test into `shader` (foliage: the UV's

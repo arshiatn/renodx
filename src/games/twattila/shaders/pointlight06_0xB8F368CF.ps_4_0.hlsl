@@ -1,6 +1,7 @@
 // 0xB8F368CF (pointlightlinearfalloff slm lowdef): deferred point lights, instanced (the light's position
 // and reach per instance: POSITION2, v3). Ray tracing: x the light's traced visibility
 // (twattila/rt_scene.hpp InstallPointLights; rt_local_lights.hlsli).
+#include "../render_scale.hlsli"
 #include "../rt_local_lights.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
@@ -89,7 +90,8 @@ void main(
   r5.xyzw = s_ssao.Sample(s_ssao_s, r0.zw).xyzw;
   r0.xy = r0.xy * g_screen_size.zw + -g_viewport_offset_scale.xy;
   r0.xy = r0.xy / g_viewport_offset_scale.zw;
-  r4.xy = r0.xy * float2(2,-2) + float2(-1,1);
+  // Below 100% the view fills its share of the target (view_share.hpp patches the game's own).
+  r4.xy = (r0.xy / DrawRenderShare()) * float2(2,-2) + float2(-1,1);
   r4.w = 1;
   r0.x = dot(r4.xyzw, inv_view_projection._m00_m10_m20_m30);
   r0.y = dot(r4.xyzw, inv_view_projection._m01_m11_m21_m31);
