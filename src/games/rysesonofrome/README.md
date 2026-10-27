@@ -266,3 +266,16 @@ characters every frame), the camera from VS PER_FRAME's uploads. Before the tile
 (from the linear depth) and the sun go to the helper; the traced sun goes into the sun's shadow mask with the contact
 shadows (the darker; their screen-space march steps aside while the rays run), the Light Bounce's trace goes through
 rays (path traced when on).
+
+fix52 (ATN's batch 4, untested in game; the helper GPU-tested): **Ray-Traced Ambient Occlusion** (restart; range,
+rate: every pixel or a quarter) into the tiled lighting's directional occlusion (t5, which it reads as 1 - w x
+SSDOParams.z): the darker of SSDO / GT-VBAO and the rays', through the contact shadows' pass (its second target).
+**Ray-Traced Reflections** (restart; samples 1-8) in place of the screen-space ones: the tiled lighting blends them over
+the probes as it does the screen-space reflections (t6: reflected light, the share of rays that met something), and the
+game's screen-space trace (ps 0xE0B7E115) is left out while they run. The helper's G-buffer guides come from Ryse's
+G-buffer (0x52C5E005: world normals, roughness 1 - gloss, the specular colour from its luma and chroma, the diffuse
+colour), and the game's HDR scene at the end of the frame is kept for the next frame's reflections and paths
+(0x52C5E006). Path Tracing also bounces the reflections' rays. Fix: path-traced rays that met what last frame saw took
+black light (no scene colour was kept). helper21 (in the zip): the last zip's helper19 stalled each request (its
+partitioned TLAS, now off); ReSTIR GI for Path Tracing (about a quarter of the noise). Needs DLSS addon v115 for the
+Light Bounce with the raised light limit (below).

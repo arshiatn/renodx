@@ -716,3 +716,5 @@ size; then:
   - Debug: ReShade.ini FrameGenerationReflexSleep=0 skips Reflex's sleep after each present (its markers stay).
 - v107 (untested in game): while the ray-traced reflections run, the game's screen-space reflections (r.SSR.Quality)
   are off (the lighting pass reads the rays' reflections; the captures fill the rest): no reflections traced twice.
+- v108 (untested in game): with Ray Reconstruction it is the only denoiser: the ray-traced bounce light's filter and
+  the reflections' filter and accumulation step aside (Ray Reconstruction gets them as traced).

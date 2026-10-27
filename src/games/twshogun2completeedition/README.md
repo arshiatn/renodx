@@ -603,6 +603,25 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v63: ray-traced reflections and point light shadows (untested in game; the helper GPU-tested)
+
+- **Ray-traced reflections** (DLSS addon v56; needs the game's screen-space reflections on): in the reflections'
+  resolve (ssrresolve00) the rays' light replaces the march's hit and the share of rays that met something its
+  confidence; while they run, what only the march reads is left out too: the march (ssrray00), its blurs (ssrfilter00 /
+  01), its HiZ (ssrhiz00 and its levels) and the scene's and hit buffer's mip chains. The helper's G-buffer
+  guides come from the sun draw's G-buffer (rt_guides.cs: diffuse = colour x (1 - metallic) x 0.96, specular = 0.04
+  toward the colour with metallic, the normal's spherical angles, roughness 1 - gloss); the resolve's lit scene is kept
+  for the next frame's reflections and paths.
+- **Ray-traced point light shadows**: the point lights the last frame drew (pointlight00 / 01), the 32 nearest and
+  brightest, go to the helper with the frame's trace: a ray from each pixel within a light's reach toward it (stopping
+  half a metre short of the light: its own torch or fire); pointlight00 / 01 darken where it is blocked
+  (twattila/rt_local_lights.hlsli, bridge v9).
+- Path tracing also bounces the reflections' rays. Fix: path-traced rays that met what last frame saw took black light
+  (no scene colour was kept).
+- **Ray-traced AO at a quarter rate** (one pixel of each 2 x 2 traced a frame, in turn). Less CPU work a frame (static
+  meshes the scene holds only marked drawn). helper21 (in the zip): the last zip's helper19 stalled each request (its
+  partitioned TLAS, now off); ReSTIR GI for Path Tracing (about a quarter of the noise).
+
 ## v62: ray tracing (Experimental, untested in game; the helper GPU-tested)
 
 - Settings in the DLSS addon's overlay ("Ray Tracing"; ReShade.ini [Shogun 2 DLSS] RayTraced* / PathTracing*), read

@@ -936,3 +936,8 @@ addon; restart the game after turning on the first effect (ray_tracing.hpp, twat
 - Ray-traced reflections: in place of the screen-space reflections (their draw is left out; needs them on in the game):
   the rays' light where they met a surface, the reflection captures and the sky for the rest. Samples 1-8.
 - Path tracing: the light bounce's and the reflections' rays go on bouncing (bounces 1-4).
+
+v27 (ATN's batch 4, untested in game; the helper GPU-tested): **Ambient occlusion at a quarter rate** (one pixel of each
+2 x 2 traced a frame, in turn: a quarter of the rays). Less CPU work a frame (static meshes the scene holds only marked
+drawn). helper21 (in the zip): the last zip's helper19 stalled each request (its partitioned TLAS, now off); ReSTIR GI
+for Path Tracing (about a quarter of the noise).

@@ -957,3 +957,10 @@ shaders' bytecode (when an addon keeps it). Found the sun shadow mask's cascade 
   Streamline (its "repeated slDLSSGSetOptions" warning at every resize; the screen could keep showing old frames after
   the startup fullscreen switch).
 - Debug: ReShade.ini FrameGenerationReflexSleep=0 skips Reflex's sleep after each present (its markers stay).
+
+## v115: the raised light limit and the HDR addon
+
+- Fix: with the light limit raised (512 by default) the addon dispatched its copy of the tiled lighting itself and
+  skipped the game's dispatch, so the HDR addon's pass after the lighting never ran: the Light Bounce (HDR fix49) was
+  never added. The addon now swaps its shader into the game's dispatch (replayed, the game's shader put back after), so
+  the HDR addon's passes before and after it run (its ray tracing, contact shadows, Light Bounce).

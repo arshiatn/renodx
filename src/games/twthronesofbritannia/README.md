@@ -2,6 +2,27 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twthronesofbritannia.addon32` (32-bit game).
 
+## v36 (2026-10-27, untested in game; the helper GPU-tested)
+
+- renodx-tw-dlaa64.exe **helper21** (in the zip). Fix: the last zip's helper19 built a partitioned TLAS (NVAPI) that
+  stalled every ray tracing request by 0.3-0.8 s in the GPU test; it stays off now (RENODX_TW_PTLAS=1 turns it on for
+  tests). **ReSTIR GI** for Path Tracing: each texel's paths are resampled with last frame's at the same surface and with
+  five neighbours' (their solid angle's Jacobian; a last ray checks the chosen surface is in view): in the GPU test about
+  a quarter of the noise at one path a texel, the same brightness.
+- Frame Generation **Dynamic** (NVIDIA's dynamic multi frame generation, up to 6x for the display's refresh rate) and
+  **5x / 6x** (RTX 50 series).
+- **Ray Tracing preset** buttons Low / Medium / High / Ultra: shadow softness, AO rays and rate, Light Bounce rays, path
+  bounces, reflection samples (High: the defaults).
+- **Ray-Traced AO Rate**: Quarter traces one pixel of each 2 x 2 a frame, in turn (DLSS smooths it): a quarter of the
+  rays.
+- With **Ray Reconstruction** it is the only denoiser: the Light Bounce's denoiser, the AO filter and the reflections'
+  accumulation and filter step aside (the reflections go out as traced).
+- Less CPU work a frame: static meshes the ray tracing scene already holds are recognised by a short key (shader, draw
+  arguments, first vertex and index buffer) and only marked drawn.
+- **Ray-Traced Grass** (off by default): the grass casts ray-traced shadows and shade too (its blades captured every
+  frame through capture versions of the game's grass vertex shaders, alpha-tested; within the units' share of
+  triangles). Heavy with dense grass.
+
 ## v35 (2026-10-27, untested in game; the helper GPU-tested)
 
 - **Path Tracing** (Experimental, Anti-Aliasing section, with DLAA / DLSS): the ray-traced Light Bounce's rays become

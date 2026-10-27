@@ -143,6 +143,8 @@ renodx::utils::settings::Settings settings;
 // installed when an effect is on at launch.
 twattila::rt_scene::Settings ray_tracing_settings;
 bool ray_tracing_installed = false;
+// Between the reflections' HiZ and their resolve (the generic mip passes there are theirs; render thread).
+bool reflection_passes = false;
 
 // Render scale (the DLSS addon draws the 3D passes into the top-left part of the full-size targets) ////////////////
 // The rendered fraction for the depth of field, the auto exposure and the tonemap's distortion lookup: a 3D pass's
@@ -321,8 +323,15 @@ void BuildRuntimeData() {
   };
 
   // Reflections: the ray-traced ones in the resolve (ssrresolve00, twattila/rt_reflection.hlsli), its lit scene kept for
-  // the next frame's; while they replace the screen-space march, the march (ssrray00) and its blurs are left out.
+  // the next frame's; while they replace the screen-space march, what only the march reads is left out: its HiZ
+  // (ssrhiz00 and its levels, cs 0xE2CE69ED), the scene's and the hit buffer's mip chains (cs 0x13A7F7D0, 0x4B546569,
+  // 0x80196ECA: generic, left out only between the HiZ and the resolve), the march (ssrray00) and its blurs.
+  custom_shaders[0x97624E56].on_draw = [](auto* cmd_list) {
+    reflection_passes = ray_tracing_installed;
+    return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list);
+  };
   custom_shaders[0xF87ECE85].on_draw = [](auto* cmd_list) {
+    reflection_passes = false;
     if (ray_tracing_installed) twattila::rt_scene::BindReflections(cmd_list, true, true);
     return true;
   };
@@ -333,6 +342,13 @@ void BuildRuntimeData() {
   };
   for (const uint32_t hash : {0x5C0AF498u, 0x13C66077u, 0x073A6CF3u}) {
     custom_shaders[hash].on_draw = [](auto* cmd_list) { return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list); };
+  }
+  for (const uint32_t hash : {0xE2CE69EDu, 0x13A7F7D0u, 0x4B546569u, 0x80196ECAu}) {
+    custom_shaders[hash] = {
+        .crc32 = hash,
+        .on_replace = [](reshade::api::command_list*) { return false; },
+        .on_draw = [](auto* cmd_list) { return !reflection_passes || twattila::rt_scene::OnReflectionMarch(cmd_list); },
+    };
   }
 
   // Render scale: captured on the game's own reflections copy and battle fog (drawn every frame before the depth of
@@ -974,6 +990,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   if (ray_tracing_installed) twshogun2::ray_tracing::Update(ray_tracing_settings);
+  reflection_passes = false;
   twshogun2::vfx_effects::OnPresent();
   static uint32_t shadow_frame = 0;
   shader_injection.shadow_noise_frame = static_cast<float>(++shadow_frame % 64);

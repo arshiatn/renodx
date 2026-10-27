@@ -461,3 +461,8 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
 
 - "Ray Tracing (Experimental)" section: sun shadows (softness), ambient occlusion (range), Global Illumination through
   rays (rays, range) and path tracing (bounces), written to ReShade.ini for the HDR addon (v62), which traces them.
+
+## v56: more ray tracing settings
+
+- Ray-traced point light shadows, ray-traced reflections (samples 1-8), AO at a quarter rate; path tracing with the
+  Global Illumination or the reflections (HDR addon v63).
