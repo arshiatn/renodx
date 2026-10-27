@@ -22,7 +22,8 @@
 // Contact shadows (Experimental): before Ryse's tiled lighting (cs 0x897232B5: t0 linear depth, t4 the shadow mask
 // array, t32 its light list, b0 its camera), the sun's shadow mask gets short screen-space shadows toward the sun: which
 // slice and channels are the sun's from the light list (0x52C5E001), then a full-screen pass (0x52C5E002 / 0x52C5E003)
-// max-blended into slice 0 of the mask (1 = shadow). In the addon's own context state; the game's is put back after.
+// max-blended into slice 0 of the mask (1 = shadow). With ray tracing's sun visibility (ray_tracing.hpp) the same pass
+// also writes its shadow, the darker. In the addon's own context state; the game's is put back after.
 namespace rysesonofrome::contact_shadows {
 
 using Microsoft::WRL::ComPtr;
@@ -108,10 +109,13 @@ inline bool Create(ID3D11Device* device) {
 
 }  // namespace internal
 
-// Before the tiled lighting's dispatch (its bindings set): the contact shadows into the sun's shadow mask.
-inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings) {
+// Before the tiled lighting's dispatch (its bindings set): the contact shadows (and the ray-traced sun's,
+// `sun_visibility`: 1 lit, at the depth's size; null: none) into the sun's shadow mask.
+inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings, ID3D11ShaderResourceView* sun_visibility = nullptr) {
   using internal::objects;
-  if (settings.strength <= 0.f || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  if ((settings.strength <= 0.f && sun_visibility == nullptr) || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
+    return;
+  }
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
@@ -169,13 +173,13 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
       .Height = static_cast<float>(mask_desc.Height),
       .MaxDepth = 1.f,
   };
-  ID3D11ShaderResourceView* inputs[] = {depth.Get(), objects.sun_srv.Get()};
+  ID3D11ShaderResourceView* inputs[] = {depth.Get(), objects.sun_srv.Get(), sun_visibility};
   ID3D11Buffer* constants[] = {camera.Get(), objects.constants.Get()};
   ID3D11RenderTargetView* target = objects.mask_target.Get();
   context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   context->VSSetShader(objects.vertex_shader.Get(), nullptr, 0);
   context->PSSetShader(objects.pixel_shader.Get(), nullptr, 0);
-  context->PSSetShaderResources(0, 2, inputs);
+  context->PSSetShaderResources(0, 3, inputs);
   context->PSSetConstantBuffers(0, 2, constants);
   context->RSSetState(objects.no_cull.Get());
   context->RSSetViewports(1, &viewport);

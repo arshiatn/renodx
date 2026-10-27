@@ -40,6 +40,7 @@
 #include "../../utils/settings.hpp"
 #include "./contact_shadows.hpp"
 #include "./light_bounce.hpp"
+#include "./ray_tracing.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -157,6 +158,18 @@ void ApplyResetPreset() {
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
+// Ray tracing (ray_tracing.hpp): its sliders; installed when on at launch (its scene's shaders are kept from the start).
+struct RtSliders {
+  float sun_shadows = 0.f;
+  float softness = 0.5f;  // degrees of the sun's disk
+  float light_bounce = 0.f;
+  float rays = 4.f;
+  float range = 10.f;  // metres
+  float path_tracing = 0.f;
+  float bounces = 2.f;
+} rt_sliders;
+bool ray_tracing_installed = false;
+
 void BuildRuntimeData() {
   custom_shaders = {
       CustomShaderEntry(0xB9B672AA),  // tonemap00 (HDRFinalPass)
@@ -186,14 +199,25 @@ void BuildRuntimeData() {
   const auto keep_shader = [](reshade::api::command_list*) { return false; };
   const auto draw_hud = [](reshade::api::command_list*) { return !hud_hidden; };
   custom_shaders[0x96675B77] = {.crc32 = 0x96675B77, .on_replace = keep_shader, .on_draw = draw_hud};
-  // The tiled lighting (kept): contact shadows into the sun's shadow mask before it runs.
+  // The tiled lighting (kept): this frame's ray tracing, then the contact shadows (and the ray-traced sun's) into the
+  // sun's shadow mask before it runs.
   const auto contact_shadows = [](reshade::api::command_list* cmd_list) {
-    rysesonofrome::contact_shadows::Apply(cmd_list, {
-                                                        .length = shader_injection.contact_shadow_length,
-                                                        .thickness = shader_injection.contact_shadow_thickness,
-                                                        .strength = shader_injection.contact_shadows,
-                                                        .frame = shader_injection.ssao_frame,
-                                                    });
+    ID3D11ShaderResourceView* sun_visibility = nullptr;
+    if (ray_tracing_installed && cmd_list->get_device()->get_api() == reshade::api::device_api::d3d11) {
+      auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+      renodx::utils::directx::NativeFromReShadeProxy(&context);
+      if (rysesonofrome::ray_tracing::Trace(context) && rt_sliders.sun_shadows != 0.f) {
+        sun_visibility = twattila::rt_scene::Visibilities()[0];
+      }
+    }
+    rysesonofrome::contact_shadows::Apply(cmd_list,
+                                          {
+                                              .length = shader_injection.contact_shadow_length,
+                                              .thickness = shader_injection.contact_shadow_thickness,
+                                              .strength = shader_injection.contact_shadows,
+                                              .frame = shader_injection.ssao_frame,
+                                          },
+                                          sun_visibility);
     return true;
   };
   // After it: the Light Bounce added to the scene it lit.
@@ -799,6 +823,88 @@ void BuildRuntimeData() {
           .tooltip = "Smooths the bounce along surfaces (less noise, never across edges).",
           .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
       },
+      // Ray tracing (ray_tracing.hpp): through renodx-tw-dlaa64.exe; on at launch only (restart).
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSunShadows",
+          .binding = &rt_sliders.sun_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Sun Shadows (restart)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "Sun shadows from rays, with the game's: also where its shadow maps miss things.\n"
+                     "Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addon. Restart the game after turning on.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowSoftness",
+          .binding = &rt_sliders.softness,
+          .default_value = 0.5f,
+          .label = "Ray-Traced Shadow Softness",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.",
+          .min = 0.f,
+          .max = 3.f,
+          .format = "%.2f",
+          .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightBounce",
+          .binding = &rt_sliders.light_bounce,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Light Bounce (restart)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "The Light Bounce's light found with rays: no guessing behind what you see, light from farther.\n"
+                     "Needs the Light Bounce on. Restart the game after turning on.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightBounceRays",
+          .binding = &rt_sliders.rays,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 4.f,
+          .label = "Ray-Traced Light Bounce Rays",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "Rays per texel: less noise, heavier.",
+          .min = 1.f,
+          .max = 16.f,
+          .is_enabled = [] { return rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightBounceRange",
+          .binding = &rt_sliders.range,
+          .default_value = 10.f,
+          .label = "Ray-Traced Light Bounce Range",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "How far its rays look for light.",
+          .min = 1.f,
+          .max = 50.f,
+          .format = "%.0f m",
+          .is_enabled = [] { return rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "PathTracing",
+          .binding = &rt_sliders.path_tracing,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Path Tracing (restart)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "The Light Bounce path traced: light bouncing several times, also from what is off screen.\n"
+                     "Needs the Light Bounce on. Heavy. Restart the game after turning on.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "PathTracingBounces",
+          .binding = &rt_sliders.bounces,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 2.f,
+          .label = "Path Tracing Bounces",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "Bounces past the first. More: brighter shade, heavier.",
+          .min = 1.f,
+          .max = 4.f,
+          .is_enabled = [] { return rt_sliders.path_tracing != 0.f; },
+      },
   };
 }
 
@@ -938,6 +1044,18 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // GT-VBAO's noise moves every frame (the game's SSDO blur and TAA / DLSS settle it).
   shader_injection.ssao_frame = static_cast<float>((static_cast<uint32_t>(shader_injection.ssao_frame) + 1u) % 4096u);
+  if (ray_tracing_installed) {
+    const bool bounce = shader_injection.light_bounce > 0.f && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f);
+    twattila::rt_scene::Update({
+        .sun_shadows = rt_sliders.sun_shadows != 0.f,
+        .sun_softness = rt_sliders.softness,
+        .light_bounce = bounce,
+        .light_bounce_rays = static_cast<uint32_t>(rt_sliders.rays),
+        .light_bounce_range = rt_sliders.range,
+        .path_tracing = bounce && rt_sliders.path_tracing != 0.f,
+        .path_bounces = static_cast<uint32_t>(rt_sliders.bounces),
+    });
+  }
 #ifdef RYSE_UI_DRAW_LOG
   if (ui_log != nullptr) {
     std::fputs("frame end\n", ui_log);
@@ -1197,6 +1315,10 @@ bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uin
 void OnDestroyDevice(reshade::api::device* device) {
   rysesonofrome::contact_shadows::Release();
   rysesonofrome::light_bounce::Release();
+  if (ray_tracing_installed) {
+    twattila::rt_scene::OnDestroyDevice(device);
+    rysesonofrome::ray_tracing::Release();
+  }
   const std::scoped_lock lock(mutex);
   if (data.device != device) return;
   DestroyView();
@@ -1402,6 +1524,12 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // Ray tracing on at launch: its scene's shaders kept from the start, the Light Bounce's trace through rays.
+  ray_tracing_installed = rt_sliders.sun_shadows != 0.f || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f;
+  if (ray_tracing_installed) {
+    rysesonofrome::ray_tracing::Install();
+    rysesonofrome::light_bounce::ray_traced_trace = twattila::rt_scene::internal::TraceLightBounce;
+  }
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   reshade::register_event<reshade::addon_event::present>(OnPresentHotkeys);
@@ -1439,6 +1567,10 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::draw_indexed>(back_buffer_fix::OnDrawIndexed);
   reshade::unregister_event<reshade::addon_event::destroy_device>(back_buffer_fix::OnDestroyDevice);
 
+  if (ray_tracing_installed) {
+    rysesonofrome::light_bounce::ray_traced_trace = nullptr;
+    rysesonofrome::ray_tracing::Uninstall();
+  }
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);

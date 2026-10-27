@@ -100,11 +100,17 @@ struct Camera {
 // Warhammer III's taa_dlss.hpp, the other games' DLSS addons): the camera when `buffer` holds the main view's (the scene
 // shaders' at `camera_slot`), the render size, whether the G-buffer guides were written this frame, and optionally
 // whether a static draw's mesh was seen moving lately (it stays out of the scene).
+// Games whose scene shaders are too many to list (Ryse) give `scene_draw` instead: every draw is asked whether it is a
+// scene draw (an opaque one into the G-buffer), which fills in its shader (its vertex shader's hash: the game's own,
+// streamed out; whether skinned: `skinned_vertex_shader`), and `capture_camera` reads the draw's camera from the
+// context (`camera` is then not needed).
 struct Host {
   bool (*camera)(ID3D11Buffer* buffer, Camera* camera) = nullptr;
   std::array<UINT, 2> (*render_size)() = nullptr;
   bool (*guides_written)() = nullptr;
   UINT camera_slot = 0;
+  bool (*capture_camera)(ID3D11DeviceContext* native, Camera* camera) = nullptr;
+  bool (*scene_draw)(ID3D11DeviceContext* native, SceneShader* shader) = nullptr;
   bool (*moving)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawArguments& arguments) = nullptr;
   bool (*moving_indexed)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) = nullptr;
 };
@@ -121,6 +127,7 @@ struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   std::vector<ComPtr<ID3D11VertexShader>> capture_shaders;  // as the scene shaders
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
+  std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   ComPtr<ID3D11Buffer> captured;  // stream output: world positions, three per triangle
   ComPtr<ID3D11ShaderResourceView> captured_srv;
   ComPtr<ID3D11ComputeShader> vertices_shader;
@@ -184,8 +191,10 @@ static Runtime runtime;
 // The addon's (Install), kept while installed.
 static std::span<const SceneShader> scene_shaders;
 static Host host;
-// The code of the scene shaders without a capture version, as the game made them (runtime.mutex).
+// The code of the scene shaders without a capture version, as the game made them (every vertex shader with
+// host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
+static std::unordered_map<uint32_t, bool> skinned_code;
 static bool clip_captures = false;  // the scene shaders stream out their SV_Position
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
@@ -233,7 +242,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
   const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE};
   const D3D11_DEPTH_STENCIL_DESC depth_desc = {.DepthEnable = FALSE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO,
                                                .DepthFunc = D3D11_COMPARISON_ALWAYS};
-  // The game's own shaders get their stream output at their first capture.
+  // The game's own shaders get their stream output at their first capture (game_outputs).
   bool made = std::ranges::all_of(scene_shaders, [&](const SceneShader& shader) {
     auto& vertex_shader = objects.capture_shaders.emplace_back();
     auto& stream_output = objects.capture_outputs.emplace_back();
@@ -367,8 +376,7 @@ inline bool AtlasSlice(ID3D11DeviceContext* native, ID3D11ShaderResourceView* te
 
 // After a scene draw of the main view: a draw not yet in the scene is drawn once more into the stream-output buffer.
 template <typename Context>
-void CaptureDraw(Context& command, const void*) {
-  const auto& shader = command.template GetCallbackData<SceneShader>();
+void Capture(Context& command, const SceneShader& shader) {
   if (frame_trace::Tracing()) {
     frame_trace::Mark(std::format("ray tracing capture: vs {:08X} ps {:08X}", shader.hash,
                                   renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader,
@@ -388,12 +396,17 @@ void CaptureDraw(Context& command, const void*) {
   native->IAGetPrimitiveTopology(&topology);
   if (topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || vertex_count == 0 || vertex_count > MAX_VERTICES) return;
   // The main view: its camera and its depth at the display's size, single-sampled; the bridge with ray tracing.
-  ComPtr<ID3D11Buffer> camera_buffer;
-  native->VSGetConstantBuffers(host.camera_slot, 1, camera_buffer.GetAddressOf());
   ComPtr<ID3D11DepthStencilView> depth_view;
   native->OMGetRenderTargets(0, nullptr, depth_view.GetAddressOf());
   Camera camera;
-  if (!camera_buffer || !depth_view || !host.camera(camera_buffer.Get(), &camera)) return;
+  if (!depth_view) return;
+  if (host.capture_camera != nullptr) {
+    if (!host.capture_camera(native, &camera)) return;
+  } else {
+    ComPtr<ID3D11Buffer> camera_buffer;
+    native->VSGetConstantBuffers(host.camera_slot, 1, camera_buffer.GetAddressOf());
+    if (!camera_buffer || !host.camera(camera_buffer.Get(), &camera)) return;
+  }
   ComPtr<ID3D11Resource> depth_resource;
   depth_view->GetResource(depth_resource.GetAddressOf());
   ComPtr<ID3D11Texture2D> depth_texture;
@@ -419,7 +432,15 @@ void CaptureDraw(Context& command, const void*) {
   ID3D11Buffer* index_buffer = nullptr;
   DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
   UINT index_offset = 0;
-  native->VSGetConstantBuffers(1, static_cast<UINT>(constant_buffers.size()), constant_buffers.data());
+  // Their ranges too (D3D11.1: one buffer can hold many draws' constants).
+  std::array<UINT, 4> first_constants = {};
+  std::array<UINT, 4> constant_counts = {};
+  if (ComPtr<ID3D11DeviceContext1> native1; SUCCEEDED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) {
+    native1->VSGetConstantBuffers1(1, static_cast<UINT>(constant_buffers.size()), constant_buffers.data(), first_constants.data(),
+                                   constant_counts.data());
+  } else {
+    native->VSGetConstantBuffers(1, static_cast<UINT>(constant_buffers.size()), constant_buffers.data());
+  }
   native->VSGetShaderResources(0, static_cast<UINT>(textures.size()), textures.data());
   native->IAGetVertexBuffers(0, static_cast<UINT>(vertex_buffers.size()), vertex_buffers.data(), strides.data(), offsets.data());
   native->IAGetIndexBuffer(&index_buffer, &index_format, &index_offset);
@@ -437,7 +458,10 @@ void CaptureDraw(Context& command, const void*) {
       mix(value);
     }
   }
-  for (auto* buffer : constant_buffers) mix(reinterpret_cast<uintptr_t>(buffer));
+  for (size_t slot = 0; slot < constant_buffers.size(); ++slot) {
+    mix(reinterpret_cast<uintptr_t>(constant_buffers[slot]));
+    mix(first_constants[slot]);
+  }
   for (auto* texture : textures) mix(reinterpret_cast<uintptr_t>(texture));
   for (size_t slot = 0; slot < vertex_buffers.size(); ++slot) {
     mix(reinterpret_cast<uintptr_t>(vertex_buffers[slot]));
@@ -483,23 +507,32 @@ void CaptureDraw(Context& command, const void*) {
   native->GetDevice(device.GetAddressOf());
   if (!PrepareDevice(device.Get())) return;
   auto& objects = runtime.objects;
-  const auto index = static_cast<size_t>(&shader - scene_shaders.data());
-  if (index >= objects.capture_shaders.size()) return;
   // Leaves wait for a slice of the atlas (none: not in the scene this frame).
   uint32_t slice = 0;
   if (shader.foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
-  // The game's own shader: its stream output (SV_Position) made once from its code.
+  // The capture version (by the shader's place in the list), else the game's own: its stream output (SV_Position) made
+  // once from its code.
   const bool clip_space = shader.capture_shader.empty();
-  if (clip_space && !objects.capture_outputs[index]) {
-    const auto code = game_code.find(shader.hash);
-    const D3D11_SO_DECLARATION_ENTRY position = {.SemanticName = "SV_POSITION", .SemanticIndex = 0, .ComponentCount = 4};
-    constexpr UINT STRIDE = 16;
-    if (code == game_code.end()
-        || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), &position, 1, &STRIDE, 1,
-                                                                D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
-                                                                objects.capture_outputs[index].GetAddressOf()))) {
-      return;
+  ID3D11VertexShader* capture_vertex_shader = nullptr;
+  ID3D11GeometryShader* stream_output = nullptr;
+  if (clip_space) {
+    auto& made = objects.game_outputs[shader.hash];
+    if (!made) {
+      const auto code = game_code.find(shader.hash);
+      const D3D11_SO_DECLARATION_ENTRY position = {.SemanticName = "SV_POSITION", .SemanticIndex = 0, .ComponentCount = 4};
+      constexpr UINT STRIDE = 16;
+      if (code == game_code.end()
+          || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), &position, 1, &STRIDE, 1,
+                                                                  D3D11_SO_NO_RASTERIZED_STREAM, nullptr, made.GetAddressOf()))) {
+        return;
+      }
     }
+    stream_output = made.Get();
+  } else {
+    const auto index = static_cast<size_t>(&shader - scene_shaders.data());
+    if (index >= objects.capture_shaders.size()) return;
+    capture_vertex_shader = objects.capture_shaders[index].Get();
+    stream_output = objects.capture_outputs[index].Get();
   }
 
   // The same draw into the stream output only (not rasterized); the game's shaders and outputs put back.
@@ -513,8 +546,8 @@ void CaptureDraw(Context& command, const void*) {
   native->SOGetTargets(1, game_output.GetAddressOf());
   ID3D11Buffer* target = objects.captured.Get();
   const UINT offset = runtime.captured_vertices * 16;
-  if (!clip_space) native->VSSetShader(objects.capture_shaders[index].Get(), nullptr, 0);
-  native->GSSetShader(objects.capture_outputs[index].Get(), nullptr, 0);
+  if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
+  native->GSSetShader(stream_output, nullptr, 0);
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(1, &target, &offset);
   if constexpr (INDEXED) {
@@ -539,16 +572,33 @@ void CaptureDraw(Context& command, const void*) {
   }
 }
 
+// A listed scene shader's draw (its SceneShader the callback's data).
+template <typename Context>
+void CaptureDraw(Context& command, const void*) {
+  Capture(command, command.template GetCallbackData<SceneShader>());
+}
+
+// Any draw when the host tells scene draws apart (host.scene_draw).
+template <typename Context>
+void CaptureAnyDraw(Context& command, const void*) {
+  auto* native = NativeContext(command.cmd_list);
+  SceneShader shader = {.hash = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::vertex_shader,
+                                                                           &command.bound_state_cache)};
+  if (native != nullptr && shader.hash != 0u && host.scene_draw(native, &shader)) Capture(command, shader);
+}
+
 // This frame's trace from the main view's `depth` and `camera_buffer` (the ambient occlusion pass's, or the first sun
 // draw's): the captures, the positions, the request; false: none.
-inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, ID3D11Buffer* camera_buffer) {
+// `depth` null: the bridge's positions (and the camera in the sun texture's texel 1) were written by the addon's own pass
+// (Ryse's, from its linear depth).
+inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, const Camera& camera) {
   auto& objects = runtime.objects;
   if (!Enabled() || runtime.traced_frame == runtime.frame || !dlaa_bridge::bridge.ray_tracing || !objects.constants) return false;
-  Camera camera;
-  if (depth == nullptr || camera_buffer == nullptr || !host.camera(camera_buffer, &camera)) return false;
-  D3D11_SHADER_RESOURCE_VIEW_DESC depth_desc = {};
-  depth->GetDesc(&depth_desc);
-  if (depth_desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D) return false;
+  if (depth != nullptr) {
+    D3D11_SHADER_RESOURCE_VIEW_DESC depth_desc = {};
+    depth->GetDesc(&depth_desc);
+    if (depth_desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D) return false;
+  }
   const auto render_size = host.render_size();
   if (render_size[0] == 0 || render_size[0] > dlaa_bridge::bridge.width || render_size[1] > dlaa_bridge::bridge.height) return false;
   {
@@ -576,9 +626,11 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         .camera = {camera.position[0], camera.position[1], camera.position[2], 1.f},
         .size = {render_size[0], render_size[1], 0, 0},
     };
-    Dispatch(native, objects.positions_shader.Get(), {depth, nullptr},
-             {dlaa_bridge::bridge.rt_positions.uav.Get(), dlaa_bridge::bridge.rt_sun.uav.Get()}, &constants, sizeof(constants),
-             (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
+    if (depth != nullptr) {
+      Dispatch(native, objects.positions_shader.Get(), {depth, nullptr},
+               {dlaa_bridge::bridge.rt_positions.uav.Get(), dlaa_bridge::bridge.rt_sun.uav.Get()}, &constants, sizeof(constants),
+               (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
+    }
   }
   const dlaa_bridge::TraceRequest request = {
       .flags = (runtime.settings.sun_shadows ? dlaa_bridge::RT_SUN_SHADOWS : 0u)
@@ -609,6 +661,12 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   runtime.captured_vertices = 0;
   runtime.drawn.clear();
   return traced;
+}
+
+// The same with the camera in `camera_buffer` (host.camera); false: not the main view's.
+inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, ID3D11Buffer* camera_buffer) {
+  Camera camera;
+  return depth != nullptr && camera_buffer != nullptr && host.camera(camera_buffer, &camera) && Trace(native, depth, camera);
 }
 
 // The Light Bounce's trace through rays (light_bounce.hpp SetRayTracedTrace): its prepared light (its first level's
@@ -661,11 +719,16 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
     if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
     const auto* code = static_cast<const uint8_t*>(desc->code);
     const uint32_t hash = renodx::utils::hash::ComputeCRC32(code, desc->code_size);
-    if (std::ranges::none_of(scene_shaders, [hash](const SceneShader& shader) { return shader.hash == hash && shader.capture_shader.empty(); })) {
+    if (host.scene_draw == nullptr
+        && std::ranges::none_of(scene_shaders, [hash](const SceneShader& shader) { return shader.hash == hash && shader.capture_shader.empty(); })) {
       continue;
     }
+    // Bone inputs: the input signature's semantic names are plain text in the code.
+    constexpr std::string_view BONES = "BLENDINDICES";
+    const std::string_view bytes(reinterpret_cast<const char*>(code), desc->code_size);
     const std::unique_lock lock(runtime.mutex);
     game_code[hash].assign(code, code + desc->code_size);
+    skinned_code[hash] = bytes.find(BONES) != std::string_view::npos;
   }
 }
 
@@ -823,12 +886,12 @@ inline std::string Status() {
   return dlaa_bridge::TraceStatus();
 }
 
-// This frame's trace from the main view's `depth` and `camera_buffer` at a pass of the game's (the addons' own hooks);
-// false: not traced (off, already traced this frame, or no main view there).
-inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, ID3D11Buffer* camera_buffer) {
+// This frame's trace from the main view's `depth` (null: the addon wrote the bridge's positions) and `camera` at a pass
+// of the game's (the addons' own hooks); false: not traced (off, already traced this frame).
+inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, const Camera& camera) {
   const std::unique_lock lock(internal::runtime.mutex);
   if (!internal::active.load(std::memory_order_relaxed)) return false;
-  internal::Trace(native, depth, camera_buffer);
+  internal::Trace(native, depth, camera);
   return internal::runtime.traced_frame == internal::runtime.frame;
 }
 
@@ -850,21 +913,46 @@ inline std::array<ID3D11ShaderResourceView*, 2> Visibilities() {
   return {dlaa_bridge::bridge.rt_visibility.srv.Get(), dlaa_bridge::bridge.rt_ambient.srv.Get()};
 }
 
-// The scene's shaders (`shaders`, the addon's, kept while installed) and the game's view (`host`).
+// Whether a game vertex shader (its hash) has bone inputs (host.scene_draw's skinned draws); false: unknown.
+inline bool SkinnedVertexShader(uint32_t hash) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  const auto found = internal::skinned_code.find(hash);
+  return found != internal::skinned_code.end() && found->second;
+}
+
+// Any draw (host.scene_draw tells the scene's apart).
+constexpr auto OnAnyDraw = []<typename T, typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  using Arguments = typename Context::ArgumentType;
+  if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    return {};
+  } else {
+    if (!internal::active.load(std::memory_order_relaxed)) return {};
+    return {.post_callback = internal::CaptureAnyDraw<Context>};
+  }
+};
+
+// The scene's shaders (`shaders`, the addon's, kept while installed; or every draw host.scene_draw accepts) and the
+// game's view (`host`).
 inline void InstallScene(std::span<const SceneShader> shaders, const Host& host) {
   internal::scene_shaders = shaders;
   internal::host = host;
-  internal::clip_captures = std::ranges::any_of(shaders, [](const SceneShader& shader) { return shader.capture_shader.empty(); });
+  internal::clip_captures = host.scene_draw != nullptr
+                            || std::ranges::any_of(shaders, [](const SceneShader& shader) { return shader.capture_shader.empty(); });
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   for (const SceneShader& shader : shaders) {
     renodx::utils::command_action::Register(
         OnSceneDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader);
+  }
+  if (host.scene_draw != nullptr) {
+    renodx::utils::command_action::Register(OnAnyDraw, {.shader_hash = 0u, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
 }
 
 inline void UninstallScene() {
   if (internal::clip_captures) reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   renodx::utils::command_action::Unregister(OnSceneDraw);
+  renodx::utils::command_action::Unregister(OnAnyDraw);
   const std::unique_lock lock(internal::runtime.mutex);
   internal::scene_shaders = {};
 }

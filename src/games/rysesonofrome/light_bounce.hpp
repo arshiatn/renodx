@@ -211,6 +211,12 @@ inline bool CreateTextures(ID3D11DeviceContext* context, ID3D11Resource* scene, 
 // After the tiled lighting's dispatch on `context` (its bindings still set): the bounce added to its HDR scene.
 // `constants`: the Light Bounce's (strength 0: off), `denoise`: the resolved bounce smoothed along surfaces before the
 // apply.
+// The trace through rays (ray_tracing.hpp: twattila/rt_core.hpp's TraceLightBounce, path traced when on): the prepared
+// light (its first level's top-left `width` x `height`, a texel each `scale` scene pixels) in, the bounce into `traced`;
+// false: not this frame (the screen-space trace then). Null: never.
+inline bool (*ray_traced_trace)(ID3D11DeviceContext* context, ID3D11Texture2D* prepared_light, UINT width, UINT height, UINT scale,
+                                ID3D11Texture2D* traced) = nullptr;
+
 inline void Apply(ID3D11DeviceContext* context, const LightBounceConstants& constants, bool denoise) {
   using internal::objects;
   ComPtr<ID3D11DeviceContext1> context1;
@@ -312,7 +318,11 @@ inline void Apply(ID3D11DeviceContext* context, const LightBounceConstants& cons
   inputs[internal::HISTORY_VIEW] = objects.history[previous_index].srv.Get();
   inputs[internal::PREPARED_VIEW] = objects.prepared_light.srv.Get();
   inputs[internal::PREPARED_VIEW + 1] = objects.prepared_geometry.srv.Get();
-  pass(objects.traced, objects.trace.Get());
+  if (ray_traced_trace == nullptr
+      || !ray_traced_trace(context, objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
+                           static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get())) {
+    pass(objects.traced, objects.trace.Get());
+  }
   inputs[internal::LIGHT_VIEW] = objects.traced.srv.Get();
   inputs[internal::FRAMES_VIEW] = objects.history_frames[previous_index].srv.Get();
   pass(objects.history[objects.history_index], objects.resolve.Get(), &objects.history_frames[objects.history_index]);

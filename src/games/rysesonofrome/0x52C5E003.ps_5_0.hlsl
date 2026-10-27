@@ -6,6 +6,7 @@
 // Contact shadows (contact_shadows.hpp): a short march toward the sun through the scene's depth from each pixel; where
 // something covers the ray (in front of it by less than the thickness) the pixel is in shadow. Max-blended into the
 // sun's shadow mask slice before the tiled lighting (cs 0x897232B5) reads it (1 = shadow), in the sun's channels only.
+// With ray tracing (t2 bound: the traced sun's visibility, ray_tracing.hpp) its shadow too, the darker.
 // Its constants are the tiled lighting's own (b0) and the addon's (b1).
 cbuffer PerBatch : register(b0) {
   float4 frustum_top_left;     // the far plane's corners from the camera (world)
@@ -27,6 +28,7 @@ cbuffer ContactShadows : register(b1) {
 
 Texture2D<float> depth_texture : register(t0);  // linear depth / far
 Buffer<uint> sun : register(t1);                // shadow mask slice, channels (0x52C5E001)
+Texture2D<float> traced_sun : register(t2);     // the ray-traced sun's visibility (1 lit; unbound: none)
 
 // World position (from the camera) at uv and depth / far, as the tiled lighting rebuilds it.
 float3 FromCamera(float2 uv, float depth) {
@@ -37,7 +39,7 @@ float3 FromCamera(float2 uv, float depth) {
 float4 main(float4 position : SV_Position) : SV_Target {
   const uint channels = sun[1];
   // Only slice 0's target is bound: a sun elsewhere (or none) gets nothing.
-  if (sun[0] != 0u || channels == 0u || strength <= 0.f) return 0.f;
+  if (sun[0] != 0u || channels == 0u) return 0.f;
   const uint2 pixel = uint2(position.xy);
   const float depth = depth_texture.Load(int3(pixel, 0));
   if (!(depth < 0.999f)) return 0.f;
@@ -59,7 +61,7 @@ float4 main(float4 position : SV_Position) : SV_Target {
   const uint STEPS = 16;
   float shadow = 0.f;
   [loop]
-  for (uint step = 0; step < STEPS; ++step) {
+  for (uint step = 0; step < STEPS && strength > 0.f; ++step) {
     const float t = bias + march_length * (step + noise) / STEPS;
     const float3 point_from_camera = start + light * t;
     // Back onto the screen: its depth / far along the camera's forward axis, then its place on the far plane.
@@ -76,7 +78,10 @@ float4 main(float4 position : SV_Position) : SV_Target {
       break;
     }
   }
-  const float value = shadow * strength;
+  float value = shadow * strength;
+  uint traced_width, traced_height;
+  traced_sun.GetDimensions(traced_width, traced_height);
+  if (traced_width != 0u) value = max(value, 1.f - traced_sun.Load(int3(pixel, 0)));
   return float4((channels & 1u) ? value : 0.f, (channels & 2u) ? value : 0.f, (channels & 4u) ? value : 0.f,
                 (channels & 8u) ? value : 0.f);
 }
