@@ -53,6 +53,7 @@ cbuffer Lights : register(b4) {
 // Where the rays toward a local light stop before it (metres; at most half the way): its lamp, torch or fire's wood.
 static const float LIGHT_CLEARANCE = 0.5f;
 
+
 #if defined(OPACITY_MICROMAPS)
 #define SCENE_QUERY(query_flags) RayQuery<(query_flags), RAYQUERY_FLAG_ALLOW_OPACITY_MICROMAPS>
 #else

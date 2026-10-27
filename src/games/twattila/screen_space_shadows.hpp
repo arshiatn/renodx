@@ -35,12 +35,14 @@
 #include "../../utils/pipeline.hpp"
 #include "./dxbc.hpp"
 #include "./light_bounce.hpp"
+#include "./view_share.hpp"
 
 // Screen-space shadows (Experimental): Bend Studio's screen-space shadows (Apache 2.0, Copyright 2023 Sony Interactive
 // Entertainment; sss_setup.cs_5_0.hlsl, twshogun2completeedition/shaders/bend_sss_gpu.hlsli) on the sun's light.
-// The game's shadowed sun light shaders are patched as they are created (their bytecode: after their shadow's saturate,
-// x 1 - t49 at the pixel; t49 unbound reads 0, the game's light), so the sun's direct light, and nothing else, gets the
-// screen-space shadow. At the frame's first patched sun draw of the main view (the display's size), with compute: the
+// The game's shadowed sun light shaders are patched as they are created (their bytecode, on top of the render scale's
+// patch (view_share.hpp): after their shadow's saturate, x 1 - t49 at the pixel; t49 unbound reads 0, the game's
+// light), so the sun's direct light, and nothing else, gets the screen-space shadow. At the frame's first patched sun
+// draw of the main view (the display's size), with compute: the
 // scene's depth (the depth-stencil buffer the sun draws keep bound, copied: 24 / 32 bits; the G-buffer's depth channel
 // is too coarse far away for Bend's thickness test, whole areas came out shadowed in blocks (ATN debug4); it only without
 // one) into a single-channel texture (sss_depth; with the game's MSAA sample 0), the dispatch list for its camera and sun
@@ -649,7 +651,9 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     auto* desc = static_cast<reshade::api::shader_desc*>(subobjects[index].data);
     if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
     const std::span<const uint8_t> code(static_cast<const uint8_t*>(desc->code), desc->code_size);
-    const uint32_t hash = renodx::utils::hash::ComputeCRC32(code.data(), code.size());
+    // The game's hash, also of a sun shader the render scale patched first.
+    const auto scaled = view_share::OriginalHash(desc->code);
+    const uint32_t hash = scaled.value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
     const std::unique_lock lock(runtime.mutex);
     if (std::ranges::find(runtime.sun_hashes, hash) == runtime.sun_hashes.end()) continue;
     auto [entry, added] = runtime.patched.try_emplace(hash);
@@ -663,6 +667,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     if (entry->second.empty()) continue;
     desc->code = entry->second.data();
     desc->code_size = entry->second.size();
+    if (scaled.has_value()) view_share::Repatched(code.data(), desc->code);
     modified = true;
   }
   return modified;

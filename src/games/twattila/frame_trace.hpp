@@ -134,7 +134,13 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
     targets[slot]->Release();
   }
   if (depth != nullptr) {
-    outputs += std::format(" ds {}", DescribeView(depth));
+    // The depth test's comparison (0: off) and w: depth written (D3D11's default state without one bound).
+    ComPtr<ID3D11DepthStencilState> depth_state;
+    context->OMGetDepthStencilState(depth_state.GetAddressOf(), nullptr);
+    D3D11_DEPTH_STENCIL_DESC depth_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL, .DepthFunc = D3D11_COMPARISON_LESS};
+    if (depth_state) depth_state->GetDesc(&depth_desc);
+    outputs += std::format(" ds {} z{}{}", DescribeView(depth), depth_desc.DepthEnable ? static_cast<int>(depth_desc.DepthFunc) : 0,
+                           depth_desc.DepthWriteMask == D3D11_DEPTH_WRITE_MASK_ALL ? "w" : "");
     depth->Release();
   }
   D3D11_VIEWPORT viewport = {};

@@ -13,14 +13,39 @@
 // reaches the pixel unblocked; hard shadows, the rays stopping short of the light's own fixture). Leaves are
 // alpha-tested (their holes let light through); with Light Through Leaves (v11) each leaf the sun's ray meets also lets
 // LEAF_TRANSMITTANCE of it through, and each cloth or sail THIN_TRANSMITTANCE.
+// The ambient visibility is kept over frames (v11): where the last trace saw the same surface (its positions, the last
+// trace's camera) a fifth of the new one goes into its history.
 // World units: metres, y up. Noise moves every frame, which DLAA / DLSS (or Ray Reconstruction) settle.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_trace.h -Vn RT_TRACE; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_TRACE_OMM.
 #include "./rt_scene.hlsli"
+#include "./rt_camera.hlsli"
 
 RWTexture2D<unorm float> visibility : register(u0);
 RWTexture2D<unorm float> ambient : register(u1);
 RWTexture2D<float2> sun_rays : register(u2);  // soft shadows: lit, blocker distance
 RWTexture2D<uint> light_mask : register(u22);  // the local lights' lit bits (v9)
+RWTexture2D<float> ambient_history[2] : register(u28);  // the ambient visibility kept over frames (v11)
+RWTexture2D<float4> ambient_positions : register(u30);  // the last trace's positions
+
+static const float AMBIENT_BLEND = 0.2f;
+
+// The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface.
+float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
+  float kept = ambient_now;
+  if ((path_flags & PATH_AMBIENT_HISTORY) != 0u) {
+    const float4 clip = ClipOf(world, previous_view_projection);
+    const float2 uv = clip.xy / max(clip.w, 1e-6f) * float2(0.5f, -0.5f) + 0.5f;
+    if (clip.w > 0.f && all(uv >= 0.f) && all(uv < 1.f)) {
+      const uint2 seen_pixel = min(uint2(uv * float2(width, height)), uint2(width, height) - 1u);
+      const float4 seen = ambient_positions[seen_pixel];
+      if (seen.w > 0.f && distance(seen.xyz, world) < 0.03f + 0.01f * seen.w) {
+        kept = lerp(ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 1u : 0u][seen_pixel], ambient_now, AMBIENT_BLEND);
+      }
+    }
+  }
+  ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u][pixel] = kept;
+  return kept;
+}
 
 // The ray toward the sun: lit (1; 0 blocked; with Light Through Leaves the share the leaves met let through) and the
 // nearest blocker's distance (soft shadows).
@@ -109,13 +134,16 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
     ambient_visibility = (float)escaped / ambient_rays;
   }
+  const bool kept = (flags & AMBIENT_OCCLUSION) != 0u && ambient_rays != 0u;
   if (!quarter) {
-    ambient[id.xy] = ambient_visibility;
+    ambient[id.xy] = kept ? KeptAmbient(id.xy, position.xyz, ambient_visibility) : ambient_visibility;
     return;
   }
   [unroll]
   for (uint corner = 0u; corner < 4u; ++corner) {
     const uint2 pixel = (id.xy & ~1u) + uint2(corner & 1u, corner >> 1);
-    if (pixel.x < width && pixel.y < height) ambient[pixel] = ambient_visibility;
+    if (pixel.x >= width || pixel.y >= height) continue;
+    const float4 corner_position = positions[pixel];
+    ambient[pixel] = (kept && corner_position.w > 0.f) ? KeptAmbient(pixel, corner_position.xyz, ambient_visibility) : ambient_visibility;
   }
 }

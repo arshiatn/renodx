@@ -70,6 +70,7 @@ struct Sliders {
   float grass = 0.f;
   float point_lights = 0.f;  // the point lights' shadows (games whose light draws InstallPointLights hooks)
   float fog_shadows = 0.f;   // the fog's (games whose fog InstallFogShadows hooks)
+  float shadows_only = 0.f;  // the rays alone cast sun shadows (games that InstallShadowsOnly)
   float light_bounce = 0.f;
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
@@ -102,6 +103,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .local_lights = sliders.point_lights != 0.f && dlaa,
       .leaf_light = sliders.leaf_light != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
+      .shadows_only = sliders.shadows_only != 0.f && sliders.sun_shadows != 0.f && dlaa,
   };
 }
 
@@ -130,6 +132,7 @@ inline const Host TW_HOST = {
     .moving_indexed = [](ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) {
       return object_motion::MovingMesh(object_motion::MeshKey(native, arguments));
     },
+    .main_view = frame_history::MainViewport,
 };
 
 // The game's reflection pass (environment_specular_light, Attila's shaders: Attila, Thrones), before its draws: the
@@ -245,6 +248,18 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
   }
 };
 
+namespace internal {
+
+// Ray-Traced Shadows Only: the sun draws' shadow map (a square depth texture of theirs, 1024 and up), learned at each
+// frame's first sun draw; while it is bound alone for drawing, the casters are skipped (the game's clear leaves it
+// shadowing nothing) as long as the sun draws took the rays' shadows the frame before (a sun shader without the
+// patch, screen_space_shadows.hpp, keeps the game's).
+static bool shadows_only_installed = false;
+static std::atomic<uint64_t> shadow_map = 0;
+static std::atomic_bool skipping_casters = false;
+
+}  // namespace internal
+
 // A sun light draw (pre callback): the frame's first writes the sun's direction (from its lighting buffer, as the game's
 // layout for the draw says) for the next trace. Without an ambient occlusion pass this frame (none in the game, or the
 // game's SSAO off) the frame's first traces (its G-buffer depth and camera), and each then reads its AO times the
@@ -256,6 +271,26 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
   if (native == nullptr || !frame_history::MainViewport(native)) return {};
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
+  if (runtime.settings.shadows_only && runtime.sun_frame != runtime.frame) {
+    std::array<ID3D11ShaderResourceView*, 16> views = {};
+    native->PSGetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    uint64_t map = 0;
+    for (auto* view : views) {
+      if (view == nullptr) continue;
+      ComPtr<ID3D11Resource> resource;
+      view->GetResource(resource.GetAddressOf());
+      view->Release();
+      ComPtr<ID3D11Texture2D> texture;
+      D3D11_TEXTURE2D_DESC desc = {};
+      if (FAILED(resource.As(&texture))) continue;
+      texture->GetDesc(&desc);
+      if (desc.Width == desc.Height && desc.Width >= 1024
+          && (desc.Format == DXGI_FORMAT_R32_TYPELESS || desc.Format == DXGI_FORMAT_R24G8_TYPELESS || desc.Format == DXGI_FORMAT_R16_TYPELESS)) {
+        map = reinterpret_cast<uintptr_t>(resource.Get());
+      }
+    }
+    internal::shadow_map.store(map, std::memory_order_relaxed);
+  }
   if (runtime.ambient_frame != runtime.frame) {
     auto& objects = runtime.objects;
     if (runtime.traced_frame != runtime.frame) {
@@ -512,6 +547,40 @@ inline void InstallFogShadows(std::span<const uint32_t> shader_hashes) {
   }
 }
 
+// Ray-Traced Shadows Only: draws are skipped while the sun's shadow map is bound alone (depth only) for drawing.
+inline void OnBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view*,
+                          reshade::api::resource_view dsv) {
+  bool skip = false;
+  const uint64_t map = internal::shadow_map.load(std::memory_order_relaxed);
+  if (count == 0 && dsv.handle != 0 && map != 0 && cmd_list->get_device()->get_resource_from_view(dsv).handle == map) {
+    const std::unique_lock lock(internal::runtime.mutex);
+    skip = internal::runtime.settings.shadows_only && internal::runtime.occlusion_frame + 1 >= internal::runtime.frame;
+  }
+  internal::skipping_casters.store(skip, std::memory_order_relaxed);
+}
+
+inline bool OnCasterDraw(reshade::api::command_list*, uint32_t, uint32_t, uint32_t, uint32_t) {
+  return internal::skipping_casters.load(std::memory_order_relaxed);
+}
+
+inline bool OnCasterDrawIndexed(reshade::api::command_list*, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
+  return internal::skipping_casters.load(std::memory_order_relaxed);
+}
+
+inline bool OnCasterDrawIndirect(reshade::api::command_list*, reshade::api::indirect_command, reshade::api::resource, uint64_t, uint32_t,
+                                 uint32_t) {
+  return internal::skipping_casters.load(std::memory_order_relaxed);
+}
+
+// The sun's shadow map's casters skipped under Ray-Traced Shadows Only (shown once installed; needs InstallSunDraws).
+inline void InstallShadowsOnly() {
+  internal::shadows_only_installed = true;
+  reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindTargets);
+  reshade::register_event<reshade::addon_event::draw>(OnCasterDraw);
+  reshade::register_event<reshade::addon_event::draw_indexed>(OnCasterDrawIndexed);
+  reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(OnCasterDrawIndirect);
+}
+
 // The scene's shaders (`shaders`) and the game's ambient occlusion passes (none: the trace at the sun draws), the
 // addon's, kept while installed (after the ambient occlusion pass's own hooks: its result is multiplied after); the
 // Light Bounce's trace through rays.
@@ -540,6 +609,12 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
   if (std::exchange(internal::fog_shadows_installed, false)) renodx::utils::command_action::Unregister(OnFogDraw);
+  if (std::exchange(internal::shadows_only_installed, false)) {
+    reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindTargets);
+    reshade::unregister_event<reshade::addon_event::draw>(OnCasterDraw);
+    reshade::unregister_event<reshade::addon_event::draw_indexed>(OnCasterDrawIndexed);
+    reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(OnCasterDrawIndirect);
+  }
   if (std::exchange(internal::point_lights_installed, false)) {
     renodx::utils::command_action::Unregister(OnPointLightDraw);
     reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
@@ -613,6 +688,19 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 3.f,
           .format = "%.2f",
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowsOnly",
+          .binding = &sliders->shadows_only,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Shadows Only (Experimental)",
+          .section = section,
+          .tooltip = "The game's sun shadow maps are not drawn: the rays alone cast sun shadows (faster). Grass, distant tree\n"
+                     "cards, smoke and (without Ray-Traced Units) soldiers cast none.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::shadows_only_installed; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLeafLight",

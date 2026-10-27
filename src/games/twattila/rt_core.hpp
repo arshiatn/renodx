@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <limits>
 #include <mutex>
 #include <span>
 #include <string>
@@ -89,6 +90,8 @@ struct Settings {
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
+  // Ray-traced sun shadows only (Experimental): the game's sun shadow map gets no casters (InstallShadowsOnly).
+  bool shadows_only = false;
 };
 
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
@@ -124,7 +127,7 @@ struct Camera {
 // The game's main view as ray tracing needs it, from the addon's anti-aliasing (the TW games' anti_aliasing.hpp,
 // Warhammer III's taa_dlss.hpp, the other games' DLSS addons): the camera when `buffer` holds the main view's (the scene
 // shaders' at `camera_slot`), the render size, whether the G-buffer guides were written this frame, and optionally
-// whether a static draw's mesh was seen moving lately (it stays out of the scene).
+// whether a static draw's mesh was seen moving lately (it stays out of the scene) and whether a draw is the main view's.
 // Games whose scene shaders are too many to list (Ryse) give `scene_draw` instead: every draw is asked whether it is a
 // scene draw (an opaque one into the G-buffer), which fills in its shader (its vertex shader's hash: the game's own,
 // streamed out; whether skinned: `skinned_vertex_shader`), and `capture_camera` reads the draw's camera from the
@@ -140,6 +143,8 @@ struct Host {
   bool (*skinned_code)(std::span<const uint8_t> code) = nullptr;
   bool (*moving)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawArguments& arguments) = nullptr;
   bool (*moving_indexed)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) = nullptr;
+  // Whether a draw is the main view's (null: every draw into its depth is).
+  bool (*main_view)(ID3D11DeviceContext* native) = nullptr;
 };
 
 namespace internal {
@@ -165,6 +170,7 @@ struct DeviceObjects {
   ComPtr<ID3D11Buffer> captured_uv;  // the game's own shaders' foliage UVs, at their vertices' places
   ComPtr<ID3D11ShaderResourceView> captured_uv_srv;
   ComPtr<ID3D11ComputeShader> vertices_shader;
+  ComPtr<ID3D11ComputeShader> skies_shader;
   ComPtr<ID3D11ComputeShader> positions_shader;
   ComPtr<ID3D11ComputeShader> sun_shader;
   ComPtr<ID3D11ComputeShader> occlusion_shader;
@@ -345,7 +351,8 @@ inline bool PrepareDevice(ID3D11Device* device) {
              || (SUCCEEDED(device->CreateBuffer(&captured_uv_desc, nullptr, objects.captured_uv.GetAddressOf()))
                  && SUCCEEDED(device->CreateShaderResourceView(objects.captured_uv.Get(), &captured_uv_view,
                                                                objects.captured_uv_srv.GetAddressOf()))))
-         && compute(__rt_vertices, &objects.vertices_shader) && compute(__rt_positions, &objects.positions_shader)
+         && compute(__rt_vertices, &objects.vertices_shader) && compute(__rt_skies, &objects.skies_shader)
+         && compute(__rt_positions, &objects.positions_shader)
          && compute(__rt_sun, &objects.sun_shader) && compute(__rt_occlusion, &objects.occlusion_shader)
          && compute(__rt_atlas, &objects.atlas_shader) && compute(__rt_ambient_combine, &objects.combine_shader)
          && SUCCEEDED(device->CreateSamplerState(&wrap_desc, objects.linear_wrap.GetAddressOf()))
@@ -539,7 +546,9 @@ void Capture(Context& command, const SceneShader& shader) {
       }
     }
   }
-  // The main view: its camera and its depth at the display's size, single-sampled; the bridge with ray tracing.
+  // The main view (not the UI's small 3D views, whose models stand elsewhere in the world): its camera and its depth at
+  // the display's size, single-sampled; the bridge with ray tracing.
+  if (host.main_view != nullptr && !host.main_view(native)) return;
   ComPtr<ID3D11DepthStencilView> depth_view;
   native->OMGetRenderTargets(0, nullptr, depth_view.GetAddressOf());
   Camera camera;
@@ -784,6 +793,36 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       Dispatch(native, objects.vertices_shader.Get(), {objects.captured_srv.Get(), objects.captured_uv_srv.Get()},
                {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr},
                &constants, sizeof(constants), (runtime.captured_vertices + 255) / 256, 1);
+      // Skies (rt_skies): the new static captures that hold the camera and are larger than the view reaches (the farther
+      // of its near and far planes' centres; unbounded with an infinite far plane) go empty.
+      const auto& inverse = camera.inverse_view_projection;
+      float reach = 0.f;
+      for (const float depth : {0.f, 1.f}) {
+        const float w = (inverse[14] * depth) + inverse[15];
+        if (std::abs(w) < 1e-12f) {
+          reach = std::numeric_limits<float>::max();
+          break;
+        }
+        const float x = (((inverse[2] * depth) + inverse[3]) / w) - camera.position[0];
+        const float y = (((inverse[6] * depth) + inverse[7]) / w) - camera.position[1];
+        const float z = (((inverse[10] * depth) + inverse[11]) / w) - camera.position[2];
+        reach = std::max(reach, std::sqrt((x * x) + (y * y) + (z * z)));
+      }
+      struct SkyConstants {
+        std::array<uint32_t, 4> capture;
+        std::array<float, 16> inverse_view_projection;
+        std::array<float, 4> camera;
+      };
+      for (const auto& capture : runtime.captures) {
+        if ((capture.flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_INSTANCED)) != 0) continue;
+        const SkyConstants sky = {
+            .capture = {capture.first_vertex, capture.vertex_count, clip_captures ? 1u : 0u, dlaa_bridge::RT_TRANSFER_WIDTH},
+            .inverse_view_projection = camera.inverse_view_projection,
+            .camera = {camera.position[0], camera.position[1], camera.position[2], reach},
+        };
+        Dispatch(native, objects.skies_shader.Get(), {objects.captured_srv.Get(), nullptr}, {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr},
+                 &sky, sizeof(sky), 1, 1);
+      }
     }
     struct PositionConstants {
       std::array<float, 16> inverse_view_projection;
@@ -845,6 +884,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .drawn = runtime.drawn,
       .lights = runtime.lights,
       .light_colours = runtime.light_colours,
+      .view_projection = camera.view_projection,
   };
   const bool traced = dlaa_bridge::TraceScene(native, request);
   runtime.lights_traced = traced && lights;

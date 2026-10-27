@@ -57,6 +57,7 @@ struct TraceRequest {
   // v9, with RT_LOCAL_LIGHTS: the local lights (world position, reach in metres; RT_MAX_LIGHTS at most).
   std::span<const std::array<float, 4>> lights;
   std::span<const std::array<float, 4>> light_colours;  // v11: as `lights`
+  std::array<float, 16> view_projection = {};            // v11: the camera's registers (the ambient's history)
 };
 
 // A ray-traced Light Bounce request (light_bounce.hpp through rt_scene.hpp): the render size, the bounce's size and its
@@ -513,6 +514,7 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
       std::copy_n(request.lights[light].begin(), 4, shared->rt_lights[light]);
       if (light < request.light_colours.size()) std::copy_n(request.light_colours[light].begin(), 4, shared->rt_light_colours[light]);
     }
+    std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
   });
 }
 

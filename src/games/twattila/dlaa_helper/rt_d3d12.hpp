@@ -66,10 +66,10 @@
 // occlusion. With DXR 1.2 the paths run as ray generation shaders (DispatchRays) with shader execution reordering. With
 // NVAPI's cluster operations (RTX Mega Geometry; set RENODX_TW_NO_CLUSTERS to turn them off) the units are built each
 // frame as clusters (CLAS) into one cluster BLAS instead of the refitted BLAS. The partitioned TLAS (PTLAS: each frame
-// only the instances that changed written; RENODX_TW_NO_PTLAS turns it off) takes every change as a whole instance
-// write: NVAPI's update operation (a new BLAS for an instance) stalled the GPU 4-5 s a time after BLAS compactions (GPU
-// harness, helper19-21). Two PTLASes in turn, the operations in device memory, as NVAPI asks. Its queue waits for the
-// addon's fence value and signals the next.
+// only the instances that changed written; only with RENODX_TW_PTLAS: it stalled a city siege) takes every change as a
+// whole instance write: NVAPI's update operation (a new BLAS for an instance) stalled the GPU 4-5 s a time after BLAS
+// compactions (GPU harness, helper19-21). Two PTLASes in turn, the operations in device memory, as NVAPI asks. Its
+// queue waits for the addon's fence value and signals the next.
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
@@ -242,10 +242,11 @@ class RtScene12 {
       }
     }
     // The partitioned TLAS: an instance per static record (its index) and one for the units, PTLAS_PARTITION_SIZE a
-    // partition; a slot's write and update arguments, its two operations and their count.
+    // partition; a slot's write and update arguments, its two operations and their count. Only with RENODX_TW_PTLAS:
+    // a city siege in Attila stalled each frame by ~0.3 s with it (the TLAS built whole costs well under a millisecond).
     NvU32 ptlas_caps = 0;
     ptlas_ = nullptr;
-    if (GetEnvironmentVariableW(L"RENODX_TW_NO_PTLAS", nullptr, 0) == 0 && NvAPI_Initialize() == NVAPI_OK
+    if (GetEnvironmentVariableW(L"RENODX_TW_PTLAS", nullptr, 0) != 0 && NvAPI_Initialize() == NVAPI_OK
         && NvAPI_D3D12_GetRaytracingCaps(device_.Get(), NVAPI_D3D12_RAYTRACING_CAPS_TYPE_PARTITIONED_TLAS, &ptlas_caps, sizeof(ptlas_caps)) == NVAPI_OK
         && (ptlas_caps & NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_CAP_STANDARD) != 0) {
       ptlas_inputs_ = {
@@ -534,6 +535,20 @@ class RtScene12 {
       }
       const auto positions_view = view(DXGI_FORMAT_R32G32B32A32_FLOAT);
       device_->CreateShaderResourceView(previous_positions_.Get(), &positions_view, Descriptor(PREVIOUS_POSITIONS));
+      // The ambient visibility's history (v11): two sets in turn, the last trace's positions.
+      if (version >= 11 && texture(DXGI_FORMAT_R16_FLOAT, &ambient_history_[0]) && texture(DXGI_FORMAT_R16_FLOAT, &ambient_history_[1])
+          && texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &ambient_positions_, D3D12_RESOURCE_STATE_COMMON)) {
+        for (UINT set = 0; set < 2; ++set) {
+          const auto history_view = written(DXGI_FORMAT_R16_FLOAT);
+          device_->CreateUnorderedAccessView(ambient_history_[set].Get(), nullptr, &history_view, Descriptor(AMBIENT_HISTORY + set));
+        }
+        const auto ambient_positions_view = written(DXGI_FORMAT_R32G32B32A32_FLOAT);
+        device_->CreateUnorderedAccessView(ambient_positions_.Get(), nullptr, &ambient_positions_view, Descriptor(AMBIENT_POSITIONS));
+      } else {
+        ambient_history_ = {};
+        ambient_positions_.Reset();
+      }
+      ambient_frame_ = UINT32_MAX;
       copied_frame_ = UINT32_MAX;
       paths_frame_ = UINT32_MAX;
       // ReSTIR GI's two sets of reservoirs (the path-traced Light Bounce's).
@@ -620,6 +635,8 @@ class RtScene12 {
     bounce_.Reset();
     light_mask_.Reset();
     fog_.Reset();
+    ambient_history_ = {};
+    ambient_positions_.Reset();
     previous_color_.Reset();
     guide_normals_.Reset();
     guide_albedo_.Reset();
@@ -1031,6 +1048,8 @@ class RtScene12 {
     REUSE_SAMPLES,  // u23-u24: ReSTIR GI's reservoirs, two sets
     REUSE_DATA = REUSE_SAMPLES + 2,  // u25-u26
     FOG = REUSE_DATA + 2,  // u27 (v11)
+    AMBIENT_HISTORY,  // u28-u29: the ambient visibility kept over frames, two sets (v11)
+    AMBIENT_POSITIONS = AMBIENT_HISTORY + 2,  // u30: the last trace's positions
     DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
@@ -1049,6 +1068,8 @@ class RtScene12 {
   static constexpr uint32_t PATH_REUSE_HISTORY = 2048;
   static constexpr uint32_t PATH_REUSE_PARITY = 4096;
   static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
+  static constexpr uint32_t PATH_AMBIENT_HISTORY = 16384;  // rt_camera.hlsli
+  static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
   struct PathConstants {
@@ -1224,8 +1245,9 @@ class RtScene12 {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(REUSE_SAMPLES + set));
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(REUSE_DATA + set));
     }
-    for (const auto descriptor :
-         {SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY, REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG}) {
+    for (const UINT descriptor : std::initializer_list<UINT>{SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY,
+                                                             REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG, AMBIENT_HISTORY,
+                                                             AMBIENT_HISTORY + 1, AMBIENT_POSITIONS}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     if (cache_keys_) return;
@@ -1993,8 +2015,41 @@ class RtScene12 {
     };
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());
+    // The ambient's history: valid when the last trace was the frame before (its camera kept for the projection).
+    const bool ambient_kept = ambient_positions_ && version >= 11 && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0;
+    if (ambient_kept) {
+      PathConstants constants = {.flags = (ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame ? PATH_AMBIENT_HISTORY : 0u)
+                                          | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u)};
+      std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
+      constants.previous_view_projection = ambient_view_projection_;
+      std::memcpy(slot->paths_data, &constants, sizeof(constants));
+      list->SetComputeRootConstantBufferView(ROOT_PATHS, slot->paths->GetGPUVirtualAddress());
+      const auto to_uav = Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      list->ResourceBarrier(1, &to_uav);
+    }
     list->SetPipelineState(trace_pipeline_.Get());
     list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+    if (ambient_kept) {
+      // This trace's positions for the next one.
+      const std::array<D3D12_RESOURCE_BARRIER, 2> to_copy = {
+          Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+          Transition(positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+      };
+      list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+      const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = ambient_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+      const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+      const D3D12_BOX region = {.left = 0, .top = 0, .front = 0, .right = std::max(shared.rt_width, 1u), .bottom = std::max(shared.rt_height, 1u),
+                                .back = 1};
+      list->CopyTextureRegion(&to, 0, 0, 0, &from, &region);
+      const std::array<D3D12_RESOURCE_BARRIER, 2> back = {
+          Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON),
+          Transition(positions_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+      };
+      list->ResourceBarrier(static_cast<UINT>(back.size()), back.data());
+      std::copy_n(shared.rt_view_projection, 16, ambient_view_projection_.begin());
+      ambient_frame_ = frame;
+      ambient_parity_ ^= 1u;
+    }
     if (fog) {
       list->SetPipelineState(fog_pipeline_.Get());
       list->Dispatch((shared.rt_width + 31) / 32, (shared.rt_height + 31) / 32, 1);
@@ -2180,6 +2235,12 @@ class RtScene12 {
   ComPtr<ID3D12Resource> bounce_;  // its output
   ComPtr<ID3D12Resource> light_mask_;  // the local lights' lit bits (v9)
   ComPtr<ID3D12Resource> fog_;         // the fog shadows (v11)
+  // The ambient visibility kept over frames (v11): its two sets, the last trace's positions, camera, frame and set.
+  std::array<ComPtr<ID3D12Resource>, 2> ambient_history_;
+  ComPtr<ID3D12Resource> ambient_positions_;
+  std::array<float, 16> ambient_view_projection_ = {};
+  uint32_t ambient_frame_ = UINT32_MAX;
+  uint32_t ambient_parity_ = 0;
   ComPtr<ID3D12PipelineState> fog_pipeline_;
   ComPtr<ID3D12PipelineState> bounce_pipeline_;
   // Paths (v8): last frame's colour (the DLAA input), the G-buffer guides, the reflections' outputs; the history and the

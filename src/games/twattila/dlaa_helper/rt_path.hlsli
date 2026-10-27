@@ -22,6 +22,7 @@
 #define SRC_GAMES_TWATTILA_DLAA_HELPER_RT_PATH_HLSLI_
 
 #include "./rt_scene.hlsli"
+#include "./rt_camera.hlsli"
 
 Texture2D<float3> light : register(t9);               // the prepared light (bounce texels)
 Texture2D<float4> previous_color : register(t10);     // last frame's scene colour (render pixels)
@@ -51,19 +52,6 @@ RWTexture2D<unorm float> specular_occlusion : register(u21);
 // and every third frame its sample re-checked (still in view, its light now): changed light shortens the history.
 RWTexture2D<float4> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
 RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
-
-cbuffer Paths : register(b3) {
-  float4 view_projection[4];           // this frame's camera registers: clip = (dot(position, [0]), ...)
-  float4 previous_view_projection[4];  // last frame's
-  uint bounce_width;
-  uint bounce_height;
-  uint bounce_scale;
-  uint path_flags;  // PATH_* below
-  uint path_bounces;
-  uint path_samples;
-  float bounce_range;      // metres
-  float reflection_range;  // metres (specular occlusion's reach)
-};
 
 static const uint PATH_TRACING = 1u;          // the bounce texels' light path traced
 static const uint PATH_REFLECTIONS = 2u;
@@ -199,11 +187,6 @@ void CacheSetAlbedo(float3 world, float3 albedo) {
 }
 
 // A world position's clip coordinates through a camera's registers.
-float4 ClipOf(float3 world, float4 registers[4]) {
-  const float4 position = float4(world, 1.f);
-  return float4(dot(position, registers[0]), dot(position, registers[1]), dot(position, registers[2]), dot(position, registers[3]));
-}
-
 // This frame's pixel of a world position where the camera sees that same surface (false: off screen or hidden).
 bool SeenNow(float3 world, out uint2 pixel) {
   pixel = 0u;

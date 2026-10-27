@@ -733,6 +733,24 @@ inline void Update(ID3D11DeviceContext* context, bool scaled, const std::array<u
   internal::runtime.bound = false;
 }
 
+// The game's hash of a shader this module patched as the game created it (`code`: the code it gave the game), else
+// none: another patch by the game's hashes on top (screen_space_shadows.hpp) then gives its code to Repatched.
+inline std::optional<uint32_t> OriginalHash(const void* code) {
+  const std::shared_lock lock(internal::runtime.mutex);
+  for (const auto& [hash, patched] : internal::runtime.patched) {
+    if (!patched.empty() && patched.data() == code) return hash;
+  }
+  return std::nullopt;
+}
+
+// Another patch's `code` in place of this module's (`patched`): its pipelines get cb12 the same.
+inline void Repatched(const void* patched, const void* code) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  if (const auto wanted = internal::runtime.wanted_code.find(patched); wanted != internal::runtime.wanted_code.end()) {
+    internal::runtime.wanted_code.emplace(code, wanted->second);
+  }
+}
+
 // A game shader (by its hash) that reads render-space textures at the display's size: those slots' reads take the
 // frame's render share (patched as the game creates it). Before the game creates its shaders (the addon's start).
 struct RegionRead {
