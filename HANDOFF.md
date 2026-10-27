@@ -470,11 +470,51 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       twpharaohdynasties_v35, twwarhammer_v32, twwarhammer2_v32, twwarhammer3_v25 (all with helper19 + NVAPI_LICENSE),
       rysesonofrome_dlss_v114, expeditionsrome_dlss_graphics_v25, twshogun2completeedition_dlss_v54,
       talesofarise_dlss_v106. tools\tw\release_zip.py --helper now takes helper19 + NVAPI's licence.
-    - NEXT: Ryse RT in the HDR addon (rysesonofrome: G-buffer = 3x RGBA16F + depth, many VS permutations -> capture
-      any G-buffer draw; PER_FRAME VS b2 with offsets (constant mirror); trace at the first sunshadow draw (t0 linear
-      depth -> positions with linear mode), sun from the tiled lighting PER_BATCH c4 SunDir (0x897232B5); apply in
-      sunshadow00-04 (max with 1 - visibility), AO in GT-VBAO, PT through its GT-VBGI (TW light bounce passes));
-      Expeditions RT (UE 4.26), Shogun 2 RT; double-work check; restore; report.
+    - Ryse RT (HDR fix51, rysesonofrome/ray_tracing.hpp): rt_core's generic capture (Host.scene_draw: every G-buffer
+      draw, 3x RGBA16F + depth; Host.capture_camera; the game's own VS streamed out, BLENDINDICES = skinned), camera from
+      VS PER_FRAME b2 uploads (rysesonofrome_dlss/constant_mirror.hpp), positions + sun from 0x52C5E004 (linear depth,
+      PER_BATCH) before the tiled lighting 0x897232B5, then rt_scene::Trace(depth null). Sun into the contact-shadow mask
+      (0x52C5E003: max(value, 1 - traced); the march off while traced), Light Bounce through rays / PT. Settings
+      "Ray Tracing (Experimental)", Install at launch only. talesofarise_dlss/matrix.hpp (Inverse) split from
+      frame_generation.hpp so the HDR addon need not embed FG shaders.
+    - rt_core additions: clip-space foliage (SceneShader.uv_semantic / uv_semantic_index: a second SO buffer with the UV,
+      rt_vertices packs it into w as halves for the helper's alpha test); SceneCoverage (each pixel shader classified at
+      init_pipeline: no discard = solid; discard + t0 sampled at an input = alpha-tested with that input's semantic;
+      t0 sampled at a computed address = left out); Host.skinned_code; dxbc.hpp FindSignatureElement. Offline check:
+      tools\expeditions\classify_test.cpp over Expeditions' dumped shaders (masks TEXCOORD0, tiled masks out,
+      characters solid, bone-index VS skinned).
+    - Expeditions RT (DLSS v26, expeditionsrome_dlss/ray_tracing.hpp): scene = UE prepass draws into the scene depth
+      (t1 of the sun light draw), skinned = ATTRIBUTE3 uint or a UAV vertex buffer (skin cache), metres (VP columns x 100);
+      camera from the sun draw's View (ps b0: WorldToClip 4-7 transposed, WorldCameraOrigin 63), sun from
+      FDeferredLightUniformStruct c5 (ShadowedBits c2.x != 0). At the sun draw (vs 0x7C21DA11, before contact
+      shadows'): guides (0x7A1E0D44 from GBufferA/B/C), trace, sun into LightAttenuation z (0x7A1E0D45: copy, then
+      z x sqrt(min(1, traced / game's)) with the game's fade and static shadowing replicated: min semantics), AO min
+      into SSAO (0x7A1E0D46). Light bounce after the sun draw (post callback: 0x7A1E0D48 prepare half res,
+      TraceLightBounce, 0x7A1E0D49 temporal resolve with world-position validation, 0x7A1E0D4A 3x3 bilateral apply x
+      diffuse colour, additive). Reflections replace the SSR draw (ps 0xE36ED33E bypassed, 0x7A1E0D47 premultiplied
+      into its target); KeepColor copies the TAA input into bridge.color for the next trace. Contact shadows skip while
+      the traced sun is applied. Unknown in game: SSR / sun-light hashes at other quality settings.
+    - Shogun 2 RT (HDR v62 + DLSS v55 settings UI): rt_core generic capture (G-buffer rt0-2 RGBA16F, only at the sun
+      draws' depth size), camera from camera_VS_PS uploads (expeditionsrome_dlss/constant_mirror.hpp; VP c10-13, render
+      size c38), trace at the first sunlight00-03 draw (sun from lighting_VS_PS c0 negated), t40 / t41 bound for those
+      draws: shaders/rt_sun.hlsli RtDarker (min with the shadow mask / AO), Light Bounce RT / PT via SetRayTracedTrace.
+    - WH3 v26: Ray Reconstruction (rr_guides.cs: WH3 lights dielectrics only: F0 0.04, diffuse x 0.96, roughness =
+      1 - material.z, normals from channel 1 by inv_view; taa_dlss WriteGuides at the first sun draw, Prepare with
+      guides, RR camera = inverse projection x view-projection). DLSS below 100%: not done (post chain at render size).
+    - Double work: Tales r.SSR.Quality 0 while RT reflections ran within 30 frames (rt_shadows ReflectingRecently);
+      Ryse contact march off under the traced sun; Expeditions contact shadows off under it, SSR bypassed under RT
+      reflections; TW / Shogun 2 / Ryse / Expeditions Light Bounce screen-space trace replaced by rays (never both);
+      TW SSR march skipped under RT reflections. Kept on purpose (complementary, combined as the darker / product):
+      game shadow maps + RT sun, SSAO / GT-VBAO + RT AO, TW / Shogun 2 Bend SSS + RT sun (grass / billboards are not
+      in the RT scene).
+    - Zips (batch 3, Downloads): rysesonofrome_fix51, expeditionsrome_dlss_graphics_v26, twshogun2completeedition_v62,
+      twshogun2completeedition_dlss_v55, twwarhammer3_v26, talesofarise_dlss_v107 (RT ones with helper19, D3D12Core,
+      AGILITY / NVAPI licences).
+    - Restored (restore_notes.txt): Ryse FG keys + DLLs, WH2 RT keys + deployed files; build\Release *.old_* and the
+      helper debug builds deleted. A Ryse.exe zombie (pid 31200) still in the process list.
+    - NOT DONE: in-game tests of batch 3 (input to games blocked); WH3 DLSS below 100%; Tales Mega Geometry / PTLAS
+      (few characters: little gain); LSS / spheres (no strands or particles in any RT scene); Shogun 2 RT reflections
+      (needs its G-buffer guides and the ssrresolve patch); TW grass / billboards in RT.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
