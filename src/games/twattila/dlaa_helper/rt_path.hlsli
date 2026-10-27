@@ -43,6 +43,12 @@ RWTexture2D<float2> specular_meta : register(u18);         // specular occlusion
 RWTexture2D<float2> specular_meta_history : register(u19);
 RWTexture2D<float4> reflection : register(u20);            // out: reflected light, the share of samples that met a surface
 RWTexture2D<unorm float> specular_occlusion : register(u21);
+// ReSTIR GI (Ouyang et al. 2021, "ReSTIR GI: Path Resampling for Real-Time Path Tracing"): each bounce texel's paths
+// become a reservoir of one surface their first rays met (its position, normal and the light leaving it toward the
+// texel), merged with last frame's at the same surface (PathTraceTexel), then with neighbours' (ReuseTexel, which
+// writes the bounce). Two sets, this frame's at PATH_REUSE_PARITY.
+RWTexture2D<float4> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
+RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal (octahedral)
 
 cbuffer Paths : register(b3) {
   float4 view_projection[4];           // this frame's camera registers: clip = (dot(position, [0]), ...)
@@ -67,6 +73,12 @@ static const uint PATH_GUIDES = 64u;          // the G-buffer guides hold this f
 static const uint PATH_SUN_TRACED = 128u;     // traced_visibility is this frame's
 static const uint PATH_LIGHT = 256u;          // the prepared light is this frame's
 static const uint PATH_RAW = 512u;            // the reflections as traced (Ray Reconstruction denoises them)
+static const uint PATH_REUSE = 1024u;         // ReSTIR GI
+static const uint PATH_REUSE_HISTORY = 2048u; // last frame's reservoirs are last frame's
+static const uint PATH_REUSE_PARITY = 4096u;  // this frame's set: 1 (else 0)
+static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
+static const uint REUSE_NEIGHBOURS = 5u;
+static const float REUSE_RADIUS = 12.f;       // bounce texels
 
 static const uint CACHE_ENTRIES = 1u << 20;
 static const uint CACHE_PROBES = 8u;
@@ -254,9 +266,10 @@ float3 PixelNormal(uint2 pixel, float4 position) {
   return SurfaceNormal(int2(pixel), position);
 }
 
-// The light arriving along a ray (`first_distance`: how far its first surface is; 1e30: none).
-float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, uint path, out float first_distance) {
+// The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal).
+float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, uint path, out float first_distance, out float3 first_normal) {
   first_distance = 1e30f;
+  first_normal = 0.f;
   float3 radiance = 0.f;
   float3 throughput = 1.f;
   const float4 toward_sun = sun[uint2(0, 0)];
@@ -292,6 +305,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
       break;
     }
     const float3 normal = HitNormal(query.CommittedInstanceID() + query.CommittedGeometryIndex(), query.CommittedPrimitiveIndex(), direction);
+    if (vertex == 0u) first_normal = normal;
     const float3 albedo = HitAlbedo(position);
     const float3 surface = position + normal * SurfaceOffset(distance(position, Camera()));
     float3 emitted = 0.f;
@@ -322,17 +336,86 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
   return radiance;
 }
 
-// Path tracing: a bounce texel's arriving light (the Light Bounce's trace output).
-void PathTraceTexel(uint2 id) {
-  if (id.x >= bounce_width || id.y >= bounce_height) return;
+struct Reservoir {
+  float3 hit;
+  float3 hit_normal;
+  float3 light;   // leaving the surface toward the texel
+  float weight;   // the resampling weights' sum while merging; W once finished
+  float count;    // M: the samples it stands for
+};
+
+float Luminance(float3 color) {
+  return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+}
+
+// The target function at a receiver: the sample's light (luminance) by the cosine toward it (the integrand without 1/pi).
+float ReuseTarget(float3 receiver, float3 receiver_normal, Reservoir reservoir) {
+  return Luminance(reservoir.light) * max(dot(receiver_normal, normalize(reservoir.hit - receiver)), 0.f);
+}
+
+// Takes `other`'s sample with probability `weight` over the sum so far; M adds up.
+void Merge(inout Reservoir reservoir, Reservoir other, float weight, float random) {
+  reservoir.weight += weight;
+  reservoir.count += other.count;
+  if (weight > 0.f && random * reservoir.weight < weight) {
+    reservoir.hit = other.hit;
+    reservoir.hit_normal = other.hit_normal;
+    reservoir.light = other.light;
+  }
+}
+
+// W = the weights' sum over M times the target at the receiver (0: nothing to show).
+void Finish(inout Reservoir reservoir, float3 receiver, float3 receiver_normal) {
+  const float target = ReuseTarget(receiver, receiver_normal, reservoir);
+  reservoir.weight = (reservoir.count > 0.f && target > 0.f) ? reservoir.weight / (reservoir.count * target) : 0.f;
+}
+
+Reservoir LoadReservoir(uint set, uint2 texel) {
+  const float4 sample_point = reuse_samples[set][texel];
+  const uint4 data = reuse_data[set][texel];
+  Reservoir reservoir;
+  reservoir.hit = sample_point.xyz;
+  reservoir.weight = sample_point.w;
+  reservoir.light = float3(f16tof32(data.x), f16tof32(data.x >> 16), f16tof32(data.y));
+  reservoir.count = (float)(data.y >> 16);
+  reservoir.hit_normal = (data.z != 0u) ? OctahedralDecode(data.z) : 0.f;
+  return reservoir;
+}
+
+void StoreReservoir(uint set, uint2 texel, Reservoir reservoir) {
+  reuse_samples[set][texel] = float4(reservoir.hit, reservoir.weight);
+  reuse_data[set][texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
+                                 f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
+                                 (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u, 0u);
+}
+
+// The surface a bounce texel shows: its render pixel, world position (w: depth; 0: the sky), normal, rays' origin.
+float4 TexelSurface(uint2 id, out float3 normal, out float3 origin) {
   const uint2 pixel = min(id * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
   const float4 position = positions[pixel];
+  normal = 0.f;
+  origin = position.xyz;
+  if (position.w <= 0.f) return position;
+  normal = PixelNormal(pixel, position);
+  origin = position.xyz + normal * SurfaceOffset(position.w);
+  return position;
+}
+
+// Path tracing: a bounce texel's arriving light (the Light Bounce's trace output); with ReSTIR GI its paths' reservoir,
+// merged with last frame's at the same surface (ReuseTexel writes the bounce).
+void PathTraceTexel(uint2 id) {
+  if (id.x >= bounce_width || id.y >= bounce_height) return;
+  float3 normal;
+  float3 origin;
+  const float4 position = TexelSurface(id, normal, origin);
+  const bool reuse = (path_flags & PATH_REUSE) != 0u;
+  const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
+  Reservoir reservoir = (Reservoir)0;
   if (position.w <= 0.f) {
     bounce[id] = 0.f;
+    if (reuse) StoreReservoir(set, id, reservoir);
     return;
   }
-  const float3 normal = PixelNormal(pixel, position);
-  const float3 origin = position.xyz + normal * SurfaceOffset(position.w);
   const uint samples = max(path_samples, 1u);
   float3 arriving = 0.f;
   [loop]
@@ -340,9 +423,79 @@ void PathTraceTexel(uint2 id) {
     const float3 direction = CosineDirection(normal, Random(uint3(id, frame * 16u + path * 2u + 1024u)),
                                              Random(uint3(id, frame * 16u + path * 2u + 1025u)));
     float first_distance;
-    arriving += PathRadiance(origin, direction, bounce_range, id, path, first_distance);
+    float3 first_normal;
+    const float3 sample_light = PathRadiance(origin, direction, bounce_range, id, path, first_distance, first_normal);
+    arriving += sample_light;
+    // Cosine-weighted rays: the target over their density is pi times the light's luminance.
+    Reservoir candidate;
+    candidate.hit = origin + direction * min(first_distance, bounce_range);
+    candidate.hit_normal = first_normal;
+    candidate.light = sample_light;
+    candidate.count = 1.f;
+    candidate.weight = 0.f;
+    Merge(reservoir, candidate, (first_distance < 1e29f) ? 3.14159265f * Luminance(sample_light) : 0.f,
+          Random(uint3(id, frame * 16u + path * 2u + 5120u)));
   }
-  bounce[id] = float4(arriving / samples, distance(position.xyz, Camera()));
+  if (!reuse) {
+    bounce[id] = float4(arriving / samples, distance(position.xyz, Camera()));
+    return;
+  }
+  uint2 previous_pixel;
+  if ((path_flags & PATH_REUSE_HISTORY) != 0u && SeenLastFrame(position.xyz, previous_pixel)) {
+    Reservoir previous = LoadReservoir(1u - set, min(previous_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u));
+    previous.count = min(previous.count, REUSE_HISTORY * samples);
+    Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
+          Random(uint3(id, frame * 16u + 6144u)));
+  }
+  Finish(reservoir, origin, normal);
+  StoreReservoir(set, id, reservoir);
+}
+
+// ReSTIR GI's spatial reuse: a texel's reservoir merged with neighbours' on the same surface (their samples' density
+// moved to this texel: the Jacobian of their surfaces' solid angles); the chosen surface's light, if in view, is the
+// bounce.
+void ReuseTexel(uint2 id) {
+  if (id.x >= bounce_width || id.y >= bounce_height) return;
+  float3 normal;
+  float3 origin;
+  const float4 position = TexelSurface(id, normal, origin);
+  if (position.w <= 0.f) {
+    bounce[id] = 0.f;
+    return;
+  }
+  const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
+  const Reservoir own = LoadReservoir(set, id);
+  Reservoir combined = (Reservoir)0;
+  Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint3(id, frame * 16u + 7168u)));
+  [loop]
+  for (uint neighbour = 0u; neighbour < REUSE_NEIGHBOURS; ++neighbour) {
+    const float angle = 6.2831853f * Random(uint3(id, frame * 16u + neighbour * 2u + 7200u));
+    const float radius = REUSE_RADIUS * sqrt(Random(uint3(id, frame * 16u + neighbour * 2u + 7201u)));
+    const int2 texel = int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
+    if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height || all(texel == int2(id))) continue;
+    float3 other_normal;
+    float3 other_origin;
+    const float4 other_position = TexelSurface(uint2(texel), other_normal, other_origin);
+    if (other_position.w <= 0.f || abs(other_position.w - position.w) > 0.1f * position.w || dot(other_normal, normal) < 0.9f) continue;
+    const Reservoir other = LoadReservoir(set, uint2(texel));
+    if (other.count <= 0.f) continue;
+    const float3 to_other = other_origin - other.hit;
+    const float3 to_here = origin - other.hit;
+    const float jacobian = abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
+                           / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+    if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
+    Merge(combined, other, ReuseTarget(origin, normal, other) * other.weight * other.count * jacobian,
+          Random(uint3(id, frame * 16u + neighbour + 7300u)));
+  }
+  Finish(combined, origin, normal);
+  // The chosen surface in view of this one (no light through walls); the integrand over its density.
+  const float3 to_hit = combined.hit - origin;
+  const float hit_distance = length(to_hit);
+  float3 arriving = 0.f;
+  if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f)) {
+    arriving = combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
+  }
+  bounce[id] = float4(arriving, distance(position.xyz, Camera()));
 }
 
 // Tangent, bitangent and `normal`.
@@ -408,7 +561,8 @@ void ReflectPixel(uint2 id) {
     if (n_dot_l <= 0.f) continue;
     if (traced) {
       float first_distance;
-      const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, id, sample + 4u, first_distance);
+      float3 first_normal;
+      const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, id, sample + 4u, first_distance, first_normal);
       if (first_distance < 1e29f) {
         const float weight = mirror ? 1.f : GgxSampleWeight(n_dot_v, n_dot_l, alpha);
         gathered += sample_light * weight;

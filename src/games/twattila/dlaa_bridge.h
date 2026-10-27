@@ -57,6 +57,8 @@ constexpr uint32_t RT_REFLECTIONS = 2;
 constexpr uint32_t RT_SPECULAR_OCCLUSION = 4;
 // Ray Reconstruction denoises the frame: the reflections' samples go out as traced (no accumulation, no filter).
 constexpr uint32_t RT_REFLECTIONS_RAW = 8;
+// The path-traced Light Bounce's samples reused over time and between neighbours (ReSTIR GI; helpers before 21 ignore it).
+constexpr uint32_t RT_PATH_REUSE = 16;
 
 struct Shared {
   uint32_t version = VERSION;

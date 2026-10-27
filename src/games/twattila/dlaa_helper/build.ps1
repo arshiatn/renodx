@@ -16,6 +16,8 @@ Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_path_omm.h" -Vn RT_PATH_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REFLECT -Fh "$out\rt_reflect.h" -Vn RT_REFLECT "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_omm.h" -Vn RT_REFLECT_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REUSE -Fh "$out\rt_reuse.h" -Vn RT_REUSE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REUSE -D OPACITY_MICROMAPS -Fh "$out\rt_reuse_omm.h" -Vn RT_REUSE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_path_lib.h" -Vn RT_PATH_LIB "$PSScriptRoot\rt_path_lib.lib_6_9.hlsl"
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_omm', 'RT_OMM'), @('rt_cache_fill', 'RT_CACHE_FILL'),
                       @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'))) {

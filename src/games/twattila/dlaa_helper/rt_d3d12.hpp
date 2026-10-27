@@ -42,6 +42,8 @@
 #include "rt_reflect.h"           // dxc -Fh (build.ps1)
 #include "rt_reflect_filter.h"    // dxc -Fh (build.ps1)
 #include "rt_reflect_omm.h"       // dxc -Fh (build.ps1)
+#include "rt_reuse.h"             // dxc -Fh (build.ps1)
+#include "rt_reuse_omm.h"         // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
 #include "rt_soft.h"              // dxc -Fh (build.ps1)
 #include "rt_trace.h"             // dxc -Fh (build.ps1)
@@ -284,7 +286,7 @@ class RtScene12 {
          .OffsetInDescriptorsFromTableStart = SRV_COUNT},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = 1, .BaseShaderRegister = 9, .OffsetInDescriptorsFromTableStart = LIGHT},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = 1, .BaseShaderRegister = 9, .OffsetInDescriptorsFromTableStart = BOUNCE},
-        // Paths (v8): t10-t14, u10-u21; the local lights' mask (v9) u22.
+        // Paths (v8): t10-t14, u10-u21; the local lights' mask (v9) u22; ReSTIR GI's reservoirs u23-u26.
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = CACHE_KEYS - PREVIOUS_COLOR, .BaseShaderRegister = 10,
          .OffsetInDescriptorsFromTableStart = PREVIOUS_COLOR},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = DESCRIPTOR_COUNT - CACHE_KEYS, .BaseShaderRegister = 10,
@@ -333,19 +335,21 @@ class RtScene12 {
     // DXR 1.2: the micromaps' bake and the ray queries that use them; else (or when they fail) DXR 1.1.
     dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_) && pipeline(RT_OMM, sizeof(RT_OMM), &omm_pipeline_)
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
-             && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_);
+             && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_);
     if (!dxr12_) {
       omm_pipeline_.Reset();
       trace_pipeline_.Reset();
       bounce_pipeline_.Reset();
       path_pipeline_.Reset();
       reflect_pipeline_.Reset();
+      reuse_pipeline_.Reset();
     }
     if ((!trace_pipeline_ && !pipeline(RT_TRACE, sizeof(RT_TRACE), &trace_pipeline_))
         || (!bounce_pipeline_ && !pipeline(RT_BOUNCE, sizeof(RT_BOUNCE), &bounce_pipeline_)) || !pipeline(RT_SOFT, sizeof(RT_SOFT), &soft_pipeline_)
         || !pipeline(RT_SCENE_DATA, sizeof(RT_SCENE_DATA), &scene_data_pipeline_)
         || (!path_pipeline_ && !pipeline(RT_PATH, sizeof(RT_PATH), &path_pipeline_))
         || (!reflect_pipeline_ && !pipeline(RT_REFLECT, sizeof(RT_REFLECT), &reflect_pipeline_))
+        || (!reuse_pipeline_ && !pipeline(RT_REUSE, sizeof(RT_REUSE), &reuse_pipeline_))
         || !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_)
         || !pipeline(RT_CACHE_RESOLVE, sizeof(RT_CACHE_RESOLVE), &cache_resolve_pipeline_)
         || !pipeline(RT_REFLECT_FILTER, sizeof(RT_REFLECT_FILTER), &reflect_filter_pipeline_)
@@ -468,12 +472,13 @@ class RtScene12 {
     // addon shares them; the history (positions, reflection accumulation) of its own at the textures' size.
     if (version >= 8) {
       const D3D12_RESOURCE_DESC positions_desc = positions_->GetDesc();
-      const auto texture = [&](DXGI_FORMAT format, ComPtr<ID3D12Resource>* resource) {
+      const auto texture = [&](DXGI_FORMAT format, ComPtr<ID3D12Resource>* resource,
+                               D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
         const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
         const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = positions_desc.Width,
                                           .Height = positions_desc.Height, .DepthOrArraySize = 1, .MipLevels = 1, .Format = format,
                                           .SampleDesc = {.Count = 1}, .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
-        return SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        return SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr,
                                                           IID_PPV_ARGS(resource->GetAddressOf())));
       };
       const auto view = [](DXGI_FORMAT format) {
@@ -501,7 +506,8 @@ class RtScene12 {
         guide_albedo_.Reset();
         guide_roughness_.Reset();
       }
-      if (!texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &previous_positions_) || !texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &positions_copy_)) {
+      if (!texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &previous_positions_, D3D12_RESOURCE_STATE_COMMON)
+          || !texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &positions_copy_, D3D12_RESOURCE_STATE_COMMON)) {
         Close();
         return false;
       }
@@ -509,6 +515,19 @@ class RtScene12 {
       device_->CreateShaderResourceView(previous_positions_.Get(), &positions_view, Descriptor(PREVIOUS_POSITIONS));
       copied_frame_ = UINT32_MAX;
       paths_frame_ = UINT32_MAX;
+      // ReSTIR GI's two sets of reservoirs (the path-traced Light Bounce's).
+      reuse_frame_ = UINT32_MAX;
+      for (UINT set = 0; set < 2; ++set) {
+        if (!texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_samples_[set]) || !texture(DXGI_FORMAT_R32G32B32A32_UINT, &reuse_data_[set])) {
+          reuse_samples_ = {};
+          reuse_data_ = {};
+          break;
+        }
+        const auto samples_view = written(DXGI_FORMAT_R32G32B32A32_FLOAT);
+        const auto data_view = written(DXGI_FORMAT_R32G32B32A32_UINT);
+        device_->CreateUnorderedAccessView(reuse_samples_[set].Get(), nullptr, &samples_view, Descriptor(REUSE_SAMPLES + set));
+        device_->CreateUnorderedAccessView(reuse_data_[set].Get(), nullptr, &data_view, Descriptor(REUSE_DATA + set));
+      }
       if (shared.rt_reflection != 0 && shared.rt_specular != 0 && open(shared.rt_reflection, &reflection_) && open(shared.rt_specular, &specular_)
           && texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &specular_accumulated_) && texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &specular_history_)
           && texture(DXGI_FORMAT_R16G16_FLOAT, &specular_meta_) && texture(DXGI_FORMAT_R16G16_FLOAT, &specular_meta_history_)) {
@@ -591,6 +610,8 @@ class RtScene12 {
     specular_history_.Reset();
     specular_meta_.Reset();
     specular_meta_history_.Reset();
+    reuse_samples_ = {};
+    reuse_data_ = {};
     if (descriptors_) WriteNullPathDescriptors();
     fence_.Reset();
   }
@@ -790,6 +811,16 @@ class RtScene12 {
         if (guides) flags |= PATH_GUIDES;
         if (sun_traced_frame_ == frame) flags |= PATH_SUN_TRACED;
         if (light_frame_ == frame) flags |= PATH_LIGHT;
+        // ReSTIR GI (RENODX_TW_NO_REUSE: off); last frame's reservoirs when it ran with these texels.
+        const std::array<uint32_t, 3> reuse_size = {shared.rt_bounce_width, shared.rt_bounce_height, std::max(shared.rt_bounce_scale, 1u)};
+        const bool reuse = path_traced && (requested & dlaa_bridge::RT_PATH_REUSE) != 0 && reuse_samples_[0]
+                           && GetEnvironmentVariableW(L"RENODX_TW_NO_REUSE", nullptr, 0) == 0;
+        if (reuse) {
+          flags |= PATH_REUSE | (reuse_parity_ != 0 ? PATH_REUSE_PARITY : 0u);
+          if (history_valid_ && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 == frame && reuse_size_ == reuse_size) {
+            flags |= PATH_REUSE_HISTORY;
+          }
+        }
         PathConstants constants = {
             .bounce_width = shared.rt_bounce_width,
             .bounce_height = shared.rt_bounce_height,
@@ -836,6 +867,14 @@ class RtScene12 {
           }
         };
         if (path_traced) dispatch(path_pipeline_.Get(), 0, shared.rt_bounce_width, shared.rt_bounce_height);
+        if (reuse) {
+          list->ResourceBarrier(1, &uav_barrier);
+          list->SetPipelineState(reuse_pipeline_.Get());
+          list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+          reuse_frame_ = frame;
+          reuse_parity_ ^= 1u;
+          reuse_size_ = reuse_size;
+        }
         if (reflections) {
           dispatch(reflect_pipeline_.Get(), 1, width, height);
           list->ResourceBarrier(1, &uav_barrier);
@@ -953,7 +992,9 @@ class RtScene12 {
     REFLECTION,
     SPECULAR_OCCLUSION,
     LIGHT_MASK,  // u22 (v9)
-    DESCRIPTOR_COUNT,
+    REUSE_SAMPLES,  // u23-u24: ReSTIR GI's reservoirs, two sets
+    REUSE_DATA = REUSE_SAMPLES + 2,  // u25-u26
+    DESCRIPTOR_COUNT = REUSE_DATA + 2,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
   // rt_path.hlsli's path flags and cache size.
@@ -967,6 +1008,9 @@ class RtScene12 {
   static constexpr uint32_t PATH_GUIDES = 64;
   static constexpr uint32_t PATH_SUN_TRACED = 128;
   static constexpr uint32_t PATH_LIGHT = 256;
+  static constexpr uint32_t PATH_REUSE = 1024;
+  static constexpr uint32_t PATH_REUSE_HISTORY = 2048;
+  static constexpr uint32_t PATH_REUSE_PARITY = 4096;
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
   struct PathConstants {
@@ -1122,6 +1166,10 @@ class RtScene12 {
       device_->CreateShaderResourceView(nullptr, &texture_view, Descriptor(descriptor));
     }
     const D3D12_UNORDERED_ACCESS_VIEW_DESC texture_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+    for (UINT set = 0; set < 2; ++set) {
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(REUSE_SAMPLES + set));
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(REUSE_DATA + set));
+    }
     for (const auto descriptor :
          {SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY, REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
@@ -1978,6 +2026,12 @@ class RtScene12 {
   ComPtr<ID3D12Resource> light_kept_;
   ComPtr<ID3D12PipelineState> path_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_pipeline_;
+  ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse
+  std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
+  std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
+  uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in
+  uint32_t reuse_parity_ = 0;          // this frame's set
+  std::array<uint32_t, 3> reuse_size_ = {};  // the bounce's size and scale they are at
   ComPtr<ID3D12PipelineState> cache_fill_pipeline_;
   ComPtr<ID3D12PipelineState> cache_resolve_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_filter_pipeline_;
