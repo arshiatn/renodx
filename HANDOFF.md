@@ -618,9 +618,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     [-] 8 SKIPPED (reasoned): refraction + caustics. The TW water shaders already refract the screen behind them; the
           water surface is not in the RT scene (ocean / river draws not captured) and nothing lights what is under it;
           caustics need photon / light tracing into a caustics map. Little to see from the TW camera for the cost.
-    [ ] 9 Missing effects: RT reflections in Rome II, Troy, Pharaoh, WH3; specular occlusion where missing (Rome II /
-          Troy / Pharaoh show the option without effect; Ryse, Expeditions, Shogun 2, WH3); grass in RT for Pharaoh,
-          WH3, Shogun 2.
+    [x] 9 PARTLY: Pharaoh grass in RT (grass.hlsl vs 0xE710D4E7, UV in o3 like Troy's: rt_capture_grass_e710
+          :world_uv_o3; its RayTracedGrass option had nothing to capture before). Checked and NOT done: RT reflections
+          in Troy / Pharaoh (no screen-space reflection pass at all: no environment_specular_light compute passes in their
+          packs or traces) and Rome II (only the water's SSR, 0x7C9C8ECF): they need the reflections injected into the
+          environment / sun lighting shaders (many permutations); their Reflections / Specular Occlusion options are
+          already hidden (AppendSettings reflection_pass false), so nothing shows without effect. WH3 reflections /
+          specular occlusion: no G-buffer guides in its RT host. WH3 grass: its own VS streamed out, needs the grass VS
+          and its UV output found (trace). Shogun 2 grass: its scene is the G-buffer classifier (scene_draw); whether
+          grass reaches the G-buffer needs a trace.
     [ ] 10 NRC (RTXGI 2 SDK, licence check) or SHaRC.
     [ ] 11 WH3 DLSS below 100% (launch WH3 myself; trace build\ingame\traces\twwarhammer3_50.txt lines 800-921:
           post-TAA 3D effects need a display-size depth, bloom chain + composite to display size, its upscale 1:1).

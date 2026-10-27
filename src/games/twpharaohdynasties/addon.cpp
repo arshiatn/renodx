@@ -1490,9 +1490,9 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 27> MOTION_SHADERS =
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws (standard and skin lighting
 // models), with the camera at b1 and the G-buffer's channels 1-4 from their first slot.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
-// branches and leaves and units, and their capture versions (world positions; leaves also UVs).
+// branches and leaves, units and grass, and their capture versions (world positions; leaves and grass also UVs).
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow.
-constexpr std::array<twattila::rt_scene::SceneShader, 15> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1508,6 +1508,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 15> SCENE_SHADERS = {{
     {.hash = 0x4A716936, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
     {.hash = 0x475A8CDF, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
     {.hash = 0x07936F02, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
+    {.hash = 0xE710D4E7, .capture_shader = __rt_capture_grass_e710, .dynamic = true, .foliage = true, .grass = true},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
