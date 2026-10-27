@@ -64,9 +64,10 @@
 // occlusion. With DXR 1.2 the paths run as ray generation shaders (DispatchRays) with shader execution reordering. With
 // NVAPI's cluster operations (RTX Mega Geometry; set RENODX_TW_NO_CLUSTERS to turn them off) the units are built each
 // frame as clusters (CLAS) into one cluster BLAS instead of the refitted BLAS. The partitioned TLAS (PTLAS: each frame
-// only the instances that changed written) only with RENODX_TW_PTLAS set: with it the addon's requests stalled 0.3-0.8 s
-// a frame in the GPU harness (the helper's own work under 0.5 ms; batch 4), and a TLAS of these instance counts builds
-// in about 0.1 ms. Its queue waits for the addon's fence value and signals the next.
+// only the instances that changed written; RENODX_TW_NO_PTLAS turns it off) takes every change as a whole instance
+// write: NVAPI's update operation (a new BLAS for an instance) stalled the GPU 4-5 s a time after BLAS compactions (GPU
+// harness, helper19-21). Two PTLASes in turn, the operations in device memory, as NVAPI asks. Its queue waits for the
+// addon's fence value and signals the next.
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
@@ -241,7 +242,7 @@ class RtScene12 {
     // partition; a slot's write and update arguments, its two operations and their count.
     NvU32 ptlas_caps = 0;
     ptlas_ = nullptr;
-    if (GetEnvironmentVariableW(L"RENODX_TW_PTLAS", nullptr, 0) != 0 && NvAPI_Initialize() == NVAPI_OK
+    if (GetEnvironmentVariableW(L"RENODX_TW_NO_PTLAS", nullptr, 0) == 0 && NvAPI_Initialize() == NVAPI_OK
         && NvAPI_D3D12_GetRaytracingCaps(device_.Get(), NVAPI_D3D12_RAYTRACING_CAPS_TYPE_PARTITIONED_TLAS, &ptlas_caps, sizeof(ptlas_caps)) == NVAPI_OK
         && (ptlas_caps & NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_CAP_STANDARD) != 0) {
       ptlas_inputs_ = {
@@ -255,20 +256,27 @@ class RtScene12 {
       const NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS params = {
           .version = NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS_VER, .pInput = &ptlas_inputs_, .pInfo = &info};
       bool made = NvAPI_D3D12_GetRaytracingPartitionedTlasIndirectPrebuildInfo(device_.Get(), &params) == NVAPI_OK;
+      // Two partitioned TLASes in turn (each build reads the last one, never in place) and the operations in device memory
+      // (NVAPI: indirectOps / indirectOpCount in NON_PIXEL_SHADER_RESOURCE), copied from the slot's upload buffer.
       if (made) {
-        ptlas_buffer_ = Buffer(info.resultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                               D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        for (auto& buffer : ptlas_buffers_) {
+          buffer = Buffer(info.resultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                          D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+          made = made && buffer;
+        }
         ptlas_scratch_ = Buffer(std::max<uint64_t>(info.scratchDataSizeInBytes, 256), D3D12_HEAP_TYPE_DEFAULT,
                                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        made = ptlas_buffer_ && ptlas_scratch_;
+        made = made && ptlas_scratch_;
       }
       for (Slot& slot : slots_) {
         if (!made) break;
         slot.ptlas = Buffer(PTLAS_UPLOAD_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
-        made = slot.ptlas && SUCCEEDED(slot.ptlas->Map(0, nullptr, reinterpret_cast<void**>(&slot.ptlas_data)));
+        slot.ptlas_device = Buffer(PTLAS_UPLOAD_BYTES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+        made = slot.ptlas && slot.ptlas_device && SUCCEEDED(slot.ptlas->Map(0, nullptr, reinterpret_cast<void**>(&slot.ptlas_data)));
       }
       if (made) {
-        ptlas_ = ptlas_buffer_.Get();
+        ptlas_current_ = 0;
+        ptlas_ = ptlas_buffers_[0].Get();
         ptlas_written_.assign(PTLAS_INSTANCES, {});
       }
     }
@@ -939,8 +947,7 @@ class RtScene12 {
   static constexpr uint32_t PTLAS_INSTANCES = MAX_INSTANCES + 1;
   static constexpr uint32_t PTLAS_PARTITION_SIZE = 256;
   static constexpr uint64_t PTLAS_WRITES_OFFSET = 0;
-  static constexpr uint64_t PTLAS_UPDATES_OFFSET = uint64_t{PTLAS_INSTANCES} * 104;
-  static constexpr uint64_t PTLAS_OPS_OFFSET = PTLAS_UPDATES_OFFSET + uint64_t{PTLAS_INSTANCES} * 16;
+  static constexpr uint64_t PTLAS_OPS_OFFSET = uint64_t{PTLAS_INSTANCES} * 104;
   static constexpr uint64_t PTLAS_COUNT_OFFSET = PTLAS_OPS_OFFSET + 64;
   static constexpr uint64_t PTLAS_UPLOAD_BYTES = PTLAS_COUNT_OFFSET + 16;
   // Records (InstanceID + geometry index): static meshes first, then each slot's units in turn, then each slot's
@@ -1059,6 +1066,7 @@ class RtScene12 {
     ComPtr<ID3D12Resource> clusters;  // Mega Geometry's arguments and records (CLUSTER_*_OFFSET)
     uint8_t* cluster_data = nullptr;
     ComPtr<ID3D12Resource> ptlas;  // the partitioned TLAS's operations (PTLAS_*_OFFSET)
+    ComPtr<ID3D12Resource> ptlas_device;  // and their copy the build reads (device memory)
     uint8_t* ptlas_data = nullptr;
     uint64_t value = 0;  // own_fence_'s value after its last use
   };
@@ -1737,12 +1745,12 @@ class RtScene12 {
                                   : 0u);
       }
       auto* writes = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE*>(slot->ptlas_data + PTLAS_WRITES_OFFSET);
-      auto* updates = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_UPDATE_INSTANCE*>(slot->ptlas_data + PTLAS_UPDATES_OFFSET);
       uint32_t write_count = 0;
-      uint32_t update_count = 0;
       for (uint32_t at = 0; at < PTLAS_INSTANCES; ++at) {
         PtlasInstance& written = ptlas_written_[at];
-        if (wanted[at] != 0 && (written.flags != wanted_flags[at] || written.id != wanted_ids[at])) {
+        const bool changed = (wanted[at] != 0) ? (written.blas != wanted[at] || written.flags != wanted_flags[at] || written.id != wanted_ids[at])
+                                               : (written.flags != UINT32_MAX && written.blas != 0);
+        if (changed) {
           auto& write = writes[write_count++];
           write = {};
           write.transform[0][0] = 1.f;
@@ -1755,31 +1763,31 @@ class RtScene12 {
           write.partitionIndex = at / PTLAS_PARTITION_SIZE;
           write.accelerationStructure = wanted[at];
           written = {.blas = wanted[at], .id = wanted_ids[at], .flags = wanted_flags[at]};
-        } else if (written.flags != UINT32_MAX && written.blas != wanted[at]) {
-          updates[update_count++] = {.instanceIndex = at, .instanceContributionToHitGroupIndex = 0, .accelerationStructure = wanted[at]};
-          written.blas = wanted[at];
         }
       }
-      ptlas_changes = write_count + update_count;
+      ptlas_changes = write_count;
       auto* operations = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP*>(slot->ptlas_data + PTLAS_OPS_OFFSET);
-      const uint64_t upload = slot->ptlas->GetGPUVirtualAddress();
+      const uint64_t upload = slot->ptlas_device->GetGPUVirtualAddress();
       uint32_t operation_count = 0;
       if (write_count != 0) {
         operations[operation_count++] = {.type = NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_WRITE_INSTANCE, .count = write_count,
                                          .data = {.StartAddress = upload + PTLAS_WRITES_OFFSET,
                                                   .StrideInBytes = sizeof(NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE)}};
       }
-      if (update_count != 0) {
-        operations[operation_count++] = {.type = NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_UPDATE_INSTANCE, .count = update_count,
-                                         .data = {.StartAddress = upload + PTLAS_UPDATES_OFFSET,
-                                                  .StrideInBytes = sizeof(NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_UPDATE_INSTANCE)}};
-      }
       std::memcpy(slot->ptlas_data + PTLAS_COUNT_OFFSET, &operation_count, sizeof(operation_count));
       if (operation_count != 0 || !ptlas_built_) {
+        const auto copy = [&](uint64_t offset, uint64_t bytes) {
+          if (bytes != 0) list->CopyBufferRegion(slot->ptlas_device.Get(), offset, slot->ptlas.Get(), offset, bytes);
+        };
+        copy(PTLAS_WRITES_OFFSET, uint64_t{write_count} * sizeof(NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE));
+        copy(PTLAS_OPS_OFFSET, PTLAS_UPLOAD_BYTES - PTLAS_OPS_OFFSET);
+        const auto to_read = Transition(slot->ptlas_device.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        list->ResourceBarrier(1, &to_read);
+        ID3D12Resource* next = ptlas_buffers_[1 - ptlas_current_].Get();
         const NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_DESC desc = {
             .inputs = ptlas_inputs_,
             .srcAccelerationStructureData = ptlas_built_ ? ptlas_->GetGPUVirtualAddress() : 0,
-            .destAccelerationStructureData = ptlas_->GetGPUVirtualAddress(),
+            .destAccelerationStructureData = next->GetGPUVirtualAddress(),
             .scratchAccelerationStructureData = ptlas_scratch_->GetGPUVirtualAddress(),
             .indirectOpCount = upload + PTLAS_COUNT_OFFSET,
             .indirectOps = upload + PTLAS_OPS_OFFSET,
@@ -1787,6 +1795,10 @@ class RtScene12 {
         const NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS params = {.version = NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS_VER,
                                                                                 .pDesc = &desc};
         if (NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list, &params) != NVAPI_OK) return Fail("Ray tracing: the partitioned TLAS failed");
+        const auto to_copy = Transition(slot->ptlas_device.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+        list->ResourceBarrier(1, &to_copy);
+        ptlas_current_ = 1 - ptlas_current_;
+        ptlas_ = next;
         ptlas_built_ = true;
       }
     }
@@ -1969,8 +1981,9 @@ class RtScene12 {
 #if defined(RENODX_NVAPI_CLUSTERS)
   NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS ptlas_inputs_ = {};
 #endif
-  ID3D12Resource* ptlas_ = nullptr;
-  ComPtr<ID3D12Resource> ptlas_buffer_;
+  ID3D12Resource* ptlas_ = nullptr;  // the last built of ptlas_buffers_
+  std::array<ComPtr<ID3D12Resource>, 2> ptlas_buffers_;
+  uint32_t ptlas_current_ = 0;
   ComPtr<ID3D12Resource> ptlas_scratch_;
   struct PtlasInstance {
     uint64_t blas = 0;

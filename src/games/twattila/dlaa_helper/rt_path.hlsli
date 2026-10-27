@@ -46,9 +46,11 @@ RWTexture2D<unorm float> specular_occlusion : register(u21);
 // ReSTIR GI (Ouyang et al. 2021, "ReSTIR GI: Path Resampling for Real-Time Path Tracing"): each bounce texel's paths
 // become a reservoir of one surface their first rays met (its position, normal and the light leaving it toward the
 // texel), merged with last frame's at the same surface (PathTraceTexel), then with neighbours' (ReuseTexel, which
-// writes the bounce). Two sets, this frame's at PATH_REUSE_PARITY.
+// writes the bounce). Two sets, this frame's at PATH_REUSE_PARITY. As kajiya's ReSTIR GI (Embark Studios, MIT / Apache
+// 2.0; compared, not copied): W clamped against fireflies, last frame's reservoir only on a surface facing the same way,
+// and every third frame its sample re-checked (still in view, its light now): changed light shortens the history.
 RWTexture2D<float4> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
-RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal (octahedral)
+RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
 
 cbuffer Paths : register(b3) {
   float4 view_projection[4];           // this frame's camera registers: clip = (dot(position, [0]), ...)
@@ -77,6 +79,8 @@ static const uint PATH_REUSE = 1024u;         // ReSTIR GI
 static const uint PATH_REUSE_HISTORY = 2048u; // last frame's reservoirs are last frame's
 static const uint PATH_REUSE_PARITY = 4096u;  // this frame's set: 1 (else 0)
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
+static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
+static const uint REUSE_VALIDATION_PERIOD = 3u;
 static const uint REUSE_NEIGHBOURS = 5u;
 static const float REUSE_RADIUS = 12.f;       // bounce texels
 
@@ -370,6 +374,12 @@ void Finish(inout Reservoir reservoir, float3 receiver, float3 receiver_normal) 
   reservoir.weight = (reservoir.count > 0.f && target > 0.f) ? reservoir.weight / (reservoir.count * target) : 0.f;
 }
 
+// The texel's own normal its reservoir was made for (0: none).
+float3 LoadReceiverNormal(uint set, uint2 texel) {
+  const uint packed = reuse_data[set][texel].w;
+  return (packed != 0u) ? OctahedralDecode(packed) : 0.f;
+}
+
 Reservoir LoadReservoir(uint set, uint2 texel) {
   const float4 sample_point = reuse_samples[set][texel];
   const uint4 data = reuse_data[set][texel];
@@ -382,11 +392,12 @@ Reservoir LoadReservoir(uint set, uint2 texel) {
   return reservoir;
 }
 
-void StoreReservoir(uint set, uint2 texel, Reservoir reservoir) {
+void StoreReservoir(uint set, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
   reuse_samples[set][texel] = float4(reservoir.hit, reservoir.weight);
   reuse_data[set][texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
                                  f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
-                                 (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u, 0u);
+                                 (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u,
+                                 (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
 }
 
 // The surface a bounce texel shows: its render pixel, world position (w: depth; 0: the sky), normal, rays' origin.
@@ -413,7 +424,7 @@ void PathTraceTexel(uint2 id) {
   Reservoir reservoir = (Reservoir)0;
   if (position.w <= 0.f) {
     bounce[id] = 0.f;
-    if (reuse) StoreReservoir(set, id, reservoir);
+    if (reuse) StoreReservoir(set, id, reservoir, 0.f);
     return;
   }
   const uint samples = max(path_samples, 1u);
@@ -442,13 +453,35 @@ void PathTraceTexel(uint2 id) {
   }
   uint2 previous_pixel;
   if ((path_flags & PATH_REUSE_HISTORY) != 0u && SeenLastFrame(position.xyz, previous_pixel)) {
-    Reservoir previous = LoadReservoir(1u - set, min(previous_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u));
-    previous.count = min(previous.count, REUSE_HISTORY * samples);
+    const uint2 previous_texel = min(previous_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u);
+    Reservoir previous = LoadReservoir(1u - set, previous_texel);
+    // Last frame's reservoir was made for a surface facing about the same way (else a new history starts).
+    if (dot(LoadReceiverNormal(1u - set, previous_texel), normal) < 0.8f) previous.count = 0.f;
+    float invalidity = 0.f;
+    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) {
+      // Validation: its surface out of view now drops it; its light now (where the screen or the cache knows it) takes
+      // the stored light's place, and a change shortens the history (bright changes dimmed until they settle).
+      const float3 to_hit = previous.hit - origin;
+      const float hit_distance = length(to_hit);
+      float3 light_now;
+      if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f)) {
+        previous.count = 0.f;
+      } else if (HitLight(previous.hit, light_now)) {
+        const float3 change = abs(previous.light - light_now) / max(previous.light + light_now, 1e-3f);
+        invalidity = smoothstep(0.1f, 0.5f, length(change) / 1.7320508f);
+        const float ratio = Luminance(previous.light) / max(Luminance(light_now), 1e-8f);
+        previous.count *= clamp(ratio, 0.03f, 1.f);
+        previous.weight *= clamp(ratio * 10.f, 0.01f, 1.f);
+        previous.light = light_now;
+      }
+    }
+    previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * samples);
     Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
           Random(uint3(id, frame * 16u + 6144u)));
   }
   Finish(reservoir, origin, normal);
-  StoreReservoir(set, id, reservoir);
+  reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP);
+  StoreReservoir(set, id, reservoir, normal);
 }
 
 // ReSTIR GI's spatial reuse: a texel's reservoir merged with neighbours' on the same surface (their samples' density

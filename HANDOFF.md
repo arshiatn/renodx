@@ -557,7 +557,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     step (ATN asked, so compaction loses nothing). Licences: MIT / Apache 2.0 / CC0 / anything free for commercial use,
     also as references (credit + licence file in the zips). Steps (task list order):
     [x] 1 Checklist + memory (feedback_progress_log.md).
-    [ ] 2 ReSTIR GI review against kajiya (Embark, MIT / Apache 2.0, rtdgi shaders) + RTXDI if its licence allows:
+    [x] 2 DONE (helper22, build	w_dlaa_helper22): ReSTIR GI v2 after kajiya (compared, not copied): W clamp 10, temporal
+          reuse only on a surface facing the same way (receiver normal in reuse_data.w), every 3rd frame the reused
+          sample re-checked (visibility; its light now via HitLight; change -> shorter history, kajiya's M / W damping).
+          Harness: noise 0.229 at 32 frames, mean in range; a light switch now shows within <= 3 frames (was ~20).
+          PTLAS FOUND: NVAPI UPDATE_INSTANCE ops stalled the GPU 4-5 s after BLAS compactions (no stall without
+          compaction or with whole-instance WRITE ops). Fix: writes only, two PTLASes in turn, ops copied to device
+          memory (NON_PIXEL_SHADER_RESOURCE); PTLAS on by default again (RENODX_TW_NO_PTLAS=1 off). Harness: no stall in
+          30 frames x 3 runs, 0.21 ms a trace request. Harness flags: HARNESS_LIGHT_SWITCH=<frame>.
+    [ ] 2-old ReSTIR GI review against kajiya (Embark, MIT / Apache 2.0, rtdgi shaders) + RTXDI if its licence allows:
           gaps known: no re-check of old samples when lighting changes, no normal test in temporal reuse, no firefly
           clamp. PTLAS stall (0.3-0.8 s a request, helper19 / RENODX_TW_PTLAS=1): compare with nvpro-samples
           (vk_partitioned_tlas, Apache 2.0) / NVAPI docs; GPU harness with RENODX_TW_GPU_TIMES.
