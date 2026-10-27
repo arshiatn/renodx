@@ -1186,7 +1186,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (rigidterrain geom /
 // custom geom, shader models 3 and 4.1, old and new; Thrones' own), rigid objects, tree branches and leaves (Attila's
 // shaders, the same hashes) and units (Thrones' own), and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x289AC6F1, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x958620C8, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0xBFD9331A, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1213,6 +1213,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
     {.hash = 0xFF473BE8, .capture_shader = __rt_capture_unit_4_bones_sm41, .dynamic = true},
     {.hash = 0xC9F9DBA5, .capture_shader = __rt_capture_unit_dismember_sm41, .dynamic = true},
     {.hash = 0x65C0AE28, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .dynamic = true},
+    {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .dynamic = true, .foliage = true, .grass = true},
+    {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .dynamic = true, .foliage = true, .grass = true},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.

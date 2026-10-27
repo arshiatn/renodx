@@ -57,6 +57,7 @@ struct Settings {
   bool sun_shadows = false;
   bool ambient_occlusion = false;
   bool units = true;  // the units in the scene (captured every frame)
+  bool grass = false;  // the grass in the scene (captured every frame, alpha-tested; with the units' budget)
   float ambient_range = 2.f;  // metres
   uint32_t ambient_rays = 2;
   bool ambient_quarter = false;  // a quarter of the rays (one pixel of each 2 x 2 traced a frame, in turn)
@@ -91,6 +92,7 @@ struct SceneShader {
   bool terrain = false;
   bool dynamic = false;
   bool foliage = false;
+  bool grass = false;  // in the scene only with Settings.grass
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
 };
@@ -575,7 +577,8 @@ void Capture(Context& command, const SceneShader& shader) {
     if (!added && entry->second.key != key) entry->second.ambiguous = true;
   }
   // Units: every frame, within their share.
-  if (shader.dynamic && (!runtime.settings.units || runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES)) return;
+  if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
+  if (shader.dynamic && runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES) return;
   if (const auto known = runtime.known.find(key); !shader.dynamic && known != runtime.known.end()) {
     if (known->second != runtime.frame) {
       known->second = runtime.frame;

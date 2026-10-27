@@ -1179,7 +1179,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 57> MOTION_SHADERS =
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (old and custom
 // geom, shader models 3 and 4.1), rigid objects, tree branches and leaves and units (Rome II's own; two builds of most),
 // and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 45> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 51> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
     {.hash = 0xF943302D, .capture_shader = __rt_capture_terrain_old_sm41_b, .terrain = true},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
@@ -1225,6 +1225,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 45> SCENE_SHADERS = {{
     {.hash = 0xEBB7BFED, .capture_shader = __rt_capture_rigid_blend_sm3_b},
     {.hash = 0x95A90798, .capture_shader = __rt_capture_rigid_blend_wind_sm3_a},
     {.hash = 0xB08CD963, .capture_shader = __rt_capture_rigid_blend_wind_sm3_b},
+    {.hash = 0xD4D9A7CE, .capture_shader = __rt_capture_grass_d4d9, .dynamic = true, .foliage = true, .grass = true},
+    {.hash = 0x239E12B0, .capture_shader = __rt_capture_grass_239e, .dynamic = true, .foliage = true, .grass = true},
+    {.hash = 0x69FCD0B3, .capture_shader = __rt_capture_grass_69fc, .dynamic = true, .foliage = true, .grass = true},
+    {.hash = 0xD0587AC7, .capture_shader = __rt_capture_grass_d058, .dynamic = true, .foliage = true, .grass = true},
+    {.hash = 0x2D15A993, .capture_shader = __rt_capture_grass_2d15, .dynamic = true, .foliage = true, .grass = true},
+    {.hash = 0x5AB72F3F, .capture_shader = __rt_capture_grass_5ab7, .dynamic = true, .foliage = true, .grass = true},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
