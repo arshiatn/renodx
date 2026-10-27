@@ -21,9 +21,16 @@
 #include <shellapi.h>
 #include <wrl/client.h>
 
+#include <algorithm>
+#include <array>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <deque>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include "../../talesofarise_dlss/ngx_backend.hpp"
@@ -123,9 +130,48 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   ComPtr<ID3D11Texture2D> motion;
   ComPtr<ID3D11Texture2D> output;
   ComPtr<ID3D11Fence> fence;
+  // Ray tracing requests of a kind (trace, Light Bounce, reflections) that ran last time are answered once copied (their
+  // fence value is always the next) and recorded in order by a worker of their own while the game goes on; the rest,
+  // and anything that opens or closes the scene, wait for the worker to be done.
+  struct RtWork {
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::deque<std::unique_ptr<twattila::dlaa_bridge::Shared>> pending;
+    std::array<bool, 3> ran = {};
+    bool busy = false;
+    bool stop = false;
+  } rt_work;
+  const auto run = [&](const twattila::dlaa_bridge::Shared& from) {
+    return (version >= 7 && from.rt_request >= 2) ? scene.Paths(from, version, from.rt_request == 3) : scene.Trace(from, version);
+  };
+  const auto kind = [&](const twattila::dlaa_bridge::Shared& from) {
+    return std::min<uint32_t>(version >= 7 ? from.rt_request : 1u, 3u) - 1;
+  };
+  std::thread rt_worker([&] {
+    std::unique_lock lock(rt_work.mutex);
+    while (true) {
+      rt_work.changed.wait(lock, [&] { return rt_work.stop || !rt_work.pending.empty(); });
+      if (rt_work.pending.empty()) return;
+      const auto work = std::move(rt_work.pending.front());
+      rt_work.pending.pop_front();
+      rt_work.busy = true;
+      lock.unlock();
+      const bool ran = run(*work);
+      strncpy_s(shared->rt_status, scene.Status().c_str(), _TRUNCATE);
+      lock.lock();
+      rt_work.ran[kind(*work)] = ran;
+      rt_work.busy = false;
+      rt_work.changed.notify_all();
+    }
+  });
+  const auto rt_drain = [&] {
+    std::unique_lock lock(rt_work.mutex);
+    rt_work.changed.wait(lock, [&] { return rt_work.pending.empty() && !rt_work.busy; });
+  };
   const HANDLE waits[] = {request, game};
   while (WaitForMultipleObjects(2, waits, FALSE, INFINITE) == WAIT_OBJECT_0) {
     if (shared->generation != opened_generation) {
+      rt_drain();
       // The addon's new textures and fence: opened, the duplicated handles closed.
       color.Reset();
       depth.Reset();
@@ -200,6 +246,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
     }
     bool evaluated = false;
+    bool answered = false;
     if (fence && version >= 5 && shared->fg_request != 0) {
       // Frame generation (D3D12): its copy queue waits for the addon's value and signals the next.
       evaluated = generation_open && generation.Present(shared);
@@ -212,14 +259,37 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     } else if (fence && version >= 4 && shared->rt_request != 0) {
       // Ray tracing (D3D12): its queue waits for the addon's value and signals the next (v7: request 2 the Light Bounce,
       // v8: request 3 the reflections).
-      evaluated = scene_open && ((version >= 7 && shared->rt_request >= 2) ? scene.Paths(*shared, version, shared->rt_request == 3)
-                                                                           : scene.Trace(*shared, version));
-      if (!scene_open) {
-        context4->Wait(fence.Get(), shared->value);
-        context4->Signal(fence.Get(), shared->value + 1);
-        context->Flush();
+      // A kind that ran last time goes to the worker and is answered at once: the addon's GPU then waits for its value
+      // before the addon signals the next (the fence's order kept). Otherwise it runs here, after the worker's.
+      bool queued = false;
+      if (scene_open) {
+        const std::unique_lock lock(rt_work.mutex);
+        if (rt_work.ran[kind(*shared)]) {
+          auto work = std::make_unique<twattila::dlaa_bridge::Shared>();
+          std::memcpy(work.get(), shared, twattila::dlaa_bridge::SharedBytes(version));
+          rt_work.pending.push_back(std::move(work));
+          queued = true;
+        }
       }
-      strncpy_s(shared->rt_status, scene.Status().c_str(), _TRUNCATE);
+      if (queued) {
+        rt_work.changed.notify_all();
+        shared->evaluated = 1;
+        shared->done_value = shared->value + 1;
+        SetEvent(done);
+        answered = true;
+      } else {
+        rt_drain();
+        evaluated = scene_open && run(*shared);
+        if (scene_open) {
+          const std::unique_lock lock(rt_work.mutex);
+          rt_work.ran[kind(*shared)] = evaluated;
+        } else {
+          context4->Wait(fence.Get(), shared->value);
+          context4->Signal(fence.Get(), shared->value + 1);
+          context->Flush();
+        }
+        strncpy_s(shared->rt_status, scene.Status().c_str(), _TRUNCATE);
+      }
     } else if (fence && reconstruction_open && shared->ray_reconstruction != 0) {
       // Ray Reconstruction (D3D12): its queue waits for the addon's value and signals the next.
       twattila::dlaa_helper::Request reconstruct = {
@@ -266,10 +336,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       context->Flush();
       set_status(backend.Status());
     }
+    if (answered) continue;
     shared->evaluated = (evaluated ? 1 : 0);
     // The fence value it signalled (none without a fence).
     shared->done_value = (fence ? shared->value + 1 : shared->value);
     SetEvent(done);
   }
+  {
+    const std::unique_lock lock(rt_work.mutex);
+    rt_work.stop = true;
+  }
+  rt_work.changed.notify_all();
+  rt_worker.join();
   return 0;
 }

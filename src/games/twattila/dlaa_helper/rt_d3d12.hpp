@@ -2023,11 +2023,11 @@ class RtScene12 {
                           "of units, {})",
                           dxr12_ ? "DXR 1.2" : "DXR 1.1", meshes_.size(), built, micromaps_built, bytes >> 20, instance_count,
                           ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
-                          static_cast<double>(triangles) / 1.0e6, static_cast<double>(units_built ? dynamic_triangles : 0u) / 1.0e6,
+                          static_cast<double>(triangles) / 1.0e6, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
                           units_clustered ? std::format("{} clusters (Mega Geometry)", clusters_built)
                                           : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
     if (timestamps_) {
-      status_ += std::format(" | GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, paths {:.2f}", gpu_ms_[0], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3]);
+      status_ = std::format("GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, paths {:.2f} | ", gpu_ms_[0], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3]) + status_;
     }
     return true;
   }
