@@ -288,6 +288,11 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   }
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.settings = settings;
+  // Ray Reconstruction denoises the frame: the AO's own smoothing and denoiser leave its noise to it.
+  if (dlaa_bridge::bridge.reconstructing) {
+    internal::runtime.settings.temporal = false;
+    internal::runtime.settings.denoise = false;
+  }
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
   ++internal::runtime.frame;

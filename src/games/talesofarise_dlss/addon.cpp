@@ -1261,6 +1261,7 @@ bool Evaluate(Frame* frame, bool replace) {
       runtime.reconstruction.ReleaseFeature();
     }
     evaluated = reconstructed || runtime.backend.Evaluate(context, evaluation);
+    talesofarise::rt_shadows::reconstructing.store(reconstructed, std::memory_order_relaxed);
     runtime.performance.Mark(context);
     if (evaluated) {
       talesofarise::rt_shadows::CaptureSceneColor(context, frame->resources[0].Get());

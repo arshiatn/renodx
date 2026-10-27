@@ -732,7 +732,10 @@ class RtScene12 {
         if (reflections && (requested & dlaa_bridge::RT_SPECULAR_OCCLUSION) != 0) flags |= PATH_SPECULAR_OCCLUSION;
         if (history_valid_) flags |= PATH_HISTORY_VALID;
         if (cache_filled_) flags |= PATH_CACHE_VALID;
-        if (reflections && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
+        // Ray Reconstruction denoises the frame: the reflections as traced (no history, no filter).
+        const bool raw = reflections && (requested & dlaa_bridge::RT_REFLECTIONS_RAW) != 0;
+        if (raw) flags |= PATH_RAW;
+        if (reflections && !raw && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
         if (guides) flags |= PATH_GUIDES;
         if (sun_traced_frame_ == frame) flags |= PATH_SUN_TRACED;
         if (light_frame_ == frame) flags |= PATH_LIGHT;
@@ -902,6 +905,7 @@ class RtScene12 {
   // rt_path.hlsli's path flags and cache size.
   static constexpr uint32_t PATH_TRACING = 1;
   static constexpr uint32_t PATH_REFLECTIONS = 2;
+  static constexpr uint32_t PATH_RAW = 512;
   static constexpr uint32_t PATH_SPECULAR_OCCLUSION = 4;
   static constexpr uint32_t PATH_HISTORY_VALID = 8;
   static constexpr uint32_t PATH_CACHE_VALID = 16;

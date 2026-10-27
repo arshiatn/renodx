@@ -860,7 +860,8 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
         .width = runtime.traced_size[0],
         .height = runtime.traced_size[1],
         .flags = (runtime.settings.reflections ? dlaa_bridge::RT_REFLECTIONS : 0u)
-                 | (runtime.settings.specular_occlusion ? dlaa_bridge::RT_SPECULAR_OCCLUSION : 0u),
+                 | (runtime.settings.specular_occlusion ? dlaa_bridge::RT_SPECULAR_OCCLUSION : 0u)
+                 | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_REFLECTIONS_RAW : 0u),
         .samples = runtime.settings.reflection_samples,
         .bounces = runtime.settings.path_tracing ? runtime.settings.path_bounces : 0u,
         .range = runtime.settings.light_bounce_range,

@@ -124,6 +124,9 @@ struct RayReconstruction {
 };
 
 struct Bridge {
+  // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
+  // accumulation and filter) leave its noise to it.
+  bool reconstructing = false;
   HANDLE mapping = nullptr;
   HANDLE request = nullptr;
   HANDLE done = nullptr;
@@ -569,6 +572,7 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     }
   });
   if (!bridge.failed && bridge.answered) bridge.status = bridge.shared->status;
+  bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides;
   if (bridge.shared != nullptr) {
     // Ray tracing's counts change every frame: its line is logged when the part before ": " changes, else each minute.
     const std::string_view ray_tracing = bridge.shared->rt_status;

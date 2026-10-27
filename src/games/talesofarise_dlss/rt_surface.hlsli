@@ -42,6 +42,7 @@ static const uint CHARACTER_SHADOWS = 256u;  // characters cast sun shadows (not
 static const uint PATH_TRACING = 512u;  // the bounce light and reflections are path traced
 static const uint SPECULAR_HISTORY = 1024u;  // last frame's reflection accumulation is last frame's
 static const uint SPECULAR_OCCLUSION = 2048u;
+static const uint RAY_RECONSTRUCTION = 8192u;  // Ray Reconstruction denoises the frame: the filters pass through
 static const uint LIGHT_FIT_VALID = 4096u;  // the learned lighting (rt_cache.hlsli) has been solved once
 
 // The scene's instance masks: static meshes, characters (and their alpha-tested parts), alpha-tested static meshes.

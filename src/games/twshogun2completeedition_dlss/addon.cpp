@@ -776,13 +776,15 @@ void OnOverlay(reshade::api::effect_runtime*) {
     };
     ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addons.");
     const bool sun_shadows = checkbox("Ray-traced sun shadows", "RayTracedSunShadows",
-                                      "Sun shadows from rays, with the game's: also where its shadow maps miss things or end.");
+                                      "Sun shadows from rays, with the game's: also where its shadow maps miss things or end.\n"
+                                      "Faster: the game's Screen Space Shadows off, the rays then alone (grass casts no contact shadows).");
     ImGui::BeginDisabled(!sun_shadows);
     slider("Ray-traced shadow softness", "RayTracedShadowSoftness", 0.5f, 0.f, 3.f, "%.2f",
            "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
-                                  "Shade in corners and under things from rays, with the game's.");
+                                  "Shade in corners and under things from rays, with the game's (the darker).\n"
+                                  "Faster: the game's SSAO off, the rays then alone.");
     ImGui::BeginDisabled(!ambient);
     slider("Ray-traced AO range", "RayTracedAmbientRange", 2.f, 0.25f, 5.f, "%.2f m", "How far its rays look for what shades a point.");
     ImGui::EndDisabled();

@@ -28,6 +28,7 @@
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "./dlaa_bridge.hpp"
 #include "./frame_history.hpp"
 #include "./light_bounce.h"
 
@@ -572,7 +573,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Sliders& sliders) {
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
   internal::runtime.apply_per_pixel = (sliders.msaa_pixel != 0.f);
-  internal::runtime.denoise = (sliders.denoise != 0.f);
+  // Ray Reconstruction denoises the frame (the bounce's resolve over frames stays: its texels are coarser).
+  internal::runtime.denoise = (sliders.denoise != 0.f) && !dlaa_bridge::bridge.reconstructing;
   ++internal::runtime.frame;
 }
 

@@ -30,7 +30,8 @@ void main(uint3 id : SV_DispatchThreadID) {
     return;
   }
   const float3 normal = normalize(encoded * 2.f - 1.f);
-  const int radius = (int)round(saturate(material[id.xy].b * 3.f) * 2.f);
+  // With Ray Reconstruction (it denoises the frame) no filter.
+  const int radius = ((flags & RAY_RECONSTRUCTION) != 0u) ? 0 : (int)round(saturate(material[id.xy].b * 3.f) * 2.f);
   const float plane_tolerance = 2.f + 0.02f * position.w;
   float4 sum = 0.f;
   float open = 0.f;

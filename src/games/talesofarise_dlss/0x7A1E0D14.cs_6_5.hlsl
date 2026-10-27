@@ -24,6 +24,9 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float plane_tolerance = 2.f + 0.02f * position.w;
   float3 sum = 0.f;
   float weights = 0.f;
+  // With Ray Reconstruction (it denoises the frame) the accumulation goes out unfiltered.
+  [branch]
+  if ((flags & RAY_RECONSTRUCTION) == 0u) {
   [unroll]
   for (int y = -3; y <= 3; ++y) {
     [unroll]
@@ -38,6 +41,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       sum += accumulated[pixel].rgb * weight;
       weights += weight;
     }
+  }
   }
   const float3 filtered = (weights > 0.f) ? sum / weights : center.rgb;
   bounce_light[id.xy] = float4(filtered * bounce_strength, 1.f);

@@ -229,6 +229,10 @@ static std::atomic<uint32_t> path_samples = 1;
 // The add-on's Agility SDK folder (D3D12Core.dll), set at load; empty or missing: Windows' D3D12 (DXR 1.1).
 static std::string agility_folder;
 
+// Ray Reconstruction denoised the last frame (addon.cpp): the bounce and reflection filters pass their accumulation
+// through and the reflections keep no history (its noise is its to remove).
+static std::atomic<bool> reconstructing = false;
+
 // Any ray-traced effect on: the scene is captured and traced.
 inline bool Active() {
   return enabled.load(std::memory_order_relaxed) || ambient_occlusion.load(std::memory_order_relaxed)
@@ -2228,7 +2232,8 @@ inline bool Trace(ID3D11DeviceContext* context) {
       (sun_shadows ? 1u : 0u) | (ambient_occlusion.load(std::memory_order_relaxed) ? 2u : 0u) | (bounce ? 4u : 0u)
           | (history_valid ? 8u : 0u) | (reflect ? 16u : 0u) | (cache_valid ? 32u : 0u) | (bounce_history ? 64u : 0u)
           | (character_shadows.load(std::memory_order_relaxed) ? 256u : 0u) | (pt ? 512u : 0u)
-          | (specular_occlusion.load(std::memory_order_relaxed) ? 2048u : 0u),
+          | (specular_occlusion.load(std::memory_order_relaxed) ? 2048u : 0u)
+          | (reconstructing.load(std::memory_order_relaxed) ? 8192u : 0u),
       std::bit_cast<uint32_t>(range),
       std::clamp(ambient_rays.load(std::memory_order_relaxed), 1u, 16u),
       std::bit_cast<uint32_t>(reach),
@@ -2458,7 +2463,9 @@ inline LightingResult TraceLighting(ID3D11DeviceContext* context, const std::arr
   }
   std::array<uint32_t, 16> settings = state.settings;
   if (pt && state.bounce_frame + 1 == state.frame) settings[1] |= 64u;  // BOUNCE_HISTORY
-  if (specular && state.specular_frame + 1 == state.frame) settings[1] |= 1024u;  // SPECULAR_HISTORY
+  if (specular && state.specular_frame + 1 == state.frame && !reconstructing.load(std::memory_order_relaxed)) {
+    settings[1] |= 1024u;  // SPECULAR_HISTORY
+  }
   list->SetComputeRoot32BitConstants(internal::ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
   const auto uav_barrier = internal::UavBarrier();
   // Learning (base colours into the cache, the learned lighting's sums), then the paths (SER on DXR 1.2).

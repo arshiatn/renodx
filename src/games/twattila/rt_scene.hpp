@@ -373,6 +373,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Ray-Traced Sun Shadows (Experimental)",
           .section = section,
           .tooltip = "Sun shadows from rays: terrain, buildings, trees and leaves cast them far beyond the shadow map's reach.\n"
+                     "Faster: Screen-Space Shadows off, the rays then alone (grass casts no contact shadows).\n"
                      "Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,

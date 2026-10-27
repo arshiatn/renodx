@@ -66,6 +66,7 @@ static const uint PATH_SPECULAR_HISTORY = 32u;
 static const uint PATH_GUIDES = 64u;          // the G-buffer guides hold this frame's
 static const uint PATH_SUN_TRACED = 128u;     // traced_visibility is this frame's
 static const uint PATH_LIGHT = 256u;          // the prepared light is this frame's
+static const uint PATH_RAW = 512u;            // the reflections as traced (Ray Reconstruction denoises them)
 
 static const uint CACHE_ENTRIES = 1u << 20;
 static const uint CACHE_PROBES = 8u;

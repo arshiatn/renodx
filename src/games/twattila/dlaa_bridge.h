@@ -49,6 +49,8 @@ constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
 constexpr uint32_t RT_SPECULAR_OCCLUSION = 4;
+// Ray Reconstruction denoises the frame: the reflections' samples go out as traced (no accumulation, no filter).
+constexpr uint32_t RT_REFLECTIONS_RAW = 8;
 
 struct Shared {
   uint32_t version = VERSION;
