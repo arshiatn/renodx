@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 7;
+constexpr uint32_t VERSION = 8;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -45,6 +45,10 @@ constexpr uint32_t RT_FOLIAGE = 4;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;
+// Path flags (v8).
+constexpr uint32_t RT_PATH_TRACING = 1;
+constexpr uint32_t RT_REFLECTIONS = 2;
+constexpr uint32_t RT_SPECULAR_OCCLUSION = 4;
 
 struct Shared {
   uint32_t version = VERSION;
@@ -156,11 +160,29 @@ struct Shared {
   uint32_t rt_bounce_rays = 0;
   float rt_bounce_range = 0.f;
   uint32_t rt_v7_padding = 0;
+  // The addon's (v8): path tracing, reflections and specular occlusion (dlaa_helper/rt_path.hlsli), RT_PATH_* in
+  // `rt_path_flags` (0: v7's Light Bounce trace). With RT_PATH_TRACING the Light Bounce request (2) path traces its
+  // texels (`rt_path_bounces` surfaces past the first, `rt_path_samples` paths a texel). A request of its own
+  // (`rt_request` 3) traces the reflections (GGX samples of each render pixel's lobe, `rt_path_samples` of them) and the
+  // specular occlusion (the share of the lobe open within `rt_reflection_range` metres) into `rt_reflection` (RGBA16F:
+  // reflected light, the share of samples that met a surface) and `rt_specular` (R8: 1 open), both at the textures'
+  // size (opened with the others; 0: off). Both read the Ray Reconstruction guides (`rt_guides` 1: written this frame)
+  // and the DLAA input `color` (it still holds last frame's scene colour: hits last frame saw take theirs); the helper
+  // keeps a world radiance cache and the learned lighting for what the screen never saw.
+  uint64_t rt_reflection = 0;
+  uint64_t rt_specular = 0;
+  uint32_t rt_path_flags = 0;
+  uint32_t rt_path_bounces = 0;
+  uint32_t rt_path_samples = 0;
+  float rt_reflection_range = 0.f;
+  uint32_t rt_guides = 0;
+  uint32_t rt_v8_padding = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 7) return sizeof(Shared);
+  if (version >= 8) return sizeof(Shared);
+  if (version == 7) return offsetof(Shared, rt_reflection);
   if (version == 6) return offsetof(Shared, rt_light);
   if (version == 5) return offsetof(Shared, rt_sun_softness);
   if (version == 4) return offsetof(Shared, fg_window);

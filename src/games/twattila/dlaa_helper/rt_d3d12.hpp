@@ -26,13 +26,21 @@
 #include <vector>
 
 #include "../dlaa_bridge.h"
-#include "rt_bounce.h"      // dxc -Fh (build.ps1)
-#include "rt_bounce_omm.h"  // dxc -Fh (build.ps1)
-#include "rt_omm.h"         // dxc -Fh (build.ps1)
-#include "rt_scene_data.h"  // dxc -Fh (build.ps1)
-#include "rt_soft.h"        // dxc -Fh (build.ps1)
-#include "rt_trace.h"       // dxc -Fh (build.ps1)
-#include "rt_trace_omm.h"   // dxc -Fh (build.ps1)
+#include "rt_bounce.h"            // dxc -Fh (build.ps1)
+#include "rt_bounce_omm.h"        // dxc -Fh (build.ps1)
+#include "rt_cache_fill.h"        // dxc -Fh (build.ps1)
+#include "rt_cache_resolve.h"     // dxc -Fh (build.ps1)
+#include "rt_omm.h"               // dxc -Fh (build.ps1)
+#include "rt_path.h"              // dxc -Fh (build.ps1)
+#include "rt_path_lib.h"          // dxc -Fh (build.ps1)
+#include "rt_path_omm.h"          // dxc -Fh (build.ps1)
+#include "rt_reflect.h"           // dxc -Fh (build.ps1)
+#include "rt_reflect_filter.h"    // dxc -Fh (build.ps1)
+#include "rt_reflect_omm.h"       // dxc -Fh (build.ps1)
+#include "rt_scene_data.h"        // dxc -Fh (build.ps1)
+#include "rt_soft.h"              // dxc -Fh (build.ps1)
+#include "rt_trace.h"             // dxc -Fh (build.ps1)
+#include "rt_trace_omm.h"         // dxc -Fh (build.ps1)
 
 // The DLAA helper's ray tracing (bridge v4-v6; the addon's rt_scene.hpp): DXR needs a 64-bit process, the Total War
 // games with the bridge are 32-bit. Its own D3D12 device keeps a BLAS per captured draw (its triangles in world space,
@@ -44,7 +52,10 @@
 // record (its instance's InstanceID plus its geometry index) with its UVs and normals in pools (rt_scene_data.cs_6_5.hlsl).
 // With the Agility SDK next to the helper (D3D12\D3D12Core.dll) and shader model 6.9, DXR 1.2: the leaves get opacity
 // micromaps (rt_omm.cs_6_5.hlsl). With a bridge v7 addon's ray-traced Light Bounce a second request each frame traces
-// rt_bounce.cs_6_5.hlsl against that frame's TLAS. Its queue waits for the addon's fence value and signals the next.
+// rt_bounce.cs_6_5.hlsl against that frame's TLAS; bridge v8 path traces it instead (rt_path.hlsli: a world radiance
+// cache and the learned lighting for what the screen never saw), and a third request traces reflections and specular
+// occlusion. With DXR 1.2 the paths run as ray generation shaders (DispatchRays) with shader execution reordering. Its
+// queue waits for the addon's fence value and signals the next.
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
@@ -132,14 +143,19 @@ class RtScene12 {
     }
     // The passes: t0 the TLAS (root SRV); the table (Descriptor); b0 the settings, b1 a dispatch's (root constants); t8
     // the capture table, u6 / u7 / u8 the micromaps' buffers (root descriptors); s0 linear wrap.
-    const std::array<D3D12_DESCRIPTOR_RANGE, 4> ranges = {{
+    const std::array<D3D12_DESCRIPTOR_RANGE, 6> ranges = {{
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = SRV_COUNT, .BaseShaderRegister = 1, .OffsetInDescriptorsFromTableStart = 0},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = LIGHT - SRV_COUNT, .BaseShaderRegister = 0,
          .OffsetInDescriptorsFromTableStart = SRV_COUNT},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = 1, .BaseShaderRegister = 9, .OffsetInDescriptorsFromTableStart = LIGHT},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = 1, .BaseShaderRegister = 9, .OffsetInDescriptorsFromTableStart = BOUNCE},
+        // Paths (v8): t10-t14, u10-u21.
+        {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = CACHE_KEYS - PREVIOUS_COLOR, .BaseShaderRegister = 10,
+         .OffsetInDescriptorsFromTableStart = PREVIOUS_COLOR},
+        {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = DESCRIPTOR_COUNT - CACHE_KEYS, .BaseShaderRegister = 10,
+         .OffsetInDescriptorsFromTableStart = CACHE_KEYS},
     }};
-    const std::array<D3D12_ROOT_PARAMETER, 9> parameters = {{
+    const std::array<D3D12_ROOT_PARAMETER, 10> parameters = {{
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV, .Descriptor = {.ShaderRegister = 0}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
          .DescriptorTable = {.NumDescriptorRanges = static_cast<UINT>(ranges.size()), .pDescriptorRanges = ranges.data()}},
@@ -150,6 +166,7 @@ class RtScene12 {
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV, .Descriptor = {.ShaderRegister = 7}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV, .Descriptor = {.ShaderRegister = 8}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .Constants = {.ShaderRegister = 2, .Num32BitValues = 20}},
+        {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV, .Descriptor = {.ShaderRegister = 3}},
     }};
     const D3D12_STATIC_SAMPLER_DESC sampler = {
         .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -179,17 +196,71 @@ class RtScene12 {
     };
     // DXR 1.2: the micromaps' bake and the ray queries that use them; else (or when they fail) DXR 1.1.
     dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_) && pipeline(RT_OMM, sizeof(RT_OMM), &omm_pipeline_)
-             && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_);
+             && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
+             && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_);
     if (!dxr12_) {
       omm_pipeline_.Reset();
       trace_pipeline_.Reset();
       bounce_pipeline_.Reset();
+      path_pipeline_.Reset();
+      reflect_pipeline_.Reset();
     }
     if ((!trace_pipeline_ && !pipeline(RT_TRACE, sizeof(RT_TRACE), &trace_pipeline_))
         || (!bounce_pipeline_ && !pipeline(RT_BOUNCE, sizeof(RT_BOUNCE), &bounce_pipeline_)) || !pipeline(RT_SOFT, sizeof(RT_SOFT), &soft_pipeline_)
         || !pipeline(RT_SCENE_DATA, sizeof(RT_SCENE_DATA), &scene_data_pipeline_)
+        || (!path_pipeline_ && !pipeline(RT_PATH, sizeof(RT_PATH), &path_pipeline_))
+        || (!reflect_pipeline_ && !pipeline(RT_REFLECT, sizeof(RT_REFLECT), &reflect_pipeline_))
+        || !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_)
+        || !pipeline(RT_CACHE_RESOLVE, sizeof(RT_CACHE_RESOLVE), &cache_resolve_pipeline_)
+        || !pipeline(RT_REFLECT_FILTER, sizeof(RT_REFLECT_FILTER), &reflect_filter_pipeline_)
         || FAILED(device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(descriptors_.GetAddressOf())))) {
       return Fail("Ray tracing: the trace shaders failed (needs shader model 6.5)");
+    }
+    // DXR 1.2: the paths as ray generation shaders (shader execution reordering), dispatched with DispatchRays; their
+    // compute versions otherwise (or when the state object fails).
+    if (dxr12_) {
+      const std::array<D3D12_EXPORT_DESC, 2> exports = {{{.Name = L"PathTraceRayGen"}, {.Name = L"ReflectRayGen"}}};
+      const D3D12_DXIL_LIBRARY_DESC library = {
+          .DXILLibrary = {.pShaderBytecode = RT_PATH_LIB, .BytecodeLength = sizeof(RT_PATH_LIB)},
+          .NumExports = static_cast<UINT>(exports.size()),
+          .pExports = const_cast<D3D12_EXPORT_DESC*>(exports.data()),
+      };
+      const D3D12_RAYTRACING_SHADER_CONFIG shader_config = {.MaxPayloadSizeInBytes = 4, .MaxAttributeSizeInBytes = 8};
+      const D3D12_RAYTRACING_PIPELINE_CONFIG1 pipeline_config = {.MaxTraceRecursionDepth = 1,
+                                                                  .Flags = D3D12_RAYTRACING_PIPELINE_FLAG_ALLOW_OPACITY_MICROMAPS};
+      const D3D12_GLOBAL_ROOT_SIGNATURE global = {.pGlobalRootSignature = root_signature_.Get()};
+      const std::array<D3D12_STATE_SUBOBJECT, 4> subobjects = {{
+          {.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, .pDesc = &library},
+          {.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG, .pDesc = &shader_config},
+          {.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG1, .pDesc = &pipeline_config},
+          {.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, .pDesc = &global},
+      }};
+      const D3D12_STATE_OBJECT_DESC state_desc = {.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE,
+                                                  .NumSubobjects = static_cast<UINT>(subobjects.size()),
+                                                  .pSubobjects = subobjects.data()};
+      ComPtr<ID3D12StateObjectProperties> properties;
+      path_shader_table_ = Buffer(2 * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
+                                  D3D12_RESOURCE_STATE_GENERIC_READ);
+      uint8_t* table = nullptr;
+      const void* path_identifier = nullptr;
+      const void* reflect_identifier = nullptr;
+      if (FAILED(device_->CreateStateObject(&state_desc, IID_PPV_ARGS(path_state_object_.GetAddressOf())))
+          || FAILED(path_state_object_.As(&properties)) || (path_identifier = properties->GetShaderIdentifier(L"PathTraceRayGen")) == nullptr
+          || (reflect_identifier = properties->GetShaderIdentifier(L"ReflectRayGen")) == nullptr || !path_shader_table_
+          || FAILED(path_shader_table_->Map(0, nullptr, reinterpret_cast<void**>(&table)))) {
+        path_state_object_.Reset();
+        path_shader_table_.Reset();
+      } else {
+        std::memcpy(table, path_identifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+        std::memcpy(table + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT, reflect_identifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+        path_shader_table_->Unmap(0, nullptr);
+      }
+    }
+    for (Slot& slot : slots_) {
+      slot.paths = Buffer(256, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      if (!slot.paths || FAILED(slot.paths->Map(0, nullptr, reinterpret_cast<void**>(&slot.paths_data)))) {
+        return Fail("Ray tracing: no D3D12 constant buffers");
+      }
     }
     descriptor_size_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     const auto buffer_view = [](DXGI_FORMAT format, UINT elements) {
@@ -214,7 +285,8 @@ class RtScene12 {
     device_->CreateUnorderedAccessView(records_.Get(), nullptr, &records_written, Descriptor(RECORDS_WRITTEN));
     device_->CreateUnorderedAccessView(uvs_.Get(), nullptr, &uvs_written, Descriptor(UVS_WRITTEN));
     device_->CreateUnorderedAccessView(normals_.Get(), nullptr, &normals_written, Descriptor(NORMALS_WRITTEN));
-    status_ = std::format("Ray tracing ready ({}; {})", dxr12_ ? "DXR 1.2: opacity micromaps" : "DXR 1.1", sdk);
+    WriteNullPathDescriptors();
+    status_ = std::format("Ray tracing ready ({}; {})", dxr12_ ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1", sdk);
     sdk_ = sdk;
     return true;
   }
@@ -248,6 +320,69 @@ class RtScene12 {
     } else {
       light_.Reset();
       bounce_.Reset();
+    }
+    // Paths (v8): last frame's scene colour (the DLAA input), the G-buffer guides and the reflections' outputs as the
+    // addon shares them; the history (positions, reflection accumulation) of its own at the textures' size.
+    if (version >= 8) {
+      const D3D12_RESOURCE_DESC positions_desc = positions_->GetDesc();
+      const auto texture = [&](DXGI_FORMAT format, ComPtr<ID3D12Resource>* resource) {
+        const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+        const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = positions_desc.Width,
+                                          .Height = positions_desc.Height, .DepthOrArraySize = 1, .MipLevels = 1, .Format = format,
+                                          .SampleDesc = {.Count = 1}, .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
+        return SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                          IID_PPV_ARGS(resource->GetAddressOf())));
+      };
+      const auto view = [](DXGI_FORMAT format) {
+        return D3D12_SHADER_RESOURCE_VIEW_DESC{.Format = format, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                               .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                                               .Texture2D = {.MipLevels = 1}};
+      };
+      const auto written = [](DXGI_FORMAT format) {
+        return D3D12_UNORDERED_ACCESS_VIEW_DESC{.Format = format, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+      };
+      if (shared.color != 0 && open(shared.color, &previous_color_)) {
+        const auto color_view = view(DXGI_FORMAT_R16G16B16A16_FLOAT);
+        device_->CreateShaderResourceView(previous_color_.Get(), &color_view, Descriptor(PREVIOUS_COLOR));
+      }
+      if (shared.normals != 0 && shared.diffuse_albedo != 0 && shared.roughness != 0 && open(shared.normals, &guide_normals_)
+          && open(shared.diffuse_albedo, &guide_albedo_) && open(shared.roughness, &guide_roughness_)) {
+        const auto normals_view = view(DXGI_FORMAT_R16G16B16A16_FLOAT);
+        const auto albedo_view = view(DXGI_FORMAT_R8G8B8A8_UNORM);
+        const auto roughness_view = view(DXGI_FORMAT_R8_UNORM);
+        device_->CreateShaderResourceView(guide_normals_.Get(), &normals_view, Descriptor(GUIDE_NORMALS));
+        device_->CreateShaderResourceView(guide_albedo_.Get(), &albedo_view, Descriptor(GUIDE_ALBEDO));
+        device_->CreateShaderResourceView(guide_roughness_.Get(), &roughness_view, Descriptor(GUIDE_ROUGHNESS));
+      } else {
+        guide_normals_.Reset();
+        guide_albedo_.Reset();
+        guide_roughness_.Reset();
+      }
+      if (!texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &previous_positions_) || !texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &positions_copy_)) {
+        Close();
+        return false;
+      }
+      const auto positions_view = view(DXGI_FORMAT_R32G32B32A32_FLOAT);
+      device_->CreateShaderResourceView(previous_positions_.Get(), &positions_view, Descriptor(PREVIOUS_POSITIONS));
+      copied_frame_ = UINT32_MAX;
+      paths_frame_ = UINT32_MAX;
+      if (shared.rt_reflection != 0 && shared.rt_specular != 0 && open(shared.rt_reflection, &reflection_) && open(shared.rt_specular, &specular_)
+          && texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &specular_accumulated_) && texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &specular_history_)
+          && texture(DXGI_FORMAT_R16G16_FLOAT, &specular_meta_) && texture(DXGI_FORMAT_R16G16_FLOAT, &specular_meta_history_)) {
+        const auto rgba = written(DXGI_FORMAT_R16G16B16A16_FLOAT);
+        const auto rg = written(DXGI_FORMAT_R16G16_FLOAT);
+        const auto r8 = written(DXGI_FORMAT_R8_UNORM);
+        device_->CreateUnorderedAccessView(specular_accumulated_.Get(), nullptr, &rgba, Descriptor(SPECULAR_ACCUMULATED));
+        device_->CreateUnorderedAccessView(specular_history_.Get(), nullptr, &rgba, Descriptor(SPECULAR_HISTORY));
+        device_->CreateUnorderedAccessView(specular_meta_.Get(), nullptr, &rg, Descriptor(SPECULAR_META));
+        device_->CreateUnorderedAccessView(specular_meta_history_.Get(), nullptr, &rg, Descriptor(SPECULAR_META_HISTORY));
+        device_->CreateUnorderedAccessView(reflection_.Get(), nullptr, &rgba, Descriptor(REFLECTION));
+        device_->CreateUnorderedAccessView(specular_.Get(), nullptr, &r8, Descriptor(SPECULAR_OCCLUSION));
+        specular_history_valid_ = false;
+      } else {
+        reflection_.Reset();
+        specular_.Reset();
+      }
     }
     const D3D12_RESOURCE_DESC size = visibility_->GetDesc();
     const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
@@ -300,6 +435,19 @@ class RtScene12 {
     sun_rays_.Reset();
     light_.Reset();
     bounce_.Reset();
+    previous_color_.Reset();
+    guide_normals_.Reset();
+    guide_albedo_.Reset();
+    guide_roughness_.Reset();
+    previous_positions_.Reset();
+    positions_copy_.Reset();
+    reflection_.Reset();
+    specular_.Reset();
+    specular_accumulated_.Reset();
+    specular_history_.Reset();
+    specular_meta_.Reset();
+    specular_meta_history_.Reset();
+    if (descriptors_) WriteNullPathDescriptors();
     fence_.Reset();
   }
 
@@ -327,6 +475,7 @@ class RtScene12 {
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, slot_index, &slot);
     traced_ = traced_ || recorded;
+    if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
     queue_->Wait(fence_.Get(), shared.value);
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
@@ -338,19 +487,28 @@ class RtScene12 {
     return recorded;
   }
 
-  // The ray-traced Light Bounce (bridge v7): rt_bounce.cs_6_5.hlsl against the TLAS this frame's trace built (the same
-  // queue, so after it); the queue waits for the addon's fence value and signals the next (also when nothing ran).
-  // False: not traced.
-  bool Bounce(const dlaa_bridge::Shared& shared) {
+  // A request after this frame's trace, against its TLAS (the same queue, so after it): the ray-traced Light Bounce
+  // (bridge v7, request 2: rt_bounce.cs_6_5.hlsl; v8 with RT_PATH_TRACING path traced, rt_path.hlsli) or the reflections
+  // and specular occlusion (v8, request 3, `reflections`). The radiance cache is filled and resolved at the frame's first
+  // such request; last frame's positions are kept for the history. The queue waits for the addon's fence value and
+  // signals the next (also when nothing ran). False: not traced.
+  bool Paths(const dlaa_bridge::Shared& shared, uint32_t version, bool reflections) {
     if (!fence_) return false;
     const size_t slot_index = next_slot_;
     Slot& slot = slots_[slot_index];
     next_slot_ = (next_slot_ + 1) % SLOTS;
     WaitFor(slot.value);
-    bool recorded = light_ && bounce_ && traced_ && SUCCEEDED(slot.allocator->Reset())
+    const uint32_t frame = shared.rt_frame;
+    const uint32_t requested = (version >= 8) ? shared.rt_path_flags : 0u;
+    const bool path_traced = !reflections && (requested & dlaa_bridge::RT_PATH_TRACING) != 0;
+    const bool wanted = reflections ? (reflection_ && (requested & (dlaa_bridge::RT_REFLECTIONS | dlaa_bridge::RT_SPECULAR_OCCLUSION)) != 0)
+                                    : (light_ && bounce_);
+    const bool uses_paths = path_traced || reflections;
+    bool recorded = wanted && traced_ && (!uses_paths || EnsureCache()) && SUCCEEDED(slot.allocator->Reset())
                     && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
     if (recorded) {
       auto* list = slot.list.Get();
+      const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
       ID3D12DescriptorHeap* heaps[] = {descriptors_.Get()};
       list->SetDescriptorHeaps(1, heaps);
       list->SetComputeRootSignature(root_signature_.Get());
@@ -361,10 +519,11 @@ class RtScene12 {
       for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
         list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
       }
+      const float bounce_range = std::clamp(shared.rt_bounce_range, 0.5f, 200.f);
       const std::array<uint32_t, 8> settings = {
-          shared.rt_frame,
+          frame,
           0u,
-          std::bit_cast<uint32_t>(std::clamp(shared.rt_bounce_range, 0.5f, 200.f)),
+          std::bit_cast<uint32_t>(bounce_range),
           std::clamp(shared.rt_bounce_rays, 1u, 32u),
           shared.rt_width,
           shared.rt_height,
@@ -381,15 +540,137 @@ class RtScene12 {
       std::vector<std::pair<ID3D12Resource*, D3D12_RESOURCE_STATES>> textures = {
           {positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE},
           {sun_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE},
-          {light_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE},
-          {bounce_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS},
       };
+      if (light_) textures.emplace_back(light_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+      if (!reflections) textures.emplace_back(bounce_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       if (atlas_) textures.emplace_back(atlas_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+      // Paths: last frame's colour (still the DLAA input), the guides, the frame's sun visibility, the reflections'.
+      const bool guides = guide_normals_ && version >= 8 && shared.rt_guides != 0;
+      if (uses_paths) {
+        textures.emplace_back(visibility_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        if (previous_color_) textures.emplace_back(previous_color_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        if (guides) {
+          for (ID3D12Resource* guide : {guide_normals_.Get(), guide_albedo_.Get(), guide_roughness_.Get()}) {
+            textures.emplace_back(guide, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+          }
+        }
+        if (reflections) {
+          textures.emplace_back(reflection_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          textures.emplace_back(specular_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        }
+      }
       std::vector<D3D12_RESOURCE_BARRIER> barriers;
       for (const auto& [resource, used] : textures) barriers.push_back(Transition(resource, D3D12_RESOURCE_STATE_COMMON, used));
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
-      list->SetPipelineState(bounce_pipeline_.Get());
-      list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+
+      if (!uses_paths) {
+        list->SetPipelineState(bounce_pipeline_.Get());
+        list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+      } else {
+        // The history at the frame's first request: last frame's positions (copied then) kept, this frame's copied.
+        const uint32_t width = std::max(shared.rt_width, 1u);
+        const uint32_t height = std::max(shared.rt_height, 1u);
+        if (frame != paths_frame_) {
+          history_valid_ = copied_frame_ != UINT32_MAX && copied_frame_ + 1 == frame && previous_color_;
+          const D3D12_BOX region = {.left = 0, .top = 0, .front = 0, .right = width, .bottom = height, .back = 1};
+          const auto copy = [&](ID3D12Resource* destination, ID3D12Resource* source) {
+            const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = destination, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+            const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = source, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+            list->CopyTextureRegion(&to, 0, 0, 0, &from, &region);
+          };
+          std::array<D3D12_RESOURCE_BARRIER, 3> to_copy = {
+              Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
+              Transition(positions_copy_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE),
+              Transition(positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+          };
+          list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+          copy(previous_positions_.Get(), positions_copy_.Get());
+          std::array<D3D12_RESOURCE_BARRIER, 2> swap = {
+              Transition(positions_copy_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
+              Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON),
+          };
+          list->ResourceBarrier(static_cast<UINT>(swap.size()), swap.data());
+          copy(positions_copy_.Get(), positions_.Get());
+          std::array<D3D12_RESOURCE_BARRIER, 2> back = {
+              Transition(positions_copy_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON),
+              Transition(positions_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+          };
+          list->ResourceBarrier(static_cast<UINT>(back.size()), back.data());
+          std::copy_n(current_view_projection_.begin(), 16, previous_view_projection_.begin());
+          std::copy_n(shared.rt_view_projection, 16, current_view_projection_.begin());
+          copied_frame_ = frame;
+          paths_frame_ = frame;
+        }
+        const auto to_previous = Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        list->ResourceBarrier(1, &to_previous);
+        if (!reflections) light_frame_ = frame;
+        uint32_t flags = 0;
+        if (path_traced) flags |= PATH_TRACING;
+        if (reflections && (requested & dlaa_bridge::RT_REFLECTIONS) != 0) flags |= PATH_REFLECTIONS;
+        if (reflections && (requested & dlaa_bridge::RT_SPECULAR_OCCLUSION) != 0) flags |= PATH_SPECULAR_OCCLUSION;
+        if (history_valid_) flags |= PATH_HISTORY_VALID;
+        if (cache_filled_) flags |= PATH_CACHE_VALID;
+        if (reflections && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
+        if (guides) flags |= PATH_GUIDES;
+        if (sun_traced_frame_ == frame) flags |= PATH_SUN_TRACED;
+        if (light_frame_ == frame) flags |= PATH_LIGHT;
+        PathConstants constants = {
+            .bounce_width = shared.rt_bounce_width,
+            .bounce_height = shared.rt_bounce_height,
+            .bounce_scale = std::max(shared.rt_bounce_scale, 1u),
+            .flags = flags,
+            .bounces = std::clamp(shared.rt_path_bounces, 0u, 8u),
+            .samples = std::clamp(shared.rt_path_samples, 1u, 16u),
+            .bounce_range = bounce_range,
+            .reflection_range = std::clamp(shared.rt_reflection_range, 0.5f, 200.f),
+        };
+        std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
+        std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
+        std::memcpy(slot.paths_data, &constants, sizeof(constants));
+        list->SetComputeRootConstantBufferView(ROOT_PATHS, slot.paths->GetGPUVirtualAddress());
+        // The radiance cache once a frame: filled (from the prepared light, else last frame's colour), resolved.
+        if (cache_frame_ != frame) {
+          const bool from_light = (flags & PATH_LIGHT) != 0;
+          const uint32_t fill_width = (from_light ? shared.rt_bounce_width : width) / 2 + 1;
+          const uint32_t fill_height = (from_light ? shared.rt_bounce_height : height) / 2 + 1;
+          list->SetPipelineState(cache_fill_pipeline_.Get());
+          list->Dispatch((fill_width + 7) / 8, (fill_height + 7) / 8, 1);
+          list->ResourceBarrier(1, &uav_barrier);
+          list->SetPipelineState(cache_resolve_pipeline_.Get());
+          list->Dispatch(CACHE_ENTRIES / 64, 1, 1);
+          list->ResourceBarrier(1, &uav_barrier);
+          cache_frame_ = frame;
+          cache_filled_ = true;
+        }
+        // The paths: ray generation shaders with shader execution reordering (DXR 1.2), else compute.
+        const auto dispatch = [&](ID3D12PipelineState* compute, uint64_t record, uint32_t across, uint32_t down) {
+          if (path_state_object_) {
+            list->SetPipelineState1(path_state_object_.Get());
+            const D3D12_DISPATCH_RAYS_DESC rays = {
+                .RayGenerationShaderRecord = {.StartAddress = path_shader_table_->GetGPUVirtualAddress() + record * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT,
+                                              .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
+                .Width = across,
+                .Height = down,
+                .Depth = 1,
+            };
+            list->DispatchRays(&rays);
+          } else {
+            list->SetPipelineState(compute);
+            list->Dispatch((across + 7) / 8, (down + 7) / 8, 1);
+          }
+        };
+        if (path_traced) dispatch(path_pipeline_.Get(), 0, shared.rt_bounce_width, shared.rt_bounce_height);
+        if (reflections) {
+          dispatch(reflect_pipeline_.Get(), 1, width, height);
+          list->ResourceBarrier(1, &uav_barrier);
+          list->SetPipelineState(reflect_filter_pipeline_.Get());
+          list->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+          specular_frame_ = frame;
+          specular_history_valid_ = true;
+        }
+        const auto from_previous = Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
+        list->ResourceBarrier(1, &from_previous);
+      }
       barriers.clear();
       for (const auto& [resource, used] : textures) barriers.push_back(Transition(resource, used, D3D12_RESOURCE_STATE_COMMON));
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
@@ -452,9 +733,51 @@ class RtScene12 {
     NORMALS_WRITTEN,
     LIGHT,   // t9 (the ray-traced Light Bounce's)
     BOUNCE,  // u9
+    // Paths (v8): t10-t14, then u10-u21.
+    PREVIOUS_COLOR,
+    PREVIOUS_POSITIONS,
+    GUIDE_NORMALS,
+    GUIDE_ALBEDO,
+    GUIDE_ROUGHNESS,
+    CACHE_KEYS,
+    CACHE_RADIANCE,
+    CACHE_SUMS,
+    CACHE_ALBEDO,
+    LIGHT_FIT,
+    LIGHT_KEPT,
+    SPECULAR_ACCUMULATED,
+    SPECULAR_HISTORY,
+    SPECULAR_META,
+    SPECULAR_META_HISTORY,
+    REFLECTION,
+    SPECULAR_OCCLUSION,
     DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
+  // rt_path.hlsli's path flags and cache size.
+  static constexpr uint32_t PATH_TRACING = 1;
+  static constexpr uint32_t PATH_REFLECTIONS = 2;
+  static constexpr uint32_t PATH_SPECULAR_OCCLUSION = 4;
+  static constexpr uint32_t PATH_HISTORY_VALID = 8;
+  static constexpr uint32_t PATH_CACHE_VALID = 16;
+  static constexpr uint32_t PATH_SPECULAR_HISTORY = 32;
+  static constexpr uint32_t PATH_GUIDES = 64;
+  static constexpr uint32_t PATH_SUN_TRACED = 128;
+  static constexpr uint32_t PATH_LIGHT = 256;
+  static constexpr UINT CACHE_ENTRIES = 1u << 20;
+  // rt_path.hlsli's b3.
+  struct PathConstants {
+    std::array<float, 16> view_projection = {};
+    std::array<float, 16> previous_view_projection = {};
+    uint32_t bounce_width = 0;
+    uint32_t bounce_height = 0;
+    uint32_t bounce_scale = 1;
+    uint32_t flags = 0;
+    uint32_t bounces = 0;
+    uint32_t samples = 1;
+    float bounce_range = 10.f;
+    float reflection_range = 10.f;
+  };
   enum Root : UINT {
     ROOT_SCENE,
     ROOT_TABLE,
@@ -465,6 +788,7 @@ class RtScene12 {
     ROOT_MICROMAP_INDICES,
     ROOT_MICROMAP_DESCS,
     ROOT_BOUNCE,  // b2: the ray-traced Light Bounce's constants
+    ROOT_PATHS,   // b3: the paths' constants (rt_path.hlsli)
   };
 
   struct Slot {
@@ -478,6 +802,8 @@ class RtScene12 {
     ComPtr<ID3D12Resource> sizes;
     ComPtr<ID3D12Resource> readback;
     std::vector<std::pair<uint64_t, uint64_t>> compactions;
+    ComPtr<ID3D12Resource> paths;  // its paths' constants (b3)
+    uint8_t* paths_data = nullptr;
     uint64_t value = 0;  // own_fence_'s value after its last use
   };
   struct Mesh {
@@ -572,6 +898,51 @@ class RtScene12 {
     ComPtr<ID3D12Resource> buffer;
     device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr, IID_PPV_ARGS(buffer.GetAddressOf()));
     return buffer;
+  }
+
+  // The paths' textures not shared (yet): null views, so their descriptors are always valid (the cache's too until
+  // EnsureCache makes it).
+  void WriteNullPathDescriptors() {
+    const D3D12_SHADER_RESOURCE_VIEW_DESC texture_view = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                                          .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                                                          .Texture2D = {.MipLevels = 1}};
+    for (const auto descriptor : {PREVIOUS_COLOR, PREVIOUS_POSITIONS, GUIDE_NORMALS, GUIDE_ALBEDO, GUIDE_ROUGHNESS}) {
+      device_->CreateShaderResourceView(nullptr, &texture_view, Descriptor(descriptor));
+    }
+    const D3D12_UNORDERED_ACCESS_VIEW_DESC texture_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+    for (const auto descriptor : {SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY, REFLECTION, SPECULAR_OCCLUSION}) {
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
+    }
+    if (cache_keys_) return;
+    const D3D12_UNORDERED_ACCESS_VIEW_DESC buffer_written = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                             .Buffer = {.NumElements = 1}};
+    for (const auto descriptor : {CACHE_KEYS, CACHE_RADIANCE, CACHE_SUMS, CACHE_ALBEDO, LIGHT_FIT, LIGHT_KEPT}) {
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &buffer_written, Descriptor(descriptor));
+    }
+  }
+
+  // The world radiance cache and the learned lighting (rt_path.hlsli), made at the first path request (zeroed: empty).
+  bool EnsureCache() {
+    if (cache_keys_) return true;
+    const auto pool = [&](DXGI_FORMAT format, UINT elements, UINT element_bytes, ComPtr<ID3D12Resource>* buffer, UINT descriptor) {
+      *buffer = Buffer(uint64_t{elements} * element_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                       D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      if (!*buffer) return false;
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC view = {.Format = format, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER, .Buffer = {.NumElements = elements}};
+      device_->CreateUnorderedAccessView(buffer->Get(), nullptr, &view, Descriptor(descriptor));
+      return true;
+    };
+    if (pool(DXGI_FORMAT_R32_UINT, CACHE_ENTRIES, 4, &cache_keys_, CACHE_KEYS)
+        && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, CACHE_ENTRIES, 16, &cache_radiance_, CACHE_RADIANCE)
+        && pool(DXGI_FORMAT_R32_UINT, CACHE_ENTRIES * 4, 4, &cache_sums_, CACHE_SUMS)
+        && pool(DXGI_FORMAT_R32G32_UINT, CACHE_ENTRIES, 8, &cache_albedo_, CACHE_ALBEDO)
+        && pool(DXGI_FORMAT_R32_UINT, 16, 4, &light_fit_, LIGHT_FIT)
+        && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, 2, 16, &light_kept_, LIGHT_KEPT)) {
+      return true;
+    }
+    cache_keys_.Reset();
+    WriteNullPathDescriptors();
+    return false;
   }
 
   static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) {
@@ -1134,6 +1505,44 @@ class RtScene12 {
   ComPtr<ID3D12Resource> light_;   // the ray-traced Light Bounce's prepared light (v7)
   ComPtr<ID3D12Resource> bounce_;  // its output
   ComPtr<ID3D12PipelineState> bounce_pipeline_;
+  // Paths (v8): last frame's colour (the DLAA input), the G-buffer guides, the reflections' outputs; the history and the
+  // cache of the helper's own; the pipelines (DXR 1.2: one state object with both ray generation shaders).
+  ComPtr<ID3D12Resource> previous_color_;
+  ComPtr<ID3D12Resource> guide_normals_;
+  ComPtr<ID3D12Resource> guide_albedo_;
+  ComPtr<ID3D12Resource> guide_roughness_;
+  ComPtr<ID3D12Resource> reflection_;
+  ComPtr<ID3D12Resource> specular_;
+  ComPtr<ID3D12Resource> previous_positions_;  // last frame's positions (t11)
+  ComPtr<ID3D12Resource> positions_copy_;      // this frame's, for the next
+  ComPtr<ID3D12Resource> specular_accumulated_;
+  ComPtr<ID3D12Resource> specular_history_;
+  ComPtr<ID3D12Resource> specular_meta_;
+  ComPtr<ID3D12Resource> specular_meta_history_;
+  ComPtr<ID3D12Resource> cache_keys_;
+  ComPtr<ID3D12Resource> cache_radiance_;
+  ComPtr<ID3D12Resource> cache_sums_;
+  ComPtr<ID3D12Resource> cache_albedo_;
+  ComPtr<ID3D12Resource> light_fit_;
+  ComPtr<ID3D12Resource> light_kept_;
+  ComPtr<ID3D12PipelineState> path_pipeline_;
+  ComPtr<ID3D12PipelineState> reflect_pipeline_;
+  ComPtr<ID3D12PipelineState> cache_fill_pipeline_;
+  ComPtr<ID3D12PipelineState> cache_resolve_pipeline_;
+  ComPtr<ID3D12PipelineState> reflect_filter_pipeline_;
+  ComPtr<ID3D12StateObject> path_state_object_;
+  ComPtr<ID3D12Resource> path_shader_table_;  // two ray generation records: the paths, the reflections
+  std::array<float, 16> current_view_projection_ = {};
+  std::array<float, 16> previous_view_projection_ = {};
+  uint32_t paths_frame_ = UINT32_MAX;     // the frame of the last path request (the history copied then)
+  uint32_t copied_frame_ = UINT32_MAX;    // the frame positions_copy_ holds
+  uint32_t light_frame_ = UINT32_MAX;     // the frame the prepared light is from
+  uint32_t cache_frame_ = UINT32_MAX;     // the frame the cache was last filled
+  uint32_t specular_frame_ = UINT32_MAX;  // the frame of the last reflections
+  uint32_t sun_traced_frame_ = UINT32_MAX;
+  bool history_valid_ = false;
+  bool cache_filled_ = false;
+  bool specular_history_valid_ = false;
   bool traced_ = false;  // a TLAS was built (the bounce traces it)
   ComPtr<ID3D12Resource> sun_rays_;  // the helper's, the textures' size
   ComPtr<ID3D12Fence> fence_;

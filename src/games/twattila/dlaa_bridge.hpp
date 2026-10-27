@@ -69,6 +69,27 @@ struct BounceRequest {
   uint32_t rays = 4;
   float range = 10.f;
   std::array<float, 16> view_projection = {};
+  // v8: path tracing (RT_PATH_TRACING), its surfaces past the first and paths a texel; the guides written this frame.
+  uint32_t path_flags = 0;
+  uint32_t path_bounces = 2;
+  uint32_t path_samples = 1;
+  bool guides = false;
+};
+
+// A reflections request (v8, rt_scene.hpp at the game's reflection pass): the render size, RT_REFLECTIONS and / or
+// RT_SPECULAR_OCCLUSION, the GGX samples a pixel and the surfaces their paths go on past the first, the paths' reach
+// past the first surface and the specular occlusion's (metres), this frame's view-projection, the guides written.
+struct ReflectRequest {
+  uint32_t frame = 0;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  uint32_t flags = 0;
+  uint32_t samples = 1;
+  uint32_t bounces = 1;
+  float range = 10.f;
+  float reflection_range = 10.f;
+  std::array<float, 16> view_projection = {};
+  bool guides = false;
 };
 
 // A frame generation request (frame_generation.hpp): the game's window, the settings, whether the HUD-less frame and
@@ -137,6 +158,10 @@ struct Bridge {
   // The ray-traced Light Bounce's (v7): its prepared light in, the bounce out.
   Texture rt_light;
   Texture rt_bounce;
+  // The reflections' (v8, made when they are on): the reflected light and the specular occlusion out.
+  Texture rt_reflection;
+  Texture rt_specular;
+  bool reflections = false;
   // The leaves' opacity masks (an RT_ATLAS_SLICES texture array, made with the first ray tracing textures and kept
   // across sizes: shared with the helper again with every set; `rt_atlas_generation` counts the arrays made).
   Texture rt_atlas;
@@ -228,17 +253,18 @@ inline uint64_t ShareWithHelper(HANDLE handle) {
 }  // namespace internal
 
 // The shared objects for `width` x `height` on `device` (with Ray Reconstruction's guides when `guides`, ray tracing's
-// textures when `ray_tracing`, frame generation's in `fg_format` unless unknown; made again when any changes); false: not
-// available.
+// textures when `ray_tracing`, frame generation's in `fg_format` unless unknown, the reflections' with ray tracing when
+// `reflections`; made again when any changes); false: not available.
 inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool guides = false, bool ray_tracing = false,
-                    DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN) {
+                    DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false) {
+  reflections = reflections && ray_tracing;
   if (!internal::Start(native_device)) return false;
   ComPtr<ID3D11Device5> device;
   if (FAILED(native_device->QueryInterface(IID_PPV_ARGS(device.GetAddressOf())))) {
     return internal::Fail("DLAA: the game's device has no D3D11.4 (shared fences).");
   }
   if (bridge.device == device && bridge.width == width && bridge.height == height && bridge.guides == guides
-      && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format) {
+      && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format && bridge.reflections == reflections) {
     return true;
   }
   bridge.color = {};
@@ -256,6 +282,8 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.rt_ambient = {};
   bridge.rt_light = {};
   bridge.rt_bounce = {};
+  bridge.rt_reflection = {};
+  bridge.rt_specular = {};
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();
   bridge.fg_hudless_rtv.Reset();
@@ -357,6 +385,9 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_ambient, &shared.rt_ambient)
                             && make(DXGI_FORMAT_R11G11B10_FLOAT, &bridge.rt_light, &shared.rt_light)
                             && make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_bounce, &shared.rt_bounce) && share_atlas()))
+                    && (!reflections
+                        || (make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_reflection, &shared.rt_reflection)
+                            && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_specular, &shared.rt_specular)))
                     && (fg_format == DXGI_FORMAT_UNKNOWN
                         || (make_frame(&bridge.fg_frame, &shared.fg_frame) && make_frame(&bridge.fg_hudless, &shared.fg_hudless)
                             && SUCCEEDED(device->CreateRenderTargetView(bridge.fg_hudless.Get(), nullptr,
@@ -382,6 +413,10 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     shared.rt_light = 0;
     shared.rt_bounce = 0;
   }
+  if (!reflections) {
+    shared.rt_reflection = 0;
+    shared.rt_specular = 0;
+  }
   if (fg_format == DXGI_FORMAT_UNKNOWN) {
     shared.fg_frame = 0;
     shared.fg_hudless = 0;
@@ -394,6 +429,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.guides = guides;
   bridge.ray_tracing = ray_tracing;
   bridge.fg_format = fg_format;
+  bridge.reflections = reflections;
   return true;
 }
 
@@ -476,6 +512,30 @@ inline bool TraceBounce(ID3D11DeviceContext* context, const BounceRequest& reque
     shared->rt_bounce_rays = request.rays;
     shared->rt_bounce_range = request.range;
     std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
+    shared->rt_path_flags = request.path_flags;
+    shared->rt_path_bounces = request.path_bounces;
+    shared->rt_path_samples = request.path_samples;
+    shared->rt_guides = (request.guides && bridge.guides) ? 1u : 0u;
+  });
+}
+
+// The reflections and specular occlusion (v8; the guides written on `context` before this) in the helper into
+// `bridge.rt_reflection` / `rt_specular`, which the game's GPU then waits for; false: not traced.
+inline bool TraceReflections(ID3D11DeviceContext* context, const ReflectRequest& request) {
+  if (!bridge.ray_tracing || !bridge.rt_reflection.texture) return false;
+  return internal::Request(context, [&](Shared* shared) {
+    shared->fg_request = 0;
+    shared->rt_request = 3;
+    shared->rt_frame = request.frame;
+    shared->rt_width = request.width;
+    shared->rt_height = request.height;
+    shared->rt_path_flags = request.flags;
+    shared->rt_path_bounces = request.bounces;
+    shared->rt_path_samples = request.samples;
+    shared->rt_bounce_range = request.range;
+    shared->rt_reflection_range = request.reflection_range;
+    std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
+    shared->rt_guides = (request.guides && bridge.guides) ? 1u : 0u;
   });
 }
 
@@ -579,6 +639,8 @@ inline void Release() {
   bridge.rt_ambient = {};
   bridge.rt_light = {};
   bridge.rt_bounce = {};
+  bridge.rt_reflection = {};
+  bridge.rt_specular = {};
   bridge.rt_atlas = {};
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();

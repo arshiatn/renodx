@@ -12,7 +12,7 @@
 // requests (bridge v4: the addon's rt_scene.hpp) run on another D3D12 device (rt_d3d12.hpp). Frame generation requests
 // (bridge v5: the addon's frame_generation.hpp, one per game present) present through Streamline's DLSS Frame Generation
 // into a child window over the game's (fg_d3d12.hpp). It quits with the game. It answers addons of bridge versions 2
-// to 5.
+// to 8.
 // Build (x64): see twattila/README.md.
 #include <windows.h>
 
@@ -132,16 +132,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       motion.Reset();
       output.Reset();
       fence.Reset();
-      // D3D12 opens them first (the D3D11 opens close the handles).
+      // D3D12 opens them first (the D3D11 opens close the handles); the guides serve Ray Reconstruction and the paths.
       reconstruction_open = false;
       if (version >= 3 && shared->diffuse_albedo != 0) {
         reconstruction_open = reconstruction.Initialize(adapter.Get(), folder)
                               && reconstruction.Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
                                                       shared->specular_albedo, shared->normals, shared->roughness},
                                                      shared->fence);
-        for (const uint64_t guide : {shared->diffuse_albedo, shared->specular_albedo, shared->normals, shared->roughness}) {
-          CloseHandle(reinterpret_cast<HANDLE>(guide));
-        }
       } else {
         reconstruction.Close();
       }
@@ -157,9 +154,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             if (texture != 0) CloseHandle(reinterpret_cast<HANDLE>(texture));
           }
         }
+        if (version >= 8) {
+          for (const uint64_t texture : {shared->rt_reflection, shared->rt_specular}) {
+            if (texture != 0) CloseHandle(reinterpret_cast<HANDLE>(texture));
+          }
+        }
         if (!scene_open) strncpy_s(shared->rt_status, scene.Status().c_str(), _TRUNCATE);
       } else {
         scene.Close();
+      }
+      if (version >= 3 && shared->diffuse_albedo != 0) {
+        for (const uint64_t guide : {shared->diffuse_albedo, shared->specular_albedo, shared->normals, shared->roughness}) {
+          CloseHandle(reinterpret_cast<HANDLE>(guide));
+        }
       }
       generation_open = false;
       if (version >= 5 && shared->fg_frame != 0) {
@@ -203,8 +210,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
       strncpy_s(shared->fg_status, generation.Status().c_str(), _TRUNCATE);
     } else if (fence && version >= 4 && shared->rt_request != 0) {
-      // Ray tracing (D3D12): its queue waits for the addon's value and signals the next (v7: request 2 the Light Bounce).
-      evaluated = scene_open && ((version >= 7 && shared->rt_request == 2) ? scene.Bounce(*shared) : scene.Trace(*shared, version));
+      // Ray tracing (D3D12): its queue waits for the addon's value and signals the next (v7: request 2 the Light Bounce,
+      // v8: request 3 the reflections).
+      evaluated = scene_open && ((version >= 7 && shared->rt_request >= 2) ? scene.Paths(*shared, version, shared->rt_request == 3)
+                                                                           : scene.Trace(*shared, version));
       if (!scene_open) {
         context4->Wait(fence.Get(), shared->value);
         context4->Signal(fence.Get(), shared->value + 1);

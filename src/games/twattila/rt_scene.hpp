@@ -21,6 +21,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <include/reshade.hpp>
@@ -37,6 +38,7 @@
 #include "./feature_settings.hpp"
 #include "./object_motion.hpp"
 #include "./light_bounce.hpp"
+#include "./ssr_hiz.hpp"
 
 // Ray-traced sun shadows and ambient occlusion (Experimental; Attila): DXR runs only in 64-bit processes, so the scene
 // goes to the DLAA helper (dlaa_bridge.h v4, dlaa_helper/rt_d3d12.hpp) and comes back as two visibilities. The scene
@@ -69,6 +71,15 @@ struct Settings {
   bool light_bounce = false;
   uint32_t light_bounce_rays = 4;
   float light_bounce_range = 10.f;  // metres
+  // Path tracing (bridge v8, dlaa_helper/rt_path.hlsli): the ray-traced Light Bounce's rays become paths going on past
+  // what the screen sees (`path_bounces` surfaces past the first), shaded from a world radiance cache and the game's
+  // lighting learned from the screen; the reflections' paths too.
+  bool path_tracing = false;
+  uint32_t path_bounces = 2;
+  // Ray-traced reflections and specular occlusion (bridge v8; the game's reflection pass reads them: Reflections()).
+  bool reflections = false;
+  bool specular_occlusion = false;
+  uint32_t reflection_samples = 1;
 };
 
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
@@ -94,6 +105,11 @@ struct Sliders {
   float light_bounce = 0.f;
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
+  float path_tracing = 0.f;
+  float path_bounces = 2.f;
+  float reflections = 0.f;
+  float specular_occlusion = 0.f;
+  float reflection_samples = 1.f;
 };
 
 inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa) {
@@ -105,10 +121,24 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .ambient_range = sliders.ambient_range,
       .ambient_rays = static_cast<uint32_t>(sliders.ambient_rays),
       .sun_softness = sliders.sun_softness,
-      .light_bounce = sliders.light_bounce != 0.f && dlaa,
+      .light_bounce = (sliders.light_bounce != 0.f || sliders.path_tracing != 0.f) && dlaa,
       .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),
       .light_bounce_range = sliders.light_bounce_range,
+      .path_tracing = sliders.path_tracing != 0.f && dlaa,
+      .path_bounces = static_cast<uint32_t>(sliders.path_bounces),
+      .reflections = sliders.reflections != 0.f && dlaa,
+      .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
+      .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples),
   };
+}
+
+// What the anti-aliasing's bridge makes for these settings: the ray tracing textures, the G-buffer guides (the paths read
+// them) and the reflections' textures.
+inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
+  aa->ray_tracing = settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections
+                    || settings.specular_occlusion;
+  aa->ray_traced_guides = settings.path_tracing || settings.reflections || settings.specular_occlusion;
+  aa->ray_traced_reflections = settings.reflections || settings.specular_occlusion;
 }
 
 namespace internal {
@@ -166,6 +196,9 @@ struct Runtime {
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
   uint64_t combined_frame = UINT64_MAX;   // the frame `combined` was made in
   uint64_t ambient_frame = UINT64_MAX;    // the frame an ambient occlusion pass took the traced ambient visibility
+  uint64_t reflected_frame = UINT64_MAX;  // the frame the reflections were asked for
+  bool reflected = false;                 // and whether they were traced
+  bool reflections_bound = false;         // the reflection pass's draw has them bound (no screen-space march)
   ID3D11ShaderResourceView* game_ao = nullptr;  // the AO it was made from (compared only)
   std::array<UINT, 2> traced_size = {};   // the render size traced
   std::array<float, 16> traced_view_projection = {};  // its camera's (the ray-traced Light Bounce's)
@@ -186,7 +219,8 @@ static std::span<const SceneShader> scene_shaders;
 static std::atomic_bool active = false;
 
 inline bool Enabled() {
-  return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.light_bounce;
+  return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.light_bounce || runtime.settings.reflections
+         || runtime.settings.specular_occlusion;
 }
 
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
@@ -599,12 +633,17 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
       .rays = runtime.settings.light_bounce_rays,
       .range = runtime.settings.light_bounce_range,
       .view_projection = runtime.traced_view_projection,
+      .path_flags = runtime.settings.path_tracing ? dlaa_bridge::RT_PATH_TRACING : 0u,
+      .path_bounces = runtime.settings.path_bounces,
+      .path_samples = runtime.settings.light_bounce_rays,
+      .guides = anti_aliasing::GuidesWritten(),
   };
   const bool bounced = dlaa_bridge::TraceBounce(native, request);
   if (bounced != runtime.logged_bounce) {
     runtime.logged_bounce = bounced;
-    renodx::utils::log::i("[Total War] Ray-traced Light Bounce: ", (bounced ? "tracing" : "not traced (the screen-space one)"), " (",
-                          width, " x ", height, ", ", request.rays, " rays).");
+    renodx::utils::log::i("[Total War] Ray-traced Light Bounce: ", (bounced ? (request.path_flags != 0 ? "path tracing" : "tracing")
+                                                                            : "not traced (the screen-space one)"),
+                          " (", width, " x ", height, ", ", request.rays, " rays).");
   }
   if (!bounced) return false;
   native->CopySubresourceRegion(traced, 0, 0, 0, 0, bridge.rt_bounce.texture.Get(), 0, &region);
@@ -612,6 +651,97 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
 }
 
 }  // namespace internal
+
+// The reflections and specular occlusion (the reflection texture: reflected light, the share of samples that met a
+// surface; the occlusion: 1 open), traced once a frame at the game's reflection pass (after this frame's trace: its
+// G-buffer guides and positions); both null when off or not traced this frame (the pass keeps the game's then).
+inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext* native) {
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  auto& bridge = dlaa_bridge::bridge;
+  if (!(runtime.settings.reflections || runtime.settings.specular_occlusion) || runtime.traced_frame != runtime.frame
+      || !bridge.rt_reflection.texture) {
+    return {};
+  }
+  if (runtime.reflected_frame != runtime.frame) {
+    runtime.reflected_frame = runtime.frame;
+    const dlaa_bridge::ReflectRequest request = {
+        .frame = static_cast<uint32_t>(runtime.frame),
+        .width = runtime.traced_size[0],
+        .height = runtime.traced_size[1],
+        .flags = (runtime.settings.reflections ? dlaa_bridge::RT_REFLECTIONS : 0u)
+                 | (runtime.settings.specular_occlusion ? dlaa_bridge::RT_SPECULAR_OCCLUSION : 0u),
+        .samples = runtime.settings.reflection_samples,
+        .bounces = runtime.settings.path_tracing ? runtime.settings.path_bounces : 0u,
+        .range = runtime.settings.light_bounce_range,
+        .reflection_range = 10.f,
+        .view_projection = runtime.traced_view_projection,
+        .guides = anti_aliasing::GuidesWritten(),
+    };
+    const bool reflected = dlaa_bridge::TraceReflections(native, request);
+    if (reflected != runtime.reflected) {
+      renodx::utils::log::i("[Total War] Ray-traced reflections: ", (reflected ? "tracing" : "not traced (the game's)"), ".");
+    }
+    runtime.reflected = reflected;
+  }
+  if (!runtime.reflected) return {};
+  return {bridge.rt_reflection.srv.Get(), bridge.rt_specular.srv.Get()};
+}
+
+// Binds the ray-traced reflections (t47, with the reflections on) and the specular occlusion (t46) for the game's
+// reflection pass's draw or dispatch (`compute`), or unbinds them (`bind` false). True: the reflections are bound (the
+// pass leaves out its screen-space march; rt_reflection.hlsli).
+inline bool BindReflections(reshade::api::command_list* cmd_list, bool compute, bool bind) {
+  ID3D11DeviceContext* native = internal::NativeContext(cmd_list);
+  if (native == nullptr) return false;
+  const auto views = (bind && internal::active.load(std::memory_order_relaxed)) ? Reflections(native)
+                                                                                 : std::array<ID3D11ShaderResourceView*, 2>{};
+  bool reflected = false;
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    reflected = views[0] != nullptr && internal::runtime.settings.reflections;
+  }
+  const std::array<ID3D11ShaderResourceView*, 2> bound = {views[1], reflected ? views[0] : nullptr};
+  if (compute) {
+    native->CSSetShaderResources(46, static_cast<UINT>(bound.size()), bound.data());
+  } else {
+    native->PSSetShaderResources(46, static_cast<UINT>(bound.size()), bound.data());
+  }
+  return reflected;
+}
+
+// The game's reflection pass (environment_specular_light, Attila's shaders: Attila, Thrones), before its draws: the
+// ray-traced reflections; without them the screen-space march's pyramid and resolve (ssr_hiz.hpp) as before. True:
+// draw.
+inline bool OnReflectionDraw(reshade::api::command_list* cmd_list) {
+  const bool reflected = BindReflections(cmd_list, false, true);
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    internal::runtime.reflections_bound = reflected;
+  }
+  return reflected || ssr_hiz::OnReflectionDraw(cmd_list);
+}
+
+// After its draws: the views unbound, the screen-space march's resolve when it ran.
+inline void OnReflectionDrawn(reshade::api::command_list* cmd_list) {
+  bool reflected = false;
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    reflected = std::exchange(internal::runtime.reflections_bound, false);
+  }
+  if (!reflected) ssr_hiz::OnReflectionDrawn(cmd_list);
+  BindReflections(cmd_list, false, false);
+}
+
+// The game's screen-space reflection march and its blurs (Warhammer, Warhammer II: environment_specular_light raycast,
+// filter_blur): left out while the ray-traced reflections replace it in the resolve. True: dispatch.
+inline bool OnReflectionMarch(reshade::api::command_list* cmd_list) {
+  ID3D11DeviceContext* native = internal::NativeContext(cmd_list);
+  if (native == nullptr || !internal::active.load(std::memory_order_relaxed)) return true;
+  const auto views = Reflections(native);
+  const std::unique_lock lock(internal::runtime.mutex);
+  return views[0] == nullptr || !internal::runtime.settings.reflections;
+}
 
 // The game's ambient occlusion pass (pre callback): this frame's trace; after it (post), its result times the traced
 // ambient visibility.
@@ -922,9 +1052,11 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 }
 
 // The settings after the anti-aliasing's (Attila's ambient occlusion also has Alone: `ambient_alone`).
+// `reflection_pass`: the game's reflection pass reads the ray-traced reflections (Attila, Thrones, Warhammer,
+// Warhammer II); the others get no reflection settings.
 inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* settings, Sliders* sliders,
                            const feature_settings::AaSliders* aa,
-                           bool ambient_alone = false) {
+                           bool ambient_alone = false, bool reflection_pass = false) {
   const auto dlaa_on = [aa] { return aa->method == 5.f; };
   const std::vector<std::string> ambient_labels = ambient_alone ? std::vector<std::string>{"Off", "On", "Alone"}
                                                                 : std::vector<std::string>{"Off", "On"};
@@ -1040,7 +1172,70 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 50.f,
           .format = "%.0f m",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce != 0.f; },
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && (sliders->light_bounce != 0.f || sliders->path_tracing != 0.f); },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "PathTracing",
+          .binding = &sliders->path_tracing,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Path Tracing (Experimental)",
+          .section = feature_settings::AA_SECTION,
+          .tooltip = "The Light Bounce's light path traced: light bouncing several times, also from what is off screen.\n"
+                     "Needs the Light Bounce on, DLAA, an RTX GPU and renodx-tw-dlaa64.exe. Heavy.",
+          .labels = {"Off", "On"},
+          .is_enabled = dlaa_on,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "PathTracingBounces",
+          .binding = &sliders->path_bounces,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 2.f,
+          .label = "Path Tracing Bounces",
+          .section = feature_settings::AA_SECTION,
+          .tooltip = "Bounces past the first. More: brighter shade, heavier.",
+          .min = 1.f,
+          .max = 4.f,
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->path_tracing != 0.f; },
+      },
+  });
+  if (!reflection_pass) return;
+  settings->insert(settings->end(), {
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedReflections",
+          .binding = &sliders->reflections,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Reflections (Experimental)",
+          .section = feature_settings::AA_SECTION,
+          .tooltip = "Reflections on armour, metal and water from rays: what is off screen or hidden shows too.\n"
+                     "Needs DLAA, an RTX GPU, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
+          .labels = {"Off", "On"},
+          .is_enabled = dlaa_on,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedReflectionSamples",
+          .binding = &sliders->reflection_samples,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Ray-Traced Reflection Samples",
+          .section = feature_settings::AA_SECTION,
+          .tooltip = "Rays per pixel on rough surfaces: less noise. Heavier.",
+          .min = 1.f,
+          .max = 8.f,
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSpecularOcclusion",
+          .binding = &sliders->specular_occlusion,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Specular Occlusion (Experimental)",
+          .section = feature_settings::AA_SECTION,
+          .tooltip = "The sky's reflection dimmed where something blocks it.\n"
+                     "Needs DLAA, an RTX GPU, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
+          .labels = {"Off", "On"},
+          .is_enabled = dlaa_on,
       },
   });
 }

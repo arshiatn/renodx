@@ -413,7 +413,17 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       material shaders, vertex pulling: rt_port.py's capture VS do not fit); TW RT reflections / PT; TW PCSS (the sun is
       evaluated in 31+ directionallight permutations; RT soft shadows cover it); WH3 DLSS below 100% / RR.
     - Game changes restored (restore_notes.txt): ini keys, preferences, deployed DLLs. Locked until a reboot: Ryse's
-      Streamline / dlssd / dlssg DLLs, WH2 renodx-tw-dlaa64.exe.old15.
+      Streamline / dlssd / dlssg DLLs, WH2 renodx-tw-dlaa64.exe.old15 (deleted at batch 3's start).
+20. (ATN, 2026-10-27 13:00, BATCH 3, "don't stop until finished, hours / days") 1) everything still missing: RT + PT in
+    Ryse, Expeditions, WH3 (+ RR, DLSS below 100%), Shogun 2, TW 7 RT reflections + PT; 2) Ryse VRR flicker with FG
+    (Reflex sleep / CPU waits in talesofarise_dlss/frame_generation.hpp); 2.5) every RT effect + PT + all accelerators
+    (DXR 1.0 DispatchRays, 1.1 RayQuery, 1.2 OMM + SER, NVAPI: Mega Geometry clusters / PTLAS, LSS) in all games;
+    3) double-work check at the end; 4) patch notes, licences, report of everything since 2026-10-27 01:00.
+    Authorized: the five in-game permissions again (scripted desktop, game-folder changes reverted at the end, first-
+    start prompts, in-game settings put back, saves / custom battles never overwritten); downloads: NVAPI (MIT,
+    build\downloads\nvapi), PresentMon 2.6.0 (MIT, build\downloads\presentmon; works unelevated: ATN is in Performance
+    Log Users), other official NVIDIA / AMD / Microsoft / Intel SDKs with permissive licences (list each in the report);
+    local git checkpoint commits on atn-mods (never pushed). Checkpoint e92046f6 = everything before batch 3.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

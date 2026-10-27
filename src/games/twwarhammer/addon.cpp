@@ -204,6 +204,17 @@ void BuildRuntimeData() {
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
   };
 
+  // Reflections: the ray-traced ones in the resolve (ssr00, twattila/rt_scene.hpp, rt_reflection.hlsli); while they
+  // replace the screen-space march, the march (raycast) and its blurs are left out.
+  custom_shaders[0x6B80E35B].on_draw = [](auto* cmd_list) {
+    twattila::rt_scene::BindReflections(cmd_list, true, true);
+    return true;
+  };
+  custom_shaders[0x6B80E35B].on_drawn = [](auto* cmd_list) { twattila::rt_scene::BindReflections(cmd_list, true, false); };
+  for (const uint32_t hash : {0x021D7515u, 0x4EBDA7FAu, 0x537CAD4Bu}) {
+    custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionMarch;
+  }
+
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
   auto v31_slider = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
@@ -1283,7 +1294,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
-  aa_settings.ray_tracing = rt_settings.sun_shadows || rt_settings.ambient_occlusion;
+  twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
@@ -1579,7 +1590,7 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
 
   // Appended Settings (HDR10)
   {

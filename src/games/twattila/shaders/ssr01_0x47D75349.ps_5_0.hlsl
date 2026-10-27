@@ -83,6 +83,7 @@ Texture2D<float4> t_jitter : register(t9);
 #include "../shared.h"
 #endif
 #include "../ssr_hiz.hlsli"
+#include "../rt_reflection.hlsli"
 
 // 3Dmigoto declarations
 #define cmp -
@@ -160,6 +161,12 @@ void main(
   r2.z = saturate(-r5.y);
   r6.xyz = r6.xyz * r1.www + -r1.xyz;
   r1.xyz = r2.zzz * r6.xyz + r1.xyz;
+  // RenoDX: ray-traced reflections (rt_reflection.hlsli): with them the screen-space march is skipped (their light
+  // where the rays met something, this environment for the rest); with the specular occlusion alone the environment
+  // is dimmed where something blocks it.
+  const float2 rt_pixel = v0.xy / g_buffers_scale;
+  const bool rt_reflected = RtReflectionsBound();
+  if (!rt_reflected) r1.xyz = RtOccludedEnvironment(rt_pixel, r1.xyz);
   r1.w = dot(r5.xyz, -r3.xyw);
   r1.w = max(0, r1.w);
   r1.w = log2(r1.w);
@@ -174,7 +181,7 @@ void main(
   r2.z = r2.w + -r2.x;
   r1.w = r1.w * r2.z + r2.x;
   r2.x = cmp(0 < r1.w);
-  if (r2.x != 0) {
+  if (r2.x != 0 && !rt_reflected) {
     r2.x = g_depth_falloff_range.y + -r3.z;
     r2.z = g_depth_falloff_range.y + -g_depth_falloff_range.x;
     r2.x = saturate(r2.x / r2.z);
@@ -310,7 +317,7 @@ void main(
       o0.xyz = r1.xyz;
     }
   } else {
-    o0.xyz = r1.xyz;
+    o0.xyz = rt_reflected ? RtReflection(rt_pixel, r1.xyz) : r1.xyz;
   }
   r1.x = (int)r2.y & 4;
   r0.z = s_ssao.Sample(s_ssao_s, r0.zw).x;

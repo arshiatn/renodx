@@ -1330,7 +1330,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
-  aa_settings.ray_tracing = rt_settings.sun_shadows || rt_settings.ambient_occlusion;
+  twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   twattila::feature_settings::UpdateSsr(&shader_injection);
   shader_injection.ssao_scale =

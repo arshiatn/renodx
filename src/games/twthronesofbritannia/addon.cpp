@@ -216,10 +216,11 @@ void BuildRuntimeData() {
   UpgradeRTVReplaceShader(0x6E20B0EF),   //t18 constant tone mapper
       __ALL_CUSTOM_SHADERS,
   };
-  // The reflections' pass (environment_specular_light, Attila's shaders): the hierarchical march's pyramid and resolve.
+  // The reflections' pass (environment_specular_light, Attila's shaders): the ray-traced reflections, else the
+  // hierarchical march's pyramid and resolve (rt_scene.hpp, ssr_hiz.hpp).
   for (const uint32_t hash : {0x66006BEAu, 0x47D75349u}) {
-    custom_shaders[hash].on_draw = [](auto* cmd_list) { return twattila::ssr_hiz::OnReflectionDraw(cmd_list); };
-    custom_shaders[hash].on_drawn = twattila::ssr_hiz::OnReflectionDrawn;
+    custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionDraw;
+    custom_shaders[hash].on_drawn = twattila::rt_scene::OnReflectionDrawn;
   }
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1343,7 +1344,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
-  aa_settings.ray_tracing = rt_settings.sun_shadows || rt_settings.ambient_occlusion;
+  twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale =
       twattila::ao_pass::RESOLUTION_SCALES[std::clamp(static_cast<int>(shader_injection.ssao_resolution), 0, 3)];
@@ -1626,7 +1627,7 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
 
   // Appended Settings (HDR10)
   {

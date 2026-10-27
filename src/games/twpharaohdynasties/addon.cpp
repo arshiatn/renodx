@@ -1568,7 +1568,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
-  aa_settings.ray_tracing = rt_settings.sun_shadows || rt_settings.ambient_occlusion;
+  twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   twpharaohdynasties::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
   // After the at-start tests' thread (one writer at a time).

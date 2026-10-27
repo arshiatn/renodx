@@ -87,6 +87,9 @@ struct Settings {
   bool ray_reconstruction = false;          // DLAA / DLSS: NVIDIA's Ray Reconstruction (guides from the G-buffer)
   uint32_t ray_reconstruction_preset = 0;  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset (0: NVIDIA's)
   bool ray_tracing = false;                // DLAA / DLSS: the bridge's ray tracing textures (rt_scene.hpp)
+  // DLAA / DLSS: the G-buffer guides for ray tracing's paths (path tracing, reflections) and the reflections' textures.
+  bool ray_traced_guides = false;
+  bool ray_traced_reflections = false;
   uint32_t frame_generation = 0;           // DLAA / DLSS: frames shown per rendered frame (2-4; 0 off: frame_generation.hpp)
   bool reflex_boost = false;
   // DLSS: the textures' levels below 100% (texture_lod_bias.hpp): 0 the game's, 1 as sharp as at the display size, 2
@@ -564,8 +567,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     // Ray Reconstruction's guides from the G-buffer (normal, colour at the draw's first slots), once a frame.
     auto& objects = runtime.objects;
     auto& bridge = dlaa_bridge::bridge;
-    if (runtime.settings.method != Method::DLAA || !runtime.settings.ray_reconstruction || objects.guides_frame == runtime.frame
-        || !objects.rr_guides || !bridge.guides) {
+    if (runtime.settings.method != Method::DLAA || !(runtime.settings.ray_reconstruction || runtime.settings.ray_traced_guides)
+        || objects.guides_frame == runtime.frame || !objects.rr_guides || !bridge.guides) {
       return {};
     }
     // Channels 1-3 (normal, colour, constants: each game's aa_rr_guides reads what its G-buffer keeps there).
@@ -867,8 +870,9 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     depth_view = CopyDepth(device.Get(), native, runtime.scene_depth.Get());
     if (depth_view == nullptr) return;
     if (method == Method::DLAA
-        && !dlaa_bridge::Prepare(device.Get(), objects.width, objects.height, runtime.settings.ray_reconstruction,
-                                 runtime.settings.ray_tracing, frame_generation::Format())) {
+        && !dlaa_bridge::Prepare(device.Get(), objects.width, objects.height,
+                                 runtime.settings.ray_reconstruction || runtime.settings.ray_traced_guides, runtime.settings.ray_tracing,
+                                 frame_generation::Format(), runtime.settings.ray_traced_reflections)) {
       return;
     }
     continued = (objects.history_valid || method == Method::DLAA) && runtime.applied_frame + 1 == runtime.frame
@@ -1287,6 +1291,12 @@ inline bool MainCamera(ID3D11Buffer* buffer, internal::Camera* camera) {
   if (upload == internal::runtime.uploads.end() || !upload->camera.valid) return false;
   *camera = upload->camera;
   return true;
+}
+
+// Whether the G-buffer guides (Ray Reconstruction's, also ray tracing's paths') were written this frame.
+inline bool GuidesWritten() {
+  const std::unique_lock lock(internal::runtime.mutex);
+  return internal::runtime.objects.guides_frame == internal::runtime.frame;
 }
 
 // DLAA's render size this frame (DLSS: below the display's).
