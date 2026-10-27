@@ -128,7 +128,7 @@ struct Shared {
   uint32_t fg_hudless_valid = 0;
   uint32_t fg_reflex_boost = 0;
   uint32_t fg_frame_index = 0;  // counts up by one each present
-  uint32_t fg_padding = 0;
+  uint32_t fg_frame_limit = 0;  // Reflex's frame rate limit, rendered frames per second (0: none; older addons 0)
   float fg_view_to_clip[16] = {};
   float fg_view_projection[16] = {};
   float fg_previous_view_projection[16] = {};

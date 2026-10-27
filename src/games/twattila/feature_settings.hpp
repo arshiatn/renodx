@@ -58,6 +58,7 @@ struct AaSliders {
   float ray_reconstruction = 0.f;  // DLAA's: off, NVIDIA's preset, D, E, F
   float frame_generation = 0.f;    // DLAA's: off, 2x, 3x, 4x
   float reflex_boost = 0.f;
+  float frame_limit = 0.f;         // frame generation's Reflex limit, rendered frames per second (0: off)
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
 };
 
@@ -103,6 +104,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .ray_reconstruction_preset = std::array<uint32_t, 5>{0u, 0u, 4u, 5u, 6u}[std::clamp(static_cast<int>(sliders.ray_reconstruction), 0, 4)],
       .frame_generation = (sliders.frame_generation >= 1.f ? static_cast<uint32_t>(std::min(sliders.frame_generation, 3.f)) + 1u : 0u),
       .reflex_boost = (sliders.reflex_boost != 0.f),
+      .frame_limit = static_cast<uint32_t>(std::clamp(sliders.frame_limit, 0.f, 240.f)),
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
   };
 }
@@ -411,6 +413,21 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .section = AA_SECTION,
                                             .tooltip = "Keeps the GPU's clocks up with frame generation (Reflex is always on with it).",
                                             .labels = {"Off", "On"},
+                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "FrameGenerationFrameLimit",
+                                            .binding = &sliders->frame_limit,
+                                            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                                            .default_value = 0.f,
+                                            .label = "Frame Rate Limit",
+                                            .section = AA_SECTION,
+                                            .tooltip = "Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it). A cap\n"
+                                                       "the game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.\n"
+                                                       "0: off.",
+                                            .min = 0.f,
+                                            .max = 240.f,
+                                            .format = "%.0f fps",
                                             .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
                                         },
                                     });

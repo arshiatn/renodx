@@ -92,6 +92,7 @@ struct Settings {
   bool ray_traced_reflections = false;
   uint32_t frame_generation = 0;           // DLAA / DLSS: frames shown per rendered frame (2-4; 0 off: frame_generation.hpp)
   bool reflex_boost = false;
+  uint32_t frame_limit = 0;  // frame generation's Reflex limit, rendered frames per second (0: none)
   // DLSS: the textures' levels below 100% (texture_lod_bias.hpp): 0 the game's, 1 as sharp as at the display size, 2
   // one step sharper (NVIDIA's advice), 3 two.
   int texture_lod_bias = 2;
@@ -1194,6 +1195,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   frame_generation::Update({
       .multiplier = (settings.method == Method::DLAA ? settings.frame_generation : 0u),
       .reflex_boost = settings.reflex_boost,
+      .frame_limit = settings.frame_limit,
   });
   const std::unique_lock lock(internal::runtime.mutex);
   auto& runtime = internal::runtime;

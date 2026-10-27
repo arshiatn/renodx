@@ -38,6 +38,7 @@ using Microsoft::WRL::ComPtr;
 struct Settings {
   uint32_t multiplier = 0;  // frames presented per rendered frame (2-4); 0: off
   bool reflex_boost = false;
+  uint32_t frame_limit = 0;  // Reflex's frame rate limit, rendered frames per second (0: none)
 };
 
 // A frame's DLAA inputs (their size and jitter, the depth and motion are the bridge's) and its camera (row vectors,
@@ -125,6 +126,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     const Inputs& inputs = state.inputs;
     request.multiplier = settings.multiplier;
     request.reflex_boost = settings.reflex_boost;
+    request.frame_limit = settings.frame_limit;
     request.hudless = hudless;
     request.inputs = kept;
     request.frame_index = ++state.frame_index;

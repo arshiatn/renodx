@@ -182,10 +182,12 @@ class FrameGeneration12 {
       SignalOnly(value);
       return false;
     }
-    if (shared->fg_reflex_boost != reflex_boost_) {
+    if (shared->fg_reflex_boost != reflex_boost_ || shared->fg_frame_limit != frame_limit_) {
       reflex_boost_ = shared->fg_reflex_boost;
+      frame_limit_ = shared->fg_frame_limit;
       sl::ReflexOptions reflex = {};
       reflex.mode = (reflex_boost_ != 0 ? sl::ReflexMode::eLowLatencyWithBoost : sl::ReflexMode::eLowLatency);
+      reflex.frameLimitUs = (frame_limit_ != 0 ? 1000000u / std::min(frame_limit_, 1000u) : 0u);
       set_reflex_(reflex);
     }
     const uint32_t frame = shared->fg_frame_index;
@@ -615,6 +617,7 @@ class FrameGeneration12 {
   DXGI_FORMAT chain_format_ = DXGI_FORMAT_UNKNOWN;
   UINT tearing_ = 0;
   uint32_t reflex_boost_ = 0;
+  uint32_t frame_limit_ = 0;  // Reflex's frame rate limit as last set (rendered frames per second; 0: none)
   uint32_t applied_generated_ = UINT32_MAX;
   bool applied_hudless_ = false;
   uint32_t max_frames_ = 0;

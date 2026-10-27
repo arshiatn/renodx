@@ -1966,6 +1966,7 @@ struct DlssSliders {
   float preset = 1.f;  // K, M, L
   float frame_generation = 0.f;  // off, 2x, 3x, 4x (restart)
   float reflex_boost = 0.f;      // (restart)
+  float frame_limit = 0.f;       // Reflex's, rendered frames per second (0: off)
 } dlss_sliders;
 bool frame_generation = false;  // started at launch
 twattila::feature_settings::AaSliders aa_sliders;
@@ -2078,6 +2079,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
       .enabled = dlss_sliders.enabled != 0.f,
       .preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(dlss_sliders.preset), 0, 2)],
   });
+  talesofarise::frame_generation::frame_limit.store(static_cast<uint32_t>(std::clamp(dlss_sliders.frame_limit, 0.f, 240.f)));
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
@@ -2398,6 +2400,20 @@ void ConfigureAddon() {
             .labels = {"Off", "On"},
             .is_enabled = [] { return dlss_sliders.enabled != 0.f && dlss_sliders.frame_generation != 0.f; },
             .on_change = write_frame_generation,
+        },
+        new renodx::utils::settings::Setting{
+            .key = "DlssFrameLimit",
+            .binding = &dlss_sliders.frame_limit,
+            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+            .default_value = 0.f,
+            .label = "Frame Rate Limit",
+            .section = twattila::feature_settings::DLSS_SECTION,
+            .tooltip = "Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it). A cap the\n"
+                       "game always reaches keeps the frame rate steady: less VRR flicker on OLED displays. 0: off.",
+            .min = 0.f,
+            .max = 240.f,
+            .format = "%.0f fps",
+            .is_enabled = [] { return dlss_sliders.enabled != 0.f && dlss_sliders.frame_generation != 0.f; },
         },
     });
   }

@@ -424,6 +424,23 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     build\downloads\nvapi), PresentMon 2.6.0 (MIT, build\downloads\presentmon; works unelevated: ATN is in Performance
     Log Users), other official NVIDIA / AMD / Microsoft / Intel SDKs with permissive licences (list each in the report);
     local git checkpoint commits on atn-mods (never pushed). Checkpoint e92046f6 = everything before batch 3.
+    PROGRESS (batch 3):
+    - TW helper17 (build\tw_dlaa_helper17, bridge v8): path tracing (Light Bounce texels: paths with a world radiance
+      cache + learned lighting, rt_path.hlsli), ray-traced reflections + specular occlusion (request 3), DXR 1.2 SER
+      ray generation shaders (DispatchRays) + OMM, DXR 1.1 compute fallback. GPU harness
+      tools\tw\rt_harness\tw_rt_harness.cpp (build\tw_rt_harness: the addon side of dlaa_bridge.hpp + the helper, a
+      ground plane and a red wall): sun shadow, AO, mirror reflections (wall red, sky above), specular occlusion,
+      path-traced red bounce: ALL PASS in DXR 1.2 and 1.1 (2026-10-27 14:20). Single-frame path noise is expected (the
+      Light Bounce's resolve / denoiser accumulate).
+    - Reflection passes reading it (rt_reflection.hlsli t46 occlusion / t47 reflection): Attila + Thrones ssr00/ssr01
+      (rt_scene OnReflectionDraw: the hierarchical march skipped when the rays reflect), WH1 / WH2 environment_specular_
+      light cs resolve (ssr00_0x6B80E35B / ssr00_0x7E1CDD0A, 3Dmigoto decompiles fixed against the disassembly: WH2's
+      |cb2[0].z| = abs(sun_direction.y), udiv by 3, icb static) with the raycast + blur skipped (OnReflectionMarch).
+      Rome II / Troy / Pharaoh: no object reflection pass (water SSR only: ssr_new apply / waterreflection00; water is
+      not in the traced positions), so their reflection settings are hidden (AppendSettings reflection_pass).
+    - Fix: rt_scene::Configure in all 7 (Light Bounce alone never got RT textures before).
+    - In-game test blocked: a Ryse.exe from the FG test (pid 4036) cannot be killed (access denied, needs a reboot) and
+      SetCursorPos / input no longer reach games (WH2 menu ignored clicks / keys). Retest after ATN's reboot.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

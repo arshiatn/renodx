@@ -66,6 +66,9 @@ static std::atomic<uint32_t> multiplier = 2;
 static std::atomic_bool reflex_boost = false;
 // Debug (ReShade.ini FrameGenerationReflexSleep, default on): Reflex's sleep after each present. Off keeps its markers.
 static std::atomic_bool reflex_sleep = true;
+// Reflex's frame rate limit: rendered frames per second (frame generation multiplies them); 0: none. Steady frames keep
+// a VRR display's refresh steady (OLEDs flicker as it changes).
+static std::atomic<uint32_t> frame_limit = 0;
 
 // The camera as Streamline takes it: matrices for row vectors (v x M, as UE's), without the jitter; its near and far
 // planes and whether depth is reversed (UE: near from the projection, UE's world size as far, reversed).
@@ -358,9 +361,8 @@ class SwapChain final : public IDXGISwapChain4 {
     Resolve(sl::kFeatureReflex, &api.sleep, "slReflexSleep");
     Resolve(sl::kFeaturePCL, &api.set_marker, "slPCLSetMarker");
     reflex_boost_ = reflex_boost.load();
-    sl::ReflexOptions reflex = {};
-    reflex.mode = (reflex_boost_ ? sl::ReflexMode::eLowLatencyWithBoost : sl::ReflexMode::eLowLatency);
-    Check(api.set_reflex_options(reflex), "Turning on Reflex");
+    frame_limit_ = frame_limit.load();
+    Check(api.set_reflex_options(ReflexOptions(reflex_boost_, frame_limit_)), "Turning on Reflex");
     attached = true;
 
     // Streamline's proxies of the device and queue make its swap chain. The copies run on a queue of their own: frame
@@ -492,6 +494,9 @@ class SwapChain final : public IDXGISwapChain4 {
         const std::unique_lock lock(state.mutex);
         state.applied = {};
       }
+      // Back on two presents later: off and on in one frame race Present in Streamline (its "repeated
+      // slDLSSGSetOptions" warning at every resize; the screen then kept showing old frames).
+      presents_after_resize_ = 2;
       // D3D12 resizes only once nothing uses the old buffers; ReShade has released its own.
       WaitIdle();
       back_buffer_.Reset();
@@ -705,11 +710,10 @@ class SwapChain final : public IDXGISwapChain4 {
     }
 
     if (attached) {
-      if (const bool boost = reflex_boost.load(); boost != reflex_boost_) {
+      if (const bool boost = reflex_boost.load(); boost != reflex_boost_ || frame_limit.load() != frame_limit_) {
         reflex_boost_ = boost;
-        sl::ReflexOptions reflex = {};
-        reflex.mode = (boost ? sl::ReflexMode::eLowLatencyWithBoost : sl::ReflexMode::eLowLatency);
-        Report(api.set_reflex_options(reflex), "Setting the Reflex mode");
+        frame_limit_ = frame_limit.load();
+        Report(api.set_reflex_options(ReflexOptions(reflex_boost_, frame_limit_)), "Setting the Reflex mode");
       }
       // What to generate: off on frames without DLSS (menus, loading), keeping its memory meanwhile.
       const uint32_t wanted_multiplier = multiplier.load();
@@ -726,6 +730,10 @@ class SwapChain final : public IDXGISwapChain4 {
       if (!wanted.dynamic) {
         const uint32_t frames = (wanted_multiplier == 0 ? std::max(most, 2u) : std::max(wanted_multiplier, 2u));
         wanted.generated_frames = (most != 0 ? std::min(frames, most) : frames) - 1;
+      }
+      if (presents_after_resize_ != 0) {
+        --presents_after_resize_;
+        wanted = {};
       }
       if (!wanted.on) wanted = {};
       bool changed = false;
@@ -904,10 +912,20 @@ class SwapChain final : public IDXGISwapChain4 {
     }
   }
 
+  // Reflex's options: low latency (with Boost), the frame rate limit (frames per second; 0: none).
+  static sl::ReflexOptions ReflexOptions(bool boost, uint32_t limit) {
+    sl::ReflexOptions options = {};
+    options.mode = (boost ? sl::ReflexMode::eLowLatencyWithBoost : sl::ReflexMode::eLowLatency);
+    options.frameLimitUs = (limit != 0 ? 1000000u / limit : 0u);
+    return options;
+  }
+
   std::atomic<ULONG> references_ = 1;
   HWND window_ = nullptr;
   UINT tearing_flag_ = 0;  // DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING when the display allows it
   bool reflex_boost_ = false;  // as Reflex was last set
+  uint32_t frame_limit_ = 0;
+  uint32_t presents_after_resize_ = 0;  // frame generation stays off for these presents
   DXGI_SWAP_CHAIN_DESC desc_ = {};  // as the game sees it
 
   ComPtr<ID3D11Device5> device11_;
@@ -1408,6 +1426,14 @@ inline void DrawSettings(const char* section, bool* enabled) {
       ImGui::SetTooltip("NVIDIA Reflex is always on with frame generation (lower latency). Boost also keeps the GPU's\n"
                         "clocks up when the CPU limits the frame rate.");
     }
+    if (int limit = static_cast<int>(frame_limit.load()); ImGui::SliderInt("Frame rate limit", &limit, 0, 240, limit == 0 ? "Off" : "%d fps")) {
+      frame_limit.store(static_cast<uint32_t>(std::clamp(limit, 0, 240)));
+      reshade::set_config_value(nullptr, section, "FrameGenerationFrameLimit", frame_limit.load());
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it). A cap the\n"
+                        "game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.");
+    }
     if (const std::string status = Status(); !status.empty()) {
       ImGui::TextWrapped("Frame generation: %s", status.c_str());
     } else {
@@ -1427,6 +1453,9 @@ inline void LoadSettings(const char* section, bool* enabled) {
   }
   if (bool sleep = true; reshade::get_config_value(nullptr, section, "FrameGenerationReflexSleep", sleep)) {
     reflex_sleep.store(sleep);
+  }
+  if (uint32_t limit = 0; reshade::get_config_value(nullptr, section, "FrameGenerationFrameLimit", limit)) {
+    frame_limit.store(std::min(limit, 240u));
   }
 }
 

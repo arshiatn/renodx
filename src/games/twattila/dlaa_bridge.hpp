@@ -99,6 +99,7 @@ struct FrameRequest {
   HWND window = nullptr;
   uint32_t multiplier = 0;
   bool reflex_boost = false;
+  uint32_t frame_limit = 0;  // Reflex's, rendered frames per second (0: none)
   bool hudless = false;
   bool inputs = false;
   uint32_t frame_index = 0;
@@ -595,6 +596,7 @@ inline bool PresentFrame(ID3D11DeviceContext* context, const FrameRequest& reque
     shared->fg_window = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(request.window));
     shared->fg_multiplier = request.multiplier;
     shared->fg_reflex_boost = (request.reflex_boost ? 1u : 0u);
+    shared->fg_frame_limit = request.frame_limit;
     shared->fg_hudless_valid = (request.hudless ? 1u : 0u);
     shared->fg_inputs = (request.inputs ? 1u : 0u);
     shared->fg_frame_index = request.frame_index;
