@@ -784,12 +784,17 @@ void DrawObjectMotion(Context& command, const void*) {
     native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &bones);
   }
   if (unit_points) {
+    ComPtr<ID3D11GeometryShader> game_geometry_shader;
+    native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
+    native->GSSetShader(nullptr, nullptr, 0);
     native->VSSetShader(objects.record_shaders[index].Get(), nullptr, 0);
     native->PSSetShader(objects.unit_record_pixel_shader.Get(), nullptr, 0);
     native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
     native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 1, static_cast<UINT>(table.size()), table.data(), nullptr);
     native->OMSetDepthStencilState(objects.capture_depth_state.Get(), 0);
     native->RSSetState(objects.capture_rasterizer.Get());
+    // Not the game's blend state: its alpha to coverage would drop the point (no colour out) and its writes.
+    native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
     if constexpr (INDEXED) {
       native->DrawIndexedInstanced(1, arguments.instance_count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
     } else {
@@ -797,6 +802,7 @@ void DrawObjectMotion(Context& command, const void*) {
     }
     native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
     native->IASetPrimitiveTopology(topology);
+    native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   }
   const bool unit_table = shader.kind == MotionKind::UNIT && !unit_points;
   if (redraw) {
