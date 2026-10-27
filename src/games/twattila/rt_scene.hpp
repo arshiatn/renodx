@@ -174,6 +174,29 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
     if (native == nullptr) return {};
     auto& runtime = internal::runtime;
     const std::unique_lock lock(runtime.mutex);
+    // The Debug View's Screen-Space AO: this pass's target (the game's or GT-VBAO's ambient occlusion).
+    if (runtime.settings.debug_view >= 8) {
+      ComPtr<ID3D11RenderTargetView> target;
+      native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+      ComPtr<ID3D11Resource> resource;
+      if (target) target->GetResource(resource.GetAddressOf());
+      auto& objects = runtime.objects;
+      if (resource && resource.Get() != objects.debug_ambient_resource.Get()) {
+        D3D11_RENDER_TARGET_VIEW_DESC target_desc = {};
+        target->GetDesc(&target_desc);
+        const D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = target_desc.Format,
+                                                           .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+                                                           .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
+        objects.debug_ambient.Reset();
+        objects.debug_ambient_resource = resource;
+        ComPtr<ID3D11Device> device;
+        native->GetDevice(device.GetAddressOf());
+        if (target_desc.ViewDimension == D3D11_RTV_DIMENSION_TEXTURE2D) {
+          device->CreateShaderResourceView(resource.Get(), &view_desc, objects.debug_ambient.GetAddressOf());
+        }
+      }
+      runtime.debug_ambient_frame = runtime.frame;
+    }
     ComPtr<ID3D11ShaderResourceView> depth;
     ComPtr<ID3D11Buffer> camera;
     native->PSGetShaderResources(ao_pass::internal::DEPTH_SLOT, 1, depth.GetAddressOf());
@@ -930,10 +953,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Ray Tracing Debug View",
           .section = section,
-          .tooltip = "A ray-traced effect's raw result as the picture (All: the seven tiled), to check they work.\n"
-                     "Magenta: it made nothing (off or not traced).",
+          .tooltip = "A ray-traced effect's raw result as the picture (All: every one tiled), to check they work.\n"
+                     "Screen-Space AO: the game's or GT-VBAO's. Magenta: it made nothing (off or not traced).",
           .labels = {"Off", "Sun Shadows", "Ambient Occlusion", "Light Bounce", "Reflections", "Specular Occlusion",
-                     "Point Light Shadows", "Fog Shadows", "All"},
+                     "Point Light Shadows", "Fog Shadows", "Screen-Space AO", "All"},
           .is_enabled = dlaa_on,
           .is_visible = [] { return internal::debug_view_drawn.load(); },
       },

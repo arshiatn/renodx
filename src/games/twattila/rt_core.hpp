@@ -93,7 +93,8 @@ struct Settings {
   // Ray-traced sun shadows only (Experimental): the game's sun shadow map gets no casters (InstallShadowsOnly).
   bool shadows_only = false;
   // The Debug View (DrawDebugView): 0 off, 1 sun shadows, 2 ambient occlusion, 3 Light Bounce, 4 reflections, 5 specular
-  // occlusion, 6 point light shadows, 7 fog shadows, 8 all seven tiled.
+  // occlusion, 6 point light shadows, 7 fog shadows, 8 the game's AO pass (screen space; a host's hook keeps it), 9 all
+  // eight tiled.
   uint32_t debug_view = 0;
 };
 
@@ -177,6 +178,8 @@ struct DeviceObjects {
   ComPtr<ID3D11ComputeShader> debug_shader;  // the Debug View's, into its picture (the tone mapper's output's size)
   ComPtr<ID3D11Texture2D> debug_texture;
   ComPtr<ID3D11UnorderedAccessView> debug_uav;
+  ComPtr<ID3D11Resource> debug_ambient_resource;  // the game's AO pass's target (the host's hook) and a view of it
+  ComPtr<ID3D11ShaderResourceView> debug_ambient;
   ComPtr<ID3D11ComputeShader> positions_shader;
   ComPtr<ID3D11ComputeShader> sun_shader;
   ComPtr<ID3D11ComputeShader> occlusion_shader;
@@ -233,6 +236,7 @@ struct Runtime {
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
   uint64_t combined_frame = UINT64_MAX;   // the frame `combined` was made in
   uint64_t ambient_frame = UINT64_MAX;    // the frame an ambient occlusion pass took the traced ambient visibility
+  uint64_t debug_ambient_frame = UINT64_MAX;  // the frame the game's AO pass drew into objects.debug_ambient
   uint64_t bounced_frame = UINT64_MAX;    // the frame the Light Bounce was traced (a texel each `bounce_scale` pixels)
   UINT bounce_scale = 1;
   uint64_t reflected_frame = UINT64_MAX;  // the frame the reflections were asked for
@@ -1181,7 +1185,7 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
   return objects.occlusion_srv.Get();
 }
 
-// The Debug View (Settings.debug_view; 8: all seven tiled) over `target`, the tone mapper's output (the bridge
+// The Debug View (Settings.debug_view; 9: all eight tiled) over `target`, the tone mapper's output (the bridge
 // textures' size, RGBA16F): that effect's result this frame as the picture (rt_debug; magenta where it made none).
 inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) {
   auto& runtime = internal::runtime;
@@ -1217,10 +1221,14 @@ inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) 
   // The views' results (rt_debug's t0-t6) and which this frame made.
   const bool traced = runtime.traced_frame == runtime.frame;
   const bool reflected = runtime.reflected && runtime.reflected_frame == runtime.frame;
-  const std::array<bool, 7> made = {traced && runtime.settings.sun_shadows,        traced && runtime.settings.ambient_occlusion,
-                                    runtime.bounced_frame == runtime.frame,         reflected && runtime.settings.reflections,
-                                    reflected && runtime.settings.specular_occlusion, traced && runtime.lights_traced,
-                                    traced && runtime.settings.fog_shadows};
+  const std::array<bool, 8> made = {traced && runtime.settings.sun_shadows,
+                                    traced && runtime.settings.ambient_occlusion,
+                                    runtime.bounced_frame == runtime.frame,
+                                    reflected && runtime.settings.reflections,
+                                    reflected && runtime.settings.specular_occlusion,
+                                    traced && runtime.lights_traced,
+                                    traced && runtime.settings.fog_shadows,
+                                    runtime.debug_ambient_frame == runtime.frame && objects.debug_ambient};
   uint32_t made_bits = 0;
   for (size_t index = 0; index < made.size(); ++index) made_bits |= made[index] ? (1u << index) : 0u;
   struct DebugConstants {
@@ -1234,11 +1242,12 @@ inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) 
   };
   {
     const internal::ComputeState kept(native);
-    // t2-t6 here (put back after), t0-t1 by Dispatch.
-    std::array<ID3D11ShaderResourceView*, 5> game_views = {};
+    // t2-t7 here (put back after), t0-t1 by Dispatch.
+    std::array<ID3D11ShaderResourceView*, 6> game_views = {};
     native->CSGetShaderResources(2, static_cast<UINT>(game_views.size()), game_views.data());
-    const std::array<ID3D11ShaderResourceView*, 5> results = {bridge.rt_bounce.srv.Get(), bridge.rt_reflection.srv.Get(), bridge.rt_specular.srv.Get(),
-                                                              bridge.rt_light_mask.srv.Get(), bridge.rt_fog.srv.Get()};
+    const std::array<ID3D11ShaderResourceView*, 6> results = {bridge.rt_bounce.srv.Get(),     bridge.rt_reflection.srv.Get(),
+                                                              bridge.rt_specular.srv.Get(),   bridge.rt_light_mask.srv.Get(),
+                                                              bridge.rt_fog.srv.Get(),        objects.debug_ambient.Get()};
     native->CSSetShaderResources(2, static_cast<UINT>(results.size()), results.data());
     internal::Dispatch(native, objects.debug_shader.Get(), {bridge.rt_visibility.srv.Get(), bridge.rt_ambient.srv.Get()},
                        {objects.debug_uav.Get(), nullptr}, &constants, sizeof(constants), (desc.Width + 7) / 8, (desc.Height + 7) / 8);
