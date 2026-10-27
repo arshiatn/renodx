@@ -31,8 +31,8 @@
 // grass sliders): the game's grass pixel shaders (rigidgrass(wet) ps30 gbuffer / gbuffer_no_clip / gbuffer_ms and
 // forward_lit_oit / aoit, 13) blend each blade into the ground's colour by 100 m (mul rA.c, rB.c, l(0.01) before min:
 // 1 - min(1, distance x 0.01)), so past it the blades are drawn but look like the ground. They are patched as the game
-// creates them: that 0.01 read from cb12[0].x, which the addon binds on their draws (0.01 / Grass Height Distance, as
-// the grass vertex shaders' height). cb12 unbound reads 0: no fade.
+// creates them: that 0.01 read from cb8[0].x (SLOT), which the addon binds on their draws (0.01 / Grass Height Distance,
+// as the grass vertex shaders' height). cb8 unbound reads 0: no fade.
 namespace twattila::grass_fade {
 
 using Microsoft::WRL::ComPtr;
@@ -42,7 +42,9 @@ constexpr std::array<uint32_t, 13> HASHES = {
     0x9FA74069, 0x0F7F49E2, 0x1BDE4E9D, 0x5ADA3882, 0x88D39D8E,  // forward_lit_oit (each shadow method)
     0x50F6A618, 0x10FB512C, 0x88CBA801, 0x8CE99E1F, 0xF2C2DE70,  // forward_lit_aoit
 };
-constexpr UINT SLOT = 12;
+// Free in Attila's shaders. It was 12, the render scale's (render_scale.hlsli): left bound after the grass, at 100% the
+// shaders view_share patched read the fade as their share (positions stretched: AO in lines, farmland gone).
+constexpr UINT SLOT = 8;
 
 namespace internal {
 
@@ -53,6 +55,7 @@ struct Runtime {
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11Buffer> buffer;
   float uploaded = -1.f;
+  ComPtr<ID3D11Buffer> game_buffer;  // the draw's own at SLOT, put back after it
 };
 
 static Runtime runtime;
@@ -123,7 +126,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
 
 }  // namespace internal
 
-// A grass draw: the fade at cb12.
+// A grass draw: the fade at cb8 for it, the draw's own put back after it.
 constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
@@ -151,8 +154,16 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
       native->UpdateSubresource(runtime.buffer.Get(), 0, nullptr, value.data(), 0, 0);
       runtime.uploaded = runtime.fade;
     }
+    native->PSGetConstantBuffers(SLOT, 1, runtime.game_buffer.ReleaseAndGetAddressOf());
     native->PSSetConstantBuffers(SLOT, 1, runtime.buffer.GetAddressOf());
-    return {};
+    return {.post_callback = [](Context& post, const void*) {
+      auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+      renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+      if (post_native == nullptr) return;
+      const std::unique_lock post_lock(internal::runtime.mutex);
+      post_native->PSSetConstantBuffers(SLOT, 1, internal::runtime.game_buffer.GetAddressOf());
+      internal::runtime.game_buffer.Reset();
+    }};
   }
 };
 
