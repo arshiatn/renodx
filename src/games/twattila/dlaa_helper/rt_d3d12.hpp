@@ -977,6 +977,7 @@ class RtScene12 {
   static constexpr UINT STATIC_UVS = 8u << 20;
   static constexpr UINT UV_POOL = STATIC_UVS;
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
+  static constexpr uint32_t RECORD_THIN = 2;
   // Opacity micromaps: a mesh's at most (its subdivision level lowered to fit), all new meshes' a request.
   static constexpr uint64_t MICROMAP_MESH_BYTES = 8u << 20;
   static constexpr uint64_t MICROMAP_FRAME_BYTES = 64u << 20;
@@ -1436,7 +1437,7 @@ class RtScene12 {
         const auto& placement = placements[index];
         const uint32_t slice = (version >= 6) ? shared.rt_capture_slices[index] : 0u;
         const std::array<uint32_t, 8> entry = {capture.first_vertex, capture.vertex_count / 3 * 3, placement.normal_offset, placement.uv_offset,
-                                               placement.record, slice | ((placement.masked ? RECORD_MASKED : 0u) << 16), 0, 0};
+                                               placement.record, slice | (RecordFlags(capture, placement.masked, version) << 16), 0, 0};
         std::memcpy(slot->table_data + index * 8, entry.data(), sizeof(entry));
       }
       const std::array<uint32_t, 4> scene_dispatch = {capture_count, vertex_end / 3, 0, 0};
@@ -1561,8 +1562,8 @@ class RtScene12 {
       std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometries(capture_count);
       std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> unit_geometries;
       std::vector<uint32_t> unit_layout;
-      // Each unit draw's first vertex, triangles and normals (Mega Geometry's clusters).
-      std::vector<std::array<uint32_t, 3>> unit_sources;
+      // Each unit draw's first vertex, triangles, normals and record flags (Mega Geometry's clusters).
+      std::vector<std::array<uint32_t, 4>> unit_sources;
       uint32_t units_record = UINT32_MAX;
       struct Build {
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc = {};
@@ -1609,7 +1610,7 @@ class RtScene12 {
           if (units_record == UINT32_MAX) units_record = placement.record;
           unit_geometries.push_back(geometries[index]);
           unit_layout.push_back(capture.vertex_count / 3 * 3);
-          unit_sources.push_back({capture.first_vertex, capture.vertex_count / 3, placement.normal_offset});
+          unit_sources.push_back({capture.first_vertex, capture.vertex_count / 3, placement.normal_offset, RecordFlags(capture, false, version)});
           dynamic_triangles += capture.vertex_count / 3;
           continue;
         }
@@ -1703,7 +1704,7 @@ class RtScene12 {
         auto* args = reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS*>(data + CLUSTER_ARGS_OFFSET);
         auto* cluster_records = reinterpret_cast<std::array<uint32_t, 4>*>(data + CLUSTER_RECORDS_OFFSET);
         uint32_t cluster_count = 0;
-        for (const auto& [first_vertex, unit_triangles, normal_offset] : unit_sources) {
+        for (const auto& [first_vertex, unit_triangles, normal_offset, record_flags] : unit_sources) {
           for (uint32_t first = 0; first < unit_triangles && cluster_count < MAX_CLUSTERS; first += CLUSTER_TRIANGLES) {
             const uint32_t count = std::min(CLUSTER_TRIANGLES, unit_triangles - first);
             auto& arg = args[cluster_count];
@@ -1717,7 +1718,7 @@ class RtScene12 {
             arg.vertexBufferStride = 16;
             arg.indexBuffer = cluster_indices_->GetGPUVirtualAddress();
             arg.vertexBuffer = vertex_buffer_->GetGPUVirtualAddress() + (uint64_t{first_vertex} + uint64_t{first} * 3) * 16;
-            cluster_records[cluster_count] = {UINT32_MAX, normal_offset + first, 0u, 0u};
+            cluster_records[cluster_count] = {UINT32_MAX, normal_offset + first, record_flags << 16, 0u};
             ++cluster_count;
           }
         }
@@ -2049,6 +2050,11 @@ class RtScene12 {
     pending_frees_.push_back({.value = own_value_ + 1, .record = mesh->record, .normal_offset = mesh->normal_offset,
                               .triangles = mesh->triangles, .uv_offset = mesh->uv_offset, .first_instance = mesh->first_instance,
                               .instances = static_cast<uint32_t>(mesh->transforms.size())});
+  }
+
+  // A capture's record flags (rt_scene.hlsli): alpha-tested leaves, thin cloth and sails (v11).
+  static uint32_t RecordFlags(const dlaa_bridge::RtCapture& capture, bool masked, uint32_t version) {
+    return (masked ? RECORD_MASKED : 0u) | ((version >= 11 && (capture.flags & dlaa_bridge::RT_THIN) != 0) ? RECORD_THIN : 0u);
   }
 
   // A world-space BLAS into the slot's TLAS instances (leaves not opaque: their alpha is tested), its InstanceID its

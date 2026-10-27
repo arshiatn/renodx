@@ -597,8 +597,16 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           beside the unit +0.068 / +0.042 / +0.019 with coloured lights (3:2:1); harness captures now in vertex order
           (the scene data pass binary-searches them, as the game's come). NOT done: emissive surfaces other than the
           games' lights (no emission in the RT scene), leaves letting light through for local lights and the paths' sun.
-    [ ] 6 Translucent / coloured shadows (sails, banners, cloth, glass) + smoke / particle shadows (particles in the
-          RT scene as non-opaque, transmittance from their opacity).
+    [x] 6 PARTLY (helper22, bridge v11): Attila + Thrones cloth (banners, tents) and sails in the RT scene (they were
+          not before: no RT shadows, reflections, AO or bounce from them): rt_capture_cloth / sail sm3 + sm41 (make_wind_
+          motion_vs.py :world; Thrones wraps Attila's), dynamic (with Ray-Traced Units), RT_THIN capture flag ->
+          RECORD_THIN (also in Mega Geometry cluster records); with Light Through Leaves each lets THIN_TRANSMITTANCE
+          0.35 of the sun through. Sail emblems left out (their own layer). Harness: a dynamic thin card 0 -> 89 / 255
+          with the flag, clusters on and off. NOTE: RT sun visibility only darkens on top of the game's shadow maps
+          (screen_space_shadows' extra occlusion), so light through leaves / cloth shows only where the rays are the only
+          shadow (past the shadow maps' reach). NOT done: coloured shadows (no colour in the RT scene: the atlas is
+          opacity only), glass, smoke / particle shadows (billboards facing the camera, flipbook opacity per frame, no
+          dynamic alpha-tested records: needs particle VS captures per game + sun-facing proxies), other TW games' cloth.
     [ ] 7 Volumetric shadows: the games' fog / light shafts shadowed by rays (froxel sun visibility from the helper).
     [ ] 8 Refraction + caustics (water).
     [ ] 9 Missing effects: RT reflections in Rome II, Troy, Pharaoh, WH3; specular occlusion where missing (Rome II /

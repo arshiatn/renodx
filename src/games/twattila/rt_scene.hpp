@@ -593,7 +593,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Light Through Leaves",
           .section = section,
-          .tooltip = "Leaves let some sunlight through in ray-traced shadows: lighter shade under trees.",
+          .tooltip = "Leaves, cloth and sails let some sunlight through ray-traced shadows (where they reach past the game's).",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
       },
@@ -656,7 +656,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 1.f,
           .label = "Ray-Traced Units",
           .section = section,
-          .tooltip = "Soldiers and horses cast ray-traced shadows and shade (about a million triangles a frame). Heavier.",
+          .tooltip = "Soldiers, horses, banners and sails cast ray-traced shadows and shade (about a million triangles a frame). Heavier.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] {
             return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);

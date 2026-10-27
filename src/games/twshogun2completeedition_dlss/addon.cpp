@@ -781,7 +781,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::BeginDisabled(!sun_shadows);
     slider("Ray-traced shadow softness", "RayTracedShadowSoftness", 0.5f, 0.f, 3.f, "%.2f",
            "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.");
-    checkbox("Light through leaves", "RayTracedLeafLight", "Leaves let some sunlight through: lighter shade under trees.");
+    checkbox("Light through leaves", "RayTracedLeafLight", "Leaves let some sunlight through ray-traced shadows (where they reach past the game's).");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
                                   "Shade in corners and under things from rays, with the game's (the darker).\n"

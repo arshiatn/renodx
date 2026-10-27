@@ -1078,7 +1078,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the main view's terrain (rigidterrain geom / custom geom, shader models 3 and
 // 4.1, old and new), rigid objects and tree branches, and their capture versions (world positions).
-constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x2FF76986, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0x6ECB6C09, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1107,6 +1107,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x31B66A15, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .dynamic = true},
     {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .dynamic = true, .foliage = true, .grass = true},
+    // Cloth (banners, tents) and sails: thin, captured every frame (the CPU moves them).
+    {.hash = 0x772B26FF, .capture_shader = __rt_capture_cloth_sm3, .dynamic = true, .thin = true},
+    {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
+    {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
+    {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
 }};
 
 bool configured = false;

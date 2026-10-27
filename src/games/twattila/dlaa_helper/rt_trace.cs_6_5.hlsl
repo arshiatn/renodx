@@ -12,7 +12,7 @@
 // the block), and with the local lights (bridge v9) a ray toward each one within reach (bit i of light_mask: light i
 // reaches the pixel unblocked; hard shadows, the rays stopping short of the light's own fixture). Leaves are
 // alpha-tested (their holes let light through); with Light Through Leaves (v11) each leaf the sun's ray meets also lets
-// LEAF_TRANSMITTANCE of it through.
+// LEAF_TRANSMITTANCE of it through, and each cloth or sail THIN_TRANSMITTANCE.
 // World units: metres, y up. Noise moves every frame, which DLAA / DLSS (or Ray Reconstruction) settle.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_trace.h -Vn RT_TRACE; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_TRACE_OMM.
 #include "./rt_scene.hlsli"
@@ -35,9 +35,9 @@ float2 SunRay(float3 origin, float3 direction) {
     TRACE_NEAREST(query, ray)
     return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(1.f, 0.f);
   }
-  // The nearest surface each time: a leaf lets its share through and the ray goes on past it (a leaf's solid parts are
-  // opaque with opacity micromaps, so it comes as a hit, not a candidate); a solid surface, or leaves too many to let
-  // any through, block it.
+  // The nearest surface each time: a leaf, cloth or sail lets its share through and the ray goes on past it (a leaf's
+  // solid parts are opaque with opacity micromaps, so it comes as a hit, not a candidate); a solid surface, or layers
+  // too many to let any through, block it.
   float lit = 1.f;
   float first = 0.f;
   [loop]
@@ -45,8 +45,9 @@ float2 SunRay(float3 origin, float3 direction) {
     TRACE_NEAREST(query, ray)
     if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(lit, first);
     if (layer == 0u) first = query.CommittedRayT();
-    if (((records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16) & RECORD_MASKED) == 0u) break;
-    lit *= LEAF_TRANSMITTANCE;
+    const uint record_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
+    if ((record_flags & (RECORD_MASKED | RECORD_THIN)) == 0u) break;
+    lit *= ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE : THIN_TRANSMITTANCE;
     if (lit < 0.02f) break;
     ray.TMin = query.CommittedRayT() + 0.01f;
   }

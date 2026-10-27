@@ -48,6 +48,8 @@ constexpr uint32_t RT_FOLIAGE = 4;
 // texels each: rows 0-2 acting on (position, 1), a fourth unused). The helper builds one BLAS and places it once per
 // instance (each instance's rows times the first one's inverse).
 constexpr uint32_t RT_INSTANCED = 8;
+// Thin (v11): cloth and sails; with RT_LEAF_LIGHT a share of the sun passes them as it passes leaves.
+constexpr uint32_t RT_THIN = 16;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;

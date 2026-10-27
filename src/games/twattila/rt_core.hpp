@@ -105,6 +105,7 @@ struct SceneShader {
   bool dynamic = false;
   bool foliage = false;
   bool grass = false;  // in the scene only with Settings.grass
+  bool thin = false;   // cloth and sails (RT_THIN)
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
 };
@@ -726,7 +727,8 @@ void Capture(Context& command, const SceneShader& shader) {
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
   runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count,
                               .flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (shader.dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
-                                       | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (instanced ? dlaa_bridge::RT_INSTANCED : 0u),
+                                       | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (instanced ? dlaa_bridge::RT_INSTANCED : 0u)
+                                       | (shader.thin ? dlaa_bridge::RT_THIN : 0u),
                               .instances = instanced ? instances : 0u});
   runtime.slices.push_back(slice);
   runtime.captured_vertices += vertex_count + row_texels;
