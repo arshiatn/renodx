@@ -176,6 +176,13 @@ struct Runtime {
   uint32_t dynamic_vertices = 0;
   std::vector<uint64_t> drawn;
   std::unordered_map<uint64_t, uint64_t> known;
+  // A static draw's short key (its shader, arguments, first vertex buffer and index buffer) and the full key it stood
+  // for; ambiguous once it stood for two (instances told apart by their constants): Capture's fast path.
+  struct ShortKey {
+    uint64_t key = 0;
+    bool ambiguous = false;
+  };
+  std::unordered_map<uint64_t, ShortKey> short_keys;
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
@@ -427,6 +434,55 @@ void Capture(Context& command, const SceneShader& shader) {
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
   if (topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || vertex_count == 0 || vertex_count > MAX_VERTICES) return;
+  // Rigid objects seen moving stay out (a mesh's shadow where it stood).
+  if constexpr (INDEXED) {
+    if (!shader.terrain && !shader.dynamic && host.moving_indexed != nullptr && host.moving_indexed(native, arguments)) return;
+  } else {
+    if (!shader.terrain && !shader.dynamic && host.moving != nullptr && host.moving(native, arguments)) return;
+  }
+  // The fast path (CPU): a static mesh drawn before, known by its short key while that stood for it alone, is only
+  // marked drawn (no camera, depth or full identity check). Units and leaves take the full path.
+  const bool short_path = !shader.dynamic && !shader.foliage;
+  uint64_t short_key = 14695981039346656037ull;
+  if (short_path) {
+    ID3D11Buffer* first_vertices = nullptr;
+    UINT first_stride = 0;
+    UINT first_offset = 0;
+    ID3D11Buffer* draw_indices = nullptr;
+    DXGI_FORMAT draw_index_format = DXGI_FORMAT_UNKNOWN;
+    UINT draw_index_offset = 0;
+    native->IAGetVertexBuffers(0, 1, &first_vertices, &first_stride, &first_offset);
+    native->IAGetIndexBuffer(&draw_indices, &draw_index_format, &draw_index_offset);
+    const auto mix_short = [&short_key](uint64_t value) { short_key = (short_key ^ value) * 1099511628211ull; };
+    mix_short(shader.hash);
+    if constexpr (INDEXED) {
+      for (const uint64_t value : {uint64_t{arguments.index_count}, uint64_t{arguments.instance_count}, uint64_t{arguments.first_index},
+                                   uint64_t{static_cast<uint32_t>(arguments.vertex_offset)}, uint64_t{arguments.first_instance}}) {
+        mix_short(value);
+      }
+    } else {
+      for (const uint64_t value : {uint64_t{arguments.vertex_count}, uint64_t{arguments.instance_count}, uint64_t{arguments.first_vertex},
+                                   uint64_t{arguments.first_instance}}) {
+        mix_short(value);
+      }
+    }
+    mix_short(reinterpret_cast<uintptr_t>(first_vertices));
+    mix_short((uint64_t{first_stride} << 32) | first_offset);
+    mix_short(reinterpret_cast<uintptr_t>(draw_indices));
+    mix_short((uint64_t{static_cast<uint32_t>(draw_index_format)} << 32) | draw_index_offset);
+    if (first_vertices != nullptr) first_vertices->Release();
+    if (draw_indices != nullptr) draw_indices->Release();
+    const std::unique_lock lock(runtime.mutex);
+    if (const auto entry = runtime.short_keys.find(short_key); entry != runtime.short_keys.end() && !entry->second.ambiguous) {
+      if (const auto known = runtime.known.find(entry->second.key); known != runtime.known.end()) {
+        if (known->second != runtime.frame) {
+          known->second = runtime.frame;
+          if (runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(entry->second.key);
+        }
+        return;
+      }
+    }
+  }
   // The main view: its camera and its depth at the display's size, single-sampled; the bridge with ray tracing.
   ComPtr<ID3D11DepthStencilView> depth_view;
   native->OMGetRenderTargets(0, nullptr, depth_view.GetAddressOf());
@@ -447,12 +503,6 @@ void Capture(Context& command, const SceneShader& shader) {
   depth_texture->GetDesc(&depth_desc);
   if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != dlaa_bridge::bridge.width || depth_desc.Height != dlaa_bridge::bridge.height) {
     return;
-  }
-  // Rigid objects seen moving stay out (a mesh's shadow where it stood).
-  if constexpr (INDEXED) {
-    if (!shader.terrain && !shader.dynamic && host.moving_indexed != nullptr && host.moving_indexed(native, arguments)) return;
-  } else {
-    if (!shader.terrain && !shader.dynamic && host.moving != nullptr && host.moving(native, arguments)) return;
   }
 
   // The draw's identity: its buffers, ranges, textures and constant buffers (but the camera's at b0).
@@ -516,6 +566,10 @@ void Capture(Context& command, const SceneShader& shader) {
 
   const std::unique_lock lock(runtime.mutex);
   if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
+  if (short_path) {
+    const auto [entry, added] = runtime.short_keys.try_emplace(short_key, Runtime::ShortKey{.key = key});
+    if (!added && entry->second.key != key) entry->second.ambiguous = true;
+  }
   // Units: every frame, within their share.
   if (shader.dynamic && (!runtime.settings.units || runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES)) return;
   if (const auto known = runtime.known.find(key); !shader.dynamic && known != runtime.known.end()) {
@@ -983,7 +1037,9 @@ inline void Update(const Settings& settings) {
   runtime.captured_vertices = 0;
   runtime.dynamic_vertices = 0;
   runtime.drawn.clear();
-  std::erase_if(runtime.known, [&](const auto& entry) { return entry.second + internal::RELEASE_FRAMES < runtime.frame; });
+  if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second + internal::RELEASE_FRAMES < runtime.frame; }) != 0) {
+    std::erase_if(runtime.short_keys, [&](const auto& entry) { return !runtime.known.contains(entry.second.key); });
+  }
 }
 
 // Whether ray tracing wants the bridge's textures (the anti-aliasing's DLAA makes them).
@@ -1095,6 +1151,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.objects.device.Get() == native) internal::runtime.objects = {};
   internal::runtime.known.clear();
+  internal::runtime.short_keys.clear();
 }
 
 }  // namespace twattila::rt_scene
