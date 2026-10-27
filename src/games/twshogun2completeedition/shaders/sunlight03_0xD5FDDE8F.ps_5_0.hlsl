@@ -7,6 +7,7 @@
 // roads moved with the camera and sat in the wrong place (ATN debug22). Read at the projected position (the viewport
 // factor divided out; at full size the game's).
 #include "../shared.h"
+#include "./rt_sun.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -185,7 +186,7 @@ void main(
   r0.zw = min(r3.xw, r0.zw);
   r4.xy = (uint2)r0.zw;
   r4.zw = float2(0,0);
-  r0.z = t_shadow.Load(r4.xyz).x;
+  r0.z = RtDarker(t_rt_sun, r4.xy, t_shadow.Load(r4.xyz).x);
   r0.z = max(g_Shadow_low_clamp, r0.z);
   r0.z = min(1, r0.z);
   r0.w = cmp(2 < r2.y);
@@ -232,7 +233,7 @@ void main(
     r4.x = r1.w * -2 + 3;
     r1.w = r1.w * r1.w;
     r1.w = r4.x * r1.w;
-    r0.x = t_ssao.SampleLevel(s_ssao_s, r0.xy, 0).x;
+    r0.x = RtDarker(t_rt_ambient, g_render_target_dimensions.xy * r0.xy, t_ssao.SampleLevel(s_ssao_s, r0.xy, 0).x);
     r0.x = max(g_SSAO_low_clamp, r0.x);
     r0.x = min(1, r0.x);
     r0.y = min(r1.w, r0.w);

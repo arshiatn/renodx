@@ -9,10 +9,12 @@
 #include <cstdint>
 #include <cstring>
 #include <span>
+#include <string_view>
 #include <vector>
 
 // DXBC (Shader Model 4 / 5 bytecode) for the shaders the addon patches as the game creates them
-// (screen_space_shadows.hpp's sun light, grass_fade.hpp's grass): the program's tokens out and back in.
+// (screen_space_shadows.hpp's sun light, grass_fade.hpp's grass): the program's tokens out and back in; the
+// signatures' elements (ray tracing's scene shaders, rt_core.hpp).
 namespace twattila::dxbc {
 
 constexpr uint32_t OP_CUSTOMDATA = 53;
@@ -154,6 +156,45 @@ inline std::vector<uint8_t> Write(std::span<const uint8_t> code, const Program& 
   const auto checksum = Checksum(patched);
   std::memcpy(patched.data() + 4, checksum.data(), 16);
   return patched;
+}
+
+// A signature chunk's (`tag`: ISGN / OSGN) element: its semantic name and index, its component type
+// (D3D_REGISTER_COMPONENT_TYPE).
+struct SignatureElement {
+  std::string_view name;
+  uint32_t index = 0;
+  uint32_t component_type = 0;
+};
+
+// The first element of `program`'s chunk `tag` that `matches` (the element, its register) into `found`; false: none.
+inline bool FindSignatureElement(std::span<const uint8_t> code, const Program& program, const char (&tag)[5], const auto& matches,
+                                 SignatureElement* found) {
+  const auto read = [&](size_t at) {
+    uint32_t value = 0;
+    if (at + 4 <= code.size()) std::memcpy(&value, code.data() + at, 4);
+    return value;
+  };
+  for (const uint32_t offset : program.offsets) {
+    if (std::memcmp(code.data() + offset, tag, 4) != 0) continue;
+    const size_t data = offset + 8;
+    const uint32_t count = read(data);
+    for (uint32_t element = 0; element < count; ++element) {
+      const size_t at = data + 8 + (24 * size_t{element});
+      const size_t name = data + read(at);
+      if (at + 24 > code.size() || name >= code.size()) return false;
+      const SignatureElement candidate = {
+          .name = std::string_view(reinterpret_cast<const char*>(code.data() + name),
+                                   strnlen(reinterpret_cast<const char*>(code.data() + name), code.size() - name)),
+          .index = read(at + 4),
+          .component_type = read(at + 12),
+      };
+      if (matches(candidate, read(at + 16))) {
+        *found = candidate;
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace twattila::dxbc

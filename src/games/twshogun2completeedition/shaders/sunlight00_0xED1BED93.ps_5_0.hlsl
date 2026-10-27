@@ -3,6 +3,7 @@
 // sun's specular makes white specks that flicker with DLSS's jitter facing the sun (ATN debug13; 0 removes them,
 // v18). RenoDX: on IS_FOLIAGE pixels the sun's specular x Foliage Sun Glints (1: the game's).
 #include "../shared.h"
+#include "./rt_sun.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -207,7 +208,7 @@ void main(
     r1.yw = min(r10.xy, r1.yw);
     r10.xy = (uint2)r1.yw;
     r10.zw = float2(0,0);
-    r1.y = t_shadow.Load(r10.xyz).x;
+    r1.y = RtDarker(t_rt_sun, r10.xy, t_shadow.Load(r10.xyz).x);
     r1.y = max(g_Shadow_low_clamp, r1.y);
     r1.y = min(1, r1.y);
     r1.y = -0.200000003 + r1.y;
@@ -215,7 +216,7 @@ void main(
     r1.w = r1.y * -2 + 3;
     r1.y = r1.y * r1.y;
     r1.y = r1.w * r1.y;
-    r0.x = t_ssao.SampleLevel(s_ssao_s, r0.xy, 0).x;
+    r0.x = RtDarker(t_rt_ambient, g_render_target_dimensions.xy * r0.xy, t_ssao.SampleLevel(s_ssao_s, r0.xy, 0).x);
     r0.x = max(g_SSAO_low_clamp, r0.x);
     r0.x = min(1, r0.x);
     r0.y = min(r1.y, r0.z);

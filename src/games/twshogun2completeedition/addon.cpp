@@ -33,6 +33,7 @@
 #include "../twattila/lighting_settings.hpp"
 #include "../twshogun2completeedition_dlss/dlss_jitter.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
+#include "./ray_tracing.hpp"
 #include "./shared.h"
 #include "./vfx_effects.hpp"
 
@@ -867,6 +868,10 @@ constexpr std::array<twattila::light_bounce::SunDraw, 4> LIGHT_BOUNCE_DRAWS = {{
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
+// Ray tracing (Experimental, ray_tracing.hpp): its settings (the DLSS addon's, ReShade.ini RayTraced* / PathTracing*),
+// installed when an effect is on at launch.
+twattila::rt_scene::Settings ray_tracing_settings;
+bool ray_tracing_installed = false;
 
 // The DLSS addon's graphics options for shaders here (its overlay, ReShade.ini [Shogun 2 DLSS]): read at attach, each
 // frame while ReShade's overlay is open (where they change) and as it closes. Not on reshade_overlay: an add-on with
@@ -918,6 +923,18 @@ void ReadDlssAddonOptions() {
   read_choice("LightBounceCheckerboard", 1, 2, &shader_injection.light_bounce_checkerboard);
   read_choice("LightBounceBackFace", 0, 2, &shader_injection.light_bounce_backface);
   read_choice("LightBounceAutoThickness", 1, 2, &shader_injection.light_bounce_auto_thickness);
+  auto& ray_tracing = ray_tracing_settings;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedSunShadows", ray_tracing.sun_shadows);
+  read_float("RayTracedShadowSoftness", 0.5f, 0.f, 3.f, &ray_tracing.sun_softness);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAmbientOcclusion", ray_tracing.ambient_occlusion);
+  read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounce", ray_tracing.light_bounce);
+  read_float("RayTracedLightBounceRange", 10.f, 1.f, 50.f, &ray_tracing.light_bounce_range);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounceRays", ray_tracing.light_bounce_rays);
+  ray_tracing.light_bounce_rays = std::clamp(ray_tracing.light_bounce_rays, 1u, 16u);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "PathTracing", ray_tracing.path_tracing);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "PathTracingBounces", ray_tracing.path_bounces);
+  ray_tracing.path_bounces = std::clamp(ray_tracing.path_bounces, 1u, 4u);
 }
 
 std::atomic_bool overlay_open = false;
@@ -936,6 +953,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     ReadDlssAddonOptions();
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  if (ray_tracing_installed) twshogun2::ray_tracing::Update(ray_tracing_settings);
   twshogun2::vfx_effects::OnPresent();
   static uint32_t shadow_frame = 0;
   shader_injection.shadow_noise_frame = static_cast<float>(++shadow_frame % 64);
@@ -1130,6 +1148,12 @@ bool AttachAddon() {
   twshogun2::dlss_jitter::Use(DLL_PROCESS_ATTACH);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
+  ray_tracing_installed = ray_tracing_settings.sun_shadows || ray_tracing_settings.ambient_occlusion || ray_tracing_settings.light_bounce;
+  if (ray_tracing_installed) {
+    twshogun2::ray_tracing::Install();
+    reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
+  }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
 
   attached = true;
@@ -1151,6 +1175,10 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
   twattila::light_bounce::Uninstall();
+  if (ray_tracing_installed) {
+    twshogun2::ray_tracing::Uninstall();
+    reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
+  }
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

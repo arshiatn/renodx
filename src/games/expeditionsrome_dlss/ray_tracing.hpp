@@ -36,9 +36,9 @@
 // renodx-tw-dlaa64.exe next to the addon, its own D3D12 device with DXR), in metres (Unreal's centimetres / 100).
 // The scene: Unreal 4.26's depth prepass into the scene depth (no target, depth written; the shadow maps' and custom
 // depth's buffers stay out), streamed out through the game's own vertex shaders (those with bone indices, ATTRIBUTE3
-// uint4, or a vertex buffer compute writes, the skin cache's: every frame). Alpha-tested materials (a prepass pixel
-// shader that discards and samples t0 at a texture coordinate: its alpha is the mask) stream out that coordinate too;
-// those that sample t0 otherwise (tiled masks) stay out. At the sun's deferred light draw (the light rectangle vs
+// uint4, or a vertex buffer compute writes, the skin cache's: every frame). Alpha-tested materials (rt_core's
+// SceneCoverage: a prepass pixel shader that discards and samples t0 at a texture coordinate, its alpha the mask) stream
+// out that coordinate too; those that sample t0 otherwise (tiled masks) stay out. At the sun's deferred light draw (the light rectangle vs
 // 0x7C21DA11, FDeferredLightUniformStruct at ps b1, View at ps b0, both read from the game's uploads:
 // constant_mirror.hpp): the G-buffer guides (0x7A1E0D44), the trace (the scene depth at t1, the sun's direction), then
 // the traced sun into the light attenuation (t8, 0x7A1E0D45: the darker of the game's and the traced) and the traced
@@ -72,24 +72,10 @@ constexpr double CENTIMETRES = 100.0;
 constexpr UINT BOUNCE_SCALE = 2;
 constexpr float BOUNCE_FRAMES = 24.f;
 
-// A prepass pixel shader: solid (none, or its discards only dither), alpha-tested against t0 at the input
-// `uv_semantic` (its xy), or left out (t0 read otherwise).
-enum class Coverage : uint8_t {
-  SOLID,
-  MASKED,
-  LEFT_OUT,
-};
-struct PixelShader {
-  Coverage coverage = Coverage::SOLID;
-  std::string uv_semantic;
-  UINT uv_index = 0;
-};
-
 struct State {
   std::mutex mutex;
   twattila::rt_scene::Settings settings;
-  std::unordered_map<uint64_t, PixelShader> pixel_shaders;  // by the native shader (ReShade's pipeline handle)
-  ID3D11Resource* scene_depth = nullptr;                    // the sun draw's t1 (compared only)
+  ID3D11Resource* scene_depth = nullptr;  // the sun draw's t1 (compared only)
   std::array<UINT, 2> render_size = {};
   uint64_t frame = 0;
   uint64_t guides_frame = UINT64_MAX;
@@ -129,128 +115,19 @@ struct State {
 };
 static State state;
 
-// A DXBC signature chunk's (ISGN / OSGN) element at `register_index`: its semantic name and index, its component type;
-// false: none.
-struct SignatureElement {
-  std::string_view name;
-  uint32_t index = 0;
-  uint32_t component_type = 0;  // D3D_REGISTER_COMPONENT_TYPE
-};
-inline bool FindSignatureElement(std::span<const uint8_t> code, const twattila::dxbc::Program& program, const char (&tag)[5],
-                                 const auto& matches, SignatureElement* found) {
-  const auto read = [&](size_t at) {
-    uint32_t value = 0;
-    if (at + 4 <= code.size()) std::memcpy(&value, code.data() + at, 4);
-    return value;
-  };
-  for (const uint32_t offset : program.offsets) {
-    if (std::memcmp(code.data() + offset, tag, 4) != 0) continue;
-    const size_t data = offset + 8;
-    const uint32_t count = read(data);
-    for (uint32_t element = 0; element < count; ++element) {
-      const size_t at = data + 8 + (24 * size_t{element});
-      const size_t name = data + read(at);
-      if (at + 24 > code.size() || name >= code.size()) return false;
-      const SignatureElement candidate = {
-          .name = std::string_view(reinterpret_cast<const char*>(code.data() + name),
-                                   strnlen(reinterpret_cast<const char*>(code.data() + name), code.size() - name)),
-          .index = read(at + 4),
-          .component_type = read(at + 12),
-      };
-      if (matches(candidate, read(at + 16))) {
-        *found = candidate;
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-// A prepass pixel shader's coverage: whether it discards, and where it samples t0.
-inline PixelShader Classify(std::span<const uint8_t> code) {
-  constexpr uint32_t OP_DISCARD = 13, OP_SAMPLE = 69, OP_SAMPLE_B = 74;
-  constexpr uint32_t OPERAND_INPUT = 1, OPERAND_RESOURCE = 7;
-  const twattila::dxbc::Program program = twattila::dxbc::Read(code);
-  const auto& tokens = program.tokens;
-  if (tokens.empty()) return {.coverage = Coverage::LEFT_OUT};
-  // An operand's tokens at `at` (0: relative indexing, which these operands do not use, or malformed).
-  const auto operand_length = [&](size_t at) -> size_t {
-    if (at >= tokens.size()) return 0;
-    const uint32_t token = tokens[at];
-    size_t length = 1 + (token >> 31);
-    if (((token >> 12) & 0xFF) == 4) return length + (((token & 3) == 2) ? 4 : 1);  // immediate32
-    for (uint32_t dimension = 0; dimension < ((token >> 20) & 3); ++dimension) {
-      if (((token >> (22 + (3 * dimension))) & 7) != 0) return 0;
-      ++length;
-    }
-    return length;
-  };
-  bool discards = false;
-  bool sampled_elsewhere = false;
-  uint32_t uv_register = UINT32_MAX;
-  for (size_t at = 2; at < tokens.size();) {
-    const uint32_t opcode = tokens[at] & 0x7FF;
-    const size_t length = twattila::dxbc::Length(tokens, at);
-    if (length == 0) return {.coverage = Coverage::LEFT_OUT};
-    discards = discards || opcode == OP_DISCARD;
-    if (opcode >= OP_SAMPLE && opcode <= OP_SAMPLE_B) {
-      // Past the extended opcode tokens: the destination, the address, the resource.
-      size_t operand = at + 1;
-      for (bool extended = (tokens[at] >> 31) != 0; extended && operand < at + length; ++operand) extended = (tokens[operand] >> 31) != 0;
-      const size_t address = operand + operand_length(operand);
-      const size_t resource = address + operand_length(address);
-      if (address > operand && resource > address && resource + 1 < at + length && ((tokens[resource] >> 12) & 0xFF) == OPERAND_RESOURCE
-          && tokens[resource + 1 + (tokens[resource] >> 31)] == 0) {
-        const bool input = ((tokens[address] >> 12) & 0xFF) == OPERAND_INPUT;
-        if (input && uv_register == UINT32_MAX) {
-          uv_register = tokens[address + 1 + (tokens[address] >> 31)];
-        } else if (!input) {
-          sampled_elsewhere = true;
-        }
-      }
-    }
-    at += length;
-  }
-  if (!discards || (uv_register == UINT32_MAX && !sampled_elsewhere)) return {};
-  SignatureElement uv;
-  if (sampled_elsewhere || uv_register == UINT32_MAX
-      || !FindSignatureElement(code, program, "ISGN", [&](const SignatureElement&, uint32_t found) { return found == uv_register; }, &uv)) {
-    return {.coverage = Coverage::LEFT_OUT};
-  }
-  return {.coverage = Coverage::MASKED, .uv_semantic = std::string(uv.name), .uv_index = uv.index};
-}
-
 // A vertex shader's code: Unreal's bone indices (ATTRIBUTE3, uint) in its input signature.
 inline bool Skinned(std::span<const uint8_t> code) {
   constexpr uint32_t COMPONENT_UINT32 = 1;
   const twattila::dxbc::Program program = twattila::dxbc::Read(code);
-  SignatureElement bones;
+  twattila::dxbc::SignatureElement bones;
   return !program.tokens.empty()
-         && FindSignatureElement(code, program, "ISGN", [](const SignatureElement& element, uint32_t) {
+         && twattila::dxbc::FindSignatureElement(code, program, "ISGN", [](const twattila::dxbc::SignatureElement& element, uint32_t) {
               return element.name == "ATTRIBUTE" && element.index == 3 && element.component_type == COMPONENT_UINT32;
             }, &bones);
 }
 
-inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
-                           const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {
-  if (device->get_api() != reshade::api::device_api::d3d11) return;
-  for (uint32_t index = 0; index < subobject_count; ++index) {
-    if (subobjects[index].type != reshade::api::pipeline_subobject_type::pixel_shader) continue;
-    const auto* desc = static_cast<const reshade::api::shader_desc*>(subobjects[index].data);
-    if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
-    PixelShader shader = Classify({static_cast<const uint8_t*>(desc->code), desc->code_size});
-    const std::unique_lock lock(state.mutex);
-    state.pixel_shaders[pipeline.handle] = std::move(shader);
-  }
-}
-
-inline void OnDestroyPipeline(reshade::api::device*, reshade::api::pipeline pipeline) {
-  const std::unique_lock lock(state.mutex);
-  state.pixel_shaders.erase(pipeline.handle);
-}
-
-// A prepass draw into the scene depth (no target, depth written): its pixel shader's coverage and its vertex shader's
-// skinning; false: not in the scene.
+// A prepass draw into the scene depth (no target, depth written): its pixel shader's coverage (rt_core's
+// SceneCoverage) and its vertex shader's skinning; false: not in the scene.
 inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShader* shader) {
   ComPtr<ID3D11RenderTargetView> target;
   ComPtr<ID3D11DepthStencilView> depth_view;
@@ -264,21 +141,11 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   D3D11_DEPTH_STENCIL_DESC depth_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL};
   if (depth_state) depth_state->GetDesc(&depth_desc);
   if (!depth_desc.DepthEnable || depth_desc.DepthWriteMask != D3D11_DEPTH_WRITE_MASK_ALL) return false;
-  ComPtr<ID3D11PixelShader> pixel_shader;
-  native->PSGetShader(pixel_shader.GetAddressOf(), nullptr, nullptr);
   {
     const std::unique_lock lock(state.mutex);
     if (depth_resource.Get() != state.scene_depth) return false;
-    if (pixel_shader) {
-      const auto found = state.pixel_shaders.find(reinterpret_cast<uint64_t>(pixel_shader.Get()));
-      if (found == state.pixel_shaders.end() || found->second.coverage == Coverage::LEFT_OUT) return false;
-      if (found->second.coverage == Coverage::MASKED) {
-        shader->foliage = true;
-        shader->uv_semantic = found->second.uv_semantic.c_str();
-        shader->uv_semantic_index = found->second.uv_index;
-      }
-    }
   }
+  if (!twattila::rt_scene::SceneCoverage(native, shader)) return false;
   // Skinned: bone indices, or a vertex buffer compute writes (the skin cache).
   ComPtr<ID3D11Buffer> vertices;
   UINT stride = 0;
@@ -736,8 +603,6 @@ inline void KeepColor(ID3D11DeviceContext* context, ID3D11Texture2D* color) {
 
 // Before the contact shadows' callback on the same draw (it rebinds the light's constants).
 inline void Install() {
-  reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
-  reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   twattila::rt_scene::InstallScene({}, HOST);
   renodx::utils::command_action::Register(internal::OnLightRectangle, {.shader_hash = internal::LIGHT_RECTANGLE_SHADER,
                                                                        .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -749,8 +614,6 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnLightRectangle);
   renodx::utils::command_action::Unregister(internal::OnReflection);
   twattila::rt_scene::UninstallScene();
-  reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
-  reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
 }
 
 // The game's device is going away: the addon's objects on it with it.

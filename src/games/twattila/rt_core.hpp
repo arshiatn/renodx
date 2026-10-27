@@ -33,6 +33,7 @@
 #include "../../utils/hash.hpp"
 #include "../../utils/state.hpp"
 #include "./dlaa_bridge.hpp"
+#include "./dxbc.hpp"
 #include "./frame_trace.hpp"
 
 // Ray tracing through the DLAA helper, the part any D3D11 game can use (rt_scene.hpp adds the Total War games' passes and
@@ -203,6 +204,20 @@ static Host host;
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
 static std::unordered_map<uint32_t, bool> skinned_code;
+// A scene draw's pixel shader (host.scene_draw: SceneCoverage): solid (none, or its discards dither only), alpha-tested
+// against its t0 at the input `uv_semantic` (xy: an opacity mask), or left out (t0 read otherwise: a tiled or computed
+// mask); by the native shader (ReShade's pipeline handle; runtime.mutex).
+enum class Coverage : uint8_t {
+  SOLID,
+  MASKED,
+  LEFT_OUT,
+};
+struct PixelCoverage {
+  Coverage coverage = Coverage::SOLID;
+  std::string uv_semantic;
+  UINT uv_index = 0;
+};
+static std::unordered_map<uint64_t, PixelCoverage> pixel_coverage;
 static bool clip_captures = false;  // the scene shaders stream out their SV_Position
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
@@ -734,15 +749,82 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   return true;
 }
 
+// A pixel shader's coverage: whether it discards, and where it samples t0.
+inline PixelCoverage ClassifyCoverage(std::span<const uint8_t> code) {
+  constexpr uint32_t OP_DISCARD = 13, OP_SAMPLE = 69, OP_SAMPLE_B = 74;
+  constexpr uint32_t OPERAND_INPUT = 1, OPERAND_RESOURCE = 7;
+  const dxbc::Program program = dxbc::Read(code);
+  const auto& tokens = program.tokens;
+  if (tokens.empty()) return {.coverage = Coverage::LEFT_OUT};
+  // An operand's tokens at `at` (0: relative indexing, which these operands do not use, or malformed).
+  const auto operand_length = [&](size_t at) -> size_t {
+    if (at >= tokens.size()) return 0;
+    const uint32_t token = tokens[at];
+    size_t length = 1 + (token >> 31);
+    if (((token >> 12) & 0xFF) == 4) return length + (((token & 3) == 2) ? 4 : 1);  // immediate32
+    for (uint32_t dimension = 0; dimension < ((token >> 20) & 3); ++dimension) {
+      if (((token >> (22 + (3 * dimension))) & 7) != 0) return 0;
+      ++length;
+    }
+    return length;
+  };
+  bool discards = false;
+  bool sampled_elsewhere = false;
+  uint32_t uv_register = UINT32_MAX;
+  for (size_t at = 2; at < tokens.size();) {
+    const uint32_t opcode = tokens[at] & 0x7FF;
+    const size_t length = dxbc::Length(tokens, at);
+    if (length == 0) return {.coverage = Coverage::LEFT_OUT};
+    discards = discards || opcode == OP_DISCARD;
+    if (opcode >= OP_SAMPLE && opcode <= OP_SAMPLE_B) {
+      // Past the extended opcode tokens: the destination, the address, the resource.
+      size_t operand = at + 1;
+      for (bool extended = (tokens[at] >> 31) != 0; extended && operand < at + length; ++operand) extended = (tokens[operand] >> 31) != 0;
+      const size_t address = operand + operand_length(operand);
+      const size_t resource = address + operand_length(address);
+      if (address > operand && resource > address && resource + 1 < at + length && ((tokens[resource] >> 12) & 0xFF) == OPERAND_RESOURCE
+          && tokens[resource + 1 + (tokens[resource] >> 31)] == 0) {
+        const bool input = ((tokens[address] >> 12) & 0xFF) == OPERAND_INPUT;
+        if (input && uv_register == UINT32_MAX) {
+          uv_register = tokens[address + 1 + (tokens[address] >> 31)];
+        } else if (!input) {
+          sampled_elsewhere = true;
+        }
+      }
+    }
+    at += length;
+  }
+  if (!discards || (uv_register == UINT32_MAX && !sampled_elsewhere)) return {};
+  dxbc::SignatureElement uv;
+  if (sampled_elsewhere || uv_register == UINT32_MAX
+      || !dxbc::FindSignatureElement(code, program, "ISGN", [&](const dxbc::SignatureElement&, uint32_t found) { return found == uv_register; },
+                                     &uv)) {
+    return {.coverage = Coverage::LEFT_OUT};
+  }
+  return {.coverage = Coverage::MASKED, .uv_semantic = std::string(uv.name), .uv_index = uv.index};
+}
+
+// A pipeline going away: its pixel shader's coverage with it (its handle may come back).
+inline void OnDestroyPipeline(reshade::api::device*, reshade::api::pipeline pipeline) {
+  const std::unique_lock lock(runtime.mutex);
+  pixel_coverage.erase(pipeline.handle);
+}
+
 // A new pipeline: the code of a scene shader without a capture version kept (its stream output is made from it).
 inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
-                           const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline) {
+                           const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   for (uint32_t index = 0; index < subobject_count; ++index) {
-    if (subobjects[index].type != reshade::api::pipeline_subobject_type::vertex_shader) continue;
     const auto* desc = static_cast<const reshade::api::shader_desc*>(subobjects[index].data);
     if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
     const auto* code = static_cast<const uint8_t*>(desc->code);
+    if (subobjects[index].type == reshade::api::pipeline_subobject_type::pixel_shader && host.scene_draw != nullptr) {
+      PixelCoverage coverage = ClassifyCoverage({code, desc->code_size});
+      const std::unique_lock lock(runtime.mutex);
+      pixel_coverage[pipeline.handle] = std::move(coverage);
+      continue;
+    }
+    if (subobjects[index].type != reshade::api::pipeline_subobject_type::vertex_shader) continue;
     const uint32_t hash = renodx::utils::hash::ComputeCRC32(code, desc->code_size);
     if (host.scene_draw == nullptr
         && std::ranges::none_of(scene_shaders, [hash](const SceneShader& shader) { return shader.hash == hash && shader.capture_shader.empty(); })) {
@@ -939,6 +1021,23 @@ inline std::array<ID3D11ShaderResourceView*, 2> Visibilities() {
   return {dlaa_bridge::bridge.rt_visibility.srv.Get(), dlaa_bridge::bridge.rt_ambient.srv.Get()};
 }
 
+// A scene draw's pixel shader (the one bound; host.scene_draw's): its alpha test into `shader` (foliage: the UV's
+// input); false: left out of the scene (a mask read some other way).
+inline bool SceneCoverage(ID3D11DeviceContext* native, SceneShader* shader) {
+  ComPtr<ID3D11PixelShader> pixel_shader;
+  native->PSGetShader(pixel_shader.GetAddressOf(), nullptr, nullptr);
+  if (!pixel_shader) return true;
+  const std::unique_lock lock(internal::runtime.mutex);
+  const auto found = internal::pixel_coverage.find(reinterpret_cast<uint64_t>(pixel_shader.Get()));
+  if (found == internal::pixel_coverage.end() || found->second.coverage == internal::Coverage::LEFT_OUT) return false;
+  if (found->second.coverage == internal::Coverage::MASKED) {
+    shader->foliage = true;
+    shader->uv_semantic = found->second.uv_semantic.c_str();
+    shader->uv_semantic_index = found->second.uv_index;
+  }
+  return true;
+}
+
 // Whether a game vertex shader (its hash) has bone inputs (host.scene_draw's skinned draws); false: unknown.
 inline bool SkinnedVertexShader(uint32_t hash) {
   const std::unique_lock lock(internal::runtime.mutex);
@@ -966,6 +1065,7 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   internal::clip_captures = host.scene_draw != nullptr
                             || std::ranges::any_of(shaders, [](const SceneShader& shader) { return shader.capture_shader.empty(); });
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
+  if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   for (const SceneShader& shader : shaders) {
     renodx::utils::command_action::Register(
         OnSceneDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader);
@@ -977,6 +1077,7 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
 
 inline void UninstallScene() {
   if (internal::clip_captures) reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
+  if (internal::host.scene_draw != nullptr) reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   renodx::utils::command_action::Unregister(OnSceneDraw);
   renodx::utils::command_action::Unregister(OnAnyDraw);
   const std::unique_lock lock(internal::runtime.mutex);

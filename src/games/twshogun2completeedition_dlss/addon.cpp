@@ -369,6 +369,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
   constexpr ImU32 GRAPHICS_COLOR = IM_COL32(0xFF, 0x7F, 0xAF, 0xFF);
   constexpr ImU32 AO_COLOR = IM_COL32(0x7F, 0xBF, 0xFF, 0xFF);  // ambient occlusion (ATN)
   constexpr ImU32 GI_COLOR = IM_COL32(0xFF, 0xB8, 0x6B, 0xFF);  // Global Illumination
+  constexpr ImU32 RT_COLOR = IM_COL32(0x6B, 0xE0, 0xD8, 0xFF);  // ray tracing
   constexpr ImU32 OTHER_COLOR = IM_COL32(0x7E, 0xE0, 0x8A, 0xFF);
   // The HDR addons' reset button after a slider (gray while at the default); true when pressed.
   const auto reset_button = [](const char* id, bool at_default) {
@@ -746,6 +747,58 @@ void OnOverlay(reshade::api::effect_runtime*) {
                               "spears stay thin, walls and hills block fully.");
   ImGui::EndDisabled();
   if (gi_changed) save_gi();
+  heading("Ray Tracing (Experimental, restart after turning on)", RT_COLOR);
+  {
+    // ReShade.ini [Shogun 2 DLSS] RayTraced* / PathTracing*: the HDR addon's ray tracing (its ray_tracing.hpp).
+    const auto checkbox = [](const char* label, const char* key, const char* tooltip) {
+      bool value = false;
+      reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      if (ImGui::Checkbox(label, &value)) reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+      return value;
+    };
+    const auto slider = [](const char* label, const char* key, float default_value, float min, float max, const char* format,
+                           const char* tooltip) {
+      float value = default_value;
+      reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      if (ImGui::SliderFloat(label, &value, min, max, format, ImGuiSliderFlags_AlwaysClamp)) {
+        reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      }
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+    };
+    const auto count = [](const char* label, const char* key, int default_value, int max, const char* tooltip) {
+      int value = default_value;
+      reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      if (ImGui::SliderInt(label, &value, 1, max, "%d", ImGuiSliderFlags_AlwaysClamp)) {
+        reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      }
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+    };
+    ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addons.");
+    const bool sun_shadows = checkbox("Ray-traced sun shadows", "RayTracedSunShadows",
+                                      "Sun shadows from rays, with the game's: also where its shadow maps miss things or end.");
+    ImGui::BeginDisabled(!sun_shadows);
+    slider("Ray-traced shadow softness", "RayTracedShadowSoftness", 0.5f, 0.f, 3.f, "%.2f",
+           "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.");
+    ImGui::EndDisabled();
+    const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
+                                  "Shade in corners and under things from rays, with the game's.");
+    ImGui::BeginDisabled(!ambient);
+    slider("Ray-traced AO range", "RayTracedAmbientRange", 2.f, 0.25f, 5.f, "%.2f m", "How far its rays look for what shades a point.");
+    ImGui::EndDisabled();
+    const bool bounce = checkbox("Ray-traced Global Illumination", "RayTracedLightBounce",
+                                 "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"
+                                 "Needs the Global Illumination on.");
+    ImGui::BeginDisabled(!bounce);
+    count("Ray-traced GI rays", "RayTracedLightBounceRays", 4, 16, "Rays per texel: less noise, heavier.");
+    slider("Ray-traced GI range", "RayTracedLightBounceRange", 10.f, 1.f, 50.f, "%.0f m", "How far its rays look for light.");
+    const bool path_tracing = checkbox("Path tracing", "PathTracing",
+                                       "The Global Illumination path traced: light bouncing several times, also from what is off screen. Heavy.");
+    ImGui::BeginDisabled(!path_tracing);
+    count("Path tracing bounces", "PathTracingBounces", 2, 4, "Bounces past the first. More: brighter shade, heavier.");
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+  }
   heading("About", OTHER_COLOR);
   auto link_button = [](const char* label, ImU32 color, ImU32 hovered, ImU32 active, const char* url) {
     ImGui::PushStyleColor(ImGuiCol_Button, color);
