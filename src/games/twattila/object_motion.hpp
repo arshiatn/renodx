@@ -466,7 +466,8 @@ void DrawObjectMotion(Context& command, const void*) {
                && (srv == nullptr || SUCCEEDED(device->CreateShaderResourceView(buffer.Get(), &srv_desc, srv->GetAddressOf())))
                && SUCCEEDED(device->CreateUnorderedAccessView(buffer.Get(), &uav_desc, uav->GetAddressOf()));
       };
-      // The units' bone pool only when the addon has units.
+      // The units' bone pool only when the addon has units; full floats (half ones moved a still horse's armour by ~1 mm:
+      // DLSS shifted it every frame).
       const bool units = static_cast<bool>(objects.unit_pixel_shader);
       bool made = true;
       for (size_t table = 0; table < 2 && made; ++table) {
@@ -475,7 +476,7 @@ void DrawObjectMotion(Context& command, const void*) {
                && make(DXGI_FORMAT_R32G32B32A32_UINT, PLACEMENT_CELLS * PLACEMENT_SLOTS * 4, 16, &objects.placement_srvs[table],
                        &objects.placement_uavs[table])
                && (!units
-                   || (make(DXGI_FORMAT_R16G16B16A16_FLOAT, BONE_SOLDIERS * BONE_TEXELS, 8, &objects.bone_srvs[table],
+                   || (make(DXGI_FORMAT_R32G32B32A32_FLOAT, BONE_SOLDIERS * BONE_TEXELS, 16, &objects.bone_srvs[table],
                             &objects.bone_uavs[table])
                        && make(DXGI_FORMAT_R32_UINT, BONE_SLOTS + 1, 4, &objects.bone_key_srvs[table], &objects.bone_key_uavs[table])
                        && make(DXGI_FORMAT_R32_UINT, BONE_SLOTS, 4, &objects.bone_entry_srvs[table], &objects.bone_entry_uavs[table])))
