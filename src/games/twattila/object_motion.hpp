@@ -71,6 +71,9 @@ struct Shaders {
   std::span<const MotionShader> shaders;
   std::span<const uint8_t> wind_pixel_shader;
   std::span<const uint8_t> unit_pixel_shader;
+  // With it the units' records are drawn apart, one point per instance (their MotionShader::record_shader), and their
+  // redraw (unit_pixel_shader without records: motion_unit_recorded.ps) skips hidden pixels early.
+  std::span<const uint8_t> unit_record_pixel_shader;
   std::span<const uint8_t> capture_pixel_shader;
   std::span<const uint8_t> rigid_compute_shader;
 };
@@ -194,6 +197,7 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11VertexShader>> motion_shaders;  // as Shaders::shaders
   ComPtr<ID3D11PixelShader> wind_pixel_shader;
   ComPtr<ID3D11PixelShader> unit_pixel_shader;
+  ComPtr<ID3D11PixelShader> unit_record_pixel_shader;
   ComPtr<ID3D11Buffer> motion_constants;
   ComPtr<ID3D11Texture2D> motion;
   ComPtr<ID3D11RenderTargetView> motion_rtv;
@@ -294,7 +298,8 @@ inline bool PrepareDevice(ID3D11Device* device) {
   objects.made = std::ranges::all_of(shaders.shaders, motion)
                  && pixel(shaders.wind_pixel_shader, &objects.wind_pixel_shader)
                  && pixel(shaders.unit_pixel_shader, &objects.unit_pixel_shader)
-                 && (shaders.capture_pixel_shader.empty()
+                 && pixel(shaders.unit_record_pixel_shader, &objects.unit_record_pixel_shader)
+                 && ((shaders.capture_pixel_shader.empty() && shaders.unit_record_pixel_shader.empty())
                      || (pixel(shaders.capture_pixel_shader, &objects.capture_pixel_shader)
                          && SUCCEEDED(device->CreateDepthStencilState(&capture_depth_desc, objects.capture_depth_state.GetAddressOf()))
                          && SUCCEEDED(device->CreateRasterizerState(&capture_rasterizer_desc, objects.capture_rasterizer.GetAddressOf()))))
@@ -313,7 +318,8 @@ inline bool PrepareDevice(ID3D11Device* device) {
 
 // After a moving draw of the main view (the host's view): the same draw with its motion vertex shader into the motion
 // target, against the game's depth (not written), every other binding the game's; units, rigid objects and deformed
-// meshes also with last frame's placement table, units with this frame's to record theirs in.
+// meshes also with last frame's placement table, units with this frame's to record theirs in (a point per instance
+// first where the addon draws records apart: Shaders::unit_record_pixel_shader; else every pixel of the redraw).
 // Rigid objects: their instances recorded through stream output while sampled or moving, drawn again only while moving.
 // Deformed meshes: captured first (their vertices' world positions and anchor), then drawn again with last frame's.
 // The ocean: its displacement textures copied (last frame's for its motion shader).
@@ -766,16 +772,38 @@ void DrawObjectMotion(Context& command, const void*) {
   if (shader.kind == MotionKind::HISTORY) {
     native->VSSetShaderResources(HISTORY_SRV_SLOT, HISTORY_SLOTS, history_views.data());
   }
+  // Units: their records (placement, bones) into this frame's table, from one point per instance where the addon draws
+  // them apart (unit_record_pixel_shader), else from every pixel of the redraw.
+  const bool unit_points = shader.kind == MotionKind::UNIT && objects.unit_record_pixel_shader && objects.record_shaders[index];
+  const std::array<ID3D11UnorderedAccessView*, 5> table = {
+      objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
+      objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
+  constexpr std::array<ID3D11UnorderedAccessView*, 5> NO_TABLE = {};
+  if (shader.kind == MotionKind::UNIT) {
+    ID3D11ShaderResourceView* bones = animation_map.Get();
+    native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &bones);
+  }
+  if (unit_points) {
+    native->VSSetShader(objects.record_shaders[index].Get(), nullptr, 0);
+    native->PSSetShader(objects.unit_record_pixel_shader.Get(), nullptr, 0);
+    native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+    native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 1, static_cast<UINT>(table.size()), table.data(), nullptr);
+    native->OMSetDepthStencilState(objects.capture_depth_state.Get(), 0);
+    native->RSSetState(objects.capture_rasterizer.Get());
+    if constexpr (INDEXED) {
+      native->DrawIndexedInstanced(1, arguments.instance_count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
+    } else {
+      native->DrawInstanced(1, arguments.instance_count, arguments.first_vertex, arguments.first_instance);
+    }
+    native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
+    native->IASetPrimitiveTopology(topology);
+  }
+  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_points;
   if (redraw) {
     ID3D11RenderTargetView* motion_target = objects.motion_rtv.Get();
     native->VSSetShader(objects.motion_shaders[index].Get(), nullptr, 0);
     native->PSSetShader(pixel_shader, nullptr, 0);
-    if (shader.kind == MotionKind::UNIT) {
-      ID3D11ShaderResourceView* bones = animation_map.Get();
-      native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &bones);
-      const std::array<ID3D11UnorderedAccessView*, 5> table = {
-          objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
-          objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
+    if (unit_table) {
       native->OMSetRenderTargetsAndUnorderedAccessViews(1, &motion_target, depth_stencil.Get(), 1, static_cast<UINT>(table.size()),
                                                         table.data(), nullptr);
     } else {
@@ -790,13 +818,14 @@ void DrawObjectMotion(Context& command, const void*) {
     } else {
       native->DrawInstanced(vertex_count, arguments.instance_count, arguments.first_vertex, arguments.first_instance);
     }
-    if (shader.kind == MotionKind::UNIT) {
-      constexpr std::array<ID3D11UnorderedAccessView*, 5> NO_TABLE = {};
+    if (unit_table) {
       native->OMSetRenderTargetsAndUnorderedAccessViews(D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL, nullptr, nullptr, 1,
                                                         static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
-      ID3D11ShaderResourceView* game_animation = game_animation_view.Get();
-      native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &game_animation);
     }
+  }
+  if (shader.kind == MotionKind::UNIT) {
+    ID3D11ShaderResourceView* game_animation = game_animation_view.Get();
+    native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &game_animation);
   }
   if (redraw || shader.kind == MotionKind::DEFORMED) {
     native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), depth_stencil.Get());
