@@ -61,9 +61,10 @@
 // cache and the learned lighting for what the screen never saw), and a third request traces reflections and specular
 // occlusion. With DXR 1.2 the paths run as ray generation shaders (DispatchRays) with shader execution reordering. With
 // NVAPI's cluster operations (RTX Mega Geometry; set RENODX_TW_NO_CLUSTERS to turn them off) the units are built each
-// frame as clusters (CLAS) into one cluster BLAS instead of the refitted BLAS, and the TLAS is a partitioned one (PTLAS:
-// each frame only the instances that changed are written; RENODX_TW_NO_PTLAS). Its queue waits for the addon's fence
-// value and signals the next.
+// frame as clusters (CLAS) into one cluster BLAS instead of the refitted BLAS. The partitioned TLAS (PTLAS: each frame
+// only the instances that changed written) only with RENODX_TW_PTLAS set: with it the addon's requests stalled 0.3-0.8 s
+// a frame in the GPU harness (the helper's own work under 0.5 ms; batch 4), and a TLAS of these instance counts builds
+// in about 0.1 ms. Its queue waits for the addon's fence value and signals the next.
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
@@ -115,6 +116,18 @@ class RtScene12 {
     }
 #endif
     const D3D12_COMMAND_QUEUE_DESC queue_desc = {.Type = D3D12_COMMAND_LIST_TYPE_DIRECT};
+    if (GetEnvironmentVariableW(L"RENODX_TW_GPU_TIMES", nullptr, 0) != 0) {
+      const D3D12_QUERY_HEAP_DESC heap_desc = {.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP, .Count = static_cast<UINT>(SLOTS * 6)};
+      const D3D12_HEAP_PROPERTIES readback_heap = {.Type = D3D12_HEAP_TYPE_READBACK};
+      const D3D12_RESOURCE_DESC readback_desc = {.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER, .Width = SLOTS * 6 * sizeof(uint64_t),
+                                                 .Height = 1, .DepthOrArraySize = 1, .MipLevels = 1, .SampleDesc = {.Count = 1},
+                                                 .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR};
+      if (FAILED(device_->CreateQueryHeap(&heap_desc, IID_PPV_ARGS(timestamps_.GetAddressOf())))
+          || FAILED(device_->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &readback_desc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                                     nullptr, IID_PPV_ARGS(timestamp_readback_.GetAddressOf())))) {
+        timestamps_.Reset();
+      }
+    }
     if (FAILED(device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(queue_.GetAddressOf())))
         || FAILED(device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(own_fence_.GetAddressOf())))) {
       return Fail("Ray tracing: no D3D12 queue");
@@ -226,7 +239,7 @@ class RtScene12 {
     // partition; a slot's write and update arguments, its two operations and their count.
     NvU32 ptlas_caps = 0;
     ptlas_ = nullptr;
-    if (GetEnvironmentVariableW(L"RENODX_TW_NO_PTLAS", nullptr, 0) == 0 && NvAPI_Initialize() == NVAPI_OK
+    if (GetEnvironmentVariableW(L"RENODX_TW_PTLAS", nullptr, 0) != 0 && NvAPI_Initialize() == NVAPI_OK
         && NvAPI_D3D12_GetRaytracingCaps(device_.Get(), NVAPI_D3D12_RAYTRACING_CAPS_TYPE_PARTITIONED_TLAS, &ptlas_caps, sizeof(ptlas_caps)) == NVAPI_OK
         && (ptlas_caps & NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_CAP_STANDARD) != 0) {
       ptlas_inputs_ = {
@@ -584,7 +597,13 @@ class RtScene12 {
     const size_t slot_index = next_slot_;
     Slot& slot = slots_[slot_index];
     next_slot_ = (next_slot_ + 1) % SLOTS;
+    LARGE_INTEGER cpu_start;
+    QueryPerformanceCounter(&cpu_start);
     WaitFor(slot.value);
+    LARGE_INTEGER cpu_waited;
+    QueryPerformanceCounter(&cpu_waited);
+    ReadTimes(slot_index);
+    slot_traced_[slot_index] = true;
     const uint64_t completed = own_fence_->GetCompletedValue();
     std::erase_if(releases_, [completed](const Release& release) { return release.value <= completed; });
     std::erase_if(pending_frees_, [&](const PendingFree& pending) {
@@ -596,8 +615,20 @@ class RtScene12 {
     });
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, slot_index, &slot);
+    if (timestamps_) {
+      LARGE_INTEGER cpu_recorded;
+      LARGE_INTEGER cpu_frequency;
+      QueryPerformanceCounter(&cpu_recorded);
+      QueryPerformanceFrequency(&cpu_frequency);
+      status_ = std::format("CPU ms: wait {:.2f}, record {:.2f} | ",
+                             static_cast<double>(cpu_waited.QuadPart - cpu_start.QuadPart) * 1000.0 / cpu_frequency.QuadPart,
+                             static_cast<double>(cpu_recorded.QuadPart - cpu_waited.QuadPart) * 1000.0 / cpu_frequency.QuadPart)
+                + status_;
+    }
     traced_ = traced_ || recorded;
     if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
+    LARGE_INTEGER submit_start;
+    QueryPerformanceCounter(&submit_start);
     queue_->Wait(fence_.Get(), shared.value);
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
@@ -606,6 +637,14 @@ class RtScene12 {
     queue_->Signal(fence_.Get(), shared.value + 1);
     queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
+    if (timestamps_) {
+      LARGE_INTEGER submit_end;
+      LARGE_INTEGER submit_frequency;
+      QueryPerformanceCounter(&submit_end);
+      QueryPerformanceFrequency(&submit_frequency);
+      status_ = std::format("submit {:.2f} | ", static_cast<double>(submit_end.QuadPart - submit_start.QuadPart) * 1000.0 / submit_frequency.QuadPart)
+                + status_;
+    }
     return recorded;
   }
 
@@ -620,6 +659,8 @@ class RtScene12 {
     Slot& slot = slots_[slot_index];
     next_slot_ = (next_slot_ + 1) % SLOTS;
     WaitFor(slot.value);
+    ReadTimes(slot_index);
+    slot_traced_[slot_index] = false;
     const uint32_t frame = shared.rt_frame;
     const uint32_t requested = (version >= 8) ? shared.rt_path_flags : 0u;
     const bool path_traced = !reflections && (requested & dlaa_bridge::RT_PATH_TRACING) != 0;
@@ -630,6 +671,7 @@ class RtScene12 {
                     && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
     if (recorded) {
       auto* list = slot.list.Get();
+      Stamp(list, slot_index * 6 + 4);
       const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
       ID3D12DescriptorHeap* heaps[] = {descriptors_.Get()};
       list->SetDescriptorHeaps(1, heaps);
@@ -799,6 +841,8 @@ class RtScene12 {
       barriers.clear();
       for (const auto& [resource, used] : textures) barriers.push_back(Transition(resource, used, D3D12_RESOURCE_STATE_COMMON));
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+      Stamp(list, slot_index * 6 + 5);
+      Resolve(list, slot_index);
       recorded = SUCCEEDED(list->Close());
     }
     queue_->Wait(fence_.Get(), shared.value);
@@ -1108,6 +1152,7 @@ class RtScene12 {
   // The request's commands into the slot's list (closed); false: nothing usable recorded.
   bool Record(const dlaa_bridge::Shared& shared, uint32_t version, size_t slot_index, Slot* slot) {
     auto* list = slot->list.Get();
+    Stamp(list, slot_index * 6);
     const uint32_t frame = shared.rt_frame;
     const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
     const auto align = [](uint64_t value, uint64_t alignment) { return (value + alignment - 1) / alignment * alignment; };
@@ -1609,6 +1654,7 @@ class RtScene12 {
       triangles += dynamic_triangles;
     }
     uint32_t ptlas_changes = 0;
+    Stamp(list, slot_index * 6 + 1);
 #if defined(RENODX_NVAPI_CLUSTERS)
     if (ptlas_ != nullptr) {
       // The partitioned TLAS: the instances whose BLAS, InstanceID or flags changed written (new ones, those of a record
@@ -1693,6 +1739,7 @@ class RtScene12 {
       };
       list->BuildRaytracingAccelerationStructure(&top_build, 0, nullptr);
     }
+    Stamp(list, slot_index * 6 + 2);
     // The shared textures: COMMON between the APIs, read or written here.
     std::vector<std::pair<ID3D12Resource*, D3D12_RESOURCE_STATES>> textures = {
         {positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE},
@@ -1733,6 +1780,8 @@ class RtScene12 {
       barriers.push_back(Transition(resource, used, D3D12_RESOURCE_STATE_COMMON));
     }
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+    Stamp(list, slot_index * 6 + 3);
+    Resolve(list, slot_index);
     if (FAILED(list->Close())) return Fail("Ray tracing: D3D12 stopped");
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
     std::erase_if(meshes_, [&](auto& entry) {
@@ -1747,7 +1796,39 @@ class RtScene12 {
                           static_cast<double>(triangles) / 1.0e6, static_cast<double>(units_built ? dynamic_triangles : 0u) / 1.0e6,
                           units_clustered ? std::format("{} clusters (Mega Geometry)", clusters_built)
                                           : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
+    if (timestamps_) {
+      status_ += std::format(" | GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, paths {:.2f}", gpu_ms_[0], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3]);
+    }
     return true;
+  }
+
+  // GPU times (RENODX_TW_GPU_TIMES): a timestamp at `index`, a slot's resolved for reading, its last read back.
+  void Stamp(ID3D12GraphicsCommandList* list, size_t index) const {
+    if (timestamps_) list->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, static_cast<UINT>(index));
+  }
+  void Resolve(ID3D12GraphicsCommandList* list, size_t slot_index) const {
+    if (timestamps_) {
+      list->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, static_cast<UINT>(slot_index * 6), 6, timestamp_readback_.Get(),
+                             slot_index * 6 * sizeof(uint64_t));
+    }
+  }
+  void ReadTimes(size_t slot_index) {
+    if (!timestamps_) return;
+    if (timestamp_frequency_ == 0) queue_->GetTimestampFrequency(&timestamp_frequency_);
+    const D3D12_RANGE range = {.Begin = slot_index * 6 * sizeof(uint64_t), .End = (slot_index + 1) * 6 * sizeof(uint64_t)};
+    uint64_t* mapped = nullptr;
+    if (timestamp_frequency_ == 0 || FAILED(timestamp_readback_->Map(0, &range, reinterpret_cast<void**>(&mapped)))) return;
+    const uint64_t* stamps = mapped + slot_index * 6;
+    const auto ms = [&](uint64_t from, uint64_t to) { return (to > from) ? static_cast<double>(to - from) * 1000.0 / timestamp_frequency_ : 0.0; };
+    if (slot_traced_[slot_index]) {
+      gpu_ms_[0] = ms(stamps[0], stamps[1]);
+      gpu_ms_[1] = ms(stamps[1], stamps[2]);
+      gpu_ms_[2] = ms(stamps[2], stamps[3]);
+    } else {
+      gpu_ms_[3] = ms(stamps[4], stamps[5]);
+    }
+    const D3D12_RANGE written = {};
+    timestamp_readback_->Unmap(0, &written);
   }
 
   // A mesh's BLAS and micromaps released, its record and pool ranges given back, once the GPU is past this request.
@@ -1874,6 +1955,13 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> cache_fill_pipeline_;
   ComPtr<ID3D12PipelineState> cache_resolve_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_filter_pipeline_;
+  // GPU times (RENODX_TW_GPU_TIMES): each slot's timestamps (a trace: its start, its TLAS, its trace, its end; paths:
+  // their start and end), read when the slot comes round again; the last trace's and paths' phases in milliseconds.
+  ComPtr<ID3D12QueryHeap> timestamps_;
+  ComPtr<ID3D12Resource> timestamp_readback_;
+  uint64_t timestamp_frequency_ = 0;
+  std::array<bool, SLOTS> slot_traced_ = {};
+  std::array<double, 4> gpu_ms_ = {};  // the scene (captures, BLASes), the TLAS, the trace; the paths
   ComPtr<ID3D12StateObject> path_state_object_;
   ComPtr<ID3D12Resource> path_shader_table_;  // two ray generation records: the paths, the reflections
   std::array<float, 16> current_view_projection_ = {};
