@@ -89,6 +89,9 @@ struct Settings {
 struct SceneShader {
   uint32_t hash = 0;
   std::span<const uint8_t> capture_shader;
+  // Instanced draws (their rows in POSITION1-3): the game's record version, one point per instance with its rows at
+  // TEXCOORD0-2 (object_motion's): the draw's first instance captured, each instance placed in the helper (RT_INSTANCED).
+  std::span<const uint8_t> rows_shader;
   bool terrain = false;
   bool dynamic = false;
   bool foliage = false;
@@ -137,6 +140,8 @@ constexpr uint64_t RELEASE_FRAMES = 3600;
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   std::vector<ComPtr<ID3D11VertexShader>> capture_shaders;  // as the scene shaders
+  std::vector<ComPtr<ID3D11VertexShader>> rows_shaders;     // as the scene shaders (instanced ones)
+  std::vector<ComPtr<ID3D11GeometryShader>> rows_outputs;
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
@@ -283,16 +288,32 @@ inline bool PrepareDevice(ID3D11Device* device) {
   const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE};
   const D3D11_DEPTH_STENCIL_DESC depth_desc = {.DepthEnable = FALSE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO,
                                                .DepthFunc = D3D11_COMPARISON_ALWAYS};
+  // The instanced draws' rows: four texels a point (rows 0-2, the record).
+  const std::array<D3D11_SO_DECLARATION_ENTRY, 4> rows_output = {{
+      {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 4},
+      {.SemanticName = "TEXCOORD", .SemanticIndex = 1, .ComponentCount = 4},
+      {.SemanticName = "TEXCOORD", .SemanticIndex = 2, .ComponentCount = 4},
+      {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
+  }};
+  constexpr UINT ROWS_STRIDE = 64;
   // The game's own shaders get their stream output at their first capture (game_outputs).
   bool made = std::ranges::all_of(scene_shaders, [&](const SceneShader& shader) {
     auto& vertex_shader = objects.capture_shaders.emplace_back();
     auto& stream_output = objects.capture_outputs.emplace_back();
-    return shader.capture_shader.empty()
-           || (SUCCEEDED(device->CreateVertexShader(shader.capture_shader.data(), shader.capture_shader.size(), nullptr,
-                                                    vertex_shader.GetAddressOf()))
-               && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.capture_shader.data(), shader.capture_shader.size(), &output,
-                                                                         1, &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
-                                                                         stream_output.GetAddressOf())));
+    auto& rows_shader = objects.rows_shaders.emplace_back();
+    auto& rows_output_shader = objects.rows_outputs.emplace_back();
+    return (shader.capture_shader.empty()
+            || (SUCCEEDED(device->CreateVertexShader(shader.capture_shader.data(), shader.capture_shader.size(), nullptr,
+                                                     vertex_shader.GetAddressOf()))
+                && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.capture_shader.data(), shader.capture_shader.size(), &output,
+                                                                          1, &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                          stream_output.GetAddressOf()))))
+           && (shader.rows_shader.empty()
+               || (SUCCEEDED(device->CreateVertexShader(shader.rows_shader.data(), shader.rows_shader.size(), nullptr, rows_shader.GetAddressOf()))
+                   && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.rows_shader.data(), shader.rows_shader.size(), rows_output.data(),
+                                                                             static_cast<UINT>(rows_output.size()), &ROWS_STRIDE, 1,
+                                                                             D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                             rows_output_shader.GetAddressOf()))));
   });
   made = made && SUCCEEDED(device->CreateBuffer(&captured_desc, nullptr, objects.captured.GetAddressOf()))
          && SUCCEEDED(device->CreateShaderResourceView(objects.captured.Get(), &captured_view, objects.captured_srv.GetAddressOf()))
@@ -431,12 +452,16 @@ void Capture(Context& command, const SceneShader& shader) {
   if (native == nullptr) return;
   const auto& arguments = command.arguments;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
+  // An instanced draw of a shader with a record version: its first instance's triangles, then its instances' rows.
+  const bool instanced = !shader.rows_shader.empty() && !shader.dynamic && arguments.instance_count > 1;
+  const UINT instances = instanced ? arguments.instance_count : 1u;
   UINT vertex_count = 0;
   if constexpr (INDEXED) {
-    vertex_count = arguments.index_count * std::max(arguments.instance_count, 1u);
+    vertex_count = arguments.index_count * (instanced ? 1u : std::max(arguments.instance_count, 1u));
   } else {
-    vertex_count = arguments.vertex_count * std::max(arguments.instance_count, 1u);
+    vertex_count = arguments.vertex_count * (instanced ? 1u : std::max(arguments.instance_count, 1u));
   }
+  const UINT row_texels = instanced ? instances * 4u : 0u;
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
   if (topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || vertex_count == 0 || vertex_count > MAX_VERTICES) return;
@@ -595,7 +620,7 @@ void Capture(Context& command, const SceneShader& shader) {
     return;
   }
   if (std::ranges::find(runtime.captures, key, &dlaa_bridge::RtCapture::key) != runtime.captures.end()) return;
-  if (runtime.captures.size() >= dlaa_bridge::RT_CAPTURES || runtime.captured_vertices + vertex_count > MAX_VERTICES) return;
+  if (runtime.captures.size() >= dlaa_bridge::RT_CAPTURES || runtime.captured_vertices + vertex_count + row_texels > MAX_VERTICES) return;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
   if (!PrepareDevice(device.Get())) return;
@@ -652,10 +677,25 @@ void Capture(Context& command, const SceneShader& shader) {
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
   if constexpr (INDEXED) {
-    native->DrawIndexedInstanced(arguments.index_count, std::max(arguments.instance_count, 1u), arguments.first_index,
+    native->DrawIndexedInstanced(arguments.index_count, instanced ? 1u : std::max(arguments.instance_count, 1u), arguments.first_index,
                                  arguments.vertex_offset, arguments.first_instance);
   } else {
-    native->DrawInstanced(arguments.vertex_count, std::max(arguments.instance_count, 1u), arguments.first_vertex, arguments.first_instance);
+    native->DrawInstanced(arguments.vertex_count, instanced ? 1u : std::max(arguments.instance_count, 1u), arguments.first_vertex,
+                          arguments.first_instance);
+  }
+  if (instanced) {
+    // One point per instance (its first vertex) with its rows, after the triangles.
+    const auto index = static_cast<size_t>(&shader - scene_shaders.data());
+    ID3D11Buffer* rows_target = objects.captured.Get();
+    const UINT rows_offset = (runtime.captured_vertices + vertex_count) * 16;
+    native->VSSetShader(objects.rows_shaders[index].Get(), nullptr, 0);
+    native->GSSetShader(objects.rows_outputs[index].Get(), nullptr, 0);
+    native->SOSetTargets(1, &rows_target, &rows_offset);
+    if constexpr (INDEXED) {
+      native->DrawIndexedInstanced(1, instances, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
+    } else {
+      native->DrawInstanced(1, instances, arguments.first_vertex, arguments.first_instance);
+    }
   }
   ID3D11Buffer* output = game_output.Get();
   constexpr UINT APPEND = UINT_MAX;
@@ -665,9 +705,10 @@ void Capture(Context& command, const SceneShader& shader) {
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
   runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count,
                               .flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (shader.dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
-                                       | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u)});
+                                       | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (instanced ? dlaa_bridge::RT_INSTANCED : 0u),
+                              .instances = instanced ? instances : 0u});
   runtime.slices.push_back(slice);
-  runtime.captured_vertices += vertex_count;
+  runtime.captured_vertices += vertex_count + row_texels;
   if (shader.dynamic) {
     runtime.dynamic_vertices += vertex_count;
   }

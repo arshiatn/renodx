@@ -255,9 +255,10 @@ float3 OctahedralDecode(uint packed) {
   return normalize(normal);
 }
 
-// A hit triangle's normal (the record's pool), facing back along the ray.
-float3 HitNormal(uint record_index, uint primitive, float3 direction) {
-  const float3 normal = OctahedralDecode(normal_pool[records[record_index].y + primitive]);
+// A hit triangle's normal (the record's pool, in its BLAS's space: turned by the instance's transform), facing back
+// along the ray.
+float3 HitNormal(uint record_index, uint primitive, float3 direction, float3x4 object_to_world) {
+  const float3 normal = normalize(mul((float3x3)object_to_world, OctahedralDecode(normal_pool[records[record_index].y + primitive])));
   return (dot(normal, direction) > 0.f) ? -normal : normal;
 }
 
@@ -308,7 +309,8 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
       radiance += throughput * light_there;
       break;
     }
-    const float3 normal = HitNormal(query.CommittedInstanceID() + query.CommittedGeometryIndex(), query.CommittedPrimitiveIndex(), direction);
+    const float3 normal = HitNormal(query.CommittedInstanceID() + query.CommittedGeometryIndex(), query.CommittedPrimitiveIndex(), direction,
+                                    query.CommittedObjectToWorld3x4());
     if (vertex == 0u) first_normal = normal;
     const float3 albedo = HitAlbedo(position);
     const float3 surface = position + normal * SurfaceOffset(distance(position, Camera()));

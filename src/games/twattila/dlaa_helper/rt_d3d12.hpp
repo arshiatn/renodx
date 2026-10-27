@@ -145,10 +145,11 @@ class RtScene12 {
                           D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       slot.readback = Buffer(uint64_t{dlaa_bridge::RT_CAPTURES} * sizeof(uint64_t), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,
                              D3D12_RESOURCE_STATE_COPY_DEST);
+      slot.rows_readback = Buffer(uint64_t{ROWS_READBACK} * 64, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
       if (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf())))
           || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
                                                IID_PPV_ARGS(slot.list.GetAddressOf())))
-          || FAILED(slot.list->Close()) || !slot.instances || !slot.table || !slot.sizes || !slot.readback
+          || FAILED(slot.list->Close()) || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback
           || FAILED(slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data)))
           || FAILED(slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data)))) {
         return Fail("Ray tracing: no D3D12 command lists");
@@ -278,10 +279,12 @@ class RtScene12 {
         ptlas_current_ = 0;
         ptlas_ = ptlas_buffers_[0].Get();
         ptlas_written_.assign(PTLAS_INSTANCES, {});
+        ptlas_wanted_.assign(PTLAS_INSTANCES, {});
       }
     }
 #endif
     free_triangles_.free = {{0, STATIC_TRIANGLES}};
+    free_instances_.free = {{STATIC_RECORDS, MAX_INSTANCES - STATIC_RECORDS}};
     free_uvs_.free = {{0, STATIC_UVS}};
     for (uint32_t record = STATIC_RECORDS; record > 0; --record) {
       free_records_.push_back(record - 1);
@@ -649,6 +652,7 @@ class RtScene12 {
       free_records_.push_back(pending.record);
       free_triangles_.Give(pending.normal_offset, pending.triangles);
       if (pending.uv_offset != UINT32_MAX) free_uvs_.Give(pending.uv_offset, pending.triangles * 3);
+      if (pending.instances != 0) free_instances_.Give(pending.first_instance, pending.instances);
       return true;
     });
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
@@ -921,7 +925,7 @@ class RtScene12 {
   static constexpr UINT AGILITY_SDK_VERSION = 619;
   static constexpr GUID SDK_CONFIGURATION = {0x7cda6aca, 0xa03e, 0x49c8, {0x94, 0x58, 0x03, 0x34, 0xd2, 0x0e, 0x07, 0xce}};
   static constexpr size_t SLOTS = 3;
-  static constexpr UINT MAX_INSTANCES = 16384;
+  static constexpr UINT MAX_INSTANCES = 65536;
   static constexpr UINT TRANSFER_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
   // Meshes drawn within this many frames cast (but the terrain only in frames that draw it); unseen longer: released.
   static constexpr uint32_t RECENT_FRAMES = 300;
@@ -952,7 +956,9 @@ class RtScene12 {
   static constexpr uint64_t PTLAS_UPLOAD_BYTES = PTLAS_COUNT_OFFSET + 16;
   // Records (InstanceID + geometry index): static meshes first, then each slot's units in turn, then each slot's
   // clusters; the pools: a normal per triangle, a UV per leaf vertex (static meshes first, then each slot's units).
-  static constexpr UINT STATIC_RECORDS = MAX_INSTANCES;
+  static constexpr UINT STATIC_RECORDS = 16384;
+  // Instanced meshes' rows read back: a slot's request at most this many instances.
+  static constexpr UINT ROWS_READBACK = 32768;
   static constexpr UINT CLUSTER_RECORDS = STATIC_RECORDS + SLOTS * dlaa_bridge::RT_CAPTURES;
   static constexpr UINT RECORD_COUNT = CLUSTER_RECORDS + SLOTS * MAX_CLUSTERS;
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
@@ -1062,6 +1068,15 @@ class RtScene12 {
     ComPtr<ID3D12Resource> paths;  // its paths' constants (b3)
     uint8_t* paths_data = nullptr;
     ComPtr<ID3D12Resource> lights;  // its trace's local lights (b4: rt_trace.cs_6_5.hlsl)
+    // Instanced captures' rows copied for the CPU (read when the slot comes round): mesh key, its build, where, how many.
+    ComPtr<ID3D12Resource> rows_readback;
+    struct RowRead {
+      uint64_t key = 0;
+      uint64_t build = 0;
+      uint32_t offset = 0;
+      uint32_t count = 0;
+    };
+    std::vector<RowRead> row_reads;
     uint8_t* light_data = nullptr;
     ComPtr<ID3D12Resource> clusters;  // Mega Geometry's arguments and records (CLUSTER_*_OFFSET)
     uint8_t* cluster_data = nullptr;
@@ -1083,6 +1098,10 @@ class RtScene12 {
     uint32_t uv_offset = UINT32_MAX;
     bool terrain = false;
     bool foliage = false;
+    // Instanced (RT_INSTANCED): each instance's transform from the first one's space (its BLAS's), read back from its
+    // capture; their places (instance indices, the partitioned TLAS's) from first_instance on.
+    std::vector<std::array<float, 12>> transforms;
+    uint32_t first_instance = 0;
   };
   struct Release {
     uint64_t value = 0;
@@ -1127,6 +1146,8 @@ class RtScene12 {
     uint32_t normal_offset = 0;
     uint32_t triangles = 0;
     uint32_t uv_offset = UINT32_MAX;
+    uint32_t first_instance = 0;  // its instances' places (instanced meshes)
+    uint32_t instances = 0;
   };
 
   bool Fail(const char* status) {
@@ -1237,6 +1258,52 @@ class RtScene12 {
     for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
       list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
     }
+    // Instanced meshes this slot captured SLOTS requests back: each instance's transform from the first one's space
+    // (rows_k times the inverse of rows_0; degenerate rows: the first instance only).
+    if (!slot->row_reads.empty()) {
+      const D3D12_RANGE read = {.Begin = 0, .End = uint64_t{ROWS_READBACK} * 64};
+      void* mapped = nullptr;
+      if (SUCCEEDED(slot->rows_readback->Map(0, &read, &mapped))) {
+        const auto* rows = static_cast<const std::array<float, 16>*>(mapped);
+        for (const auto& row_read : slot->row_reads) {
+          const auto mesh = meshes_.find(row_read.key);
+          if (mesh == meshes_.end() || mesh->second.build != row_read.build) continue;
+          const auto& first = rows[row_read.offset];
+          // The first instance's 3 x 4 (rows acting on (position, 1)) inverted.
+          const float a = first[0], b = first[1], c = first[2], d = first[4], e = first[5], f = first[6], g = first[8], h = first[9],
+                      i = first[10];
+          const float determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+          if (!(std::abs(determinant) > 1e-12f)) continue;
+          const std::array<float, 9> inverse = {(e * i - f * h) / determinant, (c * h - b * i) / determinant, (b * f - c * e) / determinant,
+                                                (f * g - d * i) / determinant, (a * i - c * g) / determinant, (c * d - a * f) / determinant,
+                                                (d * h - e * g) / determinant, (b * g - a * h) / determinant, (a * e - b * d) / determinant};
+          const std::array<float, 3> moved = {first[3], first[7], first[11]};
+          std::vector<std::array<float, 12>> transforms(row_read.count);
+          bool finite = true;
+          for (uint32_t instance = 0; instance < row_read.count; ++instance) {
+            const auto& row = rows[row_read.offset + instance];
+            auto& transform = transforms[instance];
+            for (int r = 0; r < 3; ++r) {
+              float translation = row[r * 4 + 3];
+              for (int column = 0; column < 3; ++column) {
+                const float value = row[r * 4] * inverse[column] + row[r * 4 + 1] * inverse[3 + column] + row[r * 4 + 2] * inverse[6 + column];
+                transform[r * 4 + column] = value;
+                translation -= value * moved[column];
+              }
+              transform[r * 4 + 3] = translation;
+            }
+            finite = finite && std::ranges::all_of(transform, [](float value) { return std::isfinite(value); });
+          }
+          uint32_t first_instance = 0;
+          if (!finite || !free_instances_.Take(row_read.count, &first_instance)) continue;
+          mesh->second.transforms = std::move(transforms);
+          mesh->second.first_instance = first_instance;
+        }
+        const D3D12_RANGE written = {};
+        slot->rows_readback->Unmap(0, &written);
+      }
+      slot->row_reads.clear();
+    }
     // Compactions: the BLASes this slot built SLOTS requests back (done) copied into buffers their compacted size.
     if (!slot->compactions.empty()) {
       const D3D12_RANGE read = {.Begin = 0, .End = slot->compactions.size() * sizeof(uint64_t)};
@@ -1287,7 +1354,9 @@ class RtScene12 {
     if (capture_count != 0) {
       uint32_t vertex_end = 0;
       for (uint32_t index = 0; index < capture_count; ++index) {
-        vertex_end = std::max(vertex_end, shared.rt_captures[index].first_vertex + shared.rt_captures[index].vertex_count);
+        const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
+        const uint32_t rows = (version >= 10 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0) ? capture.instances * 4u : 0u;
+        vertex_end = std::max(vertex_end, capture.first_vertex + capture.vertex_count + rows);
       }
       vertex_end = std::min(vertex_end, TRANSFER_VERTICES);
       const UINT rows = (vertex_end + dlaa_bridge::RT_TRANSFER_WIDTH - 1) / dlaa_bridge::RT_TRANSFER_WIDTH;
@@ -1489,6 +1558,10 @@ class RtScene12 {
       };
       std::vector<Build> builds;
       uint64_t scratch_needed = 0;
+      // Instanced captures' rows to read back (their first texel in the vertex buffer).
+      std::vector<Slot::RowRead> row_copies;
+      std::vector<uint32_t> row_sources;
+      uint32_t rows_used = 0;
       for (uint32_t index = 0; index < capture_count; ++index) {
         const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
         const auto& placement = placements[index];
@@ -1556,6 +1629,11 @@ class RtScene12 {
         mesh = {.blas = std::move(blas), .build = ++builds_, .bytes = info.ResultDataMaxSizeInBytes, .drawn_frame = frame,
                 .triangles = capture.vertex_count / 3, .record = placement.record, .normal_offset = placement.normal_offset,
                 .uv_offset = placement.uv_offset, .terrain = (capture.flags & dlaa_bridge::RT_TERRAIN) != 0, .foliage = placement.masked};
+        if (version >= 10 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0 && capture.instances > 1 && rows_used + capture.instances <= ROWS_READBACK) {
+          row_copies.push_back({.key = capture.key, .build = mesh.build, .offset = rows_used, .count = capture.instances});
+          row_sources.push_back(capture.first_vertex + capture.vertex_count);
+          rows_used += capture.instances;
+        }
         if (with_micromaps) {
           mesh.micromaps = std::move(bake->array);
           mesh.micromap_indices = std::move(bake->indices);
@@ -1689,6 +1767,18 @@ class RtScene12 {
 #endif
       list->ResourceBarrier(1, &uav_barrier);
       units_record_ = units_record;
+      // The instanced captures' rows into the slot's readback (four texels an instance), the CPU's once it comes round.
+      if (!row_copies.empty()) {
+        const auto to_source = Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        list->ResourceBarrier(1, &to_source);
+        for (size_t index = 0; index < row_copies.size(); ++index) {
+          list->CopyBufferRegion(slot->rows_readback.Get(), uint64_t{row_copies[index].offset} * 64, vertex_buffer_.Get(),
+                                 uint64_t{row_sources[index]} * 16, uint64_t{row_copies[index].count} * 64);
+        }
+        const auto back_to_read = Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        list->ResourceBarrier(1, &back_to_read);
+        slot->row_reads = std::move(row_copies);
+      }
       std::vector<D3D12_RESOURCE_BARRIER> after = {
           Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
           Transition(slot->sizes.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
@@ -1718,53 +1808,76 @@ class RtScene12 {
       const bool current = mesh.drawn_frame == frame;
       const bool recent = !mesh.terrain && mesh.drawn_frame + RECENT_FRAMES >= frame;
       if (!current && !recent) continue;
-      AddInstance(slot, &instance_count, mesh.blas.Get(), mesh.record, mesh.foliage);
+      if (mesh.transforms.empty()) {
+        AddInstance(slot, &instance_count, mesh.blas.Get(), mesh.record, mesh.foliage, nullptr, mesh.record);
+      } else {
+        for (uint32_t instance = 0; instance < mesh.transforms.size() && instance_count < MAX_INSTANCES; ++instance) {
+          AddInstance(slot, &instance_count, mesh.blas.Get(), mesh.record, mesh.foliage, &mesh.transforms[instance], mesh.first_instance + instance);
+        }
+      }
       triangles += mesh.triangles;
     }
     if ((units_built || units_clustered) && instance_count < MAX_INSTANCES) {
-      AddInstance(slot, &instance_count, units_clustered ? cluster_blas_.Get() : units_blas_.Get(), units_record_, false);
+      AddInstance(slot, &instance_count, units_clustered ? cluster_blas_.Get() : units_blas_.Get(), units_record_, false, nullptr,
+                  MAX_INSTANCES);
       triangles += dynamic_triangles;
     }
     uint32_t ptlas_changes = 0;
     Stamp(list, slot_index * 6 + 1);
 #if defined(RENODX_NVAPI_CLUSTERS)
     if (ptlas_ != nullptr) {
-      // The partitioned TLAS: the instances whose BLAS, InstanceID or flags changed written (new ones, those of a record
-      // given to another mesh) or updated (their BLAS: compacted, the units', or 0 for those out of this frame's scene).
-      std::vector<uint64_t> wanted(PTLAS_INSTANCES, 0);
-      std::vector<uint32_t> wanted_flags(PTLAS_INSTANCES, 0);
-      std::vector<uint32_t> wanted_ids(PTLAS_INSTANCES, 0);
+      // The partitioned TLAS: this request's instances by their place (InstanceContributionToHitGroupIndex); a place whose
+      // BLAS, InstanceID, flags or transform changed is written, one last request had and this one not written inactive.
+      const uint32_t stamp = ++ptlas_stamp_;
+      std::vector<uint32_t> places;
+      places.reserve(instance_count);
       for (UINT index = 0; index < instance_count; ++index) {
         const D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[index];
-        const uint32_t at = (instance.InstanceID < STATIC_RECORDS) ? instance.InstanceID : MAX_INSTANCES;
-        wanted[at] = instance.AccelerationStructure;
-        wanted_ids[at] = instance.InstanceID;
-        wanted_flags[at] = NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
-                           | (((instance.Flags & D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE) != 0)
-                                  ? NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_FORCE_OPAQUE
-                                  : 0u);
+        const uint32_t at = std::min<uint32_t>(instance.InstanceContributionToHitGroupIndex, PTLAS_INSTANCES - 1);
+        PtlasInstance& want = ptlas_wanted_[at];
+        want = {.blas = instance.AccelerationStructure,
+                .id = instance.InstanceID,
+                .flags = NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
+                         | (((instance.Flags & D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE) != 0)
+                                ? NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_FORCE_OPAQUE
+                                : 0u),
+                .stamp = stamp};
+        std::memcpy(want.transform.data(), instance.Transform, sizeof(want.transform));
+        places.push_back(at);
       }
       auto* writes = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE*>(slot->ptlas_data + PTLAS_WRITES_OFFSET);
       uint32_t write_count = 0;
-      for (uint32_t at = 0; at < PTLAS_INSTANCES; ++at) {
+      const auto write_place = [&](uint32_t at) {
         PtlasInstance& written = ptlas_written_[at];
-        const bool changed = (wanted[at] != 0) ? (written.blas != wanted[at] || written.flags != wanted_flags[at] || written.id != wanted_ids[at])
-                                               : (written.flags != UINT32_MAX && written.blas != 0);
-        if (changed) {
-          auto& write = writes[write_count++];
-          write = {};
+        const PtlasInstance& want = ptlas_wanted_[at];
+        const bool active = want.stamp == stamp;
+        const bool changed = active ? (written.blas != want.blas || written.flags != want.flags || written.id != want.id
+                                       || written.transform != want.transform)
+                                    : (written.flags != UINT32_MAX && written.blas != 0);
+        if (!changed) return;
+        auto& write = writes[write_count++];
+        write = {};
+        if (active) {
+          std::memcpy(write.transform, want.transform.data(), sizeof(write.transform));
+          write.instanceID = want.id;
+          write.instanceFlags = want.flags;
+          write.accelerationStructure = want.blas;
+          written = want;
+        } else {
           write.transform[0][0] = 1.f;
           write.transform[1][1] = 1.f;
           write.transform[2][2] = 1.f;
-          write.instanceID = wanted_ids[at];
-          write.instanceMask = 0xFF;
-          write.instanceFlags = wanted_flags[at];
-          write.instanceIndex = at;
-          write.partitionIndex = at / PTLAS_PARTITION_SIZE;
-          write.accelerationStructure = wanted[at];
-          written = {.blas = wanted[at], .id = wanted_ids[at], .flags = wanted_flags[at]};
+          written = {.blas = 0, .id = 0, .flags = 0};
         }
+        write.instanceMask = 0xFF;
+        write.instanceIndex = at;
+        write.partitionIndex = at / PTLAS_PARTITION_SIZE;
+      };
+      for (const uint32_t at : places) write_place(at);
+      for (const uint32_t at : ptlas_places_) {
+        if (ptlas_wanted_[at].stamp != stamp) write_place(at);
       }
+      ptlas_places_ = std::move(places);
       ptlas_changes = write_count;
       auto* operations = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP*>(slot->ptlas_data + PTLAS_OPS_OFFSET);
       const uint64_t upload = slot->ptlas_device->GetGPUVirtualAddress();
@@ -1922,24 +2035,31 @@ class RtScene12 {
       if (*resource) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*resource)});
     }
     pending_frees_.push_back({.value = own_value_ + 1, .record = mesh->record, .normal_offset = mesh->normal_offset,
-                              .triangles = mesh->triangles, .uv_offset = mesh->uv_offset});
+                              .triangles = mesh->triangles, .uv_offset = mesh->uv_offset, .first_instance = mesh->first_instance,
+                              .instances = static_cast<uint32_t>(mesh->transforms.size())});
   }
 
   // A world-space BLAS into the slot's TLAS instances (leaves not opaque: their alpha is tested), its InstanceID its
-  // first geometry's record.
-  static void AddInstance(Slot* slot, UINT* instance_count, ID3D12Resource* blas, uint32_t record, bool foliage) {
+  // first geometry's record; placed by `transform` (null: where it was captured); `place` its partitioned TLAS index
+  // (kept in InstanceContributionToHitGroupIndex: no hit groups here).
+  static void AddInstance(Slot* slot, UINT* instance_count, ID3D12Resource* blas, uint32_t record, bool foliage,
+                          const std::array<float, 12>* transform, uint32_t place) {
     D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[(*instance_count)++];
     instance = {
         .InstanceID = record,
         .InstanceMask = 0xFF,
-        .InstanceContributionToHitGroupIndex = 0,
+        .InstanceContributionToHitGroupIndex = place,
         .Flags = static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
                                    | (foliage ? 0u : static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE))),
         .AccelerationStructure = blas->GetGPUVirtualAddress(),
     };
-    instance.Transform[0][0] = 1.f;
-    instance.Transform[1][1] = 1.f;
-    instance.Transform[2][2] = 1.f;
+    if (transform != nullptr) {
+      std::memcpy(instance.Transform, transform->data(), sizeof(instance.Transform));
+    } else {
+      instance.Transform[0][0] = 1.f;
+      instance.Transform[1][1] = 1.f;
+      instance.Transform[2][2] = 1.f;
+    }
   }
 
   ComPtr<ID3D12Device5> device_;
@@ -1989,8 +2109,13 @@ class RtScene12 {
     uint64_t blas = 0;
     uint32_t id = 0;
     uint32_t flags = UINT32_MAX;  // never written
+    std::array<float, 12> transform = {};
+    uint32_t stamp = 0;  // the request it was wanted in (ptlas_wanted_)
   };
   std::vector<PtlasInstance> ptlas_written_;
+  std::vector<PtlasInstance> ptlas_wanted_;
+  std::vector<uint32_t> ptlas_places_;  // last request's
+  uint32_t ptlas_stamp_ = 0;
   bool ptlas_built_ = false;
   std::vector<uint32_t> units_layout_;
   uint32_t units_refits_ = 0;
@@ -2004,6 +2129,7 @@ class RtScene12 {
   UINT descriptor_size_ = 0;
   Ranges free_triangles_;
   Ranges free_uvs_;
+  Ranges free_instances_;  // the instanced meshes' places, STATIC_RECORDS to MAX_INSTANCES
   std::vector<uint32_t> free_records_;
   std::vector<PendingFree> pending_frees_;
   // The addon's.

@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 9;
+constexpr uint32_t VERSION = 10;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -35,8 +35,8 @@ struct RtCapture {
   uint64_t key = 0;
   uint32_t first_vertex = 0;
   uint32_t vertex_count = 0;
-  uint32_t flags = 0;  // RT_TERRAIN, RT_DYNAMIC, RT_FOLIAGE
-  uint32_t padding = 0;
+  uint32_t flags = 0;      // RT_TERRAIN, RT_DYNAMIC, RT_FOLIAGE, RT_INSTANCED
+  uint32_t instances = 0;  // v10, with RT_INSTANCED
 };
 // Terrain: only in frames that draw it (its older levels of detail would shadow this one). Dynamic (units): captured
 // every frame, in that frame's scene only. Foliage (leaves): alpha-tested against its opacity mask (v6: the vertex
@@ -44,6 +44,10 @@ struct RtCapture {
 constexpr uint32_t RT_TERRAIN = 1;
 constexpr uint32_t RT_DYNAMIC = 2;
 constexpr uint32_t RT_FOLIAGE = 4;
+// Instanced (v10): the vertices are the draw's first instance's; its `instances` instances' world rows follow them (four
+// texels each: rows 0-2 acting on (position, 1), a fourth unused). The helper builds one BLAS and places it once per
+// instance (each instance's rows times the first one's inverse).
+constexpr uint32_t RT_INSTANCED = 8;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;

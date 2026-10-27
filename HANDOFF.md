@@ -565,9 +565,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           compaction or with whole-instance WRITE ops). Fix: writes only, two PTLASes in turn, ops copied to device
           memory (NON_PIXEL_SHADER_RESOURCE); PTLAS on by default again (RENODX_TW_NO_PTLAS=1 off). Harness: no stall in
           30 frames x 3 runs, 0.21 ms a trace request. Harness flags: HARNESS_LIGHT_SWITCH=<frame>.
-    [ ] 3 Accelerators: mesh instancing (one BLAS per unique mesh, transforms in the TLAS: needs object-space captures
-          + per-instance rows), Mega Geometry clusters in Tales (port helper's NVAPI cluster path), LSS (check: the
-          games' grass / hair are alpha cards, not strands).
+    [x] 3 DONE: mesh instancing (bridge v10 RT_INSTANCED, helper22): TW rigid shaders' instanced draws (rows_shader =
+          the game's motion_record_* VS, SO 4 texels an instance) capture only their first instance's triangles plus each
+          instance's rows; the helper reads the rows back (slot rows_readback, when the slot comes round), builds one BLAS
+          and places it per instance (rows_k x inverse(rows_0)), places from free_instances_ (16384..65536), the PTLAS
+          index in InstanceContributionToHitGroupIndex, PTLAS diff over this + last request's places only (O(instances)),
+          hit normals turned by ObjectToWorld. MAX_INSTANCES 65536 (records stay 16384). Harness: an instanced box x3 casts
+          3 shadows (PTLAS on / off), all checks pass. Not done: trees (branch / leaf: no record shaders yet), Tales Mega
+          Geometry (needs NVAPI in the Tales addon build = root CMakeLists.txt, ATN's OK; characters refit cheaply), LSS
+          (not applicable: grass and hair are alpha cards, no strands).
     [ ] 4 Local light shadows everywhere (point + spot, optional soft by the light's size, more than 32 lights):
           TW 7 + WH3 light shaders, Ryse tiled lights (light list read back; DLSS addon's tiled CS copy reads t42 /
           b12), Expeditions UE deferred lights, Tales. Many lights: wider masks / importance, ReSTIR DI judged here.
