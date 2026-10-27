@@ -565,10 +565,6 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           compaction or with whole-instance WRITE ops). Fix: writes only, two PTLASes in turn, ops copied to device
           memory (NON_PIXEL_SHADER_RESOURCE); PTLAS on by default again (RENODX_TW_NO_PTLAS=1 off). Harness: no stall in
           30 frames x 3 runs, 0.21 ms a trace request. Harness flags: HARNESS_LIGHT_SWITCH=<frame>.
-    [ ] 2-old ReSTIR GI review against kajiya (Embark, MIT / Apache 2.0, rtdgi shaders) + RTXDI if its licence allows:
-          gaps known: no re-check of old samples when lighting changes, no normal test in temporal reuse, no firefly
-          clamp. PTLAS stall (0.3-0.8 s a request, helper19 / RENODX_TW_PTLAS=1): compare with nvpro-samples
-          (vk_partitioned_tlas, Apache 2.0) / NVAPI docs; GPU harness with RENODX_TW_GPU_TIMES.
     [ ] 3 Accelerators: mesh instancing (one BLAS per unique mesh, transforms in the TLAS: needs object-space captures
           + per-instance rows), Mega Geometry clusters in Tales (port helper's NVAPI cluster path), LSS (check: the
           games' grass / hair are alpha cards, not strands).
