@@ -557,7 +557,7 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     step (ATN asked, so compaction loses nothing). Licences: MIT / Apache 2.0 / CC0 / anything free for commercial use,
     also as references (credit + licence file in the zips). Steps (task list order):
     [x] 1 Checklist + memory (feedback_progress_log.md).
-    [x] 2 DONE (helper22, build	w_dlaa_helper22): ReSTIR GI v2 after kajiya (compared, not copied): W clamp 10, temporal
+    [x] 2 DONE (helper22, build\tw_dlaa_helper22): ReSTIR GI v2 after kajiya (compared, not copied): W clamp 10, temporal
           reuse only on a surface facing the same way (receiver normal in reuse_data.w), every 3rd frame the reused
           sample re-checked (visibility; its light now via HitLight; change -> shorter history, kajiya's M / W damping).
           Harness: noise 0.229 at 32 frames, mean in range; a light switch now shows within <= 3 frames (was ~20).
