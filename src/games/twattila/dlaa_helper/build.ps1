@@ -10,6 +10,8 @@ New-Item -ItemType Directory -Force $out | Out-Null
 Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_trace.h" -Vn RT_TRACE "$PSScriptRoot\rt_trace.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_trace_omm.h" -Vn RT_TRACE_OMM "$PSScriptRoot\rt_trace.cs_6_5.hlsl"
+& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_fog.h" -Vn RT_FOG "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
+& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_fog_omm.h" -Vn RT_FOG_OMM "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_bounce.h" -Vn RT_BOUNCE "$PSScriptRoot\rt_bounce.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_bounce_omm.h" -Vn RT_BOUNCE_OMM "$PSScriptRoot\rt_bounce.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_path.h" -Vn RT_PATH "$PSScriptRoot\rt_path.cs_6_5.hlsl"

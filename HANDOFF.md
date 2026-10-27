@@ -607,7 +607,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           shadow (past the shadow maps' reach). NOT done: coloured shadows (no colour in the RT scene: the atlas is
           opacity only), glass, smoke / particle shadows (billboards facing the camera, flipbook opacity per frame, no
           dynamic alpha-tested records: needs particle VS captures per game + sun-facing proxies), other TW games' cloth.
-    [ ] 7 Volumetric shadows: the games' fog / light shafts shadowed by rays (froxel sun visibility from the helper).
+    [x] 7 DONE for Attila + Thrones (helper22, bridge v11): Ray-Traced Fog Shadows (Experimental, RayTracedFogShadows,
+          off): helper rt_fog.cs (u27, RT_FOG_SHADOWS) per fog texel (a quarter of the render pixels each way) 8 points
+          along the camera's ray (squared spacing, weighted by their stretch, 400 m at most) each one ray to the sun ->
+          rt_fog (R8, shared); battlefog00 0xA6A0F887 (Thrones wraps it) x RtFogSun (rt_fog.hlsli: bilinear, full shadow
+          keeps RT_FOG_SHADE 0.35) on the sun-lit fog colour (g_volume_fog_colour x sun_colour) only; the sky-coloured
+          part and the fog amount stay. Harness: toward the wall's shadow 194 / 255, open 255. NOT done: Rome II (its
+          own battlefog hashes 890A842B / 259AEC56 / lq AE2A62D9), WH / Troy / Pharaoh in-scattering passes, Shogun 2,
+          the MSAA fog shader (A538288B), sky pixels (rays without a surface: 1).
     [ ] 8 Refraction + caustics (water).
     [ ] 9 Missing effects: RT reflections in Rome II, Troy, Pharaoh, WH3; specular occlusion where missing (Rome II /
           Troy / Pharaoh show the option without effect; Ryse, Expeditions, Shogun 2, WH3); grass in RT for Pharaoh,

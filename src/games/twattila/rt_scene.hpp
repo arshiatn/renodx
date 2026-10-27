@@ -69,6 +69,7 @@ struct Sliders {
   float units = 1.f;
   float grass = 0.f;
   float point_lights = 0.f;  // the point lights' shadows (games whose light draws InstallPointLights hooks)
+  float fog_shadows = 0.f;   // the fog's (games whose fog InstallFogShadows hooks)
   float light_bounce = 0.f;
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
@@ -100,6 +101,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples),
       .local_lights = sliders.point_lights != 0.f && dlaa,
       .leaf_light = sliders.leaf_light != 0.f,
+      .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
   };
 }
 
@@ -107,7 +109,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
 // them) and the reflections' textures.
 inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
   aa->ray_tracing = settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections
-                    || settings.specular_occlusion || settings.local_lights;
+                    || settings.specular_occlusion || settings.local_lights || settings.fog_shadows;
   aa->ray_traced_guides = settings.path_tracing || settings.reflections || settings.specular_occlusion;
   aa->ray_traced_reflections = settings.reflections || settings.specular_occlusion;
 }
@@ -364,6 +366,7 @@ struct PointLightReadback {
   size_t current = 0;
 };
 static PointLightReadback point_light_readback;
+static bool fog_shadows_installed = false;
 
 inline void OnInitInputLayout(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
                               const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {
@@ -485,6 +488,30 @@ inline void InstallPointLights(std::span<const uint32_t> shader_hashes) {
   }
 }
 
+// Attila's and Thrones' battle fog (shaders/battlefog00, shader model 3; the MSAA one left out: DLAA has none).
+constexpr std::array<uint32_t, 1> FOG_SHADERS = {0xA6A0F887};
+
+// A fog draw (the addon's replaced fog shaders with rt_fog.hlsli): this frame's fog shadows bound (put back after).
+constexpr auto OnFogDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!internal::active.load(std::memory_order_relaxed)) return {};
+  auto* native = internal::NativeContext(command.cmd_list);
+  if (native == nullptr || !BindFogShadows(native)) return {};
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = internal::NativeContext(post.cmd_list);
+    if (post_native != nullptr) UnbindFogShadows(post_native);
+  }};
+};
+
+// The fog draws (the addon's replaced pixel shaders reading rt_fog.hlsli), kept while installed: Ray-Traced Fog Shadows
+// shown.
+inline void InstallFogShadows(std::span<const uint32_t> shader_hashes) {
+  internal::fog_shadows_installed = true;
+  for (const uint32_t shader_hash : shader_hashes) {
+    renodx::utils::command_action::Register(
+        OnFogDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+}
+
 // The scene's shaders (`shaders`) and the game's ambient occlusion passes (none: the trace at the sun draws), the
 // addon's, kept while installed (after the ambient occlusion pass's own hooks: its result is multiplied after); the
 // Light Bounce's trace through rays.
@@ -512,6 +539,7 @@ inline void Uninstall() {
   light_bounce::SetRayTracedTrace(nullptr);
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
+  if (std::exchange(internal::fog_shadows_installed, false)) renodx::utils::command_action::Unregister(OnFogDraw);
   if (std::exchange(internal::point_lights_installed, false)) {
     renodx::utils::command_action::Unregister(OnPointLightDraw);
     reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
@@ -686,6 +714,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
           .is_visible = [] { return internal::point_lights_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedFogShadows",
+          .binding = &sliders->fog_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Fog Shadows (Experimental)",
+          .section = section,
+          .tooltip = "Light shafts: the fog loses the sun's glow where it lies in the shadow of buildings, trees and hills.",
+          .labels = {"Off", "On"},
+          .is_enabled = dlaa_on,
+          .is_visible = [] { return internal::fog_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounce",

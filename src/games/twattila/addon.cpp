@@ -1757,6 +1757,8 @@ bool AttachAddon() {
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);
   // The point lights' ray-traced shadows (their light shaders replaced: shaders/pointlight*).
   twattila::rt_scene::InstallPointLights(twattila::rt_scene::POINT_LIGHT_SHADERS);
+  // The battle fog's ray-traced shadows (its shader replaced: shaders/battlefog00).
+  twattila::rt_scene::InstallFogShadows(twattila::rt_scene::FOG_SHADERS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 

@@ -59,6 +59,9 @@ constexpr uint32_t RT_AMBIENT_QUARTER = 4;
 constexpr uint32_t RT_LOCAL_LIGHTS = 8;
 // Light through leaves (v11): leaves on the way to the sun let a share of it through each (else they block it).
 constexpr uint32_t RT_LEAF_LIGHT = 16;
+// Fog shadows (v11): the sun's mean visibility along each camera ray into rt_fog (a quarter of the textures' size each
+// way, R8: the texel's centre at render pixel 4 x + 2).
+constexpr uint32_t RT_FOG_SHADOWS = 32;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -204,6 +207,7 @@ struct Shared {
   uint64_t rt_light_mask = 0;
   // The addon's (v11): the local lights' colours (as rt_lights), which light what the paths meet unseen by the screen.
   float rt_light_colours[RT_MAX_LIGHTS][4] = {};
+  uint64_t rt_fog = 0;  // RT_FOG_SHADOWS' output
 };
 
 // The block's size for a version (an older addon's ends earlier).

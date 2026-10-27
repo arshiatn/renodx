@@ -166,6 +166,7 @@ struct Bridge {
   Texture rt_light;
   Texture rt_bounce;
   Texture rt_light_mask;  // v9: the local lights' lit bits
+  Texture rt_fog;         // v11: the fog shadows (a quarter of the size each way)
   // The reflections' (v8, made when they are on): the reflected light and the specular occlusion out.
   Texture rt_reflection;
   Texture rt_specular;
@@ -291,6 +292,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.rt_light = {};
   bridge.rt_bounce = {};
   bridge.rt_light_mask = {};
+  bridge.rt_fog = {};
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.fg_frame.Reset();
@@ -394,7 +396,8 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_ambient, &shared.rt_ambient)
                             && make(DXGI_FORMAT_R11G11B10_FLOAT, &bridge.rt_light, &shared.rt_light)
                             && make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_bounce, &shared.rt_bounce)
-                            && make(DXGI_FORMAT_R32_UINT, &bridge.rt_light_mask, &shared.rt_light_mask) && share_atlas()))
+                            && make(DXGI_FORMAT_R32_UINT, &bridge.rt_light_mask, &shared.rt_light_mask)
+                            && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_fog, &shared.rt_fog, (width + 3) / 4, (height + 3) / 4) && share_atlas()))
                     && (!reflections
                         || (make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_reflection, &shared.rt_reflection)
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_specular, &shared.rt_specular)))
@@ -423,6 +426,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     shared.rt_light = 0;
     shared.rt_bounce = 0;
     shared.rt_light_mask = 0;
+    shared.rt_fog = 0;
   }
   if (!reflections) {
     shared.rt_reflection = 0;
@@ -658,6 +662,7 @@ inline void Release() {
   bridge.rt_light = {};
   bridge.rt_bounce = {};
   bridge.rt_light_mask = {};
+  bridge.rt_fog = {};
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.rt_atlas = {};

@@ -86,6 +86,9 @@ struct Settings {
   bool local_lights = false;
   // Light through leaves (bridge v11): the sun's rays pass each leaf at a share (else leaves block it).
   bool leaf_light = false;
+  // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
+  // (BindFogShadows for their fog pass).
+  bool fog_shadows = false;
 };
 
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
@@ -262,7 +265,7 @@ static std::atomic_bool active = false;
 
 inline bool Enabled() {
   return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.light_bounce || runtime.settings.reflections
-         || runtime.settings.specular_occlusion || runtime.settings.local_lights;
+         || runtime.settings.specular_occlusion || runtime.settings.local_lights || runtime.settings.fog_shadows;
 }
 
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
@@ -829,7 +832,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.ambient_occlusion ? dlaa_bridge::RT_AMBIENT_OCCLUSION : 0u)
                | (runtime.settings.ambient_quarter ? dlaa_bridge::RT_AMBIENT_QUARTER : 0u)
                | (lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
-               | (runtime.settings.leaf_light ? dlaa_bridge::RT_LEAF_LIGHT : 0u),
+               | (runtime.settings.leaf_light ? dlaa_bridge::RT_LEAF_LIGHT : 0u)
+               | (runtime.settings.fog_shadows ? dlaa_bridge::RT_FOG_SHADOWS : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
@@ -1219,6 +1223,24 @@ inline bool BindLocalLights(ID3D11DeviceContext* native) {
   native->PSSetShaderResources(42, 1, &mask);
   native->PSSetConstantBuffers(12, 1, &constants);
   return true;
+}
+
+// For a fog draw (its pixel shader with rt_fog.hlsli): this frame's fog shadows at t43; false: not traced this frame
+// (nothing bound).
+inline bool BindFogShadows(ID3D11DeviceContext* native) {
+  ID3D11ShaderResourceView* fog = nullptr;
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    if (internal::runtime.traced_frame != internal::runtime.frame || !internal::runtime.settings.fog_shadows) return false;
+    fog = dlaa_bridge::bridge.rt_fog.srv.Get();
+  }
+  native->PSSetShaderResources(43, 1, &fog);
+  return fog != nullptr;
+}
+
+inline void UnbindFogShadows(ID3D11DeviceContext* native) {
+  ID3D11ShaderResourceView* no_fog = nullptr;
+  native->PSSetShaderResources(43, 1, &no_fog);
 }
 
 inline void UnbindLocalLights(ID3D11DeviceContext* native) {

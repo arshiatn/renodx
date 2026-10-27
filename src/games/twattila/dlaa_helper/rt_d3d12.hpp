@@ -35,6 +35,8 @@
 #include "rt_bounce_omm.h"        // dxc -Fh (build.ps1)
 #include "rt_cache_fill.h"        // dxc -Fh (build.ps1)
 #include "rt_cache_resolve.h"     // dxc -Fh (build.ps1)
+#include "rt_fog.h"               // dxc -Fh (build.ps1)
+#include "rt_fog_omm.h"           // dxc -Fh (build.ps1)
 #include "rt_omm.h"               // dxc -Fh (build.ps1)
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_lib.h"          // dxc -Fh (build.ps1)
@@ -297,7 +299,7 @@ class RtScene12 {
          .OffsetInDescriptorsFromTableStart = SRV_COUNT},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = 1, .BaseShaderRegister = 9, .OffsetInDescriptorsFromTableStart = LIGHT},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = 1, .BaseShaderRegister = 9, .OffsetInDescriptorsFromTableStart = BOUNCE},
-        // Paths (v8): t10-t14, u10-u21; the local lights' mask (v9) u22; ReSTIR GI's reservoirs u23-u26.
+        // Paths (v8): t10-t14, u10-u21; the local lights' mask (v9) u22; ReSTIR GI's reservoirs u23-u26; the fog (v11) u27.
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = CACHE_KEYS - PREVIOUS_COLOR, .BaseShaderRegister = 10,
          .OffsetInDescriptorsFromTableStart = PREVIOUS_COLOR},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = DESCRIPTOR_COUNT - CACHE_KEYS, .BaseShaderRegister = 10,
@@ -346,7 +348,8 @@ class RtScene12 {
     // DXR 1.2: the micromaps' bake and the ray queries that use them; else (or when they fail) DXR 1.1.
     dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_) && pipeline(RT_OMM, sizeof(RT_OMM), &omm_pipeline_)
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
-             && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_);
+             && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_)
+             && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_);
     if (!dxr12_) {
       omm_pipeline_.Reset();
       trace_pipeline_.Reset();
@@ -354,6 +357,7 @@ class RtScene12 {
       path_pipeline_.Reset();
       reflect_pipeline_.Reset();
       reuse_pipeline_.Reset();
+      fog_pipeline_.Reset();
     }
     if ((!trace_pipeline_ && !pipeline(RT_TRACE, sizeof(RT_TRACE), &trace_pipeline_))
         || (!bounce_pipeline_ && !pipeline(RT_BOUNCE, sizeof(RT_BOUNCE), &bounce_pipeline_)) || !pipeline(RT_SOFT, sizeof(RT_SOFT), &soft_pipeline_)
@@ -361,6 +365,7 @@ class RtScene12 {
         || (!path_pipeline_ && !pipeline(RT_PATH, sizeof(RT_PATH), &path_pipeline_))
         || (!reflect_pipeline_ && !pipeline(RT_REFLECT, sizeof(RT_REFLECT), &reflect_pipeline_))
         || (!reuse_pipeline_ && !pipeline(RT_REUSE, sizeof(RT_REUSE), &reuse_pipeline_))
+        || (!fog_pipeline_ && !pipeline(RT_FOG, sizeof(RT_FOG), &fog_pipeline_))
         || !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_)
         || !pipeline(RT_CACHE_RESOLVE, sizeof(RT_CACHE_RESOLVE), &cache_resolve_pipeline_)
         || !pipeline(RT_REFLECT_FILTER, sizeof(RT_REFLECT_FILTER), &reflect_filter_pipeline_)
@@ -478,6 +483,11 @@ class RtScene12 {
     if (version >= 9 && shared.rt_light_mask != 0 && open(shared.rt_light_mask, &light_mask_)) {
       const D3D12_UNORDERED_ACCESS_VIEW_DESC mask_view = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
       device_->CreateUnorderedAccessView(light_mask_.Get(), nullptr, &mask_view, Descriptor(LIGHT_MASK));
+    }
+    // The fog shadows (v11).
+    if (version >= 11 && shared.rt_fog != 0 && open(shared.rt_fog, &fog_)) {
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC fog_view = {.Format = DXGI_FORMAT_R8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+      device_->CreateUnorderedAccessView(fog_.Get(), nullptr, &fog_view, Descriptor(FOG));
     }
     // Paths (v8): last frame's scene colour (the DLAA input), the G-buffer guides and the reflections' outputs as the
     // addon shares them; the history (positions, reflection accumulation) of its own at the textures' size.
@@ -609,6 +619,7 @@ class RtScene12 {
     light_.Reset();
     bounce_.Reset();
     light_mask_.Reset();
+    fog_.Reset();
     previous_color_.Reset();
     guide_normals_.Reset();
     guide_albedo_.Reset();
@@ -1019,7 +1030,8 @@ class RtScene12 {
     LIGHT_MASK,  // u22 (v9)
     REUSE_SAMPLES,  // u23-u24: ReSTIR GI's reservoirs, two sets
     REUSE_DATA = REUSE_SAMPLES + 2,  // u25-u26
-    DESCRIPTOR_COUNT = REUSE_DATA + 2,
+    FOG = REUSE_DATA + 2,  // u27 (v11)
+    DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
   // rt_path.hlsli's path flags and cache size.
@@ -1213,7 +1225,7 @@ class RtScene12 {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(REUSE_DATA + set));
     }
     for (const auto descriptor :
-         {SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY, REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK}) {
+         {SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY, REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     if (cache_keys_) return;
@@ -1953,6 +1965,9 @@ class RtScene12 {
     // The local lights (v9): their positions and reaches to b4, their lit bits out.
     const uint32_t light_count = (version >= 9) ? std::min(shared.rt_light_count, dlaa_bridge::RT_MAX_LIGHTS) : 0u;
     const bool local_lights = (shared.rt_flags & dlaa_bridge::RT_LOCAL_LIGHTS) != 0 && light_mask_ && light_count != 0;
+    // The fog shadows (v11): a quarter of the render pixels each way.
+    const bool fog = (shared.rt_flags & dlaa_bridge::RT_FOG_SHADOWS) != 0 && fog_;
+    if (fog) textures.emplace_back(fog_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     if (local_lights) {
       textures.emplace_back(light_mask_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       std::memcpy(slot->light_data, shared.rt_lights, light_count * sizeof(shared.rt_lights[0]));
@@ -1980,6 +1995,10 @@ class RtScene12 {
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());
     list->SetPipelineState(trace_pipeline_.Get());
     list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+    if (fog) {
+      list->SetPipelineState(fog_pipeline_.Get());
+      list->Dispatch((shared.rt_width + 31) / 32, (shared.rt_height + 31) / 32, 1);
+    }
     if (soft) {
       // Soft shadows: the rays' penumbras.
       list->ResourceBarrier(1, &uav_barrier);
@@ -2160,6 +2179,8 @@ class RtScene12 {
   ComPtr<ID3D12Resource> light_;   // the ray-traced Light Bounce's prepared light (v7)
   ComPtr<ID3D12Resource> bounce_;  // its output
   ComPtr<ID3D12Resource> light_mask_;  // the local lights' lit bits (v9)
+  ComPtr<ID3D12Resource> fog_;         // the fog shadows (v11)
+  ComPtr<ID3D12PipelineState> fog_pipeline_;
   ComPtr<ID3D12PipelineState> bounce_pipeline_;
   // Paths (v8): last frame's colour (the DLAA input), the G-buffer guides, the reflections' outputs; the history and the
   // cache of the helper's own; the pipelines (DXR 1.2: one state object with both ray generation shaders).
