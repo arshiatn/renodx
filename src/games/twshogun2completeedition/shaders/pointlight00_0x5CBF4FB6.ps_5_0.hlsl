@@ -3,7 +3,9 @@
 // the top-left render scale part: the viewport comes from the camera instead (g_viewport_dimensions, patched to the
 // render size by the DLSS addon; the game's own "respect the viewport" formula). At full size the same as the game's.
 // HDR: x VFX Brightness: Firelight (v24).
+// Ray tracing: x the light's traced visibility (ray_tracing.hpp; twattila/rt_local_lights.hlsli).
 #include "../shared.h"
+#include "../../twattila/rt_local_lights.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -100,6 +102,7 @@ void main(
   r0.zw = (int2)r0.zw;
   r0.zw = max(int2(0,0), (int2)r0.zw);
   r1.xy = min((int2)r0.zw, (int2)r1.xy);
+  const int2 rt_pixel = r1.xy;
   r1.zw = float2(0,0);
   r2.z = gbuffer_readable_depth_texture.Load(r1.xyz).x;
   r0.y = r2.z + -r0.y;
@@ -250,6 +253,7 @@ void main(
   r0.xyz = r0.yzw * r0.xxx;
   r0.xyz = r3.www ? float3(1,0,0) : r0.xyz;
   o0.xyz = r2.xyz * r4.xyz + r0.xyz;
+  o0.xyz *= RtLocalLightVisibility(rt_pixel, g_light_position);
   if (HDR >= 1.f) o0.xyz *= SI.vfx_firelight;  // VFX Brightness: Firelight
   o0.w = 1;
   return;

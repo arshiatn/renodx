@@ -74,6 +74,8 @@ struct Settings {
   bool reflections = false;
   bool specular_occlusion = false;
   uint32_t reflection_samples = 1;
+  // The local lights' shadows (bridge v9: the lights the addon gives, SetLocalLights; their lit bits: LocalLightMask()).
+  bool local_lights = false;
 };
 
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
@@ -183,6 +185,8 @@ struct Runtime {
     bool ambiguous = false;
   };
   std::unordered_map<uint64_t, ShortKey> short_keys;
+  std::vector<std::array<float, 4>> lights;  // the local lights for this frame's trace (world position, reach)
+  bool lights_traced = false;                 // and whether the trace took them
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
@@ -232,7 +236,7 @@ static std::atomic_bool active = false;
 
 inline bool Enabled() {
   return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.light_bounce || runtime.settings.reflections
-         || runtime.settings.specular_occlusion;
+         || runtime.settings.specular_occlusion || runtime.settings.local_lights;
 }
 
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
@@ -727,10 +731,12 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
     }
   }
+  const bool lights = runtime.settings.local_lights && !runtime.lights.empty();
   const dlaa_bridge::TraceRequest request = {
       .flags = (runtime.settings.sun_shadows ? dlaa_bridge::RT_SUN_SHADOWS : 0u)
                | (runtime.settings.ambient_occlusion ? dlaa_bridge::RT_AMBIENT_OCCLUSION : 0u)
-               | (runtime.settings.ambient_quarter ? dlaa_bridge::RT_AMBIENT_QUARTER : 0u),
+               | (runtime.settings.ambient_quarter ? dlaa_bridge::RT_AMBIENT_QUARTER : 0u)
+               | (lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
@@ -740,8 +746,10 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .captures = runtime.captures,
       .slices = runtime.slices,
       .drawn = runtime.drawn,
+      .lights = runtime.lights,
   };
   const bool traced = dlaa_bridge::TraceScene(native, request);
+  runtime.lights_traced = traced && lights;
   if (traced) {
     for (const auto& capture : runtime.captures) {
       if ((capture.flags & dlaa_bridge::RT_DYNAMIC) == 0) {
@@ -1078,6 +1086,20 @@ inline std::array<ID3D11ShaderResourceView*, 2> Visibilities() {
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.traced_frame != internal::runtime.frame) return {};
   return {dlaa_bridge::bridge.rt_visibility.srv.Get(), dlaa_bridge::bridge.rt_ambient.srv.Get()};
+}
+
+// The local lights for the next trace (world position, reach in metres; the first RT_MAX_LIGHTS: their bits' order).
+inline void SetLocalLights(std::span<const std::array<float, 4>> lights) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::runtime.lights.assign(lights.begin(), lights.begin() + std::min<size_t>(lights.size(), dlaa_bridge::RT_MAX_LIGHTS));
+}
+
+// This frame's local lights' lit bits (R32_UINT at the render pixels: bit i, light i of SetLocalLights reaches the pixel
+// unblocked); null: not traced this frame.
+inline ID3D11ShaderResourceView* LocalLightMask() {
+  const std::unique_lock lock(internal::runtime.mutex);
+  if (internal::runtime.traced_frame != internal::runtime.frame || !internal::runtime.lights_traced) return nullptr;
+  return dlaa_bridge::bridge.rt_light_mask.srv.Get();
 }
 
 // A scene draw's pixel shader (the one bound; host.scene_draw's): its alpha test into `shader` (foliage: the UV's

@@ -790,6 +790,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     checkbox("Ray-traced AO at a quarter rate", "RayTracedAOQuarter",
              "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
     ImGui::EndDisabled();
+    checkbox("Ray-traced point light shadows", "RayTracedLocalLights",
+             "Shadows from rays for the nearest, brightest point lights (fires, torches): what stands between them and the\n"
+             "ground or walls shades them.");
     const bool reflections = checkbox("Ray-traced reflections", "RayTracedReflections",
                                       "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
                                       "Needs the game's screen-space reflections on.");

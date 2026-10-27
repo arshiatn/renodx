@@ -284,13 +284,13 @@ class RtScene12 {
          .OffsetInDescriptorsFromTableStart = SRV_COUNT},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = 1, .BaseShaderRegister = 9, .OffsetInDescriptorsFromTableStart = LIGHT},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = 1, .BaseShaderRegister = 9, .OffsetInDescriptorsFromTableStart = BOUNCE},
-        // Paths (v8): t10-t14, u10-u21.
+        // Paths (v8): t10-t14, u10-u21; the local lights' mask (v9) u22.
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = CACHE_KEYS - PREVIOUS_COLOR, .BaseShaderRegister = 10,
          .OffsetInDescriptorsFromTableStart = PREVIOUS_COLOR},
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = DESCRIPTOR_COUNT - CACHE_KEYS, .BaseShaderRegister = 10,
          .OffsetInDescriptorsFromTableStart = CACHE_KEYS},
     }};
-    const std::array<D3D12_ROOT_PARAMETER, 10> parameters = {{
+    const std::array<D3D12_ROOT_PARAMETER, 11> parameters = {{
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV, .Descriptor = {.ShaderRegister = 0}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
          .DescriptorTable = {.NumDescriptorRanges = static_cast<UINT>(ranges.size()), .pDescriptorRanges = ranges.data()}},
@@ -302,6 +302,7 @@ class RtScene12 {
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV, .Descriptor = {.ShaderRegister = 8}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .Constants = {.ShaderRegister = 2, .Num32BitValues = 20}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV, .Descriptor = {.ShaderRegister = 3}},
+        {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV, .Descriptor = {.ShaderRegister = 4}},
     }};
     const D3D12_STATIC_SAMPLER_DESC sampler = {
         .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -392,8 +393,10 @@ class RtScene12 {
       }
     }
     for (Slot& slot : slots_) {
+      slot.lights = Buffer(LIGHT_CONSTANT_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
       slot.paths = Buffer(256, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
-      if (!slot.paths || FAILED(slot.paths->Map(0, nullptr, reinterpret_cast<void**>(&slot.paths_data)))) {
+      if (!slot.lights || FAILED(slot.lights->Map(0, nullptr, reinterpret_cast<void**>(&slot.light_data))) || !slot.paths
+          || FAILED(slot.paths->Map(0, nullptr, reinterpret_cast<void**>(&slot.paths_data)))) {
         return Fail("Ray tracing: no D3D12 constant buffers");
       }
     }
@@ -455,6 +458,11 @@ class RtScene12 {
     } else {
       light_.Reset();
       bounce_.Reset();
+    }
+    // The local lights' lit bits (v9).
+    if (version >= 9 && shared.rt_light_mask != 0 && open(shared.rt_light_mask, &light_mask_)) {
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC mask_view = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+      device_->CreateUnorderedAccessView(light_mask_.Get(), nullptr, &mask_view, Descriptor(LIGHT_MASK));
     }
     // Paths (v8): last frame's scene colour (the DLAA input), the G-buffer guides and the reflections' outputs as the
     // addon shares them; the history (positions, reflection accumulation) of its own at the textures' size.
@@ -570,6 +578,7 @@ class RtScene12 {
     sun_rays_.Reset();
     light_.Reset();
     bounce_.Reset();
+    light_mask_.Reset();
     previous_color_.Reset();
     guide_normals_.Reset();
     guide_albedo_.Reset();
@@ -943,6 +952,7 @@ class RtScene12 {
     SPECULAR_META_HISTORY,
     REFLECTION,
     SPECULAR_OCCLUSION,
+    LIGHT_MASK,  // u22 (v9)
     DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
@@ -982,7 +992,10 @@ class RtScene12 {
     ROOT_MICROMAP_DESCS,
     ROOT_BOUNCE,  // b2: the ray-traced Light Bounce's constants
     ROOT_PATHS,   // b3: the paths' constants (rt_path.hlsli)
+    ROOT_LIGHTS,  // b4: the trace's local lights
   };
+  // b4: RT_MAX_LIGHTS of world position and reach, then their count (a CBV's 256-byte multiple).
+  static constexpr UINT LIGHT_CONSTANT_BYTES = 768;
 
   struct Slot {
     ComPtr<ID3D12CommandAllocator> allocator;
@@ -997,6 +1010,8 @@ class RtScene12 {
     std::vector<std::pair<uint64_t, uint64_t>> compactions;
     ComPtr<ID3D12Resource> paths;  // its paths' constants (b3)
     uint8_t* paths_data = nullptr;
+    ComPtr<ID3D12Resource> lights;  // its trace's local lights (b4: rt_trace.cs_6_5.hlsl)
+    uint8_t* light_data = nullptr;
     ComPtr<ID3D12Resource> clusters;  // Mega Geometry's arguments and records (CLUSTER_*_OFFSET)
     uint8_t* cluster_data = nullptr;
     ComPtr<ID3D12Resource> ptlas;  // the partitioned TLAS's operations (PTLAS_*_OFFSET)
@@ -1107,7 +1122,8 @@ class RtScene12 {
       device_->CreateShaderResourceView(nullptr, &texture_view, Descriptor(descriptor));
     }
     const D3D12_UNORDERED_ACCESS_VIEW_DESC texture_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
-    for (const auto descriptor : {SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY, REFLECTION, SPECULAR_OCCLUSION}) {
+    for (const auto descriptor :
+         {SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY, REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     if (cache_keys_) return;
@@ -1748,6 +1764,14 @@ class RtScene12 {
         {ambient_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS},
     };
     if (atlas_) textures.emplace_back(atlas_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    // The local lights (v9): their positions and reaches to b4, their lit bits out.
+    const uint32_t light_count = (version >= 9) ? std::min(shared.rt_light_count, dlaa_bridge::RT_MAX_LIGHTS) : 0u;
+    const bool local_lights = (shared.rt_flags & dlaa_bridge::RT_LOCAL_LIGHTS) != 0 && light_mask_ && light_count != 0;
+    if (local_lights) {
+      textures.emplace_back(light_mask_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      std::memcpy(slot->light_data, shared.rt_lights, light_count * sizeof(shared.rt_lights[0]));
+      std::memcpy(slot->light_data + sizeof(shared.rt_lights), &light_count, sizeof(light_count));
+    }
     std::vector<D3D12_RESOURCE_BARRIER> barriers = {uav_barrier};
     for (const auto& [resource, used] : textures) {
       barriers.push_back(Transition(resource, D3D12_RESOURCE_STATE_COMMON, used));
@@ -1758,7 +1782,7 @@ class RtScene12 {
     const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.01f;
     const std::array<uint32_t, 8> settings = {
         frame,
-        shared.rt_flags,
+        (shared.rt_flags & ~dlaa_bridge::RT_LOCAL_LIGHTS) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u),
         std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.f)),
         std::clamp(shared.rt_ambient_rays, 1u, 16u),
         shared.rt_width,
@@ -1767,6 +1791,7 @@ class RtScene12 {
         0u,
     };
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
+    list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());
     list->SetPipelineState(trace_pipeline_.Get());
     list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     if (soft) {
@@ -1929,6 +1954,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> atlas_;
   ComPtr<ID3D12Resource> light_;   // the ray-traced Light Bounce's prepared light (v7)
   ComPtr<ID3D12Resource> bounce_;  // its output
+  ComPtr<ID3D12Resource> light_mask_;  // the local lights' lit bits (v9)
   ComPtr<ID3D12PipelineState> bounce_pipeline_;
   // Paths (v8): last frame's colour (the DLAA input), the G-buffer guides, the reflections' outputs; the history and the
   // cache of the helper's own; the pipelines (DXR 1.2: one state object with both ray generation shaders).

@@ -945,6 +945,7 @@ void ReadDlssAddonOptions() {
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAOQuarter", ray_tracing.ambient_quarter);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedReflections", ray_tracing.reflections);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLocalLights", ray_tracing.local_lights);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedReflectionSamples", ray_tracing.reflection_samples);
   ray_tracing.reflection_samples = std::clamp(ray_tracing.reflection_samples, 1u, 8u);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounce", ray_tracing.light_bounce);
@@ -1169,7 +1170,7 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
   ray_tracing_installed = ray_tracing_settings.sun_shadows || ray_tracing_settings.ambient_occlusion || ray_tracing_settings.light_bounce
-                          || ray_tracing_settings.reflections;
+                          || ray_tracing_settings.reflections || ray_tracing_settings.local_lights;
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Install();
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);

@@ -54,6 +54,8 @@ struct TraceRequest {
   std::span<const RtCapture> captures;
   std::span<const uint32_t> slices;  // as the captures
   std::span<const uint64_t> drawn;
+  // v9, with RT_LOCAL_LIGHTS: the local lights (world position, reach in metres; RT_MAX_LIGHTS at most).
+  std::span<const std::array<float, 4>> lights;
 };
 
 // A ray-traced Light Bounce request (light_bounce.hpp through rt_scene.hpp): the render size, the bounce's size and its
@@ -162,6 +164,7 @@ struct Bridge {
   // The ray-traced Light Bounce's (v7): its prepared light in, the bounce out.
   Texture rt_light;
   Texture rt_bounce;
+  Texture rt_light_mask;  // v9: the local lights' lit bits
   // The reflections' (v8, made when they are on): the reflected light and the specular occlusion out.
   Texture rt_reflection;
   Texture rt_specular;
@@ -286,6 +289,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.rt_ambient = {};
   bridge.rt_light = {};
   bridge.rt_bounce = {};
+  bridge.rt_light_mask = {};
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.fg_frame.Reset();
@@ -388,7 +392,8 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_visibility, &shared.rt_visibility)
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_ambient, &shared.rt_ambient)
                             && make(DXGI_FORMAT_R11G11B10_FLOAT, &bridge.rt_light, &shared.rt_light)
-                            && make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_bounce, &shared.rt_bounce) && share_atlas()))
+                            && make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_bounce, &shared.rt_bounce)
+                            && make(DXGI_FORMAT_R32_UINT, &bridge.rt_light_mask, &shared.rt_light_mask) && share_atlas()))
                     && (!reflections
                         || (make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_reflection, &shared.rt_reflection)
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_specular, &shared.rt_specular)))
@@ -416,6 +421,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     shared.rt_atlas = 0;
     shared.rt_light = 0;
     shared.rt_bounce = 0;
+    shared.rt_light_mask = 0;
   }
   if (!reflections) {
     shared.rt_reflection = 0;
@@ -497,6 +503,10 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
     std::copy_n(request.slices.begin(), std::min<size_t>(request.slices.size(), shared->rt_capture_count), shared->rt_capture_slices);
     shared->rt_drawn_count = static_cast<uint32_t>(std::min<size_t>(request.drawn.size(), RT_DRAWN));
     std::copy_n(request.drawn.begin(), shared->rt_drawn_count, shared->rt_drawn);
+    shared->rt_light_count = static_cast<uint32_t>(std::min<size_t>(request.lights.size(), RT_MAX_LIGHTS));
+    for (uint32_t light = 0; light < shared->rt_light_count; ++light) {
+      std::copy_n(request.lights[light].begin(), 4, shared->rt_lights[light]);
+    }
   });
 }
 
@@ -645,6 +655,7 @@ inline void Release() {
   bridge.rt_ambient = {};
   bridge.rt_light = {};
   bridge.rt_bounce = {};
+  bridge.rt_light_mask = {};
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.rt_atlas = {};

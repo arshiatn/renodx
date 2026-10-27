@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 8;
+constexpr uint32_t VERSION = 9;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -27,6 +27,8 @@ constexpr uint32_t RT_DRAWN = 8192;
 // The leaves' opacity masks (v6): an R8 texture array of RT_ATLAS_SLICES slices RT_ATLAS_SIZE square.
 constexpr uint32_t RT_ATLAS_SIZE = 512;
 constexpr uint32_t RT_ATLAS_SLICES = 256;
+// Local lights' shadows (v9): at most this many lights a request (a bit each in the lit mask).
+constexpr uint32_t RT_MAX_LIGHTS = 32;
 
 // A draw captured this frame (its key, its triangles' vertices in the vertex texture) or drawn this frame (key only).
 struct RtCapture {
@@ -47,6 +49,8 @@ constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;
 // The ambient visibility at a quarter of the rays: one pixel of each 2 x 2 block traced (another each frame) for the block.
 constexpr uint32_t RT_AMBIENT_QUARTER = 4;
+// The local lights' shadows (v9): rt_lights into rt_light_mask.
+constexpr uint32_t RT_LOCAL_LIGHTS = 8;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -181,11 +185,19 @@ struct Shared {
   float rt_reflection_range = 0.f;
   uint32_t rt_guides = 0;
   uint32_t rt_v8_padding = 0;
+  // The addon's (v9): the local lights' shadows with RT_LOCAL_LIGHTS in a trace request's flags: `rt_light_count` lights
+  // (world position, reach in metres), a ray from each render pixel within a light's reach toward it; out in
+  // `rt_light_mask` (R32_UINT at the textures' size, opened with the others; bit i: light i reaches the pixel unblocked).
+  float rt_lights[RT_MAX_LIGHTS][4] = {};
+  uint32_t rt_light_count = 0;
+  uint32_t rt_v9_padding = 0;
+  uint64_t rt_light_mask = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 8) return sizeof(Shared);
+  if (version >= 9) return sizeof(Shared);
+  if (version == 8) return offsetof(Shared, rt_lights);
   if (version == 7) return offsetof(Shared, rt_reflection);
   if (version == 6) return offsetof(Shared, rt_light);
   if (version == 5) return offsetof(Shared, rt_sun_softness);
