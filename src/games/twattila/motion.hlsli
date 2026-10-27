@@ -96,6 +96,11 @@ bool MotionRecord(RWBuffer<uint> keys, RWBuffer<uint4> placements, uint key, flo
       const uint first = PlacementCell(int2(x, z)) * PLACEMENT_SLOTS;
       [loop]
       for (uint slot = first; slot < first + PLACEMENT_SLOTS; ++slot) {
+        // A plain read first: every pixel of a unit records the same key, and atomics on the same slots from all of them
+        // serialized (a screen full of soldiers cost ~30 ms at 4K). Only an empty slot takes the atomic.
+        const uint seen = keys[slot];
+        if (seen == key) break;
+        if (seen != 0u) continue;
         uint previous_key;
         InterlockedCompareExchange(keys[slot], 0u, key, previous_key);
         if (previous_key == key) break;
