@@ -957,6 +957,7 @@ void ReadDlssAddonOptions() {
   auto& ray_tracing = ray_tracing_settings;
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedSunShadows", ray_tracing.sun_shadows);
   read_float("RayTracedShadowSoftness", 0.5f, 0.f, 3.f, &ray_tracing.sun_softness);
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLeafLight", ray_tracing.leaf_light);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAmbientOcclusion", ray_tracing.ambient_occlusion);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAOQuarter", ray_tracing.ambient_quarter);

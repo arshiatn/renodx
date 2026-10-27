@@ -833,6 +833,17 @@ class RtScene12 {
             flags |= PATH_REUSE_HISTORY;
           }
         }
+        // The local lights with their colours (v11): what the paths meet unseen by the screen lit by them too.
+        const uint32_t light_count = (version >= 11 && (shared.rt_flags & dlaa_bridge::RT_LOCAL_LIGHTS) != 0)
+                                         ? std::min(shared.rt_light_count, dlaa_bridge::RT_MAX_LIGHTS)
+                                         : 0u;
+        if (light_count != 0) {
+          std::memcpy(slot.light_data, shared.rt_lights, light_count * sizeof(shared.rt_lights[0]));
+          std::memcpy(slot.light_data + sizeof(shared.rt_lights), &light_count, sizeof(light_count));
+          std::memcpy(slot.light_data + sizeof(shared.rt_lights) + 16, shared.rt_light_colours, light_count * sizeof(shared.rt_light_colours[0]));
+          flags |= PATH_LOCAL_LIGHTS;
+        }
+        list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot.lights->GetGPUVirtualAddress());
         PathConstants constants = {
             .bounce_width = shared.rt_bounce_width,
             .bounce_height = shared.rt_bounce_height,
@@ -1024,6 +1035,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_REUSE = 1024;
   static constexpr uint32_t PATH_REUSE_HISTORY = 2048;
   static constexpr uint32_t PATH_REUSE_PARITY = 4096;
+  static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
   struct PathConstants {
@@ -1052,7 +1064,7 @@ class RtScene12 {
     ROOT_LIGHTS,  // b4: the trace's local lights
   };
   // b4: RT_MAX_LIGHTS of world position and reach, then their count (a CBV's 256-byte multiple).
-  static constexpr UINT LIGHT_CONSTANT_BYTES = 768;
+  static constexpr UINT LIGHT_CONSTANT_BYTES = 1280;  // positions, count, colours (v11)
 
   struct Slot {
     ComPtr<ID3D12CommandAllocator> allocator;

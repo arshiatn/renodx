@@ -78,6 +78,7 @@ static const uint PATH_RAW = 512u;            // the reflections as traced (Ray 
 static const uint PATH_REUSE = 1024u;         // ReSTIR GI
 static const uint PATH_REUSE_HISTORY = 2048u; // last frame's reservoirs are last frame's
 static const uint PATH_REUSE_PARITY = 4096u;  // this frame's set: 1 (else 0)
+static const uint PATH_LOCAL_LIGHTS = 8192u;  // the local lights light the surfaces the screen never saw (b4, v11)
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
@@ -271,6 +272,45 @@ float3 PixelNormal(uint2 pixel, float4 position) {
   return SurfaceNormal(int2(pixel), position);
 }
 
+// The local lights' light on a surface the screen never saw: one of them picked by what it would give (its colour, the
+// games' smooth falloff (1 - distance / reach)^2, its angle; reservoir sampling with one number) and weighted back by its
+// odds, if a ray reaches it.
+float3 LocalLight(float3 surface, float3 normal, float u) {
+  float total = 0.f;
+  float picked_weight = 0.f;
+  float3 picked = 0.f;
+  float3 picked_direction = 0.f;
+  float picked_distance = 0.f;
+  [loop]
+  for (uint index = 0u; index < min(light_count, 32u); ++index) {
+    const float3 to_light = lights[index].xyz - surface;
+    const float light_distance = length(to_light);
+    if (light_distance >= lights[index].w || light_distance <= 1e-3f) continue;
+    const float3 direction = to_light / light_distance;
+    const float n_dot_l = dot(normal, direction);
+    if (n_dot_l <= 0.f) continue;
+    const float falloff = 1.f - light_distance / lights[index].w;
+    const float3 arriving = max(light_colours[index].rgb, 0.f) * (falloff * falloff * n_dot_l);
+    const float weight = dot(arriving, float3(0.2126f, 0.7152f, 0.0722f));
+    if (weight <= 0.f) continue;
+    total += weight;
+    const float odds = weight / total;
+    if (u < odds) {
+      picked = arriving;
+      picked_weight = weight;
+      picked_direction = direction;
+      picked_distance = light_distance;
+      u /= odds;
+    } else {
+      u = saturate((u - odds) / max(1.f - odds, 1e-6f));
+    }
+  }
+  if (picked_weight <= 0.f || Occluded(surface, picked_direction, picked_distance - min(LIGHT_CLEARANCE, 0.5f * picked_distance))) {
+    return 0.f;
+  }
+  return picked * (total / picked_weight);
+}
+
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal).
 float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, uint path, out float first_distance, out float3 first_normal) {
   first_distance = 1e30f;
@@ -318,6 +358,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     const float n_dot_l = dot(normal, toward_sun.xyz);
     if (toward_sun.w != 0.f && n_dot_l > 0.f && shade.w > 0.f && !Occluded(surface, toward_sun.xyz, 1.0e4f)) {
       emitted = albedo * sunlit * n_dot_l;
+    }
+    if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) {
+      emitted += albedo * LocalLight(surface, normal, Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 16384u)));
     }
     if (!unseen) {
       unseen = true;

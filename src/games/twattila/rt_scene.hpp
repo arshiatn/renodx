@@ -61,6 +61,7 @@ using Microsoft::WRL::ComPtr;
 struct Sliders {
   float sun_shadows = 0.f;
   float sun_softness = 0.5f;       // degrees of the sun's disk (0: hard)
+  float leaf_light = 0.f;
   float ambient_occlusion = 0.f;   // off, on, alone (the game's and GT-VBAO's not drawn; Attila)
   float ambient_range = 2.f;       // metres
   float ambient_rays = 2.f;
@@ -98,6 +99,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
       .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples),
       .local_lights = sliders.point_lights != 0.f && dlaa,
+      .leaf_light = sliders.leaf_light != 0.f,
   };
 }
 
@@ -421,11 +423,9 @@ constexpr auto OnPointLightDraw = []<typename T, typename Context>(Context& comm
       for (const auto& copy : copies) {
         for (UINT index = 0; index < copy.count; ++index) {
           const auto* instance = static_cast<const std::byte*>(mapped.pData) + copy.offset + (index * copy.stride);
-          std::array<float, 4> colour = {};
           LocalLight light = {};
-          std::memcpy(colour.data(), instance + copy.layout.colour, sizeof(colour));
           std::memcpy(light.light.data(), instance + copy.layout.position, sizeof(light.light));
-          light.brightness = std::max({colour[0], colour[1], colour[2]});
+          std::memcpy(light.colour.data(), instance + copy.layout.colour, sizeof(light.colour));
           lights.push_back(light);
         }
       }
@@ -584,6 +584,17 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 0.f,
           .max = 3.f,
           .format = "%.2f",
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLeafLight",
+          .binding = &sliders->leaf_light,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Light Through Leaves",
+          .section = section,
+          .tooltip = "Leaves let some sunlight through in ray-traced shadows: lighter shade under trees.",
+          .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
       },
       new renodx::utils::settings::Setting{

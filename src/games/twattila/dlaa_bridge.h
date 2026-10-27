@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 10;
+constexpr uint32_t VERSION = 11;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -55,6 +55,8 @@ constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;
 constexpr uint32_t RT_AMBIENT_QUARTER = 4;
 // The local lights' shadows (v9): rt_lights into rt_light_mask.
 constexpr uint32_t RT_LOCAL_LIGHTS = 8;
+// Light through leaves (v11): leaves on the way to the sun let a share of it through each (else they block it).
+constexpr uint32_t RT_LEAF_LIGHT = 16;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -198,11 +200,14 @@ struct Shared {
   uint32_t rt_light_count = 0;
   uint32_t rt_v9_padding = 0;
   uint64_t rt_light_mask = 0;
+  // The addon's (v11): the local lights' colours (as rt_lights), which light what the paths meet unseen by the screen.
+  float rt_light_colours[RT_MAX_LIGHTS][4] = {};
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 9) return sizeof(Shared);
+  if (version >= 11) return sizeof(Shared);
+  if (version >= 9) return offsetof(Shared, rt_light_colours);
   if (version == 8) return offsetof(Shared, rt_lights);
   if (version == 7) return offsetof(Shared, rt_reflection);
   if (version == 6) return offsetof(Shared, rt_light);

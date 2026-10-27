@@ -586,8 +586,17 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           75-120 light PS permutations each, need traces of the drawn ones), Ryse (shadow-mapped lights in a
           hand-assembled tiled CS), Expeditions / Tales (light permutations unknown without traces), soft local light
           shadows (hard: torches are small), ReSTIR DI (32 traced lights cover the scenes seen).
-    [ ] 5 Emissive surfaces / fire as light sources (beyond what the screen and cache saw) + light through leaves
-          (leaf hits transmit part of the sun in shadow rays).
+    [x] 5 DONE (helper22, bridge v11): Light Through Leaves (RayTracedLeafLight, off by default; TW Graphics and the
+          Shogun 2 DLSS overlay): the sun's ray steps through leaves nearest-first (opacity micromaps make a leaf's solid
+          parts opaque hits, never candidates; RAY_FLAG_FORCE_NON_OPAQUE did not change that on the 5090), each leaf lets
+          LEAF_TRANSMITTANCE 0.25 through, a solid surface or 3 leaves block. Torches / fires light what the paths meet
+          unseen: bridge v11 rt_light_colours (LocalLight.colour: Attila / Thrones POSITION1, Shogun 2 b2 row 1), Paths()
+          binds b4 (positions, count, colours; LIGHT_CONSTANT_BYTES 1280) with PATH_LOCAL_LIGHTS; at a hit neither the
+          screen nor the cache knows, one light by reservoir sampling (colour x (1 - d / reach)^2 x N.L) and a shadow
+          ray; the cache learns it. Harness: a leaf card (foliage + OMM) shadow 0 -> 64 / 255 with the flag; bounce
+          beside the unit +0.068 / +0.042 / +0.019 with coloured lights (3:2:1); harness captures now in vertex order
+          (the scene data pass binary-searches them, as the game's come). NOT done: emissive surfaces other than the
+          games' lights (no emission in the RT scene), leaves letting light through for local lights and the paths' sun.
     [ ] 6 Translucent / coloured shadows (sails, banners, cloth, glass) + smoke / particle shadows (particles in the
           RT scene as non-opaque, transmittance from their opacity).
     [ ] 7 Volumetric shadows: the games' fog / light shafts shadowed by rays (froxel sun visibility from the helper).

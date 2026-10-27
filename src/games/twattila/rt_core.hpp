@@ -53,10 +53,10 @@ namespace twattila::rt_scene {
 
 using Microsoft::WRL::ComPtr;
 
-// A local light a light draw had: world position, reach (metres); its colour's brightest channel.
+// A local light a light draw had: world position, reach (metres); its colour (rgb).
 struct LocalLight {
   std::array<float, 4> light = {};
-  float brightness = 0.f;
+  std::array<float, 4> colour = {};
 };
 
 struct Settings {
@@ -84,6 +84,8 @@ struct Settings {
   // The local lights' shadows (bridge v9): of the lights the game's light draws had (AddLocalLight) the last frame's
   // nearest and brightest go with the trace; their lit bits and positions for the light draws: BindLocalLights.
   bool local_lights = false;
+  // Light through leaves (bridge v11): the sun's rays pass each leaf at a share (else leaves block it).
+  bool leaf_light = false;
 };
 
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
@@ -208,6 +210,7 @@ struct Runtime {
   std::vector<LocalLight> lights_drawn;
   std::vector<LocalLight> lights_last;
   std::vector<std::array<float, 4>> lights;
+  std::vector<std::array<float, 4>> light_colours;
   bool lights_traced = false;
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
@@ -793,14 +796,17 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
     }
   }
-  // The local lights: last frame's nearest and brightest (their reach over their distance, squared, by brightness).
+  // The local lights: last frame's nearest and brightest (their reach over their distance, squared, by their colour's
+  // brightest channel).
   runtime.lights.clear();
+  runtime.light_colours.clear();
   if (runtime.settings.local_lights && !runtime.lights_last.empty()) {
     const auto score = [&](const LocalLight& light) {
       const float x = light.light[0] - camera.position[0];
       const float y = light.light[1] - camera.position[1];
       const float z = light.light[2] - camera.position[2];
-      return light.brightness * light.light[3] * light.light[3] / std::max((x * x) + (y * y) + (z * z), 1.f);
+      return std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3] * light.light[3]
+             / std::max((x * x) + (y * y) + (z * z), 1.f);
     };
     auto& candidates = runtime.lights_last;
     const size_t count = std::min<size_t>(candidates.size(), dlaa_bridge::RT_MAX_LIGHTS);
@@ -809,6 +815,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     std::array<std::array<float, 4>, dlaa_bridge::RT_MAX_LIGHTS + 1> constants = {};
     for (size_t index = 0; index < count; ++index) {
       runtime.lights.push_back(candidates[index].light);
+      runtime.light_colours.push_back(candidates[index].colour);
       constants[index] = candidates[index].light;
     }
     constants.back()[0] = std::bit_cast<float>(static_cast<uint32_t>(count));
@@ -819,7 +826,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .flags = (runtime.settings.sun_shadows ? dlaa_bridge::RT_SUN_SHADOWS : 0u)
                | (runtime.settings.ambient_occlusion ? dlaa_bridge::RT_AMBIENT_OCCLUSION : 0u)
                | (runtime.settings.ambient_quarter ? dlaa_bridge::RT_AMBIENT_QUARTER : 0u)
-               | (lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u),
+               | (lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
+               | (runtime.settings.leaf_light ? dlaa_bridge::RT_LEAF_LIGHT : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
@@ -830,6 +838,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .slices = runtime.slices,
       .drawn = runtime.drawn,
       .lights = runtime.lights,
+      .light_colours = runtime.light_colours,
   };
   const bool traced = dlaa_bridge::TraceScene(native, request);
   runtime.lights_traced = traced && lights;

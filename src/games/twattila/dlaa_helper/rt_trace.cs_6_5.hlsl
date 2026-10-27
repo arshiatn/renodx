@@ -11,7 +11,8 @@
 // as the range: the share that escapes; at a quarter rate one pixel of each 2 x 2 block, another each frame, traces for
 // the block), and with the local lights (bridge v9) a ray toward each one within reach (bit i of light_mask: light i
 // reaches the pixel unblocked; hard shadows, the rays stopping short of the light's own fixture). Leaves are
-// alpha-tested (their holes let light through).
+// alpha-tested (their holes let light through); with Light Through Leaves (v11) each leaf the sun's ray meets also lets
+// LEAF_TRANSMITTANCE of it through.
 // World units: metres, y up. Noise moves every frame, which DLAA / DLSS (or Ray Reconstruction) settle.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_trace.h -Vn RT_TRACE; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_TRACE_OMM.
 #include "./rt_scene.hlsli"
@@ -21,13 +22,36 @@ RWTexture2D<unorm float> ambient : register(u1);
 RWTexture2D<float2> sun_rays : register(u2);  // soft shadows: lit, blocker distance
 RWTexture2D<uint> light_mask : register(u22);  // the local lights' lit bits (v9)
 
-cbuffer Lights : register(b4) {
-  float4 lights[32];  // world position, reach (metres)
-  uint light_count;
-};
-
-// Where the rays toward a local light stop before it (metres; at most half the way): its lamp, torch or fire's wood.
-static const float LIGHT_CLEARANCE = 0.5f;
+// The ray toward the sun: lit (1; 0 blocked; with Light Through Leaves the share the leaves met let through) and the
+// nearest blocker's distance (soft shadows).
+float2 SunRay(float3 origin, float3 direction) {
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = direction;
+  ray.TMin = 0.f;
+  ray.TMax = 1.0e4f;
+  if ((flags & LEAF_LIGHT) == 0u) {
+    if (sun_cone == 0.f) return float2(Occluded(origin, direction, 1.0e4f) ? 0.f : 1.f, 0.f);
+    TRACE_NEAREST(query, ray)
+    return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(1.f, 0.f);
+  }
+  // The nearest surface each time: a leaf lets its share through and the ray goes on past it (a leaf's solid parts are
+  // opaque with opacity micromaps, so it comes as a hit, not a candidate); a solid surface, or leaves too many to let
+  // any through, block it.
+  float lit = 1.f;
+  float first = 0.f;
+  [loop]
+  for (uint layer = 0u; layer < 4u; ++layer) {
+    TRACE_NEAREST(query, ray)
+    if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(lit, first);
+    if (layer == 0u) first = query.CommittedRayT();
+    if (((records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16) & RECORD_MASKED) == 0u) break;
+    lit *= LEAF_TRANSMITTANCE;
+    if (lit < 0.02f) break;
+    ray.TMin = query.CommittedRayT() + 0.01f;
+  }
+  return float2(0.f, first);
+}
 
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
@@ -46,22 +70,9 @@ void main(uint3 id : SV_DispatchThreadID) {
   float sun_visibility = 1.f;
   float blocker_distance = 0.f;
   if ((flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f && dot(normal, toward_sun.xyz) > 0.f) {
-    const float3 sun_origin = position.xyz + (normal + toward_sun.xyz) * offset;
-    if (sun_cone > 0.f) {
-      // Soft shadows need the nearest blocker's distance.
-      RayDesc ray;
-      ray.Origin = sun_origin;
-      ray.Direction = toward_sun.xyz;
-      ray.TMin = 0.f;
-      ray.TMax = 1.0e4f;
-      TRACE_NEAREST(query, ray)
-      if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
-        sun_visibility = 0.f;
-        blocker_distance = query.CommittedRayT();
-      }
-    } else {
-      sun_visibility = Occluded(sun_origin, toward_sun.xyz, 1.0e4f) ? 0.f : 1.f;
-    }
+    const float2 sun_ray = SunRay(position.xyz + (normal + toward_sun.xyz) * offset, toward_sun.xyz);
+    sun_visibility = sun_ray.x;
+    blocker_distance = sun_ray.y;
   }
   if (sun_cone > 0.f) {
     sun_rays[id.xy] = float2(sun_visibility, blocker_distance);
