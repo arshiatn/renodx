@@ -615,7 +615,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           part and the fog amount stay. Harness: toward the wall's shadow 194 / 255, open 255. NOT done: Rome II (its
           own battlefog hashes 890A842B / 259AEC56 / lq AE2A62D9), WH / Troy / Pharaoh in-scattering passes, Shogun 2,
           the MSAA fog shader (A538288B), sky pixels (rays without a surface: 1).
-    [ ] 8 Refraction + caustics (water).
+    [-] 8 SKIPPED (reasoned): refraction + caustics. The TW water shaders already refract the screen behind them; the
+          water surface is not in the RT scene (ocean / river draws not captured) and nothing lights what is under it;
+          caustics need photon / light tracing into a caustics map. Little to see from the TW camera for the cost.
     [ ] 9 Missing effects: RT reflections in Rome II, Troy, Pharaoh, WH3; specular occlusion where missing (Rome II /
           Troy / Pharaoh show the option without effect; Ryse, Expeditions, Shogun 2, WH3); grass in RT for Pharaoh,
           WH3, Shogun 2.
