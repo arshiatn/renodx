@@ -43,6 +43,9 @@ using Microsoft::WRL::ComPtr;
 struct Settings {
   bool enabled = false;
   uint32_t preset = 0;  // NVSDK_NGX_DLSS_Hint_Render_Preset_* (0: DLSS's default)
+  // Ray tracing through the same helper (twattila/rt_scene.hpp): its textures, the reflections'.
+  bool ray_tracing = false;
+  bool reflections = false;
 };
 
 // This frame's DLSS inputs (frame generation's): the bridge's depth and motion at the render size, the jitter in render
@@ -64,6 +67,8 @@ constexpr std::array<uint32_t, 2> TAA_SHADERS = {0x1ADBFF18u, 0x6A8FC282u};
 constexpr uint32_t CAMERA_BYTES = 66 * 16;
 constexpr uint32_t CAMERA_MAX_BYTES = 2048;
 constexpr size_t PROJECTION = 6 * 4;
+constexpr size_t VIEW_PROJECTION = 10 * 4;
+constexpr size_t TIME = 35 * 4;
 constexpr size_t SCREEN_SIZE = 37 * 4;
 constexpr size_t VIEWPORT = 39 * 4;
 constexpr size_t CAMERA_JITTER = 257;
@@ -83,6 +88,7 @@ struct State {
   std::unordered_map<uint64_t, const float*> mapped;  // camera-sized constant buffers mapped for writing
   std::atomic_bool any_mapped = false;
   std::array<float, CAMERA_BYTES / 4> camera = {};  // the main view's, last uploaded
+  uint64_t camera_buffer = 0;                       // the buffer it was uploaded to
   bool camera_found = false;
   bool camera_seen = false;  // this frame
   bool trace_wanted = false;  // FrameTrace still to come (it starts from the 3D view's camera)
@@ -143,7 +149,9 @@ inline void Resolve(ID3D11DeviceContext* native) {
   ComPtr<ID3D11DeviceContext1> context1;
   const std::unique_lock lock(state.mutex);
   if (!Create(device.Get()) || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))
-      || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height) || !state.camera_found) {
+      || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height, false, state.settings.ray_tracing,
+                                         DXGI_FORMAT_UNKNOWN, state.settings.reflections)
+      || !state.camera_found) {
     release();
     return;
   }
@@ -227,14 +235,15 @@ inline void OnMapBufferRegion(reshade::api::device* device, reshade::api::resour
 }
 
 // The main view's camera (state.mutex held): a perspective projection (its last register 0, 0, 1, 0) over the whole
-// screen.
-inline void Upload(const float* c) {
+// screen, uploaded to `buffer`.
+inline void Upload(const float* c, uint64_t buffer) {
   const float* last = c + PROJECTION + 12;
   if (last[0] != 0.f || last[1] != 0.f || last[2] != 1.f || last[3] != 0.f || c[SCREEN_SIZE] <= 0.f
       || c[VIEWPORT] != c[SCREEN_SIZE] || c[VIEWPORT + 1] != c[SCREEN_SIZE + 1]) {
     return;
   }
   std::copy_n(c, state.camera.size(), state.camera.begin());
+  state.camera_buffer = buffer;
   state.camera_found = true;
   state.camera_seen = true;
 }
@@ -247,7 +256,7 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
   const float* c = found->second;
   state.mapped.erase(found);
   state.any_mapped.store(!state.mapped.empty(), std::memory_order_relaxed);
-  Upload(c);
+  Upload(c, resource.handle);
 }
 
 inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource, uint64_t offset,
@@ -256,7 +265,7 @@ inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data,
   const auto desc = device->get_resource_desc(resource);
   if ((desc.usage & reshade::api::resource_usage::constant_buffer) == 0) return false;
   const std::unique_lock lock(state.mutex);
-  if (state.settings.enabled || state.trace_wanted) Upload(static_cast<const float*>(data));
+  if (state.settings.enabled || state.trace_wanted) Upload(static_cast<const float*>(data), resource.handle);
   return false;
 }
 
@@ -294,6 +303,21 @@ inline bool LastFrame(uint64_t frame, Frame* result) {
   if (internal::state.last_frame != frame) return false;
   *result = internal::state.last;
   return true;
+}
+
+// The main view's camera constants as last uploaded when `buffer` holds them (ray tracing's camera); false: not.
+inline bool MainCamera(ID3D11Buffer* buffer, std::array<float, internal::CAMERA_BYTES / 4>* camera) {
+  const std::unique_lock lock(internal::state.mutex);
+  if (!internal::state.camera_found || reinterpret_cast<uint64_t>(buffer) != internal::state.camera_buffer) return false;
+  *camera = internal::state.camera;
+  return true;
+}
+
+// The main view's size (its viewport; below 100% the render size).
+inline std::array<UINT, 2> RenderSize() {
+  const std::unique_lock lock(internal::state.mutex);
+  if (!internal::state.camera_found) return {};
+  return {static_cast<UINT>(internal::state.camera[internal::VIEWPORT]), static_cast<UINT>(internal::state.camera[internal::VIEWPORT + 1])};
 }
 
 // Presents so far (frame generation's frame number).

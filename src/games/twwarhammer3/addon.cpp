@@ -31,6 +31,7 @@
 #include "../../utils/settings.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
@@ -1968,6 +1969,8 @@ struct DlssSliders {
   float reflex_boost = 0.f;      // (restart)
   float frame_limit = 0.f;       // Reflex's, rendered frames per second (0: off)
 } dlss_sliders;
+// Ray tracing's (twattila/rt_scene.hpp, through DLSS's helper): enabled with DLSS (aa_sliders.method 5 while it is on).
+twattila::rt_scene::Sliders rt_sliders;
 bool frame_generation = false;  // started at launch
 twattila::feature_settings::AaSliders aa_sliders;
 
@@ -2062,6 +2065,39 @@ constexpr std::array<twattila::light_bounce::SunDraw, 7> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1},
 }};
 
+// Ray tracing's scene (twattila/rt_scene.hpp): the G-buffer's opaque meshes as the game's own vertex shaders draw them
+// (their SV_Position streamed out: WH3 has no capture versions), units (skinned, character alpha) every frame. Not in
+// it: leaves (no alpha test without their UVs), grass, billboards, decals, water and the tessellated terrain (its
+// vertex shader gives control points).
+constexpr std::array<twattila::rt_scene::SceneShader, 7> SCENE_SHADERS = {{
+    {.hash = 0xF0395CC4},                    // fx_rigidanisotropic
+    {.hash = 0x8EE34EC5},                    // fx_rigidambientmapfiremesh
+    {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
+    {.hash = 0xC0ED2883},                    // fx_rigidtextureblend
+    {.hash = 0x5767F87C, .terrain = true},   // fx_rigidterrain
+    {.hash = 0xB8C567C3, .dynamic = true},   // fx_weighted (skinned units)
+    {.hash = 0x2C45437C, .dynamic = true},   // rigid_character_alpha
+}};
+
+// Ray tracing's view of the game: DLSS's camera (taa_dlss.hpp; uploaded jittered, as the scene and its depth were drawn)
+// and render size; no G-buffer guides (no reflections, paths without them).
+const twattila::rt_scene::Host RT_HOST = {
+    .camera = [](ID3D11Buffer* buffer, twattila::rt_scene::Camera* camera) {
+      std::array<float, 66 * 4> c = {};
+      if (!twwarhammer3::taa_dlss::MainCamera(buffer, &c)) return false;
+      std::array<float, 16> view_projection = {};
+      std::copy_n(c.begin() + (10 * 4), 16, view_projection.begin());
+      *camera = {
+          .view_projection = view_projection,
+          .inverse_view_projection = talesofarise::frame_generation::Inverse(view_projection),
+          .position = {c[0], c[1], c[2]},
+      };
+      return true;
+    },
+    .render_size = twwarhammer3::taa_dlss::RenderSize,
+    .guides_written = [] { return false; },
+};
+
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
@@ -2075,9 +2111,13 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
   tw::ao_trace::OnPresent();
+  aa_sliders.method = (dlss_sliders.enabled != 0.f) ? 5.f : 0.f;
+  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders);
+  twattila::rt_scene::Update(rt_settings);
   twwarhammer3::taa_dlss::Update({
       .enabled = dlss_sliders.enabled != 0.f,
       .preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(dlss_sliders.preset), 0, 2)],
+      .ray_tracing = rt_settings.sun_shadows || rt_settings.ambient_occlusion || rt_settings.light_bounce,
   });
   talesofarise::frame_generation::frame_limit.store(static_cast<uint32_t>(std::clamp(dlss_sliders.frame_limit, 0.f, 240.f)));
   // After the at-start tests' thread (one writer at a time).
@@ -2418,6 +2458,9 @@ void ConfigureAddon() {
     });
   }
 
+  // Ray tracing (twattila/rt_scene.hpp) with DLSS.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, false, twattila::feature_settings::DLSS_SECTION);
+
   // Appended Settings (HDR10)
   {
     auto* setting = new renodx::utils::settings::Setting{
@@ -2507,6 +2550,10 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // Ray tracing's at the sun draws first: its trace for the screen-space shadows, the AO filter and the Light Bounce.
+  twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Before the Light Bounce's (its callback draws the sun draw again).
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
@@ -2531,6 +2578,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
 
   attached = true;
   return true;
@@ -2562,6 +2610,8 @@ void DetachAddon() {
   twattila::screen_space_shadows::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_filter::Uninstall();
+  twattila::rt_scene::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);
   twwarhammer3::taa_dlss::Uninstall();
