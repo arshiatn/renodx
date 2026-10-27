@@ -640,7 +640,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           with a display-size depth (upscaled render depth: max of the 2 x 2 at 50%) bound in place of 0x6f454420, the
           combine + bloom at display size (view cloning, feedback_view_cloning), the composite's UV scale for t2 / t3 to
           1; test with ATN at 50 / 67 / 77 %.
-    [ ] 12 Release: 64 + 32-bit builds, patch notes, zips (helper22 if the helper changes), report.
+    [x] 12 DONE: 64 + 32-bit builds, README notes, zips in Downloads (helper22, bridge v11: every helper zip needs it):
+          twattila_v79, twthronesofbritannia_v37, twrome2_v37 (32-bit addons), twtroy_v33, twpharaohdynasties_v37,
+          twwarhammer_v34, twwarhammer2_v34, twwarhammer3_v28, twshogun2completeedition_v64 + _dlss_v57,
+          expeditionsrome_dlss_graphics_v28, rysesonofrome_fix53 (rysesonofrome_dlss and talesofarise_dlss unchanged).
+          release_zip.py --helper now ships helper22 and KAJIYA_LICENSE-MIT.txt (build\downloads\kajiya). Harness
+          (tools\tw\rt_harness): ALL PASSED with leaf / sail / fog / light colour checks; captures in vertex order.
+          Double work: none new (point light shadows only on the light shaders without the game's point shadow maps;
+          torch light only at path hits the screen and cache never saw; leaf / cloth light only past the shadow maps).
+          NEXT: ATN tests batches 3-5 in game.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
