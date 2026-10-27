@@ -17,6 +17,7 @@
 #include <cstring>
 #include <format>
 #include <mutex>
+#include <ranges>
 #include <span>
 #include <string>
 #include <type_traits>
@@ -66,6 +67,7 @@ struct Sliders {
   float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
   float units = 1.f;
   float grass = 0.f;
+  float point_lights = 0.f;  // the point lights' shadows (games whose light draws InstallPointLights hooks)
   float light_bounce = 0.f;
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
@@ -95,6 +97,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reflections = sliders.reflections != 0.f && dlaa,
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
       .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples),
+      .local_lights = sliders.point_lights != 0.f && dlaa,
   };
 }
 
@@ -102,7 +105,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
 // them) and the reflections' textures.
 inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
   aa->ray_tracing = settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections
-                    || settings.specular_occlusion;
+                    || settings.specular_occlusion || settings.local_lights;
   aa->ray_traced_guides = settings.path_tracing || settings.reflections || settings.specular_occlusion;
   aa->ray_traced_reflections = settings.reflections || settings.specular_occlusion;
 }
@@ -328,6 +331,160 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
   return {};
 };
 
+namespace internal {
+
+// The point lights' instance data as the game's input layouts give it (POSITION1: the light's colour, POSITION2: its
+// world position and reach; the light shaders' inputs), by input layout.
+struct PointLightLayout {
+  uint32_t slot = 0;
+  uint32_t colour = 0;
+  uint32_t position = 0;
+};
+static std::mutex point_light_mutex;
+static std::unordered_map<uint64_t, PointLightLayout> point_light_layouts;
+static bool point_lights_installed = false;
+
+// The light draws' instances copied for the CPU into a ring of staging buffers, read when the ring comes round (three
+// frames on: the GPU done with them) into the lights the next trace picks from.
+constexpr UINT POINT_LIGHT_BYTES = 512 * 1024;
+struct PointLightCopy {
+  UINT offset = 0;  // bytes into the staging buffer
+  UINT count = 0;
+  UINT stride = 0;
+  PointLightLayout layout;
+};
+struct PointLightReadback {
+  ComPtr<ID3D11Device> device;
+  std::array<ComPtr<ID3D11Buffer>, 3> staging;
+  std::array<std::vector<PointLightCopy>, 3> copies;
+  std::array<UINT, 3> used = {};
+  uint64_t frame = UINT64_MAX;  // the frame the current buffer fills in
+  size_t current = 0;
+};
+static PointLightReadback point_light_readback;
+
+inline void OnInitInputLayout(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
+                              const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  for (const auto& subobject : std::span(subobjects, subobject_count)) {
+    if (subobject.type != reshade::api::pipeline_subobject_type::input_layout) continue;
+    const std::span elements(static_cast<const reshade::api::input_element*>(subobject.data), subobject.count);
+    const auto find = [&](uint32_t index) {
+      return std::ranges::find_if(elements, [&](const reshade::api::input_element& element) {
+        return element.semantic != nullptr && std::string_view(element.semantic) == "POSITION" && element.semantic_index == index;
+      });
+    };
+    const auto colour = find(1);
+    const auto position = find(2);
+    if (colour == elements.end() || position == elements.end() || colour->buffer_binding != position->buffer_binding) continue;
+    const std::unique_lock lock(point_light_mutex);
+    point_light_layouts[pipeline.handle] = {.slot = position->buffer_binding, .colour = colour->offset, .position = position->offset};
+  }
+}
+
+inline void OnDestroyInputLayout(reshade::api::device*, reshade::api::pipeline pipeline) {
+  const std::unique_lock lock(point_light_mutex);
+  point_light_layouts.erase(pipeline.handle);
+}
+
+}  // namespace internal
+
+// A point light draw (the addon's replaced light shaders with rt_local_lights.hlsli): its instances copied for the next
+// traces; this frame's traced lights' bits and positions bound (put back after).
+constexpr auto OnPointLightDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!internal::active.load(std::memory_order_relaxed)) return {};
+  auto* native = internal::NativeContext(command.cmd_list);
+  if (native == nullptr) return {};
+  uint64_t frame = 0;
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    if (!internal::runtime.settings.local_lights) return {};
+    frame = internal::runtime.frame;
+  }
+  auto& readback = internal::point_light_readback;
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  if (readback.device != device) {
+    readback = {.device = device};
+    const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = internal::POINT_LIGHT_BYTES, .Usage = D3D11_USAGE_STAGING,
+                                            .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    for (auto& buffer : readback.staging) device->CreateBuffer(&staging_desc, nullptr, buffer.GetAddressOf());
+  }
+  // A new frame: the buffer filled three frames ago read (each light once) into this frame's lights, then filled again.
+  if (readback.frame != frame) {
+    readback.frame = frame;
+    readback.current = (readback.current + 1) % readback.staging.size();
+    auto& buffer = readback.staging[readback.current];
+    auto& copies = readback.copies[readback.current];
+    if (D3D11_MAPPED_SUBRESOURCE mapped = {}; !copies.empty() && SUCCEEDED(native->Map(buffer.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+      std::vector<LocalLight> lights;
+      for (const auto& copy : copies) {
+        for (UINT index = 0; index < copy.count; ++index) {
+          const auto* instance = static_cast<const std::byte*>(mapped.pData) + copy.offset + (index * copy.stride);
+          std::array<float, 4> colour = {};
+          LocalLight light = {};
+          std::memcpy(colour.data(), instance + copy.layout.colour, sizeof(colour));
+          std::memcpy(light.light.data(), instance + copy.layout.position, sizeof(light.light));
+          light.brightness = std::max({colour[0], colour[1], colour[2]});
+          lights.push_back(light);
+        }
+      }
+      native->Unmap(buffer.Get(), 0);
+      std::ranges::sort(lights, {}, &LocalLight::light);
+      const auto repeated = std::ranges::unique(lights, {}, &LocalLight::light);
+      lights.erase(repeated.begin(), repeated.end());
+      AddLocalLights(lights);
+    }
+    copies.clear();
+    readback.used[readback.current] = 0;
+  }
+  ComPtr<ID3D11InputLayout> input_layout;
+  native->IAGetInputLayout(input_layout.GetAddressOf());
+  internal::PointLightLayout layout;
+  {
+    const std::unique_lock lock(internal::point_light_mutex);
+    const auto found = internal::point_light_layouts.find(reinterpret_cast<uintptr_t>(input_layout.Get()));
+    if (found != internal::point_light_layouts.end()) layout = found->second;
+  }
+  ComPtr<ID3D11Buffer> instances;
+  UINT stride = 0;
+  UINT offset = 0;
+  if (input_layout) native->IAGetVertexBuffers(layout.slot, 1, instances.GetAddressOf(), &stride, &offset);
+  auto& buffer = readback.staging[readback.current];
+  UINT& used = readback.used[readback.current];
+  const auto& arguments = command.arguments;
+  const UINT count = stride == 0 ? 0 : std::min(arguments.instance_count, (internal::POINT_LIGHT_BYTES - used) / stride);
+  if (instances && buffer && count != 0 && std::max(layout.colour, layout.position) + 16 <= stride) {
+    const UINT first = offset + (arguments.first_instance * stride);
+    const D3D11_BOX box = {.left = first, .top = 0, .front = 0, .right = first + (count * stride), .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(buffer.Get(), 0, used, 0, 0, instances.Get(), 0, &box);
+    readback.copies[readback.current].push_back({.offset = used, .count = count, .stride = stride, .layout = layout});
+    used += count * stride;
+  }
+  if (!BindLocalLights(native)) return {};
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = internal::NativeContext(post.cmd_list);
+    if (post_native != nullptr) UnbindLocalLights(post_native);
+  }};
+};
+
+// Attila's and Thrones' point light shaders without the game's point shadow maps (shaders/pointlight00-07: smooth and
+// linear falloff, standard and skin lighting, high and low detail).
+constexpr std::array<uint32_t, 8> POINT_LIGHT_SHADERS = {0x6426B042, 0x90981DA1, 0x89FF812E, 0xFD3BF1A8,
+                                                         0x593989DE, 0x0D7A1213, 0xB8F368CF, 0xC9E4E52D};
+
+// The point light draws (the addon's replaced pixel shaders reading rt_local_lights.hlsli), kept while installed: the
+// game's input layouts tracked from now (before the device: install at load), Ray-Traced Point Light Shadows shown.
+inline void InstallPointLights(std::span<const uint32_t> shader_hashes) {
+  internal::point_lights_installed = true;
+  reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
+  reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+  for (const uint32_t shader_hash : shader_hashes) {
+    renodx::utils::command_action::Register(
+        OnPointLightDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+}
+
 // The scene's shaders (`shaders`) and the game's ambient occlusion passes (none: the trace at the sun draws), the
 // addon's, kept while installed (after the ambient occlusion pass's own hooks: its result is multiplied after); the
 // Light Bounce's trace through rays.
@@ -355,6 +512,11 @@ inline void Uninstall() {
   light_bounce::SetRayTracedTrace(nullptr);
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
+  if (std::exchange(internal::point_lights_installed, false)) {
+    renodx::utils::command_action::Unregister(OnPointLightDraw);
+    reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
+    reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+  }
   UninstallScene();
 }
 
@@ -501,6 +663,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_enabled = [sliders, aa] {
             return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
           },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedPointLights",
+          .binding = &sliders->point_lights,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Point Light Shadows",
+          .section = section,
+          .tooltip = "Torches and fires cast ray-traced shadows (the 32 nearest and brightest).",
+          .labels = {"Off", "On"},
+          .is_enabled = dlaa_on,
+          .is_visible = [] { return internal::point_lights_installed; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounce",

@@ -1750,6 +1750,8 @@ bool AttachAddon() {
   // draws the sun draws itself: no callback after it runs).
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);
+  // The point lights' ray-traced shadows (their light shaders replaced: shaders/pointlight*).
+  twattila::rt_scene::InstallPointLights(twattila::rt_scene::POINT_LIGHT_SHADERS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 

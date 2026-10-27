@@ -574,9 +574,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           3 shadows (PTLAS on / off), all checks pass. Not done: trees (branch / leaf: no record shaders yet), Tales Mega
           Geometry (needs NVAPI in the Tales addon build = root CMakeLists.txt, ATN's OK; characters refit cheaply), LSS
           (not applicable: grass and hair are alpha cards, no strands).
-    [ ] 4 Local light shadows everywhere (point + spot, optional soft by the light's size, more than 32 lights):
-          TW 7 + WH3 light shaders, Ryse tiled lights (light list read back; DLSS addon's tiled CS copy reads t42 /
-          b12), Expeditions UE deferred lights, Tales. Many lights: wider masks / importance, ReSTIR DI judged here.
+    [x] 4 DONE (addons only, helper unchanged): local lights moved into rt_core (AddLocalLight / AddLocalLights /
+          BindLocalLights / UnbindLocalLights; the trace picks the 32 nearest and brightest of last frame's lights by
+          brightness x reach^2 / distance^2; Shogun 2 refactored onto it). Attila + Thrones: Ray-Traced Point Light
+          Shadows (RayTracedPointLights, off by default): the 8 point light PS without the game's point shadow maps
+          (POINT_LIGHT_SHADERS, shaders/pointlight00-07, smooth / linear x slm / skin x high / low; Thrones wraps
+          Attila's) x RtLocalLightVisibility(v0, v3 = POSITION2); the instanced light draws' instances (input layout
+          tracked: POSITION1 colour, POSITION2 position + reach) copied to a 3-deep staging ring, read 3 frames on,
+          deduplicated -> AddLocalLights. Frame order checked in traces: point lights after the sun draw (trace done).
+          NOT done: Rome II / Troy / Pharaoh / WH1-3 (the game's own cube shadow maps on point and gobo spot lights,
+          75-120 light PS permutations each, need traces of the drawn ones), Ryse (shadow-mapped lights in a
+          hand-assembled tiled CS), Expeditions / Tales (light permutations unknown without traces), soft local light
+          shadows (hard: torches are small), ReSTIR DI (32 traced lights cover the scenes seen).
     [ ] 5 Emissive surfaces / fire as light sources (beyond what the screen and cache saw) + light through leaves
           (leaf hits transmit part of the sun in shadow rays).
     [ ] 6 Translucent / coloured shadows (sails, banners, cloth, glass) + smoke / particle shadows (particles in the

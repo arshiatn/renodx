@@ -39,9 +39,9 @@
 // (shaders/rt_sun.hlsli: the darker of them and the game's shadow mask and AO). The traced reflections replace the
 // screen-space march's hit in its resolve (ssrresolve00, twattila/rt_reflection.hlsli; the march and its blurs left
 // out), whose lit scene is the helper's last frame's colour for the next frame (KeepColor). The local lights' shadows:
-// the point lights the last frame drew (pointlight00 / 01: point_light_PS b2), the nearest and brightest
-// RT_MAX_LIGHTS of them traced with the frame, their lit bits and positions bound for this frame's point light draws
-// (t42 / b12, twattila/rt_local_lights.hlsli). The Light Bounce's trace goes through rays (path traced when on).
+// the point lights the frame draws (pointlight00 / 01: point_light_PS b2) for the next frame's trace (rt_core picks the
+// nearest and brightest), its lit bits and positions bound for the point light draws (t42 / b12,
+// twattila/rt_local_lights.hlsli). The Light Bounce's trace goes through rays (path traced when on).
 // Installed when an effect is on at launch.
 namespace twshogun2::ray_tracing {
 
@@ -68,16 +68,8 @@ namespace internal {
 constexpr uint32_t CAMERA_ROWS = 41;
 constexpr uint32_t CAMERA_VIEW_PROJECTION = 10;
 constexpr uint32_t CAMERA_VIEWPORT = 38;
-// The traced visibilities' slots (shaders/rt_sun.hlsli); the local lights' (twattila/rt_local_lights.hlsli).
+// The traced visibilities' slots (shaders/rt_sun.hlsli).
 constexpr UINT VISIBILITY_SLOT = 40;
-constexpr UINT LIGHT_MASK_SLOT = 42;
-constexpr UINT LIGHT_CONSTANTS_SLOT = 12;
-
-// A point light as drawn: world position, reach, its colour's brightest channel.
-struct PointLight {
-  std::array<float, 4> light = {};
-  float brightness = 0.f;
-};
 
 struct State {
   std::mutex mutex;
@@ -86,13 +78,9 @@ struct State {
   std::array<UINT, 2> depth_size = {};  // the sun draws' depth's: the main view's (other views' G-buffers stay out)
   uint64_t frame = 0;
   uint64_t guides_frame = UINT64_MAX;  // the frame the guides were written in
-  // The point lights drawn this frame and last; those traced this frame (their positions also in `light_constants`).
-  std::vector<PointLight> drawn_lights;
-  std::vector<PointLight> last_lights;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3DDeviceContextState> private_state;
   ComPtr<ID3D11ComputeShader> guides;
-  ComPtr<ID3D11Buffer> light_constants;  // RT_MAX_LIGHTS positions, then the count (b12)
   bool failed = false;
 };
 static State state;
@@ -179,20 +167,13 @@ inline bool PrepareObjects(ID3D11DeviceContext* native) {
   const UINT state_flags = ((device->GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0)
                                ? D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED
                                : 0;
-  const D3D11_BUFFER_DESC constants_desc = {
-      .ByteWidth = (twattila::dlaa_bridge::RT_MAX_LIGHTS + 1) * 16,
-      .Usage = D3D11_USAGE_DEFAULT,
-      .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
-  };
   state.device = device;
   state.private_state.Reset();
   state.guides.Reset();
-  state.light_constants.Reset();
   state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                  || FAILED(device1->CreateDeviceContextState(state_flags, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1),
                                                              nullptr, state.private_state.GetAddressOf()))
-                 || FAILED(device->CreateComputeShader(__rt_guides.data(), __rt_guides.size(), nullptr, state.guides.GetAddressOf()))
-                 || FAILED(device->CreateBuffer(&constants_desc, nullptr, state.light_constants.GetAddressOf()));
+                 || FAILED(device->CreateComputeShader(__rt_guides.data(), __rt_guides.size(), nullptr, state.guides.GetAddressOf()));
   return !state.failed;
 }
 
@@ -255,32 +236,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     }
   }
   if (settings.reflections || settings.path_tracing) WriteGuides(native, draw.depth_slot);
-  if (twattila::rt_scene::Camera camera; Camera(buffers[0].Get(), &camera)) {
-    // The local lights: last frame's nearest and brightest (their reach over their distance, squared, by brightness).
-    if (settings.local_lights) {
-      std::array<std::array<float, 4>, twattila::dlaa_bridge::RT_MAX_LIGHTS + 1> constants = {};
-      size_t count = 0;
-      {
-        const std::unique_lock lock(state.mutex);
-        const auto score = [&](const PointLight& light) {
-          const float x = light.light[0] - camera.position[0];
-          const float y = light.light[1] - camera.position[1];
-          const float z = light.light[2] - camera.position[2];
-          return light.brightness * light.light[3] * light.light[3] / std::max((x * x) + (y * y) + (z * z), 1.f);
-        };
-        auto& lights = state.last_lights;
-        count = std::min<size_t>(lights.size(), twattila::dlaa_bridge::RT_MAX_LIGHTS);
-        std::partial_sort(lights.begin(), lights.begin() + static_cast<ptrdiff_t>(count), lights.end(),
-                          [&](const PointLight& a, const PointLight& b) { return score(a) > score(b); });
-        for (size_t index = 0; index < count; ++index) constants[index] = lights[index].light;
-        constants.back()[0] = std::bit_cast<float>(static_cast<uint32_t>(count));
-        if (!PrepareObjects(native)) count = 0;
-      }
-      twattila::rt_scene::SetLocalLights(std::span(constants.data(), count));
-      if (count != 0) native->UpdateSubresource(state.light_constants.Get(), 0, nullptr, constants.data(), 0, 0);
-    }
-    twattila::rt_scene::Trace(native, depth.Get(), camera);
-  }
+  if (twattila::rt_scene::Camera camera; Camera(buffers[0].Get(), &camera)) twattila::rt_scene::Trace(native, depth.Get(), camera);
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
   const std::array<ID3D11ShaderResourceView*, 2> visibilities = {settings.sun_shadows ? sun : nullptr,
                                                                  settings.ambient_occlusion ? ambient : nullptr};
@@ -294,41 +250,24 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
   }};
 };
 
-// A point light draw: its light kept for the next frame's trace; this frame's traced lights' bits and positions bound
-// (put back after).
+// A point light draw: its light (point_light_PS) kept for the next frame's trace; this frame's traced lights' bits and
+// positions bound (put back after).
 constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
-  {
-    const std::unique_lock lock(state.mutex);
-    if (!state.settings.local_lights) return {};
-  }
   ComPtr<ID3D11Buffer> point_light;
   native->PSGetConstantBuffers(2, 1, point_light.GetAddressOf());
-  expeditionsrome::dlss::constants::Watch(point_light.Get(), 32);
+  if (point_light) expeditionsrome::dlss::constants::Watch(point_light.Get(), 32);
   if (std::array<std::array<float, 4>, 2> rows = {};
-      point_light && expeditionsrome::dlss::constants::Read(point_light.Get(), 0, std::as_writable_bytes(std::span(rows))) && rows[1][3] > 0.f) {
-    const PointLight light = {.light = {rows[0][0], rows[0][1], rows[0][2], rows[1][3]},
-                              .brightness = std::max({rows[1][0], rows[1][1], rows[1][2]})};
-    const std::unique_lock lock(state.mutex);
-    if (std::ranges::none_of(state.drawn_lights, [&](const PointLight& drawn) { return drawn.light == light.light; })) {
-      state.drawn_lights.push_back(light);
-    }
+      point_light && expeditionsrome::dlss::constants::Read(point_light.Get(), 0, std::as_writable_bytes(std::span(rows)))) {
+    twattila::rt_scene::AddLocalLight({.light = {rows[0][0], rows[0][1], rows[0][2], rows[1][3]}, .brightness = std::max({rows[1][0], rows[1][1], rows[1][2]})});
   }
-  auto* mask = twattila::rt_scene::LocalLightMask();
-  if (mask == nullptr) return {};
-  ID3D11Buffer* constants = state.light_constants.Get();
-  native->PSSetShaderResources(LIGHT_MASK_SLOT, 1, &mask);
-  native->PSSetConstantBuffers(LIGHT_CONSTANTS_SLOT, 1, &constants);
+  if (!twattila::rt_scene::BindLocalLights(native)) return {};
   return {.post_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::NativeFromReShadeProxy(&native);
-    if (native == nullptr) return;
-    ID3D11ShaderResourceView* no_mask = nullptr;
-    ID3D11Buffer* no_constants = nullptr;
-    native->PSSetShaderResources(LIGHT_MASK_SLOT, 1, &no_mask);
-    native->PSSetConstantBuffers(LIGHT_CONSTANTS_SLOT, 1, &no_constants);
+    if (native != nullptr) twattila::rt_scene::UnbindLocalLights(native);
   }};
 };
 
@@ -354,8 +293,6 @@ inline void Update(const twattila::rt_scene::Settings& settings) {
     const std::unique_lock lock(internal::state.mutex);
     internal::state.settings = settings;
     ++internal::state.frame;
-    std::swap(internal::state.last_lights, internal::state.drawn_lights);
-    internal::state.drawn_lights.clear();
   }
   twattila::rt_scene::Update(settings);
 }
@@ -418,7 +355,6 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     internal::state.device.Reset();
     internal::state.private_state.Reset();
     internal::state.guides.Reset();
-    internal::state.light_constants.Reset();
     internal::state.failed = false;
   }
   twattila::rt_scene::OnDestroyDevice(device);

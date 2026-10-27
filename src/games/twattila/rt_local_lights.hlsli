@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Ray-traced local light shadows in the games' light passes (rt_core.hpp LocalLightMask; the helper's rt_trace traces
+// Ray-traced local light shadows in the games' light passes (rt_core.hpp BindLocalLights; the helper's rt_trace traces
 // them at the render pixels): t42 the lit bits of this frame's traced lights, b12 their world positions (the bits'
 // order) and count. A light not among them, or nothing bound, stays as the game draws it.
 #ifndef SRC_GAMES_TWATTILA_RT_LOCAL_LIGHTS_HLSLI_

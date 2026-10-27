@@ -53,6 +53,12 @@ namespace twattila::rt_scene {
 
 using Microsoft::WRL::ComPtr;
 
+// A local light a light draw had: world position, reach (metres); its colour's brightest channel.
+struct LocalLight {
+  std::array<float, 4> light = {};
+  float brightness = 0.f;
+};
+
 struct Settings {
   bool sun_shadows = false;
   bool ambient_occlusion = false;
@@ -75,7 +81,8 @@ struct Settings {
   bool reflections = false;
   bool specular_occlusion = false;
   uint32_t reflection_samples = 1;
-  // The local lights' shadows (bridge v9: the lights the addon gives, SetLocalLights; their lit bits: LocalLightMask()).
+  // The local lights' shadows (bridge v9): of the lights the game's light draws had (AddLocalLight) the last frame's
+  // nearest and brightest go with the trace; their lit bits and positions for the light draws: BindLocalLights.
   bool local_lights = false;
 };
 
@@ -136,6 +143,8 @@ constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_T
 constexpr UINT MAX_DYNAMIC_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
+// The local lights a frame keeps for the next trace to pick from.
+constexpr size_t MAX_LOCAL_LIGHTS = 8192;
 
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
@@ -169,6 +178,8 @@ struct DeviceObjects {
   ComPtr<ID3D11UnorderedAccessView> occlusion_uav;
   // Tracing at the sun draws: their AO times the traced ambient visibility (the display's size, RGBA16F).
   ComPtr<ID3D11ComputeShader> combine_shader;
+  // The traced local lights' positions (RT_MAX_LIGHTS, then their count: rt_local_lights.hlsli's b12).
+  ComPtr<ID3D11Buffer> light_constants;
   ComPtr<ID3D11Texture2D> combined;
   ComPtr<ID3D11ShaderResourceView> combined_srv;
   ComPtr<ID3D11UnorderedAccessView> combined_uav;
@@ -192,8 +203,12 @@ struct Runtime {
     bool ambiguous = false;
   };
   std::unordered_map<uint64_t, ShortKey> short_keys;
-  std::vector<std::array<float, 4>> lights;  // the local lights for this frame's trace (world position, reach)
-  bool lights_traced = false;                 // and whether the trace took them
+  // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
+  // objects.light_constants, b12) and whether it did.
+  std::vector<LocalLight> lights_drawn;
+  std::vector<LocalLight> lights_last;
+  std::vector<std::array<float, 4>> lights;
+  bool lights_traced = false;
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
@@ -274,6 +289,8 @@ inline bool PrepareDevice(ID3D11Device* device) {
   captured_uv_view.Buffer.NumElements = MAX_VERTICES;
   const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC sun_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_BUFFER_DESC light_constants_desc = {.ByteWidth = (dlaa_bridge::RT_MAX_LIGHTS + 1) * 16, .Usage = D3D11_USAGE_DEFAULT,
+                                                  .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   D3D11_BLEND_DESC multiply_desc = {};
   multiply_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ZERO, .DestBlend = D3D11_BLEND_SRC_COLOR,
                                    .BlendOp = D3D11_BLEND_OP_ADD, .SrcBlendAlpha = D3D11_BLEND_ZERO,
@@ -325,6 +342,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
          && compute(__rt_sun, &objects.sun_shader) && compute(__rt_occlusion, &objects.occlusion_shader)
          && compute(__rt_atlas, &objects.atlas_shader) && compute(__rt_ambient_combine, &objects.combine_shader)
          && SUCCEEDED(device->CreateSamplerState(&wrap_desc, objects.linear_wrap.GetAddressOf()))
+         && SUCCEEDED(device->CreateBuffer(&light_constants_desc, nullptr, objects.light_constants.GetAddressOf()))
          && SUCCEEDED(device->CreateVertexShader(__light_bounce_vs.data(), __light_bounce_vs.size(), nullptr,
                                                  objects.fullscreen_shader.GetAddressOf()))
          && SUCCEEDED(device->CreatePixelShader(__rt_ambient_apply.data(), __rt_ambient_apply.size(), nullptr,
@@ -775,7 +793,28 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
     }
   }
-  const bool lights = runtime.settings.local_lights && !runtime.lights.empty();
+  // The local lights: last frame's nearest and brightest (their reach over their distance, squared, by brightness).
+  runtime.lights.clear();
+  if (runtime.settings.local_lights && !runtime.lights_last.empty()) {
+    const auto score = [&](const LocalLight& light) {
+      const float x = light.light[0] - camera.position[0];
+      const float y = light.light[1] - camera.position[1];
+      const float z = light.light[2] - camera.position[2];
+      return light.brightness * light.light[3] * light.light[3] / std::max((x * x) + (y * y) + (z * z), 1.f);
+    };
+    auto& candidates = runtime.lights_last;
+    const size_t count = std::min<size_t>(candidates.size(), dlaa_bridge::RT_MAX_LIGHTS);
+    std::partial_sort(candidates.begin(), candidates.begin() + static_cast<ptrdiff_t>(count), candidates.end(),
+                      [&](const LocalLight& a, const LocalLight& b) { return score(a) > score(b); });
+    std::array<std::array<float, 4>, dlaa_bridge::RT_MAX_LIGHTS + 1> constants = {};
+    for (size_t index = 0; index < count; ++index) {
+      runtime.lights.push_back(candidates[index].light);
+      constants[index] = candidates[index].light;
+    }
+    constants.back()[0] = std::bit_cast<float>(static_cast<uint32_t>(count));
+    native->UpdateSubresource(objects.light_constants.Get(), 0, nullptr, constants.data(), 0, 0);
+  }
+  const bool lights = !runtime.lights.empty();
   const dlaa_bridge::TraceRequest request = {
       .flags = (runtime.settings.sun_shadows ? dlaa_bridge::RT_SUN_SHADOWS : 0u)
                | (runtime.settings.ambient_occlusion ? dlaa_bridge::RT_AMBIENT_OCCLUSION : 0u)
@@ -1089,6 +1128,8 @@ inline void Update(const Settings& settings) {
   runtime.captured_vertices = 0;
   runtime.dynamic_vertices = 0;
   runtime.drawn.clear();
+  std::swap(runtime.lights_last, runtime.lights_drawn);
+  runtime.lights_drawn.clear();
   if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second + internal::RELEASE_FRAMES < runtime.frame; }) != 0) {
     std::erase_if(runtime.short_keys, [&](const auto& entry) { return !runtime.known.contains(entry.second.key); });
   }
@@ -1132,18 +1173,48 @@ inline std::array<ID3D11ShaderResourceView*, 2> Visibilities() {
   return {dlaa_bridge::bridge.rt_visibility.srv.Get(), dlaa_bridge::bridge.rt_ambient.srv.Get()};
 }
 
-// The local lights for the next trace (world position, reach in metres; the first RT_MAX_LIGHTS: their bits' order).
-inline void SetLocalLights(std::span<const std::array<float, 4>> lights) {
-  const std::unique_lock lock(internal::runtime.mutex);
-  internal::runtime.lights.assign(lights.begin(), lights.begin() + std::min<size_t>(lights.size(), dlaa_bridge::RT_MAX_LIGHTS));
+// A local light a light draw had (one drawn twice counts once): the next frame's trace picks the nearest and brightest of
+// this frame's.
+inline void AddLocalLight(const LocalLight& light) {
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  if (!runtime.settings.local_lights || !(light.light[3] > 0.f) || runtime.lights_drawn.size() >= internal::MAX_LOCAL_LIGHTS) return;
+  if (std::ranges::any_of(runtime.lights_drawn, [&](const LocalLight& drawn) { return drawn.light == light.light; })) return;
+  runtime.lights_drawn.push_back(light);
 }
 
-// This frame's local lights' lit bits (R32_UINT at the render pixels: bit i, light i of SetLocalLights reaches the pixel
-// unblocked); null: not traced this frame.
-inline ID3D11ShaderResourceView* LocalLightMask() {
-  const std::unique_lock lock(internal::runtime.mutex);
-  if (internal::runtime.traced_frame != internal::runtime.frame || !internal::runtime.lights_traced) return nullptr;
-  return dlaa_bridge::bridge.rt_light_mask.srv.Get();
+// Many at once (an instanced light draw's: each once).
+inline void AddLocalLights(std::span<const LocalLight> lights) {
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  if (!runtime.settings.local_lights) return;
+  for (const LocalLight& light : lights) {
+    if (runtime.lights_drawn.size() >= internal::MAX_LOCAL_LIGHTS) break;
+    if (light.light[3] > 0.f) runtime.lights_drawn.push_back(light);
+  }
+}
+
+// For a light draw (its pixel shader with rt_local_lights.hlsli): this frame's lit bits at t42 and the traced lights'
+// positions at b12; false: none traced this frame (nothing bound).
+inline bool BindLocalLights(ID3D11DeviceContext* native) {
+  ID3D11ShaderResourceView* mask = nullptr;
+  ID3D11Buffer* constants = nullptr;
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    if (internal::runtime.traced_frame != internal::runtime.frame || !internal::runtime.lights_traced) return false;
+    mask = dlaa_bridge::bridge.rt_light_mask.srv.Get();
+    constants = internal::runtime.objects.light_constants.Get();
+  }
+  native->PSSetShaderResources(42, 1, &mask);
+  native->PSSetConstantBuffers(12, 1, &constants);
+  return true;
+}
+
+inline void UnbindLocalLights(ID3D11DeviceContext* native) {
+  ID3D11ShaderResourceView* no_mask = nullptr;
+  ID3D11Buffer* no_constants = nullptr;
+  native->PSSetShaderResources(42, 1, &no_mask);
+  native->PSSetConstantBuffers(12, 1, &no_constants);
 }
 
 // A scene draw's pixel shader (the one bound; host.scene_draw's): its alpha test into `shader` (foliage: the UV's
