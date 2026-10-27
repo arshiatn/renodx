@@ -26,6 +26,11 @@
 #include <vector>
 
 #include "../dlaa_bridge.h"
+// NVIDIA's NVAPI (MIT; build.ps1 adds it when build\downloads\nvapi holds it): RTX Mega Geometry's cluster operations.
+#if __has_include(<nvapi.h>)
+#include <nvapi.h>
+#define RENODX_NVAPI_CLUSTERS 1
+#endif
 #include "rt_bounce.h"            // dxc -Fh (build.ps1)
 #include "rt_bounce_omm.h"        // dxc -Fh (build.ps1)
 #include "rt_cache_fill.h"        // dxc -Fh (build.ps1)
@@ -54,8 +59,11 @@
 // micromaps (rt_omm.cs_6_5.hlsl). With a bridge v7 addon's ray-traced Light Bounce a second request each frame traces
 // rt_bounce.cs_6_5.hlsl against that frame's TLAS; bridge v8 path traces it instead (rt_path.hlsli: a world radiance
 // cache and the learned lighting for what the screen never saw), and a third request traces reflections and specular
-// occlusion. With DXR 1.2 the paths run as ray generation shaders (DispatchRays) with shader execution reordering. Its
-// queue waits for the addon's fence value and signals the next.
+// occlusion. With DXR 1.2 the paths run as ray generation shaders (DispatchRays) with shader execution reordering. With
+// NVAPI's cluster operations (RTX Mega Geometry; set RENODX_TW_NO_CLUSTERS to turn them off) the units are built each
+// frame as clusters (CLAS) into one cluster BLAS instead of the refitted BLAS, and the TLAS is a partitioned one (PTLAS:
+// each frame only the instances that changed are written; RENODX_TW_NO_PTLAS). Its queue waits for the addon's fence
+// value and signals the next.
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
@@ -90,6 +98,22 @@ class RtScene12 {
     dxr12_ = options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_2
              && SUCCEEDED(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model)))
              && shader_model.HighestShaderModel >= D3D_SHADER_MODEL_6_9;
+#if defined(RENODX_NVAPI_CLUSTERS)
+    // RTX Mega Geometry: the driver's cluster operations, enabled for the pipelines made after this (they trace the
+    // units' cluster BLAS).
+    NvU32 cluster_caps = 0;
+    clusters_ = GetEnvironmentVariableW(L"RENODX_TW_NO_CLUSTERS", nullptr, 0) == 0 && NvAPI_Initialize() == NVAPI_OK
+                && NvAPI_D3D12_GetRaytracingCaps(device_.Get(), NVAPI_D3D12_RAYTRACING_CAPS_TYPE_CLUSTER_OPERATIONS, &cluster_caps,
+                                                 sizeof(cluster_caps)) == NVAPI_OK
+                && (cluster_caps & NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_STANDARD) != 0;
+    if (clusters_) {
+      const NVAPI_D3D12_SET_CREATE_PIPELINE_STATE_OPTIONS_PARAMS options = {
+          .version = NVAPI_D3D12_SET_CREATE_PIPELINE_STATE_OPTIONS_PARAMS_VER,
+          .flags = NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_CLUSTER_SUPPORT,
+      };
+      clusters_ = NvAPI_D3D12_SetCreatePipelineStateOptions(device_.Get(), &options) == NVAPI_OK;
+    }
+#endif
     const D3D12_COMMAND_QUEUE_DESC queue_desc = {.Type = D3D12_COMMAND_LIST_TYPE_DIRECT};
     if (FAILED(device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(queue_.GetAddressOf())))
         || FAILED(device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(own_fence_.GetAddressOf())))) {
@@ -136,6 +160,104 @@ class RtScene12 {
     uvs_ = pool(uint64_t{UV_POOL} * 4);
     normals_ = pool(uint64_t{NORMAL_POOL} * 4);
     if (!vertex_buffer_ || !tlas_ || !tlas_scratch_ || !records_ || !uvs_ || !normals_) return Fail("Ray tracing: D3D12 buffers failed");
+#if defined(RENODX_NVAPI_CLUSTERS)
+    // Mega Geometry's buffers, sized for the most clusters a frame: the CLASes (placed by the driver, their addresses in
+    // clas_addresses_), the units' cluster BLAS (at cluster_blas_, its address in cluster_destination_), the scratch,
+    // the sequential 8-bit indices; a slot's arguments and its clusters' records written by the CPU (cluster_data).
+    if (clusters_) {
+      clas_inputs_ = {
+          .maxArgCount = MAX_CLUSTERS,
+          .flags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE,
+          .type = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_CLAS_FROM_TRIANGLES,
+          .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS,
+      };
+      clas_inputs_.trianglesDesc = {
+          .vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT,
+          .maxGeometryIndexValue = MAX_CLUSTERS - 1,
+          .maxUniqueGeometryCountPerArg = 1,
+          .maxTriangleCountPerArg = CLUSTER_TRIANGLES,
+          .maxVertexCountPerArg = CLUSTER_TRIANGLES * 3,
+          .maxTotalTriangleCount = DYNAMIC_TRIANGLES,
+          .maxTotalVertexCount = DYNAMIC_TRIANGLES * 3,
+          .minPositionTruncateBitCount = 0,
+      };
+      cluster_blas_inputs_ = {
+          .maxArgCount = 1,
+          .flags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE,
+          .type = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_BLAS_FROM_CLAS,
+          .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_EXPLICIT_DESTINATIONS,
+      };
+      cluster_blas_inputs_.clasDesc = {.maxTotalClasCount = MAX_CLUSTERS, .maxClasCountPerArg = MAX_CLUSTERS};
+      NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO clas_info = {};
+      NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO blas_info = {};
+      const auto requirements = [&](const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS& inputs,
+                                    NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO* info) {
+        const NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS params = {
+            .version = NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER,
+            .pInput = &inputs,
+            .pInfo = info,
+        };
+        return NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo(device_.Get(), &params) == NVAPI_OK;
+      };
+      const auto as_buffer = [&](uint64_t bytes, D3D12_RESOURCE_STATES state) {
+        return Buffer(std::max<uint64_t>(bytes, 256), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state);
+      };
+      clusters_ = requirements(clas_inputs_, &clas_info) && requirements(cluster_blas_inputs_, &blas_info);
+      if (clusters_) {
+        clas_ = as_buffer(clas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        cluster_blas_ = as_buffer(blas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        cluster_scratch_ = as_buffer(std::max(clas_info.scratchDataSizeInBytes, blas_info.scratchDataSizeInBytes),
+                                     D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        clas_addresses_ = as_buffer(uint64_t{MAX_CLUSTERS} * 8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        cluster_destination_ = as_buffer(8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        cluster_indices_ = Buffer(256, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+        clusters_ = clas_ && cluster_blas_ && cluster_scratch_ && clas_addresses_ && cluster_destination_ && cluster_indices_;
+      }
+      for (Slot& slot : slots_) {
+        if (!clusters_) break;
+        slot.clusters = Buffer(CLUSTER_UPLOAD_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+        clusters_ = slot.clusters && SUCCEEDED(slot.clusters->Map(0, nullptr, reinterpret_cast<void**>(&slot.cluster_data)));
+        if (clusters_) {
+          for (uint32_t index = 0; index < 256; ++index) slot.cluster_data[CLUSTER_INDICES_OFFSET + index] = static_cast<uint8_t>(index);
+        }
+      }
+    }
+    // The partitioned TLAS: an instance per static record (its index) and one for the units, PTLAS_PARTITION_SIZE a
+    // partition; a slot's write and update arguments, its two operations and their count.
+    NvU32 ptlas_caps = 0;
+    ptlas_ = nullptr;
+    if (GetEnvironmentVariableW(L"RENODX_TW_NO_PTLAS", nullptr, 0) == 0 && NvAPI_Initialize() == NVAPI_OK
+        && NvAPI_D3D12_GetRaytracingCaps(device_.Get(), NVAPI_D3D12_RAYTRACING_CAPS_TYPE_PARTITIONED_TLAS, &ptlas_caps, sizeof(ptlas_caps)) == NVAPI_OK
+        && (ptlas_caps & NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_CAP_STANDARD) != 0) {
+      ptlas_inputs_ = {
+          .flags = NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_FLAG_FAST_TRACE,
+          .instanceCount = PTLAS_INSTANCES,
+          .maxInstancePerPartitionCount = PTLAS_PARTITION_SIZE,
+          .partitionCount = (PTLAS_INSTANCES + PTLAS_PARTITION_SIZE - 1) / PTLAS_PARTITION_SIZE,
+          .maxInstanceInGlobalPartitionCount = 0,
+      };
+      NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO info = {};
+      const NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS params = {
+          .version = NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS_VER, .pInput = &ptlas_inputs_, .pInfo = &info};
+      bool made = NvAPI_D3D12_GetRaytracingPartitionedTlasIndirectPrebuildInfo(device_.Get(), &params) == NVAPI_OK;
+      if (made) {
+        ptlas_buffer_ = Buffer(info.resultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                               D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        ptlas_scratch_ = Buffer(std::max<uint64_t>(info.scratchDataSizeInBytes, 256), D3D12_HEAP_TYPE_DEFAULT,
+                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        made = ptlas_buffer_ && ptlas_scratch_;
+      }
+      for (Slot& slot : slots_) {
+        if (!made) break;
+        slot.ptlas = Buffer(PTLAS_UPLOAD_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+        made = slot.ptlas && SUCCEEDED(slot.ptlas->Map(0, nullptr, reinterpret_cast<void**>(&slot.ptlas_data)));
+      }
+      if (made) {
+        ptlas_ = ptlas_buffer_.Get();
+        ptlas_written_.assign(PTLAS_INSTANCES, {});
+      }
+    }
+#endif
     free_triangles_.free = {{0, STATIC_TRIANGLES}};
     free_uvs_.free = {{0, STATIC_UVS}};
     for (uint32_t record = STATIC_RECORDS; record > 0; --record) {
@@ -513,7 +635,7 @@ class RtScene12 {
       list->SetDescriptorHeaps(1, heaps);
       list->SetComputeRootSignature(root_signature_.Get());
       list->SetComputeRootDescriptorTable(ROOT_TABLE, descriptors_->GetGPUDescriptorHandleForHeapStart());
-      list->SetComputeRootShaderResourceView(ROOT_SCENE, tlas_->GetGPUVirtualAddress());
+      list->SetComputeRootShaderResourceView(ROOT_SCENE, (ptlas_ != nullptr ? ptlas_ : tlas_.Get())->GetGPUVirtualAddress());
       // Unused root descriptors still point at a buffer.
       list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, slot.table->GetGPUVirtualAddress());
       for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
@@ -703,12 +825,35 @@ class RtScene12 {
   static constexpr uint32_t RELEASE_FRAMES = 3600;
   // The units' BLAS is refitted to each frame's poses while their draws stay the same, rebuilt this often.
   static constexpr uint32_t UNITS_REBUILD_FRAMES = 30;
-  // Records (InstanceID + geometry index): static meshes first, then each slot's units in turn; the pools: a normal per
-  // triangle, a UV per leaf vertex (static meshes first, then each slot's units).
-  static constexpr UINT STATIC_RECORDS = MAX_INSTANCES;
-  static constexpr UINT RECORD_COUNT = STATIC_RECORDS + SLOTS * dlaa_bridge::RT_CAPTURES;
-  static constexpr UINT STATIC_TRIANGLES = 8u << 20;
   static constexpr UINT DYNAMIC_TRIANGLES = (3u << 20) / 3;  // rt_scene.hpp MAX_DYNAMIC_VERTICES
+  // Mega Geometry: the units' triangles in clusters of this many (three vertices each, up to 256 a cluster), a frame's
+  // clusters at most (the last of each draw partial), each a geometry with a record of its own (a slot's in turn).
+  static constexpr uint32_t CLUSTER_TRIANGLES = 85;
+  static constexpr uint32_t MAX_CLUSTERS = 16384;
+  // A slot's upload buffer for them: the CLASes' arguments (64 bytes each), the cluster BLAS's (16), the CLAS count,
+  // the BLAS's destination, the indices (0-255), the clusters' records.
+  static constexpr uint64_t CLUSTER_ARGS_OFFSET = 0;
+  static constexpr uint64_t CLUSTER_BLAS_ARGS_OFFSET = uint64_t{MAX_CLUSTERS} * 64;
+  static constexpr uint64_t CLUSTER_COUNT_OFFSET = CLUSTER_BLAS_ARGS_OFFSET + 16;
+  static constexpr uint64_t CLUSTER_DESTINATION_OFFSET = CLUSTER_COUNT_OFFSET + 8;
+  static constexpr uint64_t CLUSTER_INDICES_OFFSET = CLUSTER_DESTINATION_OFFSET + 248;
+  static constexpr uint64_t CLUSTER_RECORDS_OFFSET = CLUSTER_INDICES_OFFSET + 256;
+  static constexpr uint64_t CLUSTER_UPLOAD_BYTES = CLUSTER_RECORDS_OFFSET + uint64_t{MAX_CLUSTERS} * 16;
+  // The partitioned TLAS: an instance per static record and the units' last, this many a partition; a slot's upload
+  // buffer: the write arguments (104 bytes each), the update arguments (16), the two operations, their count.
+  static constexpr uint32_t PTLAS_INSTANCES = MAX_INSTANCES + 1;
+  static constexpr uint32_t PTLAS_PARTITION_SIZE = 256;
+  static constexpr uint64_t PTLAS_WRITES_OFFSET = 0;
+  static constexpr uint64_t PTLAS_UPDATES_OFFSET = uint64_t{PTLAS_INSTANCES} * 104;
+  static constexpr uint64_t PTLAS_OPS_OFFSET = PTLAS_UPDATES_OFFSET + uint64_t{PTLAS_INSTANCES} * 16;
+  static constexpr uint64_t PTLAS_COUNT_OFFSET = PTLAS_OPS_OFFSET + 64;
+  static constexpr uint64_t PTLAS_UPLOAD_BYTES = PTLAS_COUNT_OFFSET + 16;
+  // Records (InstanceID + geometry index): static meshes first, then each slot's units in turn, then each slot's
+  // clusters; the pools: a normal per triangle, a UV per leaf vertex (static meshes first, then each slot's units).
+  static constexpr UINT STATIC_RECORDS = MAX_INSTANCES;
+  static constexpr UINT CLUSTER_RECORDS = STATIC_RECORDS + SLOTS * dlaa_bridge::RT_CAPTURES;
+  static constexpr UINT RECORD_COUNT = CLUSTER_RECORDS + SLOTS * MAX_CLUSTERS;
+  static constexpr UINT STATIC_TRIANGLES = 8u << 20;
   static constexpr UINT NORMAL_POOL = STATIC_TRIANGLES + SLOTS * DYNAMIC_TRIANGLES;
   static constexpr UINT STATIC_UVS = 8u << 20;
   static constexpr UINT UV_POOL = STATIC_UVS;
@@ -804,6 +949,10 @@ class RtScene12 {
     std::vector<std::pair<uint64_t, uint64_t>> compactions;
     ComPtr<ID3D12Resource> paths;  // its paths' constants (b3)
     uint8_t* paths_data = nullptr;
+    ComPtr<ID3D12Resource> clusters;  // Mega Geometry's arguments and records (CLUSTER_*_OFFSET)
+    uint8_t* cluster_data = nullptr;
+    ComPtr<ID3D12Resource> ptlas;  // the partitioned TLAS's operations (PTLAS_*_OFFSET)
+    uint8_t* ptlas_data = nullptr;
     uint64_t value = 0;  // own_fence_'s value after its last use
   };
   struct Mesh {
@@ -1011,6 +1160,8 @@ class RtScene12 {
     uint64_t dynamic_triangles = 0;
     bool units_built = false;
     bool units_refitted = false;
+    bool units_clustered = false;  // Mega Geometry's cluster BLAS built for them
+    uint32_t clusters_built = 0;
     const uint32_t capture_count = std::min(shared.rt_capture_count, dlaa_bridge::RT_CAPTURES);
     if (capture_count != 0) {
       uint32_t vertex_end = 0;
@@ -1208,6 +1359,8 @@ class RtScene12 {
       std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometries(capture_count);
       std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> unit_geometries;
       std::vector<uint32_t> unit_layout;
+      // Each unit draw's first vertex, triangles and normals (Mega Geometry's clusters).
+      std::vector<std::array<uint32_t, 3>> unit_sources;
       uint32_t units_record = UINT32_MAX;
       struct Build {
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC desc = {};
@@ -1250,6 +1403,7 @@ class RtScene12 {
           if (units_record == UINT32_MAX) units_record = placement.record;
           unit_geometries.push_back(geometries[index]);
           unit_layout.push_back(capture.vertex_count / 3 * 3);
+          unit_sources.push_back({capture.first_vertex, capture.vertex_count / 3, placement.normal_offset});
           dynamic_triangles += capture.vertex_count / 3;
           continue;
         }
@@ -1288,8 +1442,8 @@ class RtScene12 {
         slot->compactions.emplace_back(capture.key, mesh.build);
         ++built;
       }
-      // The units: refitted in place while the request's unit draws are those of the last build.
-      if (!unit_geometries.empty()) {
+      // The units: refitted in place while the request's unit draws are those of the last build (without Mega Geometry).
+      if (!unit_geometries.empty() && !clusters_) {
         const bool refit = units_blas_ && unit_layout == units_layout_ && units_refits_ < UNITS_REBUILD_FRAMES;
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
             .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
@@ -1330,6 +1484,88 @@ class RtScene12 {
         };
         list->BuildRaytracingAccelerationStructure(&build.desc, build.compact ? 1 : 0, build.compact ? &postbuild : nullptr);
       }
+#if defined(RENODX_NVAPI_CLUSTERS)
+      // Mega Geometry: the units' draws split into clusters (CLAS), built with one cluster BLAS from them; each cluster a
+      // geometry whose record points at its normals.
+      if (clusters_ && !unit_sources.empty()) {
+        uint8_t* data = slot->cluster_data;
+        auto* args = reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS*>(data + CLUSTER_ARGS_OFFSET);
+        auto* cluster_records = reinterpret_cast<std::array<uint32_t, 4>*>(data + CLUSTER_RECORDS_OFFSET);
+        uint32_t cluster_count = 0;
+        for (const auto& [first_vertex, unit_triangles, normal_offset] : unit_sources) {
+          for (uint32_t first = 0; first < unit_triangles && cluster_count < MAX_CLUSTERS; first += CLUSTER_TRIANGLES) {
+            const uint32_t count = std::min(CLUSTER_TRIANGLES, unit_triangles - first);
+            auto& arg = args[cluster_count];
+            arg = {};
+            arg.clusterId = cluster_count;
+            arg.triangleCount = count;
+            arg.vertexCount = count * 3;
+            arg.indexFormat = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INDEX_FORMAT_8BIT;
+            arg.baseGeometryIndexAndFlags = cluster_count | NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_GEOMETRY_FLAG_OPAQUE;
+            arg.indexBufferStride = 1;
+            arg.vertexBufferStride = 16;
+            arg.indexBuffer = cluster_indices_->GetGPUVirtualAddress();
+            arg.vertexBuffer = vertex_buffer_->GetGPUVirtualAddress() + (uint64_t{first_vertex} + uint64_t{first} * 3) * 16;
+            cluster_records[cluster_count] = {UINT32_MAX, normal_offset + first, 0u, 0u};
+            ++cluster_count;
+          }
+        }
+        const NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS blas_args = {
+            .clusterCount = cluster_count, .reserved = 0, .clusterVAs = clas_addresses_->GetGPUVirtualAddress()};
+        const uint64_t destination = cluster_blas_->GetGPUVirtualAddress();
+        std::memcpy(data + CLUSTER_BLAS_ARGS_OFFSET, &blas_args, sizeof(blas_args));
+        std::memcpy(data + CLUSTER_COUNT_OFFSET, &cluster_count, sizeof(cluster_count));
+        std::memcpy(data + CLUSTER_DESTINATION_OFFSET, &destination, sizeof(destination));
+        // The clusters' records, the BLAS's destination (and once the indices) copied where the builds read them.
+        const uint32_t record_base = CLUSTER_RECORDS + static_cast<uint32_t>(slot_index) * MAX_CLUSTERS;
+        std::vector<D3D12_RESOURCE_BARRIER> to_copy = {
+            Transition(records_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
+            Transition(cluster_destination_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+        };
+        list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+        list->CopyBufferRegion(records_.Get(), uint64_t{record_base} * 16, slot->clusters.Get(), CLUSTER_RECORDS_OFFSET, uint64_t{cluster_count} * 16);
+        list->CopyBufferRegion(cluster_destination_.Get(), 0, slot->clusters.Get(), CLUSTER_DESTINATION_OFFSET, 8);
+        if (!cluster_indices_written_) list->CopyBufferRegion(cluster_indices_.Get(), 0, slot->clusters.Get(), CLUSTER_INDICES_OFFSET, 256);
+        for (auto& barrier : to_copy) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+        if (!cluster_indices_written_) {
+          to_copy.push_back(Transition(cluster_indices_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+          cluster_indices_written_ = true;
+        }
+        list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+        const uint64_t upload = slot->clusters->GetGPUVirtualAddress();
+        const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC clas_desc = {
+            .inputs = clas_inputs_,
+            .addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE,
+            .batchResultData = clas_->GetGPUVirtualAddress(),
+            .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
+            .destinationAddressArray = {.StartAddress = clas_addresses_->GetGPUVirtualAddress(), .StrideInBytes = 8},
+            .resultSizeArray = {},
+            .indirectArgArray = {.StartAddress = upload + CLUSTER_ARGS_OFFSET,
+                                 .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS)},
+            .indirectArgCount = upload + CLUSTER_COUNT_OFFSET,
+        };
+        const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC blas_desc = {
+            .inputs = cluster_blas_inputs_,
+            .addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE,
+            .batchResultData = 0,
+            .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
+            .destinationAddressArray = {.StartAddress = cluster_destination_->GetGPUVirtualAddress(), .StrideInBytes = 8},
+            .resultSizeArray = {},
+            .indirectArgArray = {.StartAddress = upload + CLUSTER_BLAS_ARGS_OFFSET,
+                                 .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS)},
+            .indirectArgCount = 0,
+        };
+        const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS clas_params = {
+            .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &clas_desc};
+        const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS blas_params = {
+            .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &blas_desc};
+        units_clustered = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params) == NVAPI_OK;
+        list->ResourceBarrier(1, &uav_barrier);
+        units_clustered = units_clustered && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &blas_params) == NVAPI_OK;
+        clusters_built = cluster_count;
+        units_record = record_base;
+      }
+#endif
       list->ResourceBarrier(1, &uav_barrier);
       units_record_ = units_record;
       std::vector<D3D12_RESOURCE_BARRIER> after = {
@@ -1364,20 +1600,95 @@ class RtScene12 {
       AddInstance(slot, &instance_count, mesh.blas.Get(), mesh.record, mesh.foliage);
       triangles += mesh.triangles;
     }
-    if (units_built && instance_count < MAX_INSTANCES) {
-      AddInstance(slot, &instance_count, units_blas_.Get(), units_record_, false);
+    if ((units_built || units_clustered) && instance_count < MAX_INSTANCES) {
+      AddInstance(slot, &instance_count, units_clustered ? cluster_blas_.Get() : units_blas_.Get(), units_record_, false);
       triangles += dynamic_triangles;
     }
-    const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC top_build = {
-        .DestAccelerationStructureData = tlas_->GetGPUVirtualAddress(),
-        .Inputs = {.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
-                   .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD,
-                   .NumDescs = instance_count,
-                   .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
-                   .InstanceDescs = slot->instances->GetGPUVirtualAddress()},
-        .ScratchAccelerationStructureData = tlas_scratch_->GetGPUVirtualAddress(),
-    };
-    list->BuildRaytracingAccelerationStructure(&top_build, 0, nullptr);
+    uint32_t ptlas_changes = 0;
+#if defined(RENODX_NVAPI_CLUSTERS)
+    if (ptlas_ != nullptr) {
+      // The partitioned TLAS: the instances whose BLAS, InstanceID or flags changed written (new ones, those of a record
+      // given to another mesh) or updated (their BLAS: compacted, the units', or 0 for those out of this frame's scene).
+      std::vector<uint64_t> wanted(PTLAS_INSTANCES, 0);
+      std::vector<uint32_t> wanted_flags(PTLAS_INSTANCES, 0);
+      std::vector<uint32_t> wanted_ids(PTLAS_INSTANCES, 0);
+      for (UINT index = 0; index < instance_count; ++index) {
+        const D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[index];
+        const uint32_t at = (instance.InstanceID < STATIC_RECORDS) ? instance.InstanceID : MAX_INSTANCES;
+        wanted[at] = instance.AccelerationStructure;
+        wanted_ids[at] = instance.InstanceID;
+        wanted_flags[at] = NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
+                           | (((instance.Flags & D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE) != 0)
+                                  ? NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_FORCE_OPAQUE
+                                  : 0u);
+      }
+      auto* writes = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE*>(slot->ptlas_data + PTLAS_WRITES_OFFSET);
+      auto* updates = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_UPDATE_INSTANCE*>(slot->ptlas_data + PTLAS_UPDATES_OFFSET);
+      uint32_t write_count = 0;
+      uint32_t update_count = 0;
+      for (uint32_t at = 0; at < PTLAS_INSTANCES; ++at) {
+        PtlasInstance& written = ptlas_written_[at];
+        if (wanted[at] != 0 && (written.flags != wanted_flags[at] || written.id != wanted_ids[at])) {
+          auto& write = writes[write_count++];
+          write = {};
+          write.transform[0][0] = 1.f;
+          write.transform[1][1] = 1.f;
+          write.transform[2][2] = 1.f;
+          write.instanceID = wanted_ids[at];
+          write.instanceMask = 0xFF;
+          write.instanceFlags = wanted_flags[at];
+          write.instanceIndex = at;
+          write.partitionIndex = at / PTLAS_PARTITION_SIZE;
+          write.accelerationStructure = wanted[at];
+          written = {.blas = wanted[at], .id = wanted_ids[at], .flags = wanted_flags[at]};
+        } else if (written.flags != UINT32_MAX && written.blas != wanted[at]) {
+          updates[update_count++] = {.instanceIndex = at, .instanceContributionToHitGroupIndex = 0, .accelerationStructure = wanted[at]};
+          written.blas = wanted[at];
+        }
+      }
+      ptlas_changes = write_count + update_count;
+      auto* operations = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP*>(slot->ptlas_data + PTLAS_OPS_OFFSET);
+      const uint64_t upload = slot->ptlas->GetGPUVirtualAddress();
+      uint32_t operation_count = 0;
+      if (write_count != 0) {
+        operations[operation_count++] = {.type = NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_WRITE_INSTANCE, .count = write_count,
+                                         .data = {.StartAddress = upload + PTLAS_WRITES_OFFSET,
+                                                  .StrideInBytes = sizeof(NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE)}};
+      }
+      if (update_count != 0) {
+        operations[operation_count++] = {.type = NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_UPDATE_INSTANCE, .count = update_count,
+                                         .data = {.StartAddress = upload + PTLAS_UPDATES_OFFSET,
+                                                  .StrideInBytes = sizeof(NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_UPDATE_INSTANCE)}};
+      }
+      std::memcpy(slot->ptlas_data + PTLAS_COUNT_OFFSET, &operation_count, sizeof(operation_count));
+      if (operation_count != 0 || !ptlas_built_) {
+        const NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_DESC desc = {
+            .inputs = ptlas_inputs_,
+            .srcAccelerationStructureData = ptlas_built_ ? ptlas_->GetGPUVirtualAddress() : 0,
+            .destAccelerationStructureData = ptlas_->GetGPUVirtualAddress(),
+            .scratchAccelerationStructureData = ptlas_scratch_->GetGPUVirtualAddress(),
+            .indirectOpCount = upload + PTLAS_COUNT_OFFSET,
+            .indirectOps = upload + PTLAS_OPS_OFFSET,
+        };
+        const NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS params = {.version = NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS_VER,
+                                                                                .pDesc = &desc};
+        if (NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list, &params) != NVAPI_OK) return Fail("Ray tracing: the partitioned TLAS failed");
+        ptlas_built_ = true;
+      }
+    }
+#endif
+    if (ptlas_ == nullptr) {
+      const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC top_build = {
+          .DestAccelerationStructureData = tlas_->GetGPUVirtualAddress(),
+          .Inputs = {.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
+                     .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD,
+                     .NumDescs = instance_count,
+                     .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+                     .InstanceDescs = slot->instances->GetGPUVirtualAddress()},
+          .ScratchAccelerationStructureData = tlas_scratch_->GetGPUVirtualAddress(),
+      };
+      list->BuildRaytracingAccelerationStructure(&top_build, 0, nullptr);
+    }
     // The shared textures: COMMON between the APIs, read or written here.
     std::vector<std::pair<ID3D12Resource*, D3D12_RESOURCE_STATES>> textures = {
         {positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE},
@@ -1391,7 +1702,7 @@ class RtScene12 {
       barriers.push_back(Transition(resource, D3D12_RESOURCE_STATE_COMMON, used));
     }
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
-    list->SetComputeRootShaderResourceView(ROOT_SCENE, tlas_->GetGPUVirtualAddress());
+    list->SetComputeRootShaderResourceView(ROOT_SCENE, (ptlas_ != nullptr ? ptlas_ : tlas_.Get())->GetGPUVirtualAddress());
     const float softness = (version >= 6) ? std::clamp(shared.rt_sun_softness, 0.f, 5.f) : 0.f;
     const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.01f;
     const std::array<uint32_t, 8> settings = {
@@ -1425,11 +1736,13 @@ class RtScene12 {
       ReleaseMesh(&entry.second);
       return true;
     });
-    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} with micromaps, {} MB), {} in the scene, {:.1f} M triangles ({:.2f} M of "
-                          "units, {})",
+    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} with micromaps, {} MB), {} in the scene{}, {:.1f} M triangles ({:.2f} M "
+                          "of units, {})",
                           dxr12_ ? "DXR 1.2" : "DXR 1.1", meshes_.size(), built, micromaps_built, bytes >> 20, instance_count,
+                          ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
                           static_cast<double>(triangles) / 1.0e6, static_cast<double>(units_built ? dynamic_triangles : 0u) / 1.0e6,
-                          units_built ? (units_refitted ? "refitted" : "rebuilt") : "none");
+                          units_clustered ? std::format("{} clusters (Mega Geometry)", clusters_built)
+                                          : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
     return true;
   }
 
@@ -1481,6 +1794,33 @@ class RtScene12 {
   // The units' BLAS (refitted in place), the vertex counts of its draws at its last build, refits since.
   ComPtr<ID3D12Resource> units_blas_;
   uint64_t units_bytes_ = 0;
+  bool clusters_ = false;  // Mega Geometry's cluster operations for the units
+#if defined(RENODX_NVAPI_CLUSTERS)
+  NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS clas_inputs_ = {};
+  NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS cluster_blas_inputs_ = {};
+#endif
+  ComPtr<ID3D12Resource> clas_;
+  ComPtr<ID3D12Resource> clas_addresses_;
+  ComPtr<ID3D12Resource> cluster_blas_;
+  ComPtr<ID3D12Resource> cluster_destination_;
+  ComPtr<ID3D12Resource> cluster_scratch_;
+  ComPtr<ID3D12Resource> cluster_indices_;
+  bool cluster_indices_written_ = false;
+  // The partitioned TLAS (null: the TLAS is built each frame) and each of its instances as last written (its BLAS, 0
+  // inactive; its InstanceID and flags), built once before the first update.
+#if defined(RENODX_NVAPI_CLUSTERS)
+  NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS ptlas_inputs_ = {};
+#endif
+  ID3D12Resource* ptlas_ = nullptr;
+  ComPtr<ID3D12Resource> ptlas_buffer_;
+  ComPtr<ID3D12Resource> ptlas_scratch_;
+  struct PtlasInstance {
+    uint64_t blas = 0;
+    uint32_t id = 0;
+    uint32_t flags = UINT32_MAX;  // never written
+  };
+  std::vector<PtlasInstance> ptlas_written_;
+  bool ptlas_built_ = false;
   std::vector<uint32_t> units_layout_;
   uint32_t units_refits_ = 0;
   uint32_t units_record_ = 0;

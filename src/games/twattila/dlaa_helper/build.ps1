@@ -21,8 +21,17 @@ foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA
                       @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'))) {
   & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\$($shader[0]).h" -Vn $shader[1] "$PSScriptRoot\$($shader[0]).cs_6_5.hlsl"
 }
+# NVIDIA's NVAPI (MIT, github.com/NVIDIA/nvapi) for RTX Mega Geometry when it sits in build\downloads\nvapi (else the
+# helper builds without it).
+$nvapi = Join-Path $root "build\downloads\nvapi\extracted\nvapi-main"
+$nvapi_include = @()
+$nvapi_library = @()
+if (Test-Path "$nvapi\nvapi.h") {
+  $nvapi_include = @("-imsvc$nvapi")
+  $nvapi_library = @("$nvapi\amd64\nvapi64.lib")
+}
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
-  "-imsvc$root\external\Streamline\include" "/I$out" `
+  "-imsvc$root\external\Streamline\include" @nvapi_include "/I$out" `
   "$PSScriptRoot\main.cpp" /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
-  "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib
+  "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib
