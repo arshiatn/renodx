@@ -695,8 +695,21 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       - Frame trace (FrameTrace=1, needs DLSS < 100%) prints each draw's depth test "z<func>[w]".
       - Shared changes reach the other games' next builds (wrappers rt_skies / rt_debug added; all 10 compile).
       - Zip: twattila_v81.
-    - NEXT (Attila): a night battle (point light shadows), reflections on armour close-ups, smoke / billboard trees in
-      the scene, cheaper AO at 4K; then port v81 to the other TW games (OnTonemapDrawn + InstallShadowsOnly hooks).
+    - v82 (ATN's night custom siege, 2026-10-27 late): torch light slid to the bottom right below 100% = the replaced
+      pointlight00-07 / battlefog00 shaders lacked view_share's uv / share before their NDC (now render_scale.hlsli
+      DrawRenderShare; the traced lights' cbuffer moved b12 -> b9, b12 is the share). ATN's "DLAA 19 fps with all RT
+      off" = Path Tracing on kept RT active (light_bounce includes path_tracing) with Light Bounce strength 0: units and
+      grass captured every frame (SettingsOf now takes the Light Bounce strength; day siege DLAA+RR CPU 14.2 -> 7.8 ms).
+      Still open: DLAA alone costs more with soldiers in view (object_motion's per-unit motion redraws are DLAA-only;
+      2vs3 army view 19.2 ms, CPU-bound); RR F at 4K +5 ms; FG needs HDR10 / SDR output; ATN's horizontal ground bands
+      at night (ATN: gone with RT AO Alone; the day AO buffers show none: ask ATN for the Debug View's Screen-Space AO in
+      that battle). Debug View 8 = Screen-Space AO (the game's AO pass target, rt_scene's AO hook), 9 = All.
+    - Testing: quitting a custom battle from the pause menu does NOT write auto_save.replay. In replays P pauses, the
+      wheel zooms (up = out; down did nothing), W/A/S/D move; TW UI ignores synthetic clicks. The Xbox Game Bar can
+      minimize the game: ShowWindow(hwnd, SW_RESTORE) + AppActivate brings it back.
+    - NEXT (Attila): ATN retests v82 at night (torches below 100%, RT with Light Bounce on, AO bands via the debug view);
+      reflections on armour close-ups, smoke / billboard trees in the scene, cheaper AO at 4K, unit motion cost in DLAA;
+      then port to the other TW games (OnTonemapDrawn + InstallShadowsOnly hooks).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

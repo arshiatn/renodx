@@ -2,6 +2,18 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v82 (2026-10-27, tested in game in battle replays; torches untested)
+
+- Torch light and the battle fog are right again below 100% render scale (the DLSS modes): the point light and fog
+  shaders replaced for their ray-traced shadows had lost the render scale's correction, so torch light slid toward the
+  bottom right.
+- **Path Tracing** and **Ray-Traced Light Bounce** no longer switch ray tracing on while the game's Light Bounce is off
+  (they have nothing to trace then): every unit and plant was captured each frame for nothing (day siege, 4K DLAA + Ray
+  Reconstruction: the game's CPU time 14.2 -> 7.8 ms a frame; far more with soldiers close).
+- **Ray Tracing Debug View**: Screen-Space AO (the game's or GT-VBAO's ambient occlusion); All now tiles eight. A crash
+  when it was on before ray tracing started is fixed.
+- Frame generation needs Output HDR10 or SDR (scRGB: it does not generate, the log says so).
+
 ## v81 (2026-10-27, tested in game: the campaign and a battle replay)
 
 - Campaign map: **Ray-Traced Sun Shadows** now work there. The render scale's patch changed 8 sun shaders (the
