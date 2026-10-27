@@ -1968,6 +1968,7 @@ struct DlssSliders {
   float frame_generation = 0.f;  // off, 2x, 3x, 4x (restart)
   float reflex_boost = 0.f;      // (restart)
   float frame_limit = 0.f;       // Reflex's, rendered frames per second (0: off)
+  float ray_reconstruction = 0.f;  // NVIDIA's Ray Reconstruction (taa_dlss.hpp)
 } dlss_sliders;
 // Ray tracing's (twattila/rt_scene.hpp, through DLSS's helper): enabled with DLSS (aa_sliders.method 5 while it is on).
 twattila::rt_scene::Sliders rt_sliders;
@@ -2098,6 +2099,15 @@ const twattila::rt_scene::Host RT_HOST = {
     .guides_written = [] { return false; },
 };
 
+// Ray Reconstruction's guides (taa_dlss.hpp) at the sun light draws: the frame's first writes them.
+constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native != nullptr) twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot);
+  return {};
+};
+
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
@@ -2118,6 +2128,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
       .enabled = dlss_sliders.enabled != 0.f,
       .preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(dlss_sliders.preset), 0, 2)],
       .ray_tracing = rt_settings.sun_shadows || rt_settings.ambient_occlusion || rt_settings.light_bounce,
+      .ray_reconstruction = dlss_sliders.ray_reconstruction != 0.f,
   });
   talesofarise::frame_generation::frame_limit.store(static_cast<uint32_t>(std::clamp(dlss_sliders.frame_limit, 0.f, 240.f)));
   // After the at-start tests' thread (one writer at a time).
@@ -2418,6 +2429,18 @@ void ConfigureAddon() {
             .is_enabled = dlss_on,
         },
         new renodx::utils::settings::Setting{
+            .key = "DlssRayReconstruction",
+            .binding = &dlss_sliders.ray_reconstruction,
+            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+            .default_value = 0.f,
+            .label = "Ray Reconstruction (Experimental)",
+            .section = twattila::feature_settings::DLSS_SECTION,
+            .tooltip = "NVIDIA's Ray Reconstruction in place of DLSS: one model denoising the picture and the ray tracing.\n"
+                       "Heavier. Best with ray tracing on.",
+            .labels = {"Off", "On"},
+            .is_enabled = dlss_on,
+        },
+        new renodx::utils::settings::Setting{
             .key = "DlssFrameGeneration",
             .binding = &dlss_sliders.frame_generation,
             .value_type = renodx::utils::settings::SettingValueType::INTEGER,
@@ -2553,6 +2576,10 @@ bool AttachAddon() {
   // Ray tracing's at the sun draws first: its trace for the screen-space shadows, the AO filter and the Light Bounce.
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
+    renodx::utils::command_action::Register(
+        OnSunDrawGuides, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
+  }
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Before the Light Bounce's (its callback draws the sun draw again).
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
@@ -2611,6 +2638,7 @@ void DetachAddon() {
   twattila::light_bounce::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::rt_scene::Uninstall();
+  renodx::utils::command_action::Unregister(OnSunDrawGuides);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);

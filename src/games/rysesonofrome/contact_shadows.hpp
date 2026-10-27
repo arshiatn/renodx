@@ -153,9 +153,12 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
     if (FAILED(device->CreateRenderTargetView(mask.Get(), &target_desc, objects.mask_target.GetAddressOf()))) return;
     objects.mask = mask;
   }
-  if (std::memcmp(&settings, &objects.uploaded, sizeof(Settings)) != 0) {
-    context->UpdateSubresource(objects.constants.Get(), 0, nullptr, &settings, 0, 0);
-    objects.uploaded = settings;
+  // Under the traced sun (its visibility given) the march steps aside: the rays have the contact detail.
+  Settings used = settings;
+  if (sun_visibility != nullptr) used.strength = 0.f;
+  if (std::memcmp(&used, &objects.uploaded, sizeof(Settings)) != 0) {
+    context->UpdateSubresource(objects.constants.Get(), 0, nullptr, &used, 0, 0);
+    objects.uploaded = used;
   }
 
   const talesofarise::dlss::ContextStateScope scope(context1.Get(), objects.private_state.Get());

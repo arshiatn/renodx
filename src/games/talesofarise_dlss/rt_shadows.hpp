@@ -2637,6 +2637,15 @@ inline std::string Status() {
   return internal::state.status;
 }
 
+// Whether the ray-traced reflections ran within the last half second (the game's screen-space reflections are left off
+// meanwhile: the lighting pass reads the rays' instead).
+inline bool ReflectingRecently() {
+  constexpr uint64_t RECENT_FRAMES = 30;
+  const std::shared_lock lock(internal::state.mutex);
+  return reflections.load(std::memory_order_relaxed) && !internal::state.failed && internal::state.specular_frame != UINT64_MAX
+         && internal::state.specular_frame + RECENT_FRAMES >= internal::state.frame;
+}
+
 // Turned on again after a failure: try again.
 inline void Retry() {
   const std::unique_lock lock(internal::state.mutex);

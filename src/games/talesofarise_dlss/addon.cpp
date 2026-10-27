@@ -735,6 +735,8 @@ constexpr auto OUTPUT_SCALING = [] {
 bool effects_at_output = true;
 // r.VolumetricFog 0 greys out the r.VolumetricFog.* settings.
 constexpr size_t VOLUMETRIC_FOG = SettingIndex(L"r.VolumetricFog");
+// Off while the ray-traced reflections run (rt_shadows.hpp ReflectingRecently): they replace it.
+constexpr size_t SSR_QUALITY = SettingIndex(L"r.SSR.Quality");
 // Shaders on load: a checkbox above Smooth sun movement (ATN), not in the Loading list: ticked 1, unticked 0.
 constexpr size_t SHADERS_ON_LOAD = SettingIndex(NO_PRESET_SETTING);
 // Volume textures: D3D11 allows at most 2048 per side. Cloud shadows / cloud ray march at divisor 1 made a 3840x2160x40
@@ -2465,7 +2467,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    if (std::isnan(preset_value) && scaling == OutputScaling::NONE) {
+    const bool replaced = index == SSR_QUALITY && talesofarise::rt_shadows::ReflectingRecently();
+    if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
         wrote = true;
@@ -2478,6 +2481,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     float desired = (std::isnan(preset_value) ? entry.game_value : preset_value);
     if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, desired);
     if (setting.better == Better::LOWER) desired = std::min(entry.game_value, desired);
+    if (replaced) desired = 0.f;
     switch (scaling) {
       case OutputScaling::CELL_OR_DIVISOR:
         desired = std::max(1.f, std::round(desired * render_scale));

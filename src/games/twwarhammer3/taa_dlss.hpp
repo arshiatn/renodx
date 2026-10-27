@@ -46,6 +46,8 @@ struct Settings {
   // Ray tracing through the same helper (twattila/rt_scene.hpp): its textures, the reflections'.
   bool ray_tracing = false;
   bool reflections = false;
+  // NVIDIA's Ray Reconstruction (its guides from the G-buffer: WriteGuides).
+  bool ray_reconstruction = false;
 };
 
 // This frame's DLSS inputs (frame generation's): the bridge's depth and motion at the render size, the jitter in render
@@ -68,6 +70,7 @@ constexpr uint32_t CAMERA_BYTES = 66 * 16;
 constexpr uint32_t CAMERA_MAX_BYTES = 2048;
 constexpr size_t PROJECTION = 6 * 4;
 constexpr size_t VIEW_PROJECTION = 10 * 4;
+constexpr size_t INVERSE_PROJECTION = 26 * 4;
 constexpr size_t TIME = 35 * 4;
 constexpr size_t SCREEN_SIZE = 37 * 4;
 constexpr size_t VIEWPORT = 39 * 4;
@@ -78,6 +81,7 @@ struct Objects {
   ComPtr<ID3DDeviceContextState> private_state;
   ComPtr<ID3D11ComputeShader> inputs;
   ComPtr<ID3D11ComputeShader> output;
+  ComPtr<ID3D11ComputeShader> guides;
   bool failed = false;
 };
 
@@ -94,6 +98,7 @@ struct State {
   bool trace_wanted = false;  // FrameTrace still to come (it starts from the 3D view's camera)
   uint64_t frame = 0;          // presents
   uint64_t evaluated_frame = UINT64_MAX;
+  uint64_t guides_frame = UINT64_MAX;  // Ray Reconstruction's guides written
   Frame last;                  // the last evaluation's (frame generation)
   uint64_t last_frame = UINT64_MAX;
   bool logged = false;
@@ -110,7 +115,8 @@ inline bool Create(ID3D11Device* device) {
                    || FAILED(device1->CreateDeviceContextState(0, &level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device),
                                                                nullptr, objects.private_state.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__dlss_inputs.data(), __dlss_inputs.size(), nullptr, objects.inputs.GetAddressOf()))
-                   || FAILED(device->CreateComputeShader(__dlss_output.data(), __dlss_output.size(), nullptr, objects.output.GetAddressOf()));
+                   || FAILED(device->CreateComputeShader(__dlss_output.data(), __dlss_output.size(), nullptr, objects.output.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rr_guides.data(), __rr_guides.size(), nullptr, objects.guides.GetAddressOf()));
   if (objects.failed) renodx::utils::log::i("[Warhammer III] DLSS: its shaders could not be made.");
   return !objects.failed;
 }
@@ -149,8 +155,8 @@ inline void Resolve(ID3D11DeviceContext* native) {
   ComPtr<ID3D11DeviceContext1> context1;
   const std::unique_lock lock(state.mutex);
   if (!Create(device.Get()) || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))
-      || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height, false, state.settings.ray_tracing,
-                                         DXGI_FORMAT_UNKNOWN, state.settings.reflections)
+      || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height, state.settings.ray_reconstruction,
+                                         state.settings.ray_tracing, DXGI_FORMAT_UNKNOWN, state.settings.reflections)
       || !state.camera_found) {
     release();
     return;
@@ -183,8 +189,22 @@ inline void Resolve(ID3D11DeviceContext* native) {
     context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(destinations.size()), destinations.data(), nullptr);
     context1->Dispatch((color_desc.Width + 7) / 8, (color_desc.Height + 7) / 8, 1);
     context1->ClearState();
+    // Ray Reconstruction (its guides written this frame): view = inverse projection x view-projection (the camera's
+    // registers act on column vectors), given NVIDIA as row-vector matrices (their transposes).
+    twattila::dlaa_bridge::RayReconstruction reconstruction = {};
+    const bool reconstruct = state.settings.ray_reconstruction && state.guides_frame == state.frame && bridge.guides;
+    if (reconstruct) {
+      for (size_t row = 0; row < 4; ++row) {
+        for (size_t column = 0; column < 4; ++column) {
+          float sum = 0.f;
+          for (size_t k = 0; k < 4; ++k) sum += c[INVERSE_PROJECTION + (row * 4) + k] * c[VIEW_PROJECTION + (k * 4) + column];
+          reconstruction.world_to_view[(column * 4) + row] = sum;
+          reconstruction.view_to_clip[(column * 4) + row] = c[PROJECTION + (row * 4) + column];
+        }
+      }
+    }
     evaluated = twattila::dlaa_bridge::Evaluate(context1.Get(), color_desc.Width, color_desc.Height, jitter[0], jitter[1], reset,
-                                                state.settings.preset);
+                                                state.settings.preset, reconstruct ? &reconstruction : nullptr);
     if (evaluated) {
       ID3D11ShaderResourceView* result = bridge.output.srv.Get();
       ID3D11UnorderedAccessView* destination = target.Get();
@@ -207,6 +227,45 @@ inline void Resolve(ID3D11DeviceContext* native) {
   std::copy_n(state.camera.begin(), state.last.camera.size(), state.last.camera.begin());
   state.last_frame = state.frame;
 }
+
+}  // namespace internal
+
+// At the frame's first sun light draw of the main view (its G-buffer bound: channels 1-3 from `gbuffer_slot`, the camera
+// at `camera_slot`): Ray Reconstruction's guides into the bridge's textures (rr_guides), once a frame.
+inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT camera_slot) {
+  using internal::state;
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  const std::unique_lock lock(state.mutex);
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  if (!state.settings.enabled || !state.settings.ray_reconstruction || state.guides_frame == state.frame || !bridge.guides
+      || state.objects.failed || !state.objects.guides) {
+    return;
+  }
+  std::array<ID3D11ShaderResourceView*, 3> gbuffer = {};
+  native->PSGetShaderResources(gbuffer_slot, static_cast<UINT>(gbuffer.size()), gbuffer.data());
+  ComPtr<ID3D11Buffer> camera;
+  native->PSGetConstantBuffers(camera_slot, 1, camera.GetAddressOf());
+  D3D11_TEXTURE2D_DESC desc = {};
+  if (const auto normal = internal::TextureOf(gbuffer[0])) normal->GetDesc(&desc);
+  if (camera && gbuffer[1] != nullptr && gbuffer[2] != nullptr && desc.Width == bridge.width && desc.Height == bridge.height) {
+    talesofarise::dlss::ContextStateScope scope(context1.Get(), state.objects.private_state.Get());
+    const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                              bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
+    context1->CSSetShader(state.objects.guides.Get(), nullptr, 0);
+    context1->CSSetShaderResources(0, static_cast<UINT>(gbuffer.size()), gbuffer.data());
+    context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(guides.size()), guides.data(), nullptr);
+    context1->CSSetConstantBuffers(0, 1, camera.GetAddressOf());
+    context1->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+    context1->ClearState();
+    state.guides_frame = state.frame;
+  }
+  for (auto* view : gbuffer) {
+    if (view != nullptr) view->Release();
+  }
+}
+
+namespace internal {
 
 constexpr auto OnTaa = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
   {

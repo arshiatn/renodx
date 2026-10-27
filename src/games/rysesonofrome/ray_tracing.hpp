@@ -25,8 +25,8 @@
 
 // Ray tracing (Experimental): Ryse's scene through the Total War helper (twattila/rt_core.hpp; renodx-tw-dlaa64.exe
 // next to the addon, its own D3D12 device with DXR). The scene: every opaque draw into the G-buffer (three RGBA16F
-// targets and the depth, depth written, unblended; too many vertex shader permutations to list) streamed out through
-// its own vertex shader (those with bone inputs every frame); the camera they were drawn with is VS PER_FRAME (b2, a
+// targets and the depth, depth written, unblended; too many vertex shader permutations to list; alpha-tested ones with
+// their UV) streamed out through its own vertex shader (those with bone inputs every frame); the camera they were drawn with is VS PER_FRAME (b2, a
 // range of a bigger buffer: rows c0-c3 the jittered view-projection, c6 the camera), read from the game's uploads
 // (rysesonofrome_dlss/constant_mirror.hpp). Before the tiled lighting (cs 0x897232B5: t0 linear depth, b0 its
 // PER_BATCH: the far plane's corners from the camera, the camera, the sun) each pixel's world position and the sun go
@@ -51,7 +51,8 @@ struct State {
 static State state;
 
 // An opaque G-buffer draw (three RGBA16F targets and the depth, depth written, unblended): the bridge prepared at the
-// depth's size, its vertex shader skinned or not.
+// depth's size, its pixel shader's alpha test (rt_core's SceneCoverage: leaves against their diffuse alpha), its vertex
+// shader skinned or not.
 inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShader* shader) {
   std::array<ID3D11RenderTargetView*, 4> targets = {};
   ComPtr<ID3D11DepthStencilView> depth_view;
@@ -88,7 +89,10 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   depth_texture->GetDesc(&depth_texture_desc);
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (!twattila::dlaa_bridge::Prepare(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height, false, true)) return false;
+  if (!twattila::dlaa_bridge::Prepare(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height, false, true)
+      || !twattila::rt_scene::SceneCoverage(native, shader)) {
+    return false;
+  }
   shader->dynamic = twattila::rt_scene::SkinnedVertexShader(shader->hash);
   return true;
 }
