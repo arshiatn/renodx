@@ -1333,7 +1333,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders);
+  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   twattila::rt_scene::Configure(rt_settings, &aa_settings);

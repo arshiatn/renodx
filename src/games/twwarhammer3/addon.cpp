@@ -2122,7 +2122,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
   tw::ao_trace::OnPresent();
   aa_sliders.method = (dlss_sliders.enabled != 0.f) ? 5.f : 0.f;
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders);
+  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   twattila::rt_scene::Update(rt_settings);
   twwarhammer3::taa_dlss::Update({
       .enabled = dlss_sliders.enabled != 0.f,

@@ -82,8 +82,11 @@ struct Sliders {
   float debug_view = 0.f;  // games whose tone mapper hook calls OnTonemapDrawn
 };
 
-inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa) {
+// `light_bounce_strength`: the game's Light Bounce (its rays and paths replace the Light Bounce's trace; off, nothing to
+// trace for them, so they keep ray tracing off).
+inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa, float light_bounce_strength) {
   const bool dlaa = aa.method == 5.f;
+  const bool bounce = light_bounce_strength > 0.f && dlaa;
   return {
       .sun_shadows = sliders.sun_shadows != 0.f && dlaa,
       .ambient_occlusion = sliders.ambient_occlusion != 0.f && dlaa,
@@ -93,10 +96,10 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .ambient_rays = static_cast<uint32_t>(sliders.ambient_rays),
       .ambient_quarter = sliders.ambient_quarter != 0.f,
       .sun_softness = sliders.sun_softness,
-      .light_bounce = (sliders.light_bounce != 0.f || sliders.path_tracing != 0.f) && dlaa,
+      .light_bounce = (sliders.light_bounce != 0.f || sliders.path_tracing != 0.f) && bounce,
       .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),
       .light_bounce_range = sliders.light_bounce_range,
-      .path_tracing = sliders.path_tracing != 0.f && dlaa,
+      .path_tracing = sliders.path_tracing != 0.f && bounce,
       .path_bounces = static_cast<uint32_t>(sliders.path_bounces),
       .reflections = sliders.reflections != 0.f && dlaa,
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
