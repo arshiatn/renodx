@@ -32,6 +32,8 @@ using Microsoft::WRL::ComPtr;
 
 // Unreal's ContactShadowLength for the sun: a share of the screen (0: the game's, none).
 inline std::atomic<float> length = 0.f;
+// The ray-traced sun shadows went into this draw's light attenuation (ray_tracing.hpp, just before): none of these.
+inline std::atomic<bool> ray_traced = false;
 // OnLightRectangle's vertex shader. UE 4.26 draws only directional lights as a rectangle; spot and point lights are
 // geometry with other shaders.
 constexpr uint32_t LIGHT_RECTANGLE_SHADER = 0x7C21DA11;
@@ -64,7 +66,7 @@ static Objects objects;
 constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using internal::objects;
   const float contact_length = length.load(std::memory_order_relaxed);
-  if (contact_length <= 0.f) return {};
+  if (contact_length <= 0.f || ray_traced.load(std::memory_order_relaxed)) return {};
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;

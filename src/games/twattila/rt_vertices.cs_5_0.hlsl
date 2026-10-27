@@ -5,8 +5,9 @@
 
 // Attila ray tracing (rt_scene.hpp): the frame's captured triangles (stream output: world positions, three per triangle;
 // a leaf's w its UV as two halves) into the vertex texture the helper copies its BLAS inputs from (dlaa_bridge.h
-// RT_TRANSFER_WIDTH per row).
+// RT_TRANSFER_WIDTH per row). The game's own shaders' captures are clip-space positions, their foliage's UV beside them.
 Buffer<float4> captured : register(t0);
+Buffer<float2> captured_uv : register(t1);
 RWTexture2D<float4> vertices : register(u0);
 
 cbuffer rt_vertices : register(b0)
@@ -24,7 +25,8 @@ void main(uint id : SV_DispatchThreadID)
   if (rt_vertices.z != 0u) {
     const float4 world = float4(dot(inverse_view_projection[0], position), dot(inverse_view_projection[1], position),
                                 dot(inverse_view_projection[2], position), dot(inverse_view_projection[3], position));
-    position = float4(world.xyz / world.w, 0.f);
+    const float2 uv = captured_uv[id];
+    position = float4(world.xyz / world.w, asfloat(f32tof16(uv.x) | (f32tof16(uv.y) << 16)));
   }
   vertices[uint2(id % rt_vertices.y, id / rt_vertices.y)] = float4(all(isfinite(position.xyz)) ? position.xyz : asfloat(0x7FC00000u).xxx, position.w);
 }

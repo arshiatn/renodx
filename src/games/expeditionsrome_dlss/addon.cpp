@@ -48,6 +48,7 @@
 #include "../talesofarise_dlss/frame_generation.hpp"
 #include "../talesofarise_dlss/frame_trace.hpp"
 #include "./performance.hpp"
+#include "./ray_tracing.hpp"
 #include "./temporal_capture.hpp"
 
 static_assert(_ITERATOR_DEBUG_LEVEL == 0, "DLAA must match the shared STL layout of Release RenoDX addons");
@@ -453,6 +454,11 @@ constexpr auto OUTPUT_SCALING = [] {
 bool effects_at_output = true;
 // DLSS Frame Generation (Experimental, Tales' frame_generation.hpp): set at launch (config FrameGeneration).
 bool frame_generation = false;
+// Ray tracing (Experimental, ray_tracing.hpp): its settings (config RayTraced*, PathTracing*), installed when an effect
+// is on at launch.
+twattila::rt_scene::Settings ray_tracing_settings;
+float ray_traced_bounce_strength = 1.f;
+bool ray_tracing_installed = false;
 
 // UE 4.26's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
 constexpr uint32_t VIEW_VIEW_TO_CLIP_NO_AA = 32;
@@ -1060,6 +1066,7 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
     if (desc.Width != frame->source_width || desc.Height != frame->source_height || desc.ArraySize != 1
         || desc.MipLevels != 1 || desc.SampleDesc.Count != 1) return unsupported_texture();
   }
+  if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::KeepColor(native, frame->resources[0].Get());
   if (frame->source_width > (frame->width + 7) / 8 * 8 || frame->source_height > (frame->height + 7) / 8 * 8) {
     return unsupported_texture();
   }
@@ -1194,6 +1201,7 @@ void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool) {
 void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() == reshade::api::device_api::d3d11) {
     expeditionsrome::dlss::contact_shadows::Release(reinterpret_cast<ID3D11Device*>(device->get_native()));
+    if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Release(device);
   }
   bool matching;
   {
@@ -1216,6 +1224,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     }
   }
   talesofarise::frame_trace::OnPresent();
+  if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Update(ray_tracing_settings, ray_traced_bounce_strength);
   if (talesofarise::frame_generation::Presenting()) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
     renodx::utils::directx::NativeFromReShadeProxy(&context);
@@ -1731,7 +1740,65 @@ void OnOverlay(reshade::api::effect_runtime*) {
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("Unreal's own short sun shadows where things meet the ground and in small gaps (screen-space).\n"
                       "Longer: shadows reach farther from contact points; can show halos at the screen's edges.\n"
-                      "Max preset: %.0f%%.", CONTACT_SHADOWS_MAX * 100.f);
+                      "Off while ray-traced sun shadows are on. Max preset: %.0f%%.", CONTACT_SHADOWS_MAX * 100.f);
+  }
+  if (ImGui::TreeNode("Ray tracing (Experimental)")) {
+    auto& ray_tracing = ray_tracing_settings;
+    const auto checkbox = [](const char* label, const char* key, bool* value, const char* tooltip) {
+      if (ImGui::Checkbox(label, value)) reshade::set_config_value(nullptr, "Rome AA", key, *value);
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+    };
+    const auto slider = [](const char* label, const char* key, float* value, float min, float max, const char* format, const char* tooltip) {
+      if (ImGui::SliderFloat(label, value, min, max, format, ImGuiSliderFlags_AlwaysClamp)) {
+        reshade::set_config_value(nullptr, "Rome AA", key, *value);
+      }
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+    };
+    const auto count = [](const char* label, const char* key, uint32_t* value, int max, const char* tooltip) {
+      if (int shown = static_cast<int>(*value); ImGui::SliderInt(label, &shown, 1, max, "%d", ImGuiSliderFlags_AlwaysClamp)) {
+        *value = static_cast<uint32_t>(shown);
+        reshade::set_config_value(nullptr, "Rome AA", key, *value);
+      }
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+    };
+    ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to this addon. Restart the game after turning on the first effect.");
+    checkbox("Ray-traced sun shadows", "RayTracedSunShadows", &ray_tracing.sun_shadows,
+             "Sun shadows from rays, with the game's: also where its shadow maps miss things or end.");
+    ImGui::BeginDisabled(!ray_tracing.sun_shadows);
+    slider("Shadow softness", "RayTracedShadowSoftness", &ray_tracing.sun_softness, 0.f, 3.f, "%.2f",
+           "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.");
+    ImGui::EndDisabled();
+    checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion", &ray_tracing.ambient_occlusion,
+             "Shade in corners and under things from rays, with the game's.");
+    ImGui::BeginDisabled(!ray_tracing.ambient_occlusion);
+    slider("Ambient occlusion range", "RayTracedAmbientRange", &ray_tracing.ambient_range, .25f, 5.f, "%.2f m",
+           "How far its rays look for what shades a point.");
+    ImGui::EndDisabled();
+    checkbox("Ray-traced light bounce", "RayTracedLightBounce", &ray_tracing.light_bounce,
+             "Sunlight bouncing off what it hits onto what is near: lit ground brightens walls and shade.");
+    ImGui::BeginDisabled(!ray_tracing.light_bounce);
+    slider("Light bounce strength", "RayTracedLightBounceStrength", &ray_traced_bounce_strength, 0.f, 2.f, "%.2f",
+           "How much bounced light is added.");
+    count("Light bounce rays", "RayTracedLightBounceRays", &ray_tracing.light_bounce_rays, 16, "Rays per texel: less noise, heavier.");
+    slider("Light bounce range", "RayTracedLightBounceRange", &ray_tracing.light_bounce_range, 1.f, 50.f, "%.0f m",
+           "How far its rays look for light.");
+    ImGui::EndDisabled();
+    checkbox("Ray-traced reflections", "RayTracedReflections", &ray_tracing.reflections,
+             "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
+             "Needs the game's screen-space reflections on.");
+    ImGui::BeginDisabled(!ray_tracing.reflections);
+    count("Reflection samples", "RayTracedReflectionSamples", &ray_tracing.reflection_samples, 8,
+          "Rays per pixel on rough surfaces: less noise, heavier.");
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(!ray_tracing.light_bounce && !ray_tracing.reflections);
+    checkbox("Path tracing", "PathTracing", &ray_tracing.path_tracing,
+             "The light bounce's and the reflections' rays go on bouncing: lit by what the screen never saw. Heavy.");
+    ImGui::BeginDisabled(!ray_tracing.path_tracing);
+    count("Path tracing bounces", "PathTracingBounces", &ray_tracing.path_bounces, 4, "Bounces past the first. More: brighter shade, heavier.");
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    if (ray_tracing_installed) ImGui::TextWrapped("%s", twattila::rt_scene::Status().c_str());
+    ImGui::TreePop();
   }
   const auto& volumetric_fog = graphics.entries[VOLUMETRIC_FOG].cvar;
   const bool fog_off = volumetric_fog.values[0] != nullptr && volumetric_fog.Get() == 0.f;
@@ -1950,6 +2017,30 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
                                                                                                                                         : renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW),
                                                                                                 });
   }
+  {
+    auto& ray_tracing = ray_tracing_settings;
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedSunShadows", ray_tracing.sun_shadows);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedShadowSoftness", ray_tracing.sun_softness);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedAmbientOcclusion", ray_tracing.ambient_occlusion);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedAmbientRange", ray_tracing.ambient_range);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounce", ray_tracing.light_bounce);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounceStrength", ray_traced_bounce_strength);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounceRays", ray_tracing.light_bounce_rays);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounceRange", ray_tracing.light_bounce_range);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedReflections", ray_tracing.reflections);
+    reshade::get_config_value(nullptr, "Rome AA", "RayTracedReflectionSamples", ray_tracing.reflection_samples);
+    reshade::get_config_value(nullptr, "Rome AA", "PathTracing", ray_tracing.path_tracing);
+    reshade::get_config_value(nullptr, "Rome AA", "PathTracingBounces", ray_tracing.path_bounces);
+    ray_tracing.sun_softness = std::isfinite(ray_tracing.sun_softness) ? std::clamp(ray_tracing.sun_softness, 0.f, 3.f) : .5f;
+    ray_tracing.ambient_range = std::isfinite(ray_tracing.ambient_range) ? std::clamp(ray_tracing.ambient_range, .25f, 5.f) : 2.f;
+    ray_tracing.reflection_samples = std::clamp(ray_tracing.reflection_samples, 1u, 8u);
+    ray_tracing.path_bounces = std::clamp(ray_tracing.path_bounces, 1u, 4u);
+    ray_tracing.light_bounce_rays = std::clamp(ray_tracing.light_bounce_rays, 1u, 16u);
+    ray_tracing.light_bounce_range = std::isfinite(ray_tracing.light_bounce_range) ? std::clamp(ray_tracing.light_bounce_range, 1.f, 50.f) : 10.f;
+    ray_traced_bounce_strength = std::isfinite(ray_traced_bounce_strength) ? std::clamp(ray_traced_bounce_strength, 0.f, 2.f) : 1.f;
+    ray_tracing_installed = ray_tracing.sun_shadows || ray_tracing.ambient_occlusion || ray_tracing.light_bounce || ray_tracing.reflections;
+    if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Install();
+  }
   renodx::utils::command_action::Register(expeditionsrome::dlss::contact_shadows::OnLightRectangle, {
                                                                                                         .shader_hash = expeditionsrome::dlss::contact_shadows::LIGHT_RECTANGLE_SHADER,
                                                                                                         .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
@@ -2029,6 +2120,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     renodx::utils::command_action::Unregister(OnCommand);
     renodx::utils::command_action::Unregister(expeditionsrome::dlss::temporal_capture::OnCommand);
     renodx::utils::command_action::Unregister(expeditionsrome::dlss::contact_shadows::OnLightRectangle);
+    if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Uninstall();
     talesofarise::frame_trace::Stop();
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);

@@ -79,13 +79,16 @@ struct Settings {
 // version also gives the UV) is alpha-tested against its diffuse map's alpha (the pixel shader's t0; dlaa_bridge.h
 // RT_*).
 // Without a capture version (`capture_shader` empty) the game's own vertex shader is streamed out (its SV_Position, made
-// world positions with the frame's camera before the trace; Warhammer III).
+// world positions with the frame's camera before the trace; Warhammer III); its foliage also streams out the output
+// holding the UV (`uv_semantic`, `uv_semantic_index`: its xy).
 struct SceneShader {
   uint32_t hash = 0;
   std::span<const uint8_t> capture_shader;
   bool terrain = false;
   bool dynamic = false;
   bool foliage = false;
+  const char* uv_semantic = nullptr;
+  UINT uv_semantic_index = 0;
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
@@ -111,6 +114,8 @@ struct Host {
   UINT camera_slot = 0;
   bool (*capture_camera)(ID3D11DeviceContext* native, Camera* camera) = nullptr;
   bool (*scene_draw)(ID3D11DeviceContext* native, SceneShader* shader) = nullptr;
+  // Whether a vertex shader's code has bone inputs (null: BLENDINDICES in its input signature).
+  bool (*skinned_code)(std::span<const uint8_t> code) = nullptr;
   bool (*moving)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawArguments& arguments) = nullptr;
   bool (*moving_indexed)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) = nullptr;
 };
@@ -128,8 +133,11 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11VertexShader>> capture_shaders;  // as the scene shaders
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
+  std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
   ComPtr<ID3D11Buffer> captured;  // stream output: world positions, three per triangle
   ComPtr<ID3D11ShaderResourceView> captured_srv;
+  ComPtr<ID3D11Buffer> captured_uv;  // the game's own shaders' foliage UVs, at their vertices' places
+  ComPtr<ID3D11ShaderResourceView> captured_uv_srv;
   ComPtr<ID3D11ComputeShader> vertices_shader;
   ComPtr<ID3D11ComputeShader> positions_shader;
   ComPtr<ID3D11ComputeShader> sun_shader;
@@ -226,6 +234,10 @@ inline bool PrepareDevice(ID3D11Device* device) {
                                            .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
   D3D11_SHADER_RESOURCE_VIEW_DESC captured_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
   captured_view.Buffer.NumElements = MAX_VERTICES;
+  const D3D11_BUFFER_DESC captured_uv_desc = {.ByteWidth = MAX_VERTICES * 8, .Usage = D3D11_USAGE_DEFAULT,
+                                              .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
+  D3D11_SHADER_RESOURCE_VIEW_DESC captured_uv_view = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+  captured_uv_view.Buffer.NumElements = MAX_VERTICES;
   const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC sun_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   D3D11_BLEND_DESC multiply_desc = {};
@@ -255,6 +267,10 @@ inline bool PrepareDevice(ID3D11Device* device) {
   });
   made = made && SUCCEEDED(device->CreateBuffer(&captured_desc, nullptr, objects.captured.GetAddressOf()))
          && SUCCEEDED(device->CreateShaderResourceView(objects.captured.Get(), &captured_view, objects.captured_srv.GetAddressOf()))
+         && (!clip_captures
+             || (SUCCEEDED(device->CreateBuffer(&captured_uv_desc, nullptr, objects.captured_uv.GetAddressOf()))
+                 && SUCCEEDED(device->CreateShaderResourceView(objects.captured_uv.Get(), &captured_uv_view,
+                                                               objects.captured_uv_srv.GetAddressOf()))))
          && compute(__rt_vertices, &objects.vertices_shader) && compute(__rt_positions, &objects.positions_shader)
          && compute(__rt_sun, &objects.sun_shader) && compute(__rt_occlusion, &objects.occlusion_shader)
          && compute(__rt_atlas, &objects.atlas_shader) && compute(__rt_ambient_combine, &objects.combine_shader)
@@ -510,24 +526,32 @@ void Capture(Context& command, const SceneShader& shader) {
   // Leaves wait for a slice of the atlas (none: not in the scene this frame).
   uint32_t slice = 0;
   if (shader.foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
-  // The capture version (by the shader's place in the list), else the game's own: its stream output (SV_Position) made
-  // once from its code.
+  // The capture version (by the shader's place in the list), else the game's own: its stream output (SV_Position; its
+  // foliage's UV into the second buffer) made once from its code (null: it could not be).
   const bool clip_space = shader.capture_shader.empty();
+  const bool clip_uv = clip_space && shader.foliage && shader.uv_semantic != nullptr;
   ID3D11VertexShader* capture_vertex_shader = nullptr;
   ID3D11GeometryShader* stream_output = nullptr;
   if (clip_space) {
-    auto& made = objects.game_outputs[shader.hash];
-    if (!made) {
+    const auto [made, first] = (clip_uv ? objects.game_uv_outputs : objects.game_outputs).try_emplace(shader.hash);
+    if (first) {
       const auto code = game_code.find(shader.hash);
-      const D3D11_SO_DECLARATION_ENTRY position = {.SemanticName = "SV_POSITION", .SemanticIndex = 0, .ComponentCount = 4};
-      constexpr UINT STRIDE = 16;
+      const std::array<D3D11_SO_DECLARATION_ENTRY, 2> entries = {{
+          {.SemanticName = "SV_POSITION", .SemanticIndex = 0, .ComponentCount = 4},
+          {.SemanticName = shader.uv_semantic, .SemanticIndex = shader.uv_semantic_index, .ComponentCount = 2, .OutputSlot = 1},
+      }};
+      constexpr std::array<UINT, 2> STRIDES = {16, 8};
+      const UINT outputs = clip_uv ? 2 : 1;
       if (code == game_code.end()
-          || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), &position, 1, &STRIDE, 1,
-                                                                  D3D11_SO_NO_RASTERIZED_STREAM, nullptr, made.GetAddressOf()))) {
-        return;
+          || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), entries.data(), outputs,
+                                                                  STRIDES.data(), outputs, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                  made->second.GetAddressOf()))) {
+        renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for vertex shader {:08X}{}.", shader.hash,
+                                          clip_uv ? " with its UV" : ""));
       }
     }
-    stream_output = made.Get();
+    if (!made->second) return;
+    stream_output = made->second.Get();
   } else {
     const auto index = static_cast<size_t>(&shader - scene_shaders.data());
     if (index >= objects.capture_shaders.size()) return;
@@ -544,12 +568,12 @@ void Capture(Context& command, const SceneShader& shader) {
   native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
   native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
   native->SOGetTargets(1, game_output.GetAddressOf());
-  ID3D11Buffer* target = objects.captured.Get();
-  const UINT offset = runtime.captured_vertices * 16;
+  const std::array<ID3D11Buffer*, 2> targets = {objects.captured.Get(), objects.captured_uv.Get()};
+  const std::array<UINT, 2> stream_offsets = {runtime.captured_vertices * 16, runtime.captured_vertices * 8};
   if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
   native->GSSetShader(stream_output, nullptr, 0);
   native->PSSetShader(nullptr, nullptr, 0);
-  native->SOSetTargets(1, &target, &offset);
+  native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
   if constexpr (INDEXED) {
     native->DrawIndexedInstanced(arguments.index_count, std::max(arguments.instance_count, 1u), arguments.first_index,
                                  arguments.vertex_offset, arguments.first_instance);
@@ -613,7 +637,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
           .counts = {runtime.captured_vertices, dlaa_bridge::RT_TRANSFER_WIDTH, clip_captures ? 1u : 0u, 0},
           .inverse_view_projection = camera.inverse_view_projection,
       };
-      Dispatch(native, objects.vertices_shader.Get(), {objects.captured_srv.Get(), nullptr}, {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr},
+      Dispatch(native, objects.vertices_shader.Get(), {objects.captured_srv.Get(), objects.captured_uv_srv.Get()},
+               {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr},
                &constants, sizeof(constants), (runtime.captured_vertices + 255) / 256, 1);
     }
     struct PositionConstants {
@@ -723,12 +748,13 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
         && std::ranges::none_of(scene_shaders, [hash](const SceneShader& shader) { return shader.hash == hash && shader.capture_shader.empty(); })) {
       continue;
     }
-    // Bone inputs: the input signature's semantic names are plain text in the code.
+    // Bone inputs: the host's test, else the input signature's semantic names (plain text in the code).
     constexpr std::string_view BONES = "BLENDINDICES";
     const std::string_view bytes(reinterpret_cast<const char*>(code), desc->code_size);
+    const bool skinned = (host.skinned_code != nullptr) ? host.skinned_code({code, desc->code_size}) : bytes.find(BONES) != std::string_view::npos;
     const std::unique_lock lock(runtime.mutex);
     game_code[hash].assign(code, code + desc->code_size);
-    skinned_code[hash] = bytes.find(BONES) != std::string_view::npos;
+    skinned_code[hash] = skinned;
   }
 }
 
