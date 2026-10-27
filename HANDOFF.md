@@ -627,7 +627,10 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           specular occlusion: no G-buffer guides in its RT host. WH3 grass: its own VS streamed out, needs the grass VS
           and its UV output found (trace). Shogun 2 grass: its scene is the G-buffer classifier (scene_draw); whether
           grass reaches the G-buffer needs a trace.
-    [ ] 10 NRC (RTXGI 2 SDK, licence check) or SHaRC.
+    [-] 10 SKIPPED (reasoned): SHaRC's design is what the helper's world radiance cache already does (rt_path.hlsli:
+          spatial hash of cells by position and level (CACHE_ENTRIES 1M, CACHE_LEVELS 8), filled from the paths' unseen
+          hits and the screen, resolved each frame, looked up at path vertices to end paths early). NRC needs NVIDIA's
+          NRC library (RTXGI 2: binary, online training passes on tensor cores) wired into the paths; not done.
     [ ] 11 WH3 DLSS below 100% (launch WH3 myself; trace build\ingame\traces\twwarhammer3_50.txt lines 800-921:
           post-TAA 3D effects need a display-size depth, bloom chain + composite to display size, its upscale 1:1).
     [ ] 12 Release: 64 + 32-bit builds, patch notes, zips (helper22 if the helper changes), report.
