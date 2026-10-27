@@ -92,6 +92,9 @@ struct Settings {
   bool fog_shadows = false;
   // Ray-traced sun shadows only (Experimental): the game's sun shadow map gets no casters (InstallShadowsOnly).
   bool shadows_only = false;
+  // The Debug View (DrawDebugView): 0 off, 1 sun shadows, 2 ambient occlusion, 3 Light Bounce, 4 reflections, 5 specular
+  // occlusion, 6 point light shadows, 7 fog shadows, 8 all seven tiled.
+  uint32_t debug_view = 0;
 };
 
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
@@ -171,6 +174,9 @@ struct DeviceObjects {
   ComPtr<ID3D11ShaderResourceView> captured_uv_srv;
   ComPtr<ID3D11ComputeShader> vertices_shader;
   ComPtr<ID3D11ComputeShader> skies_shader;
+  ComPtr<ID3D11ComputeShader> debug_shader;  // the Debug View's, into its picture (the tone mapper's output's size)
+  ComPtr<ID3D11Texture2D> debug_texture;
+  ComPtr<ID3D11UnorderedAccessView> debug_uav;
   ComPtr<ID3D11ComputeShader> positions_shader;
   ComPtr<ID3D11ComputeShader> sun_shader;
   ComPtr<ID3D11ComputeShader> occlusion_shader;
@@ -227,6 +233,8 @@ struct Runtime {
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
   uint64_t combined_frame = UINT64_MAX;   // the frame `combined` was made in
   uint64_t ambient_frame = UINT64_MAX;    // the frame an ambient occlusion pass took the traced ambient visibility
+  uint64_t bounced_frame = UINT64_MAX;    // the frame the Light Bounce was traced (a texel each `bounce_scale` pixels)
+  UINT bounce_scale = 1;
   uint64_t reflected_frame = UINT64_MAX;  // the frame the reflections were asked for
   bool reflected = false;                 // and whether they were traced
   bool reflections_bound = false;         // the reflection pass's draw has them bound (no screen-space march)
@@ -352,7 +360,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
                  && SUCCEEDED(device->CreateShaderResourceView(objects.captured_uv.Get(), &captured_uv_view,
                                                                objects.captured_uv_srv.GetAddressOf()))))
          && compute(__rt_vertices, &objects.vertices_shader) && compute(__rt_skies, &objects.skies_shader)
-         && compute(__rt_positions, &objects.positions_shader)
+         && compute(__rt_debug, &objects.debug_shader) && compute(__rt_positions, &objects.positions_shader)
          && compute(__rt_sun, &objects.sun_shader) && compute(__rt_occlusion, &objects.occlusion_shader)
          && compute(__rt_atlas, &objects.atlas_shader) && compute(__rt_ambient_combine, &objects.combine_shader)
          && SUCCEEDED(device->CreateSamplerState(&wrap_desc, objects.linear_wrap.GetAddressOf()))
@@ -948,6 +956,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   }
   if (!bounced) return false;
   native->CopySubresourceRegion(traced, 0, 0, 0, 0, bridge.rt_bounce.texture.Get(), 0, &region);
+  runtime.bounced_frame = runtime.frame;
+  runtime.bounce_scale = scale;
   return true;
 }
 
@@ -1169,6 +1179,75 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
   }
   runtime.occlusion_frame = runtime.frame;
   return objects.occlusion_srv.Get();
+}
+
+// The Debug View (Settings.debug_view; 8: all seven tiled) over `target`, the tone mapper's output (the bridge
+// textures' size, RGBA16F): that effect's result this frame as the picture (rt_debug; magenta where it made none).
+inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) {
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  auto& objects = runtime.objects;
+  const auto& bridge = dlaa_bridge::bridge;
+  const uint32_t view = runtime.settings.debug_view;
+  if (view == 0 || !objects.debug_shader || !bridge.ray_tracing) return;
+  D3D11_TEXTURE2D_DESC desc = {};
+  target->GetDesc(&desc);
+  if (desc.Width != bridge.width || desc.Height != bridge.height || desc.SampleDesc.Count != 1 || desc.ArraySize != 1 || desc.MipLevels != 1
+      || (desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT && desc.Format != DXGI_FORMAT_R16G16B16A16_TYPELESS)) {
+    return;
+  }
+  D3D11_TEXTURE2D_DESC current = {};
+  if (objects.debug_texture) objects.debug_texture->GetDesc(&current);
+  if (current.Width != desc.Width || current.Height != desc.Height) {
+    objects.debug_uav.Reset();
+    objects.debug_texture.Reset();
+    D3D11_TEXTURE2D_DESC debug_desc = desc;
+    debug_desc.Usage = D3D11_USAGE_DEFAULT;
+    debug_desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+    debug_desc.CPUAccessFlags = 0;
+    debug_desc.MiscFlags = 0;
+    const D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT, .ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D};
+    if (FAILED(objects.device->CreateTexture2D(&debug_desc, nullptr, objects.debug_texture.GetAddressOf()))
+        || FAILED(objects.device->CreateUnorderedAccessView(objects.debug_texture.Get(), &uav_desc, objects.debug_uav.GetAddressOf()))) {
+      objects.debug_uav.Reset();
+      objects.debug_texture.Reset();
+      return;
+    }
+  }
+  // The views' results (rt_debug's t0-t6) and which this frame made.
+  const bool traced = runtime.traced_frame == runtime.frame;
+  const bool reflected = runtime.reflected && runtime.reflected_frame == runtime.frame;
+  const std::array<bool, 7> made = {traced && runtime.settings.sun_shadows,        traced && runtime.settings.ambient_occlusion,
+                                    runtime.bounced_frame == runtime.frame,         reflected && runtime.settings.reflections,
+                                    reflected && runtime.settings.specular_occlusion, traced && runtime.lights_traced,
+                                    traced && runtime.settings.fog_shadows};
+  uint32_t made_bits = 0;
+  for (size_t index = 0; index < made.size(); ++index) made_bits |= made[index] ? (1u << index) : 0u;
+  struct DebugConstants {
+    std::array<uint32_t, 4> view;
+    std::array<float, 4> size;
+  };
+  const DebugConstants constants = {
+      .view = {view, made_bits, static_cast<uint32_t>(runtime.lights.size()), runtime.bounce_scale},
+      .size = {static_cast<float>(runtime.traced_size[0]), static_cast<float>(runtime.traced_size[1]), static_cast<float>(desc.Width),
+               static_cast<float>(desc.Height)},
+  };
+  {
+    const internal::ComputeState kept(native);
+    // t2-t6 here (put back after), t0-t1 by Dispatch.
+    std::array<ID3D11ShaderResourceView*, 5> game_views = {};
+    native->CSGetShaderResources(2, static_cast<UINT>(game_views.size()), game_views.data());
+    const std::array<ID3D11ShaderResourceView*, 5> results = {bridge.rt_bounce.srv.Get(), bridge.rt_reflection.srv.Get(), bridge.rt_specular.srv.Get(),
+                                                              bridge.rt_light_mask.srv.Get(), bridge.rt_fog.srv.Get()};
+    native->CSSetShaderResources(2, static_cast<UINT>(results.size()), results.data());
+    internal::Dispatch(native, objects.debug_shader.Get(), {bridge.rt_visibility.srv.Get(), bridge.rt_ambient.srv.Get()},
+                       {objects.debug_uav.Get(), nullptr}, &constants, sizeof(constants), (desc.Width + 7) / 8, (desc.Height + 7) / 8);
+    native->CSSetShaderResources(2, static_cast<UINT>(game_views.size()), game_views.data());
+    for (auto* game_view : game_views) {
+      if (game_view != nullptr) game_view->Release();
+    }
+  }
+  native->CopyResource(target, objects.debug_texture.Get());
 }
 
 // Every present: the settings and a new frame; scene keys unseen for RELEASE_FRAMES forgotten (the helper released them).

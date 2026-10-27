@@ -79,6 +79,7 @@ struct Sliders {
   float reflections = 0.f;
   float specular_occlusion = 0.f;
   float reflection_samples = 1.f;
+  float debug_view = 0.f;  // games whose tone mapper hook calls OnTonemapDrawn
 };
 
 inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa) {
@@ -104,6 +105,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .leaf_light = sliders.leaf_light != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .shadows_only = sliders.shadows_only != 0.f && sliders.sun_shadows != 0.f && dlaa,
+      .debug_view = static_cast<uint32_t>(sliders.debug_view),
   };
 }
 
@@ -255,6 +257,8 @@ namespace internal {
 // shadowing nothing) as long as the sun draws took the rays' shadows the frame before (a sun shader without the
 // patch, screen_space_shadows.hpp, keeps the game's).
 static bool shadows_only_installed = false;
+// The Debug View: shown once the addon's tone mapper hook draws it (OnTonemapDrawn).
+static std::atomic_bool debug_view_drawn = false;
 static std::atomic<uint64_t> shadow_map = 0;
 static std::atomic_bool skipping_casters = false;
 
@@ -919,8 +923,34 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
       },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedDebugView",
+          .binding = &sliders->debug_view,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Ray Tracing Debug View",
+          .section = section,
+          .tooltip = "A ray-traced effect's raw result as the picture (All: the seven tiled), to check they work.\n"
+                     "Magenta: it made nothing (off or not traced).",
+          .labels = {"Off", "Sun Shadows", "Ambient Occlusion", "Light Bounce", "Reflections", "Specular Occlusion",
+                     "Point Light Shadows", "Fog Shadows", "All"},
+          .is_enabled = dlaa_on,
+          .is_visible = [] { return internal::debug_view_drawn.load(); },
+      },
   });
 }
 
+// After the tone mapper (the addon's tone mapper hook, after the anti-aliasing's): the Debug View over its output.
+inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
+  internal::debug_view_drawn = true;
+  auto* native = internal::NativeContext(cmd_list);
+  if (native == nullptr) return;
+  ComPtr<ID3D11RenderTargetView> target_view;
+  native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  if (!target_view) return;
+  ComPtr<ID3D11Resource> resource;
+  target_view->GetResource(resource.GetAddressOf());
+  if (ComPtr<ID3D11Texture2D> target; SUCCEEDED(resource.As(&target))) DrawDebugView(native, target.Get());
+}
 
 }  // namespace twattila::rt_scene

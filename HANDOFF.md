@@ -670,8 +670,33 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       worker thread in order; the first of a kind and anything opening / closing the scene stay synchronous (drained).
       Now: sun only 11.5 ms (= RT off), all on CPU 12.5 ms (frame 21.3 ms, GPU-bound by the helper's trace).
     - Zip: twattila_v80 (helper with the worker). Other games keep batch 5 zips until their port round.
-    - NEXT (Attila): RT-only sun shadows mode (replace the shadow maps where traced), smoke / billboard trees in the
-      scene, a night battle to see point light shadows, cheaper AO at 4K (rays / rate defaults).
+    - v81 (ATN's report: 3 fps siege, lines with RT units, river flicker, campaign shadows "vibrating"):
+      - 3 fps in auto_save (siege): the partitioned TLAS stalled the helper's GPU ~0.3 s a frame (CPU 12.9 ms, GPU 7.3 ms,
+        frame 356 ms; without it 22.6 ms). PTLAS now only with RENODX_TW_PTLAS=1.
+      - Lines / river: not reproduced (likely the RT units' long shadows at a low sun; ask ATN for a screenshot). The
+        debug view's Reflections tile is black in 2vs3: the river's water is not in the G-buffer, RT reflections only
+        reach glossy G-buffer surfaces.
+      - Campaign "vibration" = RT AO noise: the trace keeps the ambient visibility over frames (history u28-u29, last
+        positions u30, rt_camera.hlsli's Paths cbuffer; 1/5 new): changed pixels 2.3-3.0% -> 0.5-0.7% (RT off 0.9%).
+      - RT sun shadows never reached the campaign (and 7 other sun shaders): view_share's create callback (registered
+        first, by anti_aliasing::Install) changed them, so screen_space_shadows' CRC missed sun_hashes: no t49 patch.
+        Fix: view_share::OriginalHash(code) / Repatched(from, to) (its cb12 kept). 0xDCD5E5BA / 0x9ECED7F8 still "have no
+        shadow to patch" (view_share's change or none of their own: unchecked).
+      - Then every campaign sun ray was blocked: the campaign's sky dome is a rigid draw (vs 347F3DD9 ps D63DD3C3, 1632
+        vertices, 918 units wide around the camera; far plane 500). rt_skies.cs (after rt_vertices): a static capture
+        (not terrain / units / leaves / instanced) holding the camera and larger than the view's reach goes NaN (empty).
+        Found with a temporary CPU readback of each capture's bounds (rt_core Capture).
+      - Captures only from the main view (Host.main_view = frame_history::MainViewport): the UI portraits share the depth.
+      - Ray-Traced Shadows Only (Experimental, RayTracedShadowsOnly): sun shadow map casters skipped while the sun draws
+        took the RT mask last frame (occlusion_frame). Campaign + battle OK; 2vs3 12.08 -> 11.88 ms.
+      - Ray Tracing Debug View (RayTracedDebugView: 1 sun, 2 AO, 3 bounce, 4 reflections, 5 spec occlusion, 6 point
+        lights, 7 fog, 8 All tiled; magenta = not made this frame): rt_debug.cs after the tone mapper
+        (rt_scene::OnTonemapDrawn, Attila only so far). 2vs3: all show except point lights (day) and reflections (black).
+      - Frame trace (FrameTrace=1, needs DLSS < 100%) prints each draw's depth test "z<func>[w]".
+      - Shared changes reach the other games' next builds (wrappers rt_skies / rt_debug added; all 10 compile).
+      - Zip: twattila_v81.
+    - NEXT (Attila): a night battle (point light shadows), reflections on armour close-ups, smoke / billboard trees in
+      the scene, cheaper AO at 4K; then port v81 to the other TW games (OnTonemapDrawn + InstallShadowsOnly hooks).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

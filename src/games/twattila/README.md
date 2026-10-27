@@ -2,6 +2,22 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v81 (2026-10-27, tested in game: the campaign and a battle replay)
+
+- Campaign map: **Ray-Traced Sun Shadows** now work there. The render scale's patch changed 8 sun shaders (the
+  campaign's among them) before the shadow patch saw them, so neither the ray-traced nor the screen-space shadows
+  reached them. And the campaign's sky dome (a rigid mesh 900 units across, around the camera) no longer blocks every
+  sun ray (a static mesh holding the camera and larger than the view reaches casts no shadow).
+- **Ray-Traced Shadows Only** (Experimental): the game's sun shadow maps are not drawn, the rays alone cast sun
+  shadows (battle replay, 4K DLAA: 12.1 -> 11.9 ms a frame).
+- **Ray-Traced Ambient Occlusion** kept over frames: the campaign's houses no longer shimmer (pixels changing between
+  frames: 2.3-3.0% -> 0.5-0.7%; without ray tracing 0.9%).
+- **Ray Tracing Debug View**: one ray-traced effect's raw result as the picture, or All seven tiled; magenta: it made
+  nothing this frame (off, or not traced).
+- The UI's small 3D views (portraits) stay out of the ray-traced scene.
+- renodx-tw-dlaa64.exe **helper22** rebuilt: the partitioned TLAS only with RENODX_TW_PTLAS=1 (a city siege stalled
+  at 3 fps with it), the ambient occlusion's history.
+
 ## v80 (2026-10-27, tested in game in battle replays)
 
 - renodx-tw-dlaa64.exe **helper22** rebuilt: ray tracing no longer stalls the game. The helper answers each ray
