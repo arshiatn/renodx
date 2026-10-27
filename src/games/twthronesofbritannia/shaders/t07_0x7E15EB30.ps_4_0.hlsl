@@ -66,8 +66,9 @@ Texture2D<float4> grain_sampler : register(t4);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
+#include "../hdr_to_screen.hlsli"
 #include "../psycho_test30.hlsli"
+#include "../../twattila/render_scale.hlsli"
 
 
 void main(
@@ -81,7 +82,7 @@ void main(
 
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
-  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
+  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, (r0.xy) * FrameRenderShare(), 0).yzxw;
   r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r1.w = 1;
   r0.z = dot(r1.xyzw, inv_projection._m02_m12_m22_m32);
@@ -107,7 +108,7 @@ void main(
     r3.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r3.xy, r3.y).xyzw;
     float4 hdr_dof_sample = sample_data_5x5[r1.z].zzzz * r3.xyzw;
     r3.xyzw =
-        (HDR == 1.f)
+        (HDR >= 1.f)
             ? max(hdr_dof_sample, 0.f.xxxx)
             : saturate(hdr_dof_sample);
     r2.xyzw = r3.xyzw + r2.xyzw;
@@ -119,12 +120,12 @@ void main(
   r2.xyzw = r2.xyzw + -r3.xyzw;
   r2.xyzw = blur_kernel_scale * r2.xyzw + r3.xyzw;
   r3.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy).xyzw;
-  float god_rays_multiplier = (HDR == 1.f) ? SI.godrays : 1.f;
+  float god_rays_multiplier = (HDR >= 1.f) ? SI.godrays : 1.f;
   r3.xyz =
       r3.xxx
       * (float3(0.100000001,0.100000001,0.100000001) * god_rays_multiplier)
       + r2.xyz;
-  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
+  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, (r0.xy) * FrameRenderShare(), r0.y).yzxw;
   r0.xyw = r1.xyw;
   r1.x = dot(r0.xyzw, inv_view_projection._m00_m10_m20_m30);
   r1.w = dot(r0.xyzw, inv_view_projection._m02_m12_m22_m32);
@@ -165,7 +166,7 @@ void main(
   r1.xyzw = grain_sampler.Sample(grain_sampler_s, r1.xy).xyzw;
   r1.xyz = r1.yyy * r0.xyz;
   // SDR: preserve Britannia's stock film-grain, brightness, gamma and matrix.
-  if (HDR != 1.f)
+  if (HDR < 1.f)
   {
     r0.xyz = r1.xyz * float3(3.5,3.5,3.5) + r0.xyz;
     r0.xyz = g_brightness * r0.xyz;
@@ -178,13 +179,7 @@ void main(
     o0.y = dot(r1.xyzw, colour_matrix._m01_m11_m21_m31);
     o0.z = dot(r1.xyzw, colour_matrix._m02_m12_m22_m32);
     o0.w = r0.w;
-
-    // Preserve the original normalized-target clamp after upgrading the target.
-    o0.xyzw = saturate(o0.xyzw);
-
-    o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, g_gamma_output);
-    o0.xyz *= (SI.diffuse_white_nits / SI.graphics_white_nits);
-    o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz, 2.0f);
+    o0 = SdrToScreenOutput(o0);
     return;
   }
 
@@ -206,36 +201,6 @@ void main(
   // ---------------------------------------------------------------------------
   float output_alpha = r0.w;
   float3 hdr_color = max(r0.xyz, 0.f.xxx);
-
-  float matrix_scale =
-      renodx::tonemap::neutwo::ComputeMaxChannelScale(
-          hdr_color, 1.f, HDR_PEAK);
-  float3 matrix_input_linear = hdr_color * matrix_scale;
-  float3 matrix_input_gamma =
-      renodx::color::gamma::EncodeSafe(matrix_input_linear, 2.0f);
-
-  float4 matrix_input = float4(matrix_input_gamma, 1.f);
-
-  float3 matrix_output_gamma;
-  matrix_output_gamma.x =
-      dot(matrix_input, colour_matrix._m00_m10_m20_m30);
-  matrix_output_gamma.y =
-      dot(matrix_input, colour_matrix._m01_m11_m21_m31);
-  matrix_output_gamma.z =
-      dot(matrix_input, colour_matrix._m02_m12_m22_m32);
-
-  float3 matrix_output_linear =
-      renodx::color::gamma::DecodeSafe(matrix_output_gamma, 2.0f);
-
-  float3 graded_hdr =
-      renodx::math::DivideSafe(
-          matrix_output_linear,
-          matrix_scale.xxx,
-          matrix_output_linear);
-
-  o0.xyz = ApplyPsychoV30(graded_hdr);
-  o0.xyz *= (SI.diffuse_white_nits / SI.graphics_white_nits);
-  o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz, 2.0f);
-  o0.w = output_alpha;
+  o0 = HdrToScreenOutput(hdr_color, output_alpha);
   return;
 }

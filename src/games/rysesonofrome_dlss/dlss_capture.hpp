@@ -25,7 +25,7 @@
 
 // Debug (Advanced button): DLSS's inputs of the next CAPTURE_FRAMES evaluations, raw (color, motion vectors in pixels,
 // depth; their active rectangle), at DLAA too. For what flickers while paused (ATN): a still image's pixels should all
-// have 0 motion; the ones that do not show which surface DLSS drops every frame. As twshogun2_dlss's capture (its trees
+// have 0 motion; the ones that do not show which surface DLSS drops every frame. As twshogun2completeedition_dlss's capture (its trees
 // and banners), the same files: ryse_dlss_capture_<frame>_<color / motion / depth>.bin (header: width, height, DXGI
 // format, bytes per texel, uint32 each; then the rows) and ryse_dlss_capture.txt (each frame's parameters), next to the
 // exe; tools\shogun2\capture_decode.py reads them.

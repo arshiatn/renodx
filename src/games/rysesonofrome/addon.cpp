@@ -36,7 +36,10 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/data.hpp"
 #include "../../utils/hash.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "./contact_shadows.hpp"
+#include "./light_bounce.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -67,6 +70,51 @@ bool IsPsychoMode() {
   return shader_injection.hdr == 2.f && IsAdvancedSettings();
 }
 
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
+
+// The fire settings (ATN): Option 1 (also the sliders' defaults, Reset and the Recommended presets) and Option 2, for
+// PsychoV31 and for Extended (its own sliders; Dechroma and Highlight Saturation are V31's).
+const std::vector<std::pair<std::string, float>> FIRE_OPTION_1 = {
+    {"dechroma", 0.f},
+    {"highlight_saturation", 1.f},
+    {"highlight_hue_shift", 0.03f},
+    {"highlight_saturation_shift", 0.1f},
+    {"fire_hue", 0.f},
+    {"fire_hue_focus", 0.5f},
+};
+const std::vector<std::pair<std::string, float>> FIRE_OPTION_2 = {
+    {"dechroma", 0.f},
+    {"highlight_saturation", 1.f},
+    {"highlight_hue_shift", 0.11f},
+    {"highlight_saturation_shift", 0.07f},
+    {"fire_hue", -0.05f},
+    {"fire_hue_focus", 0.75f},
+};
+const std::vector<std::pair<std::string, float>> EXT_FIRE_OPTION_1 = {
+    {"ext_highlight_hue_shift", 0.03f},
+    {"ext_highlight_saturation_shift", 0.1f},
+    {"ext_fire_hue", 0.f},
+    {"ext_fire_hue_focus", 0.5f},
+};
+const std::vector<std::pair<std::string, float>> EXT_FIRE_OPTION_2 = {
+    {"ext_highlight_hue_shift", 0.11f},
+    {"ext_highlight_saturation_shift", 0.07f},
+    {"ext_fire_hue", -0.05f},
+    {"ext_fire_hue_focus", 0.75f},
+};
+// Recommended, also under its deeper shadows twin.
+const std::vector<std::pair<std::string, float>> LESS_POST_PROCESSING = {
+    {"tonemapper", 2.f},
+    {"film_grain", 0.f},
+    {"motion_blur_camera", 0.f},
+    {"motion_blur_object", 0.f},
+    {"sharpening", 0.25f},
+    {"depth_of_field", 2.f},
+    {"video_highlights", 0.25f},
+};
+
 void ApplyResetPreset() {
   // Peak / Paper White / UI, Settings Mode and output are kept.
   renodx::utils::settings::UpdateSettings({
@@ -77,13 +125,16 @@ void ApplyResetPreset() {
       {"ext_contrast", 1.f},
       {"ext_saturation", 1.f},
       {"ext_highlight_saturation", 1.f},
-      {"ext_hue_correction", 1.f},
       {"exposure", 1.f},
       {"highlights", 1.f},
       {"shadows", 1.f},
       {"contrast", 1.f},
       {"saturation", 1.f},
-      {"highlight_saturation", 1.f},
+      {"highlight_contrast", 1.f},
+      {"shadow_contrast", 1.f},
+      {"flare", 0.f},
+      {"gamut_compression", 1.f},
+      {"gamut_compression_mode", 1.f},
       {"roll_off", 1.f},
       {"game_shadows", 0.f},
       {"bloom", 1.f},
@@ -99,6 +150,8 @@ void ApplyResetPreset() {
       {"video_highlights", 0.f},
       {"video_dithering", 1.f},
   });
+  renodx::utils::settings::UpdateSettings(FIRE_OPTION_1);
+  renodx::utils::settings::UpdateSettings(EXT_FIRE_OPTION_1);
 }
 
 renodx::mods::shader::CustomShaders custom_shaders;
@@ -120,6 +173,12 @@ void BuildRuntimeData() {
       CustomShaderEntry(0xF1FCED4E),  // shafts01 (sun shafts radial blur)
       CustomShaderEntry(0x37ABF6CF),  // video00
       CustomShaderEntry(0xC1F889A4),  // video01 (alpha)
+      CustomShaderEntry(0xD1106E8B),  // ssdo00 (SSDO; Ambient Occlusion GT-VBAO)
+      CustomShaderEntry(0xE9264ADE),  // sunshadow00 (sun shadow mask, near cascades; Sun Shadow Softness)
+      CustomShaderEntry(0xB5DC6E36),  // sunshadow01
+      CustomShaderEntry(0xF2B4EF30),  // sunshadow02 (middle cascade)
+      CustomShaderEntry(0xF864A048),  // sunshadow03
+      CustomShaderEntry(0xF81C7168),  // sunshadow04 (far cascade)
   };
   // Not replaced; their draws skipped while the hotkeys hide them. Scaleform's text (0x96675B77) and flat shapes
   // (0x1B59F534, in OnDrawUi / OnDrawIndexedUi: the execution skull is one of them): the HUD, also the menus. The
@@ -127,10 +186,42 @@ void BuildRuntimeData() {
   const auto keep_shader = [](reshade::api::command_list*) { return false; };
   const auto draw_hud = [](reshade::api::command_list*) { return !hud_hidden; };
   custom_shaders[0x96675B77] = {.crc32 = 0x96675B77, .on_replace = keep_shader, .on_draw = draw_hud};
+  // The tiled lighting (kept): contact shadows into the sun's shadow mask before it runs.
+  const auto contact_shadows = [](reshade::api::command_list* cmd_list) {
+    rysesonofrome::contact_shadows::Apply(cmd_list, {
+                                                        .length = shader_injection.contact_shadow_length,
+                                                        .thickness = shader_injection.contact_shadow_thickness,
+                                                        .strength = shader_injection.contact_shadows,
+                                                        .frame = shader_injection.ssao_frame,
+                                                    });
+    return true;
+  };
+  // After it: the Light Bounce added to the scene it lit.
+  const auto light_bounce = [](reshade::api::command_list* cmd_list) {
+    const auto power_of_two = [](float exponent) { return static_cast<float>(1u << static_cast<uint32_t>(std::clamp(exponent, 0.f, 3.f))); };
+    if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    rysesonofrome::light_bounce::Apply(context,
+                                       {
+                                           .strength = shader_injection.light_bounce,
+                                           .radius = shader_injection.light_bounce_radius,
+                                           .thickness = shader_injection.ssao_thickness,
+                                           .steps = 8.f * power_of_two(shader_injection.light_bounce_quality),
+                                           .slices = power_of_two(shader_injection.light_bounce_directions),
+                                           .scale = power_of_two(shader_injection.light_bounce_resolution),
+                                           .history = 0.95f,
+                                           .frame = shader_injection.ssao_frame,
+                                           .bounces = shader_injection.light_bounce_multi,
+                                       },
+                                       shader_injection.light_bounce_denoise != 0.f);
+  };
+  custom_shaders[0x897232B5] = {.crc32 = 0x897232B5, .on_replace = keep_shader, .on_draw = contact_shadows, .on_drawn = light_bounce};
 
-  // 0-2 slider, 1 = the game's.
+  // 0-max slider (default 2), 1 = the game's.
   auto slider = [](const std::string& key, float* binding, const std::string& label, const std::string& section,
-                   const std::string& tooltip, bool (*is_enabled)(), bool (*is_visible)(), float default_value = 1.f) {
+                   const std::string& tooltip, bool (*is_enabled)(), bool (*is_visible)(), float default_value = 1.f,
+                   float max = 2.f) {
     return new renodx::utils::settings::Setting{
         .key = key,
         .binding = binding,
@@ -139,7 +230,7 @@ void BuildRuntimeData() {
         .section = section,
         .tooltip = tooltip,
         .min = 0.f,
-        .max = 2.f,
+        .max = max,
         .format = "%.2f",
         .is_enabled = is_enabled,
         .is_visible = is_visible,
@@ -173,6 +264,7 @@ void BuildRuntimeData() {
           .tooltip = "Maximum brightness output in nits.",
           .min = 400.f,
           .max = 10000.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "diffuse_white_nits",
@@ -183,6 +275,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of the scene/game and videos.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "graphics_white_nits",
@@ -193,6 +286,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of UI and HUD in nits.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "tonemapper",
@@ -214,7 +308,7 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV31), with all vanilla post processing, \n"
-                     "hidden chromatic aberration, bloom at 0.5, sharpening at 0.5 and Video AutoHDR at 0.25.\n"
+                     "hidden chromatic aberration, sharpening at 0.5, depth of field at 2 and Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
@@ -224,7 +318,7 @@ void BuildRuntimeData() {
                 {"motion_blur_camera", 0.20f},
                 {"motion_blur_object", 0.50f},
                 {"chromatic_aberration_strength", 0.35f},
-                {"bloom", 0.5f},
+                {"depth_of_field", 2.f},
                 {"sharpening", 0.5f},
                 // {"sun_shafts", 0.5f},
                 {"video_highlights", 0.25f},
@@ -233,23 +327,28 @@ void BuildRuntimeData() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "Recommended (Less Post Processing)",
+          .label = "Recommended",
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV31), no film grain, no motion blur,\n"
-                     "no chromatic aberration. Bloom at 0.5, Video AutoHDR at 0.25.\n"
+                     "no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
-            renodx::utils::settings::UpdateSettings({
-                {"tonemapper", 2.f},
-                {"film_grain", 0.f},
-                {"motion_blur_camera", 0.f},
-                {"motion_blur_object", 0.f},
-                {"bloom", 0.5f},
-                // {"sun_shafts", 0.5f},
-                {"video_highlights", 0.25f},
-            });
+            renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Recommended (with Deeper Shadows)",
+          .section = "Presets",
+          .group = "preset-line-1",
+          .tooltip = "As Recommended, with deeper shadows closer to the game's\n"
+                     "(PsychoV31 Shadows 0.75, Flare 0.25).",
+          .on_change = []() {
+            ApplyResetPreset();
+            renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
+            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -276,20 +375,55 @@ void BuildRuntimeData() {
              "Extended", "How much brighter colors desaturate. 0 = more, 1 = default, 2 = less.", IsExtendedMode,
              IsExtendedMode),
       new renodx::utils::settings::Setting{
-          .key = "ext_hue_correction",
-          .binding = &shader_injection.ext_hue_correction,
-          .default_value = 1.f,
-          .label = "Hue Correction",
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Fire too yellow, green or pink? Pick one or change the settings below.",
           .section = "Extended",
-          .tooltip = "Keeps the scene's hue where the game's curve shifts it (mostly mid tones and dark colors).\n"
-                     "1 = full (default, like Musa's Batman), 0 = the curve's hue. Above Paper White colors still\n"
-                     "turn white like SDR (bright fire: yellow / white core).",
-          .min = 0.f,
+          .tint = 0xFFD23C,
+          .is_visible = IsExtendedMode,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Option 1 (Default)",
+          .section = "Extended",
+          .group = "extended-fire",
+          .tooltip = "Highlight Hue Shift 0.03, Highlight Saturation Shift 0.10, Fire Hue Focus 0.50.",
+          .on_change = []() { renodx::utils::settings::UpdateSettings(EXT_FIRE_OPTION_1); },
+          .is_visible = IsExtendedMode,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Option 2",
+          .section = "Extended",
+          .group = "extended-fire",
+          .tooltip = "Highlight Hue Shift 0.11, Highlight Saturation Shift 0.07, Fire Hue -0.05, Fire Hue Focus 0.75.",
+          .on_change = []() { renodx::utils::settings::UpdateSettings(EXT_FIRE_OPTION_2); },
+          .is_visible = IsExtendedMode,
+      },
+      slider("ext_highlight_hue_shift", &shader_injection.ext_highlight_hue_shift, "Highlight Hue Shift", "Extended",
+             "Bright colors take the game's SDR hues: fire more orange, less yellow / green or pink.\n"
+             "0 = off, 1 = SDR hues.",
+             IsExtendedMode, IsExtendedMode, 0.03f, 1.f),
+      slider("ext_highlight_saturation_shift", &shader_injection.ext_highlight_saturation_shift,
+             "Highlight Saturation Shift", "Extended",
+             "Gives bright colors the saturation of the game's SDR look.\n0 = off, 1 = SDR's.", IsExtendedMode,
+             IsExtendedMode, 0.1f, 1.f),
+      new renodx::utils::settings::Setting{
+          .key = "ext_fire_hue",
+          .binding = &shader_injection.ext_fire_hue,
+          .default_value = 0.f,
+          .label = "Fire Hue (OkLCh)",
+          .section = "Extended",
+          .tooltip = "Rotates the OkLCh hue of bright warm colors (fire): below 0 redder, above 0 more yellow.\n"
+                     "0 = off.",
+          .min = -1.f,
           .max = 1.f,
           .format = "%.2f",
           .is_enabled = IsExtendedMode,
           .is_visible = IsExtendedMode,
       },
+      slider("ext_fire_hue_focus", &shader_injection.ext_fire_hue_focus, "Fire Hue Focus (OkLCh)", "Extended",
+             "Pulls pink and yellow fire toward orange (OkLCh hue). 0 = off, 1 = all orange.", IsExtendedMode,
+             IsExtendedMode, 0.5f, 1.f),
 
       // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
       slider("exposure", &shader_injection.exposure, "Exposure", "PsychoV31", "", IsPsychoMode, IsPsychoMode),
@@ -297,13 +431,48 @@ void BuildRuntimeData() {
       slider("shadows", &shader_injection.shadows, "Shadows", "PsychoV31", "", IsPsychoMode, IsPsychoMode),
       slider("contrast", &shader_injection.contrast, "Contrast", "PsychoV31", "1 = PsychoV31's own.", IsPsychoMode,
              IsPsychoMode),
+      slider("highlight_contrast", &shader_injection.highlight_contrast, "Highlight Contrast", "PsychoV31",
+             "Contrast above mid gray. 1 = PsychoV31's own.", IsPsychoMode, IsPsychoMode),
+      slider("shadow_contrast", &shader_injection.shadow_contrast, "Shadow Contrast", "PsychoV31",
+             "Contrast below mid gray. 1 = PsychoV31's own.", IsPsychoMode, IsPsychoMode),
+      new renodx::utils::settings::Setting{
+          .key = "flare",
+          .binding = &shader_injection.flare,
+          .default_value = 0.f,
+          .label = "Flare",
+          .section = "PsychoV31",
+          .tooltip = "Deepens the darkest shadows. 0 = off.",
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = IsPsychoMode,
+          .parse = [](float value) { return std::pow(value, 5.f); },
+          .is_visible = IsPsychoMode,
+      },
       slider("saturation", &shader_injection.saturation, "Saturation / Purity", "PsychoV31", "1 = PsychoV31's own.",
              IsPsychoMode, IsPsychoMode),
-      slider("highlight_saturation", &shader_injection.highlight_saturation, "Highlight Saturation", "PsychoV31",
-             "0 = less, 1 = PsychoV31's own, 2 = more.", IsPsychoMode, IsPsychoMode),
       slider("roll_off", &shader_injection.roll_off, "Highlight Roll-off", "PsychoV31",
              "How soon highlights start to compress toward Peak.\n0 = latest, 1 = default, 2 = soonest.",
              IsPsychoMode, IsPsychoMode),
+      slider("gamut_compression", &shader_injection.gamut_compression, "Gamut Compression", "PsychoV31",
+             "Pulls colors your display can't show back inside its color space.\n"
+             "0 = off (the display clips them), 1 = full (default).",
+             IsPsychoMode, IsPsychoMode, 1.f, 1.f),
+      new renodx::utils::settings::Setting{
+          .key = "gamut_compression_mode",
+          .binding = &shader_injection.gamut_compression_mode,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Gamut Compression Mode",
+          .section = "PsychoV31",
+          .tooltip = "The color space colors are fitted into.\n"
+                     "BT.2020: the whole HDR signal (default).\n"
+                     "Display P3: what most HDR monitors and TVs show. BT.709: SDR colors.",
+          .labels = {"BT.709", "BT.2020", "Display P3"},
+          .is_enabled = []() { return IsPsychoMode() && IsHdrOutput(); },
+          // PsychoV31's modes: 0 BT.709, 1 BT.2020, 3 Display P3.
+          .parse = [](float value) { return (value == 2.f ? 3.f : value); },
+          .is_visible = IsPsychoMode,
+      },
       new renodx::utils::settings::Setting{
           .key = "game_shadows",
           .binding = &shader_injection.game_shadows,
@@ -318,6 +487,62 @@ void BuildRuntimeData() {
           .is_enabled = IsPsychoMode,
           .is_visible = IsPsychoMode,
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Fire too pink, too yellow or too pale? Pick one or change the settings below.",
+          .section = "PsychoV31",
+          .tint = 0xFFD23C,
+          .is_visible = IsPsychoMode,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Option 1 (Default)",
+          .section = "PsychoV31",
+          .group = "psychov31-fire",
+          .tooltip = "Highlight Hue Shift 0.03, Highlight Saturation Shift 0.10, Fire Hue Focus 0.50.",
+          .on_change = []() { renodx::utils::settings::UpdateSettings(FIRE_OPTION_1); },
+          .is_visible = IsPsychoMode,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Option 2",
+          .section = "PsychoV31",
+          .group = "psychov31-fire",
+          .tooltip = "Highlight Hue Shift 0.11, Highlight Saturation Shift 0.07, Fire Hue -0.05, Fire Hue Focus 0.75.",
+          .on_change = []() { renodx::utils::settings::UpdateSettings(FIRE_OPTION_2); },
+          .is_visible = IsPsychoMode,
+      },
+      slider("dechroma", &shader_injection.dechroma, "Dechroma", "PsychoV31",
+             "Very bright colors fade toward white, as if overexposed. 0 = off.", IsPsychoMode, IsPsychoMode, 0.f, 1.f),
+      slider("highlight_saturation", &shader_injection.highlight_saturation, "Highlight Saturation", "PsychoV31",
+             "Saturation of bright colors. 0 = less, 1 = PsychoV31's own (default), 2 = more.", IsPsychoMode,
+             IsPsychoMode),
+      slider("highlight_hue_shift", &shader_injection.highlight_hue_shift, "Highlight Hue Shift", "PsychoV31",
+             "Bright colors take the game's SDR hues: fire more orange / yellow, less pink.\n"
+             "0 = off, 1 = SDR hues.",
+             IsPsychoMode, IsPsychoMode, 0.03f, 1.f),
+      slider("highlight_saturation_shift", &shader_injection.highlight_saturation_shift, "Highlight Saturation Shift",
+             "PsychoV31",
+             "Gives bright colors the saturation of the game's SDR look (fire cores less pale and pink).\n"
+             "0 = off, 1 = SDR's.",
+             IsPsychoMode, IsPsychoMode, 0.1f, 1.f),
+      new renodx::utils::settings::Setting{
+          .key = "fire_hue",
+          .binding = &shader_injection.fire_hue,
+          .default_value = 0.f,
+          .label = "Fire Hue (OkLCh)",
+          .section = "PsychoV31",
+          .tooltip = "Rotates the OkLCh hue of bright warm colors (fire): below 0 redder, above 0 more yellow.\n"
+                     "0 = off.",
+          .min = -1.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = IsPsychoMode,
+          .is_visible = IsPsychoMode,
+      },
+      slider("fire_hue_focus", &shader_injection.fire_hue_focus, "Fire Hue Focus (OkLCh)", "PsychoV31",
+             "Pulls pink and yellow fire toward orange (OkLCh hue). 0 = off, 1 = all orange.", IsPsychoMode,
+             IsPsychoMode, 0.5f, 1.f),
 
       // Extra (HDR only) /////////////////////////////////////////////////////////////////////////
       slider("bloom", &shader_injection.bloom, "Bloom", "Extra", "Bloom multiplier.", IsHDRMode, IsAdvancedSettings),
@@ -352,14 +577,13 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .label = "Video AutoHDR",
           .section = "Extra",
-          .tooltip = "Inverse tone mapping (ITM) for the game's videos (8-bit SDR):\n"
-                     "makes their bright parts brighter.\n"
-                     "0 = off (like SDR), 1 = strongest.\n"
+          .tooltip = "Makes the bright parts of the game's (SDR) videos brighter: only what is above mid gray,\n"
+                     "the brightest the most. 0 = off, 1 = video white reaches Peak.\n"
                      "High values can show banding (see Video Dithering).",
           .min = 0.f,
           .max = 1.f,
           .format = "%.2f",
-          .is_enabled = IsHDRMode,
+          .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
           .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
@@ -372,8 +596,208 @@ void BuildRuntimeData() {
           .tooltip = "Fine noise that hides banding in the brightened videos.\n"
                      "Only with Video AutoHDR above 0.",
           .labels = {"Off", "On"},
-          .is_enabled = [] { return IsHDRMode() && shader_injection.video_highlights > 0.f; },
+          .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_highlights > 0.f; },
           .is_visible = IsAdvancedSettings,
+      },
+      // Ambient Occlusion (ssdo00): the game's SSDO or GT-VBAO in its place (ssdo_bitmask.hlsli).
+      new renodx::utils::settings::Setting{
+          .key = "ssao_mode",
+          .binding = &shader_injection.ssao_mode,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Ambient Occlusion",
+          .section = "Ambient Occlusion",
+          .tooltip = "GT-VBAO: contact shading that lets light pass behind thin things (railings, spears, grass)\n"
+                     "instead of the game's dark halos. Experimental.",
+          .labels = {"Game's (SSDO)", "GT-VBAO"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_radius",
+          .binding = &shader_injection.ssao_radius,
+          .default_value = 1.f,
+          .label = "AO Radius",
+          .section = "Ambient Occlusion",
+          .tooltip = "How far around a point other surfaces shade it (metres).",
+          .min = 0.25f,
+          .max = 4.f,
+          .format = "%.2f m",
+          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_strength",
+          .binding = &shader_injection.ssao_strength,
+          .default_value = 1.f,
+          .label = "AO Strength",
+          .section = "Ambient Occlusion",
+          .tooltip = "How dark the shading gets.",
+          .min = 0.f,
+          .max = 3.f,
+          .format = "%.2f",
+          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_thickness",
+          .binding = &shader_injection.ssao_thickness,
+          .default_value = 0.1f,
+          .label = "AO Thickness",
+          .section = "Ambient Occlusion",
+          .tooltip = "How thick things are taken to be: thicker shades more behind them (metres).",
+          .min = 0.01f,
+          .max = 1.f,
+          .format = "%.2f m",
+          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_quality",
+          .binding = &shader_injection.ssao_quality,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "AO Quality",
+          .section = "Ambient Occlusion",
+          .tooltip = "Samples per side: more catch thin things. Heavier.",
+          .labels = {"8", "16", "32", "64"},
+          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_directions",
+          .binding = &shader_injection.ssao_directions,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "AO Directions",
+          .section = "Ambient Occlusion",
+          .tooltip = "Directions per pixel: less noise. Heavier.",
+          .labels = {"1", "2", "4", "8"},
+          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+      },
+      // Contact Shadows (contact_shadows.hpp): short screen-space shadows toward the sun, into its shadow mask.
+      new renodx::utils::settings::Setting{
+          .key = "contact_shadows",
+          .binding = &shader_injection.contact_shadows,
+          .default_value = 0.f,
+          .label = "Contact Shadows",
+          .section = "Contact Shadows",
+          .tooltip = "Small sharp sun shadows where the game's shadow map is too coarse (feet, folds of armour,\n"
+                     "stones on the ground). 0 = off. Experimental.",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+      },
+      new renodx::utils::settings::Setting{
+          .key = "contact_shadow_length",
+          .binding = &shader_injection.contact_shadow_length,
+          .default_value = 0.5f,
+          .label = "Contact Shadow Length",
+          .section = "Contact Shadows",
+          .tooltip = "How far toward the sun each pixel looks for something in the way (metres).",
+          .min = 0.1f,
+          .max = 2.f,
+          .format = "%.2f m",
+          .is_enabled = [] { return shader_injection.contact_shadows > 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "contact_shadow_thickness",
+          .binding = &shader_injection.contact_shadow_thickness,
+          .default_value = 0.2f,
+          .label = "Contact Shadow Thickness",
+          .section = "Contact Shadows",
+          .tooltip = "How thick things are taken to be: thicker casts more, thinner leaves gaps behind edges (metres).",
+          .min = 0.05f,
+          .max = 1.f,
+          .format = "%.2f m",
+          .is_enabled = [] { return shader_injection.contact_shadows > 0.f; },
+      },
+      // Sun Shadow Softness (sunshadow00-04, sun_shadow_pcss.hlsli): contact-hardening sun shadows (PCSS).
+      new renodx::utils::settings::Setting{
+          .key = "sun_shadow_softness",
+          .binding = &shader_injection.sun_shadow_softness,
+          .default_value = 0.f,
+          .label = "Sun Shadow Softness",
+          .section = "Contact Shadows",
+          .tooltip = "Sun shadows sharp where things touch and softer farther away (the sun's size in degrees;\n"
+                     "the real sun 0.5). 0 = the game's. Experimental.",
+          .min = 0.f,
+          .max = 5.f,
+          .format = "%.2f",
+      },
+      // Light Bounce (light_bounce.hpp): GT-VBGI after the tiled lighting, added to the scene it lit.
+      new renodx::utils::settings::Setting{
+          .key = "light_bounce",
+          .binding = &shader_injection.light_bounce,
+          .default_value = 0.f,
+          .label = "Light Bounce",
+          .section = "Light Bounce",
+          .tooltip = "Light bouncing off what you see onto things around it (colour bleeding, brighter corners).\n"
+                     "0 = off. Experimental.",
+          .min = 0.f,
+          .max = 2.f,
+          .format = "%.2f",
+      },
+      new renodx::utils::settings::Setting{
+          .key = "light_bounce_radius",
+          .binding = &shader_injection.light_bounce_radius,
+          .default_value = 3.f,
+          .label = "Light Bounce Radius",
+          .section = "Light Bounce",
+          .tooltip = "How far light travels to bounce (metres).",
+          .min = 0.5f,
+          .max = 10.f,
+          .format = "%.1f m",
+          .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "light_bounce_quality",
+          .binding = &shader_injection.light_bounce_quality,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Light Bounce Quality",
+          .section = "Light Bounce",
+          .tooltip = "Samples per direction: finer detail. Heavier.",
+          .labels = {"8", "16", "32"},
+          .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "light_bounce_directions",
+          .binding = &shader_injection.light_bounce_directions,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Light Bounce Directions",
+          .section = "Light Bounce",
+          .tooltip = "Directions per pixel: less noise. Heavier.",
+          .labels = {"1", "2", "4", "8"},
+          .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "light_bounce_resolution",
+          .binding = &shader_injection.light_bounce_resolution,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Light Bounce Resolution",
+          .section = "Light Bounce",
+          .tooltip = "Traced at full, half or quarter resolution (lower is faster, softer).",
+          .labels = {"Full", "Half", "Quarter"},
+          .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "light_bounce_multi",
+          .binding = &shader_injection.light_bounce_multi,
+          .default_value = 0.f,
+          .label = "Multi-Bounce",
+          .section = "Light Bounce",
+          .tooltip = "Bounced light bouncing again (brighter, softer interiors). 0 = one bounce.",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "light_bounce_denoise",
+          .binding = &shader_injection.light_bounce_denoise,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Light Bounce Denoiser",
+          .section = "Light Bounce",
+          .tooltip = "Smooths the bounce along surfaces (less noise, never across edges).",
+          .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
       },
   };
 }
@@ -512,6 +936,8 @@ bool KeyWentDown(int key) {
 
 void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  // GT-VBAO's noise moves every frame (the game's SSDO blur and TAA / DLSS settle it).
+  shader_injection.ssao_frame = static_cast<float>((static_cast<uint32_t>(shader_injection.ssao_frame) + 1u) % 4096u);
 #ifdef RYSE_UI_DRAW_LOG
   if (ui_log != nullptr) {
     std::fputs("frame end\n", ui_log);
@@ -769,6 +1195,8 @@ bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uin
 }
 
 void OnDestroyDevice(reshade::api::device* device) {
+  rysesonofrome::contact_shadows::Release();
+  rysesonofrome::light_bounce::Release();
   const std::scoped_lock lock(mutex);
   if (data.device != device) return;
   DestroyView();
@@ -801,6 +1229,36 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
     setting->can_reset = true;
     break;
   }
+}
+
+// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
+void SetOutputEncoding(int encoding) {
+  // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
+  if (bool frame_generation = false; encoding == 1 && reshade::get_config_value(nullptr, "Ryse AA", "FrameGeneration", frame_generation)
+                                     && frame_generation) {
+    encoding = 0;
+  }
+  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
+  if (encoding == 2) {
+    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
+    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
+  } else {
+    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
+  }
+}
+
+// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
+// before the swapchain mod's create_swapchain (registered after this).
+bool auto_output_pending = false;
+
+bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
+  if (!auto_output_pending) return false;
+  auto_output_pending = false;
+  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
+  const auto path = renodx::utils::platform::GetPathInfo(monitor);
+  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
+  SetOutputEncoding(windows_hdr ? 1 : 2);
+  return false;
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -872,27 +1330,65 @@ void ConfigureAddon() {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "SwapChainEncoding",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 1.f,
+        .default_value = 3.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: 10-bit.\nscRGB: 16-bit.",
-        .labels = {"HDR10", "scRGB"},
+        .tooltip = "Auto: scRGB with Windows HDR on, else SDR. Default. Frame generation uses HDR10 for scRGB.\n"
+                   "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR (all fixes and options stay).",
+        .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const auto value = setting->GetValue();
-    shader_injection.swap_chain_encoding = value;
-    renodx::mods::swapchain::SetUseHDR10(value == 0);
+    const int value = static_cast<int>(setting->GetValue());
+    auto_output_pending = (value == 3);
+    SetOutputEncoding(auto_output_pending ? 1 : value);
     settings.push_back(setting);
   }
 
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
-      .section = "About",
-      .is_visible = IsAdvancedSettings,
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "RenoDX and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. UC2 Extended by Musa and "
+                   "Jon.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
+          .section = "About",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "ATN's Ko-fi",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0xFF5A16,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "NexusMods (For RenoDX + DLSS)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x2196F3,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/rysesonofrome/mods/59"); },
+      },
   });
+
+  // Section titles: one colour (as Attila's), Output and About their own.
+  renodx::utils::settings::section_tints = {
+      {"General", 0x7EE08A},
+      {"Presets", 0x7EE08A},
+      {"Extended", 0x7EE08A},
+      {"PsychoV31", 0x7EE08A},
+      {"Extra", 0x7EE08A},
+      {"Ambient Occlusion", 0x7EE08A},
+      {"Contact Shadows", 0x7EE08A},
+      {"Output (Restart Required)", 0xFF7FAF},
+      {"About", 0xE6C27A},
+  };
 
   configured = true;
 }
@@ -902,6 +1398,7 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
+  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
@@ -927,6 +1424,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresentHotkeys);
   reshade::unregister_event<reshade::addon_event::init_pipeline>(OnInitPipelineHighlights);

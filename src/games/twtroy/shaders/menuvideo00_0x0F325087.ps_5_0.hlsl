@@ -42,7 +42,7 @@ Texture2D<float4> t_alt_map : register(t3);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
+#include "../autohdr.hlsli"
 
 
 void main(
@@ -104,7 +104,14 @@ void main(
   r3.yz = saturate(r2.yz ? r1.zw : r0.xy);
   // Paper White, then the 2.2 encode the swapchain proxy expects. Stock's
   // pow(1/g_gamma_output) and a decode back would cancel, so it collapses to this.
-  o0.xyz = renodx::color::gamma::EncodeSafe(
-      r3.xyz * (SI.diffuse_white_nits / SI.graphics_white_nits));
+  // Paper White, AutoHDR (Video Dithering: 1 code value of noise on the 2.2 encoded video first), then the 2.2 encode
+  // the swapchain proxy expects; the game's pow(1 / g_gamma_output) dropped.
+  float3 video = r3.xyz;
+  if (HDR >= 1.f && SI.video_autohdr > 0.f && SI.video_dithering != 0.f) {
+    video = renodx::color::gamma::DecodeSafe(renodx::color::gamma::EncodeSafe(video)
+                                             + (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f);
+  }
+  o0.xyz = renodx::color::gamma::EncodeSafe(AutoHdrHighlights(saturate(video), SI.video_autohdr)
+                                            * (SI.diffuse_white_nits / SI.graphics_white_nits));
   return;
 }

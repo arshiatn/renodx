@@ -20,6 +20,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 #include <include/reshade.hpp>
 
@@ -49,6 +50,7 @@ struct State {
   std::string text;
   uint32_t lines = 0;
   std::string last_view;  // the last view sizes written
+  std::unordered_set<uint32_t> saved_shaders;
   std::string status = "No frame trace yet.";
 };
 static State state;
@@ -132,6 +134,28 @@ inline std::string DescribeUnrealView(ID3D11DeviceContext* context, const std::a
   return "";
 }
 
+// Each traced shader's bytecode once, as tales_frame_trace_shaders\0x<hash>.cso next to the exe (when an addon keeps
+// the game's shader code, as the DevKit does).
+inline void SaveShader(reshade::api::command_list* cmd_list, reshade::api::pipeline_stage stage, uint32_t hash) {
+  if (hash == 0u) return;
+  {
+    const std::lock_guard lock(state.mutex);
+    if (!state.saved_shaders.insert(hash).second) return;
+  }
+  const auto* info = renodx::utils::state::GetBoundPipelineInfo(cmd_list, stage);
+  if (info == nullptr) return;
+  for (const auto& entry : info->shader_details) {
+    if (entry.shader_hash != hash || entry.subobject_index >= info->details.subobjects.size()) continue;
+    const auto* desc = static_cast<const reshade::api::shader_desc*>(info->details.subobjects[entry.subobject_index].data);
+    if (desc == nullptr || desc->code_size == 0) return;
+    const auto folder = ExecutableFolder() / L"tales_frame_trace_shaders";
+    std::filesystem::create_directories(folder);
+    std::ofstream(folder / std::format("0x{:08X}.cso", hash), std::ios::binary | std::ios::trunc)
+        .write(static_cast<const char*>(desc->code), static_cast<std::streamsize>(desc->code_size));
+    return;
+  }
+}
+
 template <typename GetViews>
 std::string DescribeInputs(GetViews get_views) {
   std::array<ID3D11ShaderResourceView*, 16> views = {};
@@ -192,9 +216,11 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
       state.last_view = view;
     }
   }
-  Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{}{} |{}{}", kind, count,
-                     renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader),
-                     renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader),
+  const uint32_t vertex_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
+  const uint32_t pixel_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
+  SaveShader(cmd_list, reshade::api::pipeline_stage::vertex_shader, vertex_hash);
+  SaveShader(cmd_list, reshade::api::pipeline_stage::pixel_shader, pixel_hash);
+  Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{}{} |{}{}", kind, count, vertex_hash, pixel_hash,
                      outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY,
                      (scissor_count != 0 ? std::format(" scissor {},{}-{},{}", scissor.left, scissor.top, scissor.right, scissor.bottom)
                                          : std::string()),
@@ -232,9 +258,9 @@ inline void TraceDispatch(reshade::api::command_list* cmd_list, const std::strin
   for (auto* buffer : constants) {
     if (buffer != nullptr) buffer->Release();
   }
-  Append(std::format("{} cs {:08X} |{} |{}{}", kind,
-                     renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::compute_shader),
-                     outputs, inputs, view));
+  const uint32_t compute_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::compute_shader);
+  SaveShader(cmd_list, reshade::api::pipeline_stage::compute_shader, compute_hash);
+  Append(std::format("{} cs {:08X} |{} |{}{}", kind, compute_hash, outputs, inputs, view));
 }
 
 inline bool OnDispatch(reshade::api::command_list* cmd_list, uint32_t x, uint32_t y, uint32_t z) {
@@ -328,6 +354,7 @@ inline void OnPresent() {
           "26 R11G11B10F, 28 RGBA8, 29 RGBA8 sRGB, 87 BGRA8).\n";
       state.lines = 0;
       state.last_view.clear();
+      state.saved_shaders.clear();
     }
     internal::UseEvents(true);
     state.tracing.store(true);

@@ -1,9 +1,9 @@
 {
   "$schema": "https://clshortfuse.github.io/renodx/renodx-metadata-schema.json",
   "id": "talesofarise_dlss",
-  "title": "Tales of Arise — DLAA + graphics settings",
+  "title": "Tales of Arise — DLSS / DLAA + graphics settings",
   "status": "stable",
-  "summary": "NVIDIA DLAA on the game's TAA pass (with the camera jitter it needs) and live graphics settings beyond the game's menu; no HDR shader changes.",
+  "summary": "NVIDIA DLAA and DLSS (Ultra Quality to Ultra Performance, Custom 1-100%) on the game's TAA pass, with post-processing at the output size, the camera jitter they need, and live graphics settings beyond the game's menu; no HDR shader changes.",
   "deploy": {
     "game_exe": "Tales of Arise.exe",
     "api": "d3d11",

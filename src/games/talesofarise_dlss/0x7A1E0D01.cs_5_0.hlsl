@@ -8,16 +8,26 @@
 Texture2D<float> SceneDepth : register(t0);
 Texture2D<float2> PackedVelocity : register(t1);
 Texture2D<float4> SceneColor : register(t2);
+// Spark trails fix: UE's separate translucency (composited before the TAA: rgb the light particles add, alpha the
+// background's share) and last frame's particle mask.
+Texture2D<float4> Translucency : register(t3);
+Texture2D<float> PreviousParticleMask : register(t4);
+// Spark motion: the sprites' own motion this frame (render pixels to last frame; alpha 1 where a sprite was drawn), at
+// the separate translucency's size.
+Texture2D<float4> ParticleMotion : register(t5);
 RWTexture2D<float> OutputDepth : register(u0);
 RWTexture2D<float2> OutputMotion : register(u1);
 RWTexture2D<float4> OutputColor : register(u2);
+RWTexture2D<float> OutputParticleMask : register(u3);
 
 cbuffer PreparationConstants : register(b0) {
   float4 ClipToPrevious[4];
   uint2 Extent;
   float2 PixelJitter;
   uint CopyColor;
-  uint3 Padding;
+  uint ParticleMask;          // 1: Translucency bound (Spark trails fix)
+  uint PreviousParticleMaskValid;
+  uint ParticleMotionValid;
 };
 
 [numthreads(8, 8, 1)]
@@ -82,6 +92,40 @@ void main(uint3 dispatch_id : SV_DispatchThreadID) {
   // RG16F must remain finite even for invalid matrices or extreme disocclusions.
   if (!all(isfinite(motion_pixels))) {
     motion_pixels = float2(0.f, 0.f);
+  }
+
+  // Spark trails fix: small bright particles have no motion vectors, so DLSS (preset L most) keeps them in its history
+  // where they were. Where a particle adds more light than its background has (sparks, embers, flames; not smoke or
+  // haze), and where one was last frame (its mask moved with the motion, x 3/4 a frame), the motion points off the
+  // screen: DLSS finds no history there and shows this frame (NVIDIA's bias current color mask does nothing for
+  // presets L and M).
+  if (ParticleMask != 0) {
+    uint2 translucency_size;
+    Translucency.GetDimensions(translucency_size.x, translucency_size.y);
+    const uint2 translucency_pixel = min(uint2((float2(pixel) + 0.5f) * float2(translucency_size) / float2(Extent)),
+                                         translucency_size - 1u);
+    const float3 added = max(Translucency.Load(int3(translucency_pixel, 0)).rgb, 0.f);
+    const float3 luma = float3(0.2126f, 0.7152f, 0.0722f);
+    const float particle = dot(added, luma);
+    const float background = dot(max(SceneColor.Load(int3(pixel, 0)).rgb - added, 0.f), luma);
+    const float current_mask = (all(isfinite(added)) ? saturate(particle / (background + 1e-3f) - 1.f) : 0.f);
+    float mask = current_mask;
+    if (PreviousParticleMaskValid != 0) {
+      const int2 previous_pixel = clamp(int2(floor(float2(pixel) + 0.5f + motion_pixels)), int2(0, 0), last_pixel);
+      mask = max(mask, 0.75f * PreviousParticleMask.Load(int3(previous_pixel, 0)));
+    }
+    OutputParticleMask[pixel] = mask;
+    // Spark motion: where a sprite is this frame and has its own motion, DLSS follows it (the spark stays sharp); where
+    // one only was, and for other particle kinds, no history as before.
+    float4 particle_motion = 0.f;
+    if (ParticleMotionValid != 0) {
+      particle_motion = ParticleMotion.Load(int3(translucency_pixel, 0));
+    }
+    if (current_mask > 0.25f && particle_motion.w > 0.f && all(isfinite(particle_motion.xy))) {
+      motion_pixels = particle_motion.xy;
+    } else if (mask > 0.25f) {
+      motion_pixels = 4.f * float2(Extent);
+    }
   }
   OutputMotion[pixel] = clamp(motion_pixels, -65504.f, 65504.f);
 }

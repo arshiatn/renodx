@@ -19,23 +19,7 @@ Texture2D<float4> lense_flare_1_texture : register(t0);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
-
-
-// Shared by all four lens flare passes. Stock colour in, final colour out.
-float4 ApplyWH3LensFlare(float4 stock_color)
-{
-  // UNORM clamp the FP16 target lost.
-  float4 flare = saturate(stock_color);
-
-  // Frame is 2.2-encoded here. Scale in linear, same ratio t00 uses.
-  float3 flare_linear = renodx::color::gamma::DecodeSafe(flare.xyz);
-  flare_linear *= ((HDR >= 0.5f) ? SI.lensflare : 1.f)
-                * (SI.diffuse_white_nits / SI.graphics_white_nits);
-  flare.xyz = renodx::color::gamma::EncodeSafe(flare_linear);
-
-  return flare;
-}
+#include "../lensflare.hlsli"
 
 
 void main(

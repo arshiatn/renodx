@@ -2,7 +2,7 @@
 
 // PHARAOH chromatic aberration - reads a copy of the frame (t_frame), R/B shifted radially.
 // Black scene was the copy (FP16 frame -> 8-bit texture) being dropped; fixed in addon.
-// No clamp here, so HDR passes through. SI.chromaticaberration is HDR only.
+// No clamp here, so HDR passes through. SI.chromaticaberration / SI.sharpening are HDR only.
 
 cbuffer camera : register(b0)
 {
@@ -58,7 +58,7 @@ Texture2D<float3> t_frame : register(t0);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
+#include "../sharpening.hlsli"
 
 
 void main(
@@ -98,5 +98,9 @@ void main(
   }
   r0.w = 1;
   o0.xyzw = r0.xzyw;
+  // HDR: RenoDX's own sharpening here too (the game may draw this pass instead of ps40_sharpen).
+  if (HDR >= 0.5f) {
+    o0.xyz = SharpenOwn(t_frame, int2(v0.xy), g_render_target_dimensions, o0.xyz);
+  }
   return;
 }

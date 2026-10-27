@@ -26,24 +26,31 @@
 // A TConsoleVariable<int32 / float> keeps its {game-thread, render-thread} values at the offset its AsVariableInt /
 // AsVariableFloat (slots 7 / 8) return: lea rax, [rcx + offset]; ret. A FConsoleVariableRef<int32 / float> (a C++
 // global the engine reads, e.g. r.ForceLOD) keeps {T& RefValue, T MainValue}, MainValue at the offset its GetInt /
-// GetFloat (slots 13 / 14) load: mov eax, [rcx + offset] / movss xmm0, [rcx + offset]; ret. Values are read and
+// GetFloat (slots 13 / 14) load: mov eax, [rcx + offset] / movss xmm0, [rcx + offset]; ret; a bool one's GetInt:
+// movzx eax, byte ptr [rcx + offset]; ret. The global can be another module's (Arise-SDK's sdk.* settings, in its
+// DLL). Values are read and
 // written there directly, as r.ScreenPercentage (engine_scale.hpp): settings the engine reads every frame apply
 // live, no change callback runs.
 namespace talesofarise::engine_cvars {
 
-// One int or float console variable's two copies: {game thread, render thread}, or a Ref's {MainValue, the global}.
+// One int, float or bool console variable's two copies: {game thread, render thread}, or a Ref's {MainValue, the
+// global}.
 struct Cvar {
-  std::array<void*, 2> values = {};  // null: not found, or not an int / float variable
+  std::array<void*, 2> values = {};  // null: not found, or not an int / float / bool variable
   bool is_int = false;
+  bool is_bool = false;  // a bool Ref (0 / 1)
 
   float Get() const {
+    if (is_bool) return (std::atomic_ref(*static_cast<uint8_t*>(values[0])).load(std::memory_order_relaxed) != 0 ? 1.f : 0.f);
     if (is_int) return static_cast<float>(std::atomic_ref(*static_cast<int32_t*>(values[0])).load(std::memory_order_relaxed));
     return std::atomic_ref(*static_cast<float*>(values[0])).load(std::memory_order_relaxed);
   }
 
   void Set(float value) const {
     for (void* copy : values) {
-      if (is_int) {
+      if (is_bool) {
+        std::atomic_ref(*static_cast<uint8_t*>(copy)).store((value >= 0.5f ? 1 : 0), std::memory_order_relaxed);
+      } else if (is_int) {
         std::atomic_ref(*static_cast<int32_t*>(copy)).store(static_cast<int32_t>(std::lround(value)), std::memory_order_relaxed);
       } else {
         std::atomic_ref(*static_cast<float*>(copy)).store(value, std::memory_order_relaxed);
@@ -134,13 +141,13 @@ class Console {
         return cvar;
       }
     }
-    // FConsoleVariableRef: MainValue at the Get* offset, the global it mirrors (in the exe) right before it.
+    // FConsoleVariableRef: MainValue at the Get* offset, the global it mirrors (in a module) right before it.
     for (const bool is_int : {false, true}) {
       const auto offset = (is_int ? Offset(slots[13], {0x8B, 0x41}, {0x8B, 0x81})
                                   : Offset(slots[14], {0xF3, 0x0F, 0x10, 0x41}, {0xF3, 0x0F, 0x10, 0x81}));
       uintptr_t global = 0;
       std::array<uint32_t, 2> bits = {};
-      if (!offset || *offset < 8 || !Read(object + *offset - 8, &global) || !InImage(global) || !Read(global, &bits[0])
+      if (!offset || *offset < 8 || !Read(object + *offset - 8, &global) || !InModule(global) || !Read(global, &bits[0])
           || !Read(object + *offset, &bits[1]) || bits[0] != bits[1]) {
         continue;
       }
@@ -148,8 +155,19 @@ class Console {
       *details = std::format("{} {:g} (ref)", (is_int ? "int" : "float"), cvar.Get());
       return cvar;
     }
+    // A bool FConsoleVariableRef (Arise-SDK's on / off settings): the same, one byte.
+    if (const auto offset = Offset(slots[13], {0x0F, 0xB6, 0x41}, {0x0F, 0xB6, 0x81})) {
+      uintptr_t global = 0;
+      std::array<uint8_t, 2> bytes = {};
+      if (*offset >= 8 && Read(object + *offset - 8, &global) && InModule(global) && Read(global, &bytes[0])
+          && Read(object + *offset, &bytes[1]) && bytes[0] == bytes[1] && bytes[0] <= 1) {
+        const Cvar cvar = {.values = {reinterpret_cast<void*>(object + *offset), reinterpret_cast<void*>(global)}, .is_bool = true};
+        *details = std::format("bool {:g} (ref)", cvar.Get());
+        return cvar;
+      }
+    }
     // For support: the getters' first bytes (slots 7, 8, 13, 14).
-    *details = "not an int / float variable; getters";
+    *details = "not an int / float / bool variable; getters";
     for (const size_t slot : {7u, 8u, 13u, 14u}) {
       std::array<uint8_t, 8> code = {};
       if (!InImage(slots[slot]) || !Read(slots[slot], &code)) continue;
@@ -179,6 +197,14 @@ class Console {
     const uintptr_t base = ImageBase();
     const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
     return address >= base && address < base + nt->OptionalHeader.SizeOfImage;
+  }
+
+  // Inside a loaded module's image (the exe's globals, or another mod's DLL).
+  static bool InModule(uintptr_t address) {
+    HMODULE module = nullptr;
+    return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                              reinterpret_cast<LPCWSTR>(address), &module)
+           && module != nullptr;
   }
 
   // The offset of a getter that is only `op [rcx + offset]; ret`: `short_op` with a disp8, `long_op` with a disp32.

@@ -20,26 +20,7 @@ Texture2D<float4> lense_flare_2_texture : register(t0);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
-
-
-// Shared by all four lens flare passes. Stock colour in, final colour out.
-float4 ApplyPharaohLensFlare(float4 stock_color)
-{
-  // Restores the write clamp the upgraded FP16 target no longer provides.
-  float4 flare = saturate(stock_color);
-
-  if (HDR >= 0.5f)
-  {
-    // Scale in linear. The frame is gamma-encoded by t01-t04 at this point, matching
-    // what the swapchain proxy decodes. The ratio is the one t01 applies to the scene.
-    float3 flare_linear = renodx::color::gamma::DecodeSafe(flare.xyz);
-    flare_linear *= SI.lensflare * (SI.diffuse_white_nits / SI.graphics_white_nits);
-    flare.xyz = renodx::color::gamma::EncodeSafe(flare_linear);
-  }
-
-  return flare;
-}
+#include "../lensflare.hlsli"
 
 
 void main(
@@ -54,6 +35,6 @@ void main(
 
   r0.xy = half_texel_offset.xy + v2.xy;
   r0.xyzw = lense_flare_2_texture.Sample(lense_flare_sampler_s, r0.xy).xyzw;
-  o0.xyzw = ApplyPharaohLensFlare(v1.xyzw * r0.xyzw);
+  o0.xyzw = ApplyPharaohLensOverlay(v1.xyzw * r0.xyzw, SI.lensflare);
   return;
 }

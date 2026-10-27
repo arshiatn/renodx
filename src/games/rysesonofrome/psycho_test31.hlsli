@@ -2246,6 +2246,36 @@ float3 psychotm_test31(
              : float3(0.f, 0.f, 0.f);
 }
 
+// ATN's additions (Tales of Arise v62 / v63), for what runs after PsychoV31.
+// Highlight Saturation Shift: the saturation (OkLab chroma / lightness) toward `reference_bt709`'s by `amount`.
+float3 ShiftSaturationToward(float3 color_bt709, float3 reference_bt709, float amount) {
+  float3 lab = renodx::color::oklab::from::BT709(color_bt709);
+  const float3 reference_lab = renodx::color::oklab::from::BT709(reference_bt709);
+  const float saturation = length(lab.yz) / max(lab.x, 1e-6f);
+  const float reference_saturation = length(reference_lab.yz) / max(reference_lab.x, 1e-6f);
+  // At most 4x: a near-gray color has no hue of its own to scale.
+  lab.yz *= lerp(1.f, min(renodx::math::DivideSafe(reference_saturation, saturation, 1.f), 4.f), amount);
+  return renodx::color::bt709::from::OkLab(lab);
+}
+
+// Colors outside a CUSTOM_PSYCHO31_TARGET_GAMUT_* gamut brought to its edge, luminance and hue kept (RenoDX's
+// RGB-bound compression in MacLeod-Boynton); colors inside unchanged. For the grading after PsychoV31's own
+// compression, which can leave the target again.
+float3 FitToTargetGamut(float3 color_bt709, int target_gamut_mode) {
+  float3x3 target_to_lms = renodx::color::macleod_boynton::BT709_TO_LMS_WEIGHTED_MAT;
+  switch (target_gamut_mode) {
+    case CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020:
+      target_to_lms = renodx::color::macleod_boynton::BT2020_TO_LMS_WEIGHTED_MAT;
+      break;
+    case CUSTOM_PSYCHO31_TARGET_GAMUT_DISPLAY_P3:
+      target_to_lms = mul(renodx::color::macleod_boynton::BT709_TO_LMS_WEIGHTED_MAT, renodx::color::DISPLAYP3_TO_BT709_MAT);
+      break;
+  }
+  return mul(renodx::color::macleod_boynton::LMS_WEIGHTED_TO_BT709_MAT,
+             renodx::color::gamut::GamutCompressWeightedLMSCoreRGBBoundFromWeightedInput(
+                 mul(renodx::color::macleod_boynton::BT709_TO_LMS_WEIGHTED_MAT, color_bt709), target_to_lms, 1.f));
+}
+
 }  // namespace psychov
 }  // namespace tonemap
 }  // namespace renodx

@@ -59,7 +59,7 @@ void main(
   r1.xyzw = distortion_sampler.SampleLevel(distortion_sampler_s, r0.xy, r0.y).xyzw;
   r0.zw = float2(-0.5,-0.5) + r1.xy;
   r0.zw = r0.zw * r1.zz;
-  r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * ((HDR == 1.f) ? SI.uvdistort : 1.f) + r0.xy;  // Distortion slider
+  r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * ((HDR >= 1.f) ? SI.uvdistort : 1.f) + r0.xy;  // Distortion slider
   r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
   r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r0.xyzw = input_sampler.SampleLevel(input_sampler_s, r0.xy, r0.y).xyzw;
@@ -79,6 +79,6 @@ void main(
   r0.x = exp2(r0.x);
   r0.x = 1 + -r0.x;
   r0.y = 0.600000024 * g_coc_blur_kernel_scale;
-  o0.w = saturate(r0.y * r0.x * ((HDR == 1.f) ? SI.dof : 1.f));  // DOF slider
+  o0.w = saturate(r0.y * r0.x * ((HDR >= 1.f) ? SI.dof : 1.f));  // DOF slider
   return;
 }

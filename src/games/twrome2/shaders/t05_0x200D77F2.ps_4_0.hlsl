@@ -69,8 +69,7 @@ Texture2D<float4> grain_sampler : register(t5);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
-#include "../psycho_test30.hlsli"
+#include "../hdr_to_screen.hlsli"
 
 
 void main(
@@ -87,7 +86,7 @@ void main(
   r1.xyzw = distortion_sampler.SampleLevel(distortion_sampler_s, r0.xy, r0.y).xyzw;
   r0.zw = float2(-0.498039216,-0.498039216) + r1.xy;
   r0.xy = r0.zw * float2(0.0199999996,0.0199999996)
-          * (HDR == 1.f ? SI.uvdistort : 1.f) + r0.xy;
+          * (HDR >= 1.f ? SI.uvdistort : 1.f) + r0.xy;
   r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
   r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r1.w = 1;
@@ -104,7 +103,7 @@ void main(
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);
   r0.z = 1 + -r0.z;
-  r0.z *= (HDR == 1.f) ? SI.dof : 1.f;  // DOF slider (HDR only): scales the blur size, 0 = off
+  r0.z *= (HDR >= 1.f) ? SI.dof : 1.f;  // DOF slider (HDR only): scales the blur size, 0 = off
   r2.xyzw = float4(0,0,0,0);
   r0.w = 0;
   r1.z = 0;
@@ -114,7 +113,7 @@ void main(
     r3.xy = -sample_data_5x5[r1.z].xy * r0.zz + r0.xy;
     r3.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r3.xy, r3.y).xyzw;
     r3.xyzw = sample_data_5x5[r1.z].zzzz * r3.xyzw;
-    r3.xyz = HDR == 1.f ? max(r3.xyz, 0.f.xxx) : saturate(r3.xyz);
+    r3.xyz = HDR >= 1.f ? max(r3.xyz, 0.f.xxx) : saturate(r3.xyz);
     r3.w = saturate(r3.w);
     r2.xyzw = r3.xyzw + r2.xyzw;
     r0.w = sample_data_5x5[r1.z].z + r0.w;
@@ -125,7 +124,7 @@ void main(
   r2.xyzw = r2.xyzw + -r3.xyzw;
   r2.xyzw = blur_kernel_scale * r2.xyzw + r3.xyzw;
   r3.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy).xyzw;
-  float god_rays_multiplier = HDR == 1.f ? SI.godrays : 1.f;
+  float god_rays_multiplier = HDR >= 1.f ? SI.godrays : 1.f;
   r3.xyz = r3.xxx * (float3(0.100000001,0.100000001,0.100000001) * god_rays_multiplier) + r2.xyz;
   r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
   r0.xyw = r1.xyw;
@@ -167,7 +166,7 @@ void main(
   r1.xy = float2(8,8) * r1.xy;
   r1.xyzw = grain_sampler.Sample(grain_sampler_s, r1.xy).xyzw;
 
-  if (HDR != 1.f)
+  if (HDR < 1.f)
   {
     r1.xyz = r1.xxx * r0.xyz;
     r0.xyz = r1.xyz * float3(3.5,3.5,3.5) + r0.xyz;
@@ -181,11 +180,7 @@ void main(
     o0.y = dot(r1.xyzw, colour_matrix._m01_m11_m21_m31);
     o0.z = dot(r1.xyzw, colour_matrix._m02_m12_m22_m32);
     o0.w = r0.w;
-
-    o0.xyzw = saturate(o0.xyzw);
-    o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, g_gamma_output);
-    o0.xyz *= SI.diffuse_white_nits / SI.graphics_white_nits;
-    o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+    o0 = SdrToScreenOutput(o0);
     return;
   }
 
@@ -196,23 +191,6 @@ void main(
   float grain_mean = (grain_mips > 1) ? grain_sampler.Load(int3(0, 0, grain_mips - 1)).x : 0.5f;
   float grain_gain = (1.f + 3.5f * r1.x) / (1.f + 3.5f * grain_mean);
   float3 hdr_color = r0.xyz * max(0.f, lerp(1.f, grain_gain, SI.filmgrain));
-
-  float matrix_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, HDR_PEAK);
-  float3 matrix_input_linear = hdr_color * matrix_scale;
-  float3 matrix_input_gamma = renodx::color::gamma::EncodeSafe(matrix_input_linear);
-
-  float4 matrix_input = float4(matrix_input_gamma, 1.f);
-  float3 matrix_output_gamma;
-  matrix_output_gamma.x = dot(matrix_input, colour_matrix._m00_m10_m20_m30);
-  matrix_output_gamma.y = dot(matrix_input, colour_matrix._m01_m11_m21_m31);
-  matrix_output_gamma.z = dot(matrix_input, colour_matrix._m02_m12_m22_m32);
-
-  float3 graded_shaped = renodx::color::gamma::DecodeSafe(matrix_output_gamma);
-  float3 graded_hdr = renodx::math::DivideSafe(graded_shaped, matrix_scale.xxx, graded_shaped);
-
-  o0.xyz = ApplyPsychoV30(graded_hdr);
-  o0.xyz *= SI.diffuse_white_nits / SI.graphics_white_nits;
-  o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
-  o0.w = output_alpha;
+  o0 = HdrToScreenOutput(hdr_color, output_alpha);
   return;
 }

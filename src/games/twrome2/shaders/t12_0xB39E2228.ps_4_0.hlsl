@@ -1,0 +1,164 @@
+// ---- Created with 3Dmigoto v1.3.16 (RenoDX pack dump, 2026-10-20)
+
+// hdr_to_screen.hlsl ps30_main_low (sm_3_lq, enable_depth_of_field): low post-processing quality
+
+cbuffer camera_VS_PS : register(b0)
+{
+  float3 camera_position : packoffset(c0);
+  float4x4 view : packoffset(c1);
+  float4x4 projection : packoffset(c5);
+  float4x4 view_projection : packoffset(c9);
+  float4x4 inv_view_projection : packoffset(c13);
+  float4x4 inv_projection : packoffset(c17);
+  float4 camera_near_far : packoffset(c21);
+  float time_in_sec : packoffset(c22);
+  float2 g_inverse_focal_length : packoffset(c22.y);
+  float g_vertical_fov : packoffset(c22.w);
+  float4 g_screen_size : packoffset(c23);
+  float g_vpos_texel_offset : packoffset(c24);
+  float4 g_viewport_dimensions : packoffset(c25);
+  float4 g_camera_temp0 : packoffset(c26);
+  float4 g_camera_temp1 : packoffset(c27);
+  float4 g_camera_temp2 : packoffset(c28);
+}
+
+cbuffer colorimetry_VS_PS : register(b1)
+{
+  float g_brightness : packoffset(c0);
+  float g_gamma_output : packoffset(c0.y);
+  float g_inv_gamma_output : packoffset(c0.z);
+}
+
+cbuffer shared_fog_of_war_PS : register(b2)
+{
+  float g_fog_of_war_blend : packoffset(c0);
+  float g_fog_of_war_outfield_blend : packoffset(c0.y);
+}
+
+cbuffer hdr_to_screen_PS : register(b3)
+{
+  float radial_blur_strength : packoffset(c0);
+  float2 radial_blur_position : packoffset(c0.y);
+  float focus_distance : packoffset(c0.w);
+  float focal_length : packoffset(c1);
+  float blur_kernel_scale : packoffset(c1.y);
+  float4x4 colour_matrix : packoffset(c2);
+  float4 pos_transform : packoffset(c6);
+  float4 sample_data_9x9[81] : packoffset(c7);
+  float4 sample_data_5x5[25] : packoffset(c88);
+  float4 sample_data_3x3[9] : packoffset(c113);
+}
+
+SamplerState gbuffer_channel_4_sampler_s : register(s0);
+SamplerState s_fog_of_war_mask_s : register(s1);
+SamplerState frame_sampler_s : register(s2);
+Texture2D<float4> gbuffer_channel_4_sampler : register(t0);
+Texture2D<float4> frame_sampler : register(t1);
+Texture2D<float4> s_fog_of_war_mask : register(t2);
+
+
+// 3Dmigoto declarations
+#define cmp -
+#include "../hdr_to_screen.hlsli"
+
+
+void main(
+  float4 v0 : SV_Position0,
+  float2 v1 : TEXCOORD0,
+  out float4 o0 : SV_Target0)
+{
+  float4 r0,r1,r2,r3;
+  uint4 bitmask, uiDest;
+  float4 fDest;
+
+  r0.xy = g_vpos_texel_offset + v0.xy;
+  r0.xy = g_screen_size.zw * r0.xy;
+  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
+  r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
+  r1.w = 1;
+  r0.z = dot(r1.xyzw, inv_projection._m02_m12_m22_m32);
+  r0.w = dot(r1.xyzw, inv_projection._m03_m13_m23_m33);
+  r0.z = r0.z / r0.w;
+  r0.w = cmp(0 >= r0.z);
+  r0.z = r0.w ? 1 : r0.z;
+  r0.w = min(500, focus_distance);
+  r0.z = r0.z + -r0.w;
+  r0.z = r0.z * r0.z;
+  r0.w = dot(focal_length, focal_length);
+  r0.z = r0.z / r0.w;
+  r0.z = -1.44269502 * r0.z;
+  r0.z = exp2(r0.z);
+  r0.z = 1 + -r0.z;
+  r0.z *= (HDR >= 1.f) ? SI.dof : 1.f;  // DOF slider (HDR only): scales the blur size, 0 = off
+  r2.xyzw = float4(0,0,0,0);
+  r0.w = 0;
+  r1.z = 0;
+  while (true) {
+    r3.x = cmp((int)r1.z >= 9);
+    if (r3.x != 0) break;
+    r3.xy = -sample_data_3x3[r1.z].xy * r0.zz + r0.xy;
+    r3.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r3.xy, r3.y).xyzw;
+    r3.xyzw = sample_data_3x3[r1.z].zzzz * r3.xyzw;
+    r3.xyz = HDR >= 1.f ? max(r3.xyz, 0.f.xxx) : saturate(r3.xyz);
+    r3.w = saturate(r3.w);
+    r2.xyzw = r3.xyzw + r2.xyzw;
+    r0.w = sample_data_3x3[r1.z].z + r0.w;
+    r1.z = (int)r1.z + 1;
+  }
+  r3.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r0.xy, r0.y).xyzw;
+  r2.xyzw = r2.xyzw / r0.wwww;
+  r2.xyzw = r2.xyzw + -r3.xyzw;
+  r2.xyzw = blur_kernel_scale * r2.xyzw + r3.xyzw;
+  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
+  r0.xyw = r1.xyw;
+  r1.x = dot(r0.xyzw, inv_view_projection._m00_m10_m20_m30);
+  r1.w = dot(r0.xyzw, inv_view_projection._m02_m12_m22_m32);
+  r0.x = dot(r0.xyzw, inv_view_projection._m03_m13_m23_m33);
+  r0.xy = r1.xw / r0.xx;
+  r0.xw = r0.xy * float2(0.00048828125,0.00048828125) + float2(0.5,0.5);
+  r1.x = 1 + -r0.w;
+  r1.y = cmp(r0.x < 0);
+  r1.z = cmp(1 < r0.x);
+  r1.y = (int)r1.z | (int)r1.y;
+  r1.z = cmp(r1.x < 0);
+  r1.y = (int)r1.z | (int)r1.y;
+  r1.x = cmp(1 < r1.x);
+  r1.x = (int)r1.x | (int)r1.y;
+  if (r1.x == 0) {
+    r0.yz = float2(1,1) + -r0.xw;
+    r1.xyzw = s_fog_of_war_mask.SampleLevel(s_fog_of_war_mask_s, r0.xz, 0).xyzw;
+    r1.y = cmp(g_fog_of_war_outfield_blend < 1);
+    r0.xyzw = float4(50,50,50,50) * r0.xyzw;
+    r0.xyzw = min(float4(1,1,1,1), r0.xyzw);
+    r0.xy = min(r0.xz, r0.yw);
+    r0.x = min(r0.x, r0.y);
+    r0.x = 1 + -r0.x;
+    r0.x = max(r1.x, r0.x);
+    r0.x = r1.y ? r0.x : r1.x;
+    r0.y = 1 + -g_fog_of_war_blend;
+    r0.x = max(r0.x, r0.y);
+  } else {
+    r0.x = -g_fog_of_war_outfield_blend * g_fog_of_war_blend + 1;
+  }
+  r0.y = dot(r2.xyz, float3(0.270000011,0.670000017,0.0599999987));
+  r1.xyz = float3(0.25,0.25,0.25) * r0.yyy;
+  r1.w = r2.w;
+  r2.xyzw = r2.xyzw + -r1.zzzw;
+  r0.xyzw = r0.xxxx * r2.xyzw + r1.xyzw;
+
+  if (HDR < 1.f) {
+    r0.xyz = saturate(g_brightness * r0.xyz);
+    r0.xyz = log2(r0.xyz);
+    r0.xyz = g_inv_gamma_output * r0.xyz;
+    r1.xyz = exp2(r0.xyz);
+    r1.w = 1;
+    o0.x = dot(r1.xyzw, colour_matrix._m00_m10_m20_m30);
+    o0.y = dot(r1.xyzw, colour_matrix._m01_m11_m21_m31);
+    o0.z = dot(r1.xyzw, colour_matrix._m02_m12_m22_m32);
+    o0.w = r0.w;
+    o0 = SdrToScreenOutput(o0);
+    return;
+  }
+  o0 = HdrToScreenOutput(r0.xyz, r0.w);
+  return;
+}

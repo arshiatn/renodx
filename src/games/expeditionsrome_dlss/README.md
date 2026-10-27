@@ -32,6 +32,42 @@ version; an NVIDIA app or Profile Inspector override may load another one). The
 log names the version and folder. Build: `cmake --build --preset
 clang-x64-release --target expeditionsrome_dlss`.
 
+## v20: v19 reverted (ATN: shadows above 4096 disappeared; the game's 8192 atlas stays)
+
+v19 doubled the sun shadow atlas (Tales of Arise's one-byte patch at exe+0x139CBAE) and allowed 8192 per cascade:
+in game the sun shadows disappeared above 4096. Back to v18: Sun shadow resolution at most what fits the game's
+8192 atlas for the cascade count (4 cascades: 4096). Not worth the risk here (ATN).
+
+## v18 (untested): D3D11 limits of Effects at output resolution
+
+Checked against D3D11's limits (Tales of Arise crashed creating a 3840-wide volume texture; at most 2048 per side).
+The only volume texture it touches is the volumetric fog grid (render width / cell size): cells now stay at least
+max(output width, widest monitor mode) / 2048 (as Tales v58), so a window or monitor change (e.g. the small startup
+window) cannot reach the limit; the depth slices are not scaled. Everything else stays as large as at 100%: shadow
+maps are projected render pixels x texels per pixel (texels / s keeps the 100% size), capped by Light shadow
+resolution (at most 8192, D3D11 allows 16384); full-resolution switches mean the render size; the light shaft divisor
+stays at least 1.
+
+## v17 (untested): exact render sizes, NVIDIA's jitter, effects at output resolution
+
+- **Render sizes at the output's exact aspect ratio** (as Tales of Arise / Shogun 2): whole units of the aspect in
+  UE's buffer multiples (16:9 at 4K: 64x36, 60 steps; 8-pixel multiples once the game pads to 8), nearest to the
+  mode's scale; r.ScreenPercentage is written a quarter pixel below the exact size (UE renders ceil(size x %)). Before,
+  58% gave 2228x1253 (x and y scaled differently: the custom-scale shimmer of Shogun 2); now 2240x1260.
+- **NVIDIA's Halton (2, 3) jitter for DLAA and every DLSS scale**, 8 x (output / input)^2 positions, any length: UE's
+  own is Halton only while it upscales and stops at 255 positions (below 18% it repeated early), and at 100% (DLAA) a
+  Gaussian of r.TemporalAASamples positions. Every path of UE's jitter setup ends at the TemporalJitterPixels store
+  (exe+0x1369279, pattern `F3 0F 11 BF .. .. 00 00 48 8D 9F .. .. 00 00 F3 44 0F 11 87 .. .. 00 00 F3 0F 58 FF`): while
+  DLAA / DLSS is on (render size known: DLAA or the live scale), a 5-byte jump (one atomic 8-byte store) leads to a
+  block next to the code that loads the addon's sample into xmm7 / xmm8, stores x as the game did and jumps back. Off
+  or unload puts the game's bytes back.
+- **Effects at output resolution (Recommended, on by default)**: while DLSS renders below 100%, settings sized in
+  render pixels follow the render scale s: volumetric fog cell size and light shaft divisor x s (at least 1; fog cells
+  keep output width / cell <= 2048), object / spot / point / rect light shadow texels per pixel / s, skin (SSS),
+  capsule and distance field shadows at full resolution. New rows (Shadows): Character soft shadows at full
+  resolution (r.CapsuleShadowsFullResolution), Distance field shadows at full resolution (r.DFFullResolution).
+  Post-processing after the TAA (bloom, motion blur) already runs at the output size.
+
 ## This build: graphics settings (not yet tested in game)
 
 Same as Tales of Arise's DLAA + Graphics addon (`talesofarise_dlss`), ported to
@@ -835,3 +871,38 @@ included, sets every setting but shaders on load (NO_PRESET_SETTING, in no prese
 volumetric fog gets the game's in every preset (Max's EXACT rule: Insane's value, else the optional ones' extra, else
 the game's). Simulated: 50 of 51 settings set by each preset, every value a valid choice.
 v16: less CPU. Constant mirror: until the TAA pass's constant buffers are watched, every map, update, copy, new and destroyed resource returns at once (no GetDesc, no lock).
+
+v21 (ATN's batch): section headings as Ryse's DLSS overlay: DLSS lavender (its settings' text too), Graphics pink,
+Advanced green.
+
+v22 (ATN's batch, untested in game): the missing global illumination, from the engine itself: Optional (changes the
+look) offers UE 4.26's screen-space global illumination (r.SSGI.Enable 1, off in the game), its quality (r.SSGI.Quality
+1-4) and full resolution (r.SSGI.HalfRes 0); in no preset. Screen-space reflections were already there (r.SSR.Quality,
+r.SSR.MaxRoughness). Contact shadows have no engine switch in 4.26 (a per-light setting); a screen-space shadows pass of
+the addon's own is a follow-up.
+
+v23 (ATN's batch, untested in game): **Frame generation (Experimental)** with DLAA / DLSS. NVIDIA's DLSS Frame Generation + Reflex through Streamline, Tales of Arise's (talesofarise_dlss/frame_generation.hpp,
+ported from Phantom FX by Bustanity, MIT: PHANTOM_FX_LICENSE.txt), now shared: the game's swap chain is replaced by a
+stand-in whose back buffer is copied into a D3D12 swap chain Streamline presents (DXGI's CreateSwapChain and
+CreateSwapChainForHwnd hooked behind ReShade), DLSS's depth and motion copied each frame, the camera given per game.
+Setup as Tales': copy `sl.interposer.dll`, `sl.common.dll`, `sl.dlss_g.dll`, `sl.reflex.dll`, `sl.pcl.dll` and
+`nvngx_dlssg.dll` (Streamline SDK 2.14.16, `bin\x64`) next to the addon, tick **Frame generation (Experimental,
+restart)** and restart the game; modes 2x-6x, Dynamic, Off (Reflex only), Reflex Boost. RTX 40 or newer, hardware
+GPU scheduling, HDR10 or SDR output (no scRGB). The stand-in path is GPU-tested with fg_test (CreateSwapChain and, FG_HWND=1,
+CreateSwapChainForHwnd); untested in this game. Camera from UE
+4.26's View (Tales' 4.21 rows + 4: ViewToClipNoAA 32, ViewForward / Up / Right 56-58, WorldCameraOrigin 63,
+ClipToPrevClip 118; reversed infinite depth, far = UE's world size). The HUD-less image after the tonemapper's ten
+permutations (the HDR addon's t00-t09, through its swap chain shader); at sizes other than the back buffer's (DLSS
+before the upscale) none: frame generation then runs without it.
+
+v24 (ATN's batch 2, tested in game at the main menu, DLSS Balanced + FG): **Contact shadows (Experimental)**, a slider
+in Graphics (Off, 0.1-10% of the screen; Max preset 3%, Game's own Off). Unreal's own: the game's sun light shader
+(ps 0xC38C91CD, its deferred light draw with the light-rectangle vs 0x7C21DA11) already holds UE's contact shadow march
+(ShadowRayCast, 8 steps toward the light), the game just gives its sun a ContactShadowLength of 0. Before that draw the
+light's constants (ps b1, FDeferredLightUniformStruct, c1.z the length; positive: a share of the screen) are copied with
+the length set (cs 0x7A1E0D43 in the addon's own context state, then CopyResource) and the copy is bound for the draw;
+the game's binding comes back after it (contact_shadows.hpp). Only draws with that vertex shader and 144-256 bytes at
+ps b1 (UE 4.26 draws only directional lights as a rectangle; the other passes with it bind the View there). Works at
+DLSS below 100% (the march is in the render's own pixels). In game at 10%: shadows behind feet on the planks, under
+a bag and in the grass; Off unchanged. The one-frame trace (`renodx_trace_now` next to the exe) also saves each traced
+shader's bytecode to `tales_frame_trace_shaders` (when the DevKit keeps it).

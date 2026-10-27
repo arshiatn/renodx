@@ -10,6 +10,9 @@
 
 #include <d3d11.h>
 #include <mutex>
+#include <cmath>
+#include <algorithm>
+#include <array>
 #include <string>
 
 #include <deps/imgui/imgui.h>
@@ -19,7 +22,21 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../talesofarise_dlss/pixel_trace.hpp"
+#include "../twattila/light_bounce.hpp"
+#include "../twattila/lighting_settings.hpp"
+#include "../twattila/rt_scene.hpp"
+#include "../twattila/anti_aliasing.hpp"
+#include "../twattila/ao_filter.hpp"
+#include "../twattila/engine_tests.hpp"
+#include "../twattila/feature_settings.hpp"
+#include "../twattila/screen_space_shadows.hpp"
+#include "./more_tests.h"
+#include "../twrome2/engine_tweaks.hpp"
+#include "./ao_trace.hpp"
+#include "./line_sweep_ao.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -30,20 +47,20 @@ namespace {
 ShaderInjectData shader_injection;
 float current_settings_mode = 0.f;
 
-bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
-}
 
 bool IsExtendedMode() {
-  return shader_injection.hdr == 1.f && current_settings_mode == 1;
+  return shader_injection.hdr == 1.f;
 }
 
 bool IsPsychoMode() {
-  return shader_injection.hdr == 2.f && current_settings_mode == 1;
+  return shader_injection.hdr == 2.f;
 }
 
 bool IsHDRMode() {
-  return (shader_injection.hdr == 2.f || shader_injection.hdr == 1.f);
+  return shader_injection.hdr >= 1.f;
+}
+bool IsPsychoV31Mode() {
+  return shader_injection.hdr == 3.f;
 }
 
 // bool IsModdedAutoExposureEnabled() {
@@ -56,6 +73,24 @@ void ApplyResetPreset() {
   // are intentionally preserved.
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", 1.f},
+      {"video_autohdr", 0.f},
+      {"lensflare", 1.f},
+      // PsychoV31
+      {"v31_exposure", 1.f},
+      {"v31_highlights", 1.f},
+      {"v31_shadows", 1.f},
+      {"v31_contrast", 1.f},
+      {"v31_highlight_contrast", 1.f},
+      {"v31_shadow_contrast", 1.f},
+      {"v31_flare", 0.f},
+      {"v31_saturation", 1.f},
+      {"v31_dechroma", 0.f},
+      {"v31_highlight_saturation", 1.f},
+      {"v31_roll_off", 1.f},
+      {"v31_gamut_compression", 1.f},
+      {"v31_gamut_compression_mode", 1.f},
+      {"v31_highlight_hue_shift", 0.05f},
+      {"v31_highlight_saturation_shift", 0.f},
 
       // PsychoV30
       {"exposure", 1.f},
@@ -83,36 +118,13 @@ void ApplyResetPreset() {
 }
 
 void ApplyPsychoRecommended() {
-  // Recommended PsychoV30 tuning for a ~1000-nit display.
-  // Only PsychoV30 controls are changed. Peak / Paper White / UI brightness
-  // and unrelated controls are preserved.
+  // ATN: every recommended preset in PsychoV31 (its sliders at their defaults), Video AutoHDR 0.20.
+  ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 2.f},
+      {"tonemapper", 3.f},
+      {"video_autohdr", 0.2f},
       {"exposure", 1.f},
       {"highlights", 0.78f},
-      {"shadows", 1.f},
-      {"contrast", 1.f},
-      {"purity_scale", 1.f},
-      {"cone_response_exponent", 1.f},
-      {"hue_shift", 2.f},
-      // {"current_adaptive_state_bt709", 0.18f},
-      // {"current_background_state_bt709", 0.18f},
-
-      // Active extra controls
-      {"vignette", 1.f},
-      {"distortion", 1.f},
-      {"sharpening", 1.f},
-  });
-}
-
-void ApplyPsychoRecommended2000() {
-  // Recommended PsychoV30 tuning for a ~1000-nit display.
-  // Only PsychoV30 controls are changed. Peak / Paper White / UI brightness
-  // and unrelated controls are preserved.
-  renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 2.f},
-      {"exposure", 1.f},
-      {"highlights", 0.88f},
       {"shadows", 1.f},
       {"contrast", 1.f},
       {"purity_scale", 1.f},
@@ -267,6 +279,9 @@ void OnDestroyDevice(reshade::api::device* device) {
               renodx::mods::swapchain::RewriteRenderTargets(cmd_list, rtvs.size(), rtvs.data(), {0}); \
             }                                                                                         \
             return true; },                                                                           \
+          .on_drawn = [](auto* cmd_list) {                                                            \
+            twattila::anti_aliasing::OnTonemapDrawn(cmd_list);                                        \
+            twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); },                              \
       },                                                                                              \
   }
 
@@ -279,12 +294,51 @@ void BuildRuntimeData() {
       UpgradeRTVReplaceShader(0x2333E142), //t00
       UpgradeRTVReplaceShader(0x187C9C6D), //t01
       UpgradeRTVReplaceShader(0x4B738F1E), //t02
+      UpgradeRTVReplaceShader(0xF4B4EBD5), //t03-t08: no distortion, MSAA
+      UpgradeRTVReplaceShader(0x76357B37),
+      UpgradeRTVReplaceShader(0x6122F5DA),
+      UpgradeRTVReplaceShader(0x0B975FC2),
+      UpgradeRTVReplaceShader(0xACA23A57),
+      UpgradeRTVReplaceShader(0x100DB7F6),
       UpgradeRTVReplaceShader(0xCE9EA4E8), //fxaa
       // UpgradeRTVReplaceShader(EMPTY),
       __ALL_CUSTOM_SHADERS,
   };
+  // Ambient Occlusion: Visibility Bitmask in place of the AO's collect (its blur does not run at every setting, ATN's
+  // AO trace: then the lighting reads the collect's output): the addon's own shader (ao_bitmask_collect), from the depth
+  // downsample's input (this frame's depth) and the sweep's camera (b0, still bound at the collect); the game's
+  // collect stays its own code (Game's costs what it did); the game's blur, when it runs, blurs it as the game's.
+  custom_shaders[0xF1CE6943].on_draw = [](auto* cmd_list) {
+    tw::ao_trace::OnPass(cmd_list, 0xF1CE6943, true);
+    if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
+    return true;
+  };
+  custom_shaders[0x19CF3C83].on_draw = [](auto* cmd_list) {
+    tw::ao_trace::OnPass(cmd_list, 0x19CF3C83, true);
+    if (shader_injection.ssao_mode < 1.f) return true;
+    tw::line_sweep_ao::KeepComputeCamera(cmd_list, 0);
+    return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection),
+                                               true, __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
+  };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // PsychoV31 sliders: 0 - max, 1 = its own.
+  auto v31_slider = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
+                       float max = 2.f, float default_value = 1.f) {
+    return new renodx::utils::settings::Setting{
+        .key = key,
+        .binding = binding,
+        .default_value = default_value,
+        .label = label,
+        .section = "PsychoV31",
+        .tooltip = tooltip,
+        .max = max,
+        .format = "%.2f",
+        .is_enabled = IsPsychoV31Mode,
+        .is_visible = IsPsychoV31Mode,
+    };
+  };
+
   settings = {
     new renodx::utils::settings::Setting{
         .key = "SettingsMode",
@@ -293,7 +347,7 @@ void BuildRuntimeData() {
         .default_value = 0.f,
         .can_reset = false,
         .label = "Settings Mode",
-        .labels = {"Simple", "Advanced"},
+        .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
@@ -331,6 +385,12 @@ void BuildRuntimeData() {
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
     
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
+        .section = "General",
+        .tint = 0xFFD23C,
+    },
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -390,8 +450,11 @@ void BuildRuntimeData() {
         .default_value = 1.f,
         .label = "Rendering Mode",
         .section = "General",
-        .tooltip = "SDR uses Attila's original SDR tonemapper.\nHDR (PsychoV30) enables the HDR pipeline and uses PsychoV30 as tonemapper.",
-        .labels = {"SDR", "HDR (Extended)","HDR (PsychoV30)"},
+        .tooltip = "SDR: the game's SDR tone mapper.\n"
+                   "HDR (Extended): the game's Reinhard extended into HDR.\n"
+                   "HDR (PsychoV30): PsychoV30 as tone mapper.\n"
+                   "HDR (PsychoV31): PsychoV31 as tone mapper, more grading sliders.",
+        .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)", "HDR (PsychoV31)"},
     },
     // new renodx::utils::settings::Setting{
     //     .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -416,18 +479,9 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-2",
+        .tooltip = "HDR (PsychoV31) and Video AutoHDR 0.20, the rest at its default.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyPsychoRecommended();
-        },
-    },
-
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-        .label = "Recommended (for 2000+nits)",
-        .section = "Presets",
-        .group = "preset-line-2",
-        .on_change = []() {
-          ApplyPsychoRecommended2000();
         },
     },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
@@ -721,6 +775,83 @@ void BuildRuntimeData() {
     //     .is_enabled = IsHDRMode,  
     //     .is_visible = IsAdvancedSettings,
     // },
+    // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
+    v31_slider("v31_exposure", &shader_injection.v31_exposure, "Exposure", ""),
+    v31_slider("v31_highlights", &shader_injection.v31_highlights, "Highlights", ""),
+    v31_slider("v31_shadows", &shader_injection.v31_shadows, "Shadows", ""),
+    v31_slider("v31_contrast", &shader_injection.v31_contrast, "Contrast", "1 = PsychoV31's own."),
+    v31_slider("v31_highlight_contrast", &shader_injection.v31_highlight_contrast, "Highlight Contrast",
+               "Contrast above mid gray. 1 = PsychoV31's own."),
+    v31_slider("v31_shadow_contrast", &shader_injection.v31_shadow_contrast, "Shadow Contrast",
+               "Contrast below mid gray. 1 = PsychoV31's own."),
+    new renodx::utils::settings::Setting{
+        .key = "v31_flare",
+        .binding = &shader_injection.v31_flare,
+        .default_value = 0.f,
+        .label = "Flare",
+        .section = "PsychoV31",
+        .tooltip = "Deepens the darkest shadows. 0 = off.",
+        .max = 1.f,
+        .format = "%.2f",
+        .is_enabled = IsPsychoV31Mode,
+        .parse = [](float value) { return std::pow(value, 5.f); },
+        .is_visible = IsPsychoV31Mode,
+    },
+    v31_slider("v31_saturation", &shader_injection.v31_saturation, "Saturation / Purity", "1 = PsychoV31's own."),
+    v31_slider("v31_dechroma", &shader_injection.v31_dechroma, "Dechroma",
+               "Very bright colors fade toward white, as if overexposed. 0 = off.", 1.f, 0.f),
+    v31_slider("v31_roll_off", &shader_injection.v31_roll_off, "Highlight Roll-off",
+               "How soon highlights start to compress toward Peak. 0 = latest, 1 = default, 2 = soonest."),
+    v31_slider("v31_gamut_compression", &shader_injection.v31_gamut_compression, "Gamut Compression",
+               "Pulls colors your display can't show back inside its color space.\n"
+               "0 = off (the display clips them), 1 = full (default).",
+               1.f),
+    new renodx::utils::settings::Setting{
+        .key = "v31_gamut_compression_mode",
+        .binding = &shader_injection.v31_gamut_compression_mode,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 1.f,
+        .label = "Gamut Compression Mode",
+        .section = "PsychoV31",
+        .tooltip = "The color space colors are fitted into.\n"
+                   "BT.2020: the whole HDR signal (default).\n"
+                   "Display P3: what most HDR monitors and TVs show. BT.709: SDR colors.",
+        .labels = {"BT.709", "BT.2020", "Display P3"},
+        .is_enabled = IsPsychoV31Mode,
+        // PsychoV31's modes: 0 BT.709, 1 BT.2020, 3 Display P3.
+        .parse = [](float value) { return (value == 2.f ? 3.f : value); },
+        .is_visible = IsPsychoV31Mode,
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Fire too pink, too orange or too pale? Change the settings below.",
+        .section = "PsychoV31",
+        .is_visible = IsPsychoV31Mode,
+    },
+    v31_slider("v31_highlight_saturation", &shader_injection.v31_highlight_saturation, "Highlight Saturation",
+               "Saturation of bright colors. 0 = less, 1 = PsychoV31's own, 2 = more."),
+    v31_slider("v31_highlight_hue_shift", &shader_injection.v31_highlight_hue_shift, "Highlight Hue Shift",
+               "Bright colors take the SDR image's hues: fire more orange / yellow, less pink.\n"
+               "0 = off, 1 = SDR hues. Default 0.05.",
+               1.f, 0.05f),
+    v31_slider("v31_highlight_saturation_shift", &shader_injection.v31_highlight_saturation_shift,
+               "Highlight Saturation Shift",
+               "Gives bright colors the saturation of the SDR image (fire cores less pale and pink).\n"
+               "0 = off (default), 1 = SDR's.",
+               1.f, 0.f),
+
+    new renodx::utils::settings::Setting{
+        .key = "lensflare",
+        .binding = &shader_injection.lensflare,
+        .default_value = 1.f,
+        .label = "Lens Flare",
+        .section = "Extra",
+        .tooltip = "Sun lens flares. 0 = off.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_enabled = IsHDRMode,
+    },
     new renodx::utils::settings::Setting{
         .key = "vignette",
         .binding = &shader_injection.vignette,
@@ -732,7 +863,6 @@ void BuildRuntimeData() {
         .max = 2.f,
         .format = "%.2f",
         .is_enabled = IsHDRMode,
-        .is_visible = IsAdvancedSettings, 
     },
     new renodx::utils::settings::Setting{
         .key = "distortion",
@@ -745,7 +875,6 @@ void BuildRuntimeData() {
         .max = 2.f,
         .format = "%.2f",
         .is_enabled = IsHDRMode,
-        .is_visible = IsAdvancedSettings,
     },
     new renodx::utils::settings::Setting{
         .key = "sharpening",
@@ -758,7 +887,43 @@ void BuildRuntimeData() {
         .max = 2.f,
         .format = "%.2f",
         .is_enabled = IsHDRMode,
-        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "video_autohdr",
+        .binding = &shader_injection.video_autohdr,
+        .default_value = 0.f,
+        .label = "Video AutoHDR",
+        .section = "Extra",
+        .tooltip = "Makes the bright parts of the game's (SDR) videos brighter: only what is above mid gray,\n"
+                   "the brightest the most. 0 = off, 1 = video white reaches Peak.\n"
+                   "High values can show banding (see Video Dithering).",
+        .min = 0.f,
+        .max = 1.f,
+        .format = "%.2f",
+        .is_enabled = IsHDRMode,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "video_dithering",
+        .binding = &shader_injection.video_dithering,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 1.f,
+        .label = "Video Dithering",
+        .section = "Extra",
+        .tooltip = "Fine noise that hides banding in the brightened videos.\n"
+                   "Only with Video AutoHDR above 0.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sky_deband",
+        .binding = &shader_injection.sky_deband,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Sky Debanding",
+        .section = "Extra",
+        .tooltip = "Smooths the sky's banding and adds fine dither.\n"
+                   "Higher: removes wider bands, softens sky details more.",
+        .labels = {"Off", "Low", "Medium", "High"},
     },
     // new renodx::utils::settings::Setting{
     //     .key = "filmgrain",
@@ -1080,6 +1245,40 @@ void BuildRuntimeData() {
   };
 }
 
+// Graphics (Experimental): engine values x the sliders (their tweaks are filled in ConfigureAddon).
+tw::engine_tweaks::Option unit_detail[5];  // very small, small, medium, large, very large units
+tw::engine_tweaks::Option unit_animation;
+tw::engine_tweaks::Option unit_variety;
+tw::engine_tweaks::Option footstep_effects;
+tw::engine_tweaks::Option model_detail;
+tw::engine_tweaks::Option terrain_detail;
+tw::engine_tweaks::Option bush_detail;
+tw::engine_tweaks::Option campaign_draw;
+tw::engine_tweaks::Option shadow_detail;
+tw::engine_tweaks::Option small_shadows;
+// Shadow Map Size: the highest Shadows setting's 8192 x 8192 (written into the game's code) x 1 or 1.5.
+tw::engine_tweaks::Option shadow_map;
+// Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
+std::vector<tw::engine_tweaks::Option*> graphics_options;
+std::vector<twattila::engine_tests::EngineTest> engine_tests;
+std::atomic<bool> at_start_done = false;
+std::atomic<bool> at_start_stop = false;
+HMODULE addon_module_handle = nullptr;
+twattila::feature_settings::SssSliders sss_sliders;
+twattila::feature_settings::AaSliders aa_sliders;
+// Ray tracing's (twattila/rt_scene.hpp).
+twattila::rt_scene::Sliders rt_sliders;
+
+void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
+renodx::utils::settings::Setting* graphics_status = nullptr;
+bool graphics_found = false;
+// The graphics watch's values (4 hardware breakpoints).
+constexpr std::array<std::string_view, 4> WATCHED_VALUES = {"scrub_lod_distance_default", "campaign_culling_ratio", "shadow_lod_distance_scaler", "cull_small_shadow_start_size"};
+
+
+// The pixel trace's position, % of the screen's width and height.
+std::array<float, 2> traced_pixel = {50.f, 50.f};
+
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
@@ -1104,6 +1303,153 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   }
 
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
+}
+
+// The shadow map size, before the game builds its shadows.
+void OnInitDevice(reshade::api::device*) {
+  tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
+}
+
+// DLAA / DLSS object motion (twattila/anti_aliasing.hpp, as Attila's): the game's shaders whose things move on
+// their own and their motion versions (tools\tw\attila_motion\port_motion.py, GPU-checked by test_motion.py).
+using twattila::anti_aliasing::MotionKind;
+constexpr std::array<twattila::anti_aliasing::MotionShader, 24> MOTION_SHADERS = {{
+    {.hash = 0x048B32D8, .motion_shader = __motion_ocean_deep_ocean2_048b, .kind = MotionKind::HISTORY, .history_textures = 0b1},
+    {.hash = 0x0959BF4F, .motion_shader = __motion_ocean_coast_ocean2_0959, .kind = MotionKind::HISTORY, .history_textures = 0b10101},
+    {.hash = 0x16AFAF14, .motion_shader = __motion_rigid_rigidstandard_16af, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_rigidstandard_16af},
+    {.hash = 0x3FCE3B26, .motion_shader = __motion_unit_weighted2_liquid_xml_3fce, .kind = MotionKind::UNIT},
+    {.hash = 0x407C1E30, .motion_shader = __motion_unit_weighted_407c, .kind = MotionKind::UNIT},
+    {.hash = 0x41147CD3, .motion_shader = __motion_tree_campaignvegetation_4114},
+    {.hash = 0x56382151, .motion_shader = __motion_oldocean_ocean_5638},
+    {.hash = 0x59D73E4C, .motion_shader = __motion_unit_weighted4_animated_overl_59d7, .kind = MotionKind::UNIT},
+    {.hash = 0x6609B69E, .motion_shader = __motion_unit_weighted_6609, .kind = MotionKind::UNIT},
+    {.hash = 0x6BEF6138, .motion_shader = __motion_unit_weightedwithburn_6bef, .kind = MotionKind::UNIT},
+    {.hash = 0x71EB7463, .motion_shader = __motion_grass_grass_71eb},
+    {.hash = 0x772F13E0, .motion_shader = __motion_unit_weighted4_animated_overl_772f, .kind = MotionKind::UNIT},
+    {.hash = 0x7FDEE7B4, .motion_shader = __motion_branch_branch_v3_7fde},
+    {.hash = 0x9ECDC023, .motion_shader = __motion_rope_rope_9ecd, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_rope_rope_9ecd},
+    {.hash = 0xB228811C, .motion_shader = __motion_unit_weighted2_emissive_wind_b228, .kind = MotionKind::UNIT},
+    {.hash = 0xB7CE3413, .motion_shader = __motion_rigid_rigidtextureblendwind_b7ce, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_rigidtextureblendwind_b7ce},
+    {.hash = 0xBB80BC52, .motion_shader = __motion_sail_sailsymbol_bb80, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sailsymbol_bb80},
+    {.hash = 0xC251DF91, .motion_shader = __motion_unit_weighted4_emissive_wind_c251, .kind = MotionKind::UNIT},
+    {.hash = 0xC5CD75C5, .motion_shader = __motion_rigid_rigidtextureblend_c5cd, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_rigidtextureblend_c5cd},
+    {.hash = 0xCD0E0357, .motion_shader = __motion_leaf_leaf_v3_cd0e},
+    {.hash = 0xEBA791E9, .motion_shader = __motion_ocean_shallow_ocean2_eba7, .kind = MotionKind::HISTORY, .history_textures = 0b101},
+    {.hash = 0xEBF2233E, .motion_shader = __motion_unit_weighted4_wind_alpha_xml_ebf2, .kind = MotionKind::UNIT},
+    {.hash = 0xF43EAAD7, .motion_shader = __motion_unit_weighted_f43e, .kind = MotionKind::UNIT},
+    {.hash = 0xFF9FC42C, .motion_shader = __motion_sail_sail_ff9f, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sail_ff9f},
+}};
+
+// Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws, the standard model's camera at b1, the skin's at b2,
+// the G-buffer's channels 1-4 from their first slot.
+// Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
+// branches and leaves and units, and their capture versions (world positions; leaves also UVs).
+// The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow.
+constexpr std::array<twattila::rt_scene::SceneShader, 15> SCENE_SHADERS = {{
+    {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
+    {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
+    {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
+    {.hash = 0xE8291DEF, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
+    {.hash = 0x6B25B4D2, .capture_shader = __rt_capture_rigid_default},
+    {.hash = 0x16AFAF14, .capture_shader = __rt_capture_rigid_standard},
+    {.hash = 0xC5CD75C5, .capture_shader = __rt_capture_rigid_blend},
+    {.hash = 0xB7CE3413, .capture_shader = __rt_capture_rigid_blend_wind},
+    {.hash = 0x8F4BAB8C, .capture_shader = __rt_capture_rigid_vertexpush},
+    {.hash = 0x7FDEE7B4, .capture_shader = __rt_capture_branch},
+    {.hash = 0xCD0E0357, .capture_shader = __rt_capture_leaf, .foliage = true},
+    {.hash = 0x6609B69E, .capture_shader = __rt_capture_unit, .dynamic = true},
+    {.hash = 0xF43EAAD7, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
+    {.hash = 0x6BEF6138, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
+    {.hash = 0x407C1E30, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
+}};
+
+constexpr std::array<twattila::light_bounce::SunDraw, 31> LIGHT_BOUNCE_DRAWS = {{
+    {.shader_hash = 0x1AB80044, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},
+    {.shader_hash = 0x2DCA8E30, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},
+    {.shader_hash = 0xA03688A3, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},
+    {.shader_hash = 0xC960A275, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},
+    {.shader_hash = 0xE091B8C4, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1},
+    {.shader_hash = 0xF2484739, .standard = true, .gbuffer_slot = 3, .camera_slot = 1},
+    {.shader_hash = 0x1494188B, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},
+    {.shader_hash = 0x1579598F, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1},
+    {.shader_hash = 0x3115B6D3, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},
+    {.shader_hash = 0x37237EC7, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},
+    {.shader_hash = 0xDF7EA1A3, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},
+    // The game's MSAA (*_ms; its G-buffer multisampled, the camera as the others').
+    {.shader_hash = 0x060623DD, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_interior
+    {.shader_hash = 0x1ECDE63F, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_edges
+    {.shader_hash = 0x488C845F, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_edges
+    {.shader_hash = 0x53224BCB, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_interior
+    {.shader_hash = 0x6257DF22, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_interior
+    {.shader_hash = 0xB699C6F8, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1},  // slm_edges
+    {.shader_hash = 0xD7990748, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_edges
+    {.shader_hash = 0xDE50CFAD, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_edges
+    {.shader_hash = 0xEB90E28A, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_interior
+    {.shader_hash = 0xEDADD458, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1},  // slm_interior
+    {.shader_hash = 0x049A86C2, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_interior
+    {.shader_hash = 0x290BE032, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1},  // skinlm_edges
+    {.shader_hash = 0x8D1F7560, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_interior
+    {.shader_hash = 0xB9663621, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_edges
+    {.shader_hash = 0xB9FC954D, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_edges
+    {.shader_hash = 0xC7D72E8C, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_interior
+    {.shader_hash = 0xCBA032CA, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_edges
+    {.shader_hash = 0xCEEE8017, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_interior
+    {.shader_hash = 0xDEEF87D5, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1},  // skinlm_interior
+    {.shader_hash = 0xDF071F9D, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_edges
+}};
+
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+               const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  tw::ao_trace::OnPresent();
+  talesofarise::pixel_trace::OnPresent(queue);
+  twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
+  // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
+  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
+  static uint32_t ao_frame = 0;
+  shader_injection.ssao_frame =
+      (bitmask_ao && shader_injection.ssao_temporal != 0.f) ? static_cast<float>(++ao_frame % 64) : 0.f;
+  twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
+                                          .edge_fix = shader_injection.ssao_edge_fix != 0.f,
+                                          .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
+  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders);
+  twattila::rt_scene::Update(rt_settings);
+  auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
+  aa_settings.ray_tracing = rt_settings.sun_shadows || rt_settings.ambient_occlusion;
+  twattila::anti_aliasing::Update(swapchain, aa_settings);
+  // After the at-start tests' thread (one writer at a time).
+  if (!at_start_done.load()) return;
+  tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
+}
+
+// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
+void SetOutputEncoding(int encoding) {
+  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
+  if (encoding == 2) {
+    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
+    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
+  } else {
+    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
+  }
+}
+
+// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
+// before the swapchain mod's create_swapchain (registered after this).
+bool auto_output_pending = false;
+
+bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
+  // Frame generation takes no scRGB: HDR10 with it.
+  const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
+  if (!auto_output_pending) {
+    if (frame_generation && shader_injection.swap_chain_encoding == 1.f) SetOutputEncoding(0);
+    return false;
+  }
+  auto_output_pending = false;
+  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
+  const auto path = renodx::utils::platform::GetPathInfo(monitor);
+  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
+  SetOutputEncoding(windows_hdr ? (frame_generation ? 0 : 1) : 2);
+  return false;
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -1156,33 +1502,353 @@ void ConfigureAddon() {
           .usage_include = reshade::api::resource_usage::render_target,
       });
 
+  // Appended Settings (Graphics (Experimental))
+  talesofarise::pixel_trace::file_prefix = "warhammer2";
+  unit_detail[0].tweaks = {{.name = "VERY_SMALL_IMPOSTER_DISTANCE"}};
+  unit_detail[1].tweaks = {{.name = "SMALL_IMPOSTER_DISTANCE"}};
+  unit_detail[2].tweaks = {{.name = "MEDIUM_IMPOSTER_DISTANCE"}};
+  unit_detail[3].tweaks = {{.name = "LARGE_IMPOSTER_DISTANCE"}};
+  unit_detail[4].tweaks = {{.name = "VERY_LARGE_IMPOSTER_DISTANCE"}};
+  unit_animation.tweaks = {
+      {.name = "VERY_SMALL_SHARED_POSE_DISTANCE"},
+      {.name = "SMALL_SHARED_POSE_DISTANCE"},
+      {.name = "MEDIUM_SHARED_POSE_DISTANCE"},
+      {.name = "LARGE_SHARED_POSE_DISTANCE"},
+      {.name = "VERY_LARGE_SHARED_POSE_DISTANCE"},
+      {.name = "VERY_SMALL_FACIAL_ANIMATION_DISTANCE"},
+      {.name = "SMALL_FACIAL_ANIMATION_DISTANCE"},
+      {.name = "MEDIUM_FACIAL_ANIMATION_DISTANCE"},
+      {.name = "LARGE_FACIAL_ANIMATION_DISTANCE"},
+      {.name = "VERY_LARGE_FACIAL_ANIMATION_DISTANCE"},
+      {.name = "VERY_SMALL_HANDS_ANIMATION_DISTANCE"},
+      {.name = "SMALL_HANDS_ANIMATION_DISTANCE"},
+      {.name = "MEDIUM_HANDS_ANIMATION_DISTANCE"},
+      {.name = "LARGE_HANDS_ANIMATION_DISTANCE"},
+      {.name = "VERY_LARGE_HANDS_ANIMATION_DISTANCE"},
+  };
+  unit_variety.tweaks = {
+      {.name = "VERY_SMALL_NO_VARIANT_DISTANCE"},
+      {.name = "SMALL_NO_VARIANT_DISTANCE"},
+      {.name = "MEDIUM_NO_VARIANT_DISTANCE"},
+      {.name = "LARGE_NO_VARIANT_DISTANCE"},
+      {.name = "VERY_LARGE_NO_VARIANT_DISTANCE"},
+  };
+  footstep_effects.tweaks = {
+      {.name = "VERY_SMALL_FOOTSTEP_VFX_DISTANCE"},
+      {.name = "SMALL_FOOTSTEP_VFX_DISTANCE"},
+      {.name = "MEDIUM_FOOTSTEP_VFX_DISTANCE"},
+      {.name = "LARGE_FOOTSTEP_VFX_DISTANCE"},
+      {.name = "VERY_LARGE_FOOTSTEP_VFX_DISTANCE"},
+  };
+  model_detail.tweaks = {
+      {.name = "distance_lod_scaler", .inverse = true},
+  };
+  // Only tweaks the game's code reads (tools\tw\tw_tweak_survey.py): battle_building_lod*, campaign_tree_lod*,
+  // campaign_grass_lod* and shadowmap_extreme_quality are never read (Building / Campaign Detail removed).
+  bush_detail.tweaks = {
+      // Scrub LOD distance, copied into each scrub when it loads.
+      {.name = "scrub_lod_distance_default"},
+  };
+  campaign_draw.tweaks = {
+      // The campaign map's culling: objects smaller than this share of the view are not drawn.
+      {.name = "campaign_culling_ratio", .inverse = true},
+  };
+  shadow_detail.tweaks = {
+      // The shadow passes' LOD distance factor (the game sets it per Shadows setting), on the camera distance.
+      {.name = "shadow_lod_distance_scaler", .inverse = true},
+  };
+  small_shadows.tweaks = {
+      // Objects smaller than these (fading between them) cast no shadow.
+      {.name = "cull_small_shadow_start_size", .inverse = true},
+      {.name = "cull_small_shadow_end_size", .inverse = true},
+  };
+  terrain_detail.tweaks = {
+      {.name = "terrain_distance_scale_low"},
+      {.name = "terrain_distance_scale_medium"},
+      {.name = "terrain_distance_scale_high"},
+      {.name = "terrain_distance_scale_ultra"},
+      {.name = "terrain_far_shader_distance"},
+  };
+  // Graphics 2 of 2's tests: Attila's that this game has, then More Tests (more_tests.h).
+  engine_tests = twattila::engine_tests::Only(twattila::engine_tests::Attila(), more_tests::ATTILA_TESTS);
+  {
+    auto more = more_tests::MoreTests();
+    engine_tests.insert(engine_tests.end(), more.begin(), more.end());
+  }
+  graphics_options = {&unit_detail[0], &unit_detail[1], &unit_detail[2], &unit_detail[3], &unit_detail[4], &unit_animation, &unit_variety, &footstep_effects, &model_detail, &terrain_detail, &bush_detail, &campaign_draw, &shadow_detail, &small_shadows, &shadow_map};
+  for (auto& test : engine_tests) graphics_options.push_back(&test.option);
+  graphics_status = new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::TEXT,
+      .label = "Engine values: not searched yet",
+      .section = "Graphics (Experimental)",
+  };
+  // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all
+  // graphics settings at their defaults; not the ambient occlusion or the Light Bounce).
+  // The highest Shadows setting (+0x7e157d): mov [rbx + 0x1dd8], 8192.f; mov [rbx + 0x1ddc], 8192.f;
+  // mov [rbx + 0x15c], 4096 (read when the game builds its shadow map: start-up, Shadows changed). The lower settings
+  // use 4096 x shadow_resolution_multiplier.
+  constexpr std::string_view HIGHEST_SHADOW_SIZE = "C7 83 D8 1D 00 00 00 00 00 46 C7 83 DC 1D 00 00 00 00 00 46 C7 83 5C 01 00 00 00 10 00 00";
+  shadow_map.tweaks = {
+      {.code_pattern = HIGHEST_SHADOW_SIZE, .code_offset = 6},
+      {.code_pattern = HIGHEST_SHADOW_SIZE, .code_offset = 16},
+      {.code_pattern = HIGHEST_SHADOW_SIZE, .code_offset = 26, .integer = true},
+  };
+  const std::vector<std::pair<std::string, float>> graphics_defaults = {
+      {"GraphicsShadowMapSize", 0.f},
+      {"GraphicsUnitDetailVerySmall", 1.f},
+      {"GraphicsUnitDetailSmall", 1.f},
+      {"GraphicsUnitDetailMedium", 1.f},
+      {"GraphicsUnitDetailLarge", 1.f},
+      {"GraphicsUnitDetailVeryLarge", 1.f},
+      {"GraphicsUnitAnimation", 1.f},
+      {"GraphicsUnitVariety", 1.f},
+      {"GraphicsFootstepEffects", 1.f},
+      {"GraphicsModelDetail", 1.f},
+      {"GraphicsTerrainDetail", 1.f},
+      {"GraphicsBushDetail", 1.f},
+      {"GraphicsCampaignDraw", 1.f},
+      {"GraphicsShadowDetail", 1.f},
+      {"GraphicsSmallShadows", 1.f},
+  };
+  const std::vector<std::pair<std::string, float>> graphics_max = {
+      {"GraphicsShadowMapSize", 1.f},
+      {"GraphicsUnitDetailVerySmall", 8.f},
+      {"GraphicsUnitDetailSmall", 8.f},
+      {"GraphicsUnitDetailMedium", 8.f},
+      {"GraphicsUnitDetailLarge", 8.f},
+      {"GraphicsUnitDetailVeryLarge", 8.f},
+      {"GraphicsUnitAnimation", 4.f},
+      {"GraphicsUnitVariety", 4.f},
+      {"GraphicsFootstepEffects", 4.f},
+      {"GraphicsModelDetail", 8.f},
+      {"GraphicsTerrainDetail", 4.f},
+      {"GraphicsBushDetail", 4.f},
+      {"GraphicsCampaignDraw", 8.f},
+      {"GraphicsShadowDetail", 4.f},
+      {"GraphicsSmallShadows", 8.f},
+  };
+  // ATN's own settings: every graphics setting at its default but these.
+  auto graphics_atn = graphics_defaults;
+  for (const auto& [key, value] : std::vector<std::pair<std::string, float>>{
+      {"GraphicsShadowMapSize", 1.f},
+      {"GraphicsUnitDetailVerySmall", 2.f},
+      {"GraphicsUnitDetailSmall", 2.f},
+      {"GraphicsUnitDetailMedium", 2.f},
+      {"GraphicsUnitDetailLarge", 2.f},
+      {"GraphicsUnitDetailVeryLarge", 2.f},
+      {"GraphicsUnitAnimation", 3.f},
+      {"GraphicsUnitVariety", 3.f},
+      {"GraphicsFootstepEffects", 3.f},
+      {"GraphicsModelDetail", 1.5f},
+      {"GraphicsTerrainDetail", 4.f},
+       }) {
+    std::ranges::find(graphics_atn, key, &std::pair<std::string, float>::first)->second = value;
+  }
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Experimental: these may not work, and may crash the game. Some apply only after loading a battle or a save.",
+          .section = "Graphics (Experimental)",
+          .tint = 0xFFD23C,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Reset",
+          .section = "Graphics (Experimental)",
+          .group = "graphics-presets",
+          .tooltip = "Every graphics setting back to its default.",
+          .on_change = [graphics_defaults]() { renodx::utils::settings::UpdateSettings(graphics_defaults); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "MAX",
+          .section = "Graphics (Experimental)",
+          .group = "graphics-presets",
+          .tooltip = "Every graphics setting at its maximum. Heavy.",
+          .on_change = [graphics_max]() { renodx::utils::settings::UpdateSettings(graphics_max); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "What I would use:",
+          .section = "Graphics (Experimental)",
+          .group = "graphics-presets",
+          .tooltip = "Unit Detail 2x, Unit Animation, Variety and Footstep Effects 3x, Model Detail 1.50x, Terrain\nDetail 4x, Shadow Map Size 12288. The rest at its default.",
+          .on_change = [graphics_atn]() { renodx::utils::settings::UpdateSettings(graphics_atn); },
+      },
+      tw::engine_tweaks::Slider(&unit_detail[0], "GraphicsUnitDetailVerySmall", "Unit Detail (Very Small Units)",
+                                "How far very small units stay 3D before turning into flat sprites.\n"
+                                "Higher: heavier for the CPU and GPU.",
+                                8.f, 0.1f),
+      tw::engine_tweaks::Slider(&unit_detail[1], "GraphicsUnitDetailSmall", "Unit Detail (Small Units)",
+                                "How far small units stay 3D before turning into flat sprites.\n"
+                                "Higher: heavier for the CPU and GPU.",
+                                8.f, 0.1f),
+      tw::engine_tweaks::Slider(&unit_detail[2], "GraphicsUnitDetailMedium", "Unit Detail (Medium Units)",
+                                "How far medium units stay 3D before turning into flat sprites.\n"
+                                "Higher: heavier for the CPU and GPU.",
+                                8.f, 0.1f),
+      tw::engine_tweaks::Slider(&unit_detail[3], "GraphicsUnitDetailLarge", "Unit Detail (Large Units)",
+                                "How far large units stay 3D before turning into flat sprites.\n"
+                                "Higher: heavier for the CPU and GPU.",
+                                8.f, 0.1f),
+      tw::engine_tweaks::Slider(&unit_detail[4], "GraphicsUnitDetailVeryLarge", "Unit Detail (Very Large Units)",
+                                "How far very large units stay 3D before turning into flat sprites.\n"
+                                "Higher: heavier for the CPU and GPU.",
+                                8.f, 0.1f),
+      tw::engine_tweaks::Slider(&unit_animation, "GraphicsUnitAnimation", "Unit Animation Distance",
+                                "How far soldiers move on their own, with faces and hands (beyond it they copy their\n"
+                                "neighbours' moves). Higher: heavier for the CPU.",
+                                4.f, 0.1f),
+      tw::engine_tweaks::Slider(&unit_variety, "GraphicsUnitVariety", "Unit Variety Distance",
+                                "How far soldiers keep their own heads and gear (beyond it they look alike).\n"
+                                "Higher: heavier.",
+                                4.f, 0.1f),
+      tw::engine_tweaks::Slider(&footstep_effects, "GraphicsFootstepEffects", "Footstep Effects Distance",
+                                "How far soldiers' footsteps kick up dust. Higher: heavier.", 4.f, 0.1f),
+      tw::engine_tweaks::Slider(&model_detail, "GraphicsModelDetail", "Model Detail Distance",
+                                "Units, buildings and other models keep their detailed versions farther away.", 8.f),
+      tw::engine_tweaks::Slider(&terrain_detail, "GraphicsTerrainDetail", "Terrain Detail Distance",
+                                "Detailed terrain reaches farther.", 4.f),
+      tw::engine_tweaks::Slider(&bush_detail, "GraphicsBushDetail", "Bush Detail Distance",
+                                "Bushes and scrub keep their detail farther away. From the next load.", 4.f),
+      tw::engine_tweaks::Slider(&campaign_draw, "GraphicsCampaignDraw", "Campaign Draw Distance",
+                                "Campaign map: small objects stay visible farther away. Heavier.", 8.f),
+      tw::engine_tweaks::Slider(&shadow_detail, "GraphicsShadowDetail", "Shadow Detail Distance",
+                                "Shadows keep the models' detailed shapes farther away. Heavier.", 4.f),
+      tw::engine_tweaks::Slider(&small_shadows, "GraphicsSmallShadows", "Small Object Shadows",
+                                "Small objects keep their shadows farther away. Heavier.", 8.f),
+      new renodx::utils::settings::Setting{
+          .key = "GraphicsShadowMapSize",
+          .binding = &shadow_map.scale,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Shadow Map Size",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Sharper sun shadows that flicker less, at the highest Shadows setting. More video memory.\n"
+                     "Applies after a restart.",
+          .labels = {"8192 (Game's)", "12288"},
+          .parse = [](float value) { return (value >= 1.f) ? 1.5f : 1.f; },
+      },
+      graphics_status,
+      // The pixel trace (talesofarise_dlss/pixel_trace.hpp), one frame on request; its marker only while it is open.
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+          .section = "Graphics (Experimental)",
+          .on_draw = [] {
+            if (!ImGui::TreeNode("Pixel trace")) return false;
+            ImGui::SliderFloat2("Traced pixel (% of width, height)", traced_pixel.data(), 0.f, 100.f, "%.1f%%");
+            // A red cross marks the pixel, the red line the traced line through it.
+            const ImVec2 screen = ImGui::GetIO().DisplaySize;
+            const ImVec2 cross = {screen.x * traced_pixel[0] / 100.f, screen.y * traced_pixel[1] / 100.f};
+            const float half_line = screen.x * talesofarise::pixel_trace::LINE_WIDTH * 0.5f;
+            ImDrawList* foreground = ImGui::GetForegroundDrawList(nullptr);
+            foreground->AddLine({cross.x - half_line, cross.y}, {cross.x + half_line, cross.y}, IM_COL32(255, 0, 0, 255), 1.f);
+            foreground->AddLine({cross.x, cross.y - 12.f}, {cross.x, cross.y + 12.f}, IM_COL32(255, 0, 0, 255), 2.f);
+            if (ImGui::Button("Trace these pixels for one frame")) {
+              talesofarise::pixel_trace::Request(traced_pixel[0] / 100.f, traced_pixel[1] / 100.f);
+            }
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip("Saves every pass that changes the pixels under the red line during the next frame\n"
+                                "to warhammer2_pixel_trace.txt next to the game's exe (one short hitch). Put the cross\n"
+                                "on something too dark.");
+            }
+            ImGui::TextWrapped("%s", talesofarise::pixel_trace::Status().c_str());
+            ImGui::TreePop();
+            return false;
+          },
+      },
+      // Two empty lines between this section and the ambient occlusion (ATN).
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "",
+          .section = "Graphics (Experimental)",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "",
+          .section = "Graphics (Experimental)",
+      },
+  });
+
+  // Appended Settings (Graphics 2 of 2's tests)
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::TEXT,
+      .label = "Tests: each changes the game's own values (1x / Game's: unchanged). Many apply from the next\n"
+               "battle or after a restart; some may do nothing or crash. More Tests: every other graphics\n"
+               "value the game reads (unsure ones).",
+      .section = engine_tests.empty() ? std::string("More Tests") : engine_tests.front().section,
+      .tint = 0xFFD23C,
+  });
+  twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
+
+  // Appended Settings (Ambient Occlusion, Global Illumination, Screen-Space Shadows, Anti-Aliasing)
+  twattila::lighting_settings::Append(&settings, &shader_injection);
+  twattila::feature_settings::AppendSss(&settings, &sss_sliders);
+  twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+
   // Appended Settings (HDR10)
   {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "SwapChainEncoding",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 1.f,
+        .default_value = 3.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: 10bit, enough quality (banding?).\nscRGB: 16bit, overkill quality.",
-        .labels = {"HDR10", "scRGB"},
+        .tooltip = "Auto: scRGB with Windows HDR on, else SDR. Default. Frame generation uses HDR10 for scRGB.\n"
+                   "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR (all fixes and options stay).",
+        .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const auto value = setting->GetValue();
-    shader_injection.swap_chain_encoding = value;
-    renodx::mods::swapchain::SetUseHDR10(value == 0);
+    const int value = static_cast<int>(setting->GetValue());
+    auto_output_pending = (value == 3);
+    SetOutputEncoding(auto_output_pending ? 1 : value);
     settings.push_back(setting);
   }
 
   // Appended Settings (About)
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
-      .section = "About",
-      .is_visible = IsAdvancedSettings,
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "RenoDX, PsychoV30 and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. Visibility "
+                   "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
+                   "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
+                   "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
+                   "(Apache 2.0, Intel).",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "ATN's Ko-fi",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0xFF5A16,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "NexusMods",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x2196F3,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarwarhammer2/mods/67"); },
+      },
   });
+
+  // Section titles and Settings Mode's pages as Attila's (twattila/feature_settings.hpp).
+  renodx::utils::settings::default_section_tint = twattila::feature_settings::BASE_TINT;
+  std::vector<std::string> engine_sections = {twattila::feature_settings::GRAPHICS_SECTION};
+  for (const auto& test : engine_tests) {
+    if (std::ranges::find(engine_sections, test.section) == engine_sections.end()) engine_sections.push_back(test.section);
+  }
+  twattila::feature_settings::SetTints({}, engine_sections);
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
 
   configured = true;
 }
@@ -1191,15 +1857,46 @@ bool AttachAddon() {
   if (attached) return true;
 
   ConfigureAddon();
+  tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
 
+  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
+  reshade::register_event<reshade::addon_event::present>(OnPresent);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+
+  // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
+  SyncEarlyLoad();
+  twattila::engine_tests::StartAtStart(nullptr, &engine_tests, &at_start_done, &at_start_stop);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // Before the Light Bounce's (its callback draws the sun draw again).
+  // Ray tracing's at the sun draws first: its trace for the screen-space shadows and the AO filter after it.
+  twattila::rt_scene::Install(SCENE_SHADERS, {});
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
+                                                        .wind_pixel_shader = __motion_wind,
+                                                        .unit_pixel_shader = __motion_unit,
+                                                        .capture_pixel_shader = __motion_capture,
+                                                        .rigid_compute_shader = __motion_rigid});
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection));
+  // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
+  twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
+  twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
+  twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
   attached = true;
   return true;
@@ -1208,7 +1905,29 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
+  reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  at_start_stop = true;
+  while (!at_start_done.load()) {
+    Sleep(1);
+  }
+  twattila::anti_aliasing::Uninstall();
+  twattila::frame_generation::Uninstall();
+  twattila::screen_space_shadows::Uninstall();
+  twattila::light_bounce::Uninstall();
+  twattila::rt_scene::Uninstall();
+  twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
+  twattila::ao_filter::Uninstall();
+  talesofarise::pixel_trace::Stop();
+  tw::engine_tweaks::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
@@ -1223,6 +1942,7 @@ void DetachAddon() {
 }  // namespace
 
 extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
+  addon_module_handle = addon_module;
   if (!addon_registered) {
     if (!reshade::register_addon(addon_module)) return false;
     addon_registered = true;
@@ -1242,6 +1962,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE)
 BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
+      addon_module_handle = h_module;
       if (!reshade::register_addon(h_module)) return FALSE;
       addon_registered = true;
       break;

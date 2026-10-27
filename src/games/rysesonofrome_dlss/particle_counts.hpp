@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <shared_mutex>
@@ -37,10 +38,18 @@
 // the game's x the factor of its kind, from its texture and material (else its top effect's name): smoke in a fire
 // follows the smoke option. Running effects change at once.
 // Lights: each particle of params with a light source adds one (PARTICLE_LIGHT_CODE, called per particle of a
-// container with lights, particle +0x80 = its container). The tiled lighting takes at most 255 lights per frame and skips
-// the rest, others each frame: more fire particles made lights blink (ATN, v74 above 2-4x). Only the game's share of a
-// container's particles keeps its light, the same particles every frame: the game's light count and brightness. The
-// light list (LIGHT_LIST_CODE) is hooked for the overlay's count (v77-v78 raised its limit: never reached, 20-30% fps).
+// container with lights, particle +0x80 = its container). Only the game's share of a container's particles keeps its
+// light, the same particles every frame: the game's light count and brightness (more fire particles made lights blink,
+// ATN v74 above 2-4x; v109's option for every particle's light crashed the game, ATN: removed in v110).
+// The light limit (v109, ATN: chapter 5 drops 20-40 lights; v76-v78 also raised each tile's, 20-30% fps): the tiled
+// lighting takes at most 255 lights per frame and skips the rest, others each frame (they blink). The light list
+// (LIGHT_LIST_CODE) fills two static arrays (cull info 255 x 0x50 B, its end a zeroed entry, CULL_INFO_CODE; shade info
+// 255 x 0x100 B), clears and uploads them whole and stops at 255 (LIGHT_LIST_SITES, all in the light list function; the
+// lights it skipped at [list + 0xe8]); the tiled shading object's GPU buffers (+8, +0x28; count at +0x18) hold 255.
+// Raised: the sites point at MOST_LIGHTS-entry arrays near the exe and take the limit, the buffers are made again by the
+// game's Create (BUFFER_CREATE_CODE) and the lighting cs is the addon's (tiled_lights_cs.h: up to MOST_LIGHTS lights,
+// each 8x8-pixel tile the game's 255; swapped in by the addon while raised). Transparent objects' per-tile list stays
+// 8-bit: the first 255 lights.
 // The counting hooks count only while the overlay shows the counts (KeepCounting).
 // The game's two particle limits, both raised (ATN v78: torches vanish and come back at 8x):
 // - Live particles: one 256-byte block each from a pool (e_ParticlesPoolSize, 12288 KB: 49152 blocks), a lock-free
@@ -78,6 +87,54 @@ constexpr std::string_view CULL_INFO_CODE = "48 8D 3D ?? ?? ?? ?? 41 81 FC FF 00
 constexpr size_t LIGHT_LIST_SKIPPED = 0xe8;
 constexpr uint32_t MAX_LIGHTS = 255;
 constexpr size_t CULL_INFO_SIZE = 0x50;  // volume type +0 (0: the end)
+constexpr uint32_t MOST_LIGHTS = 4096;  // the raised arrays; tiled_lights_cs.h takes as many
+constexpr size_t SHADE_INFO_SIZE = 0x100;
+// The game's GPU buffer Create(buffer, count, stride, format, flags, data): mov [rsp + 8], rbx; ...; mov rbx, rcx; mov
+// rcx, [rcx + 8]; xor esi, esi; mov r13d, r9d; mov r14d, r8d; mov edi, edx
+constexpr std::string_view BUFFER_CREATE_CODE =
+    "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 60 48 8B D9 48 8B 49 08 33 F6 45 8B "
+    "E9 45 8B F0 8B FA";
+constexpr size_t BUFFER_COUNT = 0x18;
+constexpr uint32_t LIGHT_BUFFER_FLAGS = 7;  // as the game makes them
+struct LightBuffer {
+  size_t offset;  // in the tiled shading object
+  uint32_t stride;
+};
+constexpr std::array<LightBuffer, 2> LIGHT_BUFFERS = {{{.offset = 0x8, .stride = CULL_INFO_SIZE}, {.offset = 0x28, .stride = SHADE_INFO_SIZE}}};
+// The light list function's code that sizes, clears, fills and uploads the arrays: a 32-bit operand at `operand`.
+enum class SiteKind : uint8_t {
+  CULL_ARRAY,   // lea reg, [rip + cull info (+ field)]
+  SHADE_ARRAY,  // lea reg, [rip + shade info (+ field)]
+  CULL_BYTES,   // mov r8d, 255 x 0x50 (memset, upload)
+  SHADE_BYTES,  // mov r8d, 255 x 0x100
+  LIMIT,        // cmp r12d / eax, 255
+};
+struct LightListSite {
+  size_t offset;   // from the function's start
+  size_t operand;  // from the instruction's start
+  SiteKind kind;
+};
+constexpr std::array<LightListSite, 19> LIGHT_LIST_SITES = {{
+    {.offset = 0xc7, .operand = 2, .kind = SiteKind::CULL_BYTES},
+    {.offset = 0x1c5, .operand = 3, .kind = SiteKind::CULL_ARRAY},
+    {.offset = 0x249, .operand = 3, .kind = SiteKind::SHADE_ARRAY},
+    {.offset = 0x252, .operand = 2, .kind = SiteKind::SHADE_BYTES},
+    {.offset = 0x323, .operand = 3, .kind = SiteKind::CULL_ARRAY},
+    {.offset = 0x34a, .operand = 3, .kind = SiteKind::SHADE_ARRAY},
+    {.offset = 0x372, .operand = 3, .kind = SiteKind::LIMIT},
+    {.offset = 0x23c5, .operand = 1, .kind = SiteKind::LIMIT},  // a shadow-casting light's entries
+    {.offset = 0x2506, .operand = 3, .kind = SiteKind::CULL_ARRAY},
+    {.offset = 0x2514, .operand = 3, .kind = SiteKind::SHADE_ARRAY},
+    {.offset = 0x2d70, .operand = 3, .kind = SiteKind::CULL_ARRAY},
+    {.offset = 0x2d87, .operand = 3, .kind = SiteKind::SHADE_ARRAY},
+    {.offset = 0x2fdd, .operand = 3, .kind = SiteKind::CULL_ARRAY},
+    {.offset = 0x2fe4, .operand = 3, .kind = SiteKind::LIMIT},  // the end entry
+    {.offset = 0x300a, .operand = 3, .kind = SiteKind::SHADE_ARRAY},
+    {.offset = 0x3024, .operand = 3, .kind = SiteKind::SHADE_ARRAY},
+    {.offset = 0x304c, .operand = 3, .kind = SiteKind::LIMIT},  // the sun, last
+    {.offset = 0x31cd, .operand = 2, .kind = SiteKind::CULL_BYTES},
+    {.offset = 0x31df, .operand = 2, .kind = SiteKind::SHADE_BYTES},
+}};
 // The particle allocation (container, spawner) -> particle or null: mov [rsp + 8], rbx; ...; inc dword [rcx + 0x98];
 // mov rsi, rdx; mov rdi, rcx; call the pool's getter
 constexpr std::string_view PARTICLE_ALLOC_CODE =
@@ -137,6 +194,7 @@ constexpr std::array<KindWords, 4> KIND_WORDS = {{
 using ContainerSpawn = void (*)(uint8_t** spawner, void* context);
 using ParticleLight = void (*)(const uint8_t* particle, void* context);
 using LightList = void (*)(uint8_t* tiled_shading, void* lists, void* view, void* frame);
+using BufferCreate = void (*)(uint8_t* buffer, uint32_t count, uint32_t stride, uint32_t format, uint32_t flags, const void* data);
 using ParticleAlloc = void* (*)(uint8_t* container, void* spawner);
 using VertexAlloc = bool (*)(void* render_vertices, int32_t frame, uint32_t vertices, uint32_t indices);
 using ParticleBuffers = void (*)(void* renderer);
@@ -167,6 +225,23 @@ static ParticleBuffers original_particle_buffers = nullptr;
 static int* particle_vertices = nullptr;  // r_ParticleVerticePoolSize's int
 static const uint8_t* cull_info = nullptr;
 static uint8_t* const* renderer = nullptr;
+// A light list site's operand and, for the array sites, its displacement to the raised arrays.
+struct RaisedSite {
+  uint8_t* operand;
+  SiteKind kind;
+  uint32_t array_displacement;
+};
+// The raised light limit: the render thread (in the light list hook) applies what the Present thread requests.
+struct RaisedLights {
+  std::vector<RaisedSite> sites;                  // empty: not available
+  std::vector<engine_memory::CodePatch> patches;  // applied for `lights`
+  const uint8_t* cull_info = nullptr;             // the raised cull info array
+  BufferCreate buffer_create = nullptr;
+  uint32_t lights = MAX_LIGHTS;
+};
+static RaisedLights raised;
+static std::atomic<uint32_t> requested_lights = MAX_LIGHTS;
+static std::atomic<bool> raise_active = false;  // the lighting dispatch's (render thread)
 // The game's particle pool and the blocks the hook added (particle threads).
 struct ParticlePool {
   std::shared_mutex mutex;
@@ -187,6 +262,7 @@ static std::atomic<uint32_t> undrawn_vertices = 0;
 struct FrameUse {
   std::shared_mutex mutex;
   uint32_t lights = 0;
+  uint32_t light_limit = MAX_LIGHTS;
   uint32_t skipped_lights = 0;
   uint32_t unspawned_particles = 0;
   uint32_t undrawn_parts = 0;
@@ -346,21 +422,72 @@ inline bool OnVertexAlloc(void* render_vertices, int32_t frame, uint32_t vertice
   return false;
 }
 
-// The render thread, once per frame: the lights it took (the cull info up to its zeroed end) and skipped, and what the
-// particle limits missed since the last one.
+// The render thread, once per frame. The light limit follows its option between light lists: the game's code back
+// before its buffers change, the buffers at the new limit before the code writes more. The game makes its buffers
+// again on a resolution change: checked each time. Counting: the lights it took (the cull info up to its zeroed end)
+// and skipped, and what the particle limits missed since the last one.
 inline void OnLightList(uint8_t* tiled_shading, void* lists, void* view, void* frame) {
+  if (!raised.sites.empty()) {
+    const uint32_t requested = requested_lights.load(std::memory_order_relaxed);
+    if (requested != raised.lights) {
+      for (auto& patch : raised.patches) {
+        engine_memory::ApplyCodePatch(&patch, false);
+      }
+      raised.patches.clear();
+      raised.lights = MAX_LIGHTS;
+    }
+    for (const auto& [offset, stride] : LIGHT_BUFFERS) {
+      if (*reinterpret_cast<const uint32_t*>(tiled_shading + offset + BUFFER_COUNT) != requested) {
+        raised.buffer_create(tiled_shading + offset, requested, stride, 0, LIGHT_BUFFER_FLAGS, nullptr);
+      }
+    }
+    if (requested != raised.lights) {
+      bool applied = true;
+      for (const auto& [operand, kind, array_displacement] : raised.sites) {
+        uint32_t value = requested;  // LIMIT
+        if (kind == SiteKind::CULL_ARRAY || kind == SiteKind::SHADE_ARRAY) {
+          value = array_displacement;
+        } else if (kind == SiteKind::CULL_BYTES) {
+          value = requested * CULL_INFO_SIZE;
+        } else if (kind == SiteKind::SHADE_BYTES) {
+          value = requested * SHADE_INFO_SIZE;
+        }
+        std::vector<uint8_t> replacement(sizeof(value));
+        std::memcpy(replacement.data(), &value, sizeof(value));
+        auto& patch = raised.patches.emplace_back(engine_memory::CodePatch{
+            .address = operand,
+            .original = std::vector<uint8_t>(operand, operand + sizeof(value)),
+            .replacement = std::move(replacement),
+        });
+        applied = engine_memory::ApplyCodePatch(&patch, true) && applied;
+      }
+      if (applied) {
+        raised.lights = requested;
+      } else {
+        // Code changed by something else: the game's code back, not tried again.
+        for (auto& patch : raised.patches) {
+          engine_memory::ApplyCodePatch(&patch, false);
+        }
+        raised.patches.clear();
+        raised.sites.clear();
+      }
+    }
+    raise_active.store(raised.lights != MAX_LIGHTS, std::memory_order_relaxed);
+  }
   original_light_list(tiled_shading, lists, view, frame);
   if (counting_frames.load(std::memory_order_relaxed) == 0) return;
   counting_frames.fetch_sub(1, std::memory_order_relaxed);
-  uint32_t lights = MAX_LIGHTS;
-  for (uint32_t index = 0; index < MAX_LIGHTS; ++index) {
-    if (*reinterpret_cast<const uint32_t*>(cull_info + index * CULL_INFO_SIZE) == 0) {
+  const uint8_t* taken = (raised.lights != MAX_LIGHTS ? raised.cull_info : cull_info);
+  uint32_t lights = raised.lights;
+  for (uint32_t index = 0; index < raised.lights; ++index) {
+    if (*reinterpret_cast<const uint32_t*>(taken + index * CULL_INFO_SIZE) == 0) {
       lights = index;
       break;
     }
   }
   const std::unique_lock lock(frame_use.mutex);
   frame_use.lights = lights;
+  frame_use.light_limit = raised.lights;
   frame_use.skipped_lights = static_cast<uint32_t>(std::max(*reinterpret_cast<const int32_t*>(tiled_shading + LIGHT_LIST_SKIPPED), 0));
   frame_use.unspawned_particles = unspawned_particles.exchange(0, std::memory_order_relaxed);
   frame_use.undrawn_parts = undrawn_parts.exchange(0, std::memory_order_relaxed);
@@ -437,13 +564,73 @@ inline void Install() {
     state.hooks = {renodx::utils::detour::Function(&internal::original_container_spawn, &internal::OnContainerSpawn),
                    renodx::utils::detour::Function(&internal::original_particle_light, &internal::OnParticleLight)};
   }
-  // The overlay's counts.
+  // The light list: the overlay's counts and the light limit (every site as expected, the raised arrays near the exe:
+  // rel32 reach).
   if (light_list_code != nullptr && cull_info_code != nullptr) {
-    int32_t cull_info_offset;
-    std::memcpy(&cull_info_offset, cull_info_code + 3, sizeof(cull_info_offset));
-    internal::cull_info = cull_info_code + internal::RIP_LEA_SIZE + cull_info_offset;
+    const auto target = [](const uint8_t* instruction) {
+      int32_t displacement;
+      std::memcpy(&displacement, instruction + 3, sizeof(displacement));
+      return instruction + internal::RIP_LEA_SIZE + displacement;
+    };
+    internal::cull_info = target(cull_info_code);
     internal::original_light_list = reinterpret_cast<internal::LightList>(light_list_code);
     state.hooks.push_back(renodx::utils::detour::Function(&internal::original_light_list, &internal::OnLightList));
+    std::string create_at;
+    uint8_t* create_code = engine_memory::FindPattern(internal::BUFFER_CREATE_CODE, &create_at);
+    uint8_t* arrays = nullptr;
+    if (create_code != nullptr) {
+      arrays = engine_memory::AllocateNearExe(internal::MOST_LIGHTS * (internal::CULL_INFO_SIZE + internal::SHADE_INFO_SIZE));
+    }
+    const uint8_t* game_shade = nullptr;
+    for (const auto& site : internal::LIGHT_LIST_SITES) {
+      if (site.kind != internal::SiteKind::SHADE_ARRAY) continue;
+      const uint8_t* site_target = target(light_list_code + site.offset);
+      if (game_shade == nullptr || site_target < game_shade) game_shade = site_target;
+    }
+    bool expected = arrays != nullptr;
+    std::vector<internal::RaisedSite> sites;
+    for (const auto& site : internal::LIGHT_LIST_SITES) {
+      if (!expected) break;
+      uint8_t* instruction = light_list_code + site.offset;
+      uint8_t* operand = instruction + site.operand;
+      uint32_t value;
+      std::memcpy(&value, operand, sizeof(value));
+      uint32_t array_displacement = 0;
+      switch (site.kind) {
+        case internal::SiteKind::CULL_ARRAY:
+        case internal::SiteKind::SHADE_ARRAY: {
+          const bool cull = site.kind == internal::SiteKind::CULL_ARRAY;
+          const uint8_t* game_array = (cull ? internal::cull_info : game_shade);
+          const uint8_t* raised_array = (cull ? arrays : arrays + internal::MOST_LIGHTS * internal::CULL_INFO_SIZE);
+          const int64_t game_bytes = internal::MAX_LIGHTS * (cull ? internal::CULL_INFO_SIZE : internal::SHADE_INFO_SIZE);
+          const int64_t field = target(instruction) - game_array;
+          const int64_t displacement = (raised_array + field) - (instruction + internal::RIP_LEA_SIZE);
+          expected = field >= 0 && field < game_bytes && displacement >= std::numeric_limits<int32_t>::min()
+                     && displacement <= std::numeric_limits<int32_t>::max();
+          array_displacement = static_cast<uint32_t>(static_cast<int32_t>(displacement));
+          break;
+        }
+        case internal::SiteKind::CULL_BYTES:
+          expected = value == internal::MAX_LIGHTS * internal::CULL_INFO_SIZE;
+          break;
+        case internal::SiteKind::SHADE_BYTES:
+          expected = value == internal::MAX_LIGHTS * internal::SHADE_INFO_SIZE;
+          break;
+        case internal::SiteKind::LIMIT:
+          expected = value == internal::MAX_LIGHTS;
+          break;
+      }
+      sites.push_back({.operand = operand, .kind = site.kind, .array_displacement = array_displacement});
+    }
+    if (expected) {
+      internal::raised = {
+          .sites = std::move(sites),
+          .cull_info = arrays,
+          .buffer_create = reinterpret_cast<internal::BufferCreate>(create_code),
+      };
+    }
+    state.details += std::format(", buffer create {}, light limit {}", create_at,
+                                 (expected ? "ready" : "not available (code or memory)"));
   }
   if (vertex_alloc_code != nullptr) {
     int32_t renderer_offset;
@@ -501,6 +688,16 @@ inline void SetFactor(Kind kind, float factor) {
   }
 }
 
+// Present thread: the light limit, 255 (the game's) up to MOST_LIGHTS (applied at the next light list).
+inline void SetLightLimit(uint32_t lights) {
+  internal::requested_lights.store(std::clamp(lights, internal::MAX_LIGHTS, internal::MOST_LIGHTS), std::memory_order_relaxed);
+}
+
+// Render thread: the lighting cs 0x897232B5 must be the addon's (tiled_lights_cs.h).
+inline bool RaisedLightsActive() {
+  return internal::raise_active.load(std::memory_order_relaxed);
+}
+
 // Overlay: the hooks count for the next COUNTING_FRAMES frames.
 inline void KeepCounting() {
   internal::counting_frames.store(internal::COUNTING_FRAMES, std::memory_order_relaxed);
@@ -521,7 +718,7 @@ inline std::string LastFrameText() {
   const std::shared_lock lock(use.mutex);
   return std::format("{} of {} lights ({} dropped); particle vertices {} of {} ({} more did not fit: {} effect parts not "
                      "drawn, {} in all); {} particles not spawned ({} in all), particle memory {}x the game's",
-                     use.lights, internal::MAX_LIGHTS, use.skipped_lights, use.vertices, buffer_vertices,
+                     use.lights, use.light_limit, use.skipped_lights, use.vertices, buffer_vertices,
                      use.undrawn_vertices, use.undrawn_parts, use.all_undrawn_parts, use.unspawned_particles,
                      use.all_unspawned_particles, growths + 1);
 }

@@ -8,7 +8,7 @@ struct ShaderInjectData {
   float gamma_correction;
   // float custom_brightness;
   float peak_test;
-  float swap_chain_encoding;
+  float swap_chain_encoding;  // 0 HDR10, 1 scRGB, 2 SDR (gamma 2.2; Peak, Paper White and UI unused)
   // float whiteclip;
 
   // float dof;
@@ -60,12 +60,75 @@ struct ShaderInjectData {
   float uvdistort;  // distortion strength (HDR)
   float dof;        // depth of field strength (HDR)
   float hue_shift;  // PsychoV30 highlight hue shift: 0 none, 1 Test30, 2 full
+
+  // Appended.
+  float vignette;  // the lens flare's vignette (vignette00), 1 the game's
+
+  // PsychoV31 (Rendering Mode 2), appended.
+  float v31_exposure;
+  float v31_highlights;
+  float v31_shadows;
+  float v31_contrast;
+  float v31_highlight_contrast;          // above mid gray, 1 V31's own
+  float v31_shadow_contrast;             // below mid gray, 1 V31's own
+  float v31_flare;                       // 0 none, deeper blacks above it
+  float v31_saturation;
+  float v31_dechroma;                    // 0 none, bright colors toward white above it
+  float v31_highlight_saturation;
+  float v31_roll_off;                    // 0 latest, 1 default, 2 soonest
+  float v31_gamut_compression;           // 0 none (the display clips), 1 full
+  float v31_gamut_compression_mode;      // V31's target: 0 BT.709, 1 BT.2020, 3 Display P3
+  float v31_highlight_hue_shift;         // hue toward the SDR image's above mid gray, 0 - 1
+  float v31_highlight_saturation_shift;  // saturation toward the SDR image's, as the hue shift, 0 - 1
+
+  // Appended.
+  float video_autohdr;      // AutoHDR on the videos: 0 SDR, 1 video white at Peak
+  float video_dithering;    // 1: 1 code value of dither before the video AutoHDR
+
+  // Lighting (Experimental), appended.
+  float ssao_mode;              // 0 the game's HBAO, 1 RenoDX's (visibility bitmask)
+  float ssao_strength;          // RenoDX's: x the game's strength
+  float ssao_radius;            // RenoDX's: x the game's radius
+  float ssao_thickness;         // RenoDX's: metres behind each depth sample (more far away)
+  float ssr_quality;            // x the SSR's ray samples (stencil 1: shiny surfaces such as armour)
+
+  // Appended.
+  float ssao_quality;           // RenoDX's: 8 x 2^this samples per side of a slice
+  float light_bounce_strength;  // Light Bounce (light_bounce.hpp): x the bounced light, 0 off
+  float light_bounce_radius;    // Light Bounce: metres
+  float ssao_directions;        // visibility bitmask: 2^this directions around the view
+  float ssao_auto_thickness;  // visibility bitmask: 1 each occluder as thick as it is wide (experiment)
+  float ssao_denoise;  // visibility bitmask: 1 the Denoiser (twattila/ao_pass.hpp)
+  float ssao_scale;  // visibility bitmask: the game's size over its own (set from the Resolution each frame)
+  float ssao_resolution;  // visibility bitmask: 0 full, 1 half resolution (twattila/ao_pass.hpp)
+  float light_bounce_quality;     // Light Bounce: 8 x 2^this samples per side of a direction
+  float light_bounce_directions;  // Light Bounce: 2^this directions
+  float light_bounce_resolution;  // Light Bounce: traced at 1 / 2^this of the resolution
+  float light_bounce_temporal;    // Light Bounce: 1 the last frames kept
+  float light_bounce_multi_bounce;  // Light Bounce: share of the last frame's bounce bounced again
+  float light_bounce_checkerboard;  // Light Bounce: 1 half the texels traced each frame (temporal)
+  float light_bounce_backface;  // Light Bounce: 1 back faces rejected (experiment)
+  float light_bounce_auto_thickness;  // Light Bounce: 1 each occluder as thick as it is wide
+  float light_bounce_denoise;  // Light Bounce: 1 the Denoiser
+  float light_bounce_msaa_pixel;  // Light Bounce: 1 with the game's MSAA the apply once per pixel
+  float ssao_temporal;            // visibility bitmask: 1 the last frames kept (ao_pass.hpp)
+  float ssao_frame;               // its noise's frame, 0-63 (0: off)
+  float ssao_edge_fix;            // visibility bitmask: 1 Temporal Smoothing's outlines from one history texel
+  float sky_deband;               // the sky's debanding and dither (sky.hlsli): 0 off, 1-3 low / medium / high
+  float grass_height_distance;    // grass vertex shaders: flat at 100 m x this (1: the game's)
+  float ssr_hierarchical;         // ssr00 / ssr01: 1 the hierarchical march (ssr_hiz.hlsli), 0 the game's
+  float ssr_rays;                 // the hierarchical march's rays: 0 every pixel, 1 half (checkerboard), 2 a quarter
+  float ssr_frame;                // which pixels trace this frame (Half / Quarter), 0-3
+  float rt_ambient_alone;         // ssao00: 1 no ambient occlusion of its own (the ray-traced one replaces it)
 };
 
 #define SI shader_injection
-#define HDR_PEAK SI.peak_white_nits / SI.diffuse_white_nits
-#define HDR_INTSCALING SI.diffuse_white_nits / SI.graphics_white_nits
-#define HDR_STOPS log2(HDR_MAXEXPECTED / HDR_PEAK)
+// SDR output (displays without HDR): the display's white is the game's and the UI's.
+#define ATTILA_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
+// Peak relative to Paper White.
+#define HDR_PEAK (ATTILA_SDR_OUTPUT ? 1.f : SI.peak_white_nits / SI.diffuse_white_nits)
+// Paper White relative to UI.
+#define ATTILA_PAPER_WHITE (ATTILA_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 
 // PsychoV30 keeps a fixed 1.0 exposure, 0.18 input/output anchors, full target
 // gamut projection, BT.2020 target volume, and automatic compression. The

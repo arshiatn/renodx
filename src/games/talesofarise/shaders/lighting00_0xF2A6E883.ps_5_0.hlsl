@@ -5,7 +5,12 @@
 // shadowed and lit cells meet (ATN: the mountains' shadow wedge in the haze around the sun;
 // r.VolumetricLightingBufferPixelNumPerCell 2 hides it for ~25 fps; the v23 test: t6 draws it). Smooth Volumetric
 // Light: t6 filtered along the sun's rays (SampleVisibility, `shaft`); Off is stock.
+// Bandai's edge tests are sized in render pixels: below 100% DLSS, SI.filter_scale (render / output, from the DLSS
+// addon) spaces them in output pixels. The shadow edge tint (the shadow mask 2.3 render pixels up-right) drew a bright
+// band around characters (the halo ATN saw: about 7 output pixels wide at 33%, 28 at 8%); edges below one render pixel
+// stay about one pixel wide and fade by the same ratio (as strong on average as at 100%).
 #include "../shared.h"
+#include "../rt_ambient.hlsli"
 
 Texture2D<float4> t18 : register(t18);
 
@@ -83,43 +88,7 @@ cbuffer cb0 : register(b0)
 #define cmp -
 
 
-// Bandai reads the volumes through s4, a point sampler: every 8-pixel cell is a hard block. t6 (RGBA8 480x270x5, the
-// sun's visibility per distance band) draws the stair-step edge of the mountains' shadow in the haze (ATN's test).
-// Smooth Volumetric Light (Along Sun Rays): 11 bilinear taps 0.8 cells apart along `shaft` (+-4 cells, tent weights),
-// from Loads (no linear sampler is bound); the slice stays point-sampled as stock (every call reads a slice centre).
-// The shafts' edges run along the sun's rays, so their stairs average out while the edge stays as sharp as one bilinear
-// cell (a Gaussian in every direction, v24-v27, also blurred across the shafts). t7 / t8 stay point-sampled.
-float4 SampleVisibility(float3 uvw, float2 shaft) {
-  float4 result;
-  if (SI.volumetric_light_smoothing == 0.f) {
-    result = t6.SampleLevel(s4_s, uvw, 0);
-  } else {
-    uint3 size;
-    t6.GetDimensions(size.x, size.y, size.z);
-    const int2 last = int2(size.xy) - 1;
-    const int slice = min(int(uvw.z * float(size.z)), int(size.z) - 1);
-    const float2 texel = uvw.xy * float2(size.xy) - 0.5f;
-    // Zero `shaft` (the pixel at the sun's point) leaves one bilinear tap.
-    float2 step = shaft * float2(size.xy);
-    step *= 0.8f * rsqrt(max(dot(step, step), 1e-30f));
-    float4 sum = 0.f;
-    [unroll]
-    for (int i = -5; i <= 5; ++i) {
-      const float2 position = texel + float(i) * step;
-      const int2 base = int2(floor(position));
-      const float2 fraction = position - float2(base);
-      const int2 low = clamp(base, 0, last);
-      const int2 high = clamp(base + 1, 0, last);
-      const float4 top = lerp(t6.Load(int4(low.x, low.y, slice, 0)), t6.Load(int4(high.x, low.y, slice, 0)), fraction.x);
-      const float4 bottom = lerp(t6.Load(int4(low.x, high.y, slice, 0)), t6.Load(int4(high.x, high.y, slice, 0)), fraction.x);
-      sum += (6.f - abs(float(i))) * lerp(top, bottom, fraction.y);
-    }
-    // / 36: the tent weights' sum. saturate: the game takes log2(1 - visibility); a filtered 1 can round to 1.0000001,
-    // and that NaN turned every fully shadowed pixel black (v24-v26).
-    result = saturate(sum / 36.f);
-  }
-  return result;
-}
+// Smooth Volumetric Light: SampleVisibility (shared.h) on t6.
 
 void main(
   float4 v0 : TEXCOORD0,
@@ -156,7 +125,8 @@ void main(
   r7.xyz = r4.xyz / r6.xyz;
   r5.x = dot(cb0[53].xyz, r3.xyz);
   r5.y = cmp(0 != r5.y);
-  r6.w = t5.Sample(s4_s, v0.xy).x;
+  // Ray-traced ambient occlusion (the DLSS addon, Experimental): 1 when it is off.
+  r6.w = t5.Sample(s4_s, v0.xy).x * RayTracedAmbientOcclusion(v0.xy);
   r6.w = log2(r6.w);
   r1.w = r6.w * r1.w;
   r8.y = exp2(r1.w);
@@ -221,18 +191,23 @@ void main(
       r11.xyz = r5.yyy ? cb0[52].xyz : cb0[50].xyz;
     }
     if (r6.w == 0) {
-      r8.zw = cb0[0].zw * float2(2.29999995,-2.29999995) + v0.xy;
+      r8.zw = cb0[0].zw * (float2(2.29999995,-2.29999995) * SI.filter_scale) + v0.xy;
       r12.xyz = t14.Gather(s4_s, r8.zw).yzw;
       r12.xyz = float3(1,1,1) + -r12.xzy;
       r6.w = r12.y + -r4.w;
       r8.zw = -r12.xz + r4.ww;
       r4.w = max(abs(r8.z), abs(r6.w));
       r4.w = max(r4.w, abs(r8.w));
+      // Penumbras widen with the sun shadow distance (the same map over more ground): the edge measure is the change
+      // per game-distance penumbra, so the edge color stays a thin line (ATN, distance 4: a wide pale patch).
+      r4.w /= max(SI.sun_shadow_distance, 1.f);
       r4.w = log2(r4.w);
       r4.w = cb0[65].x * r4.w;
       r4.w = exp2(r4.w);
       r4.w = 100 * r4.w;
       r4.w = min(1, r4.w);
+      // The band is about 1 + offset render pixels wide: 3.3 at 100%.
+      r4.w = saturate(r4.w * (3.3f * SI.filter_scale / (1.f + 2.3f * SI.filter_scale)) * SI.shadow_edge_color);
       r6.w = cmp(r5.x >= 0);
       r6.w = r6.w ? 1.000000 : 0;
       r4.w = r6.w * r4.w;
@@ -477,7 +452,8 @@ void main(
     r1.w = dot(float3(0.300000012,0.400000006,0.300000012), r12.xyz);
     r1.w = 9.99999975e-005 + r1.w;
     r12.xyz = r13.xyz / r1.www;
-    r1.w = cb0[75].w * r11.x;
+    // Ray-traced specular occlusion (the DLSS addon, Experimental): no sky tint where the reflection is covered.
+    r1.w = cb0[75].w * r11.x * RayTracedSpecularOcclusion(v0.xy);
     r12.xyz = r7.xyz * r12.xyz + -r7.xyz;
     r12.xyz = r1.www * r12.xyz + r7.xyz;
     r11.yz = float2(1,0);
@@ -534,6 +510,8 @@ void main(
       r12.xyzw = t17.SampleLevel(s7_s, r2.yz, 0).xyzw;
       r10.xyzw = -r12.xyzw + r10.xyzw;
       r10.xyzw = r3.wwww * r10.xyzw + r12.xyzw;
+      // Ray-traced reflections (the DLSS addon, Experimental): the real reflection where its rays met a surface.
+      r10.xyzw = RayTracedReflection(v0.xy, r10.xyzw);
       r3.w = r3.w * -0.5 + 1.5;
       r3.w = r10.w * r3.w;
     } else {
@@ -544,6 +522,8 @@ void main(
       r13.xyzw = t18.SampleLevel(s7_s, r2.yz, 0).xyzw;
       r13.xyzw = r13.xyzw + -r12.xyzw;
       r10.xyzw = r1.wwww * r13.xyzw + r12.xyzw;
+      // Ray-traced reflections (the DLSS addon, Experimental): the real reflection where its rays met a surface.
+      r10.xyzw = RayTracedReflection(v0.xy, r10.xyzw);
       r1.w = r1.w * 0.5 + 1.5;
       r3.w = r10.w * r1.w;
     }
@@ -572,10 +552,12 @@ void main(
     r1.xyz = float3(0,0,0);
     r2.y = 1;
   }
-  r5.xz = -cb0[0].zw * float2(-0,1.29999995) + v0.xy;
+  const float normal_scaled = 1.29999995f * SI.filter_scale;
+  const float normal_offset = max(normal_scaled, 1.f);
+  r5.xz = -cb0[0].zw * float2(-0,normal_offset) + v0.xy;
   r5.xzw = t1.SampleLevel(s1_s, r5.xz, 0).xyz;
   r5.xzw = r5.xzw * float3(2,2,2) + float3(-1,-1,-1);
-  r8.xy = cb0[0].zw * float2(1.29999995,0) + v0.xy;
+  r8.xy = cb0[0].zw * float2(normal_offset,0) + v0.xy;
   r8.xyw = t1.SampleLevel(s1_s, r8.xy, 0).xyz;
   r8.xyw = r8.xyw * float3(2,2,2) + float3(-1,-1,-1);
   r1.w = dot(r3.xyz, r5.xzw);
@@ -586,6 +568,7 @@ void main(
   r2.z = 0.00100000005 + cb0[54].x;
   r1.w = r1.w / r2.z;
   r1.w = min(1, r1.w);
+  r1.w *= normal_scaled / normal_offset;
   r2.z = -cb0[57].x + r2.x;
   r2.z = saturate(r2.z / cb0[57].y);
   r3.xy = float2(-1,-1) + cb0[57].zw;
@@ -596,9 +579,9 @@ void main(
   o1.z = saturate(r2.z / cb0[62].w);
   r2.z = cmp(r2.x < 1500);
   if (r2.z != 0) {
-    r3.xy = -cb0[0].zz * float2(1.29999995,1.29999995) + v0.xy;
+    r3.xy = -cb0[0].zz * (float2(1.29999995,1.29999995) * SI.filter_scale) + v0.xy;
     r3.xy = t0.Gather(s4_s, r3.xy).xz;
-    r3.zw = cb0[0].zz * float2(1.29999995,1.29999995) + v0.xy;
+    r3.zw = cb0[0].zz * (float2(1.29999995,1.29999995) * SI.filter_scale) + v0.xy;
     r3.zw = t0.Gather(s4_s, r3.zw).xz;
     r3.xy = -r3.xy + r3.wz;
     r3.xy = float2(62.5,62.5) * r3.xy;
@@ -862,7 +845,7 @@ void main(
       r3.w = cmp(480 >= r2.x);
       if (r3.w != 0) {
         r11.w = 0.100000001;
-        r6.xyzw = SampleVisibility(r11.xyw, shaft).xyzw;
+        r6.xyzw = SampleVisibility(t6, s4_s, r11.xyw, shaft, 1.f / cb0[0].z).xyzw;
         r3.w = 0.00833333377 * r2.x;
         r3.w = r3.w * r6.x;
         r8.xyw = r2.xxx * float3(0.00833333377,0.00833333377,0.00833333377) + float3(-1,-2,-3);
@@ -876,13 +859,13 @@ void main(
         r3.w = cmp(960 >= r2.x);
         if (r3.w != 0) {
           r11.z = 0.300000012;
-          r6.xyzw = SampleVisibility(r11.xyz, shaft).xyzw;
+          r6.xyzw = SampleVisibility(t6, s4_s, r11.xyz, shaft, 1.f / cb0[0].z).xyzw;
           r3.w = -480 + r2.x;
           r8.x = cmp(120 >= r3.w);
           if (r8.x != 0) {
             r8.x = 0.00833333377 * r3.w;
             r11.w = 0.100000009;
-            r8.y = SampleVisibility(r11.xyw, shaft).w;
+            r8.y = SampleVisibility(t6, s4_s, r11.xyw, shaft, 1.f / cb0[0].z).w;
             r8.w = -r8.y + r6.x;
             r2.z = r8.x * r8.w + r8.y;
           } else {
@@ -897,13 +880,13 @@ void main(
           r3.w = cmp(1920 >= r2.x);
           if (r3.w != 0) {
             r11.z = 0.5;
-            r6.xyzw = SampleVisibility(r11.xyz, shaft).xyzw;
+            r6.xyzw = SampleVisibility(t6, s4_s, r11.xyz, shaft, 1.f / cb0[0].z).xyzw;
             r3.w = -960 + r2.x;
             r8.x = cmp(240 >= r3.w);
             if (r8.x != 0) {
               r8.x = 0.00416666688 * r3.w;
               r11.w = 0.300000012;
-              r8.y = SampleVisibility(r11.xyw, shaft).w;
+              r8.y = SampleVisibility(t6, s4_s, r11.xyw, shaft, 1.f / cb0[0].z).w;
               r8.w = -r8.y + r6.x;
               r2.z = r8.x * r8.w + r8.y;
             } else {
@@ -918,13 +901,13 @@ void main(
             r3.w = cmp(3840 >= r2.x);
             if (r3.w != 0) {
               r11.z = 0.699999988;
-              r6.xyzw = SampleVisibility(r11.xyz, shaft).xyzw;
+              r6.xyzw = SampleVisibility(t6, s4_s, r11.xyz, shaft, 1.f / cb0[0].z).xyzw;
               r3.w = -1920 + r2.x;
               r8.x = cmp(480 >= r3.w);
               if (r8.x != 0) {
                 r8.x = 0.00208333344 * r3.w;
                 r11.w = 0.5;
-                r8.y = SampleVisibility(r11.xyw, shaft).w;
+                r8.y = SampleVisibility(t6, s4_s, r11.xyw, shaft, 1.f / cb0[0].z).w;
                 r8.w = -r8.y + r6.x;
                 r2.z = r8.x * r8.w + r8.y;
               } else {
@@ -939,13 +922,13 @@ void main(
               }
             } else {
               r11.z = 0.899999976;
-              r6.xyzw = SampleVisibility(r11.xyz, shaft).xyzw;
+              r6.xyzw = SampleVisibility(t6, s4_s, r11.xyz, shaft, 1.f / cb0[0].z).xyzw;
               r3.w = -3840 + r2.x;
               r8.x = cmp(960 >= r3.w);
               if (r8.x != 0) {
                 r8.x = 0.00104166672 * r3.w;
                 r11.w = 0.699999988;
-                r8.y = SampleVisibility(r11.xyw, shaft).w;
+                r8.y = SampleVisibility(t6, s4_s, r11.xyw, shaft, 1.f / cb0[0].z).w;
                 r8.w = -r8.y + r6.x;
                 r2.z = r8.x * r8.w + r8.y;
               } else {
@@ -1008,7 +991,8 @@ void main(
     r0.z = r2.z * r0.z;
     r6.xyz = r0.zzz * r6.yzw;
     r5.xzw = r6.xyz * r5.xzw;
-    r3.xyz = r3.xyz * r8.xyw + r5.xzw;
+    // Sun Haze: the haze's tint to the slider's power (stays positive above 1), its in-scattered light x the slider.
+    r3.xyz = r3.xyz * pow(max(r8.xyw, 0.f), SI.sun_haze) + r5.xzw * SI.sun_haze;
   } else {
     r8.xyw = float3(1,1,1);
   }
@@ -1023,7 +1007,7 @@ void main(
     r5.xzw = r5.xzw * r0.zzz;
     r6.xyz = float3(-1,-1,-1) + r7.yzw;
     r6.xyz = r6.xyz * float3(0.200000003,0.200000003,0.200000003) + float3(1,1,1);
-    r3.xyz = r5.xzw * r6.xyz + r3.xyz;
+    r3.xyz = (r5.xzw * SI.sun_haze) * r6.xyz + r3.xyz;
   }
   if (r0.y != 0) {
     r5.xzw = float3(0,0,0);
@@ -1069,6 +1053,8 @@ void main(
   r0.y = cmp(cb0[76].x != 0.000000);
   r1.xyz = r3.xyz * r2.yyy + r1.xyz;
   r0.yzw = r0.yyy ? r1.xyz : r3.xyz;
+  // Ray-traced bounce light (the DLSS addon, Experimental), before the fog: 0 when it is off.
+  r0.yzw += RayTracedBounceLight(v0.xy, t3.SampleLevel(s3_s, v0.xy, 0).xyz);
   r1.x = -cb0[48].x + r2.x;
   r1.x = saturate(r1.x / cb0[48].y);
   r1.y = -1 + cb0[49].w;

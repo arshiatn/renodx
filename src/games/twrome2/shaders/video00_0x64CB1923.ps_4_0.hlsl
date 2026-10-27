@@ -1,0 +1,48 @@
+// sprite.hlsl ps_pixel_yuv (sm_3_0): the videos. The frame is 2.2 encoded (the proxy decodes 2.2).
+
+SamplerState s_diffuse_map_y_s : register(s0);
+SamplerState s_diffuse_map_u_s : register(s1);
+SamplerState s_diffuse_map_v_s : register(s2);
+Texture2D<float4> s_diffuse_map_y : register(t0);
+Texture2D<float4> s_diffuse_map_v : register(t1);
+Texture2D<float4> s_diffuse_map_u : register(t2);
+
+
+// 3Dmigoto declarations
+#define cmp -
+#include "../autohdr.hlsli"
+
+
+void main(
+  float4 v0 : SV_Position0,
+  float4 v1 : COLOR0,
+  float2 v2 : TEXCOORD0,
+  float w2 : TEXCOORD7,
+  float4 v3 : TEXCOORD1,
+  float4 v4 : TEXCOORD2,
+  float3 v5 : TEXCOORD3,
+  out float4 o0 : SV_Target0)
+{
+  float4 r0,r1;
+  uint4 bitmask, uiDest;
+  float4 fDest;
+
+  r0.xyzw = s_diffuse_map_u.SampleLevel(s_diffuse_map_u_s, v2.xy, v2.y).xyzw;
+  r0.xyz = float3(0,-0.391448975,2.01782227) * r0.www;
+  r1.xyzw = s_diffuse_map_v.SampleLevel(s_diffuse_map_v_s, v2.xy, v2.y).xyzw;
+  r0.xyz = r1.www * float3(1.59579468,-0.813476563,0) + r0.xyz;
+  r1.xyzw = s_diffuse_map_y.SampleLevel(s_diffuse_map_y_s, v2.xy, v2.y).xyzw;
+  r0.xyz = r1.www * float3(1.16412354,1.16412354,1.16412354) + r0.xyz;
+  o0.xyz = float3(-0.87065506,0.529705048,-1.08166885) + r0.xyz;
+  o0.w = 1;
+  o0 = saturate(o0);
+  // Video AutoHDR stretches 8-bit steps: Video Dithering adds 1 code value (peak to peak) of interleaved gradient
+  // noise first, static in screen space.
+  if (HDR >= 1.f && SI.video_autohdr > 0.f && SI.video_dithering != 0.f) {
+    o0.xyz += (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f;
+  }
+  const float3 video = AutoHdrHighlights(renodx::color::gamma::DecodeSafe(o0.xyz), SI.video_autohdr);
+  // Mastered for a 2.2 screen; at Paper White (the frame's 1 is UI white).
+  o0.xyz = renodx::color::gamma::EncodeSafe(video * (SI.diffuse_white_nits / SI.graphics_white_nits), 2.2f);
+  return;
+}

@@ -87,8 +87,7 @@ float3 ApplyShaftsAndChart(float3 color, float3 shafts)
 }
 
 // HDR (Extended): UC2 Extended (Musa/Jon): Hable up to its knee (third derivative root), its tangent
-// there above it, per channel. Hue Correction toward the scene's hue (OKLab, chroma kept), as Musa's
-// Batman. A Neutwo shoulder per channel to Peak above 1 (fix32). (The "colors from SDR" step after it
+// there above it, per channel. A Neutwo shoulder per channel to Peak above 1 (fix32). (The "colors from SDR" step after it
 // was removed in fix28: README.)
 float3 ApplyExtended(float3 untonemapped, float peak)
 {
@@ -102,8 +101,7 @@ float3 ApplyExtended(float3 untonemapped, float peak)
                                                                 coeffs[3], coeffs[4], coeffs[5]) > 0.f)) {
     uc2_config.pivot_point = HDRFilmCurve.w;
   }
-  float3 color = Uncharted2::ApplyExtended(untonemapped, FilmCurve(untonemapped), uc2_config);
-  color = max(renodx::color::correct::Hue(color, untonemapped, SI.ext_hue_correction), 0.f);
+  float3 color = max(Uncharted2::ApplyExtended(untonemapped, FilmCurve(untonemapped), uc2_config), 0.f);
 
   // Above 1 each channel rolls off to Peak on its own, as SDR clips each channel: bright fire turns yellow /
   // white at its core. (A brightest-channel roll-off kept its full orange saturation up to Peak: flat, salmon.)
@@ -112,6 +110,23 @@ float3 ApplyExtended(float3 untonemapped, float peak)
   return min(color, 1.f)
          + float3(renodx::tonemap::Neutwo(over.r, shoulder), renodx::tonemap::Neutwo(over.g, shoulder),
                   renodx::tonemap::Neutwo(over.b, shoulder));
+}
+
+// Highlight Hue / Saturation Shift: toward the game's SDR curve (Hable, clipped per channel: bright fire turns orange /
+// yellow there, V31 keeps the scene's hue), above mid gray, fully from white.
+float3 ShiftHighlightHue(float3 color, float3 exposed, float scene_y, float hue_shift, float saturation_shift)
+{
+  [branch]
+  if ((hue_shift <= 0.f && saturation_shift <= 0.f) || scene_y <= 0.18f) return color;
+  const float t = saturate(log2(scene_y / 0.18f) / log2(1.f / 0.18f));
+  const float weight = t * t * (3.f - 2.f * t);
+  const float3 sdr = saturate(FilmCurve(exposed));
+  float3 shifted = renodx::color::correct::Hue(color, sdr, hue_shift * weight);
+  [branch]
+  if (saturation_shift > 0.f) {
+    shifted = renodx::tonemap::psychov::ShiftSaturationToward(shifted, sdr, saturation_shift * weight);
+  }
+  return shifted;
 }
 
 // HDR (PsychoV31): the game's grading and PsychoV31 only, anchored on Hable's mid gray. Extended
@@ -123,11 +138,14 @@ float3 ApplyPsychoV31(float3 untonemapped, float peak)
   float y_in = max(renodx::color::y::from::BT709(untonemapped), 1e-7f);
   // Highlight Roll-off: V31's shoulder compression. 0: 1, 1: 1.5 (default), 2: 3.
   float compression = 1.f + 0.5f * SI.roll_off * SI.roll_off;
+  // Gamut Compression Mode; SDR output: BT.709 (the proxy clips per channel as the game).
+  const int target_gamut = (RYSE_SDR_OUTPUT ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709
+                                             : int(SI.gamut_compression_mode));
 
   float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
       untonemapped, peak, SI.exposure, SI.highlights, SI.shadows,
-      SI.contrast, 0.f, 1.f, 1.f, SI.saturation, SI.highlight_saturation, 0.f,
-      0.18f, anchor_out, 0.f, 1.f, renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020,
+      SI.contrast, SI.flare, SI.highlight_contrast, SI.shadow_contrast, SI.saturation, SI.highlight_saturation,
+      SI.dechroma, 0.18f, anchor_out, 0.f, SI.gamut_compression, target_gamut,
       compression, 1.f, 0.5f, 0.f,
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 1.f);
   // V31 can return black for saturated blues (its source cage, compiler dependent): redo target-only.
@@ -136,8 +154,8 @@ float3 ApplyPsychoV31(float3 untonemapped, float peak)
   if (failed) {
     result = renodx::tonemap::psychov::custom_psychotm_test31(
         untonemapped, peak, SI.exposure, SI.highlights, SI.shadows,
-        SI.contrast, 0.f, 1.f, 1.f, SI.saturation, SI.highlight_saturation, 0.f,
-        0.18f, anchor_out, 0.f, 1.f, renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020,
+        SI.contrast, SI.flare, SI.highlight_contrast, SI.shadow_contrast, SI.saturation, SI.highlight_saturation,
+        SI.dechroma, 0.18f, anchor_out, 0.f, SI.gamut_compression, target_gamut,
         compression, 1.f, 0.5f, 0.f,
         renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 0.f);
     failed = all(result == 0.f);
@@ -149,9 +167,12 @@ float3 ApplyPsychoV31(float3 untonemapped, float peak)
     return ApplyExtended(exposed, peak);
   }
 
+  float y_exposed = y_in * SI.exposure;
+  result = ShiftHighlightHue(result, untonemapped * SI.exposure, y_exposed, SI.highlight_hue_shift,
+                             SI.highlight_saturation_shift);
+
   // Game Shadows: Hable's toe instead of V31's power law below mid gray, faded in over the stop
   // below it. Contrast and Shadows still apply.
-  float y_exposed = y_in * SI.exposure;
   [branch]
   if (SI.game_shadows != 0.f && y_exposed < 0.18f) {
     float toe = FilmCurveY(y_exposed) / (anchor_out * y_exposed / 0.18f);
@@ -159,6 +180,26 @@ float3 ApplyPsychoV31(float3 untonemapped, float peak)
     result *= pow(max(toe, 0.f), SI.contrast * weight);
   }
   return result;
+}
+
+// Fire Hue / Fire Hue Focus (each mode its own): warm colors (pink to yellow around orange, OkLCh) turned toward red or yellow
+// (Fire Hue, up to 30 degrees) and pulled toward orange (Focus), on the screen's colors (after the game's color chart),
+// from mid gray (fully from Paper White, as the highlight sliders) and on saturated colors only (grays have no hue).
+float3 AdjustFireHue(float3 color, float fire_hue, float focus)
+{
+  [branch]
+  if (fire_hue == 0.f && focus <= 0.f) return color;
+  const float y = renodx::color::y::from::BT709(color);
+  if (!(y > 0.18f)) return color;
+  const float t = saturate(log2(y / 0.18f) / log2(1.f / 0.18f));
+  const float brightness = t * t * (3.f - 2.f * t);
+  static const float ORANGE = 0.96f;  // radians (55 degrees)
+  float3 lch = renodx::color::oklch::from::BT709(color);
+  const float from_orange = atan2(sin(lch.z - ORANGE), cos(lch.z - ORANGE));
+  const float warm = 1.f - smoothstep(1.22f, 1.75f, abs(from_orange));  // full within 70 degrees, none past 100
+  const float weight = brightness * warm * saturate(lch.y / 0.06f);
+  lch.z += weight * (fire_hue * 0.52f - focus * from_orange);
+  return renodx::color::bt709::from::OkLCh(lch);
 }
 
 // Within BT.2020 and Peak: past Peak, desaturate keeping luminance and hue; past it in luminance,
@@ -265,11 +306,19 @@ void main(
           SI.ext_saturation, SI.ext_highlight_saturation, 0.f, 0.18f, 0.18f,
           renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709);
     }
-    tonemapped = ApplyExtended(untonemapped, peak);
+    tonemapped = ShiftHighlightHue(ApplyExtended(untonemapped, peak), untonemapped,
+                                   renodx::color::y::from::BT709(untonemapped), SI.ext_highlight_hue_shift,
+                                   SI.ext_highlight_saturation_shift);
   } else {
     tonemapped = ApplyPsychoV31(r0.xyz, peak);
   }
   float3 color = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(tonemapped, shafts));
+  [branch]
+  if (HDR >= 2.f) {
+    color = AdjustFireHue(color, SI.fire_hue, SI.fire_hue_focus);
+  } else {
+    color = AdjustFireHue(color, SI.ext_fire_hue, SI.ext_fire_hue_focus);
+  }
 
   // The shafts past 1 (near the sun), saturated by the stock, added on top (both HDR modes).
   color = RyseAddLight(color, max(shafts - 1.f, 0.f), RYSE_PEAK);

@@ -16,6 +16,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,7 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "./shared.h"
 
@@ -49,6 +51,10 @@ bool IsPsychoMode() {
   return shader_injection.hdr == 2.f && current_settings_mode == 1;
 }
 
+bool IsPsychoV31Mode() {
+  return shader_injection.hdr == 3.f && current_settings_mode == 1;
+}
+
 // Extra sliders: both HDR modes.
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f && current_settings_mode == 1;
@@ -64,6 +70,7 @@ void ApplyResetPreset() {
   // are intentionally preserved.
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", 1.f},
+      {"video_autohdr", 0.f},
 
       // PsychoV30
       {"exposure", 1.f},
@@ -75,6 +82,23 @@ void ApplyResetPreset() {
       {"hue_shift", 1.f},
       // {"current_adaptive_state_bt709", 0.18f},
       // {"current_background_state_bt709", 0.18f},
+
+      // PsychoV31
+      {"v31_exposure", 1.f},
+      {"v31_highlights", 1.f},
+      {"v31_shadows", 1.f},
+      {"v31_contrast", 1.f},
+      {"v31_highlight_contrast", 1.f},
+      {"v31_shadow_contrast", 1.f},
+      {"v31_flare", 0.f},
+      {"v31_saturation", 1.f},
+      {"v31_dechroma", 0.f},
+      {"v31_highlight_saturation", 1.f},
+      {"v31_roll_off", 1.f},
+      {"v31_gamut_compression", 1.f},
+      {"v31_gamut_compression_mode", 1.f},
+      {"v31_highlight_hue_shift", 0.06f},
+      {"v31_highlight_saturation_shift", 0.f},
 
       // HDR Extended / user grading
       {"exposure_tpm", 1.f},
@@ -102,11 +126,11 @@ void ApplyResetPreset() {
 }
 
 void ApplyPsychoRecommended() {
-  // Recommended PsychoV30 tuning for a ~1000-nit display.
-  // Only PsychoV30 controls are changed. Peak / Paper White / UI brightness
-  // and unrelated controls are preserved.
+  // ATN: every recommended preset in PsychoV31 (its sliders at their defaults), Video AutoHDR 0.20.
+  ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 2.f},
+      {"tonemapper", 3.f},
+      {"video_autohdr", 0.2f},
       {"exposure", 1.f},
       {"highlights", 1.f},
       {"shadows", 1.f},
@@ -504,6 +528,19 @@ renodx::utils::settings::Settings settings;
 void BuildRuntimeData() {
   custom_shaders = {
       UpgradeRTVReplaceShader(0xB72063D6), //t00
+      // t01-t11: ResolveMainColor's other permutations (resolve.hlsli)
+      UpgradeRTVReplaceShader(0xEC84B8D1),
+      UpgradeRTVReplaceShader(0x28D6CB27),
+      UpgradeRTVReplaceShader(0x0257CFFE),
+      UpgradeRTVReplaceShader(0xD32CFCB5),
+      UpgradeRTVReplaceShader(0x4371A094),
+      UpgradeRTVReplaceShader(0xB1E8D323),
+      UpgradeRTVReplaceShader(0xFDCB3015),
+      UpgradeRTVReplaceShader(0xF951F1D4),
+      UpgradeRTVReplaceShader(0xEBA25E29),
+      UpgradeRTVReplaceShader(0x93290942),
+      UpgradeRTVReplaceShader(0x62890EAF),
+      UpgradeRTVReplaceShader(0x602CD6AB), //fxaa01
       UpgradeRTVReplaceShader(0x3FCAE7F4), //smaa02
       UpgradeRTVReplaceShader(0xEEFF2F33), //fxaa00
       // UpgradeRTVReplaceShader(0xA03BE4CE),
@@ -512,6 +549,23 @@ void BuildRuntimeData() {
   };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // PsychoV31 sliders: 0 - max, 1 = its own.
+  auto v31_slider = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
+                       float max = 2.f, float default_value = 1.f) {
+    return new renodx::utils::settings::Setting{
+        .key = key,
+        .binding = binding,
+        .default_value = default_value,
+        .label = label,
+        .section = "PsychoV31",
+        .tooltip = tooltip,
+        .max = max,
+        .format = "%.2f",
+        .is_enabled = IsPsychoV31Mode,
+        .is_visible = IsPsychoV31Mode,
+    };
+  };
+
   settings = {
     new renodx::utils::settings::Setting{
         .key = "SettingsMode",
@@ -558,6 +612,12 @@ void BuildRuntimeData() {
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
     
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Use these in-game settings: Gamma 50% and Brightness 100%.",
+        .section = "General",
+        .tint = 0xFFD23C,
+    },
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -619,16 +679,16 @@ void BuildRuntimeData() {
         .section = "General",
         .tooltip = "SDR: the game's original tonemapper (Uncharted 2 / Hable).\n"
                    "HDR (Extended): Used (Uncharted 2/Hable Extended) instead\n"
-                   "HDR (PsychoV30): replaces (Uncharted 2 / Hable) with PsychoV30 as tonemapper.",
-        .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)"},
+                   "HDR (PsychoV30): replaces (Uncharted 2 / Hable) with PsychoV30 as tonemapper.\n"
+                   "HDR (PsychoV31): replaces it with PsychoV31, more grading sliders.",
+        .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)", "HDR (PsychoV31)"},
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-        .label = "Recommended (PsychoV30)",
+        .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Recommended Setting is PsychoV30\n"
-                   "Peak, Paper White, UI brightness, and unrelated controls are preserved.",
+        .tooltip = "HDR (PsychoV31) and Video AutoHDR 0.20, the rest at its default.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyPsychoRecommended();
         },
@@ -899,6 +959,71 @@ void BuildRuntimeData() {
 
     ///EXTRA-----////
 
+    // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
+    v31_slider("v31_exposure", &shader_injection.v31_exposure, "Exposure", ""),
+    v31_slider("v31_highlights", &shader_injection.v31_highlights, "Highlights", ""),
+    v31_slider("v31_shadows", &shader_injection.v31_shadows, "Shadows", ""),
+    v31_slider("v31_contrast", &shader_injection.v31_contrast, "Contrast", "1 = PsychoV31's own."),
+    v31_slider("v31_highlight_contrast", &shader_injection.v31_highlight_contrast, "Highlight Contrast",
+               "Contrast above mid gray. 1 = PsychoV31's own."),
+    v31_slider("v31_shadow_contrast", &shader_injection.v31_shadow_contrast, "Shadow Contrast",
+               "Contrast below mid gray. 1 = PsychoV31's own."),
+    new renodx::utils::settings::Setting{
+        .key = "v31_flare",
+        .binding = &shader_injection.v31_flare,
+        .default_value = 0.f,
+        .label = "Flare",
+        .section = "PsychoV31",
+        .tooltip = "Deepens the darkest shadows. 0 = off.",
+        .max = 1.f,
+        .format = "%.2f",
+        .is_enabled = IsPsychoV31Mode,
+        .parse = [](float value) { return std::pow(value, 5.f); },
+        .is_visible = IsPsychoV31Mode,
+    },
+    v31_slider("v31_saturation", &shader_injection.v31_saturation, "Saturation / Purity", "1 = PsychoV31's own."),
+    v31_slider("v31_dechroma", &shader_injection.v31_dechroma, "Dechroma",
+               "Very bright colors fade toward white, as if overexposed. 0 = off.", 1.f, 0.f),
+    v31_slider("v31_roll_off", &shader_injection.v31_roll_off, "Highlight Roll-off",
+               "How soon highlights start to compress toward Peak. 0 = latest, 1 = default, 2 = soonest."),
+    v31_slider("v31_gamut_compression", &shader_injection.v31_gamut_compression, "Gamut Compression",
+               "Pulls colors your display can't show back inside its color space.\n"
+               "0 = off (the display clips them), 1 = full (default).",
+               1.f),
+    new renodx::utils::settings::Setting{
+        .key = "v31_gamut_compression_mode",
+        .binding = &shader_injection.v31_gamut_compression_mode,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 1.f,
+        .label = "Gamut Compression Mode",
+        .section = "PsychoV31",
+        .tooltip = "The color space colors are fitted into.\n"
+                   "BT.2020: the whole HDR signal (default).\n"
+                   "Display P3: what most HDR monitors and TVs show. BT.709: SDR colors.",
+        .labels = {"BT.709", "BT.2020", "Display P3"},
+        .is_enabled = IsPsychoV31Mode,
+        // PsychoV31's modes: 0 BT.709, 1 BT.2020, 3 Display P3.
+        .parse = [](float value) { return (value == 2.f ? 3.f : value); },
+        .is_visible = IsPsychoV31Mode,
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Fire too pink, too orange or too pale? Change the settings below.",
+        .section = "PsychoV31",
+        .is_visible = IsPsychoV31Mode,
+    },
+    v31_slider("v31_highlight_saturation", &shader_injection.v31_highlight_saturation, "Highlight Saturation",
+               "Saturation of bright colors. 0 = less, 1 = PsychoV31's own, 2 = more."),
+    v31_slider("v31_highlight_hue_shift", &shader_injection.v31_highlight_hue_shift, "Highlight Hue Shift",
+               "Bright colors take the SDR image's hues: fire more orange / yellow, less pink.\n"
+               "0 = off, 1 = SDR hues. Default 0.06.",
+               1.f, 0.06f),
+    v31_slider("v31_highlight_saturation_shift", &shader_injection.v31_highlight_saturation_shift,
+               "Highlight Saturation Shift",
+               "Gives bright colors the saturation of the SDR image (fire cores less pale and pink).\n"
+               "0 = off (default), 1 = SDR's.",
+               1.f, 0.f),
+
     new renodx::utils::settings::Setting{
         .key = "bloom",
         .binding = &shader_injection.bloom,
@@ -955,6 +1080,34 @@ void BuildRuntimeData() {
         .format = "%.2f",
         .is_enabled = IsHDRMode,
         .is_visible = IsHDRMode,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "video_autohdr",
+        .binding = &shader_injection.video_autohdr,
+        .default_value = 0.f,
+        .label = "Video AutoHDR",
+        .section = "Extra",
+        .tooltip = "Makes the bright parts of the game's (SDR) videos brighter: only what is above mid gray,\n"
+                   "the brightest the most. 0 = off, 1 = video white reaches Peak.\n"
+                   "High values can show banding (see Video Dithering).",
+        .min = 0.f,
+        .max = 1.f,
+        .format = "%.2f",
+        .is_enabled = IsHDRMode,
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "video_dithering",
+        .binding = &shader_injection.video_dithering,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 1.f,
+        .label = "Video Dithering",
+        .section = "Extra",
+        .tooltip = "Fine noise that hides banding in the brightened videos.\n"
+                   "Only with Video AutoHDR above 0.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+        .is_visible = IsAdvancedSettings,
     },
     // new renodx::utils::settings::Setting{
     //     .key = "chromaticaberration",
@@ -1335,6 +1488,31 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
+// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
+void SetOutputEncoding(int encoding) {
+  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
+  if (encoding == 2) {
+    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
+    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
+  } else {
+    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
+  }
+}
+
+// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
+// before the swapchain mod's create_swapchain (registered after this).
+bool auto_output_pending = false;
+
+bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
+  if (!auto_output_pending) return false;
+  auto_output_pending = false;
+  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
+  const auto path = renodx::utils::platform::GetPathInfo(monitor);
+  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
+  SetOutputEncoding(windows_hdr ? 1 : 2);
+  return false;
+}
+
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War: ROME REMASTERED by ATN";
 
@@ -1497,28 +1675,56 @@ void ConfigureAddon() {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "SwapChainEncoding",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 1.f,
+        .default_value = 3.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: 10bit, enough quality (banding?).\nscRGB: 16bit, overkill quality.",
-        .labels = {"HDR10", "scRGB"},
+        .tooltip = "Auto: scRGB with Windows HDR on, else SDR. Default.\n"
+                   "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR (all fixes and options stay).",
+        .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const auto value = setting->GetValue();
-    shader_injection.swap_chain_encoding = value;
-    renodx::mods::swapchain::SetUseHDR10(value == 0);
+    const int value = static_cast<int>(setting->GetValue());
+    auto_output_pending = (value == 3);
+    SetOutputEncoding(auto_output_pending ? 1 : value);
     settings.push_back(setting);
   }
 
   // Appended Settings (About)
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
-      .section = "About",
-      .is_visible = IsAdvancedSettings,
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "RenoDX, PsychoV30 and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. Uncharted 2 extended: Musa and DabVeed.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
+          .section = "About",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "ATN's Ko-fi",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0xFF5A16,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "NexusMods",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x2196F3,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/rometotalwar/mods/22"); },
+      },
   });
+
+  // Section titles: one colour, another for Graphics (Experimental) (ATN, as Attila).
+  renodx::utils::settings::default_section_tint = 0x7EE08A;
+  renodx::utils::settings::section_tints = {{"Graphics (Experimental)", 0xFF7FAF}};
 
   configured = true;
 }
@@ -1528,6 +1734,7 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
+  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
@@ -1548,6 +1755,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
 
   reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);

@@ -295,13 +295,27 @@ float3 LegacyCurveExtended(float3 ap1)
 // (fire toward orange / yellow); V31 and the extended curves keep the source hue much longer (pinkish fire). Above mid
 // gray, fully from scene white (1.0), the hue is moved toward the SDR curve's hue by `amount` (OkLab; brightness and
 // chroma kept). `graded_ap1`: the curve input, `scene_y` its luminance.
-float3 ShiftHighlightHue(float3 color, float3 graded_ap1, float scene_y, float amount)
+// Highlight Saturation Shift (PsychoV31; ATN's experiment, debug21): the same for the saturation (OkLab chroma /
+// lightness): SDR fire stays saturated yellow up to its brightest (blue 0), V31 fades its cores to white at their own
+// hue (pink). Chroma / lightness, as V31 is brighter.
+float3 ShiftHighlightHue(float3 color, float3 graded_ap1, float scene_y, float amount, float saturation_amount)
 {
-  float3 shifted = color;
   [branch]
-  if (amount > 0.f && scene_y > 0.18f) {
-    const float t = saturate(log2(scene_y / 0.18f) / log2(1.f / 0.18f));
-    shifted = renodx::color::correct::Hue(color, ToneCurve(graded_ap1), amount * t * t * (3.f - 2.f * t));
+  if ((amount <= 0.f && saturation_amount <= 0.f) || scene_y <= 0.18f) return color;
+  const float t = saturate(log2(scene_y / 0.18f) / log2(1.f / 0.18f));
+  const float weight = t * t * (3.f - 2.f * t);
+  const float3 sdr = ToneCurve(graded_ap1);
+  float3 shifted = renodx::color::correct::Hue(color, sdr, amount * weight);
+  [branch]
+  if (saturation_amount > 0.f) {
+    float3 lab = renodx::color::oklab::from::BT709(shifted);
+    const float3 sdr_lab = renodx::color::oklab::from::BT709(sdr);
+    const float saturation = length(lab.yz) / max(lab.x, 1e-6f);
+    const float sdr_saturation = length(sdr_lab.yz) / max(sdr_lab.x, 1e-6f);
+    // At most 4x: a near-gray V31 color has no hue of its own to scale.
+    const float scale = min(renodx::math::DivideSafe(sdr_saturation, saturation, 1.f), 4.f);
+    lab.yz *= lerp(1.f, scale, saturation_amount * weight);
+    shifted = renodx::color::bt709::from::OkLab(lab);
   }
   return shifted;
 }
@@ -325,16 +339,17 @@ float3 PostGradeHDR(float3 color)
 }
 
 // Extended's grading sliders: PsychoV31 grading on the graded AP1 color before the curve; all at 1: skipped.
-float3 ApplyExtendedGrading(float3 ap1)
+// Highlight Saturation per base curve (ATN: legacy 0.92, UE Filmic 1.05).
+float3 ApplyExtendedGrading(float3 ap1, float highlight_saturation)
 {
   [branch]
   if (SI.ext_exposure == 1.f && SI.ext_highlights == 1.f && SI.ext_shadows == 1.f && SI.ext_contrast == 1.f
-      && SI.ext_saturation == 1.f && SI.ext_highlight_saturation == 1.f) {
+      && SI.ext_saturation == 1.f && highlight_saturation == 1.f) {
     return ap1;
   }
   return renodx::color::ap1::from::BT709(renodx::tonemap::psychov::custom_psychograde_test31(
       renodx::color::bt709::from::AP1(ap1), SI.ext_exposure, SI.ext_highlights, SI.ext_shadows, SI.ext_contrast,
-      0.f, 1.f, 1.f, SI.ext_saturation, SI.ext_highlight_saturation, 0.f, 0.18f, 0.18f,
+      0.f, 1.f, 1.f, SI.ext_saturation, highlight_saturation, 0.f, 0.18f, 0.18f,
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_AP1));
 }
 
@@ -344,6 +359,13 @@ ue_extended::FilmCurve GameFilmCurve()
 {
   if (!(cb0[36].x > 0.f)) return ue_extended::CreateFilmCurve(0.88f, 0.55f, 0.26f, 0.f, 0.04f);
   return ue_extended::CreateFilmCurve(cb0[36].x, cb0[36].y, cb0[36].z, 0.f, cb0[37].x);
+}
+
+// PsychoV31's target gamut: Gamut Compression Mode (default BT.2020); SDR output: BT.709 (the proxy clips per
+// channel as the game).
+int TargetGamut()
+{
+  return (TOA_SDR_OUTPUT ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709 : int(SI.gamut_compression_mode));
 }
 
 // HDR (PsychoV31), like Pharaoh: Dynasties: the artist's grading and PsychoV31 only, anchored on the
@@ -356,11 +378,12 @@ float3 ApplyPsychoV31(float3 untonemapped_ap1, float peak)
   float y_in = max(renodx::color::y::from::BT709(untonemapped_bt709), 1e-7f);
   // Highlight Roll-off: V31's shoulder compression. 0: 1, 1: 1.5 (default), 2: 3.
   float compression = 1.f + 0.5f * SI.roll_off * SI.roll_off;
+  const int target_gamut = TargetGamut();
 
   float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
       untonemapped_bt709, peak, SI.exposure, SI.highlights, SI.shadows,
-      SI.contrast, 0.f, 1.f, 1.f, SI.saturation, SI.highlight_saturation, 0.f,
-      0.18f, anchor_out, 0.f, 1.f, renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020,
+      SI.contrast, SI.flare, SI.highlight_contrast, SI.shadow_contrast, SI.saturation, SI.highlight_saturation,
+      SI.dechroma, 0.18f, anchor_out, 0.f, SI.gamut_compression, target_gamut,
       compression, 1.f, 0.5f, 0.f,
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_AP1, 1.f);
   // V31 can return black for saturated blues (its source cage, compiler dependent): redo target-only.
@@ -369,8 +392,8 @@ float3 ApplyPsychoV31(float3 untonemapped_ap1, float peak)
   if (failed) {
     result = renodx::tonemap::psychov::custom_psychotm_test31(
         untonemapped_bt709, peak, SI.exposure, SI.highlights, SI.shadows,
-        SI.contrast, 0.f, 1.f, 1.f, SI.saturation, SI.highlight_saturation, 0.f,
-        0.18f, anchor_out, 0.f, 1.f, renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020,
+        SI.contrast, SI.flare, SI.highlight_contrast, SI.shadow_contrast, SI.saturation, SI.highlight_saturation,
+        SI.dechroma, 0.18f, anchor_out, 0.f, SI.gamut_compression, target_gamut,
         compression, 1.f, 0.5f, 0.f,
         renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_AP1, 0.f);
     failed = all(result == 0.f);
@@ -387,7 +410,8 @@ float3 ApplyPsychoV31(float3 untonemapped_ap1, float peak)
 
   // Highlight Hue Shift: V31 keeps hues until its shoulder compresses.
   float y_exposed = y_in * SI.exposure;
-  result = ShiftHighlightHue(result, untonemapped_ap1 * SI.exposure, y_exposed, SI.highlight_hue_shift);
+  result = ShiftHighlightHue(result, untonemapped_ap1 * SI.exposure, y_exposed, SI.highlight_hue_shift,
+                             SI.highlight_saturation_shift);
 
   // Game Shadows: the game's toe instead of V31's power law below mid gray, faded in over the stop
   // below it (the curve is steeper at mid gray). Contrast and Shadows still apply.
@@ -536,11 +560,12 @@ float4 GenerateHDRLut(float3 untonemapped_ap1)
     // Base Curve: UE's film curve (cb0[36], cb0[37].x), which RenoDX's UE Extended addon always uses (UE fills the
     // film settings either way); or, when the game's SDR uses UE's legacy tonemapper (cb0[35].w == 0), that curve
     // extended (LegacyCurveExtended), blended back like UE Extended's (Blend Factor 50).
-    const float3 graded_ap1 = ApplyExtendedGrading(untonemapped_ap1);
-    const float3 mid_gray_ap1 = ApplyExtendedGrading(0.18f.xxx);
+    const bool legacy_curve = cb0[35].w == 0.f && SI.ext_curve == 0.f;
+    const float highlight_saturation = (legacy_curve ? SI.ext_highlight_saturation : SI.ext_filmic_highlight_saturation);
+    const float3 graded_ap1 = ApplyExtendedGrading(untonemapped_ap1, highlight_saturation);
+    const float3 mid_gray_ap1 = ApplyExtendedGrading(0.18f.xxx, highlight_saturation);
     float3 tonemapped;
     float3 mid_gray_tonemapped;
-    const bool legacy_curve = cb0[35].w == 0.f && SI.ext_curve == 0.f;
     [branch]
     if (legacy_curve) {
       tonemapped = lerp(LegacyCurveExtended(graded_ap1), ToneCurve(graded_ap1), ue_extended::VANILLA_BLEND);
@@ -551,9 +576,9 @@ float4 GenerateHDRLut(float3 untonemapped_ap1)
       tonemapped = ue_extended::ToneMap(graded_ap1, curve);
       mid_gray_tonemapped = ue_extended::ToneMap(mid_gray_ap1, curve);
     }
-    // Each base curve its own amount (ATN: legacy 0.17, UE Filmic 0.30).
+    // Each base curve its own amount (ATN: legacy 0.20, UE Filmic 0.34).
     tonemapped = ShiftHighlightHue(tonemapped, graded_ap1, renodx::color::y::from::AP1(graded_ap1),
-                                   legacy_curve ? SI.ext_highlight_hue_shift : SI.ext_filmic_highlight_hue_shift);
+                                   legacy_curve ? SI.ext_highlight_hue_shift : SI.ext_filmic_highlight_hue_shift, 0.f);
     float3 graded = UEExtendedPostGrade(ApplySDRLuts(tonemapped));
     float3 mid_gray = UEExtendedPostGrade(ApplySDRLuts(mid_gray_tonemapped));
     color = renodx::color::correct::GammaSafe(ue_extended::DisplayMap(graded, mid_gray, peak));
@@ -561,10 +586,28 @@ float4 GenerateHDRLut(float3 untonemapped_ap1)
     // HDR (PsychoV31): the game's post grade after the complete tone curve (fades must not be undone by the HDR
     // shoulder).
     color = renodx::color::correct::GammaSafe(PostGradeHDR(ApplySDRLuts(ApplyPsychoV31(untonemapped_ap1, peak))));
+    // Highlight Hue Shift and the game's grading come after PsychoV31's gamut compression and can leave the target
+    // again: such colors are brought back to its edge (luminance and hue kept); colors inside stay as they are.
+    [branch]
+    if (SI.gamut_compression > 0.f) {
+      float3x3 target_to_lms = renodx::color::macleod_boynton::BT709_TO_LMS_WEIGHTED_MAT;
+      switch (TargetGamut()) {
+        case renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020:
+          target_to_lms = renodx::color::macleod_boynton::BT2020_TO_LMS_WEIGHTED_MAT;
+          break;
+        case renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_DISPLAY_P3:
+          target_to_lms = mul(renodx::color::macleod_boynton::BT709_TO_LMS_WEIGHTED_MAT,
+                              renodx::color::DISPLAYP3_TO_BT709_MAT);
+          break;
+      }
+      color = mul(renodx::color::macleod_boynton::LMS_WEIGHTED_TO_BT709_MAT,
+                  renodx::color::gamut::GamutCompressWeightedLMSCoreRGBBoundFromWeightedInput(
+                      mul(renodx::color::macleod_boynton::BT709_TO_LMS_WEIGHTED_MAT, color), target_to_lms, 1.f));
+    }
   }
 
   color = LimitToPeak(color, TOA_PEAK);
-  color *= max(SI.diffuse_white_nits, 1.f) / max(SI.graphics_white_nits, 1.f);
+  color *= TOA_PAPER_WHITE;
   // / 1.05; alpha 1 tags the HDR LUT for its consumers.
   return float4(renodx::color::gamma::EncodeSafe(color) * 0.952381015f, 1.f);
 }

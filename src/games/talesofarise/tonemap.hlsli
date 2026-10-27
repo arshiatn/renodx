@@ -133,6 +133,7 @@ void main(
     amount = sharpen * -amount;
     const float3 laplacian = -scene * float3(4,4,4) + (right + left + up_left + down_left);
     scene = laplacian * amount + scene;
+    if (hdr_lut) scene = max(scene, 0.f);  // Sharpening above 1 can overshoot below black.
   }
 #endif
 
@@ -239,7 +240,7 @@ void main(
 #endif
 #if TOA_GRAIN_INTENSITY
   r1.x = grain * cb0[42].x + cb0[42].y;
-  if (hdr_lut) r1.x = lerp(1.f, r1.x, SI.film_grain);
+  if (hdr_lut) r1.x = max(lerp(1.f, r1.x, SI.film_grain), 0.f);
   r0.xyz = r0.xyz * r1.xxx;
 #endif
   r0.xyz = r0.xyz + float3(0.00266771927,0.00266771927,0.00266771927);

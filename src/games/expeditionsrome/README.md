@@ -84,3 +84,12 @@ UI/post-process coverage still need in-game testing. Godrays were reported
 working in the menu by the user; other lighting paths are not yet confirmed.
 
 v27: less CPU: debug logging (DEBUG_LEVEL_0) off.
+
+v28 (ATN's batch, untested): Ambient Occlusion section: GT-VBAO (Game's / GT-VBAO, Radius, Strength, Thickness,
+Quality, Directions; default Game's). The game's last AO level (UE 4.21 AmbientOcclusionPS with the lower levels
+upsampled: ao00 0x31A1C68C, ao01 0xBD381E21; t0 scene depth, t1 G-buffer normal, View: TranslatedWorldToView cb1[12..14],
+InvDeviceZToWorldZTransform cb1[61]) returns the visibility bitmask's result (talesofarise/ue_bitmask_ao.hlsli, shared with
+Tales of Arise; Attila's twattila/bitmask.hlsli primitives) with the game's intensity, not its power. The depth texture's
+place for a screen position comes from the interpolants' derivatives (works below 100% render scale). Noise moves every
+frame (present), settled by the game's AO blur and TAA / DLSS. GT-VBGI, screen-space shadows and reflections are not in
+(the passes for them are not identified in the dump yet).

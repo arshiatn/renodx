@@ -148,77 +148,8 @@ Texture2D<float4> rain_texture : register(t6);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
-#include "../psycho_test30.hlsli"
-
-// The native matrix + LUT are authored for a bounded gamma-domain signal. Compress
-// reversibly, grade in that domain, expand back. Same bridge as Warhammer 1/2.
-float3 ApplyTroyNativeGradeHDRSafe(float3 grade_source_linear)
-{
-  float grade_scale =
-      renodx::tonemap::neutwo::ComputeMaxChannelScale(grade_source_linear, 1.f, HDR_PEAK);
-  float3 grade_proxy_linear = grade_source_linear * grade_scale;
-
-  // Stock's saturate(g_brightness * c) is dropped: the proxy is already bounded, and
-  // re-clamping would only reintroduce clipping ahead of the matrix and LUT.
-  float3 grade_proxy_gamma = renodx::color::gamma::EncodeSafe(grade_proxy_linear);
-
-  float4 matrix_input = float4(grade_proxy_gamma, 1.f);
-  float3 matrix_output_gamma;
-  matrix_output_gamma.x = dot(matrix_input, colour_matrix._m00_m10_m20_m30);
-  matrix_output_gamma.y = dot(matrix_input, colour_matrix._m01_m11_m21_m31);
-  matrix_output_gamma.z = dot(matrix_input, colour_matrix._m02_m12_m22_m32);
-
-  // No saturate on the LUT coordinate - stock samples the raw matrix output.
-  float3 lut_output_gamma =
-      lut_texture.SampleLevel(lut_sampler_s, matrix_output_gamma, 0).xyz;
-  float3 graded_gamma = lerp(matrix_output_gamma, lut_output_gamma, lut_strength);
-
-  float3 graded_proxy_linear = renodx::color::gamma::DecodeSafe(graded_gamma);
-  return renodx::math::DivideSafe(graded_proxy_linear, grade_scale.xxx, graded_proxy_linear);
-}
-
-// Mode 1 user grading. Identity at default settings.
-float3 ApplyTroyHDR1UserGrading(float3 color)
-{
-  const float3 kLuminance = float3(0.212599993f, 0.715200007f, 0.0722000003f);
-  const float mid_gray = 0.18f;
-
-  float luminance = max(dot(color, kLuminance), 0.f);
-  float graded_luminance = luminance * SI.exposure_tpm;
-  graded_luminance = renodx::color::grade::Highlights(graded_luminance, SI.highlights_tpm, mid_gray);
-  graded_luminance = renodx::color::grade::Shadows(graded_luminance, SI.shadows_tpm, mid_gray);
-
-  if (SI.contrast_tpm != 1.f)
-  {
-    float normalized = max(graded_luminance / mid_gray, 0.f);
-    graded_luminance = pow(normalized, SI.contrast_tpm) * mid_gray;
-  }
-
-  float tonal_scale = luminance > 0.000001f ? graded_luminance / luminance : 1.f;
-  color *= tonal_scale;
-
-  float graded_y = dot(color, kLuminance);
-  return lerp(graded_y.xxx, color, SI.saturation_tpm);
-}
-
-// Mode 1 peak management: rolls everything above 1.0 into the display's headroom.
-// Runs last, and leaves everything at or below 1.0 alone - that is the SDR image.
-float3 ApplyTroyHDR1PeakShoulder(float3 color)
-{
-  float peak = max(HDR_PEAK, 1.0001f);
-  float max_channel = max(color.r, max(color.g, color.b));
-
-  if (max_channel > 1.f)
-  {
-    float headroom = peak - 1.f;
-    float excess = max_channel - 1.f;
-    float mapped_max = 1.f + renodx::tonemap::Neutwo(excess, headroom);
-    color *= mapped_max / max_channel;
-  }
-
-  return color;
-}
+#include "../hdr_to_screen.hlsli"
+#include "../../twattila/render_scale.hlsli"
 
 void main(
   float4 v0 : SV_Position0,
@@ -239,7 +170,7 @@ void main(
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
   r0.xy = overscan * r0.xy;
-  r0.zw = distortion_texture.SampleLevel(distortion_sampler_s, r0.xy, 0).xy;
+  r0.zw = distortion_texture.SampleLevel(distortion_sampler_s, (r0.xy) * FrameRenderShare(), 0).xy;
   r0.zw = float2(-0.501960814,-0.501960814) + r0.zw;
   r0.xy = r0.zw * (float2(0.0199999996,0.0199999996) * uv_distort_multiplier) + r0.xy;
   r1.xyzw = frame_texture.SampleLevel(frame_sampler_s, r0.xy, 0).xyzw;
@@ -291,7 +222,7 @@ void main(
   r0.zw = overscan * v0.xy;
   r2.xy = (int2)r0.zw;
   r2.zw = float2(0,0);
-  r2.z = gbuffer_channel_4_texture_ms.Load(r2.xy, 0).x;
+  r2.z = gbuffer_channel_4_texture_ms.Load(RenderShareTexel(r2.xy), 0).x;
   r0.xy = g_render_target_dimensions.xy * r0.xy;
   r0.xy = g_viewport_dimensions.zw * r0.xy;
   r2.xy = r0.xy * float2(2,-2) + float2(-1,1);
@@ -483,7 +414,7 @@ void main(
   }
   else
   {
-    graded_hdr = ApplyPsychoV30(graded_hdr);
+    graded_hdr = ApplyTroyPsycho(graded_hdr);
   }
 
   o0.xyz = graded_hdr;

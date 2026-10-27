@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -29,6 +30,16 @@
 // and keeps checking it without waiting.
 namespace talesofarise::dlss::constants {
 
+// Texture mip bias for DLSS upscaling (UE 4.21 biases material textures only for its own temporal upscaling): mapped
+// uploads whose ViewSizeAndInvSize is the main view's get MaterialTextureMipBias (.x) before the GPU reads them.
+struct ViewMipBias {
+  uint32_t size_vector = 0;  // the View uniform buffer's ViewSizeAndInvSize
+  uint32_t bias_vector = 0;  // its MaterialTextureMipBias
+  uint32_t width = 0;        // the main view's size; 0: off
+  uint32_t height = 0;
+  float bias = 0.f;
+};
+
 namespace internal {
 
 constexpr uint32_t MAX_BUFFER_BYTES = 64 * 1024;
@@ -39,7 +50,8 @@ struct Snapshot {
   std::vector<std::byte> bytes;  // first `needed` bytes of the buffer
   uint32_t valid_begin = 0;      // one valid byte range
   uint32_t valid_end = 0;
-  const std::byte* mapping = nullptr;
+  std::byte* mapping = nullptr;
+  uint32_t byte_width = 0;
 };
 
 inline std::mutex mutex;
@@ -51,6 +63,8 @@ inline std::array<std::atomic<uint64_t>, 4> watched = {};
 // Any entry in `watched`: until then every event returns at once (no GetDesc, no lock).
 inline std::atomic_bool watching = false;
 inline std::atomic<uint64_t> copied_bytes = 0;
+inline ViewMipBias view_mip_bias;  // under `mutex`
+inline std::atomic<uint64_t> biased_uploads = 0;
 // Watched buffers mapped on this thread; every other Unmap returns without locking.
 inline thread_local std::array<ID3D11Buffer*, 4> open_maps = {};
 
@@ -64,10 +78,11 @@ inline ID3D11Buffer* Buffer(reshade::api::resource resource) {
 }
 
 // Bytes to keep for a watched constant buffer, else 0.
-inline uint32_t Needed(ID3D11Buffer* buffer) {
+inline uint32_t Needed(ID3D11Buffer* buffer, uint32_t* byte_width = nullptr) {
   if (buffer == nullptr) return 0;
   D3D11_BUFFER_DESC desc = {};
   buffer->GetDesc(&desc);
+  if (byte_width != nullptr) *byte_width = desc.ByteWidth;
   if ((desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) == 0) return 0;
   const uint64_t key = Key(desc.ByteWidth, desc.Usage);
   for (const auto& entry : watched) {
@@ -99,7 +114,8 @@ inline void OnMapBufferRegion(reshade::api::device*, reshade::api::resource reso
                               reshade::api::map_access access, void** data) {
   if (!watching.load(std::memory_order_relaxed) || access == reshade::api::map_access::read_only) return;
   auto* buffer = Buffer(resource);
-  const uint32_t needed = Needed(buffer);
+  uint32_t byte_width = 0;
+  const uint32_t needed = Needed(buffer, &byte_width);
   if (needed == 0) return;
   // Copied at unmap. A discard map renames the buffer; other maps keep its contents.
   const auto slot = std::ranges::find(open_maps, nullptr);
@@ -108,7 +124,8 @@ inline void OnMapBufferRegion(reshade::api::device*, reshade::api::resource reso
   const std::lock_guard lock(mutex);
   auto& snapshot = buffers[buffer];
   snapshot.bytes.resize(needed);
-  snapshot.mapping = tracked ? static_cast<const std::byte*>(*data) : nullptr;
+  snapshot.mapping = tracked ? static_cast<std::byte*>(*data) : nullptr;
+  snapshot.byte_width = byte_width;
   snapshot.valid_begin = 0;
   snapshot.valid_end = 0;
 }
@@ -123,6 +140,16 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
   auto& snapshot = entry->second;
   // Called before the native Unmap, while the pointer is still valid.
   std::memcpy(snapshot.bytes.data(), snapshot.mapping, snapshot.bytes.size());
+  if (const auto& edit = view_mip_bias; edit.width != 0 && snapshot.bytes.size() >= (edit.size_vector + 1) * 16
+                                        && snapshot.byte_width >= (edit.bias_vector + 1) * 16) {
+    std::array<float, 4> view_size = {};
+    std::memcpy(view_size.data(), snapshot.bytes.data() + edit.size_vector * 16, sizeof(view_size));
+    if (view_size[0] == static_cast<float>(edit.width) && view_size[1] == static_cast<float>(edit.height)
+        && std::abs(view_size[0] * view_size[2] - 1.f) < 1e-3f && std::abs(view_size[1] * view_size[3] - 1.f) < 1e-3f) {
+      std::memcpy(snapshot.mapping + edit.bias_vector * 16, &edit.bias, sizeof(edit.bias));
+      biased_uploads.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
   snapshot.mapping = nullptr;
   snapshot.valid_end = static_cast<uint32_t>(snapshot.bytes.size());
   copied_bytes.fetch_add(snapshot.bytes.size(), std::memory_order_relaxed);
@@ -231,6 +258,16 @@ inline bool Read(ID3D11Buffer* buffer, uint64_t byte_offset, std::span<std::byte
 
 inline uint64_t CopiedBytes() {
   return internal::copied_bytes.load(std::memory_order_relaxed);
+}
+
+// From now on (width 0: off). Applies to buffers already watched (the TAA's View).
+inline void SetViewMipBias(const ViewMipBias& value) {
+  const std::lock_guard lock(internal::mutex);
+  internal::view_mip_bias = value;
+}
+
+inline uint64_t BiasedUploads() {
+  return internal::biased_uploads.load(std::memory_order_relaxed);
 }
 
 inline void Use(DWORD reason) {

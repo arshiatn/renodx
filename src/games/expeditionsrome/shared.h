@@ -35,6 +35,13 @@ struct ShaderInjectData {
 
   float film_grain;            // tonemapper: grain intensity and jitter
   float chromatic_aberration;  // tonemapper: scene color fringe
+  float ssao_mode;             // Ambient occlusion: 0 the game's, 1 GT-VBAO (talesofarise/ue_bitmask_ao.hlsli)
+  float ssao_radius;           // GT-VBAO: metres
+  float ssao_strength;         // GT-VBAO: exponent of the visibility, 1 GT-VBAO's own
+  float ssao_thickness;        // GT-VBAO: metres behind each depth sample (more far away)
+  float ssao_directions;       // GT-VBAO: 2^this directions around the view
+  float ssao_quality;          // GT-VBAO: 8 x 2^this samples per side of a direction
+  float ssao_frame;            // GT-VBAO: its noise's frame, 0-63
 };
 
 #define SI  shader_injection

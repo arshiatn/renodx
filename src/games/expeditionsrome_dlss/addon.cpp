@@ -8,6 +8,7 @@
 #include <include/reshade.hpp>
 
 #include <d3d11_1.h>
+#include <detours.h>
 #include <wrl/client.h>
 
 #include <embed/shaders.h>
@@ -25,6 +26,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <shared_mutex>
 #include <span>
 #include <string>
@@ -38,10 +40,13 @@
 #include "./code_patch.hpp"
 #include "./constant_mirror.hpp"
 #include "./constant_readback.hpp"
+#include "./contact_shadows.hpp"
 #include "./engine_cvars.hpp"
 #include "./engine_scale.hpp"
 #include "./native_state.hpp"
 #include "./ngx_backend.hpp"
+#include "../talesofarise_dlss/frame_generation.hpp"
+#include "../talesofarise_dlss/frame_trace.hpp"
 #include "./performance.hpp"
 #include "./temporal_capture.hpp"
 
@@ -87,6 +92,11 @@ struct PresetSettings {
   uint32_t value;
   const char* label;
 };
+
+// UE pads its render-size buffers to multiples of 4 (8 in later versions: switched to once seen). DLSS render sizes
+// are whole units of the output's aspect ratio in those multiples: the view fills its buffer and both axes get exactly
+// the same scale (no custom-scale shimmer; ATN, Shogun 2).
+std::atomic<uint32_t> buffer_multiple = 4;
 
 constexpr std::array<PresetSettings, 4> PRESETS = {{
     {.value = NVSDK_NGX_DLSS_Hint_Render_Preset_E, .label = "E (CNN, Fastest, Worst looking, not recommended)"},
@@ -144,6 +154,7 @@ struct State {
   reshade::api::device* device = nullptr;
   uint32_t width = 0;
   uint32_t height = 0;
+  uint32_t widest_display = 0;  // the widest monitor mode (volume texture guard)
   uint64_t generation = 0;
   uint64_t frame = 0;
   uint64_t claimed_frame = UINT64_MAX;
@@ -196,6 +207,25 @@ constexpr std::array<std::string_view, 2> JITTER_POSITION_LOADS = {
 constexpr size_t SIGNED_LOAD_OPCODE = 2;  // 0F BE (movsx) -> 0F B6 (movzx)
 std::array<expeditionsrome::code_patch::CodePatch, JITTER_POSITION_LOADS.size()> jitter_position_patches;
 
+// DLAA / DLSS use NVIDIA's jitter (as Tales): Halton (2, 3) over the whole pixel, 8 * (output / input)^2 positions (8
+// for DLAA), any length. UE's own: Halton only while it upscales and at most 255 positions (below 18% it repeats
+// early); at 100% a Gaussian of r.TemporalAASamples positions, denser in the middle. Every path of the jitter setup
+// ends at
+//   movss [rdi + TemporalJitterPixels.x], xmm7; lea rbx, [rdi + ...]; movss [rdi + TemporalJitterPixels.y], xmm8
+// and the projection jitter follows from xmm7 / xmm8. While an AA mode is on and the render size is known, the first
+// 5 bytes jump to a block next to the code (rip-relative reach) that loads the addon's sample (written every present)
+// into xmm7 / xmm8, stores x as the game did and jumps back; the jump is one atomic store (one aligned 8-byte block).
+constexpr std::string_view JITTER_STORE =
+    "F3 0F 11 BF ?? ?? 00 00 48 8D 9F ?? ?? 00 00 F3 44 0F 11 87 ?? ?? 00 00 F3 0F 58 FF";
+constexpr size_t JITTER_STORE_SIZE = 8;  // movss [rdi + disp32], xmm7
+constexpr size_t JUMP_SIZE = 5;          // jmp rel32
+struct HaltonJitter {
+  expeditionsrome::code_patch::CodePatch patch;  // the jump into the block
+  float* sample = nullptr;                       // x, y in input pixels
+  uint32_t positions = 0;
+  uint32_t index = 0;
+} halton_jitter;
+
 // Live render scale (engine_scale.hpp): the AA mode's percentage is written into
 // r.ScreenPercentage; Off or disabling puts the game's own value back.
 struct LiveScale {
@@ -241,6 +271,8 @@ constexpr size_t MAX_PRESET = 5;
 // In no preset at all, Game's own included (ATN: never reset by accident): shaders on load.
 constexpr std::wstring_view NO_PRESET_SETTING = L"r.CreateShadersOnLoad";
 constexpr const char* OPTIONAL_GROUP = "Optional (changes the look)";
+// Contact shadows' length in the Max preset (a share of the screen).
+constexpr float CONTACT_SHADOWS_MAX = .03f;
 constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
     {"Distance and detail", L"r.ViewDistanceScale", "Draw distance", Better::HIGHER, {1.5f, 2.f, 3.f, 20.f, KEEP},
      "How far objects are drawn."},
@@ -304,6 +336,10 @@ constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
      "Shadow sharpness from point lights such as torches."},
     {"Shadows", L"r.Shadow.TexelsPerPixelRectlight", "Rect light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
      "Shadow sharpness from area lights."},
+    {"Shadows", L"r.CapsuleShadowsFullResolution", "Character soft shadows at full resolution", Better::HIGHER, {KEEP, 1.f, 1.f, 1.f, KEEP},
+     "1: the soft shadows under characters at full resolution (the game: half)."},
+    {"Shadows", L"r.DFFullResolution", "Distance field shadows at full resolution", Better::HIGHER, {KEEP, KEEP, 1.f, 1.f, KEEP},
+     "1: distance field shadows (far objects) at full resolution (the game: half)."},
     {"Shadows", L"r.Shadow.MinResolution", "Distant object shadow resolution", Better::HIGHER, {KEEP, KEEP, KEEP, KEEP, 64.f},
      "Least resolution of distant objects' shadows."},
     {"Shadows", L"r.Shadow.FadeResolution", "Distant object shadow fade", Better::LOWER, {KEEP, KEEP, KEEP, KEEP, 32.f},
@@ -353,6 +389,13 @@ constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
      "-100: ambient occlusion at its highest quality even where a level asks for less (100: the level's own)."},
     {OPTIONAL_GROUP, L"r.LensFlareQuality", "Lens flare quality", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 3.f},
      "3: higher quality (bokeh-shaped) lens flares; the game uses 2."},
+    // UE 4.26's screen-space global illumination (off in the game): light bouncing off what is on screen.
+    {OPTIONAL_GROUP, L"r.SSGI.Enable", "Screen-space global illumination", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 1.f},
+     "1: light bounces off nearby surfaces onto others (Unreal's own, screen-space). Brighter shade, slower."},
+    {OPTIONAL_GROUP, L"r.SSGI.Quality", "Screen-space global illumination quality", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 4.f},
+     "Rays per pixel of the global illumination (1-4; 4: least noise)."},
+    {OPTIONAL_GROUP, L"r.SSGI.HalfRes", "Screen-space global illumination at half resolution", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 0.f},
+     "0: the global illumination at full resolution (sharper, slower)."},
     // In no preset (a load-time trade-off, not quality): read when an area's shaders load.
     {"Loading", L"r.CreateShadersOnLoad", "Shaders on load", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 1.f},
      "1: creates all of an area's shaders while it loads, instead of the first time an effect or material appears on\n"
@@ -376,6 +419,65 @@ constexpr size_t SUN_SHADOW_RESOLUTION = SettingIndex(L"r.Shadow.MaxCSMResolutio
 constexpr size_t VOLUMETRIC_FOG = SettingIndex(L"r.VolumetricFog");
 static_assert(SUN_SHADOW_CASCADES < SUN_SHADOW_RESOLUTION && SUN_SHADOW_RESOLUTION < GRAPHICS_SETTINGS.size());
 static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size());
+// "Effects at output resolution" (on by default, as Tales): while DLSS renders below 100%, settings sized in render
+// pixels follow the render scale s (render / output), so these effects keep the detail they have at 100%: cell sizes
+// and resolution divisors x s (nearest, at least 1), shadow texels per pixel / s (Unreal sizes object, spot, point and
+// rect light shadows by their size in render pixels), half-resolution switches at full resolution (1 where higher is
+// better, else 0). Sun shadows do not depend on the render scale; post-processing after the TAA runs at the output.
+enum class OutputScaling : uint8_t { NONE,
+                                     CELL_OR_DIVISOR,
+                                     PER_PIXEL,
+                                     FULL_RESOLUTION };
+struct OutputScaled {
+  std::wstring_view name;
+  OutputScaling scaling;
+};
+constexpr std::array<OutputScaled, 9> OUTPUT_SCALED = {{
+    {L"r.VolumetricFog.GridPixelSize", OutputScaling::CELL_OR_DIVISOR},
+    {L"r.LightShaftDownSampleFactor", OutputScaling::CELL_OR_DIVISOR},
+    {L"r.Shadow.TexelsPerPixel", OutputScaling::PER_PIXEL},
+    {L"r.Shadow.TexelsPerPixelSpotlight", OutputScaling::PER_PIXEL},
+    {L"r.Shadow.TexelsPerPixelPointlight", OutputScaling::PER_PIXEL},
+    {L"r.Shadow.TexelsPerPixelRectlight", OutputScaling::PER_PIXEL},
+    {L"r.CapsuleShadowsFullResolution", OutputScaling::FULL_RESOLUTION},
+    {L"r.DFFullResolution", OutputScaling::FULL_RESOLUTION},
+    {L"r.SSS.HalfRes", OutputScaling::FULL_RESOLUTION},
+}};
+constexpr auto OUTPUT_SCALING = [] {
+  std::array<OutputScaling, GRAPHICS_SETTINGS.size()> scaling = {};
+  for (const auto& [name, kind] : OUTPUT_SCALED) {
+    scaling[SettingIndex(name)] = kind;
+  }
+  return scaling;
+}();
+bool effects_at_output = true;
+// DLSS Frame Generation (Experimental, Tales' frame_generation.hpp): set at launch (config FrameGeneration).
+bool frame_generation = false;
+
+// UE 4.26's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
+constexpr uint32_t VIEW_VIEW_TO_CLIP_NO_AA = 32;
+constexpr uint32_t VIEW_FORWARD = 56;
+constexpr uint32_t VIEW_UP = 57;
+constexpr uint32_t VIEW_RIGHT = 58;
+constexpr uint32_t VIEW_WORLD_CAMERA_ORIGIN = 63;
+constexpr uint32_t VIEW_CLIP_TO_PREV_CLIP = 118;
+// The tonemapper's permutations (the HDR addon's t00-t09): frame generation's hudless colour after them.
+constexpr std::array<uint32_t, 10> TONEMAPPER_SHADERS = {0x316D5B96u, 0x70CBF75Eu, 0x3BAE1754u, 0xC4ABB3CCu, 0x3D18E77Bu,
+                                                         0xA77C9003u, 0xB176941Cu, 0xAAAEB4F0u, 0x2501C25Fu, 0x37FDFDF2u};
+
+// Frame generation's inputs from this frame's DLSS evaluation, submitted at present.
+struct FrameGenerationFrame {
+  std::shared_mutex mutex;
+  talesofarise::frame_generation::Inputs inputs;
+  uint64_t frame = UINT64_MAX;
+} frame_generation_frame;
+// Volume textures: D3D11 allows at most 2048 per side (Tales crashed creating a 3840-wide one: its divisors were scaled
+// at the 720p startup window and the game sized the volume from the full output). The fog grid is render width / cell
+// (UE clamps it too): cells stay at least max(output width, widest monitor mode) / 2048, so no window or monitor change
+// can reach the limit. The only volume Effects at output resolution touches; the depth slices are not scaled. The other
+// settings stay as large as at 100% (shadow maps: projected render pixels x texels per pixel, capped by
+// r.Shadow.MaxResolution <= 8192; full-resolution switches: the render size).
+constexpr size_t VOLUMETRIC_FOG_CELL = SettingIndex(L"r.VolumetricFog.GridPixelSize");
 // Each setting's own choice (a slider, as Ryse's options): 0 the game's value, else one of its choices (its distinct
 // preset values and extras, with steps between them); the preset buttons set every choice. Saved per setting in
 // ReShade.ini, section GRAPHICS_SECTION, key the cvar name, by value (SaveChoice): steps move the indexes. (The old
@@ -590,6 +692,11 @@ bool Evaluate(Frame* frame, bool replace) {
               frame->generation);
     return false;
   }
+  if (frame->temporal_upscaling && (frame->source_width != frame->render_width || frame->source_height != frame->render_height)
+      && buffer_multiple.exchange(8) != 8) {
+    renodx::utils::log::i("[Rome AA] The game pads ", frame->render_width, "x", frame->render_height, " to ",
+                          frame->source_width, "x", frame->source_height, ": render sizes in multiples of 8 from now on.");
+  }
   for (uint32_t row = 118; row < 122; ++row) {
     for (const float value : view[row]) {
       if (!std::isfinite(value)) {
@@ -771,6 +878,34 @@ bool Evaluate(Frame* frame, bool replace) {
                                                       .preset = preset.load(),
                                                   });
     runtime.performance.Mark(context);
+    if (evaluated && talesofarise::frame_generation::Presenting()) {
+      const auto& view = frame->view;
+      const auto vector = [&](uint32_t row) { return std::array<float, 3>{view[row][0], view[row][1], view[row][2]}; };
+      talesofarise::frame_generation::Inputs inputs = {
+          .depth = runtime.depth.resource,
+          .motion = runtime.motion.resource,
+          .render_width = frame->render_width,
+          .render_height = frame->render_height,
+          .jitter = {frame->taa[26][0], frame->taa[26][1]},
+          .reset = camera_cut || restart || skipped,
+          .camera = {
+              .position = vector(VIEW_WORLD_CAMERA_ORIGIN),
+              .right = vector(VIEW_RIGHT),
+              .up = vector(VIEW_UP),
+              .forward = vector(VIEW_FORWARD),
+              // UE's reversed infinite projection: its near plane at [14]; as far, UE's world size (centimetres).
+              .near_plane = view[VIEW_VIEW_TO_CLIP_NO_AA + 3][2],
+              .far_plane = 2097152.f,
+          },
+      };
+      for (size_t row = 0; row < 4; ++row) {
+        std::memcpy(&inputs.camera.view_to_clip[row * 4], view[VIEW_VIEW_TO_CLIP_NO_AA + row].data(), 16);
+        std::memcpy(&inputs.camera.clip_to_previous_clip[row * 4], view[VIEW_CLIP_TO_PREV_CLIP + row].data(), 16);
+      }
+      const std::unique_lock lock(frame_generation_frame.mutex);
+      frame_generation_frame.inputs = std::move(inputs);
+      frame_generation_frame.frame = frame->frame;
+    }
     if (evaluated && !replace) {
       // After the stock dispatch: its alpha, and its RGB where NVIDIA's is not finite.
       context->ClearState();
@@ -1018,7 +1153,22 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   if (swapchain->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   const auto desc = swapchain->get_device()->get_resource_desc(swapchain->get_back_buffer(0));
   Reset();
+  uint32_t widest_display = 0;
+  EnumDisplayMonitors(
+      nullptr, nullptr, [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
+        MONITORINFOEXW info = {};
+        info.cbSize = sizeof(info);
+        DEVMODEW mode = {};
+        mode.dmSize = sizeof(mode);
+        if (GetMonitorInfoW(monitor, &info) != FALSE && EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode) != FALSE) {
+          auto* widest = reinterpret_cast<uint32_t*>(data);
+          *widest = std::max(*widest, static_cast<uint32_t>(mode.dmPelsWidth));
+        }
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&widest_display));
   const std::unique_lock lock(state.mutex);
+  state.widest_display = widest_display;
   state.device = swapchain->get_device();
   state.width = desc.texture.width;
   state.height = desc.texture.height;
@@ -1042,6 +1192,9 @@ void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool) {
 }
 
 void OnDestroyDevice(reshade::api::device* device) {
+  if (device->get_api() == reshade::api::device_api::d3d11) {
+    expeditionsrome::dlss::contact_shadows::Release(reinterpret_cast<ID3D11Device*>(device->get_native()));
+  }
   bool matching;
   {
     const std::shared_lock lock(state.mutex);
@@ -1053,14 +1206,43 @@ void OnDestroyDevice(reshade::api::device* device) {
   }
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  // Debug: renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt;
+  // checked each second, the file removed).
+  if (static uint32_t presents = 0; ++presents % 60 == 0) {
+    if (DeleteFileW((talesofarise::frame_trace::internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
+      talesofarise::frame_trace::Request();
+    }
+  }
+  talesofarise::frame_trace::OnPresent();
+  if (talesofarise::frame_generation::Presenting()) {
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    uint64_t frame;
+    {
+      const std::shared_lock lock(state.mutex);
+      frame = state.frame;
+    }
+    talesofarise::frame_generation::Inputs inputs;
+    {
+      const std::shared_lock lock(frame_generation_frame.mutex);
+      if (frame_generation_frame.frame == frame) inputs = frame_generation_frame.inputs;
+    }
+    talesofarise::frame_generation::Submit(context, inputs, frame);
+  }
   const auto mode = requested_mode.load();
   bool changed;
   bool missed;
+  uint32_t width;
+  uint32_t height;
+  uint32_t widest_display;
   {
     const std::unique_lock lock(state.mutex);
     if (state.device != swapchain->get_device()) return;
+    width = state.width;
+    height = state.height;
+    widest_display = state.widest_display;
     changed = state.last_mode != mode;
     state.last_mode = mode;
     missed = state.claimed_frame != state.frame;
@@ -1083,6 +1265,34 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
       SetStatus(std::string("Stock TAA: waiting for ") + AA_MODES[static_cast<size_t>(mode)].label
                 + "; keep Fast or Ultra TAA and Temporal Upscaling ON below 100%");
     }
+  }
+
+  // The mode's render size: whole units of the output's aspect ratio, sides in buffer multiples (16:9 at 4K: 64x36,
+  // 60 steps), nearest to its scale. UE renders ceil(size * percentage / 100): the percentage written is a quarter
+  // pixel below the exact size. 0: the game's own.
+  float render_percentage = 0.f;
+  if (mode != AAMode::OFF && width != 0 && height != 0) {
+    const float scale = (mode == AAMode::DLSS_CUSTOM ? live.custom : AA_MODES[static_cast<size_t>(mode)].live_percentage) / 100.f;
+    const uint32_t multiple = buffer_multiple.load();
+    const uint32_t divisor = std::gcd(width, height);
+    const uint32_t units = std::lcm(multiple / std::gcd(multiple, width / divisor), multiple / std::gcd(multiple, height / divisor));
+    const uint32_t unit_width = width / divisor * units;
+    const uint32_t unit_height = height / divisor * units;
+    std::array<uint32_t, 2> render_size = {width, height};
+    if (scale < 1.f && unit_height * 20 <= height) {
+      const auto count = std::clamp(static_cast<uint32_t>(std::lround(scale * static_cast<float>(height / unit_height))), 1u, height / unit_height);
+      render_size = {count * unit_width, count * unit_height};
+    } else if (scale < 1.f) {
+      // No unit of 5% or finer (unusual aspect ratios): each side on its own.
+      const auto side = [&](uint32_t size) {
+        return std::clamp(static_cast<uint32_t>(std::lround(scale * static_cast<float>(size) / static_cast<float>(multiple))) * multiple, multiple, size);
+      };
+      render_size = {side(width), side(height)};
+    }
+    render_percentage = (render_size == std::array<uint32_t, 2>{width, height}
+                   ? 100.f
+                   : 100.f * std::min(static_cast<float>(render_size[0]) / static_cast<float>(width), static_cast<float>(render_size[1]) / static_cast<float>(height))
+                         - 25.f / static_cast<float>(std::max(width, height)));
   }
 
   // Live render scale: find r.ScreenPercentage once, then keep it at the mode's value.
@@ -1113,11 +1323,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
         }
       }
     } else if (finder.phase() == Phase::FOUND) {
-      const float desired = (mode == AAMode::DLSS_CUSTOM ? live.custom : AA_MODES[static_cast<size_t>(mode)].live_percentage);
       const auto current = finder.Get();
       if (!current) {
         live.problem = "r.ScreenPercentage is no longer readable";
-      } else if (desired <= 0) {
+      } else if (render_percentage <= 0) {
         if (live.controlling) finder.Set(live.game_value);
         live.controlling = false;
       } else {
@@ -1126,38 +1335,33 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           live.controlling = true;
           live.target = 0;
         }
-        if (*current != desired) {
+        if (*current != render_percentage) {
           // The game's menu sets it too: that becomes the value to restore, then ours is
           // written back, unless the game never lets it stay.
           if (*current != live.target) live.game_value = *current;
-          if (live.target == desired && ++live.writes > 20) {
+          if (live.target == render_percentage && ++live.writes > 20) {
             live.problem = "the game keeps resetting the render scale";
-          } else if (!finder.Set(desired)) {
+          } else if (!finder.Set(render_percentage)) {
             live.problem = finder.status();
           }
-          live.target = desired;
+          live.target = render_percentage;
           live.seen_at_write = seen_frames.load();
           live.width_at_write = static_cast<uint32_t>(seen_input.load());
           live.verified = false;
           live.note.clear();
-        } else if (live.target == desired && !live.verified && seen_frames.load() - live.seen_at_write >= 60) {
+        } else if (live.target == render_percentage && !live.verified && seen_frames.load() - live.seen_at_write >= 60) {
           // 60 temporal passes later (loading screens have none) the input must have changed.
           live.verified = true;
           live.retries = 0;
-          const auto width = static_cast<uint32_t>(seen_input.load());
-          uint32_t output_width;
-          {
-            const std::shared_lock lock(state.mutex);
-            output_width = state.width;
-          }
+          const auto input_width = static_cast<uint32_t>(seen_input.load());
           // UE renders ceil(width * percentage / 100).
-          const auto expected = static_cast<uint32_t>(std::ceil(static_cast<float>(output_width) * (desired / 100.f)));
-          if (output_width != 0 && width != 0 && std::abs(static_cast<int64_t>(width) - static_cast<int64_t>(expected)) > 1) {
-            if (width == live.width_at_write) {
-              live.problem = std::format("no effect: the input stayed {} pixels wide instead of {}", width, expected);
+          const auto expected = static_cast<uint32_t>(std::ceil(static_cast<float>(width) * (render_percentage / 100.f)));
+          if (width != 0 && input_width != 0 && std::abs(static_cast<int64_t>(input_width) - static_cast<int64_t>(expected)) > 1) {
+            if (input_width == live.width_at_write) {
+              live.problem = std::format("no effect: the input stayed {} pixels wide instead of {}", input_width, expected);
             } else {
-              live.note = std::format("the game renders {} pixels wide, not {}", width, expected);
-              renodx::utils::log::w("[Rome AA live scale] At ", desired, "% ", live.note, ".");
+              live.note = std::format("the game renders {} pixels wide, not {}", input_width, expected);
+              renodx::utils::log::w("[Rome AA live scale] At ", render_percentage, "% ", live.note, ".");
             }
           }
         }
@@ -1175,6 +1379,45 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if ((!live.enabled || !live.problem.empty()) && live.controlling) {
     if (finder.phase() == Phase::FOUND) finder.Set(live.game_value);
     live.controlling = false;
+  }
+
+  // Halton jitter: the render size is the live scale's (DLAA: the output), else UE's own pattern.
+  std::array<uint32_t, 2> jitter_render_size = {};
+  if (mode == AAMode::DLAA || (mode != AAMode::OFF && live.controlling && render_percentage > 0.f)) {
+    const auto rendered = [&](uint32_t size) {
+      return static_cast<uint32_t>(std::ceil(static_cast<float>(size) * (render_percentage / 100.f)));
+    };
+    jitter_render_size = (live.controlling && render_percentage > 0.f ? std::array<uint32_t, 2>{rendered(width), rendered(height)}
+                                                                      : std::array<uint32_t, 2>{width, height});
+  }
+  const bool halton = halton_jitter.sample != nullptr && jitter_render_size[0] != 0 && jitter_render_size[1] != 0;
+  if (halton) {
+    const auto positions = static_cast<uint32_t>(std::ceil(8. * width * height / (static_cast<double>(jitter_render_size[0]) * jitter_render_size[1])));
+    if (positions != halton_jitter.positions) {
+      halton_jitter.positions = positions;
+      halton_jitter.index = 0;
+    }
+    halton_jitter.index = (halton_jitter.index + 1) % positions;
+    const auto radical_inverse = [](uint32_t index, uint32_t base) {
+      float result = 0.f;
+      float fraction = 1.f;
+      for (; index != 0; index /= base) {
+        fraction /= static_cast<float>(base);
+        result += fraction * static_cast<float>(index % base);
+      }
+      return result;
+    };
+    // Read by the render thread at any time: each value on its own (both stay inside the pixel).
+    std::atomic_ref(halton_jitter.sample[0]).store(radical_inverse(halton_jitter.index + 1, 2) - .5f, std::memory_order_relaxed);
+    std::atomic_ref(halton_jitter.sample[1]).store(radical_inverse(halton_jitter.index + 1, 3) - .5f, std::memory_order_relaxed);
+  }
+  if (halton_jitter.patch.address != nullptr && halton_jitter.patch.applied != halton) {
+    if (expeditionsrome::code_patch::ApplyCodePatch(&halton_jitter.patch, halton)) {
+      renodx::utils::log::i("[Rome DLAA jitter] ", (halton ? std::format("NVIDIA's Halton (2, 3), {} positions", halton_jitter.positions)
+                                                           : std::string("the game's")), ".");
+    } else {
+      renodx::utils::log::w("[Rome DLAA jitter] Halton patch failed: ", halton_jitter.patch.details, ".");
+    }
   }
 
   // Graphics settings: the console is searched once (after r.ScreenPercentage's search), then each setting is kept at
@@ -1202,13 +1445,16 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     }
   }
   bool wrote = false;
+  const bool upscaling = live.controlling && render_percentage > 0.f && render_percentage < 100.f;
+  const float render_scale = (upscaling ? render_percentage / 100.f : 1.f);
   for (size_t index = 0; graphics.available && index < GRAPHICS_SETTINGS.size(); ++index) {
     auto& entry = graphics.entries[index];
     if (entry.cvar.values[0] == nullptr) continue;
     const auto& setting = GRAPHICS_SETTINGS[index];
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
+    const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    if (std::isnan(preset_value)) {
+    if (std::isnan(preset_value) && scaling == OutputScaling::NONE) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
         wrote = true;
@@ -1218,9 +1464,25 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     }
     if (!entry.controlling || current != entry.written) entry.game_value = current;
     entry.controlling = true;
-    float desired = preset_value;
-    if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, preset_value);
-    if (setting.better == Better::LOWER) desired = std::min(entry.game_value, preset_value);
+    float desired = (std::isnan(preset_value) ? entry.game_value : preset_value);
+    if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, desired);
+    if (setting.better == Better::LOWER) desired = std::min(entry.game_value, desired);
+    switch (scaling) {
+      case OutputScaling::CELL_OR_DIVISOR:
+        desired = std::max(1.f, std::round(desired * render_scale));
+        break;
+      case OutputScaling::PER_PIXEL:
+        desired /= render_scale;
+        break;
+      case OutputScaling::FULL_RESOLUTION:
+        desired = (setting.better == Better::HIGHER ? 1.f : 0.f);
+        break;
+      case OutputScaling::NONE:
+        break;
+    }
+    if (index == VOLUMETRIC_FOG_CELL && scaling != OutputScaling::NONE) {
+      desired = std::max(desired, std::ceil(static_cast<float>(std::max(width, widest_display)) / 2048.f));
+    }
     if (index == SUN_SHADOW_RESOLUTION) {
       const auto& cascades = graphics.entries[SUN_SHADOW_CASCADES];
       float cascade_count = 10.f;  // not found: Unreal's limit
@@ -1265,6 +1527,17 @@ void OnOverlay(reshade::api::effect_runtime*) {
     advanced = settings_mode == 1;
     reshade::set_config_value(nullptr, "Rome AA", "SettingsMode", settings_mode);
   }
+  // Section headings (ATN, as Ryse's): DLSS lavender (its settings too), Graphics pink, the rest green.
+  const auto heading = [](const char* label, ImU32 color) {
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    ImGui::SeparatorText(label);
+    ImGui::PopStyleColor();
+  };
+  constexpr ImU32 DLSS_COLOR = IM_COL32(0xB3, 0x9D, 0xDB, 0xFF);
+  constexpr ImU32 GRAPHICS_COLOR = IM_COL32(0xFF, 0x7F, 0xAF, 0xFF);
+  constexpr ImU32 OTHER_COLOR = IM_COL32(0x7E, 0xE0, 0x8A, 0xFF);
+  heading("DLSS", DLSS_COLOR);
+  ImGui::PushStyleColor(ImGuiCol_Text, DLSS_COLOR);
   auto mode = requested_mode.load();
   if (ImGui::BeginCombo("AA mode", AA_MODES[static_cast<size_t>(mode)].label)) {
     for (const AAMode option : MENU_ORDER) {
@@ -1321,6 +1594,15 @@ void OnOverlay(reshade::api::effect_runtime*) {
                       "DLAA and Off are not affected.%s%s",
                       example.c_str(), (graphics.searched && !lod_bias_found) ? "\n\nUnavailable: r.ViewTextureMipBias.* not found." : "");
   }
+  if (ImGui::Checkbox("Effects at output resolution (Recommended)", &effects_at_output)) {
+    reshade::set_config_value(nullptr, "Rome AA", "EffectsAtOutputResolution", effects_at_output);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Recommended (default): looks better, can cost some performance.\n"
+                      "While DLSS renders below 100%%, volumetric fog, light shafts, skin and the shadows of characters,\n"
+                      "objects and lamps keep the detail they have at 100%%.");
+  }
+  talesofarise::frame_generation::DrawSettings("Rome AA", &frame_generation);
   if (bool replace = replace_taa.load(); ImGui::Checkbox("Replace the game's TAA pass (faster)", &replace)) {
     replace_taa.store(replace);
     reshade::set_config_value(nullptr, "Rome AA", "ReplaceTAA", replace);
@@ -1372,7 +1654,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
   // jitter fix, 18% (its cap of 255).
   const bool jitter_fixed = std::ranges::all_of(jitter_position_patches, &expeditionsrome::code_patch::CodePatch::applied);
   const float lowest_scale = (jitter_fixed ? 18.f : 25.f);
-  if ((mode == AAMode::DLSS_CUSTOM && live.enabled && live.custom < lowest_scale)
+  if (!halton_jitter.patch.applied && (mode == AAMode::DLSS_CUSTOM && live.enabled && live.custom < lowest_scale)
       || (completed != 0 && extents[2] != 0
           && static_cast<float>(extents[0]) / static_cast<float>(extents[2]) < lowest_scale / 100.f - .005f)) {
     ImGui::TextWrapped("Below %.0f%%, the game's (UE's) jitter pattern gets too short for DLSS: the image can pulse blurry/sharp.",
@@ -1392,8 +1674,14 @@ void OnOverlay(reshade::api::effect_runtime*) {
                        expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[1]);
   }
 
-  ImGui::Separator();
-  ImGui::TextUnformatted("Graphics (applied live; a preset never lowers the game's own settings):");
+  ImGui::PopStyleColor();
+  heading("Graphics", GRAPHICS_COLOR);
+  ImGui::TextUnformatted("Applied live; a preset never lowers the game's own settings.");
+  // Not a cvar (contact_shadows.hpp): only Game's own (off) and Max set it.
+  const auto set_contact_shadows = [](float contact_length) {
+    expeditionsrome::dlss::contact_shadows::length.store(contact_length);
+    reshade::set_config_value(nullptr, "Rome AA", "ContactShadows", contact_length);
+  };
   for (size_t preset_index = 0; preset_index < GRAPHICS_PRESETS.size(); ++preset_index) {
     if (preset_index != 0) ImGui::SameLine();
     if (ImGui::Button(GRAPHICS_PRESETS[preset_index])) {
@@ -1426,10 +1714,25 @@ void OnOverlay(reshade::api::effect_runtime*) {
         entry.choice = (found == entry.choices.end() ? 0 : static_cast<int>(found - entry.choices.begin()) + 1);
         SaveChoice(entry);
       }
+      if (preset_index == 0) {
+        set_contact_shadows(0.f);
+      } else if (preset_index == MAX_PRESET) {
+        set_contact_shadows(CONTACT_SHADOWS_MAX);
+      }
     }
   }
   if (!graphics.status.empty()) ImGui::TextWrapped("%s", graphics.status.c_str());
   ImGui::TextWrapped("Some settings apply after loading a new area, anisotropic filtering to textures loaded afterwards. Insane and Max are very heavy and use a lot of VRAM. Max puts every setting at its highest, the optional ones too. Every preset keeps the game's volumetric fog: turning it off or lowering it is the biggest saving. Shaders on load is in no preset.");
+  if (float percent = expeditionsrome::dlss::contact_shadows::length.load() * 100.f;
+      ImGui::SliderFloat("Contact shadows (Experimental)", &percent, 0.f, 10.f, (percent > 0.f ? "%.1f%% of the screen" : "Off"),
+                         ImGuiSliderFlags_AlwaysClamp)) {
+    set_contact_shadows(percent / 100.f);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Unreal's own short sun shadows where things meet the ground and in small gaps (screen-space).\n"
+                      "Longer: shadows reach farther from contact points; can show halos at the screen's edges.\n"
+                      "Max preset: %.0f%%.", CONTACT_SHADOWS_MAX * 100.f);
+  }
   const auto& volumetric_fog = graphics.entries[VOLUMETRIC_FOG].cvar;
   const bool fog_off = volumetric_fog.values[0] != nullptr && volumetric_fog.Get() == 0.f;
   const char* open_group = nullptr;
@@ -1466,7 +1769,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
   }
   if (!advanced) return;
 
-  ImGui::Separator();
+  heading("Advanced", OTHER_COLOR);
   if (ImGui::Checkbox("Set the game's render scale from the AA mode (live)", &live.enabled)) {
     reshade::set_config_value(nullptr, "Rome AA", "LiveScale", live.enabled);
     if (live.enabled) {
@@ -1495,9 +1798,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
       ImGui::Text("Texture LOD bias: log2(render scale) %+g (the game's: %+g, at least %g)", texture_lod_bias.cvars[0].Get(),
                   texture_lod_bias.game_values[0], texture_lod_bias.game_values[1]);
     }
-    ImGui::Text("Game jitter pattern: %s (NVIDIA recommends %u or more); jitter fix: %s",
+    ImGui::Text("Jitter pattern: %s (NVIDIA recommends %u or more); %s",
                 phases != 0 ? std::to_string(phases).c_str() : "measuring", recommended,
-                jitter_fixed ? "on" : "not found (pattern correct down to 25%)");
+                (halton_jitter.patch.applied ? "NVIDIA's Halton (2, 3)"
+                                             : (jitter_fixed ? "the game's, position fix on" : "the game's (correct down to 25%)")));
     ImGui::Text("NVIDIA history resets: camera cuts %llu, skipped frames %llu, restarts %llu",
                 static_cast<unsigned long long>(diagnostics.camera_cuts.load()),
                 static_cast<unsigned long long>(diagnostics.skipped_frames.load()),
@@ -1533,6 +1837,24 @@ void OnOverlay(reshade::api::effect_runtime*) {
   ImGui::TextWrapped("Diagnostic capture only: choose AA Off, keep TAA on, then capture at fixed Screen Percentage / Temporal Upscaling settings. Capturing does not enable DLSS.");
   ImGui::TextWrapped("%s", expeditionsrome::dlss::temporal_capture::Snapshot().c_str());
 }
+
+// After the tonemapper's draw: frame generation's hudless colour from its target (at the output size only).
+constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!talesofarise::frame_generation::Presenting()) return {};
+  return {.post_callback = [](Context& command, const void*) {
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    if (context == nullptr) return;
+    ComPtr<ID3D11RenderTargetView> target;
+    context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+    uint64_t frame;
+    {
+      const std::shared_lock lock(state.mutex);
+      frame = state.frame;
+    }
+    talesofarise::frame_generation::DrawHudless(context, target.Get(), frame);
+  }};
+};
 
 }  // namespace
 
@@ -1602,6 +1924,10 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   }
   if (int settings_mode = 0; reshade::get_config_value(nullptr, "Rome AA", "SettingsMode", settings_mode)) advanced = settings_mode == 1;
   if (bool replace = true; reshade::get_config_value(nullptr, "Rome AA", "ReplaceTAA", replace)) replace_taa.store(replace);
+  reshade::get_config_value(nullptr, "Rome AA", "EffectsAtOutputResolution", effects_at_output);
+  if (float contact_length = 0.f; reshade::get_config_value(nullptr, "Rome AA", "ContactShadows", contact_length)) {
+    expeditionsrome::dlss::contact_shadows::length.store(std::isfinite(contact_length) ? std::clamp(contact_length, 0.f, .1f) : 0.f);
+  }
   if (reshade::get_config_value(nullptr, "Rome AA", "CustomScale", live.custom)) {
     live.custom = std::isfinite(live.custom) ? std::clamp(std::round(live.custom), 1.f, 100.f) : 50.f;
   }
@@ -1624,6 +1950,10 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
                                                                                                                                         : renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW),
                                                                                                 });
   }
+  renodx::utils::command_action::Register(expeditionsrome::dlss::contact_shadows::OnLightRectangle, {
+                                                                                                        .shader_hash = expeditionsrome::dlss::contact_shadows::LIGHT_RECTANGLE_SHADER,
+                                                                                                        .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
+                                                                                                    });
   for (size_t index = 0; index < JITTER_POSITION_LOADS.size(); ++index) {
     auto& patch = jitter_position_patches[index];
     patch = {};
@@ -1638,6 +1968,54 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
       renodx::utils::log::w("[Rome DLAA jitter] Jitter position load ", index, " not fixed: ", patch.details, ".");
     }
   }
+  halton_jitter = {};
+  if (uint8_t* site = expeditionsrome::code_patch::FindPattern(JITTER_STORE, &halton_jitter.patch.details); site != nullptr) {
+    DWORD region_size = 0;
+    auto* region = static_cast<uint8_t*>(DetourAllocateRegionWithinJumpBounds(site, &region_size));
+    DWORD protection = 0;
+    if (region != nullptr && region_size >= 64 && VirtualProtect(region, 64, PAGE_EXECUTE_READWRITE, &protection)) {
+      // The sample at +0, the block at +16: movss xmm7, [x]; movss xmm8, [y]; the game's store; jmp back.
+      auto* sample = region;
+      uint8_t* block = region + 16;
+      std::vector<uint8_t> code = {0xF3, 0x0F, 0x10, 0x3D, 0, 0, 0, 0, 0xF3, 0x44, 0x0F, 0x10, 0x05, 0, 0, 0, 0};
+      code.insert(code.end(), site, site + JITTER_STORE_SIZE);
+      code.insert(code.end(), {0xE9, 0, 0, 0, 0});
+      const auto x = static_cast<int32_t>(sample - (block + 8));
+      const auto y = static_cast<int32_t>(sample + 4 - (block + 17));
+      const auto back = static_cast<int32_t>(site + JITTER_STORE_SIZE - (block + code.size()));
+      std::memcpy(code.data() + 4, &x, sizeof(x));
+      std::memcpy(code.data() + 13, &y, sizeof(y));
+      std::memcpy(code.data() + code.size() - 4, &back, sizeof(back));
+      std::memset(sample, 0, 8);
+      std::memcpy(block, code.data(), code.size());
+      FlushInstructionCache(GetCurrentProcess(), block, code.size());
+      std::vector<uint8_t> jump = {0xE9, 0, 0, 0, 0};
+      const auto to_block = static_cast<int32_t>(block - (site + JUMP_SIZE));
+      std::memcpy(jump.data() + 1, &to_block, sizeof(to_block));
+      halton_jitter.sample = reinterpret_cast<float*>(sample);
+      halton_jitter.patch.address = site;
+      halton_jitter.patch.original = std::vector<uint8_t>(site, site + JUMP_SIZE);
+      halton_jitter.patch.replacement = std::move(jump);
+      renodx::utils::log::i("[Rome DLAA jitter] Found the jitter store ", halton_jitter.patch.details, ": Halton (2, 3) while DLAA / DLSS is on.");
+    } else {
+      renodx::utils::log::w("[Rome DLAA jitter] Halton jitter unavailable: no memory near the code.");
+    }
+  } else {
+    renodx::utils::log::w("[Rome DLAA jitter] The jitter store was not found (", halton_jitter.patch.details, "): the game's jitter.");
+  }
+  // Frame generation takes over the game's swap chain, which it makes after its device.
+  talesofarise::frame_generation::LoadSettings("Rome AA", &frame_generation);
+  if (frame_generation) {
+    std::wstring module_path(32768, L'\0');
+    module_path.resize(GetModuleFileNameW(module, module_path.data(), static_cast<DWORD>(module_path.size())));
+    talesofarise::frame_generation::Install(std::filesystem::path(module_path).parent_path(), "Expeditions");
+    for (const uint32_t shader_hash : TONEMAPPER_SHADERS) {
+      renodx::utils::command_action::Register(OnTonemapper, {
+                                                                .shader_hash = shader_hash,
+                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
+                                                            });
+    }
+  }
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
@@ -1650,6 +2028,8 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
   if (attached) {
     renodx::utils::command_action::Unregister(OnCommand);
     renodx::utils::command_action::Unregister(expeditionsrome::dlss::temporal_capture::OnCommand);
+    renodx::utils::command_action::Unregister(expeditionsrome::dlss::contact_shadows::OnLightRectangle);
+    talesofarise::frame_trace::Stop();
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     expeditionsrome::dlss::constants::Use(DLL_PROCESS_DETACH);
@@ -1667,6 +2047,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     graphics.console.Refresh();
     RestoreTextureLodBias();
     for (auto& patch : jitter_position_patches) expeditionsrome::code_patch::ApplyCodePatch(&patch, false);
+    expeditionsrome::code_patch::ApplyCodePatch(&halton_jitter.patch, false);
     Reset();
     attached = false;
   }

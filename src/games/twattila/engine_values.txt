@@ -1,0 +1,645 @@
+Total War: ATTILA - graphics engine values ("tweaks") that the game reads
+=========================================================================
+
+Found in the game's code by name (RenoDX tools: tw_tweaks32.py / tw_tweaks.py, tw_tweak_uses32.py / 64.py).
+Each is a named value the game keeps in memory and its code reads (values nothing reads are left out).
+Game: its built-in value
+(bools are set at run time: not listed). In the mod: a RenoDX slider or switch changes it (Graphics 2 of 2).
+Most are read when a battle or the campaign loads. Changing some may break the game or crash it.
+
+name                                                      type           game  in the mod
+------------------------------------------------------------------------------------------
+accumulated_screenshot_gamma_fix_enabled                  bool                 
+ALIGN_TO_TERRAIN                                          bool                 
+ALL_UNITS_VISIBLE                                         bool                 
+ALWAYS_ALIGN_TO_TERRAIN                                   bool                 
+ALWAYS_OVERRIDE_FACIAL_ANIMATION                          bool                 
+ANGLE_IN_DEGREES_FROM_CAMERA_TO_CONSIDER_ENTITY_ANIMS     float            50  
+ANIMAL_RANDOM_BEARING_OFFSET                              float      0.523599  
+ANIMAL_RANDOM_POSITION_OFFSET                             float           0.1  
+AOIT_GRASS_MAX_DISTANCE                                   float            15  yes
+AOIT_GRASS_MIN_DISTANCE                                   float             0  
+AOIT_TREE_MAX_DISTANCE                                    float            35  yes
+AOIT_TREE_MIN_DISTANCE                                    float             0  
+ARMY_FLAG_SCALE                                           float          0.65  
+ARMY_FLAG_WIND_STRENGTH                                   float           0.2  
+ARMY_FLAG_Y_OFFSET                                        float           0.2  
+AUTO_SET_ON_FIRE                                          bool                 
+AWARENESS_ANIM_MAX_TIME                                   float            45  
+AWARENESS_ANIM_MIN_TIME                                   float            10  
+battle_building_always_draw_last_lod                      bool                 yes
+battle_building_enable_lod_size_scale                     bool                 yes
+battle_building_fix_lod_range                             bool                 yes
+battle_building_lod0_distance                             float           100  yes
+battle_building_lod1_distance                             float           200  yes
+battle_building_lod2_distance                             float           300  yes
+battle_building_lod3_distance                             float           600  yes
+battle_building_lod4_distance                             float         10000  
+battle_building_lod_scale_nominal_size                    float            20  yes
+battle_building_no_draw_distance_calibration              float           400  
+battle_building_no_draw_enable                            bool                 yes
+battle_building_no_draw_size_calibration                  float             2  
+battle_entity_always_draw_last_lod                        bool                 yes
+battle_entity_distance_scalar                             float             1  yes
+battle_entity_large_distance_scalar                       float            30  yes
+battle_entity_lod0_distance                               float             5  yes
+battle_entity_lod1_distance                               float            10  yes
+battle_entity_lod2_distance                               float            30  yes
+battle_entity_lod3_distance                               float           100  yes
+battle_entity_lod4_distance                               float         10000  
+battle_entity_medium_distance_scalar                      float           1.2  yes
+battle_entity_small_distance_scalar                       float             1  yes
+battle_fauna_always_create_boars                          bool                 
+battle_fauna_always_create_camels                         bool                 
+battle_fauna_always_create_crows                          bool                 
+battle_fauna_always_create_deer                           bool                 
+battle_fauna_always_create_elephants                      bool                 
+battle_fauna_always_create_ibises                         bool                 
+battle_fauna_always_create_lions                          bool                 
+battle_fauna_always_create_milans                         bool                 
+battle_fauna_always_create_peasants                       bool                 
+battle_fauna_always_create_seagulls                       bool                 
+battle_fauna_always_create_turtle_doves                   bool                 
+battle_fauna_always_create_vultures                       bool                 
+battle_fauna_always_create_whales                         bool                 
+battle_fauna_always_create_wolves                         bool                 
+battle_fauna_no_fauna                                     bool                 
+battle_prop_scale_position                                float             1  
+battle_ship_always_draw_last_lod                          bool                 
+battle_ship_lod0_distance                                 float            60  
+battle_ship_lod1_distance                                 float           120  
+battle_ship_lod2_distance                                 float           200  
+battle_ship_lod3_distance                                 float           300  
+battle_ship_lod4_distance                                 float         10000  
+battle_static_quadtree_border_size                        float             0  
+BATTLE_TERRAIN_DISPLAY_PLAYABLE_BORDER_ENABLED            bool                 
+battle_view_very_large_static_quadtree                    bool                 
+battle_visibility_min_tree_distance                       float             0  
+battle_visibility_render_target_size                      int             512  
+battle_vomit_anims_weight                                 float          0.15  
+BEARING_IN_DEGREES_TO_POSITION_TO_CONSIDER_ENTITY_ANIMS   float            45  
+begin_battle_with_camera_faded                            bool                 
+BLOOD_INTENSITY_INCREMENT                                 float          0.25  yes
+BMD_LOAD_GRASS                                            bool                 
+BMD_LOAD_TREES                                            bool                 
+building_destruction_anims                                bool                 yes
+building_destruction_emitters                             bool                 yes
+building_display_enable_simple_add_instance               bool                 
+building_effect_partially_visible_alpha                   float          0.05  
+BUILDING_FIRE_PROPAGATION                                 bool                 
+BUILDING_FIRE_STAGE_ONE_DURATION                          float            18  
+BUILDING_FIRE_STAGE_TWO_DURATION                          float            10  
+BUILDING_LITE_BURN_SHADER_AMOUNT                          float           0.3  
+BUILDING_LITE_FIRE_STAGE_ONE_DURATION                     float            30  
+BUILDING_LITE_FIRE_STAGE_TWO_DURATION                     float            15  
+BUILDING_LITE_MAX_BURN_SHADER_AMOUNT                      float             1  
+BURN_SHADER_AMOUNT                                        float           0.3  
+cached_spline_use_elevation                               bool                 
+cached_spline_vfx_length                                  float           0.1  
+cam_dof_circle_radius                                     float             0  
+CAMERA_FAR_CLIP_PLANE                                     float             0  
+CAMERA_HEIGHT_MAX_SEA                                     float           150  
+CAMERA_HEIGHT_MIN_SEA                                     float          15.5  
+CAMERA_LINEAR_SPEED                                       float             0  
+CAMERA_NEAR_CLIP_PLANE                                    float             0  
+campaign_agent_locomotion_speed                           float          1.25  
+campaign_animation_fallback_blendtime                     float          0.75  
+campaign_dead_character_fade_s                            float             5  
+CAMPAIGN_DESERT_SAMPLE_DISTANCE                           float           1.5  
+CAMPAIGN_DISPLAY_BORDERS_ENABLED                          bool                 
+CAMPAIGN_DISPLAY_BUILDINGS_ENABLED                        bool                 
+CAMPAIGN_DISPLAY_CHARACTERS_ENABLED                       bool                 
+CAMPAIGN_DISPLAY_EFFECTS_ENABLED                          bool                 
+CAMPAIGN_DISPLAY_FLAGS_ENABLED                            bool                 
+CAMPAIGN_DISPLAY_PROPS_ENABLED                            bool                 
+CAMPAIGN_DISPLAY_SHROUD_ENABLED                           bool                 
+CAMPAIGN_DISPLAY_TERRAIN_ENABLED                          bool                 
+CAMPAIGN_DISPLAY_TRADE_ENABLED                            bool                 
+CAMPAIGN_DISPLAY_TREES_ENABLED                            bool                 
+campaign_grass_always_draw_last_lod                       bool                 yes
+campaign_grass_lod0_distance                              float            60  yes
+campaign_grass_lod1_distance                              float            60  yes
+campaign_grass_lod2_distance                              float            60  yes
+campaign_grass_lod3_distance                              float            60  yes
+campaign_grass_lod4_distance                              float            60  yes
+campaign_prop_large_size_threshold                        float             1  
+campaign_props_max_distance                               float            60  yes
+campaign_sea_transparency_override                        float            -1  yes
+campaign_sea_uv_scale                                     float            -1  yes
+campaign_shroud_display_suppress                          bool                 
+CAMPAIGN_SHROUD_SAMPLE_DISTANCE                           float           1.5  
+campaign_sky_scale                                        float          37.5  
+campaign_tree_always_draw_last_lod                        bool                 yes
+campaign_tree_lod0_distance                               float            30  
+campaign_tree_lod1_distance                               float            60  
+campaign_tree_lod2_distance                               float            90  
+campaign_tree_lod3_distance                               float           120  
+campaign_tree_lod4_distance                               float         10000  
+campaign_view_min_wind_strength                           float           0.5  
+campaign_view_wind_multiplier                             float            20  
+CAMPAIGN_WATER_EMITTERS_COUNT                             int              16  
+CAMPAIGN_WATER_EMITTERS_SAMPLE_COUNT                      int               5  
+CAMPAIGN_WATER_SEA_SAMPLE_DISTANCE                        float           1.5  
+character_mouseover_vfx_alpha                             float          0.33  
+CINDY_ENABLE_RECORDING_FORCE_LOD                          bool                 
+CINDY_ENABLE_STATUS_RENDER                                bool                 
+CINDY_POINT_LIGHT_SHADOW_QUALITY_HIGH                     bool                 yes
+CINDY_POINT_LIGHT_SHADOWS_ENABLED                         bool                 yes
+cindy_shadows                                             bool                 yes
+cindy_smoothing_parameter                                 float           0.3  
+cindy_smoothing_threshold                                 float             1  
+clipping_plane_distance                                   float           120  yes
+combat_witness_kill_without_animation                     bool                 
+CONTEXT_CAMERA_FAR_PLANE                                  float          5000  
+CONTEXT_CAMERA_FOV                                        float        1.5708  
+CONTEXT_CAMERA_NEAR_PLANE                                 float          0.15  
+CREAK_SIEGE_TOWER_TIME_NORMAL_FREQUENCY                   float             5  
+cull_clouds_scale                                         float             2  yes
+cull_sea                                                  bool                 
+d3d11_enable_draw                                         bool                 
+d3d11_enable_drawcall_commands                            bool                 
+d3d11_enable_state_cache                                  bool                 
+d3d11_windowed_double_buffer                              bool                 
+d3d11_windowed_set_maximum_frame_latency                  int               1  
+dead_time_alpha_fade_out_seconds                          float             5  
+DECAL_MIN_PROJECTILE_SPEED                                float             2  
+destruction_blend_bottom                                  float         65535  
+destruction_blend_top                                     float            64  
+destruction_zone_cease_tollerence                         float          0.01  
+destruction_zone_effect_time_per_level                    int             300  
+destruction_zone_effect_time_per_level_speedup            int             150  
+destruction_zone_expansion_tolerance                      float             6  
+destruction_zone_expansion_variation_high                 int               6  
+destruction_zone_expansion_variation_low                  int               3  
+destruction_zone_extra_cost_value                         int               1  
+destruction_zone_number_anchors                           int              20  
+destruction_zone_squared_distance_per_blur_level          float             1  
+destruction_zone_squared_distance_per_blur_level_center   float            15  
+destruction_zone_termination_level_multiplier             float             1  
+destruction_zone_tree_fire_percentage                     float            50  
+detail_normal_uv_scale1                                   float           1.2  
+detail_normal_uv_scale2                                   float           1.2  
+detail_normal_uv_speed1                                   float             1  
+detail_normal_uv_speed2                                   float             1  
+DISABLE_FIRE_AT_WILL                                      bool                 
+disable_render                                            bool                 
+disable_water_stenciling                                  bool                 
+DISMEMBER_ANGULAR_VELOCITY_MULTIPLIER                     float             2  
+DISMEMBER_VELOCITY_MULTIPLIER                             float             2  
+display_fps                                               bool                 
+DISTANCE_FROM_CAMERA_TO_CONSIDER_SHIP_BASED_ENTITY_ANIMS  float           250  
+DISTANCE_SQUARED_RESPOND_TO_PROJECTILE_EXPLOSION_ANIM     float           750  
+DISTANCE_SQUARED_RESPOND_TO_PROJECTILE_IMPACT_ANIM        float           500  
+DRAGOUT_RENDER_ENTITIES                                   bool                 
+draw_decal_bounds                                         bool                 
+draw_decal_bounds_solid                                   bool                 
+draw_point_light_bounds                                   bool                 
+draw_point_light_cubes                                    bool                 
+enable_battle_visibility_view                             bool                 
+enable_battle_visibility_view_buildings                   bool                 
+enable_battle_visibility_view_fog_of_war                  bool                 
+enable_battle_visibility_view_gpu_acceleration            bool                 
+enable_battle_visibility_view_trees                       bool                 
+enable_bi_directional_attach_point_searching              bool                 
+enable_borderless_desktop_window_mode                     bool                 
+enable_crossfade_blend                                    bool                 
+enable_entity_fast_cull                                   bool                 yes
+ENABLE_NIGHT_LIGHTS                                       bool                 yes
+enable_projectile_burst_velocity_modifier                 bool                 
+ENABLE_PROJECTILE_INCOMING                                bool                 
+enable_rendered_visibility                                bool                 
+enable_surface_texture                                    bool                 
+enable_tbb_building_display                               bool                 
+enable_tbb_building_lite_display                          bool                 
+enable_tbb_draw_naval_proxy                               bool                 
+enable_tbb_draw_tracker                                   bool                 
+enable_tbb_fill_animation_texture                         bool                 
+enable_tbb_tree_display                                   bool                 
+enable_vertex_attrib_binding                              bool                 
+ENGINE_ROPE_PULLING_LENGTH_FACTOR                         float           0.5  
+ENGINE_ROPE_RELAXED_LENGTH_FACTOR                         float           1.2  
+ENGINE_ROPE_VERLET_ITERATIONS                             int              25  
+ENT_COMBAT_AWARENESS_RANGE                                float             3  
+ENTITY_DISPLAY_ALPHA_OVERRIDE                             float             1  
+ENTITY_DISPLAY_ENABLE_ALPHA_CHANGE                        bool                 
+entity_display_enable_imposter_shadows                    bool                 yes
+entity_display_imposter_scale                             float             1  
+ENTITY_DISPLAY_PROXIMITY_FADE_START                       float           0.4  
+entity_display_shadow_extrusion_multiplier                float             1  yes
+entity_display_shadow_max_shadow_distance                 float         10000  
+entity_display_shared_pose_scale                          float             1  yes
+entity_display_use_imposter_variants_for_all              bool                 yes
+ENTITY_LOD_OVERRIDE                                       bool                 
+ENTITY_MAN_TRACKER_DEFAULT_BLEND_DURATION                 float           0.2  
+entity_range_scale_max_distance                           float             0  
+entity_range_scale_max_scale                              float             3  
+entity_range_scale_min_distance                           float             0  
+ENTITY_TRACKER_ALPHA_CHANGE_SPEED                         float           0.5  
+ENTITY_TRACKER_COMBAT_CHAINING_BLEND_DURATION             float             0  
+ENTITY_TRACKER_DEFAULT_BLEND_DURATION                     float           0.3  
+ENTITY_TRACKER_MAX_TRANSITION_BLEND_DURATION              float           0.2  
+ESCALATION_BUILDINGS_ON_FIRE                              bool                 
+EXTRA_DOCKING_DISTANCE_FROM_WALL                          float             1  
+EZ_SENTINAL_RANGE                                         float          6.25  
+FACIAL_ANIMATION_DISTANCE                                 float            10  
+far_building_border                                       float             0  
+far_buildings                                             bool                 yes
+final_shadow_split_blend_fraction                         float           0.2  yes
+fire_arc_width                                            float           2.5  
+fire_arc_width_tacmap                                     float            10  
+FIRE_AREA_AFFECT_DETONATION_RADIUS_LOWER                  float           0.5  
+fire_now                                                  bool                 
+FLAG_AND_INDICATOR_MASTER_SCALE                           float             1  
+FLAG_DISPLAY_REGISTRATION_ENABLED                         bool                 
+flag_wind_show_strength                                   bool                 
+flag_wind_strength_change                                 float            20  
+flag_wind_strength_max                                    float           1.2  
+flag_wind_strength_min                                    float           0.5  
+flat_sea_surface                                          bool                 
+foam_cut_off_value                                        float             1  
+foam_decay_rate                                           float             1  
+foam_enabled                                              bool                 
+foam_fade_in_time                                         float             1  
+FOOTSTEP_VFX_DISTANCE                                     float            25  
+force_unit_imposters                                      bool                 yes
+FOREST_EMITTERS_COUNT                                     int               4  
+FOREST_EMITTERS_MAX_DISTANCE                              float           100  
+FOREST_EMITTERS_MIN_DISTANCE                              float            40  
+FOREST_EMITTERS_SAMPLE_COUNT                              int              12  
+FOREST_EMITTERS_SAMPLE_DIRECTIONS                         int              16  
+FOREST_LEVEL_FOR_FOREST_WILDLIFE                          float           0.4  
+FOREST_MAX_DISTANCE                                       float           150  
+FORT_WALL_VISIBILITY_GRID_LOG2                            int               7  
+froth_distortion_amount                                   float             1  
+froth_distortion_speed                                    float             1  
+g_battle_terrain_on_shadow_cam_depth_offset_battle        float          5000  yes
+g_deep_smallwaves_cutoff                                  float          1500  
+g_deep_wind_dependency                                    float           0.4  
+g_deep_wind_dir_x                                         float             1  
+g_deep_wind_dir_y                                         float             0  
+g_deep_wind_speed                                         float            32  
+g_new_shadow_map_sample_bias                              float             0  
+g_point_light_shadow_map_sample_bias                      float          0.99  
+g_shallow_smallwaves_cutoff                               float          1500  
+g_shallow_wind_dependency                                 float           0.8  
+g_shallow_wind_dir_x                                      float             1  
+g_shallow_wind_dir_y                                      float             0  
+g_shallow_wind_speed                                      float            10  
+g_water_repeat_time                                       float             5  
+gl_enable_draw                                            bool                 
+grass_alpha_add                                           float             0  
+grass_alpha_mul                                           float           2.5  yes
+GRASS_ANGLE_CULL_AMOUNT                                   float           0.7  yes
+grass_burn_override                                       float            -1  
+grass_far_addition                                        float          -0.5  yes
+GROUP_BURNING_DEATH_TIME                                  float             2  
+GROUP_INJURED_MAX_REFIRE_TIME                             float           0.5  
+GROUP_PROJECTILE_EXPLOSION_MAX_REFIRE_TIME                float           0.5  
+GROUP_PROJECTILE_FIRE_MAX_DELAY                           float           0.4  
+GROUP_PROJECTILE_FIRE_MAX_REFIRE_TIME                     float           0.5  
+group_spray_points                                        bool                 
+GUERRILLA_MIN_DIST_FROM_KEY_BUILDING                      float           100  
+HANDS_ANIMATION_DISTANCE                                  float            10  
+HEAD_TRACKING                                             bool                 yes
+HUGE_IMPOSTER_DISTANCE                                    float          1000  
+HUGE_SHARED_POSE_DISTANCE                                 float           500  
+hull_sea_foam_duration                                    float             6  
+hull_sea_foam_end_scale                                   float           2.5  
+hull_sea_foam_fade_in                                     float             1  
+hull_sea_foam_fade_out                                    float             4  
+hull_sea_foam_start_scale                                 float             2  
+IGNORE_CAN_PLAY_UNIT_TURN_TO_ANIMS_TEST                   bool                 
+IMPOSTER_FOV_SCALE                                        float             1  
+imposter_min_offset                                       float             1  
+INTENSITY_FIRE_SPREADING_DIST_SQ                          float             6  
+KNOT_DISTANCE                                             float            50  
+LARGE_IMPOSTER_DISTANCE                                   float           250  
+LARGE_SHARED_POSE_DISTANCE                                float            75  
+lf_coastal_inner_size                                     float          -0.5  
+lf_coastal_outer_size                                     float             1  
+max_dist_for_jumping                                      float             6  
+MAX_DISTANCE_BUILDING_LARGE                               float           200  
+MAX_DISTANCE_BUILDING_LARGE_RUMBLE                        float           370  
+MAX_DISTANCE_BUILDING_MEDIUM                              float           150  
+MAX_DISTANCE_BUILDING_MEDIUM_RUMBLE                       float           320  
+MAX_DISTANCE_BUILDING_SMALL                               float            70  
+MAX_DISTANCE_BUILDING_SMALL_RUMBLE                        float           290  
+MAX_HDR_SUN_COLOUR_SCALE                                  float         25000  
+max_height_for_jumping_up_to_grapple_rope                 float             2  
+MAX_TREE_SCALE                                            float           1.2  
+MEDIUM_IMPOSTER_DISTANCE                                  float           150  
+MEDIUM_SHARED_POSE_DISTANCE                               float            50  
+MIN_CAN_POINT_INSTEAD_OF_FACE_DISTANCE_SQUARED            float           200  
+MIN_ENTITIES_TO_PLAY_ANIMS                                int              10  
+min_height_diff_for_using_grapple_ropes                   float             1  
+MIN_TRAVEL_DISTANCE_FOR_UNIT_APPROACHING                  float            50  
+MIN_TREE_SCALE                                            float           0.8  
+naval_flag_distance_scale                                 float           200  
+naval_flag_size                                           float           0.5  
+naval_flag_wind_clip_distance                             float           200  
+naval_flag_wind_direction_change                          float            10  
+naval_flag_wind_display_enabled                           bool                 
+naval_flag_wind_show_strength                             bool                 
+naval_flag_wind_strength_change                           float             1  
+naval_flag_wind_strength_max                              float            10  
+naval_flag_wind_strength_min                              float             1  
+naval_render_wakes                                        bool                 
+NAVY_FLAG_SCALE                                           float             1  
+new_shadows                                               bool                 yes
+NIGHT_LIGHT_OFFSET                                        float            10  
+NIGHT_LIGHT_RANGE                                         float            13  
+NIGHT_SPOT_DISTANCE_REDUCTION                             float           0.8  
+NO_VARIANT_DISTANCE                                       float           100  
+NUM_BUILDINGS_ON_FIRE_TRIGGER_FIRE_EVENT                  int              15  
+OIT_GRASS_MAX_DISTANCE                                    float            25  yes
+OIT_GRASS_MIN_DISTANCE                                    float             0  
+oit_multi_pass                                            bool                 
+OIT_TREE_MAX_DISTANCE                                     float            25  yes
+OIT_TREE_MIN_DISTANCE                                     float             0  
+OWN_BORDER_COLOUR_B                                       int               0  
+OWN_BORDER_COLOUR_G                                       int              60  
+OWN_BORDER_COLOUR_R                                       int             180  
+PERCENT_UNITS_WAVERING_EVENT                              int              20  
+porthole_shadows_partial_clear                            bool                 
+porthole_use_current_scene_lighting                       bool                 
+precache_ui                                               bool                 
+PROJECTILE_CAMERA_ENDING_TIMER_HIT                        int            6000  
+PROJECTILE_CAMERA_ENDING_TIMER_MISS                       int            3000  
+PROJECTILE_CAMERA_TIME_DILATION_INVERSE_COEFFICIENT       float            15  
+PROJECTILE_CAMERA_TRANSITION_DURATION_S                   float             1  
+projectile_impulse                                        float            25  
+PROJECTILE_METAL_FRONT_ANGLE                              float             0  
+PROJECTILE_TRACKER_ARROW_SCALE                            float           1.5  
+quadtree_disable_cache                                    bool                 
+r_deep_waves_scale                                        float             4  
+r_deep_waves_scale_xz                                     float             8  
+r_shallow_waves_scale                                     float             4  
+r_shallow_waves_scale_xz                                  float             4  
+READY_ENTER_RANGE                                         float            40  
+reflection_flattening_factor                              float           0.5  
+RELEASE_ANIMALS_ON                                        bool                 
+RELEASE_ANIMALS_RANGE                                     float           150  
+render_battle_props                                       bool                 
+render_character_bleed_fade_in_seconds                    float             2  
+render_character_bleed_max_intensity                      float          0.75  
+render_character_diff_state_anim_speed_mod                float          1.25  
+render_character_teleport_fade_seconds                    float          0.25  
+render_clouds                                             bool                 
+render_disable_ship                                       bool                 
+render_disable_ship_planks                                bool                 
+render_disable_ship_verlet                                bool                 
+render_entities                                           bool                 
+render_front_spray                                        bool                 
+render_imposters                                          bool                 
+render_sea_flat                                           bool                 
+render_sea_foam                                           bool                 
+render_sea_surface                                        bool                 
+render_ship_splashes                                      bool                 
+render_side_spray                                         bool                 
+render_skip_dip                                           bool                 
+render_skip_disabled_techniques                           bool                 
+render_skydome                                            bool                 
+render_vfx_far_distance                                   float            80  yes
+report_mesh_budget                                        bool                 
+rescale_battle_prop_decals                                bool                 
+rescale_battle_prop_decals_lower_safety_margin            float          0.25  
+rescale_battle_prop_decals_upper_safety_margin            float           0.5  
+RIGGING_UPDATE_ALL_SAILS                                  bool                 
+rigid_cache_enabled                                       bool                 
+rigid_calc_texel_density                                  bool                 
+rigid_campaign_tree_lod                                   float           100  yes
+rigid_campaign_tree_zprefill                              bool                 
+rigid_cloth_particle_mass                                 float             1  
+rigid_min_number_instances_for_async_tbb                  int             100  
+rigid_rope_culling_threshold                              float          4000  yes
+rigid_rope_flex                                           float             1  
+rigid_rope_particle_mass                                  float             5  
+rigid_rope_wind_pressure_scalar                           float          0.01  
+rigid_show_weighted_cloth_sim_mesh                        bool                 
+rigid_show_weighted_cloth_unsimulated                     bool                 
+rigid_show_weighted_mesh                                  bool                 
+rigid_tesselation_displacement_scale                      float           0.4  
+rigid_tesselation_factor                                  float             5  
+rigid_update_animation_texture                            bool                 
+ROPE_DISTANCE                                             float           200  yes
+ROPE_DISTANCE_FADEOUT                                     float           150  yes
+rot_velocity_foam                                         float           0.4  
+round_sea_camera                                          bool                 
+scrub_lod_distance_default                                int             200  yes
+scrub_node_always_render                                  bool                 yes
+scrub_node_instances                                      int               0  
+scrub_node_mem                                            int               0  
+sea_choppiness                                            float           1.8  
+sea_decay                                                 float        0.0006  
+sea_fps                                                   float            10  
+sea_horz_scale                                            float            70  
+SEA_LEVEL_FOR_SEAGULL                                     float           0.2  
+sea_mesh_offset_distance                                  float             3  
+sea_num_divisions                                         float           256  
+sea_phillips_constant                                     float      5.32e-05  
+sea_quantisation_distance                                 float            20  
+sea_repeat_time                                           float            10  
+sea_shininess                                             float          1000  
+sea_wind_speed                                            float            10  yes
+shadow_cam_depth_offset_campaign                          float            14  yes
+shadow_split_blend_fraction                               float           0.1  yes
+shadow_split_campaign_min_distance_delta                  float          0.01  
+shadow_split_enlargement_safe_zone                        float          1.05  yes
+shadow_split_min_cosine_angle_delta                       float      0.999998  
+shadowmap_split_scale                                     float             1  
+SHIP_DISPLAY_MAX_LATERAL_WIND_FORWARD_SCALE               float             5  
+ship_display_max_sail_simulations_per_frame               int               8  
+SHIP_DISPLAY_MIN_FORWARD_WIND                             float             1  
+ship_display_multi_thread_sail_simulation                 bool                 
+ship_display_num_sail_simulations_per_thread              int               2  
+SHIP_DISPLAY_SAIL_ROPES_BREAK_DAMAGE_MULTIPLIER           float             1  
+SHIP_DISPLAY_SAIL_ROPES_BREAK_VALUE                       float             0  
+SHIP_DISPLAY_SAILS_BURN_MULTIPLIER                        float             1  
+SHIP_DISPLAY_SAILS_BURN_SPEED                             float          0.03  
+SHIP_DISPLAY_SAILS_BURN_VALUE                             float             0  
+SHIP_DISPLAY_SAILS_DAMAGE_MULTIPLIER                      float             1  
+SHIP_DISPLAY_SAILS_DAMAGE_SPEED                           float             1  
+SHIP_DISPLAY_SAILS_DAMAGE_VALUE                           float             0  
+SHIP_DISPLAY_SAILS_PROJECTILE_EFFECT_MULTIPLIER           float           0.1  
+ship_display_update_all_sail_simulations                  bool                 
+SHIP_DISPLAY_WIND_SCALE                                   float            30  
+SHIP_DRUM_CLOSEST_DISTANCE                                float           150  
+SHIP_ENTITY_BEARING_BLEND_FACTOR                          float           0.1  
+SHIP_FIRE_DESTRUCTION_TICKS                               int             150  
+SHIP_HULL_SPLASH_PROBABILITY                              float          0.35  
+SHIP_ROTATIONAL_VELOCITY_SAIL_WIND_GUST                   float          0.15  
+SHOW_FIREARCS                                             bool                 
+skip_model_shadow                                         bool                 
+sky_hdr_scaler                                            float             1  
+SMALL_IMPOSTER_DISTANCE                                   float           100  
+SMALL_SHARED_POSE_DISTANCE                                float            50  
+soft_collision_display_alpha                              float           0.8  
+SOFT_COLLISION_OBJECT_DEAD_MASS_MODIFIER                  float          0.15  
+SPLINE_HEIGHT_ABOVE_SEA                                   float             1  
+SPLINE_HEIGHT_ABOVE_TERRAIN                               float           0.2  
+spray_cut_off_value                                       float             1  
+spray_duration                                            float             1  
+spray_speed                                               float             1  
+ssr_reflections_blur_min_depth                            float           0.5  
+ssr_reflections_blur_min_normal_similarity                float          0.98  
+ssr_reflections_blur_pass_blur_radius_multiplier_max      float             5  
+ssr_reflections_blur_pass_blur_radius_multiplier_min      float             2  
+START_EVERY_BUILDING_ON_FIRE                              bool                 
+swell_fps                                                 float             2  
+swell_horz_scale                                          float           800  
+swell_num_divisions                                       float           128  
+swell_phillips_constant                                   float      3.25e-08  
+swell_repeat_time                                         float            30  
+swell_wind_speed                                          float         12.74  
+tbb_battle_props                                          bool                 
+tbb_draw_tracker_grain                                    int              50  
+tbb_dynamic_platform_grain                                int             500  
+tbb_entity_cache_location_grain                           int             100  
+tbb_fill_animation_texture_grain                          int              32  
+tbb_naval_proxy_model_updated_grain                       int               5  
+tbb_sea_foam_grain                                        int               8  
+tbb_tracker_model_updated_grain                           int              50  
+tbb_update_cloud_instances_grain_size                     int              40  
+terrain_always_rebuild_block_instances                    bool                 
+terrain_blend_contrast                                    float             0  
+terrain_blend_gain                                        float             1  
+terrain_campaign_waterplane_scale_w                       float             2  
+terrain_campaign_waterplane_scale_x                       float            15  
+terrain_campaign_waterplane_scale_y                       float            15  
+terrain_campaign_waterplane_scale_z                       float             2  
+terrain_clip_intersected                                  bool                 
+terrain_disable_height_tests                              bool                 
+terrain_draw                                              bool                 
+terrain_editor_normal_strength                            float           0.5  
+terrain_editor_tile_max_y                                 float           200  
+terrain_editor_tile_min_y                                 float           -50  
+terrain_editor_v3_tile_max_y                              float          5000  
+terrain_editor_v3_tile_min_y                              float           -50  
+terrain_enable_blend                                      bool                 
+terrain_enable_custom_geom                                bool                 
+terrain_enable_fringes                                    bool                 
+terrain_enable_shadows                                    bool                 yes
+terrain_enable_threaded_vis                               bool                 
+terrain_enable_water_plane                                bool                 
+terrain_far_blend_end                                     float            24  
+terrain_far_blend_start                                   float             9  
+terrain_far_shader_distance                               float          1500  
+terrain_hf_height                                         float           200  
+terrain_invisible                                         bool                 
+terrain_lf_height                                         float           200  
+terrain_lod_addition                                      float             0  
+terrain_lq_infield_blend_range                            float           100  
+terrain_matrix_optimisation                               bool                 
+terrain_mid_distance_detail_far                           float           256  
+terrain_mid_distance_detail_near                          float            86  
+terrain_mid_distance_detail_near_lq                       float             0  
+terrain_mid_distance_detail_scale                         float            65  
+terrain_mid_distance_detail_strength                      float           0.6  
+terrain_mid_distance_normal_strength                      float             1  
+terrain_mid_distance_slope_factor                         float             3  
+terrain_mid_distance_slope_high                           float             1  
+terrain_mid_distance_slope_low                            float          0.35  
+terrain_near_distance_detail_distance                     float             1  
+terrain_near_distance_scale                               float             1  
+terrain_near_distance_strength                            float             1  
+terrain_normal_lf_scale                                   float             1  
+terrain_normal_terrain_scale                              float             1  
+terrain_normal_tile_scale                                 float             1  
+terrain_prop_additional_area                              float             0  
+terrain_redraw_far                                        bool                 
+terrain_refraction_offset                                 float          -0.2  
+terrain_refraction_scale                                  float           4.1  
+terrain_render_override                                   bool                 
+terrain_render_wireframe                                  bool                 
+terrain_scale                                             float         16384  
+terrain_sea_lf_height                                     float           400  
+terrain_skip_vis                                          bool                 
+terrain_stencil_blends                                    bool                 
+terrain_vertical_offset                                   float             0  
+terrain_visible_blend_tiles                               float            82  
+terrain_visible_tiles                                     float           600  
+terrain_vtex_commit_changes_check                         bool                 
+terry_lf_normal_scale                                     float             4  
+test_battle_vomit_anims                                   bool                 
+test_blood_amount                                         float             0  
+test_dismember_clip_threshold                             float             0  
+texture_manager_async_wait_timeout                        int            1000  
+texture_manager_enable_async_load                         bool                 
+texture_manager_enable_cache_update                       bool                 
+throwing_grapples_max_distance                            float            15  
+tile_map_cache_block_count                                int             128  
+tile_map_cache_block_size                                 int           16384  
+tile_map_cache_stream_block_size                          int           65536  
+TIME_RANGE_END_TIME_OFFSET                                float         1e-05  
+TIME_UNTIL_NEXT_SAIL_WIND_GUST_MULTIPLIER_IS_GUSTY        float           0.2  
+TIME_UNTIL_NEXT_SAIL_WIND_GUST_MULTIPLIER_IS_MOVING       float           0.2  
+TIME_UNTIL_NEXT_SAIL_WIND_GUST_MULTIPLIER_IS_STORMY       float           0.2  
+TIME_UNTIL_NEXT_SAIL_WIND_GUST_MULTIPLIER_IS_TURNING      float          0.15  
+tree_burn_override                                        float            -1  
+tree_fizzle_cull                                          float             0  
+tree_lod_scaler                                           float          1.35  yes
+tree_lodding_method                                       bool                 yes
+turning_angle_to_dest_proportion                          float           0.8  
+unit_dust_frequency_override                              float             0  
+UPDATE_TIME_BASE_NEAR                                     float          0.25  
+use_vfs_cacheing                                          bool                 
+vegetation_block_enable                                   bool                 yes
+vegetation_create_default_soft_collision                  bool                 
+vegetation_hstrength                                      float          0.91  yes
+vegetation_vstrength                                      float          0.08  yes
+VEHICLE_BURN_SHADER_AMOUNT                                float           0.3  
+VEHICLE_FIRE_STAGE_ONE_DURATION                           float            18  
+VEHICLE_FIRE_STAGE_TWO_DURATION                           float            10  
+VEHICLE_RAM_DEAD_TIME_BEFORE_FADE_OUT_START               float            10  
+VEHICLE_RAM_FADE_OUT_SPEED                                float             2  
+velocity_foam                                             float             7  
+VFX_DEFAULT_DISTANCE_FROM_CAMERA                          float          0.01  
+VFX_EMITTER_ORIENTATION_AXIS_LENGTH                       float            10  
+VFX_ENABLE                                                bool                 
+VFX_FAR_DISTANCE_CULLING_BIAS                             float             0  
+VFX_HACK_IGNORE_XREF_MODIFICATION                         bool                 
+VFX_MIN_PROJECTILE_SPEED                                  float           6.5  
+VFX_PARALLEL_UPDATER                                      bool                 
+VFX_RENDER_PARTICLES                                      bool                 
+VFX_RIGID_ALPHA_END                                       float             0  
+VFX_RIGID_ALPHA_MID_A                                     float             1  
+VFX_RIGID_ALPHA_MID_B                                     float             1  
+VFX_RIGID_ALPHA_START                                     float             1  
+VFX_RIGID_ALPHA_TIME_A                                    float             0  
+VFX_RIGID_ALPHA_TIME_B                                    float          0.75  
+VFX_SHOW_EMISSION_SURFACE                                 bool                 
+VFX_SHOW_EMISSION_SURFACE_GEOM                            bool                 
+VFX_SHOW_EMITTER_ORIENTATION                              bool                 
+VFX_SIMULATION_PARALLEL_UPDATE_PARTICLE_TEXTURE           bool                 
+VFX_SORT_PARTICLES                                        bool                 yes
+VFX_WIND_ANGLE_DELTA                                      float             5  
+VFX_WIND_SCALE_FACTOR                                     float            20  yes
+video_decode_deadline                                     int               0  
+visibility_view_R8                                        bool                 
+vtex_allow_teleport_detect                                bool                 
+vtex_battle_frame_blend_budget                            int               0  
+vtex_campaign_frame_blend_budget                          int               0  
+vtex_check_duplicate_cache_pages                          bool                 
+vtex_do_reduction                                         bool                 
+vtex_enable_copy_to_cache                                 bool                 
+vtex_enable_terrain_touch                                 bool                 
+vtex_mip_levels_requested_each_frame                      int               0  
+vtex_verify_page_table_sync                               bool                 
+vtex_wait_for_touch                                       bool                 
+WAKE_TEXTURE_HEIGHT                                       float            35  
+warp_distance                                             float             0  
+warp_shadows                                              bool                 yes
+warscape_load_cache_file_size_limit                       int         1048576  
+warscape_load_cache_report                                bool                 
+WATER_LAKE_MAX_DISTANCE                                   float           100  
+WATER_RIVER_MAX_DISTANCE                                  float           100  
+WATER_SEA_MAX_DISTANCE                                    float           180  
+WATER_WILDLIFE_RANDOM_DIST                                float            25  
+wave_trough_y_value                                       float             0  
+wheel_sea_foam_duration                                   float            12  
+wheel_sea_foam_end_scale                                  float             6  
+wheel_sea_foam_fade_in                                    float           0.5  
+wheel_sea_foam_fade_out                                   float           3.5  
+wheel_sea_foam_start_scale                                float             1  
+
+632 values.

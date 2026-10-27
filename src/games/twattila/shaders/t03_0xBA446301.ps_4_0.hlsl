@@ -64,8 +64,9 @@ Texture2D<float4> s_fog_of_war_mask : register(t2);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
+#include "../hdr_to_screen.hlsli"
 #include "../psycho_test30.hlsli"
+#include "../render_scale.hlsli"
 
 
 void main(
@@ -81,7 +82,7 @@ void main(
   r0.xy = g_screen_size.zw * r0.xy;
 
   // Depth of Field
-  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
+  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, (r0.xy) * FrameRenderShare(), 0).yzxw;
   r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r1.w = 1;
   r0.z = dot(r1.xyzw, inv_projection._m02_m12_m22_m32);
@@ -97,7 +98,7 @@ void main(
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);
   r0.z = 1 + -r0.z;
-  r0.z *= (HDR == 1.f) ? SI.dof : 1.f;  // DOF slider (HDR only): scales the blur size, 0 = off
+  r0.z *= (HDR >= 1.f) ? SI.dof : 1.f;  // DOF slider (HDR only): scales the blur size, 0 = off
   r2.xyzw = float4(0,0,0,0);
   r0.w = 0;
   r1.z = 0;
@@ -107,7 +108,7 @@ void main(
     r3.xy = -sample_data_5x5[r1.z].xy * r0.zz + r0.xy;
     r3.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r3.xy, r3.y).xyzw;
     // HDR keeps highlights in the blur; SDR keeps the stock clamp.
-    r3.xyzw = (HDR == 1.f) ? max(sample_data_5x5[r1.z].zzzz * r3.xyzw, 0.f) : saturate(sample_data_5x5[r1.z].zzzz * r3.xyzw);
+    r3.xyzw = (HDR >= 1.f) ? max(sample_data_5x5[r1.z].zzzz * r3.xyzw, 0.f) : saturate(sample_data_5x5[r1.z].zzzz * r3.xyzw);
     r2.xyzw = r3.xyzw + r2.xyzw;
     r0.w = sample_data_5x5[r1.z].z + r0.w;
     r1.z = (int)r1.z + 1;
@@ -118,7 +119,7 @@ void main(
   r2.xyzw = blur_kernel_scale * r2.xyzw + r3.xyzw;
 
   // 3D Projection
-  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
+  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, (r0.xy) * FrameRenderShare(), r0.y).yzxw;
   r0.xyw = r1.xyw;
   r1.x = dot(r0.xyzw, inv_view_projection._m00_m10_m20_m30);
   r1.w = dot(r0.xyzw, inv_view_projection._m02_m12_m22_m32);
@@ -161,8 +162,8 @@ void main(
   r2.xyzw = r2.xyzw + -r1.zzzw;
   r0.xyzw = r0.xxxx * r2.xyzw + r1.xyzw;
 
-  // Exact stock SDR output path. Only HDR == 1 continues to PsychoV30.
-  if (HDR != 1)
+  // Exact stock SDR output path. HDR continues to PsychoV30 / V31.
+  if (HDR < 1.f)
   {
     r0.xyz = saturate(g_brightness * r0.xyz);
     r0.xyz = log2(r0.xyz);
@@ -173,13 +174,7 @@ void main(
     o0.y = dot(r1.xyzw, colour_matrix._m01_m11_m21_m31);
     o0.z = dot(r1.xyzw, colour_matrix._m02_m12_m22_m32);
     o0.w = r0.w;
-    
-    // Restore the UNORM clamp lost to the FP16 upgrade.
-    o0.xyzw = saturate(o0.xyzw);
-
-    o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, g_gamma_output);
-    o0.xyz *= SI.diffuse_white_nits / SI.graphics_white_nits;  // scene at paper white
-    o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz, 2.0f);
+    o0 = SdrToScreenOutput(o0);
     return;
   }
 
@@ -188,27 +183,6 @@ void main(
   // fixed_exposure is basically in-game Brightness but I have it fixed at 1 which is the same as 10 in-game brightness
   const float fixed_exposure = 1.f;
   float3 hdr_color = r0.xyz * fixed_exposure;
-
-  // Bring to 0 - 1.0 -> do color matrix -> get back up. Gamma 2.0 = stock at in-game gamma 20.
-  float matrix_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, HDR_PEAK);
-  float3 matrix_input_linear = hdr_color * matrix_scale;
-  float3 matrix_input_gamma = renodx::color::gamma::EncodeSafe(matrix_input_linear, 2.0f);
-
-  //OG color Matrix
-  float4 matrix_input = float4(matrix_input_gamma, 1.f);
-  float3 matrix_output_gamma;
-  matrix_output_gamma.x = dot(matrix_input, colour_matrix._m00_m10_m20_m30);
-  matrix_output_gamma.y = dot(matrix_input, colour_matrix._m01_m11_m21_m31);
-  matrix_output_gamma.z = dot(matrix_input, colour_matrix._m02_m12_m22_m32);
-
-  float3 graded_shaped = renodx::color::gamma::DecodeSafe(matrix_output_gamma, 2.0f);
-  float3 graded_hdr = renodx::math::DivideSafe(graded_shaped, matrix_scale.xxx, graded_shaped);
-
-  // PsychoV30 tone mapper (Test30 implementation).
-  o0.xyz = ApplyAttilaPsychoV30(graded_hdr);
-
-  o0.xyz *= SI.diffuse_white_nits / SI.graphics_white_nits;  // scene at paper white
-  o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz, 2.0f);
-  o0.w = saturate(output_alpha);
+  o0 = HdrToScreenOutput(hdr_color, output_alpha);
   return;
 }

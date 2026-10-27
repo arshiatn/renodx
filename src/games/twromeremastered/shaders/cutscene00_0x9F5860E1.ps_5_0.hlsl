@@ -15,7 +15,7 @@ SamplerState s5_s : register(s5);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
+#include "../autohdr.hlsli"
 
 
 void main(
@@ -46,8 +46,13 @@ void main(
   // Restore the UNORM clamp lost to the FP16 upgrade.
   o0 = saturate(o0);
 
+  // Video AutoHDR stretches 8-bit steps: Video Dithering adds 1 code value (peak to peak) of interleaved gradient
+  // noise first, static in screen space.
+  if (HDR >= 1.f && SI.video_autohdr > 0.f && SI.video_dithering != 0.f) {
+    o0.xyz += (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f;
+  }
   o0.xyz = renodx::color::gamma::EncodeSafe(
-      renodx::color::gamma::DecodeSafe(o0.xyz)
+      AutoHdrHighlights(renodx::color::gamma::DecodeSafe(saturate(o0.xyz)), SI.video_autohdr)
       * (SI.diffuse_white_nits / SI.graphics_white_nits));
   return;
 }

@@ -41,7 +41,10 @@ Texture2D<float4> g_scurve_texture_sampler : register(t3);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
+#include "../tone_mapper.hlsli"
+// The bloom: a smooth cubic sample of its small texture (bloom_filter.hlsli; stock: one bilinear tap).
+#include "../bloom.hlsli"
+#include "../../twattila/render_scale.hlsli"
 
 void main(
   float4 v0 : SV_Position0,
@@ -52,103 +55,13 @@ void main(
   uint4 bitmask, uiDest;
   float4 fDest;
 
-  // FOR HDR: OTHERWISE DO SDR
-  // SUMMARY OF HDR PATH:
-  // ----------------------------------------------
-  // 1) Grab the scene, bloom, hdr color and etc.
-  // 2) measure the luminance
-  // 3) Apply camera exposure (without clamp)
-  // 4) Scale down with NeuTwo to get between 0 and 1 to apply LUT
-  // 5) Apply the Cinematic Contrast
-  // 6) Scale it back up
-  // 7) Final stuff
-  // ----------------------------------------------
-
-  if (HDR == 1.f)
-  {
-    // This defines the standard mathematical weights used to calculate how bright a color appears 
-    // to the human eye based on its Red, Green, and Blue values.
-    const float3 kLuminance = float3(0.212599993f, 0.715200007f, 0.0722000003f);
-
-    //Sample stuff
-    float2 texcoord = g_screen_size.zw * (g_vpos_texel_offset + v0.xy);
-    float4 scene_sample = g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, texcoord, 0);
-    float4 bloom_sample = g_hdr_rgb_bloom_texture_sampler.SampleLevel(g_hdr_rgb_bloom_texture_sampler_s, texcoord, 0);
-    float4 black_white_points = g_black_and_white_points_sampler.SampleLevel(g_black_and_white_points_sampler_s, float2(0.5f, 0.5f), 0);
-
-    // Vignette
-    float2 vignette_offset = v0.xy - g_screen_size.xy * 0.5f;
-    float vignette_position = g_vignette_enable * g_recip_half_screen_diag* length(vignette_offset);
-    float vignette_position_2 = vignette_position * vignette_position;
-    float vignette_scale =
-        1.f
-        + 1.60193861f * vignette_position_2 * vignette_position_2
-        - 3.24679637f * vignette_position_2 * vignette_position
-        + 1.24311411f * vignette_position_2
-        - 0.219172657f * vignette_position;
-
-    // If in-game Vignette is off, make Vignette slider do nothing
-    // TODO: checek if is needed. It could be possible, game will do some weird stuff with math and Idk give vignette_scale 0.999999999
-    if (g_vignette_enable == 1) {
-        // Scales the darkening (same as lerp up to 1), clamped so 2 can reach black.
-        vignette_scale = 1.f - saturate((1.f - vignette_scale) * SI.vignette);
-    }
-
-    // Removing Rome II's p.w scene-luminance cap makes the stock xyY
-    // reconstruction equivalent to scaling scene RGB by the vignette.
-    // Applying Bloom and Vignette
-    float3 hdr_color = max(scene_sample.xyz * vignette_scale, 0.f.xxx);
-    hdr_color = max(hdr_color + bloom_sample.xyz * SI.bloom,0.f.xxx);
-
-    // Keep the stock black subtraction and adaptive exposure normalization,
-    // but do not upper-clamp the scene or the normalized result.
-    // SUMMARY: To apply color grading without messing up the actual colors (hue/saturation),
-    // the shader separates the brightness from the color:
-
-    // Calculates the total range of brightness in the scene using the black and white points.
-    float linear_luminance_range = max(black_white_points.w - black_white_points.y, 0.000001f);
-    // Calculates the brightness of the current pixel using the kLuminance weights we established at the start.
-    float hdr_luminance = dot(hdr_color, kLuminance);
-    // Shifts the pixel's brightness into a standardized scale based on the scene's overall exposure.
-    float normalized_luminance = max(hdr_luminance - black_white_points.y, 0.f) / linear_luminance_range;
-    // Separates the raw color from its brightness so they can be modified independently
-    float3 untonemapped = hdr_luminance > 0.f
-                              ? hdr_color * (normalized_luminance / hdr_luminance)
-                              : 0.f.xxx;
-
-    // Rome II grades scalar log luminance. A luminance-based NeuTwo proxy
-    // preserves that behavior more faithfully than Attila's RGB proxy.
-    float curve_scale = normalized_luminance > 0.f
-                            ? renodx::tonemap::Neutwo(normalized_luminance) / normalized_luminance
-                            : 1.f;
-    float3 curve_input = untonemapped * curve_scale;
-    float curve_input_luminance = normalized_luminance * curve_scale;
-
-    // **Different compared to linear way of Attila**
-    // Return the bounded proxy to Rome II's adaptive log-luminance domain.
-
-    // Converts the linear brightness data into a logarithmic scale.
-    float log_luminance_range = max(black_white_points.z - black_white_points.x, 0.000001f);
-    float curve_domain_luminance = max(black_white_points.y + curve_input_luminance * linear_luminance_range, 0.000001f);
-
-    // Calculates the exact coordinate needed to read the game's color grading texture.
-    float curve_coordinate = (log2(curve_domain_luminance) * 0.30103001f - black_white_points.x) / log_luminance_range;
-    // Reads the cinematic contrast value from the game's S-curve texture.
-    float curve_value = g_scurve_texture_sampler.Sample(g_scurve_texture_sampler_s, float2(curve_coordinate, 0.5f)).x;
-    // Uses exp2 to convert the logarithmic data back into linear brightness now that the contrast has been applied.
-    float mapped_luminance = exp2((curve_value * log_luminance_range + black_white_points.x)* 3.32192802f);
-    float graded_proxy_luminance = max((mapped_luminance - black_white_points.y) / linear_luminance_range, 0.f);
-
-    // Recombines the new, color-graded brightness with the pixel's original color.
-    float3 graded_proxy = curve_input_luminance > 0.f
-                              ? curve_input * (graded_proxy_luminance / curve_input_luminance)
-                              : 0.f.xxx;
-
-    // scale up safely 
-    o0.xyz = renodx::math::DivideSafe(graded_proxy, curve_scale.xxx, graded_proxy);
-
-    // get the alpha 0-1
-    o0.w = saturate(scene_sample.w + bloom_sample.w);
+  // HDR: tone_mapper.hlsli.
+  if (HDR >= 1.f) {
+    const float2 texcoord = g_screen_size.zw * (g_vpos_texel_offset + v0.xy);
+    o0 = ToneMapperHdr(g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, texcoord, 0),
+                       SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (texcoord) / DrawRenderShare()),
+                       g_black_and_white_points_sampler.SampleLevel(g_black_and_white_points_sampler_s, float2(0.5f, 0.5f), 0),
+                       v0.xy);
     return;
   }
 
@@ -157,7 +70,7 @@ void main(
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
   r1.xyzw = g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, r0.xy, 0).xyzw;
-  r0.xyzw = g_hdr_rgb_bloom_texture_sampler.SampleLevel(g_hdr_rgb_bloom_texture_sampler_s, r0.xy, 0).xyzw;
+  r0.xyzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (r0.xy) / DrawRenderShare()).xyzw;
 
   // 2. CONVERT RGB TO CIE xyY COLOR SPACE
   // r2.x = Z, r2.y = X, r2.z = Y (Luminance)

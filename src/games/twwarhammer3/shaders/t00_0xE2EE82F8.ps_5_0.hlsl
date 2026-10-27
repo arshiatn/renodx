@@ -7,6 +7,7 @@
 // -> secondary LUT set blended in by camera distance on flagged G-buffer pixels.
 // HDR 0: stock, then Paper White.
 // HDR 1 (Extended): unclipped Reinhard -> HDR-safe native grade -> user grading -> shoulder.
+// HDR 3 (PsychoV31): as HDR 2 with PsychoV31.
 // HDR 2 (Psycho): Reinhard dropped, scene-linear with SDR's mid grey pinned to 0.18
 //        -> HDR-safe native grade -> PsychoV30.
 // Sliders (HDR only): SI.bloom, SI.uvdistort.
@@ -156,6 +157,58 @@ Texture3D<float4> lut_secondary_texture_3 : register(t11);
 #define cmp -
 #include "../shared.h"
 #include "../psycho_test30.hlsli"
+#include "../psycho_test31.hlsli"
+
+// PsychoV31, on the scene-linear handoff (mid gray at 0.18); target-only where its source cage returns
+// black. Highlight Hue / Saturation Shift: toward the SDR image's, which clips each channel at white (bright fire turns
+// orange / yellow there, V31 keeps the scene's hue), above mid gray, fully from white. Last, what the shifts pushed out
+// of the target gamut is brought back.
+float3 ApplyPsychoV31(float3 color)
+{
+  const int target_gamut = int(SI.v31_gamut_compression_mode);
+  const float compression = 1.f + 0.5f * SI.v31_roll_off * SI.v31_roll_off;
+  float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
+      color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+      SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
+      SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
+      renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 1.f);
+  const float3 exposed = color * SI.v31_exposure;
+  const float scene_y = renodx::color::y::from::BT709(exposed);
+  [branch]
+  if (all(result == 0.f) && scene_y > 1e-6f) {
+    result = renodx::tonemap::psychov::custom_psychotm_test31(
+        color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+        SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
+        SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
+        renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 0.f);
+  }
+  [branch]
+  if ((SI.v31_highlight_hue_shift > 0.f || SI.v31_highlight_saturation_shift > 0.f) && scene_y > 0.18f) {
+    const float t = saturate(log2(scene_y / 0.18f) / log2(1.f / 0.18f));
+    const float weight = t * t * (3.f - 2.f * t);
+    const float3 sdr = saturate(exposed);
+    result = renodx::color::correct::Hue(result, sdr, SI.v31_highlight_hue_shift * weight);
+    [branch]
+    if (SI.v31_highlight_saturation_shift > 0.f) {
+      result = renodx::tonemap::psychov::ShiftSaturationToward(result, sdr, SI.v31_highlight_saturation_shift * weight);
+    }
+  }
+  [branch]
+  if (SI.v31_gamut_compression > 0.f) {
+    result = renodx::tonemap::psychov::FitToTargetGamut(result, target_gamut);
+  }
+  return result;
+}
+
+// The Psycho modes: PsychoV30 (Rendering Mode 2) or PsychoV31 (3).
+float3 ApplyWH3Psycho(float3 color)
+{
+  [branch]
+  if (HDR >= 2.5f) {
+    return ApplyPsychoV31(color);
+  }
+  return ApplyPsychoV30(color);
+}
 
 
 // Stock LUT stage: 3 weighted LUTs, secondary set lerped in (gamma domain) where flagged.
@@ -229,20 +282,19 @@ float3 ApplyHDR1UserGrading(float3 color)
 // Extended peak: rolls everything above 1.0 into the headroom. At or below 1.0 untouched.
 float3 ApplyHDR1PeakShoulder(float3 color)
 {
-  float peak = max(HDR_PEAK, 1.0001f);
-  float max_channel = max(color.r, max(color.g, color.b));
-
-  if (max_channel > 1.f)
-  {
-    float headroom = peak - 1.f;
-    float excess = max_channel - 1.f;
-    float mapped_max = 1.f + renodx::tonemap::Neutwo(excess, headroom);
-    color *= mapped_max / max_channel;
-  }
-
-  return color;
+  // Above 1 each channel rolls off to Peak on its own, as SDR clips each channel: bright fire turns yellow / white at
+  // its core (as Ryse). (The brightest-channel roll-off kept fire's full orange saturation up to Peak: flat, salmon.)
+  const float headroom = max(HDR_PEAK, 1.0001f) - 1.f;
+  const float3 over = max(color - 1.f, 0.f);
+  return min(color, 1.f)
+         + float3(renodx::tonemap::Neutwo(over.r, headroom), renodx::tonemap::Neutwo(over.g, headroom),
+                  renodx::tonemap::Neutwo(over.b, headroom));
 }
 
+
+// Stock: one bilinear tap of the bloom; bloom_filter.hlsli: a cubic B-spline over 4 x 4 texels.
+#define BLOOM_SAMPLE_ONLY
+#include "../../twattila/bloom_filter.hlsli"
 
 void main(
   float4 v0 : SV_Position0,
@@ -283,7 +335,7 @@ void main(
 
   // Scene + bloom (bloom slider, HDR only).
   float3 scene = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, uv, 0).xyz;
-  float3 bloom = g_hdr_rgb_bloom_texture.SampleLevel(g_hdr_rgb_bloom_texture_sampler_s, uv, 0).xyz;
+  float3 bloom = SampleBloomSmooth(g_hdr_rgb_bloom_texture, uv).xyz;
   float3 color = bloom * bloom_scale + scene;
 
   // Exposure: auto exposure or manual, squared (stock).
@@ -303,10 +355,15 @@ void main(
     float mapped = x * (1 + x / white_sq) / (exposure * y + 1);
     hdr_color = (y == 0.f) ? 0.f : color * mapped / y;
   } else {
-    // Reinhard dropped. Solves x(1 + x/W)/(1 + x) = 0.18 so SDR's mid grey arrives at 0.18.
+    // Reinhard dropped. Solves x(1 + x/W)/(1 + x) = 0.18 so SDR's mid grey arrives at 0.18,
+    // with SDR's contrast there: the curve's log-log slope at x_mid. The burn differs per map, from compressing (plain
+    // Reinhard, 0.82) to expanding (low white points, up to ~1.4); pinning mid grey alone made Psycho much brighter
+    // than SDR on some maps and much darker on others (ATN). The luminance follows it: 0.18 * (x / x_mid) ^ slope.
     float inv_w = 1.f / max(white_sq, 0.0001f);
     float x_mid = 0.36f / (0.82f + sqrt(0.6724f + 0.72f * inv_w));
-    hdr_color = color * (exposure * 0.18f / x_mid);
+    float slope = 1.f + (x_mid * inv_w) / (1.f + x_mid * inv_w) - x_mid / (1.f + x_mid);
+    float handoff_y = 0.18f * pow(max(exposure * y / x_mid, 0.f), slope);
+    hdr_color = (y == 0.f) ? 0.f : color * (handoff_y / y);
   }
 
   // Secondary LUT strength: flagged pixels only, smoothstep over camera distance (stock).
@@ -372,7 +429,7 @@ void main(
     graded_hdr = ApplyHDR1UserGrading(graded_hdr);
     graded_hdr = ApplyHDR1PeakShoulder(graded_hdr);
   } else {
-    graded_hdr = ApplyPsychoV30(graded_hdr);
+    graded_hdr = ApplyWH3Psycho(graded_hdr);
   }
 
   o0.xyz = graded_hdr * (SI.diffuse_white_nits / SI.graphics_white_nits);

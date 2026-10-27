@@ -15,10 +15,15 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <chrono>
 #include <format>
+#include <mutex>
+#include <optional>
+#include <shared_mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 #include "../../utils/detour.hpp"
@@ -49,16 +54,22 @@ enum : uint8_t {
   OUTLINE_DISTANCE,
   SKIT_RESOLUTION,
   SMOOTH_CUTSCENES,
+  SMOOTH_SUN,
+  DAY_SPEED,
+  SUN_SHADOW_LAYERS,
 };
-static std::array<Option, 7> options = {{
+static std::array<Option, 10> options = {{
     {.name = L"Tales.NPCDistance", .game = 3100.f, .value = 3100.f},  // the game's NPC despawn distance
     {.name = L"Tales.MonsterDistance", .game = 1.f, .value = 1.f, .arise_sdk_cvar = L"sdk.MonsterDistanceMultiplier"},
     {.name = L"Tales.CharacterDetailDistance", .game = 1.f, .value = 1.f, .arise_sdk_cvar = L"sdk.CharaLODMultiplier"},
-    {.name = L"Tales.NeverHideCharacters", .game = 0.f, .value = 0.f},
+    {.name = L"Tales.NeverHideCharacters", .game = 0.f, .value = 0.f, .arise_sdk_cvar = L"sdk.CharaDisableCull"},
     {.name = L"Tales.OutlineDistance", .game = 6000.f, .value = 6000.f, .arise_sdk_cvar = L"sdk.MinStageEdgeBaseDistance"},
     // Percent of the screen's pixel count; 0: the game's sizes.
     {.name = L"Tales.SkitResolution", .game = 0.f, .value = 0.f, .arise_sdk_cvar = L"sdk.CutsceneScreenPercentage"},
-    {.name = L"Tales.SmoothCutscenes", .game = 0.f, .value = 0.f},
+    {.name = L"Tales.SmoothCutscenes", .game = 0.f, .value = 0.f, .arise_sdk_cvar = L"sdk.CutsceneAllowSubframes"},
+    {.name = L"Tales.SmoothSun", .game = 0.f, .value = 0.f},
+    {.name = L"Tales.DaySpeed", .game = 1.f, .value = 1.f},  // the time of day's speed, times the game's (0: stopped)
+    {.name = L"Tales.SunShadowLayers", .game = 0.f, .value = 0.f},  // the sun's shadow cascades; 0: the light's own
 }};
 // The game's output size (width << 32 | height; 0 without a swap chain), for the skit panels.
 static std::atomic<uint64_t> screen_size = 0;
@@ -208,6 +219,481 @@ static void OnSequencePostLoad(uint8_t* sequence) {
 }
 constexpr std::array<PostLoad, SEQUENCE_VTABLES.size()> SEQUENCE_POST_LOAD_HOOKS = {&OnSequencePostLoad<0>, &OnSequencePostLoad<1>};
 
+// Smooth sun: Bandai's sky Blueprint moves the sun in bursts: every 7.2 s (6 minutes of game time, ATN's overlay) it
+// turns it quickly to the next position, then holds it, although its world time runs every frame (AWorldTimeActor::Tick,
+// exe+0x5FD930, sends it to the Blueprint every frame; DLSS v73's tick interval test changed nothing).
+// The light: each new direction reaches the renderer through FLightSceneProxy::SetTransform(proxy, LightToWorld,
+// Position) (LightToWorld at +0x70, its inverse +0x30, Position +0xB0; LightType +0x140, 0: directional; both
+// arguments 16-byte aligned: it loads them with movaps, v74 crashed on unaligned ones). For directional lights the hook
+// keeps the newest transform as the target and passes the one shown so far; every present (the render thread, between
+// frames: D3D11 has no RHI thread in UE 4.21) moves it on. The directional proxies' destructor (their vtable's first
+// slot) drops them, so no freed proxy is written.
+// The sun disk: the sky shader reads the sun's direction from a material parameter collection (e.g. cb2[4] of ps
+// 0x11039AD5; v76's material instance hook found none), which the Blueprint sets in the same bursts through
+// UMaterialParameterCollectionInstance::SetVectorParameterValue(instance, Name, Value) (game thread; a change marks the
+// instance for its render update at the end of the frame). A unit-length vector within 3 degrees of a smoothed light's
+// direction (either way) is smoothed the same way: the hook passes the shown one, and after every world time tick (game
+// thread, every frame where the time of day runs) it is set again. The instances' destructor (their vtable's first
+// slot) drops them.
+// The shadows: Unreal snaps each cascade's shadow map to a grid of 4-texel steps in light space, anchored at the world
+// origin (FProjectedShadowInfo::SetupWholeSceneProjection, exe+0x1ACC450: Fmod of WorldToFace(center) by 8 / resolution;
+// its comment: stable under camera translation and rotation only). A turning light swings that grid around the world
+// origin, kilometres away, so the scene slides across it by texels every frame: the shadows shimmer all the time (ATN).
+// FDirectionalLightSceneProxy::GetViewDependentWholeSceneProjectedShadowInitializer (vtable slot 20) is hooked: each
+// cascade keeps an anchor that follows the camera (the view origin, FSceneView +0x60C, as GetShadowSplitBounds
+// exe+0x23C8AF0 reads it) in whole steps of 1/64 of the cascade's size (a multiple of the snap step for any resolution
+// from 512), which leaves the grid where it is, and WorldToLight (+0x10) gets a translation (light-space y, z: minus
+// half the anchor's position modulo that step; the snapping and the shadow matrices both add it) that anchors the grid
+// there. Camera moves keep the grid as before; a turn now swings it around the camera (v78: around the cascade's
+// center, hundreds of metres ahead with Tales' one sun shadow map), so shadow edges near the camera barely crawl. The
+// shadow window moves by under 64 texels.
+// Both: the game turns the sun for about 2.2 s, then holds it about 5 s (ATN). A burst (the first change after half a
+// second without one) starts the shown motion from where it is toward where the previous burst ended, spread over the
+// time since the previous burst: an even speed (aiming at the moving target would speed up for 2.2 s, then slow down),
+// one burst behind. Changes without such gaps start the next motion once the shown one is done. Turns above 10 degrees
+// (time skips, cutscenes, new areas) are not smoothed.
+constexpr size_t LIGHT_PROXY_LIGHT_TO_WORLD = 0x70;
+constexpr size_t LIGHT_PROXY_TYPE = 0x140;
+constexpr uint8_t DIRECTIONAL_LIGHT = 0;
+constexpr float WORLD_MAX = 2097152.f;  // a directional light's position: -direction x WORLD_MAX, w 0 (GetLightPosition)
+constexpr float DEGREES = 57.2957795f;  // per radian
+// FMatrix (rows: the light's X, Y, Z axes, then its location) and FVector4, aligned as the game's.
+struct alignas(16) Matrix : std::array<float, 16> {};
+struct alignas(16) Vector4 : std::array<float, 4> {};
+// The game's bursts of changes and the shown motion between them.
+struct Burst {
+  double start = 0.;
+  double duration = 0.;  // 0: at the target
+  double last_update = 0.;
+  double last_burst = 0.;
+
+  // A change at `now`; true when it starts a motion (a burst, or the shown motion done). A motion lasts 1-15 s, times
+  // how many times slower the day passes (12 min steps at 100x slower).
+  bool Update(double now) {
+    const bool starts = now - last_update > 0.5 || duration == 0.;
+    if (starts) {
+      const double longest = 15. / std::max(Value(DAY_SPEED), .0001f);
+      start = now;
+      duration = std::clamp(now - last_burst, std::min(1., longest), longest);
+      last_burst = now;
+    }
+    last_update = now;
+    return starts;
+  }
+
+  // The day's speed changed: the motion and the time since the last burst stretched by `ratio` (the old speed over the
+  // new), so the shown motion keeps its place and the next burst's motion fits the new steps.
+  void Rescale(double now, double ratio) {
+    if (duration > 0.) {
+      const double progress = (now - start) / duration;
+      duration *= ratio;
+      start = now - (progress * duration);
+    }
+    last_burst = now - ((now - last_burst) * ratio);
+  }
+
+  // A turn shown at once.
+  void Snap(double now) {
+    duration = 0.;
+    last_update = now;
+    last_burst = now;
+  }
+
+  // How far the shown motion is at `now` (0-1; done: duration 0).
+  float Progress(double now) {
+    const float t = static_cast<float>(std::min((now - start) / duration, 1.));
+    if (t >= 1.f) duration = 0.;
+    return t;
+  }
+};
+struct SunTransform {
+  uint8_t* proxy = nullptr;  // null: unused
+  Matrix from = {};
+  Matrix aim = {};  // where the shown motion goes: the target when it started
+  Matrix to = {};   // the newest target
+  Matrix shown = {};
+  Burst burst;
+  // The game's steps, for the overlay: bursts since the light was added (or the last snap), the second one's time,
+  // the light's direction where the previous burst ended, that burst's turn in degrees.
+  double first_burst = 0.;
+  uint32_t bursts = 0;
+  std::array<float, 3> burst_end = {};
+  float step = 0.f;
+};
+// A parameter collection's vector that follows the sun.
+struct SunVector {
+  uint8_t* instance = nullptr;  // UMaterialParameterCollectionInstance; null: unused
+  uint64_t name = 0;            // the parameter's FName
+  Vector4 from = {};
+  Vector4 aim = {};
+  Vector4 to = {};
+  Vector4 shown = {};
+  Burst burst;
+};
+struct SmoothSun {
+  std::shared_mutex mutex;
+  std::array<SunTransform, 4> lights;
+  std::array<SunVector, 8> vectors;
+};
+static SmoothSun smooth_sun;
+using SetTransform = void (*)(uint8_t* proxy, const float* light_to_world, const float* position);
+static SetTransform set_transform = nullptr;
+using SetCollectionVector = bool (*)(uint8_t* instance, uint64_t name, const float* value);
+static SetCollectionVector set_collection_vector = nullptr;
+using ActorTick = void (*)(uint8_t* actor, float delta_seconds);
+static std::array<ActorTick, 2> world_time_tick = {};
+using Destructor = void* (*)(uint8_t* object, uint32_t flags);
+static Destructor directional_proxy_destructor = nullptr;
+static Destructor collection_instance_destructor = nullptr;
+using CascadeInitializer = bool (*)(uint8_t* proxy, const uint8_t* view, int32_t cascade, bool precomputed_lighting, uint8_t* initializer);
+static CascadeInitializer cascade_initializer = nullptr;
+// FWholeSceneProjectedShadowInitializer: PreShadowTranslation +0 (minus the cascade's center), WorldToLight +0x10 (rows),
+// Scales +0x50 (1, 1 / radius, 1 / radius).
+constexpr size_t INITIALIZER_WORLD_TO_LIGHT = 0x10;
+constexpr size_t INITIALIZER_SCALES = 0x50;
+constexpr size_t VIEW_ORIGIN = 0x60C;  // FSceneView
+// Sun shadow layers (test): GetNumShadowMappedCascades (exe+0x23C61F0) takes the light's DynamicShadowCascades (proxy
+// +0x194, the component's +0x3A4) with built lighting (the cvar r.Shadow.UnbuiltNumWholeSceneDynamicShadowCascades
+// without: changed nothing, DLSS v79). Raised here for the next frame; the light's own comes back at 0.
+constexpr size_t LIGHT_PROXY_CASCADES = 0x194;
+struct LightCascades {
+  uint8_t* proxy = nullptr;  // null: unused
+  int32_t cascades = 0;      // the light's own
+};
+static std::array<LightCascades, 4> light_cascades;  // under smooth_sun.mutex
+struct CascadeAnchor {
+  std::array<double, 3> position = {};
+  uint64_t used = 0;  // 0: unused
+};
+// Per cascade index, a few anchors: the closest one is used (the skit panels render other views in the same frame).
+static std::array<std::array<CascadeAnchor, 4>, 8> cascade_anchors;  // under smooth_sun.mutex
+static uint64_t cascade_anchor_uses = 0;
+
+inline double Seconds() {
+  return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+inline float Dot3(const float* a, const float* b) {
+  return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
+}
+
+// The shown rotation between two light transforms: each axis interpolated, then made orthonormal again (the game's
+// bursts are about a degree); the location interpolated.
+inline Matrix InterpolateLight(const Matrix& from, const Matrix& to, float t) {
+  Matrix result = {};
+  std::array<std::array<float, 3>, 3> axes = {};
+  for (size_t row = 0; row < 3; ++row) {
+    for (size_t column = 0; column < 3; ++column) {
+      axes[row][column] = from[(row * 4) + column] + ((to[(row * 4) + column] - from[(row * 4) + column]) * t);
+    }
+  }
+  const auto normalize = [](std::array<float, 3>* v) {
+    const float length = std::sqrt(Dot3(v->data(), v->data()));
+    for (float& component : *v) component /= length;
+  };
+  normalize(&axes[0]);
+  const float along = Dot3(axes[1].data(), axes[0].data());
+  for (size_t column = 0; column < 3; ++column) axes[1][column] -= axes[0][column] * along;
+  normalize(&axes[1]);
+  axes[2] = {(axes[0][1] * axes[1][2]) - (axes[0][2] * axes[1][1]), (axes[0][2] * axes[1][0]) - (axes[0][0] * axes[1][2]),
+             (axes[0][0] * axes[1][1]) - (axes[0][1] * axes[1][0])};
+  for (size_t row = 0; row < 3; ++row) {
+    for (size_t column = 0; column < 3; ++column) result[(row * 4) + column] = axes[row][column];
+  }
+  for (size_t column = 0; column < 3; ++column) result[12 + column] = from[12 + column] + ((to[12 + column] - from[12 + column]) * t);
+  result[15] = 1.f;
+  return result;
+}
+
+// Where the shown motion is at `now` (the target once it is done).
+inline Matrix ShownLight(SunTransform* light, double now) {
+  if (light->burst.duration == 0.) return light->shown;
+  return InterpolateLight(light->from, light->aim, light->burst.Progress(now));
+}
+
+// The same for a direction: interpolated, with the aim's length and w.
+inline Vector4 ShownVector(SunVector* vector, double now) {
+  if (vector->burst.duration == 0.) return vector->shown;
+  const float t = vector->burst.Progress(now);
+  Vector4 result = vector->aim;
+  for (size_t column = 0; column < 3; ++column) result[column] = vector->from[column] + ((vector->aim[column] - vector->from[column]) * t);
+  const float scale = std::sqrt(Dot3(vector->aim.data(), vector->aim.data()) / Dot3(result.data(), result.data()));
+  for (size_t column = 0; column < 3; ++column) result[column] *= scale;
+  return result;
+}
+
+inline Vector4 DirectionalLightPosition(const Matrix& light_to_world) {
+  return {{-light_to_world[0] * WORLD_MAX, -light_to_world[1] * WORLD_MAX, -light_to_world[2] * WORLD_MAX, 0.f}};
+}
+
+static void OnSetTransform(uint8_t* proxy, const float* light_to_world, const float* position) {
+  if (proxy[LIGHT_PROXY_TYPE] != DIRECTIONAL_LIGHT) {
+    set_transform(proxy, light_to_world, position);
+    return;
+  }
+  const bool smooth = Value(SMOOTH_SUN) != options[SMOOTH_SUN].game;
+  Matrix target;
+  std::memcpy(target.data(), light_to_world, sizeof(target));
+  const double now = Seconds();
+  std::optional<Matrix> shown;
+  {
+    const std::unique_lock lock(smooth_sun.mutex);
+    auto light = std::ranges::find(smooth_sun.lights, proxy, &SunTransform::proxy);
+    if (!smooth) {
+      if (light != smooth_sun.lights.end()) *light = {};  // the game's transform from now on
+    } else if (light == smooth_sun.lights.end()) {
+      light = std::ranges::find(smooth_sun.lights, static_cast<uint8_t*>(nullptr), &SunTransform::proxy);
+      if (light != smooth_sun.lights.end()) {
+        // What the proxy shows now (set when it was added); a burst now, the game's 5 s before it.
+        *light = {.proxy = proxy, .burst = {.last_update = now - 1., .last_burst = now - 5.}};
+        std::memcpy(light->shown.data(), proxy + LIGHT_PROXY_LIGHT_TO_WORLD, sizeof(Matrix));
+        light->aim = light->shown;
+        light->to = light->shown;
+      }
+    }
+    if (smooth && light != smooth_sun.lights.end()) {
+      const Matrix current = ShownLight(&*light, now);
+      if (!(Dot3(current.data(), target.data()) > 0.985f)) {  // beyond ~10 degrees (or an unset or broken transform)
+        light->shown = target;
+        light->aim = target;
+        light->burst.Snap(now);
+        light->bursts = 0;
+      } else if (light->burst.Update(now)) {
+        light->from = current;
+        light->aim = light->to;
+        const std::array<float, 3> end = {light->to[0], light->to[1], light->to[2]};
+        if (light->bursts > 0) light->step = std::acos(std::clamp(Dot3(end.data(), light->burst_end.data()), -1.f, 1.f)) * DEGREES;
+        if (light->bursts == 1) light->first_burst = now;  // timed from the second: the first may be the light's creation
+        ++light->bursts;
+        light->burst_end = end;
+      }
+      light->to = target;
+      light->shown = ShownLight(&*light, now);
+      shown = light->shown;
+    }
+  }
+  if (!shown.has_value()) {
+    set_transform(proxy, light_to_world, position);
+    return;
+  }
+  set_transform(proxy, shown->data(), DirectionalLightPosition(*shown).data());
+}
+
+static bool OnCascadeInitializer(uint8_t* proxy, const uint8_t* view, int32_t cascade, bool precomputed_lighting, uint8_t* initializer) {
+  if (!cascade_initializer(proxy, view, cascade, precomputed_lighting, initializer)) return false;
+  {
+    const std::unique_lock lock(smooth_sun.mutex);
+    auto* cascades = reinterpret_cast<int32_t*>(proxy + LIGHT_PROXY_CASCADES);
+    auto own = std::ranges::find(light_cascades, proxy, &LightCascades::proxy);
+    if (const auto layers = static_cast<int32_t>(Value(SUN_SHADOW_LAYERS)); layers > 0) {
+      if (own == light_cascades.end()) {
+        own = std::ranges::find(light_cascades, static_cast<uint8_t*>(nullptr), &LightCascades::proxy);
+        if (own != light_cascades.end()) *own = {.proxy = proxy, .cascades = *cascades};
+      }
+      if (own != light_cascades.end()) *cascades = std::max(own->cascades, layers);
+    } else if (own != light_cascades.end()) {
+      *cascades = own->cascades;
+      *own = {};
+    }
+  }
+  if (Value(SMOOTH_SUN) == options[SMOOTH_SUN].game || cascade < 0 || static_cast<size_t>(cascade) >= cascade_anchors.size()) return true;
+  const auto* pre_shadow_translation = reinterpret_cast<const float*>(initializer);
+  auto* world_to_light = reinterpret_cast<float*>(initializer + INITIALIZER_WORLD_TO_LIGHT);
+  const float inverse_radius = reinterpret_cast<const float*>(initializer + INITIALIZER_SCALES)[1];
+  if (!(inverse_radius > 0.f)) return true;
+  const double radius = 1. / inverse_radius;
+  const double step = radius / 64.;
+  // Light-space axis `axis` of a world vector (back to world: the rotation's transpose).
+  const auto light = [&](const std::array<double, 3>& v, size_t axis) {
+    return (v[0] * world_to_light[axis]) + (v[1] * world_to_light[4 + axis]) + (v[2] * world_to_light[8 + axis]);
+  };
+  const auto* view_origin = reinterpret_cast<const float*>(view + VIEW_ORIGIN);
+  std::array<double, 3> center = {view_origin[0], view_origin[1], view_origin[2]};
+  if (!std::isfinite(center[0] + center[1] + center[2])) {
+    center = {-pre_shadow_translation[0], -pre_shadow_translation[1], -pre_shadow_translation[2]};
+  }
+  const std::unique_lock lock(smooth_sun.mutex);
+  // The closest anchor within 4 radii, else the longest unused one starts at the camera (a new area or a cut: one jump).
+  const auto distance = [&](const CascadeAnchor& candidate) {
+    const std::array<double, 3> offset = {center[0] - candidate.position[0], center[1] - candidate.position[1], center[2] - candidate.position[2]};
+    return (candidate.used == 0 ? INFINITY : (offset[0] * offset[0]) + (offset[1] * offset[1]) + (offset[2] * offset[2]));
+  };
+  auto& anchors = cascade_anchors[cascade];
+  auto* anchor = &*std::ranges::min_element(anchors, {}, distance);
+  if (!(distance(*anchor) <= 16. * radius * radius)) {
+    anchor = &*std::ranges::min_element(anchors, {}, &CascadeAnchor::used);
+    anchor->position = center;
+  }
+  anchor->used = ++cascade_anchor_uses;
+  const std::array<double, 3> offset = {center[0] - anchor->position[0], center[1] - anchor->position[1], center[2] - anchor->position[2]};
+  // Toward the camera in whole steps across the light (the grid stays), any distance along it.
+  const std::array<double, 3> move = {light(offset, 0), light(offset, 1) - std::fmod(light(offset, 1), step),
+                                      light(offset, 2) - std::fmod(light(offset, 2), step)};
+  for (size_t axis = 0; axis < 3; ++axis) {
+    anchor->position[axis] += (move[0] * world_to_light[axis * 4]) + (move[1] * world_to_light[(axis * 4) + 1]) + (move[2] * world_to_light[(axis * 4) + 2]);
+  }
+  for (size_t axis = 1; axis < 3; ++axis) {
+    world_to_light[12 + axis] += static_cast<float>(-std::fmod(light(anchor->position, axis), step) / 2.);
+  }
+  return true;
+}
+
+static void* OnDirectionalProxyDestroyed(uint8_t* proxy, uint32_t flags) {
+  {
+    const std::unique_lock lock(smooth_sun.mutex);
+    for (auto& light : smooth_sun.lights) {
+      if (light.proxy == proxy) light = {};
+    }
+    for (auto& own : light_cascades) {
+      if (own.proxy == proxy) own = {};
+    }
+  }
+  return directional_proxy_destructor(proxy, flags);
+}
+
+static bool OnSetCollectionVector(uint8_t* instance, uint64_t name, const float* value) {
+  const bool smooth = Value(SMOOTH_SUN) != options[SMOOTH_SUN].game;
+  Vector4 target;
+  std::memcpy(target.data(), value, sizeof(target));
+  const double now = Seconds();
+  Vector4 shown = target;
+  {
+    const std::unique_lock lock(smooth_sun.mutex);
+    auto vector = std::ranges::find_if(smooth_sun.vectors, [&](const SunVector& candidate) {
+      return candidate.instance == instance && candidate.name == name;
+    });
+    const float length = std::sqrt(Dot3(target.data(), target.data()));
+    float along = 0.f;  // the closest smoothed light's |cosine|
+    for (const auto& light : smooth_sun.lights) {
+      if (smooth && light.proxy != nullptr) along = std::max(along, std::abs(Dot3(light.to.data(), target.data())) / length);
+    }
+    // A direction (unit length: colors rarely are) within 3 degrees of a smoothed light's, either way.
+    if (!smooth || !(std::abs(length - 1.f) < 0.02f && along > 0.9986f)) {
+      if (vector != smooth_sun.vectors.end()) *vector = {};
+    } else if (vector == smooth_sun.vectors.end()) {
+      // The first change shown as it is; the next burst is smoothed.
+      vector = std::ranges::find(smooth_sun.vectors, static_cast<uint8_t*>(nullptr), &SunVector::instance);
+      if (vector != smooth_sun.vectors.end()) {
+        *vector = {.instance = instance, .name = name, .aim = target, .to = target, .shown = target, .burst = {.last_update = now, .last_burst = now}};
+      }
+    } else if (target != vector->to) {
+      const Vector4 current = ShownVector(&*vector, now);
+      if (!(Dot3(current.data(), target.data()) > 0.985f * length * std::sqrt(Dot3(current.data(), current.data())))) {
+        vector->shown = target;
+        vector->aim = target;
+        vector->burst.Snap(now);
+      } else if (vector->burst.Update(now)) {
+        vector->from = current;
+        vector->aim = vector->to;
+      }
+      vector->to = target;
+      vector->shown = ShownVector(&*vector, now);
+      shown = vector->shown;
+    } else {
+      shown = vector->shown;
+    }
+  }
+  return set_collection_vector(instance, name, shown.data());
+}
+
+static void* OnCollectionInstanceDestroyed(uint8_t* instance, uint32_t flags) {
+  {
+    const std::unique_lock lock(smooth_sun.mutex);
+    for (auto& vector : smooth_sun.vectors) {
+      if (vector.instance == instance) vector = {};
+    }
+  }
+  return collection_instance_destructor(instance, flags);
+}
+
+// Day speed: TWorldTimeManager (the first global if set, else the second) advances its time by DeltaSeconds x its rate
+// (+0x68; 50: a day in 28.8 min) every world tick (exe+0x5FE290); the rate is multiplied by the setting. A rate the
+// game sets meanwhile (its Blueprint setters) becomes the game's. When the rate changes, the sun's motions are
+// stretched to it at once.
+constexpr size_t WORLD_TIME_RATE = 0x68;
+// Both world time ticks: mov rdx, [first]; mov rcx, [second]; test rdx, rdx; mov rax, rcx; cmovne rax, rdx.
+constexpr std::string_view WORLD_TIME_MANAGER = "48 8B 15 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 85 D2 48 8B C1 48 0F 45 C2";
+static std::array<uint8_t* const*, 2> world_time_manager = {};
+struct TimeRate {
+  float game = 0.f;
+  float written = 0.f;
+};
+static TimeRate time_rate;  // game thread
+
+// After every world time tick (game thread): the smoothed vectors one frame further (the game's back with the setting
+// off). Before it: the day's rate.
+template <size_t CLASS>
+static void OnWorldTimeTick(uint8_t* actor, float delta_seconds) {
+  const double now = Seconds();
+  if (uint8_t* manager = (world_time_manager[0] == nullptr ? nullptr : (*world_time_manager[0] != nullptr ? *world_time_manager[0] : *world_time_manager[1])); manager != nullptr) {
+    auto* rate = reinterpret_cast<float*>(manager + WORLD_TIME_RATE);
+    if (*rate != time_rate.written) time_rate.game = *rate;
+    if (const float written = time_rate.game * Value(DAY_SPEED); written != time_rate.written) {
+      if (written > 0.f && time_rate.written > 0.f) {
+        const double ratio = static_cast<double>(time_rate.written) / written;
+        const std::unique_lock lock(smooth_sun.mutex);
+        for (auto& light : smooth_sun.lights) {
+          light.burst.Rescale(now, ratio);
+          light.bursts = 0;  // the overlay's step time starts again
+        }
+        for (auto& vector : smooth_sun.vectors) vector.burst.Rescale(now, ratio);
+      }
+      time_rate.written = written;
+    }
+    *rate = time_rate.written;
+  }
+  world_time_tick[CLASS](actor, delta_seconds);
+  const bool smooth = Value(SMOOTH_SUN) != options[SMOOTH_SUN].game;
+  std::array<SunVector, std::tuple_size_v<decltype(SmoothSun::vectors)>> moved = {};
+  size_t count = 0;
+  {
+    const std::unique_lock lock(smooth_sun.mutex);
+    for (auto& vector : smooth_sun.vectors) {
+      if (vector.instance == nullptr || (smooth && vector.burst.duration == 0.)) continue;
+      vector.shown = (smooth ? ShownVector(&vector, now) : vector.to);
+      moved[count++] = vector;
+      if (!smooth) vector = {};
+    }
+  }
+  // Outside the lock; instances are destroyed on this thread (garbage collection), not meanwhile.
+  for (size_t index = 0; index < count; ++index) set_collection_vector(moved[index].instance, moved[index].name, moved[index].shown.data());
+}
+
+// Every present: the shown light transforms one frame further toward their targets (at once with the setting off).
+inline void UpdateSun() {
+  if (set_transform == nullptr) return;
+  const bool smooth = Value(SMOOTH_SUN) != options[SMOOTH_SUN].game;
+  const double now = Seconds();
+  std::array<std::pair<uint8_t*, Matrix>, std::tuple_size_v<decltype(SmoothSun::lights)>> moved = {};
+  size_t count = 0;
+  {
+    const std::unique_lock lock(smooth_sun.mutex);
+    for (auto& light : smooth_sun.lights) {
+      if (light.proxy == nullptr || (light.burst.duration == 0. && smooth)) continue;
+      light.shown = (smooth ? ShownLight(&light, now) : light.to);
+      moved[count++] = {light.proxy, light.shown};
+      if (!smooth) light = {};
+    }
+  }
+  for (size_t index = 0; index < count; ++index) {
+    const auto& [proxy, shown] = moved[index];
+    set_transform(proxy, shown.data(), DirectionalLightPosition(shown).data());
+  }
+}
+
+// For the overlay: the game's sun steps (the first light with a few) and the sky values following the sun.
+inline std::string SunSteps() {
+  const std::shared_lock lock(smooth_sun.mutex);
+  const auto followed = std::ranges::count_if(smooth_sun.vectors, [](const SunVector& vector) { return vector.instance != nullptr; });
+  const auto light = std::ranges::find_if(smooth_sun.lights, [](const SunTransform& candidate) { return candidate.proxy != nullptr && candidate.bursts > 2; });
+  return std::format("Sun steps: {}; {} sky values follow the sun",
+                     (light == smooth_sun.lights.end()
+                          ? std::string("not enough seen yet")
+                          : std::format("every {:.3f} s (average of {}), the last one {:.3f} degrees",
+                                        (light->burst.last_burst - light->first_burst) / (light->bursts - 2), light->bursts - 2, light->step)),
+                     followed);
+}
+
 struct Hook {
   uint8_t option;
   std::string_view pattern;  // anywhere in the function
@@ -246,6 +732,20 @@ static float npc_fade_scale = 1.f;  // the NPC scale the fade defaults hold
 static code_patch::CodePatch render_target_update;
 static code_patch::CodePatch scene_capture_show_flags;
 static std::array<code_patch::CodePatch, SEQUENCE_VTABLES.size()> sequence_post_load_slots;
+// FDirectionalLightSceneProxy's constructor: lea rax, [vtable]; xor edx, edx; mov [rdi], rax; movzx eax, byte ptr
+// [rbx + 0x380] (the component's bUsedAsAtmosphereSunLight); and al, 1; mov [rdi + 0x178], al.
+constexpr std::string_view DIRECTIONAL_PROXY_VTABLE = "48 8D 05 ?? ?? ?? ?? 33 D2 48 89 07 0F B6 83 80 03 00 00 24 01 88 87 78 01 00 00";
+// UMaterialParameterCollectionInstance's constructor: lea rax, [vtable]; mov [rbx], rax; xor eax, eax; then its
+// fields (+0x40, +0x48, +0x60, +0x68; mov dword ptr [rbx + 0x70], -1).
+constexpr std::string_view COLLECTION_INSTANCE_VTABLE = "48 8D 05 ?? ?? ?? ?? 48 89 03 33 C0 48 89 43 40 48 89 43 48 48 89 43 60 48 89 43 68 C7 43 70 FF FF FF FF";
+struct VtableSlot {
+  std::string_view pattern;  // starts with lea reg, [vtable] (displacement at +3)
+  size_t slot;
+  void** original;
+  void* replacement;
+};
+// The directional light proxies' destructor and cascade initializer, the collection instances' destructor.
+static std::array<code_patch::CodePatch, 3> sun_vtable_slots;
 
 // A jump to `target` (mov rax, target; jmp rax) within a rel32 call's reach of `site` (Detours' region near it).
 inline uint8_t* JumpStub(const uint8_t* site, const void* target) {
@@ -272,7 +772,7 @@ inline void Install() {
     option.details.clear();
   }
 
-  const std::array<Hook, 5> wanted = {{
+  const std::array<Hook, 9> wanted = {{
       {.option = NPC_DISTANCE,
        .pattern = "C7 45 ?? 00 00 2F 45 C7 45 ?? 00 40 35 45 C7 45 ?? CD CC 4C 3E 66 0F 7F 45 ?? E8",
        .original = reinterpret_cast<void**>(&npc_manager_distances),
@@ -293,6 +793,30 @@ inline void Install() {
        .pattern = "48 8B D9 0F 29 74 24 30 48 81 C1 C8 1B 00 00 0F 29 7C 24 20 E8",
        .original = reinterpret_cast<void**>(&end_final_postprocess),
        .replacement = reinterpret_cast<void*>(&OnEndFinalPostprocess)},
+      // FLightSceneProxy::SetTransform: LightToWorld to +0x70, then its inverse.
+      {.option = SMOOTH_SUN,
+       .pattern = "48 83 EC 68 0F 28 02 48 8B C2 0F 11 41 70 4C 8B C9 0F 28 4A 10 0F 11 89 80 00 00 00 0F 28 42 20 0F 11 81 90 00 00 00",
+       .original = reinterpret_cast<void**>(&set_transform),
+       .replacement = reinterpret_cast<void*>(&OnSetTransform)},
+      // UMaterialParameterCollectionInstance::SetVectorParameterValue: its collection's (+0x30) vector parameters
+      // (+0x48, 0x28 each) searched for the name.
+      {.option = SMOOTH_SUN,
+       .pattern = "48 89 5C 24 18 48 89 54 24 10 57 48 83 EC 30 48 8B 41 30 4D 8B D0 48 8B D9 4C 63 40 50",
+       .original = reinterpret_cast<void**>(&set_collection_vector),
+       .replacement = reinterpret_cast<void*>(&OnSetCollectionVector)},
+      // AWorldTimeActor::Tick: AActor::Tick, then the manager's hour (+0x5C) against the one sent (+0x328).
+      {.option = SMOOTH_SUN,
+       .pattern = "40 57 48 83 EC 30 48 8B F9 E8 ?? ?? ?? ?? 48 8B 15 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 85 D2 48 8B C1 48 0F 45 C2 "
+                  "48 85 C0 0F 84 ?? ?? ?? ?? 48 85 D2 0F 29 74 24 20 48 8B C1 48 0F 45 C2 F3 0F 10 70 5C 0F 2E B7 28 03 00 00",
+       .original = reinterpret_cast<void**>(&world_time_tick[0]),
+       .replacement = reinterpret_cast<void*>(&OnWorldTimeTick<0>)},
+      // The game's subclass: the same, keeping DeltaSeconds (xmm7) for its own counters.
+      {.option = SMOOTH_SUN,
+       .pattern = "40 57 48 83 EC 40 0F 29 74 24 30 48 8B F9 0F 29 7C 24 20 0F 28 F9 E8 ?? ?? ?? ?? 48 8B 15 ?? ?? ?? ?? 48 8B 0D "
+                  "?? ?? ?? ?? 48 85 D2 48 8B C1 48 0F 45 C2 48 85 C0 0F 84 ?? ?? ?? ?? 48 85 D2 48 8B C1 48 0F 45 C2 "
+                  "F3 0F 10 70 5C 0F 2E B7 28 03 00 00",
+       .original = reinterpret_cast<void**>(&world_time_tick[1]),
+       .replacement = reinterpret_cast<void*>(&OnWorldTimeTick<1>)},
   }};
   std::array<uint8_t*, wanted.size()> starts = {};
   for (size_t index = 0; index < wanted.size(); ++index) {
@@ -346,6 +870,21 @@ inline void Install() {
       }
       hooks.clear();
     }
+  }
+
+  // Day speed: the world time manager's globals, read by the world time ticks (Smooth sun movement's hooks).
+  world_time_manager = {};
+  if (const auto sites = code_patch::FindPatterns(WORLD_TIME_MANAGER); sites.empty() || world_time_tick[0] == nullptr) {
+    fail(DAY_SPEED, (sites.empty() ? "world time manager not found" : "needs the world time hooks (Smooth sun movement's)"));
+  } else {
+    for (size_t index = 0; index < world_time_manager.size(); ++index) {
+      int32_t displacement = 0;
+      std::memcpy(&displacement, sites[0] + 3 + (index * 7), sizeof(displacement));
+      world_time_manager[index] = reinterpret_cast<uint8_t* const*>(sites[0] + 7 + (index * 7) + displacement);
+    }
+    options[DAY_SPEED].details = std::format("world time manager globals exe+0x{:X}, exe+0x{:X}",
+                                               reinterpret_cast<const uint8_t*>(world_time_manager[0]) - image,
+                                               reinterpret_cast<const uint8_t*>(world_time_manager[1]) - image);
   }
 
   // Character detail: the memcpy call goes to a stub.
@@ -458,6 +997,48 @@ inline void Install() {
     for (auto& slot : sequence_post_load_slots) code_patch::ApplyCodePatch(&slot, false);
   }
 
+  // Smooth sun: the vtable slots, or no smoothing (nothing freed must be written).
+  const std::array<VtableSlot, sun_vtable_slots.size()> vtable_slots = {{
+      {DIRECTIONAL_PROXY_VTABLE, 0, reinterpret_cast<void**>(&directional_proxy_destructor), reinterpret_cast<void*>(&OnDirectionalProxyDestroyed)},
+      {DIRECTIONAL_PROXY_VTABLE, 20, reinterpret_cast<void**>(&cascade_initializer), reinterpret_cast<void*>(&OnCascadeInitializer)},
+      {COLLECTION_INSTANCE_VTABLE, 0, reinterpret_cast<void**>(&collection_instance_destructor), reinterpret_cast<void*>(&OnCollectionInstanceDestroyed)},
+  }};
+  for (size_t index = 0; index < vtable_slots.size(); ++index) {
+    auto& slot = sun_vtable_slots[index];
+    slot = {};
+    if (!options[SMOOTH_SUN].available) continue;
+    const auto& wanted_slot = vtable_slots[index];
+    const uint8_t* site = code_patch::FindPattern(wanted_slot.pattern, &slot.details);
+    if (site == nullptr) {
+      fail(SMOOTH_SUN, std::format("vtable {} not found ({})", index, slot.details));
+      continue;
+    }
+    int32_t displacement = 0;
+    std::memcpy(&displacement, site + 3, sizeof(displacement));
+    auto* vtable = reinterpret_cast<uint8_t* const*>(site + 7 + displacement);
+    if (vtable[wanted_slot.slot] < image || vtable[wanted_slot.slot] >= image + nt->OptionalHeader.SizeOfImage) {
+      fail(SMOOTH_SUN, std::format("vtable slot {} already changed by another mod", index));
+      continue;
+    }
+    *wanted_slot.original = vtable[wanted_slot.slot];
+    slot.address = reinterpret_cast<uint8_t*>(const_cast<uint8_t**>(&vtable[wanted_slot.slot]));
+    slot.original.assign(slot.address, slot.address + sizeof(void*));
+    const auto hook = reinterpret_cast<uintptr_t>(wanted_slot.replacement);
+    slot.replacement.resize(sizeof(hook));
+    std::memcpy(slot.replacement.data(), &hook, sizeof(hook));
+    if (code_patch::ApplyCodePatch(&slot, true)) {
+      options[SMOOTH_SUN].details += std::format(", vtable slot {} {}", index, slot.details);
+    } else {
+      fail(SMOOTH_SUN, "patch failed: " + slot.details);
+    }
+  }
+  if (!options[SMOOTH_SUN].available) {
+    for (auto& slot : sun_vtable_slots) code_patch::ApplyCodePatch(&slot, false);
+    // Leave the light and the sky to the game (the hooks pass everything through at the game's value).
+    options[SMOOTH_SUN].value = options[SMOOTH_SUN].game;
+    fail(SUN_SHADOW_LAYERS, "needs Smooth sun movement's hooks");
+  }
+
   sun_distance_limit = {};
   if (uint8_t* site = code_patch::FindPattern(SUN_DISTANCE_LIMIT, &sun_distance_limit.details); site != nullptr) {
     sun_distance_limit.address = site;
@@ -490,6 +1071,7 @@ inline void Update() {
 }
 
 inline void Uninstall() {
+  for (auto& slot : sun_vtable_slots) code_patch::ApplyCodePatch(&slot, false);
   for (auto& slot : sequence_post_load_slots) code_patch::ApplyCodePatch(&slot, false);
   code_patch::ApplyCodePatch(&scene_capture_show_flags, false);
   code_patch::ApplyCodePatch(&render_target_update, false);

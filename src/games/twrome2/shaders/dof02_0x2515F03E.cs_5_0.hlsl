@@ -47,7 +47,7 @@ groupshared float4 g_taps[2][156];
 // SDR: stock 8-bit (clamped and truncated). HDR: float, highlights kept.
 float4 Tap(float4 color)
 {
-  if (HDR == 1.f) return float4(max(color.rgb, 0.f) * color.a, color.a) * 255.f;
+  if (HDR >= 1.f) return float4(max(color.rgb, 0.f) * color.a, color.a) * 255.f;
   return floor(float4(saturate(color.rgb) * color.a, color.a) * 255.f);
 }
 

@@ -17,6 +17,9 @@ float4 main(float4 vpos: SV_POSITION, float2 uv: TEXCOORD0)
   //  x = max(0, x); // Do not clamp here: PsychoV uses signed BT.709 to represent BT.2020.
   x = renodx::color::gamma::DecodeSafe(x, 2.0f);  // in-game gamma 20
 
+  // SDR output: gamma 2.2, white = the display's.
+  if (ATTILA_SDR_OUTPUT) return float4(renodx::color::gamma::EncodeSafe(saturate(x)), 1.f);
+
   // EOTF Emulate
   // if (SI.gamma_correction > 0.f) {
   //   x *= SI.graphics_white_nits / SI.diffuse_white_nits;

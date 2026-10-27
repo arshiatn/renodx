@@ -1,0 +1,327 @@
+// environment_specular_light.hlsl ps40_standard_lighting_model (sm_5_0): the reflections of shiny surfaces (stencil 1:
+// armour, metal), SSR on the light buffer, the environment cube where it misses. SSR Quality: x the ray's samples (finer steps, fewer
+// gaps; with the hierarchical march: x its most steps). From the 3Dmigoto decompile; sun_direction.y fixed
+// (make_attila_light.py).
+
+cbuffer camera_VS_PS : register(b0)
+{
+  float3 camera_position : packoffset(c0);
+  float4x4 view : packoffset(c1);
+  float4x4 projection : packoffset(c5);
+  float4x4 view_projection : packoffset(c9);
+  float4x4 inv_view : packoffset(c13);
+  float4x4 inv_projection : packoffset(c17);
+  float4x4 inv_view_projection : packoffset(c21);
+  float4 camera_near_far : packoffset(c25);
+  float time_in_sec : packoffset(c26);
+  float2 g_inverse_focal_length : packoffset(c26.y);
+  float g_vertical_fov : packoffset(c26.w);
+  float4 g_screen_size : packoffset(c27);
+  float g_vpos_texel_offset : packoffset(c28);
+  float4 g_viewport_dimensions : packoffset(c29);
+  float4 g_render_target_dimensions : packoffset(c30);
+  float4 g_camera_temp0 : packoffset(c31);
+  float4 g_camera_temp1 : packoffset(c32);
+  float4 g_camera_temp2 : packoffset(c33);
+  float4 g_clip_rect : packoffset(c34);
+  int g_num_of_samples : packoffset(c35);
+}
+
+cbuffer lighting_VS_PS : register(b1)
+{
+  bool g_apply_environment_specular : packoffset(c0);
+  float3 sun_direction : packoffset(c0.y);
+  float3 sun_colour : packoffset(c1);
+  float3 ambient_cube_lr[2] : packoffset(c2);
+  float3 ambient_cube_tb[2] : packoffset(c4);
+  float3 ambient_cube_fb[2] : packoffset(c6);
+  float3 g_deep_water_colour : packoffset(c8);
+  float3 g_shallow_water_colour : packoffset(c9);
+  float3 g_sea_bed_light_scatter : packoffset(c10);
+  float g_refraction_light_scatter : packoffset(c10.w);
+  float g_hdr_on : packoffset(c11);
+  bool g_ssr_enabled : packoffset(c11.y);
+}
+
+cbuffer parameters : register(b2)
+{
+  int g_flags : packoffset(c0);
+  float g_ray_length_scale : packoffset(c0.y);
+  float g_ray_max_samples : packoffset(c0.z);
+  float2 g_acceptance_depth_range : packoffset(c1);
+  float2 g_border_falloff_range : packoffset(c1.z);
+  float g_depth_bias_intensity : packoffset(c2);
+  float2 g_depth_falloff_range : packoffset(c2.y);
+  float2 g_blur_radius_multiplier : packoffset(c3);
+  float g_steep_reflection_adjustment_intensity : packoffset(c3.z);
+  float4 g_terrain_offset_scale : packoffset(c4);
+  float g_buffers_scale : packoffset(c5);
+}
+
+SamplerState s_environment_s : register(s0);
+SamplerState s_ssao_s : register(s1);
+SamplerState gbuffer_channel_1_sampler_s : register(s2);
+SamplerState gbuffer_channel_2_sampler_s : register(s3);
+SamplerState gbuffer_channel_3_sampler_s : register(s4);
+SamplerState gbuffer_channel_4_sampler_s : register(s5);
+SamplerState s_light_accumulation_buffer_s : register(s6);
+SamplerState s_terrain_s : register(s7);
+Texture2D<float4> gbuffer_channel_1_sampler : register(t0);
+Texture2D<float4> gbuffer_channel_2_sampler : register(t1);
+Texture2D<float4> gbuffer_channel_3_sampler : register(t2);
+Texture2D<float4> gbuffer_channel_4_sampler : register(t3);
+TextureCube<float4> s_environment : register(t4);
+Texture2D<float4> s_terrain : register(t5);
+Texture2D<float4> s_light_accumulation_buffer : register(t6);
+Texture2D<float4> s_ssao : register(t7);
+Texture2D<uint4> t_depth_stencil_int : register(t8);
+Texture2D<float4> t_jitter : register(t9);
+
+
+// Another game's shared.h first (Thrones of Britannia includes this file with its own).
+#ifndef SI
+#include "../shared.h"
+#endif
+#include "../ssr_hiz.hlsli"
+
+// 3Dmigoto declarations
+#define cmp -
+
+
+void main(
+  float4 v0 : SV_Position0,
+  out float3 o0 : SV_Target0,
+  out float2 o1 : SV_Target1,
+  out float2 o2 : SV_Target2)  // RenoDX: the hierarchical march's hit (ssr_hiz.hpp binds it; ssr_resolve.cs)
+{
+  o2 = float2(0.f, 0.f);
+  float4 r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,r11;
+  uint4 bitmask, uiDest;
+  float4 fDest;
+
+  r0.xy = v0.xy / g_buffers_scale;
+  r0.xy = (int2)r0.xy;
+  r0.zw = float2(0,0);
+  r0.x = t_depth_stencil_int.Load(r0.xyz).y;
+  r0.x = (int)r0.x & 15;
+  r0.x = cmp((int)r0.x != 1);
+  r0.x = (int)r0.x;
+  r0.x = cmp(r0.x < 0);
+  if (r0.x != 0) discard;
+  r0.xy = g_vpos_texel_offset + v0.xy;
+  r0.zw = g_screen_size.zw * r0.xy;
+  r0.xy = g_viewport_dimensions.zw * r0.xy;
+  r0.xyzw = r0.xyzw / g_buffers_scale;
+  r1.xyzw = gbuffer_channel_1_sampler.SampleLevel(gbuffer_channel_1_sampler_s, r0.zw, r0.w).xyzw;
+  r2.x = gbuffer_channel_2_sampler.SampleLevel(gbuffer_channel_2_sampler_s, r0.zw, r0.w).w;
+  r2.y = gbuffer_channel_3_sampler.SampleLevel(gbuffer_channel_3_sampler_s, r0.zw, r0.w).w;
+  r3.z = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.zw, r0.w).x;
+  r1.xyz = r1.xyz * float3(2,2,2) + float3(-1,-1,-1);
+  r2.z = dot(r1.xyz, r1.xyz);
+  r2.z = rsqrt(r2.z);
+  r1.xyz = r2.zzz * r1.xyz;
+  r2.y = r2.y * 255 + 0.5;
+  r2.y = floor(r2.y);
+  r2.y = (uint)r2.y;
+  r2.zw = g_flags & int2(4,16);
+  r2.zw = r2.zw ? float2(1,1) : float2(0,0);
+  r4.x = 1 + -r2.x;
+  r2.x = r2.z * r4.x + r2.x;
+  r2.z = 1 + -r1.w;
+  r1.w = r2.w * r2.z + r1.w;
+  r3.xy = r0.xy * float2(2,-2) + float2(-1,1);
+  r3.w = 1;
+  r4.x = dot(r3.xyzw, inv_view_projection._m00_m10_m20_m30);
+  r4.y = dot(r3.xyzw, inv_view_projection._m01_m11_m21_m31);
+  r4.z = dot(r3.xyzw, inv_view_projection._m02_m12_m22_m32);
+  r0.x = dot(r3.xyzw, inv_view_projection._m03_m13_m23_m33);
+  r4.xyz = r4.xyz / r0.xxx;
+  r4.w = 1;
+  r0.x = dot(r4.xyzw, view_projection._m02_m12_m22_m32);
+  r3.xyw = camera_position.xyz + -r4.xyz;
+  r0.y = dot(r3.xyw, r3.xyw);
+  r0.y = rsqrt(r0.y);
+  r3.xyw = r3.xyw * r0.yyy;
+  r0.y = dot(-r3.xyw, r1.xyz);
+  r0.y = r0.y + r0.y;
+  r5.xyz = r1.xyz * -r0.yyy + -r3.xyw;
+  r0.y = 1 + -r1.w;
+  r5.w = max(0, r5.y);
+  r1.xyz = s_environment.SampleLevel(s_environment_s, r5.xwz, 0).xyz;
+  r2.zw = r4.xz / g_terrain_offset_scale.wz;
+  r2.zw = g_terrain_offset_scale.xy + r2.zw;
+  r6.xyz = s_terrain.Sample(s_terrain_s, r2.zw).xyz;
+  r6.xyz = r6.xyz * r6.xyz;
+  r6.xyz = sun_colour.xyz * r6.xyz;
+  r1.w = saturate(-sun_direction.y);
+  r6.xyz = r6.xyz * r1.www;
+  r1.w = cmp(0 < g_hdr_on);
+  r1.w = r1.w ? 0.00400000019 : 1;
+  r2.z = saturate(-r5.y);
+  r6.xyz = r6.xyz * r1.www + -r1.xyz;
+  r1.xyz = r2.zzz * r6.xyz + r1.xyz;
+  r1.w = dot(r5.xyz, -r3.xyw);
+  r1.w = max(0, r1.w);
+  r1.w = log2(r1.w);
+  r1.w = 10 * r1.w;
+  r1.w = exp2(r1.w);
+  r2.z = 1.53938043 * r0.y;
+  r2.z = cos(r2.z);
+  r2.z = rsqrt(r2.z);
+  r2.z = 1 / r2.z;
+  r2.w = saturate(60 * r2.x);
+  r1.w = r2.z * r1.w;
+  r2.z = r2.w + -r2.x;
+  r1.w = r1.w * r2.z + r2.x;
+  r1.w = cmp(0 < r1.w);
+  if (r1.w != 0) {
+    r1.w = g_depth_falloff_range.y + -r3.z;
+    r2.x = g_depth_falloff_range.y + -g_depth_falloff_range.x;
+    r1.w = saturate(r1.w / r2.x);
+    r2.x = cmp(r1.w != 1.000000);
+    if (r2.x != 0) {
+      r6.x = dot(r4.xyzw, view._m00_m10_m20_m30);
+      r6.y = dot(r4.xyzw, view._m01_m11_m21_m31);
+      r2.x = dot(r4.xyzw, view._m02_m12_m22_m32);
+      r2.zw = g_screen_size.xy * r0.zw;
+      r2.zw = float2(0.015625,0.015625) * r2.zw;
+      r3.xy = cmp(r2.zw >= -r2.zw);
+      r2.zw = frac(abs(r2.zw));
+      r2.zw = r3.xy ? r2.zw : -r2.zw;
+      r2.zw = float2(64,64) * r2.zw;
+      r4.xy = (int2)r2.zw;
+      r4.zw = float2(0,0);
+      r3.xyw = t_jitter.Load(r4.xyz).xyz;
+      r3.xyw = r3.xyw * float3(2,2,2) + float3(-1,-1,-1);
+      r3.xyw = r3.xyw * r0.yyy;
+      r3.xyw = r3.xyw * float3(0.0500000007,0.0500000007,0.0500000007) + r5.xyz;
+      r2.z = dot(r3.xyw, r3.xyw);
+      r2.z = rsqrt(r2.z);
+      r3.xyw = r3.xyw * r2.zzz;
+      r4.x = dot(r3.xyw, view._m00_m10_m20);
+      r4.y = dot(r3.xyw, view._m01_m11_m21);
+      r4.z = dot(r3.xyw, view._m02_m12_m22);
+      r6.z = -r3.z * g_depth_bias_intensity + r2.x;
+      // RenoDX: the hierarchical march (ssr_hiz.hlsli; from the start with the game's depth bias, in its jittered
+      // direction r4 (view) / r3.xyw (world)), else the game's.
+      [branch]
+      if (SsrHierarchicalReady()) {
+        o0.xyz = SsrHierarchical(v0.xy, r6.xyz, r4.xyz, r3.xyw, r1.xyz, r1.w, o2);
+      } else {
+        r6.w = 1;
+        r5.x = dot(r6.xyzw, projection._m00_m10_m20_m30);
+        r5.y = dot(r6.xyzw, projection._m01_m11_m21_m31);
+        r5.z = dot(r6.xyzw, projection._m03_m13_m23_m33);
+        r2.x = g_ray_length_scale * r6.z;
+        r2.z = r4.z * r2.x + r6.z;
+        r2.z = cmp(r2.z < camera_near_far.x);
+        r2.w = -camera_near_far.x + r4.z;
+        r2.w = r2.w / r4.z;
+        r2.x = r2.z ? r2.w : r2.x;
+        r2.z = r4.z * r2.x;
+        r7.xyz = r4.xyz * r2.xxx + r6.xyz;
+        r7.w = 1;
+        r8.x = dot(r7.xyzw, projection._m00_m10_m20_m30);
+        r8.y = dot(r7.xyzw, projection._m01_m11_m21_m31);
+        r8.z = dot(r7.xyzw, projection._m03_m13_m23_m33);
+        r2.x = -projection._m22 + r3.z;
+        r2.x = projection._m32 / r2.x;
+        r2.x = r2.x + -r6.z;
+        r2.w = r4.z * r4.z;
+        r2.w = g_steep_reflection_adjustment_intensity * r2.w;
+        r3.x = g_buffers_scale * g_ray_max_samples * SI.ssr_quality;
+        r3.yzw = r8.xyz + -r5.xyz;
+        r4.x = g_acceptance_depth_range.y + -g_acceptance_depth_range.x;
+        r7.xyzw = g_border_falloff_range.xxyy * g_viewport_dimensions.xyxy;
+        r4.yz = g_viewport_dimensions.xy * g_border_falloff_range.yy + -r7.xy;
+        r6.xyw = r1.xyz;
+        r8.xy = r0.zw;
+        r4.w = r6.z;
+        r5.w = r2.x;
+        r8.zw = float2(0,1);
+        while (true) {
+          r9.x = cmp(r3.x < r8.w);
+          if (r9.x != 0) break;
+          r9.x = r8.w / r3.x;
+          r9.x = r9.x * r9.x + -r8.z;
+          r9.x = max(r9.x, r2.w);
+          r8.z = r9.x + r8.z;
+          r9.x = cmp(1 < r8.z);
+          if (r9.x != 0) {
+            break;
+          }
+          r9.xyz = r8.zzz * r3.yzw + r5.xyz;
+          r9.xy = r9.xy / r9.zz;
+          r9.xy = r9.xy * float2(0.5,-0.5) + float2(0.5,0.5);
+          r9.zw = cmp(r9.xy < float2(0,0));
+          r9.z = (int)r9.w | (int)r9.z;
+          r10.xy = cmp(float2(1,1) < r9.xy);
+          r9.w = (int)r10.y | (int)r10.x;
+          r9.z = (int)r9.w | (int)r9.z;
+          if (r9.z != 0) {
+            break;
+          }
+          r9.z = r8.z * r2.z + r6.z;
+          r9.w = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r9.xy, r9.y).x;
+          r9.w = -projection._m22 + r9.w;
+          r9.w = projection._m32 / r9.w;
+          r9.w = r9.z + -r9.w;
+          r10.x = cmp(0 < r9.w);
+          if (r10.x != 0) {
+            r10.x = r9.w + abs(r5.w);
+            r10.x = r9.w / r10.x;
+            r10.y = -r9.z + r4.w;
+            r10.y = r10.x * r10.y + r9.z;
+            r10.zw = -r9.xy + r8.xy;
+            r10.xz = r10.xx * r10.zw + r9.xy;
+            r10.w = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r10.xz, r10.z).x;
+            r10.w = -projection._m22 + r10.w;
+            r10.w = projection._m32 / r10.w;
+            r11.x = r8.z * r4.x + g_acceptance_depth_range.x;
+            r10.y = r10.w + -r10.y;
+            r10.y = cmp(abs(r10.y) < r11.x);
+            if (r10.y != 0) {
+              r10.yw = r10.xz * float2(2,2) + float2(-1,-1);
+              r10.yw = g_viewport_dimensions.xy * abs(r10.yw);
+              r10.yw = max(r10.yw, r7.xy);
+              r10.yw = min(r10.yw, r7.zw);
+              r10.yw = -g_viewport_dimensions.xy * g_border_falloff_range.xx + r10.yw;
+              r10.yw = r10.yw / r4.yz;
+              r10.y = max(r10.y, r10.w);
+              r10.y = max(r10.y, r1.w);
+              r10.w = r8.z * r8.z;
+              r10.y = max(r10.y, r10.w);
+              r10.xzw = s_light_accumulation_buffer.SampleLevel(s_light_accumulation_buffer_s, r10.xz, 0).xyz;
+              r11.xyz = -r10.xzw + r6.xyw;
+              r10.xyz = r10.yyy * r11.xyz + r10.xzw;
+              r6.xyw = r10.xyz;
+              break;
+            }
+          }
+          r8.xy = r9.xy;
+          r4.w = r9.z;
+          r5.w = r9.w;
+          r8.w = 1 + r8.w;
+        }
+        o0.xyz = r6.xyw;
+      }
+    } else {
+      o0.xyz = r1.xyz;
+    }
+  } else {
+    o0.xyz = r1.xyz;
+  }
+  r1.x = (int)r2.y & 4;
+  r0.z = s_ssao.Sample(s_ssao_s, r0.zw).x;
+  if (r1.x == 0) {
+    o1.y = r0.z;
+  } else {
+    o1.y = 1;
+  }
+  r0.z = g_blur_radius_multiplier.x + g_blur_radius_multiplier.y;
+  r0.y = r0.y * r0.z;
+  r0.x = saturate(r0.y / r0.x);
+  r0.x = 1 + -r0.x;
+  o1.x = -r0.x * r0.x + 1;
+  return;
+}

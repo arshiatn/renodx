@@ -41,6 +41,7 @@
 #include "../../utils/data.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/png.hpp"
 #include "../../utils/state.hpp"
 #include "./attack_patterns.hpp"
@@ -49,9 +50,12 @@
 #include "./engine_memory.hpp"
 #include "./native_state.hpp"
 #include "./ngx_backend.hpp"
+#include "../talesofarise_dlss/frame_generation.hpp"
+#include "../talesofarise_dlss/frame_trace.hpp"
 #include "./particle_counts.hpp"
 #include "./performance.hpp"
 #include "./pixel_trace.hpp"
+#include "./tiled_lights_cs.h"
 
 static_assert(_ITERATOR_DEBUG_LEVEL == 0, "DLSS must match the shared STL layout of Release RenoDX addons");
 
@@ -83,6 +87,9 @@ constexpr uint32_t UPSCALE_SHADER = 0xCD8548F6;
 // blended over the probes' cubemap in the tiled lighting (cs 0x897232B5, its SSReflectionRT). The Screen-space
 // reflections option draws the trace with the addon's shader (0x52594506); the blur stays the game's.
 constexpr uint32_t REFLECTION_TRACE_SHADER = 0xE0B7E115;
+// The game's tiled lighting (lights, probes, the sun; 255 lights at most): with the light limit raised the addon's copy
+// (tiled_lights_cs.h, particle_counts.hpp) is dispatched instead.
+constexpr uint32_t TILED_LIGHTING_SHADER = 0x897232B5;
 
 // The game's Rendering Resolution (its menu: 50-100% in steps of 10; the cvars take any size): r_Width / r_Height with
 // Native Upscaling (r_FullscreenNativeRes). The game renders into targets of that size; its native upscale stretches
@@ -224,26 +231,32 @@ struct ReflectionConstants {
 static_assert(sizeof(ReflectionConstants) == 16);
 // Per Screen-space reflections item; the first is the game's (its own shader draws). Steps grow with the length: the
 // same 4x the game's steps per metre.
-constexpr std::array<ReflectionConstants, 5> REFLECTION_QUALITIES = {{
+constexpr std::array<ReflectionConstants, 7> REFLECTION_QUALITIES = {{
     {.step_scale = 1.f, .length_scale = 1.f},
     {.step_scale = 4.f, .length_scale = 1.f},
     {.step_scale = 8.f, .length_scale = 2.f},
     {.step_scale = 16.f, .length_scale = 4.f},
     {.step_scale = 32.f, .length_scale = 8.f},
+    {.step_scale = 64.f, .length_scale = 16.f},
+    {.step_scale = 96.f, .length_scale = 24.f},
 }};
 std::atomic<int> reflection_quality = 0;  // the option's item, for the render thread
-// The addon's reflection trace and its constants on the game's device (render thread; released with the device).
-struct ReflectionShaders {
+// The addon's reflection trace and its constants, and its tiled lighting, on the game's device (render thread; released
+// with the device).
+struct GameDrawShaders {
   std::shared_mutex mutex;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11PixelShader> trace;
   ComPtr<ID3D11Buffer> constants;
   int constants_quality = 0;  // the REFLECTION_QUALITIES item in `constants` (0: none yet)
+  ComPtr<ID3D11ComputeShader> tiled_lights;
   bool failed = false;
-} reflection_shaders;
+} game_draw_shaders;
 
 struct Runtime {
   rysesonofrome::dlss::Backend backend;
+  // Frame generation's last unjittered view-projection (FrameGenerationCamera).
+  std::optional<std::array<float, 16>> previous_view_projection;
   rysesonofrome::dlss::Performance performance;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3DDeviceContextState> private_state;
@@ -295,6 +308,8 @@ std::atomic<AAMode> requested_mode = AAMode::OFF;
 std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_M;  // L looks the same in Ryse and costs more
 rysesonofrome::dlss::DlssLibrary dlss_library;
 bool advanced = false;
+// DLSS Frame Generation (Experimental, Tales' frame_generation.hpp): set at launch (config FrameGeneration).
+bool frame_generation = false;
 // The addon's own jitter (JITTER_SETUP, JITTER_APPLY), or the game's (stops in slow motion and pauses).
 std::atomic_bool own_jitter = true;
 // Percent; below 14 the game renders at its minimum anyway (512x300; 544x306 at 4K in the display's ratio).
@@ -348,6 +363,7 @@ constexpr size_t CVAR_GET_FLOAT = 0x20;
 constexpr size_t CVAR_GET_STRING = 0x28;
 constexpr size_t CVAR_SET_FLOAT = 0x40;
 constexpr size_t CVAR_GET_FLAGS = 0x60;
+constexpr size_t CVAR_SET_STRING = 0x48;
 struct GameConsole {
   bool searched = false;
   void* const* console = nullptr;  // gEnv->pConsole
@@ -429,6 +445,9 @@ struct QualityOption {
   std::array<float, 10> values;  // per item: a factor of the in-game value or, absolute, the value
   bool absolute = false;
   bool experimental = false;  // its own section; the preset buttons leave it alone
+  bool audio = false;  // in the Audio section; no preset button changes it
+  bool highlighted = false;  // drawn in yellow
+  int default_choice = 0;  // the item before one is saved and Reset's
   int atn_choice = 0;  // Experimental: the item "ATN's setting" picks
   int floor_option = -1;  // index of an option whose factor this one's never goes below (-1: none)
   std::vector<QualityCvar> cvars;
@@ -436,7 +455,7 @@ struct QualityOption {
 };
 // Cvars that read back unchanged are refused (e.g. e_DecalsRange, flags 0x800000; left out). Past the engine's caps
 // (the camera's far plane, LOD 0, the tessellation factor 64, every texture resident) higher factors change nothing.
-std::array<QualityOption, 30> quality_options = {{
+std::array<QualityOption, 32> quality_options = {{
     {.label = "Graphics preset (in-game)",
      .key = "EngineQuality",
      .tooltip = "The game's own graphics preset. Its menu goes up to High; Very High is the engine's highest.",
@@ -689,11 +708,13 @@ std::array<QualityOption, 30> quality_options = {{
      .key = "Reflections",
      .tooltip = "Reflections of what is on screen (armour, wet ground, water), traced by the addon: each hit is found\n"
                 "on the surface, with 4x the game's steps along longer rays (High 1x, Very High 2x, Ultra 4x, Extreme\n"
-                "8x as long; GPU cost grows with it). Rough surfaces stay blurred, as in the game.",
-     .choices = "In-game setting\0" "High\0" "Very High\0" "Ultra\0" "Extreme (experimental, the heaviest)\0",
-     .choice_count = 5,
+                "8x, the two Experimental 16x and 24x as long; GPU cost grows with it). Rough surfaces stay blurred,\n"
+                "as in the game.",
+     .choices = "In-game setting\0" "High\0" "Very High\0" "Ultra\0" "Extreme\0" "Extreme, 2x range (Experimental)\0"
+                "Extreme, 3x range (Experimental)\0",
+     .choice_count = 7,
      .preset_choices = {1, 2, 3, 3},
-     .values = {0.f, 1.f, 2.f, 3.f, 4.f},
+     .values = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
      .absolute = true},
     {.label = "Sword slashes cut banners and ropes",
      .key = "ClothCutting",
@@ -862,6 +883,35 @@ std::array<QualityOption, 30> quality_options = {{
      .absolute = true,
      .experimental = true,
      .atn_choice = 1},
+    // No cvars: particle_counts.hpp sets the limit (SetLightLimit), OnLightingDispatch swaps the lighting shader.
+    {.label = "Light limit",
+     .key = "LightLimit",
+     .tooltip = "The game lights at most 255 lights per frame (level lights, torches, fires, the sun last). Busy scenes\n"
+                "go over it and the extra lights go out, others each frame: they blink. A higher limit keeps them lit;\n"
+                "each 8x8 pixel block still takes at most 255. GPU cost grows only with the lights in view; video\n"
+                "memory about 1.4 MB more at 4096.",
+     .choices = "In-game setting (255)\0" "350\0" "512 (default)\0" "1024\0" "4096 (the maximum)\0",
+     .choice_count = 5,
+     .preset_choices = {0, 0, 0, 0},
+     .values = {255.f, 350.f, 512.f, 1024.f, 4096.f},
+     .absolute = true,
+     .experimental = true,
+     .highlighted = true,
+     .default_choice = 2,
+     .atn_choice = 2},
+    // CryEngine's HDR sound: the loudest sound playing sets the mix, quieter ones (voices too) are lowered within
+    // s_HDRRange (0.3) below it and come back at s_HDRFalloff: heard as compression (ATN: the German dub).
+    {.label = "Dynamic sound mixing",
+     .key = "HdrSound",
+     .tooltip = "The game turns quieter sounds (voices too) down while loud ones play, like a compressor.\n"
+                "Off: every sound at its own volume.",
+     .choices = "In-game setting (on)\0" "Off\0",
+     .choice_count = 2,
+     .preset_choices = {0, 0, 0, 0},
+     .values = {0.f, 1.f},
+     .absolute = true,
+     .audio = true,
+     .cvars = {{.name = "s_HDR", .is_float = false, .absolute = true, .values = {1.f, 0.f}, .from_choice = 1}}},
     // Last: character_animation's code patch follows its choice (quality_options.back()).
     {.label = "Character animation",
      .key = "CharacterAnimation",
@@ -889,6 +939,32 @@ std::array<QualityOption, 30> quality_options = {{
                // the distance." (20)
                {.name = "ca_FacialAnimationFramerate", .is_float = false, .absolute = true, .values = {20.f, 240.f},
                 .animation_offset = 0x128, .from_choice = 1}}},
+}};
+
+// Voice and text language apart: the game sets g_language / g_languageAudio from the platform's language only while
+// they are empty (+0xee69fa / +0xee6aa5), and their change callbacks reopen the language packs at run time
+// (Localization/<language>.pak for voices +0xede6a0, <language>_xml.pak for texts +0xede5e0). Set (const char*) is
+// ICVar +0x48 (the same start code). The first item keeps the game's; the game's value comes back when picked again.
+constexpr std::array<const char*, 7> LANGUAGE_NAMES = {"", "english", "german", "french", "italian", "spanish", "russian"};
+constexpr const char* LANGUAGE_LABELS[] = {"In-game setting", "English", "German", "French", "Italian", "Spanish", "Russian"};
+struct LanguageChoice {
+  const char* cvar;
+  const char* key;    // ReShade.ini, section "Ryse Game Settings"
+  const char* label;
+  const char* tooltip;
+  int choice = 0;     // Present thread (the overlay runs in it)
+  bool applied = true;  // the cvar matches `choice` (or the game's value is back)
+  std::string game_value;  // before the first change
+};
+std::array<LanguageChoice, 2> language_choices = {{
+    {.cvar = "g_languageAudio",
+     .key = "VoiceLanguage",
+     .label = "Voice language",
+     .tooltip = "The spoken language, apart from the texts. Applies from the next scene or loading."},
+    {.cvar = "g_language",
+     .key = "TextLanguage",
+     .label = "Text language",
+     .tooltip = "Subtitles and menus, apart from the voices. Applies from the next scene or loading."},
 }};
 
 // The Particle memory option's item (0: off, the particle options at the in-game setting).
@@ -959,10 +1035,13 @@ thread_local bool creating_clone = false;  // the clone's own init_sampler
 // fences, cloth; read while drawing, +0x18338EB; its ICVar refuses sets, flags 0x800100). r_DeferredShadingFilterGBuffer
 // 0: no smoothing of normals and gloss against sparkling highlights (DLSS / DLAA calm them; fine surface detail stays;
 // ATN: armour still shimmers a little with DLAA, the same without the HDR addon: the game's specular aliasing; the
-// filter's smoothing was an option in v56, removed: off gives much better highlights).
+// filter's smoothing was an option in v56, removed: off gives much better highlights; v108: the game's on request,
+// gbuffer_filter).
+std::atomic_bool gbuffer_filter = false;  // the game's G-buffer filter kept with DLSS / DLAA (ReShade.ini)
 struct RendererPin {
   const char* name;
   int value;  // while DLSS / DLAA runs
+  const std::atomic_bool* keep_game = nullptr;  // while it holds true, the game's value stays
   bool searched = false;
   int* address = nullptr;
   std::string details;  // where, or why not; for the log
@@ -971,7 +1050,7 @@ struct RendererPin {
 };
 std::array<RendererPin, 2> renderer_pins = {{
     {.name = "r_TexNoAnisoAlphaTest", .value = 0},
-    {.name = "r_DeferredShadingFilterGBuffer", .value = 0},
+    {.name = "r_DeferredShadingFilterGBuffer", .value = 0, .keep_game = &gbuffer_filter},
 }};  // Present thread
 bool attached = false;
 bool registered = false;
@@ -1030,6 +1109,61 @@ std::optional<Camera> ReadCamera(std::span<const std::byte> bytes) {
   }
   return camera;
 }
+
+// Frame generation's camera from CryEngine's (column vectors, the jitter added to rows 0 and 1 through row 3, reversed
+// depth): the projection and axes split out of the unjittered view-projection (scaled so that row 3, view forward, has
+// unit length), and the motion to last frame's unjittered view-projection (`previous`, then this frame's; none: still).
+talesofarise::frame_generation::Camera FrameGenerationCamera(const Camera& camera, std::optional<std::array<float, 16>>* previous) {
+  auto rows = camera.view_projection;
+  for (uint32_t axis = 0; axis < 4; ++axis) {
+    rows[0][axis] -= camera.jitter_ndc[0] * rows[3][axis];
+    rows[1][axis] -= camera.jitter_ndc[1] * rows[3][axis];
+  }
+  const auto length = [](const std::array<float, 4>& row) { return std::sqrt(row[0] * row[0] + row[1] * row[1] + row[2] * row[2]); };
+  const float scale = 1.f / length(rows[3]);
+  for (auto& row : rows) {
+    for (float& value : row) value *= scale;
+  }
+  const float x_scale = length(rows[0]);
+  const float y_scale = length(rows[1]);
+  const std::array<float, 3> forward = {rows[3][0], rows[3][1], rows[3][2]};
+  const float z_scale = rows[2][0] * forward[0] + rows[2][1] * forward[1] + rows[2][2] * forward[2];
+  const float z_offset = rows[2][3] - z_scale * rows[3][3];
+  talesofarise::frame_generation::Camera result = {
+      .view_to_clip = {x_scale, 0.f, 0.f, 0.f, 0.f, y_scale, 0.f, 0.f, 0.f, 0.f, z_scale, 1.f, 0.f, 0.f, z_offset, 0.f},
+      .clip_to_previous_clip = {1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f},
+      .position = camera.position,
+      .right = {rows[0][0] / x_scale, rows[0][1] / x_scale, rows[0][2] / x_scale},
+      .up = {rows[1][0] / y_scale, rows[1][1] / y_scale, rows[1][2] / y_scale},
+      .forward = forward,
+      // Reversed depth: 1 at the near plane, 0 at the far one (none: 10 km).
+      .near_plane = z_offset / (1.f - z_scale),
+      .far_plane = (std::abs(z_scale) > 1e-6f ? -z_offset / z_scale : 10000.f),
+      .depth_inverted = true,
+  };
+  std::array<float, 16> current = {};
+  for (uint32_t row = 0; row < 4; ++row) std::copy_n(rows[row].begin(), 4, current.begin() + row * 4);
+  if (*previous) {
+    // Column vectors: previous x inverse(current); Streamline takes it for row vectors (transposed).
+    const auto inverse = talesofarise::frame_generation::Inverse(current);
+    for (uint32_t row = 0; row < 4; ++row) {
+      for (uint32_t column = 0; column < 4; ++column) {
+        float sum = 0.f;
+        for (uint32_t k = 0; k < 4; ++k) sum += (**previous)[row * 4 + k] * inverse[k * 4 + column];
+        result.clip_to_previous_clip[column * 4 + row] = sum;
+      }
+    }
+  }
+  *previous = current;
+  return result;
+}
+
+// Frame generation's inputs from this frame's DLSS evaluation, submitted at present.
+struct FrameGenerationFrame {
+  std::shared_mutex mutex;
+  talesofarise::frame_generation::Inputs inputs;
+  uint64_t frame = UINT64_MAX;
+} frame_generation_frame;
 
 // Every camera the game uploads into PER_FRAME-sized buffers during a frame (shadow, reflection and post
 // passes too): the upload bound at the TAA can be a later, unjittered one of the main camera.
@@ -1948,6 +2082,20 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
     rysesonofrome::dlss_capture::OnEvaluate(context.Get(), runtime.color.resource.Get(), runtime.motion.resource.Get(),
                                             runtime.depth.resource.Get(), width, height, jitter_x, jitter_y,
                                             restart || skipped);
+    if (talesofarise::frame_generation::Presenting() && current_camera) {
+      talesofarise::frame_generation::Inputs inputs = {
+          .depth = runtime.depth.resource,
+          .motion = runtime.motion.resource,
+          .render_width = width,
+          .render_height = height,
+          .jitter = {jitter_x, jitter_y},
+          .reset = restart || skipped,
+          .camera = FrameGenerationCamera(*current_camera, &runtime.previous_view_projection),
+      };
+      const std::unique_lock lock(frame_generation_frame.mutex);
+      frame_generation_frame.inputs = std::move(inputs);
+      frame_generation_frame.frame = frame;
+    }
 
     // NVIDIA's result encoded like the game's TAA output with its blend state. DLAA: into its TAA target, the stock
     // draw skipped. Upscaling: into the addon's copy of that target at the display size (taa_full) for the post pass
@@ -2060,11 +2208,38 @@ constexpr auto OnSmaaDraw = []<typename Context>(Context& command) -> command_ac
   }
 };
 
-void ReleaseReflectionShaders() {
-  const std::unique_lock lock(reflection_shaders.mutex);
-  reflection_shaders.trace.Reset();
-  reflection_shaders.constants.Reset();
-  reflection_shaders.device.Reset();
+void ReleaseGameDrawShaders() {
+  const std::unique_lock lock(game_draw_shaders.mutex);
+  game_draw_shaders.trace.Reset();
+  game_draw_shaders.constants.Reset();
+  game_draw_shaders.tiled_lights.Reset();
+  game_draw_shaders.device.Reset();
+}
+
+// game_draw_shaders on the context's device, made again when the device changes; false if they could not be made.
+// Hold game_draw_shaders.mutex.
+bool PrepareGameDrawShaders(ID3D11DeviceContext* context) {
+  auto& shaders = game_draw_shaders;
+  ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  if (shaders.device != device) {
+    shaders.device = device;
+    const D3D11_BUFFER_DESC desc = {
+        .ByteWidth = sizeof(ReflectionConstants),
+        .Usage = D3D11_USAGE_DEFAULT,
+        .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+    };
+    const auto& tiled_lights = rysesonofrome::tiled_lights_cs::CODE;
+    shaders.failed =
+        FAILED(device->CreatePixelShader(__0x52594506.data(), __0x52594506.size(), nullptr, shaders.trace.ReleaseAndGetAddressOf()))
+        || FAILED(device->CreateBuffer(&desc, nullptr, shaders.constants.ReleaseAndGetAddressOf()))
+        || FAILED(device->CreateComputeShader(tiled_lights.data(), tiled_lights.size(), nullptr, shaders.tiled_lights.ReleaseAndGetAddressOf()));
+    shaders.constants_quality = 0;
+    if (shaders.failed) {
+      renodx::utils::log::w("[Ryse DLSS] Could not create the addon's reflection / lighting shaders: the game's draws.");
+    }
+  }
+  return !shaders.failed;
 }
 
 // Screen-space reflections above the in-game item: the game's trace drawn with the addon's shader, the game's other
@@ -2079,27 +2254,9 @@ constexpr auto OnReflectionDraw = []<typename Context>(Context& command) -> comm
     if (quality == 0 || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     const auto context = ImmediateContext(command.cmd_list);
     if (!context) return {};
-    auto& shaders = reflection_shaders;
+    auto& shaders = game_draw_shaders;
     const std::unique_lock lock(shaders.mutex);
-    // Made on the game's device, again when it changes.
-    ComPtr<ID3D11Device> device;
-    context->GetDevice(device.GetAddressOf());
-    if (shaders.device != device) {
-      shaders.device = device;
-      const D3D11_BUFFER_DESC desc = {
-          .ByteWidth = sizeof(ReflectionConstants),
-          .Usage = D3D11_USAGE_DEFAULT,
-          .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
-      };
-      shaders.failed =
-          FAILED(device->CreatePixelShader(__0x52594506.data(), __0x52594506.size(), nullptr, shaders.trace.ReleaseAndGetAddressOf()))
-          || FAILED(device->CreateBuffer(&desc, nullptr, shaders.constants.ReleaseAndGetAddressOf()));
-      shaders.constants_quality = 0;
-      if (shaders.failed) {
-        renodx::utils::log::w("[Ryse DLSS] Could not create the addon's reflection trace: the game's.");
-      }
-    }
-    if (shaders.failed) return {};
+    if (!PrepareGameDrawShaders(context.Get())) return {};
     if (shaders.constants_quality != quality) {
       context->UpdateSubresource(shaders.constants.Get(), 0, nullptr, &REFLECTION_QUALITIES[quality], 0, 0);
       shaders.constants_quality = quality;
@@ -2119,6 +2276,30 @@ constexpr auto OnReflectionDraw = []<typename Context>(Context& command) -> comm
   }
 };
 
+// The raised light limit (while particle_counts applies it): the game's tiled lighting dispatched with the addon's cs,
+// with the game's bindings (its cs put back after).
+constexpr auto OnLightingDispatch = []<typename Context>(Context& command) -> command_action::CallbackResult<Context> {
+  using Arguments = typename Context::ArgumentType;
+  if constexpr (!std::is_same_v<Arguments, command_action::DispatchArguments>) {
+    return {};
+  } else {
+    if (!rysesonofrome::particle_counts::RaisedLightsActive()
+        || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
+      return {};
+    }
+    const auto context = ImmediateContext(command.cmd_list);
+    if (!context) return {};
+    const std::unique_lock lock(game_draw_shaders.mutex);
+    if (!PrepareGameDrawShaders(context.Get())) return {};
+    ComPtr<ID3D11ComputeShader> game_shader;
+    context->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
+    context->CSSetShader(game_draw_shaders.tiled_lights.Get(), nullptr, 0);
+    context->Dispatch(command.arguments.group_count_x, command.arguments.group_count_y, command.arguments.group_count_z);
+    context->CSSetShader(game_shader.Get(), nullptr, 0);
+    return {.bypass = true};
+  }
+};
+
 // The post pass of a frame DLSS upscaled (POST_SHADERS): drawn first at the display size into the addon's post_full,
 // with NVIDIA's result (taa_full, in the view the game's t0 has), the addon's full-screen triangle (texture coordinates
 // 0-1) and the game's pixel shader and other bindings (its lens flares t5, at the render size, are filtered up). Then
@@ -2131,10 +2312,28 @@ constexpr auto OnPostDraw = []<typename Context>(Context& command) -> command_ac
   } else {
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     uint64_t frame;
+    bool upscaled;
     {
       const std::shared_lock lock(state.mutex);
-      if (state.device != command.cmd_list->get_device() || upscaled_frame.load() != state.frame) return {};
+      if (state.device != command.cmd_list->get_device()) return {};
+      upscaled = upscaled_frame.load() == state.frame;
       frame = state.frame;
+    }
+    // Native size: frame generation's hudless colour from the game's post pass, after it.
+    if (!upscaled) {
+      if (!talesofarise::frame_generation::Presenting()) return {};
+      return {.post_callback = [](Context& drawn, const void*) {
+        const auto context = ImmediateContext(drawn.cmd_list);
+        if (!context) return;
+        ComPtr<ID3D11RenderTargetView> target;
+        context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+        uint64_t frame;
+        {
+          const std::shared_lock lock(state.mutex);
+          frame = state.frame;
+        }
+        talesofarise::frame_generation::DrawHudless(context.Get(), target.Get(), frame);
+      }};
     }
     const auto context = ImmediateContext(command.cmd_list);
     if (!context) return {};
@@ -2196,6 +2395,7 @@ constexpr auto OnPostDraw = []<typename Context>(Context& command) -> command_ac
     context->OMSetRenderTargets(1, outputs, nullptr);
     context->PSSetShaderResources(0, 1, inputs);
     context->Draw(3, 0);
+    talesofarise::frame_generation::DrawHudless(context.Get(), runtime.post_full.rtv.Get(), frame);
     {
       std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> pointers = {};
       for (uint32_t index = 0; index < pointers.size(); ++index) pointers[index] = game_targets[index].Get();
@@ -2362,12 +2562,20 @@ void OnDestroyDevice(reshade::api::device* device) {
     if (matching) state.device = nullptr;
   }
   if (matching) Reset();
-  ReleaseReflectionShaders();
+  ReleaseGameDrawShaders();
 }
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   rysesonofrome::pixel_trace::OnPresent(queue);
+  // Debug: renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt and
+  // the traced shaders; checked each second, the file removed).
+  if (static uint32_t presents = 0; ++presents % 60 == 0) {
+    if (DeleteFileW((talesofarise::frame_trace::internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
+      talesofarise::frame_trace::Request();
+    }
+  }
+  talesofarise::frame_trace::OnPresent();
   const auto mode = requested_mode.load();
   bool changed;
   bool missed;
@@ -2384,6 +2592,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     closing_frame = state.frame;
     ++state.frame;
     present_frame.store(state.frame, std::memory_order_relaxed);
+  }
+  if (talesofarise::frame_generation::Presenting()) {
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    talesofarise::frame_generation::Inputs inputs;
+    {
+      const std::shared_lock lock(frame_generation_frame.mutex);
+      if (frame_generation_frame.frame == closing_frame) inputs = frame_generation_frame.inputs;
+    }
+    talesofarise::frame_generation::Submit(context, inputs, closing_frame);
   }
   if (trace_requested.exchange(false)) {
     trace_lines.store(0);
@@ -2503,7 +2721,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       if (pin.address == nullptr) continue;
       const std::atomic_ref<int> value(*pin.address);
       const int current = value.load(std::memory_order_relaxed);
-      if (mode != AAMode::OFF) {
+      const bool pinned = (mode != AAMode::OFF && !(pin.keep_game != nullptr && pin.keep_game->load()));
+      if (pinned) {
         if (!pin.set) {
           pin.game_value = current;
           pin.set = true;
@@ -2531,6 +2750,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     if (key == "ParticleMemory") {
       rysesonofrome::particle_counts::SetParticleMemory(static_cast<uint32_t>(option.values[option.choice]));
     }
+    if (key == "LightLimit") {
+      rysesonofrome::particle_counts::SetLightLimit(static_cast<uint32_t>(option.values[option.choice]));
+    }
     for (const auto& [particle_key, kind] : PARTICLE_OPTIONS) {
       if (key != particle_key) continue;
       if (!particle_memory && option.choice != 0) {
@@ -2547,6 +2769,23 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (save_attack_patterns.load() && rysesonofrome::attack_patterns::Saved() != 0) {
     save_attack_patterns.store(false);
     reshade::set_config_value(nullptr, "Ryse AA", "SaveAttackPatterns", false);
+  }
+
+  // Languages: as soon as the console exists (the menus too), when a choice changed.
+  if (void* console = FindGameConsole(); console != nullptr) {
+    for (auto& language : language_choices) {
+      if (language.applied) continue;
+      void* cvar = GetGameCvar(console, language.cvar);
+      if (cvar == nullptr) continue;
+      const char* current = (*reinterpret_cast<const char* (***)(void*)>(cvar))[CVAR_GET_STRING / sizeof(void*)](cvar);
+      if (language.game_value.empty() && current != nullptr) language.game_value = current;
+      const char* wanted = (language.choice == 0 ? language.game_value.c_str() : LANGUAGE_NAMES[language.choice]);
+      if (wanted[0] != '\0' && (current == nullptr || _stricmp(current, wanted) != 0)) {
+        (*reinterpret_cast<void (***)(void*, const char*)>(cvar))[CVAR_SET_STRING / sizeof(void*)](cvar, wanted);
+        renodx::utils::log::i("[Ryse DLSS] ", language.cvar, ": ", (current != nullptr ? current : "(none)"), " -> ", wanted);
+      }
+      language.applied = true;
+    }
   }
 
   // Game settings above its highest (quality_options), once the game draws its world (the game's TAA was seen).
@@ -2963,11 +3202,22 @@ void OnOverlay(reshade::api::effect_runtime*) {
     overlay_frame.store(state.frame + 1);
     rysesonofrome::particle_counts::KeepCounting();
   }
+  // Section headings (ATN): DLSS lavender, Graphics pink, the rest green (the HDR addon's titles).
+  const auto heading = [](const char* label, ImU32 color) {
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    ImGui::SeparatorText(label);
+    ImGui::PopStyleColor();
+  };
+  constexpr ImU32 DLSS_COLOR = IM_COL32(0xB3, 0x9D, 0xDB, 0xFF);
+  constexpr ImU32 GRAPHICS_COLOR = IM_COL32(0xFF, 0x7F, 0xAF, 0xFF);
+  constexpr ImU32 OTHER_COLOR = IM_COL32(0x7E, 0xE0, 0x8A, 0xFF);
   if (int settings_mode = (advanced ? 1 : 0);
       ImGui::Combo("Settings mode", &settings_mode, "Simple\0Advanced (For debugging and extra information)\0")) {
     advanced = settings_mode == 1;
     reshade::set_config_value(nullptr, "Ryse AA", "SettingsMode", settings_mode);
   }
+  heading("DLSS", DLSS_COLOR);
+  ImGui::PushStyleColor(ImGuiCol_Text, DLSS_COLOR);
   auto mode = requested_mode.load();
   if (ImGui::BeginCombo("AA mode", AA_MODES[static_cast<size_t>(mode)].label)) {
     for (const AAMode option : MENU_ORDER) {
@@ -2994,6 +3244,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
     }
     ImGui::EndCombo();
   }
+  talesofarise::frame_generation::DrawSettings("Ryse AA", &frame_generation);
   if (ImGui::Combo("Texture LOD bias", &texture_lod_bias_choice,
                    "Off (the game's own)\0"
                    "Matched (as sharp as at your output resolution)\0"
@@ -3017,6 +3268,20 @@ void OnOverlay(reshade::api::effect_runtime*) {
                       "DLAA and Off are not affected.%s",
                       example.c_str());
   }
+  if (int choice = (gbuffer_filter.load() ? 1 : 0);
+      ImGui::Combo("G-buffer filter", &choice,
+                   "Off (Recommended, better highlights but less stable)\0" "On (Vanilla, weaker highlights but more stable)\0")) {
+    gbuffer_filter.store(choice == 1);
+    reshade::set_config_value(nullptr, "Ryse AA", "GBufferFilter", choice == 1);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("The game smooths normals and gloss against sparkling highlights.\n"
+                      "Off (Recommended): sharper, brighter highlights; small ones can flicker more.\n"
+                      "On (Vanilla, as with TAA): weaker highlights, less flickering and shimmering.");
+  }
+  ImGui::PopStyleColor();
+  ImGui::TextWrapped("Unlike the game's TAA, DLSS / DLAA also filters trees, foliage and fences anisotropically and turns "
+                     "the G-buffer filter off (unless set to On).");
   ImGui::TextWrapped("Changing the AA mode or render scale briefly resets the game's exposure and reloads textures.");
 
   std::string status;
@@ -3096,7 +3361,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
                        rysesonofrome::dlss::MINIMUM_RUNTIME_VERSION[1]);
   }
 
-  ImGui::Separator();
+  heading("Graphics", GRAPHICS_COLOR);
   ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
   ImGui::TextWrapped("Game settings above the game's High. Most apply at once; some need a level load (e.g. texture "
                      "streaming) and detail can take a few seconds to stream in. Nx: N times the in-game preset's value.");
@@ -3107,10 +3372,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
   const auto preset_button = [](const char* label, const char* tooltip, int preset) {
     if (ImGui::Button(label)) {
       for (auto& option : quality_options) {
-        if (option.experimental) continue;
+        if (option.experimental || option.audio) continue;
         int choice = option.choice_count - 1;
         if (preset < 0) {
-          choice = 0;
+          choice = option.default_choice;
         } else if (preset < static_cast<int>(GRAPHICS_PRESETS.size())) {
           choice = option.preset_choices[preset];
         }
@@ -3131,8 +3396,39 @@ void OnOverlay(reshade::api::effect_runtime*) {
   preset_button("MAXED OUT", "Every option at its highest (distances and details 64x), Experimental ones excepted.",
                 static_cast<int>(GRAPHICS_PRESETS.size()));
   const bool world_seen = taa_frame.load(std::memory_order_relaxed) != UINT64_MAX;
+  // A slider over the option's items, showing the current one (as RenoDX's labelled settings); in Advanced, its cvars.
+  const auto option_slider = [&](QualityOption& option, bool locked) {
+    ImGui::BeginDisabled(locked);
+    if (option.highlighted) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
+    if (ImGui::SliderInt(option.label, &option.choice, 0, option.choice_count - 1, ChoiceName(option, option.choice),
+                         ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+      reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
+    }
+    if (option.highlighted) ImGui::PopStyleColor();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip("%s", option.tooltip);
+    }
+    if (!advanced || option.cvars.empty()) return;
+    std::string values;
+    for (const auto& entry : option.cvars) {
+      std::string value = "in-game";
+      if (entry.looked_up && entry.cvar == nullptr) {
+        value = "not found";
+      } else if (entry.reverts >= CVAR_REFUSED_REVERTS) {
+        value = "refused (the game puts its value back)";
+      } else if (entry.set) {
+        value = std::format("{:g} -> {:g}", entry.game_value, entry.set_value);
+      } else if (!world_seen) {
+        value = "waiting for the game's world";
+      }
+      values += std::format("{}{}: {}", (values.empty() ? "" : ", "), entry.name, value);
+    }
+    ImGui::TextWrapped("%s", values.c_str());
+  };
   for (const bool experimental : {false, true}) {
     if (experimental) {
+      heading("Graphics (Experimental)", GRAPHICS_COLOR);
       ImGui::TextWrapped("Experimental: the presets above leave these alone; only the buttons below change them.");
       ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
       ImGui::TextWrapped("Can be heavy and may not work. The on / off switches are features the game shipped off and "
@@ -3144,7 +3440,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         if (ImGui::Button(label)) {
           for (auto& option : quality_options) {
             if (!option.experimental) continue;
-            option.choice = (atn ? option.atn_choice : 0);
+            option.choice = (atn ? option.atn_choice : option.default_choice);
             reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
           }
         }
@@ -3152,50 +3448,62 @@ void OnOverlay(reshade::api::effect_runtime*) {
           ImGui::SetTooltip("%s", tooltip);
         }
       };
-      experimental_button("Reset##Experimental", "Every Experimental option back to the in-game setting (off).", false);
+      experimental_button("Reset##Experimental", "Every Experimental option back to the in-game setting (off), Light limit 512.",
+                          false);
       ImGui::SameLine();
       experimental_button("ATN's setting", "Every switch on (high quality shadows: extra cascades), Particle memory 16x, "
-                                           "particles: fire 2x, sparks 8x, smoke and dust 1.5x, blood 3x, other 1.5x.",
+                                           "particles: fire 2x, sparks 8x, smoke and dust 1.5x, blood 3x, other 1.5x, Light limit 512.",
                           true);
     }
     const bool particle_memory = ParticleMemoryChoice() != 0;
     for (auto& option : quality_options) {
-      if (option.experimental != experimental) continue;
+      if (option.experimental != experimental || option.audio) continue;
       // The particle sliders need Particle memory (OnPresent keeps them at the in-game setting without it).
       const bool locked = !particle_memory && std::ranges::any_of(PARTICLE_OPTIONS, [&](const ParticleOption& particle) {
         return particle.key == option.key;
       });
-      ImGui::BeginDisabled(locked);
-      // A slider over the items, showing the current one (as RenoDX's labelled settings).
-      if (ImGui::SliderInt(option.label, &option.choice, 0, option.choice_count - 1, ChoiceName(option, option.choice),
-                           ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
-        reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
-      }
-      ImGui::EndDisabled();
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("%s", option.tooltip);
-      }
-      if (!advanced || option.cvars.empty()) continue;
-      std::string values;
-      for (const auto& entry : option.cvars) {
-        std::string value = "in-game";
-        if (entry.looked_up && entry.cvar == nullptr) {
-          value = "not found";
-        } else if (entry.reverts >= CVAR_REFUSED_REVERTS) {
-          value = "refused (the game puts its value back)";
-        } else if (entry.set) {
-          value = std::format("{:g} -> {:g}", entry.game_value, entry.set_value);
-        } else if (!world_seen) {
-          value = "waiting for the game's world";
-        }
-        values += std::format("{}{}: {}", (values.empty() ? "" : ", "), entry.name, value);
-      }
-      ImGui::TextWrapped("%s", values.c_str());
+      option_slider(option, locked);
     }
   }
   if (!world_seen) {
     ImGui::TextWrapped("They apply once the game draws its world with its Temporal Anti-Aliasing on.");
   }
+  heading("Audio", OTHER_COLOR);
+  for (auto& language : language_choices) {
+    if (ImGui::SliderInt(language.label, &language.choice, 0, static_cast<int>(LANGUAGE_NAMES.size()) - 1,
+                         LANGUAGE_LABELS[language.choice], ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+      reshade::set_config_value(nullptr, "Ryse Game Settings", language.key, language.choice);
+      language.applied = false;
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", language.tooltip);
+    }
+  }
+  for (auto& option : quality_options) {
+    if (option.audio) {
+      option_slider(option, false);
+    }
+  }
+  heading("About", OTHER_COLOR);
+  // Tinted as RenoDX tints a setting (the theme's button colours at the tint's hue): the same as the HDR addon's.
+  const auto link_button = [](const char* label, const ImColor& tint, const char* url) {
+    float hue = 0.f;
+    float saturation = 0.f;
+    float value = 0.f;
+    ImGui::ColorConvertRGBtoHSV(tint.Value.x, tint.Value.y, tint.Value.z, hue, saturation, value);
+    for (const auto style : {ImGuiCol_Button, ImGuiCol_ButtonHovered, ImGuiCol_ButtonActive}) {
+      ImVec4 color = ImGui::GetStyleColorVec4(style);
+      float style_hue = 0.f;
+      ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, style_hue, saturation, value);
+      ImGui::ColorConvertHSVtoRGB(hue, saturation, value, color.x, color.y, color.z);
+      ImGui::PushStyleColor(style, color);
+    }
+    if (ImGui::Button(label)) renodx::utils::platform::LaunchURL(url);
+    ImGui::PopStyleColor(3);
+  };
+  link_button("ATN's Ko-fi", ImColor(0xFF, 0x5A, 0x16), "https://ko-fi.com/atnthegreat");
+  ImGui::SameLine();
+  link_button("NexusMods (For RenoDX + DLSS)", ImColor(0x21, 0x96, 0xF3), "https://www.nexusmods.com/rysesonofrome/mods/59");
   if (!advanced) return;
 
   ImGui::Separator();
@@ -3249,7 +3557,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
   }
   ImGui::Separator();
   ImGui::TextWrapped("Particles last frame: %s", rysesonofrome::particle_counts::LastFrameText().c_str());
-  ImGui::TextWrapped("Lights: the game lights 255 at most. Particle vertices: the most of the frame's buffer used, "
+  ImGui::TextWrapped("Lights: the game lights 255 at most (Light limit). Particle vertices: the most of the frame's buffer used, "
                      "65535 with the addon (the game: 30720); parts that did not fit are not drawn (they blink). "
                      "Particles not spawned: Particle memory full. Counted only while Advanced is open.");
   if (performance.gpu_samples != 0) {
@@ -3502,15 +3810,30 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     custom_scale.store(std::clamp(std::round(value), MIN_CUSTOM_SCALE, 100.f));
   }
   for (auto& option : quality_options) {
+    option.choice = option.default_choice;
     if (int choice = 0; reshade::get_config_value(nullptr, "Ryse Game Settings", option.key, choice)) {
       option.choice = std::clamp(choice, 0, option.choice_count - 1);
     }
   }
+  for (auto& language : language_choices) {
+    if (int choice = 0; reshade::get_config_value(nullptr, "Ryse Game Settings", language.key, choice)) {
+      language.choice = std::clamp(choice, 0, static_cast<int>(LANGUAGE_NAMES.size()) - 1);
+      language.applied = (language.choice == 0);
+    }
+  }
+  if (bool value = false; reshade::get_config_value(nullptr, "Ryse AA", "GBufferFilter", value)) gbuffer_filter.store(value);
   if (int choice = 2; reshade::get_config_value(nullptr, "Ryse AA", "TextureLodBias", choice)) {
     texture_lod_bias_choice = std::clamp(choice, 0, 3);
   }
   reshade::get_config_value(nullptr, "Ryse AA", "GameRenderWidth", saved_game_size[0]);
   reshade::get_config_value(nullptr, "Ryse AA", "GameRenderHeight", saved_game_size[1]);
+  // Frame generation takes over the game's swap chain, which it makes after its device.
+  talesofarise::frame_generation::LoadSettings("Ryse AA", &frame_generation);
+  if (frame_generation) {
+    std::wstring module_path(32768, L'\0');
+    module_path.resize(GetModuleFileNameW(module, module_path.data(), static_cast<DWORD>(module_path.size())));
+    talesofarise::frame_generation::Install(std::filesystem::path(module_path).parent_path(), "Ryse");
+  }
   dlss_library = rysesonofrome::dlss::FindDlssLibrary();
   if (dlss_library.folder.empty()) {
     renodx::utils::log::w("[Ryse DLSS] nvngx_dlss.dll not found next to the addon or the game.");
@@ -3535,6 +3858,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   }
   command_action::Register(OnUpscaleDraw, {.shader_hash = UPSCALE_SHADER, .command_types = command_action::COMMAND_TYPE_DIRECT_DRAW});
   command_action::Register(OnReflectionDraw, {.shader_hash = REFLECTION_TRACE_SHADER, .command_types = command_action::COMMAND_TYPE_DIRECT_DRAW});
+  command_action::Register(OnLightingDispatch, {.shader_hash = TILED_LIGHTING_SHADER, .command_types = command_action::COMMAND_TYPE_DISPATCH});
   rysesonofrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   rysesonofrome::dlss::constants::SetUploadCallback(OnCameraUpload);
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
@@ -3550,6 +3874,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     command_action::Unregister(OnPostDraw);
     command_action::Unregister(OnUpscaleDraw);
     command_action::Unregister(OnReflectionDraw);
+    command_action::Unregister(OnLightingDispatch);
     command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     rysesonofrome::dlss::constants::Use(DLL_PROCESS_DETACH);
@@ -3559,6 +3884,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
     reshade::unregister_event<reshade::addon_event::present>(OnPresent);
     rysesonofrome::pixel_trace::Stop();
+    talesofarise::frame_trace::Stop();
     reshade::unregister_event<reshade::addon_event::draw>(OnDraw);
     reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
     reshade::unregister_event<reshade::addon_event::copy_resource>(OnTraceCopy);
@@ -3585,7 +3911,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     rysesonofrome::particle_counts::Uninstall();
     rysesonofrome::attack_patterns::Uninstall();
     Reset();
-    ReleaseReflectionShaders();
+    ReleaseGameDrawShaders();
     attached = false;
   }
   if (registered) {

@@ -12,6 +12,1472 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
 - If the build can't write the addon (game or zombie `Ryse.exe` running), rename the old file aside and rebuild.
 - Shell heredocs eat backslashes (`\0`, `\\`): write edit scripts with the Write tool, then run them with python.
 
+## ATN's BIG BATCH (2026-10-26; ATN away 24-48 h: work non-stop, don't wait for answers, zip each game when done)
+Order (ATN's words condensed; tick items off here as they ship):
+DONE 1: twattila_v65 (SSR refine / border fade / resolve with Rays + Denoiser, Grass Trace button).
+Shared pieces for item 2 (twattila/): engine_tests.hpp (EngineTest, Attila() list, Append, SyncEarlyLoad,
+StartAtStart), feature_settings.hpp (SSS / AA sliders + settings + module settings, SsrSettings / UpdateSsr templates on
+the game's shader_injection, SetTints, AssignPages = Attila's 3 pages). Other games' compute shaders: one-line wrappers
+of twattila's (see twthronesofbritannia/*.cs_5_0.hlsl); Attila's ssr00/01 include "../shared.h" only #ifndef SI.
+tools\tw\tw_engine_values.py now: DATA PREFIX ADDON OUT TITLE "float=..,bool=..,int=.." (Thrones: 0xe0730 / 0xe09a0 /
+0xe98e0; Attila 0xbeb60 / 0xbedd0 / 0xc85d0); repack_game.py adds LICENSE files next to shared code + Apache 2.0.
+DONE 2a: twthronesofbritannia_v26 (Attila's SSR / SSS / AA / tests / pages; engine_values.txt); v27 adds Sky Debanding.
+DONE 2b: twrome2_v27 (pages, SSS, AA, 42 Attila tests + 525 More Tests, water SSR hierarchical, Sky Debanding). Port
+script: scratchpad port_tw_game.py (copy in tools\tw if kept); sky: add_sky_deband.py. SSS patch bug fixed (it inserted
+at +5 tokens: broke Rome II's 7-token `min`; Attila / Thrones' mov_sat unaffected). ssr_march.hlsli = the shared FFX
+march (includer defines FFX_SSSR_LoadWorldSpaceNormal / ScreenSpaceToViewSpace); ssr_hiz::OnReflectionDraw(cmd, slot).
+WARP check: build\warp_grass\patch_test7.exe <dump cso folder> (dumps: bin\cmd_Decompiler-1.3.16\dump_shader_<game>_pack).
+DONE 2c: twpharaohdynasties_v27, twtroy_v23, twwarhammer_v24, twwarhammer2_v24, twwarhammer3_v22 (pages, SSS, AA except
+WH3 (TAA), tests, bloom fix, sky deband where missing). SSS patch: 3 strategies (Attila div pattern; else every shadow
+map comparison x (1 - t49); else WH3's t_shadow mask reads x it). Tests for the protected exes (WH1-3, Troy: Denuvo-like
+sections, no static scan): Pharaoh's names / types (tools\tw\data64, tw_convert64.py, tw_borrow64.py; WH1/WH2 only names
+their exe holds). engine_tweaks.hpp x64 Find: one pass (by_name / by_address maps). Bloom: twattila/bloom_high_pass.hlsli
++ BLOOM_SAMPLE_ONLY reads; port script tools\tw\port\add_bloom_fix.py. Troy sky: twpharaohdynasties/sky_deband.hlsli.
+LEFT for later in item 2: Shogun 2 (graphics live in its DLSS addon; tweaks are built `lea rdi, [name]; lea rsi, [obj];
+call 0x1858720` in empire.retail.x64.dll, value at obj + 0xb8 for ints: tw_tweaks.py / engine_tweaks Find need that
+form) and Rome Remastered (Feral Forward+: dx11_ASSAO, dx11_CSMResolvePS/CS = a screen-space shadow mask (SSS could
+multiply it), Feral SSR compute (ScreenSpaceReflectionsIntersect, DownsampleDepth), SMAA / FXAA, no G-buffer pass).
+DONE 3 (partly): talesofarise_v65 (fade / load / battle-end picture keeps HDR: post-tonemap targets and copies switch to
+their clones; GT-VBAO in all 12 AO variants via bitmask_ao.hlsli, settings in the DLSS overlay through post_filters.hpp)
++ talesofarise_dlss_v95 (Spark trails fix: separate translucency t0 of ps 0x00438BF1 -> particle mask in 0x7A1E0D01 ->
+off-screen motion = no DLSS history; GT-VBAO UI). NOT done for Tales: GT-VBGI, SSS (place: the sun shadow mask cs
+0x2084C889 / sunshadow00 could multiply Bend's occlusion; needs a UE camera / light adapter for screen_space_shadows),
+SSR (UE's SSR PS; FFX needs a nearest-depth pyramid of reversed-Z: max reduce + FFX_SSSR_INVERTED_DEPTH_RANGE).
+UE 4.21 View UB (cb1 in UE passes): TranslatedWorldToView 8-11, ViewToClip 24, ClipToView 32, InvDeviceZToWorldZ 57,
+ScreenPositionScaleBias 58, ClipToPrevClip 114, TemporalAAJitter 118, ViewSizeAndInvSize 122, BufferSizeAndInvSize 123.
+NOT done in 2c: SSR for WH1-3 (they have none: a new pass needed); Pharaoh's water ray-cast SSR (ssr_new apply_ssr_ray_cast
+0x6ECC6281, linear march) could take ssr_march.hlsli like Rome II's water.
+1. Attila: SSR 1-3 (miss fallback / edge fade, FidelityFX SSSR denoiser + optional 3/4 / half-res trace, hit
+   refinement); grass still ends ~100 m even with v64's PS fade patch and all grass sliders maxed (Detail Distance only
+   costs fps): v65 adds a one-frame Grass Trace button (scrub DrawScrub distances / LOD picks) to find the limit.
+2. All 10 TW games (Attila, Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3, Shogun 2, Rome Remastered too): Attila's
+   layout (Settings Mode HDR & Effects / Graphics 1 of 2 / Graphics 2 of 2, section colours), GT-VBAO, GT-VBGI, SSS,
+   SSR, AA (TAA / SMAA T2x / SMAA / CMAA2 where the game has no TAA / DLSS); Graphics 2 of 2: engine tests like Attila
+   + "More tests" (unsure ones) + engine_values.txt in each game folder (Thrones: Attila's cvars, no More tests).
+   Rome II's blocky-bloom fix and Attila's dithering (sky deband, default Off) to every TW game that lacks them.
+3. Tales of Arise: the HDR clamp on load / after battles (a fade / post-process that clamps); GT-VBAO, GT-VBGI, SSS,
+   SSR like Attila (no RT yet); DLSS "don't use history here" (bias current colour) mask for the small fire / spark
+   particles that smear (preset L, low scale).
+4. Expeditions Rome: GT-VBAO, GT-VBGI, SSS, SSR.
+5. All DLSS addons: the DLSS section colouring from Ryse.
+6. Then: Attila DLAA (camera vectors, wind vectors, unit motion vectors, no-history mask; fix the smearing).
+DONE 4: expeditionsrome_v28 (GT-VBAO in its last AO level ao00 0x31A1C68C / ao01 0xBD381E21, talesofarise/
+ue_bitmask_ao.hlsli shared with Tales; HDR addon section "Ambient Occlusion"). GI / SSS / SSR not in (passes unknown).
+DONE 5: talesofarise_dlss_v95, expeditionsrome_dlss_graphics_v21, twshogun2completeedition_dlss_v49 (Ryse headings:
+DLSS lavender incl. its controls, Graphics pink, rest green).
+DONE 6 (camera motion only): DLAA in every TW AA module (Method 5) via renodx-tw-dlaa64.exe (DLSS is x64-only):
+dlaa_bridge.hpp (shared NT-handle textures + D3D11.4 shared fence, named mapping/events "Local\RenoDX_TW_DLAA_<pid>",
+job kill-on-close, CPU answer before the GPU Wait), dlaa_helper/main.cpp + build.ps1 (reuses talesofarise_dlss/
+ngx_backend.hpp, whose Evaluation now has create_flags), aa_dlaa_prepare/finish.cs. Zips: twattila_v66, twrome2_v28,
+twthronesofbritannia_v28, twtroy_v24, twpharaohdynasties_v28, twwarhammer_v25, twwarhammer2_v25. RTX 5090 test without
+the game: 117/120 frames. NOT done: wind (grass VS is HLSL already: previous position = same wind at time - dt; the PS
+are DXBC-patched, so an MV output needs ISGN/OSGN signature edits) and unit motion vectors.
+7. (ATN, added mid-batch; back Wednesday) After 6: DXR 1.2 for Tales of Arise starting from
+   https://github.com/teemupynnonen/mgsv-phantom-fx (MIT): RT, path tracing, Ray Reconstruction 4.5, maybe frame gen.
+8. Sparks: real motion vectors instead of the v95 no-history mask, so DLSS shows them sharp.
+
+9. (ATN, after everything) Attila DLSS upscaling: render below output, everything scaled correctly (Tales' "Effects
+   at output resolution" note and its difficulty: talesofarise_dlss README v54-v58, v70 crash), motion vectors for
+   everything (wind, units) so DLSS can work.
+DONE 9 (first step, 2026-10-26, untested in game): twattila_v67 "DLSS Render Scale (Experimental)" 33-100% under
+   Anti-Aliasing DLAA (Attila only; AppendAa(..., true)): anti_aliasing.hpp scales the 3D span (present -> tone mapper
+   drawn) like Shogun 2's render_scale: viewports / scissors at display >> 0..4 at 0, 0, every camera_VS_PS with
+   g_screen_size (c27) = display and g_viewport_dimensions (c29) = display >> k gets render >> k (and reciprocals);
+   jitter 8 / scale^2 Halton phases in render pixels; aa_dlaa_prepare at the render size; dlaa_bridge.h v2
+   (output_width / height) -> helper Custom DLSS (MVLowRes). bridge_test.cpp DLSS=1: 128 -> 256, 117 / 120 frames on
+   the 5090. All TW zips with the helper repacked (rome2 / thrones / pharaoh v29, troy v25, wh / wh2 v26: helper v2).
+   OPEN: texture LOD bias (port twshogun2completeedition_dlss/texture_lod_bias.hpp: needs a MainView signal), our own
+   effects (SSR / SSS / GT-VBAO compute passes) at the render size, VFX dynamic resolution (Shogun 2 v18 rule), unit /
+   wind motion vectors, a frame trace for Attila. ASK ATN: Attila DLAA + render scale 50%: what breaks (screens).
+10. Ryse Son of Rome: GT-VBAO, GT-VBGI, SSS, SSR.
+DONE 10 (partly, 2026-10-26, untested in game): rysesonofrome_fix48: Ambient Occlusion GT-VBAO (ssdo00 0xD1106E8B =
+    the SSDO pass, decompiled from Bin64\renodx-dev\dump (the DevKit dump; 354 shaders not in dump_shader_ryse are now
+    copied to bin\cmd_Decompiler-1.3.16\dump_shader_ryse2), WARP-identical with GT-VBAO off) and Contact Shadows
+    (contact_shadows.hpp before the tiled lighting cs 0x897232B5: sun's slice / channel from its light list t32, a march
+    max-blended into the shadow mask slice 0). OPEN: GT-VBGI (additive pass after cs 0x897232B5 on u1 HDRSceneTargetUAV;
+    t3 DiffuseRT albedo, t1 normals, t0 linear depth, b0 FrustumTL/TR/BL + WorldViewPos), SSR (the CS reads the game's
+    SSR at t6 SSReflectionRT: swap in a hierarchical march in a pre-callback). Never replace cs 0x897232B5 itself: its
+    decompile needs manual fixes (ld_raw / store_raw, denormal int literals).
+11. At the end: patch notes of all these games (Downloads\tw_patch_notes.txt etc.), licence texts correct; answer ATN:
+    is a licence txt next to the addon on Nexus enough, more copyright notices needed, our MIT licence in each game?
+
+DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + tw_patch_notes_2026-10-26.txt,
+    talesofarise_patch_notes_2026-10-26_nexus.txt, expeditionsrome_ryse_patch_notes_2026-10-26_nexus.txt). Licences:
+    docs/licenses/NVIDIA_DLSS_NOTICE.txt (DLSS SDK licence 2b notice + trademark attribution) in every zip with NGX code
+    (TW helper zips, Tales DLSS v97, Expeditions DLSS v21, Shogun 2 DLSS v49, Ryse DLSS v111); Expeditions zips got
+    RENODX_LICENSE.txt (+ ACES_LICENSE.md: RenoDX's ACES RRT); Shogun 2 HDR zip v59 APACHE_LICENSE-2.0.txt (Bend's SSS).
+    Answer for ATN: the licence files in the zip are enough; on Nexus credit NVIDIA DLSS (their licence asks for
+    attribution in credits) and list the third parties (Bend Studio, Intel CMAA2, SMAA, AMD FidelityFX, Phantom FX).
+12. (ATN, added 2026-10-26 after 7-11) Tales: more RT (beyond sun shadows), DLSS Ray Reconstruction 4.5 support,
+    path tracing.
+    DONE 2026-10-26: RTAO (DLSS v99), RR (v98) + preset F (v100, DLSS 310.9.16's new model), ray-traced bounce light
+    (DLSS v101 / HDR v69, zips in Downloads): one diffuse bounce, hits lit by last frame's scene colour where last frame
+    saw them, temporal accumulation + 0x7A1E0D14 filter, t42 in the lighting pass. GPU test rt_shadows_test.cpp passes
+    (bounce 0.285 red under the red square, 0.004 open). Path tracing proper is not possible: the RT scene has positions
+    only (no materials / emissives / skinned or masked geometry). ASK ATN: test bounce light (with DLSS or DLAA, outdoors).
+13. (ATN, added 2026-10-26) DLSS Frame Generation for Tales (Phantom FX's frame_generation.cpp may help).
+    DONE 2026-10-26: Tales DLSS v100 + HDR v68 (zips in Downloads; the DLSS zip carries Streamline 2.14.16's
+    sl.interposer/common/dlss_g/reflex/pcl + nvngx_dlssg from ATN's SDK at C:\Users\arshi\Documents\Nvidia(myself)\
+    streamline-sdk-v2.14.16, STREAMLINE_LICENSE.txt + PHANTOM_FX_LICENSE.txt). frame_generation.hpp (Phantom FX port,
+    Detours on DXGI's CreateSwapChain behind ReShade, stand-in swap chain, D3D12 copy queue, Streamline manual hooking),
+    d3d12_device.hpp (shared with rt_shadows), hudless via the HDR addon's own swap chain shader (0x7A1E0D40-42),
+    Reflex (+ Boost option, "Off (Reflex only)" mode), RR preset F. GPU test tools\toa\fg_test\fg_test.cpp
+    (build\toa_fg_test): 2x/3x/4x in SDR and HDR10 on the 5090, resize, release. Lessons: DLSS-G takes no FP16/scRGB
+    (HDR addon Auto -> HDR10 with FrameGeneration); the real swap chain needs ALLOW_TEARING (else every present is
+    DXGI_ERROR_INVALID_CALL); ResizeBuffers zeros must be resolved before Streamline sees them (else device removed);
+    it pauses when the window is unfocused. ASK ATN: test in game (FrameGeneration on, HDR10/Auto, then 2x/4x).
+14. (ATN, added 2026-10-26, after everything else) Attila: motion vectors for everything (better DLSS), then frame
+    generation if possible (32-bit game: Streamline is 64-bit only), and answer whether RT/PT + RR 4.5 is possible.
+    DONE (motion) 2026-10-26: twattila_v69 (Downloads; untested in game): DLAA / DLSS object motion: wind (grass,
+    leaves, branches: 8 VS) and units (8 skinned main VS: movement / turning, a GPU placement table carries each
+    soldier's world rows to the next frame, matched by mesh key + nearest within 0.5 m; limb swing not). Generator
+    tools\tw\attila_motion\make_wind_motion_vs.py (`:unit`), tests compare_test.cpp + placement_test.cpp (build\
+    tw_attila_motion) all pass. Shared AA module: other TW games pass no shaders (unchanged; Troy / Thrones compile).
+    OPEN: rigid moving objects (ships, siege, projectiles: rigid instanced VS, same table), cloth / sails (CPU-moved
+    VBs), limb swing (per-soldier bone history). ASK ATN: Attila DLAA (+ DLSS scale) in a battle: trees, grass,
+    marching / charging units still smearing?
+    ANSWERED (FG / RT): frame generation is not realistic: Streamline, DLSS-G and Reflex are 64-bit only and must sit in
+    the process that presents; a 64-bit helper presenting into a child window of the game's would fight focus (DLSS-G
+    pauses unfocused), input and Reflex pacing (the game's frames come from another process). Suggest NVIDIA's
+    driver-level Smooth Motion (RTX 50) instead. RT: a 32-bit process gets D3D12 but raytracing tier 0 on the 5090
+    (tools\tw\attila_motion\dxr32_check.cpp), so DXR could only run in the 64-bit helper (geometry over shared
+    textures as Tales' capture, NT handles): sun shadows / AO possible in principle, a big project; RR 4.5 through the
+    helper possible (Attila's G-buffer has the guides) but pointless without ray-traced effects; path tracing no (no
+    materials / lights in a captured scene, as Tales).
+    DONE (motion, rest) 2026-10-26: twattila_v70: rigid objects (stream-output instance rows, motion_rigid.cs match by
+    prediction, readback of moving meshes), cloth / sails / ropes (capture pass positions by SV_VertexID, anchor
+    lookup), ocean (old: last frame's time; ocean2: last frame's displacement textures). All shaders bit-identical in
+    tools\tw\attila_motion tests (compare / rigid / deformed / placement).
+    DONE (RR) twattila_v71: Ray Reconstruction (aa_rr_guides.cs from the G-buffer). NVIDIA DRIVER BUG found: D3D11 RR +
+    a CPU/cross-process wait for the GPU right after it = black output or a crash in nvwgf2umx, so the helper runs RR
+    through NGX D3D12 (dlaa_helper/rr_d3d12.hpp). Tales still uses D3D11 RR (risk: same bug in game; move to D3D12 if
+    ATN sees black / crashes with RR).
+    DONE (RT) twattila_v72: ray-traced sun shadows + AO in the helper (rt_scene.hpp, rt_d3d12.hpp, rt_trace.cs_6_5;
+    bridge v4). rt_bridge_test32d.exe (NOT rt_bridge_test32.exe: old shadow point) passes. All TW zips repacked with
+    the v4 helper (rome2 / thrones / pharaoh v30, troy v26, wh / wh2 v27).
+15. (ATN, 2026-10-26) Optimize Tales + Attila. DONE (not zipped for TW yet: goes into the next TW round): helper BLAS
+    compaction (2816 -> 1024 B in the test), RR <-> SR switch frees the other NGX feature (bridge_test ALTERNATE=1),
+    bridge answer timeout 100 ms -> 5 s (a new NGX feature takes longer: switching RR / preset in game used to turn DLAA
+    off), Tales DLSS v103 frees its RT memory 10 s after all RT effects are off. Measured (bridge_test at 2880^2 = 4K
+    pixels, GPU Process Memory counters): helper DLAA preset M 1.46 GB, K 0.86 GB, E 0.59 GB, RR 2.06 GB; game side
+    0.28 GB (0.62 GB with RR guides). A 32-bit D3D11 process holds 8 GB of VRAM with 426 MB address space
+    (scratchpad vram32.cpp): VRAM is not limited by the 32-bit address space.
+16. (ATN, 2026-10-26 evening, after 15; "no need to double check") (a) short report of the last 24 h (TW, Ryse,
+    Expeditions, Tales): what is done / missing; (b) can RT run instead of GT-VBAO / GT-VBGI / SSS (save performance);
+    (c) many TW games' SSS broken: line artefacts like Attila had, and shadows ~180 deg from the sun (wrong direction);
+    (d) Graphics 2 of 2 in every TW game but Attila: keep only what Attila still has + campaign map, trees, grass,
+    buildings, units, culling; delete the rest; (e) Attila's AO / GI / SSS sliders, names, values, denoisers, temporal
+    smoothing missing in the other TW games: port them; (f) DLSS (render scale) + motion vectors for everything in every
+    TW game like Attila (not WH3, Shogun 2: they have DLSS mods); (g) tests to make sure RT, DLSS, FG, SSS etc. work.
+    DONE 2026-10-26 (zips: twattila_v73, twrome2_v31, twthronesofbritannia_v31, twtroy_v27, twpharaohdynasties_v31,
+    twwarhammer_v28, twwarhammer2_v28, twwarhammer3_v23; all untested in game):
+    (b) RT AO Off / On / Alone (Attila); RT shadows work with SSS off. (c) SSS bug = shared code assumed Attila's
+    lighting slot b2 / sun c0.y / camera layout; SunDraw now has lighting_slot, sun_direction, camera_layout (WH3 and
+    Rome II's 6 no-shadow shaders remapped by frame_history::AttilaCamera partial CB copies; Light Bounce NOT remapped:
+    WH3's light_bounce.hlsli has its own layout). tools\tw\sun_draw_layouts.py [--write] [--ao] fills them from dumps.
+    (d) tools\tw\trim_more_tests.py + tw_game_tests.py filter (campaign / grass & trees / units / buildings & culling).
+    (e) twattila/ao_filter.hpp (AO Temporal Smoothing + Edge Fix + Denoiser at the first sun draw, SunDraw::ao_slot) for
+    Troy, Pharaoh, WH1-3; lighting_settings AO_SCALES (ssao_scale) vs AO_TEMPORAL (ssao_temporal).
+    (f) DLSS render scale + RR in Rome II, Thrones, Troy, Pharaoh, WH1, WH2 (RR guides per G-buffer family:
+    twpharaohdynasties/aa_rr_guides, twwarhammer2/aa_rr_guides); frame_history::render_width/height set by the AA
+    module; SSS (Bend RenderSize) and ao_filter follow it (ao_pass / light bounce / SSR at render scale: unchecked).
+    Object motion in all six: tools\tw\attila_motion\classify_motion.py -> port_motion.py -> test_motion.py ->
+    wire_motion.py; asm_to_hlsl.py (DXBC asm from fxc /dumpbin -> HLSL, bit-exact) where 3Dmigoto crashes (4-bone
+    units) or is wrong (WH1 trees). compare_test reads time_in_sec's offset from reflection (Rome II c22 shaders).
+    Bugs found: Light Bounce bypasses (draws the sun draw itself), so AA / RT / AO-filter hooks must install BEFORE it
+    (AA camera+depth and RT sun dir were lost with GI on); bridge answer timeout 100 ms -> 5 s.
+    OPEN: deformed_test only knows cloth layouts (sails / ropes untested everywhere); rigid ropes (view x projection)
+    have no motion; Pharaoh feather-helmet / WH2 liquid units output nothing with random test data (identical, unchecked).
+17. (ATN, 2026-10-26 late) Shogun 2: all motion vectors? (game velocity covers units, trees, grass, cloth, imposters,
+    textureblend; MISSING: rigidcommon ships / siege, sails, ropes, ocean, waterplane, wakes, projectile trails); HDR
+    upgrades (RGBA8 / RGB10A2 -> RGBA16F) do not touch its float2 velocity target. Attila: FG through the 64-bit helper
+    (ATN insists), limb swing (code exists: bone pool ClaimBones / MotionAnimationLoad; verify), particle trails, units +
+    leaves in RT. Other games: still-missing effects (Ryse GT-VBGI / SSR, Expeditions GI / SSS / SSR, Tales GT-VBGI /
+    SSS / SSR, WH1-3 SSR). Answer: SER (DXR 1.2) why not / speed, other DXR features unused; temporal smoothing needed
+    with DLSS?
+    DONE 2026-10-26 (untested in game; zips below):
+    - twattila/object_motion.hpp: Attila's object motion out of anti_aliasing.hpp (host gives a MakeView per draw;
+      Resolve at the frame's end; Target), its target R32G32_UINT (motion.hlsli MotionTexel: halves + depth bits),
+      MotionDepthMatches absolute 4e-6 (aa_dlaa_prepare + Shogun 2 merge), MotionPixels removes the rows' jitter
+      (motion_jitter, Shogun 2's cameras are jittered).
+    - Shogun 2 DLSS v51 (object_velocity.hpp + velocity_merge.cs): rigidstandard 0x41913E64 / rigidvertexwind 0x0798A33F
+      (RIGID), sail / sail symbol / rope (DEFORMED), ocean 0xC1BE6CEE / waterplane 0xC883761A (camera only, drawn after
+      the game's motion_vectors pass), constants copied from the draw's camera (CopySubresourceRegion runs), merged into
+      a copy of the game's MVs at game_dlss on_evaluate (eval->pInMotionVectors replaced). Advanced: Ship and water
+      motion vectors (ObjectMotion). Tools: port_motion / test_motion MOTION_DUMP=dump_shader_shogun2_pack, generator
+      regex (?<!\w)view_projection (waterplane's g_overlay_view_projection), compare_test reads view_projection /
+      prev_* offsets by reflection, deformed_test any vertex layout (sails / ropes now tested everywhere), velocity_test.
+    - Shogun 2 HDR v60: PCSS (shaders/pcss.hlsli, own code from Fernando 2005) in sss.hlsli SampleShadowSplit;
+      DLSS addon "Sun shadow softness (PCSS, experimental)" (SunShadowSoftness, degrees, 0 off). tools\shogun2\pcss_test.
+    - Frame generation for the TW games with DLAA (bridge v5, helper14): dlaa_helper/fg_d3d12.hpp (Streamline in the
+      helper, child window over the game's, its own window thread, disabled + HTTRANSPARENT; FG presents at the game's
+      reshade_present), twattila/frame_generation.hpp (HUD-less drawn through the swap chain proxy shader at KeepFrame in
+      a private context state; back buffer copied after ReShade's overlay), settings in feature_settings AppendAa
+      (FrameGeneration, FrameGenerationReflexBoost). Bridge Start(device) writes the adapter LUID before the helper runs
+      (race found by the FG test). Tests: fg_bridge_test (2x / 3x / 4x, mouse to the game's window), hudless_test.
+      Ships Streamline 2.14.16 DLLs + STREAMLINE_LICENSE + PHANTOM_FX_LICENSE next to the helper (tw_pack.py).
+    - Attila RT: units (RT_DYNAMIC: captured every frame, 3M vertices max, one fast-build BLAS per frame per slot;
+      Ray-Traced Units setting) and leaves (RT_FOLIAGE: non-opaque, 0.5 transmittance per leaf, rt_trace Transmittance).
+      rt_dynamic_test. Particle / projectile trail motion: not done by design (blended, no depth; transformer presets
+      ignore the bias mask).
+    - Expeditions DLSS v22: UE's r.SSGI.Enable / Quality / HalfRes in Optional. Not done (new passes, follow-ups): Ryse
+      GT-VBGI, Tales GT-VBGI, Expeditions screen-space shadows, WH1-3 SSR, PCSS in the other games.
+    - Remastered-CE (Shogun 2, a user's report): separate exe in a RemasteredCE folder (ReShade + addons must go there),
+      rebuilt shaders.pack + patched engine DLLs: some HDR shader hashes / DLSS patterns may not match; needs its files.
+    - Sweep: tools\tw\test_sweep.py runs every GPU / WARP test (motion of 7 TW games + Shogun 2, RT captures,
+      placement, helper DLAA / DLSS / RR / RT / units / FG / HUD-less, velocity, PCSS, AO filter, Ryse, Tales, AA, SSR,
+      SSS).
+18. (ATN, 2026-10-26 night) Tales first: opacity micromaps, BVH refit, SER (+ any other accelerators), path tracing and
+    everything it needs, every missing RT effect; then everything missing in the other games (Attila RT effects / refit
+    / OMM, RT in the other TW games + Ryse + Expeditions, Ryse GT-VBGI, Expeditions SSS, WH1-3 SSR, PCSS elsewhere, FG
+    for Shogun 2 / Ryse / Expeditions, Tales RR via NGX D3D12, AO / bounce / SSR at render scale, Remastered-CE).
+    DONE for Tales 2026-10-26 (zips talesofarise_dlss_v104 + talesofarise_v71, untested in game; README v104 / v71):
+    Agility SDK 1.619.6 (ATN's NuGet in Documents\Nvidia(myself)\agility, extracted to build\agility_1.619.6; the
+    preview 1.721.3 needs developer mode: not used) through ID3D12SDKConfiguration1::CreateDeviceFactory = DXR 1.2 +
+    SM 6.9 on the 5090; alpha-tested prepass draws (89 masked PS from tools\toa\rt_tests\scan_masked.py, stream output
+    from the VS's own bytecode, opacity-mask atlas, UV / normal pools, records = InstanceID); OMM (verified by omm_test);
+    character refit; batched builds; SER raygen (0x7A1E0D1C prebuilt .cso: rebuild with the dxc line in its source
+    after changing rt_path / rt_cache / rt_scene / rt_surface); soft shadows (PCSS on ray blocker distance, no history:
+    a temporal version ghosted moving shadows); character shadows; path tracing with the game's lighting learned from
+    the screen (Bandai's lighting is NPR, so PT feeds its indirect slots); glossy reflections; specular occlusion; HDR
+    v71 uses them in all 6 lighting permutations. Not done (README says why): volumetric RT, particle / translucent
+    shadows, refraction / caustics, local light shadows (need an indoor / night frame trace from ATN).
+    Other games, in progress 2026-10-27 (nothing zipped yet, all untested in game):
+    - TW helper15 (bridge v6, Agility, DXR 1.2 OMM, units refit, soft sun shadows) + Attila; RT ported to Thrones (26),
+      Rome II (45), Troy (16), Pharaoh (16), WH2 (16), WH1 (29) scene shaders with tools\tw\rt_port.py (captures from
+      3Dmigoto or, RT_ASM=labels, fxc's disassembly: WH1's trees were silently wrong in 3Dmigoto) and
+      tools\tw\rt_capture_test.py (all OK on the GPU; leaves compared projected: their capture divides by w now).
+      WH1 / WH2 have no AO draw pass: rt_scene traces at the first sun draw and multiplies its AO into the AO the sun
+      draws read (rt_ambient_combine.cs, every RT game needs its wrapper). WH3 has no DLAA: no RT. Builds: build32
+      Attila / Rome II / Thrones need a rebuild (rt_scene changed), 64-bit Troy / Pharaoh / WH1 / WH2 built.
+    - Tales DLSS v105: Ray Reconstruction through D3D12 (rr_d3d12.hpp, the helper's RayReconstruction12 generalized:
+      existing device, create flags, pre-exposure); tools\toa\rr_test\rr12_test.cpp OK (CPU waits, SR in the same
+      process, clean exit). The helper's rr_d3d12.hpp changed: rebuild helper15 before packing.
+    - Frame generation (talesofarise_dlss/frame_generation.hpp, now shared: Camera near / far / depth_inverted, Inputs
+      motion_scale, Install(dir, name), CreateSwapChainForHwnd hooked too, DrawSettings / LoadSettings, Inverse) in
+      Expeditions DLSS (UE 4.26 View rows = Tales' + 4; hudless after t00-t09), Ryse DLSS (camera split from CryEngine's
+      view-projection: tools\ryse\fg_camera_check.py OK; hudless after the post pass) and Shogun 2 DLSS (game's DLSS
+      evaluation + main camera captured in render_scale's upload hook; hudless after tonemap00 / 01). fg_test FG_HWND=1
+      runs the ForHwnd path (as CreateSwapChain; "1 frame" when the test window has no focus).
+    - Ryse HDR fix49: Light Bounce (GT-VBGI) after the tiled lighting (light_bounce.hpp + light_bounce.hlsli on the
+      shared twattila passes); tools\ryse\light_bounce_test.cpp OK.
+    - Render scale (step 9, ATN): TW GT-VBAO (bitmask_ssao.hlsli AoViewScale: texture uv -> view uv; off-view samples
+      skipped) and SSR (SSR_VIEW_SIZE, light buffer / resolve history at the view's share) were wrong below 100%: fixed,
+      WARP tests ao\render_scale_test.cpp and ssr_test.cpp (100% vs 50%: identical). SSS samples x the render share.
+      The game's own HBAO (Attila / Rome II / Thrones) stays wrong below 100% (its code). Troy / Pharaoh AO pass uses
+      the game's TEXCOORD (unverified below 100%). TW render sizes now whole aspect units (frame_history AspectSize,
+      Shogun 2's), TW texture LOD bias (twattila/texture_lod_bias.hpp, moved from Shogun 2, SetMainView), TW DLSS Mode
+      list + Custom 1-100% (AntiAliasingDlssMode; ATN: like Tales / Shogun 2). Tales / Ryse / Expeditions / Shogun 2
+      already had modes, custom and aspect-exact sizes.
+    - Zips 2026-10-27 (tools\tw\release_zip.py: repack_game + old zip's DLLs / notices + --helper): twattila_v75,
+      twrome2_v33, twthronesofbritannia_v33, twtroy_v29, twpharaohdynasties_v33, twwarhammer_v30, twwarhammer2_v30 (all
+      with helper15 + D3D12\D3D12Core.dll + AGILITY_SDK_LICENSE.txt), talesofarise_dlss_v105, rysesonofrome_fix49,
+      rysesonofrome_dlss_v112, expeditionsrome_dlss_graphics_v23, twshogun2completeedition_dlss_v52 (FG: Streamline DLLs +
+      STREAMLINE / PHANTOM_FX licences added). Sweep build\sweep_2026-10-27.txt: 41 of 43 (Pharaoh feather / WH2 liquid
+      units: the known generic-data cases).
+    NOT DONE (needs ATN or a big new pass): WH1-3 SSR (no game SSR pass: the lighting's specular must be patched),
+    Expeditions screen-space shadows (stripped UE shaders, no contact-shadow code: a one-frame trace to find the sun's
+    light draw), PCSS in Ryse / TW sun shadows, RT in Ryse / Expeditions, Attila RT reflections / GI / PT, WH3 RT (no
+    DLAA there), Remastered-CE (its files). ATN's plan for later: every RT effect + PT in every game, one toggle per
+    effect, nothing traced twice.
+19. (ATN, 2026-10-27, away; authorized: drive the desktop by script, launch / close games, change game-folder files and
+    in-game settings (restore after), click first-start prompts, use saves) BIG BATCH 2: test everything untested
+    myself in game, Not-done list (WH1-3 SSR, Expeditions SSS, PCSS Ryse / TW, RT Ryse / Expeditions / WH3 (+ WH3
+    DLAA), TW RT reflections / GI / PT), no double work + per-effect RT toggles + PT master, RT + PT in every game,
+    Remastered-CE (installer in D:\Downloads\RemasteredCE_Installer_Preview, Steam Shogun 2 now installed). TW game AO
+    below 100%: low priority.
+    In-game test kit (C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\ingame): drive.exe (build\ingame; shot via
+    Desktop Duplication HDR->sRGB, burst N frames, click / key / rel mouse / focus / kill / windows), shifts.py (burst
+    motion), ini.py (ReShade.ini keys), deploy.py (helper / Streamline / NGX DLLs from the zips into game folders;
+    build\ingame\deployed.json), devkit.py + draws.py (DevKit MCP bridge from Python: snapshot, draws, shaders).
+    build\ingame\restore_notes.txt lists every game-folder / ini change to undo at the end. DevKit must load LAST
+    (zrenodx-devkit.addon64, copied: symlinks need admin): loaded first it crashes UE games at the early addon unload.
+    Steam ids: Ryse 302510, Tales 740130, Expeditions 987840, Attila 325610, Rome II 214950, WH2 594570, WH3 1142710,
+    Pharaoh 2951630; Shogun 2 CE exe direct (Esc x2, (1024,1120) Single Player, (1464,1400) Custom Battle,
+    (1932,1568) start).
+    Results so far: Ryse FG generates 2x with HUD-less (combat burst clean). Expeditions FG: hudless hook never fired
+    (OnTonemapper had a non-deducible template parameter: command_action registered it for no draw types; same bug in
+    Shogun 2) - fixed, generates with HUD-less. Shogun 2 FG: the game's DLSS depth is R24G8_TYPELESS (not shareable
+    with D3D12): frame_generation Submit now draws depth-stencil formats into an R32 float copy (CreatePasses shared
+    with DrawHudless) - generates 2x. FG + scRGB: the three HDR addons now output HDR10 whenever frame generation is
+    on (SetOutputEncoding / Expeditions' setting). FG logs status changes, HUD-less skips, unshareable inputs.
+    Tales in game: RT running (DXR 1.2, OMM + SER; status now logged), PT, RR on D3D12, FG 2x + HUD-less: all fine.
+    TW in game (DLSS Performance + FG 2x + RT shadows / AO / units each): Attila, Thrones, WH2, Troy, Pharaoh, WH1 OK.
+    Fixes found: (1) AA's camera buffer minimum was 36 registers, Rome II's is 35: CAMERA_BYTES = 30 x 16 (it reads
+    c0-c29). (2) Rome II hooked AA's tone mapper end on its DOF passes too (dof00/03/04/05 in UpgradeRTVReplaceShader):
+    DLSS ran mid-chain and the 3D stayed in the top-left: on_drawn cleared for them; OnTonemapDrawn now takes only
+    display-size RGBA16 draws before consuming the scaling. (3) RT traced only at the AO draw in AO games: Pharaoh never
+    traced: the first sun draw now traces when no AO pass did (ambient_frame), rt_scene::InstallSunDraws before the
+    screen-space shadows in all 7. (4) TW FG + scRGB: HDR10 at the first swap chain when FG is on. (5) TW bridge logs
+    the helper's DLAA / FG lines on change and the RT line each minute. (6) In-game MSAA (ATN's Rome II x4, Troy x2,
+    WH1 2) silently keeps DLAA off: now a warning in the log. OPEN: GT-VBGI (Light Bounce) over-brightens below 100%
+    (Rome II at 50%: washed-out grass, tree shadows faint; GI 0 looks right): needs a WARP 100%-vs-50% test of the
+    whole chain. Game preference changes (gfx_aa) and ini changes to undo: build\ingame\restore_notes.txt.
+    GI below 100% FIXED: the battle portrait (a second 3D view drawn after the tone mapper, unscaled) ran the sun draw
+    hooks too and overwrote Light Bounce's history camera each frame: frame_history::MainViewport (tone mapper drawn
+    -> false; else the viewport must be the render size) gates light_bounce / rt_scene / ao_filter / SSS sun hooks.
+    Light Bounce's prepared levels / trace / geometry clamp to the view's region (light_bounce.h region_*).
+    RENDER-SCALE AUDIT (ATN: DOF, CA, shadows, reflections, our RT etc. at DLSS): twattila/frame_trace.hpp
+    ([renodx] FrameTrace=1: one frame 600 presents into scaling -> tw_frame_trace.txt; MARKs at the tone mapper),
+    tools\tw\scale_audit.py (render-space reads outside the scaled span), scale_scan.py / scale_scan_hashes.py (NDC
+    from texture uv, projected uv), scale_fix.py (HLSL rewrite, NOT used: hdr_to_screen runs after DLSS unscaled),
+    cbuffer_slots.py (TW shaders use b0-b9 only: b12 free), tools\ingame\tw_battle.sh (TRACE=1: launch, custom
+    battle, trace, close). Traces in build\ingame\traces\<game>.txt (all 7). Findings (Attila): engine builds NDC from
+    the texture uv ((vpos + off) x g_screen_size.zw x (2,-2) + (-1,1)) in point lights (via point_light_PS
+    g_viewport_offset_scale), decals, battle fog, water / river / refraction, particle distortion, game SSAO, markers;
+    the sun light uses g_viewport_dimensions (right). Post-DLSS hdr_to_screen (unscaled) reads the distortion texture
+    and depth (render space) at full uv; ps_downsample_image_store_luma (bloom + exposure source) reads the whole
+    3840 texture (stale outside the region); shadow_map_depth_buffer_analysis too (cascade fit; low impact).
+    PLAN being built: twattila/view_share.hpp: DXBC patch at creation of every PS with the pattern (runtime dataflow:
+    source from camera g_screen_size / g_render_target_dimensions -> NDC source / (viewport/target); projected
+    (0.5,-0.5)+(0.5,0.5) uv x (viewport/target)), cb12 render_scale (xy per draw viewport / target, zw frame
+    render / display; 0 = unbound = 1), bound per draw for patched pipelines (command_action hash 0, only while the
+    frame is scaled; unbound after). Replaced HLSL shaders declaring cbuffer render_scale b12 get it too (heat haze /
+    depth reads after DLSS x zw).
+    ATN 2026-10-27 more: WH1/WH2 army flags waving get wrong shadows (check RT capture of cloth / SSS); WH3: DLAA /
+    DLSS / FG / RR / RT / PT and motion vectors for EVERYTHING; then a final pass for anything missing.
+    RENDER SCALE DONE (2026-10-27 morning, all 7 TW built; Troy + Rome II checked in game at 50%: full frame, FG on):
+    - view_share.hpp: PS and CS patched at creation. NDC sites (uv x (2,-2) + (-1,1), and x (4,-4): half-size CS of a
+      full-size uv) divide the uv by rS.xy; projected sites (camera projection x (0.5,-0.5) + 0.5; CS: any, PS: read as
+      a coordinate) multiply by rS.xy; region reads (per-addon RENDER_SCALE_READS: game hash + texture slots) multiply
+      the read's coordinate by rS.zw (ld: utof / mul / ftou). rS = cb12 with 0 -> 1. Per draw: xy = viewport / target
+      only for a viewport the render scale made (corner 0,0 and target x frame share within 1.5 px), else 1 (portraits
+      at an offset, everything after DLSS); zw = frame share; a region read whose first slot's texture is not the
+      display's size (or a halving) gets 1. CS: xy = frame share before the tone mapper, 1 after. WARP test: every
+      patched PS / CS of 8 dumps creates (VIEW_SHARE_REGION=1 patches every 2D read for the test).
+    - RENDER_SCALE_READS: Attila / Thrones luma + bloom downsample 781681E4 t0, shadow depth analysis B386A8BC /
+      16390F4F t0 t1; Rome II downsample AD818F92 t0; Troy glow bright pass after DLSS 075C096D t0 t1; Pharaoh
+      57E5140E t1 t2; WH1 shadow analysis 404B4343 t0 t1. NOT the luma stats CS (BAF987B3 / F9B80B32 / 96BCFCBB /
+      A50883CE): they already read viewport / target. NOT Rome II's page touch 28C847C0 (scaled-span draw).
+    - twattila/render_scale.hlsli (FrameRenderShare / DrawRenderShare / RenderShareTexel): 70 replaced post-DLSS
+      shaders (hdr_to_screen t01.., DOF, photo mode: tools script render_share_hlsl.py in the session scratchpad)
+      read depth (gbuffer_channel_4_*) and distortion at the render share; Attila / Thrones / Rome II tone mappers read
+      the (now region-normalized) bloom at uv / DrawRenderShare. WH1 / WH2 tone mappers already read bloom at the
+      viewport's uv. Rome II's hdr_to_screen is in the scaled span (no change). Bloom 01 high-pass shaders (Troy / WH)
+      are the portraits' (no change).
+    - anti_aliasing: after DLSS the game's own viewports go back if the scaled ones are still bound (Rome II lens
+      flares drawn after the tone mapper without a viewport bind).
+    - Remastered CE (analysis, nothing to install): its installer needs the Steam CE exe (ATN's CE exe differs: hash
+      check fails; the engine DLL matches). It runs a patched copy of the engine as RemasteredCE\CE.dll (our DLSS
+      addon looked only for empire.retail.x64.dll: now both; all 12 byte patterns found unchanged in the patched
+      engine), its exe sits in RemasteredCE\ (ReShade + addons go there), and it rebuilds 2 of our SSS CS (sss00
+      0x34ECD06E -> 0x9147EB4E, sss01 0x1B529672 -> 0x7FA1D600: IgnoreEdgePixels on, TAA-flagged banner pixels read as
+      far): the HDR addon maps both to ours. Other changed shaders (particle / ribbon VS, blood decals, grass source)
+      are not ones we replace.
+    - WH1 / WH2 flags (ATN): the floating unit banners (rigidtextureblend vs40_main_2_bones: WH2 0x7DF335FF, WH1
+      0xE7F0D71A, Troy 0x262DB049, Pharaoh 0x76225B91; 18 draws of one 2169-index mesh in WH2) were in the RT scene as
+      static captures (pose of first sight) and cast RT shadows the game never gives them: dropped from SCENE_SHADERS
+      (WH2 checked in game: banner shadows gone). rt_scene traces captures with FrameTrace (MARK "ray tracing capture:
+      vs / ps"). The DevKit must NOT sit in a TW game folder with DLAA: ReShade loads it into renodx-tw-dlaa64.exe too
+      and it crashes there (helper "stopped", WER shows zrenodx-devkit.addon64). DevKit live shader probes did not
+      apply in WH2 (no visible change even on terrain).
+    - WH3 (2026-10-27): the game's own DLSS (gfx_dlss, NGX linked in the protected exe, no menu option) never creates a
+      feature even with nvngx_dlss.dll (hooked the driver's _nvngx.dll exports via a LoadLibraryExW detour to check:
+      loaded, nothing created; hook removed again). Instead taa_dlss.hpp: after the TAA resolve cs (0x1ADBFF18 /
+      0x6A8FC282: t0 depth .x, t2 velocity = clip now - before, t4 jittered colour RGBA16F, u1 out) DLSS through the TW
+      helper (dlaa_bridge), result into u1; jitter = camera g_camera_jitter (float 257, clip space; equals the
+      projection's [2][0] / [2][1]) x size / 2, y negated; motion = velocity x (-0.5, 0.5) x size. Tested in game:
+      DLAA active, pans sharp. Frame generation (dlss_frame_generation.hpp, talesofarise FG + fg_camera.hpp, HUD-less
+      after t00 0xE2EE82F8): generating 2x. Below 100% (gfx_resolution_scale) the game draws the 3D AND its post
+      chain into the targets' top-left (TAA dispatched over the render size) and upscales at the very end: our DLSS
+      stays off there (camera viewport != screen), FG pauses; DLSS < 100% would need the post after TAA at display
+      size. RR / RT not ported. Debug: renodx_trace_now next to the exe = one-frame trace (taa_dlss.hpp).
+    - Ray-traced Light Bounce (all 7 TW, bridge v7, helper16 in build\tw_dlaa_helper16): light_bounce.hpp's trace
+      step can be replaced (SetRayTracedTrace) by rt_scene TraceLightBounce: the prepared light (level 0, R11G11B10)
+      copied into the shared rt_light, request 2 -> helper RtScene12::Bounce -> rt_bounce.cs_6_5.hlsl (cosine rays
+      from rt_positions, hit -> this frame's camera view-projection -> the pixel where the camera sees the same surface
+      (rt_positions within 5 cm + 2%) -> prepared light; else 0) -> rt_bounce -> objects.traced; resolve / denoise /
+      apply unchanged. Root sig: table t9 (light) / u9 (bounce), b2 20 constants. Settings RayTracedLightBounce /
+      ...Rays (4) / ...Range (10 m) in the AA section. WH2 in game: "Ray-traced Light Bounce: tracing (960 x 540, 4
+      rays)", picture fine, 172 fps (DLSS 50% + FG + RT). The helper exe in a game folder can be held by zombie helper
+      processes (0 threads, killed games): rename it to swap (WH2 has renodx-tw-dlaa64.exe.old15).
+    - Zips (Downloads): twattila_v76, twrome2_v34, twthronesofbritannia_v34, twtroy_v30, twpharaohdynasties_v34,
+      twwarhammer_v31, twwarhammer2_v31 (helper16), twwarhammer3_v24 (helper16 + Streamline), twshogun2completeedition
+      _v61, twshogun2completeedition_dlss_v53, expeditionsrome_dlss_graphics_v24, rysesonofrome_fix50,
+      rysesonofrome_dlss_v113.
+    - Expeditions DLSS v24: Contact shadows (Graphics slider, Off-10% of the screen, Max preset 3%): the game's sun
+      light shader (ps 0xC38C91CD, draw-rectangle vs 0x7C21DA11) already has UE's ShadowRayCast; the game sends
+      ContactShadowLength 0. contact_shadows.hpp copies the light's constants (ps b1, 144-256 bytes) with c1.z set (cs
+      0x7A1E0D43, own context state) and binds the copy for that draw. In game at 10%: shadows behind feet / under a bag.
+    - One-frame trace everywhere (Tales' frame_trace.hpp, `renodx_trace_now` next to the exe): Tales, Expeditions, Ryse
+      DLSS; it also saves the traced shaders' bytecode (tales_frame_trace_shaders, needs the DevKit's subobject cache).
+    - Ryse HDR fix50: Sun Shadow Softness (PCSS, Contact Shadows section, 0-5 deg) in the 5 cascade passes of the sun
+      shadow mask (sunshadow00-04: E9264ADE B5DC6E36 F2B4EF30 F864A048 F81C7168; far cached map 10C1DA12 untouched);
+      cascade world scale solved from CryEngine's vWBasisX/Y/Z (sun_shadow_pcss.hlsli); pcss.hlsli got a Texture2D
+      version. In game at 3 deg: softer railing shadows, no acne, 45 -> 43 fps.
+    - WH1-3 SSR: they DO have the game's SSR (environment_specular_light cs raycast 0x143BD25C in WH2: hierarchical-Z
+      march at half resolution, then resolve / blur), the old "none" note was wrong. Possible later: full-resolution
+      raycast (own UAV + resolve t7 swap).
+    - NOT DONE (multi-day ports): RT in Ryse (CryEngine), Expeditions (Tales' 2.6k-line rt_shadows.hpp would need its
+      tables per game; apply point: the sun light draw's light attenuation, as contact shadows), WH3 (GPU-driven
+      material shaders, vertex pulling: rt_port.py's capture VS do not fit); TW RT reflections / PT; TW PCSS (the sun is
+      evaluated in 31+ directionallight permutations; RT soft shadows cover it); WH3 DLSS below 100% / RR.
+    - Game changes restored (restore_notes.txt): ini keys, preferences, deployed DLLs. Locked until a reboot: Ryse's
+      Streamline / dlssd / dlssg DLLs, WH2 renodx-tw-dlaa64.exe.old15.
+
+### Tales DXR plan (item 7, started 2026-10-26)
+DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
+rt_shadows.hpp; DLSS README v96 has the whole design). Stream output of the opaque depth prepass (vs C81C5E1F,
+287D5CA8, 344F8ACF, 5F4BCA38, F1D731D5; ps null) -> world positions with the draw's View -> one BLAS per new draw ->
+TLAS (this frame's + last 300 frames' non-landscape) -> cs_6_5 inline ray query per pixel -> t40 min() in sunshadow00.
+GPU test tools\toa\rt_tests\rt_shadows_test.cpp passes (the game's own VS). ASK ATN: turn it on, Advanced "Trace
+ray-traced shadows for one frame" -> tales_rt_trace.txt (shows captures, BLAS, sun direction), screenshots on/off.
+NEXT for item 7: masked leaves (alpha test: needs UVs + texture: capture TEXCOORD via SO of the masked VS + any-hit-like
+candidate loop), skinned characters (re-capture each frame, refit), off-screen casters (shadow-depth pass draws
+EB00F8A5 in the sun's view: their ShadowView UB converts them), soft shadows (sun cone + DLSS RR or a denoiser), then
+GI / reflections, RR (nvngx_dlssd.dll), frame generation (Streamline).
+Reference: refs/mgsv-phantom-fx (MIT; cloned in the session scratchpad): D3D12 beside D3D11 (d3d12_helpers: device on
+D3D11's GPU behind ReShade's proxy, shared textures and fences opened in D3D12), gi_scene (geometry pool, BLAS per
+mesh compacted, TLAS per frame), NRD RELAX GI, FFX shadow denoiser for RT sun shadows. Its scene comes from MGSV's
+memory; Tales' comes from UE draws instead:
+- Depth prepass vs 0xC81C5E1F (277 draws, debug20 trace): ATTRIBUTE0 positions (VB slot 0), cb1[0..3] = Primitive
+  LocalToWorld rows, cb0 = View (TranslatedWorldToClip 0-3, PreViewTranslation 62); world = L2W x pos + cb1[3]; others:
+  1370AE15, 5F4BCA38, A5D5F634, F1D731D5, 287D5CA8, 367A646D (check: WPO / masked). Shadow-depth vs EB00F8A5 (348,
+  Primitive at cb2). Skinned characters are skinned in the VS (no skin cache): not in BLAS at first.
+- Steps: (1) rt_device: D3D12 device on the game's LUID, D3D12 fence shared to D3D11 (D3D11.4 OpenSharedFence),
+  textures made in D3D11 with NT handles opened in D3D12; (2) rt_scene: mesh key (VB, IB, ranges) -> BLAS (copy of
+  the ranges via a staging readback once), TLAS each frame from the prepass draws (L2W); (3) rt_sun_shadow.cs_6_5 inline
+  RayQuery from depth toward the sun, min() with the game's shadow mask (sunshadow00 cs 0x2084C889 in the HDR addon),
+  far mountains beyond the CSM; (4) later: NRD / RR (nvngx_dlssd.dll in external/DLSS rel), GI, DXR 1.2 SER / OMM (dxc
+  1.9 = SM 6.9, Win SDK 28000 headers; Agility SDK via ID3D12SDKConfiguration1 device factory), frame generation
+  (Streamline in external/Streamline).
+- Sparks (8) DONE 2026-10-26: DLSS v97 (zip, untested in game): the 8 sprite VS get motion versions (0x7A1E0D20-27 from
+  tools\toa\spark_motion\make_motion_vs.py, WARP-matched by compare_test.cpp; 3Dmigoto printed if_nz cb0[3].x as a float
+  test: fixed) redrawn after each sprite draw into an RGBA16F motion target; 0x7A1E0D01 uses it where a sprite is this
+  frame, no history where one only was. Other particle kinds (ribbons / trails, mesh, GPU sprites) still no history.
+  ASK ATN: sparks sharp with DLSS? any trails? (Old plan below.)
+- Sparks (8): CPU sprite VS (3147D98A, 75139A1B, D7B928CD...) have OldPosition (ATTRIBUTE1): replace them to output the
+  previous clip position (View PrevTranslatedWorldToClip 83, PrevPreViewTranslation 105) and redraw each particle draw
+  into a motion target (DrawAtOutputSize-style post callback); the prepare pass takes it where the spark mask is set.
+
+## START HERE (2026-10-25, newest; ATN moves to their brother's account): read this first
+This section is the current state; everything below it is history (newest first). Memory (MEMORY.md, loaded
+automatically) has the per-game summaries and ATN's rules.
+
+Rules (ATN): very short answers, always English. Zips of the changed files in C:\Users\arshi\Downloads (game folder at
+the zip root, versioned names). Never push or commit unless asked. Read docs/CXX_STYLE.md before C++ edits. Short
+player-facing tooltips. Never copy other modders' code (Apache / CC0 / MIT sources with credit are fine: Bend Studio,
+Mirko Salm, Ottosson, XeGTAO ideas). Attila / Rome II / Thrones are 32-bit: always build build32 too. Shell heredocs
+turn "\\n" into real newlines: put C++ strings with \n in through the Edit / Write tools.
+
+Build / pack:
+- 32-bit: `cmake --build build32 --config Release --target renodx-twattila.addon32 renodx-twrome2.addon32
+  renodx-twthronesofbritannia.addon32`; 64-bit: `cmake --build build --config Release --target renodx-<game>.addon64`
+  (twtroy, twpharaohdynasties, twwarhammer, twwarhammer2, twwarhammer3, twshogun2completeedition(_dlss), and the
+  three 32-bit games' 64-bit builds as a compile check).
+- Pack: `python -I C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\repack_game.py <game> <old zip> <new
+  zip>` (zip names in Downloads; keeps the old zip's extras such as APACHE_LICENSE-2.0.txt and adds every shared file
+  the game's sources include).
+
+Attila v55 (2026-10-25, untested; README v55): Settings Mode HDR & Effects / Graphics 1 of 2 (AO, GI, SSS) / Graphics 2
+of 2 (Graphics (Experimental) + 78 engine test sliders in 8 "(Tests)" sections, found with tools\tw\tw_tweak_uses32.py;
+switches Game's / Off / On); AO presets Faster (Recommended at half res) / Recommended / Heavier (25 m, 64), radius max
+30, Temporal Edge Fix off everywhere (ATN: ghosting); GI Faster 32 samples (shared lighting_settings.hpp: all TW games
+get these on their next build); SSS title lavender + empty line after GI; pixel trace (attila_pixel_trace.txt) to find
+the water reflection pass (ATN then wants a better SSR, MIT / CC0 code, e.g. AMD FidelityFX SSSR); Sky Debanding
+(skydome 0xA5BA3E04 / 0x9436471B, Pharaoh's deband + dither). Grass lead: OIT_GRASS_MAX_DISTANCE 25 m (blended grass
+queue) = "Soft Grass Distance". WAITING: ATN's test of v54 (SSS, Shadow Test) and v55.
+
+Attila v56 (2026-10-25, untested; README v56): Anti-Aliasing Off / SMAA (MIT) / CMAA2 (Apache, Intel) as compute after
+the tone mapper (twattila/anti_aliasing.hpp; WARP-tested: tools\tw\warp_tests\aa), SSS extra sliders (Softness blur,
+Contrast, Hard / Fade-Out Samples run-time in bend_sss_gpu.hlsli, Edge Threshold, 3 toggles). Grass pop ~25 m: open,
+asked ATN for a pixel trace on a popping plant + in-game OIT setting. Bitdefender blocks fresh test exes (run them
+from build\, or ATN pauses it). Shell heredocs collapse "\\": use the Write tool for scripts with C++ "\n" strings.
+
+Attila v57 (2026-10-26, untested; README v57): Grass Height Distance (grass VS replacements grass00-02, the 1/100 m
+shrink / slider) + 217 more engine tests generated into twattila/engine_values.h by tools\tw\tw_engine_values.py
+(attila_tweaks_typed.txt / attila_uses.txt copied to tools\tw). ~315 graphics tests in total; ATN tests and reports
+which work. Next: keep the working ones, delete the rest; the grass pop trace.
+
+Attila v58 (2026-10-26, untested; README v58): Audio Memory (Tests): Wwise pool sizes + low-memory ratios, written at
+game start by a thread (engine_tweaks ApplyWhenSet), ReShade.ini [ADDON] LoadFromDllMain set while changed. ATN: only
+buffer sizes (arrow / group sound values not wanted). Check ReShade.log "Graphics trace" lines after start.
+
+Attila v59 (2026-10-26, untested; README v59): Hierarchical SSR (FidelityFX SSSR traversal, ssr_hiz.hpp / .hlsli,
+WARP 97% vs exact), SSS sky streak fix (far-plane pixels skipped in bend_sss_gpu.hlsli), Sky Debanding cheaper + Off,
+tests trimmed / top sliders split, engine_values.txt. NEXT (ATN asked): TAA (camera jitter injection into the main
+view's camera_VS_PS, reprojection from depth + last camera, variance clip) and SMAA T2x in Attila; grass at the screen
+border gets no SSS (likely screen-space limit, check with a mask view); grass pop ~25 m still open (needs a trace).
+Tales question: MGSV Phantom FX (MIT, DXR 1.1 ReShade add-on, NRD) - RT in Tales would be a large project.
+
+Attila v60 (2026-10-26, untested; README v60): Anti-Aliasing + SMAA T2x / TAA (camera_VS_PS jittered in the map /
+unmap / update_buffer_region events, camera + depth taken at the sun draws, camera-only reprojection, clip, sharpen;
+TAA Strength / Sharpening). WARP-tested with tools\tw\warp_tests\aa\taa_test.cpp (compiles anti_aliasing.hpp itself;
+the exe exports ReShadeLogMessage stubs; clang-cl -std:c++20 /O2 /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX, includes
+build32\twattila.include + external reshade / json / frozen / gtl / Detours, run from build\warp_taa). Risks for ATN's test: a camera the module misses (log line missing: TAA never runs, no jitter),
+moving units can trail (no motion vectors, only the clip), UI 3D markers drawn before the tone mapper would jitter.
+Still open: grass pop ~25 m (trace), SSS at the screen border.
+
+Attila v61 (2026-10-26, untested): SSS Debug View (Shadows / + Screen Edge in red: ray leaves the screen within the
+Length) to check ATN's border report. Grass pop: asked ATN to try Soft Grass Distance (OIT_GRASS_MAX_DISTANCE, game
+25 m: blended grass inside, cut-out outside) first, else a pixel trace before / after a pop. Game paths: memory
+reference_game_paths.md.
+
+Attila v62 (2026-10-26, untested; README v62): Grass Distance (scrub hooks DrawScrub +0x17f9800 / ScrubUpdate
++0x17fb510 in graphics_hooks.hpp; Thrones has the same code, no slider yet), SSS rays stop halfway to the sun's screen
+point (bend_sss_gpu.hlsli, Shogun 2 too: rebuilt, not zipped), Mirror Screen Edges. tools\tw\pe_range32.py (plain
+range disassembly when pe_dis32.py's start guess fails); warp_tests\sss\sss_scene.cpp updated (16-float settings,
+SSS_EMBED / SSS_OUT / SSS_BEND env).
+
+Attila v63 (2026-10-26, untested; README v63): Grass Density (ScrubUpdate bias / density), Mirror Screen Edges moved
+into the shader (left / right / bottom), TAA resolve centres this frame by the jitter (less shaking where the history is
+rejected). SSR answer: full resolution (the game's environment_specular_light pass, 3840 x 2160). For DLAA later: the
+jitter is runtime.jitter (pixels, y up); 8 Halton phases now, DLSS wants more.
+
+Attila v64 (2026-10-26, untested; README v64): the grass circle = the grass PIXEL shaders' own 100 m colour fade (13
+shaders, l(0.01) before min); grass_fade.hpp patches it to cb12[0].x = 0.01 / Grass Height Distance (dxbc.hpp shared
+with the SSS patch). ATN runs Grass Always Drawn On (every plant, no thinning: Grass Density does nothing there).
+ATN's batch is next (SSR items 1-3 included: miss fallback / fade, FidelityFX SSSR denoiser, hit refinement).
+
+Latest zips: twattila_v64 (newest Attila), twrome2_v26, twthronesofbritannia_v25, twtroy_v22, twpharaohdynasties_v26,
+twwarhammer_v23, twwarhammer2_v23, twwarhammer3_v21, twshogun2completeedition_v58 + _dlss_v48 (round 48). Rome II /
+Thrones were rebuilt after v54's Edge Fix (shared code) but not zipped. Ryse v1.04 shipped (HDR fix47 / DLSS v110).
+Tales of Arise HDR v64 / DLSS v94 unchanged.
+
+Total War lighting (all untested by ATN unless noted; details in "Round 48" and the Attila notes below):
+- twattila/lighting_settings.hpp: one source for every TW game's AO (GT-VBAO) and Global Illumination (GT-VBGI, the
+  Light Bounce) settings and ATN's presets (AO Faster / Heavier (Recommended); GI Faster (Recommended) / Heavier (More
+  accurate)). Temporal resolve: variance clip only with 5+ same-surface neighbours, history length (AO 3rd channel, LB
+  MRT frame-count target). v54: AO "Temporal Edge Fix" toggle (nearest history texel within 2% on outlines, 0.2 hold;
+  ATN reported thin halos).
+- Attila screen-space shadows (v49-v53, ATN asked; Bend Studio, Apache 2.0, Copyright 2023 Sony Interactive
+  Entertainment, credit in About + APACHE_LICENSE-2.0.txt in the zip): twattila/screen_space_shadows.hpp patches the 40
+  shadowed sun shaders' DXBC at creation (t49 occlusion after the cascade shadow's saturate), compute: depth-stencil copy
+  -> sss_depth -> sss_setup (Bend's BuildDispatchList on the GPU) -> 8 x DispatchIndirect sss_bend. v49-v52 artefacts
+  were one bug: SRVs bound before the UAVs (D3D11 nulled the inputs); v53 fixed it (WARP reproduced the GPU mask
+  exactly). WAITING: ATN's in-game test of v53/v54. Then remove the one-time "Screen-space shadows report" log
+  (sss_probe) if it works.
+- Attila buildings losing their own shadows (also vanilla; ATN debug4 / debug5): not solved. v51+ has three test
+  sliders at the bottom of Graphics (Shadow Test: Caster Reach / Sun Camera Depth / Cascade Margin) and ATN was asked
+  to try Building / Model Detail Distance at max. WAITING for ATN's result.
+
+Next (ATN's plan): GT-VBAO / GT-VBGI in Tales of Arise (UE4 4.21, has DLSS): no own temporal smoothing there (XeGTAO
+style: noise per frame, DLSS resolves it with the game's motion vectors), port the twattila shaders' ideas; maybe
+Bend SSS later. Then the rest of the TW tests.
+
+Tools (C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw): repack_game.py, pack_game.py, tw_tweaks32.py
+(x86 tweak names / readers), tw_tweak_survey.py (x64), pe_dis32.py, x86_disp_scan.py ([reg + disp] users), d3d_disasm.py,
+warp_tests\sss (dxbc.py: DXBC checksum / patch prototype; warp_check.cpp; sss_scene.cpp synthetic scene with env SSS_*;
+sss_real.cpp: Bend on a captured depth), warp_tests\ao (flicker_test.cpp + run_variants.ps1), bend_original (Bend's
+official zip). Decompiler and pack dumps: D:\Dev\renodx\bin\cmd_Decompiler-1.3.16 (dump_shader_<game>_pack).
+
+## OLDER START HERE (2026-10-23, end of the session on ATN's brother's account): Total War state
+ATN continues on their own account. Everything below this section is the history (newest first). Untested by ATN unless
+noted. Zips in Downloads (game folder at the zip root); patch notes for Nexus: Downloads\tw_patch_notes.txt (newest
+UPDATE block on top, player-facing) and Downloads\tw_all_changes.txt (LATEST sections, detailed).
+
+Latest zips: Attila v33, Thrones v18, Rome II v19, Pharaoh v19, Troy v15, Warhammer v17, Warhammer II v17,
+Warhammer III v16, Shogun 2 HDR v53 / DLSS v44. Attila v28 / Rome II v13 / Thrones v12 / Pharaoh v14 were released by
+ATN; later ones only add tooltips / presets / fixes.
+
+Build: 32-bit (Attila, Thrones, Rome II): `cmake --build build32 --config Release --target twattila twthronesofbritannia
+twrome2`; 64-bit: `cmake --build build --config Release --target twpharaohdynasties twtroy twwarhammer twwarhammer2
+twwarhammer3 twshogun2completeedition twshogun2completeedition_dlss`. Pack: `python -I pack_game.py <game> <zip>
+[extras]` (C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw, with tooltip_sync.py, tw_sun_layouts.py,
+tw_refs.py, tw_string_refs.py). Write edit scripts with a file tool, run them with `python -I` (shell heredocs eat
+backslashes).
+
+Shared code (all in src/games):
+- twattila/light_bounce.hpp (+ light_bounce.h, light_bounce_{prepare,trace,apply}.hlsli, frame_history.hpp): Light
+  Bounce on each game's sun draws (SunDraw table: hash, standard, G-buffer slot, camera slot), fixed slots t40-t47 /
+  b10-b12, prepare -> trace (history ping-pong, last camera at b10) -> apply. Each game: light_bounce.hlsli decode
+  (Attila family: twattila; Pharaoh + Troy: twpharaohdynasties; WH1 + WH2: twwarhammer2; WH3: twwarhammer3; Shogun 2)
+  and light_bounce_*.hlsl wrappers. Install after renodx::mods::shader::Use.
+- AO: twattila/bitmask.hlsli (bitmask math), twattila/bitmask_ssao.hlsli (Attila / Thrones / Rome II ssao pixel
+  shaders), twattila/ao_temporal.hpp (AO Temporal Smoothing: Attila / Thrones / Rome II only), twwarhammer2/
+  bitmask_ao.hlsli (line-sweep / HBAO games), twwarhammer2/line_sweep_ao.hpp (kept depth / camera, OnCollect,
+  DispatchInstead: the addon's own AO compute shader in place of a game pass whose replacement stays the game's code),
+  twwarhammer2/ao_bitmask_blur.hlsli (WH1 / Troy / Pharaoh, in place of the blur), twwarhammer3/line_sweep_bitmask.hlsli
+  (WH3 collects, WH2's own collect ao_bitmask_collect).
+- twrome2/engine_tweaks.hpp: graphics sliders (engine tweaks), Trace (button "Trace graphics settings"), watch (button
+  "Watch graphics values (10 s)": hardware data breakpoints, WH1-3).
+- Settings Mode "HDR & Effects" / "Graphics" in Attila, Thrones, Rome II, Pharaoh, Troy, WH1-3 (not Rome Remastered or
+  Shogun 2 HDR: no graphics sections). AO / Light Bounce presets (Recommended, Recommended (heavier but looks better),
+  Reset) top of the AO section; Shogun 2's in its DLSS overlay.
+
+Open, in ATN's order:
+1. WH2 stutter (ATN, Lighting 0, AO Game's): no per-frame CPU work or log spam found from the addon. Found and fixed:
+   one 1024-thread shader held the game's AO pass and ours (fxc X4714), so Game's AO paid for ours; now split
+   (DispatchInstead) in WH1 / WH2 / Troy / Pharaoh / Shogun 2. Still combined: the pixel-shader AO (Attila / Thrones /
+   Rome II ssao, Pharaoh / Troy HBAO ssao2) and WH3's 8 x 8 collects. If ATN still sees stutter: test with the addon
+   removed, the graphics sliders at Reset, and after the driver's shader cache warmed up (new shaders after updates).
+2. WH1-3 graphics sliders do nothing: values found, written, kept (Trace). Watch logs (debug4 / debug5) read: see
+   "RESUME HERE (round 20-23)": tools\tw\tw_tweak_survey.py finds every tweak and its readers statically (no more
+   traces); WH1-3 sliders rebuilt on read values (round 23, untested). Next: ATN's test; Troy / Pharaoh the same way.
+3. ATN's OLED VRR flicker (Attila / Pharaoh): AO / Light Bounce cost varies with the view; offered a smaller on-screen
+   radius cap for the Light Bounce. FPS cap advised.
+4. Later: Light Bounce / presets for Rome Remastered (no graphics there), AO temporal where an AO pass has a camera.
+
+## RESUME HERE (2026-10-24): Ryse HDR fix46 / DLSS v110 = v1.04, ATN ships
+- ATN: Light limit costs no fps -> default / Reset / ATN's setting 512; Particle lights crashed (removed). G-buffer
+  filter items "Off (Recommended, ...)" / "On (Vanilla, ...)"; DLSS section settings in lavender. HDR fix46: preset
+  "Recommended (with Deeper Shadows)". Patch notes: Downloads\ryse_v1.04_patch_notes_{nexus,discord}.txt (updated
+  with fix41-46 / v106-110). Zips: rysesonofrome_fix46, rysesonofrome_dlss_v110.
+
+## Ryse DLSS v109 (superseded by v110)
+- ATN: chapter 5 flicker = lights at the 255 limit, 20-40 dropped (particle vertices ~30000 of 65535; still with the
+  particle sliders at the game's). Light limit back (Experimental, yellow): 255 / 350 (default, Reset and ATN's
+  setting) / 512 / 1024 / 4096. v78's code (particle_counts.hpp light list sites, OnLightingDispatch) with the shader
+  at 255 per tile (tools/ryse/tiled_lights_raise.py 4096 255; scratchpad lights/ raised.shdr, WARP-tested), so not
+  v78's 20-30% fps. Particle lights (Experimental, yellow): The game's / Every particle, no button changes it.
+- New QualityOption fields: own_choice, highlighted, default_choice. 4096 vs 350 cost unmeasured: ATN can use Advanced >
+  Measure every option's choices; if equal, set default_choice / atn_choice to 4 (4096) per ATN.
+
+## RESUME HERE (2026-10-24): Ryse HDR fix45 / DLSS v108 (untested)
+- DLSS v108: Audio section (languages + Dynamic sound mixing), SSR Extreme 2x / 3x range (Experimental), G-buffer
+  filter choice + note (aniso on alpha-tested textures). HDR fix45: preset names, vanilla-like shadows 0.75 / flare 0.25,
+  DOF 2 in the Recommended presets.
+- Chapter 5 "light" flicker (debugForClaude44 shadow trace): every shadow map drawn every frame (4 sun + 7 light maps in
+  the 16384 pool; one light map 30-74 draws: a moving / flickering light), so not the shadows. Like v75-v79's torch
+  blinking (particle lights dropped): asked ATN for the Advanced line "X of Y lights (Z dropped); particle vertices ..."
+  at the spot, and a test with Particle memory 16x / the particle sliders lower.
+
+## RESUME HERE (2026-10-24): Ryse HDR fix44 (untested; DLSS v107)
+- Fire buttons Option 1 (Default) / Option 2 (FIRE_OPTION_1/2, EXT_FIRE_OPTION_1/2 in addon.cpp) for PsychoV31 and
+  Extended; Extended got ext_highlight_hue_shift / ext_highlight_saturation_shift (ShiftHighlightHue now takes its
+  amounts). Less Post Processing: Sharpening 0.25; new "Vanilla-like Shadows" preset = it + Flare 0.41.
+- Ch.3 ship smoke flicker: ATN, everything at the game's values still flickers: likely the game's; ATN traces later.
+
+## RESUME HERE (2026-10-24): Ryse HDR fix43 / DLSS v107 (untested)
+- fix43: PsychoV31 Last removed; Game Shadows under Gamut Compression Mode; fire line yellow + Default / Less Red
+  buttons (FIRE_DEFAULT / FIRE_LESS_RED in addon.cpp; Default = slider defaults, Reset, both Recommended); Extended
+  ext_fire_hue / ext_fire_hue_focus (default off); Recommended Bloom 1; section titles one green (Output, About own).
+- DLSS v107 = v105's addon.cpp again (v106's pause check made it worse when dead, ATN).
+- Chapter 3 ship smoke flicker (debugForClaude42 shadow trace): shadow maps stable (4 x 8192, draws +-2 every frame):
+  not the shadows. Next: Advanced "Particle vertices" counter at the ship (buffer full?), and the graphics option
+  "Particles" (e_ParticlesMaxScreenFill / r_ParticlesTessellationTriSize) and Draw distance at their defaults.
+
+## RESUME HERE (2026-10-24): Ryse HDR fix42 / DLSS v106 (superseded)
+- fix42: Extended Hue Correction removed (0-3 degrees with UC2 Extended: low knee, tangent above it; credit line gone).
+- DLSS v106: own jitter keeps the game's pause check (bit 27, +0x4524; the JITTER_APPLY nop patch removed): paused /
+  dead frames unjittered (ATN debugForClaude41: armour shimmer while paused). Slow motion keeps the own jitter.
+- Chapter 5 shadow / light flicker (ATN reached it): asked for Advanced -> "Trace the shadow maps for 300 frames"
+  (ryse_shadow_trace.txt) standing where it flickers, plus whether it happens with DLSS off (TAA).
+
+## RESUME HERE (2026-10-24): Ryse HDR fix41 (detour, untested)
+Zip rysesonofrome_fix41 (DLSS unchanged, v105). ATN (chapter 4; the chapter 5 shadow flicker report still open): fires
+too yellow / pink; dim fires ignore the fire sliders (V31's Highlight Saturation / Dechroma act from ~2.75 decades above
+mid gray; Hue Shift's Hable target = our hue below SDR white). Dechroma moved under the fire line; Fire Hue / Fire Hue
+Focus (AdjustFireHue, OkLCh, after the color chart, mid gray -> Paper White, saturated warm hues only); PsychoV31 Last
+toggle (shafts + chart on the scene, V31 after). Game's "dark filter" guess: HDRColorBalance / color chart, both before
+our fire controls now. Details: rysesonofrome/README.md fix41.
+
+## RESUME HERE (2026-10-24, round 29): Light Bounce "Fast MSAA (Once per Pixel)" (untested; round 28 untested too)
+Zips: Rome II v20, Attila v34, Thrones v19, Troy v16, Pharaoh v20, WH1 v18, WH2 v18 (WH3 / Shogun 2: no MSAA, built,
+no new zip).
+- ATN asked whether the Light Bounce runs once per MSAA sample: only the apply did (trace / prepare / levels once on the
+  resolved copy). New toggle in the 7 MSAA games (default Off = per sample as round 28; shared.h
+  light_bounce_msaa_pixel, Sliders.msaa_pixel): light_bounce_apply_ms_pixel build (LIGHT_BOUNCE_PIXEL: no
+  SV_SampleIndex, G-buffer at sample 0), wrapper in all 9 games (light_bounce.hpp creates it).
+- Round 30 (untested): Multi-Bounce (0-1, default 0) in all 9 TW games (Shogun 2: DLSS overlay key
+  LightBounceMultiBounce, presets keep it): the prepare adds the last trace's output (light_bounce_history.hlsli
+  BounceHistory, shared with the trace's history) x diffuse albedo x Multi-Bounce to the prepared light. Strength is
+  not in the loop (gain = what a texel sees x albedo x share < 1: settles). LightBounceConstants padded to 48 bytes.
+  Zips: Rome II v21, Attila v35, Thrones v20, Troy v17, Pharaoh v21, WH1 v19, WH2 v19, WH3 v17, Shogun 2 v54 / DLSS v45.
+- Shared AO + Light Bounce trace: not built, told ATN why (AO is needed before the lighting the bounce reads: last
+  frame's light or geometry; AO full res ~1 m vs bounce half / quarter res 3-10 m; 4 AO paths in 9 games).
+- Ryse HDR fix47 (Downloads): Fire Hue (OkLCh) / Fire Hue Focus (OkLCh) labels; patch notes updated.
+- Round 31 (untested): AO Resolution Full / Half (shared.h ssao_resolution, default Full) in the 5 ao_pass.hpp games
+  (Attila, Thrones, Rome II, Troy, Pharaoh). Half: the bitmask drawn with the game's draw at a half viewport into the
+  addon's R16G16 target (top-left pixel of each 2 x 2: result, distance / linear depth; temporal history at half size),
+  then the game's draw with the pass's ao_upsample build (AO_UPSAMPLE) reading t40: twattila/ao_upsample.hlsli (3 x 3,
+  3% distance, else the closest in distance: grazing far ground striped without it, WARP test scratchpad aohalf/).
+  DrawAgain moved to frame_history.hpp. The game's AO is full size (WH2 trace: 3840x2160). WH1-3 / Shogun 2 (compute
+  AO paths) not done: offered. Zips Rome II v22, Attila v36, Thrones v21, Troy v18, Pharaoh v22.
+- Round 32 (untested): (1) Light Bounce Checkerboard toggle (all 9; needs Temporal; LightBounceConstants.checkerboard,
+  shared.h light_bounce_checkerboard, Shogun 2 key LightBounceCheckerboard): the trace skips every other 16 x 16 block
+  of texels per frame (whole waves), keeping BounceHistory where alpha > 0.5. (2) WH3 split: its collect replacements
+  (ssao01 / ssao02) are the game's code only; Visibility Bitmask = ao_bitmask_collect01/02 via DispatchInstead after
+  OnCollect, OnCollectDone in the hook (no on_drawn). (3) AO Half resolution in the compute paths: DispatchInstead(...,
+  upsample, half): bitmask over half the output into the addon's R16G16 at u1, then the AO_UPSAMPLE build over the
+  output reading t40 (ao_bitmask_blur.hlsli: WH1 / Troy / Pharaoh line-sweep path, ao_upsample_blur; line_sweep_bitmask
+  .hlsli: WH2 ao_upsample_collect, WH3 ao_upsample_collect01/02; Shogun 2 collect, key AmbientOcclusionResolution).
+  bitmask_ao.hlsli declares u1 / t40 and AoDistance. WARP test (scratchpad aohalf/ao_half_cs_test.cpp): mean AO 0.9710
+  vs 0.9707. Zips Rome II v23, Attila v37, Thrones v22, Troy v19, Pharaoh v23, WH1 v20, WH2 v20, WH3 v18, Shogun 2 v55 /
+  DLSS v46. AO Temporal for Shogun 2 / WH3: answered (camera-only like Attila; motion vectors would be the real fix).
+- Round 33 (Attila experiment, untested): AO "GT-VBAO (Experimental)" toggle (shared.h ssao_gtvbao, also in Thrones /
+  Rome II shared.h without a setting): Mirko Salm's GT-VBAO (Shadertoy XXGSDd, dual CC0 / MIT, CC0 chosen; his code in
+  Downloads\Shadertoy stuff) ported into twattila/bitmask.hlsli (BitmaskSliceSampled: approximate inverse-CDF slice
+  directions in the view vector's frame, perspective screen direction; BitmaskCosineShare: his SliceRelCDF_Cos, checked
+  against a brute-force integral to 3e-9; BitmaskCosineSectors: floor edges + per-slice jitter) and bitmask_ssao.hlsli
+  (slice weight 1, back point along the sample's own ray). WARP test vs a CPU ray-traced reference (scratchpad
+  aohalf/gtvbao_test.cpp): mean error 0.042 -> 0.020. Credit in About. Zip Attila v38.
+- Attila v39: Light Bounce "GT-VBGI (Experimental)" (shared.h light_bounce_gtvbgi, LightBounceConstants.gtvbgi, only
+  Attila's setting): his GT-VBGI (Shadertoy lfdBWn, code in Downloads\Shadertoy stuff\GT-VBGI (diffuse), CC0; default
+  without back-face rejection): sampled slices, cosine sectors, light x fresh share, no receiver / emitter cosine,
+  bounce / slices; back point along the sample's own ray (normalize(position) x thickness: either handedness;
+  BitmaskViewQuaternion now takes +z or -z view vectors). Not WARP-tested (needs the trace's inputs). Brighter than the
+  original (his note: original too dark): Strength may need lowering. Next: the other games if ATN likes both.
+- Round 34 (untested; ATN: replace, no toggles): GT-VBAO / GT-VBGI are the only AO and Light Bounce in all 9 games.
+  twattila/bitmask.hlsli API now: BitmaskSliceAt(u, normal, view, position) (sampled slices, BitmaskSlice.direction),
+  BitmaskSectors(front, back, view, side, slice, jitter) (cosine shares, floor edges); old uniform BitmaskSliceAt /
+  BitmaskSectors and projected_length gone; BitmaskAcos = his improved polynomial. bitmask_ssao.hlsli (Attila family),
+  twwarhammer2/bitmask_ao.hlsli (WH1-3, Troy, Pharaoh, Shogun 2: screen direction from the slice plane against one AO
+  pixel's step along x / y at the pixel's depth: any handedness) and light_bounce_trace.hlsli: slice weight 1, back point
+  delta + normalize(sample position) x thickness, light x fresh share / slices. Toggles, ssao_gtvbao,
+  light_bounce_gtvbgi removed. Credits "as GT-VBAO and GT-VBGI by Mirko Salm (2024)" in About; AO mode tooltips "GT-VBAO,
+  ground-truth visibility bitmask occlusion". WARP vs ray-traced reference: Attila 0.0198, WH1 compute 0.0199 (old
+  0.042). Light Bounce brighter (no emitter cosine): presets' Strength may need lowering. Zips Rome II v24, Attila v40,
+  Thrones v23, Troy v20, Pharaoh v24, WH1 v21, WH2 v21, WH3 v19, Shogun 2 v56 / DLSS v47. Offered: lower-precision
+  light / geometry reads in the bounce trace (his suggestion; bandwidth).
+- Round 35 (untested): Light Bounce data halved (all 9): prepared light R11G11B10_FLOAT (was RGBA16F), prepared geometry
+  R32G32_UINT = depth buffer value + octahedral normal (was position xyz + normal); each game's light_bounce.hlsli split
+  into BounceDepth / BounceViewPositionAt / BounceViewPosition; the trace rebuilds a sample's pixel through the levels'
+  rotated grid (clamped as light_bounce_levels) and its position from the depth (identical to the prepare's).
+  Experiments in Attila only (fields in every shared.h / LightBounceConstants): AO "Fast Thickness" (ssao_view_thickness:
+  thickness along the pixel's view vector), Light Bounce "Back-Face Rejection" (GT-VBGI's exact bitmask version, the
+  sample normal from the prepared geometry: no extra fetch) and "Fast Thickness". One-directional / optimized-uniform
+  variants need his Shadertoy code (Xc3yzs, XcdBWf, 4cdfzf, XfcBDl): asked ATN. Zips Rome II v25, Attila v41, Thrones v24,
+  Troy v21, Pharaoh v25, WH1 v22, WH2 v22, WH3 v20, Shogun 2 v57.
+- 32-bit fix: rounds 29-35 built only 64-bit, so Attila v34-v41, Rome II v20-v25 and Thrones v19-v24 carried an
+  .addon64 (pack_game.py took the newer file). build32 rebuilt; v41 / v25 / v24 repacked with .addon32; pack_game.py now
+  always ships build32's .addon32 for these three. Build both trees every round.
+- Attila v42 (untested): authors' values. Defaults + presets "Authors' Settings" / "(Faster Light Bounce)" / Reset:
+  AO Strength 1 (now an absolute exponent: AO_GROUND_TRUTH in Attila's ssao00, no game g_Strength / g_MinStrength),
+  Radius 2 m (now metres; paper), Thickness 0.5 m (Salm), Quality Ultra, 1 direction, Temporal On, Full; Light Bounce
+  Strength 1 (preset), Radius 4 m (paper), Full, Ultra, 1 direction, Temporal On, options off; faster: LB Half + High
+  (paper's 16 samples half res). Old ini Radius values now read as metres: press a preset. Gemini notes: Ottosson's
+  distance thickness heuristic (Shadertoy 3clGWB) a candidate; Gemini's "keep emitter cosine / x projNormalLen" wrong
+  for Salm's importance-sampled slices.
+- Attila v43 (untested): Auto Thickness (Experimental) for AO and Light Bounce (ssao_auto_thickness in Attila / Thrones /
+  Rome II shared.h, LightBounceConstants.auto_thickness, 64 bytes now): Bjorn Ottosson's GT-VBAO variation (Shadertoy
+  3clGWB, code in Downloads\Shadertoy stuff\GT-VBAO thickness heuristic, CC0 / MIT header): bitmask.hlsli
+  BitmaskOccluderThickness / BitmaskOccluderBack (occluder restarts when a step runs > 0.9 along the view vector;
+  thickness = random 0.5-2 x (Thickness + width so far); back no nearer than the occluder start's). Presets set it Off.
+- Attila v44: ATN loves AO Auto Thickness (uses Thickness 0.10). Speed: the occluders[2] array compiled to an indexable
+  temporary (x0[4], scratch memory): now two variables (occluder_minus / occluder_plus); the restart test without a
+  square root. dcl_temps 29 (AO) / 31 (trace). Answered: temporal settle ~0.5-1 s is the 0.9 history; better = history
+  clamped to the current 3 x 3 neighbourhood (needs a resolve pass; offered); Fast Thickness no effect (the two rays
+  differ by degrees, memory-bound; auto ignores it): offered removal; radius vs samples.
+- Attila v45 (untested in game): noise + temporal + denoisers (ATN: "the best for Attila"). bitmask.hlsli
+  BitmaskHilbertIndex / BitmaskNoise (XeGTAO's idea: 64 x 64 Hilbert index + 288 a frame through R3; AO and Light Bounce,
+  all games' shared code). AO (ao_pass.hpp, Attila / Thrones / Rome II builds): with Half, Temporal or Denoiser the
+  bitmask draws into the addon's raw target, then AO_RESOLVE (BitmaskResolve: camera reprojection, history clamped to the
+  3 x 3 same-surface mean +- 1.25 sigma, 0.9), AO_DENOISE (BitmaskDenoise: 5 x 5 binomial, 3% distance), AO_UPSAMPLE
+  output (scale 1 = own texel); t40 input, t42 history, b10 last camera; the old in-shader temporal and SV_Target1 gone;
+  Update(bitmask, temporal, half, denoise); AmbientOcclusionDraw.resolve / .denoise. Light Bounce (all 9): trace into
+  objects.traced (Checkerboard texels negative alpha = history already), light_bounce_resolve (same clamp, 3 x 3) into
+  the history, optional light_bounce_denoise (16-tap golden-angle disk 2.5 texels, plane 2% + normal^8 weights, turned
+  per frame) into objects.denoised the apply reads; light_bounce_geometry.hlsli holds LoadGeometry; wrappers in all 9
+  games. Attila settings: AO / LB "Denoiser" (presets Off). WARP pipeline test (scratchpad aohalf/pipeline_test.cpp,
+  Quality Normal, 1 direction): error 0.044 -> 0.015, frame-to-frame 0.047 -> 0.004. Zip Attila v45; other games built,
+  not shipped (their behaviour: new noise + Light Bounce resolve with clamp).
+- Attila v46 (untested): AO Radius to 20 m, Quality adds 64 / 128 / 256 samples per side (clamp 5), Resolution Full /
+  3/4 / Half / 1/4. shared.h ssao_scale (Attila / Thrones / Rome II; addon sets it each present: Attila AO_SCALES
+  {1, 4/3, 2, 4}, others 2 or 1); AoScale() reads it; ao_pass::Update(bitmask, temporal, float scale, denoise), targets
+  ceil(size / scale); AoUpsample(results, pixel, distance, scale) (other callers pass 2). Samples vs radius: quadratic
+  spacing, edge gap 2R / N: keep N about 6-7 x R (m) for 32 @ 5 m (64 @ 10 m, 128 @ 20 m).
+- Attila v47 (untested): temporal flicker fix (ATN: flickers even at full res, AO and GI). Cause: the variance clip
+  over 3 x 3 same-surface neighbours collapsed on thin things / edges (1 neighbour = no spread = history held to this
+  frame's noise) and on quantized values. Now: clip only with 5+ same-surface neighbours (else distance check only),
+  AO width max(1.5 sigma, 0.05), LB max(1.5 sigma, 10% of mean), history 0.95 (AO resolve; LB HISTORY_SHARE, all 9
+  games). WARP flicker test (scratchpad aohalf/flicker_test.cpp, resolve compiled from source with -D knobs): worst
+  pixel spread over time 0.205 -> 0.051 (Quality 0) / 0.087 -> 0.019 (Quality 2, 4 directions), mean 0.0126 -> 0.0060.
+  LB Radius to 20 m, LB Quality to 256 (light_bounce.hpp power_of_two(quality, 5)). Not done: per-pixel history
+  length (done in round 48).
+- Round 48 (2026-10-25, all untested in game; zips: twattila v48, twrome2 v26, twthronesofbritannia v25, twtroy v22,
+  twpharaohdynasties v26, twwarhammer v23, twwarhammer2 v23, twwarhammer3 v21, twshogun2completeedition v58,
+  twshogun2completeedition_dlss v48):
+  - twattila/lighting_settings.hpp: ONE source for every TW game's AO + GI settings (Append(&settings,
+    &shader_injection); LightBounceSliders(shader_injection) for light_bounce::Update). Sections "Ambient Occlusion
+    (GT-VBAO, Experimental, needs in-game SSAO)" tint 0x7FBFFF and "Global Illumination (GT-VBGI, Experimental, no
+    in-game SSAO needed)" tint 0xFFB86B (AO_SECTION / GI_SECTION / AO_TINT / GI_TINT used by each addon's
+    section_tints and settings mode). Keys unchanged (ssao_*, light_bounce_*). AO_PASS (Temporal, Denoiser, 3/4 + 1/4)
+    detected by `requires injection.ssao_temporal` (Attila, Rome II, Thrones); Fast MSAA by light_bounce_msaa_pixel
+    (not WH3 / Shogun 2). ATN's presets from debug3 screenshots: AO Faster (5 m, High, 3/4; Half where no 3/4) /
+    Heavier (Recommended) (12.5 m, Ultra, 3/4; Full where no 3/4) / Reset (game's AO); GI Faster (Recommended)
+    (strength 1, 20 m, Quarter, 64) / Heavier (More accurate) (Half, Ultra) / Reset (off). Defaults = recommended
+    (GI strength 0). Both: 1 direction, auto thickness on, temporal + denoiser on, checkerboard on, multi-bounce 0,
+    back-face off, Fast MSAA on. Preset buttons tinted with their section colour; empty line after the AO section.
+    Thickness min 0.01 (ATN tests halos). Authors' presets and Fast Thickness removed everywhere (shader code too;
+    LightBounceConstants.view_thickness -> padding3; shared.h ssao_view_thickness -> ssao_auto_thickness where missing,
+    LB backface / auto_thickness / denoise fields added to all).
+  - All games' AO now ground truth: radius in metres, strength an exponent (AO_GROUND_TRUTH ifdef gone; compute family
+    AO_RADIUS 2 m gone; Troy / Pharaoh no longer use the game's radius / power / limit). Auto thickness ported into
+    twwarhammer2/bitmask_ao.hlsli (WH1-3, Troy, Pharaoh, Shogun 2). Samples to 256 there too.
+  - History length (SVGF-style frame count): AO history R16G16B16A16 (value, distance, frames), keep = min(n / (n + 1),
+    0.95); LB: history_frames[2] R16_FLOAT targets written as SV_Target1 by the resolve (MRT), read at t48
+    (FRAMES_VIEW, VIEW_COUNT 9), nearest texel at the reprojected spot, checkerboard-held texels keep their count.
+    WARP (aohalf/flicker_test.cpp, history reset): 8 frames after, |diff from settled| 0.0154 -> 0.0103 (Quality 2,
+    4 directions), steady state unchanged.
+  - ao_pass::RESOLUTION_SCALES {1, 4/3, 2, 4} shared by Attila / Rome II / Thrones (Rome II / Thrones got 3/4 and 1/4).
+  - Shogun 2: the DLSS addon's own ImGui (presets, new keys AmbientOcclusionAutoThickness, LightBounceDenoise,
+    LightBounceBackFace, LightBounceAutoThickness, save_ao / save_gi write a whole section); HDR addon reads them with
+    read_float / read_choice.
+  - Halos (ATN question): screen-space limit at large radius (a nearer object inside the radius darkens what is
+    behind it); lower Thickness / Auto Thickness / smaller radius help; a distance falloff (XeGTAO-style) could be
+    added. To tell if it is the game: Resolution Full + Denoiser off, then Strength 0.
+- Round 49 (2026-10-25, Attila v49, untested in game): Bend Studio's screen-space shadows (ATN asked; Apache 2.0,
+  Copyright 2023 Sony Interactive Entertainment: the license is in the code's header (bendstudio.com blog post, zip
+  code_final_candidate.zip, downloaded with ATN's OK to scratchpad bend_dl/); credit in About + APACHE_LICENSE-2.0.txt in
+  the zip). twattila/screen_space_shadows.hpp: the 40 shadowed sun shaders (LIGHT_BOUNCE_DRAWS list) patched at pipeline
+  creation (renodx::utils::pipeline::RegisterOnCreateCallback keeps the original hash, so the Light Bounce still hooks
+  them): DXBC token patch after `mov_sat rN.c, rN.c` + `div r0.xy, r0.xyxx, r0.wwww` (the cascade shadow factor):
+  ftou / mov / ld t49 / mad (1 - x) / mul_sat, dcl_resource t49, dcl_temps + 1, container sizes + DXBC checksum (MD5
+  variant, verified on all 65 originals). t49 = occlusion, so unbound / 0 = the game's light (WARP: bit-identical).
+  Compute at the frame's first patched main-view sun draw: sss_depth(_ms) copies G-buffer channel 4 x, sss_setup =
+  Bend's BuildDispatchList in HLSL (light = mul(float4(-sun_direction, 0), view_projection); camera b0 of the draw,
+  lighting_VS_PS b2 = every shadowed variant's), 8 x DispatchIndirect of sss_bend (Shogun 2's bend_sss_gpu.hlsli +
+  BEND_SSS_OCCLUSION: writes 1 - result). Settings section "Screen-Space Shadows (Bend Studio, Experimental, needs
+  in-game shadows)" tint 0xFFD966: On (default Off), Length 60 x 2^0-5 (default 240), Thickness 0.001-0.05 (0.005).
+  WARP tests: scratchpad sss_patch/warp_check.cpp (patched sun shaders), sss_scene.cpp (box + plane scene vs ray-traced
+  reference, 6 sun directions: no unwritten pixels; contact shadows as Bend's thickness allows; a 20% line on the
+  horizon row next to the sky).
+- Attila v50 (untested): ATN debug4 SSS: whole areas shadowed in 64-px blocks with line patterns = the G-buffer's
+  depth (channel 4) too coarse far away (WARP: 16-bit-quantized depth reproduces it; Bend's thickness is 0.005 x
+  (1 - depth)). Now Bend reads a copy of the depth-stencil buffer the sun draws keep bound (SceneDepth: typeless copy,
+  R24 / R32 view, MSAA sample 0; channel 4 only without one); ReShade.log logs the format once.
+  debug4 buildings: the big building's own shadow (arch recess, cornices) gone after a small camera move, building on
+  screen = not off-screen culling; asked ATN to test Building / Model Detail Distance at max (LOD without shadows?).
+- Attila v51 (untested): ATN debug5 (SSS on the scene depth): near flat ground fully shadowed inside an arc, more with
+  Thickness; far scene fine; ReShade.log: depth-stencil R24G8 (44), 2x MSAA. WARP (sss_scene.cpp, env SSS_*) with 24-bit
+  depth, 4K-like, steep camera, any near plane: no false shadow, except the side-on sun (w 0): Bend's light z = 0 and its
+  w sign vs the xy divisor disagree -> fixed (z = projection _m22 / _m23, w sign = the divisor's). The in-game cause is
+  still unknown: sss_probe logs once per SSS enable the camera registers c0-c35, sun_direction, the light coordinate and
+  8 depth pairs (Bend's input vs G-buffer channel 4) -> ReShade.log "Screen-space shadows report". Suspect: the depth
+  buffer's mapping (viewport depth range / projection) differs from the camera constants Bend extrapolates with.
+  Buildings (debug5: the arch's shadow into its own recess changes with small pans, palms / banner fine): 3 test sliders
+  in Graphics (Shadow Test: Caster Reach = entity_display_shadow_extrusion_multiplier, Sun Camera Depth =
+  shadow_cam_depth_offset_battle + g_battle_terrain_on_..., Cascade Margin = shadow_split_enlargement_safe_zone).
+- Attila v52 (debug6 report): camera standard LH (near 1, far 13000, c25 = (1, 13000)), projection _m22 1.000077,
+  light z 1.000077, sun_direction = travel direction (y -0.454), Bend's depth 0.873 at the centre (7.9 m); G-buffer
+  copy read 0 under MSAA (unimportant). WARP with that exact camera / sun, flat ground, 24-bit depth, 1920 samples: no
+  false shadow. So the real depth or a GPU-only difference. v52 also writes renodx_sss_depth.raw (R32, Bend's input)
+  and renodx_sss_occlusion.raw (R8, the GPU's result) to the game folder with the report: next, run Bend on that depth
+  in WARP with the logged camera / sun and compare.
+- Attila v53 (SSS FIXED, untested): the cause of all SSS artefacts (debug4-7) = D3D11 binding hazard in
+  screen_space_shadows.hpp's bind lambda: SRVs were set before the UAVs, so the views of the last pass's outputs
+  (parameters buffer, depth copy) were dropped to NULL -> Bend read light coordinate 0 / depth 0 (one corner fully
+  shadowed). debug7 capture (real depth + GPU mask): WARP with the addon's order reproduced the GPU mask exactly (mean
+  33.1, 12.92% > 128); with UAVs first it is clean. bind now sets UAVs first. Raw dumps removed; the log report stays.
+  Earlier "16-bit depth" theory was wrong (the depth source switch to the depth-stencil copy stays: full precision).
+  Tool: scratchpad sss_patch/sss_real.cpp runs Bend on a captured depth with logged camera / sun.
+- Attila v54 (untested): AO "Temporal Edge Fix" toggle (ssao_edge_fix, default on, Attila / Rome II / Thrones via
+  lighting_settings.hpp AO_PASS; ATN: thin halos from Temporal Smoothing): on outlines (3 x 3 not all one surface) the
+  nearest history texel within 2% instead of the 4-tap blend at 5%, and with < 5 same-surface neighbours a 0.2 hold
+  instead of none. WARP flicker (aohalf/flicker_test.cpp, env SSS_EDGE_FIX): Quality High 1 direction worst outline
+  spread 0.081 -> 0.153 (0.1: 0.22, 0.3: 0.083); Ultra 4 directions unchanged. Tales of Arise plan: no own temporal,
+  let DLSS resolve per-frame noise (XeGTAO style) with the game's motion vectors.
+- Attila disappearing tree / building shadows (ATN, also without RenoDX): not found yet. shadow_cam_depth_offset_battle
+  is 5000 m with battle terrain (no near-plane clip). 0x47f020 = entity "fast cull" (enable_entity_fast_cull: beyond
+  20 m and centre outside the view cone + 5 deg) but only in the per-soldier update (0x4569e7), not trees / buildings.
+  Next: trace the shadow pass's tree / building caster lists (tools/tw/x86_disp_scan.py finds [reg + disp] users).
+- NEXT (ATN, when awake): the same GT-VBAO / GT-VBGI work for Tales of Arise (has DLSS: TAA-reliant XeGTAO-style
+  noise, ideas from three-gtvbao and the path tracing paper).
+
+## RESUME HERE (2026-10-24, round 28): Light Bounce with MSAA (untested)
+Zips: Rome II v19, Attila v33, Thrones v18, Troy v15, Pharaoh v19, WH1 v17, WH2 v17, WH3 v16, Shogun 2 v53.
+- ATN: "support every AA". MSAA: each game's *_ms directional light shaders (not ulm) added to LIGHT_BOUNCE_DRAWS
+  (Rome II / Attila / Thrones 24: slm / skinlm x highdef / lowdef x shadow methods, per-sample; WH1 / WH2 20, Troy /
+  Pharaoh 16: edges (per-sample) / interior; G-buffer slot + camera slot per shader from RDEF: scratchpad ms_draws.py
+  <game> over dump_shader_<game>_pack). WH3 / Shogun 2 have no MSAA. light_bounce.hpp: no MSAA rejection; light copy
+  single-sampled (ResolveSubresource with the RTV format when MSAA); prepare / apply = *_ms builds when the light buffer
+  is multisampled. twattila/light_bounce_gbuffer.hlsli: BounceGBuffer (Texture2D / Texture2DMS) + BounceLoad
+  (bounce_sample: prepare 0, apply SV_SampleIndex); every light_bounce.hlsli uses it; light_bounce_prepare_ms /
+  apply_ms.ps_5_0.hlsl wrappers (#define LIGHT_BOUNCE_MSAA) in all 9 Light Bounce games. Apply runs per sample always
+  (WH interior draws are per-pixel in the game: 4x apply cost there; per-pixel variant possible).
+
+## RESUME HERE (2026-10-24, round 27): Light Bounce + MSAA, Game's AO split
+Zips: Rome II v18, Attila v32, Thrones v17, Troy v14, Pharaoh v18 (WH1-3 / Shogun 2 unchanged since round 26).
+- ATN: Light Bounce "no effect" in Rome II / Attila / Thrones. Cause (one-time draw logs, all removed again): the game
+  had MSAA on, so it lights with directionallight ps41_slm_highdef_ms / ps41_skinlm_highdef_ms (0x006F587A,
+  0xFCD6C263; G-buffer as Texture2DMS; point lights _ms too), not in LIGHT_BOUNCE_DRAWS (non-MSAA only). Not a bug of
+  the levels. Hashes -> names: bin\cmd_Decompiler-1.3.16\dump_shader_<game>_pack\names.tsv. Offered: MSAA support
+  (prepare reads sample 0 of the MS G-buffer, apply into the MSAA light buffer) or a tooltip note.
+- Game's AO split for the pixel-shader passes (ATN: "stop our AO running when Game's is selected"): Attila / Thrones
+  ssao00, Rome II ssao00 / ssao01, Troy / Pharaoh ssao01: the replacement = the game's code only (#else of AO_BITMASK);
+  the Visibility Bitmask = the addon's own PS (root ao_bitmask*.ps_5_0.hlsl: #define AO_BITMASK + include of the pass
+  file). ao_pass.hpp: Install(span<AmbientOcclusionDraw{hash, bitmask}>, &shader_injection, size); with the bitmask on
+  it swaps in the own PS + its settings buffer at b13 (game's PS / b13 put back after), levels every draw, temporal at
+  the frame's first. Game's: the callback returns at once.
+
+## RESUME HERE (2026-10-23, round 26): Depth Levels everywhere, LB levels, presets 0.11, bloom (untested)
+Zips: Rome II v17, Attila v31, Thrones v16, Pharaoh v17, Troy v13, WH1 v16, WH2 v16, WH3 v15, Shogun 2 v52 / DLSS v44.
+- ATN on v16: spikes were GPU-bound pacing; Depth Levels fixed them; directions do not lighten the AO. The paper ATN
+  attached (D:\Downloads\ssil_visibilitybitmask.pdf) is Therrien et al., the one bitmask.hlsli follows.
+- Depth Levels now a shared compute builder: twattila/depth_levels.hpp (Build(context, depth view) -> all-levels SRV,
+  5 mips R32G32_UINT at half the depth; depth_levels.cs_5_0.hlsl, wrappers in every TW game folder; CS shader / t0-t1 /
+  u0 put back) + depth_levels.hlsli (t41: DepthLevelsBound, DepthLevelLoad by depth texel). Level rule in bitmask.hlsli
+  BitmaskSampleLevel(distance texels, count) = firstbithigh - 3 (shared with the Light Bounce). The PS levels pass of
+  round 25 removed (ao_depth_levels.ps_5_0.hlsl gone).
+  Bound by: ao_pass.hpp (PS t41; Attila / Thrones / Rome II ssao00, Troy / Pharaoh HBAO ssao01 0xD42C3523, Update(bitmask,
+  false) there); line_sweep_ao.hpp internal::BindLevels / UnbindLevels (CS t41): DispatchInstead (kept ? t2 : t0) unless
+  OnCollect bound them; OnCollect(depth_slot) (WH3 ssao01 now passes depth slot 0, Shogun 2 passes 0, 0). WH1 / WH2 /
+  WH3 / Shogun 2 register depth_levels::OnDestroyDevice; ao_pass::OnDestroyDevice calls it.
+- Light Bounce levels: prepared light / geometry textures have up to 6 mips (PreparedTarget in light_bounce.hpp);
+  light_bounce_levels.ps_5_0.hlsl after the prepare (light mean 2 x 2, geometry rotated-grid pick, t46-t47 the level
+  above); trace reads Load(texel >> level, level), level by BitmaskSampleLevel(length(offset)).
+- Presets: AO Thickness 0.11 in both Recommended presets (all 9 addons + Shogun 2 DLSS overlay); yellow TEXT (0xFFD23C)
+  above the buttons: "Prefer darker shading behind trees and objects? Pick a preset, then raise Thickness (e.g. 0.20)."
+- Bloom (Rome II / Attila / Thrones, ATN "blocky"): twattila/bloom_filter.hlsli: BloomHighPassAveraged (the high pass
+  per source pixel over the bloom texel's footprint, ratio from source size x target recip size, at most 8 x 8) with
+  each game's BloomHighPassTap in its bloom.hlsli; SampleBloomSmooth (cubic B-spline, 16 Loads) in the tonemaps (Rome
+  t00 / t09, Attila t00 / t09, Thrones t00 / t17). Footprint ratio not measured in game (1: same as stock).
+- Packing: scratchpad repack3.py (old zip extras + include closure under src/games).
+
+## RESUME HERE (2026-10-23, round 25): AO Depth Levels (Rome II v16, Attila v30, Thrones v15, untested)
+- ATN on v15: "Directions Share Samples" made the AO lighter at more directions (too few steps per slice to find the
+  occluders): removed (shared.h field, UI, shader). ATN with it off, 8 directions High: still ~10 spikes a second. Our
+  pass does the same work every frame (no readback, no periodic work; noise still with Temporal off): likely GPU-bound
+  pacing (the game's CPU waits on the GPU in bursts). Asked ATN to try an FPS cap just below the 8-direction FPS.
+- Depth Levels (SAO, McGuire et al. 2012; own code): twattila/ao_temporal.hpp -> twattila/ao_pass.hpp (namespace
+  twattila::ao_pass, Update(bitmask, temporal)). Before the AO draw (bitmask AO on): the game's depth (AO pass t0) into
+  an R32G32_UINT texture with 5 mips at half its size (ao_depth_levels.ps_5_0.hlsl, Light Bounce's full-screen VS;
+  default blend / depth / rasterizer states; each texel = one depth texel of its 2 x 2 in a rotated grid: depth bits +
+  coordinate x | y << 16), bound at t41 for the draw (game's t40 / t41 / b10 / targets / blend put back after).
+  bitmask_ssao.hlsli: a step 8 x 2^n to 16 x 2^n depth texels away reads level n (firstbithigh - 3, clamped to the
+  levels bound; none bound = level 0), its position from the stored coordinate (on the surface).
+- Next: ATN's frame time test (Rome II first). Then the line-sweep games (twwarhammer2/bitmask_ao.hlsli, WH3, Shogun
+  2) and the Light Bounce trace (light_bounce_trace.hlsli: its prepared geometry is already per texel at the trace's
+  scale; levels of it the same way).
+
+## RESUME HERE (2026-10-23, round 24): AO frame time spikes (Rome II v15, superseded by round 25)
+- ATN (Rome II): frame time "mountains" at AO Directions above 1, a flat line at 1. Cause found in
+  twattila/bitmask_ssao.hlsli: every slice took all 8 x 2^Quality steps per side (x2 sides), so 4 directions = 4x the
+  depth reads and math, most where near surfaces fill the screen (radius in pixels large -> max steps). Rome II's
+  default (Quality Normal, 4 directions) = 64 samples, heavier preset (High, 4) = 128, Recommended (High, 1) = 32.
+- Fix: ssao_shared_samples (shared.h of Rome II / Attila / Thrones; UI "Directions Share Samples", default on, Rome II
+  only): steps = max(2, steps / slices). Off = old cost (A/B). Attila / Thrones: field 0 = unchanged.
+- If ATN confirms: UI + default in Attila / Thrones; the same in the line-sweep games (twwarhammer2/bitmask_ao.hlsli,
+  WH3 collects, Shogun 2) and the Light Bounce trace (LB.slices x LB.steps, light_bounce_trace.hlsli). If spikes
+  remain: depth mip chain (XeGTAO) for far samples, or a cap on the radius in pixels.
+
+## RESUME HERE (2026-10-23, round 23): WH1-3 graphics rebuilt from the survey (untested)
+Zips: WH1 v15, WH2 v15, WH3 v14 (patch notes: UPDATE (5) / LATEST 3). ATN: "add the dead ones [= remove] and add all".
+- WH1: Model / Building Detail removed; Campaign Detail = rigid_campaign_tree_lod only ("Campaign Tree Detail
+  Distance"); new Tree Detail (tree_lod_scaler, inverse), Bush Detail (scrub_lod_distance_default), Terrain Draw
+  (terrain_visible_tiles), Campaign Draw (campaign_culling_ratio, inverse), Shadow Distance (shadowmap_split_scale,
+  0.5-4x), Small Object Shadows (cull_small_shadow_size, inverse), Unit Shadow Distance (*_IMPOSTER_SHADOW_DISTANCE +
+  entity_display_shadow_max_shadow_distance).
+- WH2: Building / Campaign Detail removed; Shadow Map Size = code constants at +0x7e157d (8192.f, 8192.f, 4096; the
+  highest Shadows setting, x1.5 via parse: 12288); new Bush Detail, Campaign Draw, Shadow Detail
+  (shadow_lod_distance_scaler, inverse; the game rewrites it per Shadows setting), Small Object Shadows
+  (cull_small_shadow_start / end_size, inverse). far_buildings default 1 (skipped).
+- WH3: init_device Update; new Unit / Building / Tree / Grass / Object / Terrain Draw Distance (cull_aabb_at_num_pixels
+  battle 16 / campaign 8, inverse; + campaign_tree_display_max_distance, battle_small_prop_cull_distance), Grass Density
+  (0.5-2x), Terrain Tessellation. Shadow splits skipped (overrides, off by default; the game's table at +0x1aeb0e0).
+- Every new value's address checked offline with tools\tw\find_emu.py (the addon's Find emulated) = survey object +
+  0x68 (WH1) / + 0x60 (WH2, WH3).
+
+## RESUME HERE (2026-10-23, round 22): static tweak survey replaces the traces
+- WH1 watch-at-start (TWWarhammer\debug6): terrain_far_shader_distance read in the campaign (getter callers +0x4018fa,
+  +0x40473f), SMALL_IMPOSTER in battle (+0x532730 builds the imposter struct); battle_entity_lod0 / campaign_tree_lod0
+  never read.
+- tools\tw\tw_tweak_survey.py EXE [REGEX] [--all]: every tweak (constructors = functions called after a name lea with a
+  static object in rcx; WH1 4973, WH2 6059, WH3 3689 tweaks), its float default, and every code use (lea of the object
+  for the getter, or rip access to the value +0x60 / +0x68; initializer, atexit thunk and destructor refs excluded).
+  Matches all watch results (WH1 / WH2 dead ones = 0 uses; the readers found by the watch = its uses).
+- Current sliders, 0 uses (dead): WH1 Model Detail (battle_entity_lod*), Building Detail (battle_building_lod*),
+  Campaign Detail (campaign_tree / grass_lod*; rigid_campaign_tree_lod has 1 use); WH2 Building Detail, Campaign
+  Detail (same), Shadow Map Size (shadowmap_extreme_quality: 0 uses in WH2; shadow_resolution_multiplier has 6). WH3:
+  all 9 used (per model at load).
+- Candidates with uses (defaults): WH3 battle_cull_aabb_at_num_pixels_{unit,building,tree,grass,prop,terrain,
+  deployable} 16, campaign_* 8, battle_small_prop_cull_distance 500, campaign_tree_display_max_distance 10000,
+  grass_density_multiplier 1, terrain_tessellation_quality_battle 1 / _campaign 0.25, battle / campaign_shadow_split_0-3.
+  WH1 tree_lod_scaler 1.35, rigid_tree_lod_scalar 1, scrub_lod_distance_default 175, campaign_culling_ratio 0.003,
+  terrain_visible_tiles 500, terrain_mid_distance_slope_factor 3, cull_small_shadow_size 0.02, IMPOSTER_FOV_SCALE 1,
+  *_IMPOSTER_SHADOW_DISTANCE 10000, entity_display_shadow_max_shadow_distance 10000, shadowmap_split_scale 1.
+  WH2 shadow_resolution_multiplier, shadow_lod_distance_scaler, cull_small_shadow_start / end_size,
+  campaign_culling_ratio, scrub_lod_distance_default, far_buildings, IMPOSTER_DITHER_RATIO. Asked ATN which to add.
+
+## RESUME HERE (2026-10-23, round 21): watch-at-start logs (WH1 deubg5, WH2 debug5, WH3 debug6)
+- Watch v2 ran without crashes (WH2, WH3). WH1: no watch at all, no [Total War] WatchAtStart in its ReShade.ini (the
+  button press was not saved): asked ATN to press it again and check the ini before restarting.
+- WH3: num_pixels_per_triangle_lod_change_* are the game's quality values: +0x58cafc (a parser, movss [rax], xmm6)
+  writes unit / building / battle_tree 0.8 s after the addon's load (from the game's settings); +0x1a0363c (by model
+  type at [model + 0x58] -> (value, a 16.0 at +0x3d3a4xx)) is called by +0x1a02a00 (model setup) and stored at
+  [model + 0x84 / + 0x88]: read per model when it loads (9 s menu units / buildings, 24.5 s campaign trees, 90 s battle
+  trees), never per frame. So the sliders apply to models loaded after the change: test = restart (or a new
+  battle / campaign) with the sliders set. Consumer of model + 0x84 not found yet (if a restart shows no change).
+- WH2: campaign_tree_lod0, campaign_grass_lod0, rigid_campaign_tree_lod, battle_building_lod0: never read in ~2 min
+  (start, campaign, battle). Only rip-relative refs: static initializers (+0x61db0 ...), rigid_campaign_tree_lod also
+  +0x868810 (const / value -> a renderer parameter, then its changed callback; not run in play). Campaign Detail looks
+  dead (offered removal); buildings inconclusive (a battle without buildings loads none). distance_lod_scaler (Model
+  Detail) is read live in the campaign too (millions of reads).
+
+## RESUME HERE (2026-10-23, round 20): WH1-3 watch logs read, watch v2 (untested)
+Zips: WH1 v14, WH2 v14, WH3 v13 (debug buttons only, plus WH3 values applied from the device on).
+- ATN's 10 s watch logs (WH1 TWWarhammer\debug4, WH2 debug4 battle_crash / campaign_crash, WH3 debug5), battle then
+  campaign:
+  - WH1: only SMALL_IMPOSTER_DISTANCE read during play (battle, ~170/s) at warhammer.exe+0x162f10, a virtual float
+    getter (movss xmm0, [rcx + 0x68]; ret): caller unknown. battle_entity_lod0, campaign_tree_lod0,
+    rigid_campaign_tree_lod: never read in play.
+  - WH2: distance_lod_scaler read live per object (millions / 10 s; rip-relative at +0x5e41a0, +0x5e4f47, +0x5e7c54,
+    +0x5e7e73, +0x61a117: squared, scales the LOD distance). SMALL_IMPOSTER_DISTANCE copied with the other imposter
+    distances into a struct at +0x2256720 (~37 / s in battle: per unit). campaign_tree_lod0 / campaign_grass_lod0:
+    never read in play.
+  - WH3: none of the num_pixels_per_triangle_lod_change_* read in play: load time or the game's start (WH3 applied
+    the values only from its first present, ~0.8 s after its device; now also at init_device like WH1 / WH2).
+  - WH2 crash right after "done": a thread caught between its access and the handler got Dr7 back from its exception
+    context after the clear, then hit with the handler removed. Fixed (below).
+- Watch v2 (twrome2/engine_tweaks.hpp watch): handler clears Dr7 while stopping, clears twice before removing; a
+  getter's access (next byte ret) logs its caller from [rsp]; new threads armed every 250 ms; each new reader logged
+  as found ("new reader at N s"); buttons "Watch graphics values (60 s)" (press, then load) and "Watch graphics values
+  at the next start (5 min)" (ReShade.ini [Total War] WatchAtStart, read once in AttachAddon: Find + watch from the
+  addon's load at the game's device). Watched: WH1 SMALL_IMPOSTER / battle_entity_lod0 / campaign_tree_lod0 /
+  terrain_far_shader_distance; WH2 campaign_tree_lod0 / campaign_grass_lod0 / rigid_campaign_tree_lod /
+  battle_building_lod0; WH3 unit / building / battle_tree / campaign_tree.
+
+## RESUME HERE (2026-10-23, round 19): WH2 stutter check, Game's AO at its own cost (untested)
+Zips: WH1 v13, WH2 v13, Troy v12, Pharaoh v16, Shogun 2 v51.
+- ATN: WH2 stutters even with Lighting 0 / AO Game's. Per present the addon only updates small state (light_bounce
+  Update, ao_trace / pixel_trace atomics, engine_tweaks Apply); the Light Bounce hook returns at strength 0; no log
+  spam (ReShade.log debug3). The cost found: v12 put the bitmask into WH2's collect (32 x 32 = 1024 threads, X4714), so
+  the game's collect ran in that heavy shader too. Now line_sweep_ao.hpp DispatchInstead: the replaced pass is the
+  game's code only, the addon's own 8 x 8 shader is dispatched in its place with the addon's settings at b13.
+  WH2: ao_bitmask_collect (kept depth t2 / camera b0). WH1 / Troy / Pharaoh: ao_bitmask_blur in place of the blur, the
+  collect no longer skipped (its replacement removed: never an unwritten AO where a game skips its blur). Shogun 2:
+  ao_bitmask_collect in place of the collect (sweep camera via OnCollect, the collect's depth).
+- Helper scripts copied to C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw.
+
+## RESUME HERE (2026-10-23, newest+++++++++): round 18 (untested)
+Zips: Thrones v14 (ATN's "What I would use:" from the screenshot), WH1 v12, WH2 v12, WH3 v12.
+- WH2 AO bug solved by ATN's traces (debug3): only the collect 0x19CF3C83 runs at ATN's settings, the blur 0xC7B1F6F7
+  never; the addon skipped the collect with the bitmask, so the AO texture kept zeros (black on load) or the game's
+  last AO (afterimage). Now: bitmask in the collect (twwarhammer3/line_sweep_bitmask.hlsli, parametrised: group size,
+  own camera, output size), depth = the depth downsample's input (0xF1CE6943 replaced with the game's code; hook
+  KeepComputeDepth), camera = CS b0 at the collect (the sweep's; KeepComputeCamera), bound by OnCollect at t2 / b0.
+  WH2's blur replacement removed (game blur).
+- WH1-3 graphics: Trace shows every value found, written and kept (no "changed by the game"), yet nothing changes
+  (WH1 campaign / battle, WH2 campaign trees, WH3 everything). The exe only references the tweak objects in their
+  static constructors (tw_refs.py / tw_string_refs.py): readers go through the registry. Added
+  tw::engine_tweaks::watch (hardware data breakpoints on 4 values for 10 s, VEH counts the instruction after each
+  access, log module + offset); buttons "Watch graphics values (10 s)" in WH1-3. Next: ATN's watch logs -> disassemble
+  the readers (load-time copy vs per-frame) -> hooks as Attila's LOD pick / tree LOD.
+
+## RESUME HERE (2026-10-23, newest++++++++): round 17 (untested)
+Zips: Attila v29, Thrones v13, Rome II v14, Pharaoh v15, Troy v11, WH1 v11, WH2 v11, WH3 v11, Shogun 2 v50 / DLSS v43.
+- Tooltips: scratchpad tooltip_sync.py copies Attila's AO / Light Bounce tooltips by key; the AO choice uses a template
+  with each game's own method (GAME_AO). Rome II / Pharaoh heavier preset: 4 AO directions (ATN).
+- Thrones "What I would use:": ATN's new values were missing from the message: asked again (not changed).
+- Light Bounce ports (sun draws from dump_shader_<game>_pack via scratchpad tw_sun_layouts.py):
+  Troy = Pharaoh's decode (twpharaohdynasties/light_bounce.hlsli); WH1 / WH2 = twwarhammer2/light_bounce.hlsli
+  (spherical normals from ch1.xy, albedo ch2 x (1 - ch3)); WH1 camera b2 (reflection b1), WH2 slm b1 / skin b2; WH3 =
+  twwarhammer3/light_bounce.hlsli (3K camera layout c0-c40, view-space normals from 10-bit ch1, albedo x 0.96; one shader
+  per model via g_skin_enable, all marked standard). Troy got its own OnPresent.
+- WH1-3 / Troy / Shogun 2: AO + Light Bounce presets (heavier: 4 AO directions; no AO temporal there), modes
+  "HDR & Effects" / "Graphics" (not Shogun 2: no graphics in its HDR addon). Shogun 2 overlay: presets, Temporal
+  (LightBounceTemporal), Eighth, 16 directions, LIGHTING_COLOR light blue.
+- Traces: tw::engine_tweaks::Trace (button "Trace graphics settings", WH1-3), WH2: ao_trace on 0x19CF3C83 / 0xC7B1F6F7
+  + "Trace ambient occlusion" button + pixel trace in a TreeNode (warhammer2_pixel_trace.txt).
+- ATN's VRR flicker question (Attila / Pharaoh): AO / Light Bounce cost varies with the view (radius on screen), test
+  with them off; an fps cap steadies VRR. Offered: a smaller on-screen radius cap for steadier cost.
+
+## RESUME HERE (2026-10-23, newest+++++++): release round: Attila v28, Rome II v13, Thrones v12, Pharaoh v14
+ATN ships these four. Patch notes: Downloads\tw_patch_notes.txt (UPDATE block on top), tw_all_changes.txt (LATEST).
+- All four: modes "HDR & Effects" / "Graphics"; AO + Light Bounce presets (Recommended = ATN's screenshot values, heavier
+  one AO Thickness 0.11 + 2 directions, Reset = defaults + game's AO), graphics presets without AO / LB keys; AO
+  Directions 1-8 (1 << setting, default 2) everywhere incl. bitmask_ao.hlsli users (WH1-3, Troy, Shogun 2 overlay /
+  HDR read: built, not shipped); AO / LB titles 0x7FBFFF; two empty TEXT lines after Graphics; copyright headers on
+  the lighting / AO files.
+- AO Temporal Smoothing (default Off) in Attila / Thrones / Rome II: the shared bitmask AO is twattila/bitmask_ssao.hlsli
+  (included by Attila / Thrones ssao00 0xBD389EF1 and Rome II ssao00 0x37F7EDEF / ssao01 0x1ED22F9C). Pharaoh: none
+  (its ssao2 generate pass has no camera CB; would need the camera from elsewhere).
+- Pharaoh: pixel trace (Debug section) removed from the release (red cross drawn in Graphics mode).
+- Attila presets (ATN): Reflection 1x, Building 3x (4x / 8x) / 4x (vanilla).
+- Next: the same for WH1-3 / Troy / Rome Remastered / Shogun 2 when ATN asks.
+
+## RESUME HERE (2026-10-23, newest++++++): Attila v27 (untested)
+- Settings Mode {"HDR & Effects", "Graphics"} in Attila only (others still "Image").
+- AO Temporal Smoothing: twattila/ao_temporal.hpp (command_action on 0xBD389EF1 with a post_callback: RT1 = history,
+  t40 = last history, b10 = last camera; game's draw not replaced), ssao00 writes o1 = (AO, distance); SI.ssao_temporal,
+  SI.ssao_frame (ao_temporal::Update returns it). twattila/frame_history.hpp: Target, MakeTarget, KeepCamera (also
+  used by light_bounce.hpp).
+- UI 4K Mod Compatibility: CUSTOM slider in Graphics writing [Attila] DisableGraphics (used at the next start); with it
+  on, the section keeps text, this slider and SSR Quality. Two empty TEXT lines end the Graphics section. AO / Light
+  Bounce titles 0x7FBFFF. Graphics presets (graphics_defaults) no longer list AO / Light Bounce keys.
+- Next (ATN): presets for the AO and the Light Bounce.
+
+## RESUME HERE (2026-10-23, newest+++++): TW round 14, Settings Mode Image / Graphics (untested)
+Zips: twattila_v26, twthronesofbritannia_v11, twrome2_v12, twpharaohdynasties_v13, twwarhammer_v10, twwarhammer2_v10,
+twwarhammer3_v10, twtroy_v10.
+- ATN: Settings Mode labels {"Image", "Graphics"} (key SettingsMode kept). IsAdvancedSettings -> IsGraphicsSettings;
+  every `.is_visible = IsAdvancedSettings` removed and the Psycho mode checks no longer need Advanced; one loop at the
+  end of ConfigureAddon: graphics sections (Graphics (Experimental), Ambient Occlusion, Light Bounce; Pharaoh also
+  Debug) only in Graphics, the rest only in Image, About and SettingsMode in both.
+- Thrones / Rome II / Pharaoh now ship the round 13 Light Bounce (prepare pass, Temporal Smoothing setting, Eighth,
+  16 directions). AO Directions 1 and the AO step cap are still Attila-only.
+- Not changed: Rome Remastered and Shogun 2 HDR (no graphics sections; still Simple / Advanced). Shogun 2 still has
+  the round 12 Light Bounce settings in its DLSS overlay (no Temporal toggle there yet; the HDR addon would default On).
+
+## RESUME HERE (2026-10-23, newest++++): TW round 13, Attila v25 (untested)
+- Attila AO Directions 1 / 2 / 4 / 8 (Attila's ssao00 only: 1 << setting, default 2 = 4; Thrones / Rome II / bitmask_ao
+  keep 2 << setting), AO steps capped at one per AO pixel of the radius.
+- Light Bounce: Resolution up to Eighth, Directions up to 16 (Update clamps 0-3 / 0-4), Temporal Smoothing (Sliders.temporal,
+  Attila setting light_bounce_temporal, default On; other addons get the Sliders default On with no setting yet).
+- Passes now: light copy (t40) -> light_bounce_prepare (MRT: mean light per texel RGBA16F, position + octahedron normal
+  RGBA32_UINT; t46-t47) -> trace into history[i] reading history[1-i] (t41) and the last camera (b10, CopyResource of
+  the sun draw's camera CB after each trace) -> apply reads history[i]. Each game's light_bounce.hlsli adds a
+  previous_camera cbuffer (camera position + view_projection offsets only) and BouncePrevious; every game folder has a
+  light_bounce_prepare.ps_5_0.hlsl wrapper. Thrones / Rome II / Pharaoh / Shogun 2 build with it but were not shipped.
+- Not done: temporal smoothing for the AO (would need its own history around the game's ssao draw); offered to ATN.
+
+## RESUME HERE (2026-10-23, newest+++): TW round 12 (untested)
+Zips: twattila_v24, twthronesofbritannia_v10, twrome2_v11, twwarhammer_v9, twwarhammer2_v9, twtroy_v9,
+twpharaohdynasties_v12, twwarhammer3_v9, twshogun2completeedition_v49, twshogun2completeedition_dlss_v42.
+- Speed toggles: AO Directions (SI.ssao_directions: 2 / 4 / 8 slices, default 4) in every bitmask game (Shogun 2 via
+  the DLSS overlay, ReShade.ini AmbientOcclusionDirections). Light Bounce Resolution (Full / Half / Quarter), its own
+  Quality (8 / 16 / 32) and Directions (1 / 2 / 4); defaults = round 11 (half, 8, 2). The fast acos stays on (no
+  visible difference: no toggle).
+- twattila/light_bounce.hpp generic: Install(span<const SunDraw>) (hash, standard, gbuffer_slot, camera_slot; the
+  callback reads it with GetCallbackData), each draw's 4 G-buffer SRVs -> t42-t45 and camera CB -> b11, light copy t40,
+  bounce t41, constants b12 (light_bounce.h: steps, slices, scale). Trace / apply bodies are
+  light_bounce_trace.hlsli / light_bounce_apply.hlsli; each game's light_bounce.hlsli defines BounceViewPosition /
+  BounceViewNormal / BounceDiffuseAlbedo / BouncePixelsPerMetre / BounceViewportSize (Attila's is shared by Thrones /
+  Rome II). Install after renodx::mods::shader::Use everywhere (replaced sun shaders get renodx's injection first).
+- Pharaoh: 9 sun draws (camera b1; G-buffer t8 / t5 / t7), normal ch1.xy, albedo ch2 x (1 - ch3 specular), emissive
+  (flags & 10) == 10 none. Shogun 2 HDR: sunlight00-03 (G-buffer t7 / t9), spherical normals, albedo x (1 - metal) x
+  0.96, flag 1 clear = unlit, none; settings from the DLSS overlay (LightBounce* keys).
+- Attila: ReShade.ini [Attila] DisableGraphics=1 skips every engine change (tweaks, hooks, shadow map code) and hides
+  the Graphics sliders (SSR Quality stays), for the UI 4K mod.
+- Not yet: Light Bounce for WH1 / WH2 / WH3 / Troy, WH2 AO trace, WH3 LODs / shadows.
+
+## RESUME HERE (2026-10-23, newest++): TW round 11 (untested)
+Zips: twattila_v23, twthronesofbritannia_v9, twrome2_v10, twwarhammer_v8, twwarhammer2_v8, twtroy_v8,
+twpharaohdynasties_v11, twwarhammer3_v8, twshogun2completeedition_v48, twshogun2completeedition_dlss_v41.
+- Speed: twattila/bitmask.hlsli (BitmaskAcos = GTAO's fast acos, BitmaskSliceAt, BitmaskSectors) used by Attila /
+  Thrones / Rome II ssao shaders, the Light Bounce trace and twwarhammer2/bitmask_ao.hlsli (WH1-3, Troy, Pharaoh,
+  Shogun 2); slices stop once all 32 sectors are covered. AO Quality (SI.ssao_quality: 8 / 16 / 32 steps) in every
+  bitmask game (Shogun 2: DLSS overlay -> ReShade.ini AmbientOcclusionQuality -> HDR addon).
+- Light Bounce: traced once a frame at half resolution after the first standard (slm) sun draw (one light copy),
+  own full-screen VS, no depth / stencil; apply per sun draw with a 3x3 bilateral upscale (alpha = view depth).
+  Install(standard, skin) lists per game in addon.cpp; Thrones (14 + 12) and Rome II (18 + 14; 20 variants with the
+  camera at b1 skipped) use twattila's header and shaders via light_bounce_*.hlsl wrappers.
+- Pharaoh's black polygons = lens blood (shaders_bl.pack lenseflare ps40_blood 0xE4931F75: alpha down to -8.55 in an
+  FP16 target): lensblood00 clamps; lensflare.hlsli ApplyPharaohLensOverlay (the 5 flares' copies merged).
+- Shogun 2 DLSS v41: 14336 removed (ATN: 1080p again), sizes 4096 / 8192 / 12288 via the code constant.
+- Not yet: Light Bounce for WH1 / WH2 / Troy / Pharaoh / WH3 / Shogun 2 (other lighting passes; Pharaoh's: trace
+  #2607 vs 0xCCBE6B59 ps 0xF883F5B2, G-buffer t4-t7), WH2 AO trace, WH3 LODs / shadows.
+
+## RESUME HERE (2026-10-23, newest+): TW round 10 (untested)
+Zips: twpharaohdynasties_v10, twshogun2completeedition_dlss_v40. ATN: Attila AO Quality + Light Bounce both work and
+look very good.
+- Attila screenshot crash: ReShade's own std::bad_alloc (throw info in its dxgi.dll; ReShade.log "Failed to create
+  system memory texture for screenshot capture!"), crash dump AppData\...\Attila\crash_report\D2026-10-23_T02-49-24:
+  the 32-bit (LAA) process out of address space at a 4K screenshot (SaveOverlayShot=1 takes two). Not our code. Told
+  ATN: overlay shot off, or Win+Alt+PrtScn (outside the game).
+- Shogun 2 v40: the top Shadows setting's size written into the code (mov eax, size at +0x1a77c27 / +0x1a77c3d):
+  4096 / 8192 / 12288 / 14336. D3D11 limits for the 4-slice array (scratchpad d3d11_size_test): 14336 any depth
+  format, 16256 D32 only, 16383+ fails.
+- Pharaoh v10: Shadow Map Size via .rdata table rows 4 / 5 (+0x3da08a0) and the extreme immediates (+0x31e5271):
+  6144 / 8192 / 12288 / 16384 (single texture with tiles; 16384 creatable in every format). ATN's "What I would use:"
+  preset. Debug (Advanced): pixel trace (talesofarise_dlss/pixel_trace.hpp, file_prefix "pharaoh") for the black
+  polygons; unit sliders at 0.1x did not remove them. Next: read ATN's pharaoh_pixel_trace.txt.
+
+## RESUME HERE (2026-10-23, newest): TW round 9 (Attila AO test; untested)
+Zips: twattila_v22 (AO Quality + Light Bounce), twshogun2completeedition_dlss_v39.
+- Attila AO Quality: ssao00 steps 8 << SI.ssao_quality (Normal / High / Ultra). Light Bounce (screen-space indirect
+  light, the visibility-bitmask paper's Algorithm 1): twattila/light_bounce.hpp registers command_action callbacks on
+  the 26 directionallight ps30 slm / skinlm hashes; per sun draw it redraws the game's draw, copies RT0 (the light
+  buffer), draws light_bounce_trace.ps_5_0 into its R16G16B16A16F texture (game's VS / depth-stencil: same pixels),
+  then light_bounce_apply.ps_5_0 (3x3 depth-aware average x albedo^2 x (1 - metal)) additively; b12 / t10 / t11,
+  restored after. Main view only (RT0 = display size). Default Strength 0 (off). If ATN sees nothing: check RT0 size,
+  view-space handedness (z > 0 like the AO), the sun hashes ATN's settings use.
+- Shogun 2 v39: ATN: the game shows 32 GB normally; 1.8 GB only after 16384. v38's force_total_video_memory (4 GB)
+  reverted (it would lower the budget); 16384 stays removed (D3D11 cannot create it). ATN to retest 8192 / 12288 after
+  setting 4K + DLSS again.
+- ATN's reports, for later (after Attila's AO answer): Rome II / Thrones / WH1 Shadow Map Size works. WH3: graphics
+  sliders (buildings, unit LOD) seem to do nothing (more LOD tweaks needed?), AO works, wants shadow resolution. WH2:
+  AO blackens a lot when a battle loads, toggling Game's and back leaves an afterimage and no AO: wants a trace;
+  shadow size seems to work. Pharaoh: "What I would use:" = 1.2 x5, 0.15, 2, 2, 2, 3, 1.25, 4, 4, 6, 4, 1, 4, 8192
+  (slider order); debug1 (Pharaoh folder): huge black polygons + blue garbage mid-battle with a field full of corpses
+  (Unit Detail 1.25, Dead 0.45, Animation / Variety / Footstep 2.5, Model 3): exploding skinned meshes, most likely
+  the animation / bone buffer overflowing (Attila's Big Battle issue in the main pass); the dead-unit stub checked
+  (xmm0 only for the dead, flags rewritten by the comiss). Asked ATN to retry with Unit Animation 1x.
+
+## RESUME HERE (2026-10-23, latest+): TW round 8 (Attila / Thrones / Rome II shipped; untested)
+Zips: twattila_v21, twthronesofbritannia_v8, twrome2_v9, twshogun2completeedition_dlss_v38. Full player-facing list of
+every TW change for ATN's Nexus pages: Downloads\tw_all_changes.txt (ATN writes the Nexus texts now).
+- Thrones: "What I would use:" (ATN's 14 values), V31 Highlight Hue Shift 0.13. Rome II: preset Dead 0.5 + Shadow
+  8192. Attila: Shadow 8192 in both of ATN's presets. AO tooltips name the game's HBAO vs our GTAO bitmask.
+- CPU (ATN: no debug overhead): DebugUnits probe gone (graphics_hooks.hpp), engine_tweaks.hpp StatusLine (shown only
+  on "not found" / "failed"), campaign tree hook: thread_local last tree + no lookups at 1x until first scaled.
+- Shogun 2 shadow map resolution: not the wrong value (only +0x1a77b90 reads shadow_resolution_multiplier). The
+  game's TEXTURE_MANAGER::create_resource (+0x19da5d4) budget is ~1.8 GB on the 5090 (ATN's "Max"; likely ~30 GB
+  wrapped at 32 bits); bigger shadow maps did not fit -> "Insufficient video memory to run game, terminating"
+  (PostQuitMessage) -> next start = GPU database defaults (boot.pack: RTX 5090 Ultra 1920x1080, TAA): ATN's 1080p /
+  no DLSS. Fix: force_total_video_memory (+0x3454e58, dword bytes) = 0xFFFFFFFF while the multiplier > 1. 16384
+  removed (D3D11 CreateTexture2D 4 x 16384^2 fails with E_OUTOFMEMORY on the 5090; 12288 works; test in scratchpad
+  d3d11_size_test). Built while the game ran: the addon was linked to scratchpad s2_dlss_build (build/Release's copy
+  is still the old one until the next build with the game closed). Untested.
+- Next (ATN): the other TW games the same way (CPU / debug cleanup: Troy / WH1 / WH3 still have "Save game code" and
+  trace buttons; graphics_status lines), then Rome Remastered tiers, Troy / WH3 shadows.
+
+## RESUME HERE (2026-10-23, latest): TW round 7 (ATN's feedback; untested)
+Zips: twattila_v20, twthronesofbritannia_v7, twrome2_v8, twwarhammer_v7, twwarhammer2_v7, twtroy_v7,
+twpharaohdynasties_v9, twwarhammer3_v7, twshogun2completeedition_dlss_v37.
+- Shadow Map Size: Attila / Thrones scale the tier immediates (graphics_hooks.hpp shadow_map); Rome II, WH1, WH2,
+  Pharaoh set the game's shadowmap_extreme_quality (engine_tweaks flag tweaks; 8192 at the highest Shadows setting,
+  their own code). WH2 also has shadow_resolution_multiplier (unused). Troy / WH3: their shadow size code not found
+  (newer renderer; the 2048 / 1024 / 768 / 512 switch in Troy, WH1, Pharaoh is another map). Engine values applied
+  at init_device too (before the shadows are built).
+- Line-sweep AO (WH1 / WH2 / Troy / Pharaoh): the bitmask now runs in the blur (its own depth + camera, this frame's;
+  5x5 in-group average); collects skip with the bitmask. Kept resources across frames were the likely cause of
+  WH2's marks (round-6's depth-region fix did not help).
+- WH3 AO: ATN runs the depth-less collect 0x2A629B2B (debug3 log: 0xEE5C29AE never created); replaced, depth from
+  the downsample's UAV (KeepUavDepth) at t2, camera from t00 b1. WH3 LOD values are copied per model at creation
+  (callers of +0x141a0363c store them at model +0x84): next battle / campaign load.
+- Shogun 2 unit distances: UnitDistances +0x3a33a0 hooked (DLSS addon unit_detail.hpp); tweak values at +0xB8.
+- Rome Remastered (open): Feral rewrites Preferences Data at exit (after our addon unloads), so file edits are lost;
+  each tier value is looked up by name when settings apply and copied into engine objects (terrain_lod_distance a
+  global at exe+0x2970970, grass_range the settings object exe+0x297A978 -> +0x3b0, building scale [obj]+0x6a8,
+  shadow range +0x680, shadow atlas +0x34 of other objects). Scratchpad tw7_rr_*.py.
+
+## RESUME HERE (2026-10-22, latest+): Attila v19 Shadow Map Size
+- ATN found another author's Attila UI mod with 8192 shadows; ATN: never copy his mod or code. Ours is written from
+  our own disassembly: the shadow setup (+0x17665e0) sizes per Shadows level (Max / High 2048, Medium 1024) scaled
+  1x / 2x / 4x by one byte pattern (graphics_hooks.hpp shadow_map), at init_device; left alone if the sizes were
+  changed already (his version.dll does). Thrones has the same code (same pattern, not wired yet); Rome II differs.
+  Next: the other TW games.
+
+## RESUME HERE (2026-10-22, latest): TW round 6 (ATN's feedback on round 5; untested)
+Zips: twattila_v18, twthronesofbritannia_v6, twrome2_v7, twwarhammer_v6, twwarhammer2_v6, twtroy_v6,
+twpharaohdynasties_v8, twwarhammer3_v6, twshogun2completeedition_v47 / _dlss_v36 (no Rome Remastered change).
+- AO Radius max 10 everywhere (same sample count: farther apart, coarser, a little more cache cost).
+- WH1 engine values 4 / 45 -> 45 / 45: ObjectValue returned null when no object lea preceded the name (Warhammer's
+  object follows it). WH2 log: 50 / 50, Pharaoh 58 / 58.
+- WH2 AO marks: the blur's depth texture is larger than the region the blur reads; the collect sampled it whole (old
+  frames in the rest). line_sweep_ao.hlsli now takes depth_size (WH2 / Troy / Pharaoh: C / 2; WH1: C).
+- Thrones dead units: its per-soldier update frame is 0x148 (Attila 0x144): graphics_hooks.hpp Game enum.
+- Pharaoh dead units: twpharaohdynasties/dead_units.hpp patches the inlined imposter test (+0x6fe1c4 comiss xmm0,
+  xmm10; jb) with a jump to a stub (DetourAllocateRegionWithinJumpBounds) scaling xmm0 when bit 0 of [r15 + 0x150]
+  (alive) is clear. Tools: scratchpad tw6_pe.py / tw6_pdata.py / tw6_x64_refs.py / tw6_calls.py.
+- WH3: graphics from num_pixels_per_triangle_lod_change_* (lea r8 layout, engine_tweaks FollowingObjectValue, value
+  +0x60, read live at +0x141a036ba), inverse sliders. AO: collect ssao01_0xEE5C29AE hand-written (game path = Shogun 2's
+  new_collect) + bitmask over a 10x10 tile; camera kept from t00 (PS b1) and bound at CS b1. If no change: the other
+  collect 0x2A629B2B (no depth bound) may run -> trace.
+- Shogun 2 DLSS overlay: reset buttons (settings.hpp's look) on every slider, AO mode slider. Unit LOD: tweaks
+  (ENTITY_LOD_OVERRIDE, FEATHERED_SHARED_POSE_RANGE in empire.retail.x64.dll) have no direct readers: needs code
+  hooks like Attila's UnitDistances (open).
+- Rome Remastered: graphics tiers are values in %LOCALAPPDATA%/Feral Interactive/Total War ROME REMASTERED/Preferences
+  Data (GraphicsSetting: lod_units-4 distances 14/30/40/50, lod_building-4 scale 2, lod_grass-4 range 150,
+  lod_terrain-4 600, shadow_distance-4 600, shadow_resolution-4 4096, ...; scratchpad tw6_rr_tiers.py). Asked ATN
+  how to raise them (open).
+
+## RESUME HERE (2026-10-22, earlier): TW round 5 (ATN's feedback on round 4; untested)
+Zips: twattila_v17, twthronesofbritannia_v5, twrome2_v6, twwarhammer_v5, twwarhammer2_v5, twtroy_v5,
+twpharaohdynasties_v7, twwarhammer3_v5, twromeremastered_v5, twshogun2completeedition_v46 / _dlss_v35. Patch notes
+updated (tw_patch_notes.txt).
+- Advanced-only fix: Setting::is_visible defaults to a lambda returning true, so wrap it:
+  `[shown = setting->is_visible] { return IsAdvancedSettings() && shown(); }`. AO Radius default 1 everywhere.
+  Counters / code dump buttons removed; ao_trace.hpp is trace-only (OnPresent is one atomic exchange).
+- Hooks on custom shader entries without replacement code never run (WH3 traced 0 passes, WH2 collect skipped ->
+  stale AO lines). Line-sweep AO: the blur is hand-written (twwarhammer2/line_sweep_blur.hlsli, per game ssao01/02
+  files) and its hook keeps t0 depth + b0 camera for the next collect (line_sweep_ao.hpp OnBlur / OnCollect).
+- SDR output for the 8 games without it (shared.h OutputShaderInjection, proxy gamma 2.2, OnCreateSwapchain Auto).
+- WH2 / WH3 PsychoV31: the per-map Extended Reinhard (W = 1/burn - 0.999) handoff now matches value and log-log slope
+  at mid gray (t00 shaders).
+- WH1 graphics via engine_tweaks (x64 tweak object found by the lea rcx after the name, value at +0x68). Thrones:
+  Attila's graphics (graphics_hooks + engine_tweaks). Rome II / WH2: "What I would use:" preset (ATN's values).
+- Shogun 2 AO: ssao01_0x98BB1159 (new_collect) replaced, bitmask over camera_VS_PS viewport (c38) with its own 5x5
+  denoise; settings in the DLSS overlay (ReShade.ini [Shogun 2 DLSS] AmbientOcclusion*).
+- WH3 AO: ssao00_0x49F538CF (depth downsample) hand-written so the Advanced trace runs; waits for ATN's trace.
+- Not possible / open: Rome II Big Battle fix (no Attila-style animation packing), Troy / WH3 engine sliders (no tweak
+  names), x64 dead unit detail (inlined per-soldier code), Rome Remastered AO (Intel ASSAO, deinterleaved).
+
+## RESUME HERE (2026-10-22, later): TW round 4 (ATN's feedback on round 3; untested)
+Zips: twattila_v16, twthronesofbritannia_v4, twrome2_v5, twwarhammer_v4, twwarhammer2_v4, twtroy_v4,
+twpharaohdynasties_v6, twwarhammer3_v4, twromeremastered_v4, twshogun2completeedition_v45 / _dlss_v34,
+rysesonofrome_fix40 / _dlss_v105. Patch notes updated (tw_patch_notes.txt, ryse_v1.04_*).
+- AO: own section "Ambient Occlusion (Experimental, needs in-game SSAO)" after Graphics; defaults 1 / 4x / 0.15 m
+  (ATN, Attila too: its presets no longer set AO); Graphics + AO Advanced only (loop before configured = true), titles
+  pink. `twwarhammer2/ao_trace.hpp`: AO pass counter (Advanced text), one-frame AO trace (textures, UAVs, constants to
+  ReShade.log; WH3 fx_ssao, Shogun 2 ssao_3k), SaveGameCode (exe image from memory to Downloads\<exe>.memory.bin; WH3,
+  Troy, WH1: protected exes; analyse offline for engine tweaks).
+- WH2 "matrix" AO: positions off the depth texel centre (half-size depth) -> self-occlusion dots; bitmask_ao.hlsli
+  AoSamplePosition snaps every sample. Rome II AO: ATN saw no change; the two resolves are replaced, the counter will
+  tell if they run. Rome II Grass / Campaign removed (no effect); Dead Unit Detail via graphics_hooks (Rome II:
+  ImposterDistance +0x4978a0, call +0x464960, frame 0x1d0, alive +0xd8).
+- Bloom: high-pass caps -> log shoulder in HDR (bloom.hlsli per game): Thrones (Attila's shaders), WH1 / WH2 / Troy /
+  Pharaoh (luminance 25), Rome II (Y 2.1 x white), Rome Remastered (brightest channel cb0[0].z). WH3: none.
+- Extended per-channel shoulder: WH2 / Troy / Pharaoh hdr_to_screen.hlsli, WH3 t00 (WH1 has no Extended).
+- Hue defaults (V31 Highlight Hue Shift): WH3 0.15, WH2 0.05, Pharaoh 0.06, Troy 0.10, Rome II 0.05, Thrones 0.20,
+  Rome Remastered 0.06, Attila 0.20, WH1 0, Shogun 2 0.46, Ryse 0.08. Reset = PsychoV31 where no Extended mode (WH1,
+  Attila, Rome II, Thrones). Graphics presets MAX / Reset: WH2, Pharaoh, Rome II, Thrones (Troy / WH3: no graphics
+  sliders). WH3: one Recommended (the 2000+ one). Pharaoh: Shadow Distance removed. Attila: Big Battle Fix last, off.
+- Shogun 2 / Ryse DLSS overlays: headings DLSS lavender (B39DDB), Graphics pink, the rest green; Shogun Nexus labels
+  "NexusMods (For RenoDX + DLSS)"; Shogun graphics options go into its DLSS addon (HDR addon reads them,
+  ReadDlssAddonOptions).
+- Open: WH3 / Shogun 2 AO (ATN traces: WH3 with and without the Nexus DLSS mod; Shogun at 100% and a lower render scale),
+  WH3 / Troy / WH1 engine sliders (game code dumps), dead units for x64 games (the per-soldier code is inlined:
+  Pharaoh +0x1406fdf88 region), WH2 campaign / unit slider reports (unit tweaks are read every call at +0x142256720;
+  campaign_tree_lod* has no direct reader), grass (only Pharaoh has a working grass distance).
+
+## RESUME HERE (2026-10-22): TW round 3 (after Attila v15): all other TW mods (untested)
+Zips: twwarhammer / twwarhammer2 / twtroy / twwarhammer3 / twromeremastered / twthronesofbritannia _v3,
+twpharaohdynasties_v5, twrome2_v4, twshogun2completeedition_v44, twshogun2completeedition_dlss_v33 (Downloads). Patch
+notes: Downloads\tw_patch_notes.txt (all TW, unposted), ryse_v1.04_patch_notes_nexus / _discord.txt.
+- Every addon: yellow in-game settings note (General), NexusMods button next to Ko-fi, section titles green /
+  Graphics (Experimental) pink (`settings.hpp` default_section_tint + section_tints), Recommended presets = Reset +
+  PsychoV31 at its defaults + Video AutoHDR 0.20 (Reset: AutoHDR off), Video AutoHDR / Dithering (autohdr.hlsli; the
+  sharp video shaders and the blurred_yuv variants), V31 defaults 1 / 0 / 0. WH2: the 2000-nit preset removed (same in V31).
+- AO (Visibility Bitmask, `twwarhammer2/bitmask_ao.hlsli` core): Thrones = Attila's shader; Rome II ssao00/01 (HBAO
+  resolve); WH1 / WH2 / Troy / Pharaoh line sweep: `line_sweep_ao.hpp` skips the sweep, binds its depth (t1) and camera
+  (b0) for the collect (ssao00_*), radius 1 = 2 m; Troy / Pharaoh default AO is ssao2 HBAO (ssao_algorithm = 1,
+  ssao01_0xD42C3523). Not done: WH3 (fx_ssao with overscan; needs a trace) and Shogun 2 (new_sweep + render scale).
+- Engine sliders: WH2 + Pharaoh: Unit Detail x5 sizes (*_IMPOSTER_DISTANCE etc. are read every call as the base
+  distances: Pharaoh +0x1406b2790, WH2 +0x142256720), Animation / Variety / Footstep, Building / Campaign Detail; WH2
+  also Model / Terrain. engine_tweaks.hpp skips sections > 256 MB (WH2's protection). Rome II: Attila's UnitDistances
+  hook (Rome II pattern +0x4497e0, `Update(..., rome2 = true)`), Building / Campaign Detail, Shadow Distance removed.
+  Thrones: Attila's SSR shaders (Reflection Quality). WH3: Warhammer3.exe registers tweaks differently (none found).
+  No binaries here: Troy, WH1, Thrones, Rome Remastered, Shogun 2.
+- Rome Remastered Extended: ApplyExtendedPeakShoulder per channel (Ryse fix32). Shogun 2 renamed
+  twshogun2completeedition(_dlss) (delete the old addons). DLSS for Attila / Rome II / Pharaoh: no scene motion vectors.
+- Tools (scratchpad, copy if needed): tw_tweak_list.py (x64 tweak list + defaults), tw_override_xref.py, tw_dis.py,
+  tw_dis32.py, tw_pattern.py, tw_callers32.py.
+
+## RESUME HERE (2026-10-20): Total War round (ATN): every TW mod besides Shogun 2
+ATN's request: per game (Rome II, Attila, Thrones, Rome Remastered, Troy, Pharaoh, WH1, WH2, WH3): missing shader
+permutations from the packs, missing post-processing sliders, PsychoV31 as an extra mode (+ Tales' grading sliders),
+credits + ATN's Ko-fi (Simple + Advanced), DLSS feasibility (motion vectors / depth; not WH3, not Shogun 2), higher
+graphics options (a "Graphics" section in the HDR addon) where possible. Shogun 2 (v42 / DLSS v32): credits, Ko-fi, V31
+sliders done. Tools: C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw (tw_pack, tw_names, tw_feral_names,
+tw_shaders, tw_missing, tw_cover, tw_family, tw_vfx_port); dumps bin\cmd_Decompiler-1.3.16\dump_shader_<game>_pack
+(names.tsv, missing.txt, cso\). Findings: only WH3 has motion vectors (Pharaoh's are the shroud's only), so DLSS is not
+viable elsewhere (moving units would smear). No TW mod runs ACES code (Troy / Pharaoh: the game's own ACES fit, not
+A.M.P.A.S. code); Shogun 2 ships Bend Studio's SSS (Apache 2.0, APACHE_LICENSE-2.0.txt in docs/licenses).
+32-bit games (build32, clang-x86-release, .addon32): Rome II, Attila, Thrones. The others are 64-bit.
+- Rome II v1 done (Downloads\twrome2_v1.zip; README in src/games/twrome2): V31 mode, 9 new permutations + 28 VFX ports, credits, Ko-fi.
+- Attila v1 done (Downloads\twattila_v1.zip): V31, constant tone mappers, lens flares 1-3, lens vignette + Vignette slider; VFX permutations and the and_gamma tone mappers not ported (see its README).
+- Thrones v1 done (Downloads\twthronesofbritannia_v1.zip): V31, constant tone mappers (t17 / t18), lens flares 1-3.
+- Rome Remastered v1 done (Downloads\twromeremastered_v1.zip): resolve.hlsli covers all 12 ResolveMainColor permutations (t00-t11), fxaa01, distortion01, V31 (mode 3).
+- Troy v1 done (Downloads\twtroy_v1.zip): hdr_to_screen.hlsli, V31 (mode 3), photo mode (photo01-04), MSAA DOF preprocess (dof01).
+- Pharaoh v1 done (Downloads\twpharaohdynasties_v1.zip): hdr_to_screen.hlsli, V31 (mode 3), DOF passes t05-t08, photo01-04, DOF composite dof00/01, sharpening00 (+ slider re-enabled).
+- WH1 v1 done (Downloads\twwarhammer_v1.zip): hdr_to_screen / tone_mapper / lensflare includes, V31 (mode 2), constant tone mappers t09 / t10, lens flares 0-3 + Lens Flare slider.
+- WH2 v1 done (Downloads\twwarhammer2_v1.zip): hdr_to_screen.hlsli, V31 (mode 3), t03-t08 (no distortion / MSAA main passes), lens flares + slider.
+- WH3 v1 done (Downloads\twwarhammer3_v1.zip): V31 (mode 3) in t00, lensflare.hlsli, lensblood00. Not ported: DOF/SAT permutations (DLSS-mod render scale rebuilds).
+- Graphics v2 (ATN: only the games ATN plays: Pharaoh, Attila, Rome II; leave the rest): Downloads\twpharaohdynasties_v2.zip,
+  twrome2_v2.zip, twattila_v2.zip, untested. Shared `src/games/twrome2/engine_tweaks.hpp`: Warscape engine tweaks
+  found by name at the first present (x86 empire.retail.dll: push name; mov ecx, obj; call ctor, value obj+0x48;
+  x64 Pharaoh.exe: lea obj; lea rdx, [name]; call ctor; movss [obj+0x60]), scaled every present (a value the game
+  sets again = new base); "Graphics" section (1x-4x) + Advanced status "Engine values found: n of n". Pharaoh (live):
+  Model Detail Distance = distance_lod_scaler / x (LOD pick +0x30e59e0), Grass Distance = grass_visible_range +
+  grass_fade_start (written by the grass quality setting +0x3119a60), Small Object Distance = cull_small_screenspace_
+  objects_default / vegetation factors. Rome II (next battle / campaign load): lod_multiplier_for_low..extreme (model
+  setup +0x14b9770), Grass = scrub_lod_distance_default (int 200, copied into grass nodes +0x1492653). Attila: its
+  quality factors are code constants (+0x17fbd30), so the battle_entity / building / ship / campaign_tree lod0-3
+  distances are scaled; Grass = scrub_lod_distance_default. Not read anywhere in Pharaoh: tree_lod_scaler,
+  battle_entity_* / building lods (dead tweaks). Tools: tools\tw\tw_tweaks.py (x64), tw_tweaks32.py, pe_dis32.py.
+- TW round 2 (ATN feedback 2026-10-20; zips: Pharaoh / Rome II / Attila v3, Thrones / Rome Remastered / Troy / WH1-3 v2,
+  Shogun 2 v43; untested): V31 Highlight Hue Shift default 0 + the Tales fire note above Highlight Saturation / Hue
+  Shift / Saturation Shift (Shogun 2: note only, ATN's 0.42 / 0.33 kept). "Graphics (Experimental)", before Output.
+  ATN: Rome II / Attila v2 sliders did nothing even after a restart. v3: Model Detail = hook on the LOD pick (same code
+  in both, Rome II +0x14f0710, Attila +0x183d570: distance squared / slider squared, live); Grass = the tweak plus
+  the grass node constructor's 200 m constant (code constant; next battle; unverified which field limits grass);
+  Terrain Detail = terrain_far_shader_distance; Shadow Distance = shadowmap_split_scale (cascade widths, Attila
+  +0x1784e52). Pharaoh (ATN liked v2): 7 sliders (adds terrain_distance_scale_*, shadowmap_split_scale*, SSR /
+  contact shadow step counts, blended-object cull distances), maxima 4x-8x; int tweaks found via mov dword [rip], imm.
+  Pharaoh sharpening: no game setting (strength 0): sharpening.hlsli, RenoDX's 0.10 x slider in ps40_sharpen and
+  ps40_chromatic_aberration. Attila bloom: high pass caps luminance at 25 (flat HDR halos): bloom.hlsli log shoulder.
+  Tools added: tw_tweaks32.py, tw_tweak_uses32.py / 64.py, pe_dis32.py, x86_lod_pick.py, x86_list_field.py, rtti32.py
+  (no RTTI in these DLLs).
+- Graphics round 3 (ATN: Attila first until 100% sure, then Rome II, then the rest): Attila v4 (Downloads\twattila_v4.zip,
+  untested): Unit Detail = hook on UnitDistances +0x43c160 (18 unit distances: imposters etc.), Object Detail = LOD
+  pick (trees), Grass = scrub update hook +0x17fb510 (node +0x80) + grass VS 0.01 / SI.grass_distance, Shadow =
+  FitShadowSplits hook +0x1794430 (new_shadows) + shadowmap_split_scale; `twattila/graphics_hooks.hpp`. Yellow note
+  (engine_tweaks::Note) in Attila / Pharaoh v4 / Rome II. Rome II next: none of Attila's patterns match; redo the
+  same analysis (units table, grass VS 0.01, new_shadows) in Rome II's empire.retail.dll.
+- Attila v5 (Downloads\twattila_v5.zip, untested): Grass / Shadow removed (ATN: costly, no visible change). Unit Detail =
+  only the 8 imposter values of UnitDistances (the 18 named in twattila/graphics_hooks.hpp). Model Detail = the LOD
+  pick hook (soldiers' parts 100/200/400/500 m, trees, buildings, props; whole-engine scan: the only LOD distance
+  compare) + rigid_campaign_tree_lod. New: Building Draw Distance (battle_building_no_draw_distance_calibration,
+  next battle), Campaign Prop Distance (campaign_props_max_distance, live). Unit LOD db tables
+  (warscape_animated_lod: siege / chariots / campaign traders; warscape_rigid_lod_range: 200/400/750/1500 m).
+- Attila v6 (Downloads\twattila_v6.zip): Shadow Distance 0.5x-4x = the shadow cascade table (.rdata +0x1c88aa0) scaled
+  in place (battle highest 30/90/210/450 m = 780 m range). Shadow map resolution not found statically: next step a
+  runtime resource log (square depth textures) if ATN wants sharper shadows than Ultra.
+- Attila v7 (Downloads\twattila_v7.zip, ATN: done with Attila after this): Unit Detail 0.1x-8x; Campaign Detail
+  Distance (campaign_tree_lod0-3 / campaign_grass_lod0-4 at model setup, campaign trees use their own pick loop
+  +0x17ee130; rigid_campaign_tree_lod + campaign_props_max_distance live); campaign sea reflections = BC1
+  environment_map.dds (LDR source, not a clip; left); Recommended presets in PsychoV31. Next: Rome II graphics
+  (redo Attila's analysis: units table, shadow cascade table, campaign LOD tweaks), then the other TW games.
+- Attila v8 (Downloads\twattila_v8.zip): Extra: Water Reflections (AutoHDR on the BC1 environment cube in the
+  deferred water reflection pass, 10 permutations) + Video AutoHDR / Dithering (cutscene00), autohdr.hlsli.
+- Attila v9 (Downloads\twattila_v9.zip): campaign trees via DrawTree hook +0x17ee130 (Campaign Detail, live; per
+  model LOD distance scaling), Water Reflections removed, Unit Animation / Variety / Footstep sliders (0.1x-4x).
+  Open (ATN, 8x unit size mod): dead soldiers at full LOD up close are heavy; a dead-only imposter distance needs
+  the per-soldier update (+0x456843) traced (state values 0x52 / 0x59 / 0x5a seen there, unconfirmed).
+- Attila v10 (Downloads\twattila_v10.zip): Dead Unit Detail Distance (0.05x-1x) via ImposterDistance hook +0x48a8f0,
+  only from its per-soldier caller (return address checked), animation id at return address + 12 + 0xd8, death ids
+  125-129 / 138-139 / 185-324; Graphics presets "With 4x / 8x unit sizes", "With vanilla unit sizes", Reset. Shadow
+  jumping in big zoomed-in fights: no pool tweak found; ATN to test Unit Animation 1x vs 3x. Later (ATN, possible):
+  better SSAO (replace the game's), screen-space shadows (Bend, as Shogun 2), better SSR (the game has one).
+- Open: Attila VFX permutations, with_bloom_and_gamma tone mappers, WH3 DOF/SAT permutations.
+- Attila v15 (Downloads\twattila_v15.zip, ATN: Attila done): preset values (AO 0.39 / 4x / 0.19 m, reflection 2x, building 6x,
+  vanilla unit detail 1.2x), AO choice named Visibility Bitmask, note / gamma wording. Next: other TW games.
+- Attila v14 (Downloads\twattila_v14.zip): one Graphics section, presets that set everything (ATN's values),
+  Building Detail Distance (battle_building_lod0-3), Shadow Distance out, Campaign Detail max 4. Open (ATN's question):
+  shadow flicker: cascades not snapped to shadow-map texels when the camera moves (the matrices are built outside the
+  split fit +0x1794430), small units a few texels big; options: hook the cascade matrix setup (snap), larger shadow map,
+  softer filter (sun light replacement).
+- Attila v13 (Downloads\twattila_v13.zip): Big Battle Shadow Fix (shadow pass overflow -> unit distances down)
+  instead of taller animation pages (soldiers vanished); contact shadows and Building Draw Distance removed; SSR
+  slider = Reflection Quality (armour). Dead Unit Detail confirmed working.
+- Attila v12 (Downloads\twattila_v12.zip): jumping shadows = animation texture overflow (Animated Soldier Limit
+  slider: page height x it), Dead Unit Detail by the soldier's alive flag, 4 unit distances (fade widths out), contact
+  shadow fixes (grass, 40-80 m fade, edges), UI order / colours, V31 hue 0.20, video AutoHDR 0.20 in Recommended.
+- Ryse DLSS v104: Voice / Text language (g_languageAudio / g_language at run time).
+- Attila v11 (Downloads\twattila_v11.zip): Lighting (Experimental): RenoDX AO (visibility bitmask GTAO, replaces
+  ssao resolve 0xBD389EF1, toggle Game's / RenoDX), Contact Shadows (sun light 0xC64DB947 / 0x00D1F51E / 0xB6DA03C5 /
+  0x23E4B7D8 rebuilt from decompiles, see README v11 for the decompiler fixes), Water Reflection Quality (SSR
+  0x66006BEA / 0x47D75349). Output SDR / Auto, Nexus, section colours (settings.hpp section_tints), Unit Detail test
+  sliders, DebugUnits probe for dead soldiers. ATN has in-game SSAO off (preferences.script.txt gfx_ssao false).
+  Open: dead soldiers (probe numbers), shadow jumping in zoomed fights (ATN: when Unit Animation and Unit Detail
+  differ; contact shadows do not touch the shadow maps). Later: other TW games' Nexus buttons + graphics.
+- Ryse HDR fix39 / DLSS v103 (Downloads): V31 fire sliders, SDR / Auto, credits + Ko-fi + Nexus; DLSS: Dynamic sound
+  mixing (s_HDR), links. Cloth (debugForClaude40: a climbing soldier's thigh through his tunic): the cloth has no leg
+  colliders (g_avatar_legs_colliders_dist, v73: characters fly); left. Shadow flicker report: needs ATN's shadow trace.
+- Tales DLSS v93 (Downloads\talesofarise_dlss_v93.zip): without Arise-SDK (and DebugDevArise) sun shadow distance
+  stops at 2 (clamp patch undone, choices above 2 removed, presets capped) and Far sun shadows is greyed out.
+- Tales DLSS v92 (Downloads\talesofarise_dlss_v92.zip): Arise-SDK link = its Nexus page
+  (www.nexusmods.com/talesofarise/mods/5, newer than GitHub) in overlay / README / Arise-SDK.ini; README text matches
+  v89 (the group needs Arise-SDK). Updated text for emoose: Downloads\talesofarise_emoose_text.txt.
+<!-- TW round progress -->
+
+## RESUME HERE (2026-10-19): Tales of Arise release candidate - HDR v60, DLSS / graphics v89
+ATN continues on another Claude account (same PC / Windows user, same paths). Details per version: the READMEs
+(`src/games/talesofarise/README.md` up to v60, `src/games/talesofarise_dlss/README.md` up to v89); the long Tales
+history is further down ("Tales DLSS upscaling" section, newest at its end).
+- Deliverables: `Downloads\talesofarise_v60.zip` (HDR), `Downloads\talesofarise_dlss_v89.zip` (DLSS + graphics, with
+  the shipped `Arise-SDK.ini`). Nexus text: `Downloads\talesofarise_nexus_v2.txt` (short; known issues, Arise-SDK
+  credit). Arise-SDK credit facts: `Downloads\talesofarise_arise_sdk_credits.txt`.
+- Build: `cmake --build --preset clang-x64-release --target renodx-talesofarise.addon64` / `renodx-talesofarise_dlss.addon64`.
+  Game: `D:\SteamLibrary\steamapps\common\Tales of Arise\Arise\Binaries\Win64` (symlinks to build/Release; ATN's
+  traces in `debugN` there; `tales_image.bin` = the exe dumped from memory, file offset = RVA, base 0x7FF7BFF60000).
+  Tools (persistent): `C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\toa\image` (img.py: pdata funcs + capstone,
+  refs.py, pat.py, vt.py, crashdump.py) and `tools\pack.ps1` (zip of changed files + the addon64 into Downloads).
+- ATN's next steps: test v89 (with Arise-SDK installed, and without it with `DebugDevArise` 0 / 1), pictures, video,
+  release. Untested and unreported: "Sun shadow layers (test)" row (raises the light's DynamicShadowCascades, proxy
+  +0x194; v66 found the sun is one shadow map): remove it if it changes nothing.
+- Arise-SDK (emoose, GPL-3.0, none of its code used): he asked that with Arise-SDK installed our menu drive his live
+  sdk.* cvars (done, v86; engine_cvars.hpp now reads Refs whose global lives in another module + bool Refs) and offered
+  to link our mod. ATN asked whether our own versions may stay without Arise-SDK: no answer yet. v89: the "Arise-SDK's
+  settings" group (first in Graphics) needs Arise-SDK (greyed, presets skip it); NPC distance uses our code (shipped
+  ini: MinimumNPCDistance -1; Arise-SDK has no cvar for it); hidden ReShade.ini `[Tales AA] DebugDevArise=1` = our own
+  code for the whole group (ATN's testing only, never written by the addon). Shipped ini: game values (monster 1,
+  LOD 1, outline 6000), TAA three untouched (-1 / -1 / false), SkipIntroLogos false (ATN: it skipped nothing; maybe
+  tied to Arise-SDK's DLC "A Feast of Blessings" infinite-loading bug).
+- This round (all in the READMEs): Smooth sun movement (Recommended, off by default; engine_hooks.hpp: light proxy
+  SetTransform + sky collection vector (MPC) smoothing at constant speed, CSM snap grid anchored at the camera via the
+  proxy's vtable slot 20 = no shimmer, ATN: perfect); Day and night speed Off..1000x (TWorldTimeManager rate +0x68);
+  Shaders on load checkbox; preset M default (L smears small particles: they have no motion vectors; NVIDIA's bias
+  mask is ignored by L / M, tried v81-v82 and removed); HDR: Thin Sun Shadow Edges 0.22, Shadow Edge Color 5, Post
+  Processing section, SDR output + Auto (Shogun 2's), Sun Glow tried and removed (its glare shader also draws text).
+- Known, not fixable: ambient occlusion halo around characters (screen-space; the option only reduces it).
+- 2026-10-19: HDR v61 / DLSS v90 (`Downloads\talesofarise_v61.zip`, `talesofarise_dlss_v90.zip`): PsychoV31 Highlight /
+  Shadow Contrast, Flare, Dechroma, Gamut Compression + Gamut Compression Mode (BT.709 / BT.2020 / Display P3 / Samsung
+  G80SD; ATN: fire too orange, maybe outside the display's gamut); About: credits, ACES notice, ATN's Ko-fi (both
+  addons). ACES license (official) in `docs/licenses/ACES_LICENSE.md`, shipped as ACES_LICENSE.txt. No more Tales Nexus
+  text (ATN). Next after Tales: old games get Ko-fi, credits and (where ACES code runs) the ACES notice (memory
+  project_credits_aces_kofi).
+- v62 (`Downloads\talesofarise_v62.zip`): G80SD mode removed, Display P3 default, Psycho Highlight Saturation 1.00,
+  Recommended (Vanilla shadows) Shadows 0.50 + Flare 0.39, final gamut fit after hue shift / LUTs / post grade, credits
+  say Musa's custom PsychoV31.
+- v63: PsychoV31 Highlight Saturation Shift (experiment, default 0): highlight saturation toward the SDR curve's
+  (debug21: SDR fire yellow and saturated to its brightest, V31 red fading to white = pink).
+- v64 (ATN's values): Psycho defaults + Recommended: Highlight Saturation 1.00, Hue Shift 0.57, Saturation Shift 0.30,
+  Gamut Compression Mode BT.2020 again; Extended legacy Highlight Hue Shift 0.20.
+
 ## RESUME HERE (2026-10-16): Shogun 2 HDR v41 / DLSS v31, Ryse HDR fix37 / DLSS v101 (history below, newest at the end of this section)
 Game: D:\Games\Total War SHOGUN 2 Complete Edition (DX11). Every shader + the game's HLSL source extracted from
 data\shaders.pack: `bin\cmd_Decompiler-1.3.16\dump_shader_shogun2_pack` (README.txt; tools\shogun2). v1
@@ -186,6 +1652,291 @@ runs. All three DLSS addons: constant_mirror returns at once until something is 
 HDR addons: DEBUG_LEVEL_0 off. Checked and already fine: particle counters (counting_frames), GPU timings (Advanced
 open only), Tales pixel trace (events per trace), engine hooks, per-frame cvar loops (cheap; a 30-frame throttle was
 tried and dropped: memory-written cvars could flicker if the game resets them).
+ATN tested Ryse fix38 / v102: fine. Shogun 2 distortion at low scales checked (debug24): not a bug. Shogun 2 done.
+
+## Tales DLSS upscaling (2026-10-16): talesofarise_dlss v50 trace, v51-v52 DLSS (ATN: works), v53 / HDR v32 (untested)
+v50: Advanced "Trace one frame" (frame_trace.hpp). ATN's traces `Arise\Binaries\Win64\debug1\taa50.txt` / `taa100.txt`
+(script scratchpad tales_trace_after_taa.py): at 50% everything after the TAA runs at 1920x1080 (view = buffer):
+bloom chain from the TAA output, MB velocity cs F28BBA66 / tiles 57504B6F, LUT, MB ps 87FBD5AE (t0 = TAA output),
+tonemap ps DCFDF14D (t2 = MB output, t3 bloom), then upscale vs B3E3D245 / ps 57192B01 (plain Catmull-Rom, cb0[0] =
+source size / inverse, alpha 0) to 3840x2160, then UI. v51 (README "DLSS upscaling"): all modes in the menu; DLSS at
+the TAA writes the output size, downsampled (cs 0x7A1E0D03) into the game's TAA output; MB / tonemap draws (32 PS
+hashes) repeated at the output size in a command_action post callback (HDR addon state still bound) with TAA output ->
+DLSS output and earlier targets -> output-size copies; the upscale draw re-run with our copy and the output size in
+cb0 (exact copy), game's draw bypassed. Render sizes in whole 16:9 units of 64x36 (buffer multiple 4, auto 8),
+r.ScreenPercentage = exact - 1/4 px; TAA only accepted at the expected size; r.TemporalAASamples 8 x ratio^2 (max 127).
+ATN v51: works (2 passes, upscale replaced; the in-game render scale is overridden), textures blurry (no mip bias).
+v52 (untested): Texture LOD bias (View c133.x = MaterialTextureMipBias, written at Unmap of the main view's View UB in
+constant_mirror.hpp; Matched / Sharper default / Sharpest, no -1 floor) and NVIDIA's Halton (2, 3) jitter for DLSS
+(the skipped jitter multiply at exe+0x1A86CBC becomes rip-relative loads of our sample; jmp disp 0x12 -> 0), any
+length, so no 127 cap; r.TemporalAASamples no longer touched. The exe on disk is SteamStub-encrypted: only runtime
+pattern searches see the code (a dump of the running process would allow offline RE).
+ATN v52: Halton works down to 8%, LOD bias -2 at Performance (Sharpest looks best; Sharper stays default).
+Found (debug2): Bandai's pre-TAA screen filters are sized in render pixels, so they grow at low scales: painterly
+edge-aware blur ps 0x2483CE26 (horizontal, step 1.5 x cb0[0].z, +-4 taps) / 0x773EABCB (vertical), game sharpen in
+ps 0x381F5A30 (5-tap at +-0.5 texel, strength cb0[34].x), outlines, canvas / hatching, the character halo (8%: huge).
+HDR addon "Sharpening" only scales the tonemapper's sharpen; tonemap00 (0xDCFDF14D) has none. Proposed fix: scale
+those passes' pixel steps by render / output (HDR addon shaders + scale shared from the DLSS addon).
+ATN (debug3: two frame traces, not pixel traces; no pause needed for a pixel trace): disable the pre-TAA sharpening
+with DLSS, scale the filters, Halton for DLAA too. Halo found by code: lighting00's shadow edge tint (t14 Gather 2.3
+render px up-right, cb0[63]/[64] instead of cb0[50]/[52] in penumbra) = a ~3 render px band at every shadow-mask edge,
+characters included. Outlines = ps 0x77D287B7 (material IDs 11/12, cb0[62].x px). 0x66DC643D = painterly filter + its
+own 4-tap sharpen (0.35 - 0.2 depth). 0x381F5A30: material 6 (grass) gets a radial-blur glow (A5AFEAB4, UV-sized, fine)
+instead of the sharpen.
+DLSS v53 / HDR v32 (zips talesofarise_dlss_v53 / talesofarise_v32, untested): post_filters.hpp (cross_addon, UUID
+9c1b57b2...) shares render / output (1 unless upscaling) + game sharpening (0 under DLAA/DLSS unless the overlay's
+"Game's sharpening" is on); HDR addon replaces painterly00-02, outline00-01, grading00-03 and lighting00's edge tests
+with offsets x SI.filter_scale (point-sampled tests: min 1 render px, faded by the ratio; tint faded 3.3s/(1+2.3s)).
+Halton (2,3) now for DLAA too (8 positions). Lighting permutations B2726B44 / 6513DC8E / 81E3CED2 / C28D2F1E /
+F95FABAA (same tint, in no trace) not replaced yet.
+ATN v53 / v32: sharpening off is huge (default off good), black bars no longer grow. Asked: remove the halo at 100%
+too (stock game), and cover other permutations. CORRECTION: the debug2 cross pixel had t14.x 0.96 (light mask), which
+skips the tint: the tint is NOT the halo. Earlier v42 "Halo test" (DLSS addon cvars: SSS, contact, capsule, DF shadows,
+SSGI, Bandai AO 0 broke lighting) did not remove it either. Bandai AO (E243580F: Alchemy-style, 8 NDC-offset samples
+from its R16F depth pyramid, no range check, 11 permutations in New_1) is a classic halo suspect; sun shadow mask cs
+2084C889 is per pixel (no screen neighbours). HDR v33 (zip talesofarise_v33, DLSS unchanged v53): lighting01-05
+permutations with the edge scaling; temporary "Halo test" (HDR Extra, Advanced): lighting00 outputs its AO (t5), light
+mask (t14.xyz) or light (t4). ATN debug4 screenshots: the AO view is 20-35% brighter within ~50 px of the character
+(4K DLAA), t14 / t4 clean: Bandai's AO is the halo. HDR v34 (zip talesofarise_v34): AO Halo Fix (default On) in all
+12 AO permutations (ao00-11, generated from the dumps: CS decl / numthreads / store fixed; samples > 0.1 depth + 20 cm in
+front dropped, sum x 9 / kept); Halo test removed. WAITING: ATN's test. Proposed for ATN's question 2 (effects at low
+scales): sun shadows are render-scale independent; render-pixel-sized are Bandai's divisors (SSR, ground fog, clouds,
+light shafts), volumetric lighting / fog cells (8 px), and UE's object / point / spot shadow texels per pixel; an
+"Effects at output resolution" option could scale those by render / output while upscaling.
+ATN v34: halo much less, bright spots behind grass fixed too; a ring around the whole character left. Cause 2: AO blurs
+weight neighbours >= 0.1 across depth jumps. HDR v35 (zip talesofarise_v35): aoblur00-07 with AoBlurWeight (0 beyond
+the limit); 8C5387E3's decompile fixed by hand (int literals, aliasing ld_structured). DLSS v54 (zip
+talesofarise_dlss_v54): "Effects at output resolution" (default off): OUTPUT_SCALED list (cells / divisors x s,
+TexelsPerPixel / s, half-res switches to Maximum's value). WAITING: ATN's test of both. Not covered yet: half-res
+translucency (Bandai, no cvar found), texture streaming wanted mips (may follow the render size), skin SSS half res,
+HZB occlusion culling; half-res AO upsample permutations 4D0A29EA / 8E29A68D.
+ATN v35 / v54 (debug5): AO fix on removes most of the halo, a faint band left (even DLAA); bright spots behind grass
+gone; Effects at output resolution: much better (fog not blocky, ~5-10 fps of 250) -> default on. HDR v36: AO cutoff
+= max(2 x AO reach, 5% depth + 10 cm), blur cutoff 5% + 10 cm, temporary "Show AO (test)". DLSS v55: default on, exe
+cvars added (mixed-res translucency, quarter depth, SSS half res, SSR blur color divisor). WAITING: ATN's test; if the
+band stays, a Show AO screenshot tells AO vs something else (Bandai's SSGI next suspect).
+v55 crashed at startup (UE crash: CreateTexture3D 3840x2160x40 A8, > D3D11 2048): r.EnableMixedResolutionTranslucent
+RenderingTO14 0 -> removed in DLSS v56 (zip talesofarise_dlss_v56; game folder addons are links to build\Release).
+DLSS v57 (zip talesofarise_dlss_v57): test row r.SeparateTranslucencyScreenPercentage (ATN tests 200 at DLAA: sharper
+smoke / fire?); if yes, add it to OUTPUT_SCALED as 100 / s. Volume cell guard (render width / cell <= 2048).
+v57 crashed the same way: real cause = cloud shadow / ray march divisors 2 -> 1 (Effects at output resolution at the
+720p startup window; the game sizes those volumes from the output). DLSS v58 (zip talesofarise_dlss_v58): guard on all
+4 volume settings with max(output width, widest monitor mode) / value <= 2048. Mixed-res translucency stays removed
+(untested whether it alone crashes).
+ATN v58: starts fine; SeparateTranslucencyScreenPercentage no effect; debug6 AO views (33%): fix on = AO nearly clean
+around the character (off: clear ring); a "really small" halo stays in the normal view -> another pass (suspects:
+half-res translucency upsample C7A2979E, SSGI, lighting00 edge terms; white grass blades in front of the legs = AO 1,
+samples behind are far). DLSS v59 (zip talesofarise_dlss_v59): test row removed, mixed-res translucency back in the
+option (0 while upscaling). WAITING: two normal-view pixel traces at DLAA (in the halo / just outside, same bush).
+ATN debug7: traces on different materials (lit leaf vs dark branch: not comparable); Performance plants ~10% darker
+(rocks same). Cause: AO samples mip 0 of the closest-depth pyramid (AA7E0D32; coarser in screen terms at low scales).
+HDR v37 (zip talesofarise_v37): below 70% DLSS, AO permutations with full-res depth (ao00/01/06/07) sample t1; AO Halo
+Fix Off / On / Strong (cutoffs halved). WAITING: ATN: Performance vs DLAA plant brightness; Strong vs On band.
+ATN (before testing v37): fix on lightens rock corners too. Data (debug7 DLAA off/on): crevices under overhangs lighter
+(set-aside overhang samples replaced by the visible average) = wrong; convex edges lighter (blur no longer smears
+crevice AO) = right. HDR v38 (zip talesofarise_v38, supersedes v37): set-aside samples add max(own, visible average):
+never lighter than stock AO.
+ATN v38 (2026-10-16): grass etc. no longer lighter; likes Strong for everything ("like old HBAO at stronger presets"),
+wants to keep it as a "stronger AO" choice (asked whether the naming makes sense). BUT: the halo around the character
+(head, sword handle, cloth) does NOT change with any AO Halo Fix setting (Off / On / Strong): the halo is NOT the AO
+(v34-v37's apparent fix was its accidental brightening). Pictures: Arise\Binaries\Win64\debug8 (2). Game cannot be
+paused; the character moves on the spot (idle), grass moves with wind. NEXT (after ATN compacts): find the real halo
+source. Ideas: DLSS / TAA disocclusion around the moving character (compare AA Off = game TAA vs DLAA), Bandai's
+mixed-resolution translucency upsample (C7A2979E) around depth edges, lighting00 edge terms, SSGI, character-only
+passes (outline 77D287B7, screen-space chara self shadow, translucency chara mask r.TranslucentCharaMaskFade*),
+volumetric lighting froxels; traces must use the same material (in / out on similar leaves or ground) or a frame
+trace + per-pass debug views.
+debug8 = Show AO views (pure gray), not normal views. HDR v39 (zip talesofarise_v39): setting renamed "Ambient
+Occlusion" Game's / Fixed / Strong (key ao_halo_fix unchanged). DLSS v60 (zip talesofarise_dlss_v60): the pixel trace
+copies a horizontal line (LINE_WIDTH 1/16 of each target's width, red line in the overlay) per command: the halo's
+profile in every pass of ONE frame. Analysis: scratchpad line_trace.py (per change, luminance / first channel along
+the line). WAITING: ATN's line trace at DLAA, normal view, cross on the character's edge (line into the halo) +
+screenshot. Suspect besides those above: Bandai's character mask fade of translucency / fog (blurred mask = ring).
+ATN debug9 (v60 line, cross on top of the head, bush 5.8 m behind): per-pixel bush noise hides any halo on one line.
+Seen: SSR (cs 8ABB9808 / 559B58FD / 99ECDDCF, 1920x1080) no hits on the line; full-res cs B81E220D / 91EC6207 /
+3222F1EF (r8g8b8a8, from last frame's half-res color: SSGI-like) smooth, no edge band; translucency composite
+C7A2979E only writes alpha there; characters lit by full-screen CB0EC552 (C70CE890 RT1 = 0 on characters, 0.96
+else; that RT is lighting00's t14); F6334BA2 (before lighting00) also reads the AO. Final AO (8C5387E3) right of the
+head ~0.55 for ~10 px vs ~0.40 further out (raw AO 0.83 spikes next to silhouettes): AO setting of the trace unknown.
+DLSS v61 (zip talesofarise_dlss_v61): trace also saves square patches (PATCH_WIDTH 1/8 width) of every full-screen
+pass / dispatch to tales_trace_patches (patches.txt + raw .bin, header w, h, DXGI format, bytes per texel). Analysis:
+scratchpad patches.py (background median by distance band from the character, per pass). WAITING: ATN's v61 trace.
+ATN debug10 (v61 trace, Strong; plus off.png / strong.png at DLAA): Off vs Strong = the halo IS the AO (Off brighter
+by +0.12 stop at 1-3 px from the character, +0.09 to 15 px, fading by ~100 px; soft blobs beside head / shoulder /
+sword). In the Strong trace the final AO (8C5387E3) runs up to the silhouette with no ring (rock crevices continue to
+the head). Per-pass residuals after fitting each pass's brightness curve (scratchpad patches_load.py / patch_view.py):
+tonemap + bloom -0.01, painterly 66DC643D +0.03 stop at 1-3 px only, grading +-0.02, DLSS 0; 0A9D482A (toon ramp
+lighting before lighting00, AO only for material types >= 3) varies by rock normals (sunlit face behind the head), no
+ring. A 0 cm cutoff would bring the halo back (kept samples would all be behind the plane: hidden average ~0).
+HDR v40 (zip talesofarise_v40, temporary): Ambient Occlusion test choices 3-5 = cutoff 1/2, 1/8 of Strong's, 0
+(AO_HALO_CUTOFF in shared.h; blurs keep Strong's cutoff). ATN compares; in the end Game's + two choices stay.
+ATN picked Game's / Fixed / 1/8 Strong and wanted it in the DLSS overlay. HDR v41 (zip talesofarise_v41) + DLSS v62
+(zip talesofarise_dlss_v62): DLSS overlay "Ambient occlusion" Game's / Fixed (default) / Deep (cutoff 1/16 of
+Fixed's, blur /2), config [Tales AA] AmbientOcclusion, shared via post_filters SharedData.ambient_occlusion
+(appended; unreleased struct, both addons must match); HDR AO settings + Show AO removed; aoblur entries are
+PostFilterShader. Pixel trace Present: lock-free active flag. ATN: the halo on GRASS behind the character does not
+change with any AO choice -> another pass (grass-only radial glow A5AFEAB4 adds far-scenery color to grass along a
+line toward cb0[28].zw; a character on that line lowers it: would darken, not lighten; unproven). ATN may release as
+is; a v61 patch trace with grass behind the character would find it.
+ATN debug11 (Fixed, bush 2.8 m behind the head; scratchpad residual.py): 0A9D482A residual +0.47 stop at 1-3 px to
++0.24 at 30-40 px, then <= 0; bush (material 6, RT4.w) final AO 0.50-0.55 within ~30 px vs 0.35-0.40 beyond 40 px at
+matched depth (raw AO at its 0.3 floor further out). Could be the AO halo or the bush's front leaves (one frame
+cannot separate). No character flag in the G-buffer (characters = material 0/1 like rock; flags RT2.w overlap), so a
+character-aware AO would need the stencil. ATN: Deep worse than Fixed on rails. HDR v42 / DLSS v63 (zips): Deep
+removed; tests 2-4 = samples AND blur cutoffs x 1/2, 1/4, 1/16; 5 = no screen-space AO (AoHaloSum 0). WAITING: ATN:
+does the grass halo vanish with "Test no AO"? If not, it is not the AO.
+ATN v42: no AO = no halo anywhere -> the rest is screen-space AO's blindness behind characters (not fully fixable);
+1/4: same halo, darker shading. HDR v43 / DLSS v64 (zips): "Ambient occlusion halo" in Graphics > Shadows (first
+row): Game's / Reduced (default, cutoff 1) / Reduced + darker (samples + blur x 1/4); tests removed. Next: ATN tunes
+HDR and releases.
+Tales HDR v44 / DLSS v65 (zips): presets set the AO halo (Game's own: Game's; others: Reduced); Replace TAA in
+Advanced only; "Game's sharpening (Not recommended)", "Effects at output resolution (Recommended)"; yellow note "Every
+preset keeps the game's volumetric fog ... No preset changes Loading."; HDR scene buffers always RGBA16F (setting
+removed); HDR Sharpening tooltip: UE tonemapper sharpen (12 of 20 permutations), normal gameplay uses tonemap00
+without it, with or without DLSS.
+Expeditions DLSS v17 (zip expeditionsrome_dlss_graphics_v17, untested): exact-aspect render sizes (Tales' units,
+buffer multiple 4 -> 8 when padding seen, r.ScreenPercentage = exact - 1/4 px); NVIDIA Halton (2, 3) jitter for DLAA
+and all DLSS scales via a jump at the TemporalJitterPixels store exe+0x1369279 (pattern JITTER_STORE, all jitter paths
+end there with xmm7 / xmm8) into a Detours-region block loading the addon's sample; Effects at output resolution
+(fog cell + light shaft divisor x s, TexelsPerPixel x4 / s, SSS / capsule / DF shadows full res; new rows
+r.CapsuleShadowsFullResolution, r.DFFullResolution). Exe not encrypted: scratchpad exr_dis.py disassembles offline.
+Ryse: nothing to do: exact-aspect steps since v21, own Halton (2, 3) up to 65536 positions, vegetation at display
+width, LOD bias; ryse_cvars.txt (Very High): r_ParticlesHalfRes / SSAODownscale / ssdoHalfRes / SSReflHalfRes /
+ShadowsMaskDownScale all 0 (full render res); only r_SSIIHalfRes 1 (SSII is ATN's experimental option).
+Expeditions DLSS v18 (zip expeditionsrome_dlss_graphics_v18): fog cell guard = max(output width, widest monitor
+mode) / 2048 (Tales v58's); the only volume Effects at output resolution touches; shadows keep their 100% sizes.
+Expeditions DLSS v19 (zip expeditionsrome_dlss_graphics_v19): Tales' sun shadow atlas patch ported (exe+0x139CBAE,
+SUN_SHADOW_ATLAS offset 16: mov r13d 1 -> 2 = 16384 atlas) while resolution x ceil(sqrt(cascades)) > 8192, applied
+before writing the larger value; Sun shadow resolution presets 4096 / 6144 / 8192 / 8192, max 8192 per cascade.
+ATN v19: sun shadows vanished above 4096 (the patch did not take in 4.26: maybe the CSM layout is the second
+GMaxTextureMipCount user, exe+0x139E1AF, cmp [rcx+0x390], 3) -> Expeditions DLSS v20 (zip ..._graphics_v20) = v19
+reverted (ATN: not worth the risk).
+Tales: every frame trace (debug1/10/11) shows ONE sun map (8184 viewport at 4,4 in the 8192 atlas, ~435 draws, cs
+81785A81 min-gathers it to 2048 by UV, cs 24D721C3 projects it with a 1024x1024x16 array): cascades most likely do
+nothing. Tales DLSS v66 (zip): Sun shadow resolution list-only 16384 (test, can crash): atlas patch applied before
+writing > 8192 (else 8192), kept 8 presents after. WAITING: ATN tests cascades 6 / 8 (expect no change) and 16384
+(crash / no sun shadow / works); a frame trace at 16384 shows the atlas size.
+ATN v66 (2026-10-16): 16384 crashed: UE crash exe+0x1A9E56C (AV, `mov rax, [rcx]` with rcx = a null shadow depth
+target from the atlas list), same as above 8192 without the patch. Tales DLSS v67 (zip): test choice 12288 instead:
+works = the doubled atlas takes (only 16384 cannot be created); crash = it does not take (as Expeditions v19), 8192
+is the most. Scratchpad crashdump.py reads UE minidumps (exception, code near the IP).
+ATN v67: 12288 crashed the same way (log: atlas 16384 applied) -> Unreal's computed atlas size is not the limit; 8192
+is the most. Tales DLSS v68 (zip): test choice and the atlas patch removed (the sun is one map that fits 8192).
+Tales HDR v45 / DLSS v69 (zips, untested): Smooth Volumetric Light Soft / Long Rays tests (shared.h SampleVisibility);
+Psycho Highlight Saturation 1.18 / Hue Shift 1.30 defaults (slider to 2), fire note above both in both modes; presets
+AO Reduced + darker; "Weak CPU" -> "Game's character culling"; yellow note above the preset toggles; "Max volumetric
+fog" toggle (Bandai cells 2, UE fog 4); Bandai cell 1 test; volume guard split (render-sized: lighting + UE fog);
+sun penumbra edge color / (sun shadow distance / game's), shared via post_filters (debug12: distance 4 pale patch =
+edge color over a ~180 px penumbra from cs 2084C889).
+ATN: v69 crashed at startup (CreateTexture3D): Effects at output scaled lighting cell 2 -> 1 and v69's render-size
+bound allowed it while the game still rendered at full size. HDR v46 / DLSS v70 (zips): output bound for all volumes
+again, cell 1 removed, "Weak CPU" restored (ATN wants more name ideas later), Psycho hue shift 0-1 default 0.30.
+WAITING: ATN tests Smooth Volumetric Light Soft / Long Rays and sun shadow distance 4 (edge color).
+ATN debug13 (distance 4, v70): the shadow edge runs smoothly lit -> shadow color, no pale band. HDR v47 / DLSS v71
+(zips): Long Rays removed, Off / Soft / Along Sun Rays (new key volumetric_light_smoothing); "Vanilla crowd limits
+(CPU saver, not recommended)"; toggles stacked with empty lines; tooltips shortened; Nexus text updated
+(Downloads\talesofarise_nexus.txt). Sun shadow "banding" at long distances: Bandai's cs 2084C889 filters the 8192 map
+with a 6x6 bilinear-weighted PCF (9 Gathers); options: screen-space edge-aware blur of t14.x in lighting00-05, or a
+wider PCF in a replaced 2084C889. WAITING: ATN's screenshot of the banding.
+ATN debug14: Max volumetric fog (Bandai cells 2) showed stair-stepped light shafts: cs D09F3430 (volumetric lighting,
+writes the 1920x1080x5 visibility t6 + x16 scattering) averages each 2 x 2 Gather of the 2048 closest-depth shadow map
+(cs 81785A81 from the 8192 map) -> steps per texel, hidden by 8-px cells. HDR v48 (zip talesofarise_v48, untested):
+volumetric00 = D09F3430 with bilinear Gather weights when Smooth Volumetric Light != Off; sunshadow00 = 2084C889 with a
+tent PCF (36 Gathers, half-width 3.5 x ratio^0.25) when the new Extra "Smooth Sun Shadows" (default On) and the sun
+shadow distance ratio > 1 (shared from the DLSS addon). Post effects without a slider: the sun haze / shafts
+(Bandai's volumetric light in lighting00), the painterly filter, outlines, the grass glow; lens flares / glare are in
+the bloom chain (Bloom slider). ATN: "after this we are done with this game".
+ATN debug15: v48's Smooth Sun Shadows looked worse (blurrier, bigger penumbra edge color); Max fog steps reduced but
+still visible. HDR v49 (zip talesofarise_v49, untested): Smooth Sun Shadows = the game's 9 Gathers with a tent of
+half-width 3 texels (no widening); SampleVisibility (shared.h) stretches Soft / Along Sun Rays to the game's 8-px reach
+at finer cells (screen_width = 1 / cb0[0].z); new Extra sliders (Advanced, 1 = game's) Sun Haze, Painterly Filter,
+Outlines, Grass Glow. WAITING: ATN says which sliders to delete.
+ATN on v49: Along Sun Rays flawless (default); Smooth Sun Shadows much better. HDR v50 (zip talesofarise_v50): Sun Haze
+> 1 fix (tint^haze, was lerp -> negative: black edges, debug16); Smooth Sun Shadows Off / Smooth / Sharp / Sharper /
+Sharpest (tent 3 / 2 / 1.5 / 1.2 texels); test slider Shadow Edge Color (lighting00-05). Asked: shadow pops when the
+sun steps (~10 s) at long distances: idea = crossfade old -> new map over ~1 s (2nd 8192 map copy every frame, old
+matrix; moving characters' shadows briefly double). Not started: ATN decides.
+HDR v51 (zip talesofarise_v51): all Extra sliders safe above 1 (Outlines saturate, Painterly weights x k above 1,
+Shadow Edge Color saturate, HDR sharpen / grain max 0). Unused permutations in New_1 listed in the README (v51).
+ATN: stable shadows OK as Experimental, VRAM no issue, worried about character shadow lag in the crossfade.
+Offered: crossfade (quick, may lag) vs. moving the sun smoothly every frame (find Bandai's sun update; no ghosts).
+ATN chose the crossfade (likely removed later). HDR v52 (zip talesofarise_v52, untested): Sun Step Fade
+(Experimental, 0-2 s): sunstep00 / sunstep01 compute shaders + native D3D11 in sunshadow00's on_draw / on_drawn
+(README v52). Smooth sun movement: not started (needs Bandai's sun update found; maps without sun motion are fine).
+HDR v53 (zip): Grass Glow removed, Painterly 0-1, Sun Step Fade removed (ATN). Smooth sun: Bandai's WorldTime plugin
+(.rdata reflection: AWorldTimeActor, transient float ActorRefresher +0x32C, int myCounter +0x330, BP event UpdateTime
+(native exec at exe+0x5FF1B0), OnChangeWorldTime(newHour), UWorldTimeBPLibrary, TWorldTimeManager::ResidentInst).
+Guess: Tick counts ActorRefresher and calls UpdateTime (the BP turns the sun) every ~10 s. Code is encrypted on disk:
+DLSS v72 (zip) adds "Save the game's code for analysis" -> tales_image.bin (file offset = RVA). WAITING: ATN's dump.
+Next: find AWorldTimeActor::Tick (vtable entries near exe+0x5FF1B0), make the update run every frame (or interpolate).
+ATN saved tales_image.bin (Win64 folder; loaded at 0x7FF7BFF60000, file offset = RVA; scratchpad img.py /
+refs.py style tools: pdata funcs, rip refs, abs refs with that base). Findings in DLSS README v73: the manager's hour
+is continuous every frame; the actor calls UpdateTime (BP turns the sun) on every hour change -> steps = actor tick
+interval (guess). HDR v54 + DLSS v73 (zips, untested): ATN's highlight defaults; Smooth sun movement = tick interval
+0 + overlay counts. If the sun still steps with ticks every frame: the BP gates it (then interpolate the light at
+engine level: FScene::UpdateLightTransform not found yet, no RTTI / render command names in this exe).
+ATN: v73 no change (interval 0, updates every tick) -> BP gates the sun. DLSS v74 (zip, untested): SetTransform hook +
+present-time interpolation (DLSS README v74). Risks: Present must be on the render thread (UE 4.21 D3D11: no RHI
+thread); sky sun disk may still step.
+v74 crashed (unaligned matrix to SetTransform's movaps). ATN: the game moves the sun in bursts (fast turn every
+~5 s, then hold). DLSS v75 (zip, addon linked to build/Release/v75 because the running game locked the normal
+output): alignas(16) + burst-based smoothing (README v75). Waiting for ATN's test.
+ATN: v75 shadows smooth (period "really close"), sky sun disk still steps (debug17 traces). DLSS v76 (zip, untested):
+the sky material's sun direction (vector parameter, cb2[4] of ps 0x11039AD5) follows the smoothed light via a hook on
+FMaterialInstanceResource::RenderThread_UpdateParameter<FLinearColor> (exe+0x2474270) + recache (exe+0x2488060) +
+resource destructor slot (README v76). Overlay debug line "Sun steps": the game's exact step time / degrees and the
+number of followed sky parameters (0 = the disk's parameter not matched: then check unit length / other path).
+ATN (v76): steps every 7.200 s exactly (0.73 deg), 0 followed. v77 (zip, untested): the sun direction is a material
+parameter collection vector (shader clamps cb2 itself); MID hook removed; UMaterialParameterCollectionInstance::
+SetVectorParameterValue (exe+0x2497ED0) hooked + re-set after every world time tick; collection instance dtor slot;
+constant-speed motion (aim = previous burst end; ATN: game moves ~2.2 s, holds ~5 s); Smooth sun movement is now a
+checkbox under the 3 preset toggles (default on, no preset) + Time of day slider (game / 2x / 3x / 6x slower:
+TWorldTimeManager rate +0x68 divided). HDR v55 (zip): Shadow Edge Color tooltip fixed (0 = tint fringe, higher =
+cleaner; ATN likes 2: offer as default). README v77 / v55.
+ATN (v77): disk follows the shadows. DLSS v78 + HDR v56 (zips, untested): "Day and night speed" 100x slower ..
+100x faster (rate x speed; motions rescaled at once on rate changes); Shadow Edge Color default 2, max 10. Shadow
+shimmer while the sun turns: CSM snap grid anchored at the world origin (SetupWholeSceneProjection exe+0x1ACC450);
+v78 patches proxy vtable slot 20 (cascade initializer) to anchor each cascade's grid at its center via a small
+WorldToLight translation (README v78). If shadows break/offset: that patch (Smooth sun off = game's).
+ATN (v78): no crash, shimmer much lower; 1000x speeds amazing. DLSS v79 + HDR v57 (zips, untested): anchors follow the
+camera (FSceneView +0x60C); day speed Off / 1000x; test row Sun shadow layers (r.Shadow.UnbuiltNum...Cascades: Tales'
+sun is one shadow map, blocky at distance 3; 4096 needed to fit 2-4); HDR: Shadow Edge Color 5, Post Processing
+section, Sun Glow (sky00 = 0x11039AD5, the sky's own sun glow; README v57).
+ATN (v79): camera pivot = perfect; layers cvar did nothing. DLSS v80 + HDR v58 (zips, untested): layers test via the
+light's DynamicShadowCascades (proxy +0x194); HDR sunglare00 (0x287CCB34, UI glare clipped to UI white, Sun Glow) and
+Thin Sun Shadow Edges (contrast on the filtered sun visibility, k = 1 + (ratio - 1) x setting; README v58).
+HDR v59 (zip): Sun Glow removed entirely (0x287CCB34 also draws in-game text); Thin Sun Shadow Edges default 0.22
+(ATN likes it). OPEN QUESTION to ATN: move Extra (Smooth Volumetric Light, Sun Haze, Smooth Sun Shadows, Thin Sun
+Shadow Edges, Shadow Edge Color) into the DLSS addon's Graphics (passed like AO halo via post_filters); ATN asked for
+an opinion first, nothing done yet.
+ATN: leave Extra in the HDR addon. HDR v60 (zip, untested): SDR output + Auto (Shogun 2's port; README v60). Then:
+Arise-SDK list for ATN's message to emoose and the Nexus text (Downloads\talesofarise_nexus_v2.txt).
+DLSS v81 (zip, untested): particle mask (bias current color) from the scene copied after the grading composite vs the
+TAA input (README v81); Advanced checkbox (default on), "Advanced (For Debugging)", sun debug stats removed. ATN: after
+this, Tales is done.
+ATN (debug20): v81 mask did nothing visible (sparks streak with L). DLSS v82 (zip, untested): mask also marks last
+frame's positions (reprojected, x 3/4); Particle mask Off / On / Test: whole screen (shows if L follows the mask).
+ATN: nothing changes even with Test -> L/M ignore the bias mask. DLSS v83 (zip): mask removed, preset M default.
+ATN declined particles-after-DLSS. DLSS v84 (zip): yellow note under DLSS preset (particles have no motion vectors,
+some presets smear them, most of all L); Nexus text known issues updated.
+DLSS v85 (zip): Smooth sun movement (Recommended) off by default; Shaders on load checkbox above it. ATN: done after
+this; next ATN takes pictures, makes a video and releases (Nexus text Downloads\talesofarise_nexus_v2.txt).
+emoose replied: prefers our menu to drive Arise-SDK's sdk.* cvars when it is installed, will link our mod. DLSS v86
+(zip, untested with Arise-SDK): engine_cvars accepts Ref globals in any module + bool Refs; Never hide characters /
+Smooth cutscenes map to sdk.CharaDisableCull / sdk.CutsceneAllowSubframes; yellow "best used together with
+Arise-SDK" note (README v86). ATN should test once with Arise-SDK installed (rows not grey, tooltip "Arise-SDK's ...").
+DLSS v87 (zip): those rows grouped as "Arise-SDK's settings" (work without it too: ATN's choice). Suggest asking emoose
+for a sdk.MinimumNPCDistance cvar (only ini today).
+DLSS v88 (zip): Arise-SDK's settings group first, under its yellow note (empty line before). ATN's game-folder
+Arise-SDK.ini shortened (short comments; ATN set MinimumNPCDistance -1 himself). Repo's old custom Arise-SDK.ini still
+differs: ask ATN which one ships. -> ATN ships the shortened one: game values (monster 1, LOD 1, outline 6000),
+MinimumNPCDistance -1, SkipIntroLogos false (ATN: it skipped nothing; suspected for the DLC loading bug); copied to
+src/games/talesofarise_dlss/Arise-SDK.ini.
+DLSS v89 (zip): Arise-SDK group needs Arise-SDK (greyed + no presets without it); NPC distance via our code with the
+shipped ini's -1; hidden [Tales AA] DebugDevArise=1 = our own code for the group (ATN's testing). Nexus text updated.
+emoose has not answered ATN's question yet.
+Then: Halton jitter to Expeditions (roadmap; ATN: for all scales incl. DLAA); Expeditions / Ryse aspect-exact custom
+scales.
 
 ## RESUME HERE (2026-10-13, ATN continues on another Claude account, same PC / Windows user)
 Nothing of this conversation carries over except files: this HANDOFF, memory (`C:\Users\arshi\.claude\projects\

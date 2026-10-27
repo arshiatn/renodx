@@ -49,6 +49,10 @@ Texture2D<float4> g_hdr_rgb_bloom_texture : register(t1);
 #include "../shared.h"
 #include "../psycho_test30.hlsli"
 
+// Stock: one bilinear tap of the bloom; bloom_filter.hlsli: a cubic B-spline over 4 x 4 texels.
+#define BLOOM_SAMPLE_ONLY
+#include "../../twattila/bloom_filter.hlsli"
+
 void main(
   float4 v0 : SV_Position0,
   float2 v1 : TEXCOORD0,
@@ -73,7 +77,7 @@ void main(
     r0.yz = -g_viewport_origin.xy + v0.xy;
     r0.yz = g_vpos_texel_offset + r0.yz;
     r0.yz = g_viewport_dimensions.zw * r0.yz;
-    r0.yzw = g_hdr_rgb_bloom_texture.SampleLevel(g_hdr_rgb_bloom_texture_sampler_s, r0.yz, 0).xyz;
+    r0.yzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture, r0.yz).xyz;
     r1.xy = g_vpos_texel_offset + v0.xy;
     r1.xy = g_screen_size.zw * r1.xy;
     r1.xyzw = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, r1.xy, 0).xyzw;
@@ -103,7 +107,7 @@ void main(
   bloom_texcoord = g_viewport_dimensions.zw * bloom_texcoord;
   float2 scene_texcoord = g_vpos_texel_offset + v0.xy;
   scene_texcoord = g_screen_size.zw * scene_texcoord;
-  float4 bloom_sample = g_hdr_rgb_bloom_texture.SampleLevel(g_hdr_rgb_bloom_texture_sampler_s, bloom_texcoord, 0);
+  float4 bloom_sample = SampleBloomSmooth(g_hdr_rgb_bloom_texture, bloom_texcoord);
   float4 scene_sample = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, scene_texcoord, 0);
   float3 hdr_color = scene_sample.xyz + bloom_sample.xyz;  // stock (was * 1000)
 
@@ -112,12 +116,17 @@ void main(
   hdr_color *= game_exposure;
 
   // Mid-grey anchor: the scene value SDR shows at 0.18 arrives at PsychoV as 0.18.
-  // Reinhard darkens midtones slightly, so without this HDR 2 runs 0.2-0.28 stops
-  // brighter than SDR. Solves x(1 + x/W)/(1 + x) = 0.18 with stock's white point
-  // W = 1/burn - 0.999; this form of the root stays stable as burn -> 0.
+  // Solves x(1 + x/W)/(1 + x) = 0.18 with stock's white point W = 1/burn - 0.999; this
+  // form of the root stays stable as burn -> 0.
   float inv_w = 1.f / max(1.f / g_tone_mapping_burn - 0.999f, 0.0001f);
   float x_mid = 0.36f / (0.82f + sqrt(0.6724f + 0.72f * inv_w));
-  hdr_color *= 0.18f / x_mid;
+  // And SDR's contrast there: the curve's log-log slope at x_mid. The burn differs per map, from compressing (plain
+  // Reinhard, 0.82) to expanding (low white points, up to ~1.4); pinning mid grey alone made Psycho much brighter than
+  // SDR on some maps and much darker on others (ATN). The luminance follows it: 0.18 * (x / x_mid) ^ slope.
+  float slope = 1.f + (x_mid * inv_w) / (1.f + x_mid * inv_w) - x_mid / (1.f + x_mid);
+  float scene_y = dot(hdr_color, float3(0.212599993f, 0.715200007f, 0.0722000003f));
+  float handoff_y = 0.18f * pow(max(scene_y / x_mid, 0.f), slope);
+  hdr_color *= (scene_y > 0.f) ? handoff_y / scene_y : 0.f;
 
   o0.xyz = hdr_color;
   o0.w = scene_sample.w;

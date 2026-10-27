@@ -9,6 +9,7 @@
 #define RENODX_MODS_SWAPCHAIN_VERSION 2
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 #include <deps/imgui/imgui.h>
@@ -141,6 +142,8 @@ void BuildRuntimeData() {
       CustomShaderEntry(0x1E796BD3),         // godrays01
       CustomShaderEntry(0xCDCA640F),         // fog07 (height + volumetric fog)
       CustomShaderEntry(0xBCD37CAF),         // fog08 (height + volumetric fog, directional)
+      CustomShaderEntry(0x31A1C68C),         // ao00 (ambient occlusion, last level: GT-VBAO)
+      CustomShaderEntry(0xBD381E21),         // ao01
   };
 
   // 0-2 slider, 1 = default.
@@ -311,6 +314,75 @@ void BuildRuntimeData() {
              IsHDRMode, IsAdvancedSettings),
 
       // Extra (Probably not used): engine features in the shader dump that the game doesn't seem to use (ATN). ///
+      // Ambient Occlusion: GT-VBAO in the game's last AO level (talesofarise/ue_bitmask_ao.hlsli). ////////////////
+      new renodx::utils::settings::Setting{
+          .key = "ssao_mode",
+          .binding = &shader_injection.ssao_mode,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Ambient Occlusion",
+          .section = "Ambient Occlusion",
+          .tooltip = "GT-VBAO: contact shading that lets light pass behind thin things (grass, poles,\n"
+                     "characters) instead of dark halos. Needs in-game ambient occlusion on.",
+          .labels = {"Game's", "GT-VBAO"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_radius",
+          .binding = &shader_injection.ssao_radius,
+          .default_value = 1.5f,
+          .label = "Radius",
+          .section = "Ambient Occlusion",
+          .tooltip = "How far around a point other surfaces shade it (metres).",
+          .min = 0.25f,
+          .max = 5.f,
+          .format = "%.2f m",
+          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_strength",
+          .binding = &shader_injection.ssao_strength,
+          .default_value = 1.f,
+          .label = "Strength",
+          .section = "Ambient Occlusion",
+          .max = 3.f,
+          .format = "%.2f",
+          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_thickness",
+          .binding = &shader_injection.ssao_thickness,
+          .default_value = 0.1f,
+          .label = "Thickness",
+          .section = "Ambient Occlusion",
+          .tooltip = "How thick things are taken to be: thicker shades more behind them.",
+          .min = 0.01f,
+          .max = 1.f,
+          .format = "%.2f m",
+          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_quality",
+          .binding = &shader_injection.ssao_quality,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Quality",
+          .section = "Ambient Occlusion",
+          .tooltip = "Samples per side: more catch thin things. Heavier.",
+          .labels = {"8", "16", "32", "64"},
+          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ssao_directions",
+          .binding = &shader_injection.ssao_directions,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Directions",
+          .section = "Ambient Occlusion",
+          .tooltip = "Directions per pixel: less noise. Heavier.",
+          .labels = {"1", "2", "4", "8"},
+          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
+      },
+
       slider("film_grain", &shader_injection.film_grain, "Film Grain", "Extra (Probably not used)",
              "Multiplier on the game's film grain (where the game uses it).", IsHDRMode, IsAdvancedSettings),
       slider("chromatic_aberration", &shader_injection.chromatic_aberration, "Chromatic Aberration",
@@ -412,13 +484,16 @@ void ConfigureAddon() {
         .default_value = 1.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: 10-bit.\nscRGB: 16-bit.",
+        .tooltip = "HDR10: 10-bit.\nscRGB: 16-bit.\nFrame generation always uses HDR10.",
         .labels = {"HDR10", "scRGB"},
         .is_global = true,
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const auto value = setting->GetValue();
+    // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
+    bool frame_generation = false;
+    reshade::get_config_value(nullptr, "Rome AA", "FrameGeneration", frame_generation);
+    const auto value = frame_generation ? 0.f : setting->GetValue();
     shader_injection.swap_chain_encoding = value;
     renodx::mods::swapchain::SetUseHDR10(value == 0);
     settings.push_back(setting);
@@ -434,12 +509,19 @@ void ConfigureAddon() {
   configured = true;
 }
 
+// GT-VBAO's noise moves every frame (the game's TAA / DLSS settle it).
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+               uint32_t, const reshade::api::rect*) {
+  shader_injection.ssao_frame = std::fmod(shader_injection.ssao_frame + 1.f, 64.f);
+}
+
 bool AttachAddon() {
   if (attached) return true;
 
   ConfigureAddon();
 
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::register_event<reshade::addon_event::present>(OnPresent);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
@@ -453,6 +535,7 @@ void DetachAddon() {
   if (!attached) return;
 
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::unregister_event<reshade::addon_event::present>(OnPresent);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

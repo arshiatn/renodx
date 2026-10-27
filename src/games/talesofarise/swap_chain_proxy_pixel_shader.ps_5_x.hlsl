@@ -6,6 +6,9 @@ SamplerState s0 : register(s0);
 float4 main(float4 vpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
   float3 x = t0.Sample(s0, uv).xyz;
 
+  // SDR: gamma 2.2 as the game's, white = the display's.
+  if (TOA_SDR_OUTPUT) return float4(saturate(x), 1.f);
+
   // Gamma 2.2 encoded, 1 = UI white. Signed BT.709 can carry BT.2020 colors.
   x = renodx::color::gamma::DecodeSafe(x);
 

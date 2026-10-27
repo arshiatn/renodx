@@ -75,8 +75,8 @@ Texture3D<float4> lut_texture_3 : register(t5);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
-#include "../psycho_test30.hlsli"
+#include "../hdr_to_screen.hlsli"
+#include "../../twattila/render_scale.hlsli"
 
 
 void main(
@@ -92,7 +92,7 @@ void main(
   r0.xy = g_screen_size.zw * r0.xy;
   r0.xy = overscan * r0.xy;
   r1.xyzw = frame_texture.SampleLevel(frame_sampler_s, r0.xy, 0).xyzw;
-  r2.z = gbuffer_channel_4_texture.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).x;
+  r2.z = gbuffer_channel_4_texture.SampleLevel(gbuffer_channel_4_sampler_s, (r0.xy) * FrameRenderShare(), 0).x;
   r2.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r2.w = 1;
   r0.x = dot(r2.xyzw, inv_view_projection._m00_m10_m20_m30);
@@ -158,45 +158,6 @@ void main(
   float output_alpha = r0.w;
   float3 hdr_color = max(r0.xyz, 0.f.xxx);
 
-  // The stock matrix and 3D LUTs expect bounded gamma-domain coordinates.
-  // Compress the HDR signal reversibly, apply both native grading stages in
-  // their expected domain, then expand back to HDR before PsychoV30.
-  float grade_scale =
-      renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, HDR_PEAK);
-  float3 grade_input_linear = hdr_color * grade_scale;
-  float3 grade_input_gamma =
-      renodx::color::gamma::EncodeSafe(grade_input_linear);
-
-  float4 matrix_input = float4(grade_input_gamma, 1.f);
-  float3 matrix_output_gamma;
-  matrix_output_gamma.x =
-      dot(matrix_input, colour_matrix._m00_m10_m20_m30);
-  matrix_output_gamma.y =
-      dot(matrix_input, colour_matrix._m01_m11_m21_m31);
-  matrix_output_gamma.z =
-      dot(matrix_input, colour_matrix._m02_m12_m22_m32);
-
-  float3 lut_1 =
-      lut_texture_1.SampleLevel(lut_sampler_1_s, matrix_output_gamma, 0).xyz;
-  float3 lut_2 =
-      lut_texture_2.SampleLevel(lut_sampler_2_s, matrix_output_gamma, 0).xyz;
-  float3 lut_3 =
-      lut_texture_3.SampleLevel(lut_sampler_3_s, matrix_output_gamma, 0).xyz;
-
-  float3 graded_gamma =
-      lut_1 * lut_weights[0]
-      + lut_2 * lut_weights[1]
-      + lut_3 * lut_weights[2];
-
-  float3 graded_proxy =
-      renodx::color::gamma::DecodeSafe(graded_gamma);
-  float3 graded_hdr =
-      renodx::math::DivideSafe(graded_proxy, grade_scale.xxx, graded_proxy);
-
-  // Keep Warhammer's matrix/LUT grade before the final HDR tone mapper.
-  o0.xyz = ApplyPsychoV30(graded_hdr);
-  o0.xyz *= (SI.diffuse_white_nits / SI.graphics_white_nits);
-  o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
-  o0.w = output_alpha;
+  o0 = HdrToScreenOutput(hdr_color, output_alpha);
   return;
 }

@@ -49,7 +49,7 @@ void main(
   o0.xyzw = r1.xyzw * r0.xyzw;
   // o0.xyz = saturate(o0.xyz);
   o0.w = saturate(o0.w);
-  if (HDR == 1.f) o0.xyz *= SOMEINDICATORS;  // SDR stays stock
+  if (HDR >= 1.f) o0.xyz *= SOMEINDICATORS;  // SDR stays stock
 
   return;
 }

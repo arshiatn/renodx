@@ -5,7 +5,7 @@ struct ShaderInjectData {
   float peak_white_nits;
   float diffuse_white_nits;
   float graphics_white_nits;
-  float swap_chain_encoding;  // 0 HDR10, 1 scRGB
+  float swap_chain_encoding;  // 0 HDR10, 1 scRGB, 2 SDR (gamma 2.2; Peak, Paper White and UI unused)
 
   float hdr;  // 0 SDR, 1 HDR (Extended), 2 HDR (PsychoV31)
   float bloom;
@@ -38,16 +38,57 @@ struct ShaderInjectData {
   float ext_contrast;
   float ext_saturation;
   float ext_highlight_saturation;
-  float ext_hue_correction;  // hue toward the scene's (before the per-channel curve), 0-1 (Musa's Batman: 1)
+
+  // PsychoV31, appended.
+  float highlight_contrast;          // above mid gray, 1 V31's own
+  float shadow_contrast;             // below mid gray, 1 V31's own
+  float flare;                       // 0 none, deeper blacks above it
+  float dechroma;                    // 0 none, bright colors toward white above it
+  float gamut_compression;           // 0 none (the display clips), 1 full
+  float gamut_compression_mode;      // V31's target: 0 BT.709, 1 BT.2020, 3 Display P3
+  float highlight_hue_shift;         // hue toward the game's SDR curve above mid gray, 0 - 1
+  float highlight_saturation_shift;  // saturation toward it, as the hue shift, 0 - 1
+  float fire_hue;                    // warm colors' hue above mid gray: - toward red, + toward yellow, 0 none
+  float fire_hue_focus;              // warm colors toward one orange above mid gray, 0 none - 1
+  float ext_fire_hue;                // Extended's, as fire_hue
+  float ext_fire_hue_focus;          // Extended's, as fire_hue_focus
+  float ext_highlight_hue_shift;         // Extended's, as highlight_hue_shift
+  float ext_highlight_saturation_shift;  // Extended's, as highlight_saturation_shift
+  // Ambient occlusion (appended): the SSDO pass (ssdo00) as GT-VBAO.
+  float ssao_mode;        // 0 the game's SSDO, 1 GT-VBAO
+  float ssao_radius;      // metres
+  float ssao_strength;    // an exponent on the visibility
+  float ssao_thickness;   // metres
+  float ssao_quality;     // 0-3: 8 x 2^n samples per side of a slice
+  float ssao_directions;  // 0-3: 2^n slices
+  float ssao_frame;       // the noise's frame
+  // Contact shadows (appended; contact_shadows.hpp, read on the CPU).
+  float contact_shadows;           // strength, 0 off
+  float contact_shadow_length;     // metres
+  float contact_shadow_thickness;  // metres
+  // Light Bounce (appended; light_bounce.hpp, read on the CPU).
+  float light_bounce;              // strength, 0 off
+  float light_bounce_radius;       // metres
+  float light_bounce_quality;      // 0-2: 8 x 2^n samples per side of a slice
+  float light_bounce_directions;   // 0-3: 2^n slices
+  float light_bounce_resolution;   // 0-2: the trace at 1 / 2^n of the resolution
+  float light_bounce_multi;        // 0-1: the last frame's bounce bouncing again
+  float light_bounce_denoise;      // 1: smoothed along surfaces
+  // Sun Shadow Softness (appended; sunshadow00-04, sun_shadow_pcss.hlsli).
+  float sun_shadow_softness;  // the sun's size in degrees; 0 the game's filter
 };
 
 #define SI  shader_injection
 #define HDR SI.hdr
 
+// SDR output (displays without HDR): the display's white is the game's and the UI's.
+#define RYSE_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
 // Peak relative to Paper White.
-#define RYSE_PEAK (max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 1.f))
+#define RYSE_PEAK \
+  (RYSE_SDR_OUTPUT ? 1.f : (max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 1.f)))
 // Paper White / UI as a gain on gamma 2.2 encoded values (the proxy decodes 2.2 x UI nits).
-#define RYSE_ENCODED_SCALE pow(max(SI.diffuse_white_nits, 1.f) / max(SI.graphics_white_nits, 1.f), 1.f / 2.2f)
+#define RYSE_ENCODED_SCALE \
+  (RYSE_SDR_OUTPUT ? 1.f : pow(max(SI.diffuse_white_nits, 1.f) / max(SI.graphics_white_nits, 1.f), 1.f / 2.2f))
 
 #ifndef __cplusplus
 #if ((__SHADER_TARGET_MAJOR == 5 && __SHADER_TARGET_MINOR >= 1) || __SHADER_TARGET_MAJOR >= 6)

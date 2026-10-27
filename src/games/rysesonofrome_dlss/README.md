@@ -838,9 +838,110 @@ ATN: not wanted (the image's brightness changed with it). The armour's glint fli
 than a pixel, so the camera jitter DLSS needs hits them in some frames and misses them in others (lighting, depth and
 motion are still). While paused, Jitter "The game's" stops the jitter (no flicker, a little softer).
 
+## v111: NVIDIA's DLSS notice
+
+- NVIDIA_DLSS_NOTICE.txt in the zip (the DLSS SDK's licence asks for its notice and attribution); nothing else changed.
+
+## v110: Light limit 512, Particle lights removed; G-buffer filter texts, DLSS settings coloured
+
+- ATN: the Light limit alone costs no fps: default, Reset and ATN's setting 512. Tooltip: video memory about 1.4 MB
+  more at 4096 (the two GPU light buffers, 4096 x 0x150 B; the arrays near the exe, 1.4 MB, are made either way).
+- Particle lights removed (ATN: Every particle crashed the game, mid-game or fresh start, even at 4096); with it
+  QualityOption.own_choice.
+- G-buffer filter: Off (Recommended, better highlights but less stable) / On (Vanilla, weaker highlights but more
+  stable), tooltip to match.
+- The DLSS section's settings in its heading's lavender (B39DDB).
+
+## v109: Light limit back (each tile 255), Particle lights
+
+- ATN, chapter 5: lights flicker at the game's 255-light limit (20-40 dropped). Light limit (Experimental, yellow):
+  In-game (255) / 350 (default) / 512 / 1024 / 4096. v78's code back (light list sites, arrays near the exe, buffers
+  made again, the addon's lighting cs while raised), but each 8x8 pixel tile keeps the game's 255 (its groupshared list
+  and shading loops as the game's; v78 raised those too: 20-30% fps). The extra culling loop stops at the list's end:
+  the cost grows with the lights in view, not the limit. Shader: tools/ryse/tiled_lights_raise.py LIGHTS=4096
+  PER_TILE=255, WARP-tested (identical up to 255 lights, 600 lights in one tile, 4000 lights run).
+- Particle lights (Experimental, yellow): The game's (default: more particles keep the game's light count) or Every
+  particle. No button changes it (QualityOption.own_choice).
+- QualityOption.default_choice: the item before one is saved and the Reset buttons' (Light limit 350). ATN's setting:
+  350 too. The graphics presets leave Experimental options alone. The cost of 4096 vs 350 was not measured: Advanced >
+  Measure every option's choices includes the Light limit (frame ms).
+
+## v108: Audio, longer SSR, G-buffer filter choice
+
+- Language section renamed Audio; Dynamic sound mixing at its bottom (QualityOption.audio: drawn there, no preset
+  button changes it; the options' slider drawing is one local lambda, option_slider).
+- Screen-space reflections: Extreme without "experimental"; two more, Extreme 2x / 3x range (Experimental): 16x / 24x
+  the game's ray length with 64 / 96x its steps (the same 4x per metre). Not in any preset.
+- G-buffer filter (DLSS section): Off (default, as before: r_DeferredShadingFilterGBuffer 0 with DLSS / DLAA) or On
+  (the game's, as with TAA; RendererPin.keep_game; ReShade.ini Ryse AA GBufferFilter). A note under it: DLSS / DLAA
+  also turns anisotropic filtering on for alpha-tested textures (r_TexNoAnisoAlphaTest 0).
+
+## v107: jitter while paused back
+
+- v106 reverted (ATN: dead, it got worse): the addon's own jitter skips the game's pause check again (as v105).
+
+## v106: no jitter while paused
+
+- ATN (debugForClaude41: dead / paused, DLSS and DLAA: the whole armour shimmered; TAA still): the addon's own jitter
+  also skipped the game's pause check (bit 27 of the renderer's per-frame flags, where the jitter is added to the
+  projection), so paused frames kept jittering on sub-pixel glints. That check stays now (the JITTER_APPLY nop patch is
+  gone): a paused frame is not jittered and DLSS keeps it still. Slow motion and hit stops keep the own jitter (the
+  setup stub, as before). DLSS gets the jitter measured in the frame: 0 there.
+
+## v105: coloured headings
+
+- Overlay headings (ATN, as Shogun 2's DLSS addon): DLSS lavender, Graphics and Graphics (Experimental) pink, Language
+  and About green.
+
+## v104: voice and text language
+
+- Voice language / Text language (Simple view, saved in [Ryse Game Settings] VoiceLanguage / TextLanguage):
+  g_languageAudio / g_language exist (ATN's ryse_cvars.txt, string cvars, flags 0x10080). The game fills them from the
+  platform's language only while they are empty (+0xee69fa / +0xee6aa5), and their change callbacks reopen the language
+  packs at run time (+0xede6a0: closes the old Localization/<language>.pak, opens the new; +0xede5e0: the texts and
+  their reload). Set (const char*) = ICVar +0x48 (the same start code). Applied from the present thread once the
+  console exists, when a choice changes; "In-game setting" puts the game's value back. From the next scene / loading.
+- (Gemini's list, checked: s_CompressedDialog only keeps dialog compressed in memory, s_Compression picks a decoder
+  (PC: MP2) for files that exist in one format; neither changes the dub's quality. s_HDR is v103's switch.)
+
+## v103: sound mixing, links
+
+- Experimental "Dynamic sound mixing" (s_HDR, CryEngine's HDR sound: the loudest sound lowers quieter ones, voices too,
+  heard as compression; ATN: the German dub). Off: every sound at its own volume. The dub itself: German.pak is 333 MB
+  against English.pak's 515 MB, its files are encoded smaller (s_Compression: PC prefers MP2), not changeable.
+- Voice / text language apart: g_language / g_languageAudio are not registered as cvars here (only names in the
+  facial animation code); the language paks open at start (Localization/<language>.pak voices, <language>_xml.pak
+  texts). Workaround without the addon: copy English.pak over German.pak (backup first) for English voices with German
+  texts. An in-addon switch would need a hook on the pak open.
+- Ko-fi + NexusMods buttons at the end of the Simple view (tinted as the HDR addon's).
+
 ## v102: less CPU
 
 - The draw and copy events of the debug traces (frame trace, shadow trace, options measurement) are registered only
   while one runs (before: every draw and copy of the game went through them).
 - Constant mirror: until the TAA pass's constant buffers are watched, every map, update, copy, new and destroyed
   resource returns at once (no GetDesc, no lock).
+
+## v112: Frame generation (Experimental, untested in game)
+
+- NVIDIA's DLSS Frame Generation + Reflex through Streamline, Tales of Arise's (talesofarise_dlss/frame_generation.hpp,
+  ported from Phantom FX by Bustanity, MIT: PHANTOM_FX_LICENSE.txt), now shared: the game's swap chain is replaced by a
+  stand-in whose back buffer is copied into a D3D12 swap chain Streamline presents (DXGI's CreateSwapChain and
+  CreateSwapChainForHwnd hooked behind ReShade), DLSS's depth and motion copied each frame, the camera given per game.
+  Setup as Tales': copy `sl.interposer.dll`, `sl.common.dll`, `sl.dlss_g.dll`, `sl.reflex.dll`, `sl.pcl.dll` and
+  `nvngx_dlssg.dll` (Streamline SDK 2.14.16, `bin\x64`) next to the addon, tick **Frame generation (Experimental,
+  restart)** and restart the game; modes 2x-6x, Dynamic, Off (Reflex only), Reflex Boost. RTX 40 or newer, hardware
+  GPU scheduling, HDR10 or SDR output (no scRGB). The stand-in path is GPU-tested with fg_test (CreateSwapChain and, FG_HWND=1,
+  CreateSwapChainForHwnd); untested in this game.
+- The camera from CryEngine's view-projection (PER_FRAME c0-c3, column vectors, its jitter in rows 0 and 1 through row
+  3): the jitter taken out, scaled so the forward row has unit length, the projection's x / y scales, depth terms,
+  near and far (reversed depth) and the right / up / forward axes split out, and last frame's unjittered
+  view-projection for clip-to-previous-clip (FrameGenerationCamera; tools\ryse\fg_camera_check.py checks the math on a
+  known camera: all OK). The HUD-less image after the post pass (the game's at 100%, the addon's at the display size
+  below), through the HDR addon's swap chain shader.
+
+## v113: one-frame trace
+
+Debug: `renodx_trace_now` next to Ryse.exe traces the next frame (Tales' frame_trace.hpp, checked each second, the file
+removed): tales_frame_trace.txt (every draw, dispatch, clear and copy with shaders, targets and inputs) and the traced
+shaders' bytecode (when an addon keeps it). Found the sun shadow mask's cascade passes for the HDR addon's fix50.

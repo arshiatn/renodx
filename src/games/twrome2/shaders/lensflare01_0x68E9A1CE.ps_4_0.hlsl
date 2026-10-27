@@ -27,7 +27,7 @@ float4 ApplyRome2LensFlare(float4 stock_color)
 
   // Frame is gamma-encoded here; scale in linear by t0x's scene ratio.
   float3 flare_linear = renodx::color::gamma::DecodeSafe(flare.xyz);
-  flare_linear *= (HDR == 1.f ? SI.lensflare : 1.f)
+  flare_linear *= (HDR >= 1.f ? SI.lensflare : 1.f)
                 * (SI.diffuse_white_nits / SI.graphics_white_nits);
   flare.xyz = renodx::color::gamma::EncodeSafe(flare_linear);
 

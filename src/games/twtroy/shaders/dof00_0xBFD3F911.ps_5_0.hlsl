@@ -198,6 +198,11 @@ RWTexture2D<float4> frame_texture_rw : register(u0);
 static const float kMaxFiniteDepth = 65000.f;
 
 
+// Stock: one bilinear tap of the bloom; bloom_filter.hlsli: a cubic B-spline over 4 x 4 texels.
+#define BLOOM_SAMPLE_ONLY
+#include "../../twattila/bloom_filter.hlsli"
+#include "../../twattila/render_scale.hlsli"
+
 void main(
   float4 v0 : SV_Position0,
   float2 v1 : TEXCOORD0)
@@ -249,11 +254,11 @@ void main(
   r3.zw = max(int2(0,0), (int2)r3.zw);
   r3.xy = min((int2)r3.zw, (int2)r3.xy);
   r3.zw = float2(0,0);
-  r3.z = gbuffer_channel_4_texture.Load(r3.xyz).x;
+  r3.z = gbuffer_channel_4_texture.Load(RenderShareTexel(r3.xyz)).x;
   r1.w = -0.999989986 + r3.z;
   r1.w = saturate(100000 * r1.w);
   r1.w = -r1.w * glow_depth_masking + 1;
-  r4.xyz = glow_texture1.SampleLevel(glow_sampler_s, r1.xy, 0).xyz;
+  r4.xyz = SampleBloomSmooth(glow_texture1, r1.xy).xyz;
 
   // NDC for the depth reconstruction, taken before r1.xy is overwritten.
   r3.xy = r1.xy * float2(2,-2) + float2(-1,1);

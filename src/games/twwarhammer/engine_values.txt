@@ -1,0 +1,475 @@
+Total War: WARHAMMER (names and types from Pharaoh's code, the ones its exe holds) - graphics engine values ("tweaks") that the game reads
+==========================================================================================================================================
+
+Found in the game's code by name (RenoDX tools: tw_tweaks32.py / tw_tweaks.py, tw_tweak_uses32.py / 64.py).
+Each is a named value the game keeps in memory and its code reads (values nothing reads are left out).
+Game: its built-in value
+(bools are set at run time: not listed). In the mod: a RenoDX slider or switch changes it (Graphics 2 of 2).
+Most are read when a battle or the campaign loads. Changing some may break the game or crash it.
+
+name                                                      type           game  in the mod
+------------------------------------------------------------------------------------------
+ABILITY_RANGE_HEIGHT                                      float           0.5  
+ABILITY_RANGE_LINK_HEAD_LENGTH                            float             4  
+ABILITY_RANGE_LINK_LENGTH_FOR_TILE                        float            20  
+ABILITY_RANGE_LINK_OOR_COLOUR                             float             1  
+ABILITY_RANGE_LINK_WIDTH                                  float             4  
+ABILITY_TRAJECTORY_COLOUR                                 float             1  
+accumulated_screenshot_gamma_fix_enabled                  bool                 
+ALIGN_TO_TERRAIN                                          bool                 
+ALL_UNITS_VISIBLE                                         bool                 
+ALWAYS_ALIGN_TO_TERRAIN                                   bool                 
+apply_blood_weights                                       bool                 
+ARMY_FLAG_SCALE                                           float          0.65  
+ARMY_FLAG_WIND_STRENGTH                                   float           0.2  
+AUTO_SET_ON_FIRE                                          bool                 
+AVOIDANCE_FLY_VS_SIEGE_TOWER_LOOK_AHEAD_DISTANCE          float             8  
+BATTLE_AOE_VFX_CENTRAL_TERRAIN_ALIGN                      bool                 
+BATTLE_AOE_VFX_HEIGHT                                     float                
+battle_building_display_async_task                        bool                 
+battle_entity_low_poly_calibration_distance               float           100  
+battle_fauna_always_create_bats                           bool                 
+battle_fauna_always_create_boars                          bool                 
+battle_fauna_always_create_camels                         bool                 
+battle_fauna_always_create_crows                          bool                 
+battle_fauna_always_create_deer                           bool                 
+battle_fauna_always_create_elephants                      bool                 
+battle_fauna_always_create_ibises                         bool                 
+battle_fauna_always_create_lions                          bool                 
+battle_fauna_always_create_milans                         bool                 
+battle_fauna_always_create_peasants                       bool                 
+battle_fauna_always_create_seagulls                       bool                 
+battle_fauna_always_create_turtle_doves                   bool                 
+battle_fauna_always_create_vultures                       bool                 
+battle_fauna_always_create_whales                         bool                 
+battle_fauna_always_create_wolves                         bool                 
+battle_fauna_no_fauna                                     bool                 
+battle_terrain_display_async_task                         bool                 
+BATTLE_TERRAIN_DISPLAY_PLAYABLE_BORDER_ENABLED            bool                 
+battle_tree_display_async_task                            bool                 
+battle_verlet_display_async_task                          bool                 
+BATTLE_VISIBILITY_HEIGHT_OFFSET                           float             5  
+battle_visibility_min_tree_distance                       float                
+battle_visibility_render_target_size                      int             512  
+begin_battle_with_camera_faded                            bool                 
+blend_height_test                                         bool                 
+BLOOD_INTENSITY_INCREMENT                                 float          0.05  yes
+BLOOD_INTENSITY_INCREMENT_SCALE_1                         float          0.06  
+BLOOD_INTENSITY_INCREMENT_SCALE_2                         float          0.03  
+BLOOD_INTENSITY_INCREMENT_SCALE_3                         float         0.015  
+BLOOD_INTENSITY_INCREMENT_SCALE_RECIPROCAL                float          0.25  
+BLOODIED_INTENSITY                                        float           0.3  
+BMD_LOAD_GRASS                                            bool                 
+BMD_LOAD_TREES                                            bool                 
+building_destruction_anims                                bool                 yes
+building_destruction_emitters                             bool                 yes
+building_display_enable_simple_add_instance               bool                 
+BUILDING_FIRE_PROPAGATION                                 bool                 
+BUILDING_LITE_BURN_SHADER_AMOUNT                          float             1  
+bypass_shader_cache                                       bool                 
+cache_background_files                                    bool                 
+cache_preload_files                                       bool                 
+cached_spline_use_elevation                               bool                 
+cached_spline_vfx_length                                  float           0.1  
+cam_dof_circle_radius                                     float                
+CAMERA_FAR_CLIP_PLANE                                     float                
+CAMERA_HEIGHT_MAX_SEA                                     float           150  
+CAMERA_HEIGHT_MAX_SEA_MP                                  float           180  
+CAMERA_HEIGHT_MIN_SEA                                     float          15.5  
+CAMERA_LINEAR_SPEED                                       float                
+CAMERA_NEAR_CLIP_PLANE                                    float                
+campaign_agent_locomotion_speed                           float             1  
+campaign_culling_ratio                                    float         0.003  yes
+campaign_dead_character_fade_alpha_per_second             float           0.3  
+CAMPAIGN_DISPLAY_BORDERS_ENABLED                          bool                 
+CAMPAIGN_DISPLAY_CHARACTERS_ENABLED                       bool                 
+CAMPAIGN_DISPLAY_COMPOSITE_SCENES_ENABLED                 bool                 
+CAMPAIGN_DISPLAY_EFFECTS_ENABLED                          bool                 
+CAMPAIGN_DISPLAY_PREFABS_ENABLED                          bool                 
+CAMPAIGN_DISPLAY_SHROUD_ENABLED                           bool                 
+CAMPAIGN_DISPLAY_TRADE_ENABLED                            bool                 
+CAMPAIGN_DISPLAY_TREES_ENABLED                            bool                 
+campaign_draw_threaded_cache                              bool                 
+campaign_dying_character_starts_fade_after_action_starts  float           1.5  
+CAMPAIGN_MAX_TREE_SCALE                                   float           0.4  
+campaign_prefab_display_threading_granularity0            bool                 
+campaign_prefab_display_threading_granularity1            bool                 
+campaign_prefab_display_threading_granularity2            bool                 
+campaign_quadtree_update_cache_threading                  bool                 
+campaign_shroud_display_suppress                          bool                 
+campaign_stances_composite_blend_in_time                  float           1.5  
+campaign_use_culling_ratio                                bool                 
+campaign_view_min_wind_strength                           float           0.5  
+campaign_view_wind_multiplier                             float            20  
+CDIR_GENERATOR_MIN_QUALITY                                float                
+character_mouseover_vfx_alpha                             float          0.33  
+character_render_disable_blending                         bool                 
+character_tracker_camera_controller_view_fruction_proportionfloat           0.6  
+CINDY_ENABLE_DYNAMIC_ENV_LERPING                          bool                 
+CINDY_ENABLE_RECORDING_FORCE_LOD                          bool                 
+CINDY_ENABLE_STATUS_RENDER                                bool                 
+CINDY_POINT_LIGHT_SHADOWS_ENABLED                         bool                 yes
+cindy_shadows                                             bool                 yes
+CINDY_SHOW_SPRITE_BOUNDING_BOX                            bool                 
+cindy_smoothing_parameter                                 float           0.3  
+CINDY_STATUS_RENDER_FPS                                   int              30  
+CINDY_STATUS_RENDER_OFFSET_X                              float                
+CINDY_STATUS_RENDER_OFFSET_Y                              float                
+CINEMATIC_CAMERA_LINEAR_SPEED                             float                
+clipping_plane_distance_offset                            float                
+CLOTH_FLAG_COMPOSITE_TEXTURE_OFFSET_X                     int             256  
+CLOTH_FLAG_COMPOSITE_TEXTURE_OFFSET_Y                     int             380  
+COMBAT_WITNESS_ABORT_DISTANCE                             float             3  
+COMBAT_WITNESS_INIT_DISTANCE                              float           0.2  
+COMBAT_WITNESS_INIT_DISTANCE_SPEED_MODIFIER               float           0.2  
+combat_witness_kill_without_animation                     bool                 
+CONTEXT_CAMERA_FAR_PLANE                                  float          5000  
+CONTEXT_CAMERA_FOV                                        float        1.5708  
+CONTEXT_CAMERA_NEAR_PLANE                                 float          0.15  
+cull_small_shadow_objects                                 bool                 
+d3d11_enable_draw                                         bool                 
+d3d11_enable_drawcall_commands                            bool                 
+d3d11_enable_state_cache                                  bool                 
+d3d11_windowed_double_buffer                              bool                 
+d3d12_ssao_async                                          bool                 
+DECAL_MIN_PROJECTILE_SPEED                                float             2  
+destruction_blend_bottom                                  float         65535  
+destruction_blend_top                                     float            64  
+destruction_zone_expansion_tolerance                      float             6  
+destruction_zone_expansion_variation_high                 int               6  
+destruction_zone_expansion_variation_low                  int               3  
+destruction_zone_extra_cost_value                         int               1  
+destruction_zone_number_anchors                           int              20  
+destruction_zone_squared_distance_per_blur_level          float             1  
+destruction_zone_squared_distance_per_blur_level_center   float            15  
+DISABLE_FIRE_AT_WILL                                      bool                 
+disable_render                                            bool                 
+disable_staging_dynamic_texture_behaviour                 bool                 
+DISMEMBER_ANGULAR_VELOCITY_MULTIPLIER                     float             1  
+DISMEMBER_BOUNCE_RESTITUTION                              float           0.4  
+DISMEMBER_GRAVITY                                         float          -9.8  
+DISMEMBER_IMPACT_POS_DISTANCE_THRESHOLD                   float             1  
+DISMEMBER_IMPACT_POS_DISTANCE_THRESHOLD_PROJECTILE        float             2  
+DISMEMBER_LIMB_EXPIRY_DELAY                               float            45  
+DISMEMBER_LIMB_EXPIRY_FADE                                float             3  
+DISMEMBER_SIM_TIME_STEP                                   float          0.01  
+DISMEMBER_VELOCITY_MULTIPLIER                             float             1  
+DRAGOUT_RENDER_ENTITIES                                   bool                 
+draw_decal_bounds_solid                                   bool                 
+draw_point_light_bounds                                   bool                 
+draw_point_light_cubes                                    bool                 
+effect_partially_visible_alpha                            float          0.05  
+enable_battle_composite_scene_blood_shaders               bool                 
+enable_battle_visibility_view_fog_of_war                  bool                 
+enable_bi_directional_attach_point_searching              bool                 
+enable_borderless_desktop_window_mode                     bool                 
+enable_crossfade_blend                                    bool                 
+enable_dynamic_point_and_spot_lights                      bool                 
+enable_hdr_luma_stats                                     bool                 
+enable_imposters                                          bool                 
+enable_imposters_deprecated_tbb                           bool                 
+enable_light_probe_generation                             bool                 
+enable_ordered_animation_variations                       bool                 
+ENABLE_POINT_LIGHT_SHADOWS                                bool                 
+enable_process_imposter_queue                             bool                 
+ENABLE_PROJECTILE_INCOMING                                bool                 
+enable_rendered_visibility                                bool                 
+enable_surface_texture                                    bool                 
+enable_tbb_building_display                               bool                 
+enable_tbb_building_lite_display                          bool                 
+enable_tbb_draw_tracker                                   bool                 
+enable_tbb_fill_animation_texture                         bool                 
+enable_tbb_rigid_write_instance_data                      bool                 
+enable_tbb_tree_display                                   bool                 
+ENGINE_ROPE_PULLING_LENGTH_FACTOR                         float           0.5  
+ENGINE_ROPE_RELAXED_LENGTH_FACTOR                         float           1.2  
+ENGINE_ROPE_VERLET_ITERATIONS                             int              25  
+ENT_COMBAT_AWARENESS_RANGE                                float             2  
+ENTITY_DEFAULT_FADE_OUT_TIME                              float             3  
+ENTITY_DISPLAY_ALPHA_OVERRIDE                             float             1  
+entity_display_blob_shadow_alpha                          float           0.5  
+entity_display_blob_shadow_enable                         bool                 
+entity_display_blob_shadow_fade_out_end_distance          float           550  
+entity_display_blob_shadow_fade_out_start_distance        float           450  
+entity_display_blob_shadow_master_scale                   float             1  
+entity_display_blob_shadow_max_distance                   float           300  
+entity_display_blob_shadow_max_master_scale               float             3  
+entity_display_blob_shadow_max_scale                      float           2.4  
+entity_display_blob_shadow_min_distance                   float                
+entity_display_blob_shadow_min_scale                      float           1.2  
+ENTITY_DISPLAY_ENABLE_ALPHA_CHANGE                        bool                 
+entity_display_imposter_scale                             float             1  
+ENTITY_DISPLAY_PROXIMITY_FADE_START                       float           0.4  
+entity_display_shadow_extrusion_multiplier                float             1  
+entity_display_use_imposter_variants_for_all              bool                 yes
+entity_display_use_soft_collision_dimensions_for_culling  bool                 
+ENTITY_FIREARC_COLOUR                                     float      0.784314  
+entity_footstep_amplitude_fast                            float             1  
+entity_footstep_amplitude_idle                            float          0.25  
+entity_footstep_amplitude_slow                            float          0.75  
+ENTITY_LOD_OVERRIDE                                       bool                 
+ENTITY_LOD_SCALE_HIGH                                     float           0.9  
+ENTITY_LOD_SCALE_LOW                                      float           0.6  
+ENTITY_LOD_SCALE_MEDIUM                                   float           0.8  
+ENTITY_LOD_SCALE_ULTRA                                    float             1  
+entity_range_scale_max_distance                           float                
+entity_range_scale_max_scale                              float             3  
+entity_range_scale_min_distance                           float                
+ENTITY_SHADOW_SCALE_HIGH                                  float             1  
+ENTITY_SHADOW_SCALE_LOW                                   float             1  
+ENTITY_SHADOW_SCALE_MEDIUM                                float             1  
+ENTITY_SHADOW_SCALE_ULTRA                                 float             1  
+ENTITY_TRACKER_ALPHA_CHANGE_SPEED                         float           0.5  
+ENTITY_TRACKER_AURA_VFX_CALIBRATION_RADIUS                float           0.6  
+ENTITY_TRACKER_BLOOD_INTENSITY_CLAMP                      float           0.5  
+ENTITY_TRACKER_COMBAT_CHAINING_BLEND_DURATION             float                
+ENTITY_TRACKER_DEFAULT_BLEND_DURATION                     float           0.3  
+ENTITY_TRACKER_MAX_TRANSITION_BLEND_DURATION              float           0.2  
+ESCALATION_BUILDINGS_ON_FIRE                              bool                 
+EXTRA_DOCKING_DISTANCE_FROM_WALL                          float             1  
+far_building_border                                       float                
+far_buildings                                             bool                 yes
+FEAR_AURA_COLOUR                                          float      0.784314  
+fill_anim_textures                                        bool                 
+final_shadow_split_blend_fraction                         float            -1  yes
+fire_arc_width                                            float           2.5  
+fire_arc_width_tacmap                                     float            10  
+FIRE_AREA_AFFECT_DETONATION_RADIUS_LOWER                  float           0.5  
+first_person_doom_diver_impact_view_distance              float            10  
+FLAG_AND_INDICATOR_MASTER_SCALE                           float             1  
+FLAG_DISPLAY_REGISTRATION_ENABLED                         bool                 
+FLAG_HEIGHT_OFFESET                                       float           0.2  
+flag_wind_show_strength                                   bool                 
+flag_wind_strength_change                                 float            20  
+flag_wind_strength_max                                    float           1.2  
+flag_wind_strength_min                                    float           0.5  
+flat_sea_surface                                          bool                 
+fog_force_fade_range                                      float            10  
+fog_zero_clear_distance                                   bool                 
+fog_zero_height_fog                                       bool                 
+force_uncached_fonts                                      bool                 
+FORT_WALL_VISIBILITY_GRID_LOG2                            int               7  
+FUTURE_MOMENTUM_BLEND_TICKS                               int               3  
+g_battle_terrain_on_shadow_cam_depth_offset_battle        float          5000  
+g_deep_foam_decay_rate                                    float             1  
+g_deep_smallwaves_cutoff                                  float          1500  
+g_deep_wind_dependency                                    float           0.4  
+g_deep_wind_dir_x                                         float             1  
+g_deep_wind_dir_y                                         float                
+g_deep_wind_speed                                         float            32  
+g_new_shadow_map_sample_bias                              float                
+g_point_light_shadow_map_sample_bias                      float          0.99  
+g_shallow_foam_decay_rate                                 float             1  
+g_shallow_smallwaves_cutoff                               float          1500  
+g_shallow_wind_dependency                                 float           0.8  
+g_shallow_wind_dir_x                                      float             1  
+g_shallow_wind_dir_y                                      float                
+g_shallow_wind_speed                                      float            10  
+g_water_repeat_time                                       float             5  
+GENERAL_AURA_COLOUR                                       float      0.129412  
+global_props_corruption_display_level                     bool                 
+global_props_display_alpha_in                             bool                 
+global_props_display_alpha_out                            bool                 
+global_props_display_translation                          float             5  
+grid_spline_mesh_pos_offset                               float          0.75  
+idle_animation_duration_mod_max                           float           1.1  
+idle_animation_duration_mod_min                           float           0.9  
+ignore_disjoint_render_stats                              bool                 
+imposter_min_offset                                       float             1  
+imposter_no_anim_feather                                  bool                 
+imposter_stats                                            bool                 
+INTENSITY_FIRE_SPREADING_DIST_SQ                          float             6  
+jpeg_quality                                              int             100  
+lf_coastal_inner_size                                     float          -0.5  
+lf_coastal_outer_size                                     float             1  
+lf_inner_size                                             float          -0.5  
+lf_outer_size                                             float             2  
+load_all_animation_tables                                 bool                 
+load_xml_meshes                                           bool                 
+locomotion_blend_time_override                            float            -1  
+locomotion_min_blend_time                                 float           0.5  
+LOCOMOTIVE_FORCE_ANIMATION_SPEED                          bool                 
+MIN_TRAVEL_DISTANCE_FOR_UNIT_APPROACHING                  float            50  
+NAVY_FLAG_SCALE                                           float             1  
+NIGHT_SPOT_DISTANCE_REDUCTION                             float           0.8  
+override_anim_state                                       int              -1  
+override_normal_stance                                    int              -1  
+PIPE_HOOK_POS_DISTANCE_FROM_SLOT_TOLERANCE                float            10  
+PIPE_TELEPORT_FADE_TIME                                   float           0.5  
+porthole_shadows_partial_clear                            bool                 
+porthole_use_current_scene_lighting                       bool                 
+PROJECTILE_CAMERA_ENDING_TIMER_HIT                        int            6000  
+PROJECTILE_CAMERA_ENDING_TIMER_MISS                       int            3000  
+PROJECTILE_CAMERA_TIME_DILATION_INVERSE_COEFFICIENT       float            15  
+PROJECTILE_CAMERA_TRANSITION_DURATION_S                   float             1  
+PROJECTILE_IMPACT_LOWER_VERTICAL_SPEED_FACTOR             float           0.6  
+PROJECTILE_IMPACT_SPEED_CHANGE_RANDOMISATION_FACTOR       float          0.15  
+PROJECTILE_IMPACT_SPEED_CLAMP                             float             3  
+PROJECTILE_IMPACT_SPEED_DAMPING_FACTOR                    float           0.2  
+PROJECTILE_IMPACT_SPEED_RANDOMISATION_FACTOR              float          0.15  
+PROJECTILE_IMPACT_UPPER_VERTICAL_SPEED_FACTOR             float             1  
+PROJECTILE_OVERRIDE_HOMING                                bool                 
+PROJECTILE_OVERRIDE_HOMING_LOOKAHEAD_TIME                 float            -1  
+PROJECTILE_OVERRIDE_HOMING_MAX_TARGET_ANGLE_DELTA         float            -1  
+PROJECTILE_OVERRIDE_HOMING_START_TIME                     float            -1  
+PROJECTILE_OVERRIDE_HOMING_STEERING_COEFFICIENT           float            -1  
+PROJECTILE_TRACKER_ARROW_SCALE                            float          1.25  
+r_deep_waves_scale                                        float             4  
+r_deep_waves_scale_xz                                     float             8  
+r_shallow_waves_scale                                     float             4  
+r_shallow_waves_scale_xz                                  float             4  
+READY_ENTER_RANGE                                         float            35  
+READY_EXIT_RANGE                                          float            40  
+RELEASE_ANIMALS_ON                                        bool                 
+RELEASE_ANIMALS_RANGE                                     float           150  
+render_battle_props                                       bool                 
+render_character_bleed_fade_in_seconds                    float             2  
+render_character_bleed_max_intensity                      float          0.75  
+render_character_diff_state_anim_speed_mod                float          1.25  
+render_character_teleport_fade_seconds                    float          0.25  
+render_entities                                           bool                 
+render_imposters                                          bool                 
+render_sea_flat                                           bool                 
+render_sea_surface                                        bool                 
+render_skip_dip                                           bool                 
+render_skip_disabled_techniques                           bool                 
+render_skydome                                            bool                 
+rigid_calc_texel_density                                  bool                 
+rigid_campaign_tree_lod                                   float           100  yes
+rigid_campaign_tree_zprefill                              bool                 
+rigid_cloth_particle_mass                                 float             1  
+rigid_enable_async_cache                                  bool                 
+rigid_rope_flex                                           float             1  
+rigid_rope_wind_pressure_scalar                           float             1  
+rigid_show_weighted_cloth_sim_mesh                        bool                 
+rigid_show_weighted_cloth_unsimulated                     bool                 
+rigid_show_weighted_mesh                                  bool                 
+rigid_tesselation_displacement_scale                      float           0.4  
+rigid_tesselation_factor                                  float             5  
+rigid_update_animation_texture                            bool                 
+round_sea_camera                                          bool                 
+sea_mesh_offset_distance                                  float             3  
+sea_quantisation_distance                                 float            20  
+set_deferred_alpha_composition_upsampling_bilateral       bool                 
+shadow_cam_depth_offset_battle                            float          1500  
+shadow_cam_depth_offset_campaign                          float            12  yes
+shadow_split_blend_fraction                               float           0.1  yes
+shadowmap_extreme_quality                                 bool                 yes
+shadowmap_split_scale                                     float             1  yes
+SHIP_ENTITY_BEARING_BLEND_FACTOR                          float           0.1  
+SHIP_FIRE_DESTRUCTION_TICKS                               int             150  
+show_all_dismember_stumps                                 bool                 
+SHOW_FIREARCS                                             bool                 
+shroud_blur_kernel_size_v2                                int              10  
+shroud_half_edge_padding                                  int              64  
+skin_shader_blood_colour                                  float      0.156863  
+skip_model_shadow                                         bool                 
+soft_collision_display_alpha                              float           0.5  
+SOFT_COLLISION_OBJECT_DEAD_MASS_MODIFIER                  float            10  
+SPECIAL_ABILITY_SKIP_WIND_UP                              bool                 
+SPLINE_HEIGHT_ABOVE_SEA                                   float             1  
+SPLINE_HEIGHT_ABOVE_TERRAIN                               float           0.4  
+SQUAD_CLUSTER_SEPARATION_MIN_DISTANCE                     int              15  
+SQUAD_CLUSTER_SEPARATION_MIN_DISTANCE_ARTILLERY           int              50  
+ssao_collect_thread_size                                  int              32  
+ssao_dispatch_thread_lines                                int             100  
+ssao_dispatch_thread_size                                 int             256  
+ssao_line_spacing                                         int               3  
+staging_dynamic_texture_behaviour                         bool                 
+START_EVERY_BUILDING_ON_FIRE                              bool                 
+tbb_battle_props                                          bool                 
+tbb_dynamic_platform_grain                                int             500  
+tbb_entity_cache_location_grain                           int             100  
+tbb_sea_foam_grain                                        int               8  
+tbb_tracker_model_updated_grain                           int              50  
+terrain_allow_global_geom                                 bool                 
+terrain_clip_intersected                                  bool                 
+terrain_draw                                              bool                 
+terrain_editor_v3_tile_max_y                              float          5000  
+terrain_editor_v3_tile_min_y                              float         -2000  
+terrain_enable_blend                                      bool                 
+terrain_enable_shadows                                    bool                 yes
+terrain_enable_threaded_vis                               bool                 
+terrain_enable_water_plane                                bool                 
+terrain_far_blend_end                                     float            24  
+terrain_far_blend_start                                   float             9  
+terrain_far_shader_distance                               float          1500  yes
+terrain_invisible                                         bool                 
+terrain_lod_addition                                      float                
+terrain_mid_distance_slope_factor                         float             3  
+terrain_node_display_aabb                                 bool                 
+terrain_override_season                                   int              -1  
+terrain_redraw_far                                        bool                 
+terrain_scale                                             float         16384  
+terrain_set_climate                                       int              -1  
+terrain_skip_vis                                          bool                 
+terrain_vertical_offset                                   float                
+terrain_visible_blend_tiles                               float            82  
+terrain_visible_tiles                                     float           500  yes
+test_blood_amount                                         float                
+test_dismember_clip_threshold                             float                
+test_dismember_limb                                       bool                 
+TEST_RANGED_DPS                                           bool                 
+texture_manager_async_cache                               bool                 
+texture_manager_async_wait_timeout                        int            1000  
+texture_manager_enable_async_load                         bool                 
+texture_manager_enable_cache_update                       bool                 
+TRAJECTORY_BLOCKED_COLOUR                                 int      1056997505  
+TRAJECTORY_DISPLAY_ENABLED                                bool                 
+TRAJECTORY_HEAD_LENGTH                                    float            14  
+TRAJECTORY_LOADED_COLOUR                                  float      0.627451  
+TRAJECTORY_MOVING_COLOUR                                  float      0.784314  
+TRAJECTORY_STEP_DISTANCE                                  float            16  
+TRAJECTORY_UNLOADED_COLOUR                                float             1  
+tree_burn_override                                        float            -1  
+tweaker_assign_alliances_by_alphabetical_name             bool                 
+UNIT_AURA_COLOUR                                          float      0.521569  
+unit_dust_frequency_override                              float                
+UNIT_FLYING_MIN_SPEED_ROLL_BLEND                          float           1.5  
+UNIT_FLYING_PITCH_BLEND_FACTOR                            float           0.4  
+UNIT_FLYING_ROLL_BLEND_FACTOR                             float           0.1  
+UNIT_FLYING_YAW_BLEND_FACTOR                              float           0.2  
+use_animpacks                                             bool                 
+use_tree_instance_plane_clip_test                         bool                 
+vegetation_create_default_soft_collision                  bool                 
+vegetation_hstrength                                      float                yes
+vegetation_vstrength                                      float                yes
+VEHICLE_BURN_SHADER_AMOUNT                                float           0.3  
+VEHICLE_RAM_DEAD_TIME_BEFORE_FADE_OUT_START               float             2  
+VEHICLE_RAM_FADE_OUT_SPEED                                float             2  
+VFX_DEFAULT_DISTANCE_FROM_CAMERA                          float          0.01  
+VFX_EMITTER_ORIENTATION_AXIS_LENGTH                       float            10  
+VFX_ENABLE_DYNAMIC_DECALS                                 bool                 
+VFX_ENABLE_DYNAMIC_LIGHTS                                 bool                 
+VFX_ENABLE_INSTANCING                                     bool                 
+VFX_FAR_DISTANCE_CULLING_BIAS                             float                
+VFX_HACK_IGNORE_XREF_MODIFICATION                         bool                 
+VFX_MIN_PROJECTILE_SPEED                                  float           6.5  
+VFX_RENDER_PARTICLES                                      bool                 
+VFX_SHOW_EMITTER_BOUNDING_BOX                             bool                 
+VFX_SHOW_EMITTER_ORIENTATION                              bool                 
+VFX_WIND_ANGLE_DELTA                                      float             5  
+VFX_WIND_SCALE_FACTOR                                     float            20  yes
+video_decode_deadline                                     int                  
+vis_spotting_range_override                               float                
+visibility_node_max_requests_per_frame                    int               1  
+visibility_system_enable                                  bool                 
+vortex_arc_damage_angle_speed_for_pi                      float            15  
+vortex_collision_output                                   bool                 
+vortex_max_timeslice_limit                                int              15  
+VORTEX_MAX_Y_MOVE                                         float           1.5  
+vortex_move_output                                        bool                 
+vortex_pulse_not_arc                                      bool                 
+vortex_velocity_max_change                                float             5  
+VOTEX_SLOPE_MOVE                                          bool                 
+warscape_ambient_probe_battle_height_offset               float           100  
+warscape_ambient_probe_texture_size                       int               5  
+warscape_display_fps                                      bool                 
+warscape_display_fps_x                                    int             100  
+warscape_load_cache_report                                bool                 
+warscape_normalize_to                                     float          33.3  
+WINDS_OF_MAGIC_HAS_DEPLETION                              bool                 
+XML_MATERIAL_DONT_LOAD_TEXTURE                            bool                 
+zoom_to_dist                                              float            23  
+
+462 values.

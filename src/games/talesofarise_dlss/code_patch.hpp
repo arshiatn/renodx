@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -27,6 +29,19 @@ struct CodePatch {
   bool applied = false;
   std::string details;  // where, or why not; for the log
 };
+
+// Whether [begin, end) is committed memory with one of the `protections` (and no guard / no-access page).
+inline bool IsCommitted(const uint8_t* begin, const uint8_t* end, DWORD protections) {
+  for (const uint8_t* at = begin; at < end;) {
+    MEMORY_BASIC_INFORMATION info = {};
+    if (VirtualQuery(at, &info, sizeof(info)) == 0 || info.State != MEM_COMMIT || (info.Protect & protections) == 0
+        || (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
+      return false;
+    }
+    at = static_cast<const uint8_t*>(info.BaseAddress) + info.RegionSize;
+  }
+  return true;
+}
 
 // Every match of `pattern` (hex bytes, "??" for any, e.g. displacements) in the exe's code sections that are
 // committed and readable.
@@ -60,14 +75,7 @@ inline std::vector<uint8_t*> FindPatterns(std::string_view pattern) {
     if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) continue;
     const uint8_t* begin = base + section->VirtualAddress;
     const uint8_t* end = begin + (section->Misc.VirtualSize != 0 ? section->Misc.VirtualSize : section->SizeOfRawData);
-    bool readable = true;
-    for (const uint8_t* at = begin; readable && at < end;) {
-      MEMORY_BASIC_INFORMATION info = {};
-      readable = VirtualQuery(at, &info, sizeof(info)) != 0 && info.State == MEM_COMMIT && (info.Protect & EXECUTABLE) != 0
-                 && (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0;
-      at = static_cast<const uint8_t*>(info.BaseAddress) + info.RegionSize;
-    }
-    if (!readable) continue;
+    if (!IsCommitted(begin, end, EXECUTABLE)) continue;
     for (auto hit = std::search(begin, end, searcher); hit != end; hit = std::search(hit + 1, end, searcher)) {
       const uint8_t* start = hit - anchor;
       if (start < begin || start + bytes.size() > end) continue;
@@ -88,6 +96,33 @@ inline uint8_t* FindPattern(std::string_view pattern, std::string* details) {
   }
   *details = std::format("at exe+0x{:X}", matches[0] - reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr)));
   return matches[0];
+}
+
+// Debug: the game's image as loaded (the exe's code is SteamStub-encrypted on disk, decrypted in memory), each
+// readable section at its RVA, for offline analysis. Returns what was written, for the overlay.
+inline std::string SaveImage(const std::filesystem::path& path) {
+  const auto* base = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  if (!file) return std::format("could not create {}", path.string());
+  file.write(reinterpret_cast<const char*>(base), nt->OptionalHeader.SizeOfHeaders);
+  constexpr DWORD READABLE = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE
+                             | PAGE_EXECUTE_WRITECOPY;
+  uint32_t written = 0;
+  const auto* section = IMAGE_FIRST_SECTION(nt);
+  for (WORD index = 0; index < nt->FileHeader.NumberOfSections; ++index, ++section) {
+    const uint8_t* begin = base + section->VirtualAddress;
+    const uint8_t* end = begin + (section->Misc.VirtualSize != 0 ? section->Misc.VirtualSize : section->SizeOfRawData);
+    if (!IsCommitted(begin, end, READABLE)) continue;
+    file.seekp(section->VirtualAddress);
+    file.write(reinterpret_cast<const char*>(begin), end - begin);
+    ++written;
+  }
+  // Zeros up to the image's size, so file offsets are RVAs.
+  file.seekp(nt->OptionalHeader.SizeOfImage - 1);
+  file.put(0);
+  if (!file) return std::format("writing {} failed", path.string());
+  return std::format("Saved {} ({} sections, {} MB)", path.string(), written, nt->OptionalHeader.SizeOfImage >> 20);
 }
 
 // Writes the replacement (true) or the original bytes (false), after checking the other set is in place. Within

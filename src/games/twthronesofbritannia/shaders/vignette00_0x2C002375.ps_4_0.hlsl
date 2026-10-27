@@ -33,7 +33,7 @@ void main(
   r0.x = exp2(r0.x);
   r0.y = -0.00392156886 + r0.x;
   o0.w = r0.x;
-  if (HDR == 1.f) {
+  if (HDR >= 1.f) {
         o0.w = saturate(o0.w * SI.vignette);  // adding vignette for slider; >1 makes (1-a) negative
   }
   r0.x = cmp(r0.y < 0);

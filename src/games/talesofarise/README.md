@@ -110,3 +110,232 @@ preset): in lighting00 it scales the sun haze's light (r5.xzw, added after the t
 v30: Sun Haze removed (ATN): above 1 a black disc grew around the sun (the shadow tint r8.xyw scaled below 0, clamped
 to black), below 1 the character flickered. lighting00 is v29's without it.
 v31: less CPU: debug logging (DEBUG_LEVEL_0) off.
+v32: Bandai's screen filters before the TAA follow the DLSS addon's render scale (talesofarise_dlss README v53,
+`post_filters.hpp`): painterly00-02 (0x66DC643D, 0x2483CE26, 0x773EABCB), outline00-01 (0x77D287B7, 0x1A51F09D),
+grading00-03 (0x381F5A30, 0x4105D9D8, 0x376E3F34, 0xA1B7FCDA) and lighting00's edge tests (shadow edge tint: the halo
+around characters below 100%; normal and depth edges) space their taps in output pixels (SI.filter_scale), and the
+game's sharpening before the TAA drops when the DLSS addon says so (SI.game_sharpening). Without the DLSS addon, or at
+100%, both are 1: the game's.
+v33: the five other deferred sun lighting permutations get the same edge scaling: lighting01 / 02 (0x6513DC8E,
+0xC28D2F1E: lighting00 with Bandai's t14.y test folded, Smooth Volumetric Light included) and lighting03-05
+(0xB2726B44, 0x81E3CED2, 0xF95FABAA: no volumetric lighting, light mask in t11). The halo around characters (ATN: stock
+game at 100% too, grass behind the character brighter) is not the shadow edge tint: in the debug2 pixel trace the
+marked pixel's light mask t14.x was 0.96, which skips the tint. Temporary **Halo test** (Extra, Advanced): lighting00
+shows its AO (t5, Bandai's AO E243580F -> 8D9AC9A4 -> 8C5387E3), its light mask (t14.xyz, ps F2EFB728 then the light
+passes 0xC70CE890 / 0x7EF5B0CC / 0xCB0EC552) or its light (t4) instead of the lit scene, to see which input has the
+halo.
+v34: **AO Halo Fix** (Extra, Advanced, `ao_halo_fix`, default On). ATN's Halo test (debug4, DLAA 4K): the AO view was
+20-35% brighter within ~50 pixels of the character than further out, the lit scene the same ring; the light mask t14
+(x 1 nearly everywhere, y marks foliage) and the light t4 showed none. Bandai's AO (ao00-11: 6 compute, 6 pixel shader
+permutations, E243580F traced) sums 9 samples of its R16F depth pyramid at NDC offsets (radius 100 -> 2 / 150 -> 10
+with depth) as max(0, dot(v, n)) / (|v|^2 + 0.01) with no range check, so a sample on a character in front of a bush
+counts as nearly open. The fix (shared.h AoHaloKeep): a sample more than 0.1 x depth + 20 cm in front of the pixel is
+left out and the sum scaled by 9 / kept. The temporary Halo test is removed.
+v35: AO Halo Fix, part 2 (ATN on v34: the halo much smaller, bright spots behind grass gone too, a thin ring left around
+the whole character): Bandai's AO blurs (aoblur00-07: horizontal 0x8D9AC9A4, vertical + temporal 0x8C5387E3 /
+0x808E30C0, vertical 0xE3BCE975, 4 pixel shader permutations) weight each neighbour 0.1 + 1 / (1 + |depth difference|),
+never below 0.1, so the character's own open AO bled into the bush (+-3 render pixels). AoBlurWeight: 0 beyond the
+AO's limit (0.1 x depth + 20 cm). 3Dmigoto misprinted the temporal pass's integer constants (the loop count 2 and the
+groupshared row offsets +-24 as float bit patterns, -24 as -1) and split one ld_structured into two reads that alias:
+fixed by hand against the bytecode. The half-resolution AO upsample permutations (0x4D0A29EA, 0x8E29A68D: the same
+weight blends the AO toward 1) are left as the game's (not seen in ATN's traces).
+v36: AO Halo Fix tighter (ATN debug5, 33%: much less, a faint band left around the character): an AO sample is left
+out when it is further in front than twice the AO's reach at the pixel's depth (its widest ring, 0.000608 x radius
+factor in NDC, x depth / cb0[28].x), at least 5% of the depth + 10 cm (v34: 10% + 20 cm, ~65 cm at 4.5 m, kept a
+character standing ~50 cm before the bush); the blurs' cutoff is 5% + 10 cm too. Temporary "Show AO (test)" (Extra,
+Advanced): lighting00-02 output their AO (t5).
+v37: plants darker below 100% (ATN debug7: DLSS Performance ~10% darker in the bush, rocks unchanged): Bandai's AO
+samples mip 0 of its closest-depth pyramid (ps 0xAA7E0D32: the nearest of 2x2 pixels; 2048 wide at 4K, 1024 at
+1080p), whose texels cover more of the screen the lower the render scale, so leaves look thicker to the AO. Below 70%
+DLSS (SI.filter_scale), ao00 / 01 / 06 / 07 (the permutations with a full-resolution depth, t1) read t1 instead (one
+render pixel, about the pyramid's footprint at 100%); AO shaders now load the DLSS scale (PostFilterShader). AO Halo
+Fix gets a third level, Strong (cutoffs halved), to tell whether the last, tiny normal-view band is still AO (the
+debug7 in / out traces landed on a lit leaf and a dark branch: not comparable).
+v38: AO Halo Fix never lighter than the game's AO (ATN debug7, DLAA off / on: crevices under rock overhangs got
+lighter: their samples on the overhang are "far in front" too, and the visible average replaced real occlusion). Set
+aside samples now add back max(their own occlusion, the visible samples' average for each) (AoHaloTerm / AoHaloSum):
+the halo is still filled in, overhangs keep their shade. The blurs' depth cutoff stays (it stops crevice darkness
+smearing onto convex rock edges: those get lighter, as without the blur).
+
+v39: AO Halo Fix renamed "Ambient Occlusion" (Game's / Fixed / Strong; same setting key, saved choices kept). ATN v38:
+Strong looks like a high HBAO preset and stays as the deeper choice. The character halo ATN still sees does not change
+with any of the three (debug8): it is not this AO; the DLSS addon's line trace (v60) finds its pass.
+
+v40 (temporary): Ambient Occlusion test choices for ATN's comparison: "Test 1/2 Strong", "Test 1/8 Strong", "Test 0"
+(sample cutoff x 0.25, x 0.0625, 0 of Fixed's; blurs keep Strong's cutoff). Two choices besides Game's stay in the end.
+
+v41: the Ambient Occlusion choice moved to the DLSS addon's overlay (graphics options live there; post_filters.hpp
+shares it, the AO and blur replacements load it like the filter scale): Game's / Fixed / Deep. Deep = ATN's pick of
+the v40 tests (cutoff 1/16 of Fixed's, blurs at half Fixed's). Without the DLSS addon: Fixed. "Show AO (test)" and the
+HDR addon's own AO setting removed.
+
+v42 (temporary tests): Deep removed (ATN: worse than Fixed on rail tracks). Ambient occlusion tests 2-4 shrink the
+sample cutoff AND the blurs' cutoff together (x 1/2 = v38-v40's Strong, x 1/4, x 1/16); 5 "no AO" drops the
+screen-space AO (AoHaloSum returns 0) to tell whether the grass halo is the AO. ATN debug11 (bush 2.8 m behind the
+character, Fixed): the bush's final AO is 0.50-0.55 within ~30 px of the character vs 0.35-0.40 (raw at the 0.3
+floor) beyond 40 px at matched depths; 0A9D482A (toon lighting, uses the AO x 0.7 + 0.3 for material types >= 3:
+foliage is 6) carries it into the image.
+
+v43: final AO choices (DLSS overlay, Shadows: "Ambient occlusion halo"): Game's / Reduced (v34-v41's fix, default) /
+Reduced + darker (samples and blur cutoffs x 1/4). ATN v42: "Test no AO" has no halo anywhere, so the rest is the
+screen-space AO's blindness behind characters (what they hide is guessed from what is visible; worst on plants);
+1/4 kept the same halo with darker shading. Tests removed.
+
+v44: scene buffers always 16-bit (setting removed; R11G11B10 -> RGBA16F for HDR10 and scRGB output alike).
+Sharpening tooltip: it scales UE's tonemapper sharpen (12 of 20 tonemapper permutations), which normal gameplay does
+not use (tonemap00 DCFDF14D), with or without DLSS; Bandai's pre-TAA sharpen is the DLSS addon's toggle.
+
+v45: Smooth Volumetric Light: SampleVisibility moved to shared.h (lighting00-02 call it with t6 / s4); test choices
+Soft (3 x 3 tent 0.75 cells along and across the sun's rays, no streaks) and Long Rays (21 taps, +-8 cells).
+PsychoV31: Highlight Saturation default 1.18, Highlight Hue Shift default 1.30 (slider to 2; above 1 OKLab a / b
+extrapolate past the game's SDR hue, chroma kept); Reset / Recommended use them. Both HDR modes: the fire note, then
+Highlight Saturation, then Highlight Hue Shift. Sun penumbra edge color (lighting00-05): the edge measure (largest
+light-mask change over the 2.3-pixel gather, x100 -> the cb0[63] / [64] edge colors) is divided by the sun shadow
+distance relative to the game's (DLSS addon, post_filters sun_shadow_distance): at distance 4 Bandai's soft-shadow pass
+(cs 0x2084C889) spreads the head's penumbra over ~180 px and the edge color filled it (ATN debug12: a pale patch).
+
+v46: PsychoV31 Highlight Hue Shift back to 0-1, default (and Reset / Recommended) 0.30 (ATN meant 0.30); Highlight
+Saturation stays 1.18.
+
+v47: Smooth Volumetric Light: Long Rays removed; choices Off / Soft / Along Sun Rays (new key volumetric_light_smoothing,
+default Along Sun Rays: the order changed). Shorter tooltips.
+
+v48: volumetric00 (cs 0xD09F3430, Bandai's volumetric lighting): with Smooth Volumetric Light on, its 160 shadow lookups
+weight the 2 x 2 Gather texels bilinearly instead of averaging them (ATN debug14: Max volumetric fog's 2-pixel cells
+showed the 2048 shadow map's texel steps as stair-stepped light shafts). sunshadow00 (cs 0x2084C889, the sun shadow
+mask): new Extra setting Smooth Sun Shadows (default On): above the game's sun shadow distance (DLSS addon ratio), a
+tent filter over 12 x 12 texels (36 Gathers, half-width 3.5 x ratio^0.25 texels, at most 5) replaces Unreal's 5 x 5
+box PCF, so edges no longer follow the stretched texel grid; at the game's distance the box stays. Both generated
+from the 3Dmigoto dumps (CS declarations / stores fixed; D09F3430's iadd with a negated source restored); fxc counts
+match the originals (gathers / stores / loops / samples).
+
+v49: Smooth Sun Shadows: v48's wider tent made shadows blurrier and the penumbra's edge color bigger (ATN debug15); now
+the game's own 9 Gathers (6 x 6 texels) with a tent of half-width 3 texels (no widening with distance): about the
+box's softness, no texel stairs (fxc: 18 gathers, 9 + 9). Smooth Volumetric Light: with finer cells (Max volumetric
+fog) Soft / Along Sun Rays stretch their spacing and taps to keep the game's 8-pixel reach on screen (at most 5 x 5 /
+25 taps). New Extra sliders (Advanced, 1 = the game's, ATN testing which stay): **Sun Haze** (lighting00-02: the
+haze tint and in-scattered light), **Painterly Filter** (painterly00: lerp to the unfiltered pixel; painterly01/02:
+the blur's add), **Outlines** (outline00/01), **Grass Glow** (grading00/01: material 6's x1.3 glow add).
+
+v50: Sun Haze above 1 fixed (ATN debug16, 2.0: black rock edges against the sky, orange sky): Bandai's haze tint
+(r8.xyw, below 1 toward the sun) went negative with lerp(1, tint, haze); now tint^haze (as denser haze would),
+in-scatter still x haze. Smooth Sun Shadows: Off / Smooth (v49, tent half-width 3 texels) / Sharp / Sharper /
+Sharpest (2 / 1.5 / 1.2; half-width 6 / (setting + 1)), ATN tests. New test slider **Shadow Edge Color** (lighting00-05:
+Bandai's colored penumbra line, cb0[63] / [64], x the slider; 0 = plain shadow color). Smooth Volumetric Light
+Along Sun Rays confirmed by ATN (already the default).
+
+v51: every Extra slider checked above 1 for blends that extrapolate below 0 (v50's Sun Haze bug). Outlines: opacity
+saturate(a x k) (at most opaque). Painterly Filter: below 1 a fade to the pixel as before; above 1 the neighbours'
+weights x k in painterly00 / 01 / 02 (still averages; 02 keeps Bandai's 1.2 denominator) instead of extrapolating.
+Shadow Edge Color: weight saturated. HDR only: Sharpening's result max 0, Film Grain's multiplier max 0. Safe already:
+Bloom, Grass Glow (additive), Vignette (saturated), Chromatic Aberration / Motion Blur (offsets), Video AutoHDR (0-1).
+Permutations: all slider passes the traces showed are covered (lighting00-05, painterly00-02, outline00/01,
+grading00/01; grading02/03 have no grass glow). New_1 also holds outline variants 0xC07E4E61 / 0xDDF4509C and
+lighting-like 0x71953DD2 / 0x0E8ACF10 / 0x198E7382 / 0x2022424E (cb0[64] edge color, no 2.3 px gather): never in a
+trace, not replaced.
+
+v52: **Sun Step Fade (Experimental)** (Extra, Advanced, 0-2 s, default 0 = off): where the sun moves it turns in
+steps (~10 s) and the whole map is rendered anew; at long sun shadow distances its large texels jump. HDR addon
+(native D3D11 in the sunshadow00 callbacks, every used slot saved / restored, b2 with its range): sunstep00
+(`0x5A1E57E0`, 1 thread before the mask, with its b0 / b1) builds world-to-shadow = inverse(screen-to-world,
+cb1[44-47], affine, absolute world: the cloud shadows use it) x screen-to-shadow (cb0[28-31]) and flags a step when
+the shadow u or depth axis turns by more than ~0.01 degrees (camera moves only shift the frustum); state (9 float4,
+t6): last / old matrices, timer. sunstep01 (`0x5A1E57E1`, after the mask) copies the 8192 D16 map to an R32_FLOAT
+old map (t5) every frame except during a fade. sunshadow00 then lerps to the old map's visibility (tent, same width;
+3 for the game's box) by smoothstep(timer), only where the old uv is inside the map. Costs ~256 MB VRAM and one
+map copy per frame while on. Moving characters' shadows trail during the fade (the old map is frozen); a camera cut
+that changes the sun also fades. fxc: 27 gathers (9 + 9 + 9).
+
+v53: Grass Glow removed (ATN: no visible change); Painterly Filter 0-1 (v51's stronger-than-game weights removed:
+at most the game's filter, so the plain blends cannot extrapolate). Sun Step Fade removed (ATN: unsure it worked;
+smooth sun movement instead, DLSS addon).
+
+v54 (ATN): UE Extended Highlight Saturation per base curve: legacy 0.92 (`ext_highlight_saturation`), UE Filmic
+1.05 (new `ext_filmic_highlight_saturation`, the last shared.h field but one); UE Filmic Highlight Hue Shift 0.34.
+PsychoV31 (default, Reset and Recommended): Highlight Hue Shift 0.38, Highlight Saturation 1.20.
+v55: Shadow Edge Color tooltip corrected (ATN: 0 shows a colored fringe, 2 almost none). In the sun shadow's soft
+edge (shadow 0.1-0.9) the slider weights the game's edge color (cb0[63] / [64]) against the plain shadow tint (cb0[50] /
+[52]); at 0 the tint fills the soft edge, which is the fringe.
+v56: Shadow Edge Color default 2 (ATN), slider up to 10 (the per-pixel weight still saturates at 1; higher fills more of
+the soft edge with the edge color).
+v57: Shadow Edge Color default 5 (Reset and Recommended; ATN). Post Processing section above Extra: Bloom, Motion
+Blur, Chromatic Aberration, Vignette, Film Grain, Sharpening, Painterly Filter, Outlines (keys unchanged). Extra:
+Smooth Volumetric Light, Sun Haze, Sun Glow (new), Smooth Sun Shadows, Shadow Edge Color, Video AutoHDR / Dithering.
+Sun Glow (`sun_glow`, last shared.h field, 0-2): the white halo around the sun (ATN, debug18 Sun) is the sky sphere's
+own (ps 0x11039AD5, now sky00; base pass, so not post processing): around the disk it adds 2 x pow(dot, 3500) and
+0.1 x pow(dot, 500) of the sun's color (collection vector cb2[5] x cb2[0].x / 2), and within ~25 degrees a halo
+(1 - 10 x (1 - dot)) x cb2[1].w x cb2[1].y on the cloud texture; values 27 -> 49 within two degrees in the trace,
+40-60 after the painterly passes, all near Peak after tonemapping. Sun Glow scales the pow 500 glow and the halo; the
+disk and its pow 3500 rim stay. Its compute twin 0x7C4ABF39 (most likely the sky for reflections) is left alone.
+v58: ATN (debug19, Sun Glow 0): another glow. The biggest at the traced pixel near the sun is a UI material drawn
+after tonemapping (vs 0x038D5E3D ps 0x287CCB34, now sunglare00: radial glow cb2[9] x pow(1 - r^2, cb2[11].y) pulsing
+with sin(time), a 1024 x 1024 mask and a 512 x 8 ramp, premultiplied): 1.65 -> 7.66 there, unclipped in the HDR target
+(SDR's UNORM held at most UI white), so it reached Peak. Its color now stops at UI white (SDR) and Sun Glow scales it
+(alpha up to 1). The rest: Bandai's haze in lighting00 (Sun Haze), bloom, the sky's pow 3500 rim. Thin Sun Shadow Edges
+(`sun_shadow_edge`, default 1, 0-2; last shared.h field): ATN likes Smooth Sun Shadows Off / Smooth with the smooth
+sun (no flicker) but at Sun shadow distance 4 / 8192 the soft edge (either filter: ~3 texels) is a wide halo; sharper
+filters show stairs and flicker. In sunshadow00 the filtered visibility gets saturate((v - 0.5) x k + 0.5), k = 1 +
+(distance ratio - 1) x setting: 1 keeps the edge as wide on the ground as at the game's distance; its position stays
+the smooth filter's (its half-shadow line), so no stairs.
+v59: Sun Glow removed with both its shaders (sky00 0x11039AD5, sunglare00 0x287CCB34; ATN: 0x287CCB34 also draws
+in-game text, which its clip changed); the `sun_glow` field is gone. Thin Sun Shadow Edges default 0.22 (ATN; Reset
+and Recommended too). Sun Haze stays in Extra (Bandai's lighting pass, not post processing).
+v60: SDR output (Shogun 2 v35's): Output HDR10 / scRGB / SDR / Auto (new default; a saved HDR10 / scRGB stays). SDR:
+a 10-bit gamma 2.2 swap chain, white = the display's (TOA_SDR_OUTPUT: TOA_PEAK and the new TOA_PAPER_WHITE 1; the
+proxy returns the encoded image clipped per channel as the game). Rendering Mode SDR: the game's image; UE Extended:
+display-mapped to peak 1; PsychoV31: target gamut BT.709. Peak, Paper White and UI hidden, Video AutoHDR off. Auto:
+scRGB when Windows HDR is on for the game's display (or unknown), else SDR, at the first swap chain (create_swapchain,
+registered before the swapchain mod's). Every shader fix and slider works in both.
+v61: PsychoV31 sliders (ATN), in order: Exposure, Highlights, Shadows, Contrast, Highlight Contrast, Shadow
+Contrast, Flare (slider^5, as RenoDX's UE Extended), Saturation, Dechroma, Highlight Roll-off, Gamut Compression,
+Gamut Compression Mode (PsychoV31's target: BT.709 / BT.2020 / Display P3 / Samsung G80SD; SDR output stays BT.709),
+then the fire pair. Defaults = v60's look (1 / 1 / 0 / 0 / 1 / BT.2020). About: credits, the ACES copyright notice
+(UE Extended uses RenoDX's ACES RRT; the full license ships as ACES_LICENSE.txt from docs/licenses), ATN's Ko-fi.
+v62 (ATN): Gamut Compression Mode BT.709 / BT.2020 / Display P3 (Samsung G80SD removed), Display P3 default.
+PsychoV31 Highlight Saturation default 1.00 (Reset, Recommended). Recommended (Vanilla shadows): Shadows 0.50, Flare
+0.39. After the hue shift, the SDR LUTs and the post grade (all after PsychoV31's own gamut compression), colors
+outside the target are brought to its edge at the same luminance and hue (RenoDX's RGB-bound compression in
+MacLeod-Boynton; inside unchanged), with Gamut Compression above 0. Credits: RenoDX and PsychoV31 by ShortFuse, Musa's
+custom PsychoV31.
+v63 (ATN's experiment, debug21): PsychoV31 Highlight Saturation Shift (after Highlight Hue Shift, default 0): the
+saturation (OkLab chroma / lightness) of highlights toward the game's SDR curve with Highlight Hue Shift's weighting.
+debug21 (SDR vs PsychoV31 at Hue Shift 0, other frames): SDR fire 85-110 deg OkLab hue, blue 0, chroma / L 0.21 up to
+its brightest; V31 36 deg, chroma / L 0.32 in the body down to 0.11 in the cores (pink: red faded to white). Hue Shift
+above 0.5 turns too much yellow (ATN), so the saturation is separate.
+v64 (ATN's values): PsychoV31 defaults (Reset, both Recommended): Highlight Saturation 1.00, Highlight Hue Shift
+0.57, Highlight Saturation Shift 0.30, Gamut Compression Mode BT.2020 again. UE Extended (legacy curve) Highlight Hue
+Shift 0.20.
+
+v65 (ATN's batch, untested): Pictures of the finished frame keep HDR: on loading and after battles the game showed a
+clamped copy of the frame. Once the tone mapper has drawn a frame, a render target of the frame's kind bound after it
+(a capture or fade) switches to its 16-bit clone too, and so does the destination of a copy from an active clone
+(before, the swap chain module skipped such a copy as mismatched). Ambient occlusion GT-VBAO (the DLSS addon's setting,
+post_filters.hpp): all 12 AO variants (ao00-ao11) can run the visibility bitmask (bitmask_ao.hlsli, Attila's
+twattila/bitmask.hlsli primitives) on their own inputs (G-buffer normal through View.TranslatedWorldToView cb1[8..10],
+the pass's linear depth) in place of the 16-sample spiral, before the game's minimum and Bandai's height-field term; the
+game's AO blur (with its temporal step) and DLSS settle its per-frame noise. WARP (tools\toa\warp_ao: floor + wall):
+open floor 0.92, wall foot 0.50, wall middle 0.84, sky 1.
+
+v66 (DXR start, untested in game): the sun shadow mask (sunshadow00, cs 0x2084C889) keeps the darker of its shadow
+map and the DLSS addon's ray-traced visibility at t40 (DLSS addon v96, Ray-traced sun shadows, Experimental); unbound
+(off, or an older DLSS addon) it is the game's mask as before.
+
+v67 (untested in game): the lighting pass (lighting00-05) multiplies its ambient occlusion by the DLSS addon's
+ray-traced ambient occlusion at t41 (rt_ambient.hlsli; DLSS addon v99, Experimental); unbound it is 1.
+
+v68: Output Auto picks HDR10 instead of scRGB when the DLSS addon's frame generation is on (ReShade.ini [Tales AA]
+FrameGeneration): NVIDIA's frame generation takes no FP16 / scRGB swap chain.
+
+v69 (untested in game): the lighting pass (lighting00-05) adds the DLSS addon's ray-traced bounce light at t42 times
+the base colour before the fog (rt_ambient.hlsli RayTracedBounceLight; DLSS addon v101, Experimental); unbound it is 0.
+
+v70 (untested in game): ray-traced reflections (DLSS addon v102, Experimental): lighting00-02 replace Bandai's screen
+reflection sample (t16 / t17) with the DLSS addon's at t43 where its ray found a known surface, as much as the game
+uses its sharpest screen reflection there (rt_ambient.hlsli RayTracedReflection); unbound it is unchanged. lighting03-05
+have no screen reflection and are unchanged.
+
+v71 (untested in game; DLSS addon v104): ray-traced reflections (t43) in both screen reflection branches of all six
+lighting permutations (the sharp t16 / t17 and the blurry t17 / t18 in lighting00-02; lighting03-05 do have screen
+reflections too, at t13-t15: v70's note was wrong), where the rays met a surface (RayTracedReflection now takes their
+share: the rays sample the pixel's own roughness); ray-traced specular occlusion (t44, rt_ambient.hlsli
+RayTracedSpecularOcclusion) dims the cubemap sky tint (the cb0[75].w term) in covered places. Unbound: unchanged.

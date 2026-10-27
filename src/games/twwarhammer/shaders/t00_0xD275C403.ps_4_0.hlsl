@@ -48,18 +48,12 @@ Texture2D<float4> g_scurve_texture : register(t3);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
+#include "../tone_mapper.hlsli"
 
 
-// Literally the same as Attila
-float3 ApplyWarhammerSCurve(float3 color)
-{
-  float3 output;
-  output.r = g_scurve_texture.Sample(g_scurve_texture_sampler_s, float2(color.r, 0.5f)).r;
-  output.g = g_scurve_texture.Sample(g_scurve_texture_sampler_s, float2(color.g, 0.5f)).g;
-  output.b = g_scurve_texture.Sample(g_scurve_texture_sampler_s, float2(color.b, 0.5f)).b;
-  return output;
-}
+// Stock: one bilinear tap of the bloom; bloom_filter.hlsli: a cubic B-spline over 4 x 4 texels.
+#define BLOOM_SAMPLE_ONLY
+#include "../../twattila/bloom_filter.hlsli"
 
 void main(
   float4 v0 : SV_Position0,
@@ -74,7 +68,7 @@ void main(
   // Preserve Warhammer's adaptive exposure and S-curve as grading, but remove
   // the stock whiteout/desaturation and upper SDR clamp.
   // Made AI to use my ATTILA as ground truth because they are basically almost the same then I fixed the rest
-  if (HDR == 1.f)
+  if (HDR >= 1.f)
   {
     float2 bloom_uv = -g_viewport_origin.xy + v0.xy;
     bloom_uv = g_vpos_texel_offset + bloom_uv;
@@ -83,37 +77,14 @@ void main(
     float2 scene_uv = g_vpos_texel_offset + v0.xy;
     scene_uv = g_screen_size.zw * scene_uv;
 
-    float4 bloom_sample = g_hdr_rgb_bloom_texture.SampleLevel( g_hdr_rgb_bloom_texture_sampler_s, bloom_uv, 0);
+    float4 bloom_sample = SampleBloomSmooth(g_hdr_rgb_bloom_texture, bloom_uv);
     float4 scene_sample = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, scene_uv, 0);
 
 
     // BLOOM IS BLACK FOR SOME REASON STEAM VS EPIC???
     // Probably it was just taken from Attila's engine and was never used.
-    float3 hdr_color = max(scene_sample.xyz + bloom_sample.xyz, 0.f.xxx);
-
-    // Keep the game's adaptive black/white-point exposure, but do not upper
-    // clamp luminance to the white point. This retains highlight headroom.
-    float2 black_white_points = g_black_and_white_points.SampleLevel(g_black_and_white_points_sampler_s, float2(0.5f, 0.5f), 0).xy;
-
-    float black_point = black_white_points.x;
-    float white_point = black_white_points.y;
-    float black_white_range = max(white_point - black_point, 0.000001f);
-
-    float hdr_luminance = dot(hdr_color, float3(0.212599993f, 0.715200007f, 0.0722000003f));
-    float normalized_hdr_luminance = max(hdr_luminance - black_point, 0.f) / black_white_range;
-
-    float hdr_normalization_scale = hdr_luminance > 0.f ? normalized_hdr_luminance / hdr_luminance : 1.f;
-    float3 untonemapped = hdr_color * hdr_normalization_scale;
-
-    // Warhammer's S-curve is per-channel, like Attila's. Compress the unclipped signal into the LUT's valid 0-1 domain, apply the native
-    // curve as artistic grading, then undo the same scalar compression.
-    float curve_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(untonemapped);
-    float3 curve_input = untonemapped * curve_scale;
-    float3 graded_proxy = ApplyWarhammerSCurve(curve_input);
-    float3 graded_hdr = renodx::math::DivideSafe(graded_proxy, curve_scale.xxx, graded_proxy);
-
-    o0.xyz = graded_hdr;
-    o0.w = scene_sample.w;
+    o0 = ToneMapperHdr(scene_sample, bloom_sample,
+                       g_black_and_white_points.SampleLevel(g_black_and_white_points_sampler_s, float2(0.5f, 0.5f), 0).xy);
     return;
   }
 
@@ -121,7 +92,7 @@ void main(
   r0.xy = -g_viewport_origin.xy + v0.xy;
   r0.xy = g_vpos_texel_offset + r0.xy;
   r0.xy = g_viewport_dimensions.zw * r0.xy;
-  r0.xyzw = g_hdr_rgb_bloom_texture.SampleLevel(g_hdr_rgb_bloom_texture_sampler_s, r0.xy, 0).xyzw;
+  r0.xyzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture, r0.xy).xyzw;
   r1.xy = g_vpos_texel_offset + v0.xy;
   r1.xy = g_screen_size.zw * r1.xy;
   r1.xyzw = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, r1.xy, 0).xyzw;

@@ -8,7 +8,7 @@ struct ShaderInjectData {
   float gamma_correction;
   // float custom_brightness;
   float peak_test;
-  float swap_chain_encoding;
+  float swap_chain_encoding;  // 0 HDR10, 1 scRGB, 2 SDR (gamma 2.2; Peak, Paper White and UI unused)
   // float whiteclip;
 
   // float dof;
@@ -77,6 +77,26 @@ struct ShaderInjectData {
   // float auto_exposure_highlight_protection;     // 0: stock, 1: protected
   // float auto_exposure_highlight_headroom_stops; // 1 - 4 seems to work fine
   float hue_shift;  // PsychoV30 highlight hue shift: 0 none, 1 Test30, 2 full
+
+  // PsychoV31 (Rendering Mode 3), appended.
+  float v31_exposure;
+  float v31_highlights;
+  float v31_shadows;
+  float v31_contrast;
+  float v31_highlight_contrast;          // above mid gray, 1 V31's own
+  float v31_shadow_contrast;             // below mid gray, 1 V31's own
+  float v31_flare;                       // 0 none, deeper blacks above it
+  float v31_saturation;
+  float v31_dechroma;                    // 0 none, bright colors toward white above it
+  float v31_highlight_saturation;
+  float v31_roll_off;                    // 0 latest, 1 default, 2 soonest
+  float v31_gamut_compression;           // 0 none (the display clips), 1 full
+  float v31_gamut_compression_mode;      // V31's target: 0 BT.709, 1 BT.2020, 3 Display P3
+  float v31_highlight_hue_shift;         // hue toward the SDR image's above mid gray, 0 - 1
+  float v31_highlight_saturation_shift;  // saturation toward the SDR image's, as the hue shift, 0 - 1
+  // Appended (round 3).
+  float video_autohdr;    // AutoHDR on the videos: 0 SDR, 1 video white at Peak
+  float video_dithering;  // 1: 1 code value of dither before the video AutoHDR
 };
 
 #define SI shader_injection
@@ -144,6 +164,20 @@ cbuffer shader_injection : register(b13) {
 #endif
   ShaderInjectData shader_injection : packoffset(c0);
 }
+
+// SDR output (Output: SDR, displays without HDR): Peak, Paper White and UI white are all the display's white, so every
+// tone mapper and paper white scale lands in SDR; the proxy encodes gamma 2.2.
+ShaderInjectData OutputShaderInjection(ShaderInjectData data) {
+  [flatten]
+  if (data.swap_chain_encoding == 2.f) {
+    data.peak_white_nits = 100.f;
+    data.diffuse_white_nits = 100.f;
+    data.graphics_white_nits = 100.f;
+  }
+  return data;
+}
+#undef SI
+#define SI OutputShaderInjection(shader_injection)
 
 #include "../../shaders/renodx.hlsl"
 

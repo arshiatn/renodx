@@ -7,7 +7,7 @@ The game has no HDR option; RenoDX outputs HDR10/scRGB through a swap chain prox
 | Mode | What it does |
 |---|---|
 | SDR | The game's native tonemapper (Hable / Uncharted 2 filmic) and color chart, scaled by Paper White. |
-| HDR (Extended) | Default. UC2 Extended (Musa/Jon) on the game's Hable: Hable up to its knee (third derivative root), its tangent above it, per channel; **Hue Correction** (fix29, default 1, like Musa's Batman) moves the result's hue back to the scene's (OKLab, chroma kept), mostly in the mid tones; above 1 each channel rolls off to Peak on its own (Neutwo, fix32), as SDR clips each channel, so bright fire gets a yellow / white core. Until fix31 the brightest channel rolled off and the color kept its saturation: bright fire stayed a flat salmon orange ([1, 0.47, 0.25] at its core; PsychoV31 [1, 0.87, 0.77], SDR white). No "colors from SDR" since fix28 (below). |
+| HDR (Extended) | Default. UC2 Extended (Musa/Jon) on the game's Hable: Hable up to its knee (third derivative root), its tangent above it, per channel (Hue Correction, fix29-41, removed in fix42: it moved hues by 0-3 degrees, the knee is low and the tangent above it keeps the channels' ratios); above 1 each channel rolls off to Peak on its own (Neutwo, fix32), as SDR clips each channel, so bright fire gets a yellow / white core. Until fix31 the brightest channel rolled off and the color kept its saturation: bright fire stayed a flat salmon orange ([1, 0.47, 0.25] at its core; PsychoV31 [1, 0.87, 0.77], SDR white). No "colors from SDR" since fix28 (below). |
 | HDR (PsychoV31) | Recommended preset (with Film Grain 0, Motion Blur (Camera) 0, Motion Blur (Objects) 1, Video Highlights 0.25). PsychoV31 replaces Hable, anchored on Hable's mid gray. Exposure, bloom, saturation / color balance, sun shafts and the color chart stay. Falls back to target-only, then Extended, where V31 returns black. |
 
 **Removed in fix28: "colors from SDR" (Extended).** Until fix27, Extended pulled its color toward SDR's:
@@ -174,3 +174,84 @@ a mutex; now lock-free copies (back_buffer_fix::back_buffers, at most 16, the ol
 immediate context and its last binding atomic): the mutex only when the back buffer is bound. A new resource checks the
 same copies before locking. The HUD / execution skull / highlight draw events are registered only while one of them is
 hidden (F5 / F6 / F7, Caps Lock, Tab), else every draw went through them. Debug logging (DEBUG_LEVEL_0) off.
+fix39: PsychoV31 sliders as Tales / Attila: Highlight / Shadow Contrast, Flare, Dechroma, Gamut Compression + Mode, and
+under "Fire too pink, too orange or too pale?" Highlight Saturation (1), Highlight Hue Shift (0), Highlight Saturation
+Shift (0) toward the game's SDR (Hable, clipped). Output SDR + Auto (default), Video AutoHDR tooltip as Attila's,
+About: credits, Ko-fi and NexusMods (nexusmods.com/rysesonofrome/mods/59), section titles coloured. psycho_test31.hlsli:
+ShiftSaturationToward / FitToTargetGamut (ATN's additions, as Attila's copy).
+
+fix40: PsychoV31 Highlight Hue Shift default 0.08 (ATN; Reset and the presets too).
+
+fix41: fire controls (ATN: some fires too yellow, some pink; dim fires did not react to the three fire sliders: V31's
+Highlight Saturation / Dechroma reach full strength only ~2.75 decades above mid gray, and the Highlight Hue Shift's
+target, Hable's hue, equals ours below SDR white). Dechroma moved under "Fire too pink, too yellow or too pale?". New
+there: Fire Hue (-1 to 1, 0 off: warm colors turned up to 30 degrees, redder / more yellow) and Fire Hue Focus (0 to 1:
+pink and yellow pulled toward orange, OkLCh 55 degrees); both on the screen's colors after the game's color chart
+(AdjustFireHue in tonemap00), warm hues within 70 degrees of orange (none past 100), from mid gray (full from Paper
+White), saturated colors only; PsychoV31 only. PsychoV31 Last (experimental, ATN's theory): the sun shafts and the color
+chart on the untonemapped scene (colors past 1 normalized as for the chart), PsychoV31 after them; off = as before.
+
+fix42: Extended's Hue Correction removed (ATN: no visible effect): the per-channel UC2 Extended moves hues by 0-3 degrees
+(standard Hable constants: skin +1.7, dim fire +2.0, fire at 1.2 +2.7, mid orange -2.5), its knee is low (0.40) and
+the tangent above it keeps the channels' ratios; bright fire's yellow core comes from the per-channel shoulder above 1,
+which ran after it anyway. Setting, field and the About line's "Hue Correction as in Musa's Batman" gone; the result is
+Hue Correction 0 (clamped at 0 as before).
+
+fix43 (ATN): PsychoV31 Last removed. Game Shadows (experimental) under Gamut Compression Mode. The fire line yellow, with
+two buttons: Default (Dechroma 0.41, Highlight Saturation 1, Highlight Hue / Saturation Shift 0, Fire Hue -0.05, Fire
+Hue Focus 0.75: also the sliders' defaults, Reset and both Recommended presets) and Less Red (Fire Hue 0.05, Focus
+0.70). Extended has its own Fire Hue / Fire Hue Focus (ext_fire_hue / ext_fire_hue_focus, default off) under a yellow
+fire line. Both Recommended presets keep Bloom at 1. Section titles in one colour (Attila's green), Output and About
+their own.
+
+fix44 (ATN): fire buttons Option 1 (Default: Highlight Hue Shift 0.03, Highlight Saturation Shift 0.10, Fire Hue 0,
+Fire Hue Focus 0.50, Dechroma 0, Highlight Saturation 1; the sliders' defaults, Reset and the Recommended presets) and
+Option 2 (0.11, 0.07, -0.05, 0.75). Extended (its fire also yellow / green / pink against SDR's): its own Highlight Hue
+Shift / Highlight Saturation Shift (ShiftHighlightHue toward Hable clipped, on Extended's result) with Fire Hue / Focus
+and the same two buttons and defaults. Recommended (Less Post Processing): Sharpening 0.25; new Recommended (Less Post
+Processing, Vanilla-like Shadows): the same with PsychoV31 Flare 0.41.
+
+fix45 (ATN): presets renamed Recommended (was Less Post Processing) and Recommended (Vanilla-like Shadows): Shadows 0.75,
+Flare 0.25; Depth of Field 2 in all three Recommended presets (Reset keeps 1).
+
+fix46 (ATN): Recommended (Vanilla-like Shadows) renamed Recommended (with Deeper Shadows).
+
+fix47 (ATN): Fire Hue / Fire Hue Focus labelled Fire Hue (OkLCh) / Fire Hue Focus (OkLCh) (AdjustFireHue turns the
+OkLCh hue; Highlight Hue / Saturation Shift are OkLab too but keep their names, as in the other games).
+
+fix48 (ATN's batch, untested in game): **Ambient Occlusion** (Game's SSDO / GT-VBAO, AO Radius / Strength / Thickness /
+Quality / Directions; default Game's): the SSDO pass (ssdo00 0xD1106E8B, half resolution; decompiled from the DevKit
+dump, bit-identical to the game's on WARP with GT-VBAO off) runs the visibility bitmask (ssdo_bitmask.hlsli on
+twattila/bitmask.hlsli) on its own linear depth and normals in its camera space, and hands the game what its SSDO
+does: the direction toward what covers the pixel (world space, through SSDO_CameraMatrixInv) and the amount, in the
+units the tiled lighting (cs 0x897232B5, t5) turns into ambient (1 - 0.35 x amount x SSDOParams.z, at least 0.3), light
+and reflection occlusion; the terrain's large-scale LSDO is added as the game's. Positions from depth texel centres,
+off-screen samples skipped. WARP (tools\ryse\warp_ssdo): open floor 0.03, the floor in front of a wall 0.19 -> 0.05
+over a metre, pointing at the wall; the wall's foot pointing at the floor. **Contact Shadows** (0-1, Length, Thickness;
+default off; contact_shadows.hpp): before the tiled lighting, the sun's slice and channels from its light list (t32,
+lightType 8: 0x52C5E001), then a full-screen march toward the sun through its linear depth (0x52C5E002 / 0x52C5E003,
+its own camera constants: far-plane corners) max-blended into the shadow mask's slice 0 (1 = shadow), in the addon's
+own context state. WARP (tools\ryse\warp_contact): the floor beside a 0.5 m pole in shadow, farther floor, the other
+channels and slice 1 untouched. Not yet: SSR (the tiled lighting reads the game's SSR at t6: a hierarchical march could replace it).
+
+fix49 (ATN's batch, untested in game): **Light Bounce** (GT-VBGI; Light Bounce 0-2, default 0 = off, Radius, Quality,
+Directions, Resolution, Multi-Bounce, Denoiser; light_bounce.hpp): after the tiled lighting (on_drawn of cs
+0x897232B5), the Total War games' Light Bounce passes (twattila/light_bounce_*.hlsli: prepare + levels, visibility
+bitmask trace, temporal resolve, edge-aware denoiser, apply) on Ryse's G-buffer (light_bounce.hlsli: positions from
+PER_BATCH's far-plane corners x the linear depth t0, world normals t1 into a view space of the frustum's axes, albedo t3
+squared, the last frame's PER_BATCH for the history's reprojection), the lit HDR scene (u1, copied) as the light, the
+bounce x albedo added to u1 through a render target view, in the addon's own context state. AO Thickness is the
+occluders' thickness. GPU test (tools\ryse\light_bounce_test.cpp: floor + red-lit wall, 30 frames): the floor at the
+wall's foot 0.10 -> 0.49 red (green 0.11), near the camera 0.101, the sky untouched, the game's compute bindings back.
+
+fix50 (ATN's batch 2, tested in game: Ryse's first combat, DLSS + FG): **Sun Shadow Softness** (Contact Shadows
+section, 0-5 degrees, default 0 = the game's filter): contact-hardening sun shadows (PCSS,
+twshogun2completeedition/shaders/pcss.hlsli, now with a Texture2D version) in the sun shadow mask's cascade passes
+(sunshadow00-04: 0xE9264ADE, 0xB5DC6E36, 0xF2B4EF30, 0xF864A048, 0xF81C7168; CryEngine draws each cascade into the
+mask with a rotated 12-tap kernel, found with the one-frame trace: the five cascade draws before the tiled lighting,
+the far cached 16384 map 0x10C1DA12 keeps the game's filter). The blockers' depth around the receiver, the penumbra
+the sun's size makes across the gap, then a filter that wide (1-32 texels). The cascade's world scale comes from its
+screen-to-shadow basis (sun_shadow_pcss.hlsli: CryEngine's vWBasisX / Y / Z are the screen's pixel steps and corner ray
+in the cascade's space; the orthographic map's u and v rows are orthogonal with equal length in camera space, which
+gives the field of view's tangent, then texels per unit of depth), so every cascade gets the same world-size penumbra.
+In game at 3 degrees (an overcast scene): railing shadows on the floor softer, no acne or seams; 45 -> 43 fps.

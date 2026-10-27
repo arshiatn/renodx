@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -40,22 +41,35 @@
 // clear those pixels: the last frame's sky stays). During the next frame, before every draw, dispatch, clear and copy,
 // the texel at that position (scaled to each target's size) is copied from the targets of the command before, so every
 // command's result is known. Saved next to the exe as tales_pixel_trace.txt: each command that changed it, with its
-// shaders, the target's format and size and its shader's input textures.
+// shaders, the target's format and size and its shader's input textures. The texels of a horizontal line through the
+// position (LINE_WIDTH of each target) are copied too, so a halo's profile across a silhouette is known in every pass
+// of the same frame (ATN's character halo: the game cannot be paused, the character idles). Full-screen passes and
+// dispatches also save a square patch around the position (PATCH_WIDTH of each target's width) of each target, raw,
+// to tales_trace_patches next to the exe (patches.txt lists them): halos measured over an area, not a noisy line.
+// Other D3D11 games include it too (Pharaoh), their files named by file_prefix.
 namespace talesofarise::pixel_trace {
 
 using Microsoft::WRL::ComPtr;
 
-constexpr size_t MAX_SAMPLES = 20000;  // 1x1 staging copies per trace
+constexpr size_t MAX_SAMPLES = 20000;  // staging copies per trace (one line of texels each)
+constexpr float LINE_WIDTH = 0.0625f;  // of each target's width, centred on the position: 240 texels at 3840
+constexpr float PATCH_WIDTH = 0.125f;  // of each target's width, square, centred on the position: 480 texels at 3840
+constexpr size_t MAX_PATCHES = 400;
 constexpr size_t NO_SAMPLE = std::numeric_limits<size_t>::max();
 constexpr UINT TRACED_SLOTS = 8;
 constexpr UINT TRACED_INPUTS = 16;
+// <prefix>_pixel_trace.txt and <prefix>_trace_patches next to the exe.
+static std::string file_prefix = "tales";
 
 struct Target {
   ComPtr<ID3D11Texture2D> texture;
   UINT subresource = 0;
-  D3D11_BOX texel = {};
+  D3D11_BOX line = {};                       // one row of texels around the position
+  UINT center = 0;                           // the position's texel in `line`
+  D3D11_BOX patch = {};                      // a square of texels around the position
   DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;  // the command's view of it
-  std::string description;                   // slot, format, size, texel
+  std::string slot;
+  std::string description;  // slot, format, size, texels
   size_t before = NO_SAMPLE;
   size_t after = NO_SAMPLE;
 };
@@ -65,22 +79,33 @@ struct Command {
   std::string description;  // kind and shaders
   std::string inputs;       // its shader's textures
   std::vector<Target> targets;
+  bool full_screen = false;  // a full-screen draw or a dispatch: its targets' patches are saved
 };
 
 struct Sample {
   ComPtr<ID3D11Texture2D> staging;
-  uint32_t size = 0;                    // the texel's bytes (the rest of `bytes` stays 0)
-  std::array<uint8_t, 16> bytes = {};
+  uint32_t texel_size = 0;     // bytes per texel (at most 16)
+  std::vector<uint8_t> bytes;  // the line's texels
+};
+
+struct Patch {
+  ComPtr<ID3D11Texture2D> staging;
+  std::string name;         // file name
+  std::string description;  // command and target
+  DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+  D3D11_BOX box = {};
 };
 
 struct State {
   std::shared_mutex mutex;
+  std::atomic_bool active = false;  // requested or tracing: Present checks it without the lock
   bool requested = false;
   bool tracing = false;
   std::array<float, 2> requested_position = {};
   std::array<float, 2> position = {};  // 0-1 of each target's width and height
   std::vector<Command> commands;
   std::vector<Sample> samples;
+  std::vector<Patch> patches;
   std::map<std::pair<ID3D11Texture2D*, UINT>, size_t> latest;  // each texel's last sample
   uint32_t command_count = 0;
   std::string status = "No trace yet.";
@@ -179,8 +204,8 @@ inline std::string Decode(DXGI_FORMAT format, const std::array<uint8_t, 16>& byt
   return text + ")";
 }
 
-// `resource`'s texel at the traced position, as `view_format` sees it; false for anything but a single-sample 2D
-// texture.
+// `resource`'s line of texels at the traced position, as `view_format` sees it; false for anything but a single-sample
+// 2D texture.
 inline bool MakeTarget(ID3D11Resource* resource, UINT mip, UINT slice, DXGI_FORMAT view_format, const std::string& slot,
                        Target* target) {
   ComPtr<ID3D11Texture2D> texture;
@@ -192,23 +217,36 @@ inline bool MakeTarget(ID3D11Resource* resource, UINT mip, UINT slice, DXGI_FORM
   const UINT height = std::max(desc.Height >> mip, 1u);
   const UINT x = std::min(static_cast<UINT>(state.position[0] * static_cast<float>(width)), width - 1);
   const UINT y = std::min(static_cast<UINT>(state.position[1] * static_cast<float>(height)), height - 1);
+  const UINT half_line = static_cast<UINT>(LINE_WIDTH * 0.5f * static_cast<float>(width));
+  const UINT left = x - std::min(x, half_line);
+  const UINT right = std::min(x + half_line + 1, width);
+  const UINT half_patch = static_cast<UINT>(PATCH_WIDTH * 0.5f * static_cast<float>(width));
+  target->patch = {.left = x - std::min(x, half_patch),
+                   .top = y - std::min(y, half_patch),
+                   .front = 0,
+                   .right = std::min(x + half_patch, width),
+                   .bottom = std::min(y + half_patch, height),
+                   .back = 1};
+  target->slot = slot;
   target->format = (view_format != DXGI_FORMAT_UNKNOWN ? view_format : desc.Format);
-  target->description = std::format("{} {} {}x{}{}{} at {},{}", slot, FormatName(target->format), width, height,
+  target->description = std::format("{} {} {}x{}{}{} at {},{} (line x {}-{})", slot, FormatName(target->format), width, height,
                                     (mip != 0 ? std::format(" mip {}", mip) : std::string()),
-                                    (desc.ArraySize > 1 ? std::format(" slice {}", slice) : std::string()), x, y);
+                                    (desc.ArraySize > 1 ? std::format(" slice {}", slice) : std::string()), x, y, left,
+                                    right - 1);
   target->texture = std::move(texture);
   target->subresource = D3D11CalcSubresource(mip, slice, desc.MipLevels);
-  target->texel = {.left = x, .top = y, .front = 0, .right = x + 1, .bottom = y + 1, .back = 1};
+  target->line = {.left = left, .top = y, .front = 0, .right = right, .bottom = y + 1, .back = 1};
+  target->center = x - left;
   return true;
 }
 
-// A copy of the target's texel now, or NO_SAMPLE once MAX_SAMPLES are taken.
+// A copy of the target's line now, or NO_SAMPLE once MAX_SAMPLES are taken.
 inline size_t Copy(ID3D11DeviceContext* context, const Target& target) {
   if (state.samples.size() >= MAX_SAMPLES) return NO_SAMPLE;
   D3D11_TEXTURE2D_DESC desc = {};
   target.texture->GetDesc(&desc);
   const D3D11_TEXTURE2D_DESC staging_desc = {
-      .Width = 1,
+      .Width = target.line.right - target.line.left,
       .Height = 1,
       .MipLevels = 1,
       .ArraySize = 1,
@@ -221,11 +259,11 @@ inline size_t Copy(ID3D11DeviceContext* context, const Target& target) {
   };
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
-  Sample sample = {.size = std::min<uint32_t>(reshade::api::format_row_pitch(static_cast<reshade::api::format>(desc.Format), 1), 16)};
+  Sample sample = {.texel_size = std::min<uint32_t>(reshade::api::format_row_pitch(static_cast<reshade::api::format>(desc.Format), 1), 16)};
   if (device == nullptr || FAILED(device->CreateTexture2D(&staging_desc, nullptr, sample.staging.GetAddressOf()))) {
     return NO_SAMPLE;
   }
-  context->CopySubresourceRegion(sample.staging.Get(), 0, 0, 0, 0, target.texture.Get(), target.subresource, &target.texel);
+  context->CopySubresourceRegion(sample.staging.Get(), 0, 0, 0, 0, target.texture.Get(), target.subresource, &target.line);
   state.samples.push_back(std::move(sample));
   return state.samples.size() - 1;
 }
@@ -236,15 +274,45 @@ inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) 
   return native;
 }
 
+// The last command's targets now hold its result: their lines, and patches of a full-screen pass.
+inline void Finish(ID3D11DeviceContext* context) {
+  if (state.commands.empty()) return;
+  auto& command = state.commands.back();
+  for (auto& target : command.targets) {
+    target.after = Copy(context, target);
+    state.latest[{target.texture.Get(), target.subresource}] = target.after;
+    if (!command.full_screen || state.patches.size() >= MAX_PATCHES) continue;
+    D3D11_TEXTURE2D_DESC desc = {};
+    target.texture->GetDesc(&desc);
+    const D3D11_TEXTURE2D_DESC staging_desc = {
+        .Width = target.patch.right - target.patch.left,
+        .Height = target.patch.bottom - target.patch.top,
+        .MipLevels = 1,
+        .ArraySize = 1,
+        .Format = desc.Format,
+        .SampleDesc = {.Count = 1, .Quality = 0},
+        .Usage = D3D11_USAGE_STAGING,
+        .BindFlags = 0,
+        .CPUAccessFlags = D3D11_CPU_ACCESS_READ,
+        .MiscFlags = 0,
+    };
+    ComPtr<ID3D11Device> device;
+    context->GetDevice(device.GetAddressOf());
+    Patch patch = {.name = std::format("{:04}_{}.bin", command.index, target.slot),
+                   .description = std::format("{} | {}", command.description, target.description),
+                   .format = target.format,
+                   .box = target.patch};
+    if (device == nullptr || FAILED(device->CreateTexture2D(&staging_desc, nullptr, patch.staging.GetAddressOf()))) continue;
+    context->CopySubresourceRegion(patch.staging.Get(), 0, 0, 0, 0, target.texture.Get(), target.subresource, &target.patch);
+    state.patches.push_back(std::move(patch));
+  }
+}
+
 // The command before's targets now hold its result; then this command's targets (their texels before it, unless a
 // command before already wrote them).
-inline void Record(ID3D11DeviceContext* context, std::string description, std::string inputs, std::vector<Target> targets) {
-  if (!state.commands.empty()) {
-    for (auto& target : state.commands.back().targets) {
-      target.after = Copy(context, target);
-      state.latest[{target.texture.Get(), target.subresource}] = target.after;
-    }
-  }
+inline void Record(ID3D11DeviceContext* context, std::string description, std::string inputs, std::vector<Target> targets,
+                   bool full_screen) {
+  Finish(context);
   for (auto& target : targets) {
     const auto key = std::make_pair(target.texture.Get(), target.subresource);
     const auto known = state.latest.find(key);
@@ -252,7 +320,7 @@ inline void Record(ID3D11DeviceContext* context, std::string description, std::s
     state.latest[key] = target.before;
   }
   state.commands.push_back({.index = state.command_count, .description = std::move(description), .inputs = std::move(inputs),
-                            .targets = std::move(targets)});
+                            .targets = std::move(targets), .full_screen = full_screen});
 }
 
 // The shader's input textures (t0-t15), for the log.
@@ -285,7 +353,7 @@ std::string Inputs(GetResources get_resources) {
   return inputs;
 }
 
-inline void OnGraphics(reshade::api::command_list* cmd_list, const char* kind) {
+inline void OnGraphics(reshade::api::command_list* cmd_list, const char* kind, bool full_screen) {
   const std::unique_lock lock(state.mutex);
   if (!state.tracing) return;
   ++state.command_count;  // every command, also those without a traced target
@@ -321,7 +389,7 @@ inline void OnGraphics(reshade::api::command_list* cmd_list, const char* kind) {
   const auto pixel = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
   Record(context, std::format("{} vs 0x{:08X} ps 0x{:08X}", kind, vertex, pixel),
          Inputs([&](ID3D11ShaderResourceView** views) { context->PSGetShaderResources(0, TRACED_INPUTS, views); }),
-         std::move(targets));
+         std::move(targets), full_screen);
 }
 
 inline void OnCompute(reshade::api::command_list* cmd_list, const char* kind) {
@@ -359,7 +427,7 @@ inline void OnCompute(reshade::api::command_list* cmd_list, const char* kind) {
   const auto compute = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::compute_shader);
   Record(context, std::format("{} cs 0x{:08X}", kind, compute),
          Inputs([&](ID3D11ShaderResourceView** views) { context->CSGetShaderResources(0, TRACED_INPUTS, views); }),
-         std::move(targets));
+         std::move(targets), true);
 }
 
 // A clear or copy into `resource` (subresource `subresource`).
@@ -375,7 +443,7 @@ inline void OnWrite(reshade::api::command_list* cmd_list, ID3D11Resource* resour
   texture->GetDesc(&desc);
   std::vector<Target> targets(1);
   if (!MakeTarget(resource, subresource % desc.MipLevels, subresource / desc.MipLevels, view_format, "dest", targets.data())) return;
-  Record(context, description, {}, std::move(targets));
+  Record(context, description, {}, std::move(targets), false);
 }
 
 inline std::string SourceName(reshade::api::resource source) {
@@ -387,13 +455,13 @@ inline std::string SourceName(reshade::api::resource source) {
   return std::format("{} {}x{}", FormatName(desc.Format), desc.Width, desc.Height);
 }
 
-inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
-  OnGraphics(cmd_list, "draw");
+inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t, uint32_t, uint32_t) {
+  OnGraphics(cmd_list, "draw", vertex_count == 3);
   return false;
 }
 
-inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
-  OnGraphics(cmd_list, "draw indexed");
+inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t, int32_t, uint32_t) {
+  OnGraphics(cmd_list, "draw indexed", index_count == 3);
   return false;
 }
 
@@ -407,7 +475,7 @@ inline bool OnIndirect(reshade::api::command_list* cmd_list, reshade::api::indir
   if (type == reshade::api::indirect_command::dispatch) {
     OnCompute(cmd_list, "dispatch indirect");
   } else {
-    OnGraphics(cmd_list, "draw indirect");
+    OnGraphics(cmd_list, "draw indirect", false);
   }
   return false;
 }
@@ -497,6 +565,7 @@ inline void Request(float x, float y) {
   const std::unique_lock lock(state.mutex);
   if (state.tracing) return;
   state.requested = true;
+  state.active.store(true);
   state.requested_position = {x, y};
   state.status = "Waiting for the next frame...";
 }
@@ -509,16 +578,19 @@ inline std::string Status() {
 // Stops tracing without a result (unload).
 inline void Stop() {
   const std::unique_lock lock(state.mutex);
+  state.active.store(false);
   if (!state.tracing) return;
   Events(false);
   state.tracing = false;
   state.commands.clear();
   state.samples.clear();
+  state.patches.clear();
   state.latest.clear();
 }
 
 // At each Present (before it): starts a requested trace for the next frame, or ends the running one and saves it.
 inline void OnPresent(reshade::api::command_queue* queue) {
+  if (!state.active.load()) return;
   const std::unique_lock lock(state.mutex);
   if (!state.tracing) {
     if (!state.requested) return;
@@ -527,6 +599,7 @@ inline void OnPresent(reshade::api::command_queue* queue) {
     state.position = state.requested_position;
     state.commands.clear();
     state.samples.clear();
+    state.patches.clear();
     state.latest.clear();
     state.command_count = 0;
     Events(true);
@@ -534,45 +607,83 @@ inline void OnPresent(reshade::api::command_queue* queue) {
   }
   Events(false);
   state.tracing = false;
+  state.active.store(false);
   ID3D11DeviceContext* context = NativeContext(queue->get_immediate_command_list());
-  if (context != nullptr && !state.commands.empty()) {
-    for (auto& target : state.commands.back().targets) target.after = Copy(context, target);
-  }
+  if (context != nullptr) Finish(context);
   for (auto& sample : state.samples) {
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (context == nullptr || FAILED(context->Map(sample.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) continue;
-    std::memcpy(sample.bytes.data(), mapped.pData, sample.size);
+    D3D11_TEXTURE2D_DESC desc = {};
+    sample.staging->GetDesc(&desc);
+    const auto* row = static_cast<const uint8_t*>(mapped.pData);
+    sample.bytes.assign(row, row + (static_cast<size_t>(sample.texel_size) * desc.Width));
     context->Unmap(sample.staging.Get(), 0);
     sample.staging.Reset();
   }
   std::array<wchar_t, MAX_PATH> exe = {};
   GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
-  const auto path = std::filesystem::path(exe.data()).parent_path() / "tales_pixel_trace.txt";
+  const auto path = std::filesystem::path(exe.data()).parent_path() / (file_prefix + "_pixel_trace.txt");
   std::ofstream file(path);
   file << std::format("Pixel trace at {:.1f}% x {:.1f}% of each target ({} commands, {} with traced targets, {} texel copies{}).\n",
                       state.position[0] * 100.f, state.position[1] * 100.f, state.command_count, state.commands.size(),
                       state.samples.size(), (state.samples.size() >= MAX_SAMPLES ? ", limit reached: later values unknown" : ""))
-       << "Each line: command number, what it is (shader hashes), the target it changed, its texel before -> after, and the\n"
-       << "shader's input textures.\n\n";
+       << "Each change: command number, what it is (shader hashes), the target it changed, its texel at the position\n"
+       << "before -> after, and the shader's input textures; then the line's texels after it, left to right.\n\n";
   size_t changed = 0;
   for (const auto& command : state.commands) {
     for (const auto& target : command.targets) {
       if (target.before == NO_SAMPLE || target.after == NO_SAMPLE) continue;
-      const auto& before = state.samples[target.before].bytes;
-      const auto& after = state.samples[target.after].bytes;
-      if (before == after) continue;
+      const auto& before = state.samples[target.before];
+      const auto& after = state.samples[target.after];
+      if (before.bytes == after.bytes) continue;
       ++changed;
+      const auto texel = [&](const Sample& sample, size_t index) {
+        std::array<uint8_t, 16> bytes = {};
+        const size_t offset = index * sample.texel_size;
+        if (offset + sample.texel_size <= sample.bytes.size()) {
+          std::memcpy(bytes.data(), sample.bytes.data() + offset, sample.texel_size);
+        }
+        return Decode(target.format, bytes);
+      };
       file << std::format("#{} {} | {} | {} -> {}", command.index, command.description, target.description,
-                          Decode(target.format, before), Decode(target.format, after));
+                          texel(before, target.center), texel(after, target.center));
       if (!command.inputs.empty()) file << " | " << command.inputs;
+      file << "\n  line";
+      for (size_t index = 0; index < after.bytes.size() / std::max(after.texel_size, 1u); ++index) {
+        file << " " << texel(after, index);
+      }
       file << "\n";
     }
   }
+  // Patches: header (width, height, DXGI format as the pass saw it, bytes per texel; uint32 each), then the rows.
+  const auto folder = path.parent_path() / (file_prefix + "_trace_patches");
+  std::error_code error;
+  std::filesystem::remove_all(folder, error);
+  std::filesystem::create_directories(folder, error);
+  std::ofstream index(folder / "patches.txt");
+  index << "Each patch: file | command | target | patch's top left texel in the target.\n";
+  for (auto& patch : state.patches) {
+    D3D11_TEXTURE2D_DESC desc = {};
+    patch.staging->GetDesc(&desc);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (context == nullptr || FAILED(context->Map(patch.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) continue;
+    const uint32_t texel_size = reshade::api::format_row_pitch(static_cast<reshade::api::format>(desc.Format), 1);
+    const std::array<uint32_t, 4> header = {desc.Width, desc.Height, static_cast<uint32_t>(patch.format), texel_size};
+    std::ofstream data(folder / patch.name, std::ios::binary);
+    data.write(reinterpret_cast<const char*>(header.data()), sizeof(header));
+    for (UINT row = 0; row < desc.Height; ++row) {
+      data.write(static_cast<const char*>(mapped.pData) + (static_cast<size_t>(row) * mapped.RowPitch),
+                 static_cast<std::streamsize>(static_cast<size_t>(texel_size) * desc.Width));
+    }
+    context->Unmap(patch.staging.Get(), 0);
+    index << std::format("{} | {} | {},{}\n", patch.name, patch.description, patch.box.left, patch.box.top);
+  }
   state.commands.clear();
   state.samples.clear();
+  state.patches.clear();
   state.latest.clear();
-  state.status = std::format("Saved {} changes of the pixel to {}.", changed, path.string());
-  renodx::utils::log::i("[Tales pixel trace] ", state.status);
+  state.status = std::format("Saved {} changes of the pixels to {}.", changed, path.string());
+  renodx::utils::log::i("[Pixel trace] ", state.status);
 }
 
 }  // namespace talesofarise::pixel_trace

@@ -8,7 +8,7 @@ struct ShaderInjectData {
   float gamma_correction;
   // float custom_brightness;
   float peak_test;
-  float swap_chain_encoding;
+  float swap_chain_encoding;  // 0 HDR10, 1 scRGB, 2 SDR (gamma 2.2; Peak, Paper White and UI unused)
   // float whiteclip;
 
   // float dof;
@@ -66,6 +66,55 @@ struct ShaderInjectData {
   // Appended.
   float dof;  // DOF Low strength (HDR)
   float hue_shift;  // PsychoV30 highlight hue shift: 0 none, 1 Test30, 2 full
+
+  // PsychoV31 (Rendering Mode 2), appended.
+  float v31_exposure;
+  float v31_highlights;
+  float v31_shadows;
+  float v31_contrast;
+  float v31_highlight_contrast;          // above mid gray, 1 V31's own
+  float v31_shadow_contrast;             // below mid gray, 1 V31's own
+  float v31_flare;                       // 0 none, deeper blacks above it
+  float v31_saturation;
+  float v31_dechroma;                    // 0 none, bright colors toward white above it
+  float v31_highlight_saturation;
+  float v31_roll_off;                    // 0 latest, 1 default, 2 soonest
+  float v31_gamut_compression;           // 0 none (the display clips), 1 full
+  float v31_gamut_compression_mode;      // V31's target: 0 BT.709, 1 BT.2020, 3 Display P3
+  float v31_highlight_hue_shift;         // hue toward the SDR image's above mid gray, 0 - 1
+  float v31_highlight_saturation_shift;  // saturation toward the SDR image's, as the hue shift, 0 - 1
+  // Appended (round 3).
+  float video_autohdr;    // AutoHDR on the videos: 0 SDR, 1 video white at Peak
+  float video_dithering;  // 1: 1 code value of dither before the video AutoHDR
+  float ssao_mode;        // 0 the game's ambient occlusion, 1 visibility bitmask
+  float ssao_strength;    // visibility bitmask: x the game's strength
+  float ssao_radius;      // visibility bitmask: x the game's radius
+  float ssao_thickness;   // visibility bitmask: metres behind each depth sample (more far away)
+
+  // Appended.
+  float ssao_quality;           // visibility bitmask: 8 x 2^this samples per side
+  float light_bounce_strength;  // Light Bounce (twattila/light_bounce.hpp): x the bounced light, 0 off
+  float light_bounce_radius;    // Light Bounce: metres
+  float ssao_directions;        // visibility bitmask: 2^this directions around the view
+  float ssao_auto_thickness;  // visibility bitmask: 1 each occluder as thick as it is wide (experiment)
+  float ssao_denoise;  // visibility bitmask: 1 the Denoiser (twattila/ao_pass.hpp)
+  float ssao_scale;  // visibility bitmask: the game's size over its own (set from the Resolution each frame)
+  float ssao_resolution;  // visibility bitmask: 0 full, 1 half resolution (twattila/ao_pass.hpp)
+  float light_bounce_quality;     // Light Bounce: 8 x 2^this samples per side of a direction
+  float light_bounce_directions;  // Light Bounce: 2^this directions
+  float light_bounce_resolution;  // Light Bounce: traced at 1 / 2^this of the resolution
+  float light_bounce_temporal;    // Light Bounce: 1 the last frames kept
+  float light_bounce_multi_bounce;  // Light Bounce: share of the last frame's bounce bounced again
+  float light_bounce_checkerboard;  // Light Bounce: 1 half the texels traced each frame (temporal)
+  float light_bounce_msaa_pixel;  // Light Bounce: 1 with the game's MSAA the apply once per pixel
+  float light_bounce_backface;  // Light Bounce: 1 back faces rejected (experiment)
+  float light_bounce_auto_thickness;  // Light Bounce: 1 each occluder as thick as it is wide
+  float light_bounce_denoise;  // Light Bounce: 1 the Denoiser
+  float ssao_temporal;            // visibility bitmask: 1 the last frames kept (twattila/ao_pass.hpp)
+  float ssao_frame;               // its noise's frame, 0-63 (0: off)
+  float ssao_edge_fix;            // visibility bitmask: 1 Temporal Smoothing's outlines from one history texel
+  float ssr_hierarchical;         // the water's reflections: 1 the hierarchical march (twattila/ssr_march.hlsli)
+  float sky_deband;               // the sky's debanding and dither (twattila/sky.hlsli): 0 off, 1-3 low / medium / high
 };
 
 #define SI shader_injection
@@ -133,6 +182,20 @@ cbuffer shader_injection : register(b13) {
 #endif
   ShaderInjectData shader_injection : packoffset(c0);
 }
+
+// SDR output (Output: SDR, displays without HDR): Peak, Paper White and UI white are all the display's white, so every
+// tone mapper and paper white scale lands in SDR; the proxy encodes gamma 2.2.
+ShaderInjectData OutputShaderInjection(ShaderInjectData data) {
+  [flatten]
+  if (data.swap_chain_encoding == 2.f) {
+    data.peak_white_nits = 100.f;
+    data.diffuse_white_nits = 100.f;
+    data.graphics_white_nits = 100.f;
+  }
+  return data;
+}
+#undef SI
+#define SI OutputShaderInjection(shader_injection)
 
 #include "../../shaders/renodx.hlsl"
 

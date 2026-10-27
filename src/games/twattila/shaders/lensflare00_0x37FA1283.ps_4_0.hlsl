@@ -14,22 +14,8 @@ Texture2D<float4> lense_flare_1_sampler : register(t0);
 
 // 3Dmigoto declarations
 #define cmp -
-#include "../shared.h"
+#include "../lensflare.hlsli"
 
-
-float4 ApplyAttilaLensFlare(float4 stock_color)
-{
-  // Restore the UNORM clamp lost to the FP16 upgrade.
-  float4 flare = saturate(stock_color);
-
-  // Made for a 2.2 screen (ignores in-game gamma); the frame is 2.0. Scale in linear.
-  float3 flare_linear = renodx::color::gamma::DecodeSafe(flare.xyz);
-  flare_linear *= (HDR == 1.f ? SI.lensflare : 1.f)
-                * (SI.diffuse_white_nits / SI.graphics_white_nits);
-  flare.xyz = renodx::color::gamma::EncodeSafe(flare_linear, 2.0f);
-
-  return flare;
-}
 
 void main(
   float4 v0 : SV_Position0,

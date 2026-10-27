@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -53,6 +54,9 @@ static bool use_presets = true;
 static SettingStyle preset_style = SettingStyle::DEFAULT;
 static bool open_sections_by_default = true;
 static std::vector<std::string> default_open_sections;
+// Opt-in: a section title's text colour (HEX notation), by section name; the others in default_section_tint if set.
+static std::vector<std::pair<std::string, uint32_t>> section_tints;
+static std::optional<uint32_t> default_section_tint;
 static std::string overlay_title = NAME;
 static std::string global_name = "renodx";
 static int preset_index = 1;
@@ -613,6 +617,13 @@ static void OnRegisterOverlay(reshade::api::effect_runtime* runtime) {
         ImGui::Indent();
         ImGui::TreePop();
       }
+      const auto listed_tint = std::ranges::find(section_tints, setting->section,
+                                                 &std::pair<std::string, uint32_t>::first);
+      const std::optional<uint32_t> section_tint =
+          (listed_tint != section_tints.end() ? std::optional<uint32_t>(listed_tint->second) : default_section_tint);
+      if (section_tint.has_value()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4FromHex(section_tint.value()));
+      }
       open_node = ImGui::TreeNodeEx(
           setting->section.c_str(),
           ImGuiTreeNodeFlags_SpanFullWidth
@@ -623,6 +634,9 @@ static void OnRegisterOverlay(reshade::api::effect_runtime* runtime) {
                                 != default_open_sections.end()
                      ? ImGuiTreeNodeFlags_DefaultOpen
                      : ImGuiTreeNodeFlags_None));
+      if (section_tint.has_value()) {
+        ImGui::PopStyleColor();
+      }
       if (open_node) {
         ImGui::Unindent();
       }

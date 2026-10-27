@@ -25,6 +25,7 @@
 
 #include <nvsdk_ngx.h>
 #include <nvsdk_ngx_helpers.h>
+#include <nvsdk_ngx_helpers_dlssd.h>
 #include <include/reshade.hpp>
 
 #include "../../utils/directx.hpp"
@@ -94,6 +95,19 @@ enum class Mode : uint8_t {
   DLSS_ULTRA_QUALITY,  // about 77%, on NVIDIA's Quality model
 };
 
+// DLSS Ray Reconstruction's guides (the render size; world-space normals, read through `world_to_view`): with them
+// rr_d3d12.hpp runs NVIDIA's denoising upscaler (nvngx_dlssd.dll next to nvngx_dlss.dll) in place of Super Resolution.
+struct RayReconstruction {
+  ID3D11Resource* diffuse_albedo = nullptr;
+  ID3D11Resource* specular_albedo = nullptr;
+  ID3D11Resource* normals = nullptr;
+  ID3D11Resource* roughness = nullptr;
+  std::array<float, 16> world_to_view = {};  // row-major (row vectors); view x right, y up, z forward
+  std::array<float, 16> view_to_clip = {};
+  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset (D, E; Default lets NVIDIA choose).
+  uint32_t preset = NVSDK_NGX_RayReconstruction_Hint_Render_Preset_Default;
+};
+
 struct Evaluation {
   ID3D11Resource* color = nullptr;
   ID3D11Resource* depth = nullptr;
@@ -112,13 +126,27 @@ struct Evaluation {
   Mode mode = Mode::DLAA;
   // NVSDK_NGX_DLSS_Hint_Render_Preset; Default lets NVIDIA choose per mode.
   uint32_t preset = NVSDK_NGX_DLSS_Hint_Render_Preset_Default;
+  // NVSDK_NGX_DLSS_Feature_Flags (UE's: HDR colour, reversed depth, render-size motion vectors, auto exposure).
+  int create_flags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_DepthInverted
+                     | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
 };
+
+// The NGX project DLSS (here) and DLSS Frame Generation (Streamline, frame_generation.hpp) run under: they must match.
+inline constexpr char PROJECT_ID[] = "1a688a59-20b4-48a1-9b9b-fd28bd910ec8";
+
+// At process exit (addons unload, the game never released its device) NVIDIA's threads and module state are gone:
+// releasing crashes inside NGX. The process frees everything anyway. (Ryse DLSS.)
+inline bool ShutdownInProgress() {
+  using DllShutdownInProgress = BOOLEAN(NTAPI*)();
+  static const auto shutdown_in_progress = reinterpret_cast<DllShutdownInProgress>(
+      GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlDllShutdownInProgress"));
+  return shutdown_in_progress != nullptr && shutdown_in_progress() != FALSE;
+}
 
 // Evaluate/Reset must be serialized by the adapter, outside the loader lock.
 // The caller owns complete D3D11 state restoration and a private output resource.
 class Backend {
  private:
-  static constexpr char PROJECT_ID[] = "1a688a59-20b4-48a1-9b9b-fd28bd910ec8";
   Microsoft::WRL::ComPtr<ID3D11Device> device_;
   NVSDK_NGX_Parameter* parameters_ = nullptr;
   NVSDK_NGX_Handle* feature_ = nullptr;
@@ -130,6 +158,7 @@ class Backend {
   uint32_t output_height_ = 0;
   Mode mode_ = Mode::DLAA;
   uint32_t preset_ = NVSDK_NGX_DLSS_Hint_Render_Preset_Default;
+  int create_flags_ = 0;
   bool initialized_ = false;
   bool failed_ = false;
   bool first_frame_ = true;
@@ -165,6 +194,7 @@ class Backend {
     output_height_ = std::exchange(other.output_height_, 0);
     mode_ = std::exchange(other.mode_, Mode::DLAA);
     preset_ = std::exchange(other.preset_, NVSDK_NGX_DLSS_Hint_Render_Preset_Default);
+    create_flags_ = std::exchange(other.create_flags_, 0);
     initialized_ = std::exchange(other.initialized_, false);
     failed_ = std::exchange(other.failed_, false);
     first_frame_ = std::exchange(other.first_frame_, true);
@@ -174,12 +204,7 @@ class Backend {
   ~Backend() { Reset(); }
 
   void Reset() {
-    // At process exit (addons unload, the game never released its device) NVIDIA's threads and module
-    // state are gone: releasing crashes inside NGX. The process frees everything anyway. (Ryse DLSS.)
-    using DllShutdownInProgress = BOOLEAN(NTAPI*)();
-    static const auto shutdown_in_progress = reinterpret_cast<DllShutdownInProgress>(
-        GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlDllShutdownInProgress"));
-    if (shutdown_in_progress != nullptr && shutdown_in_progress() != FALSE) {
+    if (ShutdownInProgress()) {
       feature_ = nullptr;
       parameters_ = nullptr;
       initialized_ = false;
@@ -221,6 +246,15 @@ class Backend {
 
   const char* Status() const {
     return status_.load(std::memory_order_relaxed);
+  }
+
+  // The feature freed (Ray Reconstruction runs instead: its memory); the next evaluation makes it again.
+  void ReleaseFeature() {
+    if (feature_ == nullptr) return;
+    if (const auto result = NVSDK_NGX_D3D11_ReleaseFeature(feature_); NVSDK_NGX_FAILED(result)) {
+      LogResult("ReleaseFeature", result);
+    }
+    feature_ = nullptr;
   }
 
   bool Failed() const {
@@ -431,7 +465,7 @@ class Backend {
 
     if (feature_ == nullptr || width_ != evaluation.width || height_ != evaluation.height
         || output_width_ != output_width || output_height_ != output_height || mode_ != evaluation.mode
-        || preset_ != evaluation.preset) {
+        || preset_ != evaluation.preset || create_flags_ != evaluation.create_flags) {
       struct Settings {
         NVSDK_NGX_PerfQuality_Value quality = NVSDK_NGX_PerfQuality_Value_DLAA;
         unsigned int width = 0;
@@ -546,10 +580,7 @@ class Backend {
                       .InTargetWidth = output_width,
                       .InTargetHeight = output_height,
                       .InPerfQualityValue = selected.quality},
-          .InFeatureCreateFlags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR
-                                  | NVSDK_NGX_DLSS_Feature_Flags_DepthInverted
-                                  | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes
-                                  | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure,
+          .InFeatureCreateFlags = evaluation.create_flags,
           .InEnableOutputSubrects = false,
       };
       const char* feature_name = "Created native-resolution DLAA";
@@ -593,6 +624,7 @@ class Backend {
       output_height_ = output_height;
       mode_ = evaluation.mode;
       preset_ = evaluation.preset;
+      create_flags_ = evaluation.create_flags;
       first_frame_ = true;
       LogResult(feature_name, result);
       std::ostringstream message;
