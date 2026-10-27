@@ -624,6 +624,11 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Leaves, cloth and sails let some sunlight through ray-traced shadows (where they reach past the game's).",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          // Shown where the scene has alpha-tested leaves or cloth (Warhammer III's has neither).
+          .is_visible = [] {
+            return std::ranges::any_of(internal::scene_shaders,
+                                       [](const SceneShader& shader) { return (shader.foliage && !shader.dynamic) || shader.thin; });
+          },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAmbientOcclusion",

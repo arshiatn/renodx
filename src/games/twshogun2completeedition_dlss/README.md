@@ -466,3 +466,8 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
 
 - Ray-traced point light shadows, ray-traced reflections (samples 1-8), AO at a quarter rate; path tracing with the
   Global Illumination or the reflections (HDR addon v63).
+
+## v57: Light through leaves
+
+- Ray tracing: **Light through leaves** (with ray-traced sun shadows, HDR addon v64): leaves let a quarter of the
+  sun through each where the rays are the shadow.

@@ -279,3 +279,7 @@ colour), and the game's HDR scene at the end of the frame is kept for the next f
 black light (no scene colour was kept). helper21 (in the zip): the last zip's helper19 stalled each request (its
 partitioned TLAS, now off); ReSTIR GI for Path Tracing (about a quarter of the noise). Needs DLSS addon v115 for the
 Light Bounce with the raised light limit (below).
+
+fix53 (ATN's batch 5, untested in game; the helper GPU-tested): helper22 (in the zip; bridge v11): ReSTIR GI v2
+(compared with Embark Studios' kajiya, MIT / Apache 2.0, not copied: a light switched on or off shows within 3
+frames), the partitioned TLAS fixed and on again.

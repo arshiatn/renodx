@@ -603,6 +603,18 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v64: batch 5 (untested in game; the helper GPU-tested)
+
+- renodx-tw-dlaa64.exe **helper22** (in the zip; bridge v11, needs this addon): **ReSTIR GI v2** (compared with
+  Embark Studios' kajiya, MIT / Apache 2.0, not copied): fireflies clamped, history only on a surface facing the same
+  way, and every third frame the reused light is checked again: a light switched on or off shows within 3 frames
+  (was about 20). **Partitioned TLAS** fixed (its update operations stalled the GPU after BLAS compaction) and on
+  again.
+- **Light Through Leaves** (off by default, with Ray-Traced Sun Shadows): leaves let a quarter of the sun through
+  each, only where the rays are the shadow (past the game's own shadow maps).
+- With Ray-traced point light shadows on, the point lights' light also reaches what the Light Bounce / Path
+  Tracing meets off screen.
+
 ## v63: ray-traced reflections and point light shadows (untested in game; the helper GPU-tested)
 
 - **Ray-traced reflections** (DLSS addon v56; needs the game's screen-space reflections on): in the reflections'

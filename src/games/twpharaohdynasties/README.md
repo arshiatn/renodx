@@ -2,6 +2,17 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twpharaohdynasties.addon64`.
 
+## v37 (2026-10-27, batch 5, untested in game; the helper GPU-tested)
+
+- renodx-tw-dlaa64.exe **helper22** (in the zip; bridge v11, needs this addon): **ReSTIR GI v2** (compared with
+  Embark Studios' kajiya, MIT / Apache 2.0, not copied): fireflies clamped, history only on a surface facing the same
+  way, and every third frame the reused light is checked again: a light switched on or off shows within 3 frames
+  (was about 20). **Partitioned TLAS** fixed (its update operations stalled the GPU after BLAS compaction) and on
+  again. **Mesh instancing**: instanced draws build one BLAS placed once per instance.
+- **Light Through Leaves** (off by default, with Ray-Traced Sun Shadows): leaves let a quarter of the sun through
+  each, cloth and sails about a third; only where the rays are the shadow (past the game's own shadow maps).
+- **Ray-Traced Grass** now has Pharaoh's grass to capture (grass.hlsl, its blades every frame).
+
 ## v36 (2026-10-27, untested in game; the helper GPU-tested)
 
 - renodx-tw-dlaa64.exe **helper21** (in the zip). Fix: the last zip's helper19 built a partitioned TLAS (NVAPI) that

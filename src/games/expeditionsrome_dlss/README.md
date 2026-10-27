@@ -941,3 +941,7 @@ v27 (ATN's batch 4, untested in game; the helper GPU-tested): **Ambient occlusio
 2 x 2 traced a frame, in turn: a quarter of the rays). Less CPU work a frame (static meshes the scene holds only marked
 drawn). helper21 (in the zip): the last zip's helper19 stalled each request (its partitioned TLAS, now off); ReSTIR GI
 for Path Tracing (about a quarter of the noise).
+
+v28 (ATN's batch 5, untested in game; the helper GPU-tested): helper22 (in the zip; bridge v11): ReSTIR GI v2
+(compared with Embark Studios' kajiya, MIT / Apache 2.0, not copied: a light switched on or off shows within 3
+frames), the partitioned TLAS fixed and on again.
