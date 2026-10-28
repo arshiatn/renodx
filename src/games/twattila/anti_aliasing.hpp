@@ -209,6 +209,9 @@ struct DeviceObjects {
   Method method = Method::OFF;
   ComPtr<ID3D11Texture2D> color;
   ComPtr<ID3D11ShaderResourceView> color_srv;
+  // DLAA: the tone mapper's output read as it is (no copy into `color`) where it can be: its view, by its texture.
+  ComPtr<ID3D11Texture2D> frame_texture;
+  ComPtr<ID3D11ShaderResourceView> frame_srv;
   ComPtr<ID3D11Texture2D> result;
   ComPtr<ID3D11UnorderedAccessView> result_uav;
   ComPtr<ID3D11UnorderedAccessView> smaa_edges_uav;
@@ -697,6 +700,8 @@ inline bool PrepareSize(ID3D11Device* device, UINT width, UINT height, DXGI_FORM
   objects.width = 0;
   objects.color.Reset();
   objects.color_srv.Reset();
+  objects.frame_texture.Reset();
+  objects.frame_srv.Reset();
   objects.result.Reset();
   objects.result_uav.Reset();
   objects.smaa_edges_uav.Reset();
@@ -952,7 +957,35 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   native->CSSetConstantBuffers(0, 2, constants.data());
   const std::array<ID3D11SamplerState*, 2> samplers = {objects.linear_clamp.Get(), objects.point_clamp.Get()};
   native->CSSetSamplers(0, 2, samplers.data());
-  native->CopyResource(objects.color.Get(), target);
+  // The frame: DLAA reads the tone mapper's output itself where it can be read (its render targets off meanwhile: D3D11
+  // drops a view of a texture still bound for output), the rest a copy (a 4K copy less: ~0.1 ms).
+  ID3D11ShaderResourceView* frame_view = objects.color_srv.Get();
+  std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
+  ComPtr<ID3D11DepthStencilView> game_depth_target;
+  bool targets_off = false;
+  if (method == Method::DLAA) {
+    if (objects.frame_texture.Get() != target) {
+      objects.frame_texture = target;
+      objects.frame_srv.Reset();
+      D3D11_TEXTURE2D_DESC target_desc = {};
+      target->GetDesc(&target_desc);
+      const D3D11_SHADER_RESOURCE_VIEW_DESC frame_desc = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                                          .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+                                                          .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
+      if ((target_desc.BindFlags & D3D11_BIND_SHADER_RESOURCE) != 0) {
+        device->CreateShaderResourceView(target, &frame_desc, objects.frame_srv.GetAddressOf());
+      }
+    }
+    if (objects.frame_srv) {
+      native->OMGetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), game_depth_target.GetAddressOf());
+      native->OMSetRenderTargets(0, nullptr, nullptr);
+      targets_off = true;
+      frame_view = objects.frame_srv.Get();
+    }
+  }
+  if (!targets_off) {
+    native->CopyResource(objects.color.Get(), target);
+  }
 
   if (method == Method::SMAA || t2x) {
     bind(objects.smaa_edges.Get(), {objects.color_srv.Get()}, {objects.smaa_edges_uav.Get()});
@@ -1019,7 +1052,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     object_motion::Resolve(native, runtime.frame);
     const auto object_motion_views = object_motion::Target(runtime.frame);
     bind(objects.dlaa_prepare.Get(),
-         {objects.color_srv.Get(), depth_view, object_motion_views.redrawn.Get(), object_motion_views.drawn_motion.Get(),
+         {frame_view, depth_view, object_motion_views.redrawn.Get(), object_motion_views.drawn_motion.Get(),
           object_motion_views.drawn_depth.Get()},
          {dlaa_bridge::bridge.color.uav.Get(), dlaa_bridge::bridge.depth.uav.Get(), dlaa_bridge::bridge.motion.uav.Get()});
     native->Dispatch((input_width + 7) / 8, (input_height + 7) / 8, 1);
@@ -1048,7 +1081,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
                                      runtime.settings.dlaa_preset, reconstruct ? &reconstruction : nullptr);
     if (resolved) {
       bind(objects.dlaa_finish.Get(),
-           {dlaa_bridge::bridge.output.srv.Get(), objects.color_srv.Get(), dlaa_bridge::bridge.motion.srv.Get(),
+           {dlaa_bridge::bridge.output.srv.Get(), frame_view, dlaa_bridge::bridge.motion.srv.Get(),
             object_motion_views.redrawn.Get(), depth_view, object_motion_views.drawn_motion.Get(),
             object_motion_views.drawn_depth.Get()},
            {objects.result_uav.Get()});
@@ -1089,6 +1122,12 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   if (resolved) native->CopyResource(target, objects.result.Get());
   if (generation) {
     frame_generation::KeepFrame(native, target, *generation);
+  }
+  if (targets_off) {
+    native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), game_depth_target.Get());
+    for (auto* game_target : game_targets) {
+      if (game_target != nullptr) game_target->Release();
+    }
   }
 
   native->CSSetShader(game_shader.Get(), nullptr, 0);

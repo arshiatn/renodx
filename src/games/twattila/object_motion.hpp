@@ -11,10 +11,12 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <mutex>
 #include <ranges>
 #include <shared_mutex>
@@ -320,7 +322,7 @@ struct DeviceObjects {
   std::vector<UnitRecordDraw> unit_record_draws;
   // In-draw: the vertex shaders (as Shaders::shaders; null: none), the targets (R16G16_FLOAT: the motion in render
   // pixels; R32_FLOAT: the depth, 0 not written; the motion target's size, cleared with it) and the blend states (the
-  // game's, targets 6 and 7 without blending: by the game's description).
+  // game's, targets 6 and 7 without blending: by the game's state, kept so no other takes its address).
   std::vector<ComPtr<ID3D11VertexShader>> draw_shaders;
   ComPtr<ID3D11Texture2D> drawn_motion;
   ComPtr<ID3D11RenderTargetView> drawn_motion_rtv;
@@ -328,7 +330,7 @@ struct DeviceObjects {
   ComPtr<ID3D11Texture2D> drawn_depth;
   ComPtr<ID3D11RenderTargetView> drawn_depth_rtv;
   ComPtr<ID3D11ShaderResourceView> drawn_depth_srv;
-  std::vector<std::pair<D3D11_BLEND_DESC, ComPtr<ID3D11BlendState>>> drawn_blend_states;
+  std::vector<std::pair<ComPtr<ID3D11BlendState>, ComPtr<ID3D11BlendState>>> drawn_blend_states;
 };
 
 // NVIDIA's UAV overlap (nvapi's NvAPI_D3D11_BeginUAVOverlapEx without a wait for idle, NvAPI_D3D11_EndUAVOverlap),
@@ -358,6 +360,16 @@ static State state;
 static std::atomic_bool active = false;
 // Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only.
 static std::atomic_uint32_t test = 0;
+// Debug (temporary): the moving draws' CPU time a frame (before and after them) and their counts, logged every 1000
+// frames. The render thread's alone.
+struct MotionTiming {
+  std::chrono::steady_clock::duration spent = {};
+  uint64_t draws = 0;
+  uint64_t drawn = 0;
+  uint64_t frame = 0;
+  uint64_t frames = 0;
+};
+static MotionTiming timing;
 
 // The device's shaders and constants; false: not available.
 inline bool PrepareDevice(ID3D11Device* device) {
@@ -457,6 +469,16 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   if (&shader < state.shaders.shaders.data() || &shader >= state.shaders.shaders.data() + state.shaders.shaders.size()) return false;
   const size_t index = static_cast<size_t>(&shader - state.shaders.shaders.data());
   state.frame = view.frame;
+  if (timing.frame != view.frame) {
+    timing.frame = view.frame;
+    if (++timing.frames == 1000) {
+      renodx::utils::log::i(std::format(
+          "[Total War] Object motion (debug): {:.0f} moving draws a frame ({:.0f} in-draw), {:.0f} us of CPU a frame.",
+          timing.draws / 1000.0, timing.drawn / 1000.0,
+          std::chrono::duration<double, std::micro>(timing.spent).count() / 1000.0));
+      timing = {.frame = view.frame};
+    }
+  }
   const uint64_t frame = view.frame;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   const auto& arguments = command.arguments;
@@ -531,11 +553,11 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   }
   // In-draw: the game's pixel shader patched for the vertex shader's MOTION register (made at its first such draw), the
   // draw's targets 6 and 7 free.
+  ComPtr<ID3D11PixelShader> game_pixel_shader;
+  native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
   ComPtr<ID3D11PixelShader> drawn_pixel_shader;
   if (in_draw) {
-    ComPtr<ID3D11PixelShader> game_shader;
-    native->PSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
-    const auto game = state.pixel_shaders.find(reinterpret_cast<uint64_t>(game_shader.Get()));
+    const auto game = state.pixel_shaders.find(reinterpret_cast<uint64_t>(game_pixel_shader.Get()));
     if (game == state.pixel_shaders.end() || game_targets[dxbc::MOTION_TARGET] != nullptr
         || game_targets[dxbc::MOTION_DEPTH_TARGET] != nullptr) {
       release_targets();
@@ -559,6 +581,16 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       return false;
     }
   }
+  // What this draw does besides the game's: the motion in the draw itself or drawn again after it; the units' records
+  // streamed out (Attila) or written from every pixel of the redraw; the deformed meshes' captures (Motion Test 1: no
+  // records or captures). The pixel stage's motion constants serve the redraw and the captures, which alone change the
+  // rasterizer and depth states.
+  const bool drawn = static_cast<bool>(drawn_pixel_shader);
+  const bool no_records = (test.load(std::memory_order_relaxed) == 1);
+  const bool captures = shader.kind == MotionKind::DEFORMED && !no_records;
+  const bool unit_stream = shader.kind == MotionKind::UNIT && objects.unit_records_compute && objects.record_outputs[index];
+  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_stream && !no_records;
+  const bool pixel_constants = !drawn || captures;
   if (D3D11_TEXTURE2D_DESC current = {}; objects.motion) {
     objects.motion->GetDesc(&current);
     if (current.Width != texture_desc.Width || current.Height != texture_desc.Height) {
@@ -832,7 +864,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   // The redraw's: the game's comparison made inclusive, without writes or stencil; its rasterizer state moved 4 depth
   // units toward the camera (the redrawn depth can differ from the game's in the last bits).
   ComPtr<ID3D11RasterizerState> game_rasterizer;
-  native->RSGetState(game_rasterizer.GetAddressOf());
+  if (!drawn || captures) {
+    native->RSGetState(game_rasterizer.GetAddressOf());
+  }
   ID3D11DepthStencilState* motion_depth_state = nullptr;
   ID3D11RasterizerState* motion_rasterizer = nullptr;
   if (redraw && !drawn_pixel_shader) {
@@ -875,15 +909,15 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     motion_rasterizer = rasterizer->second.Get();
   }
 
-  // The game's bindings this changes, put back after.
+  // The game's bindings this changes, put back after (the in-draw's by FinishInDraw).
   ComPtr<ID3D11VertexShader> game_vertex_shader;
-  ComPtr<ID3D11PixelShader> game_pixel_shader;
   native->VSGetShader(game_vertex_shader.GetAddressOf(), nullptr, nullptr);
-  native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
   ComPtr<ID3D11Buffer> game_vs_constants;
   ComPtr<ID3D11Buffer> game_ps_constants;
   native->VSGetConstantBuffers(MOTION_SLOT, 1, game_vs_constants.GetAddressOf());
-  native->PSGetConstantBuffers(MOTION_SLOT, 1, game_ps_constants.GetAddressOf());
+  if (pixel_constants) {
+    native->PSGetConstantBuffers(MOTION_SLOT, 1, game_ps_constants.GetAddressOf());
+  }
   ComPtr<ID3D11BlendState> game_blend;
   std::array<float, 4> blend_factor = {};
   UINT sample_mask = 0;
@@ -893,7 +927,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->VSGetShaderResources(DEFORMED_SRV_SLOT, MOTION_VIEWS, game_motion_views.data());
   }
   ComPtr<ID3D11ShaderResourceView> game_animation_view;
-  native->PSGetShaderResources(ANIMATION_SRV_SLOT, 1, game_animation_view.GetAddressOf());
+  if (unit_table) {
+    native->PSGetShaderResources(ANIMATION_SRV_SLOT, 1, game_animation_view.GetAddressOf());
+  }
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
 
@@ -901,9 +937,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   const size_t current = objects.placement_index;
   ID3D11Buffer* motion_constants = objects.motion_constants.Get();
   native->VSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
-  native->PSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
-  // Motion Test 1: no records or captures.
-  const bool no_records = (test.load(std::memory_order_relaxed) == 1);
+  if (pixel_constants) {
+    native->PSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
+  }
   // The deformed meshes' captures write the same tables draw after draw (and the units' records at the frame's end,
   // dispatch after dispatch): NVIDIA's UAV overlap (DLSS: an NVIDIA GPU) keeps the driver from waiting for the GPU to
   // idle before each. nvapi loaded at the first.
@@ -960,7 +996,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     objects.rigid_record_count += arguments.instance_count;
     objects.rigid_draws.push_back(mesh_key);
   }
-  if (shader.kind == MotionKind::DEFORMED && !no_records) {
+  if (captures) {
     // One point per index on one pixel (no depth, no target): the vertices' world positions and the anchor.
     const std::array<ID3D11UnorderedAccessView*, 4> capture = {objects.deformed_position_uavs[current].Get(),
                                                                objects.anchor_uav.Get(), objects.placement_key_uavs[current].Get(),
@@ -1000,13 +1036,11 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   // frame's end (Shaders::unit_records_compute_shader: the draw's soldiers after the frame's records, with the
   // animation texture they read), else written from every pixel of the redraw (the table bound with it, the animation
   // texture at ANIMATION_SRV_SLOT).
-  const bool unit_stream = shader.kind == MotionKind::UNIT && objects.unit_records_compute && objects.record_outputs[index];
-  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_stream && !no_records;
   const std::array<ID3D11UnorderedAccessView*, 5> table = {
       objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
       objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
   constexpr std::array<ID3D11UnorderedAccessView*, 5> NO_TABLE = {};
-  if (shader.kind == MotionKind::UNIT) {
+  if (unit_table) {
     ID3D11ShaderResourceView* bones = animation_map.Get();
     native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &bones);
   }
@@ -1042,18 +1076,16 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     }
     drawn_targets[dxbc::MOTION_TARGET] = objects.drawn_motion_rtv.Get();
     drawn_targets[dxbc::MOTION_DEPTH_TARGET] = objects.drawn_depth_rtv.Get();
-    D3D11_BLEND_DESC blend_desc = {};
-    blend_desc.RenderTarget[0] = {.SrcBlend = D3D11_BLEND_ONE, .DestBlend = D3D11_BLEND_ZERO, .BlendOp = D3D11_BLEND_OP_ADD,
-                                  .SrcBlendAlpha = D3D11_BLEND_ONE, .DestBlendAlpha = D3D11_BLEND_ZERO,
-                                  .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL};
-    if (game_blend) {
-      game_blend->GetDesc(&blend_desc);
-    }
-    auto drawn_blend = std::ranges::find_if(objects.drawn_blend_states, [&](const auto& entry) {
-      return std::memcmp(&entry.first, &blend_desc, sizeof(blend_desc)) == 0;
-    });
+    auto drawn_blend = std::ranges::find(objects.drawn_blend_states, game_blend.Get(),
+                                         [](const auto& entry) { return entry.first.Get(); });
     if (drawn_blend == objects.drawn_blend_states.end()) {
-      D3D11_BLEND_DESC desc = blend_desc;
+      D3D11_BLEND_DESC desc = {};
+      desc.RenderTarget[0] = {.SrcBlend = D3D11_BLEND_ONE, .DestBlend = D3D11_BLEND_ZERO, .BlendOp = D3D11_BLEND_OP_ADD,
+                              .SrcBlendAlpha = D3D11_BLEND_ONE, .DestBlendAlpha = D3D11_BLEND_ZERO,
+                              .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL};
+      if (game_blend) {
+        game_blend->GetDesc(&desc);
+      }
       if (!desc.IndependentBlendEnable) {
         std::fill(std::begin(desc.RenderTarget) + 1, std::end(desc.RenderTarget), desc.RenderTarget[0]);
         desc.IndependentBlendEnable = TRUE;
@@ -1071,12 +1103,14 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       if (objects.drawn_blend_states.size() >= 256) {
         objects.drawn_blend_states.clear();
       }
-      drawn_blend = objects.drawn_blend_states.insert(objects.drawn_blend_states.end(), {blend_desc, std::move(blend_state)});
+      drawn_blend = objects.drawn_blend_states.insert(objects.drawn_blend_states.end(), {game_blend, std::move(blend_state)});
     }
     native->OMSetRenderTargets(static_cast<UINT>(drawn_targets.size()), drawn_targets.data(), depth_stencil.Get());
-    native->OMSetDepthStencilState(game_depth_state.Get(), stencil_reference);
     native->OMSetBlendState(drawn_blend->second.Get(), blend_factor.data(), sample_mask);
-    native->RSSetState(game_rasterizer.Get());
+    if (captures) {
+      native->OMSetDepthStencilState(game_depth_state.Get(), stencil_reference);
+      native->RSSetState(game_rasterizer.Get());
+    }
     native->VSSetShader(objects.draw_shaders[index].Get(), nullptr, 0);
     native->PSSetShader(drawn_pixel_shader.Get(), nullptr, 0);
   } else if (redraw) {
@@ -1104,8 +1138,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     }
   }
   // The game's bindings back, but for the in-draw's (FinishInDraw's).
-  const bool drawn = static_cast<bool>(drawn_pixel_shader);
-  if (shader.kind == MotionKind::UNIT) {
+  if (unit_table) {
     ID3D11ShaderResourceView* game_animation = game_animation_view.Get();
     native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &game_animation);
   }
@@ -1131,8 +1164,10 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     ID3D11Buffer* vs_constants = game_vs_constants.Get();
     native->VSSetConstantBuffers(MOTION_SLOT, 1, &vs_constants);
   }
-  ID3D11Buffer* ps_constants = game_ps_constants.Get();
-  native->PSSetConstantBuffers(MOTION_SLOT, 1, &ps_constants);
+  if (pixel_constants) {
+    ID3D11Buffer* ps_constants = game_ps_constants.Get();
+    native->PSSetConstantBuffers(MOTION_SLOT, 1, &ps_constants);
+  }
   release_targets();
   return drawn;
 }
@@ -1140,6 +1175,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
 // After a moving draw that wrote its motion itself (or was skipped): the game's bindings back.
 template <typename Context>
 void FinishInDraw(Context& command, const void*) {
+  const auto started = std::chrono::steady_clock::now();
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return;
@@ -1164,12 +1200,15 @@ void FinishInDraw(Context& command, const void*) {
     native->VSSetShaderResources(DEFORMED_SRV_SLOT, MOTION_VIEWS, views.data());
   }
   pending = {};
+  timing.spent += std::chrono::steady_clock::now() - started;
 }
 
 // After a moving draw that did not write its motion: drawn again with it.
 template <typename Context>
 void RedrawObjectMotion(Context& command, const void*) {
+  const auto started = std::chrono::steady_clock::now();
   DrawObjectMotion(command, false);
+  timing.spent += std::chrono::steady_clock::now() - started;
 }
 
 // A moving draw: its motion written by the draw itself where it can (its bindings set now, put back after it: also
@@ -1185,7 +1224,14 @@ constexpr auto OnMovingDraw = []<typename T, typename Context>(
     const uint32_t test_mode = test.load(std::memory_order_relaxed);
     const MotionKind kind = command.template GetCallbackData<MotionShader>().kind;
     if ((test_mode == 2 && kind != MotionKind::UNIT) || (test_mode == 3 && kind != MotionKind::WIND)) return {};
-    if (DrawObjectMotion(command, true)) return {.finalize_callback = FinishInDraw<Context>};
+    const auto started = std::chrono::steady_clock::now();
+    const bool drawn = DrawObjectMotion(command, true);
+    timing.spent += std::chrono::steady_clock::now() - started;
+    ++timing.draws;
+    if (drawn) {
+      ++timing.drawn;
+      return {.finalize_callback = FinishInDraw<Context>};
+    }
     return {.post_callback = RedrawObjectMotion<Context>};
   }
 };
