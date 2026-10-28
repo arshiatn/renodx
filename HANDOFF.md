@@ -924,6 +924,22 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       256 captures a frame no longer a limit; draws' keys in captured_keys); the cost report adds the vertices captured
       every frame and those left out. Harness: all pass. helper25 copied. NEXT: ATN retests sun shadows alone, with
       units, with grass ("left out" in the cost line should be 0).
+    - 2026-10-28 22:15, ATN's retest (RT + units + grass): grass shadows still flicker; zooming in froze the game ~2 s,
+      then the old view's RT shadows stayed and RT never came back (toggling did nothing). EVIDENCE: Windows System log
+      nvlddmkm event 153 (GPU channel reset) at 21:45:13/15 and 21:45:32/34 (also 18:01, 18:19, 18:32, 20:01 today);
+      ReShade.log "the helper did not trace" from 21:45:35 on, its status stale; cost line: 50 ms waiting for the helper,
+      1.46 M grass vertices left out a frame (grass over its 2M share). CAUSES FOUND: (1) the helper's device was
+      removed by the GPU reset and nothing made a new one; (2) rt_scene_data read every capture as the vertex
+      texture's threes, but captures after placed rows (4 texels an instance) start anywhere: grass / leaf UVs and
+      normals from the wrong vertices, changing every frame (harness proof: new quarter-mask grass test fails on the
+      old helper, passes now); (3) grass over its share. FIXES (untested in game): scene data by each capture's first
+      triangle (table entry 6); grass 4M (helper DYNAMIC_UVS 4M); DRED (auto-breadcrumbs, page faults, contexts) with
+      pass markers (vertices, scene data, micromaps, BLAS, clusters, place, TLAS, trace, fog, soft, bounce, radiance
+      cache, path tracing, reuse, reflections): after a removal the helper logs where the GPU stopped
+      (renodx-tw-dlaa64.log) and starts a new device on the set's kept handles (3 a set); bridge v15 rt_device tells the
+      addon, which captures everything again; shadow rays count as blocked after 64 alpha-tested candidates (bounded
+      cost). Harness: all modes pass, RENODX_TW_TEST_REMOVAL (RemoveDevice at the 3rd trace) restarts and passes.
+      NEXT: ATN retests; if the GPU resets again, read renodx-tw-dlaa64.log's DRED lines (which pass hung).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

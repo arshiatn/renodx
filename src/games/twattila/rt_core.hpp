@@ -165,10 +165,11 @@ constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_T
 // What is captured every frame, at most (it was full in a large battle with grass: what did not fit changed every frame,
 // grass and units' shadows pulsed, ATN 2026-10-28): units, grass and the rest at most MAX_UNIT_VERTICES (grass at most
 // MAX_GRASS_VERTICES of them), so the terrain keeps the rest. Doubled with the transfer texture (half the soldiers' draws
-// were left out: holes in their shadows, ATN 2026-10-28).
+// were left out: holes in their shadows, ATN 2026-10-28); grass 4M (3.5M drawn in ATN's battle: what fit changed as the
+// view did, flickering grass shadows).
 constexpr UINT MAX_DYNAMIC_VERTICES = 14u << 20;
 constexpr UINT MAX_UNIT_VERTICES = 10u << 20;
-constexpr UINT MAX_GRASS_VERTICES = 2u << 20;
+constexpr UINT MAX_GRASS_VERTICES = 4u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
@@ -309,6 +310,7 @@ struct Runtime {
   std::vector<std::array<float, 4>> lights;
   std::vector<std::array<float, 4>> light_colours;
   bool lights_traced = false;
+  uint32_t helper_device = 0;             // the helper's ray tracing device (a new one: its scene empty)
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
@@ -1536,6 +1538,13 @@ inline void Update(const Settings& settings) {
   runtime.settings = settings;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
+  // The helper started its ray tracing on a new device (a GPU fault or hang removed the last): every mesh captured again.
+  if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {
+    runtime.helper_device = device;
+    runtime.known.clear();
+    runtime.short_keys.clear();
+    renodx::utils::log::w("[Total War] Ray tracing: the helper started again after a GPU reset (renodx-tw-dlaa64.log), the scene is captured again.");
+  }
   auto& costs = runtime.costs;
   if (internal::Enabled()) {
     ++costs.frames;

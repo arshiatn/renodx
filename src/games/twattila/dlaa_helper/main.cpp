@@ -12,7 +12,7 @@
 // requests (bridge v4: the addon's rt_scene.hpp) run on another D3D12 device (rt_d3d12.hpp). Frame generation requests
 // (bridge v5: the addon's frame_generation.hpp, one per game present) present through Streamline's DLSS Frame Generation
 // into a child window over the game's (fg_d3d12.hpp). It quits with the game. It answers addons of bridge versions 2
-// to 12.
+// to 15.
 // Build (x64): see twattila/README.md.
 #include <windows.h>
 
@@ -27,11 +27,13 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <initializer_list>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "../../talesofarise_dlss/ngx_backend.hpp"
 #include "../dlaa_bridge.h"
@@ -118,9 +120,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // Ray Reconstruction (v3 addons with its guides): its D3D12 device and the addon's objects opened there.
   twattila::dlaa_helper::RayReconstruction12 reconstruction;
   bool reconstruction_open = false;
-  // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there.
-  twattila::dlaa_helper::RtScene12 scene;
+  // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there; a new one after a GPU reset
+  // removed it (three a set at most).
+  auto scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
   bool scene_open = false;
+  uint32_t scene_restarts = 0;
+  // The handles the addon shared for the open set (its textures and fence, duplicated into this process), kept until the
+  // next set: a new ray tracing device opens them again.
+  std::vector<HANDLE> set_handles;
   // Frame generation (v5 addons with it on): Streamline's D3D12 device, its window and swap chain.
   twattila::dlaa_helper::FrameGeneration12 generation;
   bool generation_open = false;
@@ -142,7 +149,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     bool stop = false;
   } rt_work;
   const auto run = [&](const twattila::dlaa_bridge::Shared& from) {
-    return (version >= 7 && from.rt_request >= 2) ? scene.Paths(from, version, from.rt_request == 3) : scene.Trace(from, version);
+    return (version >= 7 && from.rt_request >= 2) ? scene->Paths(from, version, from.rt_request == 3) : scene->Trace(from, version);
   };
   const auto kind = [&](const twattila::dlaa_bridge::Shared& from) {
     return std::min<uint32_t>(version >= 7 ? from.rt_request : 1u, 3u) - 1;
@@ -157,7 +164,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       rt_work.busy = true;
       lock.unlock();
       const bool ran = run(*work);
-      strncpy_s(shared->rt_status, scene.Status().c_str(), _TRUNCATE);
+      strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
       lock.lock();
       rt_work.ran[kind(*work)] = ran;
       rt_work.busy = false;
@@ -172,13 +179,29 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   while (WaitForMultipleObjects(2, waits, FALSE, INFINITE) == WAIT_OBJECT_0) {
     if (shared->generation != opened_generation) {
       rt_drain();
-      // The addon's new textures and fence: opened, the duplicated handles closed.
+      // The addon's new textures and fence, opened; the last set's handles closed, this set's kept (set_handles).
+      for (const HANDLE handle : set_handles) CloseHandle(handle);
+      set_handles.clear();
+      const auto keep = [&](std::initializer_list<uint64_t> handles) {
+        for (const uint64_t handle : handles) {
+          if (handle != 0) set_handles.push_back(reinterpret_cast<HANDLE>(handle));
+        }
+      };
+      keep({shared->color, shared->depth, shared->motion, shared->output, shared->fence});
+      if (version >= 3) keep({shared->diffuse_albedo, shared->specular_albedo, shared->normals, shared->roughness});
+      if (version >= 4) keep({shared->rt_vertices, shared->rt_positions, shared->rt_sun, shared->rt_visibility, shared->rt_ambient});
+      if (version >= 5) keep({shared->fg_frame, shared->fg_hudless});
+      if (version >= 6) keep({shared->rt_atlas});
+      if (version >= 7) keep({shared->rt_light, shared->rt_bounce});
+      if (version >= 8) keep({shared->rt_reflection, shared->rt_specular});
+      if (version >= 9) keep({shared->rt_light_mask});
+      if (version >= 11) keep({shared->rt_fog});
       color.Reset();
       depth.Reset();
       motion.Reset();
       output.Reset();
       fence.Reset();
-      // D3D12 opens them first (the D3D11 opens close the handles); the guides serve Ray Reconstruction and the paths.
+      // The guides serve Ray Reconstruction and the paths.
       reconstruction_open = false;
       if (version >= 3 && shared->diffuse_albedo != 0) {
         reconstruction_open = reconstruction.Initialize(adapter.Get(), folder)
@@ -189,47 +212,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         reconstruction.Close();
       }
       scene_open = false;
+      scene_restarts = 0;
       if (version >= 4 && shared->rt_vertices != 0) {
-        scene_open = scene.Initialize(adapter.Get(), folder) && scene.Open(*shared, version);
-        for (const uint64_t texture : {shared->rt_vertices, shared->rt_positions, shared->rt_sun, shared->rt_visibility, shared->rt_ambient}) {
-          CloseHandle(reinterpret_cast<HANDLE>(texture));
-        }
-        if (version >= 6 && shared->rt_atlas != 0) CloseHandle(reinterpret_cast<HANDLE>(shared->rt_atlas));
-        if (version >= 7) {
-          for (const uint64_t texture : {shared->rt_light, shared->rt_bounce}) {
-            if (texture != 0) CloseHandle(reinterpret_cast<HANDLE>(texture));
-          }
-        }
-        if (version >= 8) {
-          for (const uint64_t texture : {shared->rt_reflection, shared->rt_specular}) {
-            if (texture != 0) CloseHandle(reinterpret_cast<HANDLE>(texture));
-          }
-        }
-        if (!scene_open) strncpy_s(shared->rt_status, scene.Status().c_str(), _TRUNCATE);
+        scene_open = scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
+        if (!scene_open) strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
       } else {
-        scene.Close();
-      }
-      if (version >= 3 && shared->diffuse_albedo != 0) {
-        for (const uint64_t guide : {shared->diffuse_albedo, shared->specular_albedo, shared->normals, shared->roughness}) {
-          CloseHandle(reinterpret_cast<HANDLE>(guide));
-        }
+        scene->Close();
       }
       generation_open = false;
       if (version >= 5 && shared->fg_frame != 0) {
         generation_open = generation.Initialize(adapter.Get(), folder) && generation.Open(*shared, version);
-        for (const uint64_t texture : {shared->fg_frame, shared->fg_hudless}) {
-          CloseHandle(reinterpret_cast<HANDLE>(texture));
-        }
         strncpy_s(shared->fg_status, generation.Status().c_str(), _TRUNCATE);
         shared->fg_failed = (generation_open ? 0u : 1u);
       } else {
         generation.Close();
       }
       const auto open = [&](uint64_t handle, ComPtr<ID3D11Texture2D>* texture) {
-        const bool opened = SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(handle),
-                                                                   IID_PPV_ARGS(texture->GetAddressOf())));
-        CloseHandle(reinterpret_cast<HANDLE>(handle));
-        return opened;
+        return SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(handle), IID_PPV_ARGS(texture->GetAddressOf())));
       };
       bool opened = open(shared->color, &color);
       opened = open(shared->depth, &depth) && opened;
@@ -238,7 +237,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       opened = SUCCEEDED(device5->OpenSharedFence(reinterpret_cast<HANDLE>(shared->fence),
                                                   IID_PPV_ARGS(fence.GetAddressOf())))
                && opened;
-      CloseHandle(reinterpret_cast<HANDLE>(shared->fence));
       opened_generation = shared->generation;
       if (!opened) {
         set_status("DLAA helper: the shared textures could not be opened");
@@ -261,6 +259,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       // v8: request 3 the reflections).
       // A kind that ran last time goes to the worker and is answered at once: the addon's GPU then waits for its value
       // before the addon signals the next (the fence's order kept). Otherwise it runs here, after the worker's.
+      // A GPU fault or hang removed its device (Windows' timeout detection; ATN 2026-10-28: a freeze, then no ray tracing
+      // until the game restarted): where the GPU stopped logged (DRED), a new device on this set's textures.
+      if (scene_open && scene->Lost()) {
+        rt_drain();
+        ReShadeLogMessage(nullptr, 0, scene->LostReport().c_str());
+        scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
+        scene_open = ++scene_restarts <= 3 && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
+        {
+          const std::unique_lock lock(rt_work.mutex);
+          rt_work.ran = {};
+        }
+        if (version >= 15) ++shared->rt_device;
+        ReShadeLogMessage(nullptr, 0, (scene_open ? "[TW ray tracing] Started again on a new device." : "[TW ray tracing] Off until the next set."));
+      }
       bool queued = false;
       if (scene_open) {
         const std::unique_lock lock(rt_work.mutex);
@@ -288,7 +300,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
           context4->Signal(fence.Get(), shared->value + 1);
           context->Flush();
         }
-        strncpy_s(shared->rt_status, scene.Status().c_str(), _TRUNCATE);
+        strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
       }
     } else if (fence && reconstruction_open && shared->ray_reconstruction != 0) {
       // Ray Reconstruction (D3D12): its queue waits for the addon's value and signals the next.

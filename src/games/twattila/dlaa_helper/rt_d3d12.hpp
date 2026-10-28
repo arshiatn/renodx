@@ -90,12 +90,28 @@ class RtScene12 {
     const std::filesystem::path agility = folder / L"D3D12";
     ComPtr<ID3D12SDKConfiguration1> configuration;
     ComPtr<ID3D12DeviceFactory> factory;
+    // DRED (Device Removed Extended Data): after a GPU fault or hang (ATN 2026-10-28: frozen, then no ray tracing until
+    // the game restarts), each command list's operations up to where the GPU stopped, the passes' markers, a page fault's
+    // allocations (LostReport).
+    const auto record_removal = [](ID3D12DeviceRemovedExtendedDataSettings1* settings) {
+      settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+      settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+      settings->SetBreadcrumbContextEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    };
     if (std::filesystem::exists(agility / L"D3D12Core.dll")
         && SUCCEEDED(D3D12GetInterface(SDK_CONFIGURATION, IID_PPV_ARGS(configuration.GetAddressOf())))
         && SUCCEEDED(configuration->CreateDeviceFactory(AGILITY_SDK_VERSION, (agility.string() + "\\").c_str(),
                                                         IID_PPV_ARGS(factory.GetAddressOf())))) {
       factory->SetFlags(D3D12_DEVICE_FACTORY_FLAG_DISALLOW_STORING_NEW_DEVICE_AS_SINGLETON);
+      if (ComPtr<ID3D12DeviceRemovedExtendedDataSettings1> settings;
+          SUCCEEDED(factory->GetConfigurationInterface(DRED_CONFIGURATION, IID_PPV_ARGS(settings.GetAddressOf())))) {
+        record_removal(settings.Get());
+      }
       if (SUCCEEDED(factory->CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf())))) sdk = "Agility SDK";
+    }
+    if (ComPtr<ID3D12DeviceRemovedExtendedDataSettings1> settings;
+        !device_ && SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(settings.GetAddressOf())))) {
+      record_removal(settings.Get());
     }
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
     if ((!device_ && FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf()))))
@@ -162,6 +178,7 @@ class RtScene12 {
           || FAILED(slot.jobs->Map(0, nullptr, reinterpret_cast<void**>(&slot.jobs_data)))) {
         return Fail("Ray tracing: no D3D12 command lists");
       }
+      slot.list->SetName(std::format(L"slot {}", &slot - slots_.data()).c_str());
     }
     // The vertex copy (BLAS inputs), the TLAS for the most instances, the records and pools.
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS top_inputs = {
@@ -676,12 +693,66 @@ class RtScene12 {
 
   [[nodiscard]] bool Ready() const { return fence_ != nullptr; }
   [[nodiscard]] std::string Status() const { return status_ + timings_; }
+  // A GPU fault or hang (Windows' timeout detection) removed the device: nothing runs on it again (main.cpp makes a new
+  // one).
+  [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
+
+  // Why the device was removed and, from DRED, where: each command list the GPU did not finish, its operations around
+  // the one it stopped in (">"; the passes' markers by name), and a page fault's address with the allocations there.
+  [[nodiscard]] std::string LostReport() const {
+    std::string report = std::format("[TW ray tracing] The GPU removed the device (0x{:08X}).",
+                                     static_cast<uint32_t>(device_->GetDeviceRemovedReason()));
+    const auto narrow = [](const wchar_t* text) {
+      std::string narrowed;
+      for (; text != nullptr && *text != L'\0'; ++text) narrowed += static_cast<char>(*text);
+      return narrowed;
+    };
+    ComPtr<ID3D12DeviceRemovedExtendedData1> removed;
+    if (FAILED(device_.As(&removed))) return report + " No DRED.";
+    D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT1 breadcrumbs = {};
+    if (SUCCEEDED(removed->GetAutoBreadcrumbsOutput1(&breadcrumbs))) {
+      for (const D3D12_AUTO_BREADCRUMB_NODE1* node = breadcrumbs.pHeadAutoBreadcrumbNode; node != nullptr; node = node->pNext) {
+        const uint32_t done = (node->pLastBreadcrumbValue != nullptr) ? *node->pLastBreadcrumbValue : 0u;
+        if (done >= node->BreadcrumbCount) continue;
+        report += std::format("\n  {}: {} of {} operations done:", narrow(node->pCommandListDebugNameW), done, node->BreadcrumbCount);
+        for (uint32_t op = (done > 12 ? done - 12 : 0u); op < std::min(node->BreadcrumbCount, done + 4); ++op) {
+          std::string name;
+          for (uint32_t context = 0; context < node->BreadcrumbContextsCount; ++context) {
+            if (node->pBreadcrumbContexts[context].BreadcrumbIndex == op) name = narrow(node->pBreadcrumbContexts[context].pContextString);
+          }
+          if (name.empty()) {
+            const auto known = std::ranges::find(OPERATION_NAMES, node->pCommandHistory[op], &OperationName::op);
+            name = (known != OPERATION_NAMES.end()) ? known->name : std::format("op {}", static_cast<int>(node->pCommandHistory[op]));
+          }
+          report += std::format(" {}{}", (op == done ? ">" : ""), name);
+        }
+      }
+    }
+    D3D12_DRED_PAGE_FAULT_OUTPUT1 fault = {};
+    if (SUCCEEDED(removed->GetPageFaultAllocationOutput1(&fault)) && fault.PageFaultVA != 0) {
+      report += std::format("\n  page fault at 0x{:X}; there:", fault.PageFaultVA);
+      for (const D3D12_DRED_ALLOCATION_NODE1* node = fault.pHeadExistingAllocationNode; node != nullptr; node = node->pNext) {
+        report += std::format(" {} ({})", narrow(node->ObjectNameW), static_cast<int>(node->AllocationType));
+      }
+      report += "; freed lately:";
+      for (const D3D12_DRED_ALLOCATION_NODE1* node = fault.pHeadRecentFreedAllocationNode; node != nullptr; node = node->pNext) {
+        report += std::format(" {} ({})", narrow(node->ObjectNameW), static_cast<int>(node->AllocationType));
+      }
+    }
+    return report;
+  }
   [[nodiscard]] bool Dxr12() const { return dxr12_; }
 
   // One request: the frame's captures into BLASes, the TLAS of what it drew, the trace; the queue waits for the addon's
   // fence value and signals the next (also when nothing ran). False: nothing traced.
   bool Trace(const dlaa_bridge::Shared& shared, uint32_t version) {
     if (!fence_) return false;
+    // The GPU harness's RENODX_TW_TEST_REMOVAL: the device removed at the process's third trace, as a GPU hang removes it
+    // (main.cpp starts a new one).
+    static uint32_t test_traces = 0;
+    if (++test_traces == 3 && GetEnvironmentVariableW(L"RENODX_TW_TEST_REMOVAL", nullptr, 0) != 0) {
+      if (ComPtr<ID3D12Device5> device5; SUCCEEDED(device_.As(&device5))) device5->RemoveDevice();
+    }
     const size_t slot_index = next_slot_;
     Slot& slot = slots_[slot_index];
     next_slot_ = (next_slot_ + 1) % SLOTS;
@@ -817,6 +888,7 @@ class RtScene12 {
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
 
       if (!uses_paths) {
+        Mark(list, L"bounce");
         list->SetPipelineState(bounce_pipeline_.Get());
         list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
       } else {
@@ -910,6 +982,7 @@ class RtScene12 {
           const bool from_light = (flags & PATH_LIGHT) != 0;
           const uint32_t fill_width = (from_light ? shared.rt_bounce_width : width) / 2 + 1;
           const uint32_t fill_height = (from_light ? shared.rt_bounce_height : height) / 2 + 1;
+          Mark(list, L"radiance cache");
           list->SetPipelineState(cache_fill_pipeline_.Get());
           list->Dispatch((fill_width + 7) / 8, (fill_height + 7) / 8, 1);
           list->ResourceBarrier(1, &uav_barrier);
@@ -936,9 +1009,11 @@ class RtScene12 {
             list->Dispatch((across + 7) / 8, (down + 7) / 8, 1);
           }
         };
+        Mark(list, L"path tracing");
         if (path_traced) dispatch(path_pipeline_.Get(), 0, shared.rt_bounce_width, shared.rt_bounce_height);
         if (reuse) {
           list->ResourceBarrier(1, &uav_barrier);
+          Mark(list, L"reuse");
           list->SetPipelineState(reuse_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
           reuse_frame_ = frame;
@@ -946,6 +1021,7 @@ class RtScene12 {
           reuse_size_ = reuse_size;
         }
         if (reflections) {
+          Mark(list, L"reflections");
           dispatch(reflect_pipeline_.Get(), 1, width, height);
           list->ResourceBarrier(1, &uav_barrier);
           list->SetPipelineState(reflect_filter_pipeline_.Get());
@@ -982,6 +1058,26 @@ class RtScene12 {
  private:
   static constexpr UINT AGILITY_SDK_VERSION = 619;
   static constexpr GUID SDK_CONFIGURATION = {0x7cda6aca, 0xa03e, 0x49c8, {0x94, 0x58, 0x03, 0x34, 0xd2, 0x0e, 0x07, 0xce}};
+  static constexpr GUID DRED_CONFIGURATION = {0x4a75bbc4, 0x9ff4, 0x4ad8, {0x9f, 0x18, 0xab, 0xae, 0x84, 0xdc, 0x5f, 0xf2}};
+  // DRED's operations as LostReport names them (the ones recorded here).
+  struct OperationName {
+    D3D12_AUTO_BREADCRUMB_OP op;
+    const char* name;
+  };
+  static constexpr std::array<OperationName, 12> OPERATION_NAMES = {{
+      {D3D12_AUTO_BREADCRUMB_OP_SETMARKER, "marker"},
+      {D3D12_AUTO_BREADCRUMB_OP_DISPATCH, "Dispatch"},
+      {D3D12_AUTO_BREADCRUMB_OP_DISPATCHRAYS, "DispatchRays"},
+      {D3D12_AUTO_BREADCRUMB_OP_BUILDRAYTRACINGACCELERATIONSTRUCTURE, "BuildAS"},
+      {D3D12_AUTO_BREADCRUMB_OP_EMITRAYTRACINGACCELERATIONSTRUCTUREPOSTBUILDINFO, "EmitASInfo"},
+      {D3D12_AUTO_BREADCRUMB_OP_COPYRAYTRACINGACCELERATIONSTRUCTURE, "CopyAS"},
+      {D3D12_AUTO_BREADCRUMB_OP_COPYBUFFERREGION, "CopyBufferRegion"},
+      {D3D12_AUTO_BREADCRUMB_OP_COPYTEXTUREREGION, "CopyTextureRegion"},
+      {D3D12_AUTO_BREADCRUMB_OP_RESOURCEBARRIER, "Barrier"},
+      {D3D12_AUTO_BREADCRUMB_OP_RESOLVEQUERYDATA, "ResolveQueryData"},
+      {D3D12_AUTO_BREADCRUMB_OP_EXECUTEINDIRECT, "ExecuteIndirect"},
+      {D3D12_AUTO_BREADCRUMB_OP_EXECUTEEXTENSIONCOMMAND, "ExtensionCommand"},
+  }};
   static constexpr size_t SLOTS = 3;
   static constexpr UINT MAX_INSTANCES = 65536;
   static constexpr UINT TRANSFER_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
@@ -1027,7 +1123,7 @@ class RtScene12 {
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
   static constexpr UINT NORMAL_POOL = STATIC_TRIANGLES + SLOTS * DYNAMIC_TRIANGLES;
   static constexpr UINT STATIC_UVS = 8u << 20;
-  static constexpr UINT DYNAMIC_UVS = 2u << 20;  // a slot's (grass: rt_core.hpp MAX_GRASS_VERTICES)
+  static constexpr UINT DYNAMIC_UVS = 4u << 20;  // a slot's (grass: rt_core.hpp MAX_GRASS_VERTICES)
   static constexpr UINT UV_POOL = STATIC_UVS + SLOTS * DYNAMIC_UVS;
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
@@ -1314,6 +1410,11 @@ class RtScene12 {
     return false;
   }
 
+  // A pass's name among the list's DRED breadcrumbs (LostReport).
+  static void Mark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
+    list->SetMarker(0, pass, static_cast<UINT>((std::wcslen(pass) + 1) * sizeof(wchar_t)));
+  }
+
   static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) {
     return {
         .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
@@ -1456,6 +1557,7 @@ class RtScene12 {
       };
       const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = vertices_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
       const D3D12_BOX box = {.left = 0, .top = 0, .front = 0, .right = dlaa_bridge::RT_TRANSFER_WIDTH, .bottom = rows, .back = 1};
+      Mark(list, L"vertices");
       const auto to_copy = Transition(vertices_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
       list->ResourceBarrier(1, &to_copy);
       list->CopyTextureRegion(&destination, 0, 0, 0, &source, &box);
@@ -1520,18 +1622,25 @@ class RtScene12 {
         placement.record = free_records_.back();
         free_records_.pop_back();
       }
+      // Each capture's first triangle in the scene data's count (captures start anywhere: placed draws' rows are four
+      // texels an instance, so a capture after them is off the vertex texture's threes; read as threes, the grass's UVs
+      // came from the wrong vertices, its alpha test changing every frame).
+      uint32_t scene_triangles = 0;
       for (uint32_t index = 0; index < capture_count; ++index) {
         const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
         const auto& placement = placements[index];
         const uint32_t slice = (version >= 6) ? shared.rt_capture_slices[index] : 0u;
         const std::array<uint32_t, 8> entry = {capture.first_vertex, capture.vertex_count / 3 * 3, placement.normal_offset, placement.uv_offset,
-                                               placement.record, slice | (RecordFlags(capture, placement.masked, version) << 16), 0, 0};
+                                               placement.record, slice | (RecordFlags(capture, placement.masked, version) << 16),
+                                               scene_triangles, 0};
         std::memcpy(slot->table_data + index * 8, entry.data(), sizeof(entry));
+        if (placement.record != UINT32_MAX) scene_triangles += capture.vertex_count / 3;
       }
-      const std::array<uint32_t, 4> scene_dispatch = {capture_count, vertex_end / 3, 0, 0};
+      const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, 0, 0};
+      Mark(list, L"scene data");
       list->SetPipelineState(scene_data_pipeline_.Get());
       list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 4, scene_dispatch.data(), 0);
-      list->Dispatch((vertex_end / 3 + 63) / 64, 1, 1);
+      list->Dispatch((scene_triangles + 63) / 64, 1, 1);
       const std::array<D3D12_RESOURCE_BARRIER, 3> scene_written = {
           Transition(records_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
           Transition(uvs_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
@@ -1576,6 +1685,7 @@ class RtScene12 {
         };
         if (!bakes.empty() && (!grow(&micromap_data_, data_bytes) || !grow(&micromap_descs_, desc_bytes))) bakes.clear();
         if (!bakes.empty()) {
+          Mark(list, L"micromaps");
           list->SetPipelineState(omm_pipeline_.Get());
           std::vector<D3D12_RESOURCE_BARRIER> baked;
           for (Bake& bake : bakes) {
@@ -1787,6 +1897,7 @@ class RtScene12 {
         }
       }
       if (!ensure_scratch(scratch_needed)) return Fail("Ray tracing: the BLAS scratch allocation failed");
+      Mark(list, L"BLAS");
       size_t compact_slot = 0;
       for (auto& build : builds) {
         build.desc.ScratchAccelerationStructureData += scratch_->GetGPUVirtualAddress();
@@ -1875,6 +1986,7 @@ class RtScene12 {
             .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &clas_desc};
         const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS blas_params = {
             .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &blas_desc};
+        Mark(list, L"clusters");
         units_clustered = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params) == NVAPI_OK;
         list->ResourceBarrier(1, &uav_barrier);
         units_clustered = units_clustered && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &blas_params) == NVAPI_OK;
@@ -1989,6 +2101,7 @@ class RtScene12 {
       }
       const auto to_place = Transition(written, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       list->ResourceBarrier(1, &to_place);
+      Mark(list, L"place");
       list->SetPipelineState(place_pipeline_.Get());
       list->SetComputeRootShaderResourceView(ROOT_SCENE, placed_instances_[placed_last_]->GetGPUVirtualAddress());
       list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, slot->jobs->GetGPUVirtualAddress());
@@ -2124,6 +2237,7 @@ class RtScene12 {
                      .InstanceDescs = instance_descs},
           .ScratchAccelerationStructureData = tlas_scratch_->GetGPUVirtualAddress(),
       };
+      Mark(list, L"TLAS");
       list->BuildRaytracingAccelerationStructure(&top_build, 0, nullptr);
     }
     Stamp(list, slot_index * 6 + 2);
@@ -2178,6 +2292,7 @@ class RtScene12 {
       const auto to_uav = Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       list->ResourceBarrier(1, &to_uav);
     }
+    Mark(list, L"trace");
     list->SetPipelineState(trace_pipeline_.Get());
     list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     if (ambient_kept) {
@@ -2202,12 +2317,14 @@ class RtScene12 {
       ambient_parity_ ^= 1u;
     }
     if (fog) {
+      Mark(list, L"fog");
       list->SetPipelineState(fog_pipeline_.Get());
       list->Dispatch((shared.rt_width + 31) / 32, (shared.rt_height + 31) / 32, 1);
     }
     if (soft) {
       // Soft shadows: the rays' penumbras.
       list->ResourceBarrier(1, &uav_barrier);
+      Mark(list, L"soft");
       list->SetPipelineState(soft_pipeline_.Get());
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     }

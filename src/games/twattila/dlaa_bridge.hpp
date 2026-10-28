@@ -690,6 +690,11 @@ inline std::string TraceStatus() {
   return (bridge.shared != nullptr) ? std::string(bridge.shared->rt_status) : std::string();
 }
 
+// The helper's ray tracing device count (a new device after a GPU fault or hang: its scene empty).
+inline uint32_t RayTracingDevice() {
+  return (bridge.shared != nullptr) ? bridge.shared->rt_device : 0u;
+}
+
 // The inputs (written on `context` before this; their top-left `input_width` x `input_height`) through NVIDIA's DLAA
 // (or DLSS, when that is below the textures' size; Ray Reconstruction with `ray_reconstruction` and the guides) into
 // `bridge.output`, which the game's GPU then waits for; false: no result this frame (helper not ready, or no answer).

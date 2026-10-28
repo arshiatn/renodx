@@ -12,7 +12,8 @@
 #include "./rt_scene.hlsli"
 
 Buffer<float4> vertex_positions : register(t7);  // the request's vertices (w: a leaf vertex's UV as two halves)
-// Per capture: first vertex, vertex count, normal offset, UV offset; record, atlas slice | flags << 16, 0, 0.
+// Per capture: first vertex, vertex count, normal offset, UV offset; record, atlas slice | flags << 16, its first
+// triangle in `triangle_count` (captures need not start at a multiple of three vertices), 0.
 StructuredBuffer<uint4> capture_table : register(t8);
 RWBuffer<uint4> records_written : register(u3);
 RWBuffer<uint> uv_pool_written : register(u4);
@@ -31,12 +32,11 @@ static const float LEAF_ALPHA_CUTOFF = 0.5f;
 void main(uint3 id : SV_DispatchThreadID) {
   const uint triangle_index = id.x;
   if (triangle_index >= triangle_count) return;
-  const uint vertex = triangle_index * 3u;
   uint low = 0u;
   uint high = capture_count - 1u;
   while (low < high) {
     const uint middle = (low + high + 1u) / 2u;
-    if (capture_table[middle * 2u].x <= vertex) {
+    if (capture_table[middle * 2u + 1u].z <= triangle_index) {
       low = middle;
     } else {
       high = middle - 1u;
@@ -44,8 +44,9 @@ void main(uint3 id : SV_DispatchThreadID) {
   }
   const uint4 capture = capture_table[low * 2u];
   const uint4 placement = capture_table[low * 2u + 1u];
-  if (capture.z == 0xFFFFFFFFu || vertex >= capture.x + capture.y) return;
-  const uint local = (vertex - capture.x) / 3u;
+  const uint local = triangle_index - placement.z;
+  if (capture.z == 0xFFFFFFFFu || local * 3u >= capture.y) return;
+  const uint vertex = capture.x + local * 3u;
   const float4 a = vertex_positions[vertex];
   const float4 b = vertex_positions[vertex + 1u];
   const float4 c = vertex_positions[vertex + 2u];

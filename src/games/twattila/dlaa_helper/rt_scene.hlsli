@@ -77,6 +77,10 @@ bool AlphaPasses(uint record_index, uint primitive, float2 barycentrics) {
 #define CANDIDATE_PASSES(query) \
   AlphaPasses((query).CandidateInstanceID() + (query).CandidateGeometryIndex(), (query).CandidatePrimitiveIndex(), (query).CandidateTriangleBarycentrics())
 
+// Alpha-tested surfaces a ray toward a light meets at most before it counts as blocked (dense grass at a grazing angle:
+// each ray's cost bounded).
+static const uint MAX_CANDIDATES = 64u;
+
 // Whether anything lies along `direction` from `origin` within `range`.
 bool Occluded(float3 origin, float3 direction, float range) {
   RayDesc ray;
@@ -86,8 +90,9 @@ bool Occluded(float3 origin, float3 direction, float range) {
   ray.TMax = range;
   SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
   query.TraceRayInline(scene, RAY_FLAG_NONE, 0xFF, ray);
+  uint candidates = 0u;
   while (query.Proceed()) {
-    if (CANDIDATE_PASSES(query)) query.CommitNonOpaqueTriangleHit();
+    if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) query.CommitNonOpaqueTriangleHit();
   }
   return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }

@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 14;
+constexpr uint32_t VERSION = 15;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -240,11 +240,16 @@ struct Shared {
   uint32_t rt_placement_count = 0;
   uint32_t rt_v14_padding = 0;
   RtPlacement rt_placements[RT_PLACEMENTS] = {};
+  // The helper's (v15): its ray tracing devices so far, one more each time a GPU fault or hang removed the last (the new
+  // one's scene is empty: the addon captures every mesh again).
+  uint32_t rt_device = 0;
+  uint32_t rt_v15_padding = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 14) return sizeof(Shared);
+  if (version >= 15) return sizeof(Shared);
+  if (version == 14) return offsetof(Shared, rt_device);
   if (version == 13) return offsetof(Shared, rt_placement_count);
   if (version == 12) return offsetof(Shared, fg_debug);
   if (version == 11) return offsetof(Shared, fg_preset);
