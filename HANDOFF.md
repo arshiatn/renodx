@@ -912,6 +912,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       UpdateSettings: on_change_value runs under the settings mutex); the Debug View's Screen-Space AO is a copy made
       after the AO pass and before the traced AO is multiplied in; the status logged 3 s after any RT settings change
       with the effects that are on (each effect's GPU time). NEXT: ATN retests sun shadows (bands, pulsing).
+    - 2026-10-28 21:00-21:35: the Debug View's scene test (1b10c5af) and the 10 s cost report (c3e08a29). ATN's debug22
+      / debug23: RT sun shadows alone 71 -> 61 fps, with units 51, with grass 48; no shadows from walls, buildings or
+      trees, a giant leg-shaped shadow far off, long straight lines, soldiers' shadows with holes. CAUSE (proven with a
+      D3D11 test: one index an instance under a triangle list streams nothing, as points every instance): the placed
+      meshes' rows draw ran under the game's triangle list, so no rows were written and the helper placed every placed
+      mesh by stale texels (giant / stretched instances, trace up to 25 ms, nothing where it stood). Holes: the units'
+      share (4M vertices, grass inside it) was full, half the soldiers' draws left out. FIXES (untested in game): rows
+      drawn as points; RT_TRANSFER_HEIGHT 4096, MAX_DYNAMIC_VERTICES 14M, MAX_UNIT_VERTICES 10M (helper
+      DYNAMIC_TRIANGLES 14M / 3, MAX_CLUSTERS 65536); consecutive dynamic draws of one kind joined into one capture (the
+      256 captures a frame no longer a limit; draws' keys in captured_keys); the cost report adds the vertices captured
+      every frame and those left out. Harness: all pass. helper25 copied. NEXT: ATN retests sun shadows alone, with
+      units, with grass ("left out" in the cost line should be 0).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

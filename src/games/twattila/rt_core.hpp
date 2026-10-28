@@ -23,6 +23,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -163,9 +164,10 @@ namespace internal {
 constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
 // What is captured every frame, at most (it was full in a large battle with grass: what did not fit changed every frame,
 // grass and units' shadows pulsed, ATN 2026-10-28): units, grass and the rest at most MAX_UNIT_VERTICES (grass at most
-// MAX_GRASS_VERTICES of them), so the terrain keeps the rest.
-constexpr UINT MAX_DYNAMIC_VERTICES = 7u << 20;
-constexpr UINT MAX_UNIT_VERTICES = 4u << 20;
+// MAX_GRASS_VERTICES of them), so the terrain keeps the rest. Doubled with the transfer texture (half the soldiers' draws
+// were left out: holes in their shadows, ATN 2026-10-28).
+constexpr UINT MAX_DYNAMIC_VERTICES = 14u << 20;
+constexpr UINT MAX_UNIT_VERTICES = 10u << 20;
 constexpr UINT MAX_GRASS_VERTICES = 2u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
@@ -231,7 +233,7 @@ struct DeviceObjects {
 
 // The addon's own ray tracing cost since the last report (Update, every 10 s; ATN 2026-10-28: "RT shadows destroy the
 // performance", the helper's GPU time a few milliseconds): its CPU time in Capture and Trace, its GPU passes before the
-// request and the game's wait for the helper's answer.
+// request and the game's wait for the helper's answer; the vertices captured every frame and those their shares left out.
 struct Costs {
   int64_t capture_ticks = 0;
   int64_t trace_ticks = 0;
@@ -239,6 +241,8 @@ struct Costs {
   double passes_ms = 0.0;
   double waiting_ms = 0.0;
   uint32_t timed = 0;  // frames whose timestamps came back
+  uint64_t dynamic_vertices = 0;
+  uint64_t left_out = 0;
 };
 
 // Adds its scope's CPU time to `ticks` (the cost report).
@@ -263,8 +267,10 @@ struct Runtime {
   Costs costs;  // the render thread's (as `frame`)
   Settings settings;
   uint64_t frame = 0;
-  // This frame's new captures and the scene meshes it drew; the keys in the scene (the frame they were last drawn).
+  // This frame's new captures (consecutive dynamic draws joined) and their draws' keys, the scene meshes it drew; the
+  // keys in the scene (the frame they were last drawn).
   std::vector<dlaa_bridge::RtCapture> captures;
+  std::unordered_set<uint64_t> captured_keys;
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
   uint32_t dynamic_vertices = 0;
@@ -743,9 +749,13 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     // Units: every frame, within their share.
     if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
-    if (dynamic && runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES) return;
-    if (dynamic && !shader.terrain && runtime.unit_vertices + vertex_count > MAX_UNIT_VERTICES) return;
-    if (shader.grass && runtime.grass_vertices + vertex_count > MAX_GRASS_VERTICES) return;
+    if (dynamic
+        && (runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES
+            || (!shader.terrain && runtime.unit_vertices + vertex_count > MAX_UNIT_VERTICES)
+            || (shader.grass && runtime.grass_vertices + vertex_count > MAX_GRASS_VERTICES))) {
+      runtime.costs.left_out += vertex_count;
+      return;
+    }
     if (const auto known = runtime.known.find(key); !dynamic && known != runtime.known.end()) {
       // A leaf's slice stays in use while it is drawn.
       if (mask) {
@@ -768,7 +778,7 @@ void Capture(Context& command, const SceneShader& shader) {
         return;
       }
       place = true;
-    } else if (std::ranges::find(runtime.captures, key, &dlaa_bridge::RtCapture::key) != runtime.captures.end()) {
+    } else if (runtime.captured_keys.contains(key)) {
       if (!placed) return;
       place = true;
     }
@@ -825,8 +835,20 @@ void Capture(Context& command, const SceneShader& shader) {
                                       vertex_count, arguments.instance_count, arguments.first_instance, described,
                                       (moving ? ", moving" : "")));
   }
+  // A dynamic draw right after one of its kind (no opacity mask) joins its capture, the helper takes them as one (the
+  // frame's RT_CAPTURES ran out with the terrain, units and grass all captured every frame).
+  const uint32_t flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
+                         | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
+                         | (shader.thin ? dlaa_bridge::RT_THIN : 0u);
+  dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
+  if (!dynamic || shader.foliage || joined == nullptr || joined->flags != flags
+      || joined->first_vertex + joined->vertex_count != runtime.captured_vertices || joined->vertex_count % 3 != 0) {
+    joined = nullptr;
+  }
   if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || runtime.captured_vertices + row_texels > MAX_VERTICES)
-            : (runtime.captures.size() >= dlaa_bridge::RT_CAPTURES || runtime.captured_vertices + vertex_count + row_texels > MAX_VERTICES)) {
+            : ((joined == nullptr && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)
+               || runtime.captured_vertices + vertex_count + row_texels > MAX_VERTICES)) {
+    if (dynamic) runtime.costs.left_out += vertex_count;
     return;
   }
   ComPtr<ID3D11Device> device;
@@ -898,16 +920,20 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   const UINT rows_vertex = runtime.captured_vertices + (place ? 0u : vertex_count);
   if (placed) {
+    // As points (under the game's triangle list one vertex an instance made no primitive: nothing was streamed, the
+    // helper placed every placed mesh by stale texels: giant shapes, long lines, no shadows, ATN 2026-10-28).
     ID3D11Buffer* rows_target = objects.captured.Get();
     const UINT rows_offset = rows_vertex * 16;
     native->VSSetShader(objects.rows_shaders[index].Get(), nullptr, 0);
     native->GSSetShader(objects.rows_outputs[index].Get(), nullptr, 0);
     native->SOSetTargets(1, &rows_target, &rows_offset);
+    native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
     if constexpr (INDEXED) {
       native->DrawIndexedInstanced(1, instances, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
     } else {
       native->DrawInstanced(1, instances, arguments.first_vertex, arguments.first_instance);
     }
+    native->IASetPrimitiveTopology(topology);
   }
   ID3D11Buffer* output = game_output.Get();
   constexpr UINT APPEND = UINT_MAX;
@@ -922,12 +948,14 @@ void Capture(Context& command, const SceneShader& shader) {
     if (const auto known = runtime.known.find(key); known != runtime.known.end()) known->second = {.frame = runtime.frame, .instances = instances};
     return;
   }
-  runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count,
-                              .flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
-                                       | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
-                                       | (shader.thin ? dlaa_bridge::RT_THIN : 0u),
-                              .instances = (placed ? instances : 0u)});
-  runtime.slices.push_back(slice);
+  if (joined != nullptr) {
+    joined->vertex_count += vertex_count;
+  } else {
+    runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count, .flags = flags,
+                                .instances = (placed ? instances : 0u)});
+    runtime.slices.push_back(slice);
+  }
+  runtime.captured_keys.insert(key);
   runtime.captured_vertices += vertex_count + row_texels;
   if (dynamic) {
     runtime.dynamic_vertices += vertex_count;
@@ -1145,6 +1173,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     runtime.traced_view_projection = camera.view_projection;
   }
   runtime.captures.clear();
+  runtime.captured_keys.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
   runtime.drawn.clear();
@@ -1508,7 +1537,10 @@ inline void Update(const Settings& settings) {
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
   auto& costs = runtime.costs;
-  if (internal::Enabled()) ++costs.frames;
+  if (internal::Enabled()) {
+    ++costs.frames;
+    costs.dynamic_vertices += runtime.dynamic_vertices;
+  }
   if (auto& objects = runtime.objects; objects.device) {
     ComPtr<ID3D11DeviceContext> context;
     objects.device->GetImmediateContext(context.GetAddressOf());
@@ -1570,15 +1602,19 @@ inline void Update(const Settings& settings) {
       QueryPerformanceFrequency(&frequency);
       const double frame_ms = 1000.0 / static_cast<double>(frequency.QuadPart) / costs.frames;
       renodx::utils::log::i(std::format("[Total War] Ray tracing's own cost a frame: CPU {:.2f} ms capturing, {:.2f} ms tracing; GPU "
-                                        "{:.2f} ms its passes, {:.2f} ms waiting for the helper.",
+                                        "{:.2f} ms its passes, {:.2f} ms waiting for the helper; every frame {:.2f} M vertices captured, "
+                                        "{:.2f} M left out (their share full).",
                                         costs.capture_ticks * frame_ms, costs.trace_ticks * frame_ms,
                                         (costs.timed != 0 ? costs.passes_ms / costs.timed : 0.0),
-                                        (costs.timed != 0 ? costs.waiting_ms / costs.timed : 0.0)));
+                                        (costs.timed != 0 ? costs.waiting_ms / costs.timed : 0.0),
+                                        static_cast<double>(costs.dynamic_vertices) / 1.0e6 / costs.frames,
+                                        static_cast<double>(costs.left_out) / 1.0e6 / costs.frames));
     }
     costs = {};
     runtime.new_static_time = now;
   }
   runtime.captures.clear();
+  runtime.captured_keys.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
   runtime.dynamic_vertices = 0;

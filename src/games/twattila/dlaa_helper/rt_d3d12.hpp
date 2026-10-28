@@ -990,11 +990,11 @@ class RtScene12 {
   static constexpr uint32_t RELEASE_FRAMES = 3600;
   // The units' BLAS is refitted to each frame's poses while their draws stay the same, rebuilt this often.
   static constexpr uint32_t UNITS_REBUILD_FRAMES = 30;
-  static constexpr UINT DYNAMIC_TRIANGLES = (7u << 20) / 3;  // rt_core.hpp MAX_DYNAMIC_VERTICES
+  static constexpr UINT DYNAMIC_TRIANGLES = (14u << 20) / 3;  // rt_core.hpp MAX_DYNAMIC_VERTICES
   // Mega Geometry: the units' triangles in clusters of this many (three vertices each, up to 256 a cluster), a frame's
   // clusters at most (the last of each draw partial), each a geometry with a record of its own (a slot's in turn).
   static constexpr uint32_t CLUSTER_TRIANGLES = 85;
-  static constexpr uint32_t MAX_CLUSTERS = 49152;
+  static constexpr uint32_t MAX_CLUSTERS = 65536;
   // A slot's upload buffer for them: the CLASes' arguments (64 bytes each), the cluster BLAS's (16), the CLAS count,
   // the BLAS's destination, the indices (0-255), the clusters' records.
   static constexpr uint64_t CLUSTER_ARGS_OFFSET = 0;
