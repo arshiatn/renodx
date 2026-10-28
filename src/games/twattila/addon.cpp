@@ -1749,7 +1749,7 @@ bool AttachAddon() {
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit_recorded,
-                                                        .unit_record_pixel_shader = __motion_unit_record,
+                                                        .unit_records_compute_shader = __motion_unit_records,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
                                    RENDER_SCALE_READS);

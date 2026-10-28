@@ -80,9 +80,10 @@ struct Shaders {
   std::span<const MotionShader> shaders;
   std::span<const uint8_t> wind_pixel_shader;
   std::span<const uint8_t> unit_pixel_shader;
-  // With it the units' records are drawn apart, one point per instance (their MotionShader::record_shader), and their
-  // redraw (unit_pixel_shader without records: motion_unit_recorded.ps) skips hidden pixels early.
-  std::span<const uint8_t> unit_record_pixel_shader;
+  // With it (motion_unit_records.cs) each unit draw streams its soldiers out (a point per instance: their
+  // MotionShader::record_shader), recorded at the frame's end (Resolve), and their redraw (unit_pixel_shader without
+  // records: motion_unit_recorded.ps) skips hidden pixels early.
+  std::span<const uint8_t> unit_records_compute_shader;
   std::span<const uint8_t> capture_pixel_shader;
   std::span<const uint8_t> rigid_compute_shader;
 };
@@ -169,20 +170,30 @@ constexpr UINT HISTORY_SRV_SLOT = 16;
 constexpr UINT HISTORY_SLOTS = 8;
 // The motion draws' vertex shader views (t9-t23), kept for the game.
 constexpr UINT MOTION_VIEWS = HISTORY_SRV_SLOT + HISTORY_SLOTS - DEFORMED_SRV_SLOT;
-// The stream output of motion_record_*.vs: TEXCOORD0-3.
-// Motion Test 8 (debug): the units' record points (motion_unit_point.vs: TEXCOORD2-5) through stream output.
+// Units (motion_unit_records.cs): a frame's records (an instance's rows, then its bone base, the animation texture's
+// width, the draw's mesh and animation texture keys: 64 bytes), streamed out by motion_unit_point.vs (TEXCOORD2-5).
+constexpr UINT UNIT_RECORDS = 1u << 16;
+constexpr UINT UNIT_RECORD_BYTES = 64;
 constexpr std::array<D3D11_SO_DECLARATION_ENTRY, 4> UNIT_RECORD_OUTPUT = {{
     {.SemanticName = "TEXCOORD", .SemanticIndex = 2, .ComponentCount = 4},
     {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
     {.SemanticName = "TEXCOORD", .SemanticIndex = 4, .ComponentCount = 4},
     {.SemanticName = "TEXCOORD", .SemanticIndex = 5, .ComponentCount = 4},
 }};
+// The stream output of motion_record_*.vs: TEXCOORD0-3.
 constexpr std::array<D3D11_SO_DECLARATION_ENTRY, 4> RIGID_RECORD_OUTPUT = {{
     {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 4},
     {.SemanticName = "TEXCOORD", .SemanticIndex = 1, .ComponentCount = 4},
     {.SemanticName = "TEXCOORD", .SemanticIndex = 2, .ComponentCount = 4},
     {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
 }};
+
+// A unit draw's records this frame (motion_unit_records.cs at the frame's end) and the animation texture they read.
+struct UnitRecordDraw {
+  UINT first = 0;
+  UINT count = 0;
+  ComPtr<ID3D11ShaderResourceView> animation_map;
+};
 
 // A rigid mesh: recorded until `sample_until` (first seen), recorded and drawn again until `moving_until`.
 struct RigidMesh {
@@ -249,7 +260,6 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11VertexShader>> motion_shaders;  // as Shaders::shaders
   ComPtr<ID3D11PixelShader> wind_pixel_shader;
   ComPtr<ID3D11PixelShader> unit_pixel_shader;
-  ComPtr<ID3D11PixelShader> unit_record_pixel_shader;
   ComPtr<ID3D11Buffer> motion_constants;
   ComPtr<ID3D11Texture2D> motion;
   ComPtr<ID3D11RenderTargetView> motion_rtv;
@@ -300,8 +310,14 @@ struct DeviceObjects {
   UINT deformed_draw_count = 0;
   // The ocean: its displacement textures by slot.
   std::array<TextureHistory, HISTORY_SLOTS> texture_histories;
-  // Motion Test 8 (debug): the units' records streamed out, each draw's over the last's.
-  ComPtr<ID3D11Buffer> test_stream;
+  // Units' streamed records (Shaders::unit_records_compute_shader): the recording, its range, this frame's records and
+  // the draws they came from.
+  ComPtr<ID3D11ComputeShader> unit_records_compute;
+  ComPtr<ID3D11Buffer> unit_record_constants;
+  ComPtr<ID3D11Buffer> unit_records;
+  ComPtr<ID3D11ShaderResourceView> unit_records_srv;
+  UINT unit_record_count = 0;
+  std::vector<UnitRecordDraw> unit_record_draws;
   // In-draw: the vertex shaders (as Shaders::shaders; null: none), the targets (R16G16_FLOAT: the motion in render
   // pixels; R32_FLOAT: the depth, 0 not written; the motion target's size, cleared with it) and the blend states (the
   // game's, targets 6 and 7 without blending: by the game's description).
@@ -340,9 +356,7 @@ struct State {
 static State state;
 // The host draws motion this frame (else the moving draws return at once).
 static std::atomic_bool active = false;
-// Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only, 4 unit records with
-// the depth buffer kept bound, 5 unit records' bindings without their draw, 6 unit records' draw without UAVs, 7 unit
-// records' draw with the game's targets kept bound (no UAVs, no pixel shader), 8 unit records through stream output.
+// Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only.
 static std::atomic_uint32_t test = 0;
 
 // The device's shaders and constants; false: not available.
@@ -363,6 +377,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
     auto& record_output = objects.record_outputs.emplace_back();
     auto& draw_shader = objects.draw_shaders.emplace_back();
     constexpr UINT STRIDE = RIGID_RECORD_BYTES;
+    constexpr UINT UNIT_STRIDE = UNIT_RECORD_BYTES;
     return SUCCEEDED(device->CreateVertexShader(shader.motion_shader.data(), shader.motion_shader.size(), nullptr,
                                                 objects.motion_shaders.emplace_back().GetAddressOf()))
            && (shader.record_shader.empty()
@@ -379,7 +394,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
            && (shader.kind != MotionKind::UNIT || shader.record_shader.empty()
                || SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(
                    shader.record_shader.data(), shader.record_shader.size(), UNIT_RECORD_OUTPUT.data(),
-                   static_cast<UINT>(UNIT_RECORD_OUTPUT.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                   static_cast<UINT>(UNIT_RECORD_OUTPUT.size()), &UNIT_STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
                    record_output.GetAddressOf())));
   };
   // Deformed meshes' capture: no depth, every point drawn.
@@ -390,8 +405,12 @@ inline bool PrepareDevice(ID3D11Device* device) {
   objects.made = std::ranges::all_of(shaders.shaders, motion)
                  && pixel(shaders.wind_pixel_shader, &objects.wind_pixel_shader)
                  && pixel(shaders.unit_pixel_shader, &objects.unit_pixel_shader)
-                 && pixel(shaders.unit_record_pixel_shader, &objects.unit_record_pixel_shader)
-                 && ((shaders.capture_pixel_shader.empty() && shaders.unit_record_pixel_shader.empty())
+                 && (shaders.unit_records_compute_shader.empty()
+                     || (SUCCEEDED(device->CreateComputeShader(shaders.unit_records_compute_shader.data(),
+                                                               shaders.unit_records_compute_shader.size(), nullptr,
+                                                               objects.unit_records_compute.GetAddressOf()))
+                         && SUCCEEDED(device->CreateBuffer(&rigid_desc, nullptr, objects.unit_record_constants.GetAddressOf()))))
+                 && (shaders.capture_pixel_shader.empty()
                      || (pixel(shaders.capture_pixel_shader, &objects.capture_pixel_shader)
                          && SUCCEEDED(device->CreateDepthStencilState(&capture_depth_desc, objects.capture_depth_state.GetAddressOf()))
                          && SUCCEEDED(device->CreateRasterizerState(&capture_rasterizer_desc, objects.capture_rasterizer.GetAddressOf()))))
@@ -413,9 +432,9 @@ inline bool PrepareDevice(ID3D11Device* device) {
 // it): the draw's in-draw vertex shader and its pixel shader patched, targets 6 and 7 for the motion. Else (after the
 // draw) the same draw again with its motion vertex shader into the motion target, against the game's depth (not
 // written), every other binding the game's. Units, rigid objects and deformed meshes with last frame's placement
-// table, units with this frame's to record theirs in (a point per instance first where the addon draws records apart:
-// Shaders::unit_record_pixel_shader; else every pixel of the redraw). Rigid objects: their instances recorded through
-// stream output while sampled or moving, drawn again only while moving. Deformed meshes: captured first (their
+// table; units record theirs for the next frame (streamed out, recorded at the frame's end where the addon has
+// Shaders::unit_records_compute_shader; else from every pixel of the redraw). Rigid objects: their instances recorded
+// through stream output while sampled or moving, drawn again only while moving. Deformed meshes: captured first (their
 // vertices' world positions and anchor), then drawn with last frame's. The ocean: its displacement textures copied
 // (last frame's for its motion shader).
 template <typename Context>
@@ -639,6 +658,16 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       if (made && objects.capture_pixel_shader) {
         made = make(DXGI_FORMAT_R32G32B32A32_FLOAT, DEFORMED_DRAWS, 16, &objects.anchor_srv, &objects.anchor_uav);
       }
+      if (made && objects.unit_records_compute) {
+        const D3D11_BUFFER_DESC records_desc = {.ByteWidth = UNIT_RECORDS * UNIT_RECORD_BYTES, .Usage = D3D11_USAGE_DEFAULT,
+                                                .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
+        D3D11_SHADER_RESOURCE_VIEW_DESC records_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                                        .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+        records_view.Buffer.NumElements = UNIT_RECORDS * UNIT_RECORD_BYTES / 16;
+        made = SUCCEEDED(device->CreateBuffer(&records_desc, nullptr, objects.unit_records.GetAddressOf()))
+               && SUCCEEDED(device->CreateShaderResourceView(objects.unit_records.Get(), &records_view,
+                                                             objects.unit_records_srv.GetAddressOf()));
+      }
       if (made && objects.rigid_compute) {
         const D3D11_BUFFER_DESC records_desc = {.ByteWidth = RIGID_RECORDS * RIGID_RECORD_BYTES, .Usage = D3D11_USAGE_DEFAULT,
                                                 .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
@@ -670,6 +699,8 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
         objects.deformed_position_uavs = {};
         objects.anchor_srv.Reset();
         objects.anchor_uav.Reset();
+        objects.unit_records.Reset();
+        objects.unit_records_srv.Reset();
         objects.rigid_records.Reset();
         objects.rigid_records_srv.Reset();
         objects.rigid_flags_uav.Reset();
@@ -692,6 +723,8 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       objects.rigid_draws.clear();
       objects.deformed_position_count = 0;
       objects.deformed_draw_count = 0;
+      objects.unit_record_count = 0;
+      objects.unit_record_draws.clear();
       objects.placement_frame = frame;
     }
     if (shader.kind == MotionKind::UNIT) {
@@ -871,9 +904,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   native->PSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
   // Motion Test 1: no records or captures.
   const bool no_records = (test.load(std::memory_order_relaxed) == 1);
-  // The units' records and the deformed meshes' captures write the same tables draw after draw: NVIDIA's UAV overlap
-  // (DLSS: an NVIDIA GPU) keeps the driver from waiting for the GPU to idle before each (~4 ms a frame with a unit of
-  // cavalry on screen). nvapi loaded at the first.
+  // The deformed meshes' captures write the same tables draw after draw (and the units' records at the frame's end,
+  // dispatch after dispatch): NVIDIA's UAV overlap (DLSS: an NVIDIA GPU) keeps the driver from waiting for the GPU to
+  // idle before each. nvapi loaded at the first.
   auto& overlap = state.uav_overlap;
   if (!overlap.loaded && (shader.kind == MotionKind::UNIT || shader.kind == MotionKind::DEFORMED)) {
     overlap.loaded = true;
@@ -897,14 +930,14 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     }
     renodx::utils::log::i("[Total War] Object motion: NVIDIA's UAV overlap ", (overlap.begin != nullptr ? "used." : "unavailable."));
   }
-  if (record && !no_records) {
-    // One point per instance (its first vertex), not rasterized: its rows and (mesh key, slot) after the frame's records.
+  // Records (rigid objects, units): one point per instance (its first vertex) through its record shader's stream output
+  // into `records` at `offset`, not rasterized (the game's targets stay bound: a pixel shader writing them cost ~4 ms a
+  // frame with a unit of cavalry on screen).
+  const auto stream_records = [&](ID3D11Buffer* records, UINT offset) {
     ComPtr<ID3D11GeometryShader> game_geometry_shader;
     native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
     ComPtr<ID3D11Buffer> game_output;
     native->SOGetTargets(1, game_output.GetAddressOf());
-    ID3D11Buffer* records = objects.rigid_records.Get();
-    const UINT offset = objects.rigid_record_count * RIGID_RECORD_BYTES;
     native->VSSetShader(objects.record_shaders[index].Get(), nullptr, 0);
     native->GSSetShader(objects.record_outputs[index].Get(), nullptr, 0);
     native->PSSetShader(nullptr, nullptr, 0);
@@ -918,7 +951,12 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     ID3D11Buffer* output = game_output.Get();
     constexpr UINT APPEND = UINT_MAX;
     native->SOSetTargets(1, &output, &APPEND);
+    native->IASetPrimitiveTopology(topology);
     native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
+  };
+  if (record && !no_records) {
+    // Its rows and (mesh key, slot) after the frame's records.
+    stream_records(objects.rigid_records.Get(), objects.rigid_record_count * RIGID_RECORD_BYTES);
     objects.rigid_record_count += arguments.instance_count;
     objects.rigid_draws.push_back(mesh_key);
   }
@@ -958,9 +996,12 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   if (shader.kind == MotionKind::HISTORY) {
     native->VSSetShaderResources(HISTORY_SRV_SLOT, HISTORY_SLOTS, history_views.data());
   }
-  // Units: their records (placement, bones) into this frame's table, from one point per instance where the addon draws
-  // them apart (unit_record_pixel_shader), else from every pixel of the redraw.
-  const bool unit_points = shader.kind == MotionKind::UNIT && objects.unit_record_pixel_shader && objects.record_shaders[index] && !no_records;
+  // Units: their records (placement, bones) for this frame's table. Streamed out where the addon records them at the
+  // frame's end (Shaders::unit_records_compute_shader: the draw's soldiers after the frame's records, with the
+  // animation texture they read), else written from every pixel of the redraw (the table bound with it, the animation
+  // texture at ANIMATION_SRV_SLOT).
+  const bool unit_stream = shader.kind == MotionKind::UNIT && objects.unit_records_compute && objects.record_outputs[index];
+  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_stream && !no_records;
   const std::array<ID3D11UnorderedAccessView*, 5> table = {
       objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
       objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
@@ -969,64 +1010,13 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     ID3D11ShaderResourceView* bones = animation_map.Get();
     native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &bones);
   }
-  if (unit_points) {
-    ComPtr<ID3D11GeometryShader> game_geometry_shader;
-    native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
-    native->GSSetShader(nullptr, nullptr, 0);
-    native->VSSetShader(objects.record_shaders[index].Get(), nullptr, 0);
-    const uint32_t test_mode = test.load(std::memory_order_relaxed);
-    const bool keep_targets = (test_mode == 7 || test_mode == 8);
-    native->PSSetShader((keep_targets ? nullptr : objects.unit_record_pixel_shader.Get()), nullptr, 0);
-    native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
-    ID3D11DepthStencilView* record_depth = (test_mode == 4 ? depth_stencil.Get() : nullptr);
-    const auto& record_table = (test_mode == 6 ? NO_TABLE : table);
-    ComPtr<ID3D11Buffer> game_stream;
-    if (test_mode == 8) {
-      if (!objects.test_stream) {
-        const D3D11_BUFFER_DESC stream_desc = {.ByteWidth = 1u << 22, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
-        device->CreateBuffer(&stream_desc, nullptr, objects.test_stream.GetAddressOf());
-      }
-      native->SOGetTargets(1, game_stream.GetAddressOf());
-      ID3D11Buffer* stream = objects.test_stream.Get();
-      constexpr UINT START = 0;
-      native->GSSetShader(objects.record_outputs[index].Get(), nullptr, 0);
-      native->SOSetTargets(1, &stream, &START);
-    }
-    if (!keep_targets) {
-      native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(record_table.size()),
-                                                        record_table.data(), nullptr);
-    }
-    native->OMSetDepthStencilState(objects.capture_depth_state.Get(), 0);
-    native->RSSetState(objects.capture_rasterizer.Get());
-    // Not the game's blend state: its alpha to coverage would drop the point (no colour out) and its writes.
-    native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
-    if (overlap.begin != nullptr) {
-      overlap.begin(native, 0);
-    }
-    if constexpr (INDEXED) {
-      if (test_mode != 5) {
-        native->DrawIndexedInstanced(1, arguments.instance_count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
-      }
-    } else {
-      if (test_mode != 5) {
-        native->DrawInstanced(1, arguments.instance_count, arguments.first_vertex, arguments.first_instance);
-      }
-    }
-    if (overlap.end != nullptr) {
-      overlap.end(native);
-    }
-    if (!keep_targets) {
-      native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
-    }
-    if (test_mode == 8) {
-      ID3D11Buffer* stream = game_stream.Get();
-      constexpr UINT APPEND = UINT_MAX;
-      native->SOSetTargets(1, &stream, &APPEND);
-    }
-    native->IASetPrimitiveTopology(topology);
-    native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
+  if (unit_stream && !no_records && animation_map
+      && objects.unit_record_count + uint64_t{arguments.instance_count} <= UNIT_RECORDS) {
+    stream_records(objects.unit_records.Get(), objects.unit_record_count * UNIT_RECORD_BYTES);
+    objects.unit_record_draws.push_back(
+        {.first = objects.unit_record_count, .count = arguments.instance_count, .animation_map = animation_map});
+    objects.unit_record_count += arguments.instance_count;
   }
-  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_points && !no_records;
   if (drawn_pixel_shader) {
     // The game's draw writes the motion: its in-draw vertex shader, its pixel shader patched, targets 6 and 7 with
     // blending off there (the game's for the rest), the motion constants and tables kept bound; FinishInDraw puts the
@@ -1256,8 +1246,9 @@ inline void SetTest(uint32_t test) {
 }
 
 // The frame's end, after its last motion draw: the rigid objects' flags of a few frames back read (which meshes move),
-// then this frame's records matched with last frame's table into this frame's (motion_rigid.cs), their draws' flags
-// copied to be read back. The compute bindings it changes are put back.
+// the units' streamed records into this frame's table (motion_unit_records.cs), then the rigid objects' records matched
+// with last frame's table into this frame's (motion_rigid.cs), their draws' flags copied to be read back. The compute
+// bindings it changes are put back.
 inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
   using namespace internal;
   const std::unique_lock lock(state.mutex);
@@ -1278,13 +1269,9 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
     native->Unmap(readback.flags.Get(), 0);
     readback.meshes.clear();
   }
-  if (objects.placement_frame != frame || objects.rigid_record_count == 0) return;
-  const std::array<uint32_t, 4> rigid = {objects.rigid_record_count, (objects.previous_placements ? 1u : 0u), 0u, 0u};
-  native->UpdateSubresource(objects.rigid_constants.Get(), 0, nullptr, rigid.data(), 0, 0);
-  constexpr std::array<UINT, 4> EMPTY = {};
-  native->ClearUnorderedAccessViewUint(objects.rigid_flags_uav.Get(), EMPTY.data());
+  if (objects.placement_frame != frame || (objects.unit_record_draws.empty() && objects.rigid_record_count == 0)) return;
   const size_t current = objects.placement_index;
-  // The game's compute bindings: the shader, b0, t0, t14-t15 (last frame's table) and u0-u2.
+  // The game's compute bindings: the shader, b0, t0, t14-t15 and u0-u5.
   ComPtr<ID3D11ComputeShader> game_shader;
   native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
   ComPtr<ID3D11Buffer> game_constants;
@@ -1293,30 +1280,76 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
   native->CSGetShaderResources(0, 1, &game_records_view);
   std::array<ID3D11ShaderResourceView*, 2> game_table_views = {};
   native->CSGetShaderResources(PLACEMENT_SRV_SLOT + 3, 2, game_table_views.data());
-  std::array<ID3D11UnorderedAccessView*, 3> game_uavs = {};
-  native->CSGetUnorderedAccessViews(0, 3, game_uavs.data());
+  std::array<ID3D11UnorderedAccessView*, 6> game_uavs = {};
+  native->CSGetUnorderedAccessViews(0, 6, game_uavs.data());
 
-  const std::array<ID3D11ShaderResourceView*, 2> previous_table = {objects.placement_key_srvs[current ^ 1].Get(),
-                                                                   objects.placement_srvs[current ^ 1].Get()};
-  ID3D11ShaderResourceView* records = objects.rigid_records_srv.Get();
-  const std::array<ID3D11UnorderedAccessView*, 3> outputs = {
-      objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.rigid_flags_uav.Get()};
-  ID3D11Buffer* rigid_constants = objects.rigid_constants.Get();
-  native->CSSetShader(objects.rigid_compute.Get(), nullptr, 0);
-  native->CSSetConstantBuffers(0, 1, &rigid_constants);
-  native->CSSetShaderResources(0, 1, &records);
-  native->CSSetShaderResources(PLACEMENT_SRV_SLOT + 3, 2, previous_table.data());
-  native->CSSetUnorderedAccessViews(0, 3, outputs.data(), nullptr);
-  native->Dispatch((objects.rigid_record_count + 63) / 64, 1, 1);
+  if (!objects.unit_record_draws.empty()) {
+    // The units' records (streamed out by their draws) into this frame's table and bone pool (motion_unit_records.cs:
+    // u1-u5 as motion_unit_records.hlsli), consecutive draws on one animation texture (as it is now: the game writes each
+    // once a frame) in one dispatch, under NVIDIA's UAV overlap.
+    const std::array<ID3D11UnorderedAccessView*, 6> unit_outputs = {
+        nullptr, objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
+        objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
+    ID3D11Buffer* unit_constants = objects.unit_record_constants.Get();
+    ID3D11ShaderResourceView* unit_records = objects.unit_records_srv.Get();
+    native->CSSetShader(objects.unit_records_compute.Get(), nullptr, 0);
+    native->CSSetConstantBuffers(0, 1, &unit_constants);
+    native->CSSetShaderResources(0, 1, &unit_records);
+    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(unit_outputs.size()), unit_outputs.data(), nullptr);
+    const auto& overlap = state.uav_overlap;
+    if (overlap.begin != nullptr) {
+      overlap.begin(native, 0);
+    }
+    const auto& draws = objects.unit_record_draws;
+    for (size_t first = 0; first < draws.size();) {
+      size_t next = first + 1;
+      UINT count = draws[first].count;
+      while (next < draws.size() && draws[next].animation_map == draws[first].animation_map
+             && draws[next].first == draws[first].first + count) {
+        count += draws[next].count;
+        ++next;
+      }
+      const std::array<uint32_t, 4> range = {draws[first].first, count, 0u, 0u};
+      native->UpdateSubresource(unit_constants, 0, nullptr, range.data(), 0, 0);
+      ID3D11ShaderResourceView* animation_map = draws[first].animation_map.Get();
+      native->CSSetShaderResources(ANIMATION_SRV_SLOT, 1, &animation_map);
+      native->Dispatch((count + 63) / 64, 1, 1);
+      first = next;
+    }
+    if (overlap.end != nullptr) {
+      overlap.end(native);
+    }
+    constexpr std::array<ID3D11UnorderedAccessView*, 6> NO_UNIT_OUTPUTS = {};
+    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(NO_UNIT_OUTPUTS.size()), NO_UNIT_OUTPUTS.data(), nullptr);
+  }
 
-  constexpr std::array<ID3D11UnorderedAccessView*, 3> NO_OUTPUTS = {};
-  native->CSSetUnorderedAccessViews(0, 3, NO_OUTPUTS.data(), nullptr);
+  if (objects.rigid_record_count != 0) {
+    const std::array<uint32_t, 4> rigid = {objects.rigid_record_count, (objects.previous_placements ? 1u : 0u), 0u, 0u};
+    native->UpdateSubresource(objects.rigid_constants.Get(), 0, nullptr, rigid.data(), 0, 0);
+    constexpr std::array<UINT, 4> EMPTY = {};
+    native->ClearUnorderedAccessViewUint(objects.rigid_flags_uav.Get(), EMPTY.data());
+    const std::array<ID3D11ShaderResourceView*, 2> previous_table = {objects.placement_key_srvs[current ^ 1].Get(),
+                                                                     objects.placement_srvs[current ^ 1].Get()};
+    ID3D11ShaderResourceView* records = objects.rigid_records_srv.Get();
+    const std::array<ID3D11UnorderedAccessView*, 3> outputs = {
+        objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.rigid_flags_uav.Get()};
+    ID3D11Buffer* rigid_constants = objects.rigid_constants.Get();
+    native->CSSetShader(objects.rigid_compute.Get(), nullptr, 0);
+    native->CSSetConstantBuffers(0, 1, &rigid_constants);
+    native->CSSetShaderResources(0, 1, &records);
+    native->CSSetShaderResources(PLACEMENT_SRV_SLOT + 3, 2, previous_table.data());
+    native->CSSetUnorderedAccessViews(0, 3, outputs.data(), nullptr);
+    native->Dispatch((objects.rigid_record_count + 63) / 64, 1, 1);
+    constexpr std::array<ID3D11UnorderedAccessView*, 3> NO_OUTPUTS = {};
+    native->CSSetUnorderedAccessViews(0, 3, NO_OUTPUTS.data(), nullptr);
+  }
+
   native->CSSetShader(game_shader.Get(), nullptr, 0);
   ID3D11Buffer* constants = game_constants.Get();
   native->CSSetConstantBuffers(0, 1, &constants);
   native->CSSetShaderResources(0, 1, &game_records_view);
   native->CSSetShaderResources(PLACEMENT_SRV_SLOT + 3, 2, game_table_views.data());
-  native->CSSetUnorderedAccessViews(0, 3, game_uavs.data(), nullptr);
+  native->CSSetUnorderedAccessViews(0, static_cast<UINT>(game_uavs.size()), game_uavs.data(), nullptr);
   if (game_records_view != nullptr) {
     game_records_view->Release();
   }
@@ -1331,12 +1364,14 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
     }
   }
 
-  auto& readback = objects.rigid_readbacks[frame % RIGID_READBACKS];
-  ComPtr<ID3D11Resource> flags;
-  objects.rigid_flags_uav->GetResource(flags.GetAddressOf());
-  native->CopyResource(readback.flags.Get(), flags.Get());
-  readback.meshes = objects.rigid_draws;
-  readback.frame = frame;
+  if (objects.rigid_record_count != 0) {
+    auto& readback = objects.rigid_readbacks[frame % RIGID_READBACKS];
+    ComPtr<ID3D11Resource> flags;
+    objects.rigid_flags_uav->GetResource(flags.GetAddressOf());
+    native->CopyResource(readback.flags.Get(), flags.Get());
+    readback.meshes = objects.rigid_draws;
+    readback.frame = frame;
+  }
 }
 
 // The motion targets written in `frame` (none: nothing moved): the redrawn draws' (motion.hlsli MotionTexel), the

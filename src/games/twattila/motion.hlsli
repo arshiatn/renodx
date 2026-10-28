@@ -128,10 +128,10 @@ bool MotionRecord(RWBuffer<uint> keys, RWBuffer<uint4> placements, uint key, flo
   return took;
 }
 
-// A soldier's bones this frame: its bone base in the draw's animation texture.
-uint BoneKey(float raw_base)
+// A soldier's bones this frame: its bone base in its draw's animation texture (`animation_key`: object_motion.hpp's).
+uint BoneKey(float raw_base, uint animation_key)
 {
-  return ((asuint((int)floor(0.5f + raw_base)) * 2654435761u) ^ (motion_unit.w * 40503u)) | 1u;
+  return ((asuint((int)floor(0.5f + raw_base)) * 2654435761u) ^ (animation_key * 40503u)) | 1u;
 }
 
 uint BoneSlot(uint key, uint probe)
