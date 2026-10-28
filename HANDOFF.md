@@ -721,10 +721,22 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       LATER (ATN: remember): redesign the unit records: copy each soldier draw's instance data (buffer copy, no stream
       output switch) and stream all out in one batch at the frame's end (feature level 11.0: no VS UAVs); should give
       ~+7% at DLAA and help RR / FG / RT.
-      Open scaling issues (ATN debug12): the grass "circle" (a pass hiding grass past 100 m covers only the top-left at
-      UP: find it, scale it, then grass / trees past 100 m); the game's SSR at UP in the top-left 1/9 (normal image or
-      debug view? ask); SSS in the normal image (the Debug View was the top-left one). Remove debug_timing.hpp, the
-      Motion Test setting and the motion timing log before the zip.
+      Scaling fixes (ATN confirmed): the grass depth pre-pass 0x125A0DD5 (its 100 m / 50 m cut follows Grass Height
+      Distance, its terrain depth read scaled: grass past 100 m), the game's SSR, SSS lines (Bend marches the rendered
+      part's pixels). Remove debug_timing.hpp, the Motion Test setting and the motion timing log before the zip.
+      FG trace (2026-10-28, scratchpad attila_test fg.ps1 + fg_analyze.py, run fg1; DLSS UQ preset L, RT off, Reflex
+      Boost, 4K): base fps Off 89 (CPU-bound, game GPU 6.2 ms) / 2x 85.5 / 4x 75 / 6x 66.7, GPU-bound with FG (game +
+      helper GPU 94-96%). Helper GPU: DLSS SR ~2.7 ms a frame, DLSS-G ~1.2 ms a rendered frame + ~0.9 ms a generated
+      one (NVIDIA's). Hand-off on the game thread: 230 us at 2x (helper Present + Reflex sleep; 0.9-3.3 ms at 4x/6x =
+      Reflex holding the game for the full GPU), HUD-less copy 8 us. Helper presents Independent Flip, pacing fine (6x:
+      2.50 ms median, p95 2.9); the game's own presents vanish while covered (nothing to gain). GPU idle ~0.6-0.8 ms
+      a frame with FG (cross-process waits). DLSS-G presets: not in Streamline 2.14.16; nvngx_dlssg reads its render
+      preset from DRS (DLSSGDRSKeys, "render preset (requested, effective)") = the helper exe's driver profile.
+      LATER BATCH (ATN: with the records redesign, before RT): (1) HUD smear: DLSS-G UI recomposition (UI colour + alpha
+      from final vs HUD-less in the helper, enableUserInterfaceRecomposition); (2) MFG preset option (find the DRS key
+      in nvngx_dlssg, set it for the helper only); (3) no GPU wait on the FG hand-off: two FG frame sets + a fence the
+      helper signals, the game waits only before reusing a set (~3-5% base fps with FG); (4) maybe DLSS SR on the
+      helper's D3D12 device (one device with FG / RR: fewer GPU context switches).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
