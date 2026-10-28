@@ -322,6 +322,8 @@ struct State {
 static State state;
 // The host draws motion this frame (else the moving draws return at once).
 static std::atomic_bool active = false;
+// Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only.
+static std::atomic_uint32_t test = 0;
 
 // The device's shaders and constants; false: not available.
 inline bool PrepareDevice(ID3D11Device* device) {
@@ -842,7 +844,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   ID3D11Buffer* motion_constants = objects.motion_constants.Get();
   native->VSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
   native->PSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
-  if (record) {
+  // Motion Test 1: no records or captures.
+  const bool no_records = (test.load(std::memory_order_relaxed) == 1);
+  if (record && !no_records) {
     // One point per instance (its first vertex), not rasterized: its rows and (mesh key, slot) after the frame's records.
     ComPtr<ID3D11GeometryShader> game_geometry_shader;
     native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
@@ -867,7 +871,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     objects.rigid_record_count += arguments.instance_count;
     objects.rigid_draws.push_back(mesh_key);
   }
-  if (shader.kind == MotionKind::DEFORMED) {
+  if (shader.kind == MotionKind::DEFORMED && !no_records) {
     // One point per index on one pixel (no depth, no target): the vertices' world positions and the anchor.
     const std::array<ID3D11UnorderedAccessView*, 4> capture = {objects.deformed_position_uavs[current].Get(),
                                                                objects.anchor_uav.Get(), objects.placement_key_uavs[current].Get(),
@@ -899,7 +903,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   }
   // Units: their records (placement, bones) into this frame's table, from one point per instance where the addon draws
   // them apart (unit_record_pixel_shader), else from every pixel of the redraw.
-  const bool unit_points = shader.kind == MotionKind::UNIT && objects.unit_record_pixel_shader && objects.record_shaders[index];
+  const bool unit_points = shader.kind == MotionKind::UNIT && objects.unit_record_pixel_shader && objects.record_shaders[index] && !no_records;
   const std::array<ID3D11UnorderedAccessView*, 5> table = {
       objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
       objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
@@ -929,7 +933,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->IASetPrimitiveTopology(topology);
     native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   }
-  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_points;
+  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_points && !no_records;
   if (drawn_pixel_shader) {
     // The game's draw writes the motion: its in-draw vertex shader, its pixel shader patched, targets 6 and 7 with
     // blending off there (the game's for the rest), the motion constants and tables kept bound; FinishInDraw puts the
@@ -1095,6 +1099,9 @@ constexpr auto OnMovingDraw = []<typename T, typename Context>(
     return {};
   } else {
     if (!active.load(std::memory_order_relaxed)) return {};
+    const uint32_t test_mode = test.load(std::memory_order_relaxed);
+    const MotionKind kind = command.template GetCallbackData<MotionShader>().kind;
+    if ((test_mode == 2 && kind != MotionKind::UNIT) || (test_mode == 3 && kind != MotionKind::WIND)) return {};
     if (DrawObjectMotion(command, true)) return {.finalize_callback = FinishInDraw<Context>};
     return {.post_callback = RedrawObjectMotion<Context>};
   }
@@ -1148,6 +1155,11 @@ inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info)
 // The host draws motion from now on (true) or not.
 inline void SetActive(bool active) {
   internal::active.store(active, std::memory_order_relaxed);
+}
+
+// Motion Test (debug): 0 normal, 1 no records or captures, 2 units only, 3 plants only.
+inline void SetTest(uint32_t test) {
+  internal::test.store(test, std::memory_order_relaxed);
 }
 
 // The frame's end, after its last motion draw: the rigid objects' flags of a few frames back read (which meshes move),

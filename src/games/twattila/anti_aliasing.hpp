@@ -101,6 +101,7 @@ struct Settings {
   // DLAA / DLSS's Debug View: 0 off, 1 the motion NVIDIA gets, 2 the objects' own (aa_dlaa_finish), 3 no camera motion
   // (the objects' alone: aa_dlaa_prepare).
   uint32_t debug_view = 0;
+  uint32_t motion_test = 0;  // object_motion.hpp SetTest (debug)
 };
 
 namespace internal {
@@ -1211,6 +1212,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
       (settings.method == Method::SMAA_T2X || settings.method == Method::TAA || settings.method == Method::DLAA);
   internal::temporal.store(temporal, std::memory_order_relaxed);
   object_motion::SetActive(settings.method == Method::DLAA && settings.object_motion);
+  object_motion::SetTest(settings.motion_test);
   frame_generation::Update({
       .multiplier = (settings.method == Method::DLAA ? settings.frame_generation : 0u),
       .reflex_boost = settings.reflex_boost,
