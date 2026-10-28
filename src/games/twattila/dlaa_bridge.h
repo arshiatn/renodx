@@ -77,6 +77,8 @@ constexpr uint32_t RT_LEAF_LIGHT = 16;
 // Fog shadows (v11): the sun's mean visibility along each camera ray into rt_fog (a quarter of the textures' size each
 // way, R8: the texel's centre at render pixel 4 x + 2).
 constexpr uint32_t RT_FOG_SHADOWS = 32;
+// The Debug View's scene test (v14): placed instances only where this frame's draws put them (none kept).
+constexpr uint32_t RT_NO_KEPT = 64;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

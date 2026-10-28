@@ -1998,7 +1998,7 @@ class RtScene12 {
       // Clear, drawn, kept (rt_place's modes).
       for (const uint32_t mode : {0u, 1u, 2u}) {
         const uint32_t threads = (mode == 1u) ? placed_drawn : MAX_INSTANCES;
-        if (threads == 0) continue;
+        if (threads == 0 || (mode == 2u && (shared.rt_flags & dlaa_bridge::RT_NO_KEPT) != 0)) continue;
         const std::array<uint32_t, 8> place_dispatch = {mode, job_count, placed_drawn, instance_count, frame, MAX_INSTANCES, RECENT_FRAMES,
                                                         STATIC_RECORDS};
         list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(place_dispatch.size()), place_dispatch.data(), 0);

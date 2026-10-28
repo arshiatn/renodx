@@ -80,6 +80,7 @@ struct Sliders {
   float specular_occlusion = 0.f;
   float reflection_samples = 1.f;
   float debug_view = 0.f;  // games whose tone mapper hook calls OnTonemapDrawn
+  float scene_test = 0.f;  // with the Debug View on
 };
 
 // `light_bounce_strength`: the game's Light Bounce (its rays and paths replace the Light Bounce's trace; off, nothing to
@@ -110,6 +111,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .shadows_only = sliders.shadows_only != 0.f && sliders.sun_shadows != 0.f && dlaa,
       .debug_view = static_cast<uint32_t>(sliders.debug_view),
+      .scene_test = ((sliders.debug_view != 0.f) ? static_cast<uint32_t>(sliders.scene_test) : 0u),
   };
 }
 
@@ -1013,6 +1015,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "Point Light Shadows", "Fog Shadows", "Screen-Space AO", "All"},
           .is_enabled = dlaa_on,
           .is_visible = [] { return internal::debug_view_drawn.load(); },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSceneTest",
+          .binding = &sliders->scene_test,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Ray Tracing Scene (Test)",
+          .section = section,
+          .tooltip = "While the Debug View is on: one part of the scene alone, to find what breaks an effect.",
+          .labels = {"Everything", "Terrain Only", "Objects and Trees Only", "No Leaves", "Nothing Kept Off-Screen"},
+          .is_enabled = dlaa_on,
+          .is_visible = [sliders] { return internal::debug_view_drawn.load() && sliders->debug_view != 0.f; },
       },
   });
 }

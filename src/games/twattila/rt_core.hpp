@@ -97,6 +97,9 @@ struct Settings {
   // occlusion, 6 point light shadows, 7 fog shadows, 8 the game's AO pass (screen space; a host's hook keeps it), 9 all
   // eight tiled.
   uint32_t debug_view = 0;
+  // Its scene test (with the Debug View on): 0 everything, 1 the terrain alone, 2 objects and trees alone, 3 no leaves,
+  // 4 none kept off-screen.
+  uint32_t scene_test = 0;
 
   bool operator==(const Settings&) const = default;
 };
@@ -527,6 +530,9 @@ void Capture(Context& command, const SceneShader& shader) {
   // Draws after this frame's trace (past its pass: forward and transparent ones) stay out (Trace and Update run on this
   // thread too).
   if (runtime.traced_frame == runtime.frame) return;
+  // The Debug View's scene test: a part of the scene alone.
+  const uint32_t test = runtime.settings.scene_test;
+  if ((test == 1 && !shader.terrain) || (test == 2 && shader.rows_shader.empty()) || (test == 3 && shader.foliage)) return;
   const auto& arguments = command.arguments;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   // A placed draw (a shader with a record version, v14: rigid objects, tree branches and leaves): its BLAS keyed by its
@@ -1048,7 +1054,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.ambient_quarter ? dlaa_bridge::RT_AMBIENT_QUARTER : 0u)
                | (lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
                | (runtime.settings.leaf_light ? dlaa_bridge::RT_LEAF_LIGHT : 0u)
-               | (runtime.settings.fog_shadows ? dlaa_bridge::RT_FOG_SHADOWS : 0u),
+               | (runtime.settings.fog_shadows ? dlaa_bridge::RT_FOG_SHADOWS : 0u)
+               | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
@@ -1449,8 +1456,10 @@ inline void Update(const Settings& settings) {
                                    std::pair{settings.grass, "grass"}, std::pair{settings.units, "units"}}) {
       if (on) effects += (effects.empty() ? "" : ", ") + std::string(name);
     }
-    renodx::utils::log::i("[Total War] Ray tracing with ", (effects.empty() ? std::string("nothing") : effects), ": ",
-                          dlaa_bridge::TraceStatus());
+    constexpr std::array<const char*, 5> TESTS = {"", " (scene test: the terrain alone)", " (scene test: objects and trees alone)",
+                                                  " (scene test: no leaves)", " (scene test: none kept off-screen)"};
+    renodx::utils::log::i("[Total War] Ray tracing with ", (effects.empty() ? std::string("nothing") : effects),
+                          TESTS[std::min<size_t>(settings.scene_test, TESTS.size() - 1)], ": ", dlaa_bridge::TraceStatus());
   }
   if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
     if (!runtime.new_static.empty()) {
