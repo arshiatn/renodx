@@ -155,6 +155,7 @@ struct Camera {
   std::array<float, 16> projection = {};               // without the jitter (Ray Reconstruction's camera)
   std::array<float, 16> inverse_projection = {};
   float time = 0.f;                                   // time_in_sec (the wind's)
+  std::array<float, 2> jitter_clip = {};              // the jitter its uploaded rows got: clip x / y per w (0: none)
   bool valid = false;
 };
 
@@ -174,7 +175,7 @@ constexpr std::array<std::array<float, 4>, 4> SMAA_PRESETS = {{
 // CMAA2's presets' edge thresholds, low to ultra.
 constexpr std::array<float, 4> CMAA2_THRESHOLDS = {0.15f, 0.1f, 0.07f, 0.05f};
 constexpr UINT UAV_COUNT = 8;  // CMAA2's u0-u7
-constexpr UINT SRV_COUNT = 5;  // DLAA's Debug View: t0-t4
+constexpr UINT SRV_COUNT = 7;  // DLAA's Debug View: t0-t6
 
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
@@ -355,6 +356,7 @@ inline bool JitterCamera(ID3D11Buffer* buffer, std::byte* data) {
   camera.projection_z = {reg(PROJECTION + 2, 2), reg(PROJECTION + 2, 3)};
   camera.time = reg(TIME, 0);
   camera.valid = true;
+  camera.jitter_clip = {};
   if (runtime.tonemapped_frame == runtime.frame || (runtime.jitter[0] == 0.f && runtime.jitter[1] == 0.f)) {
     std::copy_n(c.begin() + INVERSE_VIEW_PROJECTION * 4, 16, camera.inverse_view_projection.begin());
     if (scaled) {
@@ -371,6 +373,7 @@ inline bool JitterCamera(ID3D11Buffer* buffer, std::byte* data) {
     reg(VIEW_PROJECTION, component) += jitter_x * reg(VIEW_PROJECTION + 3, component);
     reg(VIEW_PROJECTION + 1, component) += jitter_y * reg(VIEW_PROJECTION + 3, component);
   }
+  camera.jitter_clip = {jitter_x, jitter_y};
   // The inverses again (the registers hold the transposes: their inverse is the inverse's transpose).
   const auto invert = [&](size_t from, size_t to) {
     const float* m = &c[from * 4];
@@ -1013,8 +1016,10 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     }
     // Rigid objects: which meshes move (object_motion.hpp).
     object_motion::Resolve(native, runtime.frame);
-    const auto object_motion_view = object_motion::Target(runtime.frame);
-    bind(objects.dlaa_prepare.Get(), {objects.color_srv.Get(), depth_view, object_motion_view.Get()},
+    const auto object_motion_views = object_motion::Target(runtime.frame);
+    bind(objects.dlaa_prepare.Get(),
+         {objects.color_srv.Get(), depth_view, object_motion_views.redrawn.Get(), object_motion_views.drawn_motion.Get(),
+          object_motion_views.drawn_depth.Get()},
          {dlaa_bridge::bridge.color.uav.Get(), dlaa_bridge::bridge.depth.uav.Get(), dlaa_bridge::bridge.motion.uav.Get()});
     native->Dispatch((input_width + 7) / 8, (input_height + 7) / 8, 1);
     bind(nullptr, {}, {});
@@ -1043,7 +1048,8 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     if (resolved) {
       bind(objects.dlaa_finish.Get(),
            {dlaa_bridge::bridge.output.srv.Get(), objects.color_srv.Get(), dlaa_bridge::bridge.motion.srv.Get(),
-            object_motion_view.Get(), depth_view},
+            object_motion_views.redrawn.Get(), depth_view, object_motion_views.drawn_motion.Get(),
+            object_motion_views.drawn_depth.Get()},
            {objects.result_uav.Get()});
       native->Dispatch(groups_x, groups_y, 1);
     }
@@ -1118,7 +1124,8 @@ inline bool MotionView(ID3D11Buffer* camera, object_motion::View* view) {
       .constants = {.current = upload->camera.view_projection,
                     .previous = previous.view_projection,
                     .times = {previous.time, upload->camera.time, static_cast<float>(runtime.render_width),
-                              static_cast<float>(runtime.render_height)}},
+                              static_cast<float>(runtime.render_height)},
+                    .game_jitter = {upload->camera.jitter_clip[0], upload->camera.jitter_clip[1], 0.f, 0.f}},
   };
   return true;
 }

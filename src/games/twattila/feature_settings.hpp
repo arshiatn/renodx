@@ -401,7 +401,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .label = "DLSS Debug View",
         .section = AA_SECTION,
         .tooltip = "Motion Vectors: the motion DLSS gets (colour: direction, brighter: faster).\n"
-                   "Object Motion: the soldiers', props' and cloth's own (grey: still, red: hidden).\n"
+                   "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
                    "No Camera Motion: DLSS gets the objects' motion alone.",
         .labels = {"Off", "Motion Vectors", "Object Motion", "No Camera Motion"},
         .is_enabled = [sliders] { return sliders->method == 5.f; },

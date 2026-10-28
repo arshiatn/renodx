@@ -19,6 +19,7 @@
 #include <ranges>
 #include <shared_mutex>
 #include <span>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -29,6 +30,8 @@
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "../../utils/pipeline.hpp"
+#include "./dxbc.hpp"
 #include "./frame_history.hpp"
 
 // Object motion (DLSS's motion vectors of what moves on its own): swaying grass, leaves and branches, units, moving
@@ -41,6 +44,11 @@
 // rows through stream output; motion_rigid.cs matches them at the frame's end: Resolve) two frames when first seen and
 // every RIGID_SAMPLE_PERIOD frames, and while moving, which their records' flags (read back) tell; only moving ones are
 // drawn again. The host gives each draw its view (MakeView: the frame, the main depth's size, the cameras).
+// In-draw (a shader with its motion_draw_*.vs, Attila): the game's own draw writes the motion instead, with that vertex
+// shader (the game's outputs and both frames' clip positions) and the game's pixel shader patched to write them
+// (dxbc.hpp AddMotionTargets) into targets 6 (motion) and 7 (depth): nothing drawn again, the motion exactly where the
+// game's pixels are. The game's pixel shaders that can follow such a vertex shader are kept as the game creates them;
+// draws whose pixel shader cannot be patched are drawn again.
 namespace twattila::object_motion {
 
 using Microsoft::WRL::ComPtr;
@@ -56,13 +64,14 @@ enum class MotionKind : uint8_t {
 // A game's vertex shader whose draws move on their own and its motion version; rigid: and its record version
 // (motion_record_*.vs: its instances' rows for stream output), deformed: its capture version (motion_capture_*.vs);
 // history: the game's vertex shader texture slots (bits) whose last frame's copies the motion shader reads (at
-// HISTORY_SRV_SLOT + slot).
+// HISTORY_SRV_SLOT + slot); its in-draw version (motion_draw_*.vs), if any.
 struct MotionShader {
   uint32_t hash = 0;
   std::span<const uint8_t> motion_shader;
   MotionKind kind = MotionKind::WIND;
   std::span<const uint8_t> record_shader;
   uint8_t history_textures = 0;
+  std::span<const uint8_t> draw_shader;
 };
 
 // The game's moving shaders, the motion pixel shaders (motion_wind.ps, motion_unit.ps, motion_capture.ps) and the rigid
@@ -189,6 +198,41 @@ struct RigidReadback {
   uint64_t frame = 0;
 };
 
+// An in-draw vertex shader's outputs (the game's; MOTION0 / MOTION1 at `motion_register` and the next): the game's
+// pixel shaders that can follow it read only these.
+struct DrawOutput {
+  std::string name;
+  uint32_t index = 0;
+  uint32_t reg = 0;
+  uint8_t mask = 0;
+};
+struct DrawSignature {
+  std::vector<DrawOutput> outputs;
+  uint32_t motion_register = 0;  // 0: no in-draw version
+};
+
+// A game pixel shader that can follow an in-draw vertex shader: its code and its patched versions by MOTION register
+// (null: not patchable there).
+struct GamePixelShader {
+  std::vector<uint8_t> code;
+  std::vector<std::pair<uint32_t, ComPtr<ID3D11PixelShader>>> patched;
+};
+
+// The game's bindings an in-draw motion draw changes, put back after it (FinishInDraw).
+struct InDraw {
+  bool pending = false;
+  ComPtr<ID3D11VertexShader> vertex_shader;
+  ComPtr<ID3D11PixelShader> pixel_shader;
+  std::array<ComPtr<ID3D11RenderTargetView>, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets;
+  ComPtr<ID3D11DepthStencilView> depth_stencil;
+  ComPtr<ID3D11BlendState> blend;
+  std::array<float, 4> blend_factor = {};
+  UINT sample_mask = 0;
+  ComPtr<ID3D11Buffer> vs_constants;
+  bool views_changed = false;  // t9-t23 (all but the wind)
+  std::array<ComPtr<ID3D11ShaderResourceView>, MOTION_VIEWS> motion_views;
+};
+
 // The device's motion objects: the shaders, their constants, the target (the main depth's size; R32G32_UINT: the motion
 // as two halves and the depth, motion.hlsli MotionTexel), the depth-stencil states (the game's comparison, no writes) and rasterizer states (the game's, biased toward
 // the camera) it draws with; the units' placement tables (this frame's and last frame's, in turn).
@@ -249,6 +293,17 @@ struct DeviceObjects {
   UINT deformed_draw_count = 0;
   // The ocean: its displacement textures by slot.
   std::array<TextureHistory, HISTORY_SLOTS> texture_histories;
+  // In-draw: the vertex shaders (as Shaders::shaders; null: none), the targets (R16G16_FLOAT: the motion in render
+  // pixels; R32_FLOAT: the depth, 0 not written; the motion target's size, cleared with it) and the blend states (the
+  // game's, targets 6 and 7 without blending: by the game's description).
+  std::vector<ComPtr<ID3D11VertexShader>> draw_shaders;
+  ComPtr<ID3D11Texture2D> drawn_motion;
+  ComPtr<ID3D11RenderTargetView> drawn_motion_rtv;
+  ComPtr<ID3D11ShaderResourceView> drawn_motion_srv;
+  ComPtr<ID3D11Texture2D> drawn_depth;
+  ComPtr<ID3D11RenderTargetView> drawn_depth_rtv;
+  ComPtr<ID3D11ShaderResourceView> drawn_depth_srv;
+  std::vector<std::pair<D3D11_BLEND_DESC, ComPtr<ID3D11BlendState>>> drawn_blend_states;
 };
 
 struct State {
@@ -257,6 +312,11 @@ struct State {
   MakeView make_view = nullptr;  // the host's
   uint64_t frame = 0;           // the last view's
   DeviceObjects objects;
+  // In-draw: the vertex shaders' outputs (as Shaders::shaders), the game's pixel shaders that can follow one (by their
+  // pipeline handle: the shader), the draw in progress.
+  std::vector<DrawSignature> draw_signatures;
+  std::unordered_map<uint64_t, GamePixelShader> pixel_shaders;
+  InDraw in_draw;
 };
 
 static State state;
@@ -275,16 +335,20 @@ inline bool PrepareDevice(ID3D11Device* device) {
   const D3D11_BUFFER_DESC motion_desc = {.ByteWidth = sizeof(MotionConstants), .Usage = D3D11_USAGE_DEFAULT,
                                          .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC rigid_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-  // A motion shader, and its record or capture shader (rigid: with its stream output).
+  // A motion shader, its record or capture shader (rigid: with its stream output) and its in-draw version.
   const auto motion = [&](const MotionShader& shader) {
     auto& record_shader = objects.record_shaders.emplace_back();
     auto& record_output = objects.record_outputs.emplace_back();
+    auto& draw_shader = objects.draw_shaders.emplace_back();
     constexpr UINT STRIDE = RIGID_RECORD_BYTES;
     return SUCCEEDED(device->CreateVertexShader(shader.motion_shader.data(), shader.motion_shader.size(), nullptr,
                                                 objects.motion_shaders.emplace_back().GetAddressOf()))
            && (shader.record_shader.empty()
                || SUCCEEDED(device->CreateVertexShader(shader.record_shader.data(), shader.record_shader.size(), nullptr,
                                                        record_shader.GetAddressOf())))
+           && (shader.draw_shader.empty()
+               || SUCCEEDED(device->CreateVertexShader(shader.draw_shader.data(), shader.draw_shader.size(), nullptr,
+                                                       draw_shader.GetAddressOf())))
            && (shader.kind != MotionKind::RIGID
                || SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(
                    shader.record_shader.data(), shader.record_shader.size(), RIGID_RECORD_OUTPUT.data(),
@@ -317,19 +381,22 @@ inline bool PrepareDevice(ID3D11Device* device) {
   return objects.made;
 }
 
-// After a moving draw of the main view (the host's view): the same draw with its motion vertex shader into the motion
-// target, against the game's depth (not written), every other binding the game's; units, rigid objects and deformed
-// meshes also with last frame's placement table, units with this frame's to record theirs in (a point per instance
-// first where the addon draws records apart: Shaders::unit_record_pixel_shader; else every pixel of the redraw).
-// Rigid objects: their instances recorded through stream output while sampled or moving, drawn again only while moving.
-// Deformed meshes: captured first (their vertices' world positions and anchor), then drawn again with last frame's.
-// The ocean: its displacement textures copied (last frame's for its motion shader).
+// A moving draw of the main view (the host's view). `in_draw` (before the draw: true when it then writes the motion
+// itself, its bindings set, FinishInDraw putting the game's back after it; false: nothing done yet, drawn again after
+// it): the draw's in-draw vertex shader and its pixel shader patched, targets 6 and 7 for the motion. Else (after the
+// draw) the same draw again with its motion vertex shader into the motion target, against the game's depth (not
+// written), every other binding the game's. Units, rigid objects and deformed meshes with last frame's placement
+// table, units with this frame's to record theirs in (a point per instance first where the addon draws records apart:
+// Shaders::unit_record_pixel_shader; else every pixel of the redraw). Rigid objects: their instances recorded through
+// stream output while sampled or moving, drawn again only while moving. Deformed meshes: captured first (their
+// vertices' world positions and anchor), then drawn with last frame's. The ocean: its displacement textures copied
+// (last frame's for its motion shader).
 template <typename Context>
-void DrawObjectMotion(Context& command, const void*) {
+bool DrawObjectMotion(Context& command, bool in_draw) {
   const auto& shader = command.template GetCallbackData<MotionShader>();
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
-  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
   ComPtr<ID3D11Buffer> camera;
   native->VSGetConstantBuffers(0, 1, camera.GetAddressOf());
   MakeView make_view = nullptr;
@@ -338,10 +405,11 @@ void DrawObjectMotion(Context& command, const void*) {
     make_view = state.make_view;
   }
   View view;
-  if (!camera || make_view == nullptr || !make_view(camera.Get(), &view)) return;
+  if (!camera || make_view == nullptr || !make_view(camera.Get(), &view)) return false;
   const std::unique_lock lock(state.mutex);
   auto& objects = state.objects;
-  if (&shader < state.shaders.shaders.data() || &shader >= state.shaders.shaders.data() + state.shaders.shaders.size()) return;
+  if (&shader < state.shaders.shaders.data() || &shader >= state.shaders.shaders.data() + state.shaders.shaders.size()) return false;
+  const size_t index = static_cast<size_t>(&shader - state.shaders.shaders.data());
   state.frame = view.frame;
   const uint64_t frame = view.frame;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
@@ -356,7 +424,8 @@ void DrawObjectMotion(Context& command, const void*) {
   }
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (!PrepareDevice(device.Get())) return;
+  if (!PrepareDevice(device.Get())) return false;
+  if (in_draw && !objects.draw_shaders[index]) return false;
   const bool tabled = (shader.kind == MotionKind::UNIT || shader.kind == MotionKind::RIGID || shader.kind == MotionKind::DEFORMED);
   // Units, rigid objects and deformed meshes: the mesh.
   const uint32_t mesh_key = (tabled ? MeshKey(native, arguments) : 0u);
@@ -365,17 +434,19 @@ void DrawObjectMotion(Context& command, const void*) {
   bool record = false;
   bool redraw = true;
   if (shader.kind == MotionKind::RIGID) {
-    if (!objects.rigid_compute) return;
+    if (!objects.rigid_compute) return false;
     if (objects.rigid_meshes.size() >= RIGID_MESHES) {
       objects.rigid_meshes.clear();
     }
     const auto& mesh = objects.rigid_meshes.try_emplace(mesh_key, RigidMesh{.sample_until = frame + 2}).first->second;
     redraw = frame < mesh.moving_until;
     record = redraw || frame < mesh.sample_until || (frame + mesh_key) % RIGID_SAMPLE_PERIOD < 2;
-    if (!record) return;
+    if (!record) return false;
   }
   // Deformed meshes: one instance (its vertices by vertex).
-  if (shader.kind == MotionKind::DEFORMED && (arguments.instance_count != 1 || !objects.capture_pixel_shader)) return;
+  if (shader.kind == MotionKind::DEFORMED && (arguments.instance_count != 1 || !objects.capture_pixel_shader)) return false;
+  // In-draw: only draws with motion (rigid objects: moving; the rest recorded after the draw).
+  if (in_draw && !redraw) return false;
 
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
   ComPtr<ID3D11DepthStencilView> depth_stencil;
@@ -403,14 +474,44 @@ void DrawObjectMotion(Context& command, const void*) {
   if (!depth_resource || !game_depth_state || !depth_desc.DepthEnable || (view.depth != nullptr && depth_resource.Get() != view.depth)
       || FAILED(depth_resource.As(&depth_texture))) {
     release_targets();
-    return;
+    return false;
   }
   depth_texture->GetDesc(&texture_desc);
   ID3D11PixelShader* pixel_shader = (shader.kind == MotionKind::UNIT ? objects.unit_pixel_shader : objects.wind_pixel_shader).Get();
   if (pixel_shader == nullptr || texture_desc.Width != view.width || texture_desc.Height != view.height
       || texture_desc.SampleDesc.Count != 1) {
     release_targets();
-    return;
+    return false;
+  }
+  // In-draw: the game's pixel shader patched for the vertex shader's MOTION register (made at its first such draw), the
+  // draw's targets 6 and 7 free.
+  ComPtr<ID3D11PixelShader> drawn_pixel_shader;
+  if (in_draw) {
+    ComPtr<ID3D11PixelShader> game_shader;
+    native->PSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
+    const auto game = state.pixel_shaders.find(reinterpret_cast<uint64_t>(game_shader.Get()));
+    if (game == state.pixel_shaders.end() || game_targets[dxbc::MOTION_TARGET] != nullptr
+        || game_targets[dxbc::MOTION_DEPTH_TARGET] != nullptr) {
+      release_targets();
+      return false;
+    }
+    const uint32_t motion_register = state.draw_signatures[index].motion_register;
+    auto& patched = game->second.patched;
+    auto known = std::ranges::find(patched, motion_register, &std::pair<uint32_t, ComPtr<ID3D11PixelShader>>::first);
+    if (known == patched.end()) {
+      const std::vector<uint8_t> code = dxbc::AddMotionTargets(game->second.code, motion_register);
+      ComPtr<ID3D11PixelShader> created;
+      if (!code.empty() && FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, created.GetAddressOf()))) {
+        renodx::utils::log::w("[Total War] Object motion: a patched pixel shader was refused (its draws drawn again).");
+        created.Reset();
+      }
+      known = patched.insert(patched.end(), {motion_register, std::move(created)});
+    }
+    drawn_pixel_shader = known->second;
+    if (!drawn_pixel_shader) {
+      release_targets();
+      return false;
+    }
   }
   if (D3D11_TEXTURE2D_DESC current = {}; objects.motion) {
     objects.motion->GetDesc(&current);
@@ -420,31 +521,54 @@ void DrawObjectMotion(Context& command, const void*) {
       objects.motion_srv.Reset();
     }
   }
-  if (!objects.motion) {
-    const D3D11_TEXTURE2D_DESC motion_desc = {
+  // The motion target, and the in-draw ones where the addon has in-draw shaders.
+  const auto make_target = [&](DXGI_FORMAT format, ComPtr<ID3D11Texture2D>* texture, ComPtr<ID3D11RenderTargetView>* rtv,
+                               ComPtr<ID3D11ShaderResourceView>* srv) {
+    const D3D11_TEXTURE2D_DESC desc = {
         .Width = texture_desc.Width,
         .Height = texture_desc.Height,
         .MipLevels = 1,
         .ArraySize = 1,
-        .Format = DXGI_FORMAT_R32G32_UINT,
+        .Format = format,
         .SampleDesc = {.Count = 1},
         .Usage = D3D11_USAGE_DEFAULT,
         .BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
     };
-    if (FAILED(device->CreateTexture2D(&motion_desc, nullptr, objects.motion.GetAddressOf()))
-        || FAILED(device->CreateRenderTargetView(objects.motion.Get(), nullptr, objects.motion_rtv.GetAddressOf()))
-        || FAILED(device->CreateShaderResourceView(objects.motion.Get(), nullptr, objects.motion_srv.GetAddressOf()))) {
+    return SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture->GetAddressOf()))
+           && SUCCEEDED(device->CreateRenderTargetView(texture->Get(), nullptr, rtv->GetAddressOf()))
+           && SUCCEEDED(device->CreateShaderResourceView(texture->Get(), nullptr, srv->GetAddressOf()));
+  };
+  if (!objects.motion) {
+    const bool has_in_draw = std::ranges::any_of(objects.draw_shaders, [](const auto& draw_shader) { return draw_shader != nullptr; });
+    objects.drawn_motion.Reset();
+    objects.drawn_motion_rtv.Reset();
+    objects.drawn_motion_srv.Reset();
+    objects.drawn_depth.Reset();
+    objects.drawn_depth_rtv.Reset();
+    objects.drawn_depth_srv.Reset();
+    if (!make_target(DXGI_FORMAT_R32G32_UINT, &objects.motion, &objects.motion_rtv, &objects.motion_srv)
+        || (has_in_draw
+            && (!make_target(DXGI_FORMAT_R16G16_FLOAT, &objects.drawn_motion, &objects.drawn_motion_rtv, &objects.drawn_motion_srv)
+                || !make_target(DXGI_FORMAT_R32_FLOAT, &objects.drawn_depth, &objects.drawn_depth_rtv, &objects.drawn_depth_srv)))) {
       objects.motion.Reset();
       objects.motion_rtv.Reset();
       objects.motion_srv.Reset();
       release_targets();
-      return;
+      return false;
     }
     objects.motion_frame = UINT64_MAX;
+  }
+  if (in_draw && !objects.drawn_motion_rtv) {
+    release_targets();
+    return false;
   }
   if (objects.motion_frame != frame) {
     constexpr std::array<float, 4> NONE = {};
     native->ClearRenderTargetView(objects.motion_rtv.Get(), NONE.data());
+    if (objects.drawn_motion_rtv) {
+      native->ClearRenderTargetView(objects.drawn_motion_rtv.Get(), NONE.data());
+      native->ClearRenderTargetView(objects.drawn_depth_rtv.Get(), NONE.data());
+    }
     objects.motion_frame = frame;
   }
   // The placement tables (made at the first such draw; rigid objects: and their records and flags; deformed meshes: and
@@ -524,7 +648,7 @@ void DrawObjectMotion(Context& command, const void*) {
         objects.rigid_flags_uav.Reset();
         objects.rigid_readbacks = {};
         release_targets();
-        return;
+        return false;
       }
       objects.placement_frame = UINT64_MAX;
     }
@@ -569,7 +693,7 @@ void DrawObjectMotion(Context& command, const void*) {
     }
     if (!record && !redraw) {
       release_targets();
-      return;
+      return false;
     }
   }
   // Deformed meshes: room for a position per index (or vertex) and a slot for the anchor, else no motion this frame.
@@ -577,7 +701,7 @@ void DrawObjectMotion(Context& command, const void*) {
     if (objects.deformed_draw_count >= DEFORMED_DRAWS
         || objects.deformed_position_count + uint64_t{vertex_count} > DEFORMED_POSITIONS) {
       release_targets();
-      return;
+      return false;
     }
     draw_word = objects.deformed_draw_count++;
     draw_range = {objects.deformed_position_count, vertex_count, first_vertex, 0};
@@ -651,7 +775,7 @@ void DrawObjectMotion(Context& command, const void*) {
   native->RSGetState(game_rasterizer.GetAddressOf());
   ID3D11DepthStencilState* motion_depth_state = nullptr;
   ID3D11RasterizerState* motion_rasterizer = nullptr;
-  if (redraw) {
+  if (redraw && !drawn_pixel_shader) {
     const bool reversed = depth_desc.DepthFunc == D3D11_COMPARISON_GREATER || depth_desc.DepthFunc == D3D11_COMPARISON_GREATER_EQUAL;
     D3D11_COMPARISON_FUNC comparison = depth_desc.DepthFunc;
     if (comparison == D3D11_COMPARISON_LESS) {
@@ -665,7 +789,7 @@ void DrawObjectMotion(Context& command, const void*) {
       const D3D11_DEPTH_STENCIL_DESC desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO, .DepthFunc = comparison};
       if (FAILED(device->CreateDepthStencilState(&desc, depth_state.GetAddressOf()))) {
         release_targets();
-        return;
+        return false;
       }
     }
     D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_BACK, .DepthClipEnable = TRUE};
@@ -682,7 +806,7 @@ void DrawObjectMotion(Context& command, const void*) {
       ComPtr<ID3D11RasterizerState> rasterizer_state;
       if (FAILED(device->CreateRasterizerState(&rasterizer_desc, rasterizer_state.GetAddressOf()))) {
         release_targets();
-        return;
+        return false;
       }
       rasterizer = objects.motion_rasterizer_states.insert(objects.motion_rasterizer_states.end(),
                                                            {rasterizer_desc, std::move(rasterizer_state)});
@@ -713,7 +837,6 @@ void DrawObjectMotion(Context& command, const void*) {
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
 
-  const size_t index = static_cast<size_t>(&shader - state.shaders.shaders.data());
   const size_t last = objects.placement_index ^ 1;
   const size_t current = objects.placement_index;
   ID3D11Buffer* motion_constants = objects.motion_constants.Get();
@@ -807,7 +930,69 @@ void DrawObjectMotion(Context& command, const void*) {
     native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   }
   const bool unit_table = shader.kind == MotionKind::UNIT && !unit_points;
-  if (redraw) {
+  if (drawn_pixel_shader) {
+    // The game's draw writes the motion: its in-draw vertex shader, its pixel shader patched, targets 6 and 7 with
+    // blending off there (the game's for the rest), the motion constants and tables kept bound; FinishInDraw puts the
+    // game's back after it.
+    auto& pending = state.in_draw;
+    pending = {
+        .pending = true,
+        .vertex_shader = game_vertex_shader,
+        .pixel_shader = game_pixel_shader,
+        .depth_stencil = depth_stencil,
+        .blend = game_blend,
+        .blend_factor = blend_factor,
+        .sample_mask = sample_mask,
+        .vs_constants = game_vs_constants,
+        .views_changed = (shader.kind != MotionKind::WIND),
+    };
+    std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> drawn_targets = game_targets;
+    for (size_t slot = 0; slot < game_targets.size(); ++slot) {
+      pending.targets[slot] = game_targets[slot];
+    }
+    for (size_t slot = 0; slot < game_motion_views.size(); ++slot) {
+      pending.motion_views[slot] = game_motion_views[slot];
+    }
+    drawn_targets[dxbc::MOTION_TARGET] = objects.drawn_motion_rtv.Get();
+    drawn_targets[dxbc::MOTION_DEPTH_TARGET] = objects.drawn_depth_rtv.Get();
+    D3D11_BLEND_DESC blend_desc = {};
+    blend_desc.RenderTarget[0] = {.SrcBlend = D3D11_BLEND_ONE, .DestBlend = D3D11_BLEND_ZERO, .BlendOp = D3D11_BLEND_OP_ADD,
+                                  .SrcBlendAlpha = D3D11_BLEND_ONE, .DestBlendAlpha = D3D11_BLEND_ZERO,
+                                  .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL};
+    if (game_blend) {
+      game_blend->GetDesc(&blend_desc);
+    }
+    auto drawn_blend = std::ranges::find_if(objects.drawn_blend_states, [&](const auto& entry) {
+      return std::memcmp(&entry.first, &blend_desc, sizeof(blend_desc)) == 0;
+    });
+    if (drawn_blend == objects.drawn_blend_states.end()) {
+      D3D11_BLEND_DESC desc = blend_desc;
+      if (!desc.IndependentBlendEnable) {
+        std::fill(std::begin(desc.RenderTarget) + 1, std::end(desc.RenderTarget), desc.RenderTarget[0]);
+        desc.IndependentBlendEnable = TRUE;
+      }
+      for (const uint32_t target : {dxbc::MOTION_TARGET, dxbc::MOTION_DEPTH_TARGET}) {
+        desc.RenderTarget[target] = {.BlendEnable = FALSE, .SrcBlend = D3D11_BLEND_ONE, .DestBlend = D3D11_BLEND_ZERO,
+                                     .BlendOp = D3D11_BLEND_OP_ADD, .SrcBlendAlpha = D3D11_BLEND_ONE,
+                                     .DestBlendAlpha = D3D11_BLEND_ZERO, .BlendOpAlpha = D3D11_BLEND_OP_ADD,
+                                     .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL};
+      }
+      ComPtr<ID3D11BlendState> blend_state;
+      if (FAILED(device->CreateBlendState(&desc, blend_state.GetAddressOf()))) {
+        blend_state = game_blend;
+      }
+      if (objects.drawn_blend_states.size() >= 256) {
+        objects.drawn_blend_states.clear();
+      }
+      drawn_blend = objects.drawn_blend_states.insert(objects.drawn_blend_states.end(), {blend_desc, std::move(blend_state)});
+    }
+    native->OMSetRenderTargets(static_cast<UINT>(drawn_targets.size()), drawn_targets.data(), depth_stencil.Get());
+    native->OMSetDepthStencilState(game_depth_state.Get(), stencil_reference);
+    native->OMSetBlendState(drawn_blend->second.Get(), blend_factor.data(), sample_mask);
+    native->RSSetState(game_rasterizer.Get());
+    native->VSSetShader(objects.draw_shaders[index].Get(), nullptr, 0);
+    native->PSSetShader(drawn_pixel_shader.Get(), nullptr, 0);
+  } else if (redraw) {
     ID3D11RenderTargetView* motion_target = objects.motion_rtv.Get();
     native->VSSetShader(objects.motion_shaders[index].Get(), nullptr, 0);
     native->PSSetShader(pixel_shader, nullptr, 0);
@@ -831,44 +1016,132 @@ void DrawObjectMotion(Context& command, const void*) {
                                                         static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
     }
   }
+  // The game's bindings back, but for the in-draw's (FinishInDraw's).
+  const bool drawn = static_cast<bool>(drawn_pixel_shader);
   if (shader.kind == MotionKind::UNIT) {
     ID3D11ShaderResourceView* game_animation = game_animation_view.Get();
     native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &game_animation);
   }
-  if (redraw || shader.kind == MotionKind::DEFORMED) {
+  if (!drawn && (redraw || shader.kind == MotionKind::DEFORMED)) {
     native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), depth_stencil.Get());
     native->OMSetDepthStencilState(game_depth_state.Get(), stencil_reference);
     native->OMSetBlendState(game_blend.Get(), blend_factor.data(), sample_mask);
     native->RSSetState(game_rasterizer.Get());
   }
   if (shader.kind != MotionKind::WIND) {
-    native->VSSetShaderResources(DEFORMED_SRV_SLOT, MOTION_VIEWS, game_motion_views.data());
+    if (!drawn) {
+      native->VSSetShaderResources(DEFORMED_SRV_SLOT, MOTION_VIEWS, game_motion_views.data());
+    }
     for (auto* game_view : game_motion_views) {
       if (game_view != nullptr) {
         game_view->Release();
       }
     }
   }
-  native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
-  native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
-  ID3D11Buffer* vs_constants = game_vs_constants.Get();
+  if (!drawn) {
+    native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
+    native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
+    ID3D11Buffer* vs_constants = game_vs_constants.Get();
+    native->VSSetConstantBuffers(MOTION_SLOT, 1, &vs_constants);
+  }
   ID3D11Buffer* ps_constants = game_ps_constants.Get();
-  native->VSSetConstantBuffers(MOTION_SLOT, 1, &vs_constants);
   native->PSSetConstantBuffers(MOTION_SLOT, 1, &ps_constants);
   release_targets();
+  return drawn;
 }
 
+// After a moving draw that wrote its motion itself (or was skipped): the game's bindings back.
+template <typename Context>
+void FinishInDraw(Context& command, const void*) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return;
+  const std::unique_lock lock(state.mutex);
+  auto& pending = state.in_draw;
+  if (!pending.pending) return;
+  std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets = {};
+  for (size_t slot = 0; slot < targets.size(); ++slot) {
+    targets[slot] = pending.targets[slot].Get();
+  }
+  std::array<ID3D11ShaderResourceView*, MOTION_VIEWS> views = {};
+  for (size_t slot = 0; slot < views.size(); ++slot) {
+    views[slot] = pending.motion_views[slot].Get();
+  }
+  ID3D11Buffer* vs_constants = pending.vs_constants.Get();
+  native->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), pending.depth_stencil.Get());
+  native->OMSetBlendState(pending.blend.Get(), pending.blend_factor.data(), pending.sample_mask);
+  native->VSSetShader(pending.vertex_shader.Get(), nullptr, 0);
+  native->PSSetShader(pending.pixel_shader.Get(), nullptr, 0);
+  native->VSSetConstantBuffers(MOTION_SLOT, 1, &vs_constants);
+  if (pending.views_changed) {
+    native->VSSetShaderResources(DEFORMED_SRV_SLOT, MOTION_VIEWS, views.data());
+  }
+  pending = {};
+}
+
+// After a moving draw that did not write its motion: drawn again with it.
+template <typename Context>
+void RedrawObjectMotion(Context& command, const void*) {
+  DrawObjectMotion(command, false);
+}
+
+// A moving draw: its motion written by the draw itself where it can (its bindings set now, put back after it: also
+// when another callback skips the draw), else drawn again after it.
 constexpr auto OnMovingDraw = []<typename T, typename Context>(
-                                  Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+                                  Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
                 && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
     return {};
   } else {
     if (!active.load(std::memory_order_relaxed)) return {};
-    return {.post_callback = DrawObjectMotion<Context>};
+    if (DrawObjectMotion(command, true)) return {.finalize_callback = FinishInDraw<Context>};
+    return {.post_callback = RedrawObjectMotion<Context>};
   }
 };
+
+// The game's pixel shaders as it creates them: kept where one can follow an in-draw vertex shader (its inputs, but
+// system values, among that shader's outputs: same semantic, register, components within).
+inline void OnInitPipeline(renodx::utils::pipeline::PipelineInfo* info, uint32_t subobject_count,
+                           const reshade::api::pipeline_subobject* subobjects) {
+  for (uint32_t subobject = 0; subobject < subobject_count; ++subobject) {
+    if (subobjects[subobject].type != reshade::api::pipeline_subobject_type::pixel_shader) continue;
+    const auto* desc = static_cast<const reshade::api::shader_desc*>(subobjects[subobject].data);
+    if (desc == nullptr || desc->code == nullptr) continue;
+    const std::span<const uint8_t> code(static_cast<const uint8_t*>(desc->code), desc->code_size);
+    const dxbc::Program program = dxbc::Read(code);
+    if (program.tokens.empty()) continue;
+    std::vector<std::pair<dxbc::SignatureElement, uint32_t>> inputs;
+    dxbc::SignatureElement unused;
+    dxbc::FindSignatureElement(code, program, "ISGN", [&](const dxbc::SignatureElement& element, uint32_t reg) {
+      if (element.system_value == 0) {
+        inputs.emplace_back(element, reg);
+      }
+      return false;
+    }, &unused);
+    const auto same_name = [](std::string_view a, std::string_view b) {
+      return std::ranges::equal(a, b, [](char x, char y) { return (x | 0x20) == (y | 0x20); });
+    };
+    const std::unique_lock lock(state.mutex);
+    const bool follows = std::ranges::any_of(state.draw_signatures, [&](const DrawSignature& signature) {
+      return signature.motion_register != 0 && std::ranges::all_of(inputs, [&](const auto& input) {
+               const auto& [element, reg] = input;
+               return std::ranges::any_of(signature.outputs, [&](const DrawOutput& output) {
+                 return output.index == element.index && output.reg == reg && (element.mask & ~output.mask) == 0
+                        && same_name(output.name, element.name);
+               });
+             });
+    });
+    if (follows) {
+      state.pixel_shaders[info->pipeline.handle] = {.code = {code.begin(), code.end()}};
+    }
+  }
+}
+
+inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info) {
+  const std::unique_lock lock(state.mutex);
+  state.pixel_shaders.erase(info.pipeline.handle);
+}
 
 }  // namespace internal
 
@@ -961,12 +1234,19 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
   readback.frame = frame;
 }
 
-// The motion target written in `frame` (motion.hlsli MotionTexel); none: nothing moved.
-inline ComPtr<ID3D11ShaderResourceView> Target(uint64_t frame) {
+// The motion targets written in `frame` (none: nothing moved): the redrawn draws' (motion.hlsli MotionTexel), the
+// in-draw ones' (the motion in render pixels, the depth: 0 not written).
+struct Targets {
+  ComPtr<ID3D11ShaderResourceView> redrawn;
+  ComPtr<ID3D11ShaderResourceView> drawn_motion;
+  ComPtr<ID3D11ShaderResourceView> drawn_depth;
+};
+
+inline Targets Target(uint64_t frame) {
   const std::shared_lock lock(internal::state.mutex);
   const auto& objects = internal::state.objects;
-  if (objects.motion_frame != frame) return nullptr;
-  return objects.motion_srv;
+  if (objects.motion_frame != frame) return {};
+  return {.redrawn = objects.motion_srv, .drawn_motion = objects.drawn_motion_srv, .drawn_depth = objects.drawn_depth_srv};
 }
 
 // Whether a rigid mesh (MeshKey) was seen moving lately.
@@ -977,27 +1257,53 @@ inline bool MovingMesh(uint32_t mesh_key) {
   return mesh != meshes.end() && internal::state.frame < mesh->second.moving_until;
 }
 
-// The moving draws drawn again (`shaders`: the addon's, kept while installed) with the host's views.
+// The moving draws' motion (`shaders`: the addon's, kept while installed) with the host's views; with in-draw shaders,
+// the game's pixel shaders that can follow them kept as the game creates them.
 inline void Install(const Shaders& shaders, MakeView make_view) {
+  std::vector<internal::DrawSignature> signatures;
+  for (const auto& shader : shaders.shaders) {
+    auto& signature = signatures.emplace_back();
+    const dxbc::Program program = dxbc::Read(shader.draw_shader);
+    if (program.tokens.empty()) continue;
+    dxbc::SignatureElement unused;
+    dxbc::FindSignatureElement(shader.draw_shader, program, "OSGN", [&](const dxbc::SignatureElement& element, uint32_t reg) {
+      if (element.name == "MOTION" && element.index == 0) {
+        signature.motion_register = reg;
+      }
+      signature.outputs.push_back({.name = std::string(element.name), .index = element.index, .reg = reg, .mask = element.mask});
+      return false;
+    }, &unused);
+  }
+  const bool in_draw = std::ranges::any_of(signatures, [](const auto& signature) { return signature.motion_register != 0; });
   {
     const std::unique_lock lock(internal::state.mutex);
     internal::state.shaders = shaders;
     internal::state.make_view = make_view;
+    internal::state.draw_signatures = std::move(signatures);
   }
   for (const auto& shader : shaders.shaders) {
     renodx::utils::command_action::Register(
         internal::OnMovingDraw,
         {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader);
   }
+  if (in_draw) {
+    renodx::utils::pipeline::RegisterOnInitCallback(internal::OnInitPipeline);
+    renodx::utils::pipeline::RegisterOnDestroyCallback(internal::OnDestroyPipeline);
+  }
 }
 
 inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnMovingDraw);
+  renodx::utils::pipeline::UnregisterOnInitCallback(internal::OnInitPipeline);
+  renodx::utils::pipeline::UnregisterOnDestroyCallback(internal::OnDestroyPipeline);
   SetActive(false);
   const std::unique_lock lock(internal::state.mutex);
   internal::state.shaders = {};
   internal::state.make_view = nullptr;
   internal::state.objects = {};
+  internal::state.draw_signatures.clear();
+  internal::state.pixel_shaders.clear();
+  internal::state.in_draw = {};
 }
 
 // The game's device is going away: the motion objects on it with it.

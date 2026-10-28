@@ -148,7 +148,7 @@ inline void OnEvaluate(ID3D11DeviceContext* context, NVSDK_NGX_D3D11_DLSS_Eval_P
     frame = state.frame;
   }
   twattila::object_motion::Resolve(context, frame);
-  const auto object_motion = twattila::object_motion::Target(frame);
+  const auto object_motion = twattila::object_motion::Target(frame).redrawn;
   if (!object_motion) return;
 
   const std::unique_lock lock(state.mutex);

@@ -170,11 +170,13 @@ inline std::vector<uint8_t> Write(std::span<const uint8_t> code, const Program& 
 }
 
 // A signature chunk's (`tag`: ISGN / OSGN) element: its semantic name and index, its component type
-// (D3D_REGISTER_COMPONENT_TYPE).
+// (D3D_REGISTER_COMPONENT_TYPE), its system value (D3D_NAME) and components.
 struct SignatureElement {
   std::string_view name;
   uint32_t index = 0;
   uint32_t component_type = 0;
+  uint32_t system_value = 0;
+  uint8_t mask = 0;
 };
 
 // The first element of `program`'s chunk `tag` that `matches` (the element, its register) into `found`; false: none.
@@ -198,6 +200,8 @@ inline bool FindSignatureElement(std::span<const uint8_t> code, const Program& p
                                    strnlen(reinterpret_cast<const char*>(code.data() + name), code.size() - name)),
           .index = read(at + 4),
           .component_type = read(at + 12),
+          .system_value = read(at + 8),
+          .mask = code[at + 20],
       };
       if (matches(candidate, read(at + 16))) {
         *found = candidate;
