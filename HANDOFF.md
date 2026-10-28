@@ -745,7 +745,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
             gain to expect; DLAA's path left as tested)
       [x] 5 render scale (9a2eb81a): scissor rects restored after the tone mapper (flare + unit markers), flare
             occlusion / render area (lensflare04 VS, cb12 for VS), game HBAO share; trace audit clean (scan.py)
-      [ ] 6 soldier records redesign (DLAA GPU time for RT/PT) + more optimizations
+      [x] 6 soldier records redesign (DLAA GPU time for RT/PT) + more optimizations. Measured first (auto_save
+            replay, DLAA, FG off; scratchpad attila_test records_matrix.ps1): all 9.98 ms (game GPU 5.67), no unit
+            records 9.75 (5.44), no records or captures 9.61 (5.31): units 0.23 ms GPU, cloth captures 0.13. Tried:
+            a CopySubresourceRegion of each unit draw's instances (no stream output): 11.00 ms (6.68): copies between
+            draws stall this driver far more (1.24 ms) - dead end. Batched stream out (draws noted, streamed out
+            together at the next non-moving draw; scratchpad records_batched/batched_stream_out.patch) 9.99 (5.69)
+            and one frame-end dispatch per animation texture 9.99 (5.68): no change. Split with a debug mode: the
+            records' GPU work 0.16 ms (each soldier recorded once per mesh draw: placements + bone copies), the
+            motion VS's previous-frame lookups 0.09 ms (per vertex). Stream output was never the cost: reverted to
+            the original code. Would help (later, needs motion checks): one record per soldier (draws sharing an
+            instance range), per-instance lookups instead of per-vertex. Debug timers / Motion Test / timing log
+            removed.
       [ ] 7 clean-up (debug_timing.hpp, Motion Test setting, motion timing log; ReShade.ini FrameTrace=1 -> restore
             from scratchpad attila_test/ReShade.ini.before_trace, delete tw_frame_trace.txt), README/HANDOFF, build all
             TW games (build32 Attila / Rome II / Thrones too), zips (release_zip.py --helper), per-game report, delete

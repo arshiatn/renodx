@@ -64,7 +64,6 @@ struct AaSliders {
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
   float object_motion = 1.f;       // DLAA's: units', props' and cloth's own motion
   float debug_view = 0.f;          // DLAA's: off, motion vectors, object motion, no camera motion
-  float motion_test = 0.f;         // DLAA's object motion test (debug): normal, no records, units only, plants only
 };
 
 inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
@@ -118,7 +117,6 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
       .object_motion = (sliders.object_motion != 0.f),
       .debug_view = static_cast<uint32_t>(std::clamp(sliders.debug_view, 0.f, 3.f)),
-      .motion_test = static_cast<uint32_t>(std::clamp(sliders.motion_test, 0.f, 3.f)),
   };
 }
 
@@ -411,17 +409,6 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                    "No Camera Motion: DLSS gets the objects' motion alone.",
         .labels = {"Off", "Motion Vectors", "Object Motion", "No Camera Motion"},
         .is_enabled = [sliders] { return sliders->method == 5.f; },
-    });
-    settings->push_back(new renodx::utils::settings::Setting{
-        .key = "AntiAliasingMotionTest",
-        .binding = &sliders->motion_test,
-        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 0.f,
-        .label = "Motion Test",
-        .section = AA_SECTION,
-        .tooltip = "Debug: which part of the object motion costs the frame rate.",
-        .labels = {"Normal", "No Records", "Units Only", "Plants Only"},
-        .is_enabled = [sliders] { return sliders->method == 5.f && sliders->object_motion != 0.f; },
     });
   }
   if (ray_reconstruction) {

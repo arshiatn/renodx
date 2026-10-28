@@ -22,7 +22,6 @@
 #include <include/reshade.hpp>
 
 #include "../../utils/directx.hpp"
-#include "./debug_timing.hpp"
 #include "./dlaa_bridge.hpp"
 
 // Frame generation (Experimental) for the 32-bit Total War games: NVIDIA's DLSS Frame Generation runs only in 64-bit
@@ -151,11 +150,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     }
   }
   // The helper's answer (it presents, then Reflex paces the next frame) outside the lock.
-  bool presented = false;
-  {
-    const debug_timing::Timed timed{debug_timing::FRAME_GENERATION};
-    presented = dlaa_bridge::PresentFrame(native, request);
-  }
+  const bool presented = dlaa_bridge::PresentFrame(native, request);
   const std::unique_lock lock(state.mutex);
   state.presenting = (request.multiplier != 0 && presented);
 }
@@ -173,7 +168,6 @@ inline DXGI_FORMAT Format() {
 // DLAA ran on `target` (the tone mapper's output, before the UI): it is kept as the frame's HUD-less image with its
 // inputs.
 inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, const Inputs& inputs) {
-  const debug_timing::Timed timed{debug_timing::HUDLESS};
   auto& state = internal::state;
   const std::unique_lock lock(state.mutex);
   if (state.settings.multiplier == 0 || state.vertex_code.empty()) return;

@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -393,19 +392,6 @@ static std::atomic_bool targets_kept = false;
 static std::atomic_bool bindings_kept = false;
 // Targets 6 and 7's views (PrepareDevice): the game binding them back (a set it read while they were kept) drops them.
 static std::array<std::atomic_uint64_t, 2> drawn_target_views = {};
-// Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only.
-static std::atomic_uint32_t test = 0;
-// Debug (temporary): the moving draws' CPU time a frame (before and after them) and their counts, logged every 1000
-// frames. The render thread's alone.
-struct MotionTiming {
-  std::chrono::steady_clock::duration spent = {};
-  uint64_t draws = 0;
-  uint64_t drawn = 0;
-  uint64_t restores = 0;
-  uint64_t frame = 0;
-  uint64_t frames = 0;
-};
-static MotionTiming timing;
 
 // The device's shaders and constants; false: not available.
 inline bool PrepareDevice(ID3D11Device* device) {
@@ -540,7 +526,6 @@ inline void RestoreBindings(ID3D11DeviceContext* native) {
     constexpr UINT APPEND = UINT_MAX;
     native->SOSetTargets(1, &game_output, &APPEND);
   }
-  ++timing.restores;
 }
 
 // A moving draw of the main view (the host's view). `in_draw` (before the draw: true when it then writes the motion
@@ -572,17 +557,6 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   if (&shader < state.shaders.shaders.data() || &shader >= state.shaders.shaders.data() + state.shaders.shaders.size()) return false;
   const size_t index = static_cast<size_t>(&shader - state.shaders.shaders.data());
   state.frame = view.frame;
-  if (timing.frame != view.frame) {
-    timing.frame = view.frame;
-    if (++timing.frames == 1000) {
-      renodx::utils::log::i(std::format(
-          "[Total War] Object motion (debug): {:.0f} moving draws a frame ({:.0f} in-draw, the game's targets back {:.0f} "
-          "times), {:.0f} us of CPU a frame.",
-          timing.draws / 1000.0, timing.drawn / 1000.0, timing.restores / 1000.0,
-          std::chrono::duration<double, std::micro>(timing.spent).count() / 1000.0));
-      timing = {.frame = view.frame};
-    }
-  }
   const uint64_t frame = view.frame;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   const auto& arguments = command.arguments;
@@ -741,14 +715,12 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     }
   }
   // What this draw does besides the game's: the motion in the draw itself or drawn again after it; the units' records
-  // streamed out (Attila) or written from every pixel of the redraw; the deformed meshes' captures (Motion Test 1: no
-  // records or captures). The pixel stage's motion constants serve the redraw and the captures, which alone change the
-  // rasterizer and depth states.
+  // streamed out (Attila) or written from every pixel of the redraw; the deformed meshes' captures. The pixel stage's
+  // motion constants serve the redraw and the captures, which alone change the rasterizer and depth states.
   const bool drawn = static_cast<bool>(drawn_pixel_shader);
-  const bool no_records = (test.load(std::memory_order_relaxed) == 1);
-  const bool captures = shader.kind == MotionKind::DEFORMED && !no_records;
+  const bool captures = shader.kind == MotionKind::DEFORMED;
   const bool unit_stream = shader.kind == MotionKind::UNIT && objects.unit_records_compute && objects.record_outputs[index];
-  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_stream && !no_records;
+  const bool unit_table = shader.kind == MotionKind::UNIT && !unit_stream;
   const bool pixel_constants = !drawn || captures;
   if (D3D11_TEXTURE2D_DESC current = {}; objects.motion) {
     objects.motion->GetDesc(&current);
@@ -1182,7 +1154,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->IASetPrimitiveTopology(topology);
     native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   };
-  if (record && !no_records) {
+  if (record) {
     // Its rows and (mesh key, slot) after the frame's records.
     stream_records(objects.rigid_records.Get(), objects.rigid_record_count * RIGID_RECORD_BYTES);
     objects.rigid_record_count += arguments.instance_count;
@@ -1240,7 +1212,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     ID3D11ShaderResourceView* bones = animation_map.Get();
     native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &bones);
   }
-  if (unit_stream && !no_records && animation_map
+  if (unit_stream && animation_map
       && objects.unit_record_count + uint64_t{arguments.instance_count} <= UNIT_RECORDS) {
     stream_records(objects.unit_records.Get(), objects.unit_record_count * UNIT_RECORD_BYTES);
     objects.unit_record_draws.push_back(
@@ -1382,9 +1354,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
 // After a moving draw that did not write its motion: drawn again with it.
 template <typename Context>
 void RedrawObjectMotion(Context& command, const void*) {
-  const auto started = std::chrono::steady_clock::now();
   DrawObjectMotion(command, false);
-  timing.spent += std::chrono::steady_clock::now() - started;
 }
 
 // A moving draw: its motion written by the draw itself where it can (its bindings set now, left bound for the next
@@ -1396,24 +1366,11 @@ constexpr auto OnMovingDraw = []<typename T, typename Context>(
                 && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
     return {};
   } else {
-    const uint32_t test_mode = test.load(std::memory_order_relaxed);
-    const MotionKind kind = command.template GetCallbackData<MotionShader>().kind;
-    const bool wanted = active.load(std::memory_order_relaxed)
-                        && !((test_mode == 2 && kind != MotionKind::UNIT) || (test_mode == 3 && kind != MotionKind::WIND));
-    const auto started = std::chrono::steady_clock::now();
-    const bool drawn = wanted && DrawObjectMotion(command, true);
-    if (wanted) {
-      ++timing.draws;
-    }
-    if (drawn) {
-      ++timing.drawn;
-      timing.spent += std::chrono::steady_clock::now() - started;
-      return {};
-    }
+    const bool wanted = active.load(std::memory_order_relaxed);
+    if (wanted && DrawObjectMotion(command, true)) return {};
     if (targets_kept.load(std::memory_order_relaxed) || bindings_kept.load(std::memory_order_relaxed)) {
       RestoreBindings(NativeContext(command.cmd_list));
     }
-    timing.spent += std::chrono::steady_clock::now() - started;
     if (!wanted) return {};
     return {.post_callback = RedrawObjectMotion<Context>};
   }
@@ -1504,11 +1461,6 @@ inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info)
 // The host draws motion from now on (true) or not.
 inline void SetActive(bool active) {
   internal::active.store(active, std::memory_order_relaxed);
-}
-
-// Motion Test (debug): 0 normal, 1 no records or captures, 2 units only, 3 plants only.
-inline void SetTest(uint32_t test) {
-  internal::test.store(test, std::memory_order_relaxed);
 }
 
 // The frame's end, after its last motion draw: the rigid objects' flags of a few frames back read (which meshes move),
