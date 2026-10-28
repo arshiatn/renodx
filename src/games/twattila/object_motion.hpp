@@ -331,7 +331,8 @@ struct State {
 static State state;
 // The host draws motion this frame (else the moving draws return at once).
 static std::atomic_bool active = false;
-// Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only.
+// Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only, 4 unit records with
+// the depth buffer kept bound, 5 unit records' bindings without their draw.
 static std::atomic_uint32_t test = 0;
 
 // The device's shaders and constants; false: not available.
@@ -960,7 +961,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->VSSetShader(objects.record_shaders[index].Get(), nullptr, 0);
     native->PSSetShader(objects.unit_record_pixel_shader.Get(), nullptr, 0);
     native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
-    native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 1, static_cast<UINT>(table.size()), table.data(), nullptr);
+    const uint32_t test_mode = test.load(std::memory_order_relaxed);
+    ID3D11DepthStencilView* record_depth = (test_mode == 4 ? depth_stencil.Get() : nullptr);
+    native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(table.size()), table.data(), nullptr);
     native->OMSetDepthStencilState(objects.capture_depth_state.Get(), 0);
     native->RSSetState(objects.capture_rasterizer.Get());
     // Not the game's blend state: its alpha to coverage would drop the point (no colour out) and its writes.
@@ -969,14 +972,18 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       overlap.begin(native, 0);
     }
     if constexpr (INDEXED) {
-      native->DrawIndexedInstanced(1, arguments.instance_count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
+      if (test_mode != 5) {
+        native->DrawIndexedInstanced(1, arguments.instance_count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
+      }
     } else {
-      native->DrawInstanced(1, arguments.instance_count, arguments.first_vertex, arguments.first_instance);
+      if (test_mode != 5) {
+        native->DrawInstanced(1, arguments.instance_count, arguments.first_vertex, arguments.first_instance);
+      }
     }
     if (overlap.end != nullptr) {
       overlap.end(native);
     }
-    native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
+    native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
     native->IASetPrimitiveTopology(topology);
     native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   }
