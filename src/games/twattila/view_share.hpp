@@ -44,7 +44,8 @@
 // read their textures as if the view filled them. Every pixel shader the game creates is checked (its bytecode):
 // - an NDC built from a texture uv (the uv's last writer, followed back, reads camera_VS_PS's g_screen_size or
 //   g_render_target_dimensions): the uv first divided by the view's share of the target;
-// - a projected uv that a texture read then takes as its coordinate: multiplied by that share.
+// - a projected uv that a texture read then takes as its coordinate: multiplied by that share (also one made in two
+//   instructions, u = (x + 1) x 0.5 and v = 1 - (y + 1) x 0.5: the grass's terrain distance, at the read).
 // The share is cb12 (render_scale: xy the draw's viewport / target, zw the frame's render / display size), bound for
 // these shaders' draws while the frame is scaled; unbound it reads 0, which the patch takes as 1 (no change at 100%).
 // The addon's own replaced shaders that declare cbuffer render_scale at b12 get it too (render_scale.hlsli).
@@ -72,9 +73,10 @@ struct Operand {
   uint32_t mode = 0;    // 0 mask, 1 swizzle, 2 one component
   uint32_t select = 0;  // its mask, swizzle or component
   bool modified = false;
+  bool negated = false;  // its modifier: negate only
   bool relative = false;
   std::array<uint32_t, 2> index = {};
-  std::array<uint32_t, 4> values = {};
+  std::array<uint32_t, 4> values = {};  // an immediate's (a scalar's for every component)
 };
 
 struct Instruction {
@@ -100,12 +102,13 @@ inline size_t ParseOperand(const std::vector<uint32_t>& tokens, size_t at, size_
       extended = tokens[next++];
       // A modifier (type 1) other than none.
       if ((extended & 0x3F) == 1 && ((extended >> 6) & 0xFF) != 0) operand->modified = true;
+      if ((extended & 0x3F) == 1 && ((extended >> 6) & 0xFF) == 1) operand->negated = true;
     } while ((extended >> 31) != 0);
   }
   if (operand->type == TYPE_IMMEDIATE) {
     const size_t count = ((token & 3) == 1) ? 1 : 4;
     if (next + count > end) return 0;
-    for (size_t component = 0; component < count; ++component) operand->values[component] = tokens[next + component];
+    for (size_t component = 0; component < 4; ++component) operand->values[component] = tokens[next + (count == 1 ? 0 : component)];
     next += count;
   }
   const uint32_t dimensions = (token >> 20) & 3;
@@ -368,7 +371,7 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
   }
   if (temps_at == 0) return result;
 
-  enum class Kind { NDC, PROJECTED, REGION };
+  enum class Kind { NDC, PROJECTED, REGION, SPLIT };
   struct Site {
     size_t instruction = 0;
     Kind kind = Kind::NDC;
@@ -398,7 +401,7 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
           && (compute || ReadAsCoordinate(instructions, index, destination.index[0], (1u << components[0]) | (1u << components[1])))) {
         sites.push_back({.instruction = index, .kind = Kind::PROJECTED, .components = components});
       }
-    } else if (region_slots != 0) {
+    } else {
       switch (instruction.opcode) {
         case OP_LD: case OP_SAMPLE: case OP_SAMPLE_C: case OP_SAMPLE_C_LZ: case OP_SAMPLE_L: case OP_SAMPLE_D:
         case OP_SAMPLE_B: case OP_GATHER4: case OP_GATHER4_C: {
@@ -407,8 +410,37 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
           const Operand& resource = instruction.operands[2];
           if (resource.type != 7 || resource.index[0] >= 64 || address.relative || address.modified) break;
           const uint64_t slot = uint64_t{1} << resource.index[0];
-          if ((region_slots & slot) == 0 || (two_dimensional & slot) == 0) break;
-          sites.push_back({.instruction = index, .kind = Kind::REGION});
+          if ((region_slots & slot) != 0 && (two_dimensional & slot) != 0) {
+            sites.push_back({.instruction = index, .kind = Kind::REGION});
+            break;
+          }
+          // A projected uv made in two instructions: u by mul rD.c, rA.a, l(0.5) and v by mad rD.c, -rB.b, l(0.5),
+          // l(1.0) (or rB.b, l(-0.5)), rA.a and rB.b the camera's projection (NDC + 1).
+          bool split = camera && instruction.opcode != OP_LD && address.type == TYPE_TEMP && address.mode == 1;
+          for (uint32_t coordinate = 0; coordinate < 2 && split; ++coordinate) {
+            const uint32_t component = SourceComponent(address, coordinate);
+            size_t writer_at = index;
+            for (size_t at = index; at-- > 0;) {
+              const auto& operands = instructions[at].operands;
+              if (!operands.empty() && operands[0].type == TYPE_TEMP && operands[0].mode == 0 && !operands[0].relative
+                  && operands[0].index[0] == address.index[0] && (operands[0].select & (1u << component)) != 0) {
+                writer_at = at;
+                break;
+              }
+            }
+            const Instruction& writer = instructions[writer_at];
+            const auto& operands = writer.operands;
+            const bool u = coordinate == 0 && writer.opcode == OP_MUL && operands.size() == 3 && !operands[1].modified
+                           && operands[2].type == TYPE_IMMEDIATE && operands[2].values[component] == HALF;
+            const bool v = coordinate == 1 && writer.opcode == OP_MAD && operands.size() == 4 && operands[2].type == TYPE_IMMEDIATE
+                           && operands[3].type == TYPE_IMMEDIATE && operands[3].values[component] == ONE
+                           && ((operands[1].negated && operands[2].values[component] == HALF)
+                               || (!operands[1].modified && operands[2].values[component] == MINUS_HALF));
+            split = writer_at != index && (u || v) && operands[1].type == TYPE_TEMP && !operands[1].relative
+                    && Classify(instructions, writer_at, operands[1].index[0], 1u << SourceComponent(operands[1], component), reflection)
+                           == Source::CAMERA_PROJECTION;
+          }
+          if (split) sites.push_back({.instruction = index, .kind = Kind::SPLIT});
           break;
         }
         default:
@@ -485,23 +517,29 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
       tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(original.at + original.length), scale.begin(), scale.end());
       ++result.projected;
     } else {
-      // mov rU, <its coordinate>; its xy x the frame's share (ld: texel indices, through float); the read takes rU.
+      // mov rU, <its coordinate>; its xy x the frame's share (a split projection: the draw's; ld: texel indices,
+      // through float); the read takes rU.
       const Operand& address = original.operands[1];
       std::vector<uint32_t> address_tokens(tokens.begin() + static_cast<ptrdiff_t>(address.at),
                                            tokens.begin() + static_cast<ptrdiff_t>(address.at + address.length));
+      const auto coordinate_share = swizzled(share, (site->kind == Kind::SPLIT ? 0x04 : 0x0E));
       std::vector<uint32_t> added;
       instruction(&added, OP_MOV, {masked(uv, 0b1111), address_tokens});
       if (original.opcode == OP_LD) {
         instruction(&added, OP_UTOF, {masked(uv, 0b0011), swizzled(uv, 0x04)});
-        instruction(&added, OP_MUL, {masked(uv, 0b0011), swizzled(uv, 0x04), swizzled(share, 0x0E)});
+        instruction(&added, OP_MUL, {masked(uv, 0b0011), swizzled(uv, 0x04), coordinate_share});
         instruction(&added, OP_FTOU, {masked(uv, 0b0011), swizzled(uv, 0x04)});
       } else {
-        instruction(&added, OP_MUL, {masked(uv, 0b0011), swizzled(uv, 0x04), swizzled(share, 0x0E)});
+        instruction(&added, OP_MUL, {masked(uv, 0b0011), swizzled(uv, 0x04), coordinate_share});
       }
       const auto rewritten = replaced(original, address, swizzled(uv, 0xE4));
       added.insert(added.end(), rewritten.begin(), rewritten.end());
       put(original, added);
-      ++result.region;
+      if (site->kind == Kind::SPLIT) {
+        ++result.projected;
+      } else {
+        ++result.region;
+      }
     }
   }
   tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(code_at), share_code.begin(), share_code.end());

@@ -36,8 +36,8 @@
 // as the grass vertex shaders' height). cb8 unbound reads 0: no fade.
 // Its depth pre-pass (rigidgrass(wet) ps30 gbuffer_zprefill_grass) drops grass past 50 m from the camera whose pixel's
 // terrain point (the terrain depth at its projected uv) lies past 100 m from it: at grazing angles that cut the grass at
-// ~100 m whatever the distance (ATN debug12; below 100% its uv read the view's part of the depth wrong, so the grass
-// went on outside the top-left corner). Its 100 and 50 read from cb8[0].yz: 100 m and 50 m x Grass Height Distance.
+// ~100 m whatever the distance (ATN debug12). Its 100 and 50 read from cb8[0].yz: 100 m and 50 m x Grass Height Distance.
+// Below 100% the render scale (view_share.hpp) patches all of them first: their terrain reads at projected uvs.
 namespace twattila::grass_fade {
 
 using Microsoft::WRL::ComPtr;
@@ -124,7 +124,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     auto* desc = static_cast<reshade::api::shader_desc*>(subobjects[index].data);
     if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
     const std::span<const uint8_t> code(static_cast<const uint8_t*>(desc->code), desc->code_size);
-    // The game's hash, also of a shader the render scale patched first (the pre-pass's terrain depth read).
+    // The game's hash, also of a shader the render scale patched first (the terrain reads).
     const auto scaled = view_share::OriginalHash(desc->code);
     const uint32_t hash = scaled.value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
     if (std::ranges::find(HASHES, hash) == HASHES.end() && hash != PREFILL_HASH) continue;
