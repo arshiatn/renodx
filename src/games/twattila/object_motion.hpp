@@ -89,6 +89,7 @@ struct MotionConstants {
   std::array<uint32_t, 4> unit = {};
   std::array<uint32_t, 4> draw = {};
   std::array<float, 4> jitter = {};
+  std::array<float, 4> game_jitter = {};
 };
 
 // A draw's view (the host's): the frame, the main view's depth size (and its depth texture when known: only draws

@@ -22,6 +22,7 @@ cbuffer motion_VS : register(b12)
                               // animation texture (part of the bone key), rigid objects and deformed meshes: the draw's slot
   uint4 motion_draw;          // deformed meshes: x the draw's first position, y its positions, z its first vertex
   float4 motion_jitter;       // the rows' jitter in clip space (xy this frame's, zw last frame's; Shogun 2), else 0
+  float4 motion_game_jitter;  // in-draw motion (motion_draw_*.vs): the jitter the game's rows hold (xy, clip per w)
 }
 
 // The motion in render pixels from a surface's clip position now to where it was last frame (x right, y down, without
