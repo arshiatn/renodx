@@ -17,6 +17,15 @@ float2 DrawRenderShare() {
   return (g_render_scale.x > 0.f && g_render_scale.y > 0.f) ? g_render_scale.xy : float2(1.f, 1.f);
 }
 
+// The frame's render share where a camera's view covers that part of its screen texture (DLSS below 100%: the main
+// view's cameras, their viewport the render scale's), else 1: for textures that hold the whole view (the bloom) read at
+// a screen texture's uv, whatever the draw's own viewport (the tone mapper draws its whole target: DrawRenderShare 1).
+float2 CameraRenderShare(float4 screen_size, float4 viewport_dimensions) {
+  const float2 frame = FrameRenderShare();
+  const float2 camera = viewport_dimensions.xy / max(screen_size.xy, 1.f);
+  return all(abs(camera - frame) < 0.002f) ? frame : float2(1.f, 1.f);
+}
+
 // A texel of a texture the 3D drew (Load coordinates, mip / sample index kept) read at the display's size.
 int2 RenderShareTexel(float2 texel) {
   return int2(texel * FrameRenderShare());

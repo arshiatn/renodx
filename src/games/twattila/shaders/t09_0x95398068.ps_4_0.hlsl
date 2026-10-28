@@ -61,7 +61,7 @@ void main(
   // HDR: tone_mapper.hlsli, with the constant points.
   if (HDR >= 1.f) {
     const float2 texcoord = g_screen_size.zw * (g_vpos_texel_offset + v0.xy);
-    o0 = ToneMapperHdr(g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, texcoord, 0), SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (texcoord) / DrawRenderShare()),
+    o0 = ToneMapperHdr(g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, texcoord, 0), SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (texcoord) / CameraRenderShare(g_screen_size, g_viewport_dimensions)),
                        float2(g_luma_black_point, g_luma_white_point));
     return;
   }
@@ -69,7 +69,7 @@ void main(
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
   r1.xyzw = g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, r0.xy, 0).xyzw;
-  r0.xyzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (r0.xy) / DrawRenderShare()).xyzw;
+  r0.xyzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (r0.xy) / CameraRenderShare(g_screen_size, g_viewport_dimensions)).xyzw;
   r0.w = dot(r1.xyz, float3(0.212599993,0.715200007,0.0722000003));
   r2.x = g_luma_white_point + -g_luma_black_point;
   r2.y = r2.x * -0.340000004 + g_luma_white_point;

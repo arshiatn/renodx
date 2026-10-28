@@ -48,7 +48,7 @@ void main(
 {
   // Get coordinates and sample the scene and bloom buffers.
   float2 texcoord = g_screen_size.zw * (g_vpos_texel_offset + v0.xy);
-  float4 bloom_sample = SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (texcoord) / DrawRenderShare());
+  float4 bloom_sample = SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (texcoord) / CameraRenderShare(g_screen_size, g_viewport_dimensions));
   float4 scene_sample = g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, texcoord, 0);
 
   float output_alpha = scene_sample.w;
