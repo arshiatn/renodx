@@ -478,20 +478,23 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
                     ID3D11ShaderResourceView* gbuffer_depth, bool gbuffer_msaa, ID3D11Buffer* camera, ID3D11Buffer* lighting,
                     UINT sun_direction) {
   auto& objects = runtime.objects;
-  // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%.
+  // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%;
+  // Bend's per-pixel depth tolerances over it (a render pixel holds more of the scene: the depth steps between neighbours
+  // and along the ray grow by 1 / share): its surface thickness, else thin occluders fall between the samples of every
+  // other line, and its bilinear threshold, else slopes read as edges and shadow themselves (ATN debug19 at Ultra
+  // Performance: combed fence shadows, striped hills).
   const auto render = frame_history::RenderSize(objects.width, objects.height);
-  const float samples =
-      std::max(std::round(runtime.settings.samples * static_cast<float>(render[0]) / static_cast<float>(objects.width)),
-               runtime.settings.hard_samples + 4.f);
+  const float share = static_cast<float>(render[0]) / static_cast<float>(objects.width);
+  const float samples = std::max(std::round(runtime.settings.samples * share), runtime.settings.hard_samples + 4.f);
   const ShaderSettings settings = {
       .width = static_cast<float>(objects.width),
       .height = static_cast<float>(objects.height),
       .inverse_width = 1.f / static_cast<float>(objects.width),
       .inverse_height = 1.f / static_cast<float>(objects.height),
-      .thickness = runtime.settings.thickness,
+      .thickness = runtime.settings.thickness / share,
       .samples = samples,
       .contrast = runtime.settings.contrast,
-      .edge_threshold = runtime.settings.edge_threshold,
+      .edge_threshold = runtime.settings.edge_threshold / share,
       .hard_samples = runtime.settings.hard_samples,
       // Within the samples left after the hard ones (Bend reads past them otherwise).
       .fade_samples = std::min(runtime.settings.fade_samples, samples - runtime.settings.hard_samples),

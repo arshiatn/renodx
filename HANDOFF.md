@@ -812,7 +812,12 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       so fg_ui saw every pixel differ. Now OnTonemapDrawn's later calls of the frame (hdr_to_screen t01-t08, applied_frame
       == frame) redraw it (frame_generation::KeepOutput; KeepFrame skips its own draw while frames have that pass).
       Possibly behind the earlier "FG smears / judders" reports: retest FG with HUD Recomposition. Zips twattila_v90,
-      twrome2_v42, twthronesofbritannia_v42.
+      twrome2_v42, twthronesofbritannia_v42. ATN: FG picks up the UI correctly now (v90 confirmed).
+      v91 (ATN debug19, SSS only, UP / Quality vs DLAA): striped false shadow on distant hills, combed fence shadows.
+      Bend's SurfaceThickness and BilinearThreshold are depth tolerances per one-pixel step; below 100% steps and
+      neighbour differences grow by 1 / share, so screen_space_shadows::Compute divides both by the render share (as
+      samples x share). ATN's settings: Length 5 (1920), Thickness 0.005, Edge 0.02, Hard / Fade 1, Softness 0.
+      Zips twattila_v91, twrome2_v43, twthronesofbritannia_v43. ASK ATN: debug19 views again at UP.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

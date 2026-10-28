@@ -2,6 +2,11 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twrome2.addon32` (32-bit game).
 
+## v43 (2026-10-28, untested in game)
+
+- Screen-space shadows below 100%: no more striped hills and combed fence shadows (Attila v91: Bend's surface
+  thickness and bilinear threshold over the render share).
+
 ## v42 (2026-10-28, untested in game)
 
 - Frame generation's HUD-less image from the frame's last output pass (hdr_to_screen, the HDR output), not the first

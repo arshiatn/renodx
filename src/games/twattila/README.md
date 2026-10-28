@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v91 (2026-10-28, untested in game)
+
+- **Screen-space shadows below 100%** (ATN debug19, Ultra Performance and Quality, the toggle made no difference):
+  distant hills striped with false shadow and fence shadows combed. Bend's two depth tolerances are per pixel, tuned
+  for one pixel per step: below 100% a render pixel holds more of the scene, so the depth steps between neighbours and
+  along the ray grow by 1 / render share. Its bilinear threshold (slopes read as edges, not pushed back, shadowed
+  themselves: the stripes) and its surface thickness (thin occluders fell between the samples of every other line:
+  the combs) are now divided by the render share, as the sample count is multiplied by it. All TW games.
+
 ## v90 (2026-10-28, untested in game)
 
 - **Frame generation's HUD-less image** now comes from hdr_to_screen (the HDR output, grading and fog of war), not the
