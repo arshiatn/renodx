@@ -1003,6 +1003,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       instance order, compact box (2 instances) + alpha-tested card shadows, all 7 modes pass. Cost line now says
       "(N compact draws; M cluster sets)". NEXT: ATN's 4x battle: left out should fall to ~0 (if clusters run out, raise
       RT_DYNAMIC_CLUSTERS); then the shadow-map readers (C9FBACCB, 2E9F5935, ACE33D5D) take the rays' shadows.
+    - 2026-10-29 00:20 (cdbdbb47): clusters doubled to 262144 (ATN), half on GPUs <= 12 GB. Helper VRAM measured in the
+      harness: 3.19 GB dedicated (2.35 GB at 131072). At 4K add ~1.3 GB of the helper's screen-size buffers, made at
+      start even when their effect is off (making them lazily would save ~1 GB with shadows only).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
