@@ -739,7 +739,8 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       helper's D3D12 device (one device with FG / RR: fewer GPU context switches).
     - BATCH 2026-10-28 night (ATN asleep: no in-game tests, don't stop to ask; at the end SHUT DOWN THE PC, ATN
       allowed it). Commit after every step; tick here.
-      [ ] 1 FG HUD smear: UI recomposition   [ ] 2 MFG preset option   [ ] 3 FG hand-off without the GPU wait
+      [x] 1 FG HUD smear: UI recomposition   [x] 2 MFG preset option   [x] 3 FG hand-off without the GPU wait
+            (2028ba87: bridge v12, helper23 -> copy helper23 into the Attila folder at the end, v12 needs it)
       [ ] 4 DLSS SR on the helper's D3D12 (if worth it)
       [ ] 5 render scale: lens flare gone below 100%; unit markers above units only in the top-left 1/9 at UP (right
             positions); then audit every other screen-space read below 100%
