@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 15;
+constexpr uint32_t VERSION = 16;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -65,6 +65,37 @@ struct RtPlacement {
 };
 // The mesh was seen moving lately: its instances where they are now only (none kept from earlier draws).
 constexpr uint32_t RT_PLACE_MOVING = 1;
+// Compact draws (v16, to a helper that says rt_compact_ok: RTX Mega Geometry's clusters): a dynamic indexed draw's
+// vertices streamed once each, in its mesh's cluster order: `instances` blocks of its set's `vertices` texels from
+// `first_vertex`. Its cluster set (the mesh's index list split into clusters of at most RT_CLUSTER_TRIANGLES triangles
+// over at most RT_CLUSTER_VERTICES vertices of the block) is sent once (rt_new_sets; its data in the second mapping,
+// "<name>_clusters", RT_CLUSTER_DATA_BYTES). A soldier's triangle took three texels; its vertex now about one (4x unit
+// size battles: the soldiers needed several times the frame's texels, ATN 2026-10-28).
+constexpr uint32_t RT_COMPACT_DRAWS = 4096;
+constexpr uint32_t RT_NEW_SETS = 512;
+constexpr uint32_t RT_CLUSTER_DATA_BYTES = 16u << 20;
+constexpr uint32_t RT_CLUSTER_TRIANGLES = 128;
+constexpr uint32_t RT_CLUSTER_VERTICES = 128;
+// The frame's dynamic triangles and clusters at most (every-frame captures and compact draws).
+constexpr uint32_t RT_DYNAMIC_TRIANGLES = 12u << 20;
+constexpr uint32_t RT_DYNAMIC_CLUSTERS = 1u << 17;
+struct RtCompactDraw {
+  uint64_t set = 0;  // its cluster set's key
+  uint32_t first_vertex = 0;
+  uint32_t instances = 0;
+  uint32_t flags = 0;  // RT_TERRAIN, RT_FOLIAGE (alpha-tested), RT_THIN
+  uint32_t slice = 0;  // a foliage draw's atlas slice
+};
+// A new cluster set's data at `offset` in the second mapping: its clusters (four uint32 each: its first vertex in the
+// block, its vertices, its first triangle in the set, its triangles), then its triangles (three bytes each: vertices of
+// their cluster).
+struct RtClusterSet {
+  uint64_t key = 0;
+  uint32_t vertices = 0;  // a block's
+  uint32_t clusters = 0;
+  uint32_t triangles = 0;
+  uint32_t offset = 0;
+};
 // Thin (v11): cloth and sails; with RT_LEAF_LIGHT a share of the sun passes them as it passes leaves.
 constexpr uint32_t RT_THIN = 16;
 // Request flags.
@@ -247,11 +278,21 @@ struct Shared {
   uint32_t rt_device = 0;
   uint32_t rt_left_out = 0;
   uint64_t rt_left_out_key = 0;
+  // The addon's (v16): a trace request's compact draws and the cluster sets new to the helper (their data in the second
+  // mapping); the helper's: nonzero when it takes compact draws, one higher each time its full set pool dropped sets
+  // (the addon sends the sets it draws again).
+  uint32_t rt_compact_count = 0;
+  uint32_t rt_new_set_count = 0;
+  RtCompactDraw rt_compact[RT_COMPACT_DRAWS] = {};
+  RtClusterSet rt_new_sets[RT_NEW_SETS] = {};
+  uint32_t rt_compact_ok = 0;
+  uint32_t rt_v16_padding = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 15) return sizeof(Shared);
+  if (version >= 16) return sizeof(Shared);
+  if (version == 15) return offsetof(Shared, rt_compact_count);
   if (version == 14) return offsetof(Shared, rt_device);
   if (version == 13) return offsetof(Shared, rt_placement_count);
   if (version == 12) return offsetof(Shared, fg_debug);

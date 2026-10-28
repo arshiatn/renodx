@@ -1,0 +1,87 @@
+/*
+ * Copyright (C) 2026 ArshiaTN
+ * SPDX-License-Identifier: MIT
+ */
+
+// The Total War ray tracing's compact draws (bridge v16, dlaa_helper/rt_d3d12.hpp): the addon streamed each draw's
+// vertices once, in its cluster set's order (a block per instance). A group per cluster of a draw's instance: its first
+// thread writes the cluster's CLAS arguments (RTX Mega Geometry: its triangles' 8-bit indices in the set's pool, its
+// vertices in the vertex buffer; geometry index: the cluster's) and its record, a thread per triangle its normal and a
+// leaf's UVs (rt_scene_data.hlsli).
+// Build (build.ps1): dxc -T cs_6_5 -Fh rt_compact.h -Vn RT_COMPACT.
+#include "./rt_scene_data.hlsli"
+
+// The cluster sets: each its clusters (first vertex in the block, vertices, first triangle, triangles), then its
+// triangles (three bytes each: vertices of their cluster).
+ByteAddressBuffer sets : register(t0);
+// Three per draw: its first cluster (of the request's), first vertex, its set's place in the pool (bytes) and clusters;
+// its block's vertices, its set's triangles, its normals' and UVs' offsets (NO_UVS: not alpha-tested); its record's atlas
+// slice | flags << 16, its index for the garbage count, its bridge flags.
+StructuredBuffer<uint4> draws : register(t8);
+// NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS, 64 bytes each.
+RWByteAddressBuffer cluster_args : register(u8);
+
+cbuffer Dispatch : register(b1) {
+  uint draw_count;
+  uint cluster_count;
+  uint first_record;  // the units' instance's InstanceID (a cluster's record: its geometry index past it)
+  uint dispatch_padding;
+  uint2 vertices_address;  // GPU addresses (low, high): the vertex buffer's, the pool's
+  uint2 sets_address;
+};
+
+static const uint INDEX_FORMAT_8BIT = 1u;  // NVAPI's cluster index format
+static const uint GEOMETRY_NO_DUPLICATE_ANYHIT = 1u << 30;  // and geometry flags
+static const uint GEOMETRY_OPAQUE = 1u << 31;
+
+// `bytes` past the GPU address `base`.
+uint2 Address(uint2 base, uint bytes) {
+  const uint low = base.x + bytes;
+  return uint2(low, base.y + ((low < base.x) ? 1u : 0u));
+}
+
+[numthreads(128, 1, 1)]
+void main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID) {
+  // Rows of 65535 groups (D3D12's most along x).
+  const uint cluster = group.y * 65535u + group.x;
+  if (cluster >= cluster_count) return;
+  uint low = 0u;
+  uint high = draw_count - 1u;
+  while (low < high) {
+    const uint middle = (low + high + 1u) / 2u;
+    if (draws[middle * 3u].x <= cluster) {
+      low = middle;
+    } else {
+      high = middle - 1u;
+    }
+  }
+  const uint4 draw = draws[low * 3u];
+  const uint4 block = draws[low * 3u + 1u];
+  const uint4 kind = draws[low * 3u + 2u];
+  const uint local = cluster - draw.x;
+  const uint instance = local / draw.w;
+  const uint4 desc = sets.Load4(draw.z + (local - instance * draw.w) * 16u);
+  const uint first_vertex = draw.y + instance * block.x + desc.x;
+  const uint first_triangle = instance * block.y + desc.z;  // of the draw's
+  const uint corners = draw.z + draw.w * 16u + desc.z * 3u;
+  const bool masked = ((kind.x >> 16) & RECORD_MASKED) != 0u;
+  if (thread.x == 0u) {
+    const uint arguments = cluster * 64u;
+    cluster_args.Store4(arguments, uint4(cluster, 0u, desc.w | (desc.y << 9) | (INDEX_FORMAT_8BIT << 24),
+                                         cluster | (masked ? GEOMETRY_NO_DUPLICATE_ANYHIT : GEOMETRY_OPAQUE)));
+    cluster_args.Store4(arguments + 16u, uint4(1u | (16u << 16), 0u, Address(sets_address, corners)));
+    cluster_args.Store4(arguments + 32u, uint4(Address(vertices_address, first_vertex * 16u), 0u, 0u));
+    cluster_args.Store4(arguments + 48u, uint4(0u, 0u, 0u, 0u));
+    records_written[first_record + cluster] = uint4(masked ? block.w + first_triangle * 3u : NO_UVS, block.z + first_triangle, kind.x,
+                                                    masked ? asuint(LEAF_ALPHA_CUTOFF) : 0u);
+  }
+  if (thread.x >= desc.w) return;
+  // Its three bytes, from the two words around them.
+  const uint address = corners + thread.x * 3u;
+  const uint2 words = sets.Load2(address & ~3u);
+  const uint shift = (address & 3u) * 8u;
+  const uint packed = (shift == 0u) ? words.x : ((words.x >> shift) | (words.y << (32u - shift)));
+  const uint triangle_index = first_triangle + thread.x;
+  WriteTriangle(first_vertex + uint3(packed & 0xFFu, (packed >> 8) & 0xFFu, (packed >> 16) & 0xFFu), (kind.z & CAPTURE_TERRAIN) == 0u, kind.y,
+                block.z + triangle_index, masked ? block.w + triangle_index * 3u : NO_UVS);
+}

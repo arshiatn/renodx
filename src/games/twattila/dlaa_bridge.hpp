@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
@@ -63,6 +64,9 @@ struct TraceRequest {
   std::span<const std::array<float, 4>> light_colours;  // v11: as `lights`
   std::array<float, 16> view_projection = {};            // v11: the camera's registers (the ambient's history)
   std::span<const RtPlacement> placements;               // v14: the known placed draws (RT_PLACEMENTS at most)
+  // v16: the compact draws and the cluster sets new to the helper (their data written into ClusterData() before this).
+  std::span<const RtCompactDraw> compact;
+  std::span<const RtClusterSet> new_sets;
 };
 
 // A ray-traced Light Bounce request (light_bounce.hpp through rt_scene.hpp): the render size, the bounce's size and its
@@ -148,6 +152,9 @@ struct Bridge {
   HANDLE job = nullptr;
   HANDLE process = nullptr;
   Shared* shared = nullptr;
+  // The cluster sets' data (v16): the second mapping, RT_CLUSTER_DATA_BYTES.
+  HANDLE cluster_mapping = nullptr;
+  uint8_t* cluster_data = nullptr;
   bool started = false;
   bool failed = false;
   std::string status = "DLAA: not started";
@@ -271,6 +278,11 @@ inline bool Start(ID3D11Device* device) {
   bridge.shared = static_cast<Shared*>(MapViewOfFile(bridge.mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Shared)));
   if (bridge.shared == nullptr) return Fail("DLAA: shared memory unavailable.");
   *bridge.shared = Shared{};
+  // The cluster sets' (compact draws without it: none).
+  bridge.cluster_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, RT_CLUSTER_DATA_BYTES, (name + L"_clusters").c_str());
+  if (bridge.cluster_mapping != nullptr) {
+    bridge.cluster_data = static_cast<uint8_t*>(MapViewOfFile(bridge.cluster_mapping, FILE_MAP_ALL_ACCESS, 0, 0, RT_CLUSTER_DATA_BYTES));
+  }
   ComPtr<IDXGIDevice> dxgi_device;
   ComPtr<IDXGIAdapter> adapter;
   DXGI_ADAPTER_DESC adapter_desc = {};
@@ -639,7 +651,68 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
     std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
     shared->rt_placement_count = static_cast<uint32_t>(std::min<size_t>(request.placements.size(), RT_PLACEMENTS));
     std::copy_n(request.placements.begin(), shared->rt_placement_count, shared->rt_placements);
+    shared->rt_compact_count = static_cast<uint32_t>(std::min<size_t>(request.compact.size(), RT_COMPACT_DRAWS));
+    std::copy_n(request.compact.begin(), shared->rt_compact_count, shared->rt_compact);
+    shared->rt_new_set_count = static_cast<uint32_t>(std::min<size_t>(request.new_sets.size(), RT_NEW_SETS));
+    std::copy_n(request.new_sets.begin(), shared->rt_new_set_count, shared->rt_new_sets);
   });
+}
+
+// Whether the helper takes compact draws (v16: RTX Mega Geometry's clusters there), and the cluster sets' data for the
+// next trace request (empty: no second mapping).
+inline bool CompactDraws() {
+  return bridge.shared != nullptr && bridge.cluster_data != nullptr && bridge.shared->rt_compact_ok != 0;
+}
+
+inline std::span<uint8_t> ClusterData() {
+  return (bridge.cluster_data != nullptr) ? std::span<uint8_t>(bridge.cluster_data, RT_CLUSTER_DATA_BYTES) : std::span<uint8_t>();
+}
+
+// A mesh's cluster set (v16) from its index list (three a triangle; degenerate ones left out): its triangles in order,
+// in clusters of at most RT_CLUSTER_TRIANGLES over at most RT_CLUSTER_VERTICES vertices; `remap` the mesh vertex each
+// texel of a block streams (each cluster's vertices in turn: a vertex in two clusters streams twice), `data` the set's
+// data as RtClusterSet has it. Empty: none (indices past 2^24, garbage).
+struct ClusterSetData {
+  std::vector<uint32_t> remap;
+  std::vector<uint8_t> data;
+  uint32_t clusters = 0;
+  uint32_t triangles = 0;
+};
+inline ClusterSetData MakeClusterSet(std::span<const uint32_t> indices) {
+  ClusterSetData set;
+  const uint32_t highest = indices.empty() ? 0u : *std::ranges::max_element(indices);
+  if (indices.size() < 3 || highest >= (1u << 24)) return set;
+  std::vector<std::array<uint32_t, 4>> clusters;  // first vertex in the block, vertices, first triangle, triangles
+  std::vector<uint8_t> corners;
+  // Each mesh vertex's cluster when it was last given a place in one, and that place; the cluster being filled.
+  std::vector<uint32_t> cluster_of(size_t{highest} + 1, UINT32_MAX);
+  std::vector<uint8_t> place(cluster_of.size());
+  uint32_t current = UINT32_MAX;
+  for (size_t at = 0; at + 2 < indices.size(); at += 3) {
+    const std::array<uint32_t, 3> triangle = {indices[at], indices[at + 1], indices[at + 2]};
+    if (triangle[0] == triangle[1] || triangle[1] == triangle[2] || triangle[0] == triangle[2]) continue;
+    const auto added = static_cast<uint32_t>(std::ranges::count_if(triangle, [&](uint32_t vertex) { return cluster_of[vertex] != current; }));
+    if (current == UINT32_MAX || clusters[current][3] == RT_CLUSTER_TRIANGLES || clusters[current][1] + added > RT_CLUSTER_VERTICES) {
+      current = static_cast<uint32_t>(clusters.size());
+      clusters.push_back({static_cast<uint32_t>(set.remap.size()), 0, set.triangles, 0});
+    }
+    auto& cluster = clusters[current];
+    for (const uint32_t vertex : triangle) {
+      if (cluster_of[vertex] != current) {
+        cluster_of[vertex] = current;
+        place[vertex] = static_cast<uint8_t>(cluster[1]++);
+        set.remap.push_back(vertex);
+      }
+      corners.push_back(place[vertex]);
+    }
+    ++cluster[3];
+    ++set.triangles;
+  }
+  set.clusters = static_cast<uint32_t>(clusters.size());
+  set.data.resize((clusters.size() * 16) + corners.size());
+  std::memcpy(set.data.data(), clusters.data(), clusters.size() * 16);
+  std::memcpy(set.data.data() + (clusters.size() * 16), corners.data(), corners.size());
+  return set;
 }
 
 // The ray-traced Light Bounce (its prepared light copied into `bridge.rt_light` on `context` before this) in the helper

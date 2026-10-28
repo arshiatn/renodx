@@ -12,7 +12,7 @@
 // requests (bridge v4: the addon's rt_scene.hpp) run on another D3D12 device (rt_d3d12.hpp). Frame generation requests
 // (bridge v5: the addon's frame_generation.hpp, one per game present) present through Streamline's DLSS Frame Generation
 // into a child window over the game's (fg_d3d12.hpp). It quits with the game. It answers addons of bridge versions 2
-// to 15.
+// to 16.
 // Build (x64): see twattila/README.md.
 #include <windows.h>
 
@@ -30,6 +30,7 @@
 #include <initializer_list>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <string>
 #include <thread>
 #include <utility>
@@ -92,6 +93,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const auto set_status = [&](const char* status) {
     strncpy_s(shared->status, status, _TRUNCATE);
   };
+  // The cluster sets' data (v16): the addon's second mapping (null: none, no compact draws).
+  const uint8_t* cluster_data = nullptr;
+  if (HANDLE clusters = (version >= 16) ? OpenFileMappingW(FILE_MAP_READ, FALSE, (name + L"_clusters").c_str()) : nullptr; clusters != nullptr) {
+    cluster_data = static_cast<const uint8_t*>(MapViewOfFile(clusters, FILE_MAP_READ, 0, 0, twattila::dlaa_bridge::RT_CLUSTER_DATA_BYTES));
+    CloseHandle(clusters);
+  }
 
   // A device on the game's GPU.
   ComPtr<IDXGIFactory4> factory;
@@ -138,23 +145,39 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   ComPtr<ID3D11Texture2D> output;
   ComPtr<ID3D11Fence> fence;
   // Ray tracing requests of a kind (trace, Light Bounce, reflections) that ran last time are answered once copied (their
-  // fence value is always the next) and recorded in order by a worker of their own while the game goes on; the rest,
-  // and anything that opens or closes the scene, wait for the worker to be done.
+  // fence value is always the next; v16: with their new cluster sets' data, which the addon writes again for its next)
+  // and recorded in order by a worker of their own while the game goes on; the rest, and anything that opens or closes
+  // the scene, wait for the worker to be done.
+  struct Work {
+    std::unique_ptr<twattila::dlaa_bridge::Shared> shared;
+    std::vector<uint8_t> sets;
+  };
   struct RtWork {
     std::mutex mutex;
     std::condition_variable changed;
-    std::deque<std::unique_ptr<twattila::dlaa_bridge::Shared>> pending;
+    std::deque<Work> pending;
     std::array<bool, 3> ran = {};
     bool busy = false;
     bool stop = false;
   } rt_work;
-  const auto run = [&](const twattila::dlaa_bridge::Shared& from) {
-    return (version >= 7 && from.rt_request >= 2) ? scene->Paths(from, version, from.rt_request == 3) : scene->Trace(from, version);
+  // A trace request's new cluster sets' data: the mapping's start up to the end of the last.
+  const auto new_sets = [&](const twattila::dlaa_bridge::Shared& from) {
+    size_t bytes = 0;
+    for (uint32_t index = 0; version >= 16 && from.rt_request == 1 && index < std::min(from.rt_new_set_count, twattila::dlaa_bridge::RT_NEW_SETS); ++index) {
+      const auto& set = from.rt_new_sets[index];
+      bytes = std::max(bytes, size_t{set.offset} + (size_t{set.clusters} * 16) + (size_t{set.triangles} * 3));
+    }
+    return (cluster_data != nullptr) ? std::span(cluster_data, std::min<size_t>(bytes, twattila::dlaa_bridge::RT_CLUSTER_DATA_BYTES))
+                                     : std::span<const uint8_t>();
+  };
+  const auto run = [&](const twattila::dlaa_bridge::Shared& from, std::span<const uint8_t> sets) {
+    return (version >= 7 && from.rt_request >= 2) ? scene->Paths(from, version, from.rt_request == 3) : scene->Trace(from, version, sets);
   };
   const auto kind = [&](const twattila::dlaa_bridge::Shared& from) {
     return std::min<uint32_t>(version >= 7 ? from.rt_request : 1u, 3u) - 1;
   };
-  // Its status for the addon and (v15) the garbage triangles its scene left out so far, the last such capture's key.
+  // Its status for the addon, (v15) the garbage triangles its scene left out so far, the last such capture's key, and
+  // (v16) whether it takes compact draws.
   const auto publish = [&] {
     strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
     if (const std::string reports = scene->TakeReports(); !reports.empty()) ReShadeLogMessage(nullptr, 0, reports.c_str());
@@ -163,20 +186,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       shared->rt_left_out = left_out.far_off + left_out.parts + left_out.others;
       shared->rt_left_out_key = left_out.key;
     }
+    if (version >= 16) shared->rt_compact_ok = (cluster_data != nullptr) ? scene->CompactState() : 0u;
   };
   std::thread rt_worker([&] {
     std::unique_lock lock(rt_work.mutex);
     while (true) {
       rt_work.changed.wait(lock, [&] { return rt_work.stop || !rt_work.pending.empty(); });
       if (rt_work.pending.empty()) return;
-      const auto work = std::move(rt_work.pending.front());
+      const Work work = std::move(rt_work.pending.front());
       rt_work.pending.pop_front();
       rt_work.busy = true;
       lock.unlock();
-      const bool ran = run(*work);
+      const bool ran = run(*work.shared, work.sets);
       publish();
       lock.lock();
-      rt_work.ran[kind(*work)] = ran;
+      rt_work.ran[kind(*work.shared)] = ran;
       rt_work.busy = false;
       rt_work.changed.notify_all();
     }
@@ -287,9 +311,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (scene_open) {
         const std::unique_lock lock(rt_work.mutex);
         if (rt_work.ran[kind(*shared)]) {
-          auto work = std::make_unique<twattila::dlaa_bridge::Shared>();
-          std::memcpy(work.get(), shared, twattila::dlaa_bridge::SharedBytes(version));
-          rt_work.pending.push_back(std::move(work));
+          auto copy = std::make_unique<twattila::dlaa_bridge::Shared>();
+          std::memcpy(copy.get(), shared, twattila::dlaa_bridge::SharedBytes(version));
+          const auto sets = new_sets(*shared);
+          rt_work.pending.push_back({.shared = std::move(copy), .sets = {sets.begin(), sets.end()}});
           queued = true;
         }
       }
@@ -301,7 +326,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         answered = true;
       } else {
         rt_drain();
-        evaluated = scene_open && run(*shared);
+        evaluated = scene_open && run(*shared, new_sets(*shared));
         if (scene_open) {
           const std::unique_lock lock(rt_work.mutex);
           rt_work.ran[kind(*shared)] = evaluated;
