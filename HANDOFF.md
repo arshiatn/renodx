@@ -737,6 +737,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       in nvngx_dlssg, set it for the helper only); (3) no GPU wait on the FG hand-off: two FG frame sets + a fence the
       helper signals, the game waits only before reusing a set (~3-5% base fps with FG); (4) maybe DLSS SR on the
       helper's D3D12 device (one device with FG / RR: fewer GPU context switches).
+    - BATCH 2026-10-28 night (ATN asleep: no in-game tests, don't stop to ask; at the end SHUT DOWN THE PC, ATN
+      allowed it). Commit after every step; tick here.
+      [ ] 1 FG HUD smear: UI recomposition   [ ] 2 MFG preset option   [ ] 3 FG hand-off without the GPU wait
+      [ ] 4 DLSS SR on the helper's D3D12 (if worth it)
+      [ ] 5 render scale: lens flare gone below 100%; unit markers above units only in the top-left 1/9 at UP (right
+            positions); then audit every other screen-space read below 100%
+      [ ] 6 soldier records redesign (DLAA GPU time for RT/PT) + more optimizations
+      [ ] 7 clean-up (debug_timing.hpp, Motion Test setting, motion timing log; ReShade.ini FrameTrace=1 -> restore
+            from scratchpad attila_test/ReShade.ini.before_trace, delete tw_frame_trace.txt), README/HANDOFF, build all
+            TW games (build32 Attila / Rome II / Thrones too), zips (release_zip.py --helper), per-game report, delete
+            the scratchpad mssym (2.3 GB)
+      [ ] 8 shut down the PC (shutdown /s /t 120 after the final message)
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
