@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 11;
+constexpr uint32_t VERSION = 12;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -208,11 +208,17 @@ struct Shared {
   // The addon's (v11): the local lights' colours (as rt_lights), which light what the paths meet unseen by the screen.
   float rt_light_colours[RT_MAX_LIGHTS][4] = {};
   uint64_t rt_fog = 0;  // RT_FOG_SHADOWS' output
+  // The addon's (v12): frame generation's preset (NVIDIA's A-C as 1-3, written into the driver profile of the helper's
+  // exe, which DLSS-G reads when the helper starts it; 0: the driver's own) and the HUD's recomposition (1: the frame's
+  // UI, where it differs from the HUD-less image, laid over the generated frames instead of warped with the scene).
+  uint32_t fg_preset = 0;
+  uint32_t fg_ui = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 11) return sizeof(Shared);
+  if (version >= 12) return sizeof(Shared);
+  if (version == 11) return offsetof(Shared, fg_preset);
   if (version >= 9) return offsetof(Shared, rt_light_colours);
   if (version == 8) return offsetof(Shared, rt_lights);
   if (version == 7) return offsetof(Shared, rt_reflection);

@@ -40,6 +40,8 @@ struct Settings {
   uint32_t multiplier = 0;  // frames presented per rendered frame (2-6; 1: Dynamic, up to the display's refresh rate); 0: off
   bool reflex_boost = false;
   uint32_t frame_limit = 0;  // Reflex's frame rate limit, rendered frames per second (0: none)
+  uint32_t preset = 0;       // NVIDIA's A-C as 1-3 (0: the driver's)
+  bool hud_recomposition = true;
 };
 
 // A frame's DLAA inputs (their size and jitter, the depth and motion are the bridge's) and its camera (row vectors,
@@ -121,6 +123,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     auto& bridge = dlaa_bridge::bridge;
     if (!bridge.fg_frame || bridge.fg_format != back_desc.Format || bridge.width != back_desc.Width || bridge.height != back_desc.Height) return;
     if (settings.multiplier != 0) {
+      dlaa_bridge::BeforeSharedWrites(native);
       native->CopyResource(bridge.fg_frame.Get(), back_texture.Get());
     }
     const bool hudless = settings.multiplier != 0 && kept && std::exchange(state.hudless, false);
@@ -128,6 +131,8 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     request.multiplier = settings.multiplier;
     request.reflex_boost = settings.reflex_boost;
     request.frame_limit = settings.frame_limit;
+    request.preset = settings.preset;
+    request.hud_recomposition = settings.hud_recomposition;
     request.hudless = hudless;
     request.inputs = kept;
     request.frame_index = ++state.frame_index;
@@ -258,6 +263,7 @@ inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, con
   objects.constants.resize((state.injection_bytes + 15) / 16 * 16);
   std::memcpy(objects.constants.data(), state.injection, state.injection_bytes);
   context->UpdateSubresource(objects.injection.Get(), 0, nullptr, objects.constants.data(), 0, 0);
+  dlaa_bridge::BeforeSharedWrites(context);
   ComPtr<ID3DDeviceContextState> game_state;
   context1->SwapDeviceContextState(objects.context_state.Get(), game_state.GetAddressOf());
   const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(desc.Width), .Height = static_cast<float>(desc.Height), .MaxDepth = 1.f};

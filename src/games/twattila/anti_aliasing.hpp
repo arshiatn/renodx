@@ -93,7 +93,9 @@ struct Settings {
   bool ray_traced_reflections = false;
   uint32_t frame_generation = 0;           // DLAA / DLSS: frames shown per rendered frame (2-6; 1 Dynamic; 0 off: frame_generation.hpp)
   bool reflex_boost = false;
-  uint32_t frame_limit = 0;  // frame generation's Reflex limit, rendered frames per second (0: none)
+  uint32_t frame_limit = 0;   // frame generation's Reflex limit, rendered frames per second (0: none)
+  uint32_t frame_preset = 0;  // frame generation's NVIDIA preset A-C as 1-3 (0: the driver's)
+  bool hud_recomposition = true;
   // DLSS: the textures' levels below 100% (texture_lod_bias.hpp): 0 the game's, 1 as sharp as at the display size, 2
   // one step sharper (NVIDIA's advice), 3 two.
   int texture_lod_bias = 2;
@@ -1063,6 +1065,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     // Rigid objects: which meshes move (object_motion.hpp).
     object_motion::Resolve(native, runtime.frame);
     const auto object_motion_views = object_motion::Target(runtime.frame);
+    dlaa_bridge::BeforeSharedWrites(native);
     bind(objects.dlaa_prepare.Get(),
          {frame_view, depth_view, object_motion_views.redrawn.Get(), object_motion_views.drawn_motion.Get(),
           object_motion_views.drawn_depth.Get()},
@@ -1271,6 +1274,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
       .multiplier = (settings.method == Method::DLAA ? settings.frame_generation : 0u),
       .reflex_boost = settings.reflex_boost,
       .frame_limit = settings.frame_limit,
+      .preset = settings.frame_preset,
+      .hud_recomposition = settings.hud_recomposition,
   });
   const std::unique_lock lock(internal::runtime.mutex);
   auto& runtime = internal::runtime;

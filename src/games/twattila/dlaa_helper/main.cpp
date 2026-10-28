@@ -12,7 +12,7 @@
 // requests (bridge v4: the addon's rt_scene.hpp) run on another D3D12 device (rt_d3d12.hpp). Frame generation requests
 // (bridge v5: the addon's frame_generation.hpp, one per game present) present through Streamline's DLSS Frame Generation
 // into a child window over the game's (fg_d3d12.hpp). It quits with the game. It answers addons of bridge versions 2
-// to 8.
+// to 12.
 // Build (x64): see twattila/README.md.
 #include <windows.h>
 
@@ -216,7 +216,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
       generation_open = false;
       if (version >= 5 && shared->fg_frame != 0) {
-        generation_open = generation.Initialize(adapter.Get(), folder) && generation.Open(*shared);
+        generation_open = generation.Initialize(adapter.Get(), folder) && generation.Open(*shared, version);
         for (const uint64_t texture : {shared->fg_frame, shared->fg_hudless}) {
           CloseHandle(reinterpret_cast<HANDLE>(texture));
         }

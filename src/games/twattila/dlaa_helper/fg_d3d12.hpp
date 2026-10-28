@@ -21,14 +21,22 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <memory>
 #include <string>
 #include <thread>
 
+// NVIDIA's NVAPI (MIT; build.ps1 adds it when build\downloads\nvapi holds it): the frame generation preset's driver profile.
+#if __has_include(<nvapi.h>)
+#include <nvapi.h>
+#endif
+
 #include "../../talesofarise_dlss/ngx_backend.hpp"
 #include "../dlaa_bridge.h"
+#include "fg_ui.h"  // dxc -Fh (build.ps1)
 
 // The DLAA helper's frame generation (bridge v5): NVIDIA's DLSS Frame Generation through Streamline (sl.interposer.dll,
 // sl.common.dll, sl.dlss_g.dll, sl.reflex.dll, sl.pcl.dll and nvngx_dlssg.dll next to the helper) on a D3D12 device of
@@ -40,6 +48,8 @@
 // image with the camera, then signals the next value; the present queue waits for that and presents (frame generation
 // adds its frames there), then Reflex paces the next frame. As in talesofarise_dlss/frame_generation.hpp (Phantom FX's
 // route by Bustanity, MIT). Multiplier 0 hides the window (the game's own image shows) and turns generation off.
+// Bridge v12: the HUD's recomposition (a UI layer from the frame and its HUD-less image, fg_ui.cs_6_0.hlsl, which DLSS-G
+// lays over the frames it makes) and NVIDIA's preset, written into this exe's driver profile before DLSS-G starts.
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
@@ -126,15 +136,41 @@ class FrameGeneration12 {
       }
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    // The UI layer's pass (fg_ui.cs_6_0.hlsl): the frame and the HUD-less image in, the layer out; its size and
+    // threshold. Without it the HUD is not recomposed.
+    const std::array<D3D12_DESCRIPTOR_RANGE, 2> ranges = {{
+        {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = 2, .BaseShaderRegister = 0, .OffsetInDescriptorsFromTableStart = 0},
+        {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = 1, .BaseShaderRegister = 0, .OffsetInDescriptorsFromTableStart = 2},
+    }};
+    const std::array<D3D12_ROOT_PARAMETER, 2> parameters = {{
+        {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+         .DescriptorTable = {.NumDescriptorRanges = static_cast<UINT>(ranges.size()), .pDescriptorRanges = ranges.data()}},
+        {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .Constants = {.ShaderRegister = 0, .Num32BitValues = 4}},
+    }};
+    const D3D12_ROOT_SIGNATURE_DESC root_desc = {.NumParameters = static_cast<UINT>(parameters.size()), .pParameters = parameters.data()};
+    const D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, .NumDescriptors = 3,
+                                                  .Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE};
+    ComPtr<ID3DBlob> serialized;
+    if (FAILED(D3D12SerializeRootSignature(&root_desc, D3D_ROOT_SIGNATURE_VERSION_1, serialized.GetAddressOf(), nullptr))
+        || FAILED(device_->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(),
+                                               IID_PPV_ARGS(ui_signature_.GetAddressOf())))
+        || FAILED(device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(ui_heap_.GetAddressOf())))) {
+      ui_signature_.Reset();
+    } else {
+      const D3D12_COMPUTE_PIPELINE_STATE_DESC pipeline_desc = {.pRootSignature = ui_signature_.Get(),
+                                                               .CS = {.pShaderBytecode = FG_UI, .BytecodeLength = sizeof(FG_UI)}};
+      device_->CreateComputePipelineState(&pipeline_desc, IID_PPV_ARGS(ui_pipeline_.GetAddressOf()));
+    }
     status_ = "Frame generation ready";
     return true;
   }
 
-  // The addon's frame, HUD-less image, depth and motion (bridge v5; handles still open) and fence; false: not all could
-  // be opened.
-  bool Open(const dlaa_bridge::Shared& shared) {
+  // The addon's frame, HUD-less image, depth and motion (bridge v5; handles still open) and fence, its bridge version;
+  // false: not all could be opened.
+  bool Open(const dlaa_bridge::Shared& shared, uint32_t version) {
     Close();
     if (!device_) return false;
+    version_ = version;
     const auto open = [&](uint64_t handle, REFIID id, void** object) {
       return SUCCEEDED(device_->OpenSharedHandle(reinterpret_cast<HANDLE>(handle), id, object));
     };
@@ -148,6 +184,30 @@ class FrameGeneration12 {
     width_ = static_cast<UINT>(frame_desc.Width);
     height_ = frame_desc.Height;
     format_ = frame_desc.Format;
+    // The UI layer (RGBA16F: the alpha needs more than 2 bits) and its pass's views.
+    if (ui_pipeline_) {
+      const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+      const D3D12_RESOURCE_DESC ui_desc = {
+          .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+          .Width = width_,
+          .Height = height_,
+          .DepthOrArraySize = 1,
+          .MipLevels = 1,
+          .Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
+          .SampleDesc = {.Count = 1},
+          .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+      };
+      if (SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &ui_desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                     IID_PPV_ARGS(ui_.GetAddressOf())))) {
+        const UINT step = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        D3D12_CPU_DESCRIPTOR_HANDLE handle = ui_heap_->GetCPUDescriptorHandleForHeapStart();
+        device_->CreateShaderResourceView(frame_.Get(), nullptr, handle);
+        handle.ptr += step;
+        device_->CreateShaderResourceView(hudless_.Get(), nullptr, handle);
+        handle.ptr += step;
+        device_->CreateUnorderedAccessView(ui_.Get(), nullptr, nullptr, handle);
+      }
+    }
     return true;
   }
 
@@ -159,6 +219,7 @@ class FrameGeneration12 {
     depth_.Reset();
     motion_.Reset();
     fence_.Reset();
+    ui_.Reset();
   }
 
   // One present (the request's value: the frame is written; the next is signalled once copied). False: not presented
@@ -172,11 +233,18 @@ class FrameGeneration12 {
     const auto game_window = reinterpret_cast<HWND>(static_cast<uintptr_t>(shared->fg_window));
     if (shared->fg_multiplier == 0 || !IsWindow(game_window)) {
       // Off: generation off, the window hidden (the game's image shows); its swap chain kept for later.
-      SetGeneration(0, false, false);
+      SetGeneration(0, false, false, false);
       if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
       SignalOnly(value);
       status_ = "Frame generation off";
       return false;
+    }
+    // NVIDIA's preset into the driver profile before DLSS-G starts (it reads the profile once); later changes apply at
+    // the next start.
+    if (version_ >= 12 && shared->fg_preset != preset_) {
+      preset_saved_ = SavePreset(shared->fg_preset);
+      if (preset_ == UINT32_MAX) started_preset_ = shared->fg_preset;
+      preset_ = shared->fg_preset;
     }
     if (!PrepareWindow(game_window)) {
       SignalOnly(value);
@@ -207,32 +275,66 @@ class FrameGeneration12 {
       SignalOnly(value);
       return Fail("the swap chain has no back buffer");
     }
-    std::array<D3D12_RESOURCE_BARRIER, 2> barriers = {{
-        {.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-         .Transition = {.pResource = frame_.Get(), .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        .StateBefore = D3D12_RESOURCE_STATE_COMMON, .StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE}},
-        {.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-         .Transition = {.pResource = target.Get(), .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        .StateBefore = D3D12_RESOURCE_STATE_PRESENT, .StateAfter = D3D12_RESOURCE_STATE_COPY_DEST}},
-    }};
-    slot.list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
-    slot.list->CopyResource(target.Get(), frame_.Get());
-    for (auto& barrier : barriers) {
-      std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-    }
-    slot.list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     const bool inputs = shared->fg_inputs != 0 && token != nullptr && shared->width != 0 && shared->height != 0;
+    const bool hudless_valid = inputs && shared->fg_hudless_valid != 0;
+    // The UI layer from the frame and its HUD-less image (v12, HUD Recomposition), before the frame's copy.
+    const bool ui = hudless_valid && ui_ && version_ >= 12 && shared->fg_ui != 0;
+    const auto transition = [](ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) {
+      return D3D12_RESOURCE_BARRIER{.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+                                    .Transition = {.pResource = resource, .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                                                   .StateBefore = before, .StateAfter = after}};
+    };
+    const D3D12_RESOURCE_STATES frame_state =
+        ui ? D3D12_RESOURCE_STATE_COPY_SOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_COPY_SOURCE;
+    if (ui) {
+      const std::array<D3D12_RESOURCE_BARRIER, 3> reads = {
+          transition(frame_.Get(), D3D12_RESOURCE_STATE_COMMON, frame_state),
+          transition(hudless_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+          transition(ui_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+      };
+      slot.list->ResourceBarrier(static_cast<UINT>(reads.size()), reads.data());
+      ID3D12DescriptorHeap* heap = ui_heap_.Get();
+      slot.list->SetDescriptorHeaps(1, &heap);
+      slot.list->SetComputeRootSignature(ui_signature_.Get());
+      slot.list->SetPipelineState(ui_pipeline_.Get());
+      slot.list->SetComputeRootDescriptorTable(0, ui_heap_->GetGPUDescriptorHandleForHeapStart());
+      // 2.5 of the swap chain format's steps (HDR10 10 bits, SDR 8).
+      const float threshold = 2.5f / (format_ == DXGI_FORMAT_R10G10B10A2_UNORM ? 1023.f : 255.f);
+      const std::array<uint32_t, 4> constants = {width_, height_, std::bit_cast<uint32_t>(threshold), 0u};
+      slot.list->SetComputeRoot32BitConstants(1, static_cast<UINT>(constants.size()), constants.data(), 0);
+      slot.list->Dispatch((width_ + 7) / 8, (height_ + 7) / 8, 1);
+      const std::array<D3D12_RESOURCE_BARRIER, 3> written = {
+          transition(hudless_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+          transition(ui_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+          transition(target.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
+      };
+      slot.list->ResourceBarrier(static_cast<UINT>(written.size()), written.data());
+    } else {
+      const std::array<D3D12_RESOURCE_BARRIER, 2> copies = {
+          transition(frame_.Get(), D3D12_RESOURCE_STATE_COMMON, frame_state),
+          transition(target.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
+      };
+      slot.list->ResourceBarrier(static_cast<UINT>(copies.size()), copies.data());
+    }
+    slot.list->CopyResource(target.Get(), frame_.Get());
+    const std::array<D3D12_RESOURCE_BARRIER, 2> copied = {
+        transition(frame_.Get(), frame_state, D3D12_RESOURCE_STATE_COMMON),
+        transition(target.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT),
+    };
+    slot.list->ResourceBarrier(static_cast<UINT>(copied.size()), copied.data());
     if (inputs) {
       sl::Resource depth = {sl::ResourceType::eTex2d, depth_.Get(), D3D12_RESOURCE_STATE_COMMON};
       sl::Resource motion = {sl::ResourceType::eTex2d, motion_.Get(), D3D12_RESOURCE_STATE_COMMON};
       sl::Resource hudless = {sl::ResourceType::eTex2d, hudless_.Get(), D3D12_RESOURCE_STATE_COMMON};
+      sl::Resource ui_layer = {sl::ResourceType::eTex2d, ui_.Get(), D3D12_RESOURCE_STATE_COMMON};
       const sl::Extent render = {.top = 0, .left = 0, .width = shared->width, .height = shared->height};
-      const std::array<sl::ResourceTag, 3> tags = {
+      const std::array<sl::ResourceTag, 4> tags = {
           sl::ResourceTag(&depth, sl::kBufferTypeDepth, sl::ResourceLifecycle::eOnlyValidNow, &render),
           sl::ResourceTag(&motion, sl::kBufferTypeMotionVectors, sl::ResourceLifecycle::eOnlyValidNow, &render),
           sl::ResourceTag(&hudless, sl::kBufferTypeHUDLessColor, sl::ResourceLifecycle::eOnlyValidNow),
+          sl::ResourceTag(&ui_layer, sl::kBufferTypeUIColorAndAlpha, sl::ResourceLifecycle::eOnlyValidNow),
       };
-      const uint32_t tag_count = (shared->fg_hudless_valid != 0 ? 3u : 2u);
+      const uint32_t tag_count = ui ? 4u : hudless_valid ? 3u : 2u;
       set_tags_(*token, VIEWPORT, tags.data(), tag_count, slot.list.Get());
     }
     slot.list->Close();
@@ -248,7 +350,7 @@ class FrameGeneration12 {
     // up to the most, as many as the display's refresh rate takes (else 2x).
     const bool dynamic = shared->fg_multiplier == 1 && dynamic_supported_;
     const uint32_t frames = dynamic ? std::max(max_frames_, 2u) : std::clamp(shared->fg_multiplier, 2u, (max_frames_ != 0 ? max_frames_ : 4u));
-    SetGeneration(inputs ? frames - 1 : 0, shared->fg_hudless_valid != 0, dynamic);
+    SetGeneration(inputs ? frames - 1 : 0, shared->fg_hudless_valid != 0, dynamic, ui);
     if (inputs) SetConstants(*shared, *token);
     Marker(sl::PCLMarker::eRenderSubmitEnd, token);
     Marker(sl::PCLMarker::ePresentStart, token);
@@ -340,19 +442,99 @@ class FrameGeneration12 {
   }
 
   // Frame generation's mode: `generated` frames per rendered frame (0: off; Dynamic: at most), with the HUD-less image
-  // or not.
-  void SetGeneration(uint32_t generated, bool hudless, bool dynamic) {
-    if (!set_options_ || (generated == applied_generated_ && hudless == applied_hudless_ && dynamic == applied_dynamic_)) return;
+  // or not, the UI layer recomposed or not (kept while off: no new allocation for each menu).
+  void SetGeneration(uint32_t generated, bool hudless, bool dynamic, bool ui) {
+    if (generated == 0) ui = applied_ui_;
+    if (!set_options_
+        || (generated == applied_generated_ && hudless == applied_hudless_ && dynamic == applied_dynamic_ && ui == applied_ui_)) {
+      return;
+    }
     applied_generated_ = generated;
     applied_hudless_ = hudless;
     applied_dynamic_ = dynamic;
+    applied_ui_ = ui;
     sl::DLSSGOptions options = {};
     options.mode = (generated == 0 ? sl::DLSSGMode::eOff : dynamic ? sl::DLSSGMode::eDynamic : sl::DLSSGMode::eOn);
     options.numFramesToGenerate = std::max(generated, 1u);
     options.flags = sl::DLSSGFlags::eRetainResourcesWhenOff;
     options.hudLessBufferFormat = (hudless ? static_cast<uint32_t>(format_) : 0u);
+    options.uiBufferFormat = (ui ? static_cast<uint32_t>(DXGI_FORMAT_R16G16B16A16_FLOAT) : 0u);
+    options.enableUserInterfaceRecomposition = (ui ? sl::Boolean::eTrue : sl::Boolean::eFalse);
     set_options_(VIEWPORT, options);
   }
+
+#if __has_include(<nvapi.h>)
+  // NVIDIA's frame generation preset in the driver profile of this exe (DLSS-G's key 0x10E41DF1, which it reads from
+  // there when it starts: 1-3 A-C; 0 the driver's own, the key removed). A, B and C as nvngx_dlssg 310.9 applies them:
+  // A plain, B the HUD recomposed, C "FG Lite" candidate blending. False: not saved (NVAPI or the driver refused).
+  static bool SavePreset(uint32_t preset) {
+    constexpr NvU32 RENDER_PRESET = 0x10E41DF1;
+    const auto unicode = [](const std::wstring& text, NvAPI_UnicodeString* out) {
+      const size_t length = std::min(text.size(), static_cast<size_t>(NVAPI_UNICODE_STRING_MAX - 1));
+      for (size_t index = 0; index < length; ++index) (*out)[index] = static_cast<NvU16>(text[index]);
+      (*out)[length] = 0;
+    };
+    if (NvAPI_Initialize() != NVAPI_OK) return false;
+    NvDRSSessionHandle session = nullptr;
+    if (NvAPI_DRS_CreateSession(&session) != NVAPI_OK) return false;
+    bool saved = false;
+    if (NvAPI_DRS_LoadSettings(session) == NVAPI_OK) {
+      std::wstring path(MAX_PATH, L'\0');
+      path.resize(GetModuleFileNameW(nullptr, path.data(), MAX_PATH));
+      const std::wstring exe = path.substr(path.find_last_of(L"\\/") + 1);
+      auto application = std::make_unique<NVDRS_APPLICATION>();
+      application->version = NVDRS_APPLICATION_VER;
+      NvAPI_UnicodeString exe_name = {};
+      unicode(exe, &exe_name);
+      NvDRSProfileHandle profile = nullptr;
+      if (NvAPI_DRS_FindApplicationByName(session, exe_name, &profile, application.get()) != NVAPI_OK) {
+        profile = nullptr;
+        // A profile of its own for this exe, only to hold a preset.
+        if (preset != 0) {
+          auto profile_info = std::make_unique<NVDRS_PROFILE>();
+          profile_info->version = NVDRS_PROFILE_VER;
+          unicode(L"RenoDX Total War DLSS helper", &profile_info->profileName);
+          if (NvAPI_DRS_CreateProfile(session, profile_info.get(), &profile) != NVAPI_OK
+              && NvAPI_DRS_FindProfileByName(session, profile_info->profileName, &profile) != NVAPI_OK) {
+            profile = nullptr;
+          }
+          auto created = std::make_unique<NVDRS_APPLICATION>();
+          created->version = NVDRS_APPLICATION_VER;
+          unicode(exe, &created->appName);
+          if (profile != nullptr && NvAPI_DRS_CreateApplication(session, profile, created.get()) != NVAPI_OK) profile = nullptr;
+        }
+      }
+      if (profile == nullptr) {
+        saved = (preset == 0);
+      } else {
+        auto setting = std::make_unique<NVDRS_SETTING>();
+        setting->version = NVDRS_SETTING_VER;
+        const bool held = NvAPI_DRS_GetSetting(session, profile, RENDER_PRESET, setting.get()) == NVAPI_OK
+                          && setting->settingLocation == NVDRS_CURRENT_PROFILE_LOCATION;
+        if (preset == 0 ? !held : (held && setting->u32CurrentValue == preset)) {
+          saved = true;
+        } else {
+          NvAPI_Status status = NVAPI_OK;
+          if (preset == 0) {
+            status = NvAPI_DRS_DeleteProfileSetting(session, profile, RENDER_PRESET);
+          } else {
+            *setting = {};
+            setting->version = NVDRS_SETTING_VER;
+            setting->settingId = RENDER_PRESET;
+            setting->settingType = NVDRS_DWORD_TYPE;
+            setting->u32CurrentValue = preset;
+            status = NvAPI_DRS_SetSetting(session, profile, setting.get());
+          }
+          saved = status == NVAPI_OK && NvAPI_DRS_SaveSettings(session) == NVAPI_OK;
+        }
+      }
+    }
+    NvAPI_DRS_DestroySession(session);
+    return saved;
+  }
+#else
+  static bool SavePreset(uint32_t preset) { return preset == 0; }
+#endif
 
   // The window over the game's client area (made with its swap chain at the frame's size and format; resized with the
   // game's window). False: no window or swap chain.
@@ -411,7 +593,7 @@ class FrameGeneration12 {
     if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) return true;
     if (chain_) {
       // Generation off while the buffers change (NVIDIA: Present can deadlock otherwise).
-      SetGeneration(0, false, false);
+      SetGeneration(0, false, false, false);
       WaitIdle();
       const HRESULT resized = chain_->ResizeBuffers(0, width_, height_, format_, tearing_);
       if (SUCCEEDED(resized)) {
@@ -564,8 +746,17 @@ class FrameGeneration12 {
     } else if (!inputs) {
       status_ = "Frame generation: paused (DLAA is not running on this frame)";
     } else {
-      status_ = std::format("Frame generation: {}{} frames presented per rendered frame{}", (applied_dynamic_ ? "Dynamic, " : ""),
-                            state.numFramesActuallyPresented, (hudless ? "" : " (no HUD-less image: the UI can warp)"));
+      std::string preset;
+      if (!preset_saved_) {
+        preset = " (preset not saved: the NVIDIA driver profile could not be written)";
+      } else if (preset_ != started_preset_) {
+        preset = " (the preset applies after restarting the game)";
+      } else if (preset_ >= 1 && preset_ <= 3) {
+        preset = std::format(" (preset {})", "ABC"[preset_ - 1]);
+      }
+      status_ = std::format("Frame generation: {}{} frames presented per rendered frame{}{}{}", (applied_dynamic_ ? "Dynamic, " : ""),
+                            state.numFramesActuallyPresented, (hudless ? "" : " (no HUD-less image: the UI can warp)"),
+                            (applied_ui_ ? ", HUD recomposed" : ""), preset);
     }
   }
 
@@ -600,7 +791,7 @@ class FrameGeneration12 {
   size_t next_slot_ = 0;
   HANDLE event_ = nullptr;
 
-  // The addon's objects.
+  // The addon's objects and bridge version.
   ComPtr<ID3D12Resource> frame_;
   ComPtr<ID3D12Resource> hudless_;
   ComPtr<ID3D12Resource> depth_;
@@ -609,6 +800,18 @@ class FrameGeneration12 {
   UINT width_ = 0;
   UINT height_ = 0;
   DXGI_FORMAT format_ = DXGI_FORMAT_UNKNOWN;
+  uint32_t version_ = 0;
+
+  // The UI layer (HUD Recomposition) and its pass.
+  ComPtr<ID3D12RootSignature> ui_signature_;
+  ComPtr<ID3D12PipelineState> ui_pipeline_;
+  ComPtr<ID3D12DescriptorHeap> ui_heap_;
+  ComPtr<ID3D12Resource> ui_;
+
+  // NVIDIA's preset: last asked (UINT32_MAX: not yet), as DLSS-G started with it, whether the profile holds it.
+  uint32_t preset_ = UINT32_MAX;
+  uint32_t started_preset_ = 0;
+  bool preset_saved_ = true;
 
   // The window over the game's, its thread and swap chain.
   HWND parent_ = nullptr;
@@ -626,6 +829,7 @@ class FrameGeneration12 {
   uint32_t applied_generated_ = UINT32_MAX;
   bool applied_hudless_ = false;
   bool applied_dynamic_ = false;
+  bool applied_ui_ = false;
   uint32_t max_frames_ = 0;
   bool dynamic_supported_ = false;  // Dynamic frame generation (DLSS 4.5, RTX 50)
   uint64_t presents_ = 0;

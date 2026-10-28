@@ -59,6 +59,8 @@ struct AaSliders {
   float frame_generation = 0.f;    // DLAA's: off, 2x-6x, Dynamic
   float reflex_boost = 0.f;
   float frame_limit = 0.f;         // frame generation's Reflex limit, rendered frames per second (0: off)
+  float frame_preset = 0.f;        // frame generation's: the driver's, A, B, C
+  float hud_recomposition = 1.f;   // frame generation's: the UI laid over the generated frames
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
   float object_motion = 1.f;       // DLAA's: units', props' and cloth's own motion
   float debug_view = 0.f;          // DLAA's: off, motion vectors, object motion, no camera motion
@@ -111,6 +113,8 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
                                                              : 0u),
       .reflex_boost = (sliders.reflex_boost != 0.f),
       .frame_limit = static_cast<uint32_t>(std::clamp(sliders.frame_limit, 0.f, 240.f)),
+      .frame_preset = static_cast<uint32_t>(std::clamp(sliders.frame_preset, 0.f, 3.f)),
+      .hud_recomposition = (sliders.hud_recomposition != 0.f),
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
       .object_motion = (sliders.object_motion != 0.f),
       .debug_view = static_cast<uint32_t>(std::clamp(sliders.debug_view, 0.f, 3.f)),
@@ -474,6 +478,29 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .min = 0.f,
                                             .max = 240.f,
                                             .format = "%d fps",
+                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "FrameGenerationHudRecomposition",
+                                            .binding = &sliders->hud_recomposition,
+                                            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                                            .default_value = 1.f,
+                                            .label = "HUD Recomposition",
+                                            .section = AA_SECTION,
+                                            .tooltip = "Lays the HUD over the generated frames instead of warping it with the scene (no HUD smears).",
+                                            .labels = {"Off", "On"},
+                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "FrameGenerationPreset",
+                                            .binding = &sliders->frame_preset,
+                                            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                                            .default_value = 0.f,
+                                            .label = "Frame Generation Preset",
+                                            .section = AA_SECTION,
+                                            .tooltip = "NVIDIA's frame generation presets: A standard, B HUD recomposition, C Lite (lighter).\n"
+                                                       "Saved in the NVIDIA driver profile of renodx-tw-dlaa64.exe; applies after restarting the game.",
+                                            .labels = {"Driver's", "A", "B", "C"},
                                             .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
                                         },
                                     });

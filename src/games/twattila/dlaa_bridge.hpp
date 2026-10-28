@@ -108,6 +108,8 @@ struct FrameRequest {
   uint32_t multiplier = 0;
   bool reflex_boost = false;
   uint32_t frame_limit = 0;  // Reflex's, rendered frames per second (0: none)
+  uint32_t preset = 0;       // NVIDIA's A-C as 1-3 (0: the driver's)
+  bool hud_recomposition = false;
   bool hudless = false;
   bool inputs = false;
   uint32_t frame_index = 0;
@@ -199,6 +201,10 @@ struct Bridge {
   bool pending = false;
   RequestKind pending_kind = EVALUATE;
   std::atomic<uint64_t> waiting = 0;
+  // The helper's value the game's GPU has yet to wait for (0: none): a frame generation present's (its copies of the
+  // frame, depth and motion) or an unevaluated request's, waited for before the next request's signal or the next
+  // writes into the shared textures (BeforeSharedWrites) instead of stalling the game's GPU right after the request.
+  uint64_t deferred = 0;
   // If the helper stops while the game's GPU waits for it, the value is signalled through this handle of `fence` from a
   // device of the addon's own (Rescue).
   std::mutex rescue_mutex;
@@ -377,6 +383,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.fg_hudless_rtv.Reset();
   bridge.fg_format = DXGI_FORMAT_UNKNOWN;
   bridge.fence.Reset();
+  bridge.deferred = 0;
   if (bridge.device != device) bridge.rt_atlas = {};
   bridge.device = device;
   bridge.width = 0;
@@ -556,6 +563,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     if (!Answer()) return false;
     bridge.steady[last] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
   }
+  if (bridge.deferred != 0) context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0));
   ++bridge.value;
   context4->Signal(bridge.fence.Get(), bridge.value);
   context->Flush();
@@ -573,12 +581,30 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   }
   if (!Answer()) return false;
   bridge.steady[kind] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
-  if (shared.evaluated == 0) return false;
+  // Nothing of the helper's to read after a present or without a result: its value is waited for later (`deferred`).
+  if (shared.evaluated == 0 || kind == PRESENT_FRAME) {
+    bridge.deferred = bridge.value;
+    return shared.evaluated != 0;
+  }
   context4->Wait(bridge.fence.Get(), bridge.value);
   return true;
 }
 
 }  // namespace internal
+
+// Before the game's GPU writes the shared textures (the DLAA inputs, the frame generation frames) on `context`: the
+// helper's reads of the last ones done.
+inline void BeforeSharedWrites(ID3D11DeviceContext* context) {
+  if (bridge.deferred == 0) return;
+  // A helper that stopped may never signal it.
+  if (bridge.failed) {
+    bridge.deferred = 0;
+    return;
+  }
+  ComPtr<ID3D11DeviceContext4> context4;
+  if (FAILED(context->QueryInterface(IID_PPV_ARGS(context4.GetAddressOf())))) return;
+  context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0));
+}
 
 // This frame's ray tracing (its inputs written on `context` before this: the vertex texture's captures, the positions,
 // the sun) in the helper into `bridge.rt_visibility` / `rt_ambient`, which the game's GPU then waits for; false: nothing
@@ -699,8 +725,8 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
 }
 
 // A present through frame generation (the frame and HUD-less frame written on `context` before this): the helper copies
-// the frame and presents it into its window over the game's, which the game's GPU waits for; false: not presented
-// (helper not ready, off, or frame generation unavailable: FrameGenerationFailed).
+// the frame and presents it into its window over the game's (the game's GPU waits for its copies only before the next
+// shared writes); false: not presented (helper not ready, off, or frame generation unavailable: FrameGenerationFailed).
 inline bool PresentFrame(ID3D11DeviceContext* context, const FrameRequest& request) {
   if (bridge.fg_format == DXGI_FORMAT_UNKNOWN) return false;
   return internal::Request(context, PRESENT_FRAME, [&](Shared* shared) {
@@ -710,6 +736,8 @@ inline bool PresentFrame(ID3D11DeviceContext* context, const FrameRequest& reque
     shared->fg_multiplier = request.multiplier;
     shared->fg_reflex_boost = (request.reflex_boost ? 1u : 0u);
     shared->fg_frame_limit = request.frame_limit;
+    shared->fg_preset = request.preset;
+    shared->fg_ui = (request.hud_recomposition ? 1u : 0u);
     shared->fg_hudless_valid = (request.hudless ? 1u : 0u);
     shared->fg_inputs = (request.inputs ? 1u : 0u);
     shared->fg_frame_index = request.frame_index;
