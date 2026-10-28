@@ -940,6 +940,22 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       addon, which captures everything again; shadow rays count as blocked after 64 alpha-tested candidates (bounded
       cost). Harness: all modes pass, RENODX_TW_TEST_REMOVAL (RemoveDevice at the 3rd trace) restarts and passes.
       NEXT: ATN retests; if the GPU resets again, read renodx-tw-dlaa64.log's DRED lines (which pass hung).
+    - 2026-10-28 22:30, ATN's retest: worked a while, the same freeze, then RT updating once a second. DRED: device
+      hung (0x887A0006) with slot 0 in the micromap bake's Dispatch (10 of 48 ops; markers' strings not captured, the op
+      order names it). ReShade.log after the restart: "TLAS 2.55, trace 1027.93" GPU ms (before: TLAS 0.24, trace 6.7-10)
+      with fewer instances: the trace itself takes a second (the bake was only in flight at the reset). A TLAS build 10x
+      slower plus traces 150x slower = scene bounds spread by garbage coordinates (instances' boxes all overlap, every
+      ray meets every instance; as the pre-rows-fix garbage placements did: TLAS 0.71, trace 21-25 ms). FIXES (untested
+      in game): rt_scene_data leaves garbage triangles out (NaN through a raw UAV of the vertex buffer, root u6): a
+      coordinate past 200 km, an edge past 200 m in a dynamic capture but the terrain's, past 5 km elsewhere; counts per
+      request (root u7, read back when the slot comes round) with the first such capture's key; bridge v15 tail now
+      rt_device, rt_left_out, rt_left_out_key (unreleased layout changed); the addon logs "N garbage triangles left out in
+      10 s, the last in a capture of vertex shader X" (captures now join only within one vertex shader, key_shaders map);
+      rt_place leaves out instances moved past 200 km or scaled past 1000x; scene data and the D3D11 vertex pass dispatch
+      in rows of 65535 groups (over 4.2 M triangles went past D3D12's limit). Harness: a far triangle + a 600 m sliver
+      (old helper: 4 checks fail, the sliver shadows the open ground; new: all pass, 14 left out), all modes pass.
+      NEXT: ATN retests; ReShade.log's "garbage triangles ... vertex shader X" names the capture shader to fix; if no
+      garbage is reported and traces still explode, the next suspect is incoherent clusters (CLAS spanning draws).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

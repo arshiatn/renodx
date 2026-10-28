@@ -17,8 +17,10 @@ cbuffer rt_vertices : register(b0)
 }
 
 [numthreads(256, 1, 1)]
-void main(uint id : SV_DispatchThreadID)
+void main(uint3 dispatch_id : SV_DispatchThreadID)
 {
+  // Rows of 65535 groups (D3D11's most along x).
+  const uint id = dispatch_id.y * 65535u * 256u + dispatch_id.x;
   if (id >= rt_vertices.x) return;
   // Instances a shader collapses (scale 0, fades) give empty triangles; DXR skips those with a NaN x.
   float4 position = captured[id];

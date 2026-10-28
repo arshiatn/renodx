@@ -271,6 +271,7 @@ struct Runtime {
   // This frame's new captures (consecutive dynamic draws joined) and their draws' keys, the scene meshes it drew; the
   // keys in the scene (the frame they were last drawn).
   std::vector<dlaa_bridge::RtCapture> captures;
+  uint32_t last_capture_shader = 0;  // the vertex shader of the last capture (draws join within one)
   std::unordered_set<uint64_t> captured_keys;
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
@@ -311,6 +312,11 @@ struct Runtime {
   std::vector<std::array<float, 4>> light_colours;
   bool lights_traced = false;
   uint32_t helper_device = 0;             // the helper's ray tracing device (a new one: its scene empty)
+  // The garbage triangles the helper left out (far off or stretched) as last read, the captures' vertex shaders by key
+  // (since the last report) and what was left out since then by vertex shader (Update's report).
+  uint32_t helper_left_out = 0;
+  std::unordered_map<uint64_t, uint32_t> key_shaders;
+  std::unordered_map<uint32_t, uint32_t> left_out_shaders;
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
@@ -843,7 +849,7 @@ void Capture(Context& command, const SceneShader& shader) {
                          | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
                          | (shader.thin ? dlaa_bridge::RT_THIN : 0u);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
-  if (!dynamic || shader.foliage || joined == nullptr || joined->flags != flags
+  if (!dynamic || shader.foliage || joined == nullptr || joined->flags != flags || runtime.last_capture_shader != shader.hash
       || joined->first_vertex + joined->vertex_count != runtime.captured_vertices || joined->vertex_count % 3 != 0) {
     joined = nullptr;
   }
@@ -956,7 +962,9 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count, .flags = flags,
                                 .instances = (placed ? instances : 0u)});
     runtime.slices.push_back(slice);
+    runtime.key_shaders[key] = shader.hash;
   }
+  runtime.last_capture_shader = shader.hash;
   runtime.captured_keys.insert(key);
   runtime.captured_vertices += vertex_count + row_texels;
   if (dynamic) {
@@ -1055,9 +1063,10 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
           .counts = {runtime.captured_vertices, dlaa_bridge::RT_TRANSFER_WIDTH, clip_captures ? 1u : 0u, 0},
           .inverse_view_projection = camera.inverse_view_projection,
       };
+      const UINT vertex_groups = (runtime.captured_vertices + 255) / 256;
       Dispatch(native, objects.vertices_shader.Get(), {objects.captured_srv.Get(), objects.captured_uv_srv.Get()},
-               {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr},
-               &constants, sizeof(constants), (runtime.captured_vertices + 255) / 256, 1);
+               {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr}, &constants, sizeof(constants), std::min(vertex_groups, 65535u),
+               (vertex_groups + 65534) / 65535);
       // Skies (rt_skies): the new static captures that hold the camera and are larger than the view reaches (the farther
       // of its near and far planes' centres; unbounded with an infinite far plane) or centred on it (domes the game
       // keeps around the camera: placed ones followed it, a circle of shadow under the camera, ATN 2026-10-28) go empty.
@@ -1545,6 +1554,12 @@ inline void Update(const Settings& settings) {
     runtime.short_keys.clear();
     renodx::utils::log::w("[Total War] Ray tracing: the helper started again after a GPU reset (renodx-tw-dlaa64.log), the scene is captured again.");
   }
+  if (const auto [left_out, key] = dlaa_bridge::RayTracingLeftOut(); left_out != runtime.helper_left_out) {
+    const auto shader = runtime.key_shaders.find(key);
+    runtime.left_out_shaders[(shader != runtime.key_shaders.end()) ? shader->second : 0u] +=
+        (left_out > runtime.helper_left_out ? left_out - runtime.helper_left_out : left_out);
+    runtime.helper_left_out = left_out;
+  }
   auto& costs = runtime.costs;
   if (internal::Enabled()) {
     ++costs.frames;
@@ -1601,6 +1616,13 @@ inline void Update(const Settings& settings) {
       runtime.new_static.clear();
       runtime.new_static_examples.clear();
     }
+    for (const auto& [hash, triangles] : runtime.left_out_shaders) {
+      renodx::utils::log::w(std::format("[Total War] Ray tracing: {} garbage triangles (far off or stretched) left out in 10 s, the last in "
+                                        "a capture of vertex shader {:08X}.",
+                                        triangles, hash));
+    }
+    runtime.left_out_shaders.clear();
+    runtime.key_shaders.clear();
     for (const auto& [hash, draws] : runtime.dynamic_buffers) {
       renodx::utils::log::i(std::format("[Total War] Ray tracing: {:08X} in dynamic vertex buffers, captured every frame: {} draws in 10 s.",
                                         hash, draws));

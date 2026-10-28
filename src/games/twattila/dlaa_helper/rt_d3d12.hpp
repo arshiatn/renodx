@@ -169,10 +169,14 @@ class RtScene12 {
       slot.rows_readback = Buffer(uint64_t{ROWS_READBACK} * 64, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
       slot.jobs = Buffer(PLACE_TABLE_BYTES + uint64_t{PLACE_JOBS} * 32, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
                          D3D12_RESOURCE_STATE_GENERIC_READ);
+      slot.left_out = Buffer(16, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+      slot.left_out_readback = Buffer(16, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
       if (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf())))
           || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
                                                IID_PPV_ARGS(slot.list.GetAddressOf())))
           || FAILED(slot.list->Close()) || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs
+          || !slot.left_out || !slot.left_out_readback
+          || FAILED(slot.left_out_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.left_out_data)))
           || FAILED(slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data)))
           || FAILED(slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data)))
           || FAILED(slot.jobs->Map(0, nullptr, reinterpret_cast<void**>(&slot.jobs_data)))) {
@@ -189,8 +193,15 @@ class RtScene12 {
     };
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO top_info = {};
     device_->GetRaytracingAccelerationStructurePrebuildInfo(&top_inputs, &top_info);
-    vertex_buffer_ = Buffer(uint64_t{TRANSFER_VERTICES} * 16, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE,
+    vertex_buffer_ = Buffer(uint64_t{TRANSFER_VERTICES} * 16, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                             D3D12_RESOURCE_STATE_COPY_DEST);
+    // The scene data pass's garbage count starts from these (none, no capture).
+    left_out_start_ = Buffer(16, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+    if (uint32_t* start = nullptr; left_out_start_ && SUCCEEDED(left_out_start_->Map(0, nullptr, reinterpret_cast<void**>(&start)))) {
+      const std::array<uint32_t, 4> none = {0, 0, 0, UINT32_MAX};
+      std::memcpy(start, none.data(), sizeof(none));
+      left_out_start_->Unmap(0, nullptr);
+    }
     tlas_ = Buffer(top_info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                    D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
     tlas_scratch_ = Buffer(top_info.ScratchDataSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
@@ -211,8 +222,8 @@ class RtScene12 {
     }
     placed_state_ = Buffer(16 + uint64_t{PLACE_TABLE} * 4, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    if (!vertex_buffer_ || !tlas_ || !tlas_scratch_ || !records_ || !uvs_ || !normals_ || !build_rows_ || !placed_instances_[0]
-        || !placed_instances_[1] || !placed_state_) {
+    if (!vertex_buffer_ || !left_out_start_ || !tlas_ || !tlas_scratch_ || !records_ || !uvs_ || !normals_ || !build_rows_
+        || !placed_instances_[0] || !placed_instances_[1] || !placed_state_) {
       return Fail("Ray tracing: D3D12 buffers failed");
     }
 #if defined(RENODX_NVAPI_CLUSTERS)
@@ -742,6 +753,15 @@ class RtScene12 {
     return report;
   }
   [[nodiscard]] bool Dxr12() const { return dxr12_; }
+  // The garbage triangles the scene data left out so far (far off; stretched parts: units, grass, cloth; stretched
+  // others) and the last capture that had some (its key).
+  struct LeftOut {
+    uint32_t far_off = 0;
+    uint32_t parts = 0;
+    uint32_t others = 0;
+    uint64_t key = 0;
+  };
+  [[nodiscard]] const LeftOut& LeftOutSoFar() const { return left_out_; }
 
   // One request: the frame's captures into BLASes, the TLAS of what it drew, the trace; the queue waits for the addon's
   // fence value and signals the next (also when nothing ran). False: nothing traced.
@@ -761,6 +781,13 @@ class RtScene12 {
     WaitFor(slot.value);
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
+    if (!slot.capture_keys.empty()) {
+      left_out_.far_off += slot.left_out_data[0];
+      left_out_.parts += slot.left_out_data[1];
+      left_out_.others += slot.left_out_data[2];
+      if (slot.left_out_data[3] < slot.capture_keys.size()) left_out_.key = slot.capture_keys[slot.left_out_data[3]];
+      slot.capture_keys.clear();
+    }
     ReadTimes(slot_index);
     slot_traced_[slot_index] = true;
     const uint64_t completed = own_fence_->GetCompletedValue();
@@ -776,6 +803,7 @@ class RtScene12 {
     timings_.clear();
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, slot_index, &slot);
+    if (!recorded) slot.capture_keys.clear();
     if (timestamps_) {
       LARGE_INTEGER cpu_recorded;
       LARGE_INTEGER cpu_frequency;
@@ -1246,6 +1274,12 @@ class RtScene12 {
       uint32_t count = 0;
     };
     std::vector<RowRead> row_reads;
+    // The scene data pass's garbage left out (far off, stretched parts, stretched others, the first such capture's
+    // index), read when the slot comes round, with that request's capture keys.
+    ComPtr<ID3D12Resource> left_out;
+    ComPtr<ID3D12Resource> left_out_readback;
+    uint32_t* left_out_data = nullptr;
+    std::vector<uint64_t> capture_keys;
     ComPtr<ID3D12Resource> jobs;  // the records' BLAS addresses and its placement jobs (rt_place's t8)
     uint8_t* jobs_data = nullptr;
     uint8_t* light_data = nullptr;
@@ -1570,10 +1604,13 @@ class RtScene12 {
     // The placed meshes built this request (v14): their captures' rows as placements (first_vertex: the rows' texel).
     std::vector<dlaa_bridge::RtPlacement> built_placed;
     if (capture_count != 0 && vertex_end != 0) {
+      list->CopyBufferRegion(slot->left_out.Get(), 0, left_out_start_.Get(), 0, 16);
       std::vector<D3D12_RESOURCE_BARRIER> to_scene_data = {
           Transition(records_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
           Transition(uvs_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
           Transition(normals_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+          Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+          Transition(slot->left_out.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
       };
       if (atlas_) to_scene_data.push_back(Transition(atlas_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
       list->ResourceBarrier(static_cast<UINT>(to_scene_data.size()), to_scene_data.data());
@@ -1626,27 +1663,41 @@ class RtScene12 {
       // texels an instance, so a capture after them is off the vertex texture's threes; read as threes, the grass's UVs
       // came from the wrong vertices, its alpha test changing every frame).
       uint32_t scene_triangles = 0;
+      slot->capture_keys.resize(capture_count);
       for (uint32_t index = 0; index < capture_count; ++index) {
         const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
         const auto& placement = placements[index];
         const uint32_t slice = (version >= 6) ? shared.rt_capture_slices[index] : 0u;
         const std::array<uint32_t, 8> entry = {capture.first_vertex, capture.vertex_count / 3 * 3, placement.normal_offset, placement.uv_offset,
                                                placement.record, slice | (RecordFlags(capture, placement.masked, version) << 16),
-                                               scene_triangles, 0};
+                                               scene_triangles, capture.flags};
         std::memcpy(slot->table_data + index * 8, entry.data(), sizeof(entry));
         if (placement.record != UINT32_MAX) scene_triangles += capture.vertex_count / 3;
+        slot->capture_keys[index] = capture.key;
       }
+      // In rows of 65535 groups (D3D12's most along x: a frame of over 4.2 M triangles went past it).
       const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, 0, 0};
+      const uint32_t scene_groups = (scene_triangles + 63) / 64;
       Mark(list, L"scene data");
       list->SetPipelineState(scene_data_pipeline_.Get());
       list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 4, scene_dispatch.data(), 0);
-      list->Dispatch((scene_triangles + 63) / 64, 1, 1);
-      const std::array<D3D12_RESOURCE_BARRIER, 3> scene_written = {
+      list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, vertex_buffer_->GetGPUVirtualAddress());
+      list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, slot->left_out->GetGPUVirtualAddress());
+      list->Dispatch(std::min(scene_groups, 65535u), (scene_groups + 65534) / 65535, 1);
+      const std::array<D3D12_RESOURCE_BARRIER, 5> scene_written = {
           Transition(records_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
           Transition(uvs_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
           Transition(normals_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+          Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+          Transition(slot->left_out.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
       };
       list->ResourceBarrier(static_cast<UINT>(scene_written.size()), scene_written.data());
+      list->CopyBufferRegion(slot->left_out_readback.Get(), 0, slot->left_out.Get(), 0, 16);
+      const auto left_out_back = Transition(slot->left_out.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+      list->ResourceBarrier(1, &left_out_back);
+      for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES}) {
+        list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
+      }
 
       // Opacity micromaps (DXR 1.2) for the new leaves: their level (4 - 2) fitting MICROMAP_MESH_BYTES, all within
       // MICROMAP_FRAME_BYTES; baked, then built into micromap arrays together.
@@ -2446,6 +2497,8 @@ class RtScene12 {
   // Placed meshes (v14): their build rows (three texels a record), the instances the placement dispatches write in turn
   // (the last one written), their counters and dedupe table (rt_place's u8), the dispatch.
   ComPtr<ID3D12Resource> build_rows_;
+  ComPtr<ID3D12Resource> left_out_start_;
+  LeftOut left_out_;
   std::array<ComPtr<ID3D12Resource>, 2> placed_instances_;
   uint32_t placed_last_ = 0;
   ComPtr<ID3D12Resource> placed_state_;

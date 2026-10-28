@@ -241,9 +241,12 @@ struct Shared {
   uint32_t rt_v14_padding = 0;
   RtPlacement rt_placements[RT_PLACEMENTS] = {};
   // The helper's (v15): its ray tracing devices so far, one more each time a GPU fault or hang removed the last (the new
-  // one's scene is empty: the addon captures every mesh again).
+  // one's scene is empty: the addon captures every mesh again); the triangles it left out so far (far off or stretched
+  // past any part's size: garbage, which spread the scene's bounds until every ray met every instance) and the last
+  // capture that had some (its key).
   uint32_t rt_device = 0;
-  uint32_t rt_v15_padding = 0;
+  uint32_t rt_left_out = 0;
+  uint64_t rt_left_out_key = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).

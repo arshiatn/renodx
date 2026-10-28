@@ -154,6 +154,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const auto kind = [&](const twattila::dlaa_bridge::Shared& from) {
     return std::min<uint32_t>(version >= 7 ? from.rt_request : 1u, 3u) - 1;
   };
+  // Its status for the addon and (v15) the garbage triangles its scene left out so far, the last such capture's key.
+  const auto publish = [&] {
+    strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
+    if (version >= 15) {
+      const auto& left_out = scene->LeftOutSoFar();
+      shared->rt_left_out = left_out.far_off + left_out.parts + left_out.others;
+      shared->rt_left_out_key = left_out.key;
+    }
+  };
   std::thread rt_worker([&] {
     std::unique_lock lock(rt_work.mutex);
     while (true) {
@@ -164,7 +173,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       rt_work.busy = true;
       lock.unlock();
       const bool ran = run(*work);
-      strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
+      publish();
       lock.lock();
       rt_work.ran[kind(*work)] = ran;
       rt_work.busy = false;
@@ -300,7 +309,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
           context4->Signal(fence.Get(), shared->value + 1);
           context->Flush();
         }
-        strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
+        publish();
       }
     } else if (fence && reconstruction_open && shared->ray_reconstruction != 0) {
       // Ray Reconstruction (D3D12): its queue waits for the addon's value and signals the next.

@@ -47,6 +47,8 @@ static const uint STATE_CPU = 12u;
 static const uint STATE_TABLE = 16u;
 static const uint TABLE_ENTRIES = 1u << 18;  // rt_d3d12.hpp PLACE_TABLE
 static const uint FRAME_MASK = 0xFFFFFFu;
+static const float MAX_TRANSLATION = 2.0e5f;  // metres from the BLAS's place (battle maps: a few kilometres)
+static const float MAX_SCALE = 1000.f;
 
 // A desc's key: its record and its place in centimetres.
 uint PlaceKey(uint record, float3 position) {
@@ -146,8 +148,12 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3x3 inverse = transpose(float3x3(cofactor0, cofactor1, cofactor2)) / determinant;
   const float3x3 rotation = mul(float3x3(now0.xyz, now1.xyz, now2.xyz), inverse);
   const float3 translation = float3(now0.w, now1.w, now2.w) - mul(rotation, float3(build0.w, build1.w, build2.w));
+  // Garbage rows (an instance moved far off or scaled past any mesh's size) leave it out: one spread the scene's bounds
+  // until every ray met every instance.
+  const float scale = max(max(length(rotation[0]), length(rotation[1])), length(rotation[2]));
   if (!(abs(determinant) > 1e-12f) || !all(isfinite(rotation[0])) || !all(isfinite(rotation[1])) || !all(isfinite(rotation[2]))
-      || !all(isfinite(translation)) || !Insert(PlaceKey(record, translation))) {
+      || !all(isfinite(translation)) || any(abs(translation) > MAX_TRANSLATION) || !(scale < MAX_SCALE)
+      || !Insert(PlaceKey(record, translation))) {
     return;
   }
   // InstanceID (the record) and mask 0xFF; the frame drawn and the flags; the BLAS (its moving bit cleared).
