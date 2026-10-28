@@ -757,10 +757,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
             the original code. Would help (later, needs motion checks): one record per soldier (draws sharing an
             instance range), per-instance lookups instead of per-vertex. Debug timers / Motion Test / timing log
             removed.
-      [ ] 7 clean-up (debug_timing.hpp, Motion Test setting, motion timing log; ReShade.ini FrameTrace=1 -> restore
-            from scratchpad attila_test/ReShade.ini.before_trace, delete tw_frame_trace.txt), README/HANDOFF, build all
-            TW games (build32 Attila / Rome II / Thrones too), zips (release_zip.py --helper), per-game report, delete
-            the scratchpad mssym (2.3 GB)
+      [x] 7 clean-up done (debug timers, Motion Test, timing log; ReShade.ini back from tonight's backup without
+            FrameTrace / MotionTest, tw_frame_trace.txt deleted, preferences unchanged; scratchpad mssym + symcache
+            deleted). Smoke run (DLSS UP + FG 2x from the start) found the helper's first answer > 5 s (preset's DRS
+            load + Streamline cold start): preset saved on a thread, waited-for answers 20 s (8b640d0d); rerun: DLSS
+            + FG 2x, "HUD recomposed", no warnings. Zips in Downloads: twattila_v83, twrome2_v38,
+            twthronesofbritannia_v38, twtroy_v34, twpharaohdynasties_v38, twwarhammer_v35, twwarhammer2_v35,
+            twwarhammer3_v29 (all helper23), twshogun2completeedition_dlss_v58 (shared object_motion /
+            texture_lod_bias clean-up). helper23 copied into the Attila folder (v12 addons need it).
       [ ] 8 shut down the PC (shutdown /s /t 120 after the final message)
 
 ### Tales DXR plan (item 7, started 2026-10-26)
