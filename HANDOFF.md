@@ -741,9 +741,10 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       allowed it). Commit after every step; tick here.
       [x] 1 FG HUD smear: UI recomposition   [x] 2 MFG preset option   [x] 3 FG hand-off without the GPU wait
             (2028ba87: bridge v12, helper23 -> copy helper23 into the Attila folder at the end, v12 needs it)
-      [ ] 4 DLSS SR on the helper's D3D12 (if worth it)
-      [ ] 5 render scale: lens flare gone below 100%; unit markers above units only in the top-left 1/9 at UP (right
-            positions); then audit every other screen-space read below 100%
+      [-] 4 DLSS SR on the helper's D3D12: skipped (D3D12 queues are GPU contexts of their own like the D3D11 one: no
+            gain to expect; DLAA's path left as tested)
+      [x] 5 render scale (9a2eb81a): scissor rects restored after the tone mapper (flare + unit markers), flare
+            occlusion / render area (lensflare04 VS, cb12 for VS), game HBAO share; trace audit clean (scan.py)
       [ ] 6 soldier records redesign (DLAA GPU time for RT/PT) + more optimizations
       [ ] 7 clean-up (debug_timing.hpp, Motion Test setting, motion timing log; ReShade.ini FrameTrace=1 -> restore
             from scratchpad attila_test/ReShade.ini.before_trace, delete tw_frame_trace.txt), README/HANDOFF, build all
