@@ -33,6 +33,7 @@
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "./debug_timing.hpp"
 #include "./dlaa_bridge.hpp"
 #include "./frame_generation.hpp"
 #include "./frame_history.hpp"
@@ -312,6 +313,7 @@ inline bool CameraSized(ID3D11Buffer* buffer) {
 // An upload into `buffer` (`data`: at least CAMERA_BYTES): the main view's camera noted and jittered; true: `data`
 // changed.
 inline bool JitterCamera(ID3D11Buffer* buffer, std::byte* data) {
+  const debug_timing::Timed timed{debug_timing::CAMERAS};
   std::array<float, CAMERA_BYTES / 4> c;
   std::memcpy(c.data(), data, CAMERA_BYTES);
   const auto reg = [&](size_t index, size_t component) -> float& { return c[index * 4 + component]; };
@@ -413,6 +415,7 @@ inline bool JitterCamera(ID3D11Buffer* buffer, std::byte* data) {
 
 inline void OnMapBufferRegion(reshade::api::device*, reshade::api::resource resource, uint64_t offset, uint64_t,
                               reshade::api::map_access access, void** data) {
+  const debug_timing::Timed timed{debug_timing::MAP};
   if (!temporal.load(std::memory_order_relaxed) || access == reshade::api::map_access::read_only || offset != 0
       || data == nullptr || *data == nullptr) {
     return;
@@ -425,6 +428,7 @@ inline void OnMapBufferRegion(reshade::api::device*, reshade::api::resource reso
 
 // Before the native Unmap, while the pointer is still valid.
 inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource resource) {
+  const debug_timing::Timed timed{debug_timing::UNMAP};
   if (mapped_buffer == nullptr || mapped_buffer != reinterpret_cast<ID3D11Buffer*>(resource.handle)) return;
   JitterCamera(mapped_buffer, mapped_data);
   mapped_buffer = nullptr;
@@ -434,6 +438,7 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
 // UpdateSubresource: the main camera's uploaded jittered instead (true: the game's update skipped).
 inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource,
                                  uint64_t offset, uint64_t size) {
+  const debug_timing::Timed timed{debug_timing::UPDATE};
   if (!temporal.load(std::memory_order_relaxed) || data == nullptr || offset != 0) return false;
   auto* buffer = reinterpret_cast<ID3D11Buffer*>(resource.handle);
   if (!CameraSized(buffer)) return false;
@@ -453,6 +458,7 @@ inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data,
 
 inline void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count,
                             const reshade::api::viewport* viewports) {
+  const debug_timing::Timed timed{debug_timing::VIEWPORTS};
   if (!scaling.load(std::memory_order_relaxed) || count == 0 || count > 16) {
     main_view.store(false, std::memory_order_relaxed);
     return;
@@ -507,10 +513,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   }
   texture_lod_bias::SetTracking(queue, bias != 0.f);
   texture_lod_bias::SetBias(bias);
+  debug_timing::OnPresent();
 }
 
 inline void OnBindScissorRects(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count,
                                const reshade::api::rect* rects) {
+  const debug_timing::Timed timed{debug_timing::SCISSORS};
   if (!scaling.load(std::memory_order_relaxed) || count == 0 || count > 16) return;
   std::array<reshade::api::rect, 16> scaled = {};
   bool changed = false;
@@ -1214,7 +1222,10 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (!internal::PrepareDevice(device.Get())) return;
   if (!internal::PrepareSize(device.Get(), desc.Width, desc.Height, desc.Format, runtime.settings.method)) return;
   frame_trace::Mark(scaled ? "tone mapper drawn: DLSS (render scale) after it" : "tone mapper drawn: DLAA after it");
-  internal::Apply(native, target.Get(), scaled);
+  {
+    const debug_timing::Timed timed{debug_timing::ANTI_ALIASING};
+    internal::Apply(native, target.Get(), scaled);
+  }
   if (scaled) {
     // The game's viewports back if the scaled ones are still bound.
     std::array<D3D11_VIEWPORT, 16> current = {};

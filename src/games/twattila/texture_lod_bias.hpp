@@ -16,6 +16,7 @@
 #include <include/reshade.hpp>
 
 #include "../../utils/data.hpp"
+#include "./debug_timing.hpp"
 
 // Texture LOD bias below the display size (as rysesonofrome_dlss; Shogun 2's game DLSS, the Total War anti-aliasing's
 // DLSS): the game picks texture levels for the render size, so its textures got blurrier with the render scale (ATN,
@@ -203,6 +204,7 @@ inline void OnDestroySampler(reshade::api::device* device, reshade::api::sampler
 // After the game's PSSetSamplers: its samplers recorded, and bound again as clones in the main view.
 inline void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api::shader_stage stages,
                               reshade::api::pipeline_layout, uint32_t, const reshade::api::descriptor_table_update& update) {
+  const debug_timing::Timed timed{debug_timing::LOD_SAMPLERS};
   if (!internal::tracking.load(std::memory_order_relaxed) || internal::addon_sampler
       || stages != reshade::api::shader_stage::pixel
       || update.type != reshade::api::descriptor_type::sampler || update.count == 0
@@ -222,6 +224,7 @@ inline void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api
 
 // After the viewport scaling's: the main view started or ended, every slot bound again (clones or the game's).
 inline void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t, uint32_t, const reshade::api::viewport*) {
+  const debug_timing::Timed timed{debug_timing::LOD_VIEWPORTS};
   const bool biased = internal::Biased();
   if (biased == internal::slots.biased.load(std::memory_order_relaxed) || !internal::Immediate(cmd_list)) return;
   const std::unique_lock lock(internal::slots.mutex);
