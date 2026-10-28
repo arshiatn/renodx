@@ -240,17 +240,21 @@ class RtScene12 {
     // clas_addresses_), the units' cluster BLAS (at cluster_blas_, its address in cluster_destination_), the scratch,
     // the sequential 8-bit indices, the arguments; a slot's captures' arguments and records written by the CPU
     // (cluster_data), its compact draws' table and new sets (compact_data); the sets' pool. A cluster has at most
-    // RT_CLUSTER_TRIANGLES triangles (a compact draw's) over 255 vertices (a capture's sequential ones).
+    // RT_CLUSTER_TRIANGLES triangles (a compact draw's) over 255 vertices (a capture's sequential ones). Each takes ~6 KB
+    // of CLAS memory at most: half the clusters on GPUs of 12 GB or less (4x unit size battles: ~120,000 a frame).
     if (clusters_) {
+      DXGI_ADAPTER_DESC1 adapter_desc = {};
+      adapter->GetDesc1(&adapter_desc);
+      cluster_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? MAX_CLUSTERS : MAX_CLUSTERS / 2;
       clas_inputs_ = {
-          .maxArgCount = MAX_CLUSTERS,
+          .maxArgCount = cluster_limit_,
           .flags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE,
           .type = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_CLAS_FROM_TRIANGLES,
           .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS,
       };
       clas_inputs_.trianglesDesc = {
           .vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT,
-          .maxGeometryIndexValue = MAX_CLUSTERS - 1,
+          .maxGeometryIndexValue = cluster_limit_ - 1,
           .maxUniqueGeometryCountPerArg = 1,
           .maxTriangleCountPerArg = dlaa_bridge::RT_CLUSTER_TRIANGLES,
           .maxVertexCountPerArg = CLUSTER_TRIANGLES * 3,
@@ -264,7 +268,7 @@ class RtScene12 {
           .type = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_BLAS_FROM_CLAS,
           .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_EXPLICIT_DESTINATIONS,
       };
-      cluster_blas_inputs_.clasDesc = {.maxTotalClasCount = MAX_CLUSTERS, .maxClasCountPerArg = MAX_CLUSTERS};
+      cluster_blas_inputs_.clasDesc = {.maxTotalClasCount = cluster_limit_, .maxClasCountPerArg = cluster_limit_};
       NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO clas_info = {};
       NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO blas_info = {};
       const auto requirements = [&](const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS& inputs,
@@ -285,10 +289,10 @@ class RtScene12 {
         cluster_blas_ = as_buffer(blas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
         cluster_scratch_ = as_buffer(std::max(clas_info.scratchDataSizeInBytes, blas_info.scratchDataSizeInBytes),
                                      D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        clas_addresses_ = as_buffer(uint64_t{MAX_CLUSTERS} * 8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        clas_addresses_ = as_buffer(uint64_t{cluster_limit_} * 8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         cluster_destination_ = as_buffer(8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         cluster_indices_ = Buffer(256, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
-        cluster_args_ = as_buffer(uint64_t{MAX_CLUSTERS} * 64, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        cluster_args_ = as_buffer(uint64_t{cluster_limit_} * 64, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         set_pool_ = Buffer(uint64_t{SET_POOL_BYTES} + 16, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         clusters_ = clas_ && cluster_blas_ && cluster_scratch_ && clas_addresses_ && cluster_destination_ && cluster_indices_ && cluster_args_
                     && set_pool_;
@@ -513,7 +517,7 @@ class RtScene12 {
     device_->CreateUnorderedAccessView(normals_.Get(), nullptr, &normals_written, Descriptor(NORMALS_WRITTEN));
     WriteNullPathDescriptors();
     status_ = std::format("Ray tracing ready ({}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1", sdk,
-                          clusters_ ? std::format("; Mega Geometry clusters: {} MB", cluster_bytes >> 20) : std::string());
+                          clusters_ ? std::format("; Mega Geometry: {} clusters a frame, {} MB", cluster_limit_, cluster_bytes >> 20) : std::string());
     slow_report_ = "[TW ray tracing] " + status_ + ".";
     sdk_ = sdk;
     return true;
@@ -1742,7 +1746,7 @@ class RtScene12 {
       const uint64_t triangles = uint64_t{set.triangles} * draw.instances;
       const uint64_t block_end = uint64_t{draw.first_vertex} + (uint64_t{set.vertices} * draw.instances);
       const bool masked = (draw.flags & dlaa_bridge::RT_FOLIAGE) != 0 && atlas_;
-      if (block_end > TRANSFER_VERTICES || compact_clusters + clusters > MAX_CLUSTERS || dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES
+      if (block_end > TRANSFER_VERTICES || compact_clusters + clusters > cluster_limit_ || dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES
           || (masked && dynamic_uvs_used + (triangles * 3) > DYNAMIC_UVS) || cluster_vertices + (uint64_t{set.vertices} * draw.instances) > TRANSFER_VERTICES) {
         continue;
       }
@@ -2181,7 +2185,7 @@ class RtScene12 {
         uint32_t cluster_count = compact_clusters;
         for (const auto& [first_vertex, unit_triangles, normal_offset, record_flags, uv_offset, slice] : unit_sources) {
           const bool masked = (record_flags & RECORD_MASKED) != 0;
-          for (uint32_t first = 0; first < unit_triangles && cluster_count < MAX_CLUSTERS; first += CLUSTER_TRIANGLES) {
+          for (uint32_t first = 0; first < unit_triangles && cluster_count < cluster_limit_; first += CLUSTER_TRIANGLES) {
             const uint32_t count = std::min(CLUSTER_TRIANGLES, unit_triangles - first);
             auto& arg = args[cluster_count];
             arg = {};
@@ -2747,6 +2751,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> units_blas_;
   uint64_t units_bytes_ = 0;
   bool clusters_ = false;  // Mega Geometry's cluster operations for the units
+  uint32_t cluster_limit_ = MAX_CLUSTERS;  // the most a frame (half on smaller GPUs)
 #if defined(RENODX_NVAPI_CLUSTERS)
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS clas_inputs_ = {};
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS cluster_blas_inputs_ = {};
