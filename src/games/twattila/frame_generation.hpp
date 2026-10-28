@@ -94,6 +94,7 @@ struct State {
   bool kept = false;        // KeepFrame ran since the last present
   bool hudless = false;     // and drew the HUD-less image
   bool presenting = false;  // the helper's window shows (an off request hides it)
+  bool overlay_open = false;  // ReShade's menu: only the frame has it, so the debug views wait while it is open
   Inputs inputs;
   DeviceObjects objects;
 };
@@ -133,7 +134,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     request.frame_limit = settings.frame_limit;
     request.preset = settings.preset;
     request.hud_recomposition = settings.hud_recomposition;
-    request.debug_view = settings.debug_view;
+    request.debug_view = (state.overlay_open ? 0u : settings.debug_view);
     request.hudless = hudless;
     request.inputs = kept;
     request.frame_index = ++state.frame_index;
@@ -155,6 +156,12 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
   const bool presented = dlaa_bridge::PresentFrame(native, request);
   const std::unique_lock lock(state.mutex);
   state.presenting = (request.multiplier != 0 && presented);
+}
+
+inline bool OnOpenOverlay(reshade::api::effect_runtime*, bool open, reshade::api::input_source) {
+  const std::unique_lock lock(state.mutex);
+  state.overlay_open = open;
+  return false;
 }
 
 }  // namespace internal
@@ -314,10 +321,12 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
     internal::state.injection_bytes = injection_bytes;
   }
   reshade::register_event<reshade::addon_event::reshade_present>(internal::OnReshadePresent);
+  reshade::register_event<reshade::addon_event::reshade_open_overlay>(internal::OnOpenOverlay);
 }
 
 inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::reshade_present>(internal::OnReshadePresent);
+  reshade::unregister_event<reshade::addon_event::reshade_open_overlay>(internal::OnOpenOverlay);
   const std::unique_lock lock(internal::state.mutex);
   internal::state.objects = {};
   internal::state.vertex_code = {};

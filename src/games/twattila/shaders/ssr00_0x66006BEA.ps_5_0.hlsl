@@ -82,6 +82,7 @@ Texture2D<float4> t_jitter : register(t9);
 #ifndef SI
 #include "../shared.h"
 #endif
+#include "../render_scale.hlsli"
 #include "../ssr_hiz.hlsli"
 #include "../rt_reflection.hlsli"
 
@@ -321,7 +322,8 @@ void main(
     o0.xyz = rt_reflected ? RtReflection(rt_pixel, r1.xyz) : r1.xyz;
   }
   r1.x = (int)r2.y & 4;
-  r0.z = s_ssao.Sample(s_ssao_s, r0.zw).x;
+  // The AO blur draws its whole target below 100% (view_share.hpp RegionRead::whole).
+  r0.z = s_ssao.Sample(s_ssao_s, r0.zw / DrawRenderShare()).x;
   if (r1.x == 0) {
     o1.y = r0.z;
   } else {

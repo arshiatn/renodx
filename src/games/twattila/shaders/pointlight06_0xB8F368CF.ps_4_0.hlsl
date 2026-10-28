@@ -87,7 +87,8 @@ void main(
   r3.w = dot(r1.xyz, r1.xyz);
   r3.w = rsqrt(r3.w);
   r1.xyz = r3.www * r1.xyz;
-  r5.xyzw = s_ssao.Sample(s_ssao_s, r0.zw).xyzw;
+  // The AO blur draws its whole target below 100% (view_share.hpp RegionRead::whole).
+  r5.xyzw = s_ssao.Sample(s_ssao_s, r0.zw / DrawRenderShare()).xyzw;
   r0.xy = r0.xy * g_screen_size.zw + -g_viewport_offset_scale.xy;
   r0.xy = r0.xy / g_viewport_offset_scale.zw;
   // Below 100% the view fills its share of the target (view_share.hpp patches the game's own).

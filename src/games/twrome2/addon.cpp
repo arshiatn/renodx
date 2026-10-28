@@ -1233,9 +1233,18 @@ constexpr std::array<twattila::rt_scene::SceneShader, 51> SCENE_SHADERS = {{
     {.hash = 0x5AB72F3F, .capture_shader = __rt_capture_grass_5ab7, .dynamic = true, .foliage = true, .grass = true},
 }};
 
-// The game's passes that read render-size textures at the display's size (texture slots), below 100%.
-constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
+// The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
+// half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES; two builds of each).
+constexpr std::array<twattila::view_share::RegionRead, 9> RENDER_SCALE_READS = {{
     {.shader_hash = 0xAD818F92, .slots = 0b1},  // luma / bloom downsample
+    {.shader_hash = 0x9528B919, .slots = 0b11, .whole = true},  // AO blur_x
+    {.shader_hash = 0x41894C1F, .slots = 0b11, .whole = true},
+    {.shader_hash = 0x0DA9C7B2, .slots = 0b10, .whole = true},  // AO blur_y
+    {.shader_hash = 0x7DDD84A3, .slots = 0b10, .whole = true},
+    {.shader_hash = 0xAF849181, .slots = 0b11, .whole = true},  // water refraction (3 channels)
+    {.shader_hash = 0x2A3297C6, .slots = 0b11, .whole = true},
+    {.shader_hash = 0xD9BA49FA, .slots = 0b1, .whole = true},  // water refraction (4 channels)
+    {.shader_hash = 0x024D3FCB, .slots = 0b1, .whole = true},
 }};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 56> LIGHT_BOUNCE_DRAWS = {{
@@ -1716,7 +1725,7 @@ bool AttachAddon() {
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS);
+                                   RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection));
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.

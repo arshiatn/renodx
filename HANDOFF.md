@@ -799,6 +799,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       so the resolve and the march agree), ssr00 / ssr01 blur step x share (effects_share), SSS softness x share, RT AO
       quarter off from one step down. Troy / Pharaoh keep their AO half switch (their shaders read ssao_resolution).
       Zips twattila_v88, twrome2_v40, twthronesofbritannia_v40. ASK ATN: water reflections / AO at Performance.
+      v89: FG Debug View off while the ReShade menu is open (reshade_open_overlay; ATN could not see the menu in the
+      HUD-less view). Effects audit (build\ingame\traces\twattila.txt, 50%): only the AO blur (B4026AF2 / 6203C824 ->
+      s_ssao) and the water refraction (820D451B / 25944B2D -> s_terrain_refraction) drew below the render size (half of
+      it). view_share RegionRead::whole: those passes draw their whole half-size target (viewport + scissor swapped in
+      OnCommand, put back in a post callback), inputs region-read; readers by RDEF name (WHOLE_TEXTURES) divide the
+      coordinate by the draw's share (Kind::WHOLE; split projections left). Replaced readers: pointlight00/02/04/06 and
+      ssr00/01 (render_scale.hlsli, DrawRenderShare: that keeps the auto patch off them). WARP check: scratchpad
+      scale_audit\patch_test_whole.exe on the three dumps. Zips twattila_v89, twrome2_v41, twthronesofbritannia_v41.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

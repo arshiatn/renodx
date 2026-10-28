@@ -2,6 +2,21 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v89 (2026-10-28, untested in game)
+
+- **Frame Generation Debug View** steps aside while the ReShade menu is open (ATN: the HUD-less image has no menu in
+  it, so the menu could not be seen to turn the view off).
+- **Below 100%, the AO blur and the water refraction keep their 100% detail**: the game draws them at half the
+  display's size (ssao.hlsl blur_x / blur_y, which every light reads as s_ssao, and waterrefraction.hlsl, which water and
+  rivers read as s_terrain_refraction), and the render scale halved them again (a quarter of the display at
+  Performance). They now draw their whole half-size target (view_share.hpp RegionRead::whole, their inputs read at the
+  render share), and their readers read them over the draw's share (WHOLE_TEXTURES, patched by name: 78 light and 16
+  water shaders; ssr00 / ssr01 and point lights 00 / 02 / 04 / 06 in HLSL). Always on below 100% (as cheap as at
+  100%). WARP check of every Attila / Thrones / Rome II dump shader: all patched ones create, no other patch changed.
+  The rest of a 50% frame trace is at the render size or the display's: bloom (a fixed 256 x 256 chain from the whole
+  render), exposure, lens flares, depth of field, heat haze, markers and UI after DLSS; shadow maps and the reflection
+  cube have fixed sizes.
+
 ## v88 (2026-10-28, untested in game)
 
 - **Effects at Output Resolution** (Anti-aliasing, on by default, as Tales of Arise's; all TW games): while DLSS renders

@@ -971,10 +971,15 @@ constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
 
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
 // skinlm, every shadow method, with the camera at b0 and the G-buffer at t0-t3.
-// The game's passes that read render-size textures at the display's size (texture slots), below 100%.
-constexpr std::array<twattila::view_share::RegionRead, 2> RENDER_SCALE_READS = {{
+// The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
+// half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
+constexpr std::array<twattila::view_share::RegionRead, 6> RENDER_SCALE_READS = {{
     {.shader_hash = 0x781681E4, .slots = 0b1},   // luma / bloom downsample
     {.shader_hash = 0xB386A8BC, .slots = 0b11},  // shadow depth analysis
+    {.shader_hash = 0xB4026AF2, .slots = 0b11, .whole = true},  // AO blur_x
+    {.shader_hash = 0x6203C824, .slots = 0b10, .whole = true},  // AO blur_y
+    {.shader_hash = 0x820D451B, .slots = 0b11, .whole = true},  // water refraction (3 channels)
+    {.shader_hash = 0x25944B2D, .slots = 0b1, .whole = true},   // water refraction (4 channels)
 }};
 // The game's vertex shaders the addon replaces with ones that read the render share below 100% (cb12).
 constexpr std::array<uint32_t, 1> RENDER_SCALE_VERTEX_SHADERS = {
@@ -1782,7 +1787,8 @@ bool AttachAddon() {
                                                         .unit_records_compute_shader = __motion_unit_records,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS);
+                                   RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS,
+                                   twattila::view_share::WHOLE_TEXTURES);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection));
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.

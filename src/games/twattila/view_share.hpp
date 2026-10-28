@@ -45,7 +45,10 @@
 // - an NDC built from a texture uv (the uv's last writer, followed back, reads camera_VS_PS's g_screen_size or
 //   g_render_target_dimensions): the uv first divided by the view's share of the target;
 // - a projected uv that a texture read then takes as its coordinate: multiplied by that share (also one made in two
-//   instructions, u = (x + 1) x 0.5 and v = 1 - (y + 1) x 0.5: the grass's terrain distance, at the read).
+//   instructions, u = (x + 1) x 0.5 and v = 1 - (y + 1) x 0.5: the grass's terrain distance, at the read);
+// - a read of a whole texture (Install's `whole_textures`, by its name: what a half-size pass draws, the AO blur and the
+//   water refraction, which draw their whole target while scaled, RegionRead::whole, so they keep their 100% detail):
+//   its coordinate divided by the draw's share.
 // The share is cb12 (render_scale: xy the draw's viewport / target, zw the frame's render / display size), bound for
 // these shaders' draws while the frame is scaled; unbound it reads 0, which the patch takes as 1 (no change at 100%).
 // The addon's own replaced shaders that declare cbuffer render_scale at b12 get it too (render_scale.hlsli).
@@ -140,7 +143,8 @@ inline bool IsDeclaration(uint32_t opcode, uint32_t token) {
 }
 
 // The camera's registers in a shader (RDEF: camera_VS_PS's slot, g_screen_size / g_render_target_dimensions /
-// g_viewport_dimensions), whether it declares render_scale at b12 (the addon's shaders) or any other b12.
+// g_viewport_dimensions), whether it declares render_scale at b12 (the addon's shaders) or any other b12, and its
+// textures named in `whole_textures`.
 struct Reflection {
   uint32_t camera_slot = UINT32_MAX;
   uint32_t screen = UINT32_MAX;
@@ -150,9 +154,11 @@ struct Reflection {
   uint32_t projection = UINT32_MAX;
   bool render_scale = false;
   bool slot_taken = false;
+  uint64_t whole_slots = 0;  // bit per texture slot
 };
 
-inline Reflection Reflect(std::span<const uint8_t> code, const dxbc::Program& program) {
+inline Reflection Reflect(std::span<const uint8_t> code, const dxbc::Program& program,
+                          std::span<const std::string> whole_textures = {}) {
   Reflection reflection;
   const auto read = [&](size_t at) {
     uint32_t value = 0;
@@ -174,9 +180,15 @@ inline Reflection Reflect(std::span<const uint8_t> code, const dxbc::Program& pr
     const size_t variable_size = (major >= 5) ? 40 : 24;
     for (uint32_t index = 0; index < bindings; ++index) {
       const size_t binding = binding_at + 32 * size_t{index};
-      if (read(binding + 4) != 0) continue;  // constant buffers
+      const uint32_t type = read(binding + 4);
       const size_t name = data + read(binding);
       const uint32_t slot = read(binding + 20);
+      // D3D_SIT_TEXTURE
+      if (type == 2 && slot < 64
+          && std::ranges::any_of(whole_textures, [&](const std::string& whole) { return name_is(name, whole.c_str()); })) {
+        reflection.whole_slots |= uint64_t{1} << slot;
+      }
+      if (type != 0) continue;  // constant buffers
       // camera_VS_PS (Attila, Rome II, Thrones), camera (Troy, Pharaoh, Warhammer).
       if (name_is(name, "camera_VS_PS") || name_is(name, "camera")) reflection.camera_slot = slot;
       if (slot == SLOT) {
@@ -318,15 +330,17 @@ struct Patched {
   uint32_t ndc = 0;
   uint32_t projected = 0;
   uint32_t region = 0;
+  uint32_t whole = 0;
 };
 
 // `region_slots`: the texture slots (bit per slot) whose reads take the frame's render share (render-space textures
-// read by a pass at the display's size: after DLSS, or a full-size pass).
+// read by a pass at the display's size: after DLSS, or a full-size pass); the reads of `reflection.whole_slots` take
+// the draw's share out.
 inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection, uint64_t region_slots = 0) {
   Patched result;
   if (reflection.slot_taken) return result;
   const bool camera = reflection.camera_slot != UINT32_MAX && reflection.screen != UINT32_MAX;
-  if (!camera && region_slots == 0) return result;
+  if (!camera && region_slots == 0 && reflection.whole_slots == 0) return result;
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
   if (tokens.empty()) return result;
@@ -371,7 +385,7 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
   }
   if (temps_at == 0) return result;
 
-  enum class Kind { NDC, PROJECTED, REGION, SPLIT };
+  enum class Kind { NDC, PROJECTED, REGION, SPLIT, WHOLE };
   struct Site {
     size_t instruction = 0;
     Kind kind = Kind::NDC;
@@ -440,7 +454,12 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
                     && Classify(instructions, writer_at, operands[1].index[0], 1u << SourceComponent(operands[1], component), reflection)
                            == Source::CAMERA_PROJECTION;
           }
-          if (split) sites.push_back({.instruction = index, .kind = Kind::SPLIT});
+          // A whole texture's read: its coordinate over the draw's share (a split projection's is the view's already).
+          if (split) {
+            if ((reflection.whole_slots & slot) == 0) sites.push_back({.instruction = index, .kind = Kind::SPLIT});
+          } else if ((reflection.whole_slots & slot) != 0 && (two_dimensional & slot) != 0) {
+            sites.push_back({.instruction = index, .kind = Kind::WHOLE});
+          }
           break;
         }
         default:
@@ -517,26 +536,29 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
       tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(original.at + original.length), scale.begin(), scale.end());
       ++result.projected;
     } else {
-      // mov rU, <its coordinate>; its xy x the frame's share (a split projection: the draw's; ld: texel indices,
-      // through float); the read takes rU.
+      // mov rU, <its coordinate>; its xy x the frame's share (a split projection: the draw's; a whole texture: over the
+      // draw's; ld: texel indices, through float); the read takes rU.
       const Operand& address = original.operands[1];
       std::vector<uint32_t> address_tokens(tokens.begin() + static_cast<ptrdiff_t>(address.at),
                                            tokens.begin() + static_cast<ptrdiff_t>(address.at + address.length));
-      const auto coordinate_share = swizzled(share, (site->kind == Kind::SPLIT ? 0x04 : 0x0E));
+      const auto coordinate_share = swizzled(share, (site->kind == Kind::REGION ? 0x0E : 0x04));
+      const uint32_t scale = (site->kind == Kind::WHOLE ? OP_DIV : OP_MUL);
       std::vector<uint32_t> added;
       instruction(&added, OP_MOV, {masked(uv, 0b1111), address_tokens});
       if (original.opcode == OP_LD) {
         instruction(&added, OP_UTOF, {masked(uv, 0b0011), swizzled(uv, 0x04)});
-        instruction(&added, OP_MUL, {masked(uv, 0b0011), swizzled(uv, 0x04), coordinate_share});
+        instruction(&added, scale, {masked(uv, 0b0011), swizzled(uv, 0x04), coordinate_share});
         instruction(&added, OP_FTOU, {masked(uv, 0b0011), swizzled(uv, 0x04)});
       } else {
-        instruction(&added, OP_MUL, {masked(uv, 0b0011), swizzled(uv, 0x04), coordinate_share});
+        instruction(&added, scale, {masked(uv, 0b0011), swizzled(uv, 0x04), coordinate_share});
       }
       const auto rewritten = replaced(original, address, swizzled(uv, 0xE4));
       added.insert(added.end(), rewritten.begin(), rewritten.end());
       put(original, added);
       if (site->kind == Kind::SPLIT) {
         ++result.projected;
+      } else if (site->kind == Kind::WHOLE) {
+        ++result.whole;
       } else {
         ++result.region;
       }
@@ -552,15 +574,22 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
   return result;
 }
 
+// A shader's region read slots and whether it draws its whole target while scaled (RegionRead).
+struct Reads {
+  uint64_t region_slots = 0;
+  bool whole = false;
+};
+
 struct Runtime {
   std::shared_mutex mutex;
   // The patched bytecode by the game's hash (kept: the game may create the shader again), and the code pointers the
-  // pipelines get (patched or the addon's render_scale shaders) and their pipelines, each with its region read slots.
+  // pipelines get (patched or the addon's render_scale shaders) and their pipelines, each with its reads.
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;
-  std::unordered_map<const void*, uint64_t> wanted_code;
-  std::unordered_map<uint64_t, uint64_t> pipelines;
-  // The addon's region reads: texture slots by the game's shader hash.
-  std::unordered_map<uint32_t, uint64_t> region_reads;
+  std::unordered_map<const void*, Reads> wanted_code;
+  std::unordered_map<uint64_t, Reads> pipelines;
+  // The addon's region reads by the game's shader hash, and the whole textures' names (Install).
+  std::unordered_map<uint32_t, Reads> region_reads;
+  std::vector<std::string> whole_textures;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11Buffer> constants;
   std::array<float, 4> uploaded = {};
@@ -590,20 +619,20 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     auto found = runtime.patched.find(hash);
     if (found == runtime.patched.end()) {
       const dxbc::Program program = dxbc::Read(code);
-      const Reflection reflection = Reflect(code, program);
+      const Reflection reflection = Reflect(code, program, runtime.whole_textures);
       if (reflection.render_scale) {
-        runtime.wanted_code.emplace(desc->code, 0);
+        runtime.wanted_code.emplace(desc->code, Reads{});
         continue;
       }
       const auto region = runtime.region_reads.find(hash);
-      Patched patched = Patch(code, reflection, region != runtime.region_reads.end() ? region->second : 0);
+      Patched patched = Patch(code, reflection, region != runtime.region_reads.end() ? region->second.region_slots : 0);
       if (patched.region == 0) {
         runtime.region_reads.erase(hash);
       }
       if (!patched.code.empty()) {
         renodx::utils::log::i("[Total War] Render scale: ", (type == reshade::api::pipeline_subobject_type::compute_shader ? "compute" : "pixel"),
                               " shader ", std::format("0x{:08X}", hash), " patched (", patched.ndc, " positions, ", patched.projected,
-                              " projected reads, ", patched.region, " region reads).");
+                              " projected reads, ", patched.region, " region reads, ", patched.whole, " whole reads).");
       }
       found = runtime.patched.emplace(hash, std::move(patched.code)).first;
     }
@@ -611,7 +640,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     desc->code = found->second.data();
     desc->code_size = found->second.size();
     const auto region = runtime.region_reads.find(hash);
-    runtime.wanted_code.emplace(desc->code, region != runtime.region_reads.end() ? region->second : 0);
+    runtime.wanted_code.emplace(desc->code, region != runtime.region_reads.end() ? region->second : Reads{});
     modified = true;
   }
   return modified;
@@ -668,9 +697,9 @@ inline void Bind(ID3D11DeviceContext* native, const std::array<float, 4>& values
   runtime.bound = true;
 }
 
-// The bound shader's region read slots if it is patched (or a render_scale shader).
-inline std::optional<uint64_t> Patched(reshade::api::command_list* cmd_list, reshade::api::pipeline_stage stage,
-                                       renodx::utils::state::CommandListStateCache* cache) {
+// The bound shader's reads if it is patched (or a render_scale shader).
+inline std::optional<Reads> Patched(reshade::api::command_list* cmd_list, reshade::api::pipeline_stage stage,
+                                    renodx::utils::state::CommandListStateCache* cache) {
   const auto pipeline = renodx::utils::state::GetBoundShaderPipeline(cmd_list, stage, cache);
   if (pipeline.handle == 0u) return std::nullopt;
   const std::shared_lock lock(runtime.mutex);
@@ -679,26 +708,35 @@ inline std::optional<uint64_t> Patched(reshade::api::command_list* cmd_list, res
   return found->second;
 }
 
+// The render scale's viewport and scissor rectangle a whole pass's draw replaced, put back after it.
+struct WholeDraw {
+  D3D11_VIEWPORT viewport = {};
+  D3D11_RECT scissor = {};
+  bool scissor_bound = false;
+};
+static WholeDraw whole_draw;
+
 // Every draw while the frame is scaled: a patched (or render_scale) pixel shader gets cb12, the draw's viewport over
-// its target (a viewport the render scale made, else 1) and the frame's share. Every dispatch: a patched compute shader's share is the frame's in the scaled span
-// (before the tone mapper), 1 after.
+// its target (a viewport the render scale made, else 1) and the frame's share; a whole pass (RegionRead::whole) draws
+// its whole target instead of the render scale's part. Every dispatch: a patched compute shader's share is the frame's
+// in the scaled span (before the tone mapper), 1 after.
 constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   const float frame_x = frame_share_x.load(std::memory_order_relaxed);
   if (frame_x == 0.f) return {};
   const float frame_y = frame_share_y.load(std::memory_order_relaxed);
   constexpr bool COMPUTE = std::is_same_v<Arguments, renodx::utils::command_action::DispatchArguments>;
-  const auto region_slots = Patched(command.cmd_list, COMPUTE ? reshade::api::pipeline_stage::compute_shader : reshade::api::pipeline_stage::pixel_shader,
-                                    &command.bound_state_cache);
-  if (!region_slots.has_value()) return {};
+  const auto reads = Patched(command.cmd_list, COMPUTE ? reshade::api::pipeline_stage::compute_shader : reshade::api::pipeline_stage::pixel_shader,
+                             &command.bound_state_cache);
+  if (!reads.has_value()) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   std::array<float, 4> values = {1.f, 1.f, frame_x, frame_y};
-  if (*region_slots != 0) {
+  if (reads->region_slots != 0) {
     // Region reads of a texture the 3D draws at render scale: the display's size (or a halving of it); others (a small
     // view's own) whole.
-    const auto slot = static_cast<UINT>(std::countr_zero(*region_slots));
+    const auto slot = static_cast<UINT>(std::countr_zero(reads->region_slots));
     ComPtr<ID3D11ShaderResourceView> view;
     if constexpr (COMPUTE) {
       native->CSGetShaderResources(slot, 1, view.GetAddressOf());
@@ -746,6 +784,32 @@ constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::uti
       const float height = static_cast<float>(desc.Height);
       if (viewport.TopLeftX == 0.f && viewport.TopLeftY == 0.f && std::abs(viewport.Width - (width * frame_x)) <= 1.5f
           && std::abs(viewport.Height - (height * frame_y)) <= 1.5f) {
+        if (reads->whole) {
+          // As at 100%: its region reads take the frame's share, its readers (whole textures) the draw's out.
+          UINT scissor_count = 0;
+          native->RSGetScissorRects(&scissor_count, nullptr);
+          whole_draw = {.viewport = viewport, .scissor_bound = scissor_count != 0};
+          if (whole_draw.scissor_bound) {
+            scissor_count = 1;
+            native->RSGetScissorRects(&scissor_count, &whole_draw.scissor);
+            const D3D11_RECT scissor = {.right = static_cast<LONG>(desc.Width), .bottom = static_cast<LONG>(desc.Height)};
+            native->RSSetScissorRects(1, &scissor);
+          }
+          const D3D11_VIEWPORT whole = {.Width = width, .Height = height, .MinDepth = viewport.MinDepth, .MaxDepth = viewport.MaxDepth};
+          native->RSSetViewports(1, &whole);
+          Bind(native, values, reshade::api::pipeline_stage::pixel_shader);
+          return {
+              .post_callback = [](Context& drawn, const void* data) {
+                auto* context = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
+                renodx::utils::directx::NativeFromReShadeProxy(&context);
+                if (context == nullptr) return;
+                const auto& replaced = *static_cast<const WholeDraw*>(data);
+                context->RSSetViewports(1, &replaced.viewport);
+                if (replaced.scissor_bound) context->RSSetScissorRects(1, &replaced.scissor);
+              },
+              .post_data = &whole_draw,
+          };
+        }
         values[0] = std::clamp(viewport.Width / width, 0.f, 1.f);
         values[1] = std::clamp(viewport.Height / height, 0.f, 1.f);
       }
@@ -810,13 +874,27 @@ inline void Repatched(const void* patched, const void* code) {
 struct RegionRead {
   uint32_t shader_hash = 0;
   uint64_t slots = 0;  // bit per texture slot
+  // A half-size pass that draws its whole target while scaled (not the render scale's part of it, which would halve
+  // its detail again): its output then holds the whole view, which its readers (Install's `whole_textures`) read so.
+  bool whole = false;
 };
 
-// `vertex_shaders`: the game's vertex shaders (by hash) the addon replaces with render_scale ones (cb12 at b12).
-inline void Install(std::span<const RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shaders = {}) {
+// The names Attila's, Thrones of Britannia's and Rome II's shaders give their whole passes' outputs: the AO blur's
+// (ssao.hlsl blur_y, read by the lights) and the water refraction's (waterrefraction.hlsl, read by water and rivers).
+constexpr std::array<const char*, 2> WHOLE_TEXTURES = {"s_ssao", "s_terrain_refraction"};
+
+// `vertex_shaders`: the game's vertex shaders (by hash) the addon replaces with render_scale ones (cb12 at b12);
+// `whole_textures`: the names the game's shaders give the whole passes' outputs.
+inline void Install(std::span<const RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shaders = {},
+                    std::span<const char* const> whole_textures = {}) {
   {
     const std::unique_lock lock(internal::runtime.mutex);
-    for (const auto& read : region_reads) internal::runtime.region_reads[read.shader_hash] |= read.slots;
+    for (const auto& read : region_reads) {
+      auto& reads = internal::runtime.region_reads[read.shader_hash];
+      reads.region_slots |= read.slots;
+      reads.whole |= read.whole;
+    }
+    internal::runtime.whole_textures.assign(whole_textures.begin(), whole_textures.end());
   }
   renodx::utils::pipeline::RegisterOnCreateCallback(internal::OnCreatePipeline);
   renodx::utils::pipeline::RegisterOnInitCallback(internal::OnInitPipeline);

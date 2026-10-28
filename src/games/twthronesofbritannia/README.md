@@ -2,6 +2,12 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twthronesofbritannia.addon32` (32-bit game).
 
+## v41 (2026-10-28, untested in game)
+
+- **Below 100%, the AO blur and the water refraction keep their 100% detail** (Attila v89): they draw their whole
+  half-size target, and the 78 light and 16 water shaders that read them read the whole view.
+- Frame Generation Debug View steps aside while the ReShade menu is open.
+
 ## v40 (2026-10-28, untested in game; renodx-tw-dlaa64.exe helper24, bridge v13: ship them together)
 
 - **Effects at Output Resolution** (Anti-aliasing, on by default): while DLSS renders below 100%, ambient occlusion,

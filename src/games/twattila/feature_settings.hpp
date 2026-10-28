@@ -516,8 +516,9 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .default_value = 0.f,
                                             .label = "Frame Generation Debug View",
                                             .section = AA_SECTION,
-                                            .tooltip = "What frame generation gets. HUD-less Image: the picture without the HUD (any HUD left in it\n"
-                                                       "smears). UI Layer: the HUD laid over the generated frames, in magenta (the rest moves).",
+                                            .tooltip = "What frame generation gets, shown while the ReShade menu is closed. HUD-less Image: the\n"
+                                                       "picture without the HUD (any HUD left in it smears). UI Layer: the HUD laid over the\n"
+                                                       "generated frames, in magenta (the rest moves).",
                                             .labels = {"Off", "HUD-less Image", "UI Layer"},
                                             .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
                                         },

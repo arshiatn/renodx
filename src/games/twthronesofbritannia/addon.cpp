@@ -1222,10 +1222,15 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
 }};
 
-// The game's passes that read render-size textures at the display's size (texture slots), below 100%.
-constexpr std::array<twattila::view_share::RegionRead, 2> RENDER_SCALE_READS = {{
+// The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
+// half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
+constexpr std::array<twattila::view_share::RegionRead, 6> RENDER_SCALE_READS = {{
     {.shader_hash = 0x781681E4, .slots = 0b1},  // luma / bloom downsample
     {.shader_hash = 0x16390F4F, .slots = 0b11},  // shadow depth analysis
+    {.shader_hash = 0xB4026AF2, .slots = 0b11, .whole = true},  // AO blur_x
+    {.shader_hash = 0x6203C824, .slots = 0b10, .whole = true},  // AO blur_y
+    {.shader_hash = 0x820D451B, .slots = 0b11, .whole = true},  // water refraction (3 channels)
+    {.shader_hash = 0x25944B2D, .slots = 0b1, .whole = true},   // water refraction (4 channels)
 }};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
@@ -1735,7 +1740,7 @@ bool AttachAddon() {
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS);
+                                   RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection));
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.

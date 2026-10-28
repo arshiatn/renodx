@@ -1436,14 +1436,15 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
 
 // The camera uploads watched and the sun light draws' depth noted (`draws`: the addon's, kept while installed); the
 // moving draws drawn again for DLAA's motion (`motion`: the addon's, kept while installed); the game's passes that read
-// render-size textures at the display's size below 100% (`region_reads`), the vertex shaders the addon replaces with
-// ones that read the render share (`vertex_shares`) and the game's 3D sprites drawn against the scene's depth after the
-// tone mapper (`full_depth_shaders`, vertex shaders: the depth stretched for them below 100%).
+// render-size textures at the display's size below 100% (`region_reads`, with the half-size passes drawn whole and the
+// names their outputs' readers give them: `whole_textures`), the vertex shaders the addon replaces with ones that read
+// the render share (`vertex_shares`) and the game's 3D sprites drawn against the scene's depth after the tone mapper
+// (`full_depth_shaders`, vertex shaders: the depth stretched for them below 100%).
 inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMotion& motion = {},
                     std::span<const view_share::RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shares = {},
-                    std::span<const uint32_t> full_depth_shaders = {}) {
+                    std::span<const uint32_t> full_depth_shaders = {}, std::span<const char* const> whole_textures = {}) {
   frame_trace::Install();
-  view_share::Install(region_reads, vertex_shares);
+  view_share::Install(region_reads, vertex_shares, whole_textures);
   for (const uint32_t hash : full_depth_shaders) {
     renodx::utils::command_action::Register(
         internal::OnFullDepthDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
