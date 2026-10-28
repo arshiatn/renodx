@@ -2,6 +2,10 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twrome2.addon32` (32-bit game).
 
+## v44 (2026-10-28, untested in game)
+
+- Screen-space shadows' Debug View goes through DLSS like the shadows in the picture (Attila v92).
+
 ## v43 (2026-10-28, untested in game)
 
 - Screen-space shadows below 100%: no more striped hills and combed fence shadows (Attila v91: Bend's surface

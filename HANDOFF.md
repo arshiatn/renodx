@@ -817,7 +817,12 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       Bend's SurfaceThickness and BilinearThreshold are depth tolerances per one-pixel step; below 100% steps and
       neighbour differences grow by 1 / share, so screen_space_shadows::Compute divides both by the render share (as
       samples x share). ATN's settings: Length 5 (1920), Thickness 0.005, Edge 0.02, Hard / Fade 1, Softness 0.
-      Zips twattila_v91, twrome2_v43, twthronesofbritannia_v43. ASK ATN: debug19 views again at UP.
+      Zips twattila_v91, twrome2_v43, twthronesofbritannia_v43. ATN: the distant lines are gone (v91 confirmed).
+      v92 (ATN debug20, SSS Debug View 2, DLAA vs UP: "lower quality"): the debug view was the render-size mask stretched
+      (nearest) after DLSS. Now the tone mapper hooks call screen_space_shadows::OnTonemapDrawn before
+      anti_aliasing's (7 games' macros), once a frame (debug_frame), into the render-size part: DLSS upscales it like
+      the real shadows. Nothing else to gain: the mask feeds render-size lighting. Zips twattila_v92, twrome2_v44,
+      twthronesofbritannia_v44. NEXT (ATN: no need to wait): RT / PT fixes in Attila.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

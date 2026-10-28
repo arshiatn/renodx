@@ -308,6 +308,7 @@ struct Runtime {
   UINT display_height = 0;
   // The frame the occlusion is this frame's for (UINT64_MAX: none yet).
   uint64_t computed_frame = UINT64_MAX;
+  uint64_t debug_frame = UINT64_MAX;  // the Debug View drawn (OnTonemapDrawn)
   // A report into ReShade.log at the next computed frame (each time the shadows are turned on).
   bool probe_pending = true;
   // The patched sun shaders by their original hash (kept: the game may create them again).
@@ -778,14 +779,19 @@ inline void SetExtraOcclusion(internal::ExtraOcclusion function) {
   internal::extra_occlusion = function;
 }
 
-// The tone mapper drew (its replaced shaders' on_drawn, after the anti-aliasing): with a Debug View, its target replaced
-// by this frame's occlusion (sss_debug), the compute stage's bindings put back after.
+// The tone mapper drew (its replaced shaders' on_drawn, before the anti-aliasing): with a Debug View, its target replaced
+// by this frame's occlusion (sss_debug), once a frame (not again at a later output pass), the compute stage's bindings
+// put back after. DLSS then upscales it as it does the shadows in the picture (ATN debug20: stretched after it, the
+// render pixels showed as blocks).
 inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   auto& objects = runtime.objects;
-  if (runtime.settings.debug_view == 0 || runtime.computed_frame != runtime.frame || !objects.debug) return;
+  if (runtime.settings.debug_view == 0 || runtime.computed_frame != runtime.frame || runtime.debug_frame == runtime.frame
+      || !objects.debug) {
+    return;
+  }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
@@ -849,6 +855,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (game_uav != nullptr) game_uav->Release();
   if (game_constants != nullptr) game_constants->Release();
   native->CopyResource(target.Get(), objects.debug_texture.Get());
+  runtime.debug_frame = runtime.frame;
 }
 
 // The game's sun light draws (`draws`: the addon's, kept for as long as it is installed; the Light Bounce's list), their

@@ -2,6 +2,14 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v92 (2026-10-28, untested in game)
+
+- **Screen-space shadows' Debug View goes through DLSS** like the shadows in the picture (ATN debug20: at Ultra
+  Performance it showed the render-size mask stretched after DLSS, 3 x 3 pixel blocks the game never shows). It is now
+  drawn into the tone mapper's render-size part before the anti-aliasing (the tone mapper hooks call screen-space
+  shadows first, once a frame), so DLSS upscales it from its jittered frames. The shadows themselves feed the lighting
+  at the render size, as everything in the 3D image does: Effects at Output Resolution cannot make them finer.
+
 ## v91 (2026-10-28, untested in game)
 
 - **Screen-space shadows below 100%** (ATN debug19, Ultra Performance and Quality, the toggle made no difference):
