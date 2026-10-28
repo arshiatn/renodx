@@ -989,6 +989,20 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       traced shadows would hold everything: no (same scene, same receivers). NEXT: the readers take the rays' shadows;
       for 4x battles a compact capture (each mesh's index buffer once, only its vertices every frame: ~3-5x less) or
       the nearest units first.
+    - 2026-10-29 00:10, "Fit 4x armies first" (ATN): compact capture, bridge v16 (2bc8af8d helper, a4b9611c addon;
+      UNTESTED IN GAME). A dynamic indexed draw's mesh (index buffer + range, the buffer kept) has its indices read back
+      (staging copy, read 2 frames later without waiting, 16 sets a frame) into a cluster set (MakeClusterSet: <= 128
+      triangles over <= 128 vertices a cluster, 8-bit corners) and a remap index buffer; then its vertices stream ONCE
+      each as points through the remap (harness box: 0.73 texels a triangle instead of 3), consecutive draws of a mesh
+      joined (instances). Sets go once (second mapping "<name>_clusters", copied in the request's fill), kept in the
+      helper's 64 MB pool (full: unused sets dropped, rt_compact_ok + 1, the addon resends). Helper rt_compact.cs builds
+      the clusters' CLAS args / records / normals / UVs on the GPU, first in the units' cluster BLAS. Frame limits:
+      16.8 M dynamic triangles, 131072 clusters (CLAS memory ~800 MB; it scales with the cluster count only: 262144 =
+      1.6 GB), 16384 compact draws. Needs Mega Geometry (else the old triangle captures). Applies to every game on
+      rt_core.hpp once rebuilt (only Attila shipped now). Harness: set rebuilt exactly, remap points' stream output in
+      instance order, compact box (2 instances) + alpha-tested card shadows, all 7 modes pass. Cost line now says
+      "(N compact draws; M cluster sets)". NEXT: ATN's 4x battle: left out should fall to ~0 (if clusters run out, raise
+      RT_DYNAMIC_CLUSTERS); then the shadow-map readers (C9FBACCB, 2E9F5935, ACE33D5D) take the rays' shadows.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
