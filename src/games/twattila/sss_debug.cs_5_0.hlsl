@@ -25,13 +25,13 @@ void main(uint2 pixel : SV_DispatchThreadID)
   if (g_sss_debug_view >= 2.f)
   {
     const float4 light = asfloat(t_sss_parameters[0]);
-    const float2 position = float2(pixel) + 0.5f;  // full-size, as Bend's light coordinate
+    const float2 position = float2(render) + 0.5f;
     const float2 towards = (light.xy - position) * light.w;
     if (dot(towards, towards) > 1e-6f)
     {
       const float2 direction = normalize(towards);
       // The ray's length on screen before an edge, along each axis.
-      const float2 room = (direction > 0.f) ? (g_sss_size - position) : position;
+      const float2 room = (direction > 0.f) ? (g_sss_render_size - position) : position;
       const float2 reach = (abs(direction) > 1e-6f) ? room / abs(direction) : 1e9f;
       const float ray_length = (light.w > 0.f) ? min(g_sss_samples, 0.5f * length(towards)) : g_sss_samples;
       cut = saturate(1.f - min(reach.x, reach.y) / max(ray_length, 1.f));

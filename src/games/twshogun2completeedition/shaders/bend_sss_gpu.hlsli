@@ -157,7 +157,9 @@ struct DispatchParameters
 										// If 'PointBorderSampler' is an Unnormalized sampler, then this value can be hard-coded to 1.
 										// The 'USE_HALF_PIXEL_OFFSET' macro might need to be defined if sampling at exact pixel coordinates isn't precise (e.g., if odd patterns appear in the shadow).
 
-	// RenoDX render scale: the full-size screen the dispatch covers and its rendered part (FullSize when not scaled).
+	// RenoDX render scale: the depth's full size and its rendered part (FullSize when not scaled), whose pixels the march
+	// covers (marching the full size mapped into it read the same depth texel several times: banded self-shadowing on
+	// slopes below 100%, ATN debug14).
 	float2 FullSize;
 	float2 RenderSize;
 
@@ -196,13 +198,13 @@ struct DispatchParameters
 		return depth >= inParameters.DepthBounds.y || depth <= inParameters.DepthBounds.x;
 	}
 
-	// RenoDX render scale: a full-size pixel's depth UV in the rendered part (off screen: the border, far depth). With
-	// MirrorEdges, past the left, right and bottom edges the depth just inside them (ATN, Attila: grass at the border
-	// unshadowed when every ray runs off the screen). Not past the top: the far side, where the mirrored ground comes
-	// nearer and shadows everything below it (ATN debug10).
+	// RenoDX render scale: a rendered pixel's depth UV (off screen: the border, far depth). With MirrorEdges, past the
+	// left, right and bottom edges the depth just inside them (ATN, Attila: grass at the border unshadowed when every ray
+	// runs off the screen). Not past the top: the far side, where the mirrored ground comes nearer and shadows everything
+	// below it (ATN debug10).
 	float2 RenderDepthUV(DispatchParameters inParameters, float2 xy)
 	{
-		float2 uv = xy * inParameters.InvDepthTextureSize;
+		float2 uv = xy / inParameters.RenderSize;
 		if (inParameters.MirrorEdges)
 		{
 			uv.x = (uv.x < 0) ? -uv.x : ((uv.x > 1) ? 2 - uv.x : uv.x);
@@ -527,17 +529,8 @@ struct DispatchParameters
 		// If the first samples are always producing a hard shadow, then compute this value separately.
 		result = min(hard_shadow, result);
 
-		// RenoDX render scale: one writer per rendered pixel, the middle one of the full-size pixels on it (integer math: no
-		// gaps or doubles); off-screen pixels are skipped (the game's writes there were out of bounds).
-		const int2 full_size = int2(inParameters.FullSize);
-		const int2 render_size = int2(inParameters.RenderSize);
-		const int2 full_xy = int2(write_xy);
-		if (any(full_xy < 0) || any(full_xy >= full_size)) return;
-		const int2 render_xy = full_xy * render_size / full_size;
-		const int2 first_xy = (render_xy * full_size + render_size - 1) / render_size;
-		const int2 last_xy = ((render_xy + 1) * full_size + render_size - 1) / render_size - 1;
-		if (any(full_xy != (first_xy + last_xy) / 2)) return;
-		write_xy = render_xy;
+		// RenoDX render scale: off-screen pixels are skipped (writes there were out of bounds).
+		if (any(int2(write_xy) < 0) || any(int2(write_xy) >= int2(inParameters.RenderSize))) return;
 
 		// Add shadowmap data
 		result = min(ReadShadowMap(write_xy), result);
