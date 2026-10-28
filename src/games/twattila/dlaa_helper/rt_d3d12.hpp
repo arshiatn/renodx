@@ -749,6 +749,7 @@ class RtScene12 {
     WaitFor(slot.value);
     ReadTimes(slot_index);
     slot_traced_[slot_index] = false;
+    slot_reflected_[slot_index] = reflections;
     const uint32_t frame = shared.rt_frame;
     const uint32_t requested = (version >= 8) ? shared.rt_path_flags : 0u;
     const bool path_traced = !reflections && (requested & dlaa_bridge::RT_PATH_TRACING) != 0;
@@ -989,11 +990,11 @@ class RtScene12 {
   static constexpr uint32_t RELEASE_FRAMES = 3600;
   // The units' BLAS is refitted to each frame's poses while their draws stay the same, rebuilt this often.
   static constexpr uint32_t UNITS_REBUILD_FRAMES = 30;
-  static constexpr UINT DYNAMIC_TRIANGLES = (3u << 20) / 3;  // rt_scene.hpp MAX_DYNAMIC_VERTICES
+  static constexpr UINT DYNAMIC_TRIANGLES = (6u << 20) / 3;  // rt_core.hpp MAX_DYNAMIC_VERTICES
   // Mega Geometry: the units' triangles in clusters of this many (three vertices each, up to 256 a cluster), a frame's
   // clusters at most (the last of each draw partial), each a geometry with a record of its own (a slot's in turn).
   static constexpr uint32_t CLUSTER_TRIANGLES = 85;
-  static constexpr uint32_t MAX_CLUSTERS = 16384;
+  static constexpr uint32_t MAX_CLUSTERS = 32768;
   // A slot's upload buffer for them: the CLASes' arguments (64 bytes each), the cluster BLAS's (16), the CLAS count,
   // the BLAS's destination, the indices (0-255), the clusters' records.
   static constexpr uint64_t CLUSTER_ARGS_OFFSET = 0;
@@ -1424,6 +1425,7 @@ class RtScene12 {
     uint32_t built = 0;
     uint32_t micromaps_built = 0;
     uint64_t dynamic_triangles = 0;
+    uint64_t grass_triangles = 0;  // of them (alpha-tested)
     bool units_built = false;
     bool units_refitted = false;
     bool units_clustered = false;  // Mega Geometry's cluster BLAS built for them
@@ -1698,6 +1700,7 @@ class RtScene12 {
                                   placement.uv_offset, (version >= 6) ? shared.rt_capture_slices[index] : 0u});
           units_masked = units_masked || placement.masked;
           dynamic_triangles += capture.vertex_count / 3;
+          if (placement.masked) grass_triangles += capture.vertex_count / 3;
           continue;
         }
         const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
@@ -2215,15 +2218,16 @@ class RtScene12 {
       ReleaseMesh(&entry.second);
       return true;
     });
-    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} with micromaps, {} MB), {} in the scene (+ {} placed drawn){}, {:.1f} M triangles "
-                          "({:.2f} M of units, {})",
+    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles (units {:.2f} M, "
+                          "grass {:.2f} M, {})",
                           dxr12_ ? "DXR 1.2" : "DXR 1.1", meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn,
                           ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
                           static_cast<double>(triangles) / 1.0e6, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
-                          units_clustered ? std::format("{} clusters (Mega Geometry)", clusters_built)
-                                          : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
+                          static_cast<double>((units_built || units_clustered) ? grass_triangles : 0u) / 1.0e6,
+                          units_clustered ? std::format("{} clusters", clusters_built) : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
     if (timestamps_) {
-      timings_ = std::format(" | GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, paths {:.2f}", gpu_ms_[0], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3]);
+      timings_ = std::format(" | GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0], gpu_ms_[1],
+                             gpu_ms_[2], gpu_ms_[3], gpu_ms_[4]);
     }
     return true;
   }
@@ -2251,7 +2255,7 @@ class RtScene12 {
       gpu_ms_[1] = ms(stamps[1], stamps[2]);
       gpu_ms_[2] = ms(stamps[2], stamps[3]);
     } else {
-      gpu_ms_[3] = ms(stamps[4], stamps[5]);
+      gpu_ms_[slot_reflected_[slot_index] ? 4 : 3] = ms(stamps[4], stamps[5]);
     }
     const D3D12_RANGE written = {};
     timestamp_readback_->Unmap(0, &written);
@@ -2429,7 +2433,8 @@ class RtScene12 {
   ComPtr<ID3D12Resource> timestamp_readback_;
   uint64_t timestamp_frequency_ = 0;
   std::array<bool, SLOTS> slot_traced_ = {};
-  std::array<double, 4> gpu_ms_ = {};  // the scene (captures, BLASes), the TLAS, the trace; the paths
+  std::array<bool, SLOTS> slot_reflected_ = {};  // a path request's: the reflections (else the Light Bounce)
+  std::array<double, 5> gpu_ms_ = {};  // the scene (captures, BLASes), the TLAS, the trace; the Light Bounce, the reflections
   ComPtr<ID3D12StateObject> path_state_object_;
   ComPtr<ID3D12Resource> path_shader_table_;  // two ray generation records: the paths, the reflections
   std::array<float, 16> current_view_projection_ = {};

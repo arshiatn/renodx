@@ -887,6 +887,16 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       all below: never above the drawn ground); Thrones / Rome II copies still have it (port round); helper timings
       after the status (Status() = status_ + timings_); FG off while ReShade's menu is open (frame_generation
       OnReshadePresent multiplier 0). Built, helper25 copied; untested in game.
+    - 2026-10-28 20:15, ATN's third test: grass "pulses" (RT grass or shadows). Log: units' share full (1.04 M of 1.05 M
+      triangles: what did not fit changed every frame) and 347F3DD9 still ~80 new meshes / s (known 1884 -> 6216).
+      ATN's plan, agreed order: 1 fix the scene (budget, churn, pop-in), 2 test each RT effect alone (per-effect GPU
+      times), 3 optimize (light sampling for point lights, AO / bounce lower res + RR, PTLAS retry). STEP 1 DONE (untested
+      in game): RT_TRANSFER_HEIGHT 2048, MAX_DYNAMIC_VERTICES 6M (2 M triangles; helper DYNAMIC_TRIANGLES, MAX_CLUSTERS
+      32768), grass at most half (MAX_GRASS_VERTICES); meshes in DYNAMIC vertex buffers (not terrain) captured every frame
+      as units; known = {frame, instances}: a placed draw placed at once when its instance count changed (else its
+      turn); 10 s report adds the top churning shader's last 3 new captures (counts, VB0 / IB pointers + offsets) and
+      draws captured for dynamic vertex buffers; status: units / grass triangles, GPU ms trace / bounce / reflections.
+      NEXT: ATN tests each effect alone (sun shadows first) with the Debug View; read the report lines for the churn.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

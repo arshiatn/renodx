@@ -156,8 +156,10 @@ struct Host {
 namespace internal {
 
 constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
-// The units' share of it each frame (about a million triangles).
-constexpr UINT MAX_DYNAMIC_VERTICES = 3u << 20;
+// The units' share of it each frame (about two million triangles; it was full in a large battle with grass: what did
+// not fit changed every frame, grass and units' shadows pulsed, ATN 2026-10-28), grass at most half of it.
+constexpr UINT MAX_DYNAMIC_VERTICES = 6u << 20;
+constexpr UINT MAX_GRASS_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
@@ -219,10 +221,15 @@ struct Runtime {
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
   uint32_t dynamic_vertices = 0;
+  uint32_t grass_vertices = 0;  // of them
   std::vector<uint64_t> drawn;
   // This frame's draws of placed meshes in the scene: their instances' rows in the captured vertices (bridge v14).
   std::vector<dlaa_bridge::RtPlacement> placements;
-  std::unordered_map<uint64_t, uint64_t> known;
+  struct Known {
+    uint64_t frame = 0;      // last drawn
+    uint32_t instances = 0;  // a placed mesh's last placement's
+  };
+  std::unordered_map<uint64_t, Known> known;
   // A static draw's short key (its shader, arguments, first vertex buffer and index buffer) and the full key it stood
   // for; ambiguous once it stood for two (instances told apart by their constants): Capture's fast path.
   struct ShortKey {
@@ -234,6 +241,8 @@ struct Runtime {
   // 2026-10-28: the helper's 16384 static records filled within a minute, 93 meshes in the scene).
   std::unordered_map<uint32_t, uint32_t> new_static;
   uint64_t new_static_time = 0;
+  std::unordered_map<uint32_t, std::vector<std::string>> new_static_examples;  // the last three each
+  std::unordered_map<uint32_t, uint32_t> dynamic_buffers;  // draws captured every frame for their dynamic vertex buffers
   // The placed draws logged per vertex shader (their instancing and vertex buffers, the first two each; ATN 2026-10-28:
   // no tree shadows).
   std::unordered_map<uint32_t, uint32_t> placed_logged;
@@ -516,7 +525,19 @@ void Capture(Context& command, const SceneShader& shader) {
   // geometry alone and built once from its first instance's triangles, placed every frame it is drawn from its
   // instances' rows (the game's per-instance stream, which it repacks every frame it culls: keyed by that, every draw
   // was a new mesh every frame while the camera moved, ATN 2026-10-28).
-  const bool placed = !shader.rows_shader.empty() && !shader.dynamic;
+  // A mesh in a dynamic vertex buffer (rewritten whenever the game likes: by its geometry it was a new mesh again and
+  // again, ATN 2026-10-28) is captured every frame, as units are (the terrain keeps its own way).
+  bool dynamic = shader.dynamic;
+  if (!dynamic && !shader.terrain) {
+    ComPtr<ID3D11Buffer> first_vertices;
+    UINT first_stride = 0;
+    UINT first_offset = 0;
+    native->IAGetVertexBuffers(0, 1, first_vertices.GetAddressOf(), &first_stride, &first_offset);
+    D3D11_BUFFER_DESC first_desc = {};
+    if (first_vertices) first_vertices->GetDesc(&first_desc);
+    dynamic = first_desc.Usage == D3D11_USAGE_DYNAMIC;
+  }
+  const bool placed = !shader.rows_shader.empty() && !dynamic;
   const UINT instances = placed ? std::max(arguments.instance_count, 1u) : 1u;
   UINT vertex_count = 0;
   if constexpr (INDEXED) {
@@ -531,14 +552,14 @@ void Capture(Context& command, const SceneShader& shader) {
   // Rigid objects seen moving stay out (a mesh's shadow where it stood); placed ones go where they are drawn, every frame.
   bool moving = false;
   if constexpr (INDEXED) {
-    moving = !shader.terrain && !shader.dynamic && host.moving_indexed != nullptr && host.moving_indexed(native, arguments);
+    moving = !shader.terrain && !dynamic && host.moving_indexed != nullptr && host.moving_indexed(native, arguments);
   } else {
-    moving = !shader.terrain && !shader.dynamic && host.moving != nullptr && host.moving(native, arguments);
+    moving = !shader.terrain && !dynamic && host.moving != nullptr && host.moving(native, arguments);
   }
   if (moving && !placed) return;
   // The fast path (CPU): a static mesh drawn before, known by its short key while that stood for it alone, is only
   // marked drawn (no camera, depth or full identity check). Units, leaves and placed draws take their own paths.
-  const bool short_path = !shader.dynamic && !shader.foliage && !placed;
+  const bool short_path = !dynamic && !shader.foliage && !placed;
   uint64_t short_key = 14695981039346656037ull;
   if (short_path) {
     ID3D11Buffer* first_vertices = nullptr;
@@ -571,8 +592,8 @@ void Capture(Context& command, const SceneShader& shader) {
     const std::unique_lock lock(runtime.mutex);
     if (const auto entry = runtime.short_keys.find(short_key); entry != runtime.short_keys.end() && !entry->second.ambiguous) {
       if (const auto known = runtime.known.find(entry->second.key); known != runtime.known.end()) {
-        if (known->second != runtime.frame) {
-          known->second = runtime.frame;
+        if (known->second.frame != runtime.frame) {
+          known->second.frame = runtime.frame;
           if (runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(entry->second.key);
         }
         return;
@@ -655,8 +676,9 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     // Units: every frame, within their share.
     if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
-    if (shader.dynamic && runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES) return;
-    if (const auto known = runtime.known.find(key); !shader.dynamic && known != runtime.known.end()) {
+    if (dynamic && runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES) return;
+    if (shader.grass && runtime.grass_vertices + vertex_count > MAX_GRASS_VERTICES) return;
+    if (const auto known = runtime.known.find(key); !dynamic && known != runtime.known.end()) {
       // A leaf's slice stays in use while it is drawn.
       if (mask) {
         ComPtr<ID3D11Resource> mask_resource;
@@ -666,14 +688,15 @@ void Capture(Context& command, const SceneShader& shader) {
         }
       }
       if (!placed) {
-        if (known->second != runtime.frame) {
-          known->second = runtime.frame;
+        if (known->second.frame != runtime.frame) {
+          known->second.frame = runtime.frame;
           if (runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
         }
         return;
       }
-      if (!moving && (key + runtime.frame) % PLACE_TURNS != 0) {
-        known->second = runtime.frame;
+      // Not its turn, its instances as many as at its last placement (none came into sight).
+      if (!moving && known->second.instances == instances && (key + runtime.frame) % PLACE_TURNS != 0) {
+        known->second.frame = runtime.frame;
         return;
       }
       place = true;
@@ -828,20 +851,36 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.placements.push_back({.key = key, .first_vertex = rows_vertex, .instances = instances,
                                   .flags = (moving ? dlaa_bridge::RT_PLACE_MOVING : 0u)});
     runtime.captured_vertices += row_texels;
-    if (const auto known = runtime.known.find(key); known != runtime.known.end()) known->second = runtime.frame;
+    if (const auto known = runtime.known.find(key); known != runtime.known.end()) known->second = {.frame = runtime.frame, .instances = instances};
     return;
   }
   runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count,
-                              .flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (shader.dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
+                              .flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
                                        | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
                                        | (shader.thin ? dlaa_bridge::RT_THIN : 0u),
                               .instances = (placed ? instances : 0u)});
   runtime.slices.push_back(slice);
   runtime.captured_vertices += vertex_count + row_texels;
-  if (shader.dynamic) {
+  if (dynamic) {
     runtime.dynamic_vertices += vertex_count;
+    if (shader.grass) runtime.grass_vertices += vertex_count;
+    if (!shader.dynamic) ++runtime.dynamic_buffers[shader.hash];
   } else {
     ++runtime.new_static[shader.hash];
+    // Its geometry (Update's report: what changed between captures of a mesh that came again).
+    uint32_t first = 0;
+    int32_t base = 0;
+    if constexpr (INDEXED) {
+      first = arguments.first_index;
+      base = arguments.vertex_offset;
+    } else {
+      first = arguments.first_vertex;
+    }
+    auto& examples = runtime.new_static_examples[shader.hash];
+    if (examples.size() == 3) examples.erase(examples.begin());
+    examples.push_back(std::format("{} vertices at {} / {} x{} from {}, VB0 {:X} +{}, IB {:X} +{}", vertex_count, first, base,
+                                   arguments.instance_count, arguments.first_instance, reinterpret_cast<uintptr_t>(vertex_buffers[0]),
+                                   offsets[0], reinterpret_cast<uintptr_t>(index_buffer), index_offset));
   }
 }
 
@@ -1013,7 +1052,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   if (traced) {
     for (const auto& capture : runtime.captures) {
       if ((capture.flags & dlaa_bridge::RT_DYNAMIC) == 0) {
-        runtime.known[capture.key] = runtime.frame;
+        runtime.known[capture.key].frame = runtime.frame;
       }
     }
     runtime.traced_frame = runtime.frame;
@@ -1391,19 +1430,29 @@ inline void Update(const Settings& settings) {
         line += std::format("{}{:08X} x{}", (index == 0 ? "" : ", "), counts[index].first, counts[index].second);
       }
       renodx::utils::log::i("[Total War] Ray tracing: new static meshes in 10 s by vertex shader: ", line, " (", runtime.known.size(), " known).");
+      for (const auto& example : runtime.new_static_examples[counts.front().first]) {
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: new {:08X}: {}.", counts.front().first, example));
+      }
       runtime.new_static.clear();
+      runtime.new_static_examples.clear();
     }
+    for (const auto& [hash, draws] : runtime.dynamic_buffers) {
+      renodx::utils::log::i(std::format("[Total War] Ray tracing: {:08X} in dynamic vertex buffers, captured every frame: {} draws in 10 s.",
+                                        hash, draws));
+    }
+    runtime.dynamic_buffers.clear();
     runtime.new_static_time = now;
   }
   runtime.captures.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
   runtime.dynamic_vertices = 0;
+  runtime.grass_vertices = 0;
   runtime.drawn.clear();
   runtime.placements.clear();
   std::swap(runtime.lights_last, runtime.lights_drawn);
   runtime.lights_drawn.clear();
-  if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second + internal::RELEASE_FRAMES < runtime.frame; }) != 0) {
+  if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second.frame + internal::RELEASE_FRAMES < runtime.frame; }) != 0) {
     std::erase_if(runtime.short_keys, [&](const auto& entry) { return !runtime.known.contains(entry.second.key); });
   }
 }

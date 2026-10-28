@@ -21,7 +21,7 @@ constexpr uint32_t OLDEST_VERSION = 2;
 // Ray tracing (v4, rt_scene.hpp / dlaa_helper/rt_d3d12.hpp): the captured triangles' world positions, RT_TRANSFER_WIDTH
 // per row of the shared vertex texture (RT_TRANSFER_HEIGHT rows); new captures and drawn meshes a frame at most.
 constexpr uint32_t RT_TRANSFER_WIDTH = 4096;
-constexpr uint32_t RT_TRANSFER_HEIGHT = 1024;
+constexpr uint32_t RT_TRANSFER_HEIGHT = 2048;
 constexpr uint32_t RT_CAPTURES = 256;
 constexpr uint32_t RT_DRAWN = 8192;
 // The leaves' opacity masks (v6): an R8 texture array of RT_ATLAS_SLICES slices RT_ATLAS_SIZE square.
