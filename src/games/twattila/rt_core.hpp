@@ -218,10 +218,49 @@ struct DeviceObjects {
   ComPtr<ID3D11Texture2D> combined;
   ComPtr<ID3D11ShaderResourceView> combined_srv;
   ComPtr<ID3D11UnorderedAccessView> combined_uav;
+  // The cost report's GPU timestamps: a disjoint query and three stamps a frame (the trace's start, its request, the
+  // helper's answer), four frames in turn, read back when done.
+  struct Timing {
+    ComPtr<ID3D11Query> disjoint;
+    std::array<ComPtr<ID3D11Query>, 3> stamps;
+    bool pending = false;
+  };
+  std::array<Timing, 4> timings;
+  uint32_t timing_next = 0;
+};
+
+// The addon's own ray tracing cost since the last report (Update, every 10 s; ATN 2026-10-28: "RT shadows destroy the
+// performance", the helper's GPU time a few milliseconds): its CPU time in Capture and Trace, its GPU passes before the
+// request and the game's wait for the helper's answer.
+struct Costs {
+  int64_t capture_ticks = 0;
+  int64_t trace_ticks = 0;
+  uint32_t frames = 0;
+  double passes_ms = 0.0;
+  double waiting_ms = 0.0;
+  uint32_t timed = 0;  // frames whose timestamps came back
+};
+
+// Adds its scope's CPU time to `ticks` (the cost report).
+class CpuTime {
+ public:
+  explicit CpuTime(int64_t* ticks) : ticks_(ticks) { QueryPerformanceCounter(&start_); }
+  ~CpuTime() {
+    LARGE_INTEGER end;
+    QueryPerformanceCounter(&end);
+    *ticks_ += end.QuadPart - start_.QuadPart;
+  }
+  CpuTime(const CpuTime&) = delete;
+  CpuTime& operator=(const CpuTime&) = delete;
+
+ private:
+  int64_t* ticks_;
+  LARGE_INTEGER start_ = {};
 };
 
 struct Runtime {
   std::mutex mutex;
+  Costs costs;  // the render thread's (as `frame`)
   Settings settings;
   uint64_t frame = 0;
   // This frame's new captures and the scene meshes it drew; the keys in the scene (the frame they were last drawn).
@@ -412,6 +451,12 @@ inline bool PrepareDevice(ID3D11Device* device) {
          && SUCCEEDED(device->CreateDepthStencilState(&depth_desc, objects.no_depth.GetAddressOf()))
          && SUCCEEDED(device->CreateBuffer(&constants_desc, nullptr, objects.constants.GetAddressOf()))
          && SUCCEEDED(device->CreateBuffer(&sun_desc, nullptr, objects.sun_constants.GetAddressOf()));
+  const D3D11_QUERY_DESC disjoint_desc = {.Query = D3D11_QUERY_TIMESTAMP_DISJOINT};
+  const D3D11_QUERY_DESC stamp_desc = {.Query = D3D11_QUERY_TIMESTAMP};
+  for (auto& timing : objects.timings) {
+    device->CreateQuery(&disjoint_desc, timing.disjoint.GetAddressOf());
+    for (auto& stamp : timing.stamps) device->CreateQuery(&stamp_desc, stamp.GetAddressOf());
+  }
   if (!made) {
     renodx::utils::log::w("[Total War] Ray tracing: could not create its shaders or buffers.");
     objects = {};
@@ -527,6 +572,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   auto* native = NativeContext(command.cmd_list);
   if (native == nullptr) return;
+  const CpuTime timed(&runtime.costs.capture_ticks);
   // Draws after this frame's trace (past its pass: forward and transparent ones) stay out (Trace and Update run on this
   // thread too).
   if (runtime.traced_frame == runtime.frame) return;
@@ -941,6 +987,7 @@ inline void NotTraced(const std::string& reason) {
 inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, const Camera& camera) {
   auto& objects = runtime.objects;
   if (!Enabled() || runtime.traced_frame == runtime.frame) return false;
+  const CpuTime timed(&runtime.costs.trace_ticks);
   if (!dlaa_bridge::bridge.ray_tracing || !objects.constants) {
     NotTraced(dlaa_bridge::bridge.ray_tracing ? "its objects were not made" : "DLAA's bridge has no ray tracing textures");
     return false;
@@ -958,6 +1005,13 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     NotTraced(std::format("render size {} x {}, the bridge's {} x {}", render_size[0], render_size[1], dlaa_bridge::bridge.width,
                           dlaa_bridge::bridge.height));
     return false;
+  }
+  // The cost report's timestamps (a set still pending: this frame without).
+  auto& timing = objects.timings[objects.timing_next % objects.timings.size()];
+  const bool stamped = timing.disjoint && timing.stamps[2] && !timing.pending;
+  if (stamped) {
+    native->Begin(timing.disjoint.Get());
+    native->End(timing.stamps[0].Get());
   }
   {
     const ComputeState kept(native);
@@ -1070,7 +1124,14 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .view_projection = camera.view_projection,
       .placements = runtime.placements,
   };
+  if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);
+  if (stamped) {
+    native->End(timing.stamps[2].Get());
+    native->End(timing.disjoint.Get());
+    timing.pending = true;
+    ++objects.timing_next;
+  }
   if (!traced) NotTraced("the helper did not trace: " + dlaa_bridge::TraceStatus());
   runtime.lights_traced = traced && lights;
   if (traced) {
@@ -1446,6 +1507,29 @@ inline void Update(const Settings& settings) {
   runtime.settings = settings;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
+  auto& costs = runtime.costs;
+  if (internal::Enabled()) ++costs.frames;
+  if (auto& objects = runtime.objects; objects.device) {
+    ComPtr<ID3D11DeviceContext> context;
+    objects.device->GetImmediateContext(context.GetAddressOf());
+    for (auto& timing : objects.timings) {
+      D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint = {};
+      std::array<UINT64, 3> stamps = {};
+      if (!timing.pending || context->GetData(timing.disjoint.Get(), &disjoint, sizeof(disjoint), D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK) {
+        continue;
+      }
+      bool ready = true;
+      for (size_t index = 0; index < stamps.size(); ++index) {
+        ready = ready && context->GetData(timing.stamps[index].Get(), &stamps[index], sizeof(UINT64), D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK;
+      }
+      if (!ready) continue;
+      timing.pending = false;
+      if (disjoint.Disjoint || disjoint.Frequency == 0 || stamps[1] < stamps[0] || stamps[2] < stamps[1]) continue;
+      costs.passes_ms += static_cast<double>(stamps[1] - stamps[0]) * 1000.0 / static_cast<double>(disjoint.Frequency);
+      costs.waiting_ms += static_cast<double>(stamps[2] - stamps[1]) * 1000.0 / static_cast<double>(disjoint.Frequency);
+      ++costs.timed;
+    }
+  }
   if (runtime.status_log_time != 0 && GetTickCount64() >= runtime.status_log_time) {
     runtime.status_log_time = 0;
     std::string effects;
@@ -1481,6 +1565,17 @@ inline void Update(const Settings& settings) {
                                         hash, draws));
     }
     runtime.dynamic_buffers.clear();
+    if (costs.frames != 0) {
+      LARGE_INTEGER frequency;
+      QueryPerformanceFrequency(&frequency);
+      const double frame_ms = 1000.0 / static_cast<double>(frequency.QuadPart) / costs.frames;
+      renodx::utils::log::i(std::format("[Total War] Ray tracing's own cost a frame: CPU {:.2f} ms capturing, {:.2f} ms tracing; GPU "
+                                        "{:.2f} ms its passes, {:.2f} ms waiting for the helper.",
+                                        costs.capture_ticks * frame_ms, costs.trace_ticks * frame_ms,
+                                        (costs.timed != 0 ? costs.passes_ms / costs.timed : 0.0),
+                                        (costs.timed != 0 ? costs.waiting_ms / costs.timed : 0.0)));
+    }
+    costs = {};
     runtime.new_static_time = now;
   }
   runtime.captures.clear();
