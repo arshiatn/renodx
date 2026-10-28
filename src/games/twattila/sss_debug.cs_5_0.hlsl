@@ -7,7 +7,8 @@
 // black shadowed; with Screen Edge (2) red where the shadow's ray towards the sun (the light's screen point, Bend's
 // light coordinate in t1: away from it when the sun is behind the camera) leaves the screen before its length (towards
 // the sun: half the way to its point, bend_sss_gpu.hlsli's): nothing past the edge can cast a shadow there. Into u0,
-// copied over the tone mapper's output.
+// copied over the tone mapper's output: below 100% the render-size occlusion stretched over the whole picture (ATN: it
+// showed in the top-left corner alone).
 #include "./sss.hlsli"
 
 Texture2D<float> t_sss_occlusion : register(t0);
@@ -17,13 +18,14 @@ RWTexture2D<float4> t_rw_debug : register(u0);
 [numthreads(8, 8, 1)]
 void main(uint2 pixel : SV_DispatchThreadID)
 {
-  if (any(float2(pixel) >= g_sss_render_size)) return;
-  const float lit = 0.8f * (1.f - t_sss_occlusion.Load(int3(pixel, 0)));
+  if (any(float2(pixel) >= g_sss_size)) return;
+  const uint2 render = uint2((float2(pixel) + 0.5f) * g_sss_render_size * g_sss_inverse_size);
+  const float lit = 0.8f * (1.f - t_sss_occlusion.Load(int3(render, 0)));
   float cut = 0.f;
   if (g_sss_debug_view >= 2.f)
   {
     const float4 light = asfloat(t_sss_parameters[0]);
-    const float2 position = float2(pixel) + 0.5f;
+    const float2 position = float2(render) + 0.5f;
     const float2 towards = (light.xy - position) * light.w;
     if (dot(towards, towards) > 1e-6f)
     {
