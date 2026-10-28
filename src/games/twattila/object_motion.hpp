@@ -516,16 +516,50 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   // In-draw: only draws with motion (rigid objects: moving; the rest recorded after the draw).
   if (in_draw && !redraw) return false;
 
+  // The game's output: its targets, depth and unordered access views (transparency passes write some), all put back
+  // together (a target set alone drops the views); a draw with views gets no in-draw motion (targets 6 and 7 would
+  // take their slots).
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
   ComPtr<ID3D11DepthStencilView> depth_stencil;
-  native->OMGetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), depth_stencil.GetAddressOf());
+  std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT> game_output_views = {};
+  native->OMGetRenderTargetsAndUnorderedAccessViews(static_cast<UINT>(game_targets.size()), game_targets.data(),
+                                                    depth_stencil.GetAddressOf(), 0, static_cast<UINT>(game_output_views.size()),
+                                                    game_output_views.data());
   const auto release_targets = [&] {
     for (auto* target : game_targets) {
       if (target != nullptr) {
         target->Release();
       }
     }
+    for (auto* output_view : game_output_views) {
+      if (output_view != nullptr) {
+        output_view->Release();
+      }
+    }
   };
+  const auto first_output_view = static_cast<UINT>(
+      std::ranges::find_if(game_output_views, [](auto* output_view) { return output_view != nullptr; }) - game_output_views.begin());
+  const auto restore_output = [&] {
+    if (first_output_view == game_output_views.size()) {
+      native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), depth_stencil.Get());
+      return;
+    }
+    constexpr std::array<UINT, D3D11_PS_CS_UAV_REGISTER_COUNT> KEEP_COUNTS = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX,
+                                                                              UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+    native->OMSetRenderTargetsAndUnorderedAccessViews(
+        first_output_view, game_targets.data(), depth_stencil.Get(), first_output_view,
+        static_cast<UINT>(game_output_views.size()) - first_output_view, game_output_views.data() + first_output_view,
+        KEEP_COUNTS.data());
+  };
+  if (in_draw && first_output_view != game_output_views.size()) {
+    static bool logged = false;
+    if (!logged) {
+      renodx::utils::log::i("[Total War] Object motion: a moving draw with unordered access views (its motion drawn again).");
+      logged = true;
+    }
+    release_targets();
+    return false;
+  }
   ComPtr<ID3D11DepthStencilState> game_depth_state;
   UINT stencil_reference = 0;
   native->OMGetDepthStencilState(game_depth_state.GetAddressOf(), &stencil_reference);
@@ -1143,7 +1177,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->PSSetShaderResources(ANIMATION_SRV_SLOT, 1, &game_animation);
   }
   if (!drawn && (redraw || shader.kind == MotionKind::DEFORMED)) {
-    native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), depth_stencil.Get());
+    restore_output();
     native->OMSetDepthStencilState(game_depth_state.Get(), stencil_reference);
     native->OMSetBlendState(game_blend.Get(), blend_factor.data(), sample_mask);
     native->RSSetState(game_rasterizer.Get());
