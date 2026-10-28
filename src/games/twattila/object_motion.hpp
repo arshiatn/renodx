@@ -170,6 +170,13 @@ constexpr UINT HISTORY_SLOTS = 8;
 // The motion draws' vertex shader views (t9-t23), kept for the game.
 constexpr UINT MOTION_VIEWS = HISTORY_SRV_SLOT + HISTORY_SLOTS - DEFORMED_SRV_SLOT;
 // The stream output of motion_record_*.vs: TEXCOORD0-3.
+// Motion Test 8 (debug): the units' record points (motion_unit_point.vs: TEXCOORD2-5) through stream output.
+constexpr std::array<D3D11_SO_DECLARATION_ENTRY, 4> UNIT_RECORD_OUTPUT = {{
+    {.SemanticName = "TEXCOORD", .SemanticIndex = 2, .ComponentCount = 4},
+    {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
+    {.SemanticName = "TEXCOORD", .SemanticIndex = 4, .ComponentCount = 4},
+    {.SemanticName = "TEXCOORD", .SemanticIndex = 5, .ComponentCount = 4},
+}};
 constexpr std::array<D3D11_SO_DECLARATION_ENTRY, 4> RIGID_RECORD_OUTPUT = {{
     {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 4},
     {.SemanticName = "TEXCOORD", .SemanticIndex = 1, .ComponentCount = 4},
@@ -293,6 +300,8 @@ struct DeviceObjects {
   UINT deformed_draw_count = 0;
   // The ocean: its displacement textures by slot.
   std::array<TextureHistory, HISTORY_SLOTS> texture_histories;
+  // Motion Test 8 (debug): the units' records streamed out, each draw's over the last's.
+  ComPtr<ID3D11Buffer> test_stream;
   // In-draw: the vertex shaders (as Shaders::shaders; null: none), the targets (R16G16_FLOAT: the motion in render
   // pixels; R32_FLOAT: the depth, 0 not written; the motion target's size, cleared with it) and the blend states (the
   // game's, targets 6 and 7 without blending: by the game's description).
@@ -333,7 +342,7 @@ static State state;
 static std::atomic_bool active = false;
 // Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only, 4 unit records with
 // the depth buffer kept bound, 5 unit records' bindings without their draw, 6 unit records' draw without UAVs, 7 unit
-// records' draw with the game's targets kept bound (no UAVs, no pixel shader).
+// records' draw with the game's targets kept bound (no UAVs, no pixel shader), 8 unit records through stream output.
 static std::atomic_uint32_t test = 0;
 
 // The device's shaders and constants; false: not available.
@@ -366,6 +375,11 @@ inline bool PrepareDevice(ID3D11Device* device) {
                || SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(
                    shader.record_shader.data(), shader.record_shader.size(), RIGID_RECORD_OUTPUT.data(),
                    static_cast<UINT>(RIGID_RECORD_OUTPUT.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                   record_output.GetAddressOf())))
+           && (shader.kind != MotionKind::UNIT || shader.record_shader.empty()
+               || SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(
+                   shader.record_shader.data(), shader.record_shader.size(), UNIT_RECORD_OUTPUT.data(),
+                   static_cast<UINT>(UNIT_RECORD_OUTPUT.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
                    record_output.GetAddressOf())));
   };
   // Deformed meshes' capture: no depth, every point drawn.
@@ -961,11 +975,24 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->GSSetShader(nullptr, nullptr, 0);
     native->VSSetShader(objects.record_shaders[index].Get(), nullptr, 0);
     const uint32_t test_mode = test.load(std::memory_order_relaxed);
-    native->PSSetShader((test_mode == 7 ? nullptr : objects.unit_record_pixel_shader.Get()), nullptr, 0);
+    const bool keep_targets = (test_mode == 7 || test_mode == 8);
+    native->PSSetShader((keep_targets ? nullptr : objects.unit_record_pixel_shader.Get()), nullptr, 0);
     native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
     ID3D11DepthStencilView* record_depth = (test_mode == 4 ? depth_stencil.Get() : nullptr);
     const auto& record_table = (test_mode == 6 ? NO_TABLE : table);
-    if (test_mode != 7) {
+    ComPtr<ID3D11Buffer> game_stream;
+    if (test_mode == 8) {
+      if (!objects.test_stream) {
+        const D3D11_BUFFER_DESC stream_desc = {.ByteWidth = 1u << 22, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+        device->CreateBuffer(&stream_desc, nullptr, objects.test_stream.GetAddressOf());
+      }
+      native->SOGetTargets(1, game_stream.GetAddressOf());
+      ID3D11Buffer* stream = objects.test_stream.Get();
+      constexpr UINT START = 0;
+      native->GSSetShader(objects.record_outputs[index].Get(), nullptr, 0);
+      native->SOSetTargets(1, &stream, &START);
+    }
+    if (!keep_targets) {
       native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(record_table.size()),
                                                         record_table.data(), nullptr);
     }
@@ -988,8 +1015,13 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     if (overlap.end != nullptr) {
       overlap.end(native);
     }
-    if (test_mode != 7) {
+    if (!keep_targets) {
       native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
+    }
+    if (test_mode == 8) {
+      ID3D11Buffer* stream = game_stream.Get();
+      constexpr UINT APPEND = UINT_MAX;
+      native->SOSetTargets(1, &stream, &APPEND);
     }
     native->IASetPrimitiveTopology(topology);
     native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
