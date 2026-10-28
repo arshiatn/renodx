@@ -967,6 +967,9 @@ constexpr std::array<twattila::view_share::RegionRead, 3> RENDER_SCALE_READS = {
 constexpr std::array<uint32_t, 1> RENDER_SCALE_VERTEX_SHADERS = {
     0x7C04E880,  // lens flare: the sun's occlusion counted at the render size (lensflare04)
 };
+// The game's 3D sprites (sprite.hlsl vertex_3d*: the unit markers) drawn against the scene's depth after the tone
+// mapper: the depth stretched to the display's size for them below 100%.
+constexpr std::array<uint32_t, 4> FULL_DEPTH_SHADERS = {0x2823783C, 0xF1CA8DC6, 0x59A0821D, 0x23C7B5C0};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x4816852C, .standard = true},
@@ -1757,7 +1760,7 @@ bool AttachAddon() {
                                                         .unit_records_compute_shader = __motion_unit_records,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS);
+                                   RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection));
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.

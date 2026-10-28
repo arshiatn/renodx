@@ -234,6 +234,15 @@ struct DeviceObjects {
   DXGI_FORMAT depth_format = DXGI_FORMAT_UNKNOWN;
   size_t history_index = 0;  // the one written this frame
   bool history_valid = false;
+  // DLSS below 100%: the depth stretched for the 3D sprites after the tone mapper (UpscaleDepth; made at its first use,
+  // `upscale_tried` then): its own context state, shaders, depth and rasterizer states and constants.
+  bool upscale_tried = false;
+  ComPtr<ID3DDeviceContextState> upscale_state;
+  ComPtr<ID3D11VertexShader> upscale_vertex_shader;
+  ComPtr<ID3D11PixelShader> upscale_pixel_shader;
+  ComPtr<ID3D11DepthStencilState> upscale_depth_state;
+  ComPtr<ID3D11RasterizerState> upscale_rasterizer;
+  ComPtr<ID3D11Buffer> upscale_constants;
 };
 
 struct Runtime {
@@ -251,6 +260,7 @@ struct Runtime {
   uint64_t camera_frame = UINT64_MAX;      // the frame `camera` and `scene_depth` are from (a sun light draw's)
   uint64_t tonemapped_frame = UINT64_MAX;  // after it: no jitter
   uint64_t applied_frame = UINT64_MAX;     // the last frame TAA / SMAA T2x ran
+  uint64_t depth_upscaled_frame = UINT64_MAX;  // DLSS below 100%: the last frame UpscaleDepth ran
   Camera camera;
   Camera previous_camera;
   std::vector<Upload> uploads;
@@ -870,6 +880,89 @@ inline ID3D11ShaderResourceView* CopyDepth(ID3D11Device* device, ID3D11DeviceCon
   return objects.depth_srv.Get();
 }
 
+// DLSS below 100%, after the tone mapper: the scene's depth (`depth` through `view`) holds the render size's picture in
+// its top-left corner while the game draws its 3D sprites at the display's size against it (the unit markers above the
+// units: they failed where the corner's picture stood). It is stretched over the whole target (nearest; depth_upscale.ps
+// from a copy, depth always written, stencil kept) in a context state of its own.
+inline void UpscaleDepth(ID3D11DeviceContext* native, ID3D11DepthStencilView* view, ID3D11Texture2D* depth) {
+  auto& objects = runtime.objects;
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  ComPtr<ID3D11Device1> device1;
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (FAILED(device.As(&device1)) || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  if (!objects.upscale_tried) {
+    objects.upscale_tried = true;
+    const D3D_FEATURE_LEVEL level = device1->GetFeatureLevel();
+    const UINT state_flags = ((device1->GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0
+                                  ? D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED
+                                  : 0);
+    const D3D11_DEPTH_STENCIL_DESC depth_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL,
+                                                 .DepthFunc = D3D11_COMPARISON_ALWAYS};
+    const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE, .DepthClipEnable = TRUE};
+    const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    if (FAILED(device1->CreateDeviceContextState(state_flags, &level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
+                                                 objects.upscale_state.GetAddressOf()))
+        || FAILED(device1->CreateVertexShader(__depth_upscale_vs.data(), __depth_upscale_vs.size(), nullptr,
+                                              objects.upscale_vertex_shader.GetAddressOf()))
+        || FAILED(device1->CreatePixelShader(__depth_upscale.data(), __depth_upscale.size(), nullptr, objects.upscale_pixel_shader.GetAddressOf()))
+        || FAILED(device1->CreateDepthStencilState(&depth_desc, objects.upscale_depth_state.GetAddressOf()))
+        || FAILED(device1->CreateRasterizerState(&rasterizer_desc, objects.upscale_rasterizer.GetAddressOf()))
+        || FAILED(device1->CreateBuffer(&constants_desc, nullptr, objects.upscale_constants.GetAddressOf()))) {
+      objects.upscale_state.Reset();
+      renodx::utils::log::w("[Total War] Anti-aliasing: the depth upscale for the UI's 3D sprites could not be made.");
+    }
+  }
+  if (!objects.upscale_state) return;
+  D3D11_TEXTURE2D_DESC desc = {};
+  depth->GetDesc(&desc);
+  ID3D11ShaderResourceView* copy = CopyDepth(device.Get(), native, depth);
+  if (copy == nullptr || desc.SampleDesc.Count != 1) return;
+  const std::array<float, 4> share = {static_cast<float>(runtime.render_width) / static_cast<float>(desc.Width),
+                                      static_cast<float>(runtime.render_height) / static_cast<float>(desc.Height), 0.f, 0.f};
+  native->UpdateSubresource(objects.upscale_constants.Get(), 0, nullptr, share.data(), 0, 0);
+  ComPtr<ID3DDeviceContextState> game_state;
+  context1->SwapDeviceContextState(objects.upscale_state.Get(), game_state.GetAddressOf());
+  const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(desc.Width), .Height = static_cast<float>(desc.Height), .MaxDepth = 1.f};
+  ID3D11Buffer* constants = objects.upscale_constants.Get();
+  native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  native->VSSetShader(objects.upscale_vertex_shader.Get(), nullptr, 0);
+  native->PSSetShader(objects.upscale_pixel_shader.Get(), nullptr, 0);
+  native->PSSetShaderResources(0, 1, &copy);
+  native->PSSetConstantBuffers(0, 1, &constants);
+  native->OMSetDepthStencilState(objects.upscale_depth_state.Get(), 0);
+  native->RSSetState(objects.upscale_rasterizer.Get());
+  native->RSSetViewports(1, &viewport);
+  native->OMSetRenderTargets(0, nullptr, view);
+  native->Draw(3, 0);
+  ID3D11ShaderResourceView* no_view = nullptr;
+  native->PSSetShaderResources(0, 1, &no_view);
+  native->OMSetRenderTargets(0, nullptr, nullptr);
+  context1->SwapDeviceContextState(game_state.Get(), nullptr);
+}
+
+// A draw of the game's 3D sprites (Install's `full_depth_shaders`) against the scene's depth: DLSS below 100%, after the
+// tone mapper, the depth stretched first (once a frame).
+constexpr auto OnFullDepthDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
+  const std::unique_lock lock(runtime.mutex);
+  if (runtime.depth_upscaled_frame == runtime.frame || runtime.tonemapped_frame != runtime.frame || !runtime.scene_depth
+      || runtime.render_width == 0 || runtime.render_width >= runtime.display_width) {
+    return {};
+  }
+  ComPtr<ID3D11DepthStencilView> view;
+  native->OMGetRenderTargets(0, nullptr, view.GetAddressOf());
+  if (!view) return {};
+  ComPtr<ID3D11Resource> resource;
+  view->GetResource(resource.GetAddressOf());
+  if (resource.Get() != runtime.scene_depth.Get()) return {};
+  runtime.depth_upscaled_frame = runtime.frame;
+  UpscaleDepth(native, view.Get(), runtime.scene_depth.Get());
+  return {};
+};
+
 // SMAA, CMAA2, SMAA T2x, TAA or DLAA / DLSS on `target` (the tone mapper's; `scaled`: DLSS, its top-left render size
 // holds the frame), the compute stage's bindings put back after.
 inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool scaled) {
@@ -1337,12 +1430,18 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
 
 // The camera uploads watched and the sun light draws' depth noted (`draws`: the addon's, kept while installed); the
 // moving draws drawn again for DLAA's motion (`motion`: the addon's, kept while installed); the game's passes that read
-// render-size textures at the display's size below 100% (`region_reads`) and the vertex shaders the addon replaces with
-// ones that read the render share (`vertex_shares`).
+// render-size textures at the display's size below 100% (`region_reads`), the vertex shaders the addon replaces with
+// ones that read the render share (`vertex_shares`) and the game's 3D sprites drawn against the scene's depth after the
+// tone mapper (`full_depth_shaders`, vertex shaders: the depth stretched for them below 100%).
 inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMotion& motion = {},
-                    std::span<const view_share::RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shares = {}) {
+                    std::span<const view_share::RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shares = {},
+                    std::span<const uint32_t> full_depth_shaders = {}) {
   frame_trace::Install();
   view_share::Install(region_reads, vertex_shares);
+  for (const uint32_t hash : full_depth_shaders) {
+    renodx::utils::command_action::Register(
+        internal::OnFullDepthDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   reshade::register_event<reshade::addon_event::map_buffer_region>(internal::OnMapBufferRegion);
   reshade::register_event<reshade::addon_event::unmap_buffer_region>(internal::OnUnmapBufferRegion);
   reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateBufferRegion);
@@ -1365,6 +1464,7 @@ inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMo
 
 inline void Uninstall() {
   view_share::Uninstall();
+  renodx::utils::command_action::Unregister(internal::OnFullDepthDraw);
   reshade::unregister_event<reshade::addon_event::map_buffer_region>(internal::OnMapBufferRegion);
   reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(internal::OnUnmapBufferRegion);
   reshade::unregister_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateBufferRegion);
