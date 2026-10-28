@@ -62,7 +62,9 @@ void main()
   const uint sun_index = (uint)g_sss_sun_direction;
   const float3 sun_direction = float3(LightingFloat(sun_index), LightingFloat(sun_index + 1u), LightingFloat(sun_index + 2u));
   const float4 light_projection = mul(float4(-sun_direction, 0.f), view_projection);
-  const int2 viewport_size = int2(g_sss_render_size);
+  // The full-size screen (bend_sss_gpu.hlsli maps its pixels into the rendered part below 100%: with the render size
+  // here too only the top-left part of the picture got shadows).
+  const int2 viewport_size = int2(g_sss_size);
   const int2 min_render_bounds = 0;
   const int2 max_render_bounds = viewport_size;
 

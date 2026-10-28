@@ -478,11 +478,10 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
                     ID3D11ShaderResourceView* gbuffer_depth, bool gbuffer_msaa, ID3D11Buffer* camera, ID3D11Buffer* lighting,
                     UINT sun_direction) {
   auto& objects = runtime.objects;
-  // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%.
+  // DLSS below 100%: Bend marches the full-size screen and maps its pixels into the rendered part, so the shadows'
+  // length (full-size pixels) is the same on screen as at 100%.
   const auto render = frame_history::RenderSize(objects.width, objects.height);
-  const float samples =
-      std::max(std::round(runtime.settings.samples * static_cast<float>(render[0]) / static_cast<float>(objects.width)),
-               runtime.settings.hard_samples + 4.f);
+  const float samples = std::max(runtime.settings.samples, runtime.settings.hard_samples + 4.f);
   const ShaderSettings settings = {
       .width = static_cast<float>(objects.width),
       .height = static_cast<float>(objects.height),
