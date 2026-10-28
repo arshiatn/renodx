@@ -270,15 +270,17 @@ static std::atomic_bool temporal = false;
 static std::atomic_bool scaling = false;
 // DLSS: the main view's viewport bound now (scaled from the display's size; texture_lod_bias.hpp).
 static std::atomic_bool main_view = false;
-// DLSS: the last viewports scaled and the game's own (put back after the tone mapper: the game draws on without binding
-// them again, Rome II's lens flares).
-struct BoundViewports {
+// DLSS: the last viewports and scissor rectangles scaled and the game's own (put back after the tone mapper: the game
+// draws on without binding them again, Rome II's lens flares; Attila's lens flare and unit markers kept the scissor).
+template <typename T>
+struct BoundScaled {
   std::mutex mutex;
   uint32_t count = 0;
-  std::array<reshade::api::viewport, 16> scaled = {};
-  std::array<reshade::api::viewport, 16> original = {};
+  std::array<T, 16> scaled = {};
+  std::array<T, 16> original = {};
 };
-static BoundViewports bound_viewports;
+static BoundScaled<reshade::api::viewport> bound_viewports;
+static BoundScaled<reshade::api::rect> bound_scissors;
 // A camera buffer this thread mapped for writing, and where.
 static thread_local ID3D11Buffer* mapped_buffer = nullptr;
 static thread_local std::byte* mapped_data = nullptr;
@@ -542,6 +544,12 @@ inline void OnBindScissorRects(reshade::api::command_list* cmd_list, uint32_t fi
   }
   if (changed) {
     cmd_list->bind_scissor_rects(first, count, scaled.data());
+    if (first == 0) {
+      const std::unique_lock scissor_lock(bound_scissors.mutex);
+      bound_scissors.count = count;
+      std::copy_n(scaled.begin(), count, bound_scissors.scaled.begin());
+      std::copy_n(rects, count, bound_scissors.original.begin());
+    }
   }
 }
 
@@ -1234,25 +1242,45 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
     internal::Apply(native, target.Get(), scaled);
   }
   if (scaled) {
-    // The game's viewports back if the scaled ones are still bound.
+    // The game's viewports and scissor rectangles back if the scaled ones are still bound.
     std::array<D3D11_VIEWPORT, 16> current = {};
     UINT count = static_cast<UINT>(current.size());
     native->RSGetViewports(&count, current.data());
-    const std::unique_lock viewport_lock(internal::bound_viewports.mutex);
-    const auto& bound = internal::bound_viewports;
-    bool still_scaled = count == bound.count && count != 0;
-    for (UINT index = 0; index < count && still_scaled; ++index) {
-      const auto& viewport = bound.scaled[index];
-      still_scaled = current[index].TopLeftX == viewport.x && current[index].TopLeftY == viewport.y
-                     && current[index].Width == viewport.width && current[index].Height == viewport.height;
+    {
+      const std::unique_lock viewport_lock(internal::bound_viewports.mutex);
+      const auto& bound = internal::bound_viewports;
+      bool still_scaled = count == bound.count && count != 0;
+      for (UINT index = 0; index < count && still_scaled; ++index) {
+        const auto& viewport = bound.scaled[index];
+        still_scaled = current[index].TopLeftX == viewport.x && current[index].TopLeftY == viewport.y
+                       && current[index].Width == viewport.width && current[index].Height == viewport.height;
+      }
+      if (still_scaled) {
+        std::array<D3D11_VIEWPORT, 16> original = {};
+        for (UINT index = 0; index < count; ++index) {
+          const auto& viewport = bound.original[index];
+          original[index] = {viewport.x, viewport.y, viewport.width, viewport.height, viewport.min_depth, viewport.max_depth};
+        }
+        native->RSSetViewports(count, original.data());
+      }
+    }
+    std::array<D3D11_RECT, 16> rects = {};
+    UINT rect_count = static_cast<UINT>(rects.size());
+    native->RSGetScissorRects(&rect_count, rects.data());
+    const std::unique_lock scissor_lock(internal::bound_scissors.mutex);
+    const auto& bound = internal::bound_scissors;
+    bool still_scaled = rect_count == bound.count && rect_count != 0;
+    for (UINT index = 0; index < rect_count && still_scaled; ++index) {
+      const auto& rect = bound.scaled[index];
+      still_scaled = rects[index].left == rect.left && rects[index].top == rect.top && rects[index].right == rect.right
+                     && rects[index].bottom == rect.bottom;
     }
     if (still_scaled) {
-      std::array<D3D11_VIEWPORT, 16> original = {};
-      for (UINT index = 0; index < count; ++index) {
-        const auto& viewport = bound.original[index];
-        original[index] = {viewport.x, viewport.y, viewport.width, viewport.height, viewport.min_depth, viewport.max_depth};
+      for (UINT index = 0; index < rect_count; ++index) {
+        const auto& rect = bound.original[index];
+        rects[index] = {rect.left, rect.top, rect.right, rect.bottom};
       }
-      native->RSSetViewports(count, original.data());
+      native->RSSetScissorRects(rect_count, rects.data());
     }
   }
   frame_trace::Mark("anti-aliasing done");
@@ -1322,11 +1350,12 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
 
 // The camera uploads watched and the sun light draws' depth noted (`draws`: the addon's, kept while installed); the
 // moving draws drawn again for DLAA's motion (`motion`: the addon's, kept while installed); the game's passes that read
-// render-size textures at the display's size below 100% (`region_reads`).
+// render-size textures at the display's size below 100% (`region_reads`) and the vertex shaders the addon replaces with
+// ones that read the render share (`vertex_shares`).
 inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMotion& motion = {},
-                    std::span<const view_share::RegionRead> region_reads = {}) {
+                    std::span<const view_share::RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shares = {}) {
   frame_trace::Install();
-  view_share::Install(region_reads);
+  view_share::Install(region_reads, vertex_shares);
   reshade::register_event<reshade::addon_event::map_buffer_region>(internal::OnMapBufferRegion);
   reshade::register_event<reshade::addon_event::unmap_buffer_region>(internal::OnUnmapBufferRegion);
   reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateBufferRegion);

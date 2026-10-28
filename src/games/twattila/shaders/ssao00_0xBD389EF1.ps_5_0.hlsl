@@ -48,11 +48,14 @@ Texture2D<float4> jitter_texture_sampler : register(t1);
 
 #define cmp -
 
-// The game's HBAO (3Dmigoto decompile, unchanged).
+// The game's HBAO (3Dmigoto decompile; below 100% its positions and radius in the view's part of the textures).
 float4 GameAmbientOcclusion(float4 v0)
 {
   float4 o0;
   float4 r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,r11,r12,r13,r14,r15,r16,r17,r18,r19,r20,r21,r22,r23,r24,r25;
+  // DLSS below 100%: the view fills the textures' top-left corner (g_viewport_dimensions the render size), so a
+  // texture uv x this is the view's own uv (1 otherwise): positions from it, the radius back into texture uv.
+  const float2 view_scale = g_screen_size.xy * g_viewport_dimensions.zw;
 
   r0.x = 0.5 * g_VerticalFieldOfView;
   sincos(r0.x, r0.x, r1.x);
@@ -63,14 +66,14 @@ float4 GameAmbientOcclusion(float4 v0)
   r0.zw = g_vpos_texel_offset + v0.xy;
   r1.xy = g_screen_size.zw * r0.zw;
   r2.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r1.xy, 0).yzxw;
-  r2.xy = r1.xy * float2(2,-2) + float2(-1,1);
+  r2.xy = (r1.xy * view_scale) * float2(2,-2) + float2(-1,1);
   r2.w = 1;
   r1.z = dot(r2.xyzw, inv_projection._m02_m12_m22_m32);
   r1.w = dot(r2.xyzw, inv_projection._m03_m13_m23_m33);
   r3.z = r1.z / r1.w;
   r1.z = 0.5 * g_R;
   r1.zw = r1.zz * r0.xy;
-  r1.zw = r1.zw / r3.zz;
+  r1.zw = r1.zw / r3.zz / view_scale;
   r2.zw = g_AOResolution.xy * r1.zw;
   r2.z = min(r2.z, r2.w);
   r2.z = min(5, r2.z);
@@ -93,7 +96,7 @@ float4 GameAmbientOcclusion(float4 v0)
     r5.z = 0;
     r6.xyzw = r0.zwzw * g_screen_size.zwzw + r5.xzzy;
     r7.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r6.xy, 0).yzxw;
-    r7.xy = r6.xy * float2(2,-2) + float2(-1,1);
+    r7.xy = (r6.xy * view_scale) * float2(2,-2) + float2(-1,1);
     r7.w = 1;
     r2.x = dot(r7.xyzw, inv_projection._m02_m12_m22_m32);
     r2.y = dot(r7.xyzw, inv_projection._m03_m13_m23_m33);
@@ -103,7 +106,7 @@ float4 GameAmbientOcclusion(float4 v0)
     r5.w = -r5.x;
     r2.xy = r0.zw * g_screen_size.zw + r5.wz;
     r7.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r2.xy, 0).yzxw;
-    r7.xy = r2.xy * float2(2,-2) + float2(-1,1);
+    r7.xy = (r2.xy * view_scale) * float2(2,-2) + float2(-1,1);
     r7.w = 1;
     r2.x = dot(r7.xyzw, inv_projection._m02_m12_m22_m32);
     r2.y = dot(r7.xyzw, inv_projection._m03_m13_m23_m33);
@@ -111,7 +114,7 @@ float4 GameAmbientOcclusion(float4 v0)
     r2.xy = r7.xy * r0.xy;
     r9.xy = r2.xy * r9.zz;
     r7.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r6.zw, 0).yzxw;
-    r7.xy = r6.zw * float2(2,-2) + float2(-1,1);
+    r7.xy = (r6.zw * view_scale) * float2(2,-2) + float2(-1,1);
     r7.w = 1;
     r2.x = dot(r7.xyzw, inv_projection._m02_m12_m22_m32);
     r2.y = dot(r7.xyzw, inv_projection._m03_m13_m23_m33);
@@ -120,7 +123,7 @@ float4 GameAmbientOcclusion(float4 v0)
     r6.xy = r2.xy * r6.zz;
     r2.xy = r5.zy * float2(1,-1) + r1.xy;
     r7.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r2.xy, 0).yzxw;
-    r7.xy = r2.xy * float2(2,-2) + float2(-1,1);
+    r7.xy = (r2.xy * view_scale) * float2(2,-2) + float2(-1,1);
     r7.w = 1;
     r2.x = dot(r7.xyzw, inv_projection._m02_m12_m22_m32);
     r2.y = dot(r7.xyzw, inv_projection._m03_m13_m23_m33);
@@ -226,7 +229,7 @@ float4 GameAmbientOcclusion(float4 v0)
       r20.zw = float2(-0.5,-0.5) + r20.zw;
       r20.zw = -r20.zw * r5.xy + r18.xy;
       r21.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r19.xy, 0).xyzw;
-      r11.xy = r19.xy * float2(2,-2) + float2(-1,1);
+      r11.xy = (r19.xy * view_scale) * float2(2,-2) + float2(-1,1);
       r11.z = r21.x;
       r21.x = dot(r11.xyzw, inv_projection._m02_m12_m22_m32);
       r11.z = dot(r11.xyzw, inv_projection._m03_m13_m23_m33);
@@ -234,7 +237,7 @@ float4 GameAmbientOcclusion(float4 v0)
       r11.xy = r11.xy * r0.xy;
       r21.xy = r11.xy * r21.zz;
       r22.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r19.zw, 0).xyzw;
-      r12.xy = r19.zw * float2(2,-2) + float2(-1,1);
+      r12.xy = (r19.zw * view_scale) * float2(2,-2) + float2(-1,1);
       r12.z = r22.x;
       r11.z = dot(r12.xyzw, inv_projection._m02_m12_m22_m32);
       r12.z = dot(r12.xyzw, inv_projection._m03_m13_m23_m33);
@@ -242,7 +245,7 @@ float4 GameAmbientOcclusion(float4 v0)
       r12.xy = r12.xy * r0.xy;
       r22.xy = r12.xy * r22.zz;
       r23.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r20.xy, 0).xyzw;
-      r13.xy = r20.xy * float2(2,-2) + float2(-1,1);
+      r13.xy = (r20.xy * view_scale) * float2(2,-2) + float2(-1,1);
       r13.z = r23.x;
       r11.z = dot(r13.xyzw, inv_projection._m02_m12_m22_m32);
       r12.z = dot(r13.xyzw, inv_projection._m03_m13_m23_m33);
@@ -250,7 +253,7 @@ float4 GameAmbientOcclusion(float4 v0)
       r13.xy = r13.xy * r0.xy;
       r23.xy = r13.xy * r23.zz;
       r24.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r20.zw, 0).xyzw;
-      r14.xy = r20.zw * float2(2,-2) + float2(-1,1);
+      r14.xy = (r20.zw * view_scale) * float2(2,-2) + float2(-1,1);
       r14.z = r24.x;
       r11.z = dot(r14.xyzw, inv_projection._m02_m12_m22_m32);
       r12.z = dot(r14.xyzw, inv_projection._m03_m13_m23_m33);

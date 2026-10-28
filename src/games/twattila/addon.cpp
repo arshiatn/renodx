@@ -963,6 +963,10 @@ constexpr std::array<twattila::view_share::RegionRead, 3> RENDER_SCALE_READS = {
     {.shader_hash = 0xB386A8BC, .slots = 0b11},    // shadow depth analysis
     {.shader_hash = 0x125A0DD5, .slots = 0b1000},  // grass depth pre-pass: the terrain depth (grass_fade.hpp)
 }};
+// The game's vertex shaders the addon replaces with ones that read the render share below 100% (cb12).
+constexpr std::array<uint32_t, 1> RENDER_SCALE_VERTEX_SHADERS = {
+    0x7C04E880,  // lens flare: the sun's occlusion counted at the render size (lensflare04)
+};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x4816852C, .standard = true},
@@ -1753,7 +1757,7 @@ bool AttachAddon() {
                                                         .unit_records_compute_shader = __motion_unit_records,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS);
+                                   RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection));
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.

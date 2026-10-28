@@ -600,8 +600,9 @@ inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info)
   runtime.pipelines.erase(info.pipeline.handle);
 }
 
-// cb12 for a patched (or render_scale) shader's draw / dispatch: `values` (xy the draw's share, zw the frame's).
-inline void Bind(ID3D11DeviceContext* native, const std::array<float, 4>& values, bool compute) {
+// cb12 for a patched (or render_scale) shader's draw / dispatch: `values` (xy the draw's share, zw the frame's), for
+// the compute, pixel or (the addon's render_scale vertex shaders) vertex stage.
+inline void Bind(ID3D11DeviceContext* native, const std::array<float, 4>& values, reshade::api::pipeline_stage stage) {
   const std::unique_lock lock(runtime.mutex);
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
@@ -619,8 +620,10 @@ inline void Bind(ID3D11DeviceContext* native, const std::array<float, 4>& values
     runtime.uploaded = values;
   }
   ID3D11Buffer* buffer = runtime.constants.Get();
-  if (compute) {
+  if (stage == reshade::api::pipeline_stage::compute_shader) {
     native->CSSetConstantBuffers(SLOT, 1, &buffer);
+  } else if (stage == reshade::api::pipeline_stage::vertex_shader) {
+    native->VSSetConstantBuffers(SLOT, 1, &buffer);
   } else {
     native->PSSetConstantBuffers(SLOT, 1, &buffer);
   }
@@ -710,7 +713,19 @@ constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::uti
       }
     }
   }
-  Bind(native, values, COMPUTE);
+  Bind(native, values, COMPUTE ? reshade::api::pipeline_stage::compute_shader : reshade::api::pipeline_stage::pixel_shader);
+  return {};
+};
+
+// A draw of the addon's vertex shaders that read the frame's share (Install's `vertex_shaders`): cb12 for the vertex
+// stage while the frame is scaled.
+constexpr auto OnVertexShareDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const float frame_x = frame_share_x.load(std::memory_order_relaxed);
+  if (frame_x == 0.f) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  Bind(native, {1.f, 1.f, frame_x, frame_share_y.load(std::memory_order_relaxed)}, reshade::api::pipeline_stage::vertex_shader);
   return {};
 };
 
@@ -730,6 +745,7 @@ inline void Update(ID3D11DeviceContext* context, bool scaled, const std::array<u
   ID3D11Buffer* none = nullptr;
   context->PSSetConstantBuffers(internal::SLOT, 1, &none);
   context->CSSetConstantBuffers(internal::SLOT, 1, &none);
+  context->VSSetConstantBuffers(internal::SLOT, 1, &none);
   internal::runtime.bound = false;
 }
 
@@ -758,7 +774,8 @@ struct RegionRead {
   uint64_t slots = 0;  // bit per texture slot
 };
 
-inline void Install(std::span<const RegionRead> region_reads = {}) {
+// `vertex_shaders`: the game's vertex shaders (by hash) the addon replaces with render_scale ones (cb12 at b12).
+inline void Install(std::span<const RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shaders = {}) {
   {
     const std::unique_lock lock(internal::runtime.mutex);
     for (const auto& read : region_reads) internal::runtime.region_reads[read.shader_hash] |= read.slots;
@@ -768,6 +785,10 @@ inline void Install(std::span<const RegionRead> region_reads = {}) {
   renodx::utils::pipeline::RegisterOnDestroyCallback(internal::OnDestroyPipeline);
   renodx::utils::command_action::Register(internal::OnCommand, {.command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW
                                                                                  | renodx::utils::command_action::COMMAND_TYPE_DISPATCH});
+  for (const uint32_t hash : vertex_shaders) {
+    renodx::utils::command_action::Register(
+        internal::OnVertexShareDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 }
 
 inline void Uninstall() {
@@ -775,6 +796,7 @@ inline void Uninstall() {
   renodx::utils::pipeline::UnregisterOnInitCallback(internal::OnInitPipeline);
   renodx::utils::pipeline::UnregisterOnDestroyCallback(internal::OnDestroyPipeline);
   renodx::utils::command_action::Unregister(internal::OnCommand);
+  renodx::utils::command_action::Unregister(internal::OnVertexShareDraw);
 }
 
 inline void OnDestroyDevice(ID3D11Device* device) {
