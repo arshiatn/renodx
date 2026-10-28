@@ -332,7 +332,8 @@ static State state;
 // The host draws motion this frame (else the moving draws return at once).
 static std::atomic_bool active = false;
 // Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only, 4 unit records with
-// the depth buffer kept bound, 5 unit records' bindings without their draw.
+// the depth buffer kept bound, 5 unit records' bindings without their draw, 6 unit records' draw without UAVs, 7 unit
+// records' draw with the game's targets kept bound (no UAVs, no pixel shader).
 static std::atomic_uint32_t test = 0;
 
 // The device's shaders and constants; false: not available.
@@ -959,11 +960,15 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
     native->GSSetShader(nullptr, nullptr, 0);
     native->VSSetShader(objects.record_shaders[index].Get(), nullptr, 0);
-    native->PSSetShader(objects.unit_record_pixel_shader.Get(), nullptr, 0);
-    native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
     const uint32_t test_mode = test.load(std::memory_order_relaxed);
+    native->PSSetShader((test_mode == 7 ? nullptr : objects.unit_record_pixel_shader.Get()), nullptr, 0);
+    native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
     ID3D11DepthStencilView* record_depth = (test_mode == 4 ? depth_stencil.Get() : nullptr);
-    native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(table.size()), table.data(), nullptr);
+    const auto& record_table = (test_mode == 6 ? NO_TABLE : table);
+    if (test_mode != 7) {
+      native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(record_table.size()),
+                                                        record_table.data(), nullptr);
+    }
     native->OMSetDepthStencilState(objects.capture_depth_state.Get(), 0);
     native->RSSetState(objects.capture_rasterizer.Get());
     // Not the game's blend state: its alpha to coverage would drop the point (no colour out) and its writes.
@@ -983,7 +988,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     if (overlap.end != nullptr) {
       overlap.end(native);
     }
-    native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
+    if (test_mode != 7) {
+      native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, record_depth, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
+    }
     native->IASetPrimitiveTopology(topology);
     native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   }
