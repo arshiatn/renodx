@@ -877,6 +877,16 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       compaction, moving drop, grass clear / solid, clusters and refit paths: all pass. Diagnostic: "placed vs X: N
       vertices x M instances, VB strides / usage, leaf mask" for the first two draws of each placed shader (trees:
       are TEXCOORD0-2 per instance? leaf mask format?). NEXT: ATN retest; read the placed-vs lines for trees.
+    - 2026-10-28 20:00, ATN's second test: circle still black under the camera, shadows vibrating, FG smears the ReShade
+      menu. Log: trees instanced as assumed (VB1 per instance, stride 108 = TEXCOORD0-6; leaf mask BC1 1024x512);
+      GPU ms trace 38-60, paths 24-31 (4K native, AO 4 rays 10 m, bounce 7 rays 50 m, PT 3 bounces, reflections 4,
+      point lights, fog, grass, soft sun: the real scene's cost); the status was logged every frame (timings first).
+      CAUSE of the circle: Attila's terrain VS pushes the ground 9 cm away from height 0 from 20-30 m off the camera
+      (camera_position.xz); captured at one camera it lifted the RT ground over the one drawn near the next (and
+      re-captures changed it: vibrating). FIXES: all 8 Attila rt_capture_terrain_* use min(sign, 0) (no push above 0,
+      all below: never above the drawn ground); Thrones / Rome II copies still have it (port round); helper timings
+      after the status (Status() = status_ + timings_); FG off while ReShade's menu is open (frame_generation
+      OnReshadePresent multiplier 0). Built, helper25 copied; untested in game.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

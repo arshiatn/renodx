@@ -101,12 +101,11 @@ void GameMain(
   r0.z = cmp(r0.x < 0);
   r0.y = (int)-r0.y + (int)r0.z;
   r0.y = (int)r0.y;
-  r0.zw = -camera_position.xz + r2.xz;
-  r0.z = dot(r0.zw, r0.zw);
-  r0.z = sqrt(r0.z);
-  r0.z = -20 + r0.z;
-  r0.z = saturate(0.100000001 * r0.z);
-  r0.y = r0.z * r0.y;
+  // Ray tracing: the game pushes its ground 9 cm away from height 0 from 20 to 30 m off the camera; captured at one
+  // camera, the push lifted the ground over the one drawn near the next (a black circle under the camera, shadows
+  // changing as the ground was captured again, ATN 2026-10-28). As low as the drawn ground gets instead: no push above
+  // height 0, all of it below.
+  r0.y = min(r0.y, 0);
   r2.y = r0.y * 0.0900000036 + r0.x;
   r2.w = 1;
   o0.x = dot(r2.xyzw, motion_rows[0]);

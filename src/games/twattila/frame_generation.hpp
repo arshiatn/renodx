@@ -94,7 +94,7 @@ struct State {
   bool kept = false;        // KeepFrame ran since the last present
   bool hudless = false;     // and drew the HUD-less image
   bool presenting = false;  // the helper's window shows (an off request hides it)
-  bool overlay_open = false;  // ReShade's menu: only the frame has it, so the debug views wait while it is open
+  bool overlay_open = false;  // ReShade's menu: only the frame has it, so no generated frames while it is open
   bool output_pass = false;   // the HUD-less images come from a later pass of the output (KeepOutput), not the tone mapper
   bool output_drawn = false;  // this frame's did
   Inputs inputs;
@@ -123,22 +123,24 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     // A kept frame without its later output pass: the next ones take the tone mapper's image again.
     if (kept && !state.output_drawn) state.output_pass = false;
     const Settings settings = state.settings;
+    // ReShade's menu open: the game's frames only (generated ones warped the menu, ATN 2026-10-28).
+    const uint32_t multiplier = (state.overlay_open ? 0u : settings.multiplier);
     // Off with the window hidden already, or unavailable here: nothing to ask.
-    if ((settings.multiplier == 0 && !state.presenting) || dlaa_bridge::FrameGenerationFailed()) return;
+    if ((multiplier == 0 && !state.presenting) || dlaa_bridge::FrameGenerationFailed()) return;
     auto& bridge = dlaa_bridge::bridge;
     if (!bridge.fg_frame || bridge.fg_format != back_desc.Format || bridge.width != back_desc.Width || bridge.height != back_desc.Height) return;
-    if (settings.multiplier != 0) {
+    if (multiplier != 0) {
       dlaa_bridge::BeforeSharedWrites(native);
       native->CopyResource(bridge.fg_frame.Get(), back_texture.Get());
     }
-    const bool hudless = settings.multiplier != 0 && kept && std::exchange(state.hudless, false);
+    const bool hudless = multiplier != 0 && kept && std::exchange(state.hudless, false);
     const Inputs& inputs = state.inputs;
-    request.multiplier = settings.multiplier;
+    request.multiplier = multiplier;
     request.reflex_boost = settings.reflex_boost;
     request.frame_limit = settings.frame_limit;
     request.preset = settings.preset;
     request.hud_recomposition = settings.hud_recomposition;
-    request.debug_view = (state.overlay_open ? 0u : settings.debug_view);
+    request.debug_view = settings.debug_view;
     request.hudless = hudless;
     request.inputs = kept;
     request.frame_index = ++state.frame_index;

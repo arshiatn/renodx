@@ -675,7 +675,7 @@ class RtScene12 {
   }
 
   [[nodiscard]] bool Ready() const { return fence_ != nullptr; }
-  [[nodiscard]] const std::string& Status() const { return status_; }
+  [[nodiscard]] std::string Status() const { return status_ + timings_; }
   [[nodiscard]] bool Dxr12() const { return dxr12_; }
 
   // One request: the frame's captures into BLASes, the TLAS of what it drew, the trace; the queue waits for the addon's
@@ -702,6 +702,7 @@ class RtScene12 {
       if (pending.instances != 0) free_instances_.Give(pending.first_instance, pending.instances);
       return true;
     });
+    timings_.clear();
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, slot_index, &slot);
     if (timestamps_) {
@@ -709,10 +710,9 @@ class RtScene12 {
       LARGE_INTEGER cpu_frequency;
       QueryPerformanceCounter(&cpu_recorded);
       QueryPerformanceFrequency(&cpu_frequency);
-      status_ = std::format("CPU ms: wait {:.2f}, record {:.2f} | ",
-                             static_cast<double>(cpu_waited.QuadPart - cpu_start.QuadPart) * 1000.0 / cpu_frequency.QuadPart,
-                             static_cast<double>(cpu_recorded.QuadPart - cpu_waited.QuadPart) * 1000.0 / cpu_frequency.QuadPart)
-                + status_;
+      timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}",
+                              static_cast<double>(cpu_waited.QuadPart - cpu_start.QuadPart) * 1000.0 / cpu_frequency.QuadPart,
+                              static_cast<double>(cpu_recorded.QuadPart - cpu_waited.QuadPart) * 1000.0 / cpu_frequency.QuadPart);
     }
     traced_ = traced_ || recorded;
     if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
@@ -731,8 +731,7 @@ class RtScene12 {
       LARGE_INTEGER submit_frequency;
       QueryPerformanceCounter(&submit_end);
       QueryPerformanceFrequency(&submit_frequency);
-      status_ = std::format("submit {:.2f} | ", static_cast<double>(submit_end.QuadPart - submit_start.QuadPart) * 1000.0 / submit_frequency.QuadPart)
-                + status_;
+      timings_ += std::format(", submit {:.2f}", static_cast<double>(submit_end.QuadPart - submit_start.QuadPart) * 1000.0 / submit_frequency.QuadPart);
     }
     return recorded;
   }
@@ -2224,7 +2223,7 @@ class RtScene12 {
                           units_clustered ? std::format("{} clusters (Mega Geometry)", clusters_built)
                                           : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
     if (timestamps_) {
-      status_ = std::format("GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, paths {:.2f} | ", gpu_ms_[0], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3]) + status_;
+      timings_ = std::format(" | GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, paths {:.2f}", gpu_ms_[0], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3]);
     }
     return true;
   }
@@ -2452,6 +2451,7 @@ class RtScene12 {
   std::vector<Release> releases_;
   bool failed_ = false;
   std::string status_ = "Ray tracing off";
+  std::string timings_;  // the last trace's (GPU, CPU, submit; after the status)
 };
 
 }  // namespace twattila::dlaa_helper
