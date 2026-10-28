@@ -322,13 +322,14 @@ inline uint64_t ShareWithHelper(HANDLE handle) {
   return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(duplicate));
 }
 
-// The last request's answer (once the helper read it and signalled its value; a steady one's usually long there);
-// false: none (it stopped or did not answer: off, and a value the game's GPU waits for signalled from here).
-inline bool Answer() {
+// The last request's answer (once the helper read it and signalled its value; a steady one's usually long there),
+// waited for `timeout` ms at most; false: none (it stopped or did not answer: off, and a value the game's GPU waits for
+// signalled from here).
+inline bool Answer(DWORD timeout = 5000) {
   bridge.pending = false;
   const auto& shared = *bridge.shared;
   const std::array<HANDLE, 2> handles = {bridge.done, bridge.process};
-  const bool answered = WaitForMultipleObjects(2, handles.data(), FALSE, 5000) == WAIT_OBJECT_0
+  const bool answered = WaitForMultipleObjects(2, handles.data(), FALSE, timeout) == WAIT_OBJECT_0
                         && shared.done_value >= bridge.value;
   if (const uint64_t waited = bridge.waiting.exchange(0); waited > (answered ? shared.done_value : 0)) Rescue(waited);
   if (!answered) return Fail("DLAA: NVIDIA's helper did not answer (off).");
@@ -579,7 +580,8 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     context4->Wait(bridge.fence.Get(), bridge.value + 1);
     return true;
   }
-  if (!Answer()) return false;
+  // Waited for: the first after new shared objects may start NVIDIA's features (Streamline and DLSS-G: seconds when cold).
+  if (!Answer(20000)) return false;
   bridge.steady[kind] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
   // Nothing of the helper's to read after a present or without a result: its value is waited for later (`deferred`).
   if (shared.evaluated == 0 || kind == PRESENT_FRAME) {

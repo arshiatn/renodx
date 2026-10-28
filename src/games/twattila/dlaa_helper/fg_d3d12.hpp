@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <format>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -239,12 +240,11 @@ class FrameGeneration12 {
       status_ = "Frame generation off";
       return false;
     }
-    // NVIDIA's preset into the driver profile before DLSS-G starts (it reads the profile once); later changes apply at
-    // the next start.
+    // NVIDIA's preset into the driver profile (DLSS-G reads it when it starts: a new one applies at the next start), on
+    // a thread of its own (loading the driver's profiles takes long).
     if (version_ >= 12 && shared->fg_preset != preset_) {
-      preset_saved_ = SavePreset(shared->fg_preset);
-      if (preset_ == UINT32_MAX) started_preset_ = shared->fg_preset;
       preset_ = shared->fg_preset;
+      std::thread([this, preset = preset_] { preset_result_.store(SavePreset(preset)); }).detach();
     }
     if (!PrepareWindow(game_window)) {
       SignalOnly(value);
@@ -392,6 +392,9 @@ class FrameGeneration12 {
   };
 
   inline static const sl::ViewportHandle VIEWPORT = {0u};
+  static constexpr int PRESET_HELD = 0;
+  static constexpr int PRESET_SAVED = 1;
+  static constexpr int PRESET_FAILED = 2;
   static constexpr DWORD FENCE_TIMEOUT = 10'000;
 
   bool Fail(const std::string& status) {
@@ -466,18 +469,21 @@ class FrameGeneration12 {
 #if __has_include(<nvapi.h>)
   // NVIDIA's frame generation preset in the driver profile of this exe (DLSS-G's key 0x10E41DF1, which it reads from
   // there when it starts: 1-3 A-C; 0 the driver's own, the key removed). A, B and C as nvngx_dlssg 310.9 applies them:
-  // A plain, B the HUD recomposed, C "FG Lite" candidate blending. False: not saved (NVAPI or the driver refused).
-  static bool SavePreset(uint32_t preset) {
+  // A plain, B the HUD recomposed, C "FG Lite" candidate blending. PRESET_HELD (the profile had it), PRESET_SAVED or
+  // PRESET_FAILED (NVAPI or the driver refused).
+  static int SavePreset(uint32_t preset) {
+    static std::mutex saving;
+    const std::unique_lock lock(saving);
     constexpr NvU32 RENDER_PRESET = 0x10E41DF1;
     const auto unicode = [](const std::wstring& text, NvAPI_UnicodeString* out) {
       const size_t length = std::min(text.size(), static_cast<size_t>(NVAPI_UNICODE_STRING_MAX - 1));
       for (size_t index = 0; index < length; ++index) (*out)[index] = static_cast<NvU16>(text[index]);
       (*out)[length] = 0;
     };
-    if (NvAPI_Initialize() != NVAPI_OK) return false;
+    if (NvAPI_Initialize() != NVAPI_OK) return PRESET_FAILED;
     NvDRSSessionHandle session = nullptr;
-    if (NvAPI_DRS_CreateSession(&session) != NVAPI_OK) return false;
-    bool saved = false;
+    if (NvAPI_DRS_CreateSession(&session) != NVAPI_OK) return PRESET_FAILED;
+    int saved = PRESET_FAILED;
     if (NvAPI_DRS_LoadSettings(session) == NVAPI_OK) {
       std::wstring path(MAX_PATH, L'\0');
       path.resize(GetModuleFileNameW(nullptr, path.data(), MAX_PATH));
@@ -505,14 +511,14 @@ class FrameGeneration12 {
         }
       }
       if (profile == nullptr) {
-        saved = (preset == 0);
+        saved = (preset == 0 ? PRESET_HELD : PRESET_FAILED);
       } else {
         auto setting = std::make_unique<NVDRS_SETTING>();
         setting->version = NVDRS_SETTING_VER;
         const bool held = NvAPI_DRS_GetSetting(session, profile, RENDER_PRESET, setting.get()) == NVAPI_OK
                           && setting->settingLocation == NVDRS_CURRENT_PROFILE_LOCATION;
         if (preset == 0 ? !held : (held && setting->u32CurrentValue == preset)) {
-          saved = true;
+          saved = PRESET_HELD;
         } else {
           NvAPI_Status status = NVAPI_OK;
           if (preset == 0) {
@@ -525,7 +531,7 @@ class FrameGeneration12 {
             setting->u32CurrentValue = preset;
             status = NvAPI_DRS_SetSetting(session, profile, setting.get());
           }
-          saved = status == NVAPI_OK && NvAPI_DRS_SaveSettings(session) == NVAPI_OK;
+          saved = (status == NVAPI_OK && NvAPI_DRS_SaveSettings(session) == NVAPI_OK) ? PRESET_SAVED : PRESET_FAILED;
         }
       }
     }
@@ -533,7 +539,7 @@ class FrameGeneration12 {
     return saved;
   }
 #else
-  static bool SavePreset(uint32_t preset) { return preset == 0; }
+  static int SavePreset(uint32_t preset) { return preset == 0 ? PRESET_HELD : PRESET_FAILED; }
 #endif
 
   // The window over the game's client area (made with its swap chain at the frame's size and format; resized with the
@@ -747,9 +753,10 @@ class FrameGeneration12 {
       status_ = "Frame generation: paused (DLAA is not running on this frame)";
     } else {
       std::string preset;
-      if (!preset_saved_) {
+      const int preset_result = preset_result_.load();
+      if (preset_result == PRESET_FAILED) {
         preset = " (preset not saved: the NVIDIA driver profile could not be written)";
-      } else if (preset_ != started_preset_) {
+      } else if (preset_result == PRESET_SAVED) {
         preset = " (the preset applies after restarting the game)";
       } else if (preset_ >= 1 && preset_ <= 3) {
         preset = std::format(" (preset {})", "ABC"[preset_ - 1]);
@@ -808,10 +815,9 @@ class FrameGeneration12 {
   ComPtr<ID3D12DescriptorHeap> ui_heap_;
   ComPtr<ID3D12Resource> ui_;
 
-  // NVIDIA's preset: last asked (UINT32_MAX: not yet), as DLSS-G started with it, whether the profile holds it.
+  // NVIDIA's preset: last asked (UINT32_MAX: not yet) and its save (SavePreset's, from its thread).
   uint32_t preset_ = UINT32_MAX;
-  uint32_t started_preset_ = 0;
-  bool preset_saved_ = true;
+  std::atomic_int preset_result_ = PRESET_HELD;
 
   // The window over the game's, its thread and swap chain.
   HWND parent_ = nullptr;

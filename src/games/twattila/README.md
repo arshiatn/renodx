@@ -2,6 +2,30 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v83 (2026-10-28; the night batch untested in game, only smoke-run in a replay)
+
+- **Frame generation**:
+  - **HUD Recomposition** (on by default) lays the HUD over the generated frames instead of warping it with the scene,
+    so the HUD no longer smears. The helper takes the UI as the pixels where the presented frame differs from its
+    HUD-less image.
+  - **Frame Generation Preset** (Driver's / A / B / C) chooses NVIDIA's DLSS-G preset. DLSS-G reads it from the NVIDIA
+    driver profile of renodx-tw-dlaa64.exe (key 0x10E41DF1), so the helper writes it there; it applies after a game
+    restart. In nvngx_dlssg 310.9: A plain, B UI recomposition, C "FG Lite" (lighter).
+  - The game's GPU no longer waits for the helper's copy right after each present, only before its next writes.
+  - The Frame Rate Limit slider shows its value.
+  - NVIDIA Control Panel's global VSync applies to renodx-tw-dlaa64.exe and caps frame generation at the refresh rate:
+    turn it off for that exe.
+  - renodx-tw-dlaa64.exe **helper23** (bridge v12) ships with this version and is needed by it.
+- **Below 100% render scale (DLSS modes)**:
+  - The lens flare and the unit markers above the units show again (the scaled scissor rectangles stayed bound after
+    the tone mapper). The flare's sun occlusion is counted at the render size, and is now corrected for it.
+  - Fixed: the bloom's position, the game's SSR, Ambient Occlusion Game's (its positions and radius).
+  - Fixed: screen-space shadows (no lines at some scales).
+  - The grass's 100 m cut now follows Grass Height Distance, so grass shows past 100 m.
+- DLSS presets **L / M** no longer crush dark tones (they get the colour's square root) or pulse on armour.
+- Less CPU per frame: the DLSS helper's requests no longer wait for it, and object motion keeps its bindings across
+  moving draws.
+
 ## v82 (2026-10-27, tested in game in battle replays; torches untested)
 
 - Torch light and the battle fog are right again below 100% render scale (the DLSS modes): the point light and fog
