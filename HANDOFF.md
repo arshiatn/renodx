@@ -807,6 +807,12 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       coordinate by the draw's share (Kind::WHOLE; split projections left). Replaced readers: pointlight00/02/04/06 and
       ssr00/01 (render_scale.hlsli, DrawRenderShare: that keeps the auto patch off them). WARP check: scratchpad
       scale_audit\patch_test_whole.exe on the three dumps. Zips twattila_v89, twrome2_v41, twthronesofbritannia_v41.
+      v90: ATN's FG debug views: HUD-less much darker, UI layer = whole screen. Cause: KeepFrame drew the HUD-less from
+      the tone mapper's output (t00 8BF6B657: linear, before hdr_to_screen's PsychoV / paper white / gamma 2 encoding),
+      so fg_ui saw every pixel differ. Now OnTonemapDrawn's later calls of the frame (hdr_to_screen t01-t08, applied_frame
+      == frame) redraw it (frame_generation::KeepOutput; KeepFrame skips its own draw while frames have that pass).
+      Possibly behind the earlier "FG smears / judders" reports: retest FG with HUD Recomposition. Zips twattila_v90,
+      twrome2_v42, twthronesofbritannia_v42.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

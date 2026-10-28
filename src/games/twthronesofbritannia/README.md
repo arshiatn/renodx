@@ -2,6 +2,11 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twthronesofbritannia.addon32` (32-bit game).
 
+## v42 (2026-10-28, untested in game)
+
+- Frame generation's HUD-less image from hdr_to_screen (the HDR output), not the tone mapper before it (Attila v90):
+  it was darker, and HUD Recomposition took the whole screen for UI.
+
 ## v41 (2026-10-28, untested in game)
 
 - **Below 100%, the AO blur and the water refraction keep their 100% detail** (Attila v89): they draw their whole

@@ -1324,7 +1324,11 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (!internal::PrepareDevice(device.Get())) return;
   if (!internal::PrepareSize(device.Get(), desc.Width, desc.Height, desc.Format, runtime.settings.method)) return;
   frame_trace::Mark(scaled ? "tone mapper drawn: DLSS (render scale) after it" : "tone mapper drawn: DLAA after it");
+  // After the frame's anti-aliasing: a later pass of its output (Attila's hdr_to_screen after its tone mapper, with the
+  // HDR output), frame generation's HUD-less image from it.
+  const bool later = (runtime.applied_frame == runtime.frame);
   internal::Apply(native, target.Get(), scaled);
+  if (later) frame_generation::KeepOutput(native, target.Get());
   if (scaled) {
     // The game's viewports and scissor rectangles back if the scaled ones are still bound.
     std::array<D3D11_VIEWPORT, 16> current = {};

@@ -2,6 +2,14 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v90 (2026-10-28, untested in game)
+
+- **Frame generation's HUD-less image** now comes from hdr_to_screen (the HDR output, grading and fog of war), not the
+  tone mapper before it: ATN's debug views showed it much darker and the UI layer covering the whole screen (so HUD
+  Recomposition treated every pixel as UI). anti_aliasing.hpp: a later tone mapper hook of the same frame (after DLAA
+  ran) redraws it (frame_generation::KeepOutput); once a frame has that pass, KeepFrame stops drawing it at the tone
+  mapper (it comes back if a frame lacks the later pass). Same for Thrones and Rome II (their hdr_to_screen passes).
+
 ## v89 (2026-10-28, untested in game)
 
 - **Frame Generation Debug View** steps aside while the ReShade menu is open (ATN: the HUD-less image has no menu in

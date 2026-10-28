@@ -95,6 +95,8 @@ struct State {
   bool hudless = false;     // and drew the HUD-less image
   bool presenting = false;  // the helper's window shows (an off request hides it)
   bool overlay_open = false;  // ReShade's menu: only the frame has it, so the debug views wait while it is open
+  bool output_pass = false;   // the HUD-less images come from a later pass of the output (KeepOutput), not the tone mapper
+  bool output_drawn = false;  // this frame's did
   Inputs inputs;
   DeviceObjects objects;
 };
@@ -118,6 +120,8 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     const std::unique_lock lock(state.mutex);
     state.format = back_desc.Format;
     const bool kept = std::exchange(state.kept, false);
+    // A kept frame without its later output pass: the next ones take the tone mapper's image again.
+    if (kept && !state.output_drawn) state.output_pass = false;
     const Settings settings = state.settings;
     // Off with the window hidden already, or unavailable here: nothing to ask.
     if ((settings.multiplier == 0 && !state.presenting) || dlaa_bridge::FrameGenerationFailed()) return;
@@ -174,19 +178,19 @@ inline DXGI_FORMAT Format() {
   return internal::state.format;
 }
 
-// DLAA ran on `target` (the tone mapper's output, before the UI): it is kept as the frame's HUD-less image with its
-// inputs.
-inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, const Inputs& inputs) {
-  auto& state = internal::state;
-  const std::unique_lock lock(state.mutex);
-  if (state.settings.multiplier == 0 || state.vertex_code.empty()) return;
+namespace internal {
+
+// `target` (the tone mapper's output, or a later pass's of the frame's output) as the frame's HUD-less image: the swap
+// chain shader as the swap chain mod draws it, with the addon's shader constants, into the bridge's HUD-less frame (the
+// swap chain's format and size). False: the pass's objects could not be made. The state's lock held.
+inline bool DrawHudless(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
   auto& objects = state.objects;
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
   D3D11_TEXTURE2D_DESC desc = {};
   target->GetDesc(&desc);
   ComPtr<ID3D11Device1> device1;
-  if (FAILED(device.As(&device1))) return;
+  if (FAILED(device.As(&device1))) return false;
   if (objects.device != device1) {
     objects = {.device = device1};
     const D3D_FEATURE_LEVEL level = device1->GetFeatureLevel();
@@ -210,7 +214,7 @@ inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, con
         || FAILED(device1->CreateSamplerState(&sampler_desc, objects.sampler.GetAddressOf()))
         || FAILED(device1->CreateBuffer(&injection_desc, nullptr, objects.injection.GetAddressOf()))) {
       objects = {.device = device1};
-      return;
+      return false;
     }
   }
   // The image to draw from: the target itself when it can be read, else a copy.
@@ -252,16 +256,12 @@ inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, con
       scene = objects.scene_srv.Get();
     }
   }
-  state.inputs = inputs;
-  state.kept = true;
   state.hudless = false;
-  // The swap chain shader as the swap chain mod draws it, on the HUD-less image, with the addon's shader constants, into
-  // the bridge's HUD-less frame (the swap chain's format and size).
   auto& bridge = dlaa_bridge::bridge;
   ComPtr<ID3D11DeviceContext1> context1;
   if (scene == nullptr || !bridge.fg_hudless_rtv || bridge.width != desc.Width || bridge.height != desc.Height
       || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) {
-    return;
+    return true;
   }
   objects.constants.resize((state.injection_bytes + 15) / 16 * 16);
   std::memcpy(objects.constants.data(), state.injection, state.injection_bytes);
@@ -278,7 +278,7 @@ inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, con
   context->PSSetShader(objects.pixel_shader.Get(), nullptr, 0);
   context->PSSetShaderResources(0, 1, &scene);
   context->PSSetSamplers(0, 1, &sampler);
-  context->PSSetConstantBuffers(internal::INJECTION_SLOT, 1, &injection);
+  context->PSSetConstantBuffers(INJECTION_SLOT, 1, &injection);
   context->RSSetViewports(1, &viewport);
   context->OMSetRenderTargets(1, &hudless, nullptr);
   context->Draw(3, 0);
@@ -287,6 +287,35 @@ inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, con
   context->OMSetRenderTargets(0, nullptr, nullptr);
   context1->SwapDeviceContextState(game_state.Get(), nullptr);
   state.hudless = true;
+  return true;
+}
+
+}  // namespace internal
+
+// DLAA ran on `target` (the tone mapper's output, before the UI): the frame's inputs kept, and its HUD-less image unless
+// the last frames took that from a later pass of their output (KeepOutput).
+inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, const Inputs& inputs) {
+  auto& state = internal::state;
+  const std::unique_lock lock(state.mutex);
+  if (state.settings.multiplier == 0 || state.vertex_code.empty()) return;
+  state.hudless = false;
+  state.output_drawn = false;
+  if (!state.output_pass && !internal::DrawHudless(context, target)) return;
+  state.inputs = inputs;
+  state.kept = true;
+}
+
+// A later pass of the kept frame's output drew `target` (Attila's, Thrones' and Rome II's hdr_to_screen after their
+// tone mapper: the HDR output, grading and fog of war the presented frame has; from the tone mapper's the HUD-less image
+// was much darker, so all of it was UI, ATN): the frame's HUD-less image from it.
+inline void KeepOutput(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
+  auto& state = internal::state;
+  const std::unique_lock lock(state.mutex);
+  if (!state.kept || state.settings.multiplier == 0 || state.vertex_code.empty()) return;
+  if (internal::DrawHudless(context, target)) {
+    state.output_drawn = true;
+    state.output_pass = true;
+  }
 }
 
 inline void Update(const Settings& settings) {
