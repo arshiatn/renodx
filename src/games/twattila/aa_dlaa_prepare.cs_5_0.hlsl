@@ -31,7 +31,8 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const float3 bt2020 = mul(float3x3(0.6274040f, 0.3292820f, 0.0433136f,
                                      0.0690970f, 0.9195400f, 0.0113612f,
                                      0.0163916f, 0.0880132f, 0.8955950f), bt709);
-  t_rw_color[pixel] = float4(max(bt2020, 0.f), current.a);
+  const float3 colour = max(bt2020, 0.f);
+  t_rw_color[pixel] = float4(g_dlaa_debug.w != 0.f ? sqrt(colour) : colour, current.a);
   const float depth = t_depth.Load(int3(pixel, 0));
   t_rw_depth[pixel] = depth;
 

@@ -119,7 +119,7 @@ struct ShaderSettings {
   float cmaa2_simple_shape_blur = 0.f;
   float padding = 0.f;
   std::array<float, 4> smaa_subsample_indices = {};
-  std::array<float, 4> dlaa_debug = {};  // the view, the input size
+  std::array<float, 4> dlaa_debug = {};  // the view, the input size, the colour's encoding for NVIDIA
 };
 
 // aa.hlsli's aa_taa: the cameras in the game's register layout.
@@ -917,6 +917,10 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   // DLAA's input: DLSS, the render size.
   const UINT input_width = (scaled ? runtime.render_width : objects.width);
   const UINT input_height = (scaled ? runtime.render_height : objects.height);
+  // Presets L and M (always auto-exposed) flatten dark tones given linear colour (ATN debug11: shadows one flat grey with
+  // coloured fringes): they get its square root, as the tone mapper's own encoding (Ray Reconstruction linear colour).
+  const bool square_root = method == Method::DLAA && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u)
+                           && !(runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame);
   const ShaderSettings settings = {
       .metrics = {1.f / static_cast<float>(objects.width), 1.f / static_cast<float>(objects.height),
                   static_cast<float>(objects.width), static_cast<float>(objects.height)},
@@ -929,7 +933,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       .cmaa2_simple_shape_blur = (sharp ? 0.07f : 0.1f),
       .smaa_subsample_indices = subsample_indices,
       .dlaa_debug = {static_cast<float>(runtime.settings.debug_view), static_cast<float>(input_width),
-                     static_cast<float>(input_height), 0.f},
+                     static_cast<float>(input_height), (square_root ? 1.f : 0.f)},
   };
   if (std::memcmp(&settings, &objects.uploaded, sizeof(ShaderSettings)) != 0) {
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
