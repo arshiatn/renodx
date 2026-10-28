@@ -43,7 +43,8 @@
 // settings; Ryse, Expeditions and Shogun 2 use this alone): DXR runs in the 64-bit helper (dlaa_bridge.h v4-v8,
 // dlaa_helper/rt_d3d12.hpp), which keeps the scene and traces it. The scene is the game's own geometry as its main view
 // draws it: each draw of a scene shader not yet in it (and every dynamic draw each frame, up to MAX_DYNAMIC_VERTICES:
-// the helper builds them into that frame's scene only) is drawn once more into a stream-output buffer, through its
+// the helper builds them into that frame's scene only; bridge v16: indexed ones as their meshes' vertices once each, the
+// helper given each mesh's cluster set once) is drawn once more into a stream-output buffer, through its
 // capture version (the game's code giving the world position: the TW games' rt_capture_*.vs) or the game's own shader
 // (its SV_Position, made world positions with the frame's camera), keyed by its buffers, ranges, textures and constant
 // buffers (but the camera's); the helper keeps a BLAS per key and builds the frame's TLAS from what it drew. The trace
@@ -176,6 +177,8 @@ constexpr uint64_t RELEASE_FRAMES = 3600;
 constexpr uint64_t PLACE_TURNS = 4;
 // The local lights a frame keeps for the next trace to pick from.
 constexpr size_t MAX_LOCAL_LIGHTS = 8192;
+// Compact draws (bridge v16): the cluster sets made a frame at most (a battle's first frames bring hundreds of meshes).
+constexpr uint32_t MAX_SET_BUILDS = 16;
 
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
@@ -245,6 +248,7 @@ struct Costs {
   uint64_t dynamic_vertices = 0;
   uint64_t left_out = 0;  // their share full
   uint64_t no_room = 0;   // the frame's captures or vertex texture full
+  uint64_t compact_draws = 0;
 };
 
 // Adds its scope's CPU time to `ticks` (the cost report).
@@ -281,6 +285,35 @@ struct Runtime {
   std::vector<uint64_t> drawn;
   // This frame's draws of placed meshes in the scene: their instances' rows in the captured vertices (bridge v14).
   std::vector<dlaa_bridge::RtPlacement> placements;
+  // Compact draws (bridge v16, with the helper's Mega Geometry): an indexed dynamic draw's mesh (its index buffer's
+  // range; the buffer kept, so its key stays its own) gets a cluster set once its indices are read back (a copy read in
+  // a later frame, never waited for); its vertices then stream once each, as points through the remap index buffer (a
+  // block's vertices), in place of its triangles, and its set goes with the first trace that draws it (again after the
+  // helper's new device or when its full pool dropped sets: CompactState). Until then, and without a set, its triangles
+  // are captured.
+  struct ClusterMesh {
+    ComPtr<ID3D11Buffer> indices;
+    ComPtr<ID3D11Buffer> staging;  // its range's copy until read
+    uint64_t copied_frame = 0;
+    ComPtr<ID3D11Buffer> remap;  // R32_UINT
+    std::vector<uint8_t> data;   // its set's
+    uint32_t vertices = 0;       // a block's
+    uint32_t clusters = 0;
+    uint32_t triangles = 0;
+    uint64_t used_frame = 0;
+    bool failed = false;  // no set: its triangles captured
+    bool sent = false;
+  };
+  std::unordered_map<uint64_t, ClusterMesh> cluster_meshes;
+  // This frame's compact draws (consecutive ones of a mesh joined), the sets its trace sends and their bytes, its
+  // dynamic triangles and clusters (captures' and compact draws': the helper's RT_DYNAMIC_*), the sets made.
+  std::vector<dlaa_bridge::RtCompactDraw> compact;
+  std::vector<uint64_t> new_sets;
+  uint32_t new_set_bytes = 0;
+  uint32_t dynamic_triangles = 0;
+  uint32_t dynamic_clusters = 0;
+  uint32_t set_builds = 0;
+  uint32_t compact_state = 0;  // the helper's CompactState as last seen
   struct Known {
     uint64_t frame = 0;      // last drawn
     uint32_t instances = 0;  // a placed mesh's last placement's
@@ -581,6 +614,61 @@ inline bool AtlasSlice(ID3D11DeviceContext* native, ID3D11ShaderResourceView* te
   return true;
 }
 
+// A compact draw's mesh (v16) without its cluster set yet: its index range copied for the CPU (new), or that copy read
+// (two frames on, never waiting; MAX_SET_BUILDS a frame) into its set and remap index buffer. runtime.mutex held.
+inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3D11Buffer* index_buffer, DXGI_FORMAT format, UINT offset,
+                              UINT first_index, UINT index_count) {
+  auto& mesh = runtime.cluster_meshes[set_key];
+  mesh.used_frame = runtime.frame;
+  if (mesh.failed || mesh.remap) return;
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  const UINT index_bytes = (format == DXGI_FORMAT_R16_UINT) ? 2u : 4u;
+  if (!mesh.staging) {
+    D3D11_BUFFER_DESC desc = {};
+    index_buffer->GetDesc(&desc);
+    const uint64_t first = uint64_t{offset} + (uint64_t{first_index} * index_bytes);
+    const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = index_count * index_bytes, .Usage = D3D11_USAGE_STAGING,
+                                            .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    mesh.failed = (format != DXGI_FORMAT_R16_UINT && format != DXGI_FORMAT_R32_UINT) || desc.Usage == D3D11_USAGE_DYNAMIC
+                  || first + staging_desc.ByteWidth > desc.ByteWidth
+                  || FAILED(device->CreateBuffer(&staging_desc, nullptr, mesh.staging.GetAddressOf()));
+    if (mesh.failed) return;
+    mesh.indices = index_buffer;
+    const D3D11_BOX range = {.left = static_cast<UINT>(first), .top = 0, .front = 0, .right = static_cast<UINT>(first) + staging_desc.ByteWidth,
+                             .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(mesh.staging.Get(), 0, 0, 0, 0, index_buffer, 0, &range);
+    mesh.copied_frame = runtime.frame;
+    return;
+  }
+  if (runtime.frame < mesh.copied_frame + 2 || runtime.set_builds >= MAX_SET_BUILDS) return;
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  const HRESULT result = native->Map(mesh.staging.Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+  if (result == DXGI_ERROR_WAS_STILL_DRAWING) return;
+  ++runtime.set_builds;
+  std::vector<uint32_t> indices(index_count);
+  if (SUCCEEDED(result)) {
+    if (index_bytes == 2) {
+      std::copy_n(static_cast<const uint16_t*>(mapped.pData), index_count, indices.begin());
+    } else {
+      std::memcpy(indices.data(), mapped.pData, size_t{index_count} * 4);
+    }
+    native->Unmap(mesh.staging.Get(), 0);
+  }
+  mesh.staging.Reset();
+  dlaa_bridge::ClusterSetData set = SUCCEEDED(result) ? dlaa_bridge::MakeClusterSet(indices) : dlaa_bridge::ClusterSetData{};
+  const D3D11_BUFFER_DESC remap_desc = {.ByteWidth = static_cast<UINT>(set.remap.size() * 4), .Usage = D3D11_USAGE_IMMUTABLE,
+                                        .BindFlags = D3D11_BIND_INDEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA remap_data = {.pSysMem = set.remap.data()};
+  mesh.failed = set.triangles == 0 || set.data.size() > dlaa_bridge::RT_CLUSTER_DATA_BYTES
+                || FAILED(device->CreateBuffer(&remap_desc, &remap_data, mesh.remap.GetAddressOf()));
+  if (mesh.failed) return;
+  mesh.data = std::move(set.data);
+  mesh.vertices = static_cast<uint32_t>(set.remap.size());
+  mesh.clusters = set.clusters;
+  mesh.triangles = set.triangles;
+}
+
 // After a scene draw of the main view: a draw not yet in the scene is drawn once more into the stream-output buffer.
 template <typename Context>
 void Capture(Context& command, const SceneShader& shader) {
@@ -735,6 +823,17 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   mix(reinterpret_cast<uintptr_t>(index_buffer));
   mix((uint64_t{static_cast<uint32_t>(index_format)} << 32) | index_offset);
+  // A dynamic indexed draw can be compact (v16): its mesh's key (its index buffer and range) and that buffer.
+  const bool compactable = INDEXED && dynamic && !placed && !shader.terrain && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
+  uint64_t set_key = 14695981039346656037ull;
+  ComPtr<ID3D11Buffer> compact_indices;
+  if constexpr (INDEXED) {
+    for (const uint64_t value : {uint64_t{reinterpret_cast<uintptr_t>(index_buffer)}, (uint64_t{static_cast<uint32_t>(index_format)} << 32) | index_offset,
+                                 uint64_t{arguments.first_index}, uint64_t{arguments.index_count}}) {
+      set_key = (set_key ^ value) * 1099511628211ull;
+    }
+    if (compactable) compact_indices = index_buffer;
+  }
   // The Get calls added references; only compared.
   const auto release = [](auto* object) {
     if (object != nullptr) object->Release();
@@ -754,6 +853,13 @@ void Capture(Context& command, const SceneShader& shader) {
   // its instances between).
   bool place = false;
   bool share_full = false;
+  // Compact (v16): its mesh's blocks in place of its triangles, once its set is made and can go with this frame's trace;
+  // what it takes of the vertex texture and the helper's frame.
+  bool compact = false;
+  const UINT draw_instances = std::max(arguments.instance_count, 1u);
+  UINT texels = vertex_count;
+  UINT triangles = vertex_count / 3;
+  UINT clusters = (triangles + dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES - 1) / dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
   {
     const std::unique_lock lock(runtime.mutex);
     if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
@@ -763,10 +869,24 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     // Units: every frame, within their share.
     if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
+    if (const auto mesh = (compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end());
+        mesh != runtime.cluster_meshes.end() && mesh->second.remap) {
+      mesh->second.used_frame = runtime.frame;
+      compact = mesh->second.sent || std::ranges::find(runtime.new_sets, set_key) != runtime.new_sets.end()
+                || (runtime.new_sets.size() < dlaa_bridge::RT_NEW_SETS
+                    && runtime.new_set_bytes + ((mesh->second.data.size() + 15) / 16 * 16) <= dlaa_bridge::RT_CLUSTER_DATA_BYTES);
+      if (compact) {
+        texels = mesh->second.vertices * draw_instances;
+        triangles = mesh->second.triangles * draw_instances;
+        clusters = mesh->second.clusters * draw_instances;
+      }
+    }
     share_full = dynamic
-                 && (runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES
-                     || (!shader.terrain && runtime.unit_vertices + vertex_count > MAX_UNIT_VERTICES)
-                     || (shader.grass && runtime.grass_vertices + vertex_count > MAX_GRASS_VERTICES));
+                 && (runtime.dynamic_vertices + texels > MAX_DYNAMIC_VERTICES
+                     || (!shader.terrain && runtime.unit_vertices + texels > MAX_UNIT_VERTICES)
+                     || (shader.grass && runtime.grass_vertices + (triangles * 3) > MAX_GRASS_VERTICES)
+                     || runtime.dynamic_triangles + triangles > dlaa_bridge::RT_DYNAMIC_TRIANGLES
+                     || runtime.dynamic_clusters + clusters > dlaa_bridge::RT_DYNAMIC_CLUSTERS);
     if (const auto known = runtime.known.find(key); !dynamic && known != runtime.known.end()) {
       // A leaf's slice stays in use while it is drawn.
       if (mask) {
@@ -820,8 +940,14 @@ void Capture(Context& command, const SceneShader& shader) {
 
   const std::unique_lock lock(runtime.mutex);
   if (share_full) {
-    runtime.costs.left_out += vertex_count;
+    runtime.costs.left_out += texels;
     return;
+  }
+  // A mesh without its cluster set (v16): its indices read back for one, its triangles captured meanwhile.
+  if constexpr (INDEXED) {
+    if (compactable && !compact) {
+      PrepareClusterSet(native, set_key, compact_indices.Get(), index_format, index_offset, arguments.first_index, arguments.index_count);
+    }
   }
   if (runtime.logged_draws[shader.hash]++ < 2) {
     std::array<ID3D11Buffer*, 3> buffers = {};
@@ -861,9 +987,10 @@ void Capture(Context& command, const SceneShader& shader) {
     joined = nullptr;
   }
   if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || runtime.captured_vertices + row_texels > MAX_VERTICES)
-            : ((joined == nullptr && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)
-               || runtime.captured_vertices + vertex_count + row_texels > MAX_VERTICES)) {
-    if (dynamic) runtime.costs.no_room += vertex_count;
+            : (((compact ? runtime.compact.size() >= dlaa_bridge::RT_COMPACT_DRAWS
+                         : (joined == nullptr && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)))
+               || runtime.captured_vertices + texels + row_texels > MAX_VERTICES)) {
+    if (dynamic) runtime.costs.no_room += texels;
     return;
   }
   ComPtr<ID3D11Device> device;
@@ -926,8 +1053,18 @@ void Capture(Context& command, const SceneShader& shader) {
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
     if constexpr (INDEXED) {
-      native->DrawIndexedInstanced(arguments.index_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_index,
-                                   arguments.vertex_offset, arguments.first_instance);
+      if (compact) {
+        // Each block's vertices once: points through the mesh's remap indices (the game's index buffer and topology put
+        // back).
+        native->IASetIndexBuffer(runtime.cluster_meshes.at(set_key).remap.Get(), DXGI_FORMAT_R32_UINT, 0);
+        native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+        native->DrawIndexedInstanced(texels / draw_instances, draw_instances, 0, arguments.vertex_offset, arguments.first_instance);
+        native->IASetIndexBuffer(compact_indices.Get(), index_format, index_offset);
+        native->IASetPrimitiveTopology(topology);
+      } else {
+        native->DrawIndexedInstanced(arguments.index_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_index,
+                                     arguments.vertex_offset, arguments.first_instance);
+      }
     } else {
       native->DrawInstanced(arguments.vertex_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_vertex,
                             arguments.first_instance);
@@ -963,7 +1100,23 @@ void Capture(Context& command, const SceneShader& shader) {
     if (const auto known = runtime.known.find(key); known != runtime.known.end()) known->second = {.frame = runtime.frame, .instances = instances};
     return;
   }
-  if (joined != nullptr) {
+  if (compact) {
+    // After the last compact draw of its mesh (its blocks right after): more of its instances.
+    const uint32_t compact_flags = flags & (dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN);
+    if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
+        last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
+        && last->first_vertex + (last->instances * (texels / draw_instances)) == runtime.captured_vertices) {
+      last->instances += draw_instances;
+    } else {
+      runtime.compact.push_back({.set = set_key, .first_vertex = runtime.captured_vertices, .instances = draw_instances, .flags = compact_flags,
+                                 .slice = slice});
+    }
+    if (!runtime.cluster_meshes.at(set_key).sent && std::ranges::find(runtime.new_sets, set_key) == runtime.new_sets.end()) {
+      runtime.new_sets.push_back(set_key);
+      runtime.new_set_bytes += static_cast<uint32_t>((runtime.cluster_meshes.at(set_key).data.size() + 15) / 16 * 16);
+    }
+    runtime.key_shaders[set_key] = shader.hash;
+  } else if (joined != nullptr) {
     joined->vertex_count += vertex_count;
   } else {
     runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count, .flags = flags,
@@ -972,11 +1125,13 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.key_shaders[key] = shader.hash;
   }
   runtime.captured_keys.insert(key);
-  runtime.captured_vertices += vertex_count + row_texels;
+  runtime.captured_vertices += texels + row_texels;
   if (dynamic) {
-    runtime.dynamic_vertices += vertex_count;
-    if (!shader.terrain) runtime.unit_vertices += vertex_count;
-    if (shader.grass) runtime.grass_vertices += vertex_count;
+    runtime.dynamic_vertices += texels;
+    if (!shader.terrain) runtime.unit_vertices += texels;
+    if (shader.grass) runtime.grass_vertices += triangles * 3;
+    runtime.dynamic_triangles += triangles;
+    runtime.dynamic_clusters += clusters;
     if (!shader.dynamic) ++runtime.dynamic_buffers[shader.hash];
   } else {
     ++runtime.new_static[shader.hash];
@@ -1147,6 +1302,14 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     native->UpdateSubresource(objects.light_constants.Get(), 0, nullptr, constants.data(), 0, 0);
   }
   const bool lights = !runtime.lights.empty();
+  // v16: the cluster sets this frame's compact draws need that the helper lacks.
+  std::vector<dlaa_bridge::RtClusterSet> new_sets;
+  std::vector<std::span<const uint8_t>> new_set_data;
+  for (const uint64_t set_key : runtime.new_sets) {
+    const auto& mesh = runtime.cluster_meshes.at(set_key);
+    new_sets.push_back({.key = set_key, .vertices = mesh.vertices, .clusters = mesh.clusters, .triangles = mesh.triangles});
+    new_set_data.emplace_back(mesh.data);
+  }
   const dlaa_bridge::TraceRequest request = {
       .flags = (runtime.settings.sun_shadows ? dlaa_bridge::RT_SUN_SHADOWS : 0u)
                | (runtime.settings.ambient_occlusion ? dlaa_bridge::RT_AMBIENT_OCCLUSION : 0u)
@@ -1168,6 +1331,9 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .light_colours = runtime.light_colours,
       .view_projection = camera.view_projection,
       .placements = runtime.placements,
+      .compact = runtime.compact,
+      .new_sets = new_sets,
+      .new_set_data = new_set_data,
   };
   if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);
@@ -1185,16 +1351,21 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         runtime.known[capture.key].frame = runtime.frame;
       }
     }
+    for (const uint64_t set_key : runtime.new_sets) runtime.cluster_meshes.at(set_key).sent = true;
     runtime.traced_frame = runtime.frame;
     runtime.traced_size = render_size;
     runtime.traced_view_projection = camera.view_projection;
   }
+  runtime.costs.compact_draws += runtime.compact.size();
   runtime.captures.clear();
   runtime.captured_keys.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
   runtime.drawn.clear();
   runtime.placements.clear();
+  runtime.compact.clear();
+  runtime.new_sets.clear();
+  runtime.new_set_bytes = 0;
   return traced;
 }
 
@@ -1558,7 +1729,13 @@ inline void Update(const Settings& settings) {
     runtime.helper_device = device;
     runtime.known.clear();
     runtime.short_keys.clear();
+    for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
     renodx::utils::log::w("[Total War] Ray tracing: the helper started again after a GPU reset (renodx-tw-dlaa64.log), the scene is captured again.");
+  }
+  // Its full set pool dropped sets (v16): each sent again as it is drawn.
+  if (const uint32_t state = dlaa_bridge::CompactState(); state != runtime.compact_state) {
+    runtime.compact_state = state;
+    for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
   }
   if (const auto [left_out, key] = dlaa_bridge::RayTracingLeftOut(); left_out != runtime.helper_left_out) {
     const auto shader = runtime.key_shaders.find(key);
@@ -1649,17 +1826,22 @@ inline void Update(const Settings& settings) {
       QueryPerformanceFrequency(&frequency);
       const double frame_ms = 1000.0 / static_cast<double>(frequency.QuadPart) / costs.frames;
       renodx::utils::log::i(std::format("[Total War] Ray tracing's own cost a frame: CPU {:.2f} ms capturing, {:.2f} ms tracing; GPU "
-                                        "{:.2f} ms its passes, {:.2f} ms waiting for the helper; every frame {:.2f} M vertices captured, "
-                                        "{:.2f} M left out (their share full), {:.2f} M without room (captures or vertex texture full).",
+                                        "{:.2f} ms its passes, {:.2f} ms waiting for the helper; every frame {:.2f} M vertices captured "
+                                        "({:.0f} compact draws; {} cluster sets), {:.2f} M left out (their share full), {:.2f} M without "
+                                        "room (captures or vertex texture full).",
                                         costs.capture_ticks * frame_ms, costs.trace_ticks * frame_ms,
                                         (costs.timed != 0 ? costs.passes_ms / costs.timed : 0.0),
                                         (costs.timed != 0 ? costs.waiting_ms / costs.timed : 0.0),
                                         static_cast<double>(costs.dynamic_vertices) / 1.0e6 / costs.frames,
+                                        static_cast<double>(costs.compact_draws) / costs.frames,
+                                        std::ranges::count_if(runtime.cluster_meshes, [](const auto& entry) { return static_cast<bool>(entry.second.remap); }),
                                         static_cast<double>(costs.left_out) / 1.0e6 / costs.frames,
                                         static_cast<double>(costs.no_room) / 1.0e6 / costs.frames));
     }
     costs = {};
     runtime.new_static_time = now;
+    // Meshes not drawn for RELEASE_FRAMES give their sets (and the game's index buffers) back.
+    std::erase_if(runtime.cluster_meshes, [&](const auto& entry) { return entry.second.used_frame + internal::RELEASE_FRAMES < runtime.frame; });
   }
   runtime.captures.clear();
   runtime.captured_keys.clear();
@@ -1668,8 +1850,14 @@ inline void Update(const Settings& settings) {
   runtime.dynamic_vertices = 0;
   runtime.unit_vertices = 0;
   runtime.grass_vertices = 0;
+  runtime.dynamic_triangles = 0;
+  runtime.dynamic_clusters = 0;
+  runtime.set_builds = 0;
   runtime.drawn.clear();
   runtime.placements.clear();
+  runtime.compact.clear();
+  runtime.new_sets.clear();
+  runtime.new_set_bytes = 0;
   std::swap(runtime.lights_last, runtime.lights_drawn);
   runtime.lights_drawn.clear();
   if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second.frame + internal::RELEASE_FRAMES < runtime.frame; }) != 0) {
@@ -1849,6 +2037,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   if (internal::runtime.objects.device.Get() == native) internal::runtime.objects = {};
   internal::runtime.known.clear();
   internal::runtime.short_keys.clear();
+  internal::runtime.cluster_meshes.clear();
 }
 
 }  // namespace twattila::rt_scene

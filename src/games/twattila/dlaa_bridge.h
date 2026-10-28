@@ -71,14 +71,16 @@ constexpr uint32_t RT_PLACE_MOVING = 1;
 // over at most RT_CLUSTER_VERTICES vertices of the block) is sent once (rt_new_sets; its data in the second mapping,
 // "<name>_clusters", RT_CLUSTER_DATA_BYTES). A soldier's triangle took three texels; its vertex now about one (4x unit
 // size battles: the soldiers needed several times the frame's texels, ATN 2026-10-28).
-constexpr uint32_t RT_COMPACT_DRAWS = 4096;
+constexpr uint32_t RT_COMPACT_DRAWS = 16384;
 constexpr uint32_t RT_NEW_SETS = 512;
 constexpr uint32_t RT_CLUSTER_DATA_BYTES = 16u << 20;
 constexpr uint32_t RT_CLUSTER_TRIANGLES = 128;
 constexpr uint32_t RT_CLUSTER_VERTICES = 128;
 // The frame's dynamic triangles and clusters at most (every-frame captures and compact draws).
-constexpr uint32_t RT_DYNAMIC_TRIANGLES = 12u << 20;
+constexpr uint32_t RT_DYNAMIC_TRIANGLES = 16u << 20;
 constexpr uint32_t RT_DYNAMIC_CLUSTERS = 1u << 17;
+// An every-frame capture's clusters: this many triangles each (the last partial).
+constexpr uint32_t RT_CAPTURE_CLUSTER_TRIANGLES = 85;
 struct RtCompactDraw {
   uint64_t set = 0;  // its cluster set's key
   uint32_t first_vertex = 0;

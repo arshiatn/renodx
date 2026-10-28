@@ -255,7 +255,7 @@ class RtScene12 {
           .maxTriangleCountPerArg = dlaa_bridge::RT_CLUSTER_TRIANGLES,
           .maxVertexCountPerArg = CLUSTER_TRIANGLES * 3,
           .maxTotalTriangleCount = DYNAMIC_TRIANGLES,
-          .maxTotalVertexCount = DYNAMIC_TRIANGLES * 3,
+          .maxTotalVertexCount = TRANSFER_VERTICES,  // each a texel of the request's
           .minPositionTruncateBitCount = 0,
       };
       cluster_blas_inputs_ = {
@@ -514,6 +514,7 @@ class RtScene12 {
     WriteNullPathDescriptors();
     status_ = std::format("Ray tracing ready ({}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1", sdk,
                           clusters_ ? std::format("; Mega Geometry clusters: {} MB", cluster_bytes >> 20) : std::string());
+    slow_report_ = "[TW ray tracing] " + status_ + ".";
     sdk_ = sdk;
     return true;
   }
@@ -1167,7 +1168,7 @@ class RtScene12 {
   // Mega Geometry: the units' captured triangles in clusters of this many (three vertices each, up to 256 a cluster), a
   // frame's clusters at most (the compact draws' first; the last of each capture partial), each a geometry with a record
   // of its own (a slot's in turn).
-  static constexpr uint32_t CLUSTER_TRIANGLES = 85;
+  static constexpr uint32_t CLUSTER_TRIANGLES = dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
   static constexpr uint32_t MAX_CLUSTERS = dlaa_bridge::RT_DYNAMIC_CLUSTERS;
   // Compact draws (v16): their cluster sets' pool (bytes, in 16-byte units; past it a word the compact pass may read),
   // a slot's upload buffer for its draws' table (three uint4 each: rt_compact.cs_6_5.hlsl), then its new sets' data.
@@ -1676,10 +1677,11 @@ class RtScene12 {
         continue;
       }
       // Each cluster within its block and set, each triangle's vertices within its cluster (a bad index would read past
-      // the vertex buffer: a GPU fault).
+      // the vertex buffer: a GPU fault), the clusters' vertices the block's (the CLASes' vertices: the request's texels).
       const uint8_t* data = cluster_data.data() + sent.offset;
       const uint8_t* corners = data + (uint64_t{sent.clusters} * 16);
       bool valid = true;
+      uint64_t block = 0;
       for (uint32_t cluster = 0; cluster < sent.clusters && valid; ++cluster) {
         std::array<uint32_t, 4> desc = {};
         std::memcpy(desc.data(), data + (uint64_t{cluster} * 16), sizeof(desc));
@@ -1688,8 +1690,9 @@ class RtScene12 {
                 && uint64_t{first_vertex} + vertices <= sent.vertices && uint64_t{first_triangle} + triangles <= sent.triangles
                 && std::all_of(corners + (uint64_t{first_triangle} * 3), corners + ((uint64_t{first_triangle} + triangles) * 3),
                                [vertices](uint8_t corner) { return corner < vertices; });
+        block += vertices;
       }
-      if (!valid) continue;
+      if (!valid || block != sent.vertices) continue;
       const uint32_t units = static_cast<uint32_t>((bytes + 15) / 16);
       uint32_t offset = 0;
       if (!free_set_units_.Take(units, &offset)) {
@@ -1723,6 +1726,7 @@ class RtScene12 {
     }
     uint32_t dynamic_triangles_used = 0;  // this slot's turn of the normal and UV pools
     uint32_t dynamic_uvs_used = 0;
+    uint64_t cluster_vertices = 0;  // the units' CLASes' (at most TRANSFER_VERTICES: clas_inputs_)
     uint32_t compact_drawn = 0;
     uint32_t compact_clusters = 0;
     bool compact_masked = false;
@@ -1739,9 +1743,10 @@ class RtScene12 {
       const uint64_t block_end = uint64_t{draw.first_vertex} + (uint64_t{set.vertices} * draw.instances);
       const bool masked = (draw.flags & dlaa_bridge::RT_FOLIAGE) != 0 && atlas_;
       if (block_end > TRANSFER_VERTICES || compact_clusters + clusters > MAX_CLUSTERS || dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES
-          || (masked && dynamic_uvs_used + (triangles * 3) > DYNAMIC_UVS)) {
+          || (masked && dynamic_uvs_used + (triangles * 3) > DYNAMIC_UVS) || cluster_vertices + (uint64_t{set.vertices} * draw.instances) > TRANSFER_VERTICES) {
         continue;
       }
+      cluster_vertices += uint64_t{set.vertices} * draw.instances;
       const std::array<uint32_t, 12> entry = {
           compact_clusters, draw.first_vertex, set.offset * 16, set.clusters,
           set.vertices, set.triangles, STATIC_TRIANGLES + (static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES) + dynamic_triangles_used,
@@ -1816,7 +1821,8 @@ class RtScene12 {
         // The frame's units in this slot's turn of the records and pools (grass alpha-tested: its UVs at its triangles'
         // place in the slot's UVs, ATN 2026-10-28: blocky grass shadows).
         if ((capture.flags & dlaa_bridge::RT_DYNAMIC) != 0) {
-          if (dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES) continue;
+          if (dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES || cluster_vertices + (triangles * 3) > TRANSFER_VERTICES) continue;
+          cluster_vertices += triangles * 3;
           placement.record = STATIC_RECORDS + static_cast<uint32_t>(slot_index) * dlaa_bridge::RT_CAPTURES + dynamic_records++;
           placement.normal_offset = STATIC_TRIANGLES + static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES + dynamic_triangles_used;
           placement.masked = placement.masked && dynamic_uvs_used + triangles * 3 <= DYNAMIC_UVS;
@@ -2727,7 +2733,8 @@ class RtScene12 {
   ComPtr<ID3D12Resource> left_out_start_;
   LeftOut left_out_;
   bool bake_micromaps_ = false;
-  // A slow request's report (GPU over SLOW_MS; at most SLOW_REPORTS) and a garbage triangle's (one in 10 s), for the log.
+  // For the log: the device's start, a slow request's report (GPU over SLOW_MS; at most SLOW_REPORTS), a garbage
+  // triangle's (one in 10 s).
   std::string slow_report_;
   uint32_t slow_reports_ = 0;
   std::string garbage_example_;

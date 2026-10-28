@@ -64,9 +64,11 @@ struct TraceRequest {
   std::span<const std::array<float, 4>> light_colours;  // v11: as `lights`
   std::array<float, 16> view_projection = {};            // v11: the camera's registers (the ambient's history)
   std::span<const RtPlacement> placements;               // v14: the known placed draws (RT_PLACEMENTS at most)
-  // v16: the compact draws and the cluster sets new to the helper (their data written into ClusterData() before this).
+  // v16: the compact draws and the cluster sets new to the helper, each one's data as `new_set_data` (copied into the
+  // second mapping, the offsets packed there; once the helper answered the last request it no longer reads it).
   std::span<const RtCompactDraw> compact;
   std::span<const RtClusterSet> new_sets;
+  std::span<const std::span<const uint8_t>> new_set_data;
 };
 
 // A ray-traced Light Bounce request (light_bounce.hpp through rt_scene.hpp): the render size, the bounce's size and its
@@ -653,19 +655,23 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
     std::copy_n(request.placements.begin(), shared->rt_placement_count, shared->rt_placements);
     shared->rt_compact_count = static_cast<uint32_t>(std::min<size_t>(request.compact.size(), RT_COMPACT_DRAWS));
     std::copy_n(request.compact.begin(), shared->rt_compact_count, shared->rt_compact);
-    shared->rt_new_set_count = static_cast<uint32_t>(std::min<size_t>(request.new_sets.size(), RT_NEW_SETS));
-    std::copy_n(request.new_sets.begin(), shared->rt_new_set_count, shared->rt_new_sets);
+    shared->rt_new_set_count = 0;
+    uint32_t offset = 0;
+    for (size_t index = 0; index < std::min({request.new_sets.size(), request.new_set_data.size(), size_t{RT_NEW_SETS}}); ++index) {
+      const auto data = request.new_set_data[index];
+      if (bridge.cluster_data == nullptr || uint64_t{offset} + data.size() > RT_CLUSTER_DATA_BYTES) break;
+      std::memcpy(bridge.cluster_data + offset, data.data(), data.size());
+      shared->rt_new_sets[shared->rt_new_set_count] = request.new_sets[index];
+      shared->rt_new_sets[shared->rt_new_set_count++].offset = offset;
+      offset += static_cast<uint32_t>((data.size() + 15) / 16 * 16);
+    }
   });
 }
 
-// Whether the helper takes compact draws (v16: RTX Mega Geometry's clusters there), and the cluster sets' data for the
-// next trace request (empty: no second mapping).
-inline bool CompactDraws() {
-  return bridge.shared != nullptr && bridge.cluster_data != nullptr && bridge.shared->rt_compact_ok != 0;
-}
-
-inline std::span<uint8_t> ClusterData() {
-  return (bridge.cluster_data != nullptr) ? std::span<uint8_t>(bridge.cluster_data, RT_CLUSTER_DATA_BYTES) : std::span<uint8_t>();
+// The helper's compact draw state (v16, rt_compact_ok): 0 none taken, else it changes each time its sets were dropped
+// (sent again as they are drawn).
+inline uint32_t CompactState() {
+  return (bridge.shared != nullptr && bridge.cluster_data != nullptr) ? bridge.shared->rt_compact_ok : 0u;
 }
 
 // A mesh's cluster set (v16) from its index list (three a triangle; degenerate ones left out): its triangles in order,
