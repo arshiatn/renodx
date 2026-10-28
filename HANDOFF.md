@@ -777,6 +777,13 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       Patch on every dumped shader, created on WARP; old vs new): only grass changes, Attila 14 / Rome II 26 / Thrones
       14, Troy / Pharaoh / WH none. Zips twattila_v84, twrome2_v39, twthronesofbritannia_v39 (untested in game).
       ASK ATN: markers + grass at UP; the pixel trace for any seam left.
+    - 2026-10-28 afternoon: NEXUS BETA (ATN: someone else released a DLSS / FG mod). v85 (e6f3b761): SDR preset
+      (yellow), UI 4K Mod Compatibility On by default (DisableGraphics missing = on; ATN's ini has 0) with red restart
+      notes, DLSS preset L default, red "RT / PT not working yet" note, NVIDIA attribution in About. Player zip
+      Downloads\RenoDX_Attila_Beta_v85.zip (files at the root, licenses\, "RenoDX Attila - READ ME.txt", nvngx_dlss.dll
+      310.9.16 included now), notes on top of Downloads\tw_patch_notes.txt, Steam text Downloads\attila_steam_text.txt.
+      NEXT (ATN's order): (1) Reflex without Frame Generation (only set up with frame generation now); (2) RT / PT fixes (ATN: 3 fps in battle before the DLSS performance fixes, effects invisible or broken:
+      retest first); (3) later AMD RT + FSR / FSR FG.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
