@@ -958,9 +958,10 @@ constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
 // skinlm, every shadow method, with the camera at b0 and the G-buffer at t0-t3.
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
-constexpr std::array<twattila::view_share::RegionRead, 2> RENDER_SCALE_READS = {{
-    {.shader_hash = 0x781681E4, .slots = 0b1},  // luma / bloom downsample
-    {.shader_hash = 0xB386A8BC, .slots = 0b11},  // shadow depth analysis
+constexpr std::array<twattila::view_share::RegionRead, 3> RENDER_SCALE_READS = {{
+    {.shader_hash = 0x781681E4, .slots = 0b1},     // luma / bloom downsample
+    {.shader_hash = 0xB386A8BC, .slots = 0b11},    // shadow depth analysis
+    {.shader_hash = 0x125A0DD5, .slots = 0b1000},  // grass depth pre-pass: the terrain depth (grass_fade.hpp)
 }};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{

@@ -242,7 +242,9 @@ void main(
         r7.xyzw = g_border_falloff_range.xxyy * g_viewport_dimensions.xyxy;
         r6.xy = g_viewport_dimensions.xy * g_border_falloff_range.yy + -r7.xy;
         r8.xyz = r1.xyz;
-        r9.xy = r0.zw;
+        // RenoDX: the game's march in the view's uv (r9.xy / r9.zw / r10.yw), its reads x the view's share of the screen
+        // textures (below 100%, else only the top-left part found hits).
+        r9.xy = r0.zw / SsrScreenShare();
         r3.w = r6.z;
         r4.w = r2.z;
         r5.w = 0;
@@ -270,7 +272,7 @@ void main(
             break;
           }
           r8.w = r5.w * r2.w + r6.z;
-          r10.x = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r9.zw, r9.w).x;
+          r10.x = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r9.zw * SsrScreenShare(), r9.w).x;
           r10.x = -projection._m22 + r10.x;
           r10.x = projection._m32 / r10.x;
           r10.x = -r10.x + r8.w;
@@ -282,7 +284,7 @@ void main(
             r10.z = r10.y * r10.z + r8.w;
             r11.xy = r9.xy + -r9.zw;
             r10.yw = r10.yy * r11.xy + r9.zw;
-            r11.x = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r10.yw, r10.w).x;
+            r11.x = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r10.yw * SsrScreenShare(), r10.w).x;
             r11.x = -projection._m22 + r11.x;
             r11.x = projection._m32 / r11.x;
             r11.y = r5.w * r3.z + g_acceptance_depth_range.x;
@@ -299,7 +301,7 @@ void main(
               r10.z = max(r10.z, r2.x);
               r11.x = r5.w * r5.w;
               r10.z = max(r11.x, r10.z);
-              r11.xyz = s_light_accumulation_buffer.SampleLevel(s_light_accumulation_buffer_s, r10.yw, 0).xyz;
+              r11.xyz = s_light_accumulation_buffer.SampleLevel(s_light_accumulation_buffer_s, r10.yw * SsrScreenShare(), 0).xyz;
               r12.xyz = -r11.xyz + r8.xyz;
               r10.yzw = r10.zzz * r12.xyz + r11.xyz;
               r8.xyz = r10.yzw;

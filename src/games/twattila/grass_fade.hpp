@@ -26,6 +26,7 @@
 #include "../../utils/hash.hpp"
 #include "../../utils/pipeline.hpp"
 #include "./dxbc.hpp"
+#include "./view_share.hpp"
 
 // Grass Height Distance's colour fade (ATN debug9: grass stops in a circle ~100 m around the camera, whatever the
 // grass sliders): the game's grass pixel shaders (rigidgrass(wet) ps30 gbuffer / gbuffer_no_clip / gbuffer_ms and
@@ -33,6 +34,10 @@
 // 1 - min(1, distance x 0.01)), so past it the blades are drawn but look like the ground. They are patched as the game
 // creates them: that 0.01 read from cb8[0].x (SLOT), which the addon binds on their draws (0.01 / Grass Height Distance,
 // as the grass vertex shaders' height). cb8 unbound reads 0: no fade.
+// Its depth pre-pass (rigidgrass(wet) ps30 gbuffer_zprefill_grass) drops grass past 50 m from the camera whose pixel's
+// terrain point (the terrain depth at its projected uv) lies past 100 m from it: at grazing angles that cut the grass at
+// ~100 m whatever the distance (ATN debug12; below 100% its uv read the view's part of the depth wrong, so the grass
+// went on outside the top-left corner). Its 100 and 50 read from cb8[0].yz: 100 m and 50 m x Grass Height Distance.
 namespace twattila::grass_fade {
 
 using Microsoft::WRL::ComPtr;
@@ -42,6 +47,7 @@ constexpr std::array<uint32_t, 13> HASHES = {
     0x9FA74069, 0x0F7F49E2, 0x1BDE4E9D, 0x5ADA3882, 0x88D39D8E,  // forward_lit_oit (each shadow method)
     0x50F6A618, 0x10FB512C, 0x88CBA801, 0x8CE99E1F, 0xF2C2DE70,  // forward_lit_aoit
 };
+constexpr uint32_t PREFILL_HASH = 0x125A0DD5;  // gbuffer_zprefill_grass
 // Free in Attila's shaders. It was 12, the render scale's (render_scale.hlsli): left bound after the grass, at 100% the
 // shaders view_share patched read the fade as their share (positions stretched: AO in lines, farmland gone).
 constexpr UINT SLOT = 8;
@@ -50,7 +56,7 @@ namespace internal {
 
 struct Runtime {
   std::mutex mutex;
-  float fade = 0.01f;  // per metre: 0.01 / Grass Height Distance
+  float fade = 0.01f;  // per metre: 0.01 / Grass Height Distance (the pre-pass's distances 1 / fade, half of it)
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;  // by the game's hash (kept: it may create them again)
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11Buffer> buffer;
@@ -62,11 +68,13 @@ static Runtime runtime;
 
 // The fade's mul (its 0.01 the second source, a min next): that source from cb12[0].x, cb12 declared. Empty: not such
 // a shader.
-inline std::vector<uint8_t> Patch(std::span<const uint8_t> code) {
-  constexpr uint32_t OP_MIN = 51, OP_MUL = 56, OP_DCL_TEMPS = 104;
+inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool prefill) {
+  constexpr uint32_t OP_LT = 49, OP_MIN = 51, OP_MUL = 56, OP_DCL_TEMPS = 104;
   constexpr uint32_t IMMEDIATE_SCALAR = 0x00004001, HUNDREDTH = 0x3C23D70A;
-  // cb#[#].x (select-1, 2D immediate index) and dcl_constantbuffer cb#[1], immediateIndexed.
+  constexpr uint32_t IMMEDIATE_VECTOR = 0x00004002, HUNDRED = 0x42C80000, FIFTY = 0x42480000;
+  // cb#[#].x (select-1, 2D immediate index), cb#[#].yzyy (swizzle) and dcl_constantbuffer cb#[1], immediateIndexed.
   constexpr uint32_t CONSTANT_X = 2u | (2u << 2) | (8u << 12) | (2u << 20);
+  constexpr uint32_t CONSTANT_YZYY = 2u | (1u << 2) | (0x59u << 4) | (8u << 12) | (2u << 20);
   constexpr std::array<uint32_t, 4> DECLARATION = {0x04000059, 0x00208E46, SLOT, 1};
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
@@ -78,18 +86,29 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code) {
     if (length == 0) return {};
     const uint32_t opcode = tokens[at] & 0x7FF;
     if (opcode == OP_DCL_TEMPS) temps_at = at;
-    if (opcode == OP_MUL && length == 7 && tokens[at + 5] == IMMEDIATE_SCALAR && tokens[at + 6] == HUNDREDTH
-        && at + length < tokens.size() && (tokens[at + length] & 0x7FF) == OP_MIN) {
+    // The fade: mul rA.c, rB.c, l(0.01) before a min. The pre-pass: lt rA.xy, l(100, 50, 0, 0), rB.xyxx.
+    const bool fade = !prefill && opcode == OP_MUL && length == 7 && tokens[at + 5] == IMMEDIATE_SCALAR
+                      && tokens[at + 6] == HUNDREDTH && at + length < tokens.size() && (tokens[at + length] & 0x7FF) == OP_MIN;
+    const bool cut = prefill && opcode == OP_LT && length == 10 && tokens[at + 3] == IMMEDIATE_VECTOR && tokens[at + 4] == HUNDRED
+                     && tokens[at + 5] == FIFTY && tokens[at + 6] == 0 && tokens[at + 7] == 0;
+    if (fade || cut) {
       if (fade_at != 0) return {};
       fade_at = at;
     }
     at += length;
   }
   if (temps_at == 0 || fade_at == 0) return {};
-  tokens[fade_at] = (tokens[fade_at] & ~(0x7Fu << 24)) | (8u << 24);
-  tokens[fade_at + 5] = CONSTANT_X;
-  tokens[fade_at + 6] = SLOT;
-  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 7), 0u);
+  if (prefill) {
+    tokens[fade_at] = (tokens[fade_at] & ~(0x7Fu << 24)) | (8u << 24);
+    const std::array<uint32_t, 3> distances = {CONSTANT_YZYY, SLOT, 0};
+    tokens.erase(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 3), tokens.begin() + static_cast<ptrdiff_t>(fade_at + 8));
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 3), distances.begin(), distances.end());
+  } else {
+    tokens[fade_at] = (tokens[fade_at] & ~(0x7Fu << 24)) | (8u << 24);
+    tokens[fade_at + 5] = CONSTANT_X;
+    tokens[fade_at + 6] = SLOT;
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 7), 0u);
+  }
   // Before dcl_temps (the declarations come first; dcl_temps is before every instruction).
   tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(temps_at), DECLARATION.begin(), DECLARATION.end());
   tokens[1] = static_cast<uint32_t>(tokens.size());
@@ -105,18 +124,21 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     auto* desc = static_cast<reshade::api::shader_desc*>(subobjects[index].data);
     if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
     const std::span<const uint8_t> code(static_cast<const uint8_t*>(desc->code), desc->code_size);
-    const uint32_t hash = renodx::utils::hash::ComputeCRC32(code.data(), code.size());
-    if (std::ranges::find(HASHES, hash) == HASHES.end()) continue;
+    // The game's hash, also of a shader the render scale patched first (the pre-pass's terrain depth read).
+    const auto scaled = view_share::OriginalHash(desc->code);
+    const uint32_t hash = scaled.value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
+    if (std::ranges::find(HASHES, hash) == HASHES.end() && hash != PREFILL_HASH) continue;
     const std::unique_lock lock(runtime.mutex);
     auto [entry, added] = runtime.patched.try_emplace(hash);
     if (added) {
-      entry->second = Patch(code);
+      entry->second = Patch(code, hash == PREFILL_HASH);
       std::stringstream s;
       s << "[Total War] Grass fade: grass shader " << PRINT_CRC32(hash)
         << (entry->second.empty() ? " has no fade to patch." : " patched.");
       reshade::log::message(reshade::log::level::info, s.str().c_str());
     }
     if (entry->second.empty()) continue;
+    if (scaled.has_value()) view_share::Repatched(desc->code, entry->second.data());
     desc->code = entry->second.data();
     desc->code_size = entry->second.size();
     modified = true;
@@ -150,7 +172,7 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
     }
     if (!runtime.buffer) return {};
     if (runtime.uploaded != runtime.fade) {
-      const std::array<float, 4> value = {runtime.fade, 0.f, 0.f, 0.f};
+      const std::array<float, 4> value = {runtime.fade, 1.f / runtime.fade, 0.5f / runtime.fade, 0.f};
       native->UpdateSubresource(runtime.buffer.Get(), 0, nullptr, value.data(), 0, 0);
       runtime.uploaded = runtime.fade;
     }
@@ -180,6 +202,8 @@ inline void Install() {
     renodx::utils::command_action::Register(
         OnGrassDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
+  renodx::utils::command_action::Register(
+      OnGrassDraw, {.shader_hash = PREFILL_HASH, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 }
 
 inline void Uninstall() {

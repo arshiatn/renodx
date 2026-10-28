@@ -35,6 +35,13 @@ float3 FFX_SSSR_ScreenSpaceToViewSpace(float3 screen_position)
 
 // The view's pixels (the render size with DLSS below 100%): the march's screen.
 #define SSR_VIEW_SIZE g_viewport_dimensions.xy
+
+// The view's share of the screen-size textures (below 100% the 3D image is their top-left part): a view uv x this reads
+// them.
+float2 SsrScreenShare()
+{
+  return g_viewport_dimensions.xy * g_screen_size.zw;
+}
 #include "./ssr_march.hlsli"
 
 // The reflection at `pixel` of a ray from `start_view` along `direction_view` (view space; `direction_world` the same
@@ -70,8 +77,7 @@ float3 SsrHierarchical(float2 pixel, float3 start_view, float3 direction_view, f
   if (confidence <= 0.f) return environment;
   hit_info = float2(length(FFX_SSSR_ScreenSpaceToViewSpace(hit) - start_view), confidence);
   // The hit's uv is the view's: the light buffer's (screen-size) uv is that x the view's share of it.
-  const float3 reflected =
-      s_light_accumulation_buffer.SampleLevel(s_light_accumulation_buffer_s, hit.xy * g_viewport_dimensions.xy * g_screen_size.zw, 0).xyz;
+  const float3 reflected = s_light_accumulation_buffer.SampleLevel(s_light_accumulation_buffer_s, hit.xy * SsrScreenShare(), 0).xyz;
   return lerp(reflected, environment, max(1.f - confidence, environment_floor));
 }
 
