@@ -306,6 +306,14 @@ struct DeviceObjects {
   std::vector<std::pair<D3D11_BLEND_DESC, ComPtr<ID3D11BlendState>>> drawn_blend_states;
 };
 
+// NVIDIA's UAV overlap (nvapi's NvAPI_D3D11_BeginUAVOverlapEx without a wait for idle, NvAPI_D3D11_EndUAVOverlap),
+// loaded at the first record draw; null: unavailable.
+struct UavOverlap {
+  bool loaded = false;
+  int(__cdecl* begin)(IUnknown* context, uint32_t wait_flags) = nullptr;
+  int(__cdecl* end)(IUnknown* context) = nullptr;
+};
+
 struct State {
   std::shared_mutex mutex;
   Shaders shaders;              // the addon's (Install), kept while installed
@@ -317,6 +325,7 @@ struct State {
   std::vector<DrawSignature> draw_signatures;
   std::unordered_map<uint64_t, GamePixelShader> pixel_shaders;
   InDraw in_draw;
+  UavOverlap uav_overlap;
 };
 
 static State state;
@@ -846,6 +855,32 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   native->PSSetConstantBuffers(MOTION_SLOT, 1, &motion_constants);
   // Motion Test 1: no records or captures.
   const bool no_records = (test.load(std::memory_order_relaxed) == 1);
+  // The units' records and the deformed meshes' captures write the same tables draw after draw: NVIDIA's UAV overlap
+  // (DLSS: an NVIDIA GPU) keeps the driver from waiting for the GPU to idle before each (~4 ms a frame with a unit of
+  // cavalry on screen). nvapi loaded at the first.
+  auto& overlap = state.uav_overlap;
+  if (!overlap.loaded && (shader.kind == MotionKind::UNIT || shader.kind == MotionKind::DEFORMED)) {
+    overlap.loaded = true;
+    using Query = void*(__cdecl*)(uint32_t id);
+    using Initialize = int(__cdecl*)();
+    Query query = nullptr;
+    Initialize initialize = nullptr;
+    if (HMODULE nvapi = LoadLibraryW(sizeof(void*) == 8 ? L"nvapi64.dll" : L"nvapi.dll"); nvapi != nullptr) {
+      query = reinterpret_cast<Query>(GetProcAddress(nvapi, "nvapi_QueryInterface"));
+    }
+    if (query != nullptr) {
+      initialize = reinterpret_cast<Initialize>(query(0x0150E828));
+    }
+    if (initialize != nullptr && initialize() == 0) {
+      overlap.begin = reinterpret_cast<decltype(overlap.begin)>(query(0xBA08208A));
+      overlap.end = reinterpret_cast<decltype(overlap.end)>(query(0x2216A357));
+    }
+    if (overlap.begin == nullptr || overlap.end == nullptr) {
+      overlap.begin = nullptr;
+      overlap.end = nullptr;
+    }
+    renodx::utils::log::i("[Total War] Object motion: NVIDIA's UAV overlap ", (overlap.begin != nullptr ? "used." : "unavailable."));
+  }
   if (record && !no_records) {
     // One point per instance (its first vertex), not rasterized: its rows and (mesh key, slot) after the frame's records.
     ComPtr<ID3D11GeometryShader> game_geometry_shader;
@@ -882,10 +917,16 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 0, static_cast<UINT>(capture.size()), capture.data(), nullptr);
     native->OMSetDepthStencilState(objects.capture_depth_state.Get(), 0);
     native->RSSetState(objects.capture_rasterizer.Get());
+    if (overlap.begin != nullptr) {
+      overlap.begin(native, 0);
+    }
     if constexpr (INDEXED) {
       native->DrawIndexedInstanced(vertex_count, 1, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
     } else {
       native->DrawInstanced(vertex_count, 1, arguments.first_vertex, arguments.first_instance);
+    }
+    if (overlap.end != nullptr) {
+      overlap.end(native);
     }
   }
   native->IASetPrimitiveTopology(topology);
@@ -924,10 +965,16 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     native->RSSetState(objects.capture_rasterizer.Get());
     // Not the game's blend state: its alpha to coverage would drop the point (no colour out) and its writes.
     native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+    if (overlap.begin != nullptr) {
+      overlap.begin(native, 0);
+    }
     if constexpr (INDEXED) {
       native->DrawIndexedInstanced(1, arguments.instance_count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
     } else {
       native->DrawInstanced(1, arguments.instance_count, arguments.first_vertex, arguments.first_instance);
+    }
+    if (overlap.end != nullptr) {
+      overlap.end(native);
     }
     native->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 1, static_cast<UINT>(NO_TABLE.size()), NO_TABLE.data(), nullptr);
     native->IASetPrimitiveTopology(topology);
