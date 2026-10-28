@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <functional>
 #include <limits>
 #include <mutex>
 #include <span>
@@ -224,6 +225,10 @@ struct Runtime {
     bool ambiguous = false;
   };
   std::unordered_map<uint64_t, ShortKey> short_keys;
+  // New static meshes captured per vertex shader since the last report (Update: every 10 s), the report's time (ATN
+  // 2026-10-28: the helper's 16384 static records filled within a minute, 93 meshes in the scene).
+  std::unordered_map<uint32_t, uint32_t> new_static;
+  uint64_t new_static_time = 0;
   // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
   // objects.light_constants, b12) and whether it did.
   std::vector<LocalLight> lights_drawn;
@@ -758,6 +763,8 @@ void Capture(Context& command, const SceneShader& shader) {
   runtime.captured_vertices += vertex_count + row_texels;
   if (shader.dynamic) {
     runtime.dynamic_vertices += vertex_count;
+  } else {
+    ++runtime.new_static[shader.hash];
   }
 }
 
@@ -776,20 +783,43 @@ void CaptureAnyDraw(Context& command, const void*) {
   if (native != nullptr && shader.hash != 0u && host.scene_draw(native, &shader)) Capture(command, shader);
 }
 
+// A frame's trace not made, and why: logged when the reason changes, else at most every 5 s (ATN 2026-10-28: every
+// effect magenta in the Debug View, so no trace was made).
+inline void NotTraced(const std::string& reason) {
+  static std::string last;
+  static uint64_t logged = 0;
+  const uint64_t now = GetTickCount64();
+  if (last == reason && now < logged + 5000) return;
+  last = reason;
+  logged = now;
+  renodx::utils::log::i("[Total War] Ray tracing: no trace this frame (", reason, ").");
+}
+
 // This frame's trace from the main view's `depth` and `camera_buffer` (the ambient occlusion pass's, or the first sun
 // draw's): the captures, the positions, the request; false: none.
 // `depth` null: the bridge's positions (and the camera in the sun texture's texel 1) were written by the addon's own pass
 // (Ryse's, from its linear depth).
 inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, const Camera& camera) {
   auto& objects = runtime.objects;
-  if (!Enabled() || runtime.traced_frame == runtime.frame || !dlaa_bridge::bridge.ray_tracing || !objects.constants) return false;
+  if (!Enabled() || runtime.traced_frame == runtime.frame) return false;
+  if (!dlaa_bridge::bridge.ray_tracing || !objects.constants) {
+    NotTraced(dlaa_bridge::bridge.ray_tracing ? "its objects were not made" : "DLAA's bridge has no ray tracing textures");
+    return false;
+  }
   if (depth != nullptr) {
     D3D11_SHADER_RESOURCE_VIEW_DESC depth_desc = {};
     depth->GetDesc(&depth_desc);
-    if (depth_desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D) return false;
+    if (depth_desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D) {
+      NotTraced("the depth is no 2D texture");
+      return false;
+    }
   }
   const auto render_size = host.render_size();
-  if (render_size[0] == 0 || render_size[0] > dlaa_bridge::bridge.width || render_size[1] > dlaa_bridge::bridge.height) return false;
+  if (render_size[0] == 0 || render_size[0] > dlaa_bridge::bridge.width || render_size[1] > dlaa_bridge::bridge.height) {
+    NotTraced(std::format("render size {} x {}, the bridge's {} x {}", render_size[0], render_size[1], dlaa_bridge::bridge.width,
+                          dlaa_bridge::bridge.height));
+    return false;
+  }
   {
     const ComputeState kept(native);
     if (!runtime.captures.empty()) {
@@ -899,6 +929,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .view_projection = camera.view_projection,
   };
   const bool traced = dlaa_bridge::TraceScene(native, request);
+  if (!traced) NotTraced("the helper did not trace: " + dlaa_bridge::TraceStatus());
   runtime.lights_traced = traced && lights;
   if (traced) {
     for (const auto& capture : runtime.captures) {
@@ -919,8 +950,13 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
 
 // The same with the camera in `camera_buffer` (host.camera); false: not the main view's.
 inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, ID3D11Buffer* camera_buffer) {
+  if (!Enabled() || runtime.traced_frame == runtime.frame) return false;
   Camera camera;
-  return depth != nullptr && camera_buffer != nullptr && host.camera(camera_buffer, &camera) && Trace(native, depth, camera);
+  if (depth == nullptr || camera_buffer == nullptr || !host.camera(camera_buffer, &camera)) {
+    NotTraced(depth == nullptr ? "no depth bound at its pass" : "no main camera in its pass's camera buffer");
+    return false;
+  }
+  return Trace(native, depth, camera);
 }
 
 // The Light Bounce's trace through rays (light_bounce.hpp SetRayTracedTrace): its prepared light (its first level's
@@ -1266,6 +1302,19 @@ inline void Update(const Settings& settings) {
   runtime.settings = settings;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
+  if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
+    if (!runtime.new_static.empty()) {
+      std::vector<std::pair<uint32_t, uint32_t>> counts(runtime.new_static.begin(), runtime.new_static.end());
+      std::ranges::sort(counts, std::ranges::greater{}, &std::pair<uint32_t, uint32_t>::second);
+      std::string line;
+      for (size_t index = 0; index < std::min<size_t>(counts.size(), 6); ++index) {
+        line += std::format("{}{:08X} x{}", (index == 0 ? "" : ", "), counts[index].first, counts[index].second);
+      }
+      renodx::utils::log::i("[Total War] Ray tracing: new static meshes in 10 s by vertex shader: ", line, " (", runtime.known.size(), " known).");
+      runtime.new_static.clear();
+    }
+    runtime.new_static_time = now;
+  }
   runtime.captures.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;

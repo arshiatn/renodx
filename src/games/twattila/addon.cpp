@@ -1652,7 +1652,8 @@ void ConfigureAddon() {
   // Appended Settings (Screen-Space Shadows, Anti-Aliasing: twattila/feature_settings.hpp)
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
+                                     &shader_injection.light_bounce_strength);
 
   // Appended Settings (Output)
   {

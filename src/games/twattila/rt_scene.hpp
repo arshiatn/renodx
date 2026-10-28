@@ -657,10 +657,13 @@ inline void Uninstall() {
 // The settings after the anti-aliasing's (Attila's ambient occlusion also has Alone: `ambient_alone`).
 // `reflection_pass`: the game's reflection pass reads the ray-traced reflections (Attila, Thrones, Warhammer,
 // Warhammer II); the others get no reflection settings.
+// `light_bounce_strength`: the Light Bounce's (Lighting), for a note when the effects that replace its trace are on
+// without it (null: none).
 inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* settings, Sliders* sliders,
                            const feature_settings::AaSliders* aa,
                            bool ambient_alone = false, bool reflection_pass = false,
-                           const std::string& section = feature_settings::AA_SECTION) {
+                           const std::string& section = feature_settings::AA_SECTION,
+                           const float* light_bounce_strength = nullptr) {
   const auto dlaa_on = [aa] { return aa->method == 5.f; };
   const std::vector<std::string> ambient_labels = ambient_alone ? std::vector<std::string>{"Off", "On", "Alone"}
                                                                 : std::vector<std::string>{"Off", "On"};
@@ -904,6 +907,16 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "Needs the Light Bounce on, DLAA, an RTX GPU and renodx-tw-dlaa64.exe. Heavy.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Light Bounce (Lighting) is off: Ray-Traced Light Bounce and Path Tracing do nothing without it.",
+          .section = section,
+          .tint = 0xFF5050,
+          .is_visible = [sliders, light_bounce_strength] {
+            return light_bounce_strength != nullptr && *light_bounce_strength <= 0.f
+                   && (sliders->light_bounce != 0.f || sliders->path_tracing != 0.f);
+          },
       },
       new renodx::utils::settings::Setting{
           .key = "PathTracingBounces",
