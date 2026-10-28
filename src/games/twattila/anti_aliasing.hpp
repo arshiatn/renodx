@@ -39,6 +39,7 @@
 #include "./frame_trace.hpp"
 #include "./light_bounce.hpp"
 #include "./object_motion.hpp"
+#include "./reflex.hpp"
 #include "./smaa/AreaTex.h"
 #include "./smaa/SearchTex.h"
 #include "./texture_lod_bias.hpp"
@@ -91,8 +92,8 @@ struct Settings {
   bool ray_traced_guides = false;
   bool ray_traced_reflections = false;
   uint32_t frame_generation = 0;           // DLAA / DLSS: frames shown per rendered frame (2-6; 1 Dynamic; 0 off: frame_generation.hpp)
-  bool reflex_boost = false;
-  uint32_t frame_limit = 0;   // frame generation's Reflex limit, rendered frames per second (0: none)
+  uint32_t reflex = 0;        // NVIDIA Reflex: 0 off, 1 on, 2 on + boost (with frame generation: on whatever this is)
+  uint32_t frame_limit = 0;   // Reflex's limit, rendered frames per second (0: none)
   uint32_t frame_preset = 0;  // frame generation's NVIDIA preset A-C as 1-3 (0: the driver's)
   bool hud_recomposition = true;
   // DLSS: the textures' levels below 100% (texture_lod_bias.hpp): 0 the game's, 1 as sharp as at the display size, 2
@@ -1380,11 +1381,12 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   object_motion::SetActive(settings.method == Method::DLAA && settings.object_motion);
   frame_generation::Update({
       .multiplier = (settings.method == Method::DLAA ? settings.frame_generation : 0u),
-      .reflex_boost = settings.reflex_boost,
+      .reflex_boost = (settings.reflex == 2),
       .frame_limit = settings.frame_limit,
       .preset = settings.frame_preset,
       .hud_recomposition = settings.hud_recomposition,
   });
+  reflex::Update(swapchain, settings.reflex, settings.frame_limit);
   const std::unique_lock lock(internal::runtime.mutex);
   auto& runtime = internal::runtime;
   runtime.settings = settings;
@@ -1454,6 +1456,7 @@ inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMo
   reshade::register_event<reshade::addon_event::destroy_sampler>(texture_lod_bias::OnDestroySampler);
   reshade::register_event<reshade::addon_event::push_descriptors>(texture_lod_bias::OnPushDescriptors);
   reshade::register_event<reshade::addon_event::present>(internal::OnPresent);
+  reflex::Install();
   for (const auto& draw : draws) {
     renodx::utils::command_action::Register(
         internal::OnSunDraw,
@@ -1475,6 +1478,7 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::destroy_sampler>(texture_lod_bias::OnDestroySampler);
   reshade::unregister_event<reshade::addon_event::push_descriptors>(texture_lod_bias::OnPushDescriptors);
   reshade::unregister_event<reshade::addon_event::present>(internal::OnPresent);
+  reflex::Uninstall();
   renodx::utils::command_action::Unregister(internal::OnSunDraw);
   object_motion::Uninstall();
   internal::scaling.store(false);
@@ -1510,6 +1514,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   object_motion::OnDestroyDevice(native);
   frame_generation::OnDestroyDevice(native);
+  reflex::OnDestroyDevice(native);
   view_share::OnDestroyDevice(native);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.objects.device.Get() != native) return;

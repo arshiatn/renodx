@@ -2,6 +2,19 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v86 (2026-10-28, untested in game)
+
+- **NVIDIA Reflex** (Off / On / On + Boost; replaces Reflex Boost, all TW games): Reflex without frame generation, with
+  any anti-aliasing. reflex.hpp sets NVAPI's sleep mode on the game's D3D11 device, calls its Sleep right after each
+  present (ReShade's finish_present) and sends the latency markers; with frame generation presenting it steps aside
+  (the helper's Streamline runs Reflex). NVAPI loaded by function id (no 32-bit nvapi.lib; nvapi.hpp, now shared with
+  object motion's UAV overlap). 32-bit GPU test on the RTX 5090: NVAPI takes the structs, the driver reports low
+  latency on and the game's sleep used, a 30 fps limit gives 32.8 ms frames. **Frame Rate Limit** works with Reflex
+  on too (it needed frame generation).
+- Frame Generation Preset's tooltip: what nvngx_dlssg 310.9 does with them (EndpointConfiguration::ReadRegkeys, DRS
+  0x10E41DF1): A forces UI recomposition off, B on, C (Lite: candidate blending) off. NVIDIA's DLSS-G indicator shows
+  no letter: DLSSG.UserInterfaceRecompositionEnabled and DLSSG.LiteCandidateBlendingEnabled show the result.
+
 ## v85 (2026-10-28, the Nexus beta)
 
 - **SDR (monitors without HDR)** preset (yellow): Output SDR, Recommended without the VFX boost, no video AutoHDR. In

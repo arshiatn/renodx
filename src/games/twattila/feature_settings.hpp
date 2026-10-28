@@ -57,8 +57,8 @@ struct AaSliders {
   float render_scale = 100.f;  // Custom, in percent (below 100: DLSS)
   float ray_reconstruction = 0.f;  // DLAA's: off, NVIDIA's preset, D, E, F
   float frame_generation = 0.f;    // DLAA's: off, 2x-6x, Dynamic
-  float reflex_boost = 0.f;
-  float frame_limit = 0.f;         // frame generation's Reflex limit, rendered frames per second (0: off)
+  float reflex = 0.f;              // NVIDIA Reflex: off, on, on + boost (frame generation: always on)
+  float frame_limit = 0.f;         // Reflex's limit, rendered frames per second (0: off)
   float frame_preset = 0.f;        // frame generation's: the driver's, A, B, C
   float hud_recomposition = 1.f;   // frame generation's: the UI laid over the generated frames
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
@@ -110,7 +110,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .frame_generation = (sliders.frame_generation >= 6.f   ? 1u
                            : sliders.frame_generation >= 1.f ? static_cast<uint32_t>(sliders.frame_generation) + 1u
                                                              : 0u),
-      .reflex_boost = (sliders.reflex_boost != 0.f),
+      .reflex = static_cast<uint32_t>(std::clamp(sliders.reflex, 0.f, 2.f)),
       .frame_limit = static_cast<uint32_t>(std::clamp(sliders.frame_limit, 0.f, 240.f)),
       .frame_preset = static_cast<uint32_t>(std::clamp(sliders.frame_preset, 0.f, 3.f)),
       .hud_recomposition = (sliders.hud_recomposition != 0.f),
@@ -442,15 +442,15 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .is_enabled = [sliders] { return sliders->method == 5.f; },
                                         },
                                         new renodx::utils::settings::Setting{
-                                            .key = "FrameGenerationReflexBoost",
-                                            .binding = &sliders->reflex_boost,
-                                            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                                            .key = "Reflex",
+                                            .binding = &sliders->reflex,
+                                            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
                                             .default_value = 0.f,
-                                            .label = "Reflex Boost",
+                                            .label = "NVIDIA Reflex",
                                             .section = AA_SECTION,
-                                            .tooltip = "Keeps the GPU's clocks up with frame generation (Reflex is always on with it).",
-                                            .labels = {"Off", "On"},
-                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                            .tooltip = "Less input lag on NVIDIA GPUs, with any anti-aliasing: each frame starts only as the GPU\n"
+                                                       "needs it. Boost also keeps the GPU's clocks up. Always on with frame generation.",
+                                            .labels = {"Off", "On", "On + Boost"},
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "FrameGenerationFrameLimit",
@@ -461,11 +461,11 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .section = AA_SECTION,
                                             .tooltip = "Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it). A cap\n"
                                                        "the game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.\n"
-                                                       "0: off.",
+                                                       "Needs Reflex or frame generation on. 0: off.",
                                             .min = 0.f,
                                             .max = 240.f,
                                             .format = "%d fps",
-                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                            .is_enabled = [sliders] { return sliders->reflex != 0.f || (sliders->method == 5.f && sliders->frame_generation != 0.f); },
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "FrameGenerationHudRecomposition",
@@ -485,7 +485,9 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .default_value = 0.f,
                                             .label = "Frame Generation Preset",
                                             .section = AA_SECTION,
-                                            .tooltip = "NVIDIA's frame generation presets: A standard, B HUD recomposition, C Lite (lighter).\n"
+                                            .tooltip = "NVIDIA's frame generation presets. Driver's: HUD Recomposition as set above.\n"
+                                                       "A: HUD recomposition off (the HUD smears). B: HUD recomposition on.\n"
+                                                       "C (Lite): lighter but lower quality, HUD recomposition off.\n"
                                                        "Saved in the NVIDIA driver profile of renodx-tw-dlaa64.exe; applies after restarting the game.",
                                             .labels = {"Driver's", "A", "B", "C"},
                                             .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },

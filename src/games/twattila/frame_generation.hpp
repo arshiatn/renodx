@@ -291,6 +291,12 @@ inline bool Wanted() {
   return internal::state.settings.multiplier != 0;
 }
 
+// Whether the helper presents the game's frames (its Reflex paces the game then: reflex.hpp steps aside).
+inline bool Presenting() {
+  const std::shared_lock lock(internal::state.mutex);
+  return internal::state.presenting;
+}
+
 // The helper's frame generation status (one line).
 inline std::string Status() {
   return dlaa_bridge::FrameGenerationStatus();

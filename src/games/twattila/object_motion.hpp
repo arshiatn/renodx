@@ -34,6 +34,7 @@
 #include "../../utils/pipeline.hpp"
 #include "./dxbc.hpp"
 #include "./frame_history.hpp"
+#include "./nvapi.hpp"
 
 // Object motion (DLSS's motion vectors of what moves on its own): swaying grass, leaves and branches, units, moving
 // rigid objects, deformed meshes and the ocean. Each of their draws is drawn again with its motion vertex shader
@@ -1103,20 +1104,8 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   auto& overlap = state.uav_overlap;
   if (!overlap.loaded && (shader.kind == MotionKind::UNIT || shader.kind == MotionKind::DEFORMED)) {
     overlap.loaded = true;
-    using Query = void*(__cdecl*)(uint32_t id);
-    using Initialize = int(__cdecl*)();
-    Query query = nullptr;
-    Initialize initialize = nullptr;
-    if (HMODULE nvapi = LoadLibraryW(sizeof(void*) == 8 ? L"nvapi64.dll" : L"nvapi.dll"); nvapi != nullptr) {
-      query = reinterpret_cast<Query>(GetProcAddress(nvapi, "nvapi_QueryInterface"));
-    }
-    if (query != nullptr) {
-      initialize = reinterpret_cast<Initialize>(query(0x0150E828));
-    }
-    if (initialize != nullptr && initialize() == 0) {
-      overlap.begin = reinterpret_cast<decltype(overlap.begin)>(query(0xBA08208A));
-      overlap.end = reinterpret_cast<decltype(overlap.end)>(query(0x2216A357));
-    }
+    overlap.begin = reinterpret_cast<decltype(overlap.begin)>(nvapi::Function(0xBA08208A));
+    overlap.end = reinterpret_cast<decltype(overlap.end)>(nvapi::Function(0x2216A357));
     if (overlap.begin == nullptr || overlap.end == nullptr) {
       overlap.begin = nullptr;
       overlap.end = nullptr;
