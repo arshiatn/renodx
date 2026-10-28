@@ -48,7 +48,7 @@ float2 SsrScreenShare()
 // in world space): what it hits on screen, faded into `environment` by the confidence, at least by `environment_floor`
 // (the game's depth falloff). `hit_info` for the resolve (ssr_resolve.cs): the reflected distance (view space) and the
 // confidence; y -1: not traced this frame (Reflection Rays Half / Quarter: the pixels take turns, the resolve fills the
-// rest).
+// rest; SI.ssr_traced: fewer skipped with Effects at Output Resolution).
 float3 SsrHierarchical(float2 pixel, float3 start_view, float3 direction_view, float3 direction_world, float3 environment,
                        float environment_floor, out float2 hit_info)
 {
@@ -56,8 +56,8 @@ float3 SsrHierarchical(float2 pixel, float3 start_view, float3 direction_view, f
   const uint2 position = uint2(pixel);
   const uint frame = (uint)SI.ssr_frame;
   [branch]
-  if ((SI.ssr_rays == 1.f && ((position.x + position.y + frame) & 1u) != 0u)
-      || (SI.ssr_rays == 2.f && ((position.x & 1u) + 2u * (position.y & 1u)) != (frame & 3u)))
+  if ((SI.ssr_traced == 1.f && ((position.x + position.y + frame) & 1u) != 0u)
+      || (SI.ssr_traced == 2.f && ((position.x & 1u) + 2u * (position.y & 1u)) != (frame & 3u)))
   {
     hit_info = float2(0.f, -1.f);
     return environment;

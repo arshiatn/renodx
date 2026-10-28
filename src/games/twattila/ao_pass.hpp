@@ -339,8 +339,14 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
   }
 };
 
-// The Resolution setting's items (Full, 3/4, Half, 1/4): the game's size over the ambient occlusion's.
-constexpr std::array<float, 4> RESOLUTION_SCALES = {1.f, 4.f / 3.f, 2.f, 4.f};
+// The Resolution setting's item (Full, 3/4, Half, 1/4) as the game's size over the ambient occlusion's; with Effects at
+// Output Resolution x the render share (at least full), the detail of 100%.
+inline float ResolutionScale(float resolution) {
+  constexpr std::array<float, 4> SCALES = {1.f, 4.f / 3.f, 2.f, 4.f};
+  return std::max(SCALES[std::clamp(static_cast<int>(resolution), 0, 3)]
+                      * frame_history::effect_share.load(std::memory_order_relaxed),
+                  1.f);
+}
 
 // Every present: the visibility bitmask ambient occlusion on or off, its Temporal Smoothing, its resolution (`scale`: the
 // game's size over its own, 1 full) and Denoiser (the shaders read them from the settings too); returns the noise's frame

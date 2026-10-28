@@ -94,7 +94,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .grass = sliders.grass != 0.f,
       .ambient_range = sliders.ambient_range,
       .ambient_rays = static_cast<uint32_t>(sliders.ambient_rays),
-      .ambient_quarter = sliders.ambient_quarter != 0.f,
+      // Effects at Output Resolution: every pixel each frame from one step of 2 down (as many rays on screen as at 100%).
+      .ambient_quarter = sliders.ambient_quarter != 0.f && frame_history::EffectSteps() < 1.f,
       .sun_softness = sliders.sun_softness,
       .light_bounce = (sliders.light_bounce != 0.f || sliders.path_tracing != 0.f) && bounce,
       .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),

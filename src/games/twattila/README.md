@@ -2,6 +2,16 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v88 (2026-10-28, untested in game)
+
+- **Effects at Output Resolution** (Anti-aliasing, on by default, as Tales of Arise's; all TW games): while DLSS renders
+  below 100%, the effects sized in render pixels follow the render scale and keep their 100% detail (ATN debug18:
+  softer reflections and shadows at low DLSS modes). Ambient occlusion's Resolution x the render share (at least
+  full), Light Bounce's Resolution one step finer per step of 2, Reflection Rays Half / Quarter up by the steps per
+  area (Quality: Quarter traces Half), the game's reflection blur (reflections_blur, in texels of the full-size
+  target) x the render share, Screen-space Shadows' Softness x the render share (nearest pixel), ray-traced ambient
+  occlusion's Quarter rate off from one step of 2 down. Only while DLSS really scales (not in menus).
+
 ## v87 (2026-10-28, untested in game; renodx-tw-dlaa64.exe helper24, bridge v13: ship them together)
 
 - **HUD Recomposition** now gives DLSS-G a one-byte **UI alpha** (kBufferTypeUIAlpha, NVIDIA's faster UI input) in

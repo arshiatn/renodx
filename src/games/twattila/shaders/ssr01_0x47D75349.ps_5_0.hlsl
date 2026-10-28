@@ -332,5 +332,8 @@ void main(
   r0.x = saturate(r0.y / r0.x);
   r0.x = 1 + -r0.x;
   o1.x = -r0.x * r0.x + 1;
+  // Effects at Output Resolution (DLSS below 100%): the blur's step (reflections_blur: (this x 1.9 + 0.1) texels of the
+  // full-size target) x the render share, as wide on screen as at 100%.
+  o1.x = max(((o1.x * 1.9f + 0.1f) * SI.effects_share - 0.1f) / 1.9f, 0.f);
   return;
 }

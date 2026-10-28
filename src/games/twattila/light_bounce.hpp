@@ -562,7 +562,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Sliders& sliders) {
       .thickness = sliders.thickness,
       .steps = 8.f * power_of_two(sliders.quality, 5.f),
       .slices = power_of_two(sliders.directions, 4.f),
-      .scale = power_of_two(sliders.resolution, 3.f),
+      // Effects at Output Resolution: the render scale's steps of 2 off the divisor (the detail of 100%).
+      .scale = power_of_two(sliders.resolution - frame_history::EffectSteps(), 3.f),
       .history = (temporal ? internal::HISTORY_SHARE : 0.f),
       .frame = (temporal ? static_cast<float>(internal::runtime.frame % 64) : 0.f),
       .bounces = std::clamp(sliders.multi_bounce, 0.f, 1.f),

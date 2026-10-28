@@ -85,6 +85,7 @@ struct Settings {
   float sharpening = 0.25f;      // TAA, SMAA T2x
   uint32_t dlaa_preset = 0;      // DLAA: NVSDK_NGX_DLSS_Hint_Render_Preset (0: NVIDIA's)
   float render_scale = 1.f;      // DLAA below 1: DLSS (the 3D image drawn at this fraction of the display's size)
+  bool effects_at_output = true;  // DLSS: the effects' resolutions follow the render scale (frame_history::effect_share)
   bool ray_reconstruction = false;          // DLAA / DLSS: NVIDIA's Ray Reconstruction (guides from the G-buffer)
   uint32_t ray_reconstruction_preset = 0;  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset (0: NVIDIA's)
   bool ray_tracing = false;                // DLAA / DLSS: the bridge's ray tracing textures (rt_scene.hpp)
@@ -1408,6 +1409,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   runtime.render_width = render[0];
   runtime.render_height = render[1];
   internal::scaling.store(scaled);
+  frame_history::effect_share.store(((scaled && settings.effects_at_output) ? render_scale : 1.f), std::memory_order_relaxed);
   {
     // The patched shaders' render scale (view_share.hpp): render / display.
     auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());

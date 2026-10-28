@@ -1339,8 +1339,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   twattila::feature_settings::UpdateSsr(&shader_injection);
-  shader_injection.ssao_scale =
-      twattila::ao_pass::RESOLUTION_SCALES[std::clamp(static_cast<int>(shader_injection.ssao_resolution), 0, 3)];
+  shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
   shader_injection.ssao_frame =
       twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, shader_injection.ssao_temporal != 0.f,
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);

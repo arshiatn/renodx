@@ -791,6 +791,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       indicator, splines) land in the UI layer (not interpolated). WAITING: where ATN sees the smear.
       NEXT (ATN's order): (2) RT / PT fixes (ATN: 3 fps in battle before the DLSS performance fixes, effects invisible or broken:
       retest first); (3) later AMD RT + FSR / FSR FG.
+    - 2026-10-28 evening: v87 (d1ada232) FG UI alpha + Frame Generation Debug View (helper24, bridge v13). Nexus
+      quarantine: fork pushed, Downloads\nexus_quarantine_email.txt (ATN sends it), new short page text
+      Downloads\nexus_attila_description.txt. v88: Effects at Output Resolution (AA section, default on, as Tales;
+      frame_history::effect_share = the render share while DLSS really scales): AO ResolutionScale x share, Light
+      Bounce resolution - EffectSteps(), SSR ssr_traced = rays - EffectSteps(2) (C++ writes it, ssr_hiz.hlsli reads it,
+      so the resolve and the march agree), ssr00 / ssr01 blur step x share (effects_share), SSS softness x share, RT AO
+      quarter off from one step down. Troy / Pharaoh keep their AO half switch (their shaders read ssao_resolution).
+      Zips twattila_v88, twrome2_v40, twthronesofbritannia_v40. ASK ATN: water reflections / AO at Performance.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

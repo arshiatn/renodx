@@ -55,6 +55,7 @@ struct AaSliders {
   float dlaa_preset = 2.f;  // K, M, L
   float dlss_mode = 0.f;       // DLAA's scale: DLSS_MODE_SCALES, the last Custom (render_scale)
   float render_scale = 100.f;  // Custom, in percent (below 100: DLSS)
+  float effects_at_output = 1.f;   // DLSS: the effects keep their 100% detail (their resolutions follow the render scale)
   float ray_reconstruction = 0.f;  // DLAA's: off, NVIDIA's preset, D, E, F
   float frame_generation = 0.f;    // DLAA's: off, 2x-6x, Dynamic
   float reflex = 0.f;              // NVIDIA Reflex: off, on, on + boost (frame generation: always on)
@@ -79,7 +80,8 @@ inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
       .ignore_edges = (sliders.ignore_edges != 0.f),
       .precision_offset = (sliders.precision_offset != 0.f),
       .sample_along_ray = (sliders.sample_along_ray != 0.f),
-      .softness = sliders.softness,
+      // Effects at Output Resolution: as soft on screen as at 100% (the nearest whole pixel, 0 off).
+      .softness = std::round(sliders.softness * frame_history::effect_share.load(std::memory_order_relaxed)),
       .debug_view = static_cast<int>(sliders.debug_view),
       .mirror_edges = (sliders.mirror_edges != 0.f),
   };
@@ -104,6 +106,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       // NVSDK_NGX_DLSS_Hint_Render_Preset K, M, L.
       .dlaa_preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(sliders.dlaa_preset), 0, 2)],
       .render_scale = RenderScale(sliders),
+      .effects_at_output = (sliders.effects_at_output != 0.f),
       .ray_reconstruction = (sliders.ray_reconstruction != 0.f),
       // NVSDK_NGX_RayReconstruction_Hint_Render_Preset Default, D, E, F.
       .ray_reconstruction_preset = std::array<uint32_t, 5>{0u, 0u, 4u, 5u, 6u}[std::clamp(static_cast<int>(sliders.ray_reconstruction), 0, 4)],
@@ -388,6 +391,18 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .is_enabled = [sliders] { return sliders->method == 5.f && RenderScale(*sliders) < 1.f; },
     });
     settings->push_back(new renodx::utils::settings::Setting{
+        .key = "AntiAliasingEffectsAtOutput",
+        .binding = &sliders->effects_at_output,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Effects at Output Resolution (Recommended)",
+        .section = AA_SECTION,
+        .tooltip = "While DLSS renders below 100%, ambient occlusion, Light Bounce, reflections and shadow softness\n"
+                   "keep their 100% detail. Looks better, can cost some performance.",
+        .labels = {"Off", "On"},
+        .is_enabled = [sliders] { return sliders->method == 5.f && RenderScale(*sliders) < 1.f; },
+    });
+    settings->push_back(new renodx::utils::settings::Setting{
         .key = "AntiAliasingObjectMotion",
         .binding = &sliders->object_motion,
         .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -578,8 +593,11 @@ template <typename Injection>
 inline void UpdateSsr(Injection* injection, float denoiser = 0.f) {
   if constexpr (requires { injection->ssr_rays; }) {
     static uint64_t frame = 0;
-    ssr_hiz::Update(injection->ssr_hierarchical != 0.f, denoiser != 0.f,
-                    std::clamp(static_cast<int>(injection->ssr_rays), 0, 2));
+    // Effects at Output Resolution: the rays' share of pixels up by the render scale's steps per area (Quality traces
+    // Half where 100% traces Quarter), and the game's reflection blur x the render share (ssr00 / ssr01).
+    injection->ssr_traced = std::clamp(injection->ssr_rays - frame_history::EffectSteps(2.f), 0.f, 2.f);
+    injection->effects_share = frame_history::effect_share.load(std::memory_order_relaxed);
+    ssr_hiz::Update(injection->ssr_hierarchical != 0.f, denoiser != 0.f, static_cast<int>(injection->ssr_traced));
     injection->ssr_frame = static_cast<float>(++frame % 4);
   } else {
     ssr_hiz::Update(injection->ssr_hierarchical != 0.f, false, 0);

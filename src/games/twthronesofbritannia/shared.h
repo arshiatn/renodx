@@ -115,6 +115,8 @@ struct ShaderInjectData {
   float ssr_rays;                 // the hierarchical march's rays: 0 every pixel, 1 half (checkerboard), 2 a quarter
   float ssr_frame;                // which pixels trace this frame (Half / Quarter), 0-3
   float sky_deband;               // the sky's debanding and dither (twattila/sky.hlsli): 0 off, 1-3 low / medium / high
+  float effects_share;            // Effects at Output Resolution: DLSS's render share (1 off); ssr00 / ssr01's blur x it
+  float ssr_traced;               // ssr_rays less the render scale's steps (Effects at Output Resolution), each frame
 };
 
 #define SI shader_injection

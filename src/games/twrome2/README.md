@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twrome2.addon32` (32-bit game).
 
+## v40 (2026-10-28, untested in game; renodx-tw-dlaa64.exe helper24, bridge v13: ship them together)
+
+- **Effects at Output Resolution** (Anti-aliasing, on by default): while DLSS renders below 100%, ambient occlusion,
+  Light Bounce, shadow softness and ray-traced ambient occlusion keep their 100% detail (Attila v88).
+- **NVIDIA Reflex** (Off / On / On + Boost): without frame generation too, with any anti-aliasing; Frame Rate Limit
+  works with Reflex on (Attila v86).
+- **HUD Recomposition** gives DLSS-G a one-byte UI alpha (faster); **Frame Generation Debug View** (Attila v87).
+- DLSS preset L by default; a red note in Ray Tracing: not working correctly yet (Attila v85).
+
 ## v39 (2026-10-28, untested in game)
 
 - **Below 100%** (DLSS modes and custom render scales): **grass** looks as at DLAA all over the screen. Outside the

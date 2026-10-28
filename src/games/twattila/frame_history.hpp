@@ -75,6 +75,17 @@ inline bool MakeTarget(ID3D11Device* device, UINT width, UINT height, DXGI_FORMA
 inline std::atomic<uint32_t> render_width = 0;
 inline std::atomic<uint32_t> render_height = 0;
 
+// Effects at Output Resolution (anti_aliasing.hpp sets it every present): DLSS's render share while it draws below 100%
+// with the option on, else 1. The effects' own resolutions follow it (their divisors x it), so they keep the detail
+// they have at 100%.
+inline std::atomic<float> effect_share = 1.f;
+
+// The steps of 2 between full and `effect_share` (nearest; 0 at 1): what a divisor of 2^n drops by; `dimensions` 2 for
+// counts per area (the reflections' rays: Half, Quarter).
+inline float EffectSteps(float dimensions = 1.f) {
+  return std::round(dimensions * std::log2(1.f / std::clamp(effect_share.load(std::memory_order_relaxed), 0.01f, 1.f)));
+}
+
 // The render size for a display of `width` x `height` at `scale`: a whole number of the display's aspect units (width
 // and height over their gcd: 16 x 9 at 3840 x 2160), so the render aspect is exactly the display's. The games' motion
 // vectors take their aspect from the viewport: with each length rounded (custom 99%: 3802 x 2138) static pixels got up
