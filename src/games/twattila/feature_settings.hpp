@@ -473,7 +473,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                                        "0: off.",
                                             .min = 0.f,
                                             .max = 240.f,
-                                            .format = "%.0f fps",
+                                            .format = "%d fps",
                                             .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
                                         },
                                     });
