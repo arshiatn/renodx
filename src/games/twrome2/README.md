@@ -2,6 +2,11 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twrome2.addon32` (32-bit game).
 
+## v45 (2026-10-28, untested in game)
+
+- Screen-space shadows fade out from 40% to 60% of the far plane's distance (Attila v93: the campaign's sky backdrop
+  shadowed itself).
+
 ## v44 (2026-10-28, untested in game)
 
 - Screen-space shadows' Debug View goes through DLSS like the shadows in the picture (Attila v92).

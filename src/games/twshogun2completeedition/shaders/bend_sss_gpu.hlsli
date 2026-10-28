@@ -124,6 +124,8 @@ struct DispatchParameters
 	int FadeOutSamples;
 	// RenoDX Mirror Screen Edges: past the left, right and bottom edges the depth just inside, mirrored.
 	bool MirrorEdges;
+	// RenoDX: the shadow fades out between these shares of the far plane's distance (y <= x: none).
+	float2 FarFade;
 
 	// Set sensible starting tuning values
 	void SetDefaults()
@@ -142,6 +144,7 @@ struct DispatchParameters
 		HardShadowSamples			= HARD_SHADOW_SAMPLES;
 		FadeOutSamples				= FADE_OUT_SAMPLES;
 		MirrorEdges					= false;
+		FarFade						= float2(0, 0);
 	}
 
 	// Runtime data returned from BuildDispatchList():
@@ -531,6 +534,16 @@ struct DispatchParameters
 
 		// RenoDX render scale: off-screen pixels are skipped (writes there were out of bounds).
 		if (any(int2(write_xy) < 0) || any(int2(write_xy) >= int2(inParameters.RenderSize))) return;
+
+		// RenoDX FarFade: the pixel's distance as a share of the far plane's, (depth_inf - 1) / (depth_inf - depth) with
+		// depth_inf the projection's depth at infinity (the light's z). Far away a screen-space shadow resolves nothing, and Attila's
+		// campaign backdrop (the clouds past the map's edge, three quarters of the way out, its depth nearer towards the
+		// top) shadowed itself (ATN debug21).
+		if (inParameters.FarFade.y > inParameters.FarFade.x && inParameters.LightCoordinate.z > 1)
+		{
+			const float distance_share = (inParameters.LightCoordinate.z - 1) / (inParameters.LightCoordinate.z - first_sampling_depth);
+			result = lerp(result, 1, smoothstep(inParameters.FarFade.x, inParameters.FarFade.y, distance_share));
+		}
 
 		// Add shadowmap data
 		result = min(ReadShadowMap(write_xy), result);

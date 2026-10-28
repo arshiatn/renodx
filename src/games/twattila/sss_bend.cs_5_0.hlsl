@@ -45,6 +45,9 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   dp.HardShadowSamples = (int)g_sss_hard_samples;
   dp.FadeOutSamples = (int)g_sss_fade_samples;
   dp.MirrorEdges = (g_sss_mirror_edges != 0.f);
+  // None past 60% of the far plane's distance (from 40%): Attila's campaign backdrop sits near 75%; battles' far plane
+  // is 13 km away.
+  dp.FarFade = float2(0.4f, 0.6f);
   dp.LightCoordinate = asfloat(t_sss_parameters[0]);
   dp.WaveOffset = t_sss_parameters[1 + g_sss_dispatch].xy;
   dp.FarDepthValue = 1.f;

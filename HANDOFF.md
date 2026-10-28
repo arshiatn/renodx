@@ -823,6 +823,10 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       anti_aliasing's (7 games' macros), once a frame (debug_frame), into the render-size part: DLSS upscales it like
       the real shadows. Nothing else to gain: the mask feeds render-size lighting. Zips twattila_v92, twrome2_v44,
       twthronesofbritannia_v44. NEXT (ATN: no need to wait): RT / PT fixes in Attila.
+      v93 (ATN debug21, campaign, DLAA, SSS on vs off: the sky / clouds past the map's edge darkened up to a hard
+      vertical edge; the orange ring around the city is the game's): campaign projection n 1 / f 500 (depth_inf
+      1.002004), the backdrop's depth 0.99935 (75% of far). Bend FarFade (bend_sss_gpu.hlsli, set in sss_bend.cs):
+      shadow fades 0.4 -> 0.6 of the far distance. Zips twattila_v93, twrome2_v45, twthronesofbritannia_v45.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

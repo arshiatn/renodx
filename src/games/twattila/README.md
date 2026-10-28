@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v93 (2026-10-28, untested in game)
+
+- **Screen-space shadows no longer darken the campaign's sky** (ATN debug21, DLAA: the clouds past the map's edge
+  shadowed up to a hard edge). ATN's log: that backdrop's depth is 0.99935 with the campaign's depth at infinity
+  1.002, three quarters of the way to the far plane, a lit mesh whose depth comes nearer towards the top, so Bend
+  shadowed it against itself (the game's shadow maps never reach it). Bend's shadow now fades out from 40% to 60% of
+  the far plane's distance (bend_sss_gpu.hlsli FarFade: (depth_inf - 1) / (depth_inf - depth), the light's z being
+  the depth at infinity). Battles' far plane is 13 km away. All TW games.
+
 ## v92 (2026-10-28, untested in game)
 
 - **Screen-space shadows' Debug View goes through DLSS** like the shadows in the picture (ATN debug20: at Ultra
