@@ -41,6 +41,7 @@
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_lib.h"          // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
+#include "rt_place.h"             // dxc -Fh (build.ps1)
 #include "rt_reflect.h"           // dxc -Fh (build.ps1)
 #include "rt_reflect_filter.h"    // dxc -Fh (build.ps1)
 #include "rt_reflect_omm.h"       // dxc -Fh (build.ps1)
@@ -57,7 +58,8 @@
 // refits the frame's units into one BLAS (rebuilt when their draws change, or every UNITS_REBUILD_FRAMES), builds the
 // TLAS of the meshes the frame drew (and, but for the terrain, those drawn within RECENT_FRAMES: casters behind the
 // camera) with it, and traces rt_trace.cs_6_5.hlsl into the shared visibility textures (soft shadows through
-// rt_soft.cs_6_5.hlsl). Leaves are alpha-tested against their opacity masks (the addon's atlas, v6): each geometry has a
+// rt_soft.cs_6_5.hlsl). Placed meshes (bridge v14: rigid objects and trees, keyed by their geometry) have a BLAS from their
+// first instance, placed on the GPU (rt_place.cs_6_5.hlsl) where each frame's draws put their instances. Leaves are alpha-tested against their opacity masks (the addon's atlas, v6): each geometry has a
 // record (its instance's InstanceID plus its geometry index) with its UVs and normals in pools (rt_scene_data.cs_6_5.hlsl).
 // With the Agility SDK next to the helper (D3D12\D3D12Core.dll) and shader model 6.9, DXR 1.2: the leaves get opacity
 // micromaps (rt_omm.cs_6_5.hlsl). With a bridge v7 addon's ray-traced Light Bounce a second request each frame traces
@@ -148,12 +150,14 @@ class RtScene12 {
       slot.readback = Buffer(uint64_t{dlaa_bridge::RT_CAPTURES} * sizeof(uint64_t), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,
                              D3D12_RESOURCE_STATE_COPY_DEST);
       slot.rows_readback = Buffer(uint64_t{ROWS_READBACK} * 64, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+      slot.jobs = Buffer(uint64_t{PLACE_JOBS} * 32, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
       if (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf())))
           || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
                                                IID_PPV_ARGS(slot.list.GetAddressOf())))
-          || FAILED(slot.list->Close()) || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback
+          || FAILED(slot.list->Close()) || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs
           || FAILED(slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data)))
-          || FAILED(slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data)))) {
+          || FAILED(slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data)))
+          || FAILED(slot.jobs->Map(0, nullptr, reinterpret_cast<void**>(&slot.jobs_data)))) {
         return Fail("Ray tracing: no D3D12 command lists");
       }
     }
@@ -178,7 +182,18 @@ class RtScene12 {
     records_ = pool(uint64_t{RECORD_COUNT} * 16);
     uvs_ = pool(uint64_t{UV_POOL} * 4);
     normals_ = pool(uint64_t{NORMAL_POOL} * 4);
-    if (!vertex_buffer_ || !tlas_ || !tlas_scratch_ || !records_ || !uvs_ || !normals_) return Fail("Ray tracing: D3D12 buffers failed");
+    // Placed meshes (v14): their build rows by record; the TLAS's instances when some are placed, two in turn (the last
+    // one's carried instances copied into the next).
+    build_rows_ = Buffer(uint64_t{STATIC_RECORDS} * 48, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                         D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    for (auto& placed : placed_instances_) {
+      placed = Buffer(uint64_t{MAX_INSTANCES} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), D3D12_HEAP_TYPE_DEFAULT,
+                      D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    }
+    if (!vertex_buffer_ || !tlas_ || !tlas_scratch_ || !records_ || !uvs_ || !normals_ || !build_rows_ || !placed_instances_[0]
+        || !placed_instances_[1]) {
+      return Fail("Ray tracing: D3D12 buffers failed");
+    }
 #if defined(RENODX_NVAPI_CLUSTERS)
     // Mega Geometry's buffers, sized for the most clusters a frame: the CLASes (placed by the driver, their addresses in
     // clas_addresses_), the units' cluster BLAS (at cluster_blas_, its address in cluster_destination_), the scratch,
@@ -362,7 +377,7 @@ class RtScene12 {
     }
     if ((!trace_pipeline_ && !pipeline(RT_TRACE, sizeof(RT_TRACE), &trace_pipeline_))
         || (!bounce_pipeline_ && !pipeline(RT_BOUNCE, sizeof(RT_BOUNCE), &bounce_pipeline_)) || !pipeline(RT_SOFT, sizeof(RT_SOFT), &soft_pipeline_)
-        || !pipeline(RT_SCENE_DATA, sizeof(RT_SCENE_DATA), &scene_data_pipeline_)
+        || !pipeline(RT_SCENE_DATA, sizeof(RT_SCENE_DATA), &scene_data_pipeline_) || !pipeline(RT_PLACE, sizeof(RT_PLACE), &place_pipeline_)
         || (!path_pipeline_ && !pipeline(RT_PATH, sizeof(RT_PATH), &path_pipeline_))
         || (!reflect_pipeline_ && !pipeline(RT_REFLECT, sizeof(RT_REFLECT), &reflect_pipeline_))
         || (!reuse_pipeline_ && !pipeline(RT_REUSE, sizeof(RT_REUSE), &reuse_pipeline_))
@@ -998,6 +1013,9 @@ class RtScene12 {
   static constexpr UINT STATIC_RECORDS = 16384;
   // Instanced meshes' rows read back: a slot's request at most this many instances.
   static constexpr UINT ROWS_READBACK = 32768;
+  // A request's placement jobs (rt_place.cs_6_5.hlsl) at most: its new captures', its placements', a carried one per
+  // static mesh.
+  static constexpr UINT PLACE_JOBS = dlaa_bridge::RT_CAPTURES + dlaa_bridge::RT_PLACEMENTS + STATIC_RECORDS;
   static constexpr UINT CLUSTER_RECORDS = STATIC_RECORDS + SLOTS * dlaa_bridge::RT_CAPTURES;
   static constexpr UINT RECORD_COUNT = CLUSTER_RECORDS + SLOTS * MAX_CLUSTERS;
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
@@ -1006,6 +1024,8 @@ class RtScene12 {
   static constexpr UINT UV_POOL = STATIC_UVS;
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
+  static constexpr uint32_t PLACE_FOLIAGE = 1;  // rt_place.cs_6_5.hlsl
+  static constexpr uint32_t PLACE_CARRIED = 2;
   // Opacity micromaps: a mesh's at most (its subdivision level lowered to fit), all new meshes' a request.
   static constexpr uint64_t MICROMAP_MESH_BYTES = 8u << 20;
   static constexpr uint64_t MICROMAP_FRAME_BYTES = 64u << 20;
@@ -1123,6 +1143,8 @@ class RtScene12 {
       uint32_t count = 0;
     };
     std::vector<RowRead> row_reads;
+    ComPtr<ID3D12Resource> jobs;  // its placement jobs (rt_place's t8)
+    uint32_t* jobs_data = nullptr;
     uint8_t* light_data = nullptr;
     ComPtr<ID3D12Resource> clusters;  // Mega Geometry's arguments and records (CLUSTER_*_OFFSET)
     uint8_t* cluster_data = nullptr;
@@ -1148,6 +1170,13 @@ class RtScene12 {
     // capture; their places (instance indices, the partitioned TLAS's) from first_instance on.
     std::vector<std::array<float, 12>> transforms;
     uint32_t first_instance = 0;
+    // Placed (v14, RT_INSTANCED): in the scene only where a request's draws put its instances (rt_place), its build rows
+    // kept by record; its last instances (their first desc and count in the placement dispatch that wrote them) carried
+    // while it was drawn within RECENT_FRAMES.
+    bool placed = false;
+    uint32_t placed_first = 0;
+    uint32_t placed_count = 0;
+    uint64_t placed_generation = 0;
   };
   struct Release {
     uint64_t value = 0;
@@ -1398,14 +1427,20 @@ class RtScene12 {
     bool units_clustered = false;  // Mega Geometry's cluster BLAS built for them
     uint32_t clusters_built = 0;
     const uint32_t capture_count = std::min(shared.rt_capture_count, dlaa_bridge::RT_CAPTURES);
-    if (capture_count != 0) {
-      uint32_t vertex_end = 0;
-      for (uint32_t index = 0; index < capture_count; ++index) {
-        const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
-        const uint32_t rows = (version >= 10 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0) ? capture.instances * 4u : 0u;
-        vertex_end = std::max(vertex_end, capture.first_vertex + capture.vertex_count + rows);
-      }
-      vertex_end = std::min(vertex_end, TRANSFER_VERTICES);
+    // v14: this frame's draws of placed meshes in the scene (their instances' rows in the vertex texture).
+    const uint32_t placement_count = (version >= 14) ? std::min(shared.rt_placement_count, dlaa_bridge::RT_PLACEMENTS) : 0u;
+    // The request's vertices copied from the shared texture: the captures' triangles and rows, the placements' rows.
+    uint32_t vertex_end = 0;
+    for (uint32_t index = 0; index < capture_count; ++index) {
+      const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
+      const uint32_t rows = (version >= 10 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0) ? capture.instances * 4u : 0u;
+      vertex_end = std::max(vertex_end, capture.first_vertex + capture.vertex_count + rows);
+    }
+    for (uint32_t index = 0; index < placement_count; ++index) {
+      vertex_end = std::max(vertex_end, shared.rt_placements[index].first_vertex + shared.rt_placements[index].instances * 4u);
+    }
+    vertex_end = std::min(vertex_end, TRANSFER_VERTICES);
+    if (vertex_end != 0) {
       const UINT rows = (vertex_end + dlaa_bridge::RT_TRANSFER_WIDTH - 1) / dlaa_bridge::RT_TRANSFER_WIDTH;
       const D3D12_TEXTURE_COPY_LOCATION destination = {
           .pResource = vertex_buffer_.Get(),
@@ -1419,9 +1454,16 @@ class RtScene12 {
       const auto to_copy = Transition(vertices_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
       list->ResourceBarrier(1, &to_copy);
       list->CopyTextureRegion(&destination, 0, 0, 0, &source, &box);
-      std::vector<D3D12_RESOURCE_BARRIER> to_scene_data = {
+      const std::array<D3D12_RESOURCE_BARRIER, 2> copied = {
           Transition(vertices_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
           Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+      };
+      list->ResourceBarrier(static_cast<UINT>(copied.size()), copied.data());
+    }
+    // The placed meshes built this request (v14): their captures' rows as placements (first_vertex: the rows' texel).
+    std::vector<dlaa_bridge::RtPlacement> built_placed;
+    if (capture_count != 0 && vertex_end != 0) {
+      std::vector<D3D12_RESOURCE_BARRIER> to_scene_data = {
           Transition(records_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
           Transition(uvs_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
           Transition(normals_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
@@ -1676,7 +1718,11 @@ class RtScene12 {
         mesh = {.blas = std::move(blas), .build = ++builds_, .bytes = info.ResultDataMaxSizeInBytes, .drawn_frame = frame,
                 .triangles = capture.vertex_count / 3, .record = placement.record, .normal_offset = placement.normal_offset,
                 .uv_offset = placement.uv_offset, .terrain = (capture.flags & dlaa_bridge::RT_TERRAIN) != 0, .foliage = placement.masked};
-        if (version >= 10 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0 && capture.instances > 1 && rows_used + capture.instances <= ROWS_READBACK) {
+        if (version >= 14 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0) {
+          mesh.placed = true;
+          built_placed.push_back({.key = capture.key, .first_vertex = capture.first_vertex + capture.vertex_count, .instances = capture.instances});
+        } else if (version >= 10 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0 && capture.instances > 1
+                   && rows_used + capture.instances <= ROWS_READBACK) {
           row_copies.push_back({.key = capture.key, .build = mesh.build, .offset = rows_used, .count = capture.instances});
           row_sources.push_back(capture.first_vertex + capture.vertex_count);
           rows_used += capture.instances;
@@ -1814,20 +1860,29 @@ class RtScene12 {
 #endif
       list->ResourceBarrier(1, &uav_barrier);
       units_record_ = units_record;
-      // The instanced captures' rows into the slot's readback (four texels an instance), the CPU's once it comes round.
-      if (!row_copies.empty()) {
-        const auto to_source = Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
-        list->ResourceBarrier(1, &to_source);
+      // The new placed meshes' build rows (their first instance's) by record (v14); older addons' instanced captures' rows
+      // into the slot's readback (four texels an instance), the CPU's once it comes round.
+      if (!row_copies.empty() || !built_placed.empty()) {
+        std::vector<D3D12_RESOURCE_BARRIER> to_source = {
+            Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+        };
+        if (!built_placed.empty()) {
+          to_source.push_back(Transition(build_rows_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST));
+        }
+        list->ResourceBarrier(static_cast<UINT>(to_source.size()), to_source.data());
         for (size_t index = 0; index < row_copies.size(); ++index) {
           list->CopyBufferRegion(slot->rows_readback.Get(), uint64_t{row_copies[index].offset} * 64, vertex_buffer_.Get(),
                                  uint64_t{row_sources[index]} * 16, uint64_t{row_copies[index].count} * 64);
         }
-        const auto back_to_read = Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        list->ResourceBarrier(1, &back_to_read);
+        for (const auto& built_rows : built_placed) {
+          list->CopyBufferRegion(build_rows_.Get(), uint64_t{meshes_[built_rows.key].record} * 48, vertex_buffer_.Get(),
+                                 uint64_t{built_rows.first_vertex} * 16, 48);
+        }
+        for (auto& barrier : to_source) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+        list->ResourceBarrier(static_cast<UINT>(to_source.size()), to_source.data());
         slot->row_reads = std::move(row_copies);
       }
       std::vector<D3D12_RESOURCE_BARRIER> after = {
-          Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
           Transition(slot->sizes.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
       };
       if (atlas_) after.push_back(Transition(atlas_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
@@ -1851,7 +1906,7 @@ class RtScene12 {
     uint64_t bytes = 0;
     for (const auto& [key, mesh] : meshes_) {
       bytes += mesh.bytes;
-      if (instance_count == MAX_INSTANCES) continue;
+      if (mesh.placed || instance_count == MAX_INSTANCES) continue;
       const bool current = mesh.drawn_frame == frame;
       const bool recent = !mesh.terrain && mesh.drawn_frame + RECENT_FRAMES >= frame;
       if (!current && !recent) continue;
@@ -1868,6 +1923,90 @@ class RtScene12 {
       AddInstance(slot, &instance_count, units_clustered ? cluster_blas_.Get() : units_blas_.Get(), units_record_, false, nullptr,
                   MAX_INSTANCES);
       triangles += dynamic_triangles;
+    }
+    // Placed meshes (v14; not with the partitioned TLAS): after the CPU's instances rt_place writes those of this request's
+    // draws (the new captures', then the placements'; a mesh's together) and carries the last dispatch's of the meshes
+    // drawn lately but not now.
+    D3D12_GPU_VIRTUAL_ADDRESS instance_descs = slot->instances->GetGPUVirtualAddress();
+    uint32_t placed_total = 0;
+    if (ptlas_ == nullptr) {
+      const uint64_t generation = placed_generation_ + 1;
+      const uint32_t room = MAX_INSTANCES - instance_count;
+      uint32_t job_count = 0;
+      const auto add_job = [&](uint32_t count, uint32_t source, uint32_t flags, const Mesh& mesh) {
+        const uint64_t address = mesh.blas->GetGPUVirtualAddress();
+        const std::array<uint32_t, 8> job = {placed_total, count, source, flags, mesh.record, static_cast<uint32_t>(address),
+                                             static_cast<uint32_t>(address >> 32), 0u};
+        std::memcpy(slot->jobs_data + uint64_t{job_count} * 8, job.data(), sizeof(job));
+        ++job_count;
+        placed_total += count;
+        triangles += uint64_t{mesh.triangles} * count;
+      };
+      std::vector<dlaa_bridge::RtPlacement> draws = built_placed;
+      draws.insert(draws.end(), shared.rt_placements, shared.rt_placements + placement_count);
+      std::ranges::stable_sort(draws, {}, &dlaa_bridge::RtPlacement::key);
+      for (const auto& draw : draws) {
+        if (placed_total == room || job_count == PLACE_JOBS) break;
+        const auto found = meshes_.find(draw.key);
+        if (found == meshes_.end() || !found->second.placed || draw.instances == 0
+            || uint64_t{draw.first_vertex} + (uint64_t{draw.instances} * 4u) > vertex_end) {
+          continue;
+        }
+        Mesh& mesh = found->second;
+        if (mesh.placed_generation != generation) {
+          mesh.placed_generation = generation;
+          mesh.placed_first = instance_count + placed_total;
+          mesh.placed_count = 0;
+        }
+        const uint32_t count = std::min(draw.instances, room - placed_total);
+        mesh.placed_count += count;
+        mesh.drawn_frame = frame;
+        add_job(count, draw.first_vertex, (mesh.foliage ? PLACE_FOLIAGE : 0u), mesh);
+      }
+      for (auto& [key, mesh] : meshes_) {
+        if (placed_total == room || job_count == PLACE_JOBS) break;
+        if (!mesh.placed || mesh.placed_generation != placed_generation_ || mesh.placed_count == 0 || mesh.drawn_frame + RECENT_FRAMES < frame) {
+          continue;
+        }
+        const uint32_t source = mesh.placed_first;
+        mesh.placed_generation = generation;
+        mesh.placed_first = instance_count + placed_total;
+        mesh.placed_count = std::min(mesh.placed_count, room - placed_total);
+        add_job(mesh.placed_count, source, PLACE_CARRIED, mesh);
+      }
+      if (job_count != 0) {
+        ID3D12Resource* written = placed_instances_[1 - placed_last_].Get();
+        const auto to_copy = Transition(written, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+        list->ResourceBarrier(1, &to_copy);
+        if (instance_count != 0) {
+          list->CopyBufferRegion(written, 0, slot->instances.Get(), 0, uint64_t{instance_count} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+        }
+        const auto to_place = Transition(written, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        list->ResourceBarrier(1, &to_place);
+        const std::array<uint32_t, 4> place_dispatch = {job_count, placed_total, instance_count, 0u};
+        list->SetPipelineState(place_pipeline_.Get());
+        list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 4, place_dispatch.data(), 0);
+        list->SetComputeRootShaderResourceView(ROOT_SCENE, placed_instances_[placed_last_]->GetGPUVirtualAddress());
+        list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, slot->jobs->GetGPUVirtualAddress());
+        list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, written->GetGPUVirtualAddress());
+        list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, build_rows_->GetGPUVirtualAddress());
+        list->Dispatch((placed_total + 63) / 64, 1, 1);
+        const auto to_build = Transition(written, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        list->ResourceBarrier(1, &to_build);
+        // Unused root descriptors still point at a buffer.
+        list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, slot->table->GetGPUVirtualAddress());
+        for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES}) {
+          list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
+        }
+        instance_descs = written->GetGPUVirtualAddress();
+        instance_count += placed_total;
+        placed_last_ = 1 - placed_last_;
+        placed_generation_ = generation;
+      }
+    }
+    if (vertex_end != 0) {
+      const auto vertices_written = Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+      list->ResourceBarrier(1, &vertices_written);
     }
     uint32_t ptlas_changes = 0;
     Stamp(list, slot_index * 6 + 1);
@@ -1970,7 +2109,7 @@ class RtScene12 {
                      .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD,
                      .NumDescs = instance_count,
                      .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
-                     .InstanceDescs = slot->instances->GetGPUVirtualAddress()},
+                     .InstanceDescs = instance_descs},
           .ScratchAccelerationStructureData = tlas_scratch_->GetGPUVirtualAddress(),
       };
       list->BuildRaytracingAccelerationStructure(&top_build, 0, nullptr);
@@ -2074,9 +2213,9 @@ class RtScene12 {
       ReleaseMesh(&entry.second);
       return true;
     });
-    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} with micromaps, {} MB), {} in the scene{}, {:.1f} M triangles ({:.2f} M "
-                          "of units, {})",
-                          dxr12_ ? "DXR 1.2" : "DXR 1.1", meshes_.size(), built, micromaps_built, bytes >> 20, instance_count,
+    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} with micromaps, {} MB), {} in the scene ({} placed){}, {:.1f} M triangles "
+                          "({:.2f} M of units, {})",
+                          dxr12_ ? "DXR 1.2" : "DXR 1.1", meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_total,
                           ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
                           static_cast<double>(triangles) / 1.0e6, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
                           units_clustered ? std::format("{} clusters (Mega Geometry)", clusters_built)
@@ -2173,6 +2312,13 @@ class RtScene12 {
   ComPtr<ID3D12Resource> normals_;
   ComPtr<ID3D12Resource> micromap_data_;  // a request's micromap inputs (grown when needed)
   ComPtr<ID3D12Resource> micromap_descs_;
+  // Placed meshes (v14): their build rows (three texels a record), the instances the placement dispatches write in turn
+  // (the last one written, its dispatch's generation: Mesh::placed_generation), the dispatch.
+  ComPtr<ID3D12Resource> build_rows_;
+  std::array<ComPtr<ID3D12Resource>, 2> placed_instances_;
+  uint32_t placed_last_ = 0;
+  uint64_t placed_generation_ = 1;
+  ComPtr<ID3D12PipelineState> place_pipeline_;
   // The units' BLAS (refitted in place), the vertex counts of its draws at its last build, refits since.
   ComPtr<ID3D12Resource> units_blas_;
   uint64_t units_bytes_ = 0;

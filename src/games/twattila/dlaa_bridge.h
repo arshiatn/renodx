@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 13;
+constexpr uint32_t VERSION = 14;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -29,6 +29,8 @@ constexpr uint32_t RT_ATLAS_SIZE = 512;
 constexpr uint32_t RT_ATLAS_SLICES = 256;
 // Local lights' shadows (v9): at most this many lights a request (a bit each in the lit mask).
 constexpr uint32_t RT_MAX_LIGHTS = 32;
+// Placed draws (v14) a frame at most, besides the new captures.
+constexpr uint32_t RT_PLACEMENTS = 8192;
 
 // A draw captured this frame (its key, its triangles' vertices in the vertex texture) or drawn this frame (key only).
 struct RtCapture {
@@ -46,8 +48,16 @@ constexpr uint32_t RT_DYNAMIC = 2;
 constexpr uint32_t RT_FOLIAGE = 4;
 // Instanced (v10): the vertices are the draw's first instance's; its `instances` instances' world rows follow them (four
 // texels each: rows 0-2 acting on (position, 1), a fourth unused). The helper builds one BLAS and places it once per
-// instance (each instance's rows times the first one's inverse).
+// instance (each instance's rows times the first one's inverse). v14: keyed by the draw's geometry alone, `instances`
+// from 1, placed every frame it is drawn (this capture's rows, then RtPlacement's), never from older rows.
 constexpr uint32_t RT_INSTANCED = 8;
+// A placed draw (v14) whose BLAS the helper has: its instances' rows this frame in the vertex texture (as RT_INSTANCED's).
+// The game repacks its per-instance streams every frame it culls: keyed by those, every draw was a new mesh every frame.
+struct RtPlacement {
+  uint64_t key = 0;
+  uint32_t first_vertex = 0;
+  uint32_t instances = 0;
+};
 // Thin (v11): cloth and sails; with RT_LEAF_LIGHT a share of the sun passes them as it passes leaves.
 constexpr uint32_t RT_THIN = 16;
 // Request flags.
@@ -217,11 +227,16 @@ struct Shared {
   // layer tinted magenta over the frame; 0: off).
   uint32_t fg_debug = 0;
   uint32_t fg_v13_padding = 0;
+  // The addon's (v14): a trace request's placed draws of known BLASes (RT_INSTANCED's every frame they are drawn).
+  uint32_t rt_placement_count = 0;
+  uint32_t rt_v14_padding = 0;
+  RtPlacement rt_placements[RT_PLACEMENTS] = {};
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 13) return sizeof(Shared);
+  if (version >= 14) return sizeof(Shared);
+  if (version == 13) return offsetof(Shared, rt_placement_count);
   if (version == 12) return offsetof(Shared, fg_debug);
   if (version == 11) return offsetof(Shared, fg_preset);
   if (version >= 9) return offsetof(Shared, rt_light_colours);

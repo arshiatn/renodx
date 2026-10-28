@@ -827,6 +827,39 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       vertical edge; the orange ring around the city is the game's): campaign projection n 1 / f 500 (depth_inf
       1.002004), the backdrop's depth 0.99935 (75% of far). Bend FarFade (bend_sss_gpu.hlsli, set in sss_bend.cs):
       shadow fades 0.4 -> 0.6 of the far distance. Zips twattila_v93, twrome2_v45, twthronesofbritannia_v45.
+    - 2026-10-28 evening, RT / PT ROOT CAUSE (ATN's battle, RT all on, RR F, FG 2x; diagnostics d1f8d532: rt_core
+      NotTraced + "new static meshes in 10 s by vertex shader"): while the camera is still the static keys hold (95
+      known); once it moves, every instanced scenery draw is a "new mesh" every frame: rigidcommon 0x347F3DD9 up to
+      107120 per 10 s, rigidleafcommon_v3 0x46C616F0 (trees), rigidbranchcommon_v3 0x77B993FD, rigidterrain 0x6ECB6C09.
+      The game culls and repacks its per-instance stream (VB slot 1, transforms in v5-v12) every frame, and Capture's key
+      mixes VB offsets, instance count / first instance and cb offsets. Effects: rt_core known grows past 200k entries
+      (erase_if every frame), up to 256 new BLAS a frame, the helper's 16384 static records fill, its scene collapses to
+      ~9 meshes, results freeze at the spawn view (ATN: "every effect smearing"), and perf drops. Earlier all-magenta
+      session: not reproduced (NotTraced will name it). Light Bounce strength 0 in ATN's preset: RT bounce / PT off by
+      design (red note added). FIX NEEDED (redesign, helper + addon): BLAS keyed by geometry only (shader, VB0, IB,
+      index args; no instance stream / counts / cb offsets), built once in the first capture's space; every frame each
+      draw's instance rows written (the rows VS, one point per instance) and the helper makes the TLAS instance descs on
+      the GPU (rows_now x inverse(rows_at_build), stored per mesh at build) - no readback latency, no per-frame BLAS.
+      ATN: "Yes, start". IMPLEMENTATION (bridge v14, helper25): dlaa_bridge.h RtPlacement {key, first_vertex, instances}
+      x RT_PLACEMENTS appended to Shared (rt_placement_count). Addon rt_core Capture: placeable = rows_shader &&
+      !dynamic (rigid x4 + new motion_record_tree_sm3/sm41/sm5 for branches / leaves: rows = TEXCOORD0-2); geometry key
+      (shader, index / vertex range, base vertex, VB0, IB; no instance count / first instance / other VBs / CBs); known
+      -> rows-only stream out + placement; new -> first instance's triangles + rows, RT_INSTANCED, instances >= 1; no
+      "moving" exclusion for placeables. Helper Record (v14): RT_INSTANCED captures build the BLAS as before (no rows
+      readback), Mesh.placed; jobs = this frame's new placed captures (build) + rt_placements of known placed meshes;
+      CPU instances (others + units) copied into a device instance buffer, rt_place.cs writes the jobs' instances after
+      them (rows now x inverse(build rows), build rows per record written by the build job), TLAS from that buffer;
+      PTLAS off with v14. Not yet: placed meshes kept a while after they leave the view (off-screen casters).
+      DONE (as built, uncommitted test round): RT_PLACEMENTS 8192; one rows shader motion_record_tree.vs_4_0 for all six
+      tree shaders (one input signature); build rows copied by record (CopyBufferRegion) when a placed mesh is built,
+      rt_place reads them for every job; placed meshes drawn lately but not now (RECENT_FRAMES) carried from the last
+      dispatch's descs (two device instance buffers in turn, a mesh's instances together: draws sorted by key), their
+      BLAS address refreshed (compaction); a placement over the limit does not refresh the addon's known frame (the
+      mesh is forgotten and captured again). GPU harness (tools\tw\rt_harness, build\tw_rt_harness): boxes captured
+      in frame 0, placed by rows with a 4th instance from frame 1, carried in the last frame: ALL PASSED (8 and 3
+      frames; 2 frames: only the never-placed instance fails, as expected). helper25 copied into Attila's folder.
+      NEXT: ATN's in-game test (status line "N in the scene (M placed)", the churn log should stay small, the Debug
+      View should follow the camera), then README v94 / v46, zips (release_zip.py helper25), report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
