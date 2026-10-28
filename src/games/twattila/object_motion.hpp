@@ -352,12 +352,20 @@ struct State {
   std::vector<DrawSignature> draw_signatures;
   std::unordered_map<uint64_t, GamePixelShader> pixel_shaders;
   InDraw in_draw;
+  // The game's targets and depth an in-draw motion draw left bound with targets 6 and 7 (`targets_kept`): the next
+  // moving draws set none, any other draw gets the game's back first (RestoreTargets: switching targets cost the driver
+  // ~0.5 us a time).
+  std::array<ComPtr<ID3D11RenderTargetView>, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> kept_targets;
+  ComPtr<ID3D11DepthStencilView> kept_depth_stencil;
   UavOverlap uav_overlap;
 };
 
 static State state;
 // The host draws motion this frame (else the moving draws return at once).
 static std::atomic_bool active = false;
+static std::atomic_bool targets_kept = false;
+// Targets 6 and 7's views (PrepareDevice): the game binding them back (a set it read while they were kept) drops them.
+static std::array<std::atomic_uint64_t, 2> drawn_target_views = {};
 // Motion Test (debug, SetTest): 0 normal, 1 no records or captures, 2 units only, 3 plants only.
 static std::atomic_uint32_t test = 0;
 // Debug (temporary): the moving draws' CPU time a frame (before and after them) and their counts, logged every 1000
@@ -366,6 +374,7 @@ struct MotionTiming {
   std::chrono::steady_clock::duration spent = {};
   uint64_t draws = 0;
   uint64_t drawn = 0;
+  uint64_t restores = 0;
   uint64_t frame = 0;
   uint64_t frames = 0;
 };
@@ -439,6 +448,19 @@ inline bool PrepareDevice(ID3D11Device* device) {
   return objects.made;
 }
 
+// The game's targets back where an in-draw motion draw kept targets 6 and 7 bound (before any other draw, a redraw and
+// the frame's end).
+inline void RestoreTargets(ID3D11DeviceContext* native) {
+  if (!targets_kept.exchange(false, std::memory_order_relaxed)) return;
+  const std::unique_lock lock(state.mutex);
+  std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets = {};
+  for (size_t slot = 0; slot < targets.size(); ++slot) {
+    targets[slot] = state.kept_targets[slot].Get();
+  }
+  native->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), state.kept_depth_stencil.Get());
+  ++timing.restores;
+}
+
 // A moving draw of the main view (the host's view). `in_draw` (before the draw: true when it then writes the motion
 // itself, its bindings set, FinishInDraw putting the game's back after it; false: nothing done yet, drawn again after
 // it): the draw's in-draw vertex shader and its pixel shader patched, targets 6 and 7 for the motion. Else (after the
@@ -473,8 +495,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     timing.frame = view.frame;
     if (++timing.frames == 1000) {
       renodx::utils::log::i(std::format(
-          "[Total War] Object motion (debug): {:.0f} moving draws a frame ({:.0f} in-draw), {:.0f} us of CPU a frame.",
-          timing.draws / 1000.0, timing.drawn / 1000.0,
+          "[Total War] Object motion (debug): {:.0f} moving draws a frame ({:.0f} in-draw, the game's targets back {:.0f} "
+          "times), {:.0f} us of CPU a frame.",
+          timing.draws / 1000.0, timing.drawn / 1000.0, timing.restores / 1000.0,
           std::chrono::duration<double, std::micro>(timing.spent).count() / 1000.0));
       timing = {.frame = view.frame};
     }
@@ -522,9 +545,21 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
   ComPtr<ID3D11DepthStencilView> depth_stencil;
   std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT> game_output_views = {};
-  native->OMGetRenderTargetsAndUnorderedAccessViews(static_cast<UINT>(game_targets.size()), game_targets.data(),
-                                                    depth_stencil.GetAddressOf(), 0, static_cast<UINT>(game_output_views.size()),
-                                                    game_output_views.data());
+  // Kept from the last in-draw motion draw (bound with targets 6 and 7; the game set none since, nor views).
+  const bool kept = targets_kept.load(std::memory_order_relaxed);
+  if (kept) {
+    for (size_t slot = 0; slot < game_targets.size(); ++slot) {
+      game_targets[slot] = state.kept_targets[slot].Get();
+      if (game_targets[slot] != nullptr) {
+        game_targets[slot]->AddRef();
+      }
+    }
+    depth_stencil = state.kept_depth_stencil;
+  } else {
+    native->OMGetRenderTargetsAndUnorderedAccessViews(static_cast<UINT>(game_targets.size()), game_targets.data(),
+                                                      depth_stencil.GetAddressOf(), 0, static_cast<UINT>(game_output_views.size()),
+                                                      game_output_views.data());
+  }
   const auto release_targets = [&] {
     for (auto* target : game_targets) {
       if (target != nullptr) {
@@ -669,6 +704,8 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       return false;
     }
     objects.motion_frame = UINT64_MAX;
+    drawn_target_views[0].store(reinterpret_cast<uint64_t>(objects.drawn_motion_rtv.Get()), std::memory_order_relaxed);
+    drawn_target_views[1].store(reinterpret_cast<uint64_t>(objects.drawn_depth_rtv.Get()), std::memory_order_relaxed);
   }
   if (in_draw && !objects.drawn_motion_rtv) {
     release_targets();
@@ -1139,7 +1176,10 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       }
       drawn_blend = objects.drawn_blend_states.insert(objects.drawn_blend_states.end(), {game_blend, std::move(blend_state)});
     }
-    native->OMSetRenderTargets(static_cast<UINT>(drawn_targets.size()), drawn_targets.data(), depth_stencil.Get());
+    // Still bound when kept (but after the captures, which unbind them).
+    if (!kept || captures) {
+      native->OMSetRenderTargets(static_cast<UINT>(drawn_targets.size()), drawn_targets.data(), depth_stencil.Get());
+    }
     native->OMSetBlendState(drawn_blend->second.Get(), blend_factor.data(), sample_mask);
     if (captures) {
       native->OMSetDepthStencilState(game_depth_state.Get(), stencil_reference);
@@ -1216,16 +1256,15 @@ void FinishInDraw(Context& command, const void*) {
   const std::unique_lock lock(state.mutex);
   auto& pending = state.in_draw;
   if (!pending.pending) return;
-  std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets = {};
-  for (size_t slot = 0; slot < targets.size(); ++slot) {
-    targets[slot] = pending.targets[slot].Get();
-  }
   std::array<ID3D11ShaderResourceView*, MOTION_VIEWS> views = {};
   for (size_t slot = 0; slot < views.size(); ++slot) {
     views[slot] = pending.motion_views[slot].Get();
   }
   ID3D11Buffer* vs_constants = pending.vs_constants.Get();
-  native->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), pending.depth_stencil.Get());
+  // Targets 6 and 7 stay bound for the next moving draw (RestoreTargets puts the game's back before any other).
+  state.kept_targets = pending.targets;
+  state.kept_depth_stencil = pending.depth_stencil;
+  targets_kept.store(true, std::memory_order_relaxed);
   native->OMSetBlendState(pending.blend.Get(), pending.blend_factor.data(), pending.sample_mask);
   native->VSSetShader(pending.vertex_shader.Get(), nullptr, 0);
   native->PSSetShader(pending.pixel_shader.Get(), nullptr, 0);
@@ -1254,21 +1293,70 @@ constexpr auto OnMovingDraw = []<typename T, typename Context>(
                 && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
     return {};
   } else {
-    if (!active.load(std::memory_order_relaxed)) return {};
     const uint32_t test_mode = test.load(std::memory_order_relaxed);
     const MotionKind kind = command.template GetCallbackData<MotionShader>().kind;
-    if ((test_mode == 2 && kind != MotionKind::UNIT) || (test_mode == 3 && kind != MotionKind::WIND)) return {};
+    const bool wanted = active.load(std::memory_order_relaxed)
+                        && !((test_mode == 2 && kind != MotionKind::UNIT) || (test_mode == 3 && kind != MotionKind::WIND));
     const auto started = std::chrono::steady_clock::now();
-    const bool drawn = DrawObjectMotion(command, true);
-    timing.spent += std::chrono::steady_clock::now() - started;
-    ++timing.draws;
+    const bool drawn = wanted && DrawObjectMotion(command, true);
+    if (wanted) {
+      ++timing.draws;
+    }
     if (drawn) {
       ++timing.drawn;
+      timing.spent += std::chrono::steady_clock::now() - started;
       return {.finalize_callback = FinishInDraw<Context>};
     }
+    if (targets_kept.load(std::memory_order_relaxed)) {
+      auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+      renodx::utils::directx::NativeFromReShadeProxy(&native);
+      RestoreTargets(native);
+    }
+    timing.spent += std::chrono::steady_clock::now() - started;
+    if (!wanted) return {};
     return {.post_callback = RedrawObjectMotion<Context>};
   }
 };
+
+// Any draw: the game's targets back first where an in-draw motion draw kept its own bound, but for a moving draw (which
+// keeps them or puts them back itself, OnMovingDraw).
+constexpr auto OnAnyDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!targets_kept.load(std::memory_order_relaxed)) return {};
+  using Arguments = typename Context::ArgumentType;
+  if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                || std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    const uint32_t hash = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::vertex_shader);
+    if (std::ranges::any_of(state.shaders.shaders, [hash](const MotionShader& shader) { return shader.hash == hash; })) return {};
+  }
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  RestoreTargets(native);
+  return {};
+};
+
+// The game binds targets: kept ones are gone with it; targets 6 and 7 bound back (a set it read while they were kept)
+// are dropped (the rest as bound: the swap chain module's upgrades).
+inline void OnBindRenderTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view* targets,
+                                reshade::api::resource_view) {
+  targets_kept.store(false, std::memory_order_relaxed);
+  if (count <= dxbc::MOTION_TARGET || targets == nullptr) return;
+  if (targets[dxbc::MOTION_TARGET].handle != drawn_target_views[0].load(std::memory_order_relaxed)
+      && (count <= dxbc::MOTION_DEPTH_TARGET
+          || targets[dxbc::MOTION_DEPTH_TARGET].handle != drawn_target_views[1].load(std::memory_order_relaxed))) {
+    return;
+  }
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  std::array<ID3D11RenderTargetView*, dxbc::MOTION_TARGET> bound = {};
+  ComPtr<ID3D11DepthStencilView> bound_depth;
+  native->OMGetRenderTargets(static_cast<UINT>(bound.size()), bound.data(), bound_depth.GetAddressOf());
+  native->OMSetRenderTargets(static_cast<UINT>(bound.size()), bound.data(), bound_depth.Get());
+  for (auto* target : bound) {
+    if (target != nullptr) {
+      target->Release();
+    }
+  }
+}
 
 // The game's pixel shaders as it creates them: kept where one can follow an in-draw vertex shader (its inputs, but
 // system values, among that shader's outputs: same semantic, register, components within).
@@ -1331,6 +1419,7 @@ inline void SetTest(uint32_t test) {
 // bindings it changes are put back.
 inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
   using namespace internal;
+  RestoreTargets(native);
   const std::unique_lock lock(state.mutex);
   auto& objects = state.objects;
   for (auto& readback : objects.rigid_readbacks) {
@@ -1509,15 +1598,25 @@ inline void Install(const Shaders& shaders, MakeView make_view) {
   if (in_draw) {
     renodx::utils::pipeline::RegisterOnInitCallback(internal::OnInitPipeline);
     renodx::utils::pipeline::RegisterOnDestroyCallback(internal::OnDestroyPipeline);
+    renodx::utils::command_action::Register(
+        internal::OnAnyDraw,
+        {.shader_hash = 0u, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW
+                                             | renodx::utils::command_action::COMMAND_TYPE_INDIRECT});
+    reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindRenderTargets);
   }
 }
 
 inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnMovingDraw);
+  renodx::utils::command_action::Unregister(internal::OnAnyDraw);
+  reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindRenderTargets);
   renodx::utils::pipeline::UnregisterOnInitCallback(internal::OnInitPipeline);
   renodx::utils::pipeline::UnregisterOnDestroyCallback(internal::OnDestroyPipeline);
   SetActive(false);
+  internal::targets_kept.store(false, std::memory_order_relaxed);
   const std::unique_lock lock(internal::state.mutex);
+  internal::state.kept_targets = {};
+  internal::state.kept_depth_stencil.Reset();
   internal::state.shaders = {};
   internal::state.make_view = nullptr;
   internal::state.objects = {};
@@ -1531,6 +1630,9 @@ inline void OnDestroyDevice(ID3D11Device* device) {
   const std::unique_lock lock(internal::state.mutex);
   if (internal::state.objects.device.Get() == device) {
     internal::state.objects = {};
+    internal::targets_kept.store(false, std::memory_order_relaxed);
+    internal::state.kept_targets = {};
+    internal::state.kept_depth_stencil.Reset();
   }
 }
 

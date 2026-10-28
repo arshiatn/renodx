@@ -8,17 +8,21 @@
 #include <windows.h>
 
 #include <d3d11_4.h>
-#include <dxgi1_2.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <mutex>
+#include <thread>
 #include <string_view>
 #include <span>
 #include <cstdint>
 #include <cstring>
 #include <string>
 
+#include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "./dlaa_bridge.h"
 
@@ -127,6 +131,9 @@ struct RayReconstruction {
   std::array<float, 16> view_to_clip = {};
 };
 
+// The requests' kinds (each steady or not on its own).
+enum RequestKind : size_t { EVALUATE, TRACE_SCENE, TRACE_BOUNCE, TRACE_REFLECTIONS, PRESENT_FRAME, REQUEST_KINDS };
+
 struct Bridge {
   // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
   // accumulation and filter) leave its noise to it.
@@ -185,6 +192,17 @@ struct Bridge {
   ComPtr<ID3D11Fence> fence;
   uint64_t value = 0;
   bool answered = false;  // the helper's first answer came (NVIDIA's set-up: up to seconds)
+  // Steady requests (their kind ran last time with this fence; not frame generation's presents) go without waiting for
+  // the helper's work (~0.25 ms of the game's frame): the game's GPU waits for the helper's next value at once and the
+  // answer is read with the next request (`pending`). `waiting`: that value while unanswered (0: none).
+  std::array<bool, REQUEST_KINDS> steady = {};
+  bool pending = false;
+  RequestKind pending_kind = EVALUATE;
+  std::atomic<uint64_t> waiting = 0;
+  // If the helper stops while the game's GPU waits for it, the value is signalled through this handle of `fence` from a
+  // device of the addon's own (Rescue).
+  std::mutex rescue_mutex;
+  HANDLE rescue_fence = nullptr;
 };
 
 static Bridge bridge;
@@ -196,6 +214,39 @@ inline bool Fail(const std::string& status) {
   bridge.status = status;
   renodx::utils::log::w("[Total War] ", status);
   return false;
+}
+
+// The game's GPU waits for `value`, which the helper will not signal (it stopped or did not answer): signalled from a
+// device of the addon's own on the same GPU (the game goes on, without DLAA).
+inline void Rescue(uint64_t value) {
+  const std::unique_lock lock(bridge.rescue_mutex);
+  ComPtr<IDXGIFactory4> factory;
+  ComPtr<IDXGIAdapter1> adapter;
+  ComPtr<ID3D11Device> device;
+  ComPtr<ID3D11DeviceContext> context;
+  ComPtr<ID3D11Device5> device5;
+  ComPtr<ID3D11DeviceContext4> context4;
+  ComPtr<ID3D11Fence> fence;
+  const LUID luid = {.LowPart = bridge.shared->adapter_luid_low, .HighPart = bridge.shared->adapter_luid_high};
+  if (bridge.rescue_fence == nullptr || !renodx::utils::directx::Initialize()
+      || FAILED(renodx::utils::directx::pCreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())))
+      || FAILED(factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf())))
+      || FAILED(renodx::utils::directx::pD3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, nullptr, 0,
+                                                           D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
+                                                           context.GetAddressOf()))
+      || FAILED(device.As(&device5)) || FAILED(context.As(&context4))
+      || FAILED(device5->OpenSharedFence(bridge.rescue_fence, IID_PPV_ARGS(fence.GetAddressOf())))) {
+    renodx::utils::log::w("[Total War] DLAA: the helper stopped while the game's GPU waited for it (not freed).");
+    return;
+  }
+  context4->Signal(fence.Get(), value);
+  context->Flush();
+  // Kept until the GPU signalled it.
+  if (const HANDLE signalled = CreateEventW(nullptr, FALSE, FALSE, nullptr); signalled != nullptr) {
+    if (SUCCEEDED(fence->SetEventOnCompletion(value, signalled))) WaitForSingleObject(signalled, 2000);
+    CloseHandle(signalled);
+  }
+  renodx::utils::log::w("[Total War] DLAA: the helper stopped while the game's GPU waited for it (freed).");
 }
 
 // The helper started (once; false: it cannot be), told the game's GPU (`device`'s) before it runs.
@@ -247,6 +298,11 @@ inline bool Start(ID3D11Device* device) {
   ResumeThread(information.hThread);
   CloseHandle(information.hThread);
   bridge.process = information.hProcess;
+  // Its stop while the game's GPU waits for it (a steady request): Rescue.
+  std::thread([process = information.hProcess] {
+    WaitForSingleObject(process, INFINITE);
+    if (const uint64_t value = bridge.waiting.exchange(0); value != 0) Rescue(value);
+  }).detach();
   bridge.status = "DLAA: starting NVIDIA's helper";
   renodx::utils::log::i("[Total War] DLAA: renodx-tw-dlaa64.exe started.");
   return true;
@@ -258,6 +314,23 @@ inline uint64_t ShareWithHelper(HANDLE handle) {
   DuplicateHandle(GetCurrentProcess(), handle, bridge.process, &duplicate, 0, FALSE,
                   DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE);
   return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(duplicate));
+}
+
+// The last request's answer (once the helper read it and signalled its value; a steady one's usually long there);
+// false: none (it stopped or did not answer: off, and a value the game's GPU waits for signalled from here).
+inline bool Answer() {
+  bridge.pending = false;
+  const auto& shared = *bridge.shared;
+  const std::array<HANDLE, 2> handles = {bridge.done, bridge.process};
+  const bool answered = WaitForMultipleObjects(2, handles.data(), FALSE, 5000) == WAIT_OBJECT_0
+                        && shared.done_value >= bridge.value;
+  if (const uint64_t waited = bridge.waiting.exchange(0); waited > (answered ? shared.done_value : 0)) Rescue(waited);
+  if (!answered) return Fail("DLAA: NVIDIA's helper did not answer (off).");
+  bridge.answered = true;
+  // The value it signalled after its work (one higher; also after a failure, so the next request starts above it).
+  bridge.value = shared.done_value;
+  bridge.status = shared.status;
+  return true;
 }
 
 }  // namespace internal
@@ -277,6 +350,9 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
       && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format && bridge.reflections == reflections) {
     return true;
   }
+  // The helper done with the last request before `shared` changes; the new objects' first requests wait for answers.
+  if (bridge.pending) internal::Answer();
+  bridge.steady = {};
   bridge.color = {};
   bridge.depth = {};
   bridge.motion = {};
@@ -410,6 +486,12 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                     && SUCCEEDED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &fence_handle));
   if (!made) return internal::Fail("DLAA: the shared textures could not be made.");
   shared.fence = internal::ShareWithHelper(fence_handle);
+  {
+    const std::unique_lock lock(bridge.rescue_mutex);
+    if (bridge.rescue_fence != nullptr) CloseHandle(bridge.rescue_fence);
+    bridge.rescue_fence = nullptr;
+    bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &bridge.rescue_fence);
+  }
   bridge.value = 0;
   if (!guides) {
     shared.diffuse_albedo = 0;
@@ -451,10 +533,12 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
 
 namespace internal {
 
-// One request (its fields written by `fill` after the fence's signal) and the helper's answer; false: none (it is not
-// ready, or did not answer: off). The game's GPU then waits for the helper's value when `waited` and it ran.
+// One request (its fields written by `fill` after the fence's signal) and the game's GPU then waiting for the helper's
+// value; false: none (it is not ready, did not run, or did not answer: off). A steady one returns at once (it ran last
+// time); the others wait for the helper's answer (at once, but for a new NVIDIA feature: the first, or after a size,
+// preset or Ray Reconstruction change).
 template <typename Fill>
-bool Request(ID3D11DeviceContext* context, Fill&& fill) {
+bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   if (bridge.failed || bridge.width == 0) return false;
   auto& shared = *bridge.shared;
   if (shared.ready == 0) {
@@ -467,20 +551,28 @@ bool Request(ID3D11DeviceContext* context, Fill&& fill) {
   if (FAILED(context->QueryInterface(IID_PPV_ARGS(context4.GetAddressOf())))) {
     return Fail("DLAA: the game's context has no D3D11.4.");
   }
+  if (bridge.pending) {
+    const RequestKind last = bridge.pending_kind;
+    if (!Answer()) return false;
+    bridge.steady[last] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
+  }
   ++bridge.value;
   context4->Signal(bridge.fence.Get(), bridge.value);
   context->Flush();
   shared.value = bridge.value;
   fill(&shared);
   ResetEvent(bridge.done);
+  const bool steady = bridge.steady[kind] && kind != PRESENT_FRAME;
+  if (steady) bridge.waiting.store(bridge.value + 1);
   SetEvent(bridge.request);
-  // It answers at once, but for a new NVIDIA feature (the first, or after a size, preset or Ray Reconstruction change).
-  if (WaitForSingleObject(bridge.done, 5000) != WAIT_OBJECT_0 || shared.done_value < bridge.value) {
-    return Fail("DLAA: NVIDIA's helper did not answer (off).");
+  if (steady) {
+    bridge.pending = true;
+    bridge.pending_kind = kind;
+    context4->Wait(bridge.fence.Get(), bridge.value + 1);
+    return true;
   }
-  bridge.answered = true;
-  // The value it signalled after its work (one higher; also after a failure, so the next request starts above it).
-  bridge.value = shared.done_value;
+  if (!Answer()) return false;
+  bridge.steady[kind] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
   if (shared.evaluated == 0) return false;
   context4->Wait(bridge.fence.Get(), bridge.value);
   return true;
@@ -493,7 +585,7 @@ bool Request(ID3D11DeviceContext* context, Fill&& fill) {
 // traced this frame.
 inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request) {
   if (!bridge.ray_tracing) return false;
-  return internal::Request(context, [&](Shared* shared) {
+  return internal::Request(context, TRACE_SCENE, [&](Shared* shared) {
     shared->fg_request = 0;
     shared->rt_request = 1;
     shared->rt_flags = request.flags;
@@ -522,7 +614,7 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
 // into `bridge.rt_bounce`, which the game's GPU then waits for; false: not traced.
 inline bool TraceBounce(ID3D11DeviceContext* context, const BounceRequest& request) {
   if (!bridge.ray_tracing || !bridge.rt_bounce.texture) return false;
-  return internal::Request(context, [&](Shared* shared) {
+  return internal::Request(context, TRACE_BOUNCE, [&](Shared* shared) {
     shared->fg_request = 0;
     shared->rt_request = 2;
     shared->rt_frame = request.frame;
@@ -545,7 +637,7 @@ inline bool TraceBounce(ID3D11DeviceContext* context, const BounceRequest& reque
 // `bridge.rt_reflection` / `rt_specular`, which the game's GPU then waits for; false: not traced.
 inline bool TraceReflections(ID3D11DeviceContext* context, const ReflectRequest& request) {
   if (!bridge.ray_tracing || !bridge.rt_reflection.texture) return false;
-  return internal::Request(context, [&](Shared* shared) {
+  return internal::Request(context, TRACE_REFLECTIONS, [&](Shared* shared) {
     shared->fg_request = 0;
     shared->rt_request = 3;
     shared->rt_frame = request.frame;
@@ -571,7 +663,7 @@ inline std::string TraceStatus() {
 // `bridge.output`, which the game's GPU then waits for; false: no result this frame (helper not ready, or no answer).
 inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_height, float jitter_x, float jitter_y,
                      bool reset, uint32_t preset, const RayReconstruction* ray_reconstruction = nullptr) {
-  const bool evaluated = internal::Request(context, [&](Shared* shared) {
+  const bool evaluated = internal::Request(context, EVALUATE, [&](Shared* shared) {
     shared->fg_request = 0;
     shared->rt_request = 0;
     shared->width = input_width;
@@ -589,7 +681,6 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
       std::copy_n(ray_reconstruction->view_to_clip.begin(), 16, shared->view_to_clip);
     }
   });
-  if (!bridge.failed && bridge.answered) bridge.status = bridge.shared->status;
   bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides;
   if (bridge.shared != nullptr) {
     // Ray tracing's counts change every frame: its line is logged when the part before ": " changes, else each minute.
@@ -612,7 +703,7 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
 // (helper not ready, off, or frame generation unavailable: FrameGenerationFailed).
 inline bool PresentFrame(ID3D11DeviceContext* context, const FrameRequest& request) {
   if (bridge.fg_format == DXGI_FORMAT_UNKNOWN) return false;
-  return internal::Request(context, [&](Shared* shared) {
+  return internal::Request(context, PRESENT_FRAME, [&](Shared* shared) {
     shared->rt_request = 0;
     shared->fg_request = 1;
     shared->fg_window = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(request.window));
