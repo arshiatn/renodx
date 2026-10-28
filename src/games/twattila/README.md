@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v84 (2026-10-28, untested in game)
+
+- **Below 100%** (DLSS modes and custom render scales):
+  - **Grass** looks as at DLAA all over the screen. Outside the top-left part it read the ground's distance from the
+    wrong place, so the blades did not blend into the ground: more, darker grass, reaching farther with Grass Detail
+    Distance.
+  - **Unit markers** above the units show all over the screen again (they disappeared in the top-left part): the
+    scene's depth is stretched to the full screen for them.
+
 ## v83 (2026-10-28; the night batch untested in game, only smoke-run in a replay)
 
 - **Frame generation**:

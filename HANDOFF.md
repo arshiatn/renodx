@@ -765,7 +765,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
             twthronesofbritannia_v38, twtroy_v34, twpharaohdynasties_v38, twwarhammer_v35, twwarhammer2_v35,
             twwarhammer3_v29 (all helper23), twshogun2completeedition_dlss_v58 (shared object_motion /
             texture_lod_bias clean-up). helper23 copied into the Attila folder (v12 addons need it).
-      [ ] 8 shut down the PC (shutdown /s /t 120 after the final message)
+      [x] 8 shut down the PC (shutdown /s /t 120 after the final message)
+    - 2026-10-28 day (ATN tested v83: HUD smear and lens flare fixed): unit markers below 100% gone in the top-left
+      ninth (they draw after the tone mapper at the display's size against the scene depth, whose render-size picture
+      sits in that corner): the depth stretched to the full target for them (6220302a; anti_aliasing.hpp UpscaleDepth,
+      FULL_DEPTH_SHADERS = sprite vertex_3d*; other TW games only got the shader wrappers). ATN debug16 "shading" and
+      debug17 grass rectangle = one bug: the 13 grass PS read the terrain distance (t4, t3 in no_clip) at a projected
+      uv made as mul x 0.5 / mad 1 - y x 0.5, which view_share's auto patch missed, so outside the top-left ninth the
+      blades did not blend into the ground. view_share Kind::SPLIT (104eee9f) patches that form at the read with the
+      draw's share; the pre-pass's manual region read dropped. Checked offline (scratchpad scale_audit patch_test.cpp:
+      Patch on every dumped shader, created on WARP; old vs new): only grass changes, Attila 14 / Rome II 26 / Thrones
+      14, Troy / Pharaoh / WH none. Zips twattila_v84, twrome2_v39, twthronesofbritannia_v39 (untested in game).
+      ASK ATN: markers + grass at UP; the pixel trace for any seam left.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

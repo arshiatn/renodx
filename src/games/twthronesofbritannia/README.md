@@ -2,6 +2,11 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twthronesofbritannia.addon32` (32-bit game).
 
+## v39 (2026-10-28, untested in game)
+
+- **Below 100%** (DLSS modes and custom render scales): **grass** looks as at DLAA all over the screen. Outside the
+  top-left part it read the ground's distance from the wrong place, so the blades did not blend into the ground.
+
 ## v37 (2026-10-27, batch 5, untested in game; the helper GPU-tested)
 
 - renodx-tw-dlaa64.exe **helper22** (in the zip; bridge v11, needs this addon): **ReSTIR GI v2** (compared with
