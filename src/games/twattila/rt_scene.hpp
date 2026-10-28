@@ -680,6 +680,12 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
     };
   };
   settings->insert(settings->end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Ray tracing and path tracing do not work correctly yet (fixed in the next update).",
+          .section = section,
+          .tint = 0xFF5050,
+      },
       quality_button("Ray Tracing: Low", "Hard shadows, AO 1 ray at a quarter rate, bounce 2 rays, 1 path bounce, 1 reflection sample.",
                      {{"RayTracedShadowSoftness", 0.f}, {"RayTracedAORays", 1.f}, {"RayTracedAOQuarter", 1.f},
                       {"RayTracedLightBounceRays", 2.f}, {"PathTracingBounces", 1.f}, {"RayTracedReflectionSamples", 1.f}}),

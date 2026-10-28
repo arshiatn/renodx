@@ -356,6 +356,19 @@ void BuildRuntimeData() {
           ApplyHDRPreset(2.f, 1.f, 1.00f, 0.1f, 1.f, 4.f, 1.8f, 0.7f, 1.5f, 2.f, 0.2f);
         },
     },
+    // SDR: the game's and the UI's white are the monitor's own (no Paper White / UI nits to set), so the HDR boosts off.
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .group = "preset-line-3",
+        .tooltip = "For SDR monitors: Output SDR (restart the game if it was HDR), Recommended without VFX boost,\n"
+                   "no video AutoHDR. In SDR the game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplyHDRPreset(2.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.f);
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
+        },
+    },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "dof",
@@ -943,8 +956,9 @@ renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
 bool graphics_hooks_installed = false;
 // ReShade.ini [Attila] DisableGraphics=1: none of the engine changes above (hooks, code, tweaks) and their sliders
-// hidden, for mods that change the same engine code (the UI 4K mod). The SSR Quality (a shader option) stays.
-bool graphics_disabled = false;
+// hidden, for mods that change the same engine code (the UI 4K mod). The SSR Quality (a shader option) stays. On
+// without the key (ATN: the UI 4K mod is common).
+bool graphics_disabled = true;
 int ui_mod_compatibility = 0;  // its slider: written to ReShade.ini, used from the next start
 
 
@@ -1401,7 +1415,9 @@ void ConfigureAddon() {
   note->label += " Some apply only after loading a battle or a save.\n"
                  "The two presets below are the settings I would use myself.";
   if (graphics_disabled) {
-    note->label = "Off: UI 4K Mod Compatibility is on (ReShade.ini, [Attila] DisableGraphics=1).";
+    note->label = "Off while UI 4K Mod Compatibility is On (the default, for the UI 4K mod).\n"
+                  "To use these settings: turn it Off below, then restart the game.";
+    note->tint = 0xFF5050;
   }
   const auto unit_distance = [](size_t index, const std::string& key, const std::string& label,
                                 const std::string& units) {
@@ -1430,14 +1446,14 @@ void ConfigureAddon() {
               reshade::set_config_value(nullptr, "Attila", "DisableGraphics", ui_mod_compatibility);
             }
             if (ImGui::IsItemHovered()) {
-              ImGui::SetTooltip("On: none of this page's engine changes, for the UI 4K mod (it changes the same game\n"
-                                "code). SSR Quality still works. Takes effect after restarting the game.\n"
-                                "By hand: ReShade.ini, under [Attila]: DisableGraphics=1.");
+              ImGui::SetTooltip("On (default): none of this page's engine changes, for the UI 4K mod (it changes the\n"
+                                "same game code). Off: this page's settings work. SSR Quality works either way.\n"
+                                "Takes effect after restarting the game. By hand: ReShade.ini, [Attila] DisableGraphics.");
             }
-            if ((ui_mod_compatibility != 0) != graphics_disabled) {
-              ImGui::SameLine();
-              ImGui::TextUnformatted("(restart the game)");
-            }
+            ImGui::SameLine();
+            const bool restart_pending = (ui_mod_compatibility != 0) != graphics_disabled;
+            ImGui::TextColored(ImVec4(1.f, 0.31f, 0.31f, 1.f), "%s",
+                               (restart_pending ? "Restart the game now to apply this!" : "Changing this needs a game restart."));
             return false;
           },
       },
@@ -1663,11 +1679,19 @@ void ConfigureAddon() {
                    "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024); auto thickness after "
                    "Bjorn Ottosson.\n"
                    "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License "
-                   "2.0 (APACHE_LICENSE-2.0.txt).\n"
-                   "SMAA: Jimenez, Echevarria, Masia, Navarro and Gutierrez (2013), MIT License (smaa/LICENSE.txt). "
-                   "CMAA2: Filip Strugar, Copyright (c) 2018 Intel Corporation, Apache License 2.0. Reflections' ray "
-                   "march: AMD FidelityFX SSSR, Copyright (c) 2021 Advanced Micro Devices, MIT License "
-                   "(ffx_sssr/LICENSE.txt).",
+                   "2.0.\n"
+                   "SMAA: Jimenez, Echevarria, Masia, Navarro and Gutierrez (2013), MIT License. CMAA2: Filip Strugar, "
+                   "Copyright (c) 2018 Intel Corporation, Apache License 2.0. Reflections' ray march: AMD FidelityFX "
+                   "SSSR, Copyright (c) 2021 Advanced Micro Devices, MIT License.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "NVIDIA DLSS (Super Resolution, Ray Reconstruction and Frame Generation), NVIDIA Reflex, Streamline "
+                   "and NVAPI: NVIDIA Corporation, under NVIDIA's licenses. NVIDIA, GeForce RTX, DLSS and Reflex are "
+                   "trademarks and/or registered trademarks of NVIDIA Corporation. DirectX Agility SDK: Microsoft. Ray "
+                   "tracing: ideas from Embark Studios' kajiya (MIT) and Bustanity's Phantom FX (MIT). Every license "
+                   "is in the licenses folder.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{

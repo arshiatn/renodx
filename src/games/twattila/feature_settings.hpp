@@ -52,7 +52,7 @@ struct AaSliders {
   float extra_sharpness = 0.f;
   float taa_strength = 0.9f;
   float sharpening = 0.25f;
-  float dlaa_preset = 1.f;  // K, M, L
+  float dlaa_preset = 2.f;  // K, M, L
   float dlss_mode = 0.f;       // DLAA's scale: DLSS_MODE_SCALES, the last Custom (render_scale)
   float render_scale = 100.f;  // Custom, in percent (below 100: DLSS)
   float ray_reconstruction = 0.f;  // DLAA's: off, NVIDIA's preset, D, E, F
@@ -338,10 +338,10 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .key = "AntiAliasingDlaaPreset",
                                             .binding = &sliders->dlaa_preset,
                                             .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-                                            .default_value = 1.f,
+                                            .default_value = 2.f,
                                             .label = "DLAA Preset",
                                             .section = AA_SECTION,
-                                            .tooltip = "NVIDIA's models: K the first transformer, M the second (default), L the sharpest.",
+                                            .tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default).",
                                             .labels = {"K", "M", "L"},
                                             .is_enabled = [sliders] { return sliders->method == 5.f; },
                                         },
@@ -435,8 +435,8 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .label = "Frame Generation (Experimental)",
                                             .section = AA_SECTION,
                                             .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
-                                                       "5x, 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
-                                                       "Needs DLAA, an RTX 40 or newer GPU, Output HDR10 or SDR, a windowed or borderless game,\n"
+                                                       "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
+                                                       "Needs DLAA, Output HDR10 or SDR, a windowed or borderless game,\n"
                                                        "and Streamline's files next to renodx-tw-dlaa64.exe.",
                                             .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
                                             .is_enabled = [sliders] { return sliders->method == 5.f; },

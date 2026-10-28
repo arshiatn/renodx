@@ -2,6 +2,20 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v85 (2026-10-28, the Nexus beta)
+
+- **SDR (monitors without HDR)** preset (yellow): Output SDR, Recommended without the VFX boost, no video AutoHDR. In
+  SDR output the game's and the UI's white are the monitor's own, so it sets no Paper White or UI nits.
+- **UI 4K Mod Compatibility** is On by default (no DisableGraphics in ReShade.ini): the engine settings stay off until
+  it is turned Off and the game restarted. A red note says so next to it and on top of Graphics 2 of 2.
+- DLAA / DLSS **Preset L** by default (all TW games: shared settings).
+- A red note above the ray tracing settings: they do not work correctly yet (all TW games).
+- Frame Generation's tooltip: 3x to 6x and Dynamic need an RTX 50 (2x: RTX 40).
+- About: NVIDIA DLSS, Reflex, Streamline and NVAPI attribution (NVIDIA's license asks for it there), Microsoft's Agility
+  SDK, kajiya and Phantom FX.
+- Nexus zip RenoDX_Attila_Beta_v85.zip: the files at its root (next to Attila.exe), nvngx_dlss.dll included now (the
+  NVIDIA RTX SDKs license allows it inside an application), a licenses folder and a player read-me.
+
 ## v84 (2026-10-28, untested in game)
 
 - **Below 100%** (DLSS modes and custom render scales):
