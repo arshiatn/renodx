@@ -18,9 +18,12 @@
 // render thread's; counts across threads approximate).
 namespace twattila::debug_timing {
 
-enum Hook : size_t { MAP, UNMAP, CAMERAS, UPDATE, VIEWPORTS, SCISSORS, LOD_SAMPLERS, LOD_VIEWPORTS, ANTI_ALIASING, HOOKS };
-constexpr std::array<const char*, HOOKS> NAMES = {"map",       "unmap",        "camera checks", "update",       "viewports",
-                                                  "scissors",  "lod samplers", "lod viewports", "anti-aliasing"};
+enum Hook : size_t {
+  MAP, UNMAP, CAMERAS, UPDATE, VIEWPORTS, SCISSORS, LOD_SAMPLERS, LOD_VIEWPORTS, ANTI_ALIASING, HUDLESS, FRAME_GENERATION, HOOKS
+};
+constexpr std::array<const char*, HOOKS> NAMES = {"map",           "unmap",         "camera checks",   "update",
+                                                  "viewports",     "scissors",      "lod samplers",    "lod viewports",
+                                                  "anti-aliasing", "hud-less copy", "frame generation"};
 
 struct Entry {
   std::chrono::steady_clock::duration spent = {};
