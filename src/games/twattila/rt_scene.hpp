@@ -178,8 +178,10 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
     if (native == nullptr) return {};
     auto& runtime = internal::runtime;
     const std::unique_lock lock(runtime.mutex);
-    // The Debug View's Screen-Space AO: this pass's target (the game's or GT-VBAO's ambient occlusion).
-    if (runtime.settings.debug_view >= 8) {
+    // The Debug View's Screen-Space AO: this pass's target (the game's or GT-VBAO's ambient occlusion), copied after it
+    // and before the traced ambient visibility goes in (it showed both, ATN 2026-10-28).
+    const bool keep_ambient = runtime.settings.debug_view >= 8;
+    if (keep_ambient) {
       ComPtr<ID3D11RenderTargetView> target;
       native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
       ComPtr<ID3D11Resource> resource;
@@ -192,27 +194,39 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
                                                            .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
                                                            .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
         objects.debug_ambient.Reset();
+        objects.debug_ambient_copy.Reset();
         objects.debug_ambient_resource = resource;
         ComPtr<ID3D11Device> device;
         native->GetDevice(device.GetAddressOf());
-        if (target_desc.ViewDimension == D3D11_RTV_DIMENSION_TEXTURE2D) {
-          device->CreateShaderResourceView(resource.Get(), &view_desc, objects.debug_ambient.GetAddressOf());
+        ComPtr<ID3D11Texture2D> texture;
+        D3D11_TEXTURE2D_DESC copy_desc = {};
+        if (target_desc.ViewDimension == D3D11_RTV_DIMENSION_TEXTURE2D && SUCCEEDED(resource.As(&texture))) {
+          texture->GetDesc(&copy_desc);
+          copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+          copy_desc.MiscFlags = 0;
+          if (copy_desc.SampleDesc.Count == 1 && SUCCEEDED(device->CreateTexture2D(&copy_desc, nullptr, objects.debug_ambient_copy.GetAddressOf()))) {
+            device->CreateShaderResourceView(objects.debug_ambient_copy.Get(), &view_desc, objects.debug_ambient.GetAddressOf());
+          }
         }
       }
-      runtime.debug_ambient_frame = runtime.frame;
     }
     ComPtr<ID3D11ShaderResourceView> depth;
     ComPtr<ID3D11Buffer> camera;
     native->PSGetShaderResources(ao_pass::internal::DEPTH_SLOT, 1, depth.GetAddressOf());
     native->PSGetConstantBuffers(ao_pass::internal::CAMERA_SLOT, 1, camera.GetAddressOf());
     internal::Trace(native, depth.Get(), camera.Get());
-    if (!runtime.settings.ambient_occlusion || runtime.traced_frame != runtime.frame) return {};
+    if (!keep_ambient && (!runtime.settings.ambient_occlusion || runtime.traced_frame != runtime.frame)) return {};
     return {.post_callback = [](Context& post, const void*) {
       auto* post_native = internal::NativeContext(post.cmd_list);
       if (post_native == nullptr) return;
       auto& post_runtime = internal::runtime;
       const std::unique_lock post_lock(post_runtime.mutex);
       auto& objects = post_runtime.objects;
+      if (post_runtime.settings.debug_view >= 8 && objects.debug_ambient_copy) {
+        post_native->CopyResource(objects.debug_ambient_copy.Get(), objects.debug_ambient_resource.Get());
+        post_runtime.debug_ambient_frame = post_runtime.frame;
+      }
+      if (!post_runtime.settings.ambient_occlusion || post_runtime.traced_frame != post_runtime.frame) return;
       post_runtime.ambient_frame = post_runtime.frame;
       std::array<D3D11_VIEWPORT, D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE> viewports = {};
       UINT viewport_count = static_cast<UINT>(viewports.size());
@@ -672,6 +686,17 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
   const auto preset = [](Values values) {
     return [values = std::move(values)]() { renodx::utils::settings::UpdateSettings(values); };
   };
+  // Turned on: the Light Bounce (Lighting) on with them when it was off (they trace its light: without it they did
+  // nothing, ATN 2026-10-28).
+  const auto light_bounce_on = [light_bounce_strength] {
+    if (light_bounce_strength == nullptr || *light_bounce_strength > 0.f) return;
+    for (const char* key : {"RayTracedLightBounce", "PathTracing"}) {
+      if (const auto* setting = renodx::utils::settings::FindSetting(key); setting != nullptr && setting->GetValue() != 0.f) {
+        renodx::utils::settings::UpdateSettings({{"light_bounce_strength", 1.f}});
+        return;
+      }
+    }
+  };
   const auto quality_button = [&](const char* label, const char* tooltip, Values values) {
     return new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -869,9 +894,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Ray-Traced Light Bounce (Experimental)",
           .section = section,
           .tooltip = "The Light Bounce finds its light with rays through the scene: farther, and nothing guessed behind what\n"
-                     "the camera sees. Needs the Light Bounce on, DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
+                     "the camera sees. Turns the Light Bounce on. Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
+          .on_change = light_bounce_on,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRays",
@@ -906,9 +932,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Path Tracing (Experimental)",
           .section = section,
           .tooltip = "The Light Bounce's light path traced: light bouncing several times, also from what is off screen.\n"
-                     "Needs the Light Bounce on, DLAA, an RTX GPU and renodx-tw-dlaa64.exe. Heavy.",
+                     "Turns the Light Bounce on. Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe. Heavy.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
+          .on_change = light_bounce_on,
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,

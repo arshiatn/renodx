@@ -897,6 +897,21 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       turn); 10 s report adds the top churning shader's last 3 new captures (counts, VB0 / IB pointers + offsets) and
       draws captured for dynamic vertex buffers; status: units / grass triangles, GPU ms trace / bounce / reflections.
       NEXT: ATN tests each effect alone (sun shadows first) with the Debug View; read the report lines for the churn.
+    - 2026-10-28 20:35, ATN tested every effect alone: RT Light Bounce + Path Tracing did nothing (light_bounce_strength 0:
+      they only replace the Light Bounce's trace; the red note was missed); debug views "wrong (?)"; Screen-Space AO view
+      showed things always or never; sun shadows pulsing and broken (debug shot: long black bands on flat ground,
+      stepped bands on hills). Log: churn mostly gone (347F3DD9 dynamic-VB draws ~1-10 a frame now captured every
+      frame), bounce GPU 0.00 always, reflections once 74 ms. CAUSE of the bands (most likely): the terrain draws its
+      pieces from a dynamic instance stream refilled in the same places every frame, so its keys stayed while its
+      pieces changed: earlier views' terrain stayed in the scene. FIXES (built, helper copied, untested in game): any
+      scene draw without a record version with a DYNAMIC vertex buffer in slots 0-3 (the terrain) is captured every
+      frame (budget: MAX_DYNAMIC_VERTICES 7M, units + grass + rest MAX_UNIT_VERTICES 4M so the terrain keeps the rest,
+      grass MAX_GRASS_VERTICES 2M; helper DYNAMIC_TRIANGLES 7M / 3, MAX_CLUSTERS 49152, DYNAMIC_UVS 2M a slot with its
+      own counter; status "every frame X M: terrain, grass"); the first two draws of every scene shader logged (VB
+      usage); RT Light Bounce / Path Tracing turned on also turn the Light Bounce on (strength 1, on_change ->
+      UpdateSettings: on_change_value runs under the settings mutex); the Debug View's Screen-Space AO is a copy made
+      after the AO pass and before the traced AO is multiplied in; the status logged 3 s after any RT settings change
+      with the effects that are on (each effect's GPU time). NEXT: ATN retests sun shadows (bands, pulsing).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

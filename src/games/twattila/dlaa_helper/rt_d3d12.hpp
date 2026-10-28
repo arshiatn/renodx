@@ -990,11 +990,11 @@ class RtScene12 {
   static constexpr uint32_t RELEASE_FRAMES = 3600;
   // The units' BLAS is refitted to each frame's poses while their draws stay the same, rebuilt this often.
   static constexpr uint32_t UNITS_REBUILD_FRAMES = 30;
-  static constexpr UINT DYNAMIC_TRIANGLES = (6u << 20) / 3;  // rt_core.hpp MAX_DYNAMIC_VERTICES
+  static constexpr UINT DYNAMIC_TRIANGLES = (7u << 20) / 3;  // rt_core.hpp MAX_DYNAMIC_VERTICES
   // Mega Geometry: the units' triangles in clusters of this many (three vertices each, up to 256 a cluster), a frame's
   // clusters at most (the last of each draw partial), each a geometry with a record of its own (a slot's in turn).
   static constexpr uint32_t CLUSTER_TRIANGLES = 85;
-  static constexpr uint32_t MAX_CLUSTERS = 32768;
+  static constexpr uint32_t MAX_CLUSTERS = 49152;
   // A slot's upload buffer for them: the CLASes' arguments (64 bytes each), the cluster BLAS's (16), the CLAS count,
   // the BLAS's destination, the indices (0-255), the clusters' records.
   static constexpr uint64_t CLUSTER_ARGS_OFFSET = 0;
@@ -1027,7 +1027,7 @@ class RtScene12 {
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
   static constexpr UINT NORMAL_POOL = STATIC_TRIANGLES + SLOTS * DYNAMIC_TRIANGLES;
   static constexpr UINT STATIC_UVS = 8u << 20;
-  static constexpr UINT DYNAMIC_UVS = DYNAMIC_TRIANGLES * 3;  // a slot's (grass)
+  static constexpr UINT DYNAMIC_UVS = 2u << 20;  // a slot's (grass: rt_core.hpp MAX_GRASS_VERTICES)
   static constexpr UINT UV_POOL = STATIC_UVS + SLOTS * DYNAMIC_UVS;
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
@@ -1425,7 +1425,8 @@ class RtScene12 {
     uint32_t built = 0;
     uint32_t micromaps_built = 0;
     uint64_t dynamic_triangles = 0;
-    uint64_t grass_triangles = 0;  // of them (alpha-tested)
+    uint64_t grass_triangles = 0;    // of them (alpha-tested)
+    uint64_t terrain_triangles = 0;  // and the terrain's
     bool units_built = false;
     bool units_refitted = false;
     bool units_clustered = false;  // Mega Geometry's cluster BLAS built for them
@@ -1486,6 +1487,7 @@ class RtScene12 {
       std::vector<Placement> placements(capture_count);
       uint32_t dynamic_records = 0;
       uint32_t dynamic_triangles_used = 0;
+      uint32_t dynamic_uvs_used = 0;
       for (uint32_t index = 0; index < capture_count; ++index) {
         const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
         auto& placement = placements[index];
@@ -1498,7 +1500,11 @@ class RtScene12 {
           if (dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES) continue;
           placement.record = STATIC_RECORDS + static_cast<uint32_t>(slot_index) * dlaa_bridge::RT_CAPTURES + dynamic_records++;
           placement.normal_offset = STATIC_TRIANGLES + static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES + dynamic_triangles_used;
-          if (placement.masked) placement.uv_offset = STATIC_UVS + static_cast<uint32_t>(slot_index) * DYNAMIC_UVS + dynamic_triangles_used * 3;
+          placement.masked = placement.masked && dynamic_uvs_used + triangles * 3 <= DYNAMIC_UVS;
+          if (placement.masked) {
+            placement.uv_offset = STATIC_UVS + static_cast<uint32_t>(slot_index) * DYNAMIC_UVS + dynamic_uvs_used;
+            dynamic_uvs_used += triangles * 3;
+          }
           dynamic_triangles_used += triangles;
           continue;
         }
@@ -1701,6 +1707,7 @@ class RtScene12 {
           units_masked = units_masked || placement.masked;
           dynamic_triangles += capture.vertex_count / 3;
           if (placement.masked) grass_triangles += capture.vertex_count / 3;
+          if ((capture.flags & dlaa_bridge::RT_TERRAIN) != 0) terrain_triangles += capture.vertex_count / 3;
           continue;
         }
         const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
@@ -2218,11 +2225,12 @@ class RtScene12 {
       ReleaseMesh(&entry.second);
       return true;
     });
-    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles (units {:.2f} M, "
-                          "grass {:.2f} M, {})",
+    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles (every frame {:.2f} "
+                          "M: terrain {:.2f}, grass {:.2f}; {})",
                           dxr12_ ? "DXR 1.2" : "DXR 1.1", meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn,
                           ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
                           static_cast<double>(triangles) / 1.0e6, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
+                          static_cast<double>((units_built || units_clustered) ? terrain_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? grass_triangles : 0u) / 1.0e6,
                           units_clustered ? std::format("{} clusters", clusters_built) : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
     if (timestamps_) {

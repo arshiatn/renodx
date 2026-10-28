@@ -97,6 +97,8 @@ struct Settings {
   // occlusion, 6 point light shadows, 7 fog shadows, 8 the game's AO pass (screen space; a host's hook keeps it), 9 all
   // eight tiled.
   uint32_t debug_view = 0;
+
+  bool operator==(const Settings&) const = default;
 };
 
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
@@ -156,10 +158,12 @@ struct Host {
 namespace internal {
 
 constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
-// The units' share of it each frame (about two million triangles; it was full in a large battle with grass: what did
-// not fit changed every frame, grass and units' shadows pulsed, ATN 2026-10-28), grass at most half of it.
-constexpr UINT MAX_DYNAMIC_VERTICES = 6u << 20;
-constexpr UINT MAX_GRASS_VERTICES = 3u << 20;
+// What is captured every frame, at most (it was full in a large battle with grass: what did not fit changed every frame,
+// grass and units' shadows pulsed, ATN 2026-10-28): units, grass and the rest at most MAX_UNIT_VERTICES (grass at most
+// MAX_GRASS_VERTICES of them), so the terrain keeps the rest.
+constexpr UINT MAX_DYNAMIC_VERTICES = 7u << 20;
+constexpr UINT MAX_UNIT_VERTICES = 4u << 20;
+constexpr UINT MAX_GRASS_VERTICES = 2u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
@@ -184,7 +188,8 @@ struct DeviceObjects {
   ComPtr<ID3D11ComputeShader> debug_shader;  // the Debug View's, into its picture (the tone mapper's output's size)
   ComPtr<ID3D11Texture2D> debug_texture;
   ComPtr<ID3D11UnorderedAccessView> debug_uav;
-  ComPtr<ID3D11Resource> debug_ambient_resource;  // the game's AO pass's target (the host's hook) and a view of it
+  ComPtr<ID3D11Resource> debug_ambient_resource;  // the game's AO pass's target (the host's hook), its copy and a view of it
+  ComPtr<ID3D11Texture2D> debug_ambient_copy;
   ComPtr<ID3D11ShaderResourceView> debug_ambient;
   ComPtr<ID3D11ComputeShader> positions_shader;
   ComPtr<ID3D11ComputeShader> sun_shader;
@@ -221,7 +226,8 @@ struct Runtime {
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
   uint32_t dynamic_vertices = 0;
-  uint32_t grass_vertices = 0;  // of them
+  uint32_t unit_vertices = 0;   // of them all but the terrain's
+  uint32_t grass_vertices = 0;  // and grass
   std::vector<uint64_t> drawn;
   // This frame's draws of placed meshes in the scene: their instances' rows in the captured vertices (bridge v14).
   std::vector<dlaa_bridge::RtPlacement> placements;
@@ -241,11 +247,13 @@ struct Runtime {
   // 2026-10-28: the helper's 16384 static records filled within a minute, 93 meshes in the scene).
   std::unordered_map<uint32_t, uint32_t> new_static;
   uint64_t new_static_time = 0;
+  // The helper's status logged this long after the settings changed (each effect's GPU time as they are tried).
+  uint64_t status_log_time = 0;
   std::unordered_map<uint32_t, std::vector<std::string>> new_static_examples;  // the last three each
   std::unordered_map<uint32_t, uint32_t> dynamic_buffers;  // draws captured every frame for their dynamic vertex buffers
   // The placed draws logged per vertex shader (their instancing and vertex buffers, the first two each; ATN 2026-10-28:
   // no tree shadows).
-  std::unordered_map<uint32_t, uint32_t> placed_logged;
+  std::unordered_map<uint32_t, uint32_t> logged_draws;
   // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
   // objects.light_constants, b12) and whether it did.
   std::vector<LocalLight> lights_drawn;
@@ -525,17 +533,24 @@ void Capture(Context& command, const SceneShader& shader) {
   // geometry alone and built once from its first instance's triangles, placed every frame it is drawn from its
   // instances' rows (the game's per-instance stream, which it repacks every frame it culls: keyed by that, every draw
   // was a new mesh every frame while the camera moved, ATN 2026-10-28).
-  // A mesh in a dynamic vertex buffer (rewritten whenever the game likes: by its geometry it was a new mesh again and
-  // again, ATN 2026-10-28) is captured every frame, as units are (the terrain keeps its own way).
+  // A draw from a dynamic vertex buffer (rewritten whenever the game likes) is captured every frame, as units are: a mesh
+  // with a record version by its first one (by its geometry it was a new mesh again and again; its instances' stream is
+  // placed), any other by any (the terrain draws its pieces from a dynamic instance stream refilled in the same places:
+  // keyed by it, pieces of earlier views stayed in the scene, black bands, pulsing shadows, ATN 2026-10-28).
   bool dynamic = shader.dynamic;
-  if (!dynamic && !shader.terrain) {
-    ComPtr<ID3D11Buffer> first_vertices;
-    UINT first_stride = 0;
-    UINT first_offset = 0;
-    native->IAGetVertexBuffers(0, 1, first_vertices.GetAddressOf(), &first_stride, &first_offset);
-    D3D11_BUFFER_DESC first_desc = {};
-    if (first_vertices) first_vertices->GetDesc(&first_desc);
-    dynamic = first_desc.Usage == D3D11_USAGE_DYNAMIC;
+  if (!dynamic) {
+    std::array<ID3D11Buffer*, 4> buffers = {};
+    std::array<UINT, 4> buffer_strides = {};
+    std::array<UINT, 4> buffer_offsets = {};
+    const UINT slots = (shader.rows_shader.empty() ? static_cast<UINT>(buffers.size()) : 1u);
+    native->IAGetVertexBuffers(0, slots, buffers.data(), buffer_strides.data(), buffer_offsets.data());
+    for (UINT slot = 0; slot < slots; ++slot) {
+      if (buffers[slot] == nullptr) continue;
+      D3D11_BUFFER_DESC buffer_desc = {};
+      buffers[slot]->GetDesc(&buffer_desc);
+      dynamic = dynamic || buffer_desc.Usage == D3D11_USAGE_DYNAMIC;
+      buffers[slot]->Release();
+    }
   }
   const bool placed = !shader.rows_shader.empty() && !dynamic;
   const UINT instances = placed ? std::max(arguments.instance_count, 1u) : 1u;
@@ -677,6 +692,7 @@ void Capture(Context& command, const SceneShader& shader) {
     // Units: every frame, within their share.
     if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
     if (dynamic && runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES) return;
+    if (dynamic && !shader.terrain && runtime.unit_vertices + vertex_count > MAX_UNIT_VERTICES) return;
     if (shader.grass && runtime.grass_vertices + vertex_count > MAX_GRASS_VERTICES) return;
     if (const auto known = runtime.known.find(key); !dynamic && known != runtime.known.end()) {
       // A leaf's slice stays in use while it is drawn.
@@ -730,7 +746,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
 
   const std::unique_lock lock(runtime.mutex);
-  if (placed && runtime.placed_logged[shader.hash]++ < 2) {
+  if (runtime.logged_draws[shader.hash]++ < 2) {
     std::array<ID3D11Buffer*, 3> buffers = {};
     std::array<UINT, 3> buffer_strides = {};
     std::array<UINT, 3> buffer_offsets = {};
@@ -863,6 +879,7 @@ void Capture(Context& command, const SceneShader& shader) {
   runtime.captured_vertices += vertex_count + row_texels;
   if (dynamic) {
     runtime.dynamic_vertices += vertex_count;
+    if (!shader.terrain) runtime.unit_vertices += vertex_count;
     if (shader.grass) runtime.grass_vertices += vertex_count;
     if (!shader.dynamic) ++runtime.dynamic_buffers[shader.hash];
   } else {
@@ -1418,9 +1435,23 @@ inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) 
 inline void Update(const Settings& settings) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
+  if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + 3000;
   runtime.settings = settings;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
+  if (runtime.status_log_time != 0 && GetTickCount64() >= runtime.status_log_time) {
+    runtime.status_log_time = 0;
+    std::string effects;
+    for (const auto& [on, name] : {std::pair{settings.sun_shadows, "sun shadows"}, std::pair{settings.ambient_occlusion, "AO"},
+                                   std::pair{settings.light_bounce, "Light Bounce"}, std::pair{settings.path_tracing, "path tracing"},
+                                   std::pair{settings.reflections, "reflections"}, std::pair{settings.specular_occlusion, "specular occlusion"},
+                                   std::pair{settings.local_lights, "point lights"}, std::pair{settings.fog_shadows, "fog shadows"},
+                                   std::pair{settings.grass, "grass"}, std::pair{settings.units, "units"}}) {
+      if (on) effects += (effects.empty() ? "" : ", ") + std::string(name);
+    }
+    renodx::utils::log::i("[Total War] Ray tracing with ", (effects.empty() ? std::string("nothing") : effects), ": ",
+                          dlaa_bridge::TraceStatus());
+  }
   if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
     if (!runtime.new_static.empty()) {
       std::vector<std::pair<uint32_t, uint32_t>> counts(runtime.new_static.begin(), runtime.new_static.end());
@@ -1447,6 +1478,7 @@ inline void Update(const Settings& settings) {
   runtime.slices.clear();
   runtime.captured_vertices = 0;
   runtime.dynamic_vertices = 0;
+  runtime.unit_vertices = 0;
   runtime.grass_vertices = 0;
   runtime.drawn.clear();
   runtime.placements.clear();
