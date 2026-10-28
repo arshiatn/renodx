@@ -243,7 +243,8 @@ struct Costs {
   double waiting_ms = 0.0;
   uint32_t timed = 0;  // frames whose timestamps came back
   uint64_t dynamic_vertices = 0;
-  uint64_t left_out = 0;
+  uint64_t left_out = 0;  // their share full
+  uint64_t no_room = 0;   // the frame's captures or vertex texture full
 };
 
 // Adds its scope's CPU time to `ticks` (the cost report).
@@ -271,7 +272,6 @@ struct Runtime {
   // This frame's new captures (consecutive dynamic draws joined) and their draws' keys, the scene meshes it drew; the
   // keys in the scene (the frame they were last drawn).
   std::vector<dlaa_bridge::RtCapture> captures;
-  uint32_t last_capture_shader = 0;  // the vertex shader of the last capture (draws join within one)
   std::unordered_set<uint64_t> captured_keys;
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
@@ -317,6 +317,11 @@ struct Runtime {
   uint32_t helper_left_out = 0;
   std::unordered_map<uint64_t, uint32_t> key_shaders;
   std::unordered_map<uint32_t, uint32_t> left_out_shaders;
+  // Under Ray-Traced Shadows Only, one frame every 10 s: the pixel shaders reading the game's sun shadow map that are
+  // not the patched sun draws (forward-lit grass and the like: lit everywhere, the map has no casters).
+  uint64_t readers_frame = UINT64_MAX;
+  std::unordered_set<uint32_t> sun_draw_shaders;
+  std::unordered_set<uint32_t> shadow_readers;
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
@@ -748,6 +753,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // again as the helper releases it), one not seen moving only in its turn, every PLACE_TURNS frames (the helper keeps
   // its instances between).
   bool place = false;
+  bool share_full = false;
   {
     const std::unique_lock lock(runtime.mutex);
     if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
@@ -757,13 +763,10 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     // Units: every frame, within their share.
     if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
-    if (dynamic
-        && (runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES
-            || (!shader.terrain && runtime.unit_vertices + vertex_count > MAX_UNIT_VERTICES)
-            || (shader.grass && runtime.grass_vertices + vertex_count > MAX_GRASS_VERTICES))) {
-      runtime.costs.left_out += vertex_count;
-      return;
-    }
+    share_full = dynamic
+                 && (runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES
+                     || (!shader.terrain && runtime.unit_vertices + vertex_count > MAX_UNIT_VERTICES)
+                     || (shader.grass && runtime.grass_vertices + vertex_count > MAX_GRASS_VERTICES));
     if (const auto known = runtime.known.find(key); !dynamic && known != runtime.known.end()) {
       // A leaf's slice stays in use while it is drawn.
       if (mask) {
@@ -816,6 +819,10 @@ void Capture(Context& command, const SceneShader& shader) {
   }
 
   const std::unique_lock lock(runtime.mutex);
+  if (share_full) {
+    runtime.costs.left_out += vertex_count;
+    return;
+  }
   if (runtime.logged_draws[shader.hash]++ < 2) {
     std::array<ID3D11Buffer*, 3> buffers = {};
     std::array<UINT, 3> buffer_strides = {};
@@ -849,14 +856,14 @@ void Capture(Context& command, const SceneShader& shader) {
                          | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
                          | (shader.thin ? dlaa_bridge::RT_THIN : 0u);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
-  if (!dynamic || shader.foliage || joined == nullptr || joined->flags != flags || runtime.last_capture_shader != shader.hash
+  if (!dynamic || shader.foliage || joined == nullptr || joined->flags != flags
       || joined->first_vertex + joined->vertex_count != runtime.captured_vertices || joined->vertex_count % 3 != 0) {
     joined = nullptr;
   }
   if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || runtime.captured_vertices + row_texels > MAX_VERTICES)
             : ((joined == nullptr && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)
                || runtime.captured_vertices + vertex_count + row_texels > MAX_VERTICES)) {
-    if (dynamic) runtime.costs.left_out += vertex_count;
+    if (dynamic) runtime.costs.no_room += vertex_count;
     return;
   }
   ComPtr<ID3D11Device> device;
@@ -964,7 +971,6 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.slices.push_back(slice);
     runtime.key_shaders[key] = shader.hash;
   }
-  runtime.last_capture_shader = shader.hash;
   runtime.captured_keys.insert(key);
   runtime.captured_vertices += vertex_count + row_texels;
   if (dynamic) {
@@ -1623,6 +1629,14 @@ inline void Update(const Settings& settings) {
     }
     runtime.left_out_shaders.clear();
     runtime.key_shaders.clear();
+    if (!runtime.shadow_readers.empty()) {
+      std::string readers;
+      for (const uint32_t hash : runtime.shadow_readers) readers += std::format("{}{:08X}", (readers.empty() ? "" : ", "), hash);
+      renodx::utils::log::i("[Total War] Ray tracing: pixel shaders reading the game's sun shadow map without the rays' shadows "
+                            "(lit everywhere under Ray-Traced Shadows Only): ", readers, ".");
+      runtime.shadow_readers.clear();
+    }
+    if (runtime.settings.shadows_only) runtime.readers_frame = runtime.frame + 1;
     for (const auto& [hash, draws] : runtime.dynamic_buffers) {
       renodx::utils::log::i(std::format("[Total War] Ray tracing: {:08X} in dynamic vertex buffers, captured every frame: {} draws in 10 s.",
                                         hash, draws));
@@ -1634,12 +1648,13 @@ inline void Update(const Settings& settings) {
       const double frame_ms = 1000.0 / static_cast<double>(frequency.QuadPart) / costs.frames;
       renodx::utils::log::i(std::format("[Total War] Ray tracing's own cost a frame: CPU {:.2f} ms capturing, {:.2f} ms tracing; GPU "
                                         "{:.2f} ms its passes, {:.2f} ms waiting for the helper; every frame {:.2f} M vertices captured, "
-                                        "{:.2f} M left out (their share full).",
+                                        "{:.2f} M left out (their share full), {:.2f} M without room (captures or vertex texture full).",
                                         costs.capture_ticks * frame_ms, costs.trace_ticks * frame_ms,
                                         (costs.timed != 0 ? costs.passes_ms / costs.timed : 0.0),
                                         (costs.timed != 0 ? costs.waiting_ms / costs.timed : 0.0),
                                         static_cast<double>(costs.dynamic_vertices) / 1.0e6 / costs.frames,
-                                        static_cast<double>(costs.left_out) / 1.0e6 / costs.frames));
+                                        static_cast<double>(costs.left_out) / 1.0e6 / costs.frames,
+                                        static_cast<double>(costs.no_room) / 1.0e6 / costs.frames));
     }
     costs = {};
     runtime.new_static_time = now;

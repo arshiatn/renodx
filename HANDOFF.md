@@ -968,6 +968,19 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       most) and one garbage triangle a 10 s (positions, capture key and flags, counts by kind) to renodx-tw-dlaa64.log.
       Harness: all modes pass, with and without RENODX_TW_OMM. NEXT: ATN retests; no freeze = the bake (then find why it
       stalls in game); a freeze = DRED names the next pass; the garbage example shows what the grass / unit captures make.
+    - 2026-10-28 23:00, ATN's retest: NO freeze (bake confirmed as the stall; why it stalls in game is still open, bakes
+      stay off). No garbage at all: last run's came only after the resets. But units were MISSING from the scene ("every
+      frame 2.4 M: terrain 1.0, grass 1.4" = no units; "left out" 30-78 M): c3b19f02 joined captures only within one
+      vertex shader, 4x units alternate shaders, the frame's 256 captures ran out (c362537f's run had 1.2-1.6 M unit
+      triangles). ATN also: grass shadows don't move with the wind; some grass / trees behind buildings stay lit. The
+      rays' shadows reach only the patched deferred sun shaders (x (1 - t49)); passes that light themselves (Attila's
+      blended near grass, < 25 m) read the game's sun shadow map, which Ray-Traced Shadows Only empties: lit everywhere.
+      RT grass uses the drawn grass's own wind code and time, so it sways; a few cm of sway on still ground is averaged
+      by DLSS / Ray Reconstruction (no motion on the receiver). FIXES (untested in game): captures join across shaders
+      again; left out counted only for main-view draws, split into "share full" and "without room (captures or vertex
+      texture)"; under Shadows Only one frame every 10 s logs the pixel shaders that read the game's sun shadow map but are
+      no patched sun draw ("pixel shaders reading the game's sun shadow map without the rays' shadows"). NEXT: those
+      shaders get the rays' shadows (patched as the sun draws, or the map kept for them).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

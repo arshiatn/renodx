@@ -606,11 +606,37 @@ inline void OnBindTargets(reshade::api::command_list* cmd_list, uint32_t count, 
   internal::skipping_casters.store(skip, std::memory_order_relaxed);
 }
 
-inline bool OnCasterDraw(reshade::api::command_list*, uint32_t, uint32_t, uint32_t, uint32_t) {
+// Under it, in the frame Update picks every 10 s: a draw whose pixel shader reads the sun's shadow map and is no patched
+// sun draw (forward-lit: lit everywhere, the map has no casters) has its pixel shader noted for the report.
+inline void NoteShadowReader(reshade::api::command_list* cmd_list) {
+  auto& runtime = internal::runtime;
+  if (runtime.readers_frame != runtime.frame) return;
+  const uint64_t map = internal::shadow_map.load(std::memory_order_relaxed);
+  auto* native = internal::NativeContext(cmd_list);
+  if (map == 0 || native == nullptr) return;
+  std::array<ID3D11ShaderResourceView*, 16> views = {};
+  native->PSGetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+  bool reads = false;
+  for (auto* view : views) {
+    if (view == nullptr) continue;
+    ComPtr<ID3D11Resource> resource;
+    view->GetResource(resource.GetAddressOf());
+    view->Release();
+    reads = reads || reinterpret_cast<uintptr_t>(resource.Get()) == map;
+  }
+  if (!reads) return;
+  const uint32_t shader = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
+  const std::unique_lock lock(runtime.mutex);
+  if (!runtime.sun_draw_shaders.contains(shader)) runtime.shadow_readers.insert(shader);
+}
+
+inline bool OnCasterDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
+  NoteShadowReader(cmd_list);
   return internal::skipping_casters.load(std::memory_order_relaxed);
 }
 
-inline bool OnCasterDrawIndexed(reshade::api::command_list*, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
+inline bool OnCasterDrawIndexed(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
+  NoteShadowReader(cmd_list);
   return internal::skipping_casters.load(std::memory_order_relaxed);
 }
 
@@ -646,6 +672,7 @@ inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pas
 // frame's trace), the AO filter and the Light Bounce.
 inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws) {
   for (const auto& draw : sun_draws) {
+    internal::runtime.sun_draw_shaders.insert(draw.shader_hash);
     renodx::utils::command_action::Register(
         OnSunDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
   }
