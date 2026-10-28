@@ -927,6 +927,7 @@ void BuildRuntimeData() {
           .tooltip = "Rays per pixel on rough surfaces: less noise, heavier.",
           .min = 1.f,
           .max = 8.f,
+          .format = "%d",
           .is_enabled = [] { return rt_sliders.reflections != 0.f; },
       },
       new renodx::utils::settings::Setting{
@@ -950,6 +951,7 @@ void BuildRuntimeData() {
           .tooltip = "Rays per texel: less noise, heavier.",
           .min = 1.f,
           .max = 16.f,
+          .format = "%d",
           .is_enabled = [] { return rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f; },
       },
       new renodx::utils::settings::Setting{
@@ -985,6 +987,7 @@ void BuildRuntimeData() {
           .tooltip = "Bounces past the first. More: brighter shade, heavier.",
           .min = 1.f,
           .max = 4.f,
+          .format = "%d",
           .is_enabled = [] { return rt_sliders.path_tracing != 0.f; },
       },
   };

@@ -796,6 +796,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "More rays: less noise. Heavier.",
           .min = 1.f,
           .max = 8.f,
+          .format = "%d",
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->ambient_occlusion != 0.f; },
       },
       new renodx::utils::settings::Setting{
@@ -882,6 +883,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "More rays: less noise. Heavier.",
           .min = 1.f,
           .max = 16.f,
+          .format = "%d",
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce != 0.f; },
       },
       new renodx::utils::settings::Setting{
@@ -928,6 +930,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Bounces past the first. More: brighter shade, heavier.",
           .min = 1.f,
           .max = 4.f,
+          .format = "%d",
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->path_tracing != 0.f; },
       },
   });
@@ -955,6 +958,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Rays per pixel on rough surfaces: less noise. Heavier.",
           .min = 1.f,
           .max = 8.f,
+          .format = "%d",
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f; },
       },
       new renodx::utils::settings::Setting{

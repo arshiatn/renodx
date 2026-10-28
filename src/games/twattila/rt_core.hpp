@@ -160,6 +160,8 @@ constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_T
 constexpr UINT MAX_DYNAMIC_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
+// A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
+constexpr uint64_t PLACE_TURNS = 4;
 // The local lights a frame keeps for the next trace to pick from.
 constexpr size_t MAX_LOCAL_LIGHTS = 8192;
 
@@ -232,6 +234,9 @@ struct Runtime {
   // 2026-10-28: the helper's 16384 static records filled within a minute, 93 meshes in the scene).
   std::unordered_map<uint32_t, uint32_t> new_static;
   uint64_t new_static_time = 0;
+  // The placed draws logged per vertex shader (their instancing and vertex buffers, the first two each; ATN 2026-10-28:
+  // no tree shadows).
+  std::unordered_map<uint32_t, uint32_t> placed_logged;
   // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
   // objects.light_constants, b12) and whether it did.
   std::vector<LocalLight> lights_drawn;
@@ -502,6 +507,9 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   auto* native = NativeContext(command.cmd_list);
   if (native == nullptr) return;
+  // Draws after this frame's trace (past its pass: forward and transparent ones) stay out (Trace and Update run on this
+  // thread too).
+  if (runtime.traced_frame == runtime.frame) return;
   const auto& arguments = command.arguments;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   // A placed draw (a shader with a record version, v14: rigid objects, tree branches and leaves): its BLAS keyed by its
@@ -520,12 +528,14 @@ void Capture(Context& command, const SceneShader& shader) {
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
   if (topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || vertex_count == 0 || vertex_count > MAX_VERTICES) return;
-  // Rigid objects seen moving stay out (a mesh's shadow where it stood); placed ones go where they are drawn.
+  // Rigid objects seen moving stay out (a mesh's shadow where it stood); placed ones go where they are drawn, every frame.
+  bool moving = false;
   if constexpr (INDEXED) {
-    if (!placed && !shader.terrain && !shader.dynamic && host.moving_indexed != nullptr && host.moving_indexed(native, arguments)) return;
+    moving = !shader.terrain && !shader.dynamic && host.moving_indexed != nullptr && host.moving_indexed(native, arguments);
   } else {
-    if (!placed && !shader.terrain && !shader.dynamic && host.moving != nullptr && host.moving(native, arguments)) return;
+    moving = !shader.terrain && !shader.dynamic && host.moving != nullptr && host.moving(native, arguments);
   }
+  if (moving && !placed) return;
   // The fast path (CPU): a static mesh drawn before, known by its short key while that stood for it alone, is only
   // marked drawn (no camera, depth or full identity check). Units, leaves and placed draws take their own paths.
   const bool short_path = !shader.dynamic && !shader.foliage && !placed;
@@ -569,30 +579,6 @@ void Capture(Context& command, const SceneShader& shader) {
       }
     }
   }
-  // The main view (not the UI's small 3D views, whose models stand elsewhere in the world): its camera and its depth at
-  // the display's size, single-sampled; the bridge with ray tracing.
-  if (host.main_view != nullptr && !host.main_view(native)) return;
-  ComPtr<ID3D11DepthStencilView> depth_view;
-  native->OMGetRenderTargets(0, nullptr, depth_view.GetAddressOf());
-  Camera camera;
-  if (!depth_view) return;
-  if (host.capture_camera != nullptr) {
-    if (!host.capture_camera(native, &camera)) return;
-  } else {
-    ComPtr<ID3D11Buffer> camera_buffer;
-    native->VSGetConstantBuffers(host.camera_slot, 1, camera_buffer.GetAddressOf());
-    if (!camera_buffer || !host.camera(camera_buffer.Get(), &camera)) return;
-  }
-  ComPtr<ID3D11Resource> depth_resource;
-  depth_view->GetResource(depth_resource.GetAddressOf());
-  ComPtr<ID3D11Texture2D> depth_texture;
-  D3D11_TEXTURE2D_DESC depth_desc = {};
-  if (FAILED(depth_resource.As(&depth_texture))) return;
-  depth_texture->GetDesc(&depth_desc);
-  if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != dlaa_bridge::bridge.width || depth_desc.Height != dlaa_bridge::bridge.height) {
-    return;
-  }
-
   // The draw's identity: its buffers, ranges, textures and constant buffers (but the camera's at b0); a placed draw's its
   // geometry alone (its ranges, first vertex buffer and index buffer).
   std::array<ID3D11Buffer*, 4> constant_buffers = {};
@@ -655,39 +641,98 @@ void Capture(Context& command, const SceneShader& shader) {
   ComPtr<ID3D11ShaderResourceView> mask;
   if (shader.foliage) native->PSGetShaderResources(0, 1, mask.GetAddressOf());
 
-  const std::unique_lock lock(runtime.mutex);
-  if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
-  if (short_path) {
-    const auto [entry, added] = runtime.short_keys.try_emplace(short_key, Runtime::ShortKey{.key = key});
-    if (!added && entry->second.key != key) entry->second.ambiguous = true;
-  }
-  // Units: every frame, within their share.
-  if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
-  if (shader.dynamic && runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES) return;
   // A mesh in the scene is marked drawn; a placed one (also one captured earlier this frame) is placed where this draw's
   // instances are (their rows only: a placement; marked drawn once placed, so one left out is forgotten and captured
-  // again as the helper releases it).
+  // again as the helper releases it), one not seen moving only in its turn, every PLACE_TURNS frames (the helper keeps
+  // its instances between).
   bool place = false;
-  if (const auto known = runtime.known.find(key); !shader.dynamic && known != runtime.known.end()) {
-    // A leaf's slice stays in use while it is drawn.
-    if (mask) {
-      ComPtr<ID3D11Resource> mask_resource;
-      mask->GetResource(mask_resource.GetAddressOf());
-      if (const auto found = runtime.atlas_slices.find(mask_resource.Get()); found != runtime.atlas_slices.end()) {
-        runtime.slice_used[found->second.second] = runtime.frame;
-      }
+  {
+    const std::unique_lock lock(runtime.mutex);
+    if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
+    if (short_path) {
+      const auto [entry, added] = runtime.short_keys.try_emplace(short_key, Runtime::ShortKey{.key = key});
+      if (!added && entry->second.key != key) entry->second.ambiguous = true;
     }
-    if (!placed) {
-      if (known->second != runtime.frame) {
+    // Units: every frame, within their share.
+    if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
+    if (shader.dynamic && runtime.dynamic_vertices + vertex_count > MAX_DYNAMIC_VERTICES) return;
+    if (const auto known = runtime.known.find(key); !shader.dynamic && known != runtime.known.end()) {
+      // A leaf's slice stays in use while it is drawn.
+      if (mask) {
+        ComPtr<ID3D11Resource> mask_resource;
+        mask->GetResource(mask_resource.GetAddressOf());
+        if (const auto found = runtime.atlas_slices.find(mask_resource.Get()); found != runtime.atlas_slices.end()) {
+          runtime.slice_used[found->second.second] = runtime.frame;
+        }
+      }
+      if (!placed) {
+        if (known->second != runtime.frame) {
+          known->second = runtime.frame;
+          if (runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
+        }
+        return;
+      }
+      if (!moving && (key + runtime.frame) % PLACE_TURNS != 0) {
         known->second = runtime.frame;
-        if (runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
+        return;
       }
-      return;
+      place = true;
+    } else if (std::ranges::find(runtime.captures, key, &dlaa_bridge::RtCapture::key) != runtime.captures.end()) {
+      if (!placed) return;
+      place = true;
     }
-    place = true;
-  } else if (std::ranges::find(runtime.captures, key, &dlaa_bridge::RtCapture::key) != runtime.captures.end()) {
-    if (!placed) return;
-    place = true;
+  }
+  // The main view (not the UI's small 3D views, whose models stand elsewhere in the world): its camera and its depth at
+  // the display's size, single-sampled.
+  if (host.main_view != nullptr && !host.main_view(native)) return;
+  ComPtr<ID3D11DepthStencilView> depth_view;
+  native->OMGetRenderTargets(0, nullptr, depth_view.GetAddressOf());
+  Camera camera;
+  if (!depth_view) return;
+  if (host.capture_camera != nullptr) {
+    if (!host.capture_camera(native, &camera)) return;
+  } else {
+    ComPtr<ID3D11Buffer> camera_buffer;
+    native->VSGetConstantBuffers(host.camera_slot, 1, camera_buffer.GetAddressOf());
+    if (!camera_buffer || !host.camera(camera_buffer.Get(), &camera)) return;
+  }
+  ComPtr<ID3D11Resource> depth_resource;
+  depth_view->GetResource(depth_resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> depth_texture;
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  if (FAILED(depth_resource.As(&depth_texture))) return;
+  depth_texture->GetDesc(&depth_desc);
+  if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != dlaa_bridge::bridge.width || depth_desc.Height != dlaa_bridge::bridge.height) {
+    return;
+  }
+
+  const std::unique_lock lock(runtime.mutex);
+  if (placed && runtime.placed_logged[shader.hash]++ < 2) {
+    std::array<ID3D11Buffer*, 3> buffers = {};
+    std::array<UINT, 3> buffer_strides = {};
+    std::array<UINT, 3> buffer_offsets = {};
+    native->IAGetVertexBuffers(0, static_cast<UINT>(buffers.size()), buffers.data(), buffer_strides.data(), buffer_offsets.data());
+    std::string described;
+    for (size_t slot = 0; slot < buffers.size(); ++slot) {
+      if (buffers[slot] == nullptr) continue;
+      D3D11_BUFFER_DESC buffer_desc = {};
+      buffers[slot]->GetDesc(&buffer_desc);
+      described += std::format(", VB{} stride {} offset {} {}", slot, buffer_strides[slot], buffer_offsets[slot],
+                               (buffer_desc.Usage == D3D11_USAGE_DYNAMIC ? "dynamic" : "static"));
+      buffers[slot]->Release();
+    }
+    // A leaf's opacity mask (the atlas takes its alpha).
+    if (ComPtr<ID3D11Resource> mask_resource; mask) {
+      mask->GetResource(mask_resource.GetAddressOf());
+      if (ComPtr<ID3D11Texture2D> mask_texture; SUCCEEDED(mask_resource.As(&mask_texture))) {
+        D3D11_TEXTURE2D_DESC mask_desc = {};
+        mask_texture->GetDesc(&mask_desc);
+        described += std::format(", mask {}x{} format {}", mask_desc.Width, mask_desc.Height, static_cast<int>(mask_desc.Format));
+      }
+    }
+    renodx::utils::log::i(std::format("[Total War] Ray tracing: placed vs {:08X}: {} vertices x {} instances from {}{}{}.", shader.hash,
+                                      vertex_count, arguments.instance_count, arguments.first_instance, described,
+                                      (moving ? ", moving" : "")));
   }
   if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || runtime.captured_vertices + row_texels > MAX_VERTICES)
             : (runtime.captures.size() >= dlaa_bridge::RT_CAPTURES || runtime.captured_vertices + vertex_count + row_texels > MAX_VERTICES)) {
@@ -780,7 +825,8 @@ void Capture(Context& command, const SceneShader& shader) {
   native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
   if (place) {
-    runtime.placements.push_back({.key = key, .first_vertex = rows_vertex, .instances = instances});
+    runtime.placements.push_back({.key = key, .first_vertex = rows_vertex, .instances = instances,
+                                  .flags = (moving ? dlaa_bridge::RT_PLACE_MOVING : 0u)});
     runtime.captured_vertices += row_texels;
     if (const auto known = runtime.known.find(key); known != runtime.known.end()) known->second = runtime.frame;
     return;
@@ -867,7 +913,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr},
                &constants, sizeof(constants), (runtime.captured_vertices + 255) / 256, 1);
       // Skies (rt_skies): the new static captures that hold the camera and are larger than the view reaches (the farther
-      // of its near and far planes' centres; unbounded with an infinite far plane) go empty.
+      // of its near and far planes' centres; unbounded with an infinite far plane) or centred on it (domes the game
+      // keeps around the camera: placed ones followed it, a circle of shadow under the camera, ATN 2026-10-28) go empty.
       const auto& inverse = camera.inverse_view_projection;
       float reach = 0.f;
       for (const float depth : {0.f, 1.f}) {
@@ -887,7 +934,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         std::array<float, 4> camera;
       };
       for (const auto& capture : runtime.captures) {
-        if ((capture.flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_INSTANCED)) != 0) continue;
+        if ((capture.flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE)) != 0) continue;
         const SkyConstants sky = {
             .capture = {capture.first_vertex, capture.vertex_count, clip_captures ? 1u : 0u, dlaa_bridge::RT_TRANSFER_WIDTH},
             .inverse_view_projection = camera.inverse_view_projection,

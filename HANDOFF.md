@@ -860,6 +860,23 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       frames; 2 frames: only the never-placed instance fails, as expected). helper25 copied into Attila's folder.
       NEXT: ATN's in-game test (status line "N in the scene (M placed)", the churn log should stay small, the Debug
       View should follow the camera), then README v94 / v46, zips (release_zip.py helper25), report.
+    - 2026-10-28 night, ATN's first v14 test (commit 146469bf): Debug View follows the camera now (scene 8-18k placed
+      instances, 2100+ meshes); but performance bad, shadows jump while moving, a big shadow circle under the camera
+      (bigger when zooming in), grass blocky, no tree shadows (?), RT integer sliders showed "0". ReShade.log: 347F3DD9
+      ~90 "new" captures/s with the known count flat = draws after the frame's trace, captured and dropped every frame.
+      FIXES (helper25 rebuilt, untested in game): integer sliders "%d" (TW rt_scene + Ryse: SliderInt got "%.0f");
+      captures skipped after the frame's trace; placed meshes not seen moving (object_motion) re-placed every
+      PLACE_TURNS = 4 frames in turn (CPU: most draws stop before the main-view check and the stream out), moving ones
+      every frame with RT_PLACE_MOVING (RtPlacement got flags); the sky check (rt_skies) covers placed captures and
+      also empties captures centred on the camera (battle dome = the circle: placed, it followed the camera); helper:
+      placed descs as a GPU union (rt_place modes clear / drawn / kept: each instance kept RECENT_FRAMES after its last
+      draw, deduplicated by record + 1 cm place, BLAS from a per-record table (compaction), dropped when its mesh is
+      drawn moving), TLAS of MAX_INSTANCES descs (the rest inactive), ROOT_DISPATCH 8 constants; grass alpha-tested
+      (dynamic foliage: a slot's UV region, masked units geometry / cluster records + flags, units instance not
+      forced opaque); GPU timings on by default (RENODX_TW_NO_GPU_TIMES off) in the status / 60 s log. Harness: kept,
+      compaction, moving drop, grass clear / solid, clusters and refit paths: all pass. Diagnostic: "placed vs X: N
+      vertices x M instances, VB strides / usage, leaf mask" for the first two draws of each placed shader (trees:
+      are TEXCOORD0-2 per instance? leaf mask format?). NEXT: ATN retest; read the placed-vs lines for trees.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

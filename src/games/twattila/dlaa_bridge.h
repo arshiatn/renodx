@@ -49,7 +49,8 @@ constexpr uint32_t RT_FOLIAGE = 4;
 // Instanced (v10): the vertices are the draw's first instance's; its `instances` instances' world rows follow them (four
 // texels each: rows 0-2 acting on (position, 1), a fourth unused). The helper builds one BLAS and places it once per
 // instance (each instance's rows times the first one's inverse). v14: keyed by the draw's geometry alone, `instances`
-// from 1, placed every frame it is drawn (this capture's rows, then RtPlacement's), never from older rows.
+// from 1, placed where its draws put its instances (this capture's rows, then RtPlacement's); the helper keeps each
+// instance a while after its last draw (off-screen casters), but those of meshes drawn moving.
 constexpr uint32_t RT_INSTANCED = 8;
 // A placed draw (v14) whose BLAS the helper has: its instances' rows this frame in the vertex texture (as RT_INSTANCED's).
 // The game repacks its per-instance streams every frame it culls: keyed by those, every draw was a new mesh every frame.
@@ -57,7 +58,11 @@ struct RtPlacement {
   uint64_t key = 0;
   uint32_t first_vertex = 0;
   uint32_t instances = 0;
+  uint32_t flags = 0;  // RT_PLACE_MOVING
+  uint32_t padding = 0;
 };
+// The mesh was seen moving lately: its instances where they are now only (none kept from earlier draws).
+constexpr uint32_t RT_PLACE_MOVING = 1;
 // Thin (v11): cloth and sails; with RT_LEAF_LIGHT a share of the sun passes them as it passes leaves.
 constexpr uint32_t RT_THIN = 16;
 // Request flags.

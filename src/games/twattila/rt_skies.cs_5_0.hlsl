@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Attila ray tracing (rt_core.hpp): a new static capture that holds the camera and is larger than the view reaches is a
-// sky (Attila's campaign map draws its dome as a rigid object around the camera, 900 units across): it casts no shadow,
+// Attila ray tracing (rt_core.hpp): a new static capture that holds the camera and is larger than the view reaches, or is
+// centred on it, is a sky (Attila's campaign map draws its dome as a rigid object around the camera, 900 units across;
+// placed draws follow the camera with it): it casts no shadow,
 // its triangles go empty in the vertex texture (a NaN x, which DXR skips). After rt_vertices, one group per capture:
 // its vertices' bounds, then the test.
 Buffer<float4> captured : register(t0);
@@ -52,7 +53,9 @@ void main(uint thread : SV_GroupIndex)
     GroupMemoryBarrierWithGroupSync();
   }
   const float3 size = highs[0] - lows[0];
-  if (any(camera.xyz < lows[0]) || any(camera.xyz > highs[0]) || max(size.x, max(size.y, size.z)) <= camera.w) return;
+  // Centred on the camera across (a dome the game keeps around it, smaller than the view reaches: battles).
+  const bool centred = all(abs((lows[0].xz + highs[0].xz) * 0.5f - camera.xz) <= 0.01f * max(size.x, size.z));
+  if (any(camera.xyz < lows[0]) || any(camera.xyz > highs[0]) || (max(size.x, max(size.y, size.z)) <= camera.w && !centred)) return;
   [loop]
   for (uint emptied = thread; emptied < rt_skies.y; emptied += GROUP_SIZE) {
     const uint vertex = rt_skies.x + emptied;
