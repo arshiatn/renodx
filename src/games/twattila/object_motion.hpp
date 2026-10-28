@@ -256,12 +256,26 @@ struct InDraw {
   ComPtr<ID3D11Buffer> our_stream_output;  // the records (none of the game's then)
   std::array<ComPtr<ID3D11RenderTargetView>, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets;
   ComPtr<ID3D11DepthStencilView> depth_stencil;
+  D3D11_TEXTURE2D_DESC depth_desc = {};  // its texture's (checked at the targets' first draw)
 };
 
-// A binding of the game's: `bound`, or where that is still ours from the last in-draw motion draw, the game's then.
+// A binding of the game's: `bound`, or where that is still ours from the last in-draw motion draw, the game's then (held
+// by `bound` or the kept bindings).
 template <typename T>
-ComPtr<T> GameBinding(const ComPtr<T>& bound, const ComPtr<T>& ours, const ComPtr<T>& game) {
-  return (bound && bound == ours) ? game : bound;
+T* GameBinding(const ComPtr<T>& bound, const ComPtr<T>& ours, const ComPtr<T>& game) {
+  return (bound && bound == ours) ? game.Get() : bound.Get();
+}
+
+// The immediate context under ReShade's command list (looked up again when that changes).
+inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
+  thread_local uint64_t wrapped = 0;
+  thread_local ID3D11DeviceContext* native = nullptr;
+  if (const uint64_t current = cmd_list->get_native(); current != wrapped) {
+    native = reinterpret_cast<ID3D11DeviceContext*>(current);
+    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    wrapped = current;
+  }
+  return native;
 }
 
 // The device's motion objects: the shaders, their constants, the target (the main depth's size; R32G32_UINT: the motion
@@ -294,6 +308,12 @@ struct DeviceObjects {
   // The animation textures the units' draws read (their position + 1: the bone pool's key with the bone base). Compared
   // only.
   std::vector<ID3D11Resource*> animation_textures;
+  // The last draw's animation view and its key, and its depth state and that's description (consecutive draws share
+  // them).
+  ComPtr<ID3D11ShaderResourceView> last_animation_map;
+  uint32_t last_animation_key = 0;
+  ComPtr<ID3D11DepthStencilState> last_depth_state;
+  D3D11_DEPTH_STENCIL_DESC last_depth_desc = {};
   size_t placement_index = 0;            // this frame's table
   uint64_t placement_frame = UINT64_MAX;  // the frame it was cleared in
   bool previous_placements = false;      // last frame's table was written last frame
@@ -536,8 +556,7 @@ inline void RestoreBindings(ID3D11DeviceContext* native) {
 template <typename Context>
 bool DrawObjectMotion(Context& command, bool in_draw) {
   const auto& shader = command.template GetCallbackData<MotionShader>();
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  auto* native = NativeContext(command.cmd_list);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
   ComPtr<ID3D11Buffer> camera;
   native->VSGetConstantBuffers(0, 1, camera.GetAddressOf());
@@ -607,14 +626,11 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
   ComPtr<ID3D11DepthStencilView> depth_stencil;
   std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT> game_output_views = {};
-  // Kept from the last in-draw motion draw (bound with targets 6 and 7; the game set none since, nor views).
+  // Kept from the last in-draw motion draw (bound with targets 6 and 7, held there; the game set none since, nor views).
   const bool kept_targets = targets_kept.load(std::memory_order_relaxed);
   if (kept_targets) {
     for (size_t slot = 0; slot < game_targets.size(); ++slot) {
       game_targets[slot] = state.in_draw.targets[slot].Get();
-      if (game_targets[slot] != nullptr) {
-        game_targets[slot]->AddRef();
-      }
     }
     depth_stencil = state.in_draw.depth_stencil;
   } else {
@@ -623,6 +639,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
                                                       game_output_views.data());
   }
   const auto release_targets = [&] {
+    if (kept_targets) return;
     for (auto* target : game_targets) {
       if (target != nullptr) {
         target->Release();
@@ -660,22 +677,32 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   ComPtr<ID3D11DepthStencilState> game_depth_state;
   UINT stencil_reference = 0;
   native->OMGetDepthStencilState(game_depth_state.GetAddressOf(), &stencil_reference);
-  D3D11_DEPTH_STENCIL_DESC depth_desc = {};
-  if (game_depth_state) {
-    game_depth_state->GetDesc(&depth_desc);
+  if (game_depth_state != objects.last_depth_state) {
+    objects.last_depth_desc = {};
+    if (game_depth_state) {
+      game_depth_state->GetDesc(&objects.last_depth_desc);
+    }
+    objects.last_depth_state = game_depth_state;
   }
-  ComPtr<ID3D11Resource> depth_resource;
-  if (depth_stencil) {
-    depth_stencil->GetResource(depth_resource.GetAddressOf());
+  const D3D11_DEPTH_STENCIL_DESC& depth_desc = objects.last_depth_desc;
+  // The main view's depth (the kept targets': checked at their first draw).
+  D3D11_TEXTURE2D_DESC texture_desc = state.in_draw.depth_desc;
+  if (!kept_targets) {
+    ComPtr<ID3D11Resource> depth_resource;
+    if (depth_stencil) {
+      depth_stencil->GetResource(depth_resource.GetAddressOf());
+    }
+    ComPtr<ID3D11Texture2D> depth_texture;
+    if (!depth_resource || (view.depth != nullptr && depth_resource.Get() != view.depth) || FAILED(depth_resource.As(&depth_texture))) {
+      release_targets();
+      return false;
+    }
+    depth_texture->GetDesc(&texture_desc);
   }
-  ComPtr<ID3D11Texture2D> depth_texture;
-  D3D11_TEXTURE2D_DESC texture_desc = {};
-  if (!depth_resource || !game_depth_state || !depth_desc.DepthEnable || (view.depth != nullptr && depth_resource.Get() != view.depth)
-      || FAILED(depth_resource.As(&depth_texture))) {
+  if (!game_depth_state || !depth_desc.DepthEnable) {
     release_targets();
     return false;
   }
-  depth_texture->GetDesc(&texture_desc);
   ID3D11PixelShader* pixel_shader = (shader.kind == MotionKind::UNIT ? objects.unit_pixel_shader : objects.wind_pixel_shader).Get();
   if (pixel_shader == nullptr || texture_desc.Width != view.width || texture_desc.Height != view.height
       || texture_desc.SampleDesc.Count != 1) {
@@ -686,11 +713,10 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   // draw's targets 6 and 7 free.
   ComPtr<ID3D11PixelShader> bound_pixel_shader;
   native->PSGetShader(bound_pixel_shader.GetAddressOf(), nullptr, nullptr);
-  const ComPtr<ID3D11PixelShader> game_pixel_shader =
-      GameBinding(bound_pixel_shader, state.in_draw.our_pixel_shader, state.in_draw.pixel_shader);
+  ID3D11PixelShader* const game_pixel_shader = GameBinding(bound_pixel_shader, state.in_draw.our_pixel_shader, state.in_draw.pixel_shader);
   ComPtr<ID3D11PixelShader> drawn_pixel_shader;
   if (in_draw) {
-    const auto game = state.pixel_shaders.find(reinterpret_cast<uint64_t>(game_pixel_shader.Get()));
+    const auto game = state.pixel_shaders.find(reinterpret_cast<uint64_t>(game_pixel_shader));
     if (game == state.pixel_shaders.end() || game_targets[dxbc::MOTION_TARGET] != nullptr
         || game_targets[dxbc::MOTION_DEPTH_TARGET] != nullptr) {
       release_targets();
@@ -897,7 +923,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     if (shader.kind == MotionKind::UNIT) {
       // The draw's animation texture (its bones), and its key for the pool.
       native->VSGetShaderResources(0, 1, animation_map.GetAddressOf());
-      if (animation_map) {
+      if (animation_map && animation_map == objects.last_animation_map) {
+        draw_word = objects.last_animation_key;
+      } else if (animation_map) {
         ComPtr<ID3D11Resource> animation_texture;
         animation_map->GetResource(animation_texture.GetAddressOf());
         auto known = std::ranges::find(objects.animation_textures, animation_texture.Get());
@@ -908,6 +936,8 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
           known = objects.animation_textures.insert(objects.animation_textures.end(), animation_texture.Get());
         }
         draw_word = static_cast<uint32_t>(known - objects.animation_textures.begin()) + 1;
+        objects.last_animation_map = animation_map;
+        objects.last_animation_key = draw_word;
       }
     }
   }
@@ -1050,10 +1080,10 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   const auto& kept = state.in_draw;
   ComPtr<ID3D11VertexShader> bound_vertex_shader;
   native->VSGetShader(bound_vertex_shader.GetAddressOf(), nullptr, nullptr);
-  const ComPtr<ID3D11VertexShader> game_vertex_shader = GameBinding(bound_vertex_shader, kept.our_vertex_shader, kept.vertex_shader);
+  ID3D11VertexShader* const game_vertex_shader = GameBinding(bound_vertex_shader, kept.our_vertex_shader, kept.vertex_shader);
   ComPtr<ID3D11Buffer> bound_vs_constants;
   native->VSGetConstantBuffers(MOTION_SLOT, 1, bound_vs_constants.GetAddressOf());
-  const ComPtr<ID3D11Buffer> game_vs_constants = GameBinding(bound_vs_constants, objects.motion_constants, kept.vs_constants);
+  ID3D11Buffer* const game_vs_constants = GameBinding(bound_vs_constants, objects.motion_constants, kept.vs_constants);
   ComPtr<ID3D11Buffer> game_ps_constants;
   if (pixel_constants) {
     native->PSGetConstantBuffers(MOTION_SLOT, 1, game_ps_constants.GetAddressOf());
@@ -1062,11 +1092,11 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   std::array<float, 4> blend_factor = {};
   UINT sample_mask = 0;
   native->OMGetBlendState(bound_blend.GetAddressOf(), blend_factor.data(), &sample_mask);
-  const ComPtr<ID3D11BlendState> game_blend = GameBinding(bound_blend, kept.our_blend, kept.blend);
+  ID3D11BlendState* const game_blend = GameBinding(bound_blend, kept.our_blend, kept.blend);
   const UINT first_view = (shader.kind == MotionKind::HISTORY ? HISTORY_SRV_SLOT - DEFORMED_SRV_SLOT : 0u);
   const UINT view_count = (shader.kind == MotionKind::HISTORY ? HISTORY_SLOTS : (tabled ? 7u : 0u));
   std::array<ComPtr<ID3D11ShaderResourceView>, MOTION_VIEWS> bound_views;
-  std::array<ComPtr<ID3D11ShaderResourceView>, MOTION_VIEWS> game_motion_views;
+  std::array<ID3D11ShaderResourceView*, MOTION_VIEWS> game_motion_views = {};
   if (view_count != 0) {
     std::array<ID3D11ShaderResourceView*, MOTION_VIEWS> views = {};
     native->VSGetShaderResources(DEFORMED_SRV_SLOT + first_view, view_count, views.data() + first_view);
@@ -1077,7 +1107,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   }
   // Records or captures change the shaders (bound again after them).
   bool shaders_changed = false;
-  ComPtr<ID3D11Buffer> game_stream_output;
+  ID3D11Buffer* game_stream_output = nullptr;
   ComPtr<ID3D11Buffer> streamed;  // the records' buffer left bound (in-draw, none of the game's)
   ComPtr<ID3D11ShaderResourceView> game_animation_view;
   if (unit_table) {
@@ -1145,7 +1175,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     if (drawn && !game_stream_output) {
       streamed = records;
     } else {
-      ID3D11Buffer* output = game_stream_output.Get();
+      ID3D11Buffer* output = game_stream_output;
       constexpr UINT APPEND = UINT_MAX;
       native->SOSetTargets(1, &output, &APPEND);
     }
@@ -1224,7 +1254,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> drawn_targets = game_targets;
     drawn_targets[dxbc::MOTION_TARGET] = objects.drawn_motion_rtv.Get();
     drawn_targets[dxbc::MOTION_DEPTH_TARGET] = objects.drawn_depth_rtv.Get();
-    auto drawn_blend = std::ranges::find(objects.drawn_blend_states, game_blend.Get(),
+    auto drawn_blend = std::ranges::find(objects.drawn_blend_states, game_blend,
                                          [](const auto& entry) { return entry.first.Get(); });
     if (drawn_blend == objects.drawn_blend_states.end()) {
       D3D11_BLEND_DESC desc = {};
@@ -1251,7 +1281,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       if (objects.drawn_blend_states.size() >= 256) {
         objects.drawn_blend_states.clear();
       }
-      drawn_blend = objects.drawn_blend_states.insert(objects.drawn_blend_states.end(), {game_blend, std::move(blend_state)});
+      drawn_blend = objects.drawn_blend_states.insert(objects.drawn_blend_states.end(), {ComPtr<ID3D11BlendState>(game_blend), std::move(blend_state)});
     }
     // Still bound when kept (but after the captures, which unbind them).
     if (!kept_targets || captures) {
@@ -1290,6 +1320,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       keep.targets[slot] = game_targets[slot];
     }
     keep.depth_stencil = depth_stencil;
+    keep.depth_desc = texture_desc;
     targets_kept.store(true, std::memory_order_relaxed);
     bindings_kept.store(true, std::memory_order_relaxed);
   } else if (redraw) {
@@ -1324,20 +1355,20 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   if (!drawn && (redraw || shader.kind == MotionKind::DEFORMED)) {
     restore_output();
     native->OMSetDepthStencilState(game_depth_state.Get(), stencil_reference);
-    native->OMSetBlendState(game_blend.Get(), blend_factor.data(), sample_mask);
+    native->OMSetBlendState(game_blend, blend_factor.data(), sample_mask);
     native->RSSetState(game_rasterizer.Get());
   }
   if (!drawn && view_count != 0) {
     std::array<ID3D11ShaderResourceView*, MOTION_VIEWS> views = {};
     for (UINT slot = first_view; slot < first_view + view_count; ++slot) {
-      views[slot] = game_motion_views[slot].Get();
+      views[slot] = game_motion_views[slot];
     }
     native->VSSetShaderResources(DEFORMED_SRV_SLOT + first_view, view_count, views.data() + first_view);
   }
   if (!drawn) {
-    native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
-    native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
-    ID3D11Buffer* vs_constants = game_vs_constants.Get();
+    native->VSSetShader(game_vertex_shader, nullptr, 0);
+    native->PSSetShader(game_pixel_shader, nullptr, 0);
+    ID3D11Buffer* vs_constants = game_vs_constants;
     native->VSSetConstantBuffers(MOTION_SLOT, 1, &vs_constants);
   }
   if (pixel_constants) {
@@ -1380,9 +1411,7 @@ constexpr auto OnMovingDraw = []<typename T, typename Context>(
       return {};
     }
     if (targets_kept.load(std::memory_order_relaxed) || bindings_kept.load(std::memory_order_relaxed)) {
-      auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-      renodx::utils::directx::NativeFromReShadeProxy(&native);
-      RestoreBindings(native);
+      RestoreBindings(NativeContext(command.cmd_list));
     }
     timing.spent += std::chrono::steady_clock::now() - started;
     if (!wanted) return {};
@@ -1400,9 +1429,7 @@ constexpr auto OnAnyDraw = []<typename T, typename Context>(Context& command) ->
     const uint32_t hash = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::vertex_shader);
     if (std::ranges::any_of(state.shaders.shaders, [hash](const MotionShader& shader) { return shader.hash == hash; })) return {};
   }
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
-  RestoreBindings(native);
+  RestoreBindings(NativeContext(command.cmd_list));
   return {};
 };
 
@@ -1417,8 +1444,7 @@ inline void OnBindRenderTargets(reshade::api::command_list* cmd_list, uint32_t c
           || targets[dxbc::MOTION_DEPTH_TARGET].handle != drawn_target_views[1].load(std::memory_order_relaxed))) {
     return;
   }
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  auto* native = NativeContext(cmd_list);
   std::array<ID3D11RenderTargetView*, dxbc::MOTION_TARGET> bound = {};
   ComPtr<ID3D11DepthStencilView> bound_depth;
   native->OMGetRenderTargets(static_cast<UINT>(bound.size()), bound.data(), bound_depth.GetAddressOf());
