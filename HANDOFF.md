@@ -710,6 +710,21 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     - NEXT (Attila): ATN retests v82 at night (torches below 100%, RT with Light Bounce on, AO bands via the debug view);
       reflections on armour close-ups, smoke / billboard trees in the scene, cheaper AO at 4K, unit motion cost in DLAA;
       then port to the other TW games (OnTonemapDrawn + InstallShadowsOnly hooks).
+    - 2026-10-28 (not zipped yet; Attila build32 only, the other TW games share anti_aliasing / object_motion / dlaa_bridge
+      and need rebuilds): CPU cost vs No AA measured with an admin xperf profile (scratchpad attila_test rec.ps1 +
+      prof.py; debug_timing.hpp hook timers, temporary). Fixed: the DLSS helper request no longer waits for the helper on
+      the CPU (steady requests async, watchdog Rescue if it dies: ~0.25 ms); object motion's in-draw bindings and targets
+      stay bound across consecutive moving draws (1.18 -> 0.77 us a moving draw); presets L/M get the colour's square
+      root (they crushed dark tones on linear HDR: ATN confirmed fixed, also the armour pulse); the bloom read at
+      CameraRenderShare (it sat at the sun's position / render share); the SSS Debug View stretched below 100%.
+      Measured (Motion Test No Records): the soldier records cost 0.50 ms GPU at DLAA (131 vs 141 fps), 0.04 ms at UP.
+      LATER (ATN: remember): redesign the unit records: copy each soldier draw's instance data (buffer copy, no stream
+      output switch) and stream all out in one batch at the frame's end (feature level 11.0: no VS UAVs); should give
+      ~+7% at DLAA and help RR / FG / RT.
+      Open scaling issues (ATN debug12): the grass "circle" (a pass hiding grass past 100 m covers only the top-left at
+      UP: find it, scale it, then grass / trees past 100 m); the game's SSR at UP in the top-left 1/9 (normal image or
+      debug view? ask); SSS in the normal image (the Debug View was the top-left one). Remove debug_timing.hpp, the
+      Motion Test setting and the motion timing log before the zip.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
