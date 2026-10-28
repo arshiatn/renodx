@@ -782,7 +782,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       notes, DLSS preset L default, red "RT / PT not working yet" note, NVIDIA attribution in About. Player zip
       Downloads\RenoDX_Attila_Beta_v85.zip (files at the root, licenses\, "RenoDX Attila - READ ME.txt", nvngx_dlss.dll
       310.9.16 included now), notes on top of Downloads\tw_patch_notes.txt, Steam text Downloads\attila_steam_text.txt.
-      NEXT (ATN's order): (1) Reflex without Frame Generation (only set up with frame generation now); (2) RT / PT fixes (ATN: 3 fps in battle before the DLSS performance fixes, effects invisible or broken:
+      v86 (596330a8): (1) done, NVIDIA Reflex Off / On / On + Boost with any AA (reflex.hpp, NVAPI by id; GPU-tested
+      32-bit). ATN: FG smears at 2x / 3x. Checked: FG's inputs follow Streamline's rules (row-major unjittered matrices,
+      clipToPrevClip, pixel MVs x 1/render size, same depth / MVs as SR, render extents, binary premultiplied UI layer).
+      DLSS-G preset DRS 0x10E41DF1 = 2 (B) in the helper's profile; nvngx_dlssg 310.9 ReadRegkeys: A = UI recomposition
+      forced off, B on, C Lite + off (so A / C smear the HUD); its indicator shows DLSSG.UserInterfaceRecompositionEnabled
+      / LiteCandidateBlendingEnabled, not a letter. Post-tonemap draws (lens flares, sprite.hlsl unit markers, outline,
+      indicator, splines) land in the UI layer (not interpolated). WAITING: where ATN sees the smear.
+      NEXT (ATN's order): (2) RT / PT fixes (ATN: 3 fps in battle before the DLSS performance fixes, effects invisible or broken:
       retest first); (3) later AMD RT + FSR / FSR FG.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
