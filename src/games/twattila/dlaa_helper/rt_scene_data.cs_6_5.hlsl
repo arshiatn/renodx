@@ -17,7 +17,8 @@
 
 // The request's vertices, 16 bytes each (w: a leaf vertex's UV as two halves).
 RWByteAddressBuffer vertices_written : register(u6);
-// Triangles left out: far off, stretched parts, stretched others; the first such capture's index.
+// Triangles left out: far off, stretched parts, stretched others; an example's capture index (the first thread to claim
+// it) and its three vertices (rt_d3d12.hpp LEFT_OUT_BYTES).
 RWByteAddressBuffer left_out : register(u7);
 // Per capture: first vertex, vertex count, normal offset, UV offset; record, atlas slice | flags << 16, its first
 // triangle in `triangle_count` (captures need not start at a multiple of three vertices), its bridge flags.
@@ -72,7 +73,13 @@ void main(uint3 id : SV_DispatchThreadID) {
     vertices_written.Store4(vertex * 16u + 16u, uint4(empty, empty, empty, asuint(b.w)));
     vertices_written.Store4(vertex * 16u + 32u, uint4(empty, empty, empty, asuint(c.w)));
     left_out.InterlockedAdd(far_off ? 0u : (part ? 4u : 8u), 1u);
-    left_out.InterlockedMin(12u, low);
+    uint unclaimed = 0u;
+    left_out.InterlockedCompareExchange(12u, 0xFFFFFFFFu, low, unclaimed);
+    if (unclaimed == 0xFFFFFFFFu) {
+      left_out.Store4(16u, asuint(a));
+      left_out.Store4(32u, asuint(b));
+      left_out.Store4(48u, asuint(c));
+    }
   }
   const float3 face = cross(b.xyz - a.xyz, c.xyz - a.xyz);
   const float face_length = length(face);

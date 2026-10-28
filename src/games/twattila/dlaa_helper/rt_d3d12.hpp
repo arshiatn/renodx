@@ -113,6 +113,9 @@ class RtScene12 {
         !device_ && SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(settings.GetAddressOf())))) {
       record_removal(settings.Get());
     }
+    // Opacity micromaps for new leaves only with RENODX_TW_OMM: the three GPU resets ATN met that DRED recorded all
+    // stopped the GPU in the first bake's dispatch (2026-10-28); without them the ray queries alpha-test the leaves.
+    bake_micromaps_ = GetEnvironmentVariableW(L"RENODX_TW_OMM", nullptr, 0) != 0;
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
     if ((!device_ && FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf()))))
         || FAILED(device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
@@ -169,8 +172,8 @@ class RtScene12 {
       slot.rows_readback = Buffer(uint64_t{ROWS_READBACK} * 64, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
       slot.jobs = Buffer(PLACE_TABLE_BYTES + uint64_t{PLACE_JOBS} * 32, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
                          D3D12_RESOURCE_STATE_GENERIC_READ);
-      slot.left_out = Buffer(16, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
-      slot.left_out_readback = Buffer(16, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+      slot.left_out = Buffer(LEFT_OUT_BYTES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+      slot.left_out_readback = Buffer(LEFT_OUT_BYTES, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
       if (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf())))
           || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
                                                IID_PPV_ARGS(slot.list.GetAddressOf())))
@@ -196,9 +199,9 @@ class RtScene12 {
     vertex_buffer_ = Buffer(uint64_t{TRANSFER_VERTICES} * 16, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                             D3D12_RESOURCE_STATE_COPY_DEST);
     // The scene data pass's garbage count starts from these (none, no capture).
-    left_out_start_ = Buffer(16, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+    left_out_start_ = Buffer(LEFT_OUT_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
     if (uint32_t* start = nullptr; left_out_start_ && SUCCEEDED(left_out_start_->Map(0, nullptr, reinterpret_cast<void**>(&start)))) {
-      const std::array<uint32_t, 4> none = {0, 0, 0, UINT32_MAX};
+      const std::array<uint32_t, LEFT_OUT_BYTES / 4> none = {0, 0, 0, UINT32_MAX};
       std::memcpy(start, none.data(), sizeof(none));
       left_out_start_->Unmap(0, nullptr);
     }
@@ -762,6 +765,12 @@ class RtScene12 {
     uint64_t key = 0;
   };
   [[nodiscard]] const LeftOut& LeftOutSoFar() const { return left_out_; }
+  // The log's lines since the last call: a slow request's report and a garbage triangle's example.
+  [[nodiscard]] std::string TakeReports() {
+    std::string reports = std::exchange(slow_report_, {});
+    if (!garbage_example_.empty()) reports += (reports.empty() ? "" : "\n") + std::exchange(garbage_example_, {});
+    return reports;
+  }
 
   // One request: the frame's captures into BLASes, the TLAS of what it drew, the trace; the queue waits for the addon's
   // fence value and signals the next (also when nothing ran). False: nothing traced.
@@ -782,10 +791,22 @@ class RtScene12 {
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
     if (!slot.capture_keys.empty()) {
-      left_out_.far_off += slot.left_out_data[0];
-      left_out_.parts += slot.left_out_data[1];
-      left_out_.others += slot.left_out_data[2];
-      if (slot.left_out_data[3] < slot.capture_keys.size()) left_out_.key = slot.capture_keys[slot.left_out_data[3]];
+      const uint32_t* found = slot.left_out_data;
+      left_out_.far_off += found[0];
+      left_out_.parts += found[1];
+      left_out_.others += found[2];
+      if (found[3] < slot.capture_keys.size()) {
+        left_out_.key = slot.capture_keys[found[3]];
+        if (const uint64_t now = GetTickCount64(); now >= garbage_example_time_ + 10000) {
+          const auto* example = reinterpret_cast<const float*>(found + 4);
+          garbage_example_ = std::format("[TW ray tracing] A garbage triangle (capture {:016X}, flags {}): ({:.6g}, {:.6g}, {:.6g}) ({:.6g}, "
+                                         "{:.6g}, {:.6g}) ({:.6g}, {:.6g}, {:.6g}); so far {} far off, {} stretched parts, {} others.",
+                                         left_out_.key, slot.capture_flags[found[3]], example[0], example[1], example[2], example[4],
+                                         example[5], example[6], example[8], example[9], example[10], left_out_.far_off,
+                                         left_out_.parts, left_out_.others);
+          garbage_example_time_ = now;
+        }
+      }
       slot.capture_keys.clear();
     }
     ReadTimes(slot_index);
@@ -1160,6 +1181,11 @@ class RtScene12 {
   // Opacity micromaps: a mesh's at most (its subdivision level lowered to fit), all new meshes' a request.
   static constexpr uint64_t MICROMAP_MESH_BYTES = 8u << 20;
   static constexpr uint64_t MICROMAP_FRAME_BYTES = 64u << 20;
+  // The scene data pass's garbage count (rt_scene_data.cs_6_5.hlsl): three counts, the example's capture, its vertices.
+  static constexpr UINT LEFT_OUT_BYTES = 64;
+  // A request slower than this on the GPU is reported (ms), at most this many times.
+  static constexpr double SLOW_MS = 100.0;
+  static constexpr uint32_t SLOW_REPORTS = 50;
   // The descriptor table: SRVs t1-t7, UAVs u0-u5.
   enum Descriptor : UINT {
     POSITIONS,
@@ -1280,6 +1306,8 @@ class RtScene12 {
     ComPtr<ID3D12Resource> left_out_readback;
     uint32_t* left_out_data = nullptr;
     std::vector<uint64_t> capture_keys;
+    std::vector<uint32_t> capture_flags;
+    std::string status;  // its request's (a slow one's report)
     ComPtr<ID3D12Resource> jobs;  // the records' BLAS addresses and its placement jobs (rt_place's t8)
     uint8_t* jobs_data = nullptr;
     uint8_t* light_data = nullptr;
@@ -1604,7 +1632,7 @@ class RtScene12 {
     // The placed meshes built this request (v14): their captures' rows as placements (first_vertex: the rows' texel).
     std::vector<dlaa_bridge::RtPlacement> built_placed;
     if (capture_count != 0 && vertex_end != 0) {
-      list->CopyBufferRegion(slot->left_out.Get(), 0, left_out_start_.Get(), 0, 16);
+      list->CopyBufferRegion(slot->left_out.Get(), 0, left_out_start_.Get(), 0, LEFT_OUT_BYTES);
       std::vector<D3D12_RESOURCE_BARRIER> to_scene_data = {
           Transition(records_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
           Transition(uvs_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
@@ -1664,6 +1692,7 @@ class RtScene12 {
       // came from the wrong vertices, its alpha test changing every frame).
       uint32_t scene_triangles = 0;
       slot->capture_keys.resize(capture_count);
+      slot->capture_flags.resize(capture_count);
       for (uint32_t index = 0; index < capture_count; ++index) {
         const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
         const auto& placement = placements[index];
@@ -1674,6 +1703,7 @@ class RtScene12 {
         std::memcpy(slot->table_data + index * 8, entry.data(), sizeof(entry));
         if (placement.record != UINT32_MAX) scene_triangles += capture.vertex_count / 3;
         slot->capture_keys[index] = capture.key;
+        slot->capture_flags[index] = capture.flags;
       }
       // In rows of 65535 groups (D3D12's most along x: a frame of over 4.2 M triangles went past it).
       const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, 0, 0};
@@ -1692,7 +1722,7 @@ class RtScene12 {
           Transition(slot->left_out.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
       };
       list->ResourceBarrier(static_cast<UINT>(scene_written.size()), scene_written.data());
-      list->CopyBufferRegion(slot->left_out_readback.Get(), 0, slot->left_out.Get(), 0, 16);
+      list->CopyBufferRegion(slot->left_out_readback.Get(), 0, slot->left_out.Get(), 0, LEFT_OUT_BYTES);
       const auto left_out_back = Transition(slot->left_out.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
       list->ResourceBarrier(1, &left_out_back);
       for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES}) {
@@ -1710,7 +1740,7 @@ class RtScene12 {
         ComPtr<ID3D12Resource> array;
       };
       std::vector<Bake> bakes;
-      if (dxr12_) {
+      if (dxr12_ && bake_micromaps_) {
         uint64_t data_bytes = 0;
         uint64_t desc_bytes = 0;
         for (uint32_t index = 0; index < capture_count; ++index) {
@@ -2405,6 +2435,7 @@ class RtScene12 {
       timings_ = std::format(" | GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0], gpu_ms_[1],
                              gpu_ms_[2], gpu_ms_[3], gpu_ms_[4]);
     }
+    slot->status = status_;
     return true;
   }
 
@@ -2430,8 +2461,19 @@ class RtScene12 {
       gpu_ms_[0] = ms(stamps[0], stamps[1]);
       gpu_ms_[1] = ms(stamps[1], stamps[2]);
       gpu_ms_[2] = ms(stamps[2], stamps[3]);
+      if (gpu_ms_[0] + gpu_ms_[1] + gpu_ms_[2] > SLOW_MS && slow_reports_ < SLOW_REPORTS) {
+        slow_report_ = std::format("[TW ray tracing] A slow request, GPU ms: scene {:.1f}, TLAS {:.1f}, trace {:.1f}; {}", gpu_ms_[0], gpu_ms_[1],
+                                   gpu_ms_[2], slots_[slot_index].status);
+        ++slow_reports_;
+      }
     } else {
-      gpu_ms_[slot_reflected_[slot_index] ? 4 : 3] = ms(stamps[4], stamps[5]);
+      const double paths_ms = ms(stamps[4], stamps[5]);
+      gpu_ms_[slot_reflected_[slot_index] ? 4 : 3] = paths_ms;
+      if (paths_ms > SLOW_MS && slow_reports_ < SLOW_REPORTS) {
+        slow_report_ = std::format("[TW ray tracing] A slow {} request: {:.1f} GPU ms", slot_reflected_[slot_index] ? "reflections" : "Light Bounce",
+                                   paths_ms);
+        ++slow_reports_;
+      }
     }
     const D3D12_RANGE written = {};
     timestamp_readback_->Unmap(0, &written);
@@ -2499,6 +2541,12 @@ class RtScene12 {
   ComPtr<ID3D12Resource> build_rows_;
   ComPtr<ID3D12Resource> left_out_start_;
   LeftOut left_out_;
+  bool bake_micromaps_ = false;
+  // A slow request's report (GPU over SLOW_MS; at most SLOW_REPORTS) and a garbage triangle's (one in 10 s), for the log.
+  std::string slow_report_;
+  uint32_t slow_reports_ = 0;
+  std::string garbage_example_;
+  uint64_t garbage_example_time_ = 0;
   std::array<ComPtr<ID3D12Resource>, 2> placed_instances_;
   uint32_t placed_last_ = 0;
   ComPtr<ID3D12Resource> placed_state_;

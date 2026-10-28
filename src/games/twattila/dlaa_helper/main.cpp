@@ -157,6 +157,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // Its status for the addon and (v15) the garbage triangles its scene left out so far, the last such capture's key.
   const auto publish = [&] {
     strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
+    if (const std::string reports = scene->TakeReports(); !reports.empty()) ReShadeLogMessage(nullptr, 0, reports.c_str());
     if (version >= 15) {
       const auto& left_out = scene->LeftOutSoFar();
       shared->rt_left_out = left_out.far_off + left_out.parts + left_out.others;

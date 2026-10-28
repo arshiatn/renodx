@@ -956,6 +956,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       (old helper: 4 checks fail, the sliver shadows the open ground; new: all pass, 14 left out), all modes pass.
       NEXT: ATN retests; ReShade.log's "garbage triangles ... vertex shader X" names the capture shader to fix; if no
       garbage is reported and traces still explode, the next suspect is incoherent clusters (CLAS spanning draws).
+    - 2026-10-28 22:45, ATN's retest (zoomed into soldiers): same freeze. ReShade.log: garbage IS filtered (10 s: grass
+      01FA9CDE 126281, units 5F9CD405 14148, terrain 6ECB6C09 1879, rigid 347F3DD9 1846 triangles) but GPU resets go on
+      (nvlddmkm 153 x5 in 11 s; Application log: LiveKernelEvent 141 = VIDEO_ENGINE_TIMEOUT_DETECTED). DRED twice: device
+      hung with slot 2 at 13 of 79 / 229 ops, again the first micromap bake's Dispatch (3 of 3 reports at that op). GPU
+      harness HARNESS_LEAF_STRESS=240 (240 new leaf meshes x 4000 random cards, 241 micromap arrays in one frame): no slow
+      request, no hang: the bake is not slow by itself; in game the GPU stalls there past 2 s (cause unknown: not the
+      bake's loops, not cross-process textures as the game's GPU waits for the helper right after each request).
+      CHANGES (untested in game): micromap bakes only with RENODX_TW_OMM (leaves alpha-tested by the ray queries,
+      64-candidate cap); the helper logs requests over 100 ms GPU (scene / TLAS / trace + that request's status, 50 at
+      most) and one garbage triangle a 10 s (positions, capture key and flags, counts by kind) to renodx-tw-dlaa64.log.
+      Harness: all modes pass, with and without RENODX_TW_OMM. NEXT: ATN retests; no freeze = the bake (then find why it
+      stalls in game); a freeze = DRED names the next pass; the garbage example shows what the grass / unit captures make.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
