@@ -1,5 +1,5 @@
-// Attila capture motion (anti_aliasing.hpp): the game's 0xD11B5EC7 with its world position by vertex, one point per index on one pixel for
-// motion_capture.ps.
+// Attila capture motion (anti_aliasing.hpp): the game's 0xD11B5EC7 with its world position by vertex, one point per index on a pixel of its
+// own for motion_capture.ps.
 // Made by tools\tw\attila_motion\make_wind_motion_vs.py.
 
 cbuffer camera_VS_PS : register(b0)
@@ -113,5 +113,5 @@ void main(
   const float4 world = o0;
   motion_world = world;
   motion_vertex = motion_vertex_id - motion_draw.z;
-  motion_position = float4(0.f, 0.f, 0.5f, 1.f);
+  motion_position = MotionScatterPoint(motion_vertex_id);
 }

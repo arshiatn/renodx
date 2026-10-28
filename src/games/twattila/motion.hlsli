@@ -77,6 +77,16 @@ static const uint BONE_SOLDIERS = 16384u;
 static const uint BONE_SLOTS = 32768u;
 static const uint BONE_PROBES = 16u;
 
+// A point drawn only for its pixel shader's writes (records, captures): a pixel of its own on a 64 x 64 grid over the
+// viewport, by `index` and the draw's mesh key (points on one pixel are shaded one after another: ~4 ms a frame with a
+// unit of cavalry on screen, all on the viewport's corner).
+float4 MotionScatterPoint(uint index)
+{
+  const uint cell = (index + motion_unit.x) & 4095u;
+  const float2 grid = (float2(cell & 63u, cell >> 6) + 0.5f) / 64.f;
+  return float4(grid * float2(2.f, -2.f) + float2(-1.f, 1.f), 0.5f, 1.f);
+}
+
 uint PlacementCell(int2 cell)
 {
   return ((asuint(cell.x) * 73856093u) ^ (asuint(cell.y) * 19349663u)) & (PLACEMENT_CELLS - 1u);

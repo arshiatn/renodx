@@ -35,11 +35,19 @@ void ClaimBones(uint key, float raw_base, float width)
     uint entry;
     InterlockedAdd(motion_bone_keys[BONE_SLOTS], 1u, entry);
     if (entry >= BONE_SOLDIERS) return;
-    // The texels as the game reads them: base + i along the rows of the texture.
+    // The texels as the game reads them: base + i along the rows of the texture, eight loads at a time.
     [loop]
-    for (uint texel = 0u; texel < BONE_TEXELS; ++texel) {
-      const int texel_index = base + (int)texel;
-      motion_bones[entry * BONE_TEXELS + texel] = motion_animation_map.Load(int3(texel_index % texture_width, texel_index / texture_width, 0));
+    for (uint texel = 0u; texel < BONE_TEXELS; texel += 8u) {
+      float4 values[8];
+      [unroll]
+      for (uint next = 0u; next < 8u; ++next) {
+        const int texel_index = base + (int)(texel + next);
+        values[next] = motion_animation_map.Load(int3(texel_index % texture_width, texel_index / texture_width, 0));
+      }
+      [unroll]
+      for (uint next = 0u; next < 8u; ++next) {
+        motion_bones[entry * BONE_TEXELS + texel + next] = values[next];
+      }
     }
     motion_bone_entries[slot] = entry + 1u;
     return;

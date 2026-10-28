@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Attila unit motion's records (object_motion.hpp): one point per soldier or horse (motion_unit_point.vs, at the
-// viewport's corner, no depth, no target) records its placement and bones (motion_unit_records.hlsli).
+// Attila unit motion's records (object_motion.hpp): one point per soldier or horse (motion_unit_point.vs, a pixel of
+// its own, no depth, no target) records its placement and bones (motion_unit_records.hlsli).
 #include "./motion_unit_records.hlsli"
 
 void main(float4 position : SV_Position, nointerpolation float4 row0 : TEXCOORD2, nointerpolation float4 row1 : TEXCOORD3,

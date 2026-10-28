@@ -4,10 +4,13 @@
  */
 
 // Attila unit motion's record points (object_motion.hpp): one per soldier or horse (a draw's first vertex of each
-// instance) at the viewport's top-left pixel, with its placement (TEXCOORD0-2: the instance's world rows) and bone base
-// (TEXCOORD3.x), as every unit vertex shader takes them (motion_unit_*.vs), for motion_unit_record.ps. The inputs before
-// them are declared as the game's (MOTION_UNIT_4_BONES: motion_unit_point_4_bones.vs, one position more): D3D11 feeds
-// a vertex shader's inputs by register, as its input layout was made for the game's shader.
+// instance) on a pixel of its own (motion.hlsli MotionScatterPoint), with its placement (TEXCOORD0-2: the instance's
+// world rows) and bone base (TEXCOORD3.x), as every unit vertex shader takes them (motion_unit_*.vs), for
+// motion_unit_record.ps. The inputs before them are declared as the game's (MOTION_UNIT_4_BONES:
+// motion_unit_point_4_bones.vs, one position more): D3D11 feeds a vertex shader's inputs by register, as its input layout
+// was made for the game's shader.
+#include "./motion.hlsli"
+
 cbuffer variant_animation_size : register(b2)
 {
   float2 g_animation_texture_height : packoffset(c0);
@@ -22,11 +25,11 @@ void main(float4 position0 : POSITION0, float4 position1 : POSITION1, float4 pos
           float2 position3 : POSITION3, float4 position4 : POSITION4, float4 position5 : POSITION5,
 #endif
           float4 row0 : TEXCOORD0, float4 row1 : TEXCOORD1, float4 row2 : TEXCOORD2, float4 bone_base : TEXCOORD3,
-          out float4 position : SV_Position0, out nointerpolation float4 point_row0 : TEXCOORD2,
+          uint instance : SV_InstanceID, out float4 position : SV_Position0, out nointerpolation float4 point_row0 : TEXCOORD2,
           out nointerpolation float4 point_row1 : TEXCOORD3, out nointerpolation float4 point_row2 : TEXCOORD4,
           out nointerpolation float4 point_bones : TEXCOORD5)
 {
-  position = float4(-0.999f, 0.999f, 0.5f, 1.f);
+  position = MotionScatterPoint(instance);
   point_row0 = row0;
   point_row1 = row1;
   point_row2 = row2;
