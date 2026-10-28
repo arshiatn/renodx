@@ -115,8 +115,9 @@ struct ShaderSettings {
 //   filtered average, so it is scaled the same.
 // - Else (Warhammer III's shadow mask): rT first, and after each read of the texture named t_shadow (ld / sample) the
 //   same mul.
+// - A forward pass reading the sun's shadow map (`forward`: Attila's under Ray-Traced Shadows Only) as Troy's.
 // Empty: not such a shader.
-inline std::vector<uint8_t> Patch(std::span<const uint8_t> code) {
+inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = false) {
   constexpr uint32_t OP_CUSTOMDATA = 53, OP_DIV = 14, OP_FTOU = 28, OP_LD = 45, OP_MAD = 50, OP_MIN = 51, OP_MOV = 54,
                      OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_C = 70, OP_SAMPLE_C_LZ = 71, OP_SAMPLE_L = 72,
                      OP_GATHER4_C = 126, OP_GATHER4_PO_C = 128;
@@ -197,7 +198,8 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code) {
     previous_at = at;
     at += length;
   }
-  const std::vector<size_t>& scaled = comparisons.empty() ? mask_reads : comparisons;
+  if (forward) saturate_at = 0;
+  const std::vector<size_t>& scaled = (comparisons.empty() && !forward) ? mask_reads : comparisons;
   if (temps_at == 0 || position == UINT32_MAX || (saturate_at == 0 && scaled.empty())) return {};
 
   // Operands: temp with a write mask, any register with a swizzle, a 1-component immediate.
@@ -311,9 +313,10 @@ struct Runtime {
   uint64_t debug_frame = UINT64_MAX;  // the Debug View drawn (OnTonemapDrawn)
   // A report into ReShade.log at the next computed frame (each time the shadows are turned on).
   bool probe_pending = true;
-  // The patched sun shaders by their original hash (kept: the game may create them again).
+  // The patched sun shaders by their original hash (kept: the game may create them again), the forward passes' too.
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;
   std::vector<uint32_t> sun_hashes;
+  std::vector<uint32_t> forward_hashes;
   DeviceObjects objects;
 };
 
@@ -645,7 +648,8 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
   if (game_sampler != nullptr) game_sampler->Release();
 }
 
-// The game creates a pipeline: its sun light shaders with the screen-space shadow (renodx keeps their original hash).
+// The game creates a pipeline: its sun light shaders with the screen-space shadow (renodx keeps their original hash), its
+// forward passes reading the sun's shadow map with t49 too.
 inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipeline_layout,
                              uint32_t subobject_count, const reshade::api::pipeline_subobject* subobjects) {
   if (device->get_api() != reshade::api::device_api::d3d11) return false;
@@ -659,12 +663,13 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     const auto scaled = view_share::OriginalHash(desc->code);
     const uint32_t hash = scaled.value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
     const std::unique_lock lock(runtime.mutex);
-    if (std::ranges::find(runtime.sun_hashes, hash) == runtime.sun_hashes.end()) continue;
+    const bool forward = std::ranges::find(runtime.forward_hashes, hash) != runtime.forward_hashes.end();
+    if (!forward && std::ranges::find(runtime.sun_hashes, hash) == runtime.sun_hashes.end()) continue;
     auto [entry, added] = runtime.patched.try_emplace(hash);
     if (added) {
-      entry->second = Patch(code);
+      entry->second = Patch(code, forward);
       std::stringstream s;
-      s << "[Total War] Screen-space shadows: sun shader " << PRINT_CRC32(hash)
+      s << "[Total War] Screen-space shadows: " << (forward ? "forward shader " : "sun shader ") << PRINT_CRC32(hash)
         << (entry->second.empty() ? " has no shadow to patch." : " patched.");
       reshade::log::message(reshade::log::level::info, s.str().c_str());
     }
@@ -881,6 +886,14 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.objects.device.Get() != native) return;
   internal::runtime.objects = {};
+}
+
+// The game's forward passes that read the sun's shadow map (`hashes`), patched as they are created to take its
+// occlusion at t49 too (each comparison x (1 - t49 at the pixel); t49 unbound reads 0: the game's shadow); their draws
+// bind it themselves (Attila: rt_scene::InstallShadowReaders, under Ray-Traced Shadows Only). After Install.
+inline void PatchForwardShadows(std::span<const uint32_t> hashes) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::runtime.forward_hashes.insert(internal::runtime.forward_hashes.end(), hashes.begin(), hashes.end());
 }
 
 inline void Uninstall() {

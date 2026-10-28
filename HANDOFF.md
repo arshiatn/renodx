@@ -1006,6 +1006,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     - 2026-10-29 00:20 (cdbdbb47): clusters doubled to 262144 (ATN), half on GPUs <= 12 GB. Helper VRAM measured in the
       harness: 3.19 GB dedicated (2.35 GB at 131072). At 4K add ~1.3 GB of the helper's screen-size buffers, made at
       start even when their effect is off (making them lazily would save ~1 GB with shadows only).
+    - 2026-10-29 00:40, ATN: "include everything", lazy buffers; trees' shadows don't move (UNTESTED IN GAME). ATN's 00:21
+      log (units 0, 30 M left out) = RT units toggled off at the time, grass over its 4M share; units were in at 00:20
+      (1.45 M triangles; unit draws are instanced: 55 soldiers x 77 triangles). DONE: helper history (paths' positions,
+      ReSTIR, reflections, AO) made at first use, released after 600 frames unused (logged "history released"; harness
+      HARNESS_PAUSE_EFFECTS=650 passes). Under Shadows Only the forward readers take the rays' shadows: C9FBACCB and
+      2E9F5935 patched at creation (screen_space_shadows Patch forward: each comparison x (1 - t49); ReShade.log says
+      "forward shader X patched" or "has no shadow to patch"), particles' vfx00 multiplies its shadow by 1 - t49; t49 =
+      this frame's RT occlusion bound at their draws only under Shadows Only (rt_scene OnShadowReaderDraw). LIMITS: t49
+      is the surface behind (grass near the ground fine, smoke high in the air takes the ground's shadow); beyond the
+      game's last cascade the readers stay lit. Trees: placed meshes are one BLAS from the first capture (frozen pose),
+      so their wind sway is not in the rays' shadows. NEXT: moving trees = near tree draws captured every frame (compact,
+      like units) with the placed instances kept off-screen.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

@@ -564,25 +564,12 @@ class RtScene12 {
       device_->CreateUnorderedAccessView(fog_.Get(), nullptr, &fog_view, Descriptor(FOG));
     }
     // Paths (v8): last frame's scene colour (the DLAA input), the G-buffer guides and the reflections' outputs as the
-    // addon shares them; the history (positions, reflection accumulation) of its own at the textures' size.
+    // addon shares them (the history of the helper's own made when first used: EnsureHistory).
     if (version >= 8) {
-      const D3D12_RESOURCE_DESC positions_desc = positions_->GetDesc();
-      const auto texture = [&](DXGI_FORMAT format, ComPtr<ID3D12Resource>* resource,
-                               D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
-        const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
-        const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = positions_desc.Width,
-                                          .Height = positions_desc.Height, .DepthOrArraySize = 1, .MipLevels = 1, .Format = format,
-                                          .SampleDesc = {.Count = 1}, .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
-        return SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr,
-                                                          IID_PPV_ARGS(resource->GetAddressOf())));
-      };
       const auto view = [](DXGI_FORMAT format) {
         return D3D12_SHADER_RESOURCE_VIEW_DESC{.Format = format, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
                                                .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                                                .Texture2D = {.MipLevels = 1}};
-      };
-      const auto written = [](DXGI_FORMAT format) {
-        return D3D12_UNORDERED_ACCESS_VIEW_DESC{.Format = format, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
       };
       if (shared.color != 0 && open(shared.color, &previous_color_)) {
         const auto color_view = view(DXGI_FORMAT_R16G16B16A16_FLOAT);
@@ -601,55 +588,9 @@ class RtScene12 {
         guide_albedo_.Reset();
         guide_roughness_.Reset();
       }
-      if (!texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &previous_positions_, D3D12_RESOURCE_STATE_COMMON)
-          || !texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &positions_copy_, D3D12_RESOURCE_STATE_COMMON)) {
-        Close();
-        return false;
-      }
-      const auto positions_view = view(DXGI_FORMAT_R32G32B32A32_FLOAT);
-      device_->CreateShaderResourceView(previous_positions_.Get(), &positions_view, Descriptor(PREVIOUS_POSITIONS));
-      // The ambient visibility's history (v11): two sets in turn, the last trace's positions.
-      if (version >= 11 && texture(DXGI_FORMAT_R16_FLOAT, &ambient_history_[0]) && texture(DXGI_FORMAT_R16_FLOAT, &ambient_history_[1])
-          && texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &ambient_positions_, D3D12_RESOURCE_STATE_COMMON)) {
-        for (UINT set = 0; set < 2; ++set) {
-          const auto history_view = written(DXGI_FORMAT_R16_FLOAT);
-          device_->CreateUnorderedAccessView(ambient_history_[set].Get(), nullptr, &history_view, Descriptor(AMBIENT_HISTORY + set));
-        }
-        const auto ambient_positions_view = written(DXGI_FORMAT_R32G32B32A32_FLOAT);
-        device_->CreateUnorderedAccessView(ambient_positions_.Get(), nullptr, &ambient_positions_view, Descriptor(AMBIENT_POSITIONS));
-      } else {
-        ambient_history_ = {};
-        ambient_positions_.Reset();
-      }
-      ambient_frame_ = UINT32_MAX;
-      copied_frame_ = UINT32_MAX;
-      paths_frame_ = UINT32_MAX;
-      // ReSTIR GI's two sets of reservoirs (the path-traced Light Bounce's).
-      reuse_frame_ = UINT32_MAX;
-      for (UINT set = 0; set < 2; ++set) {
-        if (!texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_samples_[set]) || !texture(DXGI_FORMAT_R32G32B32A32_UINT, &reuse_data_[set])) {
-          reuse_samples_ = {};
-          reuse_data_ = {};
-          break;
-        }
-        const auto samples_view = written(DXGI_FORMAT_R32G32B32A32_FLOAT);
-        const auto data_view = written(DXGI_FORMAT_R32G32B32A32_UINT);
-        device_->CreateUnorderedAccessView(reuse_samples_[set].Get(), nullptr, &samples_view, Descriptor(REUSE_SAMPLES + set));
-        device_->CreateUnorderedAccessView(reuse_data_[set].Get(), nullptr, &data_view, Descriptor(REUSE_DATA + set));
-      }
-      if (shared.rt_reflection != 0 && shared.rt_specular != 0 && open(shared.rt_reflection, &reflection_) && open(shared.rt_specular, &specular_)
-          && texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &specular_accumulated_) && texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &specular_history_)
-          && texture(DXGI_FORMAT_R16G16_FLOAT, &specular_meta_) && texture(DXGI_FORMAT_R16G16_FLOAT, &specular_meta_history_)) {
-        const auto rgba = written(DXGI_FORMAT_R16G16B16A16_FLOAT);
-        const auto rg = written(DXGI_FORMAT_R16G16_FLOAT);
-        const auto r8 = written(DXGI_FORMAT_R8_UNORM);
-        device_->CreateUnorderedAccessView(specular_accumulated_.Get(), nullptr, &rgba, Descriptor(SPECULAR_ACCUMULATED));
-        device_->CreateUnorderedAccessView(specular_history_.Get(), nullptr, &rgba, Descriptor(SPECULAR_HISTORY));
-        device_->CreateUnorderedAccessView(specular_meta_.Get(), nullptr, &rg, Descriptor(SPECULAR_META));
-        device_->CreateUnorderedAccessView(specular_meta_history_.Get(), nullptr, &rg, Descriptor(SPECULAR_META_HISTORY));
-        device_->CreateUnorderedAccessView(reflection_.Get(), nullptr, &rgba, Descriptor(REFLECTION));
-        device_->CreateUnorderedAccessView(specular_.Get(), nullptr, &r8, Descriptor(SPECULAR_OCCLUSION));
-        specular_history_valid_ = false;
+      if (shared.rt_reflection != 0 && shared.rt_specular != 0 && open(shared.rt_reflection, &reflection_) && open(shared.rt_specular, &specular_)) {
+        Written(reflection_.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, REFLECTION);
+        Written(specular_.Get(), DXGI_FORMAT_R8_UNORM, SPECULAR_OCCLUSION);
       } else {
         reflection_.Reset();
         specular_.Reset();
@@ -839,6 +780,7 @@ class RtScene12 {
     }
     ReadTimes(slot_index);
     slot_traced_[slot_index] = true;
+    ExpireHistory(shared.rt_frame);
     const uint64_t completed = own_fence_->GetCompletedValue();
     std::erase_if(releases_, [completed](const Release& release) { return release.value <= completed; });
     std::erase_if(pending_frees_, [&](const PendingFree& pending) {
@@ -909,8 +851,10 @@ class RtScene12 {
     const bool wanted = reflections ? (reflection_ && (requested & (dlaa_bridge::RT_REFLECTIONS | dlaa_bridge::RT_SPECULAR_OCCLUSION)) != 0)
                                     : (light_ && bounce_);
     const bool uses_paths = path_traced || reflections;
-    bool recorded = wanted && traced_ && (!uses_paths || EnsureCache()) && SUCCEEDED(slot.allocator->Reset())
-                    && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
+    bool recorded = wanted && traced_
+                    && (!uses_paths
+                        || (EnsureCache() && EnsureHistory(HISTORY_PATHS, frame) && (!reflections || EnsureHistory(HISTORY_SPECULAR, frame))))
+                    && SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
     if (recorded) {
       auto* list = slot.list.Get();
       Stamp(list, slot_index * 6 + 4);
@@ -1026,8 +970,8 @@ class RtScene12 {
         if (light_frame_ == frame) flags |= PATH_LIGHT;
         // ReSTIR GI (RENODX_TW_NO_REUSE: off); last frame's reservoirs when it ran with these texels.
         const std::array<uint32_t, 3> reuse_size = {shared.rt_bounce_width, shared.rt_bounce_height, std::max(shared.rt_bounce_scale, 1u)};
-        const bool reuse = path_traced && (requested & dlaa_bridge::RT_PATH_REUSE) != 0 && reuse_samples_[0]
-                           && GetEnvironmentVariableW(L"RENODX_TW_NO_REUSE", nullptr, 0) == 0;
+        const bool reuse = path_traced && (requested & dlaa_bridge::RT_PATH_REUSE) != 0
+                           && GetEnvironmentVariableW(L"RENODX_TW_NO_REUSE", nullptr, 0) == 0 && EnsureHistory(HISTORY_REUSE, frame);
         if (reuse) {
           flags |= PATH_REUSE | (reuse_parity_ != 0 ? PATH_REUSE_PARITY : 0u);
           if (history_valid_ && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 == frame && reuse_size_ == reuse_size) {
@@ -1226,6 +1170,9 @@ class RtScene12 {
   // A request slower than this on the GPU is reported (ms), at most this many times.
   static constexpr double SLOW_MS = 100.0;
   static constexpr uint32_t SLOW_REPORTS = 50;
+  // The effects' history (EnsureHistory): its kinds, released after this many frames unused (~10 s).
+  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_KINDS };
+  static constexpr uint32_t HISTORY_FRAMES = 600;
   // The descriptor table: SRVs t1-t7, UAVs u0-u5.
   enum Descriptor : UINT {
     POSITIONS,
@@ -1527,6 +1474,128 @@ class RtScene12 {
     cache_keys_.Reset();
     WriteNullPathDescriptors();
     return false;
+  }
+
+  // A texture of the helper's own at the shared textures' size, and a UAV of one at `descriptor`.
+  bool Texture(DXGI_FORMAT format, ComPtr<ID3D12Resource>* resource, D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS) const {
+    const D3D12_RESOURCE_DESC positions = positions_->GetDesc();
+    const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+    const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = positions.Width, .Height = positions.Height,
+                                      .DepthOrArraySize = 1, .MipLevels = 1, .Format = format, .SampleDesc = {.Count = 1},
+                                      .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
+    return SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr, IID_PPV_ARGS(resource->GetAddressOf())));
+  }
+  void Written(ID3D12Resource* resource, DXGI_FORMAT format, UINT descriptor) const {
+    const D3D12_UNORDERED_ACCESS_VIEW_DESC view = {.Format = format, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+    device_->CreateUnorderedAccessView(resource, nullptr, &view, Descriptor(descriptor));
+  }
+
+  // An effect's history (textures of its own at the textures' size, ~1.3 GB at 4K for all four), made when it is first
+  // used and kept marked by `frame`; false: it could not be made.
+  bool EnsureHistory(History kind, uint32_t frame) {
+    history_used_[kind] = frame;
+    switch (kind) {
+      case HISTORY_PATHS:
+        // Last frame's positions and this frame's (copied for the next).
+        if (previous_positions_) return true;
+        if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &previous_positions_, D3D12_RESOURCE_STATE_COMMON)
+            || !Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &positions_copy_, D3D12_RESOURCE_STATE_COMMON)) {
+          previous_positions_.Reset();
+          positions_copy_.Reset();
+          return false;
+        }
+        {
+          const D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                                        .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                                                        .Texture2D = {.MipLevels = 1}};
+          device_->CreateShaderResourceView(previous_positions_.Get(), &view, Descriptor(PREVIOUS_POSITIONS));
+        }
+        copied_frame_ = UINT32_MAX;
+        paths_frame_ = UINT32_MAX;
+        return true;
+      case HISTORY_REUSE:
+        // ReSTIR GI's two sets of reservoirs (the path-traced Light Bounce's).
+        if (reuse_samples_[0]) return true;
+        for (UINT set = 0; set < 2; ++set) {
+          if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_samples_[set]) || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &reuse_data_[set])) {
+            reuse_samples_ = {};
+            reuse_data_ = {};
+            return false;
+          }
+          Written(reuse_samples_[set].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, REUSE_SAMPLES + set);
+          Written(reuse_data_[set].Get(), DXGI_FORMAT_R32G32B32A32_UINT, REUSE_DATA + set);
+        }
+        reuse_frame_ = UINT32_MAX;
+        return true;
+      case HISTORY_SPECULAR:
+        // The reflections' accumulation and its metadata, this frame's and the last.
+        if (specular_accumulated_) return true;
+        if (!Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &specular_accumulated_) || !Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &specular_history_)
+            || !Texture(DXGI_FORMAT_R16G16_FLOAT, &specular_meta_) || !Texture(DXGI_FORMAT_R16G16_FLOAT, &specular_meta_history_)) {
+          for (auto* texture : {std::addressof(specular_accumulated_), std::addressof(specular_history_), std::addressof(specular_meta_),
+                                std::addressof(specular_meta_history_)}) {
+            texture->Reset();
+          }
+          return false;
+        }
+        Written(specular_accumulated_.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, SPECULAR_ACCUMULATED);
+        Written(specular_history_.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, SPECULAR_HISTORY);
+        Written(specular_meta_.Get(), DXGI_FORMAT_R16G16_FLOAT, SPECULAR_META);
+        Written(specular_meta_history_.Get(), DXGI_FORMAT_R16G16_FLOAT, SPECULAR_META_HISTORY);
+        specular_history_valid_ = false;
+        return true;
+      case HISTORY_AMBIENT:
+        // The ambient visibility's (v11): two sets in turn, the last trace's positions.
+        if (ambient_positions_) return true;
+        if (!Texture(DXGI_FORMAT_R16_FLOAT, &ambient_history_[0]) || !Texture(DXGI_FORMAT_R16_FLOAT, &ambient_history_[1])
+            || !Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &ambient_positions_, D3D12_RESOURCE_STATE_COMMON)) {
+          ambient_history_ = {};
+          ambient_positions_.Reset();
+          return false;
+        }
+        Written(ambient_history_[0].Get(), DXGI_FORMAT_R16_FLOAT, AMBIENT_HISTORY);
+        Written(ambient_history_[1].Get(), DXGI_FORMAT_R16_FLOAT, AMBIENT_HISTORY + 1);
+        Written(ambient_positions_.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, AMBIENT_POSITIONS);
+        ambient_frame_ = UINT32_MAX;
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // The history an effect left unused for HISTORY_FRAMES given back once the GPU is past this request (its views null:
+  // nothing reads them while unused), logged.
+  void ExpireHistory(uint32_t frame) {
+    const D3D12_UNORDERED_ACCESS_VIEW_DESC null_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+    const auto release = [&](const char* effect, std::initializer_list<ComPtr<ID3D12Resource>*> textures, std::initializer_list<UINT> written) {
+      for (auto* texture : textures) {
+        if (*texture) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*texture)});
+      }
+      for (const UINT descriptor : written) device_->CreateUnorderedAccessView(nullptr, nullptr, &null_written, Descriptor(descriptor));
+      slow_report_ += std::format("{}[TW ray tracing] The {} history released (unused for {} frames).", (slow_report_.empty() ? "" : "\n"), effect,
+                                  HISTORY_FRAMES);
+    };
+    const auto unused = [&](History kind) { return history_used_[kind] + HISTORY_FRAMES < frame; };
+    if (previous_positions_ && unused(HISTORY_PATHS)) {
+      const D3D12_SHADER_RESOURCE_VIEW_DESC null_view = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                                         .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                                                         .Texture2D = {.MipLevels = 1}};
+      device_->CreateShaderResourceView(nullptr, &null_view, Descriptor(PREVIOUS_POSITIONS));
+      release("paths' positions", {std::addressof(previous_positions_), std::addressof(positions_copy_)}, {});
+    }
+    if (reuse_samples_[0] && unused(HISTORY_REUSE)) {
+      release("ReSTIR GI", {std::addressof(reuse_samples_[0]), std::addressof(reuse_samples_[1]), std::addressof(reuse_data_[0]), std::addressof(reuse_data_[1])},
+              {REUSE_SAMPLES, REUSE_SAMPLES + 1, REUSE_DATA, REUSE_DATA + 1});
+    }
+    if (specular_accumulated_ && unused(HISTORY_SPECULAR)) {
+      release("reflections'", {std::addressof(specular_accumulated_), std::addressof(specular_history_), std::addressof(specular_meta_),
+               std::addressof(specular_meta_history_)},
+              {SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY});
+    }
+    if (ambient_positions_ && unused(HISTORY_AMBIENT)) {
+      release("ambient occlusion's", {std::addressof(ambient_history_[0]), std::addressof(ambient_history_[1]), std::addressof(ambient_positions_)},
+              {AMBIENT_HISTORY, AMBIENT_HISTORY + 1, AMBIENT_POSITIONS});
+    }
   }
 
   // A pass's name among the list's DRED breadcrumbs (LostReport).
@@ -2556,7 +2625,7 @@ class RtScene12 {
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());
     // The ambient's history: valid when the last trace was the frame before (its camera kept for the projection).
-    const bool ambient_kept = ambient_positions_ && version >= 11 && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0;
+    const bool ambient_kept = version >= 11 && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 && EnsureHistory(HISTORY_AMBIENT, frame);
     if (ambient_kept) {
       PathConstants constants = {.flags = (ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame ? PATH_AMBIENT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u)};
@@ -2882,6 +2951,7 @@ class RtScene12 {
   bool cache_filled_ = false;
   bool specular_history_valid_ = false;
   bool traced_ = false;  // a TLAS was built (the bounce traces it)
+  std::array<uint32_t, HISTORY_KINDS> history_used_ = {};  // the frame each history was last used in
   ComPtr<ID3D12Resource> sun_rays_;  // the helper's, the textures' size
   ComPtr<ID3D12Fence> fence_;
   std::unordered_map<uint64_t, Mesh> meshes_;

@@ -429,6 +429,7 @@ struct PointLightLayout {
 static std::mutex point_light_mutex;
 static std::unordered_map<uint64_t, PointLightLayout> point_light_layouts;
 static bool point_lights_installed = false;
+static bool shadow_readers_installed = false;
 
 // The light draws' instances copied for the CPU into a ring of staging buffers, read when the ring comes round (three
 // frames on: the GPU done with them) into the lights the next trace picks from.
@@ -594,6 +595,37 @@ inline void InstallFogShadows(std::span<const uint32_t> shader_hashes) {
   }
 }
 
+// Attila's forward passes reading the sun's shadow map (ReShade.log 2026-10-28: lit everywhere under Ray-Traced Shadows
+// Only): two of the game's (patched: screen_space_shadows::PatchForwardShadows) and the particles' (shaders/vfx00, which
+// reads t49 itself).
+constexpr std::array<uint32_t, 3> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D};
+
+// A forward pass's draw reading the sun's shadow map: under Ray-Traced Shadows Only (its map empty) the rays' occlusion
+// at t49 (the patched sun draws', this frame's), else none (t49 reads 0: the game's shadow).
+constexpr auto OnShadowReaderDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  auto* native = internal::NativeContext(command.cmd_list);
+  if (native == nullptr) return {};
+  ID3D11ShaderResourceView* occlusion = nullptr;
+  if (internal::active.load(std::memory_order_relaxed)) {
+    const std::unique_lock lock(internal::runtime.mutex);
+    if (internal::runtime.settings.shadows_only && internal::runtime.occlusion_frame == internal::runtime.frame) {
+      occlusion = internal::runtime.objects.occlusion_srv.Get();
+    }
+  }
+  native->PSSetShaderResources(49, 1, &occlusion);
+  return {};
+};
+
+// The forward passes reading the sun's shadow map (`shader_hashes`), kept while installed: the rays' shadows under
+// Ray-Traced Shadows Only.
+inline void InstallShadowReaders(std::span<const uint32_t> shader_hashes) {
+  internal::shadow_readers_installed = true;
+  for (const uint32_t shader_hash : shader_hashes) {
+    renodx::utils::command_action::Register(
+        OnShadowReaderDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+}
+
 // Ray-Traced Shadows Only: draws are skipped while the sun's shadow map is bound alone (depth only) for drawing.
 inline void OnBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view*,
                           reshade::api::resource_view dsv) {
@@ -684,6 +716,7 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
   if (std::exchange(internal::fog_shadows_installed, false)) renodx::utils::command_action::Unregister(OnFogDraw);
+  if (std::exchange(internal::shadow_readers_installed, false)) renodx::utils::command_action::Unregister(OnShadowReaderDraw);
   if (std::exchange(internal::shadows_only_installed, false)) {
     reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindTargets);
     reshade::unregister_event<reshade::addon_event::draw>(OnCasterDraw);
