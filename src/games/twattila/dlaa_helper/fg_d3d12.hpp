@@ -51,6 +51,7 @@
 // route by Bustanity, MIT). Multiplier 0 hides the window (the game's own image shows) and turns generation off.
 // Bridge v12: the HUD's recomposition (a UI layer from the frame and its HUD-less image, fg_ui.cs_6_0.hlsl, which DLSS-G
 // lays over the frames it makes) and NVIDIA's preset, written into this exe's driver profile before DLSS-G starts.
+// Bridge v13: the debug view (the HUD-less image, or the frame with its UI layer tinted, presented instead).
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
@@ -137,11 +138,11 @@ class FrameGeneration12 {
       }
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    // The UI layer's pass (fg_ui.cs_6_0.hlsl): the frame and the HUD-less image in, the layer out; its size and
-    // threshold. Without it the HUD is not recomposed.
+    // The UI layer's pass (fg_ui.cs_6_0.hlsl): the frame and the HUD-less image in, the layer (and the debug view) out;
+    // its size, threshold and whether the debug view is written. Without it the HUD is not recomposed.
     const std::array<D3D12_DESCRIPTOR_RANGE, 2> ranges = {{
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV, .NumDescriptors = 2, .BaseShaderRegister = 0, .OffsetInDescriptorsFromTableStart = 0},
-        {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = 1, .BaseShaderRegister = 0, .OffsetInDescriptorsFromTableStart = 2},
+        {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = 2, .BaseShaderRegister = 0, .OffsetInDescriptorsFromTableStart = 2},
     }};
     const std::array<D3D12_ROOT_PARAMETER, 2> parameters = {{
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
@@ -149,8 +150,9 @@ class FrameGeneration12 {
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .Constants = {.ShaderRegister = 0, .Num32BitValues = 4}},
     }};
     const D3D12_ROOT_SIGNATURE_DESC root_desc = {.NumParameters = static_cast<UINT>(parameters.size()), .pParameters = parameters.data()};
-    const D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, .NumDescriptors = 3,
+    const D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, .NumDescriptors = 4,
                                                   .Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE};
+    descriptor_step_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     ComPtr<ID3DBlob> serialized;
     if (FAILED(D3D12SerializeRootSignature(&root_desc, D3D_ROOT_SIGNATURE_VERSION_1, serialized.GetAddressOf(), nullptr))
         || FAILED(device_->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(),
@@ -185,7 +187,8 @@ class FrameGeneration12 {
     width_ = static_cast<UINT>(frame_desc.Width);
     height_ = frame_desc.Height;
     format_ = frame_desc.Format;
-    // The UI layer (RGBA16F: the alpha needs more than 2 bits) and its pass's views.
+    // The UI layer (DLSS-G's UI alpha: one byte a pixel, NVIDIA's faster UI input) and its pass's views; the debug
+    // view's slot empty until it is asked for.
     if (ui_pipeline_) {
       const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
       const D3D12_RESOURCE_DESC ui_desc = {
@@ -194,19 +197,21 @@ class FrameGeneration12 {
           .Height = height_,
           .DepthOrArraySize = 1,
           .MipLevels = 1,
-          .Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
+          .Format = DXGI_FORMAT_R8_UNORM,
           .SampleDesc = {.Count = 1},
           .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
       };
       if (SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &ui_desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
                                                      IID_PPV_ARGS(ui_.GetAddressOf())))) {
-        const UINT step = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         D3D12_CPU_DESCRIPTOR_HANDLE handle = ui_heap_->GetCPUDescriptorHandleForHeapStart();
         device_->CreateShaderResourceView(frame_.Get(), nullptr, handle);
-        handle.ptr += step;
+        handle.ptr += descriptor_step_;
         device_->CreateShaderResourceView(hudless_.Get(), nullptr, handle);
-        handle.ptr += step;
+        handle.ptr += descriptor_step_;
         device_->CreateUnorderedAccessView(ui_.Get(), nullptr, nullptr, handle);
+        handle.ptr += descriptor_step_;
+        const D3D12_UNORDERED_ACCESS_VIEW_DESC empty_desc = {.Format = format_, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+        device_->CreateUnorderedAccessView(nullptr, nullptr, &empty_desc, handle);
       }
     }
     return true;
@@ -221,6 +226,7 @@ class FrameGeneration12 {
     motion_.Reset();
     fence_.Reset();
     ui_.Reset();
+    debug_view_.Reset();
   }
 
   // One present (the request's value: the frame is written; the next is signalled once copied). False: not presented
@@ -277,22 +283,53 @@ class FrameGeneration12 {
     }
     const bool inputs = shared->fg_inputs != 0 && token != nullptr && shared->width != 0 && shared->height != 0;
     const bool hudless_valid = inputs && shared->fg_hudless_valid != 0;
+    // The debug view (v13): 1 the HUD-less image presented (no UI layer then), 2 the frame with its UI layer tinted.
+    debug_ = (version_ >= 13 && hudless_valid ? shared->fg_debug : 0u);
     // The UI layer from the frame and its HUD-less image (v12, HUD Recomposition), before the frame's copy.
-    const bool ui = hudless_valid && ui_ && version_ >= 12 && shared->fg_ui != 0;
+    const bool ui = hudless_valid && ui_ && version_ >= 12 && shared->fg_ui != 0 && debug_ != 1;
+    // The debug view's frame (the swap chain's format, the pass's last view), made at its first use.
+    if (ui && debug_ == 2 && !debug_view_) {
+      const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+      const D3D12_RESOURCE_DESC debug_desc = {
+          .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+          .Width = width_,
+          .Height = height_,
+          .DepthOrArraySize = 1,
+          .MipLevels = 1,
+          .Format = format_,
+          .SampleDesc = {.Count = 1},
+          .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+      };
+      if (SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &debug_desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                     IID_PPV_ARGS(debug_view_.GetAddressOf())))) {
+        D3D12_CPU_DESCRIPTOR_HANDLE handle = ui_heap_->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += 3 * static_cast<SIZE_T>(descriptor_step_);
+        device_->CreateUnorderedAccessView(debug_view_.Get(), nullptr, nullptr, handle);
+      }
+    }
+    const bool tinted = ui && debug_ == 2 && debug_view_;
+    ID3D12Resource* source = frame_.Get();
+    if (debug_ == 1) {
+      source = hudless_.Get();
+    } else if (tinted) {
+      source = debug_view_.Get();
+    }
     const auto transition = [](ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) {
       return D3D12_RESOURCE_BARRIER{.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
                                     .Transition = {.pResource = resource, .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                                                    .StateBefore = before, .StateAfter = after}};
     };
-    const D3D12_RESOURCE_STATES frame_state =
-        ui ? D3D12_RESOURCE_STATE_COPY_SOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_COPY_SOURCE;
+    // The frame and the HUD-less image are read by the pass and the copy; the shared textures decay to COMMON.
+    constexpr D3D12_RESOURCE_STATES READ = D3D12_RESOURCE_STATE_COPY_SOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    std::array<D3D12_RESOURCE_BARRIER, 5> barriers = {
+        transition(frame_.Get(), D3D12_RESOURCE_STATE_COMMON, READ),
+        transition(hudless_.Get(), D3D12_RESOURCE_STATE_COMMON, READ),
+        transition(target.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
+        transition(ui_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        transition(debug_view_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+    };
+    slot.list->ResourceBarrier((tinted ? 5u : (ui ? 4u : 3u)), barriers.data());
     if (ui) {
-      const std::array<D3D12_RESOURCE_BARRIER, 3> reads = {
-          transition(frame_.Get(), D3D12_RESOURCE_STATE_COMMON, frame_state),
-          transition(hudless_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-          transition(ui_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-      };
-      slot.list->ResourceBarrier(static_cast<UINT>(reads.size()), reads.data());
       ID3D12DescriptorHeap* heap = ui_heap_.Get();
       slot.list->SetDescriptorHeaps(1, &heap);
       slot.list->SetComputeRootSignature(ui_signature_.Get());
@@ -300,28 +337,21 @@ class FrameGeneration12 {
       slot.list->SetComputeRootDescriptorTable(0, ui_heap_->GetGPUDescriptorHandleForHeapStart());
       // 2.5 of the swap chain format's steps (HDR10 10 bits, SDR 8).
       const float threshold = 2.5f / (format_ == DXGI_FORMAT_R10G10B10A2_UNORM ? 1023.f : 255.f);
-      const std::array<uint32_t, 4> constants = {width_, height_, std::bit_cast<uint32_t>(threshold), 0u};
+      const std::array<uint32_t, 4> constants = {width_, height_, std::bit_cast<uint32_t>(threshold), (tinted ? 1u : 0u)};
       slot.list->SetComputeRoot32BitConstants(1, static_cast<UINT>(constants.size()), constants.data(), 0);
       slot.list->Dispatch((width_ + 7) / 8, (height_ + 7) / 8, 1);
-      const std::array<D3D12_RESOURCE_BARRIER, 3> written = {
-          transition(hudless_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-          transition(ui_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
-          transition(target.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
-      };
-      slot.list->ResourceBarrier(static_cast<UINT>(written.size()), written.data());
-    } else {
-      const std::array<D3D12_RESOURCE_BARRIER, 2> copies = {
-          transition(frame_.Get(), D3D12_RESOURCE_STATE_COMMON, frame_state),
-          transition(target.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
-      };
-      slot.list->ResourceBarrier(static_cast<UINT>(copies.size()), copies.data());
+      barriers[0] = transition(ui_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON);
+      barriers[1] = transition(debug_view_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+      slot.list->ResourceBarrier((tinted ? 2u : 1u), barriers.data());
     }
-    slot.list->CopyResource(target.Get(), frame_.Get());
-    const std::array<D3D12_RESOURCE_BARRIER, 2> copied = {
-        transition(frame_.Get(), frame_state, D3D12_RESOURCE_STATE_COMMON),
+    slot.list->CopyResource(target.Get(), source);
+    barriers = {
+        transition(frame_.Get(), READ, D3D12_RESOURCE_STATE_COMMON),
+        transition(hudless_.Get(), READ, D3D12_RESOURCE_STATE_COMMON),
         transition(target.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT),
+        transition(debug_view_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
     };
-    slot.list->ResourceBarrier(static_cast<UINT>(copied.size()), copied.data());
+    slot.list->ResourceBarrier((tinted ? 4u : 3u), barriers.data());
     if (inputs) {
       sl::Resource depth = {sl::ResourceType::eTex2d, depth_.Get(), D3D12_RESOURCE_STATE_COMMON};
       sl::Resource motion = {sl::ResourceType::eTex2d, motion_.Get(), D3D12_RESOURCE_STATE_COMMON};
@@ -332,7 +362,7 @@ class FrameGeneration12 {
           sl::ResourceTag(&depth, sl::kBufferTypeDepth, sl::ResourceLifecycle::eOnlyValidNow, &render),
           sl::ResourceTag(&motion, sl::kBufferTypeMotionVectors, sl::ResourceLifecycle::eOnlyValidNow, &render),
           sl::ResourceTag(&hudless, sl::kBufferTypeHUDLessColor, sl::ResourceLifecycle::eOnlyValidNow),
-          sl::ResourceTag(&ui_layer, sl::kBufferTypeUIColorAndAlpha, sl::ResourceLifecycle::eOnlyValidNow),
+          sl::ResourceTag(&ui_layer, sl::kBufferTypeUIAlpha, sl::ResourceLifecycle::eOnlyValidNow),
       };
       const uint32_t tag_count = ui ? 4u : hudless_valid ? 3u : 2u;
       set_tags_(*token, VIEWPORT, tags.data(), tag_count, slot.list.Get());
@@ -461,7 +491,6 @@ class FrameGeneration12 {
     options.numFramesToGenerate = std::max(generated, 1u);
     options.flags = sl::DLSSGFlags::eRetainResourcesWhenOff;
     options.hudLessBufferFormat = (hudless ? static_cast<uint32_t>(format_) : 0u);
-    options.uiBufferFormat = (ui ? static_cast<uint32_t>(DXGI_FORMAT_R16G16B16A16_FLOAT) : 0u);
     options.enableUserInterfaceRecomposition = (ui ? sl::Boolean::eTrue : sl::Boolean::eFalse);
     set_options_(VIEWPORT, options);
   }
@@ -761,9 +790,15 @@ class FrameGeneration12 {
       } else if (preset_ >= 1 && preset_ <= 3) {
         preset = std::format(" (preset {})", "ABC"[preset_ - 1]);
       }
-      status_ = std::format("Frame generation: {}{} frames presented per rendered frame{}{}{}", (applied_dynamic_ ? "Dynamic, " : ""),
+      const char* debug_view = "";
+      if (debug_ == 1) {
+        debug_view = ", debug view: the HUD-less image";
+      } else if (debug_ == 2) {
+        debug_view = ", debug view: the UI layer in magenta";
+      }
+      status_ = std::format("Frame generation: {}{} frames presented per rendered frame{}{}{}{}", (applied_dynamic_ ? "Dynamic, " : ""),
                             state.numFramesActuallyPresented, (hudless ? "" : " (no HUD-less image: the UI can warp)"),
-                            (applied_ui_ ? ", HUD recomposed" : ""), preset);
+                            (applied_ui_ ? ", HUD recomposed" : ""), preset, debug_view);
     }
   }
 
@@ -809,11 +844,14 @@ class FrameGeneration12 {
   DXGI_FORMAT format_ = DXGI_FORMAT_UNKNOWN;
   uint32_t version_ = 0;
 
-  // The UI layer (HUD Recomposition) and its pass.
+  // The UI layer (HUD Recomposition) and its pass; the debug view's frame (the layer tinted: made at its first use).
   ComPtr<ID3D12RootSignature> ui_signature_;
   ComPtr<ID3D12PipelineState> ui_pipeline_;
   ComPtr<ID3D12DescriptorHeap> ui_heap_;
+  UINT descriptor_step_ = 0;
   ComPtr<ID3D12Resource> ui_;
+  ComPtr<ID3D12Resource> debug_view_;
+  uint32_t debug_ = 0;  // this present's debug view (bridge v13's fg_debug)
 
   // NVIDIA's preset: last asked (UINT32_MAX: not yet) and its save (SavePreset's, from its thread).
   uint32_t preset_ = UINT32_MAX;

@@ -2,6 +2,16 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v87 (2026-10-28, untested in game; renodx-tw-dlaa64.exe helper24, bridge v13: ship them together)
+
+- **HUD Recomposition** now gives DLSS-G a one-byte **UI alpha** (kBufferTypeUIAlpha, NVIDIA's faster UI input) in
+  place of the 8-byte UI colour and alpha: an eighth of the layer's writes and of Streamline's copy each frame (ATN:
+  120 fps without recomposition, 115 with it).
+- **Frame Generation Debug View** (Off / HUD-less Image / UI Layer): the helper presents what DLSS-G gets, the HUD-less
+  image (any HUD in it smears) or the frame with its UI layer in magenta (the parts laid over the generated frames).
+  GPU test (fg_bridge_test, 32-bit through helper24): 2x with and without recomposition and both views, "HUD
+  recomposed" with the UI alpha.
+
 ## v86 (2026-10-28, untested in game)
 
 - **NVIDIA Reflex** (Off / On / On + Boost; replaces Reflex Boost, all TW games): Reflex without frame generation, with

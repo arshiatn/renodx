@@ -61,6 +61,7 @@ struct AaSliders {
   float frame_limit = 0.f;         // Reflex's limit, rendered frames per second (0: off)
   float frame_preset = 0.f;        // frame generation's: the driver's, A, B, C
   float hud_recomposition = 1.f;   // frame generation's: the UI laid over the generated frames
+  float frame_debug_view = 0.f;    // frame generation's: off, the HUD-less image, the UI layer
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
   float object_motion = 1.f;       // DLAA's: units', props' and cloth's own motion
   float debug_view = 0.f;          // DLAA's: off, motion vectors, object motion, no camera motion
@@ -114,6 +115,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .frame_limit = static_cast<uint32_t>(std::clamp(sliders.frame_limit, 0.f, 240.f)),
       .frame_preset = static_cast<uint32_t>(std::clamp(sliders.frame_preset, 0.f, 3.f)),
       .hud_recomposition = (sliders.hud_recomposition != 0.f),
+      .frame_debug_view = static_cast<uint32_t>(std::clamp(sliders.frame_debug_view, 0.f, 2.f)),
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
       .object_motion = (sliders.object_motion != 0.f),
       .debug_view = static_cast<uint32_t>(std::clamp(sliders.debug_view, 0.f, 3.f)),
@@ -490,6 +492,18 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                                        "C (Lite): lighter but lower quality, HUD recomposition off.\n"
                                                        "Saved in the NVIDIA driver profile of renodx-tw-dlaa64.exe; applies after restarting the game.",
                                             .labels = {"Driver's", "A", "B", "C"},
+                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "FrameGenerationDebugView",
+                                            .binding = &sliders->frame_debug_view,
+                                            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                                            .default_value = 0.f,
+                                            .label = "Frame Generation Debug View",
+                                            .section = AA_SECTION,
+                                            .tooltip = "What frame generation gets. HUD-less Image: the picture without the HUD (any HUD left in it\n"
+                                                       "smears). UI Layer: the HUD laid over the generated frames, in magenta (the rest moves).",
+                                            .labels = {"Off", "HUD-less Image", "UI Layer"},
                                             .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
                                         },
                                     });

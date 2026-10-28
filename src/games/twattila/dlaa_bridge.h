@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 12;
+constexpr uint32_t VERSION = 13;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -213,11 +213,16 @@ struct Shared {
   // UI, where it differs from the HUD-less image, laid over the generated frames instead of warped with the scene).
   uint32_t fg_preset = 0;
   uint32_t fg_ui = 0;
+  // The addon's (v13): frame generation's debug view (1: the HUD-less image presented, without a UI layer; 2: the UI
+  // layer tinted magenta over the frame; 0: off).
+  uint32_t fg_debug = 0;
+  uint32_t fg_v13_padding = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 12) return sizeof(Shared);
+  if (version >= 13) return sizeof(Shared);
+  if (version == 12) return offsetof(Shared, fg_debug);
   if (version == 11) return offsetof(Shared, fg_preset);
   if (version >= 9) return offsetof(Shared, rt_light_colours);
   if (version == 8) return offsetof(Shared, rt_lights);
