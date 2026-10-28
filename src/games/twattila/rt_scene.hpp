@@ -626,8 +626,9 @@ inline void NoteShadowReader(reshade::api::command_list* cmd_list) {
   }
   if (!reads) return;
   const uint32_t shader = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
+  const uint32_t vertex_shader = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
   const std::unique_lock lock(runtime.mutex);
-  if (!runtime.sun_draw_shaders.contains(shader)) runtime.shadow_readers.insert(shader);
+  if (!runtime.sun_draw_shaders.contains(shader)) runtime.shadow_readers.insert((uint64_t{shader} << 32) | vertex_shader);
 }
 
 inline bool OnCasterDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {

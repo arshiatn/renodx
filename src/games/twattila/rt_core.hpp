@@ -321,7 +321,7 @@ struct Runtime {
   // not the patched sun draws (forward-lit grass and the like: lit everywhere, the map has no casters).
   uint64_t readers_frame = UINT64_MAX;
   std::unordered_set<uint32_t> sun_draw_shaders;
-  std::unordered_set<uint32_t> shadow_readers;
+  std::unordered_set<uint64_t> shadow_readers;  // pixel shader << 32 | its draw's vertex shader
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
   uint64_t sun_frame = UINT64_MAX;        // the frame the sun was written in
@@ -1631,7 +1631,9 @@ inline void Update(const Settings& settings) {
     runtime.key_shaders.clear();
     if (!runtime.shadow_readers.empty()) {
       std::string readers;
-      for (const uint32_t hash : runtime.shadow_readers) readers += std::format("{}{:08X}", (readers.empty() ? "" : ", "), hash);
+      for (const uint64_t pair : runtime.shadow_readers) {
+        readers += std::format("{}{:08X} (vs {:08X})", (readers.empty() ? "" : ", "), pair >> 32, pair & 0xFFFFFFFFu);
+      }
       renodx::utils::log::i("[Total War] Ray tracing: pixel shaders reading the game's sun shadow map without the rays' shadows "
                             "(lit everywhere under Ray-Traced Shadows Only): ", readers, ".");
       runtime.shadow_readers.clear();

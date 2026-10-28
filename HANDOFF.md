@@ -981,6 +981,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       texture)"; under Shadows Only one frame every 10 s logs the pixel shaders that read the game's sun shadow map but are
       no patched sun draw ("pixel shaders reading the game's sun shadow map without the rays' shadows"). NEXT: those
       shaders get the rays' shadows (patched as the sun draws, or the map kept for them).
+    - 2026-10-28 23:15, ATN's log: the readers are PS C9FBACCB, 2E9F5935 and ACE33D5D (vfx00: particles / smoke); the
+      log now adds each one's vertex shader (grass F3741248 / 01FA9CDE, leaves 46C616F0 / 5B880546 / CABCB9D1, ocean ...)
+      to tell which is the grass. RT Grass works (grass 1.40 M in, 0.00 off) but grass sits at its 4M-vertex share.
+      Units at 4x unit size: 16-21 M vertices a frame left out of their share (counted after the main-view check; a draw
+      in two main passes counts twice): the soldiers need several times the frame's capacity. ATN asked whether path
+      traced shadows would hold everything: no (same scene, same receivers). NEXT: the readers take the rays' shadows;
+      for 4x battles a compact capture (each mesh's index buffer once, only its vertices every frame: ~3-5x less) or
+      the nearest units first.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
