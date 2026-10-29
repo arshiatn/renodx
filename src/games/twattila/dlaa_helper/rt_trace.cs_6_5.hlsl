@@ -6,12 +6,12 @@
 // The Total War ray tracing (dlaa_helper/rt_d3d12.hpp; D3D12 inline ray queries) against the scene the addon captured
 // (rt_scene.hpp: static terrain, buildings and props, tree trunks, leaves with their opacity masks, the units of the
 // frame), per pixel from its world position: the sun's visibility (one ray toward the sun: 0 blocked, 1 lit; 1 for the
-// sky, surfaces facing away and frames without a sun; for soft shadows also the blocker's distance into sun_rays, which
-// rt_soft.cs_6_5.hlsl turns into penumbras) and the ambient visibility (cosine-weighted rays around the normal, as far
-// as the range: the share that escapes; at a quarter rate one pixel of each 2 x 2 block, another each frame, traces for
-// the block); the local lights' shadows are a pass of their own after it (rt_lights.cs_6_5.hlsl). Leaves are
-// alpha-tested (their holes let light through); with Light Through Leaves (v11) each leaf the sun's ray meets also lets
-// LEAF_TRANSMITTANCE of it through, and each cloth or sail THIN_TRANSMITTANCE.
+// sky, planar surfaces facing away and frames without a sun; for soft shadows also the blocker's distance into
+// sun_rays, which rt_soft.cs_6_5.hlsl turns into penumbras) and the ambient visibility (cosine-weighted rays around the
+// normal, as far as the range: the share that escapes; at a quarter rate one pixel of each 2 x 2 block, another each
+// frame, traces for the block); the local lights' shadows are a pass of their own after it (rt_lights.cs_6_5.hlsl).
+// Leaves are alpha-tested (their holes let light through); with Light Through Leaves (v11) each leaf the sun's ray
+// meets also lets LEAF_TRANSMITTANCE of it through, and each cloth or sail THIN_TRANSMITTANCE.
 // The ambient visibility is kept over frames (v11): where the last trace saw the same surface (its positions, the last
 // trace's camera) a fifth of the new one goes into its history.
 // World units: metres, y up. Noise moves every frame, which DLAA / DLSS (or Ray Reconstruction) settle.
@@ -53,7 +53,7 @@ float2 SunRay(float3 origin, float3 direction) {
   ray.TMax = 1.0e4f;
   smoke_transmittance = 1.f;
   if ((flags & LEAF_LIGHT) == 0u) {
-    if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f) ? 0.f : smoke_transmittance, 0.f);
+    if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f, ALL_INSTANCES) ? 0.f : smoke_transmittance, 0.f);
     TRACE_NEAREST(query, ray)
     return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(smoke_transmittance, 0.f);
   }
@@ -92,11 +92,18 @@ void main(uint3 id : SV_DispatchThreadID) {
     return;
   }
   const float3 normal = SurfaceNormal(int2(id.xy), position);
+  const bool planar = Planar(int2(id.xy), position, normal);
+  const float3 origin = RayOrigin(position, normal, planar);
   const float offset = SurfaceOffset(position.w);
   const float4 toward_sun = sun[uint2(0, 0)];
+  const bool facing = dot(normal, toward_sun.xyz) > 0.f;
   float sun_visibility = 1.f;
   float blocker_distance = 0.f;
-  if ((flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f && dot(normal, toward_sun.xyz) > 0.f) {
+  // A planar surface facing away keeps 1 (its shading's angle darkens it; a leaf lit from behind stays lit, as with the
+  // game's shadow maps). Corners, cracks and edges are traced either way: their normal can be wrong (left lit, they let
+  // the sun into the cracks where wall parts meet, ATN 2026-10-29); those facing away against solid surfaces only, from
+  // past themselves (a leaf or blade does not shadow itself).
+  if ((flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f && (facing || !planar)) {
     float3 toward = toward_sun.xyz;
     if (sun_cone > 0.f && !filtered) {
       // Uniform over the sun's disk (sun_cone: the tan of its angular radius).
@@ -105,7 +112,9 @@ void main(uint3 id : SV_DispatchThreadID) {
       const float angle = Random(uint3(id.xy, frame * 16u + 1001u)) * 6.28318531f;
       toward = normalize(toward + (tangent * cos(angle) + cross(toward, tangent) * sin(angle)) * radius);
     }
-    const float2 sun_ray = SunRay(position.xyz + (normal + toward) * offset, toward);
+    // Off along the normal and toward the sun; where not planar toward the camera.
+    const float2 sun_ray = facing ? SunRay(planar ? origin + toward * offset : origin, toward)
+                                  : float2(OccludedSolid(position.xyz + toward * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
     sun_visibility = sun_ray.x;
     blocker_distance = sun_ray.y;
   }
@@ -119,7 +128,6 @@ void main(uint3 id : SV_DispatchThreadID) {
   if (quarter && any(id.xy != (id.xy & ~1u) + uint2(frame & 1u, (frame >> 1) & 1u))) return;
   float ambient_visibility = 1.f;
   if ((flags & AMBIENT_OCCLUSION) != 0u && ambient_rays != 0u) {
-    const float3 origin = position.xyz + normal * offset;
     // The rays spread over the hemisphere: each its band of the cosine-weighted disk's radius, the golden angle from the
     // last, the set turned per pixel by interleaved gradient noise and jittered within the bands. Less noise than
     // independent rays (Ray Reconstruction left ~20% of theirs), and what is left settles faster.
@@ -129,7 +137,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     [loop]
     for (uint ray = 0; ray < ambient_rays; ++ray) {
       const float3 direction = CosineDirection(normal, ((float)ray + band_jitter) / (float)ambient_rays, frac(turn + (float)ray * 0.618034f));
-      if (!Occluded(origin, direction, ambient_range)) ++escaped;
+      if (!Occluded(origin, direction, ambient_range, NO_SMOKE)) ++escaped;
     }
     ambient_visibility = (float)escaped / ambient_rays;
   }

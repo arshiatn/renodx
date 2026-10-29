@@ -6,8 +6,8 @@
 // The Total War ray-traced fog shadows (dlaa_helper/rt_d3d12.hpp, bridge v11): per fog texel (a quarter of the render
 // pixels each way) the sun's visibility along the camera's ray to the texel's surface: FOG_SAMPLES points, closer
 // together near the camera (where shafts show; each weighted by the stretch it stands for), each one ray toward the
-// sun. The games' fog pass (twattila/rt_fog.hlsli) dims the sun's share of its colour by it: light shafts through gaps,
-// the fog in shadow darker. Sky texels and frames without a sun: 1. Noise moves every frame (DLAA / DLSS settle it).
+// sun (dimmed by the smoke it meets). The games' fog pass (twattila/rt_fog.hlsli) dims the sun's share of its colour by
+// it: light shafts through gaps, the fog in shadow darker. Sky texels and frames without a sun: 1. Noise moves every frame (DLAA / DLSS settle it).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_fog.h -Vn RT_FOG; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_FOG_OMM.
 #include "./rt_scene.hlsli"
 
@@ -37,7 +37,8 @@ void main(uint3 id : SV_DispatchThreadID) {
   for (uint index = 0u; index < FOG_SAMPLES; ++index) {
     // Squared spacing: a point at `along` stands for a stretch in proportion to it.
     const float along = (index + jitter) / FOG_SAMPLES;
-    if (!Occluded(camera + direction * (along * along * range), toward_sun.xyz, FOG_SUN_RANGE)) lit += along;
+    smoke_transmittance = 1.f;
+    if (!Occluded(camera + direction * (along * along * range), toward_sun.xyz, FOG_SUN_RANGE, ALL_INSTANCES)) lit += along * smoke_transmittance;
     weights += along;
   }
   fog[id.xy] = (weights > 0.f) ? lit / weights : 1.f;

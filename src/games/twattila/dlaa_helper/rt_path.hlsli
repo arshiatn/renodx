@@ -280,7 +280,7 @@ float3 LocalLight(float3 surface, float3 normal, float u) {
       u = saturate((u - odds) / max(1.f - odds, 1e-6f));
     }
   }
-  if (picked_weight <= 0.f || Occluded(surface, picked_direction, picked_distance - min(LIGHT_CLEARANCE, 0.5f * picked_distance))) {
+  if (picked_weight <= 0.f || Occluded(surface, picked_direction, picked_distance - min(LIGHT_CLEARANCE, 0.5f * picked_distance), NO_SMOKE)) {
     return 0.f;
   }
   return picked * (total / picked_weight);
@@ -306,7 +306,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     ray.Direction = direction;
     ray.TMin = 0.f;
     ray.TMax = (vertex == 0u) ? range : bounce_range;
-    TRACE_NEAREST(query, ray)
+    TRACE_SURFACE(query, ray)
     const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
     if (!hit) {
       // Past the first surface the learned shade light stands for the sky; from the camera's pixel the game's own
@@ -328,7 +328,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     const float3 surface = position + normal * SurfaceOffset(distance(position, Camera()));
     float3 emitted = 0.f;
     const float n_dot_l = dot(normal, toward_sun.xyz);
-    if (toward_sun.w != 0.f && n_dot_l > 0.f && shade.w > 0.f && !Occluded(surface, toward_sun.xyz, 1.0e4f)) {
+    if (toward_sun.w != 0.f && n_dot_l > 0.f && shade.w > 0.f && !Occluded(surface, toward_sun.xyz, 1.0e4f, NO_SMOKE)) {
       emitted = albedo * sunlit * n_dot_l;
     }
     if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) {
@@ -425,7 +425,7 @@ float4 TexelSurface(uint2 id, out float3 normal, out float3 origin) {
   origin = position.xyz;
   if (position.w <= 0.f) return position;
   normal = PixelNormal(pixel, position);
-  origin = position.xyz + normal * SurfaceOffset(position.w);
+  origin = RayOrigin(position, normal, Planar(int2(pixel), position, normal));
   return position;
 }
 
@@ -485,7 +485,7 @@ void PathTraceTexel(uint2 id) {
       const float3 to_hit = previous.hit - origin;
       const float hit_distance = length(to_hit);
       float3 light_now;
-      if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f)) {
+      if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_SMOKE)) {
         previous.count = 0.f;
       } else if (HitLight(previous.hit, light_now)) {
         const float3 change = abs(previous.light - light_now) / max(previous.light + light_now, 1e-3f);
@@ -546,7 +546,7 @@ void ReuseTexel(uint2 id) {
   const float3 to_hit = combined.hit - origin;
   const float hit_distance = length(to_hit);
   float3 arriving = 0.f;
-  if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f)) {
+  if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_SMOKE)) {
     arriving = combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
   bounce[id] = float4(arriving, distance(position.xyz, Camera()));
@@ -593,7 +593,7 @@ void ReflectPixel(uint2 id) {
   const float3 normal = PixelNormal(id, position);
   const float3 view = normalize(Camera() - position.xyz);
   const float n_dot_v = max(dot(normal, view), 1e-3f);
-  const float3 origin = position.xyz + normal * SurfaceOffset(position.w);
+  const float3 origin = RayOrigin(position, normal, Planar(int2(id), position, normal));
   const float roughness = saturate(guide_roughness[id]);
   const float alpha = max(roughness * roughness, 1e-3f);
   const bool mirror = roughness < 0.05f;
@@ -627,7 +627,7 @@ void ReflectPixel(uint2 id) {
         ++met;
       }
       if (first_distance > reflection_range) ++open;
-    } else if (!Occluded(origin, direction, reflection_range)) {
+    } else if (!Occluded(origin, direction, reflection_range, NO_SMOKE)) {
       ++open;
     }
   }

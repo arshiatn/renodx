@@ -1077,6 +1077,24 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       AO history kept under RR again: residual 0.0245 -> 0.0080 (wall foot). Grass: ~70M vertices a frame over its 4M
       share; now half the helper's alpha-tested corners (helper says rt_dynamic_uvs: 32M over 20 GB, 16M over 12 GB, 8M
       else; RT_DYNAMIC_UVS 32M). helper28 in Attila's folder, Downloads\twattila_v96.zip. Untested in game.
+      v97 (2026-10-29, ATN after v96: RT costs too much, grass shadows vanish, city wall cracks lit, VRAM). ATN's log
+      (05:50-06:01): AO alone 1.6-20 ms with foliage in view; with Smoke Shadows + point lights the trace up to 49 ms;
+      0 vertices left out all session (grass not dropped); Mega Geometry drew 8-21k clusters of 524k reserved (3.3 GB).
+      helper29 (build\tw_dlaa_helper29, bridge v17 unchanged), harness at 4K (helper28 -> 29):
+      - Smoke in a BLAS + TLAS instance of its own (mask 2; the addon's last capture, Mega Geometry's last clusters):
+        only sun and fog rays meet it (rt_scene.hlsli ALL_INSTANCES / NO_SMOKE). 1000 particles in view: trace 81.5 ->
+        7.9 ms (AO 29.2 -> 0.7, lights 34.2 -> 0.6), bounce 12.7 -> 0.8, reflections 35.5 -> 1.5. Sun rays stop past
+        SMOKE_DARK (5% left): 12.2 -> 5.0; fog rays dim by the smoke.
+      - Nearest-hit rays (bounce, paths, reflections: TRACE_SURFACE) solid-only with micromaps (leaf stress in view:
+        bounce 18.3 -> 12.6, reflections 39.4 -> 21.2), alpha-tested without (capped). AO / lights stay alpha-tested:
+        culled, rays through dense leaves never stop (5x the trace in the leaf stress).
+      - Wall cracks: rays start along the normal only where the 4 neighbours lie on its plane (Planar), else toward the
+        camera; a non-planar pixel facing away from the sun is traced too (solid-only, from past itself).
+      - VRAM: Mega Geometry's room starts at 32768 clusters (330 MB, was 3324 MB) and doubles when a frame has more
+        (SizeClusters; log "room for N clusters a frame now"), up to the GPU's limit.
+      Harness: HARNESS_SMOKE_STRESS=<particles>, HARNESS_TRACE_FLAGS=<flags>; scratchpad last_status.py reads the last
+      status (slow frames report late). Untested in game. ASK ATN: when do grass shadows vanish (near / far, moving
+      camera, wind)? A screenshot.
       NVIDIA's SDKs are allowed (NVIDIA RTX SDKs License: RTXDI, SHARC, NRC, NRD, RTXPT, RTXGI; RTXMU MIT; Mega
       Geometry samples Apache 2.0): download at build time like OMM, binaries / compiled shaders only, credit in About.
       [x] 1 (step 2: RT_RECONSTRUCTED 256; harness HARNESS_SUN_SOFTNESS) RR is the only denoiser (ATN: no NRD; RR/PT users use RR): under RR, SSR's denoiser + history (ssr_hiz)

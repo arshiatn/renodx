@@ -28,15 +28,17 @@ void main(uint3 id : SV_DispatchThreadID) {
     light_mask[id.xy] = 0xFFFFFFFFu;
     return;
   }
-  // Lights out of reach or behind the surface keep their bit: their own shading leaves those pixels dark.
+  // Lights out of reach or behind a planar surface keep their bit: their own shading leaves those pixels dark (at
+  // corners, cracks and edges the normal from the depth can be wrong: traced).
   const float3 normal = SurfaceNormal(int2(id.xy), position);
-  const float3 light_origin = position.xyz + normal * SurfaceOffset(position.w);
+  const bool planar = Planar(int2(id.xy), position, normal);
+  const float3 light_origin = RayOrigin(position, normal, planar);
   uint reached = 0u;
   [loop]
   for (uint light = 0u; light < light_count; ++light) {
     const float3 to_light = lights[light].xyz - light_origin;
     const float light_distance = length(to_light);
-    if (light_distance < lights[light].w && light_distance > 1e-3f && dot(to_light, normal) > 0.f) reached |= 1u << light;
+    if (light_distance < lights[light].w && light_distance > 1e-3f && (!planar || dot(to_light, normal) > 0.f)) reached |= 1u << light;
   }
   uint traced = reached;
   uint lit = 0xFFFFFFFFu;
@@ -72,7 +74,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     if (((traced >> light) & 1u) == 0u) continue;
     const float3 to_light = lights[light].xyz - light_origin;
     const float light_distance = length(to_light);
-    if (Occluded(light_origin, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance))) lit &= ~(1u << light);
+    if (Occluded(light_origin, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_SMOKE)) lit &= ~(1u << light);
   }
   light_mask[id.xy] = lit;
   light_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u][id.xy] = lit;

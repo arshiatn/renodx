@@ -100,29 +100,92 @@ bool AlphaPasses(uint record_index, uint primitive, float2 barycentrics) {
 // each ray's cost bounded).
 static const uint MAX_CANDIDATES = 64u;
 
-// Whether anything lies along `direction` from `origin` within `range`.
-bool Occluded(float3 origin, float3 direction, float range) {
+// The share of the sun's light left at which smoke counts as dark: its ray goes no further (each particle a candidate;
+// at 4K through 1000 particles the trace took 80 ms a frame, each sun ray dozens).
+static const float SMOKE_DARK = 0.05f;
+
+// The TLAS's instance masks (rt_d3d12.hpp): the smoke has an instance of its own, which only the rays toward the sun
+// meet (ALL_INSTANCES); the others (the ambient, the local lights, the paths, the reflections) leave it out in the
+// hardware (NO_SMOKE).
+static const uint ALL_INSTANCES = 0xFFu;
+static const uint NO_SMOKE = 0xFDu;
+
+// Whether anything among `instances` lies along `direction` from `origin` within `range` (alpha-tested: leaves, grass
+// and cloth by their masks, smoke dimming smoke_transmittance).
+bool Occluded(float3 origin, float3 direction, float range, uint instances) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
   ray.TMin = 0.f;
   ray.TMax = range;
   SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
-  query.TraceRayInline(scene, RAY_FLAG_NONE, 0xFF, ray);
+  query.TraceRayInline(scene, RAY_FLAG_NONE, instances, ray);
   uint candidates = 0u;
   while (query.Proceed()) {
-    if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) query.CommitNonOpaqueTriangleHit();
+    if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
+      query.CommitNonOpaqueTriangleHit();
+    } else if (smoke_transmittance < SMOKE_DARK) {
+      query.Abort();
+    }
   }
   return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }
 
-// The nearest surface along a ray (its query, committed: CommittedStatus says whether one was).
-#define TRACE_NEAREST(query, ray)                                     \
-  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;               \
-  query.TraceRayInline(scene, RAY_FLAG_NONE, 0xFF, (ray));              \
-  while (query.Proceed()) {                                             \
-    if (CANDIDATE_PASSES(query)) query.CommitNonOpaqueTriangleHit();    \
+// The nearest surface along a ray toward the sun (alpha-tested as Occluded; its query, committed: CommittedStatus says
+// whether one was). Past MAX_CANDIDATES alpha-tested surfaces the last counts; past dark smoke none further.
+#define TRACE_NEAREST(query, ray)                                                                  \
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                                            \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, ALL_INSTANCES, (ray));                                  \
+  {                                                                                                  \
+    uint trace_candidates = 0u;                                                                      \
+    while (query.Proceed()) {                                                                        \
+      if (++trace_candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {                         \
+        query.CommitNonOpaqueTriangleHit();                                                          \
+      } else if (smoke_transmittance < SMOKE_DARK) {                                                 \
+        query.Abort();                                                                               \
+      }                                                                                              \
+    }                                                                                                \
   }
+
+// Whether a solid surface lies along a ray: alpha-tested ones are culled in the hardware (the solid parts of leaves with
+// opacity micromaps stay), the smoke's instance left out. A ray goes on through every culled one (through a canopy 5x
+// the cost of alpha tests ending at the first leaf), so only from surfaces facing away from the sun.
+bool OccludedSolid(float3 origin, float3 direction, float range) {
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = direction;
+  ray.TMin = 0.f;
+  ray.TMax = range;
+  SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_SMOKE, ray);
+  query.Proceed();
+  return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+}
+
+// The nearest surface along a ray of the Light Bounce, its paths or the reflections (its query, committed:
+// CommittedStatus says whether one was; the smoke left out). With opacity micromaps solid surfaces only, the leaves'
+// solid parts among them (an alpha test for every candidate nearer than the hit, grass by the dozen, made them cost up
+// to 30 ms a frame, ATN 2026-10-29); else alpha-tested, at most MAX_CANDIDATES.
+#if defined(OPACITY_MICROMAPS)
+#define TRACE_SURFACE(query, ray)                                                      \
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;     \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_SMOKE, (ray));                           \
+  query.Proceed();
+#else
+#define TRACE_SURFACE(query, ray)                                         \
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                   \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_SMOKE, (ray));              \
+  {                                                                         \
+    uint surface_candidates = 0u;                                           \
+    while (query.Proceed()) {                                               \
+      if (++surface_candidates > MAX_CANDIDATES) {                          \
+        query.Abort();                                                      \
+      } else if (CANDIDATE_PASSES(query)) {                                 \
+        query.CommitNonOpaqueTriangleHit();                                 \
+      }                                                                     \
+    }                                                                       \
+  }
+#endif
 
 uint OctahedralEncode(float3 normal) {
   normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
@@ -151,6 +214,27 @@ float3 SurfaceNormal(int2 pixel, float4 position) {
 // Off a surface by 2 cm plus 0.1% of the depth (depth precision and coarser far geometry grow with distance).
 float SurfaceOffset(float depth) {
   return 0.02f + depth * 0.001f;
+}
+
+// Whether the four neighbours lie on the pixel's surface (`normal`: its plane): not a corner, crack or edge, where the
+// normal from the depth can be wrong.
+bool Planar(int2 pixel, float4 position, float3 normal) {
+  static const int2 SIDES[4] = {int2(-1, 0), int2(1, 0), int2(0, -1), int2(0, 1)};
+  const int2 last = int2(width, height) - 1;
+  [unroll]
+  for (uint side = 0u; side < 4u; ++side) {
+    const float4 neighbour = positions[clamp(pixel + SIDES[side], 0, last)];
+    const float3 to_neighbour = neighbour.xyz - position.xyz;
+    if (neighbour.w <= 0.f || abs(dot(to_neighbour, normal)) > 0.2f * length(to_neighbour)) return false;
+  }
+  return true;
+}
+
+// Where a pixel's own rays leave from: off its surface along the normal where it is planar, else toward the camera,
+// whose way is clear (along a wrong normal a start can land in or past the geometry beside it: light in the cracks
+// where wall parts meet, ATN 2026-10-29).
+float3 RayOrigin(float4 position, float3 normal, bool planar) {
+  return position.xyz + (planar ? normal : normalize(sun[uint2(1, 0)].xyz - position.xyz)) * SurfaceOffset(position.w);
 }
 
 // A per-pixel, per-frame, per-ray value in 0-1 (PCG hash).

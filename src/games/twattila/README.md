@@ -2,6 +2,18 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v97 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper29: ship them together)
+
+- **Smoke costs almost nothing now**: Smoke Shadows' particles are a part of the ray-traced scene only the sun's (and
+  the fog's) rays see; a sun ray stops once the smoke has darkened it. 1000 particles in view at 4K: tracing 81 -> 8 ms,
+  reflections 35 -> 1.5 ms, Light Bounce 13 -> 0.8 ms.
+- **Faster reflections and Light Bounce in foliage**: with Leaf Micromaps their rays skip the alpha tests (leaves in
+  view: reflections 39 -> 21 ms, bounce 18 -> 13 ms). AO and torch shadows keep them (without, rays through a canopy
+  never stop: 5x the cost).
+- **City wall cracks no longer lit**: at corners, cracks and edges (where the normal from the depth can be wrong) rays
+  start toward the camera, and those pixels are traced even when they seem to face away from the sun.
+- **~3 GB less VRAM**: Mega Geometry's memory starts at 330 MB (was 3.3 GB) and grows only when a battle needs more.
+
 ## v96 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper28: ship them together)
 
 - **Less AO noise under Ray Reconstruction**: tested with RR itself (the game's nvngx_dlssd 310.9.16, preset F) on 4-ray

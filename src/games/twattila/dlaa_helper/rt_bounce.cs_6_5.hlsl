@@ -34,7 +34,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     return;
   }
   const float3 normal = SurfaceNormal(pixel, position);
-  const float3 origin = position.xyz + normal * SurfaceOffset(position.w);
+  const float3 origin = RayOrigin(position, normal, Planar(pixel, position, normal));
   const uint rays = max(ambient_rays, 1u);
   float3 arriving = 0.f;
   [loop]
@@ -46,7 +46,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     ray.Direction = direction;
     ray.TMin = 0.f;
     ray.TMax = ambient_range;
-    TRACE_NEAREST(query, ray)
+    TRACE_SURFACE(query, ray)
     if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) continue;
     const float4 hit = float4(origin + direction * query.CommittedRayT(), 1.f);
     const float4 clip = float4(dot(hit, view_projection[0]), dot(hit, view_projection[1]), dot(hit, view_projection[2]),
