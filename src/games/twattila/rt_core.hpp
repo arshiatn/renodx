@@ -109,6 +109,8 @@ struct Settings {
   bool fog_shadows = false;
   // Leaf micromaps: the helper bakes new leaves' opacity micromaps (NVIDIA's OMM SDK): fewer alpha tests per ray.
   bool micromaps = false;
+  // GPU Micromap Baking: on the GPU (the SDK's GPU baker), not the helper's CPU threads.
+  bool gpu_micromaps = false;
   // Smoke shadows: the lit particles drawn since the last trace (InstallSmokeShadows' shaders: smoke and dust) dim the
   // ray-traced sun, a frame late (CaptureParticles, rt_smoke).
   bool smoke_shadows = false;
@@ -1623,6 +1625,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.fog_shadows ? dlaa_bridge::RT_FOG_SHADOWS : 0u)
                | ((runtime.settings.fog_shadows && lights && runtime.settings.light_glow > 0.f) ? dlaa_bridge::RT_FOG_LIGHTS : 0u)
                | (runtime.settings.micromaps ? dlaa_bridge::RT_MICROMAPS : 0u)
+               | ((runtime.settings.micromaps && runtime.settings.gpu_micromaps) ? dlaa_bridge::RT_GPU_MICROMAPS : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u)
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u),

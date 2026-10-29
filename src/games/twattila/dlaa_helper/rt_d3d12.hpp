@@ -56,6 +56,7 @@
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
+#include "rt_omm_uvs.h"           // dxc -Fh (build.ps1)
 #include "rt_reflect.h"           // dxc -Fh (build.ps1)
 #include "rt_reflect_filter.h"    // dxc -Fh (build.ps1)
 #include "rt_reflect_omm.h"       // dxc -Fh (build.ps1)
@@ -126,7 +127,15 @@ class RtScene12 {
           SUCCEEDED(factory->GetConfigurationInterface(DRED_CONFIGURATION, IID_PPV_ARGS(settings.GetAddressOf())))) {
         record_removal(settings.Get());
       }
+      // RENODX_TW_D3D12_DEBUG (tests; D3D12\d3d12SDKLayers.dll next to D3D12Core.dll): D3D12's debug layer, its messages
+      // into the log after each request.
+      if (GetEnvironmentVariableW(L"RENODX_TW_D3D12_DEBUG", nullptr, 0) != 0) {
+        ComPtr<ID3D12Debug> debug;
+        debug_result_ = factory->GetConfigurationInterface(DEBUG_CONFIGURATION, IID_PPV_ARGS(debug.GetAddressOf()));
+        if (SUCCEEDED(debug_result_)) debug->EnableDebugLayer();
+      }
       if (SUCCEEDED(factory->CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf())))) sdk = "Agility SDK";
+      if (device_) device_.As(&info_queue_);
     }
     if (ComPtr<ID3D12DeviceRemovedExtendedDataSettings1> settings;
         !device_ && SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(settings.GetAddressOf())))) {
@@ -149,6 +158,19 @@ class RtScene12 {
                           && load(&omm_.destroy_result, "ommCpuDestroyBakeResult");
       if (loaded && std::ranges::all_of(omm_.bakers, [&](ommBaker& baker) { return create_baker(&creation, &baker) == ommResult_SUCCESS; })) {
         omm_.library = library;
+        // The GPU baker (GPU Micromap Baking; its pipelines made with the device: MakeGpuBaker).
+        ommBakerCreationDesc gpu_creation = ommBakerCreationDescDefault();
+        gpu_creation.type = ommBakerType_GPU;
+        const ommGpuPipelineConfigDesc gpu_config = ommGpuPipelineConfigDescDefault();
+        if (!load(&omm_.gpu_create_pipeline, "ommGpuCreatePipeline") || !load(&omm_.gpu_destroy_pipeline, "ommGpuDestroyPipeline")
+            || !load(&omm_.gpu_pipeline_desc, "ommGpuGetPipelineDesc") || !load(&omm_.gpu_pre_dispatch, "ommGpuGetPreDispatchInfo")
+            || !load(&omm_.gpu_dispatch, "ommGpuDispatch") || !load(&omm_.gpu_static_data, "ommGpuGetStaticResourceData")
+            || create_baker(&gpu_creation, &omm_.gpu_baker) != ommResult_SUCCESS
+            || omm_.gpu_create_pipeline(omm_.gpu_baker, &gpu_config, &omm_.gpu_pipeline) != ommResult_SUCCESS) {
+          if (omm_.gpu_baker != nullptr) omm_.destroy_baker(omm_.gpu_baker);
+          omm_.gpu_baker = nullptr;
+          omm_.gpu_pipeline = nullptr;
+        }
       } else {
         for (const ommBaker baker : omm_.bakers) {
           if (baker != nullptr) omm_.destroy_baker(baker);
@@ -538,6 +560,11 @@ class RtScene12 {
       return Fail("Ray tracing: the trace shaders failed (needs shader model 6.5)");
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
+    std::string gpu_baker = "no micromaps";
+#if defined(RENODX_OMM_SDK)
+    if (dxr12_ && bake_micromaps_) gpu_baker = pipeline(RT_OMM_UVS, sizeof(RT_OMM_UVS), &omm_gpu_.clamp) ? std::string() : "rt_omm_uvs";
+    gpu_micromaps_ = gpu_baker.empty() && MakeGpuBaker(&gpu_baker);
+#endif
     for (Slot& slot : slots_) {
       slot.lights = Buffer(LIGHT_CONSTANT_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
       slot.paths = Buffer(256, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -571,12 +598,16 @@ class RtScene12 {
     device_->CreateUnorderedAccessView(normals_.Get(), nullptr, &normals_written, Descriptor(NORMALS_WRITTEN));
     WriteNullPathDescriptors();
     status_ = std::format("Ray tracing ready ({}{}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps" : "DXR 1.1",
-                          (dxr12_ && bake_micromaps_) ? "; leaf micromaps: NVIDIA OMM SDK" : "", sdk,
+                          (dxr12_ && bake_micromaps_) ? (gpu_micromaps_ ? "; leaf micromaps: NVIDIA OMM SDK (CPU, GPU)"
+                                                                        : "; leaf micromaps: NVIDIA OMM SDK (CPU; GPU off: " + gpu_baker + ")")
+                                                      : std::string(),
+                          sdk,
                           clusters_ ? std::format("; Mega Geometry: room for {} clusters a frame, up to {} ({} from templates of {} bytes), {} MB",
                                                   cluster_room_, cluster_limit_, cluster_room_ - built_limit_, template_bytes_,
                                                   (cluster_bytes_ + TEMPLATE_POOL_BYTES) >> 20)
                                     : std::string());
-    slow_report_ = "[TW ray tracing] " + status_ + ".";
+    slow_report_ = "[TW ray tracing] " + status_
+                   + (info_queue_ ? " (D3D12 debug layer on)." : std::format(" (debug layer 0x{:08X}).", static_cast<uint32_t>(debug_result_)));
     sdk_ = sdk;
     return true;
   }
@@ -870,6 +901,11 @@ class RtScene12 {
     slot_clustered_[slot_index] = false;
     ExpireHistory(shared.rt_frame);
     const uint64_t completed = own_fence_->GetCompletedValue();
+    // A removed device's fences read all ones: where the GPU stopped into the log once (DRED).
+    if (completed == UINT64_MAX && !lost_logged_) {
+      lost_logged_ = true;
+      slow_report_ += std::format("{}{}", slow_report_.empty() ? "" : "\n", LostReport());
+    }
     std::erase_if(releases_, [&](const Release& release) {
       if (release.value > completed) return false;
       if (release.units != 0) {
@@ -900,6 +936,19 @@ class RtScene12 {
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, cluster_data, slot_index, &slot);
     if (!recorded) slot.capture_keys.clear();
+    if (info_queue_) {
+      for (UINT64 index = 0; index < std::min<UINT64>(info_queue_->GetNumStoredMessages(), 20); ++index) {
+        SIZE_T bytes = 0;
+        info_queue_->GetMessage(index, nullptr, &bytes);
+        std::vector<uint8_t> message(bytes);
+        if (SUCCEEDED(info_queue_->GetMessage(index, reinterpret_cast<D3D12_MESSAGE*>(message.data()), &bytes))) {
+          const auto* found = reinterpret_cast<const D3D12_MESSAGE*>(message.data());
+          slow_report_ += std::format("{}[TW ray tracing] D3D12: {}", slow_report_.empty() ? "" : "\n",
+                                      std::string_view(found->pDescription, found->DescriptionByteLength));
+        }
+      }
+      info_queue_->ClearStoredMessages();
+    }
     LARGE_INTEGER cpu_recorded;
     QueryPerformanceCounter(&cpu_recorded);
     if (timestamps_) cpu_timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}", CpuMs(cpu_start, cpu_waited), CpuMs(cpu_waited, cpu_recorded));
@@ -1195,6 +1244,8 @@ class RtScene12 {
     for (const ommBaker baker : omm_.bakers) {
       if (baker != nullptr) omm_.destroy_baker(baker);
     }
+    if (omm_.gpu_pipeline != nullptr) omm_.gpu_destroy_pipeline(omm_.gpu_baker, omm_.gpu_pipeline);
+    if (omm_.gpu_baker != nullptr) omm_.destroy_baker(omm_.gpu_baker);
     if (omm_.library != nullptr) FreeLibrary(omm_.library);
 #endif
   }
@@ -1203,6 +1254,7 @@ class RtScene12 {
   static constexpr UINT AGILITY_SDK_VERSION = 619;
   static constexpr GUID SDK_CONFIGURATION = {0x7cda6aca, 0xa03e, 0x49c8, {0x94, 0x58, 0x03, 0x34, 0xd2, 0x0e, 0x07, 0xce}};
   static constexpr GUID DRED_CONFIGURATION = {0x4a75bbc4, 0x9ff4, 0x4ad8, {0x9f, 0x18, 0xab, 0xae, 0x84, 0xdc, 0x5f, 0xf2}};
+  static constexpr GUID DEBUG_CONFIGURATION = {0xf2352aeb, 0xdd84, 0x49fe, {0xb9, 0x7b, 0xa9, 0xdc, 0xfd, 0xcc, 0x1b, 0x4f}};  // CLSID_D3D12Debug
   // DRED's operations as LostReport names them (the ones recorded here).
   struct OperationName {
     D3D12_AUTO_BREADCRUMB_OP op;
@@ -1325,6 +1377,9 @@ class RtScene12 {
   static constexpr size_t MICROMAP_WORKERS = 4;  // bakes at once (each with the SDK's own threads)
   static constexpr size_t SET_MICROMAP_READS = 16;  // grass sets' micromap reads a request at most
   static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
+  // GPU Micromap Baking: bakes a request at most, the SDK's descriptors (a ring: a few requests' bakes), its scratch.
+  static constexpr size_t MICROMAP_GPU_BAKES = 8;
+  static constexpr UINT OMM_DESCRIPTORS = 16384;
   // Grass's finest micromap level (leaves': 6): new grass's shadows wait for its bakes (ATN's debug28: still a visible
   // delay), and level 6 is four times the work.
   static constexpr int GRASS_MICROMAP_LEVEL = 5;
@@ -1538,6 +1593,23 @@ class RtScene12 {
     uint64_t uvs_offset = 0;
     ComPtr<ID3D12Resource> mask;
     uint64_t mask_offset = 0;
+    // GPU Micromap Baking's (BakeMicromapsOnGpu): its UVs' place in uvs_ and its mask's slice; its outputs' buffers
+    // (its request's bakes share them) and places, its histogram's place in their read-back (gpu_failed: refused).
+    bool gpu = false;
+    bool gpu_failed = false;
+    uint32_t uv_offset = 0;
+    uint32_t slice = 0;
+    ComPtr<ID3D12Resource> gpu_arrays;
+    uint64_t arrays_offset = 0;
+    ComPtr<ID3D12Resource> gpu_descs;
+    uint64_t descs_offset = 0;
+    ComPtr<ID3D12Resource> gpu_indices;
+    uint64_t indices_offset = 0;
+    ComPtr<ID3D12Resource> gpu_readback;
+    uint64_t histogram_offset = 0;
+    uint32_t histogram_bytes = 0;
+    std::array<uint64_t, 2> log_offsets = {};  // RENODX_TW_OMM_LOG: its post-dispatch info's and first indices' places there
+    uint64_t log_extra = 0;
     std::vector<uint32_t> uv_data;
     std::vector<uint8_t> mask_data;
     // The bake's: the micromaps' data, descs, an index a triangle (32-bit; the special ones negative), their histogram.
@@ -1557,6 +1629,40 @@ class RtScene12 {
     decltype(&ommCpuBake) bake = nullptr;
     decltype(&ommCpuGetBakeResultDesc) result_desc = nullptr;
     decltype(&ommCpuDestroyBakeResult) destroy_result = nullptr;
+    // GPU Micromap Baking: the GPU baker, its pipeline and calls.
+    ommBaker gpu_baker = nullptr;
+    ommGpuPipeline gpu_pipeline = nullptr;
+    decltype(&ommGpuCreatePipeline) gpu_create_pipeline = nullptr;
+    decltype(&ommGpuDestroyPipeline) gpu_destroy_pipeline = nullptr;
+    decltype(&ommGpuGetPipelineDesc) gpu_pipeline_desc = nullptr;
+    decltype(&ommGpuGetPreDispatchInfo) gpu_pre_dispatch = nullptr;
+    decltype(&ommGpuDispatch) gpu_dispatch = nullptr;
+    decltype(&ommGpuGetStaticResourceData) gpu_static_data = nullptr;
+  };
+  // GPU Micromap Baking (MakeGpuBaker, BakeMicromapsOnGpu): the OMM SDK's compute pipelines (root signatures from its
+  // descriptions: a table of its ranges, the global constants' CBV, its own root constants, its static samplers; the
+  // raster ones are not made: bakes run ComputeOnly), its descriptors (a ring), the indirect dispatch's signature, the
+  // corners' indices (ours are not indexed: 0, 1, 2...), its static buffers, the scratch it asks for (kept, grown), the
+  // masks' copies (an atlas slice each: its alpha texture) and the bakes' clamped UVs.
+  struct OmmGpu {
+    struct Pipeline {
+      ComPtr<ID3D12RootSignature> root;
+      ComPtr<ID3D12PipelineState> state;
+      int table = -1;     // its root parameters (-1: none)
+      int constants = -1;
+      int global = -1;
+      UINT constant_count = 0;
+    };
+    std::vector<Pipeline> pipelines;
+    ComPtr<ID3D12DescriptorHeap> heap;
+    UINT next = 0;
+    ComPtr<ID3D12CommandSignature> dispatch;
+    ComPtr<ID3D12Resource> indices;
+    std::array<ComPtr<ID3D12Resource>, 2> statics;  // its static vertex and index buffers
+    std::array<ComPtr<ID3D12Resource>, OMM_MAX_TRANSIENT_POOL_BUFFERS> transient;
+    std::vector<ComPtr<ID3D12Resource>> masks;  // resting in NON_PIXEL_SHADER_RESOURCE
+    ComPtr<ID3D12Resource> uvs;                 // resting in NON_PIXEL_SHADER_RESOURCE
+    ComPtr<ID3D12PipelineState> clamp;          // rt_omm_uvs
   };
 #endif
   // A pool's free ranges (offset -> count), first fit (as Tales of Arise's rt_shadows.hpp).
@@ -2244,9 +2350,14 @@ class RtScene12 {
     // Grass micromaps (with the Leaf Micromaps setting and Mega Geometry's micromap support): an alpha-tested set's first
     // instance's UVs read back once, a few sets a request (the bakes' room shared with the leaves').
     std::vector<MicromapRead> set_micromap_reads;
+    // GPU Micromap Baking: this request's bakes on the GPU at its end (at most MICROMAP_GPU_BAKES: the SDK's guide asks
+    // for a frame budget).
+    const bool gpu_bakes = gpu_micromaps_ && (shared.rt_flags & dlaa_bridge::RT_GPU_MICROMAPS) != 0;
+    std::vector<MicromapBake*> gpu_baking;
     size_t set_micromap_room = (cluster_micromaps_ && bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
-                                   ? std::min<size_t>(SET_MICROMAP_READS, MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
-                                                                                                      + MicromapsBaking() + micromaps_baked_.size()))
+                                   ? std::min<size_t>(gpu_bakes ? MICROMAP_GPU_BAKES : SET_MICROMAP_READS,
+                                                      MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
+                                                                                                    + MicromapsBaking() + micromaps_baked_.size()))
                                    : 0u;
 #if defined(RENODX_NVAPI_CLUSTERS)
     auto* template_args =
@@ -2555,25 +2666,41 @@ class RtScene12 {
             continue;
           }
           if (own_value_ + 1 < baked->value + SLOTS) continue;
-          const uint64_t descs_offset = Align(baked->data.size(), 256);
-          const uint64_t indices_offset = Align(descs_offset + (baked->descs.size() * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)), 256);
-          auto inputs = Buffer(indices_offset + (baked->indices.size() * 4), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
-                               D3D12_RESOURCE_STATE_GENERIC_READ);
-          uint8_t* mapped = nullptr;
-          if (!inputs || FAILED(inputs->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) continue;
-          std::memcpy(mapped, baked->data.data(), baked->data.size());
-          std::memcpy(mapped + descs_offset, baked->descs.data(), baked->descs.size() * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
-          std::memcpy(mapped + indices_offset, baked->indices.data(), baked->indices.size() * 4);
-          inputs->Unmap(0, nullptr);
+          // Its data, descs and indices: a GPU bake's where the bake left them (its request's shared outputs, kept until
+          // this request's builds are past), a CPU bake's uploaded.
+          ComPtr<ID3D12Resource> inputs;
+          uint64_t indices_offset = 0;
+          D3D12_GPU_VIRTUAL_ADDRESS data_address = 0;
+          D3D12_GPU_VIRTUAL_ADDRESS descs_address = 0;
+          if (baked->gpu) {
+            inputs = baked->gpu_indices;
+            indices_offset = baked->indices_offset;
+            data_address = baked->gpu_arrays->GetGPUVirtualAddress() + baked->arrays_offset;
+            descs_address = baked->gpu_descs->GetGPUVirtualAddress() + baked->descs_offset;
+            releases_.push_back({.value = own_value_ + 1, .resource = baked->gpu_arrays});
+            releases_.push_back({.value = own_value_ + 1, .resource = baked->gpu_descs});
+          } else {
+            const uint64_t descs_offset = Align(baked->data.size(), 256);
+            indices_offset = Align(descs_offset + (baked->descs.size() * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)), 256);
+            inputs = Buffer(indices_offset + (baked->indices.size() * 4), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
+                            D3D12_RESOURCE_STATE_GENERIC_READ);
+            uint8_t* mapped = nullptr;
+            if (!inputs || FAILED(inputs->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) continue;
+            std::memcpy(mapped, baked->data.data(), baked->data.size());
+            std::memcpy(mapped + descs_offset, baked->descs.data(), baked->descs.size() * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
+            std::memcpy(mapped + indices_offset, baked->indices.data(), baked->indices.size() * 4);
+            inputs->Unmap(0, nullptr);
+            data_address = inputs->GetGPUVirtualAddress();
+            descs_address = data_address + descs_offset;
+          }
           ComPtr<ID3D12Resource> array;
-          if (!baked->descs.empty()) {
+          if (!baked->histogram.empty()) {
             D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC& array_desc = array_descs[array_builds.size()];
             array_desc = {
                 .NumOmmHistogramEntries = static_cast<UINT>(baked->histogram.size()),
                 .pOmmHistogram = baked->histogram.data(),
-                .InputBuffer = inputs->GetGPUVirtualAddress(),
-                .PerOmmDescs = {.StartAddress = inputs->GetGPUVirtualAddress() + descs_offset,
-                                .StrideInBytes = sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)},
+                .InputBuffer = data_address,
+                .PerOmmDescs = {.StartAddress = descs_address, .StrideInBytes = sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)},
             };
             const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS array_inputs = {
                 .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_ARRAY,
@@ -2668,6 +2795,7 @@ class RtScene12 {
                                  ? MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                  + MicromapsBaking() + micromaps_baked_.size())
                                  : 0u;
+      if (gpu_bakes) micromap_room = std::min(micromap_room, MICROMAP_GPU_BAKES - std::min(MICROMAP_GPU_BAKES, micromap_reads.size()));
       // Instanced captures' rows to read back (their first texel in the vertex buffer).
       std::vector<Slot::RowRead> row_copies;
       std::vector<uint32_t> row_sources;
@@ -3050,6 +3178,7 @@ class RtScene12 {
         uint64_t uvs_bytes = 0;
         for (const MicromapRead& read : micromap_reads) {
           if (!read.set) positions_bytes = Align(positions_bytes + (uint64_t{read.triangles} * 48), 256);
+          if (gpu_bakes) continue;
           uvs_bytes = Align(uvs_bytes + (uint64_t{read.triangles} * 12), 256);
           masks.try_emplace(read.slice, masks.size() * MASK_BYTES);
         }
@@ -3061,10 +3190,12 @@ class RtScene12 {
           if (positions_bytes != 0) {
             positions = Buffer(positions_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
           }
-          uvs = Buffer(uvs_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
-          mask = Buffer(masks.size() * MASK_BYTES, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+          if (!gpu_bakes) {
+            uvs = Buffer(uvs_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+            mask = Buffer(masks.size() * MASK_BYTES, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+          }
         }
-        if ((positions_bytes != 0 && !positions) || !uvs || !mask) micromap_reads.clear();
+        if ((positions_bytes != 0 && !positions) || (!gpu_bakes && (!uvs || !mask))) micromap_reads.clear();
         if (!micromap_reads.empty()) {
           const D3D12_RESOURCE_DESC atlas_desc = atlas_->GetDesc();
           for (const auto& [slice, offset] : masks) {
@@ -3090,13 +3221,18 @@ class RtScene12 {
           auto bake = std::make_unique<MicromapBake>();
           *bake = {.key = read.key, .build = read.build, .value = own_value_ + 1, .triangles = read.triangles, .set = read.set,
                    .grass = read.grass, .positions = (read.set ? nullptr : positions), .positions_offset = positions_at, .uvs = uvs, .uvs_offset = uvs_at,
-                   .mask = mask, .mask_offset = masks.at(read.slice)};
+                   .mask = mask, .mask_offset = gpu_bakes ? 0u : masks.at(read.slice), .gpu = gpu_bakes, .uv_offset = read.uv_offset,
+                   .slice = read.slice};
           if (!read.set) {
             list->CopyBufferRegion(positions.Get(), positions_at, vertex_buffer_.Get(), uint64_t{read.first_vertex} * 16, uint64_t{read.triangles} * 48);
             positions_at = Align(positions_at + (uint64_t{read.triangles} * 48), 256);
           }
-          list->CopyBufferRegion(uvs.Get(), uvs_at, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
-          uvs_at = Align(uvs_at + (uint64_t{read.triangles} * 12), 256);
+          if (gpu_bakes) {
+            gpu_baking.push_back(bake.get());
+          } else {
+            list->CopyBufferRegion(uvs.Get(), uvs_at, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
+            uvs_at = Align(uvs_at + (uint64_t{read.triangles} * 12), 256);
+          }
           micromap_reads_.push_back(std::move(bake));
         }
         for (auto& barrier : to_source) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
@@ -3499,6 +3635,9 @@ class RtScene12 {
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     Stamp(list, slot_index * STAMPS + 3);
     Resolve(list, slot_index);
+#if defined(RENODX_OMM_SDK)
+    BakeMicromapsOnGpu(list, gpu_baking);
+#endif
     if (FAILED(list->Close())) return Fail("Ray tracing: D3D12 stopped");
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
     std::erase_if(meshes_, [&](auto& entry) {
@@ -3667,6 +3806,58 @@ class RtScene12 {
   void AdvanceMicromaps(uint64_t completed) {
     for (std::unique_ptr<MicromapBake>& read : micromap_reads_) {
       if (read->value > completed) continue;
+#if defined(RENODX_OMM_SDK)
+      // GPU Micromap Baking: its histogram read back (the SDK's usage counts: a count, a level and a format each; the
+      // zero ones left out), the rest stays on the GPU.
+      if (read->gpu) {
+        const D3D12_RANGE range = {.Begin = read->histogram_offset, .End = read->histogram_offset + read->histogram_bytes};
+        const uint8_t* mapped = nullptr;
+        if (!read->gpu_failed && read->gpu_readback
+            && SUCCEEDED(read->gpu_readback->Map(0, &range, reinterpret_cast<void**>(const_cast<uint8_t**>(&mapped))))) {
+          if (GetEnvironmentVariableW(L"RENODX_TW_OMM_LOG", nullptr, 0) != 0) {
+            std::string raw;
+            for (uint32_t word = 0; word < read->histogram_bytes / 4; ++word) {
+              raw += std::format(" {:08X}", reinterpret_cast<const uint32_t*>(mapped + range.Begin)[word]);
+            }
+            const D3D12_RANGE more = {.Begin = read->log_offsets[0], .End = read->log_offsets[1] + 64};
+            const uint8_t* extra = nullptr;
+            if (read->log_offsets[1] != 0 && SUCCEEDED(read->gpu_readback->Map(0, &more, reinterpret_cast<void**>(const_cast<uint8_t**>(&extra))))) {
+              raw += " | post:";
+              for (uint32_t word = 0; word < 8; ++word) raw += std::format(" {}", reinterpret_cast<const uint32_t*>(extra + read->log_offsets[0])[word]);
+              raw += " | indices:";
+              for (uint32_t word = 0; word < 8; ++word) raw += std::format(" {:08X}", reinterpret_cast<const uint32_t*>(extra + read->log_offsets[1])[word]);
+              const D3D12_RANGE none = {};
+              read->gpu_readback->Unmap(0, &none);
+              const D3D12_RANGE debug_range = {.Begin = read->log_extra, .End = read->log_extra + 128};
+              if (read->log_extra != 0 && SUCCEEDED(read->gpu_readback->Map(0, &debug_range, reinterpret_cast<void**>(const_cast<uint8_t**>(&extra))))) {
+                raw += " | uvs:";
+                for (uint32_t word = 0; word < 6; ++word) raw += std::format(" {:08X}", reinterpret_cast<const uint32_t*>(extra + read->log_extra)[word]);
+                raw += " | scratch:";
+                for (uint32_t word = 16; word < 32; ++word) raw += std::format(" {:X}", reinterpret_cast<const uint32_t*>(extra + read->log_extra)[word]);
+                read->gpu_readback->Unmap(0, &none);
+              }
+            }
+            slow_report_ += std::format("{}[TW ray tracing] GPU bake {} triangles: histogram {} bytes:{}", slow_report_.empty() ? "" : "\n",
+                                        read->triangles, read->histogram_bytes, raw);
+          }
+          const auto* counts = reinterpret_cast<const ommCpuOpacityMicromapUsageCount*>(mapped + range.Begin);
+          for (size_t entry = 0; entry < read->histogram_bytes / sizeof(ommCpuOpacityMicromapUsageCount); ++entry) {
+            if (counts[entry].count == 0) continue;
+            read->histogram.push_back({.Count = counts[entry].count, .SubdivisionLevel = counts[entry].subdivisionLevel,
+                                       .Format = static_cast<D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT>(counts[entry].format)});
+          }
+          const D3D12_RANGE none = {};
+          read->gpu_readback->Unmap(0, &none);
+          read->gpu_readback.Reset();
+          ++micromap_tally_[0];
+          micromaps_baked_.push_back(std::move(read));
+        } else {
+          ++micromap_tally_[2];
+          read.reset();
+        }
+        continue;
+      }
+#endif
       // Its places in its request's read-backs (Map points at a buffer's start).
       const D3D12_RANGE uv_range = {.Begin = read->uvs_offset, .End = read->uvs_offset + (uint64_t{read->triangles} * 12)};
       const D3D12_RANGE mask_range = {.Begin = read->mask_offset,
@@ -3722,6 +3913,539 @@ class RtScene12 {
   }
 
 #if defined(RENODX_OMM_SDK)
+  // GPU Micromap Baking: the OMM SDK's compute pipelines as D3D12 ones (each a table of its descriptor ranges, the global
+  // constants' CBV, the dispatches' own root constants, the SDK's static samplers), the descriptor ring, the indirect
+  // dispatch's signature, the corners' indices and the SDK's static buffers; false: it stays off (the CPU bakes go on),
+  // `why` says what failed (the status line).
+  bool MakeGpuBaker(std::string* why) {
+    const ommGpuPipelineInfoDesc* info = nullptr;
+    if (omm_.gpu_pipeline == nullptr) {
+      *why = "no GPU baker";
+      return false;
+    }
+    if (omm_.gpu_pipeline_desc(omm_.gpu_pipeline, &info) != ommResult_SUCCESS) {
+      *why = "no pipeline descriptions";
+      return false;
+    }
+    std::vector<D3D12_STATIC_SAMPLER_DESC> samplers;
+    for (uint32_t index = 0; index < info->staticSamplersNum; ++index) {
+      const ommGpuStaticSamplerDesc& sampler = info->staticSamplers[index];
+      D3D12_TEXTURE_ADDRESS_MODE address = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+      switch (sampler.desc.addressingMode) {
+        case ommTextureAddressMode_Mirror:     address = D3D12_TEXTURE_ADDRESS_MODE_MIRROR; break;
+        case ommTextureAddressMode_Clamp:      address = D3D12_TEXTURE_ADDRESS_MODE_CLAMP; break;
+        case ommTextureAddressMode_Border:     address = D3D12_TEXTURE_ADDRESS_MODE_BORDER; break;
+        case ommTextureAddressMode_MirrorOnce: address = D3D12_TEXTURE_ADDRESS_MODE_MIRROR_ONCE; break;
+        default:                               break;
+      }
+      samplers.push_back({.Filter = (sampler.desc.filter == ommTextureFilterMode_Nearest) ? D3D12_FILTER_MIN_MAG_MIP_POINT : D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+                          .AddressU = address,
+                          .AddressV = address,
+                          .AddressW = address,
+                          .MaxAnisotropy = 1,
+                          .ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER,
+                          .BorderColor = (sampler.desc.borderAlpha > 0.5f) ? D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK
+                                                                           : D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK,
+                          .MaxLOD = D3D12_FLOAT32_MAX,
+                          .ShaderRegister = sampler.registerIndex});
+    }
+    auto& gpu = omm_gpu_;
+    gpu.pipelines.resize(info->pipelineNum);
+    for (uint32_t index = 0; index < info->pipelineNum; ++index) {
+      // The raster ones are not needed: the bakes run ComputeOnly.
+      if (info->pipelines[index].type != ommGpuPipelineType_Compute) continue;
+      const ommGpuComputePipelineDesc& compute = info->pipelines[index].compute;
+      std::vector<D3D12_DESCRIPTOR_RANGE> ranges;
+      for (uint32_t range = 0; range < compute.descriptorRangeNum; ++range) {
+        const ommGpuDescriptorRangeDesc& desc = compute.descriptorRanges[range];
+        ranges.push_back({.RangeType = (desc.descriptorType == ommGpuDescriptorType_RawBufferWrite) ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV
+                                                                                                    : D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                          .NumDescriptors = desc.descriptorNum,
+                          .BaseShaderRegister = desc.baseRegisterIndex,
+                          .OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND});
+      }
+      OmmGpu::Pipeline& made = gpu.pipelines[index];
+      std::vector<D3D12_ROOT_PARAMETER> parameters;
+      if (!ranges.empty()) {
+        made.table = static_cast<int>(parameters.size());
+        parameters.push_back({.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+                              .DescriptorTable = {.NumDescriptorRanges = static_cast<UINT>(ranges.size()), .pDescriptorRanges = ranges.data()}});
+      }
+      // The global constants for every pipeline (omm_rasterize_cs_r reads them without hasConstantData).
+      if (info->globalConstantBufferDesc.maxDataSize != 0) {
+        made.global = static_cast<int>(parameters.size());
+        parameters.push_back({.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV,
+                              .Descriptor = {.ShaderRegister = info->globalConstantBufferDesc.registerIndex}});
+      }
+      if (info->localConstantBufferDesc.maxDataSize >= 4) {
+        made.constants = static_cast<int>(parameters.size());
+        made.constant_count = info->localConstantBufferDesc.maxDataSize / 4;
+        parameters.push_back({.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
+                              .Constants = {.ShaderRegister = info->localConstantBufferDesc.registerIndex, .Num32BitValues = made.constant_count}});
+      }
+      const D3D12_ROOT_SIGNATURE_DESC root_desc = {.NumParameters = static_cast<UINT>(parameters.size()),
+                                                   .pParameters = parameters.data(),
+                                                   .NumStaticSamplers = static_cast<UINT>(samplers.size()),
+                                                   .pStaticSamplers = samplers.data()};
+      ComPtr<ID3DBlob> serialized;
+      ComPtr<ID3DBlob> errors;
+      if (FAILED(D3D12SerializeRootSignature(&root_desc, D3D_ROOT_SIGNATURE_VERSION_1, serialized.GetAddressOf(), errors.GetAddressOf()))
+          || FAILED(device_->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(made.root.GetAddressOf())))) {
+        *why = std::format("pipeline {} ({}): root signature {}", index, compute.shaderFileName != nullptr ? compute.shaderFileName : "?",
+                           errors ? std::string(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string());
+        return false;
+      }
+      const D3D12_COMPUTE_PIPELINE_STATE_DESC state_desc = {
+          .pRootSignature = made.root.Get(), .CS = {.pShaderBytecode = compute.computeShader.data, .BytecodeLength = compute.computeShader.size}};
+      if (const HRESULT result = device_->CreateComputePipelineState(&state_desc, IID_PPV_ARGS(made.state.GetAddressOf())); FAILED(result)) {
+        *why = std::format("pipeline {} ({}): state 0x{:08X} ({} ranges, global b{} {}, local b{} {} bytes)", index,
+                           compute.shaderFileName != nullptr ? compute.shaderFileName : "?", static_cast<uint32_t>(result), ranges.size(),
+                           info->globalConstantBufferDesc.registerIndex, compute.hasConstantData ? 1 : 0,
+                           info->localConstantBufferDesc.registerIndex, info->localConstantBufferDesc.maxDataSize);
+        return false;
+      }
+    }
+    const D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, .NumDescriptors = OMM_DESCRIPTORS,
+                                                  .Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE};
+    const D3D12_INDIRECT_ARGUMENT_DESC argument = {.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH};
+    const D3D12_COMMAND_SIGNATURE_DESC signature = {.ByteStride = sizeof(D3D12_DISPATCH_ARGUMENTS), .NumArgumentDescs = 1, .pArgumentDescs = &argument};
+    gpu.indices = Buffer(uint64_t{MICROMAP_TRIANGLES} * 12, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+    uint32_t* corners = nullptr;
+    if (FAILED(device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gpu.heap.GetAddressOf())))
+        || FAILED(device_->CreateCommandSignature(&signature, nullptr, IID_PPV_ARGS(gpu.dispatch.GetAddressOf()))) || !gpu.indices
+        || FAILED(gpu.indices->Map(0, nullptr, reinterpret_cast<void**>(&corners)))) {
+      *why = "its descriptors, signature or indices";
+      return false;
+    }
+    std::iota(corners, corners + (uint64_t{MICROMAP_TRIANGLES} * 3), 0u);
+    gpu.indices->Unmap(0, nullptr);
+    for (size_t kind = 0; kind < gpu.statics.size(); ++kind) {
+      const ommGpuResourceType type = (kind == 0) ? ommGpuResourceType_STATIC_VERTEX_BUFFER : ommGpuResourceType_STATIC_INDEX_BUFFER;
+      size_t bytes = 0;
+      if (omm_.gpu_static_data(type, nullptr, &bytes) != ommResult_SUCCESS || bytes == 0) continue;
+      gpu.statics[kind] = Buffer(Align(bytes, 256), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      uint8_t* data = nullptr;
+      if (!gpu.statics[kind] || FAILED(gpu.statics[kind]->Map(0, nullptr, reinterpret_cast<void**>(&data)))) {
+        *why = "its static buffers";
+        return false;
+      }
+      omm_.gpu_static_data(type, data, &bytes);
+      gpu.statics[kind]->Unmap(0, nullptr);
+    }
+    return true;
+  }
+
+  // GPU Micromap Baking at the end of a request: `bakes` (its new leaves' and grass sets': their UVs in uvs_, their masks
+  // in the atlas) baked by the OMM SDK's GPU baker (ComputeOnly, 4-state as the ray queries test them, the CPU bakes'
+  // settings): each mask's slice copied to a texture of its own, the UVs copied with garbage coordinates zeroed
+  // (rt_omm_uvs), then each bake's dispatch chain, every resource in the state its descriptor needs and a UAV barrier
+  // after each dispatch, into outputs the request's bakes share (256-byte aligned places); the histograms copied to a
+  // read-back (AdvanceMicromaps: the bakes' builds wait for them, the rest stays on the GPU). A bake the SDK refuses keeps
+  // its leaves alpha-tested.
+  void BakeMicromapsOnGpu(ID3D12GraphicsCommandList4* list, const std::vector<MicromapBake*>& bakes) {
+    if (bakes.empty()) return;
+    auto& gpu = omm_gpu_;
+    struct Planned {
+      MicromapBake* bake = nullptr;
+      ommGpuDispatchConfigDesc config = {};
+      ommGpuPreDispatchInfo info = {};
+      // The clamped UVs', then the outputs' (array data, descs, desc histogram, indices, index histogram, post-dispatch
+      // info): places and sizes.
+      std::array<uint64_t, 7> offsets = {};
+      std::array<uint64_t, 7> sizes = {};
+    };
+    std::vector<Planned> planned;
+    std::string why;  // the last failure (logged once a request)
+    std::array<uint64_t, 7> totals = {};
+    std::array<uint64_t, OMM_MAX_TRANSIENT_POOL_BUFFERS> transient_bytes = {};
+    for (MicromapBake* bake : bakes) {
+      Planned plan = {.bake = bake, .config = ommGpuDispatchConfigDescDefault(), .info = ommGpuPreDispatchInfoDefault()};
+      ommGpuDispatchConfigDesc& config = plan.config;
+      config.bakeFlags = ommGpuBakeFlags_PerformSetupAndBake | ommGpuBakeFlags_ComputeOnly | ommGpuBakeFlags_Force32BitIndices
+                         | ommGpuBakeFlags_DisableTexCoordDeduplication;
+      config.runtimeSamplerDesc = {.addressingMode = ommTextureAddressMode_Wrap, .filter = ommTextureFilterMode_Linear, .borderAlpha = 0.f};
+      config.alphaMode = ommAlphaMode_Test;
+      config.alphaTextureWidth = dlaa_bridge::RT_ATLAS_SIZE;
+      config.alphaTextureHeight = dlaa_bridge::RT_ATLAS_SIZE;
+      config.alphaTextureChannel = 0;
+      config.texCoordFormat = ommTexCoordFormat_UV16_FLOAT;
+      config.texCoordOffsetInBytes = static_cast<uint32_t>(totals[0]);
+      config.indexFormat = ommIndexFormat_UINT_32;
+      config.indexCount = bake->triangles * 3;
+      config.alphaCutoff = LEAF_ALPHA_CUTOFF;
+      config.maxSubdivisionLevel = static_cast<uint8_t>(bake->grass ? GRASS_MICROMAP_LEVEL : 6);
+      config.maxOutOmmArraySize = MICROMAP_MESH_BYTES;
+      config.maxScratchMemorySize = ommGpuScratchMemoryBudget_MB_64;
+      if (const ommResult result = omm_.gpu_pre_dispatch(omm_.gpu_pipeline, &config, &plan.info); result != ommResult_SUCCESS) {
+        bake->gpu_failed = true;
+        why = std::format("pre-dispatch info {}", static_cast<int>(result));
+        continue;
+      }
+      plan.sizes = {uint64_t{bake->triangles} * 12,
+                    plan.info.outOmmArraySizeInBytes,
+                    plan.info.outOmmDescSizeInBytes,
+                    plan.info.outOmmArrayHistogramSizeInBytes,
+                    plan.info.outOmmIndexBufferSizeInBytes,
+                    plan.info.outOmmIndexHistogramSizeInBytes,
+                    plan.info.outOmmPostDispatchInfoSizeInBytes};
+      for (size_t kind = 0; kind < totals.size(); ++kind) {
+        plan.offsets[kind] = totals[kind];
+        totals[kind] = Align(totals[kind] + std::max<uint64_t>(plan.sizes[kind], 4), 256);
+      }
+      for (uint32_t pool = 0; pool < plan.info.numTransientPoolBuffers && pool < OMM_MAX_TRANSIENT_POOL_BUFFERS; ++pool) {
+        transient_bytes[pool] = std::max<uint64_t>(transient_bytes[pool], plan.info.transientPoolBufferSizeInBytes[pool]);
+      }
+      planned.push_back(plan);
+    }
+    const auto fail_all = [&] {
+      for (Planned& plan : planned) plan.bake->gpu_failed = true;
+    };
+    if (planned.empty()) return;
+    // The clamped UVs and the scratch (kept, grown: the old ones go once the GPU is past this request), the masks' textures
+    // (kept, one a bake), the request's outputs and the histograms' read-back.
+    const auto grow = [&](ComPtr<ID3D12Resource>* buffer, uint64_t bytes, D3D12_RESOURCE_STATES state) {
+      if (*buffer && (*buffer)->GetDesc().Width >= bytes) return true;
+      if (*buffer) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*buffer)});
+      *buffer = Buffer(Align(bytes, 1u << 16), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state);
+      return static_cast<bool>(*buffer);
+    };
+    bool made = grow(&gpu.uvs, totals[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    for (size_t pool = 0; pool < transient_bytes.size() && made; ++pool) {
+      if (transient_bytes[pool] != 0) made = grow(&gpu.transient[pool], transient_bytes[pool], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
+    while (made && gpu.masks.size() < planned.size()) {
+      const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+      const D3D12_RESOURCE_DESC texture = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = dlaa_bridge::RT_ATLAS_SIZE,
+                                           .Height = dlaa_bridge::RT_ATLAS_SIZE, .DepthOrArraySize = 1, .MipLevels = 1,
+                                           .Format = DXGI_FORMAT_R8_UNORM, .SampleDesc = {.Count = 1}};
+      ComPtr<ID3D12Resource> mask;
+      made = SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &texture, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                                        nullptr, IID_PPV_ARGS(mask.GetAddressOf())));
+      if (made) gpu.masks.push_back(std::move(mask));
+    }
+    std::array<ComPtr<ID3D12Resource>, 6> outputs;
+    for (size_t kind = 0; kind < outputs.size() && made; ++kind) {
+      outputs[kind] = Buffer(totals[kind + 1], D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                             D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      made = static_cast<bool>(outputs[kind]);
+    }
+    ComPtr<ID3D12Resource> readback;
+    const bool logged = GetEnvironmentVariableW(L"RENODX_TW_OMM_LOG", nullptr, 0) != 0;
+    const uint64_t logged_bytes = logged ? totals[6] + (planned.size() * 64) + 128 : 0;
+    if (made) readback = Buffer(totals[3] + logged_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+    if (!made || !readback || !atlas_) {
+      fail_all();
+      slow_report_ += std::format("{}[TW ray tracing] GPU micromap bakes: their buffers failed (made {}, read-back {}, sizes {} {} {} {} {} {} {}, "
+                                  "transient {} {}).",
+                                  slow_report_.empty() ? "" : "\n", made, static_cast<bool>(readback), totals[0], totals[1], totals[2], totals[3],
+                                  totals[4], totals[5], totals[6], transient_bytes[0], transient_bytes[1]);
+      return;
+    }
+    Mark(list, L"micromap bakes");
+    const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
+    // The masks' slices into their textures (the atlas rests in COMMON between requests).
+    std::vector<D3D12_RESOURCE_BARRIER> barriers = {Transition(atlas_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE)};
+    for (size_t index = 0; index < planned.size(); ++index) {
+      barriers.push_back(Transition(gpu.masks[index].Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST));
+    }
+    list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+    const UINT mips = atlas_->GetDesc().MipLevels;
+    for (size_t index = 0; index < planned.size(); ++index) {
+      const D3D12_TEXTURE_COPY_LOCATION destination = {.pResource = gpu.masks[index].Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                                                       .SubresourceIndex = 0};
+      const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = atlas_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                                                  .SubresourceIndex = planned[index].bake->slice * mips};
+      list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+    }
+    for (auto& barrier : barriers) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+    // The UVs clamped (the main root signature: rt_omm_uvs reads t0, writes u6, its count at b1).
+    barriers.push_back(Transition(gpu.uvs.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+    list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+    list->SetComputeRootSignature(root_signature_.Get());
+    list->SetPipelineState(gpu.clamp.Get());
+    for (const Planned& plan : planned) {
+      const std::array<uint32_t, 8> constants = {plan.bake->triangles * 3};
+      list->SetComputeRootShaderResourceView(ROOT_SCENE, uvs_->GetGPUVirtualAddress() + (uint64_t{plan.bake->uv_offset} * 4));
+      list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, gpu.uvs->GetGPUVirtualAddress() + plan.offsets[0]);
+      list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(constants.size()), constants.data(), 0);
+      list->Dispatch((plan.bake->triangles * 3 + 63) / 64, 1, 1);
+    }
+    const auto clamped = Transition(gpu.uvs.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    list->ResourceBarrier(1, &clamped);
+    // The SDK's chains.
+    ID3D12DescriptorHeap* heaps[] = {gpu.heap.Get()};
+    list->SetDescriptorHeaps(1, heaps);
+    std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> states;  // the tracked ones' states now (upload buffers stay readable)
+    for (const auto& output : outputs) states[output.Get()] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    for (const auto& pool : gpu.transient) {
+      if (pool) states[pool.Get()] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    }
+    for (size_t index = 0; index < planned.size(); ++index) states[gpu.masks[index].Get()] = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    states[gpu.uvs.Get()] = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    const D3D12_CPU_DESCRIPTOR_HANDLE cpu_start = gpu.heap->GetCPUDescriptorHandleForHeapStart();
+    const D3D12_GPU_DESCRIPTOR_HANDLE gpu_start = gpu.heap->GetGPUDescriptorHandleForHeapStart();
+    for (size_t index = 0; index < planned.size(); ++index) {
+      Planned& plan = planned[index];
+      const ommGpuDispatchChain* chain = nullptr;
+      if (const ommResult result = omm_.gpu_dispatch(omm_.gpu_pipeline, &plan.config, &chain); result != ommResult_SUCCESS || chain == nullptr) {
+        plan.bake->gpu_failed = true;
+        why = std::format("dispatch {}", static_cast<int>(result));
+        continue;
+      }
+      if (logged) {
+        std::string steps;
+        for (uint32_t step = 0; step < chain->numDispatches; ++step) {
+          const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
+          if (dispatch.type == ommGpuDispatchType_Compute) {
+            steps += std::format(" c{}:{}x{}/{}r/{}b", dispatch.compute.pipelineIndex, dispatch.compute.gridWidth, dispatch.compute.gridHeight,
+                                 dispatch.compute.resourceNum, dispatch.compute.localConstantBufferDataSize);
+          } else if (dispatch.type == ommGpuDispatchType_ComputeIndirect) {
+            steps += std::format(" i{}/{}r/{}b", dispatch.computeIndirect.pipelineIndex, dispatch.computeIndirect.resourceNum,
+                                 dispatch.computeIndirect.localConstantBufferDataSize);
+          } else {
+            steps += std::format(" t{}", static_cast<int>(dispatch.type));
+          }
+        }
+        std::string globals_words;
+        for (uint32_t word = 0; word < chain->globalCBufferDataSize / 4; ++word) {
+          globals_words += std::format(" {}", reinterpret_cast<const uint32_t*>(chain->globalCBufferData)[word]);
+        }
+        std::string pipelines_used;
+        for (uint32_t step = 0; step < chain->numDispatches; ++step) {
+          const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
+          if (dispatch.type != ommGpuDispatchType_Compute) continue;
+          const auto& made_pipeline = gpu.pipelines[dispatch.compute.pipelineIndex];
+          pipelines_used += std::format(" p{}:t{}g{}c{}", dispatch.compute.pipelineIndex, made_pipeline.table, made_pipeline.global, made_pipeline.constants);
+          for (uint32_t number = 0; number < dispatch.compute.resourceNum; ++number) {
+            pipelines_used += std::format(",r{}s{}i{}", static_cast<int>(dispatch.compute.resources[number].type),
+                                          static_cast<int>(dispatch.compute.resources[number].stateNeeded), dispatch.compute.resources[number].indexInPool);
+          }
+        }
+        slow_report_ += std::format("{}[TW ray tracing] GPU bake globals:{} | dispatches:{}", slow_report_.empty() ? "" : "\n", globals_words, pipelines_used);
+        slow_report_ += std::format("{}[TW ray tracing] GPU bake chain: {} dispatches, globals {} bytes, pre-dispatch index count {}, sizes {} {} {} {}, "
+                                    "transient {} ({} {}):{}",
+                                    slow_report_.empty() ? "" : "\n", chain->numDispatches, chain->globalCBufferDataSize, plan.info.outOmmIndexCount,
+                                    plan.info.outOmmArraySizeInBytes, plan.info.outOmmDescSizeInBytes, plan.info.outOmmIndexBufferSizeInBytes,
+                                    plan.info.outOmmArrayHistogramSizeInBytes, plan.info.numTransientPoolBuffers, plan.info.transientPoolBufferSizeInBytes[0],
+                                    plan.info.transientPoolBufferSizeInBytes[1], steps);
+      }
+      ComPtr<ID3D12Resource> globals;
+      if (chain->globalCBufferDataSize != 0) {
+        globals = Buffer(Align(chain->globalCBufferDataSize, 256), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+        uint8_t* data = nullptr;
+        if (!globals || FAILED(globals->Map(0, nullptr, reinterpret_cast<void**>(&data)))) {
+          plan.bake->gpu_failed = true;
+          why = "its constants";
+          continue;
+        }
+        std::memcpy(data, chain->globalCBufferData, chain->globalCBufferDataSize);
+        globals->Unmap(0, nullptr);
+        releases_.push_back({.value = own_value_ + 1, .resource = globals});
+      }
+      // A resource the chain names: its buffer (or the mask's texture), its place and size there.
+      const auto locate = [&](const ommGpuResource& resource, uint64_t* offset, uint64_t* bytes) -> ID3D12Resource* {
+        const auto output = [&](size_t kind) {
+          *offset = plan.offsets[kind + 1];
+          *bytes = std::max<uint64_t>(plan.sizes[kind + 1], 4);
+          return outputs[kind].Get();
+        };
+        const auto whole = [&](const ComPtr<ID3D12Resource>& buffer) -> ID3D12Resource* {
+          *offset = 0;
+          *bytes = buffer ? buffer->GetDesc().Width : 0;
+          return buffer.Get();
+        };
+        switch (resource.type) {
+          case ommGpuResourceType_IN_ALPHA_TEXTURE:             return gpu.masks[index].Get();
+          case ommGpuResourceType_IN_TEXCOORD_BUFFER:           return whole(gpu.uvs);
+          case ommGpuResourceType_IN_INDEX_BUFFER:              return whole(gpu.indices);
+          case ommGpuResourceType_OUT_OMM_ARRAY_DATA:           return output(0);
+          case ommGpuResourceType_OUT_OMM_DESC_ARRAY:           return output(1);
+          case ommGpuResourceType_OUT_OMM_DESC_ARRAY_HISTOGRAM: return output(2);
+          case ommGpuResourceType_OUT_OMM_INDEX_BUFFER:         return output(3);
+          case ommGpuResourceType_OUT_OMM_INDEX_HISTOGRAM:      return output(4);
+          case ommGpuResourceType_OUT_POST_DISPATCH_INFO:       return output(5);
+          case ommGpuResourceType_TRANSIENT_POOL_BUFFER:
+            return (resource.indexInPool < gpu.transient.size()) ? whole(gpu.transient[resource.indexInPool]) : nullptr;
+          case ommGpuResourceType_STATIC_VERTEX_BUFFER: return whole(gpu.statics[0]);
+          case ommGpuResourceType_STATIC_INDEX_BUFFER:  return whole(gpu.statics[1]);
+          default:                                      return nullptr;
+        }
+      };
+      const auto state_for = [&](ID3D12Resource* resource, D3D12_RESOURCE_STATES needed) {
+        const auto tracked = states.find(resource);
+        if (tracked == states.end() || tracked->second == needed) return;
+        barriers.push_back(Transition(resource, tracked->second, needed));
+        tracked->second = needed;
+      };
+      for (uint32_t step = 0; step < chain->numDispatches && !plan.bake->gpu_failed; ++step) {
+        const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
+        if (dispatch.type == ommGpuDispatchType_BeginLabel || dispatch.type == ommGpuDispatchType_EndLabel) continue;
+        const bool indirect = dispatch.type == ommGpuDispatchType_ComputeIndirect;
+        if (!indirect && dispatch.type != ommGpuDispatchType_Compute) {
+          plan.bake->gpu_failed = true;
+          why = std::format("dispatch type {}", static_cast<int>(dispatch.type));
+          break;
+        }
+        const ommGpuResource* resources = indirect ? dispatch.computeIndirect.resources : dispatch.compute.resources;
+        const uint32_t resource_count = indirect ? dispatch.computeIndirect.resourceNum : dispatch.compute.resourceNum;
+        const uint8_t* constants = indirect ? dispatch.computeIndirect.localConstantBufferData : dispatch.compute.localConstantBufferData;
+        const uint32_t constant_bytes = indirect ? dispatch.computeIndirect.localConstantBufferDataSize : dispatch.compute.localConstantBufferDataSize;
+        const uint16_t pipeline_index = indirect ? dispatch.computeIndirect.pipelineIndex : dispatch.compute.pipelineIndex;
+        if (pipeline_index >= gpu.pipelines.size() || !gpu.pipelines[pipeline_index].state) {
+          plan.bake->gpu_failed = true;
+          why = std::format("pipeline {}", pipeline_index);
+          break;
+        }
+        const OmmGpu::Pipeline& pipeline = gpu.pipelines[pipeline_index];
+        if (gpu.next + resource_count > OMM_DESCRIPTORS) gpu.next = 0;
+        barriers.clear();
+        for (uint32_t number = 0; number < resource_count; ++number) {
+          const ommGpuResource& resource = resources[number];
+          uint64_t offset = 0;
+          uint64_t bytes = 0;
+          ID3D12Resource* target = locate(resource, &offset, &bytes);
+          if (target == nullptr) {
+            plan.bake->gpu_failed = true;
+            why = std::format("resource type {} ({})", static_cast<int>(resource.type), resource.indexInPool);
+            break;
+          }
+          const D3D12_CPU_DESCRIPTOR_HANDLE handle = {.ptr = cpu_start.ptr + (uint64_t{gpu.next + number} * descriptor_size_)};
+          if (resource.stateNeeded == ommGpuDescriptorType_TextureRead) {
+            D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = DXGI_FORMAT_R8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                                    .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING};
+            view.Texture2D = {.MostDetailedMip = resource.mipOffset, .MipLevels = std::max<UINT>(resource.mipNum, 1u)};
+            device_->CreateShaderResourceView(target, &view, handle);
+            state_for(target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+          } else if (resource.stateNeeded == ommGpuDescriptorType_RawBufferWrite) {
+            D3D12_UNORDERED_ACCESS_VIEW_DESC view = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER};
+            view.Buffer = {.FirstElement = offset / 4, .NumElements = static_cast<UINT>(bytes / 4), .Flags = D3D12_BUFFER_UAV_FLAG_RAW};
+            device_->CreateUnorderedAccessView(target, nullptr, &view, handle);
+            state_for(target, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          } else {
+            const bool raw = resource.stateNeeded == ommGpuDescriptorType_RawBufferRead;
+            D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = raw ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_R32_UINT,
+                                                    .ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+                                                    .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING};
+            view.Buffer = {.FirstElement = offset / 4, .NumElements = static_cast<UINT>(bytes / 4),
+                           .Flags = raw ? D3D12_BUFFER_SRV_FLAG_RAW : D3D12_BUFFER_SRV_FLAG_NONE};
+            device_->CreateShaderResourceView(target, &view, handle);
+            state_for(target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+          }
+        }
+        if (plan.bake->gpu_failed) break;
+        ID3D12Resource* arguments = nullptr;
+        uint64_t arguments_offset = 0;
+        if (indirect) {
+          uint64_t bytes = 0;
+          arguments = locate(dispatch.computeIndirect.indirectArg, &arguments_offset, &bytes);
+          if (arguments == nullptr) {
+            plan.bake->gpu_failed = true;
+            why = std::format("indirect arguments' type {}", static_cast<int>(dispatch.computeIndirect.indirectArg.type));
+            break;
+          }
+          arguments_offset += dispatch.computeIndirect.indirectArgByteOffset;
+          state_for(arguments, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+        }
+        if (!barriers.empty()) list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+        list->SetComputeRootSignature(pipeline.root.Get());
+        list->SetPipelineState(pipeline.state.Get());
+        if (pipeline.table >= 0) {
+          list->SetComputeRootDescriptorTable(pipeline.table, {.ptr = gpu_start.ptr + (uint64_t{gpu.next} * descriptor_size_)});
+        }
+        if (pipeline.global >= 0 && globals) list->SetComputeRootConstantBufferView(pipeline.global, globals->GetGPUVirtualAddress());
+        if (pipeline.constants >= 0 && constant_bytes >= 4) {
+          list->SetComputeRoot32BitConstants(pipeline.constants, std::min(constant_bytes / 4, pipeline.constant_count), constants, 0);
+        }
+        gpu.next += resource_count;
+        if (indirect) {
+          list->ExecuteIndirect(gpu.dispatch.Get(), 1, arguments, arguments_offset, nullptr, 0);
+        } else {
+          list->Dispatch(dispatch.compute.gridWidth, dispatch.compute.gridHeight, 1);
+        }
+        list->ResourceBarrier(1, &uav_barrier);
+      }
+    }
+    // What the builds read (array data, descs, indices) readable from now on, the histograms copied to the read-back, the
+    // kept ones back to their resting states.
+    barriers.clear();
+    for (const size_t kind : {0u, 1u, 3u}) {
+      if (states[outputs[kind].Get()] != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+        barriers.push_back(Transition(outputs[kind].Get(), states[outputs[kind].Get()], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+      }
+    }
+    if (states[outputs[2].Get()] != D3D12_RESOURCE_STATE_COPY_SOURCE) {
+      barriers.push_back(Transition(outputs[2].Get(), states[outputs[2].Get()], D3D12_RESOURCE_STATE_COPY_SOURCE));
+    }
+    for (const auto& pool : gpu.transient) {
+      if (pool && states[pool.Get()] != D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+        barriers.push_back(Transition(pool.Get(), states[pool.Get()], D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+      }
+    }
+    for (size_t index = 0; index < planned.size(); ++index) {
+      ID3D12Resource* mask = gpu.masks[index].Get();
+      if (states[mask] != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+        barriers.push_back(Transition(mask, states[mask], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+      }
+    }
+    if (states[gpu.uvs.Get()] != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+      barriers.push_back(Transition(gpu.uvs.Get(), states[gpu.uvs.Get()], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+    }
+    if (logged) {
+      for (const size_t kind : {3u, 5u}) {
+        const D3D12_RESOURCE_STATES now = (kind == 3u) ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE : states[outputs[kind].Get()];
+        if (kind == 5u && now != D3D12_RESOURCE_STATE_COPY_SOURCE) {
+          barriers.push_back(Transition(outputs[kind].Get(), now, D3D12_RESOURCE_STATE_COPY_SOURCE));
+          states[outputs[kind].Get()] = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        }
+      }
+    }
+    if (!barriers.empty()) list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+    list->CopyBufferRegion(readback.Get(), 0, outputs[2].Get(), 0, totals[3]);
+    if (logged) {
+      list->CopyBufferRegion(readback.Get(), totals[3], outputs[5].Get(), 0, totals[6]);
+      const auto to_copy = Transition(outputs[3].Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
+      list->ResourceBarrier(1, &to_copy);
+      for (size_t index = 0; index < planned.size(); ++index) {
+        list->CopyBufferRegion(readback.Get(), totals[3] + totals[6] + (index * 64), outputs[3].Get(), planned[index].offsets[4],
+                               std::min<uint64_t>(64, planned[index].sizes[4]));
+      }
+      const auto from_copy = Transition(outputs[3].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+      list->ResourceBarrier(1, &from_copy);
+      // The first bake's clamped UVs and the scratch's first bytes.
+      const uint64_t extra = totals[3] + totals[6] + (planned.size() * 64);
+      std::array<D3D12_RESOURCE_BARRIER, 2> to_read = {
+          Transition(gpu.uvs.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+          Transition(gpu.transient[0].Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)};
+      list->ResourceBarrier(gpu.transient[0] ? 2 : 1, to_read.data());
+      list->CopyBufferRegion(readback.Get(), extra, gpu.uvs.Get(), planned[0].offsets[0], 64);
+      if (gpu.transient[0]) list->CopyBufferRegion(readback.Get(), extra + 64, gpu.transient[0].Get(), 0, 32);
+      list->CopyBufferRegion(readback.Get(), extra + 96, gpu.indices.Get(), 4, 32);  // 1, 2, 3...: the section ran
+      for (auto& barrier : to_read) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+      list->ResourceBarrier(gpu.transient[0] ? 2 : 1, to_read.data());
+      slow_report_ += std::format("{}[TW ray tracing] GPU bake debug at {}", slow_report_.empty() ? "" : "\n", extra);
+      planned[0].bake->log_extra = extra;
+      for (size_t index = 0; index < planned.size(); ++index) {
+        planned[index].bake->log_offsets = {totals[3] + planned[index].offsets[6], totals[3] + totals[6] + (index * 64)};
+      }
+    }
+    if (!why.empty()) {
+      slow_report_ += std::format("{}[TW ray tracing] GPU micromap bake failed: {}.", slow_report_.empty() ? "" : "\n", why);
+    }
+    for (Planned& plan : planned) {
+      if (plan.bake->gpu_failed) continue;
+      MicromapBake& bake = *plan.bake;
+      bake.gpu_arrays = outputs[0];
+      bake.arrays_offset = plan.offsets[1];
+      bake.gpu_descs = outputs[1];
+      bake.descs_offset = plan.offsets[2];
+      bake.gpu_indices = outputs[3];
+      bake.indices_offset = plan.offsets[4];
+      bake.gpu_readback = readback;
+      bake.histogram_offset = plan.offsets[3];
+      bake.histogram_bytes = static_cast<uint32_t>(plan.sizes[3]);
+    }
+  }
+
   // A leaf mesh's micromaps from its UVs and mask (the bake thread): 4-state as the ray queries test them (bilinear,
   // wrapping, LEAF_ALPHA_CUTOFF), a micro-triangle about two texels across (at most level 6, grass's
   // GRASS_MICROMAP_LEVEL), the same ones shared, wholly opaque or clear triangles the special indices (all of them so: no
@@ -3848,7 +4572,12 @@ class RtScene12 {
   uint64_t micromap_logged_ = 0;                 // that line's time (GetTickCount64)
 #if defined(RENODX_OMM_SDK)
   OmmSdk omm_;
+  OmmGpu omm_gpu_;
 #endif
+  bool gpu_micromaps_ = false;  // GPU Micromap Baking ready (MakeGpuBaker)
+  ComPtr<ID3D12InfoQueue> info_queue_;  // RENODX_TW_D3D12_DEBUG
+  HRESULT debug_result_ = S_FALSE;
+  bool lost_logged_ = false;
   // For the log: the device's start, a slow request's report (GPU over SLOW_MS; at most SLOW_REPORTS), a garbage
   // triangle's (one in 10 s).
   std::string slow_report_;

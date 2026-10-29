@@ -72,6 +72,7 @@ struct Sliders {
   float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
   float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
   float micromaps = 1.f;
+  float gpu_micromaps = 0.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
   float light_bounce = 0.f;  // the Light Bounce's tracer: 0 its own (screen space), 1 rays, 2 paths
   float light_bounce_rays = 4.f;
@@ -131,6 +132,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .grass_sway = sliders.grass_sway != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .micromaps = sliders.micromaps != 0.f,
+      .gpu_micromaps = sliders.gpu_micromaps != 0.f,
       .smoke_shadows = sliders.smoke_shadows != 0.f && sliders.sun_shadows != 0.f && dlaa,
       .shadows_only = sliders.sun_shadows != 0.f && dlaa,
       .debug_view = static_cast<uint32_t>(sliders.debug_view),
@@ -1071,6 +1073,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_enabled = [sliders, aa] {
             return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
           },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedGpuMicromaps",
+          .binding = &sliders->gpu_micromaps,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "GPU Micromap Baking (Experimental)",
+          .section = section,
+          .tooltip = "Leaf Micromaps baked on the GPU instead of CPU threads: new grass's and leaves' shadows\n"
+                     "settle almost at once, and the CPU stays free. If the game freezes, turn it off.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->micromaps != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedFogShadows",

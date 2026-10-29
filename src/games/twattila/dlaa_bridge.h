@@ -140,6 +140,9 @@ constexpr uint32_t RT_FOG_LIGHTS = 512;
 // The addon's ray tracing profile (Record Ray Tracing Profile): the helper writes each request's costs into
 // tw_rt_profile_helper.csv next to it (older helpers ignore it).
 constexpr uint32_t RT_PROFILE = 1024;
+// GPU Micromap Baking (Experimental): new leaves' and grass sets' micromaps baked on the GPU by NVIDIA's OMM SDK in the
+// trace's own commands (no read-back of their UVs and masks, no CPU bakes; helpers before 38 ignore it).
+constexpr uint32_t RT_GPU_MICROMAPS = 2048;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
