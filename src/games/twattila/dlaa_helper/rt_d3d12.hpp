@@ -844,7 +844,16 @@ class RtScene12 {
     slot_clustered_[slot_index] = false;
     ExpireHistory(shared.rt_frame);
     const uint64_t completed = own_fence_->GetCompletedValue();
-    std::erase_if(releases_, [completed](const Release& release) { return release.value <= completed; });
+    std::erase_if(releases_, [&](const Release& release) {
+      if (release.value > completed) return false;
+      if (release.units != 0) {
+        // A chunk left empty (but a pool's first) lets its buffer go: a burst of builds keeps no memory.
+        BlasChunk& chunk = blas_pools_[release.pool][release.chunk];
+        chunk.free.Give(release.offset, release.units);
+        if (release.chunk != 0 && chunk.free.free.size() == 1 && chunk.free.free.begin()->second == BLAS_CHUNK_UNITS) chunk.buffer.Reset();
+      }
+      return true;
+    });
     std::erase_if(pending_frees_, [&](const PendingFree& pending) {
       if (pending.value > completed) return false;
       free_records_.push_back(pending.record);
@@ -1185,6 +1194,12 @@ class RtScene12 {
   // destinations after the new sets' data), the templates' pool.
   static constexpr uint32_t TEMPLATE_BUILDS = 16384;
   static constexpr uint64_t TEMPLATE_POOL_BYTES = 128ull << 20;  // ~43,000 templates of 3 KB (a battle: ~700 sets)
+  // The static BLASes' pools (BlasPlace): chunks of 32 MB in 256-byte units; a BLAS past 8 MB takes a buffer of its own.
+  static constexpr uint64_t BLAS_CHUNK_BYTES = 32ull << 20;
+  static constexpr uint32_t BLAS_CHUNK_UNITS = static_cast<uint32_t>(BLAS_CHUNK_BYTES / D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
+  static constexpr uint64_t BLAS_OWN_BYTES = BLAS_CHUNK_BYTES / 4;
+  static constexpr uint32_t BUILD_POOL = 0;
+  static constexpr uint32_t KEPT_POOL = 1;
   static constexpr uint64_t COMPACT_SETS_OFFSET = uint64_t{dlaa_bridge::RT_COMPACT_DRAWS} * 48;
   static constexpr uint64_t COMPACT_TEMPLATE_ARGS_OFFSET = COMPACT_SETS_OFFSET + dlaa_bridge::RT_CLUSTER_DATA_BYTES;
   static constexpr uint64_t COMPACT_TEMPLATE_DESTINATIONS_OFFSET = COMPACT_TEMPLATE_ARGS_OFFSET + uint64_t{TEMPLATE_BUILDS} * 72;
@@ -1381,8 +1396,20 @@ class RtScene12 {
     uint8_t* ptlas_data = nullptr;
     uint64_t value = 0;  // own_fence_'s value after its last use
   };
+  // A static BLAS's memory (suballocated as NVIDIA's RTXMU does: a committed buffer each cost 64 KB at least and a driver
+  // allocation, hundreds of new meshes at once a hitch): a place in one of the pools' chunks (BLAS_CHUNK_BYTES buffers,
+  // 256-byte units: the builds' and the compacted BLASes' pools, so short-lived builds leave no holes among the kept), or
+  // a buffer of its own past BLAS_OWN_BYTES.
+  struct BlasPlace {
+    ComPtr<ID3D12Resource> own;
+    uint32_t pool = 0;
+    uint32_t chunk = 0;
+    uint32_t offset = 0;  // units
+    uint32_t units = 0;   // 0: none (or its own)
+    uint64_t address = 0;  // GPU (0: none)
+  };
   struct Mesh {
-    ComPtr<ID3D12Resource> blas;
+    BlasPlace blas;
     ComPtr<ID3D12Resource> micromaps;  // its opacity micromap array (DXR 1.2), kept while the BLAS lives
     uint64_t build = 0;
     uint64_t bytes = 0;
@@ -1401,9 +1428,14 @@ class RtScene12 {
     // record.
     bool placed = false;
   };
+  // A buffer, or a BLAS's place in a pool (`units` past 0), let go once the GPU is past request `value`.
   struct Release {
     uint64_t value = 0;
     ComPtr<ID3D12Resource> resource;
+    uint32_t pool = 0;
+    uint32_t chunk = 0;
+    uint32_t offset = 0;
+    uint32_t units = 0;
   };
   // A new leaf mesh's micromaps on their way: its UVs and opacity mask (its atlas slice) read back from the request that
   // built its BLAS, its positions kept; baked on a thread (NVIDIA's OMM SDK), then built into a micromap array with its
@@ -1783,7 +1815,8 @@ class RtScene12 {
       }
       slot->row_reads.clear();
     }
-    // Compactions: the BLASes this slot built SLOTS requests back (done) copied into buffers their compacted size.
+    // Compactions: the BLASes this slot built SLOTS requests back (done) copied into places their compacted size (the
+    // kept pool).
     if (!slot->compactions.empty()) {
       const D3D12_RANGE read = {.Begin = 0, .End = slot->compactions.size() * sizeof(uint64_t)};
       void* mapped = nullptr;
@@ -1795,12 +1828,10 @@ class RtScene12 {
               || sizes[index] >= mesh->second.bytes) {
             continue;
           }
-          auto compacted = Buffer(sizes[index], D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                                  D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-          if (!compacted) break;
-          list->CopyRaytracingAccelerationStructure(compacted->GetGPUVirtualAddress(), mesh->second.blas->GetGPUVirtualAddress(),
-                                                    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_COMPACT);
-          releases_.push_back({.value = own_value_ + 1, .resource = std::move(mesh->second.blas)});
+          BlasPlace compacted = PlaceBlas(sizes[index], KEPT_POOL);
+          if (compacted.address == 0) break;
+          list->CopyRaytracingAccelerationStructure(compacted.address, mesh->second.blas.address, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_COMPACT);
+          ReleaseBlas(&mesh->second.blas);
           mesh->second.blas = std::move(compacted);
           mesh->second.bytes = sizes[index];
         }
@@ -2296,10 +2327,9 @@ class RtScene12 {
         };
         D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
         device_->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
-        auto blas = Buffer(info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                           D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-        if (blas) {
-          builds.push_back({.desc = {.DestAccelerationStructureData = blas->GetGPUVirtualAddress(), .Inputs = inputs,
+        BlasPlace blas = PlaceBlas(info.ResultDataMaxSizeInBytes, BUILD_POOL);
+        if (blas.address != 0) {
+          builds.push_back({.desc = {.DestAccelerationStructureData = blas.address, .Inputs = inputs,
                                      .ScratchAccelerationStructureData = scratch_needed},
                             .compact = true});
           scratch_needed = align(scratch_needed + info.ScratchDataSizeInBytes, 256);
@@ -2354,8 +2384,8 @@ class RtScene12 {
           continue;
         }
         uint64_t bytes = 0;
-        auto blas = build_static(&geometries[index], &bytes);
-        if (!blas) {
+        BlasPlace blas = build_static(&geometries[index], &bytes);
+        if (blas.address == 0) {
           // No room: its place goes back now (nothing references it).
           free_records_.push_back(placement.record);
           free_triangles_.Give(placement.normal_offset, capture.vertex_count / 3);
@@ -2363,7 +2393,7 @@ class RtScene12 {
           continue;
         }
         Mesh& mesh = meshes_[capture.key];
-        if (mesh.blas) ReleaseMesh(&mesh);
+        if (mesh.blas.address != 0) ReleaseMesh(&mesh);
         mesh = {.blas = std::move(blas), .build = ++builds_, .bytes = bytes, .drawn_frame = frame,
                 .triangles = capture.vertex_count / 3, .record = placement.record, .normal_offset = placement.normal_offset,
                 .uv_offset = placement.uv_offset, .terrain = (capture.flags & dlaa_bridge::RT_TERRAIN) != 0, .foliage = placement.masked};
@@ -2412,9 +2442,9 @@ class RtScene12 {
             .OmmTriangles = {.pTriangles = &micromap_triangles[index], .pOmmLinkage = &micromap_linkages[index]},
         };
         uint64_t bytes = 0;
-        auto blas = build_static(&micromap_geometries[index], &bytes);
-        if (!blas) continue;
-        releases_.push_back({.value = own_value_ + 1, .resource = std::move(mesh.blas)});
+        BlasPlace blas = build_static(&micromap_geometries[index], &bytes);
+        if (blas.address == 0) continue;
+        ReleaseBlas(&mesh.blas);
         mesh.blas = std::move(blas);
         mesh.bytes = bytes;
         mesh.build = ++builds_;
@@ -2677,23 +2707,33 @@ class RtScene12 {
     UINT instance_count = 0;
     uint64_t triangles = 0;
     uint64_t bytes = 0;
+    uint64_t separate_bytes = 0;  // what the static BLASes took as buffers of their own (64 KB at least each)
     for (const auto& [key, mesh] : meshes_) {
       bytes += mesh.bytes;
+      separate_bytes += (mesh.bytes + 0xFFFFu) & ~uint64_t{0xFFFFu};
       if (mesh.placed || instance_count == MAX_INSTANCES) continue;
       const bool current = mesh.drawn_frame == frame;
       const bool recent = !mesh.terrain && mesh.drawn_frame + RECENT_FRAMES >= frame;
       if (!current && !recent) continue;
       if (mesh.transforms.empty()) {
-        AddInstance(slot, &instance_count, mesh.blas.Get(), mesh.record, mesh.foliage, nullptr, mesh.record);
+        AddInstance(slot, &instance_count, mesh.blas.address, mesh.record, mesh.foliage, nullptr, mesh.record);
       } else {
         for (uint32_t instance = 0; instance < mesh.transforms.size() && instance_count < MAX_INSTANCES; ++instance) {
-          AddInstance(slot, &instance_count, mesh.blas.Get(), mesh.record, mesh.foliage, &mesh.transforms[instance], mesh.first_instance + instance);
+          AddInstance(slot, &instance_count, mesh.blas.address, mesh.record, mesh.foliage, &mesh.transforms[instance], mesh.first_instance + instance);
         }
       }
       triangles += mesh.triangles;
     }
+    // The pools' chunks logged when they change, against what separate buffers took.
+    const auto held = [](const std::vector<BlasChunk>& chunks) { return std::ranges::count_if(chunks, [](const BlasChunk& chunk) { return chunk.buffer != nullptr; }); };
+    if (const auto chunks = static_cast<size_t>(held(blas_pools_[BUILD_POOL]) + held(blas_pools_[KEPT_POOL])); chunks != blas_chunks_logged_) {
+      blas_chunks_logged_ = chunks;
+      slow_report_ += std::format("{}[TW ray tracing] Static BLASes: {} meshes, {} MB in {} pool chunks of {} MB (as buffers of their own {} MB).",
+                                  (slow_report_.empty() ? "" : "\n"), meshes_.size(), bytes >> 20, chunks, BLAS_CHUNK_BYTES >> 20,
+                                  separate_bytes >> 20);
+    }
     if ((units_built || units_clustered) && instance_count < MAX_INSTANCES) {
-      AddInstance(slot, &instance_count, units_clustered ? cluster_blas_.Get() : units_blas_.Get(), units_record_, units_masked_, nullptr,
+      AddInstance(slot, &instance_count, (units_clustered ? cluster_blas_ : units_blas_)->GetGPUVirtualAddress(), units_record_, units_masked_, nullptr,
                   MAX_INSTANCES);
       triangles += dynamic_triangles;
     }
@@ -2708,7 +2748,7 @@ class RtScene12 {
       auto* record_blas = reinterpret_cast<uint64_t*>(slot->jobs_data);
       std::fill_n(record_blas, STATIC_RECORDS, uint64_t{0});
       for (const auto& [key, mesh] : meshes_) {
-        if (mesh.placed) record_blas[mesh.record] = mesh.blas->GetGPUVirtualAddress();
+        if (mesh.placed) record_blas[mesh.record] = mesh.blas.address;
       }
       uint32_t job_count = 0;
       const auto place = [&](const dlaa_bridge::RtPlacement& draw) {
@@ -3048,12 +3088,52 @@ class RtScene12 {
 
   // A mesh's BLAS and micromaps released, its record and pool ranges given back, once the GPU is past this request.
   void ReleaseMesh(Mesh* mesh) {
-    for (ComPtr<ID3D12Resource>* resource : {std::addressof(mesh->blas), std::addressof(mesh->micromaps)}) {
-      if (*resource) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*resource)});
-    }
+    ReleaseBlas(&mesh->blas);
+    if (mesh->micromaps) releases_.push_back({.value = own_value_ + 1, .resource = std::move(mesh->micromaps)});
     pending_frees_.push_back({.value = own_value_ + 1, .record = mesh->record, .normal_offset = mesh->normal_offset,
                               .triangles = mesh->triangles, .uv_offset = mesh->uv_offset, .first_instance = mesh->first_instance,
                               .instances = static_cast<uint32_t>(mesh->transforms.size())});
+  }
+
+  // A place of `bytes` for a static BLAS in `pool` (BUILD_POOL, KEPT_POOL): the first chunk with room, else a new chunk;
+  // past BLAS_OWN_BYTES a buffer of its own. Its address is 0 when there is no memory.
+  BlasPlace PlaceBlas(uint64_t bytes, uint32_t pool) {
+    BlasPlace place;
+    if (bytes > BLAS_OWN_BYTES) {
+      place.own = Buffer(bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+      if (place.own) place.address = place.own->GetGPUVirtualAddress();
+      return place;
+    }
+    const auto units = static_cast<uint32_t>((bytes + D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT - 1)
+                                             / D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
+    std::vector<BlasChunk>& chunks = blas_pools_[pool];
+    uint32_t chunk = 0;
+    while (chunk < chunks.size() && !(chunks[chunk].buffer && chunks[chunk].free.Take(units, &place.offset))) ++chunk;
+    if (chunk == chunks.size()) {
+      // A new chunk, in the place of one let go if there is one.
+      chunk = static_cast<uint32_t>(std::ranges::find_if(chunks, [](const BlasChunk& other) { return !other.buffer; }) - chunks.begin());
+      if (chunk == chunks.size()) chunks.emplace_back();
+      chunks[chunk].buffer = Buffer(BLAS_CHUNK_BYTES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                    D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+      if (!chunks[chunk].buffer) return place;
+      chunks[chunk].free.free = {{units, BLAS_CHUNK_UNITS - units}};
+      place.offset = 0;
+    }
+    place.pool = pool;
+    place.chunk = chunk;
+    place.units = units;
+    place.address = chunks[chunk].buffer->GetGPUVirtualAddress() + (uint64_t{place.offset} * D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
+    return place;
+  }
+
+  // A static BLAS's place given back once the GPU is past this request.
+  void ReleaseBlas(BlasPlace* place) {
+    if (place->own) {
+      releases_.push_back({.value = own_value_ + 1, .resource = std::move(place->own)});
+    } else if (place->units != 0) {
+      releases_.push_back({.value = own_value_ + 1, .pool = place->pool, .chunk = place->chunk, .offset = place->offset, .units = place->units});
+    }
+    *place = {};
   }
 
   // The leaves' micromaps on their way: read once the GPU is past their request (their readbacks released), baked one at
@@ -3169,7 +3249,7 @@ class RtScene12 {
   // A world-space BLAS into the slot's TLAS instances (leaves not opaque: their alpha is tested), its InstanceID its
   // first geometry's record; placed by `transform` (null: where it was captured); `place` its partitioned TLAS index
   // (kept in InstanceContributionToHitGroupIndex: no hit groups here).
-  static void AddInstance(Slot* slot, UINT* instance_count, ID3D12Resource* blas, uint32_t record, bool foliage,
+  static void AddInstance(Slot* slot, UINT* instance_count, D3D12_GPU_VIRTUAL_ADDRESS blas, uint32_t record, bool foliage,
                           const std::array<float, 12>* transform, uint32_t place) {
     D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[(*instance_count)++];
     instance = {
@@ -3178,7 +3258,7 @@ class RtScene12 {
         .InstanceContributionToHitGroupIndex = place,
         .Flags = static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
                                    | (foliage ? 0u : static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE))),
-        .AccelerationStructure = blas->GetGPUVirtualAddress(),
+        .AccelerationStructure = blas,
     };
     if (transform != nullptr) {
       std::memcpy(instance.Transform, transform->data(), sizeof(instance.Transform));
@@ -3388,6 +3468,13 @@ class RtScene12 {
   std::unordered_map<uint64_t, Mesh> meshes_;
   uint64_t builds_ = 0;
   std::vector<Release> releases_;
+  // The static BLASes' pools (BlasPlace): the builds' and the compacted ones', each its chunks.
+  struct BlasChunk {
+    ComPtr<ID3D12Resource> buffer;
+    Ranges free;
+  };
+  std::array<std::vector<BlasChunk>, 2> blas_pools_;
+  size_t blas_chunks_logged_ = 0;  // their chunks at the last log line
   bool failed_ = false;
   std::string status_ = "Ray tracing off";
   // The last trace's times: the GPU's (after the status's label), the CPU's and the submit's (at its end).

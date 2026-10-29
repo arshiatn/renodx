@@ -1097,7 +1097,11 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           1.182 vs 0.836 ms without, reflections 2.818 vs 2.106; 1080p in view (steady, frames 200+) bounce 1.714 vs
           1.673, reflections 3.221 vs 2.769; 4K in view 12.7 / 25.5 vs 4.6 / 10.0. Our hits need lookups, not divergent
           shading: all passes are compute again (rt_path_lib removed; DXR 1.2 keeps opacity micromaps).
-      [ ] 7 RTXMU: BLAS suballocation and compaction (fewer allocations, less memory).
+      [x] 7 (step 8) RTXMU: BLAS suballocation and compaction (fewer allocations, less memory). Static BLASes now live
+          in two pools (builds, compacted; 32 MB chunks in 256-byte units, first fit; past 8 MB a buffer of their own),
+          frees through releases_ once the GPU is past them, an empty chunk (but a pool's first) let go. Harness: 250
+          leaf meshes of 40 triangles: under 1 MB of BLAS in 2 chunks where separate buffers took 15 MB (64 KB each at
+          least); of 4000: 32 MB in 3-4 chunks vs 46 MB. The helper logs "Static BLASes: ..." when its chunks change.
       [ ] 8 Partitioned TLAS again (find the siege stall); Mega Geometry for the captures still on the CPU path
           (non-indexed or not yet compact dynamic draws: make them compact too). Step 4: the second half has no gain:
           ATN's 03:11 log (2026-10-29) has every cluster instantiated from templates after a battle's first frames
