@@ -1111,7 +1111,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the main view's terrain (rigidterrain geom / custom geom, shader models 3 and
 // 4.1, old and new), rigid objects and tree branches, and their capture versions (world positions).
-constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 33> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x2FF76986, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0x6ECB6C09, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1124,6 +1124,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41},
     {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3},
     {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3},
+    // Rocks and cliffs blended into the terrain (rigidterrainblend): its depth pass (its material pass has no camera).
+    {.hash = 0xE03E161C, .capture_shader = __rt_capture_rigid_terrain_blend_sm3, .rows_shader = __motion_record_rigid_terrain_blend_sm3},
     {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3, .rows_shader = __motion_record_tree},
     {.hash = 0xB8C3E83D, .capture_shader = __rt_capture_branch_sm41, .rows_shader = __motion_record_tree},
     {.hash = 0x6EEF4062, .capture_shader = __rt_capture_branch_sm5, .rows_shader = __motion_record_tree},

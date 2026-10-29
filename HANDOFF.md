@@ -1090,7 +1090,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 11 (step 3: transfer 8192 rows, 32M triangles, 524288 clusters (>20 GB; half >12 GB, else a quarter), units at
           most 3/4 of each share; Mega Geometry 3.3 GB, stress 1.31 ms; ATN's next log confirms) Walls without RT shadows (ATN debug24: grass before a city wall sunlit, the Debug View shows only a strip
           at its base): v94's log left ~37 M texels a frame out (a share full). 597b8473 logs which vertex shaders and
-          which share; fix from that log (rebalance / raise the shares, walls must never be left out).
+          which share; fix from that log (rebalance / raise the shares, walls must never be left out). Also captured
+          now: rocks and cliffs blended into the terrain (rigidterrainblend, its depth pass vs E03E161C; never in the
+          scene before).
       [x] 12 (step 1) Log polish: "Leaf micromaps" tally at most every 10 s (120 lines in one session), the status's stale
           "bounce" GPU ms while the Light Bounce is off.
       [ ] 13 Cluster LOD (ATN: add it): each mesh's clusters also built as coarser simplified versions (a hierarchy,
