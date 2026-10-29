@@ -1092,6 +1092,11 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           which share; fix from that log (rebalance / raise the shares, walls must never be left out).
       [ ] 12 Log polish: "Leaf micromaps" tally at most every 10 s (120 lines in one session), the status's stale
           "bounce" GPU ms while the Light Bounce is off.
+      [ ] 13 Cluster LOD (ATN: add it): each mesh's clusters also built as coarser simplified versions (a hierarchy,
+          as Nanite); every frame each instance traces the coarsest clusters right for its distance (far soldiers,
+          buildings: several times fewer triangles to build and trace). NVIDIA's nv_cluster_lod_builder (hierarchy,
+          Apache 2.0) with meshoptimizer (simplification, MIT); vk_lod_clusters (Apache 2.0) shows it with Mega Geometry
+          ray tracing (Vulkan: port the method to NVAPI's cluster operations). Licence texts + credit in About.
       Not possible / no gain: DMM (not in DXR, dropped by NVIDIA), LSS (no strand geometry in Attila), AddToStateObject
       and indirect DispatchRays (no shader streaming; the helper's dispatch is not the cost), Mega Geometry for static
       meshes (built once already: no gain in tracing).
