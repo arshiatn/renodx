@@ -124,19 +124,26 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
   talesofarise::dlss::Backend backend;
   bool super_resolution_ran = false;  // its feature is made (freed while Ray Reconstruction runs)
-  // Ray Reconstruction (v3 addons with its guides): its D3D12 device and the addon's objects opened there.
-  twattila::dlaa_helper::RayReconstruction12 reconstruction;
+  // Ray Reconstruction (v3 addons with its guides): its D3D12 device and the addon's objects opened there (a new device
+  // after a GPU reset removed it).
+  auto reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
   bool reconstruction_open = false;
-  // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there; a new one after a GPU reset
-  // removed it (three a set at most).
+  // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there. After a GPU reset removed
+  // it, a new one with the Experimental options that build the scene in their own way paused until the game restarts; a
+  // second removal leaves ray tracing off (ATN 2026-10-29: a hang, then three new devices lost at once, and Windows then
+  // refused the helper new devices: frame generation's too).
   auto scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
   bool scene_open = false;
-  uint32_t scene_restarts = 0;
+  uint32_t scene_losses = 0;
+  constexpr uint32_t PAUSED_TRACE_FLAGS = twattila::dlaa_bridge::RT_GPU_MICROMAPS | twattila::dlaa_bridge::RT_SWAY_IN_VIEW;
+  constexpr uint32_t PAUSED_PATH_FLAGS = twattila::dlaa_bridge::RT_PATH_SER | twattila::dlaa_bridge::RT_PATH_SHARC;
+  constexpr const char* RT_OFF = "Ray tracing off after a second GPU reset (renodx-tw-dlaa64.log): restart the game";
   // The handles the addon shared for the open set (its textures and fence, duplicated into this process), kept until the
   // next set: a new ray tracing device opens them again.
   std::vector<HANDLE> set_handles;
-  // Frame generation (v5 addons with it on): Streamline's D3D12 device, its window and swap chain.
-  twattila::dlaa_helper::FrameGeneration12 generation;
+  // Frame generation (v5 addons with it on): Streamline's D3D12 device, its window and swap chain (made again after a GPU
+  // reset removed the device).
+  auto generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
   bool generation_open = false;
   uint32_t opened_generation = 0;
   ComPtr<ID3D11Texture2D> color;
@@ -179,7 +186,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // Its status for the addon, (v15) the garbage triangles its scene left out so far, the last such capture's key, and
   // (v16) whether it takes compact draws.
   const auto publish = [&] {
-    strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
+    strncpy_s(shared->rt_status, (scene_losses >= 2) ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
     if (const std::string reports = scene->TakeReports(); !reports.empty()) ReShadeLogMessage(nullptr, 0, reports.c_str());
     if (version >= 15) {
       const auto& left_out = scene->LeftOutSoFar();
@@ -212,6 +219,45 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     std::unique_lock lock(rt_work.mutex);
     rt_work.changed.wait(lock, [&] { return rt_work.pending.empty() && !rt_work.busy; });
   };
+  // A GPU fault or hang (Windows' timeout detection) removed the ray tracing's device: where the GPU stopped logged (DRED),
+  // a new scene (opened by the caller after the first) and the addon told to capture its scene again.
+  const auto replace_lost_scene = [&] {
+    rt_drain();
+    ReShadeLogMessage(nullptr, 0, scene->LostReport().c_str());
+    scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
+    scene_open = false;
+    {
+      const std::unique_lock lock(rt_work.mutex);
+      rt_work.ran = {};
+    }
+    if (version >= 15) ++shared->rt_device;
+    ReShadeLogMessage(nullptr, 0, (++scene_losses == 1)
+                                      ? "[TW ray tracing] Started again on a new device, with GPU Micromap Baking, Swaying Shadows Range, Off-Screen "
+                                        "Sway, Shader Execution Reordering and SHaRC Radiance Cache (Experimental) paused until the game restarts."
+                                      : "[TW ray tracing] Off until the game restarts (a second GPU reset).");
+  };
+  // The open set's objects in Ray Reconstruction and frame generation (their handles stay open: set_handles), on a new
+  // device when a GPU reset removed theirs.
+  const auto open_reconstruction = [&] {
+    if (reconstruction->Lost()) {
+      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed Ray Reconstruction's device: a new one.");
+      reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
+    }
+    reconstruction_open = reconstruction->Initialize(adapter.Get(), folder)
+                          && reconstruction->Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
+                                                   shared->specular_albedo, shared->normals, shared->roughness},
+                                                  shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u);
+  };
+  const auto open_generation = [&] {
+    if (generation->Lost()) {
+      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: Streamline started again.");
+      generation->Shutdown();
+      generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
+    }
+    generation_open = generation->Initialize(adapter.Get(), folder) && generation->Open(*shared, version);
+    strncpy_s(shared->fg_status, generation->Status().c_str(), _TRUNCATE);
+    shared->fg_failed = (generation_open ? 0u : 1u);
+  };
   const HANDLE waits[] = {request, game};
   while (WaitForMultipleObjects(2, waits, FALSE, INFINITE) == WAIT_OBJECT_0) {
     if (shared->generation != opened_generation) {
@@ -243,28 +289,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       // The guides serve Ray Reconstruction and the paths.
       reconstruction_open = false;
       if (version >= 3 && shared->diffuse_albedo != 0) {
-        reconstruction_open = reconstruction.Initialize(adapter.Get(), folder)
-                              && reconstruction.Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
-                                                      shared->specular_albedo, shared->normals, shared->roughness},
-                                                     shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u);
+        open_reconstruction();
       } else {
-        reconstruction.Close();
+        reconstruction->Close();
       }
+      if (scene->Lost()) replace_lost_scene();
       scene_open = false;
-      scene_restarts = 0;
       if (version >= 4 && shared->rt_vertices != 0) {
-        scene_open = scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
-        if (!scene_open) strncpy_s(shared->rt_status, scene->Status().c_str(), _TRUNCATE);
+        scene_open = scene_losses < 2 && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
+        if (!scene_open) strncpy_s(shared->rt_status, (scene_losses >= 2) ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
       } else {
         scene->Close();
       }
       generation_open = false;
       if (version >= 5 && shared->fg_frame != 0) {
-        generation_open = generation.Initialize(adapter.Get(), folder) && generation.Open(*shared, version);
-        strncpy_s(shared->fg_status, generation.Status().c_str(), _TRUNCATE);
-        shared->fg_failed = (generation_open ? 0u : 1u);
+        open_generation();
       } else {
-        generation.Close();
+        generation->Close();
       }
       const auto open = [&](uint64_t handle, ComPtr<ID3D11Texture2D>* texture) {
         return SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(handle), IID_PPV_ARGS(texture->GetAddressOf())));
@@ -282,35 +323,38 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         fence.Reset();
       }
     }
+    // A GPU reset removed Ray Reconstruction's or frame generation's device: a new one on this set (until then requests
+    // pass without them).
+    if (reconstruction_open && reconstruction->Lost()) open_reconstruction();
+    if (generation_open && generation->Lost()) open_generation();
     bool evaluated = false;
     bool answered = false;
     if (fence && version >= 5 && shared->fg_request != 0) {
       // Frame generation (D3D12): its copy queue waits for the addon's value and signals the next.
-      evaluated = generation_open && generation.Present(shared);
+      evaluated = generation_open && generation->Present(shared);
       if (!generation_open) {
         context4->Wait(fence.Get(), shared->value);
         context4->Signal(fence.Get(), shared->value + 1);
         context->Flush();
       }
-      strncpy_s(shared->fg_status, generation.Status().c_str(), _TRUNCATE);
+      strncpy_s(shared->fg_status, generation->Status().c_str(), _TRUNCATE);
     } else if (fence && version >= 4 && shared->rt_request != 0) {
       // Ray tracing (D3D12): its queue waits for the addon's value and signals the next (v7: request 2 the Light Bounce,
       // v8: request 3 the reflections).
       // A kind that ran last time goes to the worker and is answered at once: the addon's GPU then waits for its value
       // before the addon signals the next (the fence's order kept). Otherwise it runs here, after the worker's.
-      // A GPU fault or hang removed its device (Windows' timeout detection; ATN 2026-10-28: a freeze, then no ray tracing
-      // until the game restarted): where the GPU stopped logged (DRED), a new device on this set's textures.
+      // A GPU fault or hang removed its device (ATN 2026-10-28: a freeze, then no ray tracing until the game restarted): a
+      // new device on this set's textures after the first (the addon makes a new set at once: the fence the lost device
+      // shared reads all ones, dlaa_bridge::Prepare).
       if (scene_open && scene->Lost()) {
-        rt_drain();
-        ReShadeLogMessage(nullptr, 0, scene->LostReport().c_str());
-        scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
-        scene_open = ++scene_restarts <= 3 && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
-        {
-          const std::unique_lock lock(rt_work.mutex);
-          rt_work.ran = {};
-        }
-        if (version >= 15) ++shared->rt_device;
-        ReShadeLogMessage(nullptr, 0, (scene_open ? "[TW ray tracing] Started again on a new device." : "[TW ray tracing] Off until the next set."));
+        replace_lost_scene();
+        scene_open = scene_losses < 2 && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
+      }
+      // After a GPU reset the paused Experimental options stay off (the addon writes them again each request).
+      if (scene_losses != 0) {
+        shared->rt_flags &= ~PAUSED_TRACE_FLAGS;
+        if (version >= 8) shared->rt_path_flags &= ~PAUSED_PATH_FLAGS;
+        if (version >= 18) shared->rt_sway_range = 0.f;
       }
       bool queued = false;
       if (scene_open) {
@@ -359,10 +403,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       std::copy_n(shared->world_to_view, 16, reconstruct.world_to_view.begin());
       std::copy_n(shared->view_to_clip, 16, reconstruct.view_to_clip.begin());
       if (std::exchange(super_resolution_ran, false)) backend.Reset();
-      evaluated = reconstruction.Evaluate(reconstruct);
-      set_status(reconstruction.Status().c_str());
+      evaluated = reconstruction->Evaluate(reconstruct);
+      set_status(reconstruction->Status().c_str());
     } else if (fence) {
-      reconstruction.ReleaseFeature();
+      reconstruction->ReleaseFeature();
       super_resolution_ran = true;
       context4->Wait(fence.Get(), shared->value);
       evaluated = backend.Evaluate(context.Get(), {

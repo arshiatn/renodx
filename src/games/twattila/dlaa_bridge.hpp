@@ -386,8 +386,12 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   if (FAILED(native_device->QueryInterface(IID_PPV_ARGS(device.GetAddressOf())))) {
     return internal::Fail("DLAA: the game's device has no D3D11.4 (shared fences).");
   }
+  // A GPU reset that removed one of the helper's devices leaves the shared fence at all ones: every wait on it passes at
+  // once and nothing is in order (ATN 2026-10-29: Ray Reconstruction and frame generation broken after a freeze), so all
+  // are made again with a new fence.
   if (bridge.device == device && bridge.width == width && bridge.height == height && bridge.guides == guides
-      && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format && bridge.reflections == reflections) {
+      && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format && bridge.reflections == reflections
+      && (!bridge.fence || bridge.fence->GetCompletedValue() != UINT64_MAX)) {
     return true;
   }
   // The helper done with the last request before `shared` changes; the new objects' first requests wait for answers.

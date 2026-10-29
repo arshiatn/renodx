@@ -25,6 +25,7 @@
 #include <map>
 #include <memory>
 #include <numeric>
+#include <source_location>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -193,9 +194,14 @@ class RtScene12 {
     }
     bake_micromaps_ = omm_.bakers[0] != nullptr;
 #endif
+    // Not for good: Windows refuses a process new devices for a while after GPU resets (ATN 2026-10-29: after four, "needs
+    // DXR 1.1"); tried again at the next set.
+    if (const HRESULT made = device_ ? S_OK : D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf())); FAILED(made)) {
+      status_ = std::format("Ray tracing: no D3D12 device on the game's GPU (0x{:08X})", static_cast<uint32_t>(made));
+      return false;
+    }
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
-    if ((!device_ && FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf()))))
-        || FAILED(device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
+    if (FAILED(device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
         || options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_1) {
       return Fail("Ray tracing needs a GPU and driver with DXR 1.1");
     }
@@ -863,11 +869,18 @@ class RtScene12 {
       for (const D3D12_AUTO_BREADCRUMB_NODE1* node = breadcrumbs.pHeadAutoBreadcrumbNode; node != nullptr; node = node->pNext) {
         const uint32_t done = (node->pLastBreadcrumbValue != nullptr) ? *node->pLastBreadcrumbValue : 0u;
         if (done >= node->BreadcrumbCount) continue;
-        report += std::format("\n  {}: {} of {} operations done:", narrow(node->pCommandListDebugNameW), done, node->BreadcrumbCount);
-        for (uint32_t op = (done > 12 ? done - 12 : 0u); op < std::min(node->BreadcrumbCount, done + 4); ++op) {
+        const auto slot = std::ranges::find_if(slots_, [&](const Slot& slot) { return slot.list.Get() == node->pCommandList; });
+        report += std::format("\n  {}{}: {} of {} operations done:", narrow(node->pCommandListDebugNameW),
+                              (slot != slots_.end()) ? " (" + slot->request + ")" : std::string(), done, node->BreadcrumbCount);
+        const uint32_t first = (done > 12 ? done - 12 : 0u);
+        auto marker = static_cast<size_t>(std::count(node->pCommandHistory, node->pCommandHistory + first, D3D12_AUTO_BREADCRUMB_OP_SETMARKER));
+        for (uint32_t op = first; op < std::min(node->BreadcrumbCount, done + 4); ++op) {
           std::string name;
           for (uint32_t context = 0; context < node->BreadcrumbContextsCount; ++context) {
             if (node->pBreadcrumbContexts[context].BreadcrumbIndex == op) name = narrow(node->pBreadcrumbContexts[context].pContextString);
+          }
+          if (node->pCommandHistory[op] == D3D12_AUTO_BREADCRUMB_OP_SETMARKER && slot != slots_.end() && marker < slot->marks.size()) {
+            name = narrow(slot->marks[marker++]);
           }
           if (name.empty()) {
             const auto known = std::ranges::find(OPERATION_NAMES, node->pCommandHistory[op], &OperationName::op);
@@ -968,11 +981,6 @@ class RtScene12 {
     slot_clustered_[slot_index] = false;
     ExpireHistory(shared.rt_frame);
     const uint64_t completed = own_fence_->GetCompletedValue();
-    // A removed device's fences read all ones: where the GPU stopped into the log once (DRED).
-    if (completed == UINT64_MAX && !lost_logged_) {
-      lost_logged_ = true;
-      slow_report_ += std::format("{}{}", slow_report_.empty() ? "" : "\n", LostReport());
-    }
     std::erase_if(releases_, [&](const Release& release) {
       if (release.value > completed) return false;
       if (release.units != 0) {
@@ -1000,6 +1008,8 @@ class RtScene12 {
     AdvanceMicromaps(completed);
     gpu_timings_.clear();
     cpu_timings_.clear();
+    slot.marks.clear();
+    slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, cluster_data, slot_index, &slot);
     if (!recorded) slot.capture_keys.clear();
@@ -1065,6 +1075,8 @@ class RtScene12 {
     const bool wanted = reflections ? (reflection_ && (requested & (dlaa_bridge::RT_REFLECTIONS | dlaa_bridge::RT_SPECULAR_OCCLUSION)) != 0)
                                     : (light_ && bounce_);
     const bool uses_paths = path_traced || reflections;
+    slot.marks.clear();
+    slot.request = std::format("{} {}: flags 0x{:X}, paths 0x{:X}", reflections ? "reflections" : "Light Bounce", own_value_ + 1, shared.rt_flags, requested);
     bool recorded = wanted && traced_
                     && (!uses_paths
                         || (EnsureCache() && EnsureHistory(HISTORY_PATHS, frame) && (!reflections || EnsureHistory(HISTORY_SPECULAR, frame))))
@@ -1615,6 +1627,9 @@ class RtScene12 {
   struct Slot {
     ComPtr<ID3D12CommandAllocator> allocator;
     ComPtr<ID3D12GraphicsCommandList4> list;
+    // Its last request and passes (LostReport).
+    std::string request;
+    std::vector<const wchar_t*> marks;
     ComPtr<ID3D12Resource> instances;
     D3D12_RAYTRACING_INSTANCE_DESC* instance_data = nullptr;
     ComPtr<ID3D12Resource> table;  // the scene data pass's capture table
@@ -1895,14 +1910,17 @@ class RtScene12 {
 
   // `buffer` (default heap, UAV-capable) of `bytes` at least (in 64 KB steps; the old one released once the GPU is past
   // this request). False: no memory for it.
-  bool GrowBuffer(ComPtr<ID3D12Resource>* buffer, uint64_t bytes, D3D12_RESOURCE_STATES state) {
+  bool GrowBuffer(ComPtr<ID3D12Resource>* buffer, uint64_t bytes, D3D12_RESOURCE_STATES state,
+                  std::source_location where = std::source_location::current()) {
     if (*buffer && (*buffer)->GetDesc().Width >= bytes) return true;
     if (*buffer) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*buffer)});
-    *buffer = Buffer(Align(bytes, 1u << 16), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state);
+    *buffer = Buffer(Align(bytes, 1u << 16), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state, where);
     return static_cast<bool>(*buffer);
   }
 
-  ComPtr<ID3D12Resource> Buffer(uint64_t bytes, D3D12_HEAP_TYPE heap_type, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES state) const {
+  // Named by the line that makes it (DRED's page fault report).
+  ComPtr<ID3D12Resource> Buffer(uint64_t bytes, D3D12_HEAP_TYPE heap_type, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES state,
+                                std::source_location where = std::source_location::current()) const {
     const D3D12_HEAP_PROPERTIES heap = {.Type = heap_type};
     const D3D12_RESOURCE_DESC desc = {
         .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
@@ -1915,14 +1933,16 @@ class RtScene12 {
         .Flags = flags,
     };
     ComPtr<ID3D12Resource> buffer;
-    device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr, IID_PPV_ARGS(buffer.GetAddressOf()));
+    if (SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr, IID_PPV_ARGS(buffer.GetAddressOf())))) {
+      buffer->SetName(std::format(L"rt_d3d12.hpp:{}", where.line()).c_str());
+    }
     return buffer;
   }
 
 #if defined(RENODX_NVAPI_CLUSTERS)
   // A buffer for Mega Geometry's operations (written by them: unordered access).
-  ComPtr<ID3D12Resource> ClusterBuffer(uint64_t bytes, D3D12_RESOURCE_STATES state) const {
-    return Buffer(std::max<uint64_t>(bytes, 256), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state);
+  ComPtr<ID3D12Resource> ClusterBuffer(uint64_t bytes, D3D12_RESOURCE_STATES state, std::source_location where = std::source_location::current()) const {
+    return Buffer(std::max<uint64_t>(bytes, 256), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state, where);
   }
 
   bool ClusterRequirements(const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS& inputs,
@@ -2205,9 +2225,12 @@ class RtScene12 {
     }
   }
 
-  // A pass's name among the list's DRED breadcrumbs (LostReport).
-  static void Mark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
+  // A pass's name among the list's DRED breadcrumbs, kept with its slot (LostReport: DRED leaves markers unnamed).
+  void Mark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
     list->SetMarker(0, pass, static_cast<UINT>((std::wcslen(pass) + 1) * sizeof(wchar_t)));
+    for (Slot& slot : slots_) {
+      if (slot.list.Get() == list) slot.marks.push_back(pass);
+    }
   }
 
   static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) {
@@ -4684,7 +4707,6 @@ class RtScene12 {
   bool gpu_micromaps_ = false;  // GPU Micromap Baking ready (MakeGpuBaker)
   ComPtr<ID3D12InfoQueue> info_queue_;  // RENODX_TW_D3D12_DEBUG
   HRESULT debug_result_ = S_FALSE;
-  bool lost_logged_ = false;
   // For the log: the device's start, a slow request's report (GPU over SLOW_MS; at most SLOW_REPORTS), a garbage
   // triangle's (one in 10 s).
   std::string slow_report_;

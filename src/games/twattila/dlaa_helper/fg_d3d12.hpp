@@ -62,50 +62,55 @@ class FrameGeneration12 {
   bool Initialize(IDXGIAdapter1* adapter, const std::wstring& folder) {
     if (failed_) return false;
     if (device_) return true;
-    const std::wstring interposer = folder + L"\\sl.interposer.dll";
-    if (GetFileAttributesW(interposer.c_str()) == INVALID_FILE_ATTRIBUTES) return Fail("sl.interposer.dll is not next to the helper");
-    if (!sl::security::verifyEmbeddedSignature(interposer.c_str())) return Fail("sl.interposer.dll is not signed by NVIDIA");
-    module_ = LoadLibraryExW(interposer.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (module_ == nullptr) return Fail("sl.interposer.dll did not load");
-    const bool resolved = Resolve(&init_, "slInit") && Resolve(&shutdown_, "slShutdown") && Resolve(&is_supported_, "slIsFeatureSupported")
-                          && Resolve(&set_device_, "slSetD3DDevice") && Resolve(&upgrade_, "slUpgradeInterface")
-                          && Resolve(&native_, "slGetNativeInterface") && Resolve(&feature_function_, "slGetFeatureFunction")
-                          && Resolve(&frame_token_, "slGetNewFrameToken") && Resolve(&set_tags_, "slSetTagForFrame")
-                          && Resolve(&set_constants_, "slSetConstants");
-    if (!resolved) return Fail("sl.interposer.dll lacks Streamline's functions");
+    // Streamline once; a device that could not be made is tried again at the next set (Windows refuses a process new
+    // devices for a while after GPU resets).
+    if (!initialized_) {
+      const std::wstring interposer = folder + L"\\sl.interposer.dll";
+      if (GetFileAttributesW(interposer.c_str()) == INVALID_FILE_ATTRIBUTES) return Fail("sl.interposer.dll is not next to the helper");
+      if (!sl::security::verifyEmbeddedSignature(interposer.c_str())) return Fail("sl.interposer.dll is not signed by NVIDIA");
+      module_ = LoadLibraryExW(interposer.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+      if (module_ == nullptr) return Fail("sl.interposer.dll did not load");
+      const bool resolved = Resolve(&init_, "slInit") && Resolve(&shutdown_, "slShutdown") && Resolve(&is_supported_, "slIsFeatureSupported")
+                            && Resolve(&set_device_, "slSetD3DDevice") && Resolve(&upgrade_, "slUpgradeInterface")
+                            && Resolve(&native_, "slGetNativeInterface") && Resolve(&feature_function_, "slGetFeatureFunction")
+                            && Resolve(&frame_token_, "slGetNewFrameToken") && Resolve(&set_tags_, "slSetTagForFrame")
+                            && Resolve(&set_constants_, "slSetConstants");
+      if (!resolved) return Fail("sl.interposer.dll lacks Streamline's functions");
 
-    std::array<const wchar_t*, 1> paths = {folder.c_str()};
-    const std::array<sl::Feature, 3> features = {sl::kFeatureDLSS_G, sl::kFeatureReflex, sl::kFeaturePCL};
-    sl::Preferences preferences = {};
-    preferences.pathsToPlugins = paths.data();
-    preferences.numPathsToPlugins = static_cast<uint32_t>(paths.size());
-    preferences.pathToLogsAndData = paths[0];
-    preferences.flags = sl::PreferenceFlags::eDisableCLStateTracking | sl::PreferenceFlags::eUseManualHooking
-                        | sl::PreferenceFlags::eUseDXGIFactoryProxy | sl::PreferenceFlags::eUseFrameBasedResourceTagging;
-    preferences.featuresToLoad = features.data();
-    preferences.numFeaturesToLoad = static_cast<uint32_t>(features.size());
-    preferences.engine = sl::EngineType::eCustom;
-    preferences.engineVersion = "1.0";
-    preferences.projectId = talesofarise::dlss::PROJECT_ID;
-    if (const sl::Result result = init_(preferences, sl::kSDKVersion); result != sl::Result::eOk) {
-      return Fail(std::format("Streamline did not start ({})", sl::getResultAsStr(result)));
-    }
-    initialized_ = true;
-    DXGI_ADAPTER_DESC1 adapter_desc = {};
-    adapter->GetDesc1(&adapter_desc);
-    sl::AdapterInfo info = {};
-    info.deviceLUID = reinterpret_cast<uint8_t*>(&adapter_desc.AdapterLuid);
-    info.deviceLUIDSizeInBytes = sizeof(LUID);
-    if (const sl::Result supported = is_supported_(sl::kFeatureDLSS_G, info); supported != sl::Result::eOk) {
-      return Fail(std::format("DLSS Frame Generation is not supported here ({}): an RTX 40 or newer GPU, a recent driver and "
-                              "hardware-accelerated GPU scheduling",
-                              sl::getResultAsStr(supported)));
+      std::array<const wchar_t*, 1> paths = {folder.c_str()};
+      const std::array<sl::Feature, 3> features = {sl::kFeatureDLSS_G, sl::kFeatureReflex, sl::kFeaturePCL};
+      sl::Preferences preferences = {};
+      preferences.pathsToPlugins = paths.data();
+      preferences.numPathsToPlugins = static_cast<uint32_t>(paths.size());
+      preferences.pathToLogsAndData = paths[0];
+      preferences.flags = sl::PreferenceFlags::eDisableCLStateTracking | sl::PreferenceFlags::eUseManualHooking
+                          | sl::PreferenceFlags::eUseDXGIFactoryProxy | sl::PreferenceFlags::eUseFrameBasedResourceTagging;
+      preferences.featuresToLoad = features.data();
+      preferences.numFeaturesToLoad = static_cast<uint32_t>(features.size());
+      preferences.engine = sl::EngineType::eCustom;
+      preferences.engineVersion = "1.0";
+      preferences.projectId = talesofarise::dlss::PROJECT_ID;
+      if (const sl::Result result = init_(preferences, sl::kSDKVersion); result != sl::Result::eOk) {
+        return Fail(std::format("Streamline did not start ({})", sl::getResultAsStr(result)));
+      }
+      initialized_ = true;
+      DXGI_ADAPTER_DESC1 adapter_desc = {};
+      adapter->GetDesc1(&adapter_desc);
+      sl::AdapterInfo info = {};
+      info.deviceLUID = reinterpret_cast<uint8_t*>(&adapter_desc.AdapterLuid);
+      info.deviceLUIDSizeInBytes = sizeof(LUID);
+      if (const sl::Result supported = is_supported_(sl::kFeatureDLSS_G, info); supported != sl::Result::eOk) {
+        return Fail(std::format("DLSS Frame Generation is not supported here ({}): an RTX 40 or newer GPU, a recent driver and "
+                                "hardware-accelerated GPU scheduling",
+                                sl::getResultAsStr(supported)));
+      }
     }
     const D3D12_COMMAND_QUEUE_DESC queue_desc = {.Type = D3D12_COMMAND_LIST_TYPE_DIRECT};
-    if (FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf())))
-        || set_device_(device_.Get()) != sl::Result::eOk) {
-      return Fail("no D3D12 device for Streamline on the game's GPU");
+    if (const HRESULT made = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf())); FAILED(made)) {
+      status_ = std::format("Frame generation: no D3D12 device on the game's GPU (0x{:08X})", static_cast<uint32_t>(made));
+      return false;
     }
+    if (set_device_(device_.Get()) != sl::Result::eOk) return Fail("Streamline refused the D3D12 device");
     if (!Resolve(sl::kFeatureDLSS_G, &set_options_, "slDLSSGSetOptions") || !Resolve(sl::kFeatureDLSS_G, &get_state_, "slDLSSGGetState")
         || !Resolve(sl::kFeatureReflex, &set_reflex_, "slReflexSetOptions") || !Resolve(sl::kFeatureReflex, &sleep_, "slReflexSleep")
         || !Resolve(sl::kFeaturePCL, &set_marker_, "slPCLSetMarker")) {
@@ -413,6 +418,8 @@ class FrameGeneration12 {
   }
 
   const std::string& Status() const { return status_; }
+  // A GPU reset removed its device (the helper starts Streamline again on a new one).
+  [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
 
  private:
   struct Slot {

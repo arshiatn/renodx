@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstdint>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -74,9 +75,11 @@ class RayReconstruction12 {
   bool Initialize(IDXGIAdapter1* adapter, const std::wstring& folder) {
     if (failed_) return false;
     if (device_) return true;
+    // Not for good: Windows refuses a process new devices for a while after GPU resets (tried again at the next set).
     ComPtr<ID3D12Device> device;
-    if (FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device.GetAddressOf())))) {
-      return Fail("Ray Reconstruction: no D3D12 device on the game's GPU");
+    if (const HRESULT made = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device.GetAddressOf())); FAILED(made)) {
+      status_ = std::format("Ray Reconstruction: no D3D12 device on the game's GPU (0x{:08X})", static_cast<uint32_t>(made));
+      return false;
     }
     return Initialize(device.Get(), folder);
   }
@@ -174,6 +177,8 @@ class RayReconstruction12 {
   }
 
   [[nodiscard]] bool Ready() const { return fence_ != nullptr; }
+  // A GPU reset removed its device (the helper makes a new one).
+  [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
   [[nodiscard]] const std::string& Status() const { return status_; }
 
   ~RayReconstruction12() {
