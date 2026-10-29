@@ -1383,8 +1383,19 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           old ones kept per instance; alternating still / swaying frames would shimmer under DLSS), cluster LOD / unit
           templates (time). The game-side capture still streams every instance (the cut saves the helper's CLAS / BLAS
           builds and its scene data, not the addon's stream output).
-      [ ] 6. The game waits ~15 ms a frame for the helper's GPU work (sun 5-7 + AO 5-7 ms): speedups (foliage shadow
-          rays through micromaps as opaque, RT one frame behind / overlap?), as experimental toggles.
+      [x] 6. (0b4574a2, helper40.) The game waits ~15 ms a frame for the helper's GPU work (sun 5-7 + AO 5-7 ms): speedups
+          (foliage shadow rays through micromaps as opaque, RT one frame behind / overlap?), as experimental toggles.
+          Done: Fast Leaf Shadows (RayTracedFastLeafShadows, with Leaf Micromaps; bridge RT_FAST_LEAVES 8192 -> rt_scene
+          FAST_LEAVES: Occluded / TRACE_NEAREST / LeafHit / SunRay's queries take RAY_FLAG_FORCE_OMM_2_STATE in rt_trace and
+          rt_lights: no alpha tests for micromapped leaves); Grass Shadow Range (RayTracedGrassShadowRange, 0 m = all;
+          bridge rt_grass_shadow_range in v6's padding -> Settings b0 grass_shadow_range): pixels deeper than it trace the
+          sun without GRASS_INSTANCE (placed + swaying grass; per-frame captured grass sits in the units' BLAS and stays)
+          and skip the grass AO ray. Harness: HARNESS_GRASS_SHADOW_RANGE (a placed solid patch at 5.0 m), modes
+          grass_range_near / _far, fast_leaves (+ _gpu_light); 4K grass field (HARNESS_PLACED_GRASS=40) trace 4.05 ms ->
+          2.10 ms at 3 m, 3.26 at 8 m; Fast Leaf Shadows unmeasured (no micromapped canopy in the harness view).
+          Not done: RT one frame behind: the helper's CPU round trip is ~0.1 ms (async) and its GPU work runs in its own
+          process (time-sliced with the game's, no overlap), so a frame-late trace would only hide that bubble while
+          its shadows lag a frame (reprojection needed). The wait is the GPU work itself.
       [ ] 7. NVIDIA advice not used yet, as experimental toggles even if slower now (ATN tests in a big city): ReSTIR DI
           for torches / fires, reflections through the path tracer, SHaRC radiance cache, emissive lights in paths,
           SER; and the old list's misses (refraction, caustics, coloured shadows through glass / banners).
