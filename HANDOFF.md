@@ -1088,7 +1088,12 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           the guides, later); DOF guide (luminance after - before DOF, same post-tone-map problem); SSR's hit distance
           (the game's SSR pixel shader would need a UAV, later).
       [ ] 3 RTXDI (ReSTIR DI) for torches and fires: a few sampled lights a pixel instead of up to 32 shadow rays.
-      [ ] 4 SHARC in place of our world radiance cache (A/B); NRC after (bigger: training each frame).
+      [-] 4 (step 10: assessed, not built) SHARC in place of our world radiance cache (A/B); NRC after (bigger: training each frame).
+          SHARC v1.6.5.0 (NVIDIA RTX SDKs License, build\downloads\sharc) speeds a path tracer by ending paths at cached
+          hits; ours already end at the first hit the screen or our cache knows (HitLight) and only go on for surfaces
+          nobody saw. It would add an update pass (paths from 1 pixel in 25 a frame), a resolve, 64-bit atomics and
+          80-160 MB, for multi-bounce light off screen built on the same learned lighting: quality to A/B in game, no
+          speed. NRC likewise (it trains each frame).
       [x] 5 (step 7: measured, SER removed) SER in the incoherent passes (AO, Light Bounce as ray generation shaders like the paths).
           The harness (tools\tw\rt_harness; 640 x 360, 1080p and 4K builds; base scene and HARNESS_STRESS_IN_VIEW: the leaf
           stress and 20,000 boxes where the rays go) says SER is slower in every pass. Trace (AO, shadows) as a ray
