@@ -20,10 +20,10 @@ constexpr uint32_t OLDEST_VERSION = 2;
 
 // Ray tracing (v4, rt_scene.hpp / dlaa_helper/rt_d3d12.hpp): the captured triangles' world positions, RT_TRANSFER_WIDTH
 // per row of the shared vertex texture (RT_TRANSFER_HEIGHT rows; 4096 since the units' and the terrain's shares were
-// full in a battle, a helper of either height reads the rows an addon fills); new captures and drawn meshes a frame at
-// most.
+// full in a battle, 5120 with swaying trees; a helper of either height reads the rows an addon fills); new captures and
+// drawn meshes a frame at most.
 constexpr uint32_t RT_TRANSFER_WIDTH = 4096;
-constexpr uint32_t RT_TRANSFER_HEIGHT = 4096;
+constexpr uint32_t RT_TRANSFER_HEIGHT = 5120;
 constexpr uint32_t RT_CAPTURES = 256;
 constexpr uint32_t RT_DRAWN = 8192;
 // The leaves' opacity masks (v6): an R8 texture array of RT_ATLAS_SLICES slices RT_ATLAS_SIZE square.
@@ -65,6 +65,9 @@ struct RtPlacement {
 };
 // The mesh was seen moving lately: its instances where they are now only (none kept from earlier draws).
 constexpr uint32_t RT_PLACE_MOVING = 1;
+// Its instances also drawn this frame as a compact draw (swaying leaves): placed hidden (no ray meets them), kept for
+// when they are off-screen (shown again then).
+constexpr uint32_t RT_PLACE_HIDDEN = 2;
 // Compact draws (v16, to a helper that says rt_compact_ok: RTX Mega Geometry's clusters): a dynamic indexed draw's
 // vertices streamed once each, in its mesh's cluster order: `instances` blocks of its set's `vertices` texels from
 // `first_vertex`. Its cluster set (the mesh's index list split into clusters of at most RT_CLUSTER_TRIANGLES triangles
@@ -82,6 +85,8 @@ constexpr uint32_t RT_DYNAMIC_TRIANGLES = 16u << 20;
 constexpr uint32_t RT_DYNAMIC_CLUSTERS = 1u << 18;
 // An every-frame capture's clusters: this many triangles each (the last partial).
 constexpr uint32_t RT_CAPTURE_CLUSTER_TRIANGLES = 85;
+// The frame's alpha-tested dynamic triangles' corners at most (their UVs: grass's and swaying leaves').
+constexpr uint32_t RT_DYNAMIC_UVS = 16u << 20;
 struct RtCompactDraw {
   uint64_t set = 0;  // its cluster set's key
   uint32_t first_vertex = 0;

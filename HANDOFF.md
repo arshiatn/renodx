@@ -1024,8 +1024,11 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           point light shadows on with it (toggle removed), banners / sails cast with RT Shadows (not under Units).
       [x] 2 Point light shadows: drawn light matched to the nearest traced one within 25 cm (was 1 cm: carried torches
           lost their shadow). Not done: soft edges (needs a fractional mask), > 32 lights.
-      [ ] 3 Moving trees: placed leaf draws also captured every frame (compact, wind), their static instances placed
-          hidden (mask 0) while drawn, restored off-screen; tree share; transfer texture / UV pool sized for it.
+      [x] 3 Moving trees: a placed leaves' draw whose set is made also streams its instances' leaves every frame
+          (compact, the capture version's wind) within MAX_TREE_VERTICES (3M texels); its placed instances go in hidden
+          (RT_PLACE_HIDDEN: mask 0) every such frame, kept ones shown again (rt_place restores mask 0xFF). Branches stay
+          static. Transfer texture 5120 rows (20M texels), dynamic share 17M, RT_DYNAMIC_UVS 16M a slot (UV pool 224 MB).
+          Harness HARNESS_HIDDEN=1 / 2 (hidden instance's shadow gone / back when not drawn) pass.
       [ ] 4 Smoke shadows (Experimental): particles as see-through cards dimming the sun by their opacity.
       [ ] 5 Optimizations: terrain once, early trace + late wait, cluster templates, CLAS memory to need, OMM SDK (MIT?).
       [ ] 6 Grass / flags motion check; zip twattila_vN + helper; report.

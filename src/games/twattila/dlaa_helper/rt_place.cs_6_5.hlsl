@@ -9,7 +9,8 @@
 // world space) and kept (the last dispatch's placed descs: their mesh's BLAS as it is now, but those drawn more than
 // `recent_frames` ago, of released meshes or of meshes drawn moving now). A mesh's instance at one place (1 cm) once,
 // the drawn first: instances stay while their mesh is drawn elsewhere (off-screen casters). Each desc keeps the frame
-// it was drawn in (InstanceContributionToHitGroupIndex: no hit groups here). Degenerate rows: left out.
+// it was drawn in (InstanceContributionToHitGroupIndex: no hit groups here). Degenerate rows: left out. A hidden draw's
+// instances (swaying leaves, their compact copy traced instead) go in with mask 0 (no ray meets them), kept ones shown.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_place.h -Vn RT_PLACE.
 
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (the kept ones' source)
@@ -38,6 +39,7 @@ static const uint MODE_CLEAR = 0u;
 static const uint MODE_DRAWN = 1u;
 static const uint MODE_KEPT = 2u;
 static const uint PLACE_FOLIAGE = 1u;  // alpha-tested: not forced opaque
+static const uint PLACE_HIDDEN = 2u;   // mask 0 while drawn
 static const uint INSTANCE_CULL_DISABLE = 1u;  // D3D12_RAYTRACING_INSTANCE_FLAG_*
 static const uint INSTANCE_FORCE_OPAQUE = 4u;
 static const uint STATE_WRITTEN = 0u;
@@ -114,7 +116,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     const uint4 row1 = instances_before.Load4(index * 64u + 16u);
     const uint4 row2 = instances_before.Load4(index * 64u + 32u);
     if (!Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w))))) return;
-    Append(row0, row1, row2, uint4(tail.xy, blas.x & ~0xFFu, blas.y));
+    Append(row0, row1, row2, uint4(record | (0xFFu << 24), tail.y, blas.x & ~0xFFu, blas.y));
     return;
   }
   if (index >= instance_count) return;
@@ -156,8 +158,9 @@ void main(uint3 id : SV_DispatchThreadID) {
       || !Insert(PlaceKey(record, translation))) {
     return;
   }
-  // InstanceID (the record) and mask 0xFF; the frame drawn and the flags; the BLAS (its moving bit cleared).
+  // InstanceID (the record) and mask 0xFF (0 hidden); the frame drawn and the flags; the BLAS (its moving bit cleared).
   const uint flags = INSTANCE_CULL_DISABLE | (((job.w & PLACE_FOLIAGE) != 0u) ? 0u : INSTANCE_FORCE_OPAQUE);
+  const uint mask = ((job.w & PLACE_HIDDEN) != 0u) ? 0u : 0xFFu;
   Append(asuint(float4(rotation[0], translation.x)), asuint(float4(rotation[1], translation.y)), asuint(float4(rotation[2], translation.z)),
-         uint4(record | (0xFFu << 24), (frame & FRAME_MASK) | (flags << 24), blas.x & ~0xFFu, blas.y));
+         uint4(record | (mask << 24), (frame & FRAME_MASK) | (flags << 24), blas.x & ~0xFFu, blas.y));
 }

@@ -168,9 +168,11 @@ constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_T
 // MAX_GRASS_VERTICES of them), so the terrain keeps the rest. Doubled with the transfer texture (half the soldiers' draws
 // were left out: holes in their shadows, ATN 2026-10-28); grass 4M (3.5M drawn in ATN's battle: what fit changed as the
 // view did, flickering grass shadows).
-constexpr UINT MAX_DYNAMIC_VERTICES = 14u << 20;
+// 17M of the 20M texels since swaying trees (MAX_TREE_VERTICES: their leaves where drawn every frame).
+constexpr UINT MAX_DYNAMIC_VERTICES = 17u << 20;
 constexpr UINT MAX_UNIT_VERTICES = 10u << 20;
 constexpr UINT MAX_GRASS_VERTICES = 4u << 20;
+constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
@@ -312,6 +314,8 @@ struct Runtime {
   uint32_t new_set_bytes = 0;
   uint32_t dynamic_triangles = 0;
   uint32_t dynamic_clusters = 0;
+  uint32_t tree_vertices = 0;  // swaying leaves' texels and corners (their UVs)
+  uint32_t tree_corners = 0;
   uint32_t set_builds = 0;
   uint32_t compact_state = 0;  // the helper's CompactState as last seen
   struct Known {
@@ -824,8 +828,10 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   mix(reinterpret_cast<uintptr_t>(index_buffer));
   mix((uint64_t{static_cast<uint32_t>(index_format)} << 32) | index_offset);
-  // A dynamic indexed draw can be compact (v16): its mesh's key (its index buffer and range) and that buffer.
-  const bool compactable = INDEXED && dynamic && !placed && !shader.terrain && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
+  // A dynamic indexed draw can be compact (v16), so can a placed draw of leaves (its trees sway: their leaves where drawn
+  // also captured every frame, in the wind): its mesh's key (its index buffer and range) and that buffer.
+  const bool compactable = INDEXED && (placed ? (shader.foliage && !shader.capture_shader.empty()) : dynamic) && !shader.terrain
+                           && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
   uint64_t set_key = 14695981039346656037ull;
   ComPtr<ID3D11Buffer> compact_indices;
   if constexpr (INDEXED) {
@@ -855,9 +861,15 @@ void Capture(Context& command, const SceneShader& shader) {
   bool place = false;
   bool share_full = false;
   // Compact (v16): its mesh's blocks in place of its triangles, once its set is made and can go with this frame's trace;
-  // what it takes of the vertex texture and the helper's frame.
+  // what it takes of the vertex texture and the helper's frame. A placed draw of leaves sways (`sway`): its blocks besides
+  // its rows, within the trees' share.
+  bool blocks = false;
   bool compact = false;
+  bool sway = false;
   const UINT draw_instances = std::max(arguments.instance_count, 1u);
+  UINT block_texels = 0;
+  UINT block_triangles = 0;
+  UINT block_clusters = 0;
   UINT texels = vertex_count;
   UINT triangles = vertex_count / 3;
   UINT clusters = (triangles + dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES - 1) / dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
@@ -873,14 +885,18 @@ void Capture(Context& command, const SceneShader& shader) {
     if (const auto mesh = (compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end());
         mesh != runtime.cluster_meshes.end() && mesh->second.remap) {
       mesh->second.used_frame = runtime.frame;
-      compact = mesh->second.sent || std::ranges::find(runtime.new_sets, set_key) != runtime.new_sets.end()
-                || (runtime.new_sets.size() < dlaa_bridge::RT_NEW_SETS
-                    && runtime.new_set_bytes + ((mesh->second.data.size() + 15) / 16 * 16) <= dlaa_bridge::RT_CLUSTER_DATA_BYTES);
-      if (compact) {
-        texels = mesh->second.vertices * draw_instances;
-        triangles = mesh->second.triangles * draw_instances;
-        clusters = mesh->second.clusters * draw_instances;
-      }
+      blocks = mesh->second.sent || std::ranges::find(runtime.new_sets, set_key) != runtime.new_sets.end()
+               || (runtime.new_sets.size() < dlaa_bridge::RT_NEW_SETS
+                   && runtime.new_set_bytes + ((mesh->second.data.size() + 15) / 16 * 16) <= dlaa_bridge::RT_CLUSTER_DATA_BYTES);
+      block_texels = mesh->second.vertices * draw_instances;
+      block_triangles = mesh->second.triangles * draw_instances;
+      block_clusters = mesh->second.clusters * draw_instances;
+    }
+    compact = blocks && dynamic;
+    if (compact) {
+      texels = block_texels;
+      triangles = block_triangles;
+      clusters = block_clusters;
     }
     share_full = dynamic
                  && (runtime.dynamic_vertices + texels > MAX_DYNAMIC_VERTICES
@@ -904,8 +920,14 @@ void Capture(Context& command, const SceneShader& shader) {
         }
         return;
       }
-      // Not its turn, its instances as many as at its last placement (none came into sight).
-      if (!moving && known->second.instances == instances && (key + runtime.frame) % PLACE_TURNS != 0) {
+      // Its leaves sway within the trees' share (placed every frame then, hidden where drawn); else not its turn, its
+      // instances as many as at its last placement (none came into sight).
+      sway = blocks && runtime.tree_vertices + block_texels <= MAX_TREE_VERTICES
+             && runtime.tree_corners + (block_triangles * 3) <= dlaa_bridge::RT_DYNAMIC_UVS - MAX_GRASS_VERTICES
+             && runtime.dynamic_vertices + block_texels <= MAX_DYNAMIC_VERTICES
+             && runtime.dynamic_triangles + block_triangles <= dlaa_bridge::RT_DYNAMIC_TRIANGLES
+             && runtime.dynamic_clusters + block_clusters <= dlaa_bridge::RT_DYNAMIC_CLUSTERS;
+      if (!sway && !moving && known->second.instances == instances && (key + runtime.frame) % PLACE_TURNS != 0) {
         known->second.frame = runtime.frame;
         return;
       }
@@ -946,7 +968,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   // A mesh without its cluster set (v16): its indices read back for one, its triangles captured meanwhile.
   if constexpr (INDEXED) {
-    if (compactable && !compact) {
+    if (compactable && !blocks) {
       PrepareClusterSet(native, set_key, compact_indices.Get(), index_format, index_offset, arguments.first_index, arguments.index_count);
     }
   }
@@ -987,6 +1009,8 @@ void Capture(Context& command, const SceneShader& shader) {
       || joined->first_vertex + joined->vertex_count != runtime.captured_vertices || joined->vertex_count % 3 != 0) {
     joined = nullptr;
   }
+  // No room for the swaying copy: its placed copies alone.
+  sway = sway && runtime.compact.size() < dlaa_bridge::RT_COMPACT_DRAWS && runtime.captured_vertices + block_texels + row_texels <= MAX_VERTICES;
   if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || runtime.captured_vertices + row_texels > MAX_VERTICES)
             : (((compact ? runtime.compact.size() >= dlaa_bridge::RT_COMPACT_DRAWS
                          : (joined == nullptr && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)))
@@ -1008,6 +1032,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // Leaves wait for a slice of the atlas (none: not in the scene this frame).
   uint32_t slice = 0;
   if (!place && shader.foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
+  sway = sway && mask && AtlasSlice(native, mask.Get(), &slice);
   ID3D11VertexShader* capture_vertex_shader = nullptr;
   ID3D11GeometryShader* stream_output = nullptr;
   if (!place && clip_space) {
@@ -1030,14 +1055,14 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     if (!made->second) return;
     stream_output = made->second.Get();
-  } else if (!place) {
+  } else if (!place || sway) {
     capture_vertex_shader = objects.capture_shaders[index].Get();
     stream_output = objects.capture_outputs[index].Get();
   }
 
-  // The same draw into the stream output only (not rasterized): a new mesh's triangles (a placed one's first instance's),
-  // then a placed draw's instances' rows (one point per instance: its first vertex); the game's shaders and outputs put
-  // back.
+  // The same draw into the stream output only (not rasterized): a new mesh's triangles (a placed one's first instance's;
+  // a compact or swaying draw's blocks), then a placed draw's instances' rows (one point per instance: its first vertex);
+  // the game's shaders and outputs put back.
   ComPtr<ID3D11VertexShader> game_vertex_shader;
   ComPtr<ID3D11GeometryShader> game_geometry_shader;
   ComPtr<ID3D11PixelShader> game_pixel_shader;
@@ -1047,19 +1072,19 @@ void Capture(Context& command, const SceneShader& shader) {
   native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
   native->SOGetTargets(1, game_output.GetAddressOf());
   native->PSSetShader(nullptr, nullptr, 0);
-  if (!place) {
+  if (!place || sway) {
     const std::array<ID3D11Buffer*, 2> targets = {objects.captured.Get(), objects.captured_uv.Get()};
     const std::array<UINT, 2> stream_offsets = {runtime.captured_vertices * 16, runtime.captured_vertices * 8};
     if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
     if constexpr (INDEXED) {
-      if (compact) {
+      if (compact || sway) {
         // Each block's vertices once: points through the mesh's remap indices (the game's index buffer and topology put
         // back).
         native->IASetIndexBuffer(runtime.cluster_meshes.at(set_key).remap.Get(), DXGI_FORMAT_R32_UINT, 0);
         native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
-        native->DrawIndexedInstanced(texels / draw_instances, draw_instances, 0, arguments.vertex_offset, arguments.first_instance);
+        native->DrawIndexedInstanced(block_texels / draw_instances, draw_instances, 0, arguments.vertex_offset, arguments.first_instance);
         native->IASetIndexBuffer(compact_indices.Get(), index_format, index_offset);
         native->IASetPrimitiveTopology(topology);
       } else {
@@ -1071,7 +1096,7 @@ void Capture(Context& command, const SceneShader& shader) {
                             arguments.first_instance);
     }
   }
-  const UINT rows_vertex = runtime.captured_vertices + (place ? 0u : vertex_count);
+  const UINT rows_vertex = runtime.captured_vertices + (sway ? block_texels : (place ? 0u : vertex_count));
   if (placed) {
     // As points (under the game's triangle list one vertex an instance made no primitive: nothing was streamed, the
     // helper placed every placed mesh by stale texels: giant shapes, long lines, no shadows, ATN 2026-10-28).
@@ -1094,19 +1119,13 @@ void Capture(Context& command, const SceneShader& shader) {
   native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
   native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
-  if (place) {
-    runtime.placements.push_back({.key = key, .first_vertex = rows_vertex, .instances = instances,
-                                  .flags = (moving ? dlaa_bridge::RT_PLACE_MOVING : 0u)});
-    runtime.captured_vertices += row_texels;
-    if (const auto known = runtime.known.find(key); known != runtime.known.end()) known->second = {.frame = runtime.frame, .instances = instances};
-    return;
-  }
-  if (compact) {
-    // After the last compact draw of its mesh (its blocks right after): more of its instances.
+  // A compact draw's blocks (from the captured vertices' end): after the last compact draw of its mesh (its blocks right
+  // after), more of its instances; its set sent with this frame's trace when the helper lacks it.
+  const auto add_blocks = [&] {
     const uint32_t compact_flags = flags & (dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
-        && last->first_vertex + (last->instances * (texels / draw_instances)) == runtime.captured_vertices) {
+        && last->first_vertex + (last->instances * (block_texels / draw_instances)) == runtime.captured_vertices) {
       last->instances += draw_instances;
     } else {
       runtime.compact.push_back({.set = set_key, .first_vertex = runtime.captured_vertices, .instances = draw_instances, .flags = compact_flags,
@@ -1117,6 +1136,25 @@ void Capture(Context& command, const SceneShader& shader) {
       runtime.new_set_bytes += static_cast<uint32_t>((runtime.cluster_meshes.at(set_key).data.size() + 15) / 16 * 16);
     }
     runtime.key_shaders[set_key] = shader.hash;
+  };
+  if (place) {
+    if (sway) {
+      add_blocks();
+      runtime.captured_vertices += block_texels;
+      runtime.tree_vertices += block_texels;
+      runtime.tree_corners += block_triangles * 3;
+      runtime.dynamic_vertices += block_texels;
+      runtime.dynamic_triangles += block_triangles;
+      runtime.dynamic_clusters += block_clusters;
+    }
+    runtime.placements.push_back({.key = key, .first_vertex = rows_vertex, .instances = instances,
+                                  .flags = (moving ? dlaa_bridge::RT_PLACE_MOVING : 0u) | (sway ? dlaa_bridge::RT_PLACE_HIDDEN : 0u)});
+    runtime.captured_vertices += row_texels;
+    if (const auto known = runtime.known.find(key); known != runtime.known.end()) known->second = {.frame = runtime.frame, .instances = instances};
+    return;
+  }
+  if (compact) {
+    add_blocks();
   } else if (joined != nullptr) {
     joined->vertex_count += vertex_count;
   } else {
@@ -1853,6 +1891,8 @@ inline void Update(const Settings& settings) {
   runtime.grass_vertices = 0;
   runtime.dynamic_triangles = 0;
   runtime.dynamic_clusters = 0;
+  runtime.tree_vertices = 0;
+  runtime.tree_corners = 0;
   runtime.set_builds = 0;
   runtime.drawn.clear();
   runtime.placements.clear();

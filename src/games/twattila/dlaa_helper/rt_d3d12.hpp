@@ -1156,12 +1156,13 @@ class RtScene12 {
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
   static constexpr UINT NORMAL_POOL = STATIC_TRIANGLES + SLOTS * DYNAMIC_TRIANGLES;
   static constexpr UINT STATIC_UVS = 8u << 20;
-  static constexpr UINT DYNAMIC_UVS = 4u << 20;  // a slot's (grass: rt_core.hpp MAX_GRASS_VERTICES)
+  static constexpr UINT DYNAMIC_UVS = dlaa_bridge::RT_DYNAMIC_UVS;  // a slot's (grass, swaying leaves)
   static constexpr UINT UV_POOL = STATIC_UVS + SLOTS * DYNAMIC_UVS;
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
   static constexpr float LEAF_ALPHA_CUTOFF = 0.5f;  // rt_scene_data.cs_6_5.hlsl
   static constexpr uint32_t PLACE_FOLIAGE = 1;  // rt_place.cs_6_5.hlsl
+  static constexpr uint32_t PLACE_HIDDEN = 2;
   // Opacity micromaps: a mesh's at most (its subdivision level lowered to fit), all new meshes' a request.
   static constexpr uint64_t MICROMAP_MESH_BYTES = 8u << 20;
   static constexpr uint64_t MICROMAP_FRAME_BYTES = 64u << 20;
@@ -1714,7 +1715,7 @@ class RtScene12 {
     uint32_t built = 0;
     uint32_t micromaps_built = 0;
     uint64_t dynamic_triangles = 0;
-    uint64_t grass_triangles = 0;    // of them (alpha-tested)
+    uint64_t grass_triangles = 0;    // of them alpha-tested (grass, swaying leaves)
     uint64_t terrain_triangles = 0;  // and the terrain's
     bool units_built = false;
     bool units_refitted = false;
@@ -2428,7 +2429,8 @@ class RtScene12 {
         Mesh& mesh = found->second;
         mesh.drawn_frame = frame;
         if ((draw.flags & dlaa_bridge::RT_PLACE_MOVING) != 0) record_blas[mesh.record] |= 1u;
-        const std::array<uint32_t, 8> job = {placed_drawn, draw.instances, draw.first_vertex, (mesh.foliage ? PLACE_FOLIAGE : 0u),
+        const std::array<uint32_t, 8> job = {placed_drawn, draw.instances, draw.first_vertex,
+                                             (mesh.foliage ? PLACE_FOLIAGE : 0u) | ((draw.flags & dlaa_bridge::RT_PLACE_HIDDEN) != 0 ? PLACE_HIDDEN : 0u),
                                              mesh.record, 0u, 0u, 0u};
         std::memcpy(slot->jobs_data + PLACE_TABLE_BYTES + uint64_t{job_count} * 32, job.data(), sizeof(job));
         ++job_count;
@@ -2687,7 +2689,7 @@ class RtScene12 {
       return true;
     });
     status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles (every frame {:.2f} "
-                          "M: terrain {:.2f}, grass {:.2f}; {})",
+                          "M: terrain {:.2f}, grass and swaying leaves {:.2f}; {})",
                           dxr12_ ? "DXR 1.2" : "DXR 1.1", meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn,
                           ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
                           static_cast<double>(triangles) / 1.0e6, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
