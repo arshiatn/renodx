@@ -11,6 +11,7 @@
 // the drawn first: instances stay while their mesh is drawn elsewhere (off-screen casters). Each desc keeps the frame
 // it was drawn in (InstanceContributionToHitGroupIndex: no hit groups here). Degenerate rows: left out. A hidden draw's
 // instances (swaying leaves, their compact copy traced instead) go in with mask 0 (no ray meets them), kept ones shown.
+// Grass outside the view (drawn or kept) stays out: GrassInView.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_place.h -Vn RT_PLACE.
 
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (the kept ones' source)
@@ -33,6 +34,10 @@ cbuffer Dispatch : register(b1) {
   uint max_instances;
   uint recent_frames;
   uint record_count;  // the table's records (the jobs after them)
+};
+
+cbuffer Camera : register(b2) {
+  float4 view_projection[4];  // the trace's camera registers: clip = (dot(position, [0]), ...); all 0: none
 };
 
 static const uint MODE_CLEAR = 0u;
@@ -60,6 +65,23 @@ static const uint TABLE_ENTRIES = 1u << 19;  // rt_d3d12.hpp PLACE_TABLE
 static const uint FRAME_MASK = 0xFFFFFFu;
 static const float MAX_TRANSLATION = 2.0e5f;  // metres from the BLAS's place (battle maps: a few kilometres)
 static const float MAX_SCALE = 1000.f;
+// How far outside the view's sides a grass patch still goes in (metres): the patch's size and its shadow at a low sun.
+static const float GRASS_VIEW_MARGIN = 16.f;
+
+// False: a grass patch at `position` (its origin in the world) is outside the view's four sides moved out by
+// GRASS_VIEW_MARGIN. Its shadows are short, and Grass Always Drawn draws every cell, also behind the camera (ATN's
+// debug28: trees' and grass's shadows flickering and gone with it).
+bool GrassInView(float3 position) {
+  if (!any(view_projection[3] != 0.f)) return true;
+  const float4 world = float4(position, 1.f);
+  const float4 sides[4] = {view_projection[3] + view_projection[0], view_projection[3] - view_projection[0],
+                           view_projection[3] + view_projection[1], view_projection[3] - view_projection[1]};
+  [unroll]
+  for (uint side = 0u; side < 4u; ++side) {
+    if (dot(sides[side], world) < -GRASS_VIEW_MARGIN * length(sides[side].xyz)) return false;
+  }
+  return true;
+}
 
 // A desc's key: its record and its place in centimetres.
 uint PlaceKey(uint record, float3 position) {
@@ -125,7 +147,12 @@ void main(uint3 id : SV_DispatchThreadID) {
     const uint4 row0 = instances_before.Load4(index * 64u);
     const uint4 row1 = instances_before.Load4(index * 64u + 16u);
     const uint4 row2 = instances_before.Load4(index * 64u + 32u);
-    if (!Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w))))) return;
+    // Its rows place the BLAS (its first instance in world space): its origin there, the build's, where they put it.
+    const float4 origin = float4(build_rows[record * 3u].w, build_rows[record * 3u + 1u].w, build_rows[record * 3u + 2u].w, 1.f);
+    if ((grass && !GrassInView(float3(dot(asfloat(row0), origin), dot(asfloat(row1), origin), dot(asfloat(row2), origin))))
+        || !Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w))))) {
+      return;
+    }
     const uint kept_mask = grass ? GRASS_INSTANCE : ((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE);
     Append(row0, row1, row2, uint4(record | (kept_mask << 24), tail.y, blas.x & ~0xFFu, blas.y));
     return;
@@ -166,7 +193,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float scale = max(max(length(rotation[0]), length(rotation[1])), length(rotation[2]));
   if (!(abs(determinant) > 1e-12f) || !all(isfinite(rotation[0])) || !all(isfinite(rotation[1])) || !all(isfinite(rotation[2]))
       || !all(isfinite(translation)) || any(abs(translation) > MAX_TRANSLATION) || !(scale < MAX_SCALE)
-      || !Insert(PlaceKey(record, translation))) {
+      || ((job.w & PLACE_GRASS) != 0u && !GrassInView(float3(now0.w, now1.w, now2.w))) || !Insert(PlaceKey(record, translation))) {
     return;
   }
   // InstanceID (the record) and mask (its group; 0 hidden); the frame drawn and the flags; the BLAS (its moving bit

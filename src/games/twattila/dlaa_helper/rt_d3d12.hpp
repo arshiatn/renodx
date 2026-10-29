@@ -1318,6 +1318,9 @@ class RtScene12 {
   static constexpr size_t MICROMAP_WORKERS = 4;  // bakes at once (each with the SDK's own threads)
   static constexpr size_t SET_MICROMAP_READS = 16;  // grass sets' micromap reads a request at most
   static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
+  // Grass's finest micromap level (leaves': 6): new grass's shadows wait for its bakes (ATN's debug28: still a visible
+  // delay), and level 6 is four times the work.
+  static constexpr int GRASS_MICROMAP_LEVEL = 5;
   // The scene data pass's garbage count (rt_scene_data.cs_6_5.hlsl): three counts, the example's capture, its vertices.
   static constexpr UINT LEFT_OUT_BYTES = 64;
   // A request slower than this on the GPU is reported (ms), at most this many times.
@@ -1517,6 +1520,7 @@ class RtScene12 {
     uint64_t value = 0;  // the reading request's
     uint32_t triangles = 0;
     bool set = false;  // a cluster set's (grass: its templates built with the micromaps), not a mesh's
+    bool grass = false;  // GRASS_MICROMAP_LEVEL
     // Its request's buffers (one of each for all its reads) and its places in them: its vertices (16 bytes each) for the
     // rebuild; read back: a packed half UV a corner, its atlas slice.
     ComPtr<ID3D12Resource> positions;
@@ -1629,6 +1633,7 @@ class RtScene12 {
     uint32_t uv_offset = 0;
     uint32_t slice = 0;
     bool set = false;
+    bool grass = false;
   };
 
   bool Fail(const char* status) {
@@ -2313,7 +2318,7 @@ class RtScene12 {
           set.micromaps_tried = true;
           --set_micromap_room;
           set_micromap_reads.push_back({.key = draw.set, .build = set.generation, .triangles = set.triangles, .uv_offset = entry[7],
-                                        .slice = draw.slice, .set = true});
+                                        .slice = draw.slice, .set = true, .grass = (draw.flags & dlaa_bridge::RT_GRASS) != 0});
         }
         compact_keys.push_back(draw.set);
         compact_flags.push_back(draw.flags);
@@ -2711,7 +2716,7 @@ class RtScene12 {
         }
         if (placement.masked && micromap_room != 0 && mesh.triangles <= MICROMAP_TRIANGLES) {
           micromap_reads.push_back({.key = capture.key, .build = mesh.build, .first_vertex = capture.first_vertex, .triangles = mesh.triangles,
-                                    .uv_offset = placement.uv_offset, .slice = shared.rt_capture_slices[index]});
+                                    .uv_offset = placement.uv_offset, .slice = shared.rt_capture_slices[index], .grass = mesh.grass});
           --micromap_room;
         }
         slot->compactions.emplace_back(capture.key, mesh.build);
@@ -3075,7 +3080,7 @@ class RtScene12 {
         for (const MicromapRead& read : micromap_reads) {
           auto bake = std::make_unique<MicromapBake>();
           *bake = {.key = read.key, .build = read.build, .value = own_value_ + 1, .triangles = read.triangles, .set = read.set,
-                   .positions = (read.set ? nullptr : positions), .positions_offset = positions_at, .uvs = uvs, .uvs_offset = uvs_at,
+                   .grass = read.grass, .positions = (read.set ? nullptr : positions), .positions_offset = positions_at, .uvs = uvs, .uvs_offset = uvs_at,
                    .mask = mask, .mask_offset = masks.at(read.slice)};
           if (!read.set) {
             list->CopyBufferRegion(positions.Get(), positions_at, vertex_buffer_.Get(), uint64_t{read.first_vertex} * 16, uint64_t{read.triangles} * 48);
@@ -3199,7 +3204,8 @@ class RtScene12 {
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, written->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, build_rows_->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, placed_state_->GetGPUVirtualAddress());
-      // Clear, drawn, kept (rt_place's modes).
+      // The camera (b2: grass outside the view stays out), then clear, drawn, kept (rt_place's modes).
+      list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 16, shared.rt_view_projection, 0);
       for (const uint32_t mode : {0u, 1u, 2u}) {
         const uint32_t threads = (mode == 1u) ? placed_drawn : MAX_INSTANCES;
         if (threads == 0 || (mode == 2u && (shared.rt_flags & dlaa_bridge::RT_NO_KEPT) != 0)) continue;
@@ -3708,9 +3714,9 @@ class RtScene12 {
 
 #if defined(RENODX_OMM_SDK)
   // A leaf mesh's micromaps from its UVs and mask (the bake thread): 4-state as the ray queries test them (bilinear,
-  // wrapping, LEAF_ALPHA_CUTOFF), a micro-triangle about two texels across (at most level 6), the same ones shared, wholly
-  // opaque or clear triangles the special indices (all of them so: no micromaps, no array); none (no indices) when the
-  // SDK fails.
+  // wrapping, LEAF_ALPHA_CUTOFF), a micro-triangle about two texels across (at most level 6, grass's
+  // GRASS_MICROMAP_LEVEL), the same ones shared, wholly opaque or clear triangles the special indices (all of them so: no
+  // micromaps, no array); none (no indices) when the SDK fails.
   void BakeMicromaps(MicromapBake* bake, ommBaker baker) const {
     ommCpuTextureMipDesc mip = ommCpuTextureMipDescDefault();
     mip.width = dlaa_bridge::RT_ATLAS_SIZE;
@@ -3737,7 +3743,7 @@ class RtScene12 {
     input.indexBuffer = corners.data();
     input.indexCount = static_cast<uint32_t>(corners.size());
     input.alphaCutoff = LEAF_ALPHA_CUTOFF;
-    input.maxSubdivisionLevel = 6;
+    input.maxSubdivisionLevel = bake->grass ? GRASS_MICROMAP_LEVEL : 6;
     input.maxArrayDataSize = MICROMAP_MESH_BYTES;
     input.maxWorkloadSize = MICROMAP_WORKLOAD;
     ommCpuBakeResult result = nullptr;
