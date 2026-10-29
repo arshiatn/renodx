@@ -1429,6 +1429,23 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 8. Build (helper41, build32, 64-bit check), harness (30 modes pass, all_modes_h41), twattila_v105.zip, README /
           HANDOFF / memory, report.
 
+    - v107 BIG BATCH (ATN 2026-10-29 ~21:05, away a few hours, "no need to stop", commit often). ATN's v106 test: every
+      Experimental toggle on (Path Tracing 16 rays, SHaRC, SER, GPU bakes, sway 50 m + Off-Screen Sway off, importance
+      torch shadows, Path-Traced Ambient, grass range 75 m). Logs (Attila folder): the helper's first GPU loss: a hang in a
+      trace request's sway pass (DRED: BLAS marker, cluster-destination copy, sway marker, counts copy, >Dispatch), then
+      three restarts each lost at the cluster-destination copy after the BLAS builds (page faults on freed resources),
+      then "Off until the next set" (RR off with RT); frame generation then failed "no D3D12 device for Streamline"
+      (sticky Fail). Checklist ([ ] open, [x] done, [-] left out with the reason):
+      [ ] 1. The freeze and losing RR / MFG: DRED names (pass markers per slot, resource names), experimental options off
+          for the session after a GPU reset (the helper restarts without them), RT restarts' status, FG retries its device.
+      [ ] 2. River zoom (grass on the riverbed) destroys fps: find the cost, get performance back.
+      [ ] 3. Surfaces stay black a few seconds then "load": find it (Path-Traced Ambient? caches? AO history?).
+      [ ] 4. NVIDIA guidelines audit: everything as NVIDIA's guides say (GPU micromap baking the default, OMM / Mega
+          Geometry / DLSS RR / ReSTIR / SHaRC usage).
+      [ ] 5. More ReSTIR: reflections, shadows, other effects; fewer rays, less noise, less VRAM.
+      [ ] 6. Water refraction (RT), caustics, coloured shadows through banners / sails.
+      [ ] 7. Build (helper45+, build32, 64-bit check), harness, twattila_v107.zip, README / HANDOFF / memory, report.
+
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
 rt_shadows.hpp; DLSS README v96 has the whole design). Stream output of the opaque depth prepass (vs C81C5E1F,
