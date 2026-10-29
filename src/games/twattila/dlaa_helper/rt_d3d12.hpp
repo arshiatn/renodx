@@ -761,8 +761,8 @@ class RtScene12 {
   [[nodiscard]] std::string Status() const {
     // The GPU times right after the label: the bridge's line holds 255 characters, a battle's counts run past them.
     const size_t label = status_.find("): ");
-    if (timings_.empty() || label == std::string::npos) return status_;
-    return std::format("{}{} | {}", status_.substr(0, label + 3), timings_, status_.substr(label + 3));
+    if (gpu_timings_.empty() || label == std::string::npos) return status_ + cpu_timings_;
+    return std::format("{}{} | {}{}", status_.substr(0, label + 3), gpu_timings_, status_.substr(label + 3), cpu_timings_);
   }
   // A GPU fault or hang (Windows' timeout detection) removed the device: nothing runs on it again (main.cpp makes a new
   // one).
@@ -892,7 +892,8 @@ class RtScene12 {
       return true;
     });
     AdvanceMicromaps(completed);
-    timings_.clear();
+    gpu_timings_.clear();
+    cpu_timings_.clear();
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, cluster_data, slot_index, &slot);
     if (!recorded) slot.capture_keys.clear();
@@ -901,7 +902,7 @@ class RtScene12 {
       LARGE_INTEGER cpu_frequency;
       QueryPerformanceCounter(&cpu_recorded);
       QueryPerformanceFrequency(&cpu_frequency);
-      timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}",
+      cpu_timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}",
                               static_cast<double>(cpu_waited.QuadPart - cpu_start.QuadPart) * 1000.0 / cpu_frequency.QuadPart,
                               static_cast<double>(cpu_recorded.QuadPart - cpu_waited.QuadPart) * 1000.0 / cpu_frequency.QuadPart);
     }
@@ -922,7 +923,7 @@ class RtScene12 {
       LARGE_INTEGER submit_frequency;
       QueryPerformanceCounter(&submit_end);
       QueryPerformanceFrequency(&submit_frequency);
-      timings_ += std::format(", submit {:.2f}", static_cast<double>(submit_end.QuadPart - submit_start.QuadPart) * 1000.0 / submit_frequency.QuadPart);
+      cpu_timings_ += std::format(", submit {:.2f}", static_cast<double>(submit_end.QuadPart - submit_start.QuadPart) * 1000.0 / submit_frequency.QuadPart);
     }
     return recorded;
   }
@@ -3019,18 +3020,19 @@ class RtScene12 {
       ReleaseMesh(&entry.second);
       return true;
     });
-    status_ = std::format("Ray tracing ({}): {} meshes ({} new, {} micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles (every frame {:.2f} "
-                          "M: terrain {:.2f}, grass and swaying leaves {:.2f}; {})",
-                          dxr12_ ? "DXR 1.2" : "DXR 1.1", meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn,
-                          ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
-                          static_cast<double>(triangles) / 1.0e6, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
+    status_ = std::format("Ray tracing ({}): every frame {:.2f} M triangles (terrain {:.2f}, grass and leaves {:.2f}; {}) | {} meshes ({} new, {} "
+                          "micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles",
+                          dxr12_ ? "DXR 1.2" : "DXR 1.1", static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? terrain_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? grass_triangles : 0u) / 1.0e6,
                           units_clustered ? std::format("{} clusters ({} from templates), {} compact draws of {} sets", clusters_built, templated_built,
                                                         compact_drawn, sets_.size())
-                                          : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
+                                          : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"),
+                          meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn,
+                          ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
+                          static_cast<double>(triangles) / 1.0e6);
     if (timestamps_) {
-      timings_ = std::format("GPU ms: scene {:.2f} (clusters {:.2f}), TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0],
+      gpu_timings_ = std::format("GPU ms: scene {:.2f} (clusters {:.2f}), TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0],
                              gpu_ms_[5], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3], gpu_ms_[4]);
     }
     slot->status = status_;
@@ -3420,7 +3422,9 @@ class RtScene12 {
   std::vector<Release> releases_;
   bool failed_ = false;
   std::string status_ = "Ray tracing off";
-  std::string timings_;  // the last trace's (GPU, CPU, submit; after the status's label)
+  // The last trace's times: the GPU's (after the status's label), the CPU's and the submit's (at its end).
+  std::string gpu_timings_;
+  std::string cpu_timings_;
 };
 
 }  // namespace twattila::dlaa_helper

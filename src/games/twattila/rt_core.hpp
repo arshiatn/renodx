@@ -265,7 +265,13 @@ struct Costs {
   uint64_t left_out = 0;  // their share full
   uint64_t no_room = 0;   // the frame's captures or vertex texture full
   uint64_t compact_draws = 0;
+  uint64_t particles = 0;  // Smoke Shadows' streamed out
+  // What was left out by vertex shader: its texels by the first of its shares that was full (SHARE_NAMES).
+  std::unordered_map<uint32_t, std::array<uint64_t, 5>> left_out_shaders;
 };
+// The shares a dynamic draw needs room in (Capture): all dynamic draws' texels, the units', the grass's corners, the
+// helper's triangles and clusters.
+constexpr std::array<const char*, 5> SHARE_NAMES = {"dynamic texels", "units' texels", "grass corners", "triangles", "clusters"};
 
 // Adds its scope's CPU time to `ticks` (the cost report).
 class CpuTime {
@@ -883,7 +889,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // again as the helper releases it), one not seen moving only in its turn, every PLACE_TURNS frames (the helper keeps
   // its instances between).
   bool place = false;
-  bool share_full = false;
+  size_t full_share = SHARE_NAMES.size();  // the first of its shares that is full (none: their count)
   // Compact (v16): its mesh's blocks in place of its triangles, once its set is made and can go with this frame's trace;
   // what it takes of the vertex texture and the helper's frame. A placed draw of leaves sways (`sway`): its blocks besides
   // its rows, within the trees' share.
@@ -922,12 +928,16 @@ void Capture(Context& command, const SceneShader& shader) {
       triangles = block_triangles;
       clusters = block_clusters;
     }
-    share_full = dynamic
-                 && (runtime.dynamic_vertices + texels > MAX_DYNAMIC_VERTICES
-                     || (!shader.terrain && runtime.unit_vertices + texels > MAX_UNIT_VERTICES)
-                     || (shader.grass && runtime.grass_vertices + (triangles * 3) > MAX_GRASS_VERTICES)
-                     || runtime.dynamic_triangles + triangles > dlaa_bridge::RT_DYNAMIC_TRIANGLES
-                     || runtime.dynamic_clusters + clusters > dlaa_bridge::RT_DYNAMIC_CLUSTERS);
+    if (dynamic) {
+      const std::array<bool, SHARE_NAMES.size()> full = {
+          runtime.dynamic_vertices + texels > MAX_DYNAMIC_VERTICES,
+          !shader.terrain && runtime.unit_vertices + texels > MAX_UNIT_VERTICES,
+          shader.grass && runtime.grass_vertices + (triangles * 3) > MAX_GRASS_VERTICES,
+          runtime.dynamic_triangles + triangles > dlaa_bridge::RT_DYNAMIC_TRIANGLES,
+          runtime.dynamic_clusters + clusters > dlaa_bridge::RT_DYNAMIC_CLUSTERS,
+      };
+      full_share = static_cast<size_t>(std::ranges::find(full, true) - full.begin());
+    }
     if (const auto known = runtime.known.find(key); !dynamic && known != runtime.known.end()) {
       // A leaf's slice stays in use while it is drawn.
       if (mask) {
@@ -986,8 +996,9 @@ void Capture(Context& command, const SceneShader& shader) {
   }
 
   const std::unique_lock lock(runtime.mutex);
-  if (share_full) {
+  if (full_share < SHARE_NAMES.size()) {
     runtime.costs.left_out += texels;
+    runtime.costs.left_out_shaders[shader.hash][full_share] += texels;
     return;
   }
   // A mesh without its cluster set (v16): its indices read back for one, its triangles captured meanwhile.
@@ -1289,6 +1300,7 @@ void CaptureParticles(Context& command) {
   native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
   runtime.particles += count;
+  runtime.costs.particles += count;
 }
 
 // A listed scene shader's draw (its SceneShader the callback's data).
@@ -1991,6 +2003,24 @@ inline void Update(const Settings& settings) {
                                         std::ranges::count_if(runtime.cluster_meshes, [](const auto& entry) { return static_cast<bool>(entry.second.remap); }),
                                         static_cast<double>(costs.left_out) / 1.0e6 / costs.frames,
                                         static_cast<double>(costs.no_room) / 1.0e6 / costs.frames));
+      // What was left out, and which share was full (the largest first).
+      std::vector<std::tuple<uint64_t, uint32_t, size_t>> left_out;
+      for (const auto& [hash, shares] : costs.left_out_shaders) {
+        for (size_t share = 0; share < shares.size(); ++share) {
+          if (shares[share] != 0) left_out.emplace_back(shares[share], hash, share);
+        }
+      }
+      std::ranges::sort(left_out, std::greater<>());
+      std::string shaders;
+      for (const auto& [texels, hash, share] : std::span(left_out).first(std::min<size_t>(left_out.size(), 8))) {
+        shaders += std::format("{}{:08X} {:.2f} M ({} full)", shaders.empty() ? "" : ", ", hash,
+                               static_cast<double>(texels) / 1.0e6 / costs.frames, internal::SHARE_NAMES[share]);
+      }
+      if (!shaders.empty()) renodx::utils::log::i("[Total War] Ray tracing: left out a frame by vertex shader: ", shaders, ".");
+      if (costs.particles != 0) {
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows, {:.0f} particles a frame.",
+                                          static_cast<double>(costs.particles) / costs.frames));
+      }
     }
     costs = {};
     runtime.new_static_time = now;
