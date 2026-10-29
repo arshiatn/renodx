@@ -2,6 +2,19 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v104 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper36: ship them together)
+
+- **Ray Reconstruction keeps dark tones**: every RR preset lifted shadows below ~1.4 nits to one flat violet level (the
+  units' legs and their shadows). RR now gets the colour's square root, as DLSS presets L and M do.
+- **Water reflections with Ray-Traced Reflections**: rivers and lakes keep the screen-space reflections. The rays left
+  from the riverbed (the water is drawn after the G-buffer they start from): a bright sky and none of the bridge.
+- **Water Clarity** goes up to 16 (murky rivers needed more than 4), and the log says once where it applies.
+- **Torch and Fire Light in Fog and Smoke**: also on the particles' second shader (fire smoke), and as strong as the
+  game's own sunlight on them (it was about 12 times weaker).
+- **Grass Always Drawn**: grass outside the view (with 16 m to spare) stays out of the ray-traced scene. With it the game
+  draws every grass cell, also behind you, past what the scene holds (trees' and grass's shadows flickered).
+- **Grass shadows settle faster**: grass's micromaps one level coarser (a quarter of the baking).
+
 ## v103 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper35: ship them together)
 
 - **Shadow leaks fixed**: surfaces facing away from the sun are traced too (they were left lit, trusting the game's

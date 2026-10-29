@@ -1315,6 +1315,31 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       - Room growth max(1.5x room, 1.25x wanted).
       NEXT: ATN records twice at the same place, Light Through Leaves On / Off (and Swaying Grass Shadows Off), to see the
       leaf logic's share of the sun; then the sun's rays (TMax, the leaves' query) or the AO.
+    - v104 (2026-10-29, helper36; ATN's debug28: 3 profiles (Light Through Leaves on / off with Graphics 2 of 2 maxed but
+      Grass Always Drawn off, and reset), "Reflection" and "DLSS RR precision" shots, a list of questions). Profiles:
+      sun 5.3-6.9 and AO 5.5-7.0 ms move together with the view (foliage), Light Through Leaves now ~free, scene 2.8 ms
+      (211 K clusters), placed up to 200 K of 262 K (with Grass Always Drawn off). Done:
+      - RR dark tones: the RR shot's darks below ~1.36 nits (G) one flat violet level (653 K pixels on one 10-bit PQ code).
+        RR ignores exposure (its guide, 3.7). Harness: ATN's L frame as RR's colour (HARNESS_RR_IMAGE, jittered,
+        HARNESS_RR_JITTER) is fine, but squared (the DLSS input is the tone mapper's output, far darker than the graded
+        shot) RR raises the darkest 3x and L 2.7x; with the square root 1.0x (noisy AO: ~1% darker, a bit more noise).
+        anti_aliasing.hpp square_root for RR too. The harness's nvngx_dlss.dll is now 310.9.16 (the game's).
+      - Water reflections: the water draws its own G-buffer (normal, material 4) after the deferred light, so the rays
+        (traced from the G-buffer taken at the sun light draw) left from the riverbed with its rough normal: sky, too
+        bright, no bridge (the debug view black on the river). ssr00 / ssr01: the game's material flag 4 (its own no-SSAO
+        test) keeps the screen-space march and leaves out the RT specular occlusion; rt_scene builds the pyramid and the
+        resolve with the rays too (the rays' pixels hit -2: passed through).
+      - Water Clarity: the copy / compute / rebind works in a GPU test (scratchpad water_test); range to 16 and a
+        one-time log line (did the hook fire in ATN's river? check the log).
+      - Torch light on smoke: vfx01 (the particles' path without shadows) had none: rt_local_lights there too (b9 via
+        SHADOW_READER_SHADERS); the wrap-lit branch (sun colour without a phase function) drops the 1 / 4 pi.
+      - Reflex: on and accepted by NVAPI in ATN's log; pacing only when GPU-bound (check NVIDIA overlay's PC Latency).
+      - Grass Always Drawn flicker: rt_place leaves out grass outside the view's sides +16 m (world origin: the rows are
+        world matrices, the BLAS the first instance in world space; harness rows made the same); kept grass too.
+        Untested whether that was the cause: next profile with it ON (placed vs 262 K).
+      - GRASS_MICROMAP_LEVEL 5 (MicromapRead / MicromapBake grass flag).
+      NEXT: ATN's test of RR darks, water, torches; a profile with Grass Always Drawn ON; near-only grass sway (GPU-side
+      per-instance distance in rt_place + rt_compact) if the sway's cost still matters.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
