@@ -2,6 +2,26 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v95 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper27 and bridge v17: ship them together)
+
+- **Ray Reconstruction is the only denoiser**: under RR the reflections' denoiser and history, the helper's ray-traced
+  AO history and the soft-shadow filter are off (RR denoises them); soft sun shadows trace one ray toward a point of the
+  sun's disk instead. RR gets the reflections' **specular hit distance** (how far each pixel's reflection rays went:
+  reflections in motion), **32 jitter phases** (NVIDIA's minimum for RR), NVIDIA's sky guide values, and ReSTIR GI's
+  reuse varied per frame (RR expects independent samples).
+- **Ray-Traced Ambient Occlusion On replaces** the game's ambient occlusion and GT-VBAO (Alone folded in). **Units and
+  grass** are always in the ray-traced scene (their toggles are gone).
+- **4x battles and walls**: the shares are bigger (8192 vertex rows, 32M triangles, 524,288 clusters on GPUs over 20 GB)
+  and units take at most three quarters of them, so walls and buildings drawn after the soldiers keep a quarter. Rocks,
+  cliffs and other meshes blended into the terrain (rigidterrainblend) are in the ray-traced scene now.
+- **Faster light bounce and reflections**: the helper's paths no longer use shader execution reordering (measured slower
+  in every pass: 4K bounce 1.18 -> 0.84 ms, reflections 2.82 -> 2.11 ms in the test scene).
+- **Many fires**: past 8 lights reaching a pixel, the 4 most important are traced every frame and the rest in turns,
+  keeping last frame's shadow where the surface was seen (4K, 32 lights reaching every pixel: 6.64 -> 5.17 ms).
+- **Static meshes share memory pools** (NVIDIA RTXMU's approach): no driver allocation per mesh (64 KB at least each);
+  the helper logs the pools when they grow.
+- Log: the leaf micromap tally at most every 10 s, the Light Bounce's and reflections' GPU times only while they run.
+
 ## v94 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper26, bridge v16 and omm-lib.dll: ship them together)
 
 - **Ray-Traced Shadows are every shadow**: the sun's (the game's sun shadow maps are no longer drawn and Screen-Space

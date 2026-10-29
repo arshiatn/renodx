@@ -1066,6 +1066,11 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           times now first), Leaf Micromaps (log "Leaf micromaps: N meshes baked"; turn off if the GPU resets), Smoke
           Shadows (Experimental, off: particle size scale, fire casting?).
     - NEXT BIG BATCH (ATN 2026-10-29, after the v94 test; ATN: size doesn't matter, anything that speeds RT/PT on or off).
+      DONE 2026-10-29 as v95 (Downloads\twattila_v95.zip; helper27 = build\tw_dlaa_helper27, copied into Attila's
+      folder; bridge v17; all 11 other addons build; harness 16 modes pass; untested in game). Built: 1, 2 (part), 3 (ray
+      budget), 5 (measured: SER removed), 7, 9, 10, 11, 12 + rocks. Not built, with numbers: 4 SHARC / NRC (no speed),
+      8 (no gain), 13 cluster LOD (wants a 4x battle log first). ASK ATN: a 4x battle log (status line: every frame
+      M triangles) and a siege with fires (the light budget).
       NVIDIA's SDKs are allowed (NVIDIA RTX SDKs License: RTXDI, SHARC, NRC, NRD, RTXPT, RTXGI; RTXMU MIT; Mega
       Geometry samples Apache 2.0): download at build time like OMM, binaries / compiled shaders only, credit in About.
       [x] 1 (step 2: RT_RECONSTRUCTED 256; harness HARNESS_SUN_SOFTNESS) RR is the only denoiser (ATN: no NRD; RR/PT users use RR): under RR, SSR's denoiser + history (ssr_hiz)
