@@ -1081,7 +1081,11 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [ ] 5 SER in the incoherent passes (AO, Light Bounce as ray generation shaders like the paths).
       [ ] 7 RTXMU: BLAS suballocation and compaction (fewer allocations, less memory).
       [ ] 8 Partitioned TLAS again (find the siege stall); Mega Geometry for the captures still on the CPU path
-          (non-indexed or not yet compact dynamic draws: make them compact too).
+          (non-indexed or not yet compact dynamic draws: make them compact too). Step 4: the second half has no gain:
+          ATN's 03:11 log (2026-10-29) has every cluster instantiated from templates after a battle's first frames
+          (10 of 11 status lines; the first: 29,181 soup clusters before any set was made); every scene draw in the
+          trace is indexed, a dynamic one is compact once its set arrives (2-3 frames). Soup templates would need <= 128
+          vertices (the instantiation's limit): 42-triangle clusters, twice as many. Left as is.
       [x] 9 (step 1) Each RT effect replaces its raster one, never both: RT AO replaces the game's SSAO and GT-VBAO (fold On /
           Alone into one On = Alone). Already: RT Shadows (shadow maps + SSS), RT Reflections (SSR skipped), RT Light
           Bounce / Path Tracing (GT-VBGI's screen trace replaced; its resolve shared).
