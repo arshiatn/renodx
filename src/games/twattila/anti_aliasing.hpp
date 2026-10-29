@@ -1015,10 +1015,12 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   // DLAA's input: DLSS, the render size.
   const UINT input_width = (scaled ? runtime.render_width : objects.width);
   const UINT input_height = (scaled ? runtime.render_height : objects.height);
-  // Presets L and M (always auto-exposed) flatten dark tones given linear colour (ATN debug11: shadows one flat grey with
-  // coloured fringes): they get its square root, as the tone mapper's own encoding (Ray Reconstruction linear colour).
-  const bool square_root = method == Method::DLAA && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u)
-                           && !(runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame);
+  // Presets L and M (always auto-exposed) and Ray Reconstruction flatten dark tones given linear colour (ATN debug11:
+  // shadows one flat grey with coloured fringes; debug28: Ray Reconstruction's a flat violet veil): they get its square
+  // root, as the tone mapper's own encoding.
+  const bool square_root = method == Method::DLAA
+                           && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u
+                               || (runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame));
   const ShaderSettings settings = {
       .metrics = {1.f / static_cast<float>(objects.width), 1.f / static_cast<float>(objects.height),
                   static_cast<float>(objects.width), static_cast<float>(objects.height)},

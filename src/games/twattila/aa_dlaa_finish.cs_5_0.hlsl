@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-// DLAA (anti_aliasing.hpp): NVIDIA's result (t0, BT.2020: linear, or its square root for presets L and M) back to the
-// tone mapper's signed BT.709 and its 2.0
-// encoding (square root, sign kept), the frame's own alpha (t1), into the result (u0). Its Debug View instead: the motion
+// DLAA (anti_aliasing.hpp): NVIDIA's result (t0, BT.2020: linear, or its square root for presets L and M and Ray
+// Reconstruction) back to the tone mapper's signed BT.709 and its 2.0 encoding (square root, sign kept), the frame's own
+// alpha (t1), into the result (u0). Its Debug View instead: the motion
 // NVIDIA got (1: t2) or the objects' own (2: t3, motion.hlsli MotionTexel; t4 the depth), at the input size (top-left),
 // stretched over the picture: the direction as the hue, brighter the faster (32 pixels a frame: full). Object Motion
 // (t5 / t6 the in-draw motion and depth too): grey where an object's is the final surface but still (yellowish: drawn

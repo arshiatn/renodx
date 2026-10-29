@@ -21,7 +21,8 @@ cbuffer aa_settings : register(b0)
   float g_aa_padding;
   float4 g_smaa_subsample_indices;  // SMAA T2x: this frame's sample (SMAA 1x: 0)
   float4 g_dlaa_debug;              // DLAA's Debug View (anti_aliasing.hpp Settings debug_view): x the view, yz the input size;
-                                    // w the colour NVIDIA gets: 1 its square root (presets L and M), else linear
+                                    // w the colour NVIDIA gets: 1 its square root (presets L and M, Ray
+                                    // Reconstruction), else linear
 }
 
 // TAA and SMAA T2x (aa_taa_*.cs): the cameras in the game's register layout (mul(float4(p, 1), m) as its shaders).
