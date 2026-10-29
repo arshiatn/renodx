@@ -2,6 +2,24 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v107 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper46: ship them together)
+
+- **After a GPU freeze, RR and frame generation work again**: when the GPU drops the helper's ray tracing device, the
+  fence shared with the game was stuck, so nothing waited for the helper any more (RR and MFG broken, fps "better"). The
+  addon now makes a new one at once. Ray tracing starts again once, with GPU Micromap Baking and the Experimental
+  swaying shadows options, Shader Execution Reordering and SHaRC paused until the game restarts; a second freeze turns
+  ray tracing off for the session (four in a row made Windows refuse the helper new GPU devices, frame generation's
+  too). RR and frame generation get new devices after a reset and retry at the next set. The log names each pass and
+  buffer where the GPU stopped.
+- **River / grass fps**: grass meshes first drawn before the helper took compact draws (a battle's first frames) were
+  built with their clusters each over a whole grass patch: rays through grass cost about 4x (test field with ATN's
+  settings: 30 ms -> 7.6 ms). They are now ordered by place; the log counts "unsorted" sets (should stay 0).
+- **Surfaces black for a few seconds**: an object's coarser level of detail stayed in the ray-traced scene for 300
+  frames after the game switched to a finer one while zooming, darkening it. Objects not drawn for 16 frames now leave
+  the scene when they are inside the view (off-screen ones still cast shadows).
+- **NVIDIA's guidelines**: GPU Micromap Baking is on by default (NVIDIA's OMM SDK: the GPU baker for baking in game; no
+  longer Experimental). Under Ray Reconstruction the AO goes to RR raw (RR replaces denoisers that accumulate frames).
+
 ## v106 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper44: ship them together)
 
 - **SHaRC Radiance Cache (Experimental, with Path Tracing)**: NVIDIA's SHaRC holds the light of what the screen does not
