@@ -1496,7 +1496,7 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           x (1 - t50); needs the sun shaders' bytecode (dump in game) to check the patch), RT refraction (the water is
           drawn forward after the lighting, so the trace never sees its surface: needs a capture of the water surface at
           its draw and a late trace, or last frame's, reprojected).
-      [x] 7. v107 for items 1-4: twattila_v107.zip (Downloads, 21:57; helper46, release_zip.py now names
+      [x] 7. v107 for items 1-4 + caustics: twattila_v107.zip (Downloads, 22:15; helper46, release_zip.py now names
           build\tw_dlaa_helper46), build32 Attila / Rome II / Thrones and the 64-bit TW check built, all_modes 38/38
           (all_modes_h46.txt: new removal_sway, undrawn_kept, undrawn_gone), README v107. Items 5-6 go to v108.
 
