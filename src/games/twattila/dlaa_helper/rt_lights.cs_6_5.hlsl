@@ -69,12 +69,30 @@ void main(uint3 id : SV_DispatchThreadID) {
     traced = reached & chosen;
     lit = ~(reached & kept_dark);
   }
+  // Soft shadows under Ray Reconstruction: each ray to a point of the light's disk (light_size), the bit lit where the
+  // share of rays that reached it beats noise moved each frame, which RR averages into the share (hard: half). Several
+  // rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel.
+  const bool reconstructed = (flags & RECONSTRUCTED) != 0u;
+  const bool soft = reconstructed && light_size > 0.f;
+  const uint rays = clamp(shadow_rays, 1u, 4u);
+  const float threshold = (reconstructed && (soft || rays > 1u)) ? InterleavedGradientNoise(float2(id.xy)) : 0.5f;
+  const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
   [loop]
   for (uint light = 0u; light < light_count; ++light) {
     if (((traced >> light) & 1u) == 0u) continue;
-    const float3 to_light = lights[light].xyz - light_origin;
-    const float light_distance = length(to_light);
-    if (Occluded(light_origin, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_SMOKE)) lit &= ~(1u << light);
+    uint reached_rays = 0u;
+    [loop]
+    for (uint ray = 0u; ray < rays; ++ray) {
+      const float3 from = light_origin + ((rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f);
+      float3 to_light = lights[light].xyz - from;
+      if (soft) {
+        const uint seed = (frame * 32u + light) * 16u + ray * 2u;
+        to_light += DiskPoint(normalize(to_light), light_size, float2(Random(uint3(id.xy, seed)), Random(uint3(id.xy, seed + 1u))));
+      }
+      const float light_distance = length(to_light);
+      if (!Occluded(from, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_SMOKE)) ++reached_rays;
+    }
+    if ((float)reached_rays <= threshold * (float)rays) lit &= ~(1u << light);
   }
   light_mask[id.xy] = lit;
   light_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u][id.xy] = lit;

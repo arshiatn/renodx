@@ -28,8 +28,10 @@ cbuffer Settings : register(b0) {
   uint ambient_rays;
   uint width;
   uint height;
-  float sun_cone;  // tan of the sun's angular radius for soft shadows (0: hard)
-  uint settings_padding;
+  float sun_cone;     // tan of the sun's angular radius for soft shadows (0: hard)
+  uint shadow_rays;   // rays a pixel toward the sun and each light (v18; Ray Tracing at Output Resolution)
+  float light_size;   // the local lights' radius in metres for soft shadows under Ray Reconstruction (v18; 0: hard)
+  uint3 settings_padding;
 };
 
 static const uint SUN_SHADOWS = 1u;
@@ -235,6 +237,35 @@ bool Planar(int2 pixel, float4 position, float3 normal) {
 // where wall parts meet, ATN 2026-10-29).
 float3 RayOrigin(float4 position, float3 normal, bool planar) {
   return position.xyz + (planar ? normal : normalize(sun[uint2(1, 0)].xyz - position.xyz)) * SurfaceOffset(position.w);
+}
+
+// Interleaved gradient noise (Jimenez 2014, "Next Generation Post Processing in Call of Duty: Advanced Warfare"): a value
+// per pixel that is even over every few neighbours, moved each frame.
+float InterleavedGradientNoise(float2 pixel) {
+  pixel += 5.588238f * (float)(frame & 63u);
+  return frac(52.9829189f * frac(dot(pixel, float2(0.06711056f, 0.00583715f))));
+}
+
+// A point of a disk of `radius` facing `axis` (`u` in 0-1 each: uniform over it), from its centre: the sun's disk (its
+// tan) for a jittered sun ray, a light's for a soft shadow.
+float3 DiskPoint(float3 axis, float radius, float2 u) {
+  const float3 tangent = normalize(cross((abs(axis.y) < 0.999f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f), axis));
+  const float angle = u.y * 6.28318531f;
+  return (tangent * cos(angle) + cross(axis, tangent) * sin(angle)) * (sqrt(u.x) * radius);
+}
+
+// A spot of the surface a planar pixel shows, `spot` (each -0.5 to 0.5) across it, from its centre: several rays a pixel
+// (Ray Tracing at Output Resolution) start from the output pixels it stands for. Half its neighbours' span each way.
+float3 PixelSpot(int2 pixel, float2 spot) {
+  const int2 last = int2(width, height) - 1;
+  const float3 across = positions[clamp(pixel + int2(1, 0), 0, last)].xyz - positions[clamp(pixel - int2(1, 0), 0, last)].xyz;
+  const float3 down = positions[clamp(pixel + int2(0, 1), 0, last)].xyz - positions[clamp(pixel - int2(0, 1), 0, last)].xyz;
+  return (across * spot.x + down * spot.y) * 0.5f;
+}
+
+// The `ray`th of a pixel's spots (R2 sequence turned by `turn`), each axis -0.5 to 0.5.
+float2 SpotOf(uint ray, float turn) {
+  return frac(float2(0.5f, 0.5f) + (float)ray * float2(0.7548777f, 0.5698403f) + turn) - 0.5f;
 }
 
 // A per-pixel, per-frame, per-ray value in 0-1 (PCG hash).

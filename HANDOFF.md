@@ -1102,9 +1102,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           section's search-only settings (Radius, Quality, Directions, Checkerboard, Back-Face, Auto Thickness) off while
           traced) GI: one selector (Off / Screen-Space GT-VBGI / Ray-Traced / Path-Traced); PT + RT GI could both be on (only
           one tracer runs, the toggles stacked); GT-VBGI's march settings only for Screen-Space.
-      [ ] 2 Soft torch / fire shadows: each frame a ray to a jittered point of a light of radius R (bits; RR / DLAA
+      [x] 2 (helper30, bridge v18: RayTracedLightSoftness 0.25 m, rt_lights DiskPoint jitter + IGN threshold under RR; harness: penumbra band 5.8k -> 28.6k edge pixels) Soft torch / fire shadows: each frame a ray to a jittered point of a light of radius R (bits; RR / DLAA
           average them); slider; bridge v18 field.
-      [ ] 8 RT at output density below 100% render scale: samples x output / render pixels (sun, AO, lights,
+      [x] 8 (RayTracingOutputResolution: density round(1/scale^2) <= 4 x AO rays / reflection samples / sun + light rays (PixelSpot R2 spots); harness all pass with 4) RT at output density below 100% render scale: samples x output / render pixels (sun, AO, lights,
           reflections, GI texels); toggle; bridge v18 field.
       [ ] 1 Grass micromaps: NVAPI cluster templates take OMMs (FLAG_ALLOW_OMM on every op touching them, template args'
           opacityMicromapArray / index buffer): bake per compact set (its UVs + alpha slice, OMM SDK as the leaves), its

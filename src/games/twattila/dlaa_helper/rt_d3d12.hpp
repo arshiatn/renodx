@@ -443,7 +443,7 @@ class RtScene12 {
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV, .Descriptor = {.ShaderRegister = 0}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
          .DescriptorTable = {.NumDescriptorRanges = static_cast<UINT>(ranges.size()), .pDescriptorRanges = ranges.data()}},
-        {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .Constants = {.ShaderRegister = 0, .Num32BitValues = 8}},
+        {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .Constants = {.ShaderRegister = 0, .Num32BitValues = 12}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .Constants = {.ShaderRegister = 1, .Num32BitValues = 8}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV, .Descriptor = {.ShaderRegister = 8}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV, .Descriptor = {.ShaderRegister = 6}},
@@ -925,7 +925,7 @@ class RtScene12 {
         list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
       }
       const float bounce_range = std::clamp(shared.rt_bounce_range, 0.5f, 200.f);
-      const std::array<uint32_t, 8> settings = {
+      const std::array<uint32_t, 12> settings = {
           frame,
           0u,
           std::bit_cast<uint32_t>(bounce_range),
@@ -933,7 +933,7 @@ class RtScene12 {
           shared.rt_width,
           shared.rt_height,
           0u,
-          0u,
+          1u,
       };
       std::array<uint32_t, 20> bounce = {};
       std::memcpy(bounce.data(), shared.rt_view_projection, sizeof(shared.rt_view_projection));
@@ -3123,7 +3123,8 @@ class RtScene12 {
     // harness's RR test (HARNESS_RR) left 19-23% of the raw 4-ray AO's noise; with this history and the AO's spread rays
     // (rt_trace) a third of what RR alone left.
     const bool reconstructed = (shared.rt_flags & dlaa_bridge::RT_RECONSTRUCTED) != 0;
-    const std::array<uint32_t, 8> settings = {
+    // v18: rays a pixel toward the sun and each light, the lights' radius for soft shadows (rt_lights: under RR).
+    const std::array<uint32_t, 12> settings = {
         frame,
         (shared.rt_flags & ~dlaa_bridge::RT_LOCAL_LIGHTS) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u),
         std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.f)),
@@ -3131,7 +3132,8 @@ class RtScene12 {
         shared.rt_width,
         shared.rt_height,
         std::bit_cast<uint32_t>(soft ? std::tan(softness * 3.14159265f / 180.f) : 0.f),
-        0u,
+        (version >= 18) ? std::clamp(shared.rt_shadow_rays, 1u, 4u) : 1u,
+        std::bit_cast<uint32_t>((version >= 18) ? std::clamp(shared.rt_light_size, 0.f, 2.f) : 0.f),
     };
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());

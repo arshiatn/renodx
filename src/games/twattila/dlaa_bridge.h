@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 17;
+constexpr uint32_t VERSION = 18;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -315,11 +315,17 @@ struct Shared {
   uint64_t rr_hit_distance = 0;
   uint32_t rr_hit_distance_written = 0;
   uint32_t rr_v17_padding = 0;
+  // The addon's (v18): the local lights' radius in metres for soft shadows (with Ray Reconstruction each frame a ray to
+  // a point of the light's disk; 0: hard), the rays a pixel toward the sun and each light (Ray Tracing at Output
+  // Resolution below 100% render scale: the output pixels a render pixel stands for; 0 or 1: one).
+  float rt_light_size = 0.f;
+  uint32_t rt_shadow_rays = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 17) return sizeof(Shared);
+  if (version >= 18) return sizeof(Shared);
+  if (version == 17) return offsetof(Shared, rt_light_size);
   if (version == 16) return offsetof(Shared, rr_hit_distance);
   if (version == 15) return offsetof(Shared, rt_compact_count);
   if (version == 14) return offsetof(Shared, rt_device);

@@ -70,6 +70,10 @@ struct Settings {
   uint32_t ambient_rays = 2;
   bool ambient_quarter = false;  // a quarter of the rays (one pixel of each 2 x 2 traced a frame, in turn)
   float sun_softness = 0.5f;  // degrees of the sun's disk (0: hard shadows)
+  float light_size = 0.f;     // the local lights' radius (metres) for soft shadows under Ray Reconstruction (bridge v18)
+  // Rays a pixel toward the sun and each light (bridge v18): below 100% render scale with Ray Tracing at Output
+  // Resolution the output pixels a render pixel stands for (the ambient's and the reflections' rays likewise).
+  uint32_t shadow_rays = 1;
   // The Light Bounce's light found with rays (light_bounce.hpp's trace replaced; it needs the Light Bounce on).
   bool light_bounce = false;
   uint32_t light_bounce_rays = 4;
@@ -1510,6 +1514,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .compact = runtime.compact,
       .new_sets = new_sets,
       .new_set_data = new_set_data,
+      .light_size = runtime.settings.light_size,
+      .shadow_rays = runtime.settings.shadow_rays,
   };
   if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);

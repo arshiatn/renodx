@@ -25,13 +25,6 @@ RWTexture2D<float2> sun_rays : register(u2);  // soft shadows: lit, blocker dist
 RWTexture2D<float> ambient_history[2] : register(u28);  // the ambient visibility kept over frames (v11)
 
 static const float AMBIENT_BLEND = 0.2f;
-// Interleaved gradient noise (Jimenez 2014, "Next Generation Post Processing in Call of Duty: Advanced Warfare"): a value
-// per pixel that is even over every few neighbours, moved each frame.
-float InterleavedGradientNoise(float2 pixel) {
-  pixel += 5.588238f * (float)(frame & 63u);
-  return frac(52.9829189f * frac(dot(pixel, float2(0.06711056f, 0.00583715f))));
-}
-
 // The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface.
 float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
   float kept = ambient_now;
@@ -104,19 +97,25 @@ void main(uint3 id : SV_DispatchThreadID) {
   // the sun into the cracks where wall parts meet, ATN 2026-10-29); those facing away against solid surfaces only, from
   // past themselves (a leaf or blade does not shadow itself).
   if ((flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f && (facing || !planar)) {
-    float3 toward = toward_sun.xyz;
-    if (sun_cone > 0.f && !filtered) {
-      // Uniform over the sun's disk (sun_cone: the tan of its angular radius).
-      const float3 tangent = normalize(cross((abs(toward.y) < 0.999f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f), toward));
-      const float radius = sqrt(Random(uint3(id.xy, frame * 16u + 1000u))) * sun_cone;
-      const float angle = Random(uint3(id.xy, frame * 16u + 1001u)) * 6.28318531f;
-      toward = normalize(toward + (tangent * cos(angle) + cross(toward, tangent) * sin(angle)) * radius);
+    // With several rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel, averaged.
+    const uint rays = clamp(shadow_rays, 1u, 4u);
+    const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
+    float2 sum = 0.f;
+    [loop]
+    for (uint ray = 0u; ray < rays; ++ray) {
+      float3 toward = toward_sun.xyz;
+      if (sun_cone > 0.f && !filtered) {
+        // Uniform over the sun's disk (sun_cone: the tan of its angular radius).
+        toward = normalize(toward + DiskPoint(toward, sun_cone, float2(Random(uint3(id.xy, frame * 16u + 1000u + ray * 2u)),
+                                                                        Random(uint3(id.xy, frame * 16u + 1001u + ray * 2u)))));
+      }
+      const float3 spot = (rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f;
+      // Off along the normal and toward the sun; where not planar toward the camera.
+      sum += facing ? SunRay((planar ? origin + toward * offset : origin) + spot, toward)
+                    : float2(OccludedSolid(position.xyz + spot + toward * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
     }
-    // Off along the normal and toward the sun; where not planar toward the camera.
-    const float2 sun_ray = facing ? SunRay(planar ? origin + toward * offset : origin, toward)
-                                  : float2(OccludedSolid(position.xyz + toward * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
-    sun_visibility = sun_ray.x;
-    blocker_distance = sun_ray.y;
+    sun_visibility = sum.x / rays;
+    blocker_distance = sum.y / rays;
   }
   if (filtered) {
     sun_rays[id.xy] = float2(sun_visibility, blocker_distance);

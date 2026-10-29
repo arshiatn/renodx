@@ -69,6 +69,8 @@ struct TraceRequest {
   std::span<const RtCompactDraw> compact;
   std::span<const RtClusterSet> new_sets;
   std::span<const std::span<const uint8_t>> new_set_data;
+  float light_size = 0.f;     // v18: the local lights' radius (metres) for soft shadows under Ray Reconstruction
+  uint32_t shadow_rays = 1;   // v18: rays a pixel toward the sun and each light
 };
 
 // A ray-traced Light Bounce request (light_bounce.hpp through rt_scene.hpp): the render size, the bounce's size and its
@@ -643,6 +645,8 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
     shared->rt_ambient_range = request.ambient_range;
     shared->rt_ambient_rays = request.ambient_rays;
     shared->rt_sun_softness = request.sun_softness;
+    shared->rt_light_size = request.light_size;
+    shared->rt_shadow_rays = request.shadow_rays;
     shared->rt_frame = request.frame;
     shared->rt_width = request.width;
     shared->rt_height = request.height;
