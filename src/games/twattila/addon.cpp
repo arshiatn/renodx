@@ -1153,6 +1153,83 @@ bool configured = false;
 bool attached = false;
 bool addon_registered = false;
 
+// Water Clarity (ATN: rivers more see-through): the river (2E9F5935) and lake (C9FBACCB) shaders blend toward the deep
+// water colour by g_sea_bed_light_scatter (lighting_VS_PS c10 at b2) to the power of the water they look through. At
+// their draws a copy of those constants with it raised to 1 / clarity is bound (water_clarity.cs), the game's put back
+// after the draw (later draws, and the game's updates of its own buffer, stay its).
+constexpr std::array<uint32_t, 2> WATER_SHADERS = {0x2E9F5935, 0xC9FBACCB};
+constexpr UINT WATER_LIGHTING_SLOT = 2;
+float water_clarity = 1.f;
+using Microsoft::WRL::ComPtr;
+struct WaterObjects {
+  ComPtr<ID3D11Device> device;
+  UINT bytes = 0;  // the game's lighting constants' (0: none made)
+  ComPtr<ID3D11ComputeShader> shader;
+  ComPtr<ID3D11Buffer> constants;
+  ComPtr<ID3D11Buffer> copied;  // raw: the game's constants
+  ComPtr<ID3D11ShaderResourceView> copied_srv;
+  ComPtr<ID3D11Buffer> clarified;  // raw: with the scatter raised
+  ComPtr<ID3D11UnorderedAccessView> clarified_uav;
+  ComPtr<ID3D11Buffer> lighting;       // the constant buffer bound for the draw
+  ComPtr<ID3D11Buffer> game_lighting;  // the game's, put back after it
+};
+WaterObjects water_objects;
+
+constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (std::abs(water_clarity - 1.f) < 0.01f) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  ComPtr<ID3D11Buffer> game_lighting;
+  native->PSGetConstantBuffers(WATER_LIGHTING_SLOT, 1, game_lighting.GetAddressOf());
+  if (!game_lighting) return {};
+  D3D11_BUFFER_DESC game_desc = {};
+  game_lighting->GetDesc(&game_desc);
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& objects = water_objects;
+  if (objects.device != device || objects.bytes != game_desc.ByteWidth) {
+    objects = {.device = device};
+    const D3D11_BUFFER_DESC raw_in = {.ByteWidth = game_desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                      .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+    const D3D11_BUFFER_DESC raw_out = {.ByteWidth = game_desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+                                       .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+    const D3D11_BUFFER_DESC lighting_desc = {.ByteWidth = game_desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX};
+    srv_desc.BufferEx = {.FirstElement = 0, .NumElements = game_desc.ByteWidth / 4, .Flags = D3D11_BUFFEREX_SRV_FLAG_RAW};
+    D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER};
+    uav_desc.Buffer = {.FirstElement = 0, .NumElements = game_desc.ByteWidth / 4, .Flags = D3D11_BUFFER_UAV_FLAG_RAW};
+    const bool made = SUCCEEDED(device->CreateComputeShader(__water_clarity.data(), __water_clarity.size(), nullptr, objects.shader.GetAddressOf()))
+                      && SUCCEEDED(device->CreateBuffer(&constants_desc, nullptr, objects.constants.GetAddressOf()))
+                      && SUCCEEDED(device->CreateBuffer(&raw_in, nullptr, objects.copied.GetAddressOf()))
+                      && SUCCEEDED(device->CreateShaderResourceView(objects.copied.Get(), &srv_desc, objects.copied_srv.GetAddressOf()))
+                      && SUCCEEDED(device->CreateBuffer(&raw_out, nullptr, objects.clarified.GetAddressOf()))
+                      && SUCCEEDED(device->CreateUnorderedAccessView(objects.clarified.Get(), &uav_desc, objects.clarified_uav.GetAddressOf()))
+                      && SUCCEEDED(device->CreateBuffer(&lighting_desc, nullptr, objects.lighting.GetAddressOf()));
+    if (!made) return {};
+    objects.bytes = game_desc.ByteWidth;
+  }
+  native->CopyResource(objects.copied.Get(), game_lighting.Get());
+  const std::array<uint32_t, 4> constants = {objects.bytes / 4, std::bit_cast<uint32_t>(1.f / water_clarity), 0u, 0u};
+  native->UpdateSubresource(objects.constants.Get(), 0, nullptr, constants.data(), 0, 0);
+  native->CSSetShader(objects.shader.Get(), nullptr, 0);
+  native->CSSetShaderResources(0, 1, objects.copied_srv.GetAddressOf());
+  native->CSSetUnorderedAccessViews(0, 1, objects.clarified_uav.GetAddressOf(), nullptr);
+  native->CSSetConstantBuffers(0, 1, objects.constants.GetAddressOf());
+  native->Dispatch(((objects.bytes / 4) + 63) / 64, 1, 1);
+  ID3D11ShaderResourceView* no_view = nullptr;
+  ID3D11UnorderedAccessView* no_uav = nullptr;
+  native->CSSetShaderResources(0, 1, &no_view);
+  native->CSSetUnorderedAccessViews(0, 1, &no_uav, nullptr);
+  native->CopyResource(objects.lighting.Get(), objects.clarified.Get());
+  objects.game_lighting = std::move(game_lighting);
+  native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, objects.lighting.GetAddressOf());
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    post_native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, water_objects.game_lighting.GetAddressOf());
+    water_objects.game_lighting.Reset();
+  }};
+};
+
 }  // namespace
 
 // Lifecycle /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1660,6 +1737,17 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into rivers and lakes. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 4.f,
+      .format = "%.2f",
+  });
 
   // Appended Settings (Output)
   {
@@ -1817,6 +1905,10 @@ bool AttachAddon() {
   twattila::rt_scene::InstallShadowsOnly();
   twattila::screen_space_shadows::PatchForwardShadows(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::SHADOW_READER_SHADERS);
+  for (const uint32_t shader_hash : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnWaterDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
