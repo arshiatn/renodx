@@ -1093,8 +1093,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       - VRAM: Mega Geometry's room starts at 32768 clusters (330 MB, was 3324 MB) and doubles when a frame has more
         (SizeClusters; log "room for N clusters a frame now"), up to the GPU's limit.
       Harness: HARNESS_SMOKE_STRESS=<particles>, HARNESS_TRACE_FLAGS=<flags>; scratchpad last_status.py reads the last
-      status (slow frames report late). Untested in game. ASK ATN: when do grass shadows vanish (near / far, moving
-      camera, wind)? A screenshot.
+      status (slow frames report late). helper29 in Attila's folder, Downloads\twattila_v97.zip (Rome II / Thrones
+      addon32 build). Default 4K scene: trace 1.47 -> 1.64 ms (the crack fix's extra rays). Untested in game. ASK ATN:
+      when do grass shadows vanish (near / far, moving camera, wind)? A screenshot.
       NVIDIA's SDKs are allowed (NVIDIA RTX SDKs License: RTXDI, SHARC, NRC, NRD, RTXPT, RTXGI; RTXMU MIT; Mega
       Geometry samples Apache 2.0): download at build time like OMM, binaries / compiled shaders only, credit in About.
       [x] 1 (step 2: RT_RECONSTRUCTED 256; harness HARNESS_SUN_SOFTNESS) RR is the only denoiser (ATN: no NRD; RR/PT users use RR): under RR, SSR's denoiser + history (ssr_hiz)
