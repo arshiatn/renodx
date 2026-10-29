@@ -88,6 +88,9 @@ struct Settings {
   // lighting learned from the screen; the reflections' paths too.
   bool path_tracing = false;
   uint32_t path_bounces = 2;
+  // Path-Traced Ambient (with path_tracing): the paths bring the sky's light, the sun light draws lose the game's
+  // ambient cube (rt_scene.hpp OnPathAmbientDraw), the ray-traced AO is off.
+  bool path_ambient = false;
   // Ray-traced reflections and specular occlusion (bridge v8; the game's reflection pass reads them: Reflections()).
   bool reflections = false;
   bool specular_occlusion = false;
@@ -255,6 +258,9 @@ struct DeviceObjects {
   // The traced local lights' positions (RT_MAX_LIGHTS, then their count: rt_local_lights.hlsli's b12).
   ComPtr<ID3D11Buffer> light_constants;
   ComPtr<ID3D11Buffer> water_flags;  // rt_reflection.hlsli's rt_reflection_flags: the water traced
+  ComPtr<ID3D11Buffer> ambient_lighting;  // Path-Traced Ambient: the sun light draws' lighting constants, no ambient cube
+  UINT ambient_lighting_bytes = 0;
+  ComPtr<ID3D11Buffer> no_ambient;  // the ambient cube's 96 bytes of zeros
   ComPtr<ID3D11ShaderResourceView> surface_depth;  // the reflection pass's depth (the water's in it) as depth
   ID3D11Resource* surface_depth_resource = nullptr;
   ComPtr<ID3D11Texture2D> combined;
@@ -335,6 +341,9 @@ class CpuTime {
   int64_t* ticks_;
   LARGE_INTEGER start_ = {};
 };
+
+// Path-Traced Ambient: the paths' frames with the game's ambient before it goes (the helper learns its sky's scale).
+constexpr uint32_t PATH_AMBIENT_FRAMES = 120;
 
 // rt_positions.cs's constants: world positions from a depth.
 struct PositionConstants {
@@ -455,6 +464,14 @@ struct Runtime {
   uint64_t reflected_frame = UINT64_MAX;  // the frame the reflections were asked for
   bool reflected = false;                 // and whether they were traced
   bool water_traced = false;              // the water's from its own depth and normal (the guides and positions again)
+  // Path-Traced Ambient: on once the paths ran PATH_AMBIENT_FRAMES in a row with the game's ambient (the helper learns
+  // the scale from its ambient cube to the screen's light meanwhile), the paths' frames so far.
+  bool path_ambient_on = false;
+  uint32_t path_frames = 0;
+  uint64_t ambient_off_frame = UINT64_MAX;     // Path-Traced Ambient: the frame objects.ambient_lighting was copied in
+  ID3D11Buffer* ambient_off_source = nullptr;  // from this buffer of the game's (compared only)
+  ComPtr<ID3D11Buffer> ambient_game_lighting;  // the game's, put back after the draw at ambient_slot
+  UINT ambient_slot = 0;
   PositionConstants positions = {};       // the trace's positions pass's (the reflection pass runs it again for the water)
   ID3D11ShaderResourceView* game_ao = nullptr;  // the AO it was made from (compared only)
   std::array<UINT, 2> traced_size = {};   // the render size traced
@@ -1691,6 +1708,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   }
   const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = width, .bottom = height, .back = 1};
   native->CopySubresourceRegion(bridge.rt_light.texture.Get(), 0, 0, 0, 0, prepared_light, 0, &region);
+  runtime.path_frames = (runtime.settings.path_tracing && runtime.bounced_frame + 1 == runtime.frame) ? runtime.path_frames + 1 : 0u;
+  runtime.path_ambient_on = runtime.settings.path_ambient && runtime.path_frames >= PATH_AMBIENT_FRAMES;
   const dlaa_bridge::BounceRequest request = {
       .frame = static_cast<uint32_t>(runtime.frame),
       .width = runtime.traced_size[0],
@@ -1702,7 +1721,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
       .range = runtime.settings.light_bounce_range,
       .view_projection = runtime.traced_view_projection,
       .path_flags = runtime.settings.path_tracing ? (dlaa_bridge::RT_PATH_TRACING | dlaa_bridge::RT_PATH_REUSE
-                                                     | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u))
+                                                     | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u)
+                                                     | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u))
                                                   : 0u,
       .path_bounces = runtime.settings.path_bounces,
       .path_samples = runtime.settings.light_bounce_rays,

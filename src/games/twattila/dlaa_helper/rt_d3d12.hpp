@@ -1072,6 +1072,13 @@ class RtScene12 {
         const std::array<uint32_t, 3> reuse_size = {shared.rt_bounce_width, shared.rt_bounce_height, std::max(shared.rt_bounce_scale, 1u)};
         const bool reuse = path_traced && (requested & dlaa_bridge::RT_PATH_REUSE) != 0
                            && GetEnvironmentVariableW(L"RENODX_TW_NO_REUSE", nullptr, 0) == 0 && EnsureHistory(HISTORY_REUSE, frame);
+        if (path_traced && (requested & dlaa_bridge::RT_PATH_AMBIENT) != 0) {
+          flags |= PATH_AMBIENT;
+          path_ambient_frame_ = frame;
+        }
+        // The learned lighting stays while the game's ambient is away (also through the reflections' requests: the radiance
+        // cache's resolve, once a frame, can be theirs).
+        if (path_ambient_frame_ != UINT32_MAX && path_ambient_frame_ + 2 >= frame) flags |= PATH_KEEP_LIGHT;
         if (reuse) {
           flags |= PATH_REUSE | (reuse_parity_ != 0 ? PATH_REUSE_PARITY : 0u);
           if ((requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) flags |= PATH_PERMUTE;
@@ -1395,6 +1402,8 @@ class RtScene12 {
   static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;
   static constexpr uint32_t PATH_LIGHT_HISTORY = 131072;
   static constexpr uint32_t PATH_PERMUTE = 65536;
+  static constexpr uint32_t PATH_AMBIENT = 262144;  // rt_path.hlsli
+  static constexpr uint32_t PATH_KEEP_LIGHT = 524288;
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
   struct PathConstants {
@@ -1815,7 +1824,7 @@ class RtScene12 {
         && pool(DXGI_FORMAT_R32_UINT, CACHE_ENTRIES * 4, 4, &cache_sums_, CACHE_SUMS)
         && pool(DXGI_FORMAT_R32G32_UINT, CACHE_ENTRIES, 8, &cache_albedo_, CACHE_ALBEDO)
         && pool(DXGI_FORMAT_R32_UINT, 16, 4, &light_fit_, LIGHT_FIT)
-        && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, 2, 16, &light_kept_, LIGHT_KEPT)) {
+        && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, 3, 16, &light_kept_, LIGHT_KEPT)) {
       return true;
     }
     cache_keys_.Reset();
@@ -3983,6 +3992,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> cache_albedo_;
   ComPtr<ID3D12Resource> light_fit_;
   ComPtr<ID3D12Resource> light_kept_;
+  uint32_t path_ambient_frame_ = UINT32_MAX;  // the last frame the paths took the sky for the game's ambient
   ComPtr<ID3D12PipelineState> path_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_pipeline_;
   ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse

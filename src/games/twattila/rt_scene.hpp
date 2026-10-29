@@ -77,6 +77,7 @@ struct Sliders {
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
   float path_bounces = 2.f;
+  float path_ambient = 0.f;  // Path-Traced Ambient (games InstallSunDraws gives the ambient cube's place)
   float reflections = 0.f;
   float specular_occlusion = 0.f;
   float water_reflections = 1.f;  // the water's from its own surface (games whose reflection pass OnReflectionDraw hooks)
@@ -85,11 +86,17 @@ struct Sliders {
   float scene_test = 0.f;  // with the Debug View on
 };
 
+namespace internal {
+// The sun draws' lighting buffer's ambient cube, its first float (InstallSunDraws; 0: none): the paths' sky.
+static UINT ambient_cube = 0;
+}  // namespace internal
+
 // `light_bounce_strength`: the game's Light Bounce (its rays and paths replace the Light Bounce's trace; off, nothing to
 // trace for them, so they keep ray tracing off).
 inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa, float light_bounce_strength) {
   const bool dlaa = aa.method == 5.f;
   const bool bounce = light_bounce_strength > 0.f && dlaa;
+  const bool path_ambient = sliders.path_ambient != 0.f && sliders.light_bounce == 2.f && bounce && internal::ambient_cube != 0;
   // Ray Tracing at Output Resolution: below 100% each render pixel traces the rays of the output pixels it stands for
   // (at most 4: Performance), as many on screen as at DLAA (ATN: RR Performance's 1080p rays looked noisy at 4K).
   const float render_scale = feature_settings::RenderScale(aa);
@@ -97,7 +104,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       (sliders.output_rays != 0.f) ? std::clamp(std::lround(1.f / (render_scale * render_scale)), 1l, 4l) : 1l);
   return {
       .sun_shadows = sliders.sun_shadows != 0.f && dlaa,
-      .ambient_occlusion = sliders.ambient_occlusion != 0.f && dlaa,
+      .ambient_occlusion = sliders.ambient_occlusion != 0.f && dlaa && !path_ambient,
       .ambient_range = sliders.ambient_range,
       .ambient_rays = static_cast<uint32_t>(sliders.ambient_rays) * density,
       // Effects at Output Resolution: every pixel each frame from one step of 2 down (as many rays on screen as at 100%;
@@ -112,6 +119,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .light_bounce_range = sliders.light_bounce_range,
       .path_tracing = sliders.light_bounce == 2.f && bounce,
       .path_bounces = static_cast<uint32_t>(sliders.path_bounces),
+      .path_ambient = path_ambient,
       .reflections = sliders.reflections != 0.f && dlaa,
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
       .water_reflections = sliders.water_reflections != 0.f,
@@ -320,8 +328,6 @@ static bool shadows_only_installed = false;
 static std::atomic_bool debug_view_drawn = false;
 static std::atomic<uint64_t> shadow_map = 0;
 static std::atomic_bool skipping_casters = false;
-// The sun draws' lighting buffer's ambient cube, its first float (InstallSunDraws; 0: none): the paths' sky.
-static UINT ambient_cube = 0;
 
 }  // namespace internal
 
@@ -433,6 +439,61 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
   native->CSSetConstantBuffers(1, 1, game_second.GetAddressOf());
   runtime.sun_frame = runtime.frame;
   return {};
+};
+
+// Path-Traced Ambient, at each sun light draw after OnSunDraw (its rt_sun read the game's ambient cube first: the
+// paths' sky): the draw's lighting constants without the game's ambient cube (the paths bring the occluded sky's light
+// instead; the copy made once a frame), the game's put back after it. Only while the paths run (a frame without them
+// keeps the game's ambient).
+constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!internal::active.load(std::memory_order_relaxed)) return {};
+  const auto& draw = command.template GetCallbackData<light_bounce::SunDraw>();
+  auto* native = internal::NativeContext(command.cmd_list);
+  if (native == nullptr || !frame_history::MainViewport(native)) return {};
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  if (!runtime.path_ambient_on || runtime.bounced_frame + 1 < runtime.frame) return {};
+  ComPtr<ID3D11Buffer> game_lighting;
+  native->PSGetConstantBuffers(draw.lighting_slot, 1, game_lighting.GetAddressOf());
+  if (!game_lighting) return {};
+  D3D11_BUFFER_DESC desc = {};
+  game_lighting->GetDesc(&desc);
+  constexpr UINT CUBE_BYTES = 96;  // six float3 registers
+  const UINT cube_offset = internal::ambient_cube * 4;
+  if (desc.ByteWidth < cube_offset + CUBE_BYTES) return {};
+  auto& objects = runtime.objects;
+  if (objects.ambient_lighting_bytes != desc.ByteWidth) {
+    objects.ambient_lighting.Reset();
+    objects.ambient_lighting_bytes = 0;
+    const D3D11_BUFFER_DESC copy = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    if (FAILED(objects.device->CreateBuffer(&copy, nullptr, objects.ambient_lighting.GetAddressOf()))) return {};
+    objects.ambient_lighting_bytes = desc.ByteWidth;
+  }
+  if (!objects.no_ambient) {
+    constexpr std::array<float, CUBE_BYTES / 4> ZEROS = {};
+    const D3D11_BUFFER_DESC zeros = {.ByteWidth = CUBE_BYTES, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = ZEROS.data()};
+    if (FAILED(objects.device->CreateBuffer(&zeros, &data, objects.no_ambient.GetAddressOf()))) return {};
+  }
+  if (runtime.ambient_off_frame != runtime.frame || runtime.ambient_off_source != game_lighting.Get()) {
+    native->CopyResource(objects.ambient_lighting.Get(), game_lighting.Get());
+    const D3D11_BOX cube = {.left = 0, .top = 0, .front = 0, .right = CUBE_BYTES, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(objects.ambient_lighting.Get(), 0, cube_offset, 0, 0, objects.no_ambient.Get(), 0, &cube);
+    runtime.ambient_off_frame = runtime.frame;
+    runtime.ambient_off_source = game_lighting.Get();
+  }
+  native->PSSetConstantBuffers(draw.lighting_slot, 1, objects.ambient_lighting.GetAddressOf());
+  runtime.ambient_game_lighting = std::move(game_lighting);
+  runtime.ambient_slot = draw.lighting_slot;
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = internal::NativeContext(post.cmd_list);
+    auto& post_runtime = internal::runtime;
+    const std::unique_lock post_lock(post_runtime.mutex);
+    if (post_native != nullptr) {
+      post_native->PSSetConstantBuffers(post_runtime.ambient_slot, 1, post_runtime.ambient_game_lighting.GetAddressOf());
+    }
+    post_runtime.ambient_game_lighting.Reset();
+  }};
 };
 
 namespace internal {
@@ -762,6 +823,11 @@ inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws, UI
     internal::runtime.sun_draw_shaders.insert(draw.shader_hash);
     renodx::utils::command_action::Register(
         OnSunDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
+    if (ambient_cube != 0) {
+      renodx::utils::command_action::Register(
+          OnPathAmbientDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW},
+          &draw);
+    }
   }
 }
 
@@ -769,6 +835,7 @@ inline void Uninstall() {
   light_bounce::SetRayTracedTrace(nullptr);
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
+  if (internal::ambient_cube != 0) renodx::utils::command_action::Unregister(OnPathAmbientDraw);
   if (std::exchange(internal::fog_shadows_installed, false)) renodx::utils::command_action::Unregister(OnFogDraw);
   if (std::exchange(internal::smoke_shadows_installed, false)) renodx::utils::command_action::Unregister(OnParticleDraw);
   if (std::exchange(internal::shadow_readers_installed, false)) renodx::utils::command_action::Unregister(OnShadowReaderDraw);
@@ -1044,6 +1111,19 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .labels = {"Off", "Rays", "Path Tracing"},
           .is_enabled = dlaa_on,
           .on_change = light_bounce_on,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedPathAmbient",
+          .binding = &sliders->path_ambient,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Path-Traced Ambient (Experimental)",
+          .section = section,
+          .tooltip = "With Path Tracing: the paths bring the sky's light too, in place of the game's ambient light and the\n"
+                     "ray-traced AO (less noise, faster). Small contact shadows follow the Light Bounce's resolution.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f; },
+          .is_visible = [] { return internal::ambient_cube != 0; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRays",

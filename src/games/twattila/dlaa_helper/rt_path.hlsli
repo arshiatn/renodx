@@ -37,7 +37,8 @@ RWBuffer<float4> cache_radiance : register(u11);      // rgb, the frame it was l
 RWBuffer<uint> cache_sums : register(u12);            // this frame's r, g, b (CACHE_SCALE fixed point), count
 RWBuffer<uint2> cache_albedo : register(u13);         // rgba8 base colour (a 255; 0: none), that frame + 1
 RWBuffer<uint> light_fit : register(u14);             // count, x, x^2, y rgb, x y rgb
-RWBuffer<float4> light_kept : register(u15);          // [0] rgb in shade, [1] rgb the sun adds (w 1: solved)
+RWBuffer<float4> light_kept : register(u15);          // [0] rgb in shade, [1] rgb the sun adds, [2] the ambient
+                                                      // cube's scale to them (w 1: solved)
 RWTexture2D<float4> specular_accumulated : register(u16);
 RWTexture2D<float4> specular_history : register(u17);
 RWTexture2D<float2> specular_meta : register(u18);         // specular occlusion, frames
@@ -69,6 +70,8 @@ static const uint PATH_REUSE_HISTORY = 2048u; // last frame's reservoirs are las
 static const uint PATH_REUSE_PARITY = 4096u;  // this frame's set: 1 (else 0)
 static const uint PATH_LOCAL_LIGHTS = 8192u;  // the local lights light the surfaces the screen never saw (b4, v11)
 static const uint PATH_PERMUTE = 65536u;      // last frame's reservoir from a neighbour texel (Ray Reconstruction)
+static const uint PATH_AMBIENT = 262144u;     // Path-Traced Ambient: a camera ray that escapes brings the sky's light
+static const uint PATH_KEEP_LIGHT = 524288u;  // the learned lighting kept (the game's ambient away: Path-Traced Ambient)
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
@@ -286,19 +289,27 @@ float3 LocalLight(float3 surface, float3 normal, float u) {
   return picked * (total / picked_weight);
 }
 
+// The game's ambient cube's mean over its six directions (the sun texture's texels 3-8; rt_sun.cs_5_0.hlsl).
+float3 AmbientCubeMean() {
+  float3 mean = 0.f;
+  [unroll]
+  for (uint side = 3u; side < 9u; ++side) mean += sun[uint2(side, 0)].rgb;
+  return mean / 6.f;
+}
+
 // The sky's light along a path that escapes: the game's own ambient cube by the direction (the sun texture's texels 3-8:
 // +x, -x, +y, -y, +z, -z; rt_sun.cs_5_0.hlsl), scaled so its mean over directions is the learned shade light (`shade`,
 // which stood for the whole sky before: bluer from above, the ground's colour from below now); the shade where the
-// game gave none.
+// game gave none. With Path-Traced Ambient (the screen's shade the paths' own sky then) the cube by the scale learned
+// before it (light_kept[2]).
 float3 SkyLight(float3 direction, float3 shade) {
   if (sun[uint2(3, 0)].w == 0.f) return shade;
   const float3 squared = direction * direction;
   const float3 cube = squared.x * sun[uint2((direction.x < 0.f) ? 4u : 3u, 0)].rgb + squared.y * sun[uint2((direction.y < 0.f) ? 6u : 5u, 0)].rgb
                       + squared.z * sun[uint2((direction.z < 0.f) ? 8u : 7u, 0)].rgb;
-  float3 mean = 0.f;
-  [unroll]
-  for (uint side = 3u; side < 9u; ++side) mean += sun[uint2(side, 0)].rgb;
-  return shade * cube / max(mean / 6.f, 1e-4f);
+  const float4 scale = light_kept[2];
+  if ((path_flags & PATH_AMBIENT) != 0u && scale.w > 0.f) return scale.rgb * cube;
+  return shade * cube / max(AmbientCubeMean(), 1e-4f);
 }
 
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal).
@@ -325,8 +336,8 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
     if (!hit) {
       // Past the first surface the sky (the game's ambient by direction); from the camera's pixel the game's own
-      // ambient covers it.
-      if (vertex > 0u) radiance += throughput * SkyLight(direction, shade.rgb);
+      // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).
+      if (vertex > 0u || (path_flags & PATH_AMBIENT) != 0u) radiance += throughput * SkyLight(direction, shade.rgb);
       break;
     }
     const float3 position = origin + direction * query.CommittedRayT();

@@ -151,6 +151,9 @@ constexpr uint32_t RT_PATH_REUSE = 16;
 // Ray Reconstruction denoises the frame (v17): ReSTIR GI takes last frame's reservoir from a neighbouring texel, a
 // different one each frame (it takes the samples as independent: NVIDIA's DLSS-RR integration guide).
 constexpr uint32_t RT_PATH_RECONSTRUCTED = 32;
+// Path-Traced Ambient: the bounce texels' paths that escape bring the sky's light too (the addon takes the game's
+// ambient away; helpers before 37 ignore it).
+constexpr uint32_t RT_PATH_AMBIENT = 64;
 
 struct Shared {
   uint32_t version = VERSION;
