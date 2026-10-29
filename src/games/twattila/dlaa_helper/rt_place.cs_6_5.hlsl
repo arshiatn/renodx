@@ -42,6 +42,9 @@ static const uint PLACE_FOLIAGE = 1u;  // alpha-tested: not forced opaque
 static const uint PLACE_HIDDEN = 2u;   // mask 0 while drawn
 static const uint INSTANCE_CULL_DISABLE = 1u;  // D3D12_RAYTRACING_INSTANCE_FLAG_*
 static const uint INSTANCE_FORCE_OPAQUE = 4u;
+// Instance masks (rt_d3d12.hpp): a solid mesh's, a leaves' mesh's (alpha-tested; Light Through Leaves counts them apart).
+static const uint SOLID_INSTANCE = 0x01u;
+static const uint LEAF_INSTANCE = 0x04u;
 static const uint STATE_WRITTEN = 0u;
 static const uint STATE_BEFORE = 4u;
 static const uint STATE_CPU_BEFORE = 8u;
@@ -116,7 +119,8 @@ void main(uint3 id : SV_DispatchThreadID) {
     const uint4 row1 = instances_before.Load4(index * 64u + 16u);
     const uint4 row2 = instances_before.Load4(index * 64u + 32u);
     if (!Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w))))) return;
-    Append(row0, row1, row2, uint4(record | (0xFFu << 24), tail.y, blas.x & ~0xFFu, blas.y));
+    const uint kept_mask = (((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE;
+    Append(row0, row1, row2, uint4(record | (kept_mask << 24), tail.y, blas.x & ~0xFFu, blas.y));
     return;
   }
   if (index >= instance_count) return;
@@ -158,9 +162,10 @@ void main(uint3 id : SV_DispatchThreadID) {
       || !Insert(PlaceKey(record, translation))) {
     return;
   }
-  // InstanceID (the record) and mask 0xFF (0 hidden); the frame drawn and the flags; the BLAS (its moving bit cleared).
+  // InstanceID (the record) and mask (its group; 0 hidden); the frame drawn and the flags; the BLAS (its moving bit
+  // cleared).
   const uint flags = INSTANCE_CULL_DISABLE | (((job.w & PLACE_FOLIAGE) != 0u) ? 0u : INSTANCE_FORCE_OPAQUE);
-  const uint mask = ((job.w & PLACE_HIDDEN) != 0u) ? 0u : 0xFFu;
+  const uint mask = ((job.w & PLACE_HIDDEN) != 0u) ? 0u : (((job.w & PLACE_FOLIAGE) != 0u) ? LEAF_INSTANCE : SOLID_INSTANCE);
   Append(asuint(float4(rotation[0], translation.x)), asuint(float4(rotation[1], translation.y)), asuint(float4(rotation[2], translation.z)),
          uint4(record | (mask << 24), (frame & FRAME_MASK) | (flags << 24), blas.x & ~0xFFu, blas.y));
 }

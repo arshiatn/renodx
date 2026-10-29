@@ -107,11 +107,13 @@ static const uint MAX_CANDIDATES = 64u;
 // at 4K through 1000 particles the trace took 80 ms a frame, each sun ray dozens).
 static const float SMOKE_DARK = 0.05f;
 
-// The TLAS's instance masks (rt_d3d12.hpp): the smoke has an instance of its own, which only the rays toward the sun
-// meet (ALL_INSTANCES); the others (the ambient, the local lights, the paths, the reflections) leave it out in the
-// hardware (NO_SMOKE).
+// The TLAS's instance masks (rt_d3d12.hpp: solids 1, the smoke's own instance 2, the leaves' meshes 4): the rays toward
+// the sun meet all (ALL_INSTANCES); the others (the ambient, the local lights, the paths, the reflections) leave the
+// smoke out in the hardware (NO_SMOKE); Light Through Leaves meets the leaves apart (NO_LEAVES, LEAVES).
 static const uint ALL_INSTANCES = 0xFFu;
 static const uint NO_SMOKE = 0xFDu;
+static const uint NO_LEAVES = 0xFBu;
+static const uint LEAVES = 0x04u;
 
 // Whether anything among `instances` lies along `direction` from `origin` within `range` (alpha-tested: leaves, grass
 // and cloth by their masks, smoke dimming smoke_transmittance).
@@ -134,11 +136,12 @@ bool Occluded(float3 origin, float3 direction, float range, uint instances) {
   return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }
 
-// The nearest surface along a ray toward the sun (alpha-tested as Occluded; its query, committed: CommittedStatus says
-// whether one was). Past MAX_CANDIDATES alpha-tested surfaces the last counts; past dark smoke none further.
-#define TRACE_NEAREST(query, ray)                                                                  \
+// The nearest surface among `instances` along a ray toward the sun (alpha-tested as Occluded; its query, committed:
+// CommittedStatus says whether one was). Past MAX_CANDIDATES alpha-tested surfaces the last counts; past dark smoke
+// none further.
+#define TRACE_NEAREST(query, ray, instances)                                                       \
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                                            \
-  query.TraceRayInline(scene, RAY_FLAG_NONE, ALL_INSTANCES, (ray));                                  \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, (instances), (ray));                                    \
   {                                                                                                  \
     uint trace_candidates = 0u;                                                                      \
     while (query.Proceed()) {                                                                        \

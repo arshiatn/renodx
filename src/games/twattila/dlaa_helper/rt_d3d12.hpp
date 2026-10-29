@@ -1249,10 +1249,12 @@ class RtScene12 {
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
   static constexpr uint32_t RECORD_SMOKE = 4;
-  // TLAS instance masks (rt_scene.hlsli): the smoke in an instance of its own (the frame's last dynamic captures, a BLAS
-  // apart), which only the rays toward the sun meet.
-  static constexpr UINT ALL_INSTANCES = 0xFF;
+  // TLAS instance masks (rt_scene.hlsli; rt_place.cs_6_5.hlsl for the placed meshes): the smoke in an instance of its
+  // own (the frame's last dynamic captures, a BLAS apart), which only the rays toward the sun meet; the leaves' meshes
+  // their own group (Light Through Leaves counts them apart); everything else solid.
+  static constexpr UINT SOLID_INSTANCE = 0x01;
   static constexpr UINT SMOKE_INSTANCE = 0x02;
+  static constexpr UINT LEAF_INSTANCE = 0x04;
   static constexpr float LEAF_ALPHA_CUTOFF = 0.5f;  // rt_scene_data.cs_6_5.hlsl
   static constexpr uint32_t PLACE_FOLIAGE = 1;  // rt_place.cs_6_5.hlsl
   static constexpr uint32_t PLACE_HIDDEN = 2;
@@ -2959,11 +2961,12 @@ class RtScene12 {
       const bool recent = !mesh.terrain && mesh.drawn_frame + RECENT_FRAMES >= frame;
       if (!current && !recent) continue;
       if (mesh.transforms.empty()) {
-        AddInstance(slot, &instance_count, mesh.blas.address, mesh.record, mesh.foliage, nullptr, mesh.record, ALL_INSTANCES);
+        AddInstance(slot, &instance_count, mesh.blas.address, mesh.record, mesh.foliage, nullptr, mesh.record,
+                    mesh.foliage ? LEAF_INSTANCE : SOLID_INSTANCE);
       } else {
         for (uint32_t instance = 0; instance < mesh.transforms.size() && instance_count < MAX_INSTANCES; ++instance) {
           AddInstance(slot, &instance_count, mesh.blas.address, mesh.record, mesh.foliage, &mesh.transforms[instance], mesh.first_instance + instance,
-                      ALL_INSTANCES);
+                      mesh.foliage ? LEAF_INSTANCE : SOLID_INSTANCE);
         }
       }
       triangles += mesh.triangles;
@@ -2978,7 +2981,7 @@ class RtScene12 {
     }
     if ((units_built || units_clustered) && instance_count < MAX_INSTANCES) {
       AddInstance(slot, &instance_count, (units_clustered ? cluster_blas_ : units_blas_)->GetGPUVirtualAddress(), units_record_, units_masked_, nullptr,
-                  MAX_INSTANCES, ALL_INSTANCES);
+                  MAX_INSTANCES, SOLID_INSTANCE);
       triangles += dynamic_triangles;
     }
     if ((smoke_built || smoke_clustered) && instance_count < MAX_INSTANCES) {

@@ -36,6 +36,23 @@ float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
   return kept;
 }
 
+// Some leaf (the leaves' meshes alone: LEAF_INSTANCE) along `direction` from `origin` between `near` and `far`: its
+// distance (whichever the hardware met first, not the nearest), -1 none.
+float LeafHit(float3 origin, float3 direction, float near, float far) {
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = direction;
+  ray.TMin = near;
+  ray.TMax = far;
+  SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
+  query.TraceRayInline(scene, RAY_FLAG_NONE, LEAVES, ray);
+  uint candidates = 0u;
+  while (query.Proceed()) {
+    if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) query.CommitNonOpaqueTriangleHit();
+  }
+  return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? query.CommittedRayT() : -1.f;
+}
+
 // The ray toward the sun: lit (1; 0 blocked; with Light Through Leaves the share the leaves met let through; the share
 // the smoke it met let through) and the nearest blocker's distance (soft shadows).
 float2 SunRay(float3 origin, float3 direction) {
@@ -47,28 +64,48 @@ float2 SunRay(float3 origin, float3 direction) {
   smoke_transmittance = 1.f;
   if ((flags & LEAF_LIGHT) == 0u) {
     if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f, ALL_INSTANCES) ? 0.f : smoke_transmittance, 0.f);
-    TRACE_NEAREST(query, ray)
+    TRACE_NEAREST(query, ray, ALL_INSTANCES)
     return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(smoke_transmittance, 0.f);
   }
-  // The nearest surface each time: a leaf, cloth or sail lets its share through and the ray goes on past it (a leaf's
-  // solid parts are opaque with opacity micromaps, so it comes as a hit, not a candidate); a solid surface, or layers
-  // too many to let any through, block it.
+  // Light Through Leaves: the leaves' meshes (their own instances) apart from the rest. The rest first, as without it
+  // (the first surface met: a solid blocks); where that is cloth, a sail or grass, the old way: the nearest surface each
+  // time, each passing its share, a solid blocking. Then the leaves: none, one or more than one (any-hit rays around
+  // the first met), each LEAF_TRANSMITTANCE. Stepping through every leaf layer took 16 ms at 4K in dense leaves (0.9
+  // without Light Through Leaves; ATN's 17-18 ms traces, the stutters panning over forests).
   float lit = 1.f;
   float first = 0.f;
-  float smoke = 1.f;  // the first pass's (the later ones may meet its smoke again)
-  [loop]
-  for (uint layer = 0u; layer < 4u; ++layer) {
-    TRACE_NEAREST(query, ray)
-    if (layer == 0u) smoke = smoke_transmittance;
-    if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(lit * smoke, first);
-    if (layer == 0u) first = query.CommittedRayT();
-    const uint record_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
-    if ((record_flags & (RECORD_MASKED | RECORD_THIN)) == 0u) break;
-    lit *= ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE : THIN_TRANSMITTANCE;
-    if (lit < 0.02f) break;
-    ray.TMin = query.CommittedRayT() + 0.01f;
+  {
+    SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
+    query.TraceRayInline(scene, RAY_FLAG_NONE, NO_LEAVES, ray);
+    uint candidates = 0u;
+    while (query.Proceed()) {
+      if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
+        query.CommitNonOpaqueTriangleHit();
+      } else if (smoke_transmittance < SMOKE_DARK) {
+        query.Abort();
+      }
+    }
+    if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+      const uint met_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
+      if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u) return float2(0.f, query.CommittedRayT());
+      smoke_transmittance = 1.f;
+      [loop]
+      for (uint layer = 0u; layer < 4u; ++layer) {
+        TRACE_NEAREST(layered, ray, NO_LEAVES)
+        if (layered.CommittedStatus() != COMMITTED_TRIANGLE_HIT) break;
+        if (layer == 0u) first = layered.CommittedRayT();
+        const uint record_flags = records[layered.CommittedInstanceID() + layered.CommittedGeometryIndex()].z >> 16;
+        lit *= ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
+        if (lit < 0.02f) return float2(0.f, first);
+        ray.TMin = layered.CommittedRayT() + 0.01f;
+      }
+    }
   }
-  return float2(0.f, first);
+  const float smoke = smoke_transmittance;
+  const float leaf = LeafHit(origin, direction, 0.f, 1.0e4f);
+  if (leaf < 0.f) return float2(lit * smoke, first);
+  const bool more = (leaf > 0.02f && LeafHit(origin, direction, 0.f, leaf - 0.01f) >= 0.f) || LeafHit(origin, direction, leaf + 0.01f, 1.0e4f) >= 0.f;
+  return float2(lit * smoke * (more ? LEAF_TRANSMITTANCE * LEAF_TRANSMITTANCE : LEAF_TRANSMITTANCE), (first > 0.f) ? min(first, leaf) : leaf);
 }
 
 [numthreads(8, 8, 1)]
