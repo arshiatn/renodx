@@ -1106,7 +1106,7 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           average them); slider; bridge v18 field.
       [x] 8 (RayTracingOutputResolution: density round(1/scale^2) <= 4 x AO rays / reflection samples / sun + light rays (PixelSpot R2 spots); harness all pass with 4) RT at output density below 100% render scale: samples x output / render pixels (sun, AO, lights,
           reflections, GI texels); toggle; bridge v18 field.
-      [ ] 1 Grass micromaps: NVAPI cluster templates take OMMs (FLAG_ALLOW_OMM on every op touching them, template args'
+      [x] 1 (compact sets: first instance's UVs + slice read back, baked like leaves, templates rebuilt with the OMM array (ALLOW_OMM on all cluster ops, fallback without); harness HARNESS_GRASS_STRESS=50000 at 4K: trace 3.59 -> 2.67 ms, sun alone 1.44 -> 1.22; non-cluster grass captures not done) Grass micromaps: NVAPI cluster templates take OMMs (FLAG_ALLOW_OMM on every op touching them, template args'
           opacityMicromapArray / index buffer): bake per compact set (its UVs + alpha slice, OMM SDK as the leaves), its
           templates rebuilt with them; non-cluster path: OMM linkage on grass captures (stable UVs per key).
       [ ] 3 Torch / fire light in fog and smoke: a helper pass (fog texels, points along the view ray, shadow rays to the

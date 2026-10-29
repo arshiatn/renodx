@@ -343,11 +343,29 @@ class RtScene12 {
           .maxTotalVertexCount = TRANSFER_VERTICES,
           .minPositionTruncateBitCount = 0,
       };
+      // Grass micromaps: every cluster operation allows them (templates, instantiations and the BLAS from them read them);
+      // without the driver's support for that, none.
+      const auto allow_micromaps = [&](bool allowed) {
+        const auto operation_flags = allowed ? NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_ALLOW_OMM
+                                             : NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE;
+        for (auto* inputs : {&clas_inputs_, &cluster_blas_inputs_, &template_inputs_, &instantiate_inputs_}) {
+          inputs->flags = operation_flags;
+        }
+        cluster_micromaps_ = allowed;
+      };
       // A template's most bytes: its requirements as the only one.
-      auto one_template = template_inputs_;
-      one_template.maxArgCount = 1;
       NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO template_info = {};
-      clusters_ = ClusterRequirements(one_template, &template_info) && SizeClusters(std::min(cluster_limit_, CLUSTER_ROOM));
+      const auto size_clusters = [&] {
+        auto one_template = template_inputs_;
+        one_template.maxArgCount = 1;
+        return ClusterRequirements(one_template, &template_info) && SizeClusters(std::min(cluster_limit_, CLUSTER_ROOM));
+      };
+      allow_micromaps(dxr12_ && bake_micromaps_);
+      clusters_ = size_clusters();
+      if (!clusters_ && cluster_micromaps_) {
+        allow_micromaps(false);
+        clusters_ = size_clusters();
+      }
       if (clusters_) {
         template_bytes_ = static_cast<uint32_t>(Align(template_info.resultDataMaxSizeInBytes, NVAPI_D3D12_RAYTRACING_CLUSTER_TEMPLATE_BYTE_ALIGNMENT));
         cluster_destination_ = ClusterBuffer(8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -1238,6 +1256,7 @@ class RtScene12 {
   static constexpr uint32_t MICROMAP_MESH_BYTES = 8u << 20;
   static constexpr uint32_t MICROMAP_TRIANGLES = 1u << 18;
   static constexpr size_t MICROMAP_BAKES = 64;
+  static constexpr size_t SET_MICROMAP_READS = 16;  // grass sets' micromap reads a request at most
   static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
   // The scene data pass's garbage count (rt_scene_data.cs_6_5.hlsl): three counts, the example's capture, its vertices.
   static constexpr UINT LEFT_OUT_BYTES = 64;
@@ -1431,9 +1450,10 @@ class RtScene12 {
   // BLAS again (AdvanceMicromaps, Record).
   struct MicromapBake {
     uint64_t key = 0;
-    uint64_t build = 0;  // its mesh's (another: dropped)
+    uint64_t build = 0;  // its mesh's or its cluster set's generation (another: dropped)
     uint64_t value = 0;  // the reading request's
     uint32_t triangles = 0;
+    bool set = false;  // a cluster set's (grass: its templates built with the micromaps), not a mesh's
     ComPtr<ID3D12Resource> positions;  // its vertices (16 bytes each), for the rebuild
     ComPtr<ID3D12Resource> uvs;        // read back: a packed half UV a corner
     ComPtr<ID3D12Resource> mask;       // read back: its atlas slice
@@ -1512,14 +1532,35 @@ class RtScene12 {
     std::vector<std::array<uint32_t, 4>> descs;
     uint32_t template_first = UINT32_MAX;
     bool template_masked = false;
+    uint64_t generation = 0;  // which set this is under its key (a bake for an older one is dropped)
+    // Its opacity micromaps (alpha-tested sets, grass: baked once like the leaves'): the array and the upload holding a
+    // triangle's index each at `micromap_indices`; its templates are built with them. `micromaps_tried`: read once.
+    ComPtr<ID3D12Resource> micromaps;
+    ComPtr<ID3D12Resource> micromap_inputs;
+    uint64_t micromap_indices = 0;
+    bool micromaps_tried = false;
   };
-  // A replaced or dropped set's units and templates, given back once the GPU is past the requests that read them.
+  // A replaced or dropped set's units, templates and micromaps, given back once the GPU is past the requests that read
+  // them.
   struct PendingSetFree {
     uint64_t value = 0;
     uint32_t offset = 0;
     uint32_t units = 0;
     uint32_t template_first = UINT32_MAX;
     uint32_t templates = 0;
+    ComPtr<ID3D12Resource> micromaps;
+    ComPtr<ID3D12Resource> micromap_inputs;
+  };
+  // A micromap bake's read: a new leaf mesh's (its kept positions too) or an alpha-tested cluster set's (its first
+  // instance's UVs this request, in its templates' triangle order).
+  struct MicromapRead {
+    uint64_t key = 0;
+    uint64_t build = 0;
+    uint32_t first_vertex = 0;
+    uint32_t triangles = 0;
+    uint32_t uv_offset = 0;
+    uint32_t slice = 0;
+    bool set = false;
   };
 
   bool Fail(const char* status) {
@@ -2001,7 +2042,9 @@ class RtScene12 {
           std::erase_if(sets_, [&](const auto& entry) {
             if (used.contains(entry.first)) return false;
             pending_set_frees_.push_back({.value = own_value_ + 1, .offset = entry.second.offset, .units = entry.second.units,
-                                          .template_first = entry.second.template_first, .templates = entry.second.clusters});
+                                          .template_first = entry.second.template_first, .templates = entry.second.clusters,
+                                          .micromaps = std::move(entry.second.micromaps),
+                                          .micromap_inputs = std::move(entry.second.micromap_inputs)});
             return true;
           });
           ++set_drops_;
@@ -2011,10 +2054,11 @@ class RtScene12 {
       }
       if (const auto last = sets_.find(sent.key); last != sets_.end()) {
         pending_set_frees_.push_back({.value = own_value_ + 1, .offset = last->second.offset, .units = last->second.units,
-                                      .template_first = last->second.template_first, .templates = last->second.clusters});
+                                      .template_first = last->second.template_first, .templates = last->second.clusters,
+                                      .micromaps = std::move(last->second.micromaps), .micromap_inputs = std::move(last->second.micromap_inputs)});
       }
       sets_[sent.key] = {.offset = offset, .units = units, .vertices = sent.vertices, .clusters = sent.clusters, .triangles = sent.triangles,
-                         .descs = std::move(descs)};
+                         .descs = std::move(descs), .generation = ++set_generation_};
       std::memcpy(slot->compact_data + set_upload, data, bytes);
       set_copies.push_back({set_upload, uint64_t{offset} * 16, bytes});
       set_upload = Align(set_upload + bytes, 16);
@@ -2054,6 +2098,13 @@ class RtScene12 {
     uint32_t templated_clusters = 0;  // the first run's
     uint32_t template_builds = 0;     // this request's new templates
     bool templates_dropped = false;
+    // Grass micromaps (with the Leaf Micromaps setting and Mega Geometry's micromap support): an alpha-tested set's first
+    // instance's UVs read back once, a few sets a request (the bakes' room shared with the leaves').
+    std::vector<MicromapRead> set_micromap_reads;
+    size_t set_micromap_room = (cluster_micromaps_ && bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
+                                   ? std::min<size_t>(SET_MICROMAP_READS, MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
+                                                                                                      + (micromap_baking_.valid() ? 1u : 0u) + micromaps_baked_.size()))
+                                   : 0u;
 #if defined(RENODX_NVAPI_CLUSTERS)
     auto* template_args =
         reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS*>(slot->compact_data + COMPACT_TEMPLATE_ARGS_OFFSET);
@@ -2085,6 +2136,12 @@ class RtScene12 {
               arg.geometryIndexAndFlagsBufferStride = 4;
               arg.geometryIndexAndFlagsBuffer = template_geometry_->GetGPUVirtualAddress();
               arg.indexBuffer = set_pool_->GetGPUVirtualAddress() + ((uint64_t{set.offset} + set.clusters) * 16) + (uint64_t{desc_triangle} * 3);
+              if (set.micromaps) {
+                arg.opacityMicromapIndexFormat = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INDEX_FORMAT_32BIT;
+                arg.opacityMicromapIndexBufferStride = 4;
+                arg.opacityMicromapArray = set.micromaps->GetGPUVirtualAddress();
+                arg.opacityMicromapIndexBuffer = set.micromap_inputs->GetGPUVirtualAddress() + set.micromap_indices + (uint64_t{desc_triangle} * 4);
+              }
               template_destinations[template_builds] = templates_->GetGPUVirtualAddress() + (uint64_t{first_template + cluster} * template_bytes_);
               ++template_builds;
             }
@@ -2119,6 +2176,12 @@ class RtScene12 {
             templated_run ? set.template_first : 0u,
         };
         std::memcpy(slot->compact_data + (uint64_t{compact_drawn} * 48), entry.data(), sizeof(entry));
+        if (masked && set_micromap_room != 0 && !set.micromaps_tried && set.triangles <= MICROMAP_TRIANGLES) {
+          set.micromaps_tried = true;
+          --set_micromap_room;
+          set_micromap_reads.push_back({.key = draw.set, .build = set.generation, .triangles = set.triangles, .uv_offset = entry[7],
+                                        .slice = draw.slice, .set = true});
+        }
         compact_keys.push_back(draw.set);
         compact_flags.push_back(draw.flags);
         ++compact_drawn;
@@ -2327,10 +2390,18 @@ class RtScene12 {
       if (dxr12_ && !micromaps_baked_.empty()) {
         std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC> array_descs(micromaps_baked_.size());
         std::vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC> array_builds;
+        std::vector<std::unique_ptr<MicromapBake>> set_bakes;  // their histograms read by the builds below
         uint64_t array_scratch = 0;
         for (std::unique_ptr<MicromapBake>& baked : micromaps_baked_) {
-          const auto mesh = meshes_.find(baked->key);
-          if (mesh == meshes_.end() || mesh->second.build != baked->build) {
+          ClusterSet* set = nullptr;
+          if (baked->set) {
+            const auto found = sets_.find(baked->key);
+            if (found == sets_.end() || found->second.generation != baked->build) {
+              baked.reset();
+              continue;
+            }
+            set = &found->second;
+          } else if (const auto mesh = meshes_.find(baked->key); mesh == meshes_.end() || mesh->second.build != baked->build) {
             releases_.push_back({.value = own_value_ + 1, .resource = std::move(baked->positions)});
             baked.reset();
             continue;
@@ -2348,7 +2419,7 @@ class RtScene12 {
           inputs->Unmap(0, nullptr);
           ComPtr<ID3D12Resource> array;
           if (!baked->descs.empty()) {
-            D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC& array_desc = array_descs[micromap_arrays.size()];
+            D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC& array_desc = array_descs[array_builds.size()];
             array_desc = {
                 .NumOmmHistogramEntries = static_cast<UINT>(baked->histogram.size()),
                 .pOmmHistogram = baked->histogram.data(),
@@ -2372,6 +2443,21 @@ class RtScene12 {
             array_builds.push_back({.DestAccelerationStructureData = array->GetGPUVirtualAddress(), .Inputs = array_inputs,
                                     .ScratchAccelerationStructureData = array_scratch});
             array_scratch = Align(array_scratch + info.ScratchDataSizeInBytes, 256);
+          }
+          if (set != nullptr) {
+            // Its templates again, with the micromaps (the old ones given back once the GPU is past this request); a set
+            // whose triangles are all wholly opaque or clear keeps its templates (no array).
+            if (array) {
+              pending_set_frees_.push_back({.value = own_value_ + 1, .template_first = set->template_first,
+                                            .templates = (set->template_first != UINT32_MAX) ? set->clusters : 0u});
+              set->template_first = UINT32_MAX;
+              set->micromaps = std::move(array);
+              set->micromap_inputs = std::move(inputs);
+              set->micromap_indices = indices_offset;
+              ++micromap_tally_[3];
+            }
+            set_bakes.push_back(std::move(baked));
+            continue;
           }
           micromap_arrays.push_back({.bake = std::move(baked), .array = std::move(array), .inputs = std::move(inputs), .indices_offset = indices_offset});
         }
@@ -2429,15 +2515,7 @@ class RtScene12 {
       };
       // New leaves whose micromaps are baked (with an addon's RT_MICROMAPS, while there is room): their positions, UVs and
       // mask slice copied after the builds.
-      struct MicromapRead {
-        uint64_t key = 0;
-        uint64_t build = 0;
-        uint32_t first_vertex = 0;
-        uint32_t triangles = 0;
-        uint32_t uv_offset = 0;
-        uint32_t slice = 0;
-      };
-      std::vector<MicromapRead> micromap_reads;
+      std::vector<MicromapRead> micromap_reads = std::move(set_micromap_reads);
       size_t micromap_room = (bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
                                  ? MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                  + (micromap_baking_.valid() ? 1u : 0u) + micromaps_baked_.size())
@@ -2811,8 +2889,10 @@ class RtScene12 {
         const D3D12_RESOURCE_DESC atlas_desc = micromap_reads.empty() ? D3D12_RESOURCE_DESC{} : atlas_->GetDesc();
         for (const MicromapRead& read : micromap_reads) {
           auto bake = std::make_unique<MicromapBake>();
-          *bake = {.key = read.key, .build = read.build, .value = own_value_ + 1, .triangles = read.triangles};
-          bake->positions = Buffer(uint64_t{read.triangles} * 48, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+          *bake = {.key = read.key, .build = read.build, .value = own_value_ + 1, .triangles = read.triangles, .set = read.set};
+          if (!read.set) {
+            bake->positions = Buffer(uint64_t{read.triangles} * 48, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+          }
           bake->uvs = Buffer(uint64_t{read.triangles} * 12, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
           ComPtr<ID3D12Resource>& mask = masks[read.slice];
           if (!mask) {
@@ -2833,10 +2913,12 @@ class RtScene12 {
             }
           }
           bake->mask = mask;
-          if (!bake->positions || !bake->uvs || !bake->mask) continue;
-          list->CopyBufferRegion(bake->positions.Get(), 0, vertex_buffer_.Get(), uint64_t{read.first_vertex} * 16, uint64_t{read.triangles} * 48);
+          if ((!read.set && !bake->positions) || !bake->uvs || !bake->mask) continue;
+          if (!read.set) {
+            list->CopyBufferRegion(bake->positions.Get(), 0, vertex_buffer_.Get(), uint64_t{read.first_vertex} * 16, uint64_t{read.triangles} * 48);
+            positions_copied.push_back(Transition(bake->positions.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+          }
           list->CopyBufferRegion(bake->uvs.Get(), 0, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
-          positions_copied.push_back(Transition(bake->positions.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
           micromap_reads_.push_back(std::move(bake));
         }
         for (auto& barrier : to_source) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
@@ -3375,8 +3457,9 @@ class RtScene12 {
     // The bakes' tally at most every 10 s (the log).
     if ((micromap_tally_[0] + micromap_tally_[2]) != 0 && GetTickCount64() >= micromap_logged_ + 10000) {
       micromap_logged_ = GetTickCount64();
-      slow_report_ += std::format("{}[TW ray tracing] Leaf micromaps: {} meshes baked ({} KB), {} failed.", (slow_report_.empty() ? "" : "\n"),
-                                  micromap_tally_[0], micromap_tally_[1] >> 10, micromap_tally_[2]);
+      slow_report_ += std::format("{}[TW ray tracing] Leaf micromaps: {} meshes baked ({} KB), {} failed; {} grass sets given theirs.",
+                                  (slow_report_.empty() ? "" : "\n"), micromap_tally_[0], micromap_tally_[1] >> 10, micromap_tally_[2],
+                                  micromap_tally_[3]);
       micromap_tally_ = {};
     }
   }
@@ -3495,7 +3578,10 @@ class RtScene12 {
   std::vector<std::unique_ptr<MicromapBake>> micromap_queue_;
   std::future<std::unique_ptr<MicromapBake>> micromap_baking_;
   std::vector<std::unique_ptr<MicromapBake>> micromaps_baked_;
-  std::array<uint64_t, 3> micromap_tally_ = {};  // since the last log line: meshes baked, their data's bytes, failed
+  // Since the last log line: meshes baked, their data's bytes, failed, of them grass sets (their templates rebuilt).
+  std::array<uint64_t, 4> micromap_tally_ = {};
+  bool cluster_micromaps_ = false;  // Mega Geometry's operations allow micromaps (grass sets' templates)
+  uint64_t set_generation_ = 0;
   uint64_t micromap_logged_ = 0;                 // that line's time (GetTickCount64)
 #if defined(RENODX_OMM_SDK)
   OmmSdk omm_;
