@@ -2,6 +2,17 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v108 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper47: ship them together)
+
+- **PT AO no longer goes dark**: its first 1-2 s were still the game's ambient (PT AO takes over after a short warm-up,
+  now 30 frames). Two faults made it dark: the game's AO / GT-VBAO stayed on and stacked on it (now off with PT AO, as
+  with RT AO), and light bouncing off walls and ground came back without their ambient light (now added).
+- **Grass and rivers faster**: the sun's shadow rays (22-27 ms zoomed into grass or over a river's grassy bed in ATN's
+  trace) test grass only over their first stretch, where a blade can still be above them (2.5 m of rise), and grass
+  with micromaps skips its alpha tests (2-state, as NVIDIA suggests for shadow rays). Test field: 4.8 -> 2.1 ms.
+- **Grass shadows settle sooner**: three times as many grass micromaps baked a frame on the GPU (new grass's shadows
+  were dark for 1-2 s until baked).
+
 ## v107 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper46: ship them together)
 
 - **After a GPU freeze, RR and frame generation work again**: when the GPU drops the helper's ray tracing device, the
