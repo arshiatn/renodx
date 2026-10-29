@@ -607,7 +607,9 @@ class RtScene12 {
                                                   (cluster_bytes_ + TEMPLATE_POOL_BYTES) >> 20)
                                     : std::string());
     slow_report_ = "[TW ray tracing] " + status_
-                   + (info_queue_ ? " (D3D12 debug layer on)." : std::format(" (debug layer 0x{:08X}).", static_cast<uint32_t>(debug_result_)));
+                   + (info_queue_                ? std::string(" (D3D12 debug layer on).")
+                      : (debug_result_ != S_FALSE) ? std::format(" (no D3D12 debug layer: 0x{:08X}).", static_cast<uint32_t>(debug_result_))
+                                                   : std::string("."));
     sdk_ = sdk;
     return true;
   }
@@ -812,7 +814,8 @@ class RtScene12 {
       }
     }
     D3D12_DRED_PAGE_FAULT_OUTPUT1 fault = {};
-    if (SUCCEEDED(removed->GetPageFaultAllocationOutput1(&fault)) && fault.PageFaultVA != 0) {
+    if (SUCCEEDED(removed->GetPageFaultAllocationOutput1(&fault))
+        && (fault.PageFaultVA != 0 || fault.pHeadExistingAllocationNode != nullptr || fault.pHeadRecentFreedAllocationNode != nullptr)) {
       report += std::format("\n  page fault at 0x{:X}; there:", fault.PageFaultVA);
       for (const D3D12_DRED_ALLOCATION_NODE1* node = fault.pHeadExistingAllocationNode; node != nullptr; node = node->pNext) {
         report += std::format(" {} ({})", narrow(node->ObjectNameW), static_cast<int>(node->AllocationType));
@@ -1608,8 +1611,6 @@ class RtScene12 {
     ComPtr<ID3D12Resource> gpu_readback;
     uint64_t histogram_offset = 0;
     uint32_t histogram_bytes = 0;
-    std::array<uint64_t, 2> log_offsets = {};  // RENODX_TW_OMM_LOG: its post-dispatch info's and first indices' places there
-    uint64_t log_extra = 0;
     std::vector<uint32_t> uv_data;
     std::vector<uint8_t> mask_data;
     // The bake's: the micromaps' data, descs, an index a triangle (32-bit; the special ones negative), their histogram.
@@ -1654,6 +1655,7 @@ class RtScene12 {
       UINT constant_count = 0;
     };
     std::vector<Pipeline> pipelines;
+    uint32_t globals_bytes = 0;  // the global constants' largest size
     ComPtr<ID3D12DescriptorHeap> heap;
     UINT next = 0;
     ComPtr<ID3D12CommandSignature> dispatch;
@@ -3814,37 +3816,14 @@ class RtScene12 {
         const uint8_t* mapped = nullptr;
         if (!read->gpu_failed && read->gpu_readback
             && SUCCEEDED(read->gpu_readback->Map(0, &range, reinterpret_cast<void**>(const_cast<uint8_t**>(&mapped))))) {
-          if (GetEnvironmentVariableW(L"RENODX_TW_OMM_LOG", nullptr, 0) != 0) {
-            std::string raw;
-            for (uint32_t word = 0; word < read->histogram_bytes / 4; ++word) {
-              raw += std::format(" {:08X}", reinterpret_cast<const uint32_t*>(mapped + range.Begin)[word]);
-            }
-            const D3D12_RANGE more = {.Begin = read->log_offsets[0], .End = read->log_offsets[1] + 64};
-            const uint8_t* extra = nullptr;
-            if (read->log_offsets[1] != 0 && SUCCEEDED(read->gpu_readback->Map(0, &more, reinterpret_cast<void**>(const_cast<uint8_t**>(&extra))))) {
-              raw += " | post:";
-              for (uint32_t word = 0; word < 8; ++word) raw += std::format(" {}", reinterpret_cast<const uint32_t*>(extra + read->log_offsets[0])[word]);
-              raw += " | indices:";
-              for (uint32_t word = 0; word < 8; ++word) raw += std::format(" {:08X}", reinterpret_cast<const uint32_t*>(extra + read->log_offsets[1])[word]);
-              const D3D12_RANGE none = {};
-              read->gpu_readback->Unmap(0, &none);
-              const D3D12_RANGE debug_range = {.Begin = read->log_extra, .End = read->log_extra + 128};
-              if (read->log_extra != 0 && SUCCEEDED(read->gpu_readback->Map(0, &debug_range, reinterpret_cast<void**>(const_cast<uint8_t**>(&extra))))) {
-                raw += " | uvs:";
-                for (uint32_t word = 0; word < 6; ++word) raw += std::format(" {:08X}", reinterpret_cast<const uint32_t*>(extra + read->log_extra)[word]);
-                raw += " | scratch:";
-                for (uint32_t word = 16; word < 32; ++word) raw += std::format(" {:X}", reinterpret_cast<const uint32_t*>(extra + read->log_extra)[word]);
-                read->gpu_readback->Unmap(0, &none);
-              }
-            }
-            slow_report_ += std::format("{}[TW ray tracing] GPU bake {} triangles: histogram {} bytes:{}", slow_report_.empty() ? "" : "\n",
-                                        read->triangles, read->histogram_bytes, raw);
-          }
           const auto* counts = reinterpret_cast<const ommCpuOpacityMicromapUsageCount*>(mapped + range.Begin);
           for (size_t entry = 0; entry < read->histogram_bytes / sizeof(ommCpuOpacityMicromapUsageCount); ++entry) {
             if (counts[entry].count == 0) continue;
             read->histogram.push_back({.Count = counts[entry].count, .SubdivisionLevel = counts[entry].subdivisionLevel,
                                        .Format = static_cast<D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT>(counts[entry].format)});
+            // Their data's bytes: 4^level micro-triangles, 1 or 2 bits each.
+            micromap_tally_[1] += uint64_t{counts[entry].count}
+                                  * ((((uint64_t{1} << (2u * counts[entry].subdivisionLevel)) * counts[entry].format) + 7) / 8);
           }
           const D3D12_RANGE none = {};
           read->gpu_readback->Unmap(0, &none);
@@ -3972,6 +3951,7 @@ class RtScene12 {
                               .DescriptorTable = {.NumDescriptorRanges = static_cast<UINT>(ranges.size()), .pDescriptorRanges = ranges.data()}});
       }
       // The global constants for every pipeline (omm_rasterize_cs_r reads them without hasConstantData).
+      gpu.globals_bytes = info->globalConstantBufferDesc.maxDataSize;
       if (info->globalConstantBufferDesc.maxDataSize != 0) {
         made.global = static_cast<int>(parameters.size());
         parameters.push_back({.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV,
@@ -4130,15 +4110,16 @@ class RtScene12 {
       made = static_cast<bool>(outputs[kind]);
     }
     ComPtr<ID3D12Resource> readback;
-    const bool logged = GetEnvironmentVariableW(L"RENODX_TW_OMM_LOG", nullptr, 0) != 0;
-    const uint64_t logged_bytes = logged ? totals[6] + (planned.size() * 64) + 128 : 0;
-    if (made) readback = Buffer(totals[3] + logged_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
-    if (!made || !readback || !atlas_) {
+    if (made) readback = Buffer(totals[3], D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+    // The bakes' global constants: one upload buffer, a place each.
+    const uint64_t globals_stride = Align(std::max(gpu.globals_bytes, 4u), 256);
+    ComPtr<ID3D12Resource> globals;
+    uint8_t* globals_data = nullptr;
+    if (made) globals = Buffer(globals_stride * planned.size(), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+    if (!made || !readback || !globals || !atlas_ || FAILED(globals->Map(0, nullptr, reinterpret_cast<void**>(&globals_data)))) {
       fail_all();
-      slow_report_ += std::format("{}[TW ray tracing] GPU micromap bakes: their buffers failed (made {}, read-back {}, sizes {} {} {} {} {} {} {}, "
-                                  "transient {} {}).",
-                                  slow_report_.empty() ? "" : "\n", made, static_cast<bool>(readback), totals[0], totals[1], totals[2], totals[3],
-                                  totals[4], totals[5], totals[6], transient_bytes[0], transient_bytes[1]);
+      slow_report_ += std::format("{}[TW ray tracing] GPU micromap bakes: their buffers failed ({} bakes, {} KB).", slow_report_.empty() ? "" : "\n",
+                                  planned.size(), (totals[0] + totals[1] + totals[2] + totals[3] + totals[4] + totals[5] + totals[6]) >> 10);
       return;
     }
     Mark(list, L"micromap bakes");
@@ -4192,56 +4173,12 @@ class RtScene12 {
         why = std::format("dispatch {}", static_cast<int>(result));
         continue;
       }
-      if (logged) {
-        std::string steps;
-        for (uint32_t step = 0; step < chain->numDispatches; ++step) {
-          const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
-          if (dispatch.type == ommGpuDispatchType_Compute) {
-            steps += std::format(" c{}:{}x{}/{}r/{}b", dispatch.compute.pipelineIndex, dispatch.compute.gridWidth, dispatch.compute.gridHeight,
-                                 dispatch.compute.resourceNum, dispatch.compute.localConstantBufferDataSize);
-          } else if (dispatch.type == ommGpuDispatchType_ComputeIndirect) {
-            steps += std::format(" i{}/{}r/{}b", dispatch.computeIndirect.pipelineIndex, dispatch.computeIndirect.resourceNum,
-                                 dispatch.computeIndirect.localConstantBufferDataSize);
-          } else {
-            steps += std::format(" t{}", static_cast<int>(dispatch.type));
-          }
-        }
-        std::string globals_words;
-        for (uint32_t word = 0; word < chain->globalCBufferDataSize / 4; ++word) {
-          globals_words += std::format(" {}", reinterpret_cast<const uint32_t*>(chain->globalCBufferData)[word]);
-        }
-        std::string pipelines_used;
-        for (uint32_t step = 0; step < chain->numDispatches; ++step) {
-          const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
-          if (dispatch.type != ommGpuDispatchType_Compute) continue;
-          const auto& made_pipeline = gpu.pipelines[dispatch.compute.pipelineIndex];
-          pipelines_used += std::format(" p{}:t{}g{}c{}", dispatch.compute.pipelineIndex, made_pipeline.table, made_pipeline.global, made_pipeline.constants);
-          for (uint32_t number = 0; number < dispatch.compute.resourceNum; ++number) {
-            pipelines_used += std::format(",r{}s{}i{}", static_cast<int>(dispatch.compute.resources[number].type),
-                                          static_cast<int>(dispatch.compute.resources[number].stateNeeded), dispatch.compute.resources[number].indexInPool);
-          }
-        }
-        slow_report_ += std::format("{}[TW ray tracing] GPU bake globals:{} | dispatches:{}", slow_report_.empty() ? "" : "\n", globals_words, pipelines_used);
-        slow_report_ += std::format("{}[TW ray tracing] GPU bake chain: {} dispatches, globals {} bytes, pre-dispatch index count {}, sizes {} {} {} {}, "
-                                    "transient {} ({} {}):{}",
-                                    slow_report_.empty() ? "" : "\n", chain->numDispatches, chain->globalCBufferDataSize, plan.info.outOmmIndexCount,
-                                    plan.info.outOmmArraySizeInBytes, plan.info.outOmmDescSizeInBytes, plan.info.outOmmIndexBufferSizeInBytes,
-                                    plan.info.outOmmArrayHistogramSizeInBytes, plan.info.numTransientPoolBuffers, plan.info.transientPoolBufferSizeInBytes[0],
-                                    plan.info.transientPoolBufferSizeInBytes[1], steps);
+      if (chain->globalCBufferDataSize > globals_stride) {
+        plan.bake->gpu_failed = true;
+        why = std::format("its constants ({} bytes)", chain->globalCBufferDataSize);
+        continue;
       }
-      ComPtr<ID3D12Resource> globals;
-      if (chain->globalCBufferDataSize != 0) {
-        globals = Buffer(Align(chain->globalCBufferDataSize, 256), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
-        uint8_t* data = nullptr;
-        if (!globals || FAILED(globals->Map(0, nullptr, reinterpret_cast<void**>(&data)))) {
-          plan.bake->gpu_failed = true;
-          why = "its constants";
-          continue;
-        }
-        std::memcpy(data, chain->globalCBufferData, chain->globalCBufferDataSize);
-        globals->Unmap(0, nullptr);
-        releases_.push_back({.value = own_value_ + 1, .resource = globals});
-      }
+      std::memcpy(globals_data + (index * globals_stride), chain->globalCBufferData, chain->globalCBufferDataSize);
       // A resource the chain names: its buffer (or the mask's texture), its place and size there.
       const auto locate = [&](const ommGpuResource& resource, uint64_t* offset, uint64_t* bytes) -> ID3D12Resource* {
         const auto output = [&](size_t kind) {
@@ -4352,7 +4289,7 @@ class RtScene12 {
         if (pipeline.table >= 0) {
           list->SetComputeRootDescriptorTable(pipeline.table, {.ptr = gpu_start.ptr + (uint64_t{gpu.next} * descriptor_size_)});
         }
-        if (pipeline.global >= 0 && globals) list->SetComputeRootConstantBufferView(pipeline.global, globals->GetGPUVirtualAddress());
+        if (pipeline.global >= 0) list->SetComputeRootConstantBufferView(pipeline.global, globals->GetGPUVirtualAddress() + (index * globals_stride));
         if (pipeline.constants >= 0 && constant_bytes >= 4) {
           list->SetComputeRoot32BitConstants(pipeline.constants, std::min(constant_bytes / 4, pipeline.constant_count), constants, 0);
         }
@@ -4390,44 +4327,8 @@ class RtScene12 {
     if (states[gpu.uvs.Get()] != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
       barriers.push_back(Transition(gpu.uvs.Get(), states[gpu.uvs.Get()], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
     }
-    if (logged) {
-      for (const size_t kind : {3u, 5u}) {
-        const D3D12_RESOURCE_STATES now = (kind == 3u) ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE : states[outputs[kind].Get()];
-        if (kind == 5u && now != D3D12_RESOURCE_STATE_COPY_SOURCE) {
-          barriers.push_back(Transition(outputs[kind].Get(), now, D3D12_RESOURCE_STATE_COPY_SOURCE));
-          states[outputs[kind].Get()] = D3D12_RESOURCE_STATE_COPY_SOURCE;
-        }
-      }
-    }
     if (!barriers.empty()) list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     list->CopyBufferRegion(readback.Get(), 0, outputs[2].Get(), 0, totals[3]);
-    if (logged) {
-      list->CopyBufferRegion(readback.Get(), totals[3], outputs[5].Get(), 0, totals[6]);
-      const auto to_copy = Transition(outputs[3].Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
-      list->ResourceBarrier(1, &to_copy);
-      for (size_t index = 0; index < planned.size(); ++index) {
-        list->CopyBufferRegion(readback.Get(), totals[3] + totals[6] + (index * 64), outputs[3].Get(), planned[index].offsets[4],
-                               std::min<uint64_t>(64, planned[index].sizes[4]));
-      }
-      const auto from_copy = Transition(outputs[3].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-      list->ResourceBarrier(1, &from_copy);
-      // The first bake's clamped UVs and the scratch's first bytes.
-      const uint64_t extra = totals[3] + totals[6] + (planned.size() * 64);
-      std::array<D3D12_RESOURCE_BARRIER, 2> to_read = {
-          Transition(gpu.uvs.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
-          Transition(gpu.transient[0].Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)};
-      list->ResourceBarrier(gpu.transient[0] ? 2 : 1, to_read.data());
-      list->CopyBufferRegion(readback.Get(), extra, gpu.uvs.Get(), planned[0].offsets[0], 64);
-      if (gpu.transient[0]) list->CopyBufferRegion(readback.Get(), extra + 64, gpu.transient[0].Get(), 0, 32);
-      list->CopyBufferRegion(readback.Get(), extra + 96, gpu.indices.Get(), 4, 32);  // 1, 2, 3...: the section ran
-      for (auto& barrier : to_read) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-      list->ResourceBarrier(gpu.transient[0] ? 2 : 1, to_read.data());
-      slow_report_ += std::format("{}[TW ray tracing] GPU bake debug at {}", slow_report_.empty() ? "" : "\n", extra);
-      planned[0].bake->log_extra = extra;
-      for (size_t index = 0; index < planned.size(); ++index) {
-        planned[index].bake->log_offsets = {totals[3] + planned[index].offsets[6], totals[3] + totals[6] + (index * 64)};
-      }
-    }
     if (!why.empty()) {
       slow_report_ += std::format("{}[TW ray tracing] GPU micromap bake failed: {}.", slow_report_.empty() ? "" : "\n", why);
     }
@@ -4444,6 +4345,12 @@ class RtScene12 {
       bake.histogram_offset = plan.offsets[3];
       bake.histogram_bytes = static_cast<uint32_t>(plan.sizes[3]);
     }
+    // Every output (the histograms and the post-dispatch info too), the read-back and the constants kept until the GPU is
+    // past this request.
+    globals->Unmap(0, nullptr);
+    for (auto& output : outputs) releases_.push_back({.value = own_value_ + 1, .resource = std::move(output)});
+    releases_.push_back({.value = own_value_ + 1, .resource = std::move(readback)});
+    releases_.push_back({.value = own_value_ + 1, .resource = std::move(globals)});
   }
 
   // A leaf mesh's micromaps from its UVs and mask (the bake thread): 4-state as the ray queries test them (bilinear,
