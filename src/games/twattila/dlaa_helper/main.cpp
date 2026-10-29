@@ -186,7 +186,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       shared->rt_left_out = left_out.far_off + left_out.parts + left_out.others;
       shared->rt_left_out_key = left_out.key;
     }
-    if (version >= 16) shared->rt_compact_ok = (cluster_data != nullptr) ? scene->CompactState() : 0u;
+    if (version >= 16) {
+      shared->rt_compact_ok = (cluster_data != nullptr) ? scene->CompactState() : 0u;
+      shared->rt_dynamic_uvs = scene->DynamicUvs();
+    }
   };
   std::thread rt_worker([&] {
     std::unique_lock lock(rt_work.mutex);

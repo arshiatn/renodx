@@ -1071,6 +1071,12 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       budget), 5 (measured: SER removed), 7, 9, 10, 11, 12 + rocks. Not built, with numbers: 4 SHARC / NRC (no speed),
       8 (no gain), 13 cluster LOD (wants a 4x battle log first). ASK ATN: a 4x battle log (status line: every frame
       M triangles) and a siege with fires (the light budget).
+      v96 (2026-10-29, ATN's v95 test: AO noisy under RR preset F, grass dropped): the harness's RR test (HARNESS_RR=<preset>,
+      RT_EXTRA_TRACE_FLAGS=256; nvngx_dlssd 310.9.16 copied from the game, 310.7 kept in build\tw_rt_harness\dll_310_7)
+      showed RR working but leaving 19-23% of raw 4-ray AO noise. Fixed: AO rays stratified + IGN-turned (rt_trace), the
+      AO history kept under RR again: residual 0.0245 -> 0.0080 (wall foot). Grass: ~70M vertices a frame over its 4M
+      share; now half the helper's alpha-tested corners (helper says rt_dynamic_uvs: 32M over 20 GB, 16M over 12 GB, 8M
+      else; RT_DYNAMIC_UVS 32M). helper28 in Attila's folder, Downloads\twattila_v96.zip. Untested in game.
       NVIDIA's SDKs are allowed (NVIDIA RTX SDKs License: RTXDI, SHARC, NRC, NRD, RTXPT, RTXGI; RTXMU MIT; Mega
       Geometry samples Apache 2.0): download at build time like OMM, binaries / compiled shaders only, credit in About.
       [x] 1 (step 2: RT_RECONSTRUCTED 256; harness HARNESS_SUN_SOFTNESS) RR is the only denoiser (ATN: no NRD; RR/PT users use RR): under RR, SSR's denoiser + history (ssr_hiz)

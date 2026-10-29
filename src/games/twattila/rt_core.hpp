@@ -126,7 +126,7 @@ struct SceneShader {
   bool terrain = false;
   bool dynamic = false;
   bool foliage = false;
-  bool grass = false;  // within the grass's share (MAX_GRASS_VERTICES)
+  bool grass = false;  // within the grass's share (half the helper's alpha-tested corners)
   bool thin = false;   // cloth and sails (RT_THIN)
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
@@ -168,15 +168,15 @@ namespace internal {
 constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
 // What is captured every frame, at most (it was full in a large battle with grass: what did not fit changed every frame,
 // grass and units' shadows pulsed, ATN 2026-10-28): units, grass and the rest at most MAX_UNIT_VERTICES (grass at most
-// MAX_GRASS_VERTICES of them), so the terrain keeps the rest. Doubled with the transfer texture (half the soldiers' draws
+// its share of them), so the terrain keeps the rest. Doubled with the transfer texture (half the soldiers' draws
 // were left out: holes in their shadows, ATN 2026-10-28); grass 4M (3.5M drawn in ATN's battle: what fit changed as the
 // view did, flickering grass shadows).
 // 17M of the 20M texels since swaying trees (MAX_TREE_VERTICES: their leaves where drawn every frame), 29M of 32M since
 // city walls were left out in a 4x battle (ATN 2026-10-29). Units (skinned soldiers and horses) take at most three
 // quarters of the frame's texels, triangles and clusters: what comes after them (walls and buildings in dynamic buffers,
-// the terrain, banners) keeps a quarter.
+// the terrain, banners) keeps a quarter. Grass takes half the helper's alpha-tested corners (16M on GPUs over 20 GB, 4x
+// the 4M that left ~70M grass vertices a frame out), swaying leaves the rest.
 constexpr UINT MAX_DYNAMIC_VERTICES = 29u << 20;
-constexpr UINT MAX_GRASS_VERTICES = 4u << 20;
 constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
@@ -306,6 +306,7 @@ struct Runtime {
   uint32_t unit_triangles = 0;
   uint32_t unit_clusters = 0;
   uint32_t grass_vertices = 0;  // and grass's
+  uint32_t alpha_corners = dlaa_bridge::RT_DYNAMIC_UVS / 2;  // the helper's alpha-tested corners a frame (grass, swaying leaves)
   std::vector<uint64_t> drawn;
   // This frame's draws of placed meshes in the scene: their instances' rows in the captured vertices (bridge v14).
   std::vector<dlaa_bridge::RtPlacement> placements;
@@ -934,7 +935,7 @@ void Capture(Context& command, const SceneShader& shader) {
           runtime.dynamic_vertices + texels > MAX_DYNAMIC_VERTICES,
           runtime.dynamic_triangles + triangles > dlaa_bridge::RT_DYNAMIC_TRIANGLES,
           runtime.dynamic_clusters + clusters > dlaa_bridge::RT_DYNAMIC_CLUSTERS,
-          shader.grass && runtime.grass_vertices + (triangles * 3) > MAX_GRASS_VERTICES,
+          shader.grass && runtime.grass_vertices + (triangles * 3) > runtime.alpha_corners / 2,
           unit
               && (runtime.unit_vertices + texels > MAX_DYNAMIC_VERTICES / 4 * 3
                   || runtime.unit_triangles + triangles > dlaa_bridge::RT_DYNAMIC_TRIANGLES / 4 * 3
@@ -961,7 +962,7 @@ void Capture(Context& command, const SceneShader& shader) {
       // Its leaves sway within the trees' share (placed every frame then, hidden where drawn); else not its turn, its
       // instances as many as at its last placement (none came into sight).
       sway = blocks && runtime.tree_vertices + block_texels <= MAX_TREE_VERTICES
-             && runtime.tree_corners + (block_triangles * 3) <= dlaa_bridge::RT_DYNAMIC_UVS - MAX_GRASS_VERTICES
+             && runtime.tree_corners + (block_triangles * 3) <= runtime.alpha_corners - (runtime.alpha_corners / 2)
              && runtime.dynamic_vertices + block_texels <= MAX_DYNAMIC_VERTICES
              && runtime.dynamic_triangles + block_triangles <= dlaa_bridge::RT_DYNAMIC_TRIANGLES
              && runtime.dynamic_clusters + block_clusters <= dlaa_bridge::RT_DYNAMIC_CLUSTERS;
@@ -2047,6 +2048,7 @@ inline void Update(const Settings& settings) {
   runtime.unit_triangles = 0;
   runtime.unit_clusters = 0;
   runtime.grass_vertices = 0;
+  runtime.alpha_corners = dlaa_bridge::DynamicUvs();
   runtime.dynamic_triangles = 0;
   runtime.dynamic_clusters = 0;
   runtime.tree_vertices = 0;

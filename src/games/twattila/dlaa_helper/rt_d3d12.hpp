@@ -249,8 +249,16 @@ class RtScene12 {
     const auto pool = [&](uint64_t bytes) {
       return Buffer(bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     };
+    // A request's alpha-tested corners (grass, swaying leaves): all on GPUs over 20 GB, half over 12 GB, else a quarter
+    // (the addon reads it back: rt_dynamic_uvs).
+    DXGI_ADAPTER_DESC1 adapter_desc = {};
+    adapter->GetDesc1(&adapter_desc);
+    dynamic_uvs_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? DYNAMIC_UVS
+                   : (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? DYNAMIC_UVS / 2
+                                                                              : DYNAMIC_UVS / 4;
+    uv_pool_ = STATIC_UVS + (SLOTS * dynamic_uvs_);
     records_ = pool(uint64_t{RECORD_COUNT} * 16);
-    uvs_ = pool(uint64_t{UV_POOL} * 4);
+    uvs_ = pool(uint64_t{uv_pool_} * 4);
     normals_ = pool(uint64_t{NORMAL_POOL} * 4);
     // Placed meshes (v14): their build rows by record; the TLAS's instances when some are placed, two in turn (the last
     // one's carried instances copied into the next).
@@ -276,8 +284,6 @@ class RtScene12 {
     // of CLAS memory at most: half the clusters on GPUs of 20 GB or less, a quarter on 12 GB or less (4x unit size battles
     // filled 262,144 with city walls left out).
     if (clusters_) {
-      DXGI_ADAPTER_DESC1 adapter_desc = {};
-      adapter->GetDesc1(&adapter_desc);
       cluster_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? MAX_CLUSTERS
                        : (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? MAX_CLUSTERS / 2
                                                                                   : MAX_CLUSTERS / 4;
@@ -555,7 +561,7 @@ class RtScene12 {
       return D3D12_UNORDERED_ACCESS_VIEW_DESC{.Format = format, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER, .Buffer = {.NumElements = elements}};
     };
     const auto records_view = buffer_view(DXGI_FORMAT_R32G32B32A32_UINT, RECORD_COUNT);
-    const auto uvs_view = buffer_view(DXGI_FORMAT_R32_UINT, UV_POOL);
+    const auto uvs_view = buffer_view(DXGI_FORMAT_R32_UINT, uv_pool_);
     const auto normals_view = buffer_view(DXGI_FORMAT_R32_UINT, NORMAL_POOL);
     const auto vertices_view = buffer_view(DXGI_FORMAT_R32G32B32A32_FLOAT, TRANSFER_VERTICES);
     device_->CreateShaderResourceView(records_.Get(), &records_view, Descriptor(RECORDS));
@@ -563,7 +569,7 @@ class RtScene12 {
     device_->CreateShaderResourceView(normals_.Get(), &normals_view, Descriptor(NORMALS));
     device_->CreateShaderResourceView(vertex_buffer_.Get(), &vertices_view, Descriptor(VERTICES));
     const auto records_written = buffer_uav(DXGI_FORMAT_R32G32B32A32_UINT, RECORD_COUNT);
-    const auto uvs_written = buffer_uav(DXGI_FORMAT_R32_UINT, UV_POOL);
+    const auto uvs_written = buffer_uav(DXGI_FORMAT_R32_UINT, uv_pool_);
     const auto normals_written = buffer_uav(DXGI_FORMAT_R32_UINT, NORMAL_POOL);
     device_->CreateUnorderedAccessView(records_.Get(), nullptr, &records_written, Descriptor(RECORDS_WRITTEN));
     device_->CreateUnorderedAccessView(uvs_.Get(), nullptr, &uvs_written, Descriptor(UVS_WRITTEN));
@@ -806,6 +812,9 @@ class RtScene12 {
   // Whether it takes compact draws (v16, rt_compact_ok): 0 not, else one more each time the full set pool dropped sets
   // (the addon sends its sets again).
   [[nodiscard]] uint32_t CompactState() const { return clusters_ ? 1u + set_drops_ : 0u; }
+
+  // Its alpha-tested dynamic corners a request (rt_dynamic_uvs).
+  [[nodiscard]] uint32_t DynamicUvs() const { return dynamic_uvs_; }
 
   // One request: the frame's captures into BLASes, the TLAS of what it drew, the trace; the queue waits for the addon's
   // fence value and signals the next (also when nothing ran). `cluster_data`: its new cluster sets' data (v16, the
@@ -1244,8 +1253,7 @@ class RtScene12 {
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
   static constexpr UINT NORMAL_POOL = STATIC_TRIANGLES + SLOTS * DYNAMIC_TRIANGLES;
   static constexpr UINT STATIC_UVS = 8u << 20;
-  static constexpr UINT DYNAMIC_UVS = dlaa_bridge::RT_DYNAMIC_UVS;  // a slot's (grass, swaying leaves)
-  static constexpr UINT UV_POOL = STATIC_UVS + SLOTS * DYNAMIC_UVS;
+  static constexpr UINT DYNAMIC_UVS = dlaa_bridge::RT_DYNAMIC_UVS;  // a slot's at most (grass, swaying leaves: dynamic_uvs_)
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
   static constexpr uint32_t RECORD_SMOKE = 4;
@@ -2039,7 +2047,7 @@ class RtScene12 {
         const uint64_t block_end = uint64_t{draw.first_vertex} + (uint64_t{set.vertices} * draw.instances);
         const uint64_t run_clusters = templated_run ? compact_clusters : compact_clusters - templated_clusters;
         if (block_end > TRANSFER_VERTICES || run_clusters + clusters > (templated_run ? cluster_limit_ - built_limit_ : built_limit_)
-            || dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES || (masked && dynamic_uvs_used + (triangles * 3) > DYNAMIC_UVS)
+            || dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES || (masked && dynamic_uvs_used + (triangles * 3) > dynamic_uvs_)
             || cluster_vertices + (uint64_t{set.vertices} * draw.instances) > TRANSFER_VERTICES) {
           continue;
         }
@@ -2047,7 +2055,7 @@ class RtScene12 {
         const std::array<uint32_t, 12> entry = {
             compact_clusters, draw.first_vertex, set.offset * 16, set.clusters,
             set.vertices, set.triangles, STATIC_TRIANGLES + (static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES) + dynamic_triangles_used,
-            masked ? STATIC_UVS + (static_cast<uint32_t>(slot_index) * DYNAMIC_UVS) + dynamic_uvs_used : UINT32_MAX,
+            masked ? STATIC_UVS + (static_cast<uint32_t>(slot_index) * dynamic_uvs_) + dynamic_uvs_used : UINT32_MAX,
             draw.slice | (RecordFlags({.flags = draw.flags}, masked, version) << 16), capture_count + compact_drawn, draw.flags,
             templated_run ? set.template_first : 0u,
         };
@@ -2154,9 +2162,9 @@ class RtScene12 {
           cluster_vertices += triangles * 3;
           placement.record = STATIC_RECORDS + static_cast<uint32_t>(slot_index) * dlaa_bridge::RT_CAPTURES + dynamic_records++;
           placement.normal_offset = STATIC_TRIANGLES + static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES + dynamic_triangles_used;
-          placement.masked = placement.masked && dynamic_uvs_used + triangles * 3 <= DYNAMIC_UVS;
+          placement.masked = placement.masked && dynamic_uvs_used + triangles * 3 <= dynamic_uvs_;
           if (placement.masked) {
-            placement.uv_offset = STATIC_UVS + static_cast<uint32_t>(slot_index) * DYNAMIC_UVS + dynamic_uvs_used;
+            placement.uv_offset = STATIC_UVS + static_cast<uint32_t>(slot_index) * dynamic_uvs_ + dynamic_uvs_used;
             dynamic_uvs_used += triangles * 3;
           }
           dynamic_triangles_used += triangles;
@@ -2982,7 +2990,9 @@ class RtScene12 {
     list->SetComputeRootShaderResourceView(ROOT_SCENE, (ptlas_ != nullptr ? ptlas_ : tlas_.Get())->GetGPUVirtualAddress());
     const float softness = (version >= 6) ? std::clamp(shared.rt_sun_softness, 0.f, 5.f) : 0.f;
     const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.01f;
-    // Ray Reconstruction is the only denoiser: no ambient history, no soft-shadow filter (rt_trace jitters its sun ray).
+    // Under Ray Reconstruction no soft-shadow filter (rt_trace jitters its sun ray). The ambient keeps its history: the
+    // harness's RR test (HARNESS_RR) left 19-23% of the raw 4-ray AO's noise; with this history and the AO's spread rays
+    // (rt_trace) a third of what RR alone left.
     const bool reconstructed = (shared.rt_flags & dlaa_bridge::RT_RECONSTRUCTED) != 0;
     const std::array<uint32_t, 8> settings = {
         frame,
@@ -3003,7 +3013,7 @@ class RtScene12 {
                               && EnsureHistory(HISTORY_AMBIENT, frame);
     {
       const bool last_frame = ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
-      PathConstants constants = {.flags = (!reconstructed && last_frame ? PATH_AMBIENT_HISTORY : 0u)
+      PathConstants constants = {.flags = (last_frame ? PATH_AMBIENT_HISTORY : 0u)
                                           | (lights_kept && last_frame && lights_frame_ + 1 == frame ? PATH_LIGHT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u)};
       std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
@@ -3375,6 +3385,8 @@ class RtScene12 {
   bool clusters_ = false;  // Mega Geometry's cluster operations for the units
   uint32_t cluster_limit_ = MAX_CLUSTERS;  // the most a frame (half on smaller GPUs)
   uint32_t built_limit_ = MAX_CLUSTERS;    // of them built from triangles (the rest instantiated from templates)
+  uint32_t dynamic_uvs_ = DYNAMIC_UVS;     // a request's alpha-tested corners (by the GPU's memory)
+  uint32_t uv_pool_ = STATIC_UVS + (SLOTS * DYNAMIC_UVS);
 #if defined(RENODX_NVAPI_CLUSTERS)
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS clas_inputs_ = {};
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS cluster_blas_inputs_ = {};

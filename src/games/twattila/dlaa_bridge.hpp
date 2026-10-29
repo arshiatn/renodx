@@ -681,6 +681,12 @@ inline uint32_t CompactState() {
   return (bridge.shared != nullptr && bridge.cluster_data != nullptr) ? bridge.shared->rt_compact_ok : 0u;
 }
 
+// The helper's alpha-tested dynamic corners a request (rt_dynamic_uvs; an older helper's: RT_DYNAMIC_UVS / 2).
+inline uint32_t DynamicUvs() {
+  return (bridge.shared != nullptr && bridge.shared->rt_dynamic_uvs != 0) ? std::min(bridge.shared->rt_dynamic_uvs, RT_DYNAMIC_UVS)
+                                                                         : RT_DYNAMIC_UVS / 2;
+}
+
 // A mesh's cluster set (v16) from its index list (three a triangle; degenerate ones left out): its triangles in order,
 // in clusters of at most RT_CLUSTER_TRIANGLES over at most RT_CLUSTER_VERTICES vertices; `remap` the mesh vertex each
 // texel of a block streams (each cluster's vertices in turn: a vertex in two clusters streams twice), `data` the set's

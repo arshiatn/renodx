@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v96 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper28: ship them together)
+
+- **Less AO noise under Ray Reconstruction**: tested with RR itself (the game's nvngx_dlssd 310.9.16, preset F) on 4-ray
+  AO, RR left 19-23% of the noise. The AO rays now spread over the hemisphere (stratified, turned per pixel by
+  interleaved gradient noise) and the AO keeps its own history under RR again: what RR leaves is a third of before
+  (harness, wall foot: 0.0245 -> 0.0080).
+- **More grass in the ray-traced scene**: the grass share follows the GPU's memory, 4x on GPUs over 20 GB (16M corners;
+  ~70M grass vertices a frame were left out), 2x over 12 GB.
+
 ## v95 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper27 and bridge v17: ship them together)
 
 - **Ray Reconstruction is the only denoiser**: under RR the reflections' denoiser and history, the helper's ray-traced

@@ -85,8 +85,10 @@ constexpr uint32_t RT_DYNAMIC_TRIANGLES = 32u << 20;
 constexpr uint32_t RT_DYNAMIC_CLUSTERS = 1u << 19;
 // An every-frame capture's clusters: this many triangles each (the last partial).
 constexpr uint32_t RT_CAPTURE_CLUSTER_TRIANGLES = 85;
-// The frame's alpha-tested dynamic triangles' corners at most (their UVs: grass's and swaying leaves').
-constexpr uint32_t RT_DYNAMIC_UVS = 16u << 20;
+// The frame's alpha-tested dynamic triangles' corners at most (their UVs: grass's and swaying leaves'); a helper on a GPU
+// of 20 GB or less takes half, of 12 GB or less a quarter, and says how many (rt_dynamic_uvs). Doubled since grass was
+// left out by the share (~70M grass vertices a frame over it, ATN 2026-10-29).
+constexpr uint32_t RT_DYNAMIC_UVS = 32u << 20;
 struct RtCompactDraw {
   uint64_t set = 0;  // its cluster set's key
   uint32_t first_vertex = 0;
@@ -125,8 +127,8 @@ constexpr uint32_t RT_FOG_SHADOWS = 32;
 constexpr uint32_t RT_NO_KEPT = 64;
 // Leaf micromaps: new leaves' opacity micromaps baked (NVIDIA's OMM SDK in the helper) and built with their BLAS.
 constexpr uint32_t RT_MICROMAPS = 128;
-// Ray Reconstruction denoises the frame (the only denoiser): the ambient's history off, soft sun shadows one ray toward
-// a point of the sun's disk instead of the rays' soft-shadow filter.
+// Ray Reconstruction denoises the frame: soft sun shadows one ray toward a point of the sun's disk instead of the rays'
+// soft-shadow filter (the ambient keeps its history: RR alone left ~20% of the AO's noise).
 constexpr uint32_t RT_RECONSTRUCTED = 256;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
@@ -305,7 +307,7 @@ struct Shared {
   RtCompactDraw rt_compact[RT_COMPACT_DRAWS] = {};
   RtClusterSet rt_new_sets[RT_NEW_SETS] = {};
   uint32_t rt_compact_ok = 0;
-  uint32_t rt_v16_padding = 0;
+  uint32_t rt_dynamic_uvs = 0;  // the helper's alpha-tested corners a request (by its GPU's memory; 0: RT_DYNAMIC_UVS / 2)
   // The addon's (v17): Ray Reconstruction's specular hit distance (R16F at the textures' size, made with the reflections'
   // textures, opened with the others; 0: none), which a reflections request with RT_REFLECTIONS_RAW writes (metres to
   // what each pixel's reflection rays met; 65504, NVIDIA's value for the sky, where none met or none were traced). An
