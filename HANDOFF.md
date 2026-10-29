@@ -1030,7 +1030,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           static. Transfer texture 5120 rows (20M texels), dynamic share 17M, RT_DYNAMIC_UVS 16M a slot (UV pool 224 MB).
           Harness HARNESS_HIDDEN=1 / 2 (hidden instance's shadow gone / back when not drawn) pass.
       [ ] 4 Smoke shadows (Experimental): particles as see-through cards dimming the sun by their opacity.
-      [ ] 5 Optimizations: terrain once, early trace + late wait, cluster templates, CLAS memory to need, OMM SDK (MIT?).
+      [ ] 5 Optimizations: [x] terrain compact (71eb3be0). [x] Cluster templates: a set's clusters built once as
+          templates (opaque or alpha-tested), instantiated each frame with the vertices (3 KB each, 128 MB pool, the
+          unused sets' templates given back when full); a quarter of the clusters still built from triangles (captures,
+          sets without templates yet). Harness stress (20,000 boxes, 80k clusters): scene 1.48 -> 1.08 ms, clusters
+          1.22 -> 0.82. Found: an instantiation's geometryIndexOffset is only applied to templates built with a
+          per-triangle geometry index buffer (zeros: template_geometry_); without, the record lookup got garbage.
+          Status line: GPU times right after the label (the bridge's 255 characters cut them in battles).
+          [ ] early trace + late wait [ ] CLAS memory to need [ ] OMM SDK (MIT?).
       [ ] 6 Grass / flags motion check; zip twattila_vN + helper; report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)

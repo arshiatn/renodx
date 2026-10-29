@@ -5,9 +5,11 @@
 
 // The Total War ray tracing's compact draws (bridge v16, dlaa_helper/rt_d3d12.hpp): the addon streamed each draw's
 // vertices once, in its cluster set's order (a block per instance). A group per cluster of a draw's instance: its first
-// thread writes the cluster's CLAS arguments (RTX Mega Geometry: its triangles' 8-bit indices in the set's pool, its
-// vertices in the vertex buffer; geometry index: the cluster's) and its record, a thread per triangle its normal and a
-// leaf's UVs (rt_scene_data.hlsli).
+// thread writes the cluster's arguments (RTX Mega Geometry; geometry index: the cluster's) and its record, a thread per
+// triangle its normal and a leaf's UVs (rt_scene_data.hlsli). The first `templated_clusters` clusters (draws' whose set
+// has templates) are instantiated from their template with their vertices in the vertex buffer (32 bytes of
+// arguments each); the others are built from their triangles' 8-bit indices in the set's pool (64 bytes each, after
+// `built_arguments` bytes).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_compact.h -Vn RT_COMPACT.
 #include "./rt_scene_data.hlsli"
 
@@ -16,9 +18,9 @@
 ByteAddressBuffer sets : register(t0);
 // Three per draw: its first cluster (of the request's), first vertex, its set's place in the pool (bytes) and clusters;
 // its block's vertices, its set's triangles, its normals' and UVs' offsets (NO_UVS: not alpha-tested); its record's atlas
-// slice | flags << 16, its index for the garbage count, its bridge flags.
+// slice | flags << 16, its index for the garbage count, its bridge flags, its set's first template.
 StructuredBuffer<uint4> draws : register(t8);
-// NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS, 64 bytes each.
+// NVAPI's INSTANTIATE_TEMPLATE_ARGS (32 bytes each), then from `built_arguments` its TRIANGLE_CLUSTER_ARGS (64 bytes each).
 RWByteAddressBuffer cluster_args : register(u8);
 
 cbuffer Dispatch : register(b1) {
@@ -28,6 +30,13 @@ cbuffer Dispatch : register(b1) {
   uint dispatch_padding;
   uint2 vertices_address;  // GPU addresses (low, high): the vertex buffer's, the pool's
   uint2 sets_address;
+};
+
+cbuffer Templates : register(b2) {
+  uint2 templates_address;  // the templates' pool (low, high)
+  uint template_bytes;      // a template's place
+  uint templated_clusters;  // the first clusters, instantiated
+  uint built_arguments;     // where the triangles' arguments start (bytes)
 };
 
 static const uint INDEX_FORMAT_8BIT = 1u;  // NVAPI's cluster index format
@@ -66,12 +75,19 @@ void main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID) {
   const uint corners = draw.z + draw.w * 16u + desc.z * 3u;
   const bool masked = ((kind.x >> 16) & RECORD_MASKED) != 0u;
   if (thread.x == 0u) {
-    const uint arguments = cluster * 64u;
-    cluster_args.Store4(arguments, uint4(cluster, 0u, desc.w | (desc.y << 9) | (INDEX_FORMAT_8BIT << 24),
-                                         cluster | (masked ? GEOMETRY_NO_DUPLICATE_ANYHIT : GEOMETRY_OPAQUE)));
-    cluster_args.Store4(arguments + 16u, uint4(1u | (16u << 16), 0u, Address(sets_address, corners)));
-    cluster_args.Store4(arguments + 32u, uint4(Address(vertices_address, first_vertex * 16u), 0u, 0u));
-    cluster_args.Store4(arguments + 48u, uint4(0u, 0u, 0u, 0u));
+    if (cluster < templated_clusters) {
+      // Its cluster id and geometry index past the template's (0), the template, its vertices (16-byte stride).
+      const uint arguments = cluster * 32u;
+      cluster_args.Store4(arguments, uint4(cluster, cluster, Address(templates_address, (kind.w + local - instance * draw.w) * template_bytes)));
+      cluster_args.Store4(arguments + 16u, uint4(Address(vertices_address, first_vertex * 16u), 16u, 0u));
+    } else {
+      const uint arguments = built_arguments + (cluster - templated_clusters) * 64u;
+      cluster_args.Store4(arguments, uint4(cluster, 0u, desc.w | (desc.y << 9) | (INDEX_FORMAT_8BIT << 24),
+                                           cluster | (masked ? GEOMETRY_NO_DUPLICATE_ANYHIT : GEOMETRY_OPAQUE)));
+      cluster_args.Store4(arguments + 16u, uint4(1u | (16u << 16), 0u, Address(sets_address, corners)));
+      cluster_args.Store4(arguments + 32u, uint4(Address(vertices_address, first_vertex * 16u), 0u, 0u));
+      cluster_args.Store4(arguments + 48u, uint4(0u, 0u, 0u, 0u));
+    }
     records_written[first_record + cluster] = uint4(masked ? block.w + first_triangle * 3u : NO_UVS, block.z + first_triangle, kind.x,
                                                     masked ? asuint(LEAF_ALPHA_CUTOFF) : 0u);
   }

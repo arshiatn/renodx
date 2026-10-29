@@ -246,8 +246,11 @@ class RtScene12 {
       DXGI_ADAPTER_DESC1 adapter_desc = {};
       adapter->GetDesc1(&adapter_desc);
       cluster_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? MAX_CLUSTERS : MAX_CLUSTERS / 2;
+      // A quarter of them built from triangles (the captures', the compact draws' whose set has no templates yet), the rest
+      // instantiated.
+      built_limit_ = cluster_limit_ / 4;
       clas_inputs_ = {
-          .maxArgCount = cluster_limit_,
+          .maxArgCount = built_limit_,
           .flags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE,
           .type = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_CLAS_FROM_TRIANGLES,
           .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS,
@@ -269,8 +272,45 @@ class RtScene12 {
           .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_EXPLICIT_DESTINATIONS,
       };
       cluster_blas_inputs_.clasDesc = {.maxTotalClasCount = cluster_limit_, .maxClasCountPerArg = cluster_limit_};
+      // Templates (a set's opaque clusters' triangles, built once, explicit places in templates_) and their instantiation
+      // each frame (the vertices in the vertex buffer) into the first batch of CLASes.
+      template_inputs_ = {
+          .maxArgCount = TEMPLATE_BUILDS,
+          .flags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE,
+          .type = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_CLUSTER_TEMPLATES_FROM_TRIANGLES,
+          .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_EXPLICIT_DESTINATIONS,
+      };
+      template_inputs_.trianglesDesc = {
+          .vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT,
+          .maxGeometryIndexValue = cluster_limit_ - 1,
+          .maxUniqueGeometryCountPerArg = 1,
+          .maxTriangleCountPerArg = dlaa_bridge::RT_CLUSTER_TRIANGLES,
+          .maxVertexCountPerArg = dlaa_bridge::RT_CLUSTER_VERTICES,
+          .maxTotalTriangleCount = TEMPLATE_BUILDS * dlaa_bridge::RT_CLUSTER_TRIANGLES,
+          .maxTotalVertexCount = TEMPLATE_BUILDS * dlaa_bridge::RT_CLUSTER_VERTICES,
+          .minPositionTruncateBitCount = 0,
+      };
+      instantiate_inputs_ = {
+          .maxArgCount = cluster_limit_ - built_limit_,
+          .flags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE,
+          .type = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_INSTANTIATE_CLUSTER_TEMPLATES,
+          .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS,
+      };
+      instantiate_inputs_.trianglesDesc = {
+          .vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT,
+          .maxGeometryIndexValue = cluster_limit_ - 1,
+          .maxUniqueGeometryCountPerArg = 1,
+          .maxTriangleCountPerArg = dlaa_bridge::RT_CLUSTER_TRIANGLES,
+          .maxVertexCountPerArg = dlaa_bridge::RT_CLUSTER_VERTICES,
+          .maxTotalTriangleCount = DYNAMIC_TRIANGLES,
+          .maxTotalVertexCount = TRANSFER_VERTICES,
+          .minPositionTruncateBitCount = 0,
+      };
       NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO clas_info = {};
       NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO blas_info = {};
+      NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO templates_info = {};
+      NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO template_info = {};
+      NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO instantiate_info = {};
       const auto requirements = [&](const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS& inputs,
                                     NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO* info) {
         const NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS params = {
@@ -283,21 +323,36 @@ class RtScene12 {
       const auto as_buffer = [&](uint64_t bytes, D3D12_RESOURCE_STATES state) {
         return Buffer(std::max<uint64_t>(bytes, 256), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state);
       };
-      clusters_ = requirements(clas_inputs_, &clas_info) && requirements(cluster_blas_inputs_, &blas_info);
+      // A template's most bytes: its requirements as the only one.
+      auto one_template = template_inputs_;
+      one_template.maxArgCount = 1;
+      clusters_ = requirements(clas_inputs_, &clas_info) && requirements(cluster_blas_inputs_, &blas_info)
+                  && requirements(template_inputs_, &templates_info) && requirements(one_template, &template_info)
+                  && requirements(instantiate_inputs_, &instantiate_info);
       if (clusters_) {
-        clas_ = as_buffer(clas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        const auto align = [](uint64_t value, uint64_t alignment) { return (value + alignment - 1) / alignment * alignment; };
+        template_bytes_ = static_cast<uint32_t>(align(template_info.resultDataMaxSizeInBytes, NVAPI_D3D12_RAYTRACING_CLUSTER_TEMPLATE_BYTE_ALIGNMENT));
+        // The instantiated CLASes first, those built from triangles after them; the arguments likewise (32 and 64 bytes).
+        instantiated_bytes_ = align(instantiate_info.resultDataMaxSizeInBytes, NVAPI_D3D12_RAYTRACING_CLAS_BYTE_ALIGNMENT);
+        clas_ = as_buffer(instantiated_bytes_ + clas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
         cluster_blas_ = as_buffer(blas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-        cluster_scratch_ = as_buffer(std::max(clas_info.scratchDataSizeInBytes, blas_info.scratchDataSizeInBytes),
+        cluster_scratch_ = as_buffer(std::max({clas_info.scratchDataSizeInBytes, blas_info.scratchDataSizeInBytes, templates_info.scratchDataSizeInBytes,
+                                               instantiate_info.scratchDataSizeInBytes}),
                                      D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         clas_addresses_ = as_buffer(uint64_t{cluster_limit_} * 8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         cluster_destination_ = as_buffer(8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         cluster_indices_ = Buffer(256, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
-        cluster_args_ = as_buffer(uint64_t{cluster_limit_} * 64, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        cluster_args_ = as_buffer((uint64_t{cluster_limit_ - built_limit_} * 32) + (uint64_t{built_limit_} * 64), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         set_pool_ = Buffer(uint64_t{SET_POOL_BYTES} + 16, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        templates_ = as_buffer(TEMPLATE_POOL_BYTES, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        template_destinations_ = as_buffer(uint64_t{TEMPLATE_BUILDS} * 8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        template_geometry_ = Buffer(uint64_t{dlaa_bridge::RT_CLUSTER_TRIANGLES} * 4, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE,
+                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         clusters_ = clas_ && cluster_blas_ && cluster_scratch_ && clas_addresses_ && cluster_destination_ && cluster_indices_ && cluster_args_
-                    && set_pool_;
-        cluster_bytes = clas_info.resultDataMaxSizeInBytes + blas_info.resultDataMaxSizeInBytes
-                        + std::max(clas_info.scratchDataSizeInBytes, blas_info.scratchDataSizeInBytes);
+                    && set_pool_ && templates_ && template_destinations_ && template_geometry_ && template_bytes_ != 0;
+        cluster_bytes = instantiated_bytes_ + clas_info.resultDataMaxSizeInBytes + blas_info.resultDataMaxSizeInBytes + TEMPLATE_POOL_BYTES
+                        + std::max({clas_info.scratchDataSizeInBytes, blas_info.scratchDataSizeInBytes, templates_info.scratchDataSizeInBytes,
+                                    instantiate_info.scratchDataSizeInBytes});
       }
       for (Slot& slot : slots_) {
         if (!clusters_) break;
@@ -310,6 +365,7 @@ class RtScene12 {
         }
       }
       free_set_units_.free = {{0, SET_POOL_BYTES / 16}};
+      if (clusters_) free_templates_.free = {{0, static_cast<uint32_t>(TEMPLATE_POOL_BYTES / template_bytes_)}};
     }
     // The partitioned TLAS: an instance per static record (its index) and one for the units, PTLAS_PARTITION_SIZE a
     // partition; a slot's write and update arguments, its two operations and their count. Only with RENODX_TW_PTLAS:
@@ -517,7 +573,9 @@ class RtScene12 {
     device_->CreateUnorderedAccessView(normals_.Get(), nullptr, &normals_written, Descriptor(NORMALS_WRITTEN));
     WriteNullPathDescriptors();
     status_ = std::format("Ray tracing ready ({}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1", sdk,
-                          clusters_ ? std::format("; Mega Geometry: {} clusters a frame, {} MB", cluster_limit_, cluster_bytes >> 20) : std::string());
+                          clusters_ ? std::format("; Mega Geometry: {} clusters a frame ({} from templates of {} bytes), {} MB", cluster_limit_,
+                                                  cluster_limit_ - built_limit_, template_bytes_, cluster_bytes >> 20)
+                                    : std::string());
     slow_report_ = "[TW ray tracing] " + status_ + ".";
     sdk_ = sdk;
     return true;
@@ -670,7 +728,12 @@ class RtScene12 {
   }
 
   [[nodiscard]] bool Ready() const { return fence_ != nullptr; }
-  [[nodiscard]] std::string Status() const { return status_ + timings_; }
+  [[nodiscard]] std::string Status() const {
+    // The GPU times right after the label: the bridge's line holds 255 characters, a battle's counts run past them.
+    const size_t label = status_.find("): ");
+    if (timings_.empty() || label == std::string::npos) return status_;
+    return std::format("{}{} | {}", status_.substr(0, label + 3), timings_, status_.substr(label + 3));
+  }
   // A GPU fault or hang (Windows' timeout detection) removed the device: nothing runs on it again (main.cpp makes a new
   // one).
   [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
@@ -794,7 +857,8 @@ class RtScene12 {
     });
     std::erase_if(pending_set_frees_, [&](const PendingSetFree& pending) {
       if (pending.value > completed) return false;
-      free_set_units_.Give(pending.offset, pending.units);
+      if (pending.units != 0) free_set_units_.Give(pending.offset, pending.units);
+      if (pending.template_first != UINT32_MAX) free_templates_.Give(pending.template_first, pending.templates);
       return true;
     });
     timings_.clear();
@@ -1122,11 +1186,19 @@ class RtScene12 {
   // Compact draws (v16): their cluster sets' pool (bytes, in 16-byte units; past it a word the compact pass may read),
   // a slot's upload buffer for its draws' table (three uint4 each: rt_compact.cs_6_5.hlsl), then its new sets' data.
   static constexpr uint32_t SET_POOL_BYTES = 64u << 20;
+  // Cluster templates (Mega Geometry): an opaque compact draw's clusters instantiated each frame from templates built once
+  // per set (its triangles, no positions), a request's template builds at most (their arguments, 72 bytes each, and
+  // destinations after the new sets' data), the templates' pool.
+  static constexpr uint32_t TEMPLATE_BUILDS = 16384;
+  static constexpr uint64_t TEMPLATE_POOL_BYTES = 128ull << 20;  // ~43,000 templates of 3 KB (a battle: ~700 sets)
   static constexpr uint64_t COMPACT_SETS_OFFSET = uint64_t{dlaa_bridge::RT_COMPACT_DRAWS} * 48;
-  static constexpr uint64_t COMPACT_UPLOAD_BYTES = COMPACT_SETS_OFFSET + dlaa_bridge::RT_CLUSTER_DATA_BYTES;
+  static constexpr uint64_t COMPACT_TEMPLATE_ARGS_OFFSET = COMPACT_SETS_OFFSET + dlaa_bridge::RT_CLUSTER_DATA_BYTES;
+  static constexpr uint64_t COMPACT_TEMPLATE_DESTINATIONS_OFFSET = COMPACT_TEMPLATE_ARGS_OFFSET + uint64_t{TEMPLATE_BUILDS} * 72;
+  static constexpr uint64_t COMPACT_TEMPLATE_COUNT_OFFSET = COMPACT_TEMPLATE_DESTINATIONS_OFFSET + uint64_t{TEMPLATE_BUILDS} * 8;
+  static constexpr uint64_t COMPACT_UPLOAD_BYTES = COMPACT_TEMPLATE_COUNT_OFFSET + 16;
   // A slot's upload buffer for the captures' clusters: the CLASes' arguments (64 bytes each, copied into cluster_args_
-  // after the compact draws'), the cluster BLAS's (16), the CLAS count, the BLAS's destination, the indices (0-255), the
-  // clusters' records.
+  // after the compact draws' built from triangles), the cluster BLAS's (16), the CLAS counts (built from triangles, from
+  // templates), the BLAS's destination, the indices (0-255), the clusters' records (by geometry index).
   static constexpr uint64_t CLUSTER_ARGS_OFFSET = 0;
   static constexpr uint64_t CLUSTER_BLAS_ARGS_OFFSET = uint64_t{MAX_CLUSTERS} * 64;
   static constexpr uint64_t CLUSTER_COUNT_OFFSET = CLUSTER_BLAS_ARGS_OFFSET + 16;
@@ -1377,19 +1449,25 @@ class RtScene12 {
     uint32_t instances = 0;
   };
   // A compact draws' cluster set (v16): its data's place in set_pool_ (16-byte units), its block's vertices, its clusters
-  // and triangles.
+  // (first vertex, vertices, first triangle, triangles each) and triangles; its templates' first place in templates_
+  // (UINT32_MAX: none), a template each cluster, alpha-tested or opaque.
   struct ClusterSet {
     uint32_t offset = 0;
     uint32_t units = 0;
     uint32_t vertices = 0;
     uint32_t clusters = 0;
     uint32_t triangles = 0;
+    std::vector<std::array<uint32_t, 4>> descs;
+    uint32_t template_first = UINT32_MAX;
+    bool template_masked = false;
   };
-  // A replaced or dropped set's units, given back once the GPU is past the requests that read them.
+  // A replaced or dropped set's units and templates, given back once the GPU is past the requests that read them.
   struct PendingSetFree {
     uint64_t value = 0;
     uint32_t offset = 0;
     uint32_t units = 0;
+    uint32_t template_first = UINT32_MAX;
+    uint32_t templates = 0;
   };
 
   bool Fail(const char* status) {
@@ -1722,6 +1800,7 @@ class RtScene12 {
     bool units_refitted = false;
     bool units_clustered = false;  // Mega Geometry's cluster BLAS built for them
     uint32_t clusters_built = 0;
+    uint32_t templated_built = 0;  // of them instantiated from templates
     const uint32_t capture_count = std::min(shared.rt_capture_count, dlaa_bridge::RT_CAPTURES);
     // v14: this frame's draws of placed meshes in the scene (their instances' rows in the vertex texture).
     const uint32_t placement_count = (version >= 14) ? std::min(shared.rt_placement_count, dlaa_bridge::RT_PLACEMENTS) : 0u;
@@ -1743,6 +1822,12 @@ class RtScene12 {
     const uint32_t compact_count = (version >= 16 && clusters_) ? std::min(shared.rt_compact_count, dlaa_bridge::RT_COMPACT_DRAWS) : 0u;
     const uint32_t new_set_count = (version >= 16 && clusters_) ? std::min(shared.rt_new_set_count, dlaa_bridge::RT_NEW_SETS) : 0u;
     std::vector<std::array<uint64_t, 3>> set_copies;  // upload offset, pool offset, bytes
+    // The sets this request's draws use (kept when a pool is full).
+    const auto used_sets = [&] {
+      std::unordered_set<uint64_t> used;
+      for (uint32_t draw = 0; draw < compact_count; ++draw) used.insert(shared.rt_compact[draw].set);
+      return used;
+    };
     uint64_t set_upload = COMPACT_SETS_OFFSET;
     bool sets_dropped = false;
     for (uint32_t index = 0; index < new_set_count; ++index) {
@@ -1757,8 +1842,9 @@ class RtScene12 {
       const uint8_t* corners = data + (uint64_t{sent.clusters} * 16);
       bool valid = true;
       uint64_t block = 0;
+      std::vector<std::array<uint32_t, 4>> descs(sent.clusters);
       for (uint32_t cluster = 0; cluster < sent.clusters && valid; ++cluster) {
-        std::array<uint32_t, 4> desc = {};
+        std::array<uint32_t, 4>& desc = descs[cluster];
         std::memcpy(desc.data(), data + (uint64_t{cluster} * 16), sizeof(desc));
         const auto [first_vertex, vertices, first_triangle, triangles] = desc;
         valid = vertices != 0 && vertices <= dlaa_bridge::RT_CLUSTER_VERTICES && triangles != 0 && triangles <= dlaa_bridge::RT_CLUSTER_TRIANGLES
@@ -1772,11 +1858,11 @@ class RtScene12 {
       uint32_t offset = 0;
       if (!free_set_units_.Take(units, &offset)) {
         if (!sets_dropped) {
-          std::unordered_set<uint64_t> used;
-          for (uint32_t draw = 0; draw < compact_count; ++draw) used.insert(shared.rt_compact[draw].set);
+          const std::unordered_set<uint64_t> used = used_sets();
           std::erase_if(sets_, [&](const auto& entry) {
             if (used.contains(entry.first)) return false;
-            pending_set_frees_.push_back({.value = own_value_ + 1, .offset = entry.second.offset, .units = entry.second.units});
+            pending_set_frees_.push_back({.value = own_value_ + 1, .offset = entry.second.offset, .units = entry.second.units,
+                                          .template_first = entry.second.template_first, .templates = entry.second.clusters});
             return true;
           });
           ++set_drops_;
@@ -1785,9 +1871,11 @@ class RtScene12 {
         continue;
       }
       if (const auto last = sets_.find(sent.key); last != sets_.end()) {
-        pending_set_frees_.push_back({.value = own_value_ + 1, .offset = last->second.offset, .units = last->second.units});
+        pending_set_frees_.push_back({.value = own_value_ + 1, .offset = last->second.offset, .units = last->second.units,
+                                      .template_first = last->second.template_first, .templates = last->second.clusters});
       }
-      sets_[sent.key] = {.offset = offset, .units = units, .vertices = sent.vertices, .clusters = sent.clusters, .triangles = sent.triangles};
+      sets_[sent.key] = {.offset = offset, .units = units, .vertices = sent.vertices, .clusters = sent.clusters, .triangles = sent.triangles,
+                         .descs = std::move(descs)};
       std::memcpy(slot->compact_data + set_upload, data, bytes);
       set_copies.push_back({set_upload, uint64_t{offset} * 16, bytes});
       set_upload = align(set_upload + bytes, 16);
@@ -1808,39 +1896,120 @@ class RtScene12 {
     // Their keys and flags (the garbage count's sources after the captures).
     std::vector<uint64_t> compact_keys;
     std::vector<uint32_t> compact_flags;
-    for (uint32_t index = 0; index < compact_count; ++index) {
-      const dlaa_bridge::RtCompactDraw& draw = shared.rt_compact[index];
-      const auto found = sets_.find(draw.set);
-      if (found == sets_.end() || draw.instances == 0) continue;
-      const ClusterSet& set = found->second;
-      const uint64_t clusters = uint64_t{set.clusters} * draw.instances;
-      const uint64_t triangles = uint64_t{set.triangles} * draw.instances;
-      const uint64_t block_end = uint64_t{draw.first_vertex} + (uint64_t{set.vertices} * draw.instances);
-      const bool masked = (draw.flags & dlaa_bridge::RT_FOLIAGE) != 0 && atlas_;
-      if (block_end > TRANSFER_VERTICES || compact_clusters + clusters > cluster_limit_ || dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES
-          || (masked && dynamic_uvs_used + (triangles * 3) > DYNAMIC_UVS) || cluster_vertices + (uint64_t{set.vertices} * draw.instances) > TRANSFER_VERTICES) {
-        continue;
+    // In two runs: the draws instantiated from their set's templates (a set's made at its first draw while there is room;
+    // the pool full, the templates of the sets this request does not use are given back), then those built from triangles
+    // (no templates yet; with the captures' clusters at most built_limit_). The table in that order: the compact pass finds
+    // a cluster's draw by its first cluster.
+    uint32_t templated_clusters = 0;  // the first run's
+    uint32_t template_builds = 0;     // this request's new templates
+    bool templates_dropped = false;
+#if defined(RENODX_NVAPI_CLUSTERS)
+    auto* template_args =
+        reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS*>(slot->compact_data + COMPACT_TEMPLATE_ARGS_OFFSET);
+    auto* template_destinations = reinterpret_cast<uint64_t*>(slot->compact_data + COMPACT_TEMPLATE_DESTINATIONS_OFFSET);
+#endif
+    for (const bool templated_run : {true, false}) {
+      for (uint32_t index = 0; index < compact_count; ++index) {
+        const dlaa_bridge::RtCompactDraw& draw = shared.rt_compact[index];
+        const auto found = sets_.find(draw.set);
+        if (found == sets_.end() || draw.instances == 0) continue;
+        ClusterSet& set = found->second;
+        const bool masked = (draw.flags & dlaa_bridge::RT_FOLIAGE) != 0 && atlas_;
+#if defined(RENODX_NVAPI_CLUSTERS)
+        uint32_t first_template = 0;
+        if (templated_run && set.template_first == UINT32_MAX && template_builds + set.clusters <= TEMPLATE_BUILDS) {
+          if (free_templates_.Take(set.clusters, &first_template)) {
+            set.template_first = first_template;
+            set.template_masked = masked;
+            for (uint32_t cluster = 0; cluster < set.clusters; ++cluster) {
+              const auto& [desc_vertex, desc_vertices, desc_triangle, desc_triangles] = set.descs[cluster];
+              auto& arg = template_args[template_builds];
+              arg = {};
+              arg.triangleCount = desc_triangles;
+              arg.vertexCount = desc_vertices;
+              arg.indexFormat = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INDEX_FORMAT_8BIT;
+              arg.baseGeometryIndexAndFlags = masked ? NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION
+                                                     : NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_GEOMETRY_FLAG_OPAQUE;
+              arg.indexBufferStride = 1;
+              arg.geometryIndexAndFlagsBufferStride = 4;
+              arg.geometryIndexAndFlagsBuffer = template_geometry_->GetGPUVirtualAddress();
+              arg.indexBuffer = set_pool_->GetGPUVirtualAddress() + ((uint64_t{set.offset} + set.clusters) * 16) + (uint64_t{desc_triangle} * 3);
+              template_destinations[template_builds] = templates_->GetGPUVirtualAddress() + (uint64_t{first_template + cluster} * template_bytes_);
+              ++template_builds;
+            }
+          } else if (!templates_dropped) {
+            const std::unordered_set<uint64_t> used = used_sets();
+            for (auto& [key, other] : sets_) {
+              if (other.template_first == UINT32_MAX || used.contains(key)) continue;
+              pending_set_frees_.push_back({.value = own_value_ + 1, .template_first = other.template_first, .templates = other.clusters});
+              other.template_first = UINT32_MAX;
+            }
+            templates_dropped = true;
+          }
+        }
+#endif
+        if ((set.template_first != UINT32_MAX && set.template_masked == masked) != templated_run) continue;
+        const uint64_t clusters = uint64_t{set.clusters} * draw.instances;
+        const uint64_t triangles = uint64_t{set.triangles} * draw.instances;
+        const uint64_t block_end = uint64_t{draw.first_vertex} + (uint64_t{set.vertices} * draw.instances);
+        const uint64_t run_clusters = templated_run ? compact_clusters : compact_clusters - templated_clusters;
+        if (block_end > TRANSFER_VERTICES || run_clusters + clusters > (templated_run ? cluster_limit_ - built_limit_ : built_limit_)
+            || dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES || (masked && dynamic_uvs_used + (triangles * 3) > DYNAMIC_UVS)
+            || cluster_vertices + (uint64_t{set.vertices} * draw.instances) > TRANSFER_VERTICES) {
+          continue;
+        }
+        cluster_vertices += uint64_t{set.vertices} * draw.instances;
+        const std::array<uint32_t, 12> entry = {
+            compact_clusters, draw.first_vertex, set.offset * 16, set.clusters,
+            set.vertices, set.triangles, STATIC_TRIANGLES + (static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES) + dynamic_triangles_used,
+            masked ? STATIC_UVS + (static_cast<uint32_t>(slot_index) * DYNAMIC_UVS) + dynamic_uvs_used : UINT32_MAX,
+            draw.slice | (RecordFlags({.flags = draw.flags}, masked, version) << 16), capture_count + compact_drawn, draw.flags,
+            templated_run ? set.template_first : 0u,
+        };
+        std::memcpy(slot->compact_data + (uint64_t{compact_drawn} * 48), entry.data(), sizeof(entry));
+        compact_keys.push_back(draw.set);
+        compact_flags.push_back(draw.flags);
+        ++compact_drawn;
+        compact_clusters += static_cast<uint32_t>(clusters);
+        dynamic_triangles_used += static_cast<uint32_t>(triangles);
+        if (masked) dynamic_uvs_used += static_cast<uint32_t>(triangles * 3);
+        compact_masked = compact_masked || masked;
+        dynamic_triangles += triangles;
+        if (masked) grass_triangles += triangles;
+        if ((draw.flags & dlaa_bridge::RT_TERRAIN) != 0) terrain_triangles += triangles;
+        vertex_end = std::max(vertex_end, static_cast<uint32_t>(block_end));
       }
-      cluster_vertices += uint64_t{set.vertices} * draw.instances;
-      const std::array<uint32_t, 12> entry = {
-          compact_clusters, draw.first_vertex, set.offset * 16, set.clusters,
-          set.vertices, set.triangles, STATIC_TRIANGLES + (static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES) + dynamic_triangles_used,
-          masked ? STATIC_UVS + (static_cast<uint32_t>(slot_index) * DYNAMIC_UVS) + dynamic_uvs_used : UINT32_MAX,
-          draw.slice | (RecordFlags({.flags = draw.flags}, masked, version) << 16), capture_count + compact_drawn, draw.flags, 0u,
-      };
-      std::memcpy(slot->compact_data + (uint64_t{compact_drawn} * 48), entry.data(), sizeof(entry));
-      compact_keys.push_back(draw.set);
-      compact_flags.push_back(draw.flags);
-      ++compact_drawn;
-      compact_clusters += static_cast<uint32_t>(clusters);
-      dynamic_triangles_used += static_cast<uint32_t>(triangles);
-      if (masked) dynamic_uvs_used += static_cast<uint32_t>(triangles * 3);
-      compact_masked = compact_masked || masked;
-      dynamic_triangles += triangles;
-      if (masked) grass_triangles += triangles;
-      if ((draw.flags & dlaa_bridge::RT_TERRAIN) != 0) terrain_triangles += triangles;
-      vertex_end = std::max(vertex_end, static_cast<uint32_t>(block_end));
+      if (templated_run) templated_clusters = compact_clusters;
     }
+#if defined(RENODX_NVAPI_CLUSTERS)
+    // The new templates, built from the sets' triangles (their places copied where the build reads them).
+    if (template_builds != 0) {
+      std::memcpy(slot->compact_data + COMPACT_TEMPLATE_COUNT_OFFSET, &template_builds, sizeof(template_builds));
+      const auto to_copy = Transition(template_destinations_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+      list->ResourceBarrier(1, &to_copy);
+      list->CopyBufferRegion(template_destinations_.Get(), 0, slot->compact.Get(), COMPACT_TEMPLATE_DESTINATIONS_OFFSET, uint64_t{template_builds} * 8);
+      const auto copied = Transition(template_destinations_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      list->ResourceBarrier(1, &copied);
+      const uint64_t upload = slot->compact->GetGPUVirtualAddress();
+      const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC templates_desc = {
+          .inputs = template_inputs_,
+          .addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE,
+          .batchResultData = 0,
+          .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
+          .destinationAddressArray = {.StartAddress = template_destinations_->GetGPUVirtualAddress(), .StrideInBytes = 8},
+          .resultSizeArray = {},
+          .indirectArgArray = {.StartAddress = upload + COMPACT_TEMPLATE_ARGS_OFFSET,
+                               .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS)},
+          .indirectArgCount = upload + COMPACT_TEMPLATE_COUNT_OFFSET,
+      };
+      const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS templates_params = {
+          .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &templates_desc};
+      Mark(list, L"templates");
+      NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &templates_params);
+      const D3D12_RESOURCE_BARRIER built_templates = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
+      list->ResourceBarrier(1, &built_templates);
+    }
+#endif
     vertex_end = std::min(vertex_end, TRANSFER_VERTICES);
     if (vertex_end != 0) {
       const UINT rows = (vertex_end + dlaa_bridge::RT_TRANSFER_WIDTH - 1) / dlaa_bridge::RT_TRANSFER_WIDTH;
@@ -1963,6 +2132,12 @@ class RtScene12 {
         Mark(list, L"compact");
         list->SetPipelineState(compact_pipeline_.Get());
         list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(compact_dispatch.size()), compact_dispatch.data(), 0);
+        const uint64_t templates_address = templates_->GetGPUVirtualAddress();
+        const std::array<uint32_t, 5> templates_dispatch = {
+            static_cast<uint32_t>(templates_address), static_cast<uint32_t>(templates_address >> 32), template_bytes_, templated_clusters,
+            (cluster_limit_ - built_limit_) * 32,
+        };
+        list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(templates_dispatch.size()), templates_dispatch.data(), 0);
         list->SetComputeRootShaderResourceView(ROOT_SCENE, sets_address);
         list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, slot->compact->GetGPUVirtualAddress());
         list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, cluster_args_->GetGPUVirtualAddress());
@@ -2256,9 +2431,9 @@ class RtScene12 {
         uint32_t cluster_count = compact_clusters;
         for (const auto& [first_vertex, unit_triangles, normal_offset, record_flags, uv_offset, slice] : unit_sources) {
           const bool masked = (record_flags & RECORD_MASKED) != 0;
-          for (uint32_t first = 0; first < unit_triangles && cluster_count < cluster_limit_; first += CLUSTER_TRIANGLES) {
+          for (uint32_t first = 0; first < unit_triangles && cluster_count - templated_clusters < built_limit_; first += CLUSTER_TRIANGLES) {
             const uint32_t count = std::min(CLUSTER_TRIANGLES, unit_triangles - first);
-            auto& arg = args[cluster_count];
+            auto& arg = args[cluster_count - templated_clusters];
             arg = {};
             arg.clusterId = cluster_count;
             arg.triangleCount = count;
@@ -2279,8 +2454,9 @@ class RtScene12 {
         const NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS blas_args = {
             .clusterCount = cluster_count, .reserved = 0, .clusterVAs = clas_addresses_->GetGPUVirtualAddress()};
         const uint64_t destination = cluster_blas_->GetGPUVirtualAddress();
+        const std::array<uint32_t, 2> clas_counts = {cluster_count - templated_clusters, templated_clusters};
         std::memcpy(data + CLUSTER_BLAS_ARGS_OFFSET, &blas_args, sizeof(blas_args));
-        std::memcpy(data + CLUSTER_COUNT_OFFSET, &cluster_count, sizeof(cluster_count));
+        std::memcpy(data + CLUSTER_COUNT_OFFSET, clas_counts.data(), sizeof(clas_counts));
         std::memcpy(data + CLUSTER_DESTINATION_OFFSET, &destination, sizeof(destination));
         // The captures' clusters' arguments and records, the BLAS's destination (and once the indices) copied where the
         // builds read them.
@@ -2294,8 +2470,9 @@ class RtScene12 {
         if (captured != 0) {
           list->CopyBufferRegion(records_.Get(), (uint64_t{first_cluster_record} + compact_clusters) * 16, slot->clusters.Get(),
                                  CLUSTER_RECORDS_OFFSET + (uint64_t{compact_clusters} * 16), captured * 16);
-          list->CopyBufferRegion(cluster_args_.Get(), uint64_t{compact_clusters} * 64, slot->clusters.Get(),
-                                 CLUSTER_ARGS_OFFSET + (uint64_t{compact_clusters} * 64), captured * 64);
+          const uint64_t built_compact = compact_clusters - templated_clusters;
+          list->CopyBufferRegion(cluster_args_.Get(), (uint64_t{cluster_limit_ - built_limit_} * 32) + (built_compact * 64), slot->clusters.Get(),
+                                 CLUSTER_ARGS_OFFSET + (built_compact * 64), captured * 64);
         }
         list->CopyBufferRegion(cluster_destination_.Get(), 0, slot->clusters.Get(), CLUSTER_DESTINATION_OFFSET, 8);
         if (!cluster_indices_written_) list->CopyBufferRegion(cluster_indices_.Get(), 0, slot->clusters.Get(), CLUSTER_INDICES_OFFSET, 256);
@@ -2305,15 +2482,27 @@ class RtScene12 {
           cluster_indices_written_ = true;
         }
         list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+        // The instantiated CLASes into the first batch (their addresses first), those built from triangles after.
         const uint64_t upload = slot->clusters->GetGPUVirtualAddress();
-        const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC clas_desc = {
-            .inputs = clas_inputs_,
+        const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC instantiate_desc = {
+            .inputs = instantiate_inputs_,
             .addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE,
             .batchResultData = clas_->GetGPUVirtualAddress(),
             .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
             .destinationAddressArray = {.StartAddress = clas_addresses_->GetGPUVirtualAddress(), .StrideInBytes = 8},
             .resultSizeArray = {},
             .indirectArgArray = {.StartAddress = cluster_args_->GetGPUVirtualAddress(),
+                                 .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_INSTANTIATE_TEMPLATE_ARGS)},
+            .indirectArgCount = upload + CLUSTER_COUNT_OFFSET + 4,
+        };
+        const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC clas_desc = {
+            .inputs = clas_inputs_,
+            .addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE,
+            .batchResultData = clas_->GetGPUVirtualAddress() + instantiated_bytes_,
+            .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
+            .destinationAddressArray = {.StartAddress = clas_addresses_->GetGPUVirtualAddress() + (uint64_t{templated_clusters} * 8), .StrideInBytes = 8},
+            .resultSizeArray = {},
+            .indirectArgArray = {.StartAddress = cluster_args_->GetGPUVirtualAddress() + (uint64_t{cluster_limit_ - built_limit_} * 32),
                                  .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS)},
             .indirectArgCount = upload + CLUSTER_COUNT_OFFSET,
         };
@@ -2328,6 +2517,8 @@ class RtScene12 {
                                  .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS)},
             .indirectArgCount = 0,
         };
+        const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS instantiate_params = {
+            .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &instantiate_desc};
         const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS clas_params = {
             .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &clas_desc};
         const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS blas_params = {
@@ -2335,13 +2526,21 @@ class RtScene12 {
         // Their build timed apart (a trace's slot leaves the paths' two stamps free).
         Mark(list, L"clusters");
         Stamp(list, slot_index * 6 + 4);
-        units_clustered = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params) == NVAPI_OK;
-        list->ResourceBarrier(1, &uav_barrier);
+        units_clustered = true;
+        if (templated_clusters != 0) {
+          units_clustered = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &instantiate_params) == NVAPI_OK;
+          list->ResourceBarrier(1, &uav_barrier);
+        }
+        if (cluster_count != templated_clusters) {
+          units_clustered = units_clustered && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params) == NVAPI_OK;
+          list->ResourceBarrier(1, &uav_barrier);
+        }
         units_clustered = units_clustered && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &blas_params) == NVAPI_OK;
         list->ResourceBarrier(1, &uav_barrier);
         Stamp(list, slot_index * 6 + 5);
         slot_clustered_[slot_index] = true;
         clusters_built = cluster_count;
+        templated_built = templated_clusters;
         units_record = first_cluster_record;
       }
 #endif
@@ -2701,10 +2900,11 @@ class RtScene12 {
                           static_cast<double>(triangles) / 1.0e6, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? terrain_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? grass_triangles : 0u) / 1.0e6,
-                          units_clustered ? std::format("{} clusters, {} compact draws of {} sets", clusters_built, compact_drawn, sets_.size())
+                          units_clustered ? std::format("{} clusters ({} from templates), {} compact draws of {} sets", clusters_built, templated_built,
+                                                        compact_drawn, sets_.size())
                                           : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
     if (timestamps_) {
-      timings_ = std::format(" | GPU ms: scene {:.2f} (clusters {:.2f}), TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0],
+      timings_ = std::format("GPU ms: scene {:.2f} (clusters {:.2f}), TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0],
                              gpu_ms_[5], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3], gpu_ms_[4]);
     }
     slot->status = status_;
@@ -2830,9 +3030,12 @@ class RtScene12 {
   uint64_t units_bytes_ = 0;
   bool clusters_ = false;  // Mega Geometry's cluster operations for the units
   uint32_t cluster_limit_ = MAX_CLUSTERS;  // the most a frame (half on smaller GPUs)
+  uint32_t built_limit_ = MAX_CLUSTERS;    // of them built from triangles (the rest instantiated from templates)
 #if defined(RENODX_NVAPI_CLUSTERS)
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS clas_inputs_ = {};
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS cluster_blas_inputs_ = {};
+  NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS template_inputs_ = {};
+  NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS instantiate_inputs_ = {};
 #endif
   ComPtr<ID3D12Resource> clas_;
   ComPtr<ID3D12Resource> clas_addresses_;
@@ -2846,6 +3049,16 @@ class RtScene12 {
   // compact pass.
   ComPtr<ID3D12Resource> cluster_args_;
   ComPtr<ID3D12Resource> set_pool_;
+  // The cluster templates (TEMPLATE_POOL_BYTES, template_bytes_ each, a set's together), a request's builds' places, the
+  // instantiated CLASes' share of clas_.
+  ComPtr<ID3D12Resource> templates_;
+  ComPtr<ID3D12Resource> template_destinations_;
+  // Zero geometry indices for a template's triangles: an instantiation's geometry index offset is only applied to a
+  // template built with them (without, the instantiated triangles' geometry index, their record, came out wrong).
+  ComPtr<ID3D12Resource> template_geometry_;
+  uint32_t template_bytes_ = 0;
+  uint64_t instantiated_bytes_ = 0;
+  Ranges free_templates_;
   std::unordered_map<uint64_t, ClusterSet> sets_;
   Ranges free_set_units_;
   std::vector<PendingSetFree> pending_set_frees_;
@@ -2970,7 +3183,7 @@ class RtScene12 {
   std::vector<Release> releases_;
   bool failed_ = false;
   std::string status_ = "Ray tracing off";
-  std::string timings_;  // the last trace's (GPU, CPU, submit; after the status)
+  std::string timings_;  // the last trace's (GPU, CPU, submit; after the status's label)
 };
 
 }  // namespace twattila::dlaa_helper
