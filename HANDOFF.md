@@ -1018,6 +1018,17 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       game's last cascade the readers stay lit. Trees: placed meshes are one BLAS from the first capture (frozen pose),
       so their wind sway is not in the rays' shadows. NEXT: moving trees = near tree draws captured every frame (compact,
       like units) with the placed instances kept off-screen.
+    - 2026-10-29 01:00 NIGHT BATCH (ATN asleep, tests in game when awake; no in-game tests by me). Checklist (commit
+      after each):
+      [x] 1 RT Shadows = all shadows: Shadows Only folded into RT Shadows (toggle removed), SSS off with it, torch /
+          point light shadows on with it (toggle removed), banners / sails cast with RT Shadows (not under Units).
+      [x] 2 Point light shadows: drawn light matched to the nearest traced one within 25 cm (was 1 cm: carried torches
+          lost their shadow). Not done: soft edges (needs a fractional mask), > 32 lights.
+      [ ] 3 Moving trees: placed leaf draws also captured every frame (compact, wind), their static instances placed
+          hidden (mask 0) while drawn, restored off-screen; tree share; transfer texture / UV pool sized for it.
+      [ ] 4 Smoke shadows (Experimental): particles as see-through cards dimming the sun by their opacity.
+      [ ] 5 Optimizations: terrain once, early trace + late wait, cluster templates, CLAS memory to need, OMM SDK (MIT?).
+      [ ] 6 Grass / flags motion check; zip twattila_vN + helper; report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

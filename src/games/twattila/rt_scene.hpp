@@ -68,9 +68,7 @@ struct Sliders {
   float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
   float units = 1.f;
   float grass = 0.f;
-  float point_lights = 0.f;  // the point lights' shadows (games whose light draws InstallPointLights hooks)
-  float fog_shadows = 0.f;   // the fog's (games whose fog InstallFogShadows hooks)
-  float shadows_only = 0.f;  // the rays alone cast sun shadows (games that InstallShadowsOnly)
+  float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
   float light_bounce = 0.f;
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
@@ -106,10 +104,12 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reflections = sliders.reflections != 0.f && dlaa,
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
       .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples),
-      .local_lights = sliders.point_lights != 0.f && dlaa,
+      // Ray-traced sun shadows are every shadow: the point lights' too (games whose light draws InstallPointLights hooks),
+      // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
+      .local_lights = sliders.sun_shadows != 0.f && dlaa,
       .leaf_light = sliders.leaf_light != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
-      .shadows_only = sliders.shadows_only != 0.f && sliders.sun_shadows != 0.f && dlaa,
+      .shadows_only = sliders.sun_shadows != 0.f && dlaa,
       .debug_view = static_cast<uint32_t>(sliders.debug_view),
       .scene_test = ((sliders.debug_view != 0.f) ? static_cast<uint32_t>(sliders.scene_test) : 0u),
   };
@@ -620,6 +620,10 @@ constexpr auto OnShadowReaderDraw = []<typename T, typename Context>(Context& co
 // Ray-Traced Shadows Only.
 inline void InstallShadowReaders(std::span<const uint32_t> shader_hashes) {
   internal::shadow_readers_installed = true;
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    internal::runtime.reader_shaders.insert(shader_hashes.begin(), shader_hashes.end());
+  }
   for (const uint32_t shader_hash : shader_hashes) {
     renodx::utils::command_action::Register(
         OnShadowReaderDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -660,7 +664,9 @@ inline void NoteShadowReader(reshade::api::command_list* cmd_list) {
   const uint32_t shader = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
   const uint32_t vertex_shader = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
   const std::unique_lock lock(runtime.mutex);
-  if (!runtime.sun_draw_shaders.contains(shader)) runtime.shadow_readers.insert((uint64_t{shader} << 32) | vertex_shader);
+  if (!runtime.sun_draw_shaders.contains(shader) && !runtime.reader_shaders.contains(shader)) {
+    runtime.shadow_readers.insert((uint64_t{shader} << 32) | vertex_shader);
+  }
 }
 
 inline bool OnCasterDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
@@ -797,10 +803,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .binding = &sliders->sun_shadows,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
           .default_value = 0.f,
-          .label = "Ray-Traced Sun Shadows (Experimental)",
+          .label = "Ray-Traced Shadows (Experimental)",
           .section = section,
-          .tooltip = "Sun shadows from rays: terrain, buildings, trees and leaves cast them far beyond the shadow map's reach.\n"
-                     "Faster: Screen-Space Shadows off, the rays then alone (grass casts no contact shadows).\n"
+          .tooltip = "Every shadow from rays: the sun's (terrain, buildings, trees, units, grass, banners) and the torches' and\n"
+                     "fires'. Replaces the game's shadow maps and Screen-Space Shadows.\n"
                      "Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
@@ -816,19 +822,6 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 3.f,
           .format = "%.2f",
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedShadowsOnly",
-          .binding = &sliders->shadows_only,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Ray-Traced Shadows Only (Experimental)",
-          .section = section,
-          .tooltip = "The game's sun shadow maps are not drawn: the rays alone cast sun shadows (faster). Grass, distant tree\n"
-                     "cards, smoke and (without Ray-Traced Units) soldiers cast none.",
-          .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
-          .is_visible = [] { return internal::shadows_only_installed; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLeafLight",
@@ -906,7 +899,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 1.f,
           .label = "Ray-Traced Units",
           .section = section,
-          .tooltip = "Soldiers, horses, banners and sails cast ray-traced shadows and shade (about a million triangles a frame). Heavier.",
+          .tooltip = "Soldiers and horses cast ray-traced shadows and shade (millions of triangles a frame in big battles). Heavier.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] {
             return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
@@ -924,18 +917,6 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_enabled = [sliders, aa] {
             return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
           },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedPointLights",
-          .binding = &sliders->point_lights,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Ray-Traced Point Light Shadows",
-          .section = section,
-          .tooltip = "Torches and fires cast ray-traced shadows (the 32 nearest and brightest).",
-          .labels = {"Off", "On"},
-          .is_enabled = dlaa_on,
-          .is_visible = [] { return internal::point_lights_installed; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedFogShadows",

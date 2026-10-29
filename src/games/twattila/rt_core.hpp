@@ -93,7 +93,7 @@ struct Settings {
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
-  // Ray-traced sun shadows only (Experimental): the game's sun shadow map gets no casters (InstallShadowsOnly).
+  // The game's sun shadow map gets no casters (InstallShadowsOnly; with the ray-traced sun shadows): the rays alone cast.
   bool shadows_only = false;
   // The Debug View (DrawDebugView): 0 off, 1 sun shadows, 2 ambient occlusion, 3 Light Bounce, 4 reflections, 5 specular
   // occlusion, 6 point light shadows, 7 fog shadows, 8 the game's AO pass (screen space; a host's hook keeps it), 9 all
@@ -354,6 +354,7 @@ struct Runtime {
   // not the patched sun draws (forward-lit grass and the like: lit everywhere, the map has no casters).
   uint64_t readers_frame = UINT64_MAX;
   std::unordered_set<uint32_t> sun_draw_shaders;
+  std::unordered_set<uint32_t> reader_shaders;  // the forward passes given the rays' shadows (InstallShadowReaders)
   std::unordered_set<uint64_t> shadow_readers;  // pixel shader << 32 | its draw's vertex shader
   uint64_t traced_frame = UINT64_MAX;     // the frame the visibilities are from
   uint64_t occlusion_frame = UINT64_MAX;  // the frame `occlusion` was made in
@@ -867,8 +868,8 @@ void Capture(Context& command, const SceneShader& shader) {
       const auto [entry, added] = runtime.short_keys.try_emplace(short_key, Runtime::ShortKey{.key = key});
       if (!added && entry->second.key != key) entry->second.ambiguous = true;
     }
-    // Units: every frame, within their share.
-    if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !runtime.settings.units)) return;
+    // Units: every frame, within their share (banners and sails always: the shadows are all the rays' now).
+    if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !shader.thin && !runtime.settings.units)) return;
     if (const auto mesh = (compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end());
         mesh != runtime.cluster_meshes.end() && mesh->second.remap) {
       mesh->second.used_frame = runtime.frame;

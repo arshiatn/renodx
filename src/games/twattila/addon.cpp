@@ -1183,10 +1183,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
+  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // Ray-traced shadows replace the screen-space ones too.
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
   twattila::feature_settings::UpdateSsr(&shader_injection, ssr_denoiser);
   twattila::grass_fade::Update(shader_injection.grass_height_distance);
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   twattila::rt_scene::Update(rt_settings);
   // Ray-traced ambient occlusion Alone: the game's and GT-VBAO's not drawn (their cost saved).
   shader_injection.rt_ambient_alone = (rt_settings.ambient_occlusion && rt_sliders.ambient_occlusion == 2.f) ? 1.f : 0.f;

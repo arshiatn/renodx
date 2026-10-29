@@ -16,18 +16,26 @@ cbuffer rt_local_lights : register(b9) {
   uint4 rt_light_count;  // x
 };
 
+// The traced light nearest a drawn one stands for it within this distance (metres): the traced positions are a few
+// frames old (a carried torch moves; within 1 cm only, its shadow went).
+static const float RT_LIGHT_MATCH_DISTANCE = 0.25f;
+
 // The light at `light_position`'s share reaching a render pixel: 0 blocked, 1 reached (or not traced).
 float RtLocalLightVisibility(int2 render_pixel, float3 light_position) {
   uint width, height;
   t_rt_light_mask.GetDimensions(width, height);
   if (width == 0u) return 1.f;
+  uint nearest = 32u;
+  float nearest_distance = RT_LIGHT_MATCH_DISTANCE * RT_LIGHT_MATCH_DISTANCE;
   [loop]
   for (uint light = 0u; light < min(rt_light_count.x, 32u); ++light) {
-    if (all(abs(rt_light_positions[light].xyz - light_position) < 0.01f)) {
-      return (float)((t_rt_light_mask.Load(int3(render_pixel, 0)) >> light) & 1u);
+    const float3 offset = rt_light_positions[light].xyz - light_position;
+    if (dot(offset, offset) < nearest_distance) {
+      nearest_distance = dot(offset, offset);
+      nearest = light;
     }
   }
-  return 1.f;
+  return (nearest < 32u) ? (float)((t_rt_light_mask.Load(int3(render_pixel, 0)) >> nearest) & 1u) : 1.f;
 }
 
 #endif  // SRC_GAMES_TWATTILA_RT_LOCAL_LIGHTS_HLSLI_
