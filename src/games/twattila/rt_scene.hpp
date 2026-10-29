@@ -66,6 +66,8 @@ struct Sliders {
   float output_rays = 0.f;         // Ray Tracing at Output Resolution (below 100% render scale)
   float leaf_light = 0.f;
   float grass_sway = 1.f;          // placed grass's swaying copies (Attila)
+  float sway_range = 0.f;          // metres (0: everywhere)
+  float sway_off_screen = 1.f;
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
   float ambient_range = 2.f;       // metres
   float ambient_rays = 2.f;
@@ -130,6 +132,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .local_lights = sliders.sun_shadows != 0.f && dlaa,
       .leaf_light = sliders.leaf_light != 0.f,
       .grass_sway = sliders.grass_sway != 0.f,
+      .sway_range = sliders.sway_range,
+      .sway_off_screen = sliders.sway_off_screen != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .micromaps = sliders.micromaps != 0.f,
       .gpu_micromaps = sliders.gpu_micromaps != 0.f,
@@ -1008,6 +1012,36 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           // Shown where grass is placed (Attila).
           .is_visible = [] {
             return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass && !shader.rows_shader.empty(); });
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSwayRange",
+          .binding = &sliders->sway_range,
+          .default_value = 0.f,
+          .label = "Swaying Shadows Range (Experimental)",
+          .section = section,
+          .tooltip = "Trees and grass sway in the ray tracing only this close to the camera;\n"
+                     "farther ones stay still: faster. 0 m: everywhere.",
+          .min = 0.f,
+          .max = 300.f,
+          .format = "%.0f m",
+          .is_enabled = dlaa_on,
+          .is_visible = [] {
+            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.foliage && !shader.rows_shader.empty(); });
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedOffScreenSway",
+          .binding = &sliders->sway_off_screen,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Off-Screen Sway (Experimental)",
+          .section = section,
+          .tooltip = "Off: trees and grass away from the view stay still in the ray tracing: faster.",
+          .labels = {"Off", "On"},
+          .is_enabled = dlaa_on,
+          .is_visible = [] {
+            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.foliage && !shader.rows_shader.empty(); });
           },
       },
       new renodx::utils::settings::Setting{

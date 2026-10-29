@@ -93,7 +93,9 @@ struct RtCompactDraw {
   uint64_t set = 0;  // its cluster set's key
   uint32_t first_vertex = 0;
   uint32_t instances = 0;
-  uint32_t flags = 0;  // RT_TERRAIN, RT_FOLIAGE (alpha-tested), RT_THIN
+  // RT_TERRAIN, RT_FOLIAGE (alpha-tested), RT_THIN, RT_GRASS; RT_INSTANCED (v18): a placed draw's swaying copy, its
+  // instances' rows right after its blocks.
+  uint32_t flags = 0;
   uint32_t slice = 0;  // a foliage draw's atlas slice
 };
 // A new cluster set's data at `offset` in the second mapping: its clusters (four uint32 each: its first vertex in the
@@ -143,6 +145,8 @@ constexpr uint32_t RT_PROFILE = 1024;
 // GPU Micromap Baking (Experimental): new leaves' and grass sets' micromaps baked on the GPU by NVIDIA's OMM SDK in the
 // trace's own commands (no read-back of their UVs and masks, no CPU bakes; helpers before 38 ignore it).
 constexpr uint32_t RT_GPU_MICROMAPS = 2048;
+// Off-Screen Sway off (v18): swaying placed draws' instances away from the view keep their placed (still) copies only.
+constexpr uint32_t RT_SWAY_IN_VIEW = 4096;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -306,7 +310,9 @@ struct Shared {
   uint32_t fg_v13_padding = 0;
   // The addon's (v14): a trace request's placed draws of known BLASes (RT_INSTANCED's every frame they are drawn).
   uint32_t rt_placement_count = 0;
-  uint32_t rt_v14_padding = 0;
+  // The addon's (v18, in v14's padding): how far from the camera along the view swaying placed draws' instances keep
+  // their swaying copies (metres; 0: everywhere); past it their placed (still) copies are traced.
+  float rt_sway_range = 0.f;
   RtPlacement rt_placements[RT_PLACEMENTS] = {};
   // The helper's (v15): its ray tracing devices so far, one more each time a GPU fault or hang removed the last (the new
   // one's scene is empty: the addon captures every mesh again); the triangles it left out so far (far off or stretched

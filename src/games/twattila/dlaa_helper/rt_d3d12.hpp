@@ -64,6 +64,7 @@
 #include "rt_reuse_omm.h"         // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
 #include "rt_soft.h"              // dxc -Fh (build.ps1)
+#include "rt_sway.h"              // dxc -Fh (build.ps1)
 #include "rt_trace.h"             // dxc -Fh (build.ps1)
 #include "rt_trace_omm.h"         // dxc -Fh (build.ps1)
 
@@ -560,6 +561,7 @@ class RtScene12 {
       return Fail("Ray tracing: the trace shaders failed (needs shader model 6.5)");
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
+    if (clusters_ && !pipeline(RT_SWAY, sizeof(RT_SWAY), &sway_pipeline_)) sway_pipeline_.Reset();
     std::string gpu_baker = "no micromaps";
 #if defined(RENODX_OMM_SDK)
     if (dxr12_ && bake_micromaps_) gpu_baker = pipeline(RT_OMM_UVS, sizeof(RT_OMM_UVS), &omm_gpu_.clamp) ? std::string() : "rt_omm_uvs";
@@ -1302,7 +1304,7 @@ class RtScene12 {
   static constexpr uint32_t CLUSTER_ROOM = 32768;  // Mega Geometry's room for a frame's clusters at first (~200 MB)
   static constexpr uint32_t CLUSTER_STEP = 8192;   // its runs grow in steps of this
   // Compact draws (v16): their cluster sets' pool (bytes, in 16-byte units; past it a word the compact pass may read),
-  // a slot's upload buffer for its draws' table (three uint4 each: rt_compact.cs_6_5.hlsl), then its new sets' data.
+  // a slot's upload buffer for its draws' table (four uint4 each: rt_compact.cs_6_5.hlsl), then its new sets' data.
   static constexpr uint32_t SET_POOL_BYTES = 64u << 20;
   // Cluster templates (Mega Geometry): an opaque compact draw's clusters instantiated each frame from templates built once
   // per set (its triangles, no positions), a request's template builds at most (their arguments, 72 bytes each, and
@@ -1315,7 +1317,7 @@ class RtScene12 {
   static constexpr uint64_t BLAS_OWN_BYTES = BLAS_CHUNK_BYTES / 4;
   static constexpr uint32_t BUILD_POOL = 0;
   static constexpr uint32_t KEPT_POOL = 1;
-  static constexpr uint64_t COMPACT_SETS_OFFSET = uint64_t{dlaa_bridge::RT_COMPACT_DRAWS} * 48;
+  static constexpr uint64_t COMPACT_SETS_OFFSET = uint64_t{dlaa_bridge::RT_COMPACT_DRAWS} * 64;
   static constexpr uint64_t COMPACT_TEMPLATE_ARGS_OFFSET = COMPACT_SETS_OFFSET + dlaa_bridge::RT_CLUSTER_DATA_BYTES;
   static constexpr uint64_t COMPACT_TEMPLATE_DESTINATIONS_OFFSET = COMPACT_TEMPLATE_ARGS_OFFSET + uint64_t{TEMPLATE_BUILDS} * 72;
   static constexpr uint64_t COMPACT_TEMPLATE_COUNT_OFFSET = COMPACT_TEMPLATE_DESTINATIONS_OFFSET + uint64_t{TEMPLATE_BUILDS} * 8;
@@ -1328,6 +1330,10 @@ class RtScene12 {
   static constexpr uint64_t CLUSTER_ARGS_OFFSET = 0;
   static constexpr uint64_t CLUSTER_BLAS_ARGS_OFFSET = uint64_t{MAX_CLUSTERS} * 64;
   static constexpr uint64_t CLUSTER_COUNT_OFFSET = CLUSTER_BLAS_ARGS_OFFSET + (CLUSTER_BLASES * 16);
+  // rt_sway.hlsli's flags; sway_counts_'s bytes (the cluster BLASes' arguments and the CLAS counts, as in that upload).
+  static constexpr uint32_t SWAY_CUT = 1;
+  static constexpr uint32_t SWAY_IN_VIEW = 2;
+  static constexpr uint64_t SWAY_COUNTS_BYTES = 256;
   static constexpr uint64_t CLUSTER_DESTINATION_OFFSET = CLUSTER_COUNT_OFFSET + 8;
   static constexpr uint64_t CLUSTER_INDICES_OFFSET = CLUSTER_DESTINATION_OFFSET + 248;
   static constexpr uint64_t CLUSTER_RECORDS_OFFSET = CLUSTER_INDICES_OFFSET + 256;
@@ -1772,6 +1778,15 @@ class RtScene12 {
   }
 
   static constexpr uint64_t Align(uint64_t value, uint64_t alignment) { return (value + alignment - 1) / alignment * alignment; }
+
+  // `buffer` (default heap, UAV-capable) of `bytes` at least (in 64 KB steps; the old one released once the GPU is past
+  // this request). False: no memory for it.
+  bool GrowBuffer(ComPtr<ID3D12Resource>* buffer, uint64_t bytes, D3D12_RESOURCE_STATES state) {
+    if (*buffer && (*buffer)->GetDesc().Width >= bytes) return true;
+    if (*buffer) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*buffer)});
+    *buffer = Buffer(Align(bytes, 1u << 16), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state);
+    return static_cast<bool>(*buffer);
+  }
 
   ComPtr<ID3D12Resource> Buffer(uint64_t bytes, D3D12_HEAP_TYPE heap_type, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES state) const {
     const D3D12_HEAP_PROPERTIES heap = {.Type = heap_type};
@@ -2344,6 +2359,25 @@ class RtScene12 {
     // built from triangles (no templates yet; with the captures' clusters at most built_limit_), the grass's first: the
     // grass's clusters together (their own cluster BLAS, GRASS_INSTANCE). The table in that order: the compact pass finds a
     // cluster's draw by its first cluster.
+    // Swaying Shadows Range / Off-Screen Sway (v18, rt_sway.hlsli): the compact pass leaves out the swaying copies of the
+    // instances it turns down, the place pass shows their placed copies; only for swaying draws whose placement goes in
+    // (their rows here: hidden, of a placed mesh, its rows copied).
+    uint32_t sway_flags = 0;
+    std::unordered_set<uint32_t> sway_rows;
+    if (sway_pipeline_ && version >= 18 && (shared.rt_sway_range > 0.f || (shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0)
+        && GrowBuffer(&sway_arguments_, cluster_args_->GetDesc().Width, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+        && GrowBuffer(&sway_lists_, clas_addresses_->GetDesc().Width, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+        && GrowBuffer(&sway_counts_, SWAY_COUNTS_BYTES, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)) {
+      sway_flags = SWAY_CUT | (((shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0) ? SWAY_IN_VIEW : 0u);
+      for (uint32_t index = 0; index < placement_count; ++index) {
+        const dlaa_bridge::RtPlacement& placement = shared.rt_placements[index];
+        const auto mesh = meshes_.find(placement.key);
+        if ((placement.flags & dlaa_bridge::RT_PLACE_HIDDEN) != 0 && mesh != meshes_.end() && mesh->second.placed
+            && uint64_t{placement.first_vertex} + (uint64_t{placement.instances} * 4) <= std::min(vertex_end, TRANSFER_VERTICES)) {
+          sway_rows.insert(placement.first_vertex);
+        }
+      }
+    }
     uint32_t templated_clusters = 0;  // the first two runs'
     uint32_t grass_first = 0;         // the grass's clusters
     uint32_t grass_end = 0;
@@ -2428,14 +2462,17 @@ class RtScene12 {
           continue;
         }
         cluster_vertices += uint64_t{set.vertices} * draw.instances;
-        const std::array<uint32_t, 12> entry = {
+        const std::array<uint32_t, 16> entry = {
             compact_clusters, draw.first_vertex, set.offset * 16, set.clusters,
             set.vertices, set.triangles, STATIC_TRIANGLES + (static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES) + dynamic_triangles_used,
             masked ? STATIC_UVS + (static_cast<uint32_t>(slot_index) * dynamic_uvs_) + dynamic_uvs_used : UINT32_MAX,
             draw.slice | (RecordFlags({.flags = draw.flags | dlaa_bridge::RT_DYNAMIC}, masked, version) << 16), capture_count + compact_drawn, draw.flags,
             templated_run ? set.template_first : 0u,
+            ((draw.flags & dlaa_bridge::RT_INSTANCED) != 0 && sway_rows.contains(static_cast<uint32_t>(block_end))) ? static_cast<uint32_t>(block_end)
+                                                                                                                  : UINT32_MAX,
+            0u, 0u, 0u,
         };
-        std::memcpy(slot->compact_data + (uint64_t{compact_drawn} * 48), entry.data(), sizeof(entry));
+        std::memcpy(slot->compact_data + (uint64_t{compact_drawn} * 64), entry.data(), sizeof(entry));
         if (masked && set_micromap_room != 0 && !set.micromaps_tried && set.triangles <= MICROMAP_TRIANGLES) {
           set.micromaps_tried = true;
           --set_micromap_room;
@@ -2609,11 +2646,14 @@ class RtScene12 {
         list->SetPipelineState(compact_pipeline_.Get());
         list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(compact_dispatch.size()), compact_dispatch.data(), 0);
         const uint64_t templates_address = templates_->GetGPUVirtualAddress();
-        const std::array<uint32_t, 5> templates_dispatch = {
+        const std::array<uint32_t, 8> templates_dispatch = {
             static_cast<uint32_t>(templates_address), static_cast<uint32_t>(templates_address >> 32), template_bytes_, templated_clusters,
-            (cluster_room_ - built_limit_) * 32,
+            (cluster_room_ - built_limit_) * 32, sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range), 0u,
         };
         list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(templates_dispatch.size()), templates_dispatch.data(), 0);
+        // The sway's view: the view-projection's rows 0, 1 and 3.
+        list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 8, shared.rt_view_projection, 8);
+        list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 4, shared.rt_view_projection + 12, 16);
         list->SetComputeRootShaderResourceView(ROOT_SCENE, sets_address);
         list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, slot->compact->GetGPUVirtualAddress());
         list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, cluster_args_->GetGPUVirtualAddress());
@@ -3038,15 +3078,17 @@ class RtScene12 {
         }
         const std::array<std::pair<uint32_t, uint32_t>, CLUSTER_BLASES> blas_runs = {
             {{0u, grass_first}, {grass_first, grass_end}, {grass_end, units_end}, {units_end, cluster_count}}};
+        // With the sway (rt_sway) the counts start at 0 in sway_counts_ and the lists are sway_lists_'s.
+        const bool sway = sway_flags != 0;
         std::array<uint64_t, CLUSTER_BLASES> destinations = {};
         for (size_t blas = 0; blas < CLUSTER_BLASES; ++blas) {
           const NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS blas_args = {
-              .clusterCount = blas_runs[blas].second - blas_runs[blas].first, .reserved = 0,
-              .clusterVAs = clas_addresses_->GetGPUVirtualAddress() + (uint64_t{blas_runs[blas].first} * 8)};
+              .clusterCount = sway ? 0u : blas_runs[blas].second - blas_runs[blas].first, .reserved = 0,
+              .clusterVAs = (sway ? sway_lists_ : clas_addresses_)->GetGPUVirtualAddress() + (uint64_t{blas_runs[blas].first} * 8)};
           std::memcpy(data + CLUSTER_BLAS_ARGS_OFFSET + (blas * 16), &blas_args, sizeof(blas_args));
           destinations[blas] = cluster_blases_[blas]->GetGPUVirtualAddress();
         }
-        const std::array<uint32_t, 2> clas_counts = {cluster_count - templated_clusters, templated_clusters};
+        const std::array<uint32_t, 2> clas_counts = {sway ? 0u : cluster_count - templated_clusters, sway ? 0u : templated_clusters};
         std::memcpy(data + CLUSTER_COUNT_OFFSET, clas_counts.data(), sizeof(clas_counts));
         std::memcpy(data + CLUSTER_DESTINATION_OFFSET, destinations.data(), sizeof(destinations));
         // The captures' clusters' arguments and records, the BLAS's destination (and once the indices) copied where the
@@ -3073,8 +3115,39 @@ class RtScene12 {
           cluster_indices_written_ = true;
         }
         list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
-        // The instantiated CLASes into the first batch (their addresses first), those built from triangles after.
         const uint64_t upload = slot->clusters->GetGPUVirtualAddress();
+        const uint32_t templated_room = cluster_room_ - built_limit_;
+        const auto sway_pass = [&](uint32_t mode, ID3D12Resource* read, ID3D12Resource* written) {
+          const std::array<uint32_t, 8> sway_dispatch = {mode, cluster_count, templated_clusters, templated_room * 32, grass_first, grass_end, units_end, 0u};
+          list->SetComputeRootSignature(root_signature_.Get());
+          list->SetPipelineState(sway_pipeline_.Get());
+          list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(sway_dispatch.size()), sway_dispatch.data(), 0);
+          list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, read->GetGPUVirtualAddress());
+          list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, written->GetGPUVirtualAddress());
+          list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, sway_counts_->GetGPUVirtualAddress());
+          list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, clas_addresses_->GetGPUVirtualAddress());
+          list->Dispatch((cluster_count + 63) / 64, 1, 1);
+        };
+        // The sway's kept clusters: their arguments packed into sway_arguments_ and counted (its counts from 0, the cluster
+        // BLASes' list addresses: the upload's).
+        if (sway) {
+          Mark(list, L"sway");
+          std::array<D3D12_RESOURCE_BARRIER, 2> to_pack = {
+              Transition(sway_counts_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
+              Transition(sway_arguments_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)};
+          list->ResourceBarrier(static_cast<UINT>(to_pack.size()), to_pack.data());
+          list->CopyBufferRegion(sway_counts_.Get(), 0, slot->clusters.Get(), CLUSTER_BLAS_ARGS_OFFSET, (CLUSTER_BLASES * 16) + 8);
+          const auto counting = Transition(sway_counts_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          list->ResourceBarrier(1, &counting);
+          sway_pass(0, cluster_args_.Get(), sway_arguments_.Get());
+          to_pack = {Transition(sway_counts_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+                     Transition(sway_arguments_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)};
+          list->ResourceBarrier(static_cast<UINT>(to_pack.size()), to_pack.data());
+        }
+        // The instantiated CLASes into the first batch (their addresses first), those built from triangles after (with the
+        // sway: the kept ones, by its counts, the built ones' addresses after the instantiated ones' room).
+        const uint64_t arguments = (sway ? sway_arguments_ : cluster_args_)->GetGPUVirtualAddress();
+        const uint64_t counts = sway ? sway_counts_->GetGPUVirtualAddress() + (CLUSTER_BLASES * 16) : upload + CLUSTER_COUNT_OFFSET;
         const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC instantiate_desc = {
             .inputs = instantiate_inputs_,
             .addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE,
@@ -3082,20 +3155,21 @@ class RtScene12 {
             .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
             .destinationAddressArray = {.StartAddress = clas_addresses_->GetGPUVirtualAddress(), .StrideInBytes = 8},
             .resultSizeArray = {},
-            .indirectArgArray = {.StartAddress = cluster_args_->GetGPUVirtualAddress(),
+            .indirectArgArray = {.StartAddress = arguments,
                                  .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_INSTANTIATE_TEMPLATE_ARGS)},
-            .indirectArgCount = upload + CLUSTER_COUNT_OFFSET + 4,
+            .indirectArgCount = counts + 4,
         };
         const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC clas_desc = {
             .inputs = clas_inputs_,
             .addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE,
             .batchResultData = clas_->GetGPUVirtualAddress() + instantiated_bytes_,
             .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
-            .destinationAddressArray = {.StartAddress = clas_addresses_->GetGPUVirtualAddress() + (uint64_t{templated_clusters} * 8), .StrideInBytes = 8},
+            .destinationAddressArray = {.StartAddress = clas_addresses_->GetGPUVirtualAddress() + (uint64_t{sway ? templated_room : templated_clusters} * 8),
+                                        .StrideInBytes = 8},
             .resultSizeArray = {},
-            .indirectArgArray = {.StartAddress = cluster_args_->GetGPUVirtualAddress() + (uint64_t{cluster_room_ - built_limit_} * 32),
+            .indirectArgArray = {.StartAddress = arguments + (uint64_t{templated_room} * 32),
                                  .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS)},
-            .indirectArgCount = upload + CLUSTER_COUNT_OFFSET,
+            .indirectArgCount = counts,
         };
         const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC blas_desc = {
             .inputs = cluster_blas_inputs_,
@@ -3104,7 +3178,7 @@ class RtScene12 {
             .batchScratchData = cluster_scratch_->GetGPUVirtualAddress(),
             .destinationAddressArray = {.StartAddress = cluster_destination_->GetGPUVirtualAddress(), .StrideInBytes = 8},
             .resultSizeArray = {},
-            .indirectArgArray = {.StartAddress = upload + CLUSTER_BLAS_ARGS_OFFSET,
+            .indirectArgArray = {.StartAddress = sway ? sway_counts_->GetGPUVirtualAddress() : upload + CLUSTER_BLAS_ARGS_OFFSET,
                                  .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS)},
             .indirectArgCount = 0,
         };
@@ -3123,6 +3197,20 @@ class RtScene12 {
         if (cluster_count != templated_clusters) {
           clas_built = clas_built && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params) == NVAPI_OK;
           list->ResourceBarrier(1, &uav_barrier);
+        }
+        // The sway's cluster BLASes' lists from the kept CLASes' addresses, counted in their arguments.
+        if (sway) {
+          const auto counting = Transition(sway_counts_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          list->ResourceBarrier(1, &counting);
+          sway_pass(1, sway_arguments_.Get(), sway_lists_.Get());
+          const std::array<D3D12_RESOURCE_BARRIER, 2> counted = {
+              Transition(sway_counts_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE), uav_barrier};
+          list->ResourceBarrier(static_cast<UINT>(counted.size()), counted.data());
+          // Unused root descriptors still point at a buffer.
+          list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, slot->table->GetGPUVirtualAddress());
+          for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
+            list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
+          }
         }
         // The cluster BLASes one after another (the same scratch).
         for (size_t blas = 0; blas < CLUSTER_BLASES; ++blas) {
@@ -3351,8 +3439,11 @@ class RtScene12 {
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, written->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, build_rows_->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, placed_state_->GetGPUVirtualAddress());
-      // The camera (b2: grass outside the view stays out), then clear, drawn, kept (rt_place's modes).
+      // The camera (b2: grass outside the view stays out) and the sway's flags and range, then clear, drawn, kept (rt_place's
+      // modes).
+      const std::array<uint32_t, 2> place_sway = {sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range)};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 16, shared.rt_view_projection, 0);
+      list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(place_sway.size()), place_sway.data(), 16);
       for (const uint32_t mode : {0u, 1u, 2u}) {
         const uint32_t threads = (mode == 1u) ? placed_drawn : MAX_INSTANCES;
         if (threads == 0 || (mode == 2u && (shared.rt_flags & dlaa_bridge::RT_NO_KEPT) != 0)) continue;
@@ -4081,17 +4172,11 @@ class RtScene12 {
       for (Planned& plan : planned) plan.bake->gpu_failed = true;
     };
     if (planned.empty()) return;
-    // The clamped UVs and the scratch (kept, grown: the old ones go once the GPU is past this request), the masks' textures
-    // (kept, one a bake), the request's outputs and the histograms' read-back.
-    const auto grow = [&](ComPtr<ID3D12Resource>* buffer, uint64_t bytes, D3D12_RESOURCE_STATES state) {
-      if (*buffer && (*buffer)->GetDesc().Width >= bytes) return true;
-      if (*buffer) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*buffer)});
-      *buffer = Buffer(Align(bytes, 1u << 16), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, state);
-      return static_cast<bool>(*buffer);
-    };
-    bool made = grow(&gpu.uvs, totals[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    // The clamped UVs and the scratch (kept, grown), the masks' textures (kept, one a bake), the request's outputs and the
+    // histograms' read-back.
+    bool made = GrowBuffer(&gpu.uvs, totals[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     for (size_t pool = 0; pool < transient_bytes.size() && made; ++pool) {
-      if (transient_bytes[pool] != 0) made = grow(&gpu.transient[pool], transient_bytes[pool], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      if (transient_bytes[pool] != 0) made = GrowBuffer(&gpu.transient[pool], transient_bytes[pool], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
     while (made && gpu.masks.size() < planned.size()) {
       const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
@@ -4545,6 +4630,13 @@ class RtScene12 {
   std::vector<PendingSetFree> pending_set_frees_;
   uint32_t set_drops_ = 0;
   ComPtr<ID3D12PipelineState> compact_pipeline_;
+  // Swaying Shadows Range / Off-Screen Sway (rt_sway.cs_6_5.hlsl; null: unavailable): the kept clusters' arguments
+  // (cluster_args_'s size, resting in NON_PIXEL_SHADER_RESOURCE), the cluster BLASes' lists (clas_addresses_'s size, in
+  // UNORDERED_ACCESS), their arguments and the CLAS counts (SWAY_COUNTS_BYTES, resting in NON_PIXEL_SHADER_RESOURCE).
+  ComPtr<ID3D12PipelineState> sway_pipeline_;
+  ComPtr<ID3D12Resource> sway_arguments_;
+  ComPtr<ID3D12Resource> sway_lists_;
+  ComPtr<ID3D12Resource> sway_counts_;
   // The partitioned TLAS (null: the TLAS is built each frame) and each of its instances as last written (its BLAS, 0
   // inactive; its InstanceID and flags), built once before the first update.
 #if defined(RENODX_NVAPI_CLUSTERS)

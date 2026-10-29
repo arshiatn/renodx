@@ -104,6 +104,10 @@ struct Settings {
   bool leaf_light = false;
   // Placed grass (Attila) sways within its share (its swaying copies traced; off: all of it placed still).
   bool grass_sway = true;
+  // Swaying Shadows Range (Experimental): swaying placed instances keep their swaying copies within these metres of the
+  // camera (0: everywhere), placed still past them; Off-Screen Sway (Experimental) off: also only near the view.
+  float sway_range = 0.f;
+  bool sway_off_screen = true;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -1292,7 +1296,9 @@ void Capture(Context& command, const SceneShader& shader) {
   // A compact draw's blocks (from the captured vertices' end): after the last compact draw of its mesh (its blocks right
   // after), more of its instances; its set sent with this frame's trace when the helper lacks it.
   const auto add_blocks = [&] {
-    const uint32_t compact_flags = flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS);
+    // A placed draw's swaying copy marked (its rows follow its blocks: never joined to another draw's).
+    const uint32_t compact_flags = (flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS))
+                                   | (place ? dlaa_bridge::RT_INSTANCED : 0u);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
         && last->first_vertex + (last->instances * (block_texels / draw_instances)) == runtime.captured_vertices) {
@@ -1626,6 +1632,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | ((runtime.settings.fog_shadows && lights && runtime.settings.light_glow > 0.f) ? dlaa_bridge::RT_FOG_LIGHTS : 0u)
                | (runtime.settings.micromaps ? dlaa_bridge::RT_MICROMAPS : 0u)
                | ((runtime.settings.micromaps && runtime.settings.gpu_micromaps) ? dlaa_bridge::RT_GPU_MICROMAPS : 0u)
+               | (runtime.settings.sway_off_screen ? 0u : dlaa_bridge::RT_SWAY_IN_VIEW)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u)
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u),
@@ -1647,6 +1654,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .new_set_data = new_set_data,
       .light_size = runtime.settings.light_size,
       .shadow_rays = runtime.settings.shadow_rays,
+      .sway_range = runtime.settings.sway_range,
   };
   if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);

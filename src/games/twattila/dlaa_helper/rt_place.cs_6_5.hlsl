@@ -11,8 +11,10 @@
 // the drawn first: instances stay while their mesh is drawn elsewhere (off-screen casters). Each desc keeps the frame
 // it was drawn in (InstanceContributionToHitGroupIndex: no hit groups here). Degenerate rows: left out. A hidden draw's
 // instances (swaying leaves, their compact copy traced instead) go in with mask 0 (no ray meets them), kept ones shown.
-// Grass outside the view (drawn or kept) stays out: GrassInView.
+// Grass outside the view (drawn or kept) stays out: GrassInView. A hidden draw's instance SwayTraced turns down (its
+// swaying copy left out: rt_sway.hlsli) is shown.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_place.h -Vn RT_PLACE.
+#include "./rt_sway.hlsli"
 
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (the kept ones' source)
 Buffer<float4> vertex_positions : register(t7);     // the request's vertices: an instance's rows 0-2 in four texels
@@ -38,6 +40,8 @@ cbuffer Dispatch : register(b1) {
 
 cbuffer Camera : register(b2) {
   float4 view_projection[4];  // the trace's camera registers: clip = (dot(position, [0]), ...); all 0: none
+  uint sway_flags;            // rt_sway.hlsli
+  float sway_range;
 };
 
 static const uint MODE_CLEAR = 0u;
@@ -72,15 +76,8 @@ static const float GRASS_VIEW_MARGIN = 16.f;
 // GRASS_VIEW_MARGIN. Its shadows are short, and Grass Always Drawn draws every cell, also behind the camera (ATN's
 // debug28: trees' and grass's shadows flickering and gone with it).
 bool GrassInView(float3 position) {
-  if (!any(view_projection[3] != 0.f)) return true;
-  const float4 world = float4(position, 1.f);
-  const float4 sides[4] = {view_projection[3] + view_projection[0], view_projection[3] - view_projection[0],
-                           view_projection[3] + view_projection[1], view_projection[3] - view_projection[1]};
-  [unroll]
-  for (uint side = 0u; side < 4u; ++side) {
-    if (dot(sides[side], world) < -GRASS_VIEW_MARGIN * length(sides[side].xyz)) return false;
-  }
-  return true;
+  return !any(view_projection[3] != 0.f)
+         || NearView(float4(position, 1.f), view_projection[0], view_projection[1], view_projection[3], GRASS_VIEW_MARGIN);
 }
 
 // A desc's key: its record and its place in centimetres.
@@ -199,7 +196,10 @@ void main(uint3 id : SV_DispatchThreadID) {
   // InstanceID (the record) and mask (its group; 0 hidden); the frame drawn and the flags; the BLAS (its moving bit
   // cleared).
   const uint flags = INSTANCE_CULL_DISABLE | (((job.w & PLACE_FOLIAGE) != 0u) ? 0u : INSTANCE_FORCE_OPAQUE);
-  const uint mask = ((job.w & PLACE_HIDDEN) != 0u)  ? 0u
+  const bool hidden = (job.w & PLACE_HIDDEN) != 0u
+                      && ((sway_flags & SWAY_CUT) == 0u
+                          || SwayTraced(float3(now0.w, now1.w, now2.w), view_projection[0], view_projection[1], view_projection[3], sway_range, sway_flags));
+  const uint mask = hidden                          ? 0u
                     : ((job.w & PLACE_GRASS) != 0u)  ? GRASS_INSTANCE
                     : ((job.w & PLACE_FOLIAGE) != 0u) ? LEAF_INSTANCE
                                                       : SOLID_INSTANCE;
