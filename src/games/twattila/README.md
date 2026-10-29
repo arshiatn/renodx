@@ -2,6 +2,25 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v98 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper30 and bridge v18: ship them together)
+
+- **One Light Bounce tracer**: Ray-Traced Light Bounce is now Off / Rays / Path Tracing (path tracing and rays could
+  both be on before; only one ran). Path Tracing must be picked again once. While rays or paths find the light, the
+  Lighting section's screen-space search settings (Radius, Quality, Directions, ...) are greyed out.
+- **Grass micromaps**: with Leaf Micromaps on, grass gets opacity micromaps too, so most grass alpha tests run in the
+  hardware (50,000 grass cards in view at 4K: tracing 3.6 -> 2.7 ms).
+- **Soft torch and fire shadows** (with Ray Reconstruction): Torch and Fire Shadow Softness (their size, default
+  0.25 m; 0 sharp).
+- **Torch and fire light in fog and smoke**: with Ray-Traced Fog Shadows, torches and fires light the fog around them
+  (their shafts and shadows in it); smoke and dust near them are lit too. Torch and Fire Light in Fog and Smoke (0-2,
+  default 1; ~0.1 ms).
+- **Ray Tracing at Output Resolution**: below 100% render scale, as many shadow, AO and reflection rays as at DLAA (up
+  to 4 a pixel): less noise and finer shadow edges at DLAA's ray tracing cost.
+- **Water Clarity**: see further into rivers and lakes (1: the game's).
+- **Path tracing**: paths that escape bring the game's own sky light by direction (bluer from above), leaves, cloth
+  and sails pass light through (green light under trees, sunlit leaves glow from behind), two torch lights sampled a
+  bounce.
+
 ## v97 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper29: ship them together)
 
 - **Smoke costs almost nothing now**: Smoke Shadows' particles are a part of the ray-traced scene only the sun's (and
