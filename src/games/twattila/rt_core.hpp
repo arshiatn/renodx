@@ -310,7 +310,7 @@ struct Runtime {
   uint32_t unit_vertices = 0;   // of them the units' (skinned soldiers and horses), their triangles and clusters
   uint32_t unit_triangles = 0;
   uint32_t unit_clusters = 0;
-  uint32_t grass_vertices = 0;  // and grass's
+  uint32_t grass_vertices = 0;  // and grass's (its swaying copies' with rows: placed grass)
   uint32_t alpha_corners = dlaa_bridge::RT_DYNAMIC_UVS / 2;  // the helper's alpha-tested corners a frame (grass, swaying leaves)
   std::vector<uint64_t> drawn;
   // This frame's draws of placed meshes in the scene: their instances' rows in the captured vertices (bridge v14).
@@ -816,8 +816,12 @@ void Capture(Context& command, const SceneShader& shader) {
       }
     }
   }
+  // A leaf's opacity mask: its pixel shader's diffuse map.
+  ComPtr<ID3D11ShaderResourceView> mask;
+  if (shader.foliage) native->PSGetShaderResources(0, 1, mask.GetAddressOf());
   // The draw's identity: its buffers, ranges, textures and constant buffers (but the camera's at b0); a placed draw's its
-  // geometry alone (its ranges, first vertex buffer and index buffer).
+  // geometry alone (its ranges, first vertex buffer and index buffer) and its mask (one grass mesh might be drawn with
+  // more than one: its BLAS's alpha test is its first capture's).
   std::array<ID3D11Buffer*, 4> constant_buffers = {};
   std::array<ID3D11ShaderResourceView*, 4> textures = {};
   std::array<ID3D11Buffer*, 4> vertex_buffers = {};
@@ -865,6 +869,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   mix(reinterpret_cast<uintptr_t>(index_buffer));
   mix((uint64_t{static_cast<uint32_t>(index_format)} << 32) | index_offset);
+  mix(reinterpret_cast<uintptr_t>(mask.Get()));
   // A dynamic indexed draw can be compact (v16; the terrain's too: a vertex a texel, not three a triangle), so can a placed
   // draw of leaves (its trees sway: their leaves where drawn also captured every frame, in the wind): its mesh's key (its
   // index buffer and range) and that buffer.
@@ -887,10 +892,6 @@ void Capture(Context& command, const SceneShader& shader) {
   std::ranges::for_each(textures, release);
   std::ranges::for_each(vertex_buffers, release);
   release(index_buffer);
-
-  // A leaf's opacity mask: its pixel shader's diffuse map.
-  ComPtr<ID3D11ShaderResourceView> mask;
-  if (shader.foliage) native->PSGetShaderResources(0, 1, mask.GetAddressOf());
 
   // A mesh in the scene is marked drawn; a placed one (also one captured earlier this frame) is placed where this draw's
   // instances are (their rows only: a placement; marked drawn once placed, so one left out is forgotten and captured
@@ -964,10 +965,13 @@ void Capture(Context& command, const SceneShader& shader) {
         }
         return;
       }
-      // Its leaves sway within the trees' share (placed every frame then, hidden where drawn); else not its turn, its
-      // instances as many as at its last placement (none came into sight).
-      sway = blocks && runtime.tree_vertices + block_texels <= MAX_TREE_VERTICES
-             && runtime.tree_corners + (block_triangles * 3) <= runtime.alpha_corners - (runtime.alpha_corners / 2)
+      // Its leaves sway within the trees' share, grass within its own (placed every frame then, hidden where drawn; past it
+      // placed still: grass was left out, whole fields without shadows with Grass Always Drawn, ATN 2026-10-29); else not
+      // its turn, its instances as many as at its last placement (none came into sight).
+      sway = blocks
+             && (shader.grass ? runtime.grass_vertices + (block_triangles * 3) <= runtime.alpha_corners / 2
+                              : (runtime.tree_vertices + block_texels <= MAX_TREE_VERTICES
+                                 && runtime.tree_corners + (block_triangles * 3) <= runtime.alpha_corners - (runtime.alpha_corners / 2)))
              && runtime.dynamic_vertices + block_texels <= MAX_DYNAMIC_VERTICES
              && runtime.dynamic_triangles + block_triangles <= dlaa_bridge::RT_DYNAMIC_TRIANGLES
              && runtime.dynamic_clusters + block_clusters <= dlaa_bridge::RT_DYNAMIC_CLUSTERS;
@@ -1186,8 +1190,12 @@ void Capture(Context& command, const SceneShader& shader) {
     if (sway) {
       add_blocks();
       runtime.captured_vertices += block_texels;
-      runtime.tree_vertices += block_texels;
-      runtime.tree_corners += block_triangles * 3;
+      if (shader.grass) {
+        runtime.grass_vertices += block_triangles * 3;
+      } else {
+        runtime.tree_vertices += block_texels;
+        runtime.tree_corners += block_triangles * 3;
+      }
       runtime.dynamic_vertices += block_texels;
       runtime.dynamic_triangles += block_triangles;
       runtime.dynamic_clusters += block_clusters;

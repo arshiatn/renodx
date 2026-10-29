@@ -1186,7 +1186,8 @@ class RtScene12 {
       {D3D12_AUTO_BREADCRUMB_OP_EXECUTEEXTENSIONCOMMAND, "ExtensionCommand"},
   }};
   static constexpr size_t SLOTS = 3;
-  static constexpr UINT MAX_INSTANCES = 65536;
+  // The TLAS's instances at most (8 MB of descs; twice 65536 since grass past its share is placed: a patch an instance).
+  static constexpr UINT MAX_INSTANCES = 131072;
   static constexpr UINT TRANSFER_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
   // Meshes drawn within this many frames cast (but the terrain only in frames that draw it); unseen longer: released.
   static constexpr uint32_t RECENT_FRAMES = 300;

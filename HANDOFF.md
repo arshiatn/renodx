@@ -1223,7 +1223,16 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 3 Micromap reads: a request's reads share one buffer of each kind (positions, UVs, masks; each read made 2-3:
           up to 64 leaves a request, a few ms of CreateCommittedResource). Arrays were already one a request (one bake
           at a time); template rebuilds bounded by the addon's 16 new sets a frame: left as they are.
-      [ ] 4 Nearest grass first when the grass share is full.
+      [x] 4 (instead of nearest first: the addon can't know a grass draw's distance before choosing, its instance rows
+          are in the game's dynamic ring, and one draw is 192 patches of 13,824 triangles spread over a cell) Grass past
+          its share placed still, as the trees' leaves: grass shaders get rows (rt_rows_grass.vs_4_0.hlsl, one for
+          F3741248 / 01FA9CDE), no longer .dynamic, sway within the grass share (rt_core sway budget by shader.grass),
+          else placed in turns (PLACE_TURNS) from their mesh's BLAS (its first capture). Shrink with distance: the
+          capture versions and the rows shrink the whole blade (rt_grass.hlsli RtGrassShrink, >= 5%: invertible), so
+          rows_k x inverse(rows_0) x capture_0 = capture_k (GPU check scratchpad grass_rows_test: 0.01 mm, both shaders,
+          a flat 150 m first instance). Placed keys mix the PS mask (a mesh drawn with two masks: two BLASes). TLAS
+          MAX_INSTANCES 65536 -> 131072. Cost: a rows draw a swaying grass draw a frame (hidden copies), a quarter of
+          one for still ones.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

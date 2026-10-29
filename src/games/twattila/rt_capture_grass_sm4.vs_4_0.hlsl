@@ -2,7 +2,8 @@
 // (rt_scene.hpp).
 // Made by tools\tw\attila_motion\make_wind_motion_vs.py.
 
-// rigidgrass.hlsl vs30_main_grass (sm_3_0): blades shrink with distance, flat at 100 m x Grass Height Distance (SI.grass_height_distance; 1: the game's).
+// rigidgrass.hlsl vs30_main_grass (sm_3_0): blades shrink with distance, flat at 100 m x Grass Height Distance (SI.grass_height_distance; 1: the game's),
+// here the whole blade (rt_grass.hlsli).
 #include "./shared.h"
 
 
@@ -46,6 +47,7 @@ cbuffer wind_VS : register(b1)
 
 
 #include "./motion.hlsli"
+#include "./rt_grass.hlsli"
 
 static float motion_time;
 static float4 motion_rows[4];
@@ -85,16 +87,8 @@ void GameMain(
   uint4 bitmask, uiDest;
   float4 fDest;
 
-  r0.x = v5.w;
-  r0.y = v6.w;
-  r0.z = v7.w;
-  r0.xyz = -camera_position.xyz + r0.xyz;
-  r0.x = dot(r0.xyz, r0.xyz);
-  r0.x = sqrt(r0.x);
-  r0.x = (0.00999999978 / SI.grass_height_distance) * r0.x;  // RenoDX: Grass Height Distance
-  r0.x = min(1, r0.x);
-  r0.y = saturate(v4.w);
-  r0.x = r0.y * -r0.x + 1;
+  // RenoDX: the whole blade's shrink (rt_grass.hlsli: the placed copies' rows carry theirs; Grass Height Distance).
+  r0.x = RtGrassShrink(float3(v5.w, v6.w, v7.w), camera_position.xyz);
   r0.y = 0.600000024 + v0.y;
   r0.y = r0.x * r0.y + -0.600000024;
   r0.xz = v0.xz;

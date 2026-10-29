@@ -2,6 +2,17 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v99 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper31: ship them together)
+
+- **Light Through Leaves much cheaper**: sun rays no longer step through every leaf layer of a forest; they count the
+  leaves they cross (none, one, more) after the rest of the scene. Dense leaves at 4K: 16.2 -> 2.5 ms (0.9 without
+  it). Over forests this was the 17-18 ms traces and the stutter while panning.
+- **Fewer hitches**: Mega Geometry's memory grows on a worker thread before it runs out (each growth, up to 2.5 GB,
+  stalled a frame); new leaves' micromap reads make 3 buffers a frame instead of 2-3 each.
+- **Grass no longer left out**: grass past its share of the frame (Grass Always Drawn, high density and distance) goes
+  in as still patches instead of being dropped (whole fields lost their shadows); the share's grass still sways. Far
+  blades shrink as the game draws them.
+
 ## v98 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper30 and bridge v18: ship them together)
 
 - **One Light Bounce tracer**: Ray-Traced Light Bounce is now Off / Rays / Path Tracing (path tracing and rays could

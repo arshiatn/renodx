@@ -1140,8 +1140,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 33> SCENE_SHADERS = {{
     {.hash = 0x372628AB, .capture_shader = __rt_capture_unit_4_bones_sm41, .dynamic = true},
     {.hash = 0xEA1AEB0E, .capture_shader = __rt_capture_unit_dismember_sm41, .dynamic = true},
     {.hash = 0x31B66A15, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .dynamic = true},
-    {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .dynamic = true, .foliage = true, .grass = true},
-    {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .dynamic = true, .foliage = true, .grass = true},
+    // Grass placed (its instance rows), swaying within its share, past it still (rt_rows_grass).
+    {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .rows_shader = __rt_rows_grass, .foliage = true, .grass = true},
+    {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .rows_shader = __rt_rows_grass, .foliage = true, .grass = true},
     // Cloth (banners, tents) and sails: thin, captured every frame (the CPU moves them).
     {.hash = 0x772B26FF, .capture_shader = __rt_capture_cloth_sm3, .dynamic = true, .thin = true},
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
