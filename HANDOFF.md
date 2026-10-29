@@ -1096,6 +1096,26 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       status (slow frames report late). helper29 in Attila's folder, Downloads\twattila_v97.zip (Rome II / Thrones
       addon32 build). Default 4K scene: trace 1.47 -> 1.64 ms (the crack fix's extra rays). Untested in game. ASK ATN:
       when do grass shadows vanish (near / far, moving camera, wind)? A screenshot.
+    - NIGHT BATCH 2026-10-29 (ATN asleep: "really really big batch", commit often; shut the PC down when all is done:
+      `shutdown /s /t 120`, no /f). One bridge bump (v18) for the new request fields. Tick items here as they land:
+      [ ] 6 GI: one selector (Off / Screen-Space GT-VBGI / Ray-Traced / Path-Traced); PT + RT GI could both be on (only
+          one tracer runs, the toggles stacked); GT-VBGI's march settings only for Screen-Space.
+      [ ] 2 Soft torch / fire shadows: each frame a ray to a jittered point of a light of radius R (bits; RR / DLAA
+          average them); slider; bridge v18 field.
+      [ ] 8 RT at output density below 100% render scale: samples x output / render pixels (sun, AO, lights,
+          reflections, GI texels); toggle; bridge v18 field.
+      [ ] 1 Grass micromaps: NVAPI cluster templates take OMMs (FLAG_ALLOW_OMM on every op touching them, template args'
+          opacityMicromapArray / index buffer): bake per compact set (its UVs + alpha slice, OMM SDK as the leaves), its
+          templates rebuilt with them; non-cluster path: OMM linkage on grass captures (stable UVs per key).
+      [ ] 3 Torch / fire light in fog and smoke: a helper pass (fog texels, points along the view ray, shadow rays to the
+          lights in reach) -> RGB in-scatter the addon's fog pass adds; smoke particles lit by lights near them (vfx00).
+      [ ] 4 RT water refraction: rays from the water surface bent into the water (riverbed from the screen / cache),
+          absorption by path length (a clarity control); find the river shader and the water reflection path first.
+      [ ] 5 Path tracing: sky light by direction (learned from sky pixels), light through leaves in paths, the radiance
+          cache fed by the paths (multi-bounce off screen), glossy bounces, more light samples, Russian roulette.
+      [ ] 7 Answer (ATN wants it as an option if it can work): RTX Character Rendering (hair = LSS strands, skin =
+          ray-traced SSS) on TW humans / horses, close-up only?
+      [ ] Harness all modes, 4K timings, zip twattila_v98, README, memory, per-game report; then shut down.
       NVIDIA's SDKs are allowed (NVIDIA RTX SDKs License: RTXDI, SHARC, NRC, NRD, RTXPT, RTXGI; RTXMU MIT; Mega
       Geometry samples Apache 2.0): download at build time like OMM, binaries / compiled shaders only, credit in About.
       [x] 1 (step 2: RT_RECONSTRUCTED 256; harness HARNESS_SUN_SOFTNESS) RR is the only denoiser (ATN: no NRD; RR/PT users use RR): under RR, SSR's denoiser + history (ssr_hiz)
