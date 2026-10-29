@@ -1065,6 +1065,25 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       NEXT (ATN's test): RT Shadows = all, swaying trees, 4x battles (cluster count / scene ms in the status line, GPU
           times now first), Leaf Micromaps (log "Leaf micromaps: N meshes baked"; turn off if the GPU resets), Smoke
           Shadows (Experimental, off: particle size scale, fire casting?).
+    - NEXT BIG BATCH (ATN 2026-10-29, after the v94 test; ATN: size doesn't matter, anything that speeds RT/PT on or off).
+      NVIDIA's SDKs are allowed (NVIDIA RTX SDKs License: RTXDI, SHARC, NRC, NRD, RTXPT, RTXGI; RTXMU MIT; Mega
+      Geometry samples Apache 2.0): download at build time like OMM, binaries / compiled shaders only, credit in About.
+      [ ] 1 Nothing denoises twice under Ray Reconstruction: SSR's denoiser + history (ssr_hiz) off under RR, the
+          helper's RT AO history (PATH_AMBIENT_HISTORY) off under RR, sun shadows traced in the sun's cone (one jittered
+          ray) instead of rt_soft's filter under RR. (GT-VBAO's filter and GT-VBGI's denoiser already step aside.)
+      [ ] 2 RR's guides (we feed only albedos, normals, roughness, depth, motion): diffuse / specular hit distance
+          (RT AO / GI / reflection rays), color before / after particles (the particle pass), bias-current-color mask
+          (trails, smoke: no motion vectors), color before / after fog (battle fog), screen-space refraction guide
+          (water), depth-of-field guide. Option "RR for screen-space effects" with RT off (A/B vs DLSS SR).
+      [ ] 3 RTXDI (ReSTIR DI) for torches and fires: a few sampled lights a pixel instead of up to 32 shadow rays.
+      [ ] 4 SHARC in place of our world radiance cache (A/B); NRC after (bigger: training each frame).
+      [ ] 5 SER in the incoherent passes (AO, Light Bounce as ray generation shaders like the paths).
+      [ ] 6 NRD (SIGMA shadows, ReBLUR AO / GI) for RR off, A/B against our filters.
+      [ ] 7 RTXMU: BLAS suballocation and compaction (fewer allocations, less memory).
+      [ ] 8 Partitioned TLAS again (find the siege stall), Mega Geometry for the CPU-path captures left.
+      Not possible / no gain: DMM (not in DXR, dropped by NVIDIA), LSS (no strand geometry in Attila), AddToStateObject
+      and indirect DispatchRays (no shader streaming; the helper's dispatch is not the cost), Mega Geometry for static
+      meshes (built once already: no gain in tracing).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
