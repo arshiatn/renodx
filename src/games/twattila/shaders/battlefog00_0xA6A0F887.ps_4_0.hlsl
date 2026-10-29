@@ -1,6 +1,6 @@
 // 0xA6A0F887 (battlefog, shader model 3): the battle's height and distance fog, its colour the sun-lit fog colour
-// blended toward the sky's. Ray tracing: the sun-lit colour x the sun's visibility along the camera's ray
-// (twattila/rt_scene.hpp InstallFogShadows; rt_fog.hlsli).
+// blended toward the sky's. Ray tracing: the sun-lit colour x the sun's visibility along the camera's ray, plus the
+// torches' and fires' light along it (twattila/rt_scene.hpp InstallFogShadows; rt_fog.hlsli).
 #include "../render_scale.hlsli"
 #include "../rt_fog.hlsli"
 
@@ -123,6 +123,7 @@ void main(
   r2.xyz = -r1.xyz * r0.www + r2.xyz;
   r1.xyz = r1.xyz * r0.www;
   o0.xyz = r0.yyy * r2.xyz + r1.xyz;
+  o0.xyz += g_volume_fog_colour.xyz * RtFogLights(v0.xy) * (1.5 * abs(g_apply_environment_specular) * r0.w);
   r0.y = max(0.00100000005, g_fog_clear_distance);
   r0.y = 1 / r0.y;
   r0.y = r0.z * r0.y;

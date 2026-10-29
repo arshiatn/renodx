@@ -234,6 +234,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (version >= 9) keep({shared->rt_light_mask});
       if (version >= 11) keep({shared->rt_fog});
       if (version >= 17) keep({shared->rr_hit_distance});
+      if (version >= 18) keep({shared->rt_fog_lights});
       color.Reset();
       depth.Reset();
       motion.Reset();

@@ -609,6 +609,10 @@ class RtScene12 {
       const D3D12_UNORDERED_ACCESS_VIEW_DESC fog_view = {.Format = DXGI_FORMAT_R8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
       device_->CreateUnorderedAccessView(fog_.Get(), nullptr, &fog_view, Descriptor(FOG));
     }
+    if (version >= 18 && shared.rt_fog_lights != 0 && open(shared.rt_fog_lights, &fog_lights_)) {
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC fog_lights_view = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+      device_->CreateUnorderedAccessView(fog_lights_.Get(), nullptr, &fog_lights_view, Descriptor(FOG_LIGHTS));
+    }
     // Paths (v8): last frame's scene colour (the DLAA input), the G-buffer guides and the reflections' outputs as the
     // addon shares them (the history of the helper's own made when first used: EnsureHistory).
     if (version >= 8) {
@@ -699,6 +703,7 @@ class RtScene12 {
     bounce_.Reset();
     light_mask_.Reset();
     fog_.Reset();
+    fog_lights_.Reset();
     ambient_history_ = {};
     ambient_positions_.Reset();
     light_history_ = {};
@@ -1309,7 +1314,8 @@ class RtScene12 {
     AMBIENT_POSITIONS = AMBIENT_HISTORY + 2,  // u30: the last trace's positions
     HIT_DISTANCE,  // u31: Ray Reconstruction's specular hit distance (v17)
     LIGHT_HISTORY,  // u32-u33: the local lights' bits kept over frames, two sets
-    DESCRIPTOR_COUNT = LIGHT_HISTORY + 2,
+    FOG_LIGHTS = LIGHT_HISTORY + 2,  // u34 (v18): the local lights' light in the fog
+    DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
   // rt_path.hlsli's path flags and cache size.
@@ -1686,7 +1692,7 @@ class RtScene12 {
     for (const UINT descriptor : std::initializer_list<UINT>{SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY,
                                                              REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG, AMBIENT_HISTORY,
                                                              AMBIENT_HISTORY + 1, AMBIENT_POSITIONS, HIT_DISTANCE, LIGHT_HISTORY,
-                                                             LIGHT_HISTORY + 1}) {
+                                                             LIGHT_HISTORY + 1, FOG_LIGHTS}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     if (cache_keys_) return;
@@ -3174,6 +3180,9 @@ class RtScene12 {
     // The fog shadows (v11): a quarter of the render pixels each way.
     const bool fog = (shared.rt_flags & dlaa_bridge::RT_FOG_SHADOWS) != 0 && fog_;
     if (fog) textures.emplace_back(fog_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    if (fog && fog_lights_ && (shared.rt_flags & dlaa_bridge::RT_FOG_LIGHTS) != 0) {
+      textures.emplace_back(fog_lights_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
     // Their places in the last trace's list (the addon orders them by importance each frame; the same position and
     // reach: the same light), a byte each after the colours (255: new).
     std::array<uint8_t, dlaa_bridge::RT_MAX_LIGHTS> light_previous = {};
@@ -3181,6 +3190,10 @@ class RtScene12 {
       textures.emplace_back(light_mask_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       std::memcpy(slot->light_data, shared.rt_lights, light_count * sizeof(shared.rt_lights[0]));
       std::memcpy(slot->light_data + sizeof(shared.rt_lights), &light_count, sizeof(light_count));
+      // Their colours (v11) for the fog's torch and fire light (rt_fog; the paths' requests copy them too).
+      if (version >= 11) {
+        std::memcpy(slot->light_data + sizeof(shared.rt_lights) + 16, shared.rt_light_colours, light_count * sizeof(shared.rt_light_colours[0]));
+      }
       for (uint32_t light = 0; light < light_count; ++light) {
         const auto found = std::ranges::find_if(previous_lights_.begin(), previous_lights_.begin() + previous_light_count_,
                                                 [&](const std::array<float, 4>& other) {
@@ -3691,6 +3704,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> bounce_;  // its output
   ComPtr<ID3D12Resource> light_mask_;  // the local lights' lit bits (v9)
   ComPtr<ID3D12Resource> fog_;         // the fog shadows (v11)
+  ComPtr<ID3D12Resource> fog_lights_;  // the local lights' light in the fog (v18)
   // The ambient visibility kept over frames (v11): its two sets, the last trace's positions, camera, frame and set.
   std::array<ComPtr<ID3D12Resource>, 2> ambient_history_;
   ComPtr<ID3D12Resource> ambient_positions_;

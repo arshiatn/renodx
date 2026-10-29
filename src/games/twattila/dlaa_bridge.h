@@ -130,6 +130,9 @@ constexpr uint32_t RT_MICROMAPS = 128;
 // Ray Reconstruction denoises the frame: soft sun shadows one ray toward a point of the sun's disk instead of the rays'
 // soft-shadow filter (the ambient keeps its history: RR alone left ~20% of the AO's noise).
 constexpr uint32_t RT_RECONSTRUCTED = 256;
+// Torch and fire light in fog (v18, with RT_FOG_SHADOWS): along each camera ray the local lights' light too (one light a
+// point, picked by what it gives there; through a shadow ray the smoke dims) into rt_fog_lights.
+constexpr uint32_t RT_FOG_LIGHTS = 512;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -320,6 +323,7 @@ struct Shared {
   // Resolution below 100% render scale: the output pixels a render pixel stands for; 0 or 1: one).
   float rt_light_size = 0.f;
   uint32_t rt_shadow_rays = 0;
+  uint64_t rt_fog_lights = 0;  // RT_FOG_LIGHTS' output (RGBA16F at rt_fog's size)
 };
 
 // The block's size for a version (an older addon's ends earlier).

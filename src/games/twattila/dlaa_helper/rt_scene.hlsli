@@ -40,6 +40,7 @@ static const uint AMBIENT_QUARTER = 4u;  // one pixel of each 2 x 2 block traces
 static const uint LOCAL_LIGHTS = 8u;     // the local lights' shadows (rt_trace.cs_6_5.hlsl)
 static const uint LEAF_LIGHT = 16u;      // leaves let a share of the sun through (rt_trace.cs_6_5.hlsl)
 static const uint RECONSTRUCTED = 256u;  // Ray Reconstruction denoises the frame (dlaa_bridge.h RT_RECONSTRUCTED)
+static const uint FOG_LIGHTS = 512u;     // the local lights' light in the fog too (rt_fog.cs_6_5.hlsl; v18)
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 static const uint RECORD_THIN = 2u;    // cloth and sails
 static const uint RECORD_SMOKE = 4u;   // smoke (Smoke Shadows): dims the sun's rays, blocks none

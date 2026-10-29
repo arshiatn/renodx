@@ -190,6 +190,7 @@ struct Bridge {
   Texture rt_bounce;
   Texture rt_light_mask;  // v9: the local lights' lit bits
   Texture rt_fog;         // v11: the fog shadows (a quarter of the size each way)
+  Texture rt_fog_lights;  // v18: the local lights' light in the fog (as rt_fog)
   // The reflections' (v8, made when they are on): the reflected light and the specular occlusion out; Ray
   // Reconstruction's specular hit distance (v17), written by this frame's reflections (`hit_distance_written`).
   Texture rt_reflection;
@@ -398,6 +399,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.rt_bounce = {};
   bridge.rt_light_mask = {};
   bridge.rt_fog = {};
+  bridge.rt_fog_lights = {};
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.rr_hit_distance = {};
@@ -505,7 +507,9 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                             && make(DXGI_FORMAT_R11G11B10_FLOAT, &bridge.rt_light, &shared.rt_light)
                             && make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_bounce, &shared.rt_bounce)
                             && make(DXGI_FORMAT_R32_UINT, &bridge.rt_light_mask, &shared.rt_light_mask)
-                            && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_fog, &shared.rt_fog, (width + 3) / 4, (height + 3) / 4) && share_atlas()))
+                            && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_fog, &shared.rt_fog, (width + 3) / 4, (height + 3) / 4)
+                            && make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_fog_lights, &shared.rt_fog_lights, (width + 3) / 4, (height + 3) / 4)
+                            && share_atlas()))
                     && (!reflections
                         || (make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_reflection, &shared.rt_reflection)
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_specular, &shared.rt_specular)
@@ -542,6 +546,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     shared.rt_bounce = 0;
     shared.rt_light_mask = 0;
     shared.rt_fog = 0;
+    shared.rt_fog_lights = 0;
   }
   if (!reflections) {
     shared.rt_reflection = 0;
@@ -902,6 +907,7 @@ inline void Release() {
   bridge.rt_bounce = {};
   bridge.rt_light_mask = {};
   bridge.rt_fog = {};
+  bridge.rt_fog_lights = {};
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.rr_hit_distance = {};

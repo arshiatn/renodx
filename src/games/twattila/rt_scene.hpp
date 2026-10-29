@@ -62,6 +62,7 @@ struct Sliders {
   float sun_shadows = 0.f;
   float sun_softness = 0.5f;       // degrees of the sun's disk (0: hard)
   float light_softness = 0.25f;    // the torches' and fires' radius (metres; 0: hard)
+  float light_glow = 1.f;          // torch and fire light in fog and smoke (0: none)
   float output_rays = 0.f;         // Ray Tracing at Output Resolution (below 100% render scale)
   float leaf_light = 0.f;
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
@@ -102,6 +103,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .ambient_quarter = sliders.ambient_quarter != 0.f && (density > 1u || frame_history::EffectSteps() < 1.f),
       .sun_softness = sliders.sun_softness,
       .light_size = sliders.light_softness,
+      .light_glow = sliders.light_glow,
       .shadow_rays = density,
       .light_bounce = sliders.light_bounce != 0.f && bounce,
       .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),
@@ -637,13 +639,18 @@ constexpr auto OnShadowReaderDraw = []<typename T, typename Context>(Context& co
   auto* native = internal::NativeContext(command.cmd_list);
   if (native == nullptr) return {};
   ID3D11ShaderResourceView* occlusion = nullptr;
+  ID3D11Buffer* lights = nullptr;  // the particles' (vfx00): torches and fires light the smoke and dust near them
   if (internal::active.load(std::memory_order_relaxed)) {
     const std::unique_lock lock(internal::runtime.mutex);
     if (internal::runtime.settings.shadows_only && internal::runtime.occlusion_frame == internal::runtime.frame) {
       occlusion = internal::runtime.objects.occlusion_srv.Get();
     }
+    if (internal::runtime.lights_traced && internal::runtime.traced_frame == internal::runtime.frame) {
+      lights = internal::runtime.objects.light_constants.Get();
+    }
   }
   native->PSSetShaderResources(49, 1, &occlusion);
+  native->PSSetConstantBuffers(9, 1, &lights);
   return {};
 };
 
@@ -862,6 +869,20 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 0.f,
           .max = 1.f,
           .format = "%.2f m",
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::point_lights_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightGlow",
+          .binding = &sliders->light_glow,
+          .default_value = 1.f,
+          .label = "Torch and Fire Light in Fog and Smoke",
+          .section = section,
+          .tooltip = "Torches and fires light the fog around them (with Ray-Traced Fog Shadows: their shafts and\n"
+                     "shadows in it) and the smoke and dust near them. 0: off.",
+          .min = 0.f,
+          .max = 2.f,
+          .format = "%.2f",
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
       },

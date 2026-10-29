@@ -1,4 +1,5 @@
 #include "../shared.h"
+#include "../rt_local_lights.hlsli"
 
 // ---- Reconstructed from 0xACE33D5D.ps_5_0.cso
 // ---- Total War: Attila VFX pixel shader (Shader Model 5.0)
@@ -617,6 +618,8 @@ void main(
         r10.xyz = sun_colour.xyz * r10.xyz;
         r10.xyz = r10.xyz * r6.zzz;
         r11.xyz = ambient_cube_tb[0].xyz * r6.xxx;
+        // Torches and fires light the smoke near them (ray tracing's local lights, isotropic: 1 / 4 pi).
+        r11.xyz += 0.0795774683 * RtLocalLightAt(v4.xyz);
         r9.xyz = r11.xyz * r9.xyz;
         r9.xyz = r9.xyz * r6.zzz;
         r9.xyz = r0.yyy * r10.xyz + r9.xyz;
@@ -672,6 +675,8 @@ void main(
         r0.z = r0.z * r0.w + r1.y;
         r7.xyz = sun_colour.xyz * r0.zzz;
         r0.yzw = r7.xyz * r0.yyy + r6.xyw;
+        // Torches and fires light the smoke near them (ray tracing's local lights, isotropic: 1 / 4 pi).
+        r0.yzw += 0.0795774683 * RtLocalLightAt(v4.xyz);
         r6.xyw = r0.yzw * r6.zzz;
         r0.yzw = -r0.yzw * r6.zzz + ps_lighting_legacy_params[r0.x].zzz;
         r0.yzw = r1.xxx * r0.yzw + r6.xyw;

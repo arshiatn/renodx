@@ -12,9 +12,22 @@
 
 Texture2D<uint> t_rt_light_mask : register(t42);
 cbuffer rt_local_lights : register(b9) {
-  float4 rt_light_positions[32];
-  uint4 rt_light_count;  // x
+  float4 rt_light_positions[32];  // xyz, w the reach (metres)
+  uint4 rt_light_count;           // x; y the glow (asfloat: torch and fire light in fog and smoke, 0 none)
+  float4 rt_light_colours[32];    // rgb
 };
+
+// The local lights' light reaching a world point (no shadows): each one's colour times the games' smooth falloff
+// (1 - distance / reach)^2, times the glow setting. Torches and fires lighting the smoke and dust near them (vfx00).
+float3 RtLocalLightAt(float3 world) {
+  float3 light = 0.f;
+  [loop]
+  for (uint index = 0u; index < min(rt_light_count.x, 32u); ++index) {
+    const float falloff = saturate(1.f - (distance(rt_light_positions[index].xyz, world) / max(rt_light_positions[index].w, 1e-3f)));
+    light += rt_light_colours[index].rgb * (falloff * falloff);
+  }
+  return light * asfloat(rt_light_count.y);
+}
 
 // The traced light nearest a drawn one stands for it within this distance (metres): the traced positions are a few
 // frames old (a carried torch moves; within 1 cm only, its shadow went).

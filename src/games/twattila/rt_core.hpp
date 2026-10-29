@@ -74,6 +74,7 @@ struct Settings {
   // Rays a pixel toward the sun and each light (bridge v18): below 100% render scale with Ray Tracing at Output
   // Resolution the output pixels a render pixel stands for (the ambient's and the reflections' rays likewise).
   uint32_t shadow_rays = 1;
+  float light_glow = 1.f;  // torch and fire light in fog (RT_FOG_LIGHTS) and on the particles near them (b9's y)
   // The Light Bounce's light found with rays (light_bounce.hpp's trace replaced; it needs the Light Bounce on).
   bool light_bounce = false;
   uint32_t light_bounce_rays = 4;
@@ -478,7 +479,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
   captured_uv_view.Buffer.NumElements = MAX_VERTICES;
   const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC sun_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-  const D3D11_BUFFER_DESC light_constants_desc = {.ByteWidth = (dlaa_bridge::RT_MAX_LIGHTS + 1) * 16, .Usage = D3D11_USAGE_DEFAULT,
+  const D3D11_BUFFER_DESC light_constants_desc = {.ByteWidth = ((dlaa_bridge::RT_MAX_LIGHTS * 2) + 1) * 16, .Usage = D3D11_USAGE_DEFAULT,
                                                   .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   D3D11_BLEND_DESC multiply_desc = {};
   multiply_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ZERO, .DestBlend = D3D11_BLEND_SRC_COLOR,
@@ -1470,13 +1471,16 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     const size_t count = std::min<size_t>(candidates.size(), dlaa_bridge::RT_MAX_LIGHTS);
     std::partial_sort(candidates.begin(), candidates.begin() + static_cast<ptrdiff_t>(count), candidates.end(),
                       [&](const LocalLight& a, const LocalLight& b) { return score(a) > score(b); });
-    std::array<std::array<float, 4>, dlaa_bridge::RT_MAX_LIGHTS + 1> constants = {};
+    // b9 (rt_local_lights.hlsli): positions and reach, the count and the glow (torch and fire light in fog and smoke),
+    // the colours.
+    std::array<std::array<float, 4>, (dlaa_bridge::RT_MAX_LIGHTS * 2) + 1> constants = {};
     for (size_t index = 0; index < count; ++index) {
       runtime.lights.push_back(candidates[index].light);
       runtime.light_colours.push_back(candidates[index].colour);
       constants[index] = candidates[index].light;
+      constants[dlaa_bridge::RT_MAX_LIGHTS + 1 + index] = candidates[index].colour;
     }
-    constants.back()[0] = std::bit_cast<float>(static_cast<uint32_t>(count));
+    constants[dlaa_bridge::RT_MAX_LIGHTS] = {std::bit_cast<float>(static_cast<uint32_t>(count)), runtime.settings.light_glow, 0.f, 0.f};
     native->UpdateSubresource(objects.light_constants.Get(), 0, nullptr, constants.data(), 0, 0);
   }
   const bool lights = !runtime.lights.empty();
@@ -1495,6 +1499,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
                | (runtime.settings.leaf_light ? dlaa_bridge::RT_LEAF_LIGHT : 0u)
                | (runtime.settings.fog_shadows ? dlaa_bridge::RT_FOG_SHADOWS : 0u)
+               | ((runtime.settings.fog_shadows && lights && runtime.settings.light_glow > 0.f) ? dlaa_bridge::RT_FOG_LIGHTS : 0u)
                | (runtime.settings.micromaps ? dlaa_bridge::RT_MICROMAPS : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u),
@@ -2150,19 +2155,28 @@ inline bool BindLocalLights(ID3D11DeviceContext* native) {
 // For a fog draw (its pixel shader with rt_fog.hlsli): this frame's fog shadows at t43; false: not traced this frame
 // (nothing bound).
 inline bool BindFogShadows(ID3D11DeviceContext* native) {
-  ID3D11ShaderResourceView* fog = nullptr;
+  std::array<ID3D11ShaderResourceView*, 2> fog = {};
+  ID3D11Buffer* lights = nullptr;
   {
     const std::unique_lock lock(internal::runtime.mutex);
     if (internal::runtime.traced_frame != internal::runtime.frame || !internal::runtime.settings.fog_shadows) return false;
-    fog = dlaa_bridge::bridge.rt_fog.srv.Get();
+    fog[0] = dlaa_bridge::bridge.rt_fog.srv.Get();
+    // The local lights' light in the fog (t44) and its strength (b9's y) where they were traced with it.
+    if (internal::runtime.lights_traced && internal::runtime.settings.light_glow > 0.f) {
+      fog[1] = dlaa_bridge::bridge.rt_fog_lights.srv.Get();
+      lights = internal::runtime.objects.light_constants.Get();
+    }
   }
-  native->PSSetShaderResources(43, 1, &fog);
-  return fog != nullptr;
+  native->PSSetShaderResources(43, 2, fog.data());
+  native->PSSetConstantBuffers(9, 1, &lights);
+  return fog[0] != nullptr;
 }
 
 inline void UnbindFogShadows(ID3D11DeviceContext* native) {
-  ID3D11ShaderResourceView* no_fog = nullptr;
-  native->PSSetShaderResources(43, 1, &no_fog);
+  constexpr std::array<ID3D11ShaderResourceView*, 2> NO_FOG = {};
+  ID3D11Buffer* no_lights = nullptr;
+  native->PSSetShaderResources(43, 2, NO_FOG.data());
+  native->PSSetConstantBuffers(9, 1, &no_lights);
 }
 
 inline void UnbindLocalLights(ID3D11DeviceContext* native) {
