@@ -120,6 +120,8 @@ constexpr uint32_t RT_LEAF_LIGHT = 16;
 constexpr uint32_t RT_FOG_SHADOWS = 32;
 // The Debug View's scene test (v14): placed instances only where this frame's draws put them (none kept).
 constexpr uint32_t RT_NO_KEPT = 64;
+// Leaf micromaps: new leaves' opacity micromaps baked (NVIDIA's OMM SDK in the helper) and built with their BLAS.
+constexpr uint32_t RT_MICROMAPS = 128;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

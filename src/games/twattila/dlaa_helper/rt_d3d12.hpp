@@ -14,13 +14,16 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <future>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -33,6 +36,13 @@
 #include <nvapi.h>
 #define RENODX_NVAPI_CLUSTERS 1
 #endif
+// NVIDIA's Opacity Micro-Map SDK (NVIDIA RTX SDKs License; build.ps1 adds its header when build\downloads\omm holds its
+// Windows release): the leaves' opacity micromaps baked on the CPU (its omm-lib.dll next to the helper, loaded at run
+// time; without it, none).
+#if __has_include(<omm.h>)
+#include <omm.h>
+#define RENODX_OMM_SDK 1
+#endif
 #include "rt_bounce.h"            // dxc -Fh (build.ps1)
 #include "rt_bounce_omm.h"        // dxc -Fh (build.ps1)
 #include "rt_cache_fill.h"        // dxc -Fh (build.ps1)
@@ -40,7 +50,6 @@
 #include "rt_compact.h"           // dxc -Fh (build.ps1)
 #include "rt_fog.h"               // dxc -Fh (build.ps1)
 #include "rt_fog_omm.h"           // dxc -Fh (build.ps1)
-#include "rt_omm.h"               // dxc -Fh (build.ps1)
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_lib.h"          // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
@@ -66,8 +75,9 @@
 // kept a while after its last draw (off-screen casters). Leaves are alpha-tested against their opacity masks (the addon's atlas, v6): each geometry has a
 // record (its instance's InstanceID plus its geometry index) with its UVs and normals in pools (rt_scene_data.cs_6_5.hlsl).
 // With the Agility SDK next to the helper (D3D12\D3D12Core.dll) and shader model 6.9, DXR 1.2: the leaves get opacity
-// micromaps (rt_omm.cs_6_5.hlsl). With a bridge v7 addon's ray-traced Light Bounce a second request each frame traces
-// rt_bounce.cs_6_5.hlsl against that frame's TLAS; bridge v8 path traces it instead (rt_path.hlsli: a world radiance
+// micromaps (baked by NVIDIA's OMM SDK, omm-lib.dll next to the helper; AdvanceMicromaps). With a bridge v7 addon's
+// ray-traced Light Bounce a second request each frame traces rt_bounce.cs_6_5.hlsl against that frame's TLAS; bridge v8
+// path traces it instead (rt_path.hlsli: a world radiance
 // cache and the learned lighting for what the screen never saw), and a third request traces reflections and specular
 // occlusion. With DXR 1.2 the paths run as ray generation shaders (DispatchRays) with shader execution reordering. With
 // NVAPI's cluster operations (RTX Mega Geometry; set RENODX_TW_NO_CLUSTERS to turn them off) the units are built each
@@ -118,9 +128,29 @@ class RtScene12 {
         !device_ && SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(settings.GetAddressOf())))) {
       record_removal(settings.Get());
     }
-    // Opacity micromaps for new leaves only with RENODX_TW_OMM: the three GPU resets ATN met that DRED recorded all
-    // stopped the GPU in the first bake's dispatch (2026-10-28); without them the ray queries alpha-test the leaves.
-    bake_micromaps_ = GetEnvironmentVariableW(L"RENODX_TW_OMM", nullptr, 0) != 0;
+#if defined(RENODX_OMM_SDK)
+    // Opacity micromaps for new leaves, baked on the CPU by NVIDIA's OMM SDK (the GPU bake it replaced stopped ATN's GPU
+    // three times, 2026-10-28): its omm-lib.dll next to the helper, its CPU baker.
+    if (HMODULE library = (omm_.library == nullptr) ? LoadLibraryW((folder / L"omm-lib.dll").c_str()) : nullptr; library != nullptr) {
+      const auto load = [library](auto* function, const char* name) {
+        *function = reinterpret_cast<std::remove_pointer_t<decltype(function)>>(GetProcAddress(library, name));
+        return *function != nullptr;
+      };
+      decltype(&ommCreateBaker) create_baker = nullptr;
+      ommBakerCreationDesc creation = ommBakerCreationDescDefault();
+      creation.type = ommBakerType_CPU;
+      if (load(&create_baker, "ommCreateBaker") && load(&omm_.destroy_baker, "ommDestroyBaker")
+          && load(&omm_.create_texture, "ommCpuCreateTexture") && load(&omm_.destroy_texture, "ommCpuDestroyTexture")
+          && load(&omm_.bake, "ommCpuBake") && load(&omm_.result_desc, "ommCpuGetBakeResultDesc")
+          && load(&omm_.destroy_result, "ommCpuDestroyBakeResult") && create_baker(&creation, &omm_.baker) == ommResult_SUCCESS) {
+        omm_.library = library;
+      } else {
+        FreeLibrary(library);
+        omm_ = {};
+      }
+    }
+    bake_micromaps_ = omm_.baker != nullptr;
+#endif
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
     if ((!device_ && FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf()))))
         || FAILED(device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))
@@ -472,13 +502,12 @@ class RtScene12 {
       const D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {.pRootSignature = root_signature_.Get(), .CS = {.pShaderBytecode = code, .BytecodeLength = bytes}};
       return SUCCEEDED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(state->GetAddressOf())));
     };
-    // DXR 1.2: the micromaps' bake and the ray queries that use them; else (or when they fail) DXR 1.1.
-    dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_) && pipeline(RT_OMM, sizeof(RT_OMM), &omm_pipeline_)
+    // DXR 1.2: the ray queries that use the micromaps; else (or when they fail) DXR 1.1.
+    dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_)
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
              && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_)
              && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_);
     if (!dxr12_) {
-      omm_pipeline_.Reset();
       trace_pipeline_.Reset();
       bounce_pipeline_.Reset();
       path_pipeline_.Reset();
@@ -572,7 +601,8 @@ class RtScene12 {
     device_->CreateUnorderedAccessView(uvs_.Get(), nullptr, &uvs_written, Descriptor(UVS_WRITTEN));
     device_->CreateUnorderedAccessView(normals_.Get(), nullptr, &normals_written, Descriptor(NORMALS_WRITTEN));
     WriteNullPathDescriptors();
-    status_ = std::format("Ray tracing ready ({}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1", sdk,
+    status_ = std::format("Ray tracing ready ({}{}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1",
+                          (dxr12_ && bake_micromaps_) ? "; leaf micromaps: NVIDIA OMM SDK" : "", sdk,
                           clusters_ ? std::format("; Mega Geometry: {} clusters a frame ({} from templates of {} bytes), {} MB", cluster_limit_,
                                                   cluster_limit_ - built_limit_, template_bytes_, cluster_bytes >> 20)
                                     : std::string());
@@ -861,6 +891,7 @@ class RtScene12 {
       if (pending.template_first != UINT32_MAX) free_templates_.Give(pending.template_first, pending.templates);
       return true;
     });
+    AdvanceMicromaps(completed);
     timings_.clear();
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, cluster_data, slot_index, &slot);
@@ -1144,6 +1175,11 @@ class RtScene12 {
   ~RtScene12() {
     if (own_fence_) WaitFor(own_value_);
     if (event_ != nullptr) CloseHandle(event_);
+    if (micromap_baking_.valid()) micromap_baking_.wait();
+#if defined(RENODX_OMM_SDK)
+    if (omm_.baker != nullptr) omm_.destroy_baker(omm_.baker);
+    if (omm_.library != nullptr) FreeLibrary(omm_.library);
+#endif
   }
 
  private:
@@ -1236,9 +1272,12 @@ class RtScene12 {
   static constexpr float LEAF_ALPHA_CUTOFF = 0.5f;  // rt_scene_data.cs_6_5.hlsl
   static constexpr uint32_t PLACE_FOLIAGE = 1;  // rt_place.cs_6_5.hlsl
   static constexpr uint32_t PLACE_HIDDEN = 2;
-  // Opacity micromaps: a mesh's at most (its subdivision level lowered to fit), all new meshes' a request.
-  static constexpr uint64_t MICROMAP_MESH_BYTES = 8u << 20;
-  static constexpr uint64_t MICROMAP_FRAME_BYTES = 64u << 20;
+  // Opacity micromaps (NVIDIA's OMM SDK): a leaf mesh's data at most (the SDK makes micromaps coarser to fit), its
+  // triangles at most, the bakes on their way at most.
+  static constexpr uint32_t MICROMAP_MESH_BYTES = 8u << 20;
+  static constexpr uint32_t MICROMAP_TRIANGLES = 1u << 18;
+  static constexpr size_t MICROMAP_BAKES = 64;
+  static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
   // The scene data pass's garbage count (rt_scene_data.cs_6_5.hlsl): three counts, the example's capture, its vertices.
   static constexpr UINT LEFT_OUT_BYTES = 64;
   // A request slower than this on the GPU is reported (ms), at most this many times.
@@ -1384,7 +1423,6 @@ class RtScene12 {
   struct Mesh {
     ComPtr<ID3D12Resource> blas;
     ComPtr<ID3D12Resource> micromaps;  // its opacity micromap array (DXR 1.2), kept while the BLAS lives
-    ComPtr<ID3D12Resource> micromap_indices;
     uint64_t build = 0;
     uint64_t bytes = 0;
     uint32_t drawn_frame = 0;
@@ -1406,6 +1444,38 @@ class RtScene12 {
     uint64_t value = 0;
     ComPtr<ID3D12Resource> resource;
   };
+  // A new leaf mesh's micromaps on their way: its UVs and opacity mask (its atlas slice) read back from the request that
+  // built its BLAS, its positions kept; baked on a thread (NVIDIA's OMM SDK), then built into a micromap array with its
+  // BLAS again (AdvanceMicromaps, Record).
+  struct MicromapBake {
+    uint64_t key = 0;
+    uint64_t build = 0;  // its mesh's (another: dropped)
+    uint64_t value = 0;  // the reading request's
+    uint32_t triangles = 0;
+    ComPtr<ID3D12Resource> positions;  // its vertices (16 bytes each), for the rebuild
+    ComPtr<ID3D12Resource> uvs;        // read back: a packed half UV a corner
+    ComPtr<ID3D12Resource> mask;       // read back: its atlas slice
+    std::vector<uint32_t> uv_data;
+    std::vector<uint8_t> mask_data;
+    // The bake's: the micromaps' data, descs, an index a triangle (32-bit; the special ones negative), their histogram.
+    std::vector<uint8_t> data;
+    std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_DESC> descs;
+    std::vector<uint32_t> indices;
+    std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_HISTOGRAM_ENTRY> histogram;
+  };
+#if defined(RENODX_OMM_SDK)
+  // The OMM SDK's CPU baker and the calls the bakes use (omm-lib.dll's).
+  struct OmmSdk {
+    HMODULE library = nullptr;
+    ommBaker baker = nullptr;
+    decltype(&ommDestroyBaker) destroy_baker = nullptr;
+    decltype(&ommCpuCreateTexture) create_texture = nullptr;
+    decltype(&ommCpuDestroyTexture) destroy_texture = nullptr;
+    decltype(&ommCpuBake) bake = nullptr;
+    decltype(&ommCpuGetBakeResultDesc) result_desc = nullptr;
+    decltype(&ommCpuDestroyBakeResult) destroy_result = nullptr;
+  };
+#endif
   // A pool's free ranges (offset -> count), first fit (as Tales of Arise's rt_shadows.hpp).
   struct Ranges {
     std::map<uint32_t, uint32_t> free;
@@ -2162,118 +2232,83 @@ class RtScene12 {
         list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
       }
 
-      // Opacity micromaps (DXR 1.2) for the new leaves: their level (4 - 2) fitting MICROMAP_MESH_BYTES, all within
-      // MICROMAP_FRAME_BYTES; baked, then built into micromap arrays together.
-      struct Bake {
-        uint32_t index = 0;
-        uint32_t level = 0;
-        uint64_t data_offset = 0;
-        uint64_t desc_offset = 0;
-        ComPtr<ID3D12Resource> indices;
+      // Opacity micromaps (DXR 1.2) baked for leaves built SLOTS requests back or more (their first compaction and rows
+      // read): their arrays built now from the bakes' upload buffers (none when every triangle has a special index), their
+      // BLASes again below.
+      struct MicromapArray {
+        std::unique_ptr<MicromapBake> bake;
         ComPtr<ID3D12Resource> array;
+        ComPtr<ID3D12Resource> inputs;  // upload: the data, descs, indices (read by the builds alone)
+        uint64_t indices_offset = 0;
       };
-      std::vector<Bake> bakes;
-      if (dxr12_ && bake_micromaps_) {
-        uint64_t data_bytes = 0;
-        uint64_t desc_bytes = 0;
-        for (uint32_t index = 0; index < capture_count; ++index) {
-          if (!placements[index].masked || placements[index].record == UINT32_MAX
-              || (shared.rt_captures[index].flags & dlaa_bridge::RT_DYNAMIC) != 0) {
+      std::vector<MicromapArray> micromap_arrays;
+      if (dxr12_ && !micromaps_baked_.empty()) {
+        std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC> array_descs(micromaps_baked_.size());
+        std::vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC> array_builds;
+        uint64_t array_scratch = 0;
+        for (std::unique_ptr<MicromapBake>& baked : micromaps_baked_) {
+          const auto mesh = meshes_.find(baked->key);
+          if (mesh == meshes_.end() || mesh->second.build != baked->build) {
+            releases_.push_back({.value = own_value_ + 1, .resource = std::move(baked->positions)});
+            baked.reset();
             continue;
           }
-          const uint64_t triangles = shared.rt_captures[index].vertex_count / 3;
-          const auto bytes_at = [&](uint32_t at) { return triangles * std::max<uint64_t>((1ull << (2 * at)) / 4, 4); };
-          uint32_t level = 4;
-          while (level > 2 && bytes_at(level) > MICROMAP_MESH_BYTES) --level;
-          if (bytes_at(level) > MICROMAP_MESH_BYTES || data_bytes + bytes_at(level) > MICROMAP_FRAME_BYTES) continue;
-          bakes.push_back({.index = index, .level = level, .data_offset = data_bytes, .desc_offset = desc_bytes});
-          data_bytes = align(data_bytes + bytes_at(level), 256);
-          desc_bytes = align(desc_bytes + triangles * 8, 256);
-        }
-        const auto grow = [&](ComPtr<ID3D12Resource>* buffer, uint64_t bytes) {
-          if (*buffer && (*buffer)->GetDesc().Width >= bytes) return true;
-          if (*buffer) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*buffer)});
-          *buffer = Buffer(std::max<uint64_t>(bytes, 1 << 20), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-          return static_cast<bool>(*buffer);
-        };
-        if (!bakes.empty() && (!grow(&micromap_data_, data_bytes) || !grow(&micromap_descs_, desc_bytes))) bakes.clear();
-        if (!bakes.empty()) {
-          Mark(list, L"micromaps");
-          list->SetPipelineState(omm_pipeline_.Get());
-          std::vector<D3D12_RESOURCE_BARRIER> baked;
-          for (Bake& bake : bakes) {
-            const uint32_t triangles = shared.rt_captures[bake.index].vertex_count / 3;
-            bake.indices = Buffer(uint64_t{triangles} * 4, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                                  D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            if (!bake.indices) continue;
-            const std::array<uint32_t, 4> bake_dispatch = {placements[bake.index].record, triangles, bake.level, 0};
-            list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 4, bake_dispatch.data(), 0);
-            list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, micromap_data_->GetGPUVirtualAddress() + bake.data_offset);
-            list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, bake.indices->GetGPUVirtualAddress());
-            list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, micromap_descs_->GetGPUVirtualAddress() + bake.desc_offset);
-            list->Dispatch((triangles + 63) / 64, 1, 1);
-            baked.push_back(Transition(bake.indices.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-          }
-          baked.push_back(Transition(micromap_data_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-          baked.push_back(Transition(micromap_descs_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-          list->ResourceBarrier(static_cast<UINT>(baked.size()), baked.data());
-          std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_HISTOGRAM_ENTRY> histograms(bakes.size());
-          std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC> arrays(bakes.size());
-          std::vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC> builds;
-          uint64_t scratch_needed = 0;
-          for (size_t index = 0; index < bakes.size(); ++index) {
-            Bake& bake = bakes[index];
-            if (!bake.indices) continue;
-            histograms[index] = {.Count = shared.rt_captures[bake.index].vertex_count / 3, .SubdivisionLevel = bake.level,
-                                 .Format = D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT_OC1_4_STATE};
-            arrays[index] = {
-                .NumOmmHistogramEntries = 1,
-                .pOmmHistogram = &histograms[index],
-                .InputBuffer = micromap_data_->GetGPUVirtualAddress() + bake.data_offset,
-                .PerOmmDescs = {.StartAddress = micromap_descs_->GetGPUVirtualAddress() + bake.desc_offset,
+          if (own_value_ + 1 < baked->value + SLOTS) continue;
+          const uint64_t descs_offset = align(baked->data.size(), 256);
+          const uint64_t indices_offset = align(descs_offset + (baked->descs.size() * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)), 256);
+          auto inputs = Buffer(indices_offset + (baked->indices.size() * 4), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
+                               D3D12_RESOURCE_STATE_GENERIC_READ);
+          uint8_t* mapped = nullptr;
+          if (!inputs || FAILED(inputs->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) continue;
+          std::memcpy(mapped, baked->data.data(), baked->data.size());
+          std::memcpy(mapped + descs_offset, baked->descs.data(), baked->descs.size() * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
+          std::memcpy(mapped + indices_offset, baked->indices.data(), baked->indices.size() * 4);
+          inputs->Unmap(0, nullptr);
+          ComPtr<ID3D12Resource> array;
+          if (!baked->descs.empty()) {
+            D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC& array_desc = array_descs[micromap_arrays.size()];
+            array_desc = {
+                .NumOmmHistogramEntries = static_cast<UINT>(baked->histogram.size()),
+                .pOmmHistogram = baked->histogram.data(),
+                .InputBuffer = inputs->GetGPUVirtualAddress(),
+                .PerOmmDescs = {.StartAddress = inputs->GetGPUVirtualAddress() + descs_offset,
                                 .StrideInBytes = sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)},
             };
-            const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
+            const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS array_inputs = {
                 .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_ARRAY,
                 .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE,
                 .NumDescs = 1,
                 .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
-                .pOpacityMicromapArrayDesc = &arrays[index],
+                .pOpacityMicromapArrayDesc = &array_desc,
             };
             D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
-            device_->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
-            bake.array = Buffer(info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT,
-                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE,
-                                D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-            if (!bake.array) continue;
-            builds.push_back({.DestAccelerationStructureData = bake.array->GetGPUVirtualAddress(), .Inputs = inputs,
-                              .ScratchAccelerationStructureData = scratch_needed});
-            scratch_needed = align(scratch_needed + info.ScratchDataSizeInBytes, 256);
+            device_->GetRaytracingAccelerationStructurePrebuildInfo(&array_inputs, &info);
+            array = Buffer(info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT,
+                           D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE,
+                           D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+            if (!array) continue;
+            array_builds.push_back({.DestAccelerationStructureData = array->GetGPUVirtualAddress(), .Inputs = array_inputs,
+                                    .ScratchAccelerationStructureData = array_scratch});
+            array_scratch = align(array_scratch + info.ScratchDataSizeInBytes, 256);
           }
-          const bool arrays_built = !builds.empty() && ensure_scratch(scratch_needed);
-          if (arrays_built) {
-            for (auto& build : builds) {
-              build.ScratchAccelerationStructureData += scratch_->GetGPUVirtualAddress();
-              list->BuildRaytracingAccelerationStructure(&build, 0, nullptr);
-            }
-            micromaps_built = static_cast<uint32_t>(builds.size());
-            list->ResourceBarrier(1, &uav_barrier);
+          micromap_arrays.push_back({.bake = std::move(baked), .array = std::move(array), .inputs = std::move(inputs), .indices_offset = indices_offset});
+        }
+        std::erase(micromaps_baked_, nullptr);
+        if (!array_builds.empty() && ensure_scratch(array_scratch)) {
+          Mark(list, L"micromaps");
+          for (auto& build : array_builds) {
+            build.ScratchAccelerationStructureData += scratch_->GetGPUVirtualAddress();
+            list->BuildRaytracingAccelerationStructure(&build, 0, nullptr);
           }
-          // Leaves without both (their buffers stay until the GPU is past this request) get none.
-          for (Bake& bake : bakes) {
-            if (arrays_built && bake.array && bake.indices) continue;
-            for (ComPtr<ID3D12Resource>* resource : {std::addressof(bake.array), std::addressof(bake.indices)}) {
-              if (*resource) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*resource)});
-            }
-          }
+          list->ResourceBarrier(1, &uav_barrier);
+        } else if (!array_builds.empty()) {
+          std::erase_if(micromap_arrays, [](const MicromapArray& made) { return made.array.Get() != nullptr; });
         }
       }
 
       // The BLASes, built together: static ones once (for tracing, then compacted), the units' one refitted to this
       // request's poses while its draws are the same (rebuilt every UNITS_REBUILD_FRAMES or when they change).
       std::vector<D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC> triangle_descs(capture_count);
-      std::vector<D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC> linkages(capture_count);
       std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometries(capture_count);
       std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> unit_geometries;
       std::vector<uint32_t> unit_layout;  // their vertices (the top bit: alpha-tested)
@@ -2287,6 +2322,45 @@ class RtScene12 {
       };
       std::vector<Build> builds;
       uint64_t scratch_needed = 0;
+      // A static BLAS (built for tracing, then compacted) of `geometry` among the builds: its buffer (null: no room) and
+      // size.
+      const auto build_static = [&](const D3D12_RAYTRACING_GEOMETRY_DESC* geometry, uint64_t* bytes) {
+        const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
+            .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
+            .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE
+                     | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,
+            .NumDescs = 1,
+            .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+            .pGeometryDescs = geometry,
+        };
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
+        device_->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+        auto blas = Buffer(info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                           D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        if (blas) {
+          builds.push_back({.desc = {.DestAccelerationStructureData = blas->GetGPUVirtualAddress(), .Inputs = inputs,
+                                     .ScratchAccelerationStructureData = scratch_needed},
+                            .compact = true});
+          scratch_needed = align(scratch_needed + info.ScratchDataSizeInBytes, 256);
+          *bytes = info.ResultDataMaxSizeInBytes;
+        }
+        return blas;
+      };
+      // New leaves whose micromaps are baked (with an addon's RT_MICROMAPS, while there is room): their positions, UVs and
+      // mask slice copied after the builds.
+      struct MicromapRead {
+        uint64_t key = 0;
+        uint64_t build = 0;
+        uint32_t first_vertex = 0;
+        uint32_t triangles = 0;
+        uint32_t uv_offset = 0;
+        uint32_t slice = 0;
+      };
+      std::vector<MicromapRead> micromap_reads;
+      size_t micromap_room = (bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
+                                 ? MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
+                                                                                 + (micromap_baking_.valid() ? 1u : 0u) + micromaps_baked_.size())
+                                 : 0u;
       // Instanced captures' rows to read back (their first texel in the vertex buffer).
       std::vector<Slot::RowRead> row_copies;
       std::vector<uint32_t> row_sources;
@@ -2301,27 +2375,11 @@ class RtScene12 {
             .VertexCount = capture.vertex_count / 3 * 3,
             .VertexBuffer = {.StartAddress = vertex_buffer_->GetGPUVirtualAddress() + uint64_t{capture.first_vertex} * 16, .StrideInBytes = 16},
         };
-        const auto bake = std::ranges::find(bakes, index, &Bake::index);
-        const bool with_micromaps = bake != bakes.end() && bake->array && bake->indices;
-        if (with_micromaps) {
-          linkages[index] = {
-              .OpacityMicromapIndexBuffer = {.StartAddress = bake->indices->GetGPUVirtualAddress(), .StrideInBytes = 4},
-              .OpacityMicromapIndexFormat = DXGI_FORMAT_R32_UINT,
-              .OpacityMicromapBaseLocation = 0,
-              .OpacityMicromapArray = bake->array->GetGPUVirtualAddress(),
-          };
-          geometries[index] = {
-              .Type = D3D12_RAYTRACING_GEOMETRY_TYPE_OMM_TRIANGLES,
-              .Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
-              .OmmTriangles = {.pTriangles = &triangle_descs[index], .pOmmLinkage = &linkages[index]},
-          };
-        } else {
-          geometries[index] = {
-              .Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
-              .Flags = placement.masked ? D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION : D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
-              .Triangles = triangle_descs[index],
-          };
-        }
+        geometries[index] = {
+            .Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
+            .Flags = placement.masked ? D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION : D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
+            .Triangles = triangle_descs[index],
+        };
         if ((capture.flags & dlaa_bridge::RT_DYNAMIC) != 0) {
           if (units_record == UINT32_MAX) units_record = placement.record;
           unit_geometries.push_back(geometries[index]);
@@ -2334,18 +2392,8 @@ class RtScene12 {
           if ((capture.flags & dlaa_bridge::RT_TERRAIN) != 0) terrain_triangles += capture.vertex_count / 3;
           continue;
         }
-        const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
-            .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
-            .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE
-                     | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION,
-            .NumDescs = 1,
-            .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
-            .pGeometryDescs = &geometries[index],
-        };
-        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
-        device_->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
-        auto blas = Buffer(info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                           D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        uint64_t bytes = 0;
+        auto blas = build_static(&geometries[index], &bytes);
         if (!blas) {
           // No room: its place goes back now (nothing references it).
           free_records_.push_back(placement.record);
@@ -2353,13 +2401,9 @@ class RtScene12 {
           if (placement.uv_offset != UINT32_MAX) free_uvs_.Give(placement.uv_offset, capture.vertex_count / 3 * 3);
           continue;
         }
-        builds.push_back({.desc = {.DestAccelerationStructureData = blas->GetGPUVirtualAddress(), .Inputs = inputs,
-                                   .ScratchAccelerationStructureData = scratch_needed},
-                          .compact = true});
-        scratch_needed = align(scratch_needed + info.ScratchDataSizeInBytes, 256);
         Mesh& mesh = meshes_[capture.key];
         if (mesh.blas) ReleaseMesh(&mesh);
-        mesh = {.blas = std::move(blas), .build = ++builds_, .bytes = info.ResultDataMaxSizeInBytes, .drawn_frame = frame,
+        mesh = {.blas = std::move(blas), .build = ++builds_, .bytes = bytes, .drawn_frame = frame,
                 .triangles = capture.vertex_count / 3, .record = placement.record, .normal_offset = placement.normal_offset,
                 .uv_offset = placement.uv_offset, .terrain = (capture.flags & dlaa_bridge::RT_TERRAIN) != 0, .foliage = placement.masked};
         if (version >= 14 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0) {
@@ -2371,12 +2415,58 @@ class RtScene12 {
           row_sources.push_back(capture.first_vertex + capture.vertex_count);
           rows_used += capture.instances;
         }
-        if (with_micromaps) {
-          mesh.micromaps = std::move(bake->array);
-          mesh.micromap_indices = std::move(bake->indices);
+        if (placement.masked && micromap_room != 0 && mesh.triangles <= MICROMAP_TRIANGLES) {
+          micromap_reads.push_back({.key = capture.key, .build = mesh.build, .first_vertex = capture.first_vertex, .triangles = mesh.triangles,
+                                    .uv_offset = placement.uv_offset, .slice = shared.rt_capture_slices[index]});
+          --micromap_room;
         }
         slot->compactions.emplace_back(capture.key, mesh.build);
         ++built;
+      }
+      // The leaves whose micromaps were baked: their BLAS built again with them from their kept positions (a new build,
+      // compacted in turn); the old one released once the GPU is past this request.
+      std::vector<D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC> micromap_triangles(micromap_arrays.size());
+      std::vector<D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC> micromap_linkages(micromap_arrays.size());
+      std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> micromap_geometries(micromap_arrays.size());
+      for (size_t index = 0; index < micromap_arrays.size(); ++index) {
+        MicromapArray& made = micromap_arrays[index];
+        const auto found = meshes_.find(made.bake->key);
+        if (found == meshes_.end() || found->second.build != made.bake->build) continue;
+        Mesh& mesh = found->second;
+        micromap_triangles[index] = {
+            .IndexFormat = DXGI_FORMAT_UNKNOWN,
+            .VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT,
+            .VertexCount = mesh.triangles * 3,
+            .VertexBuffer = {.StartAddress = made.bake->positions->GetGPUVirtualAddress(), .StrideInBytes = 16},
+        };
+        micromap_linkages[index] = {
+            .OpacityMicromapIndexBuffer = {.StartAddress = made.inputs->GetGPUVirtualAddress() + made.indices_offset, .StrideInBytes = 4},
+            .OpacityMicromapIndexFormat = DXGI_FORMAT_R32_UINT,
+            .OpacityMicromapBaseLocation = 0,
+            .OpacityMicromapArray = made.array ? made.array->GetGPUVirtualAddress() : 0,
+        };
+        micromap_geometries[index] = {
+            .Type = D3D12_RAYTRACING_GEOMETRY_TYPE_OMM_TRIANGLES,
+            .Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION,
+            .OmmTriangles = {.pTriangles = &micromap_triangles[index], .pOmmLinkage = &micromap_linkages[index]},
+        };
+        uint64_t bytes = 0;
+        auto blas = build_static(&micromap_geometries[index], &bytes);
+        if (!blas) continue;
+        releases_.push_back({.value = own_value_ + 1, .resource = std::move(mesh.blas)});
+        mesh.blas = std::move(blas);
+        mesh.bytes = bytes;
+        mesh.build = ++builds_;
+        mesh.micromaps = std::move(made.array);
+        slot->compactions.emplace_back(made.bake->key, mesh.build);
+        ++micromaps_built;
+      }
+      // What they did not keep (their positions and inputs; the arrays of leaves gone or without room) goes once the GPU
+      // is past this request.
+      for (MicromapArray& made : micromap_arrays) {
+        for (ComPtr<ID3D12Resource>* resource : {std::addressof(made.array), std::addressof(made.inputs), std::addressof(made.bake->positions)}) {
+          if (*resource) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*resource)});
+        }
       }
       // The units: refitted in place while the request's unit draws are those of the last build (without Mega Geometry).
       if (!unit_geometries.empty() && !clusters_) {
@@ -2548,13 +2638,18 @@ class RtScene12 {
       units_record_ = units_record;
       units_masked_ = units_masked || compact_masked;
       // The new placed meshes' build rows (their first instance's) by record (v14); older addons' instanced captures' rows
-      // into the slot's readback (four texels an instance), the CPU's once it comes round.
-      if (!row_copies.empty() || !built_placed.empty()) {
+      // into the slot's readback (four texels an instance), the CPU's once it comes round; the new leaves' micromap
+      // inputs (their positions kept, their UVs and mask slice read back: a slice once a request).
+      if (!row_copies.empty() || !built_placed.empty() || !micromap_reads.empty()) {
         std::vector<D3D12_RESOURCE_BARRIER> to_source = {
             Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
         };
         if (!built_placed.empty()) {
           to_source.push_back(Transition(build_rows_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST));
+        }
+        if (!micromap_reads.empty()) {
+          to_source.push_back(Transition(uvs_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE));
+          to_source.push_back(Transition(atlas_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE));
         }
         list->ResourceBarrier(static_cast<UINT>(to_source.size()), to_source.data());
         for (size_t index = 0; index < row_copies.size(); ++index) {
@@ -2565,7 +2660,41 @@ class RtScene12 {
           list->CopyBufferRegion(build_rows_.Get(), uint64_t{meshes_[built_rows.key].record} * 48, vertex_buffer_.Get(),
                                  uint64_t{built_rows.first_vertex} * 16, 48);
         }
+        std::map<uint32_t, ComPtr<ID3D12Resource>> masks;
+        std::vector<D3D12_RESOURCE_BARRIER> positions_copied;
+        const D3D12_RESOURCE_DESC atlas_desc = micromap_reads.empty() ? D3D12_RESOURCE_DESC{} : atlas_->GetDesc();
+        for (const MicromapRead& read : micromap_reads) {
+          auto bake = std::make_unique<MicromapBake>();
+          *bake = {.key = read.key, .build = read.build, .value = own_value_ + 1, .triangles = read.triangles};
+          bake->positions = Buffer(uint64_t{read.triangles} * 48, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+          bake->uvs = Buffer(uint64_t{read.triangles} * 12, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+          ComPtr<ID3D12Resource>& mask = masks[read.slice];
+          if (!mask) {
+            mask = Buffer(uint64_t{dlaa_bridge::RT_ATLAS_SIZE} * dlaa_bridge::RT_ATLAS_SIZE, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,
+                          D3D12_RESOURCE_STATE_COPY_DEST);
+            if (mask) {
+              const D3D12_TEXTURE_COPY_LOCATION destination = {
+                  .pResource = mask.Get(),
+                  .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                  .PlacedFootprint = {.Offset = 0,
+                                      .Footprint = {.Format = atlas_desc.Format, .Width = dlaa_bridge::RT_ATLAS_SIZE, .Height = dlaa_bridge::RT_ATLAS_SIZE,
+                                                    .Depth = 1, .RowPitch = dlaa_bridge::RT_ATLAS_SIZE}},
+              };
+              const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = atlas_.Get(),
+                                                          .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                                                          .SubresourceIndex = read.slice * atlas_desc.MipLevels};
+              list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+            }
+          }
+          bake->mask = mask;
+          if (!bake->positions || !bake->uvs || !bake->mask) continue;
+          list->CopyBufferRegion(bake->positions.Get(), 0, vertex_buffer_.Get(), uint64_t{read.first_vertex} * 16, uint64_t{read.triangles} * 48);
+          list->CopyBufferRegion(bake->uvs.Get(), 0, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
+          positions_copied.push_back(Transition(bake->positions.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+          micromap_reads_.push_back(std::move(bake));
+        }
         for (auto& barrier : to_source) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+        to_source.insert(to_source.end(), positions_copied.begin(), positions_copied.end());
         list->ResourceBarrier(static_cast<UINT>(to_source.size()), to_source.data());
         slot->row_reads = std::move(row_copies);
       }
@@ -2573,10 +2702,6 @@ class RtScene12 {
           Transition(slot->sizes.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
       };
       if (atlas_) after.push_back(Transition(atlas_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
-      if (!bakes.empty()) {
-        after.push_back(Transition(micromap_data_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
-        after.push_back(Transition(micromap_descs_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
-      }
       list->ResourceBarrier(static_cast<UINT>(after.size()), after.data());
       list->CopyBufferRegion(slot->readback.Get(), 0, slot->sizes.Get(), 0, slot->compactions.size() * sizeof(uint64_t));
       const auto back = Transition(slot->sizes.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -2954,13 +3079,116 @@ class RtScene12 {
 
   // A mesh's BLAS and micromaps released, its record and pool ranges given back, once the GPU is past this request.
   void ReleaseMesh(Mesh* mesh) {
-    for (ComPtr<ID3D12Resource>* resource : {std::addressof(mesh->blas), std::addressof(mesh->micromaps), std::addressof(mesh->micromap_indices)}) {
+    for (ComPtr<ID3D12Resource>* resource : {std::addressof(mesh->blas), std::addressof(mesh->micromaps)}) {
       if (*resource) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*resource)});
     }
     pending_frees_.push_back({.value = own_value_ + 1, .record = mesh->record, .normal_offset = mesh->normal_offset,
                               .triangles = mesh->triangles, .uv_offset = mesh->uv_offset, .first_instance = mesh->first_instance,
                               .instances = static_cast<uint32_t>(mesh->transforms.size())});
   }
+
+  // The leaves' micromaps on their way: read once the GPU is past their request (their readbacks released), baked one at
+  // a time on a thread, then waiting for a request to build them (Record).
+  void AdvanceMicromaps(uint64_t completed) {
+    for (std::unique_ptr<MicromapBake>& read : micromap_reads_) {
+      if (read->value > completed) continue;
+      const D3D12_RANGE uv_range = {.Begin = 0, .End = uint64_t{read->triangles} * 12};
+      const D3D12_RANGE mask_range = {.Begin = 0, .End = uint64_t{dlaa_bridge::RT_ATLAS_SIZE} * dlaa_bridge::RT_ATLAS_SIZE};
+      const D3D12_RANGE written = {};
+      const uint32_t* uvs = nullptr;
+      const uint8_t* mask = nullptr;
+      if (SUCCEEDED(read->uvs->Map(0, &uv_range, reinterpret_cast<void**>(const_cast<uint32_t**>(&uvs))))) {
+        read->uv_data.assign(uvs, uvs + (uint64_t{read->triangles} * 3));
+        read->uvs->Unmap(0, &written);
+      }
+      if (SUCCEEDED(read->mask->Map(0, &mask_range, reinterpret_cast<void**>(const_cast<uint8_t**>(&mask))))) {
+        read->mask_data.assign(mask, mask + mask_range.End);
+        read->mask->Unmap(0, &written);
+      }
+      read->uvs.Reset();
+      read->mask.Reset();
+      if (!read->uv_data.empty() && !read->mask_data.empty()) micromap_queue_.push_back(std::move(read));
+      read.reset();
+    }
+    std::erase(micromap_reads_, nullptr);
+    if (micromap_baking_.valid() && micromap_baking_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+      std::unique_ptr<MicromapBake> baked = micromap_baking_.get();
+      ++micromap_tally_[baked->indices.empty() ? 2 : 0];
+      micromap_tally_[1] += baked->data.size();
+      if (!baked->indices.empty()) micromaps_baked_.push_back(std::move(baked));
+    }
+#if defined(RENODX_OMM_SDK)
+    if (!micromap_baking_.valid() && !micromap_queue_.empty()) {
+      micromap_baking_ = std::async(std::launch::async, [this, bake = std::move(micromap_queue_.front())]() mutable {
+        BakeMicromaps(bake.get());
+        return std::move(bake);
+      });
+      micromap_queue_.erase(micromap_queue_.begin());
+    }
+#endif
+    // A batch's tally once none are on their way (the log).
+    if (micromap_reads_.empty() && micromap_queue_.empty() && !micromap_baking_.valid() && (micromap_tally_[0] + micromap_tally_[2]) != 0) {
+      slow_report_ += std::format("{}[TW ray tracing] Leaf micromaps: {} meshes baked ({} KB), {} failed.", (slow_report_.empty() ? "" : "\n"),
+                                  micromap_tally_[0], micromap_tally_[1] >> 10, micromap_tally_[2]);
+      micromap_tally_ = {};
+    }
+  }
+
+#if defined(RENODX_OMM_SDK)
+  // A leaf mesh's micromaps from its UVs and mask (the bake thread): 4-state as the ray queries test them (bilinear,
+  // wrapping, LEAF_ALPHA_CUTOFF), a micro-triangle about two texels across (at most level 6), the same ones shared, wholly
+  // opaque or clear triangles the special indices (all of them so: no micromaps, no array); none (no indices) when the
+  // SDK fails.
+  void BakeMicromaps(MicromapBake* bake) const {
+    ommCpuTextureMipDesc mip = ommCpuTextureMipDescDefault();
+    mip.width = dlaa_bridge::RT_ATLAS_SIZE;
+    mip.height = dlaa_bridge::RT_ATLAS_SIZE;
+    mip.rowPitch = dlaa_bridge::RT_ATLAS_SIZE;
+    mip.textureData = bake->mask_data.data();
+    ommCpuTextureDesc texture_desc = ommCpuTextureDescDefault();
+    texture_desc.format = ommCpuTextureFormat_UNORM8;
+    texture_desc.mips = &mip;
+    texture_desc.mipCount = 1;
+    texture_desc.alphaCutoff = LEAF_ALPHA_CUTOFF;
+    ommCpuTexture texture = nullptr;
+    if (omm_.create_texture(omm_.baker, &texture_desc, &texture) != ommResult_SUCCESS) return;
+    std::vector<uint32_t> corners(uint64_t{bake->triangles} * 3);
+    std::iota(corners.begin(), corners.end(), 0u);
+    ommCpuBakeInputDesc input = ommCpuBakeInputDescDefault();
+    input.bakeFlags = ommCpuBakeFlags_EnableInternalThreads | ommCpuBakeFlags_Force32BitIndices;
+    input.texture = texture;
+    input.runtimeSamplerDesc = {.addressingMode = ommTextureAddressMode_Wrap, .filter = ommTextureFilterMode_Linear, .borderAlpha = 0.f};
+    input.alphaMode = ommAlphaMode_Test;
+    input.texCoordFormat = ommTexCoordFormat_UV16_FLOAT;
+    input.texCoords = bake->uv_data.data();
+    input.indexFormat = ommIndexFormat_UINT_32;
+    input.indexBuffer = corners.data();
+    input.indexCount = static_cast<uint32_t>(corners.size());
+    input.alphaCutoff = LEAF_ALPHA_CUTOFF;
+    input.maxSubdivisionLevel = 6;
+    input.maxArrayDataSize = MICROMAP_MESH_BYTES;
+    input.maxWorkloadSize = MICROMAP_WORKLOAD;
+    ommCpuBakeResult result = nullptr;
+    const ommCpuBakeResultDesc* desc = nullptr;
+    if (omm_.bake(omm_.baker, &input, &result) == ommResult_SUCCESS && omm_.result_desc(result, &desc) == ommResult_SUCCESS
+        && desc->indexFormat == ommIndexFormat_UINT_32 && desc->indexCount == bake->triangles) {
+      static_assert(sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC) == sizeof(ommCpuOpacityMicromapDesc));
+      const auto* data = static_cast<const uint8_t*>(desc->arrayData);
+      bake->data.assign(data, data + desc->arrayDataSize);
+      bake->descs.resize(desc->descArrayCount);
+      std::memcpy(bake->descs.data(), desc->descArray, bake->descs.size() * sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
+      for (uint32_t entry = 0; entry < desc->descArrayHistogramCount; ++entry) {
+        const ommCpuOpacityMicromapUsageCount& usage = desc->descArrayHistogram[entry];
+        bake->histogram.push_back({.Count = usage.count, .SubdivisionLevel = usage.subdivisionLevel,
+                                   .Format = static_cast<D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT>(usage.format)});
+      }
+      const auto* indices = static_cast<const uint32_t*>(desc->indexBuffer);
+      bake->indices.assign(indices, indices + desc->indexCount);
+    }
+    if (result != nullptr) omm_.destroy_result(result);
+    omm_.destroy_texture(omm_.baker, texture);
+  }
+#endif
 
   // A capture's record flags (rt_scene.hlsli): alpha-tested leaves, thin cloth and sails (v11).
   static uint32_t RecordFlags(const dlaa_bridge::RtCapture& capture, bool masked, uint32_t version) {
@@ -3007,14 +3235,22 @@ class RtScene12 {
   ComPtr<ID3D12Resource> records_;
   ComPtr<ID3D12Resource> uvs_;
   ComPtr<ID3D12Resource> normals_;
-  ComPtr<ID3D12Resource> micromap_data_;  // a request's micromap inputs (grown when needed)
-  ComPtr<ID3D12Resource> micromap_descs_;
   // Placed meshes (v14): their build rows (three texels a record), the instances the placement dispatches write in turn
   // (the last one written), their counters and dedupe table (rt_place's u8), the dispatch.
   ComPtr<ID3D12Resource> build_rows_;
   ComPtr<ID3D12Resource> left_out_start_;
   LeftOut left_out_;
+  // The leaves' opacity micromaps (NVIDIA's OMM SDK; none without omm-lib.dll), on their way: read back by a request in
+  // flight, read (waiting for the bake thread), on it, baked (waiting for a request to build them).
   bool bake_micromaps_ = false;
+  std::vector<std::unique_ptr<MicromapBake>> micromap_reads_;
+  std::vector<std::unique_ptr<MicromapBake>> micromap_queue_;
+  std::future<std::unique_ptr<MicromapBake>> micromap_baking_;
+  std::vector<std::unique_ptr<MicromapBake>> micromaps_baked_;
+  std::array<uint64_t, 3> micromap_tally_ = {};  // since the last log line: meshes baked, their data's bytes, failed
+#if defined(RENODX_OMM_SDK)
+  OmmSdk omm_;
+#endif
   // For the log: the device's start, a slow request's report (GPU over SLOW_MS; at most SLOW_REPORTS), a garbage
   // triangle's (one in 10 s).
   std::string slow_report_;
@@ -3093,7 +3329,6 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> trace_pipeline_;
   ComPtr<ID3D12PipelineState> soft_pipeline_;
   ComPtr<ID3D12PipelineState> scene_data_pipeline_;
-  ComPtr<ID3D12PipelineState> omm_pipeline_;
   ComPtr<ID3D12DescriptorHeap> descriptors_;
   UINT descriptor_size_ = 0;
   Ranges free_triangles_;

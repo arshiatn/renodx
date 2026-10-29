@@ -69,6 +69,7 @@ struct Sliders {
   float units = 1.f;
   float grass = 0.f;
   float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
+  float micromaps = 1.f;
   float light_bounce = 0.f;
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
@@ -109,6 +110,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .local_lights = sliders.sun_shadows != 0.f && dlaa,
       .leaf_light = sliders.leaf_light != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
+      .micromaps = sliders.micromaps != 0.f,
       .shadows_only = sliders.sun_shadows != 0.f && dlaa,
       .debug_view = static_cast<uint32_t>(sliders.debug_view),
       .scene_test = ((sliders.debug_view != 0.f) ? static_cast<uint32_t>(sliders.scene_test) : 0u),
@@ -913,6 +915,19 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Ray-Traced Grass",
           .section = section,
           .tooltip = "Grass casts ray-traced shadows and shade too (with the units' share of triangles). Heavy with dense grass.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] {
+            return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLeafMicromaps",
+          .binding = &sliders->micromaps,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Leaf Micromaps (Experimental)",
+          .section = section,
+          .tooltip = "Faster ray-traced shadows through leaves: their cut-outs are baked once (NVIDIA Opacity Micro-Map SDK).",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] {
             return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);

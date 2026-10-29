@@ -1030,14 +1030,24 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           static. Transfer texture 5120 rows (20M texels), dynamic share 17M, RT_DYNAMIC_UVS 16M a slot (UV pool 224 MB).
           Harness HARNESS_HIDDEN=1 / 2 (hidden instance's shadow gone / back when not drawn) pass.
       [ ] 4 Smoke shadows (Experimental): particles as see-through cards dimming the sun by their opacity.
-      [ ] 5 Optimizations: [x] terrain compact (71eb3be0). [x] Cluster templates: a set's clusters built once as
+      [x] 5 Optimizations: [x] terrain compact (71eb3be0). [x] Cluster templates: a set's clusters built once as
           templates (opaque or alpha-tested), instantiated each frame with the vertices (3 KB each, 128 MB pool, the
           unused sets' templates given back when full); a quarter of the clusters still built from triangles (captures,
           sets without templates yet). Harness stress (20,000 boxes, 80k clusters): scene 1.48 -> 1.08 ms, clusters
           1.22 -> 0.82. Found: an instantiation's geometryIndexOffset is only applied to templates built with a
           per-triangle geometry index buffer (zeros: template_geometry_); without, the record lookup got garbage.
           Status line: GPU times right after the label (the bridge's 255 characters cut them in battles).
-          [ ] early trace + late wait [ ] CLAS memory to need [ ] OMM SDK (MIT?).
+          [x] OMM SDK (NVIDIA RTX SDKs License: free, binaries in the app, ATN OK 2026-10-29): build\downloads\omm
+          (release 1.10.0: omm-lib.dll loaded at run time, header for build.ps1; LICENSE.txt), the GPU bake (rt_omm,
+          ATN's three GPU resets) removed. A new static leaf mesh (with the addon's Leaf Micromaps, RT_MICROMAPS 128,
+          default on, Experimental) copies its positions, reads back its UVs and atlas slice; AdvanceMicromaps bakes on
+          a thread (4-state, bilinear wrap, cutoff 0.5, level <= 6, workload 2^28, special indices), Record builds the
+          array (none when all special: DXR allows a null array) and the BLAS again SLOTS+ requests on (new build,
+          compacted). Log: "Leaf micromaps: N meshes baked (K KB), F failed". Harness: RT_EXTRA_TRACE_FLAGS=128 / 144,
+          HARNESS_LEAF_STRESS=8 (4000-triangle random meshes: ~80 ms a bake) pass. release_zip.py ships helper26 +
+          omm-lib.dll + OMM_SDK_LICENSE.txt; About credits the SDK.
+          [-] early trace + late wait: no gap (the trace is asked at the AO pass, read right after). [-] CLAS memory to
+          need: VRAM only (32 GB card). Both skipped.
       [ ] 6 Grass / flags motion check; zip twattila_vN + helper; report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)

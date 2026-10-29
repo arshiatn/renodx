@@ -23,7 +23,6 @@ Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_path_lib.h" -Vn RT_PATH_LIB "$PSScriptRoot\rt_path_lib.lib_6_9.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_compact', 'RT_COMPACT'), @('rt_place', 'RT_PLACE'),
-                      @('rt_omm', 'RT_OMM'),
                       @('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'))) {
   & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\$($shader[0]).h" -Vn $shader[1] "$PSScriptRoot\$($shader[0]).cs_6_5.hlsl"
 }
@@ -36,8 +35,17 @@ if (Test-Path "$nvapi\nvapi.h") {
   $nvapi_include = @("-imsvc$nvapi")
   $nvapi_library = @("$nvapi\amd64\nvapi64.lib")
 }
+# NVIDIA's Opacity Micro-Map SDK (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/OMM: its Windows release) for the
+# leaves' micromaps when it sits in build\downloads\omm\extracted; its omm-lib.dll (loaded at run time) ships next to the
+# helper.
+$omm = Join-Path $root "build\downloads\omm\extracted"
+$omm_include = @()
+if (Test-Path "$omm\include\omm.h") {
+  $omm_include = @("-imsvc$omm\include")
+  Copy-Item "$omm\bin\omm-lib.dll" $out -Force
+}
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
-  "-imsvc$root\external\Streamline\include" @nvapi_include "/I$out" `
+  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include "/I$out" `
   "$PSScriptRoot\main.cpp" /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
   "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib
