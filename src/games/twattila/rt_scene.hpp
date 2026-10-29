@@ -84,6 +84,7 @@ struct Sliders {
   float light_bounce = 0.f;  // the Light Bounce's tracer: 0 its own (screen space), 1 rays, 2 paths
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
+  float light_bounce_resolution = 1.f;  // 0 full, 1 half, 2 quarter
   float path_bounces = 2.f;
   float path_ambient = 0.f;  // Path-Traced Ambient (games InstallSunDraws gives the ambient cube's place)
   float reflections = 0.f;
@@ -125,6 +126,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .light_bounce = sliders.light_bounce != 0.f && bounce,
       .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),
       .light_bounce_range = sliders.light_bounce_range,
+      .light_bounce_resolution = sliders.light_bounce_resolution,
       .path_tracing = sliders.light_bounce == 2.f && bounce,
       .path_bounces = static_cast<uint32_t>(sliders.path_bounces),
       .path_ambient = path_ambient,
@@ -161,6 +163,8 @@ inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
                     || settings.specular_occlusion || settings.local_lights || settings.fog_shadows;
   aa->ray_traced_guides = settings.path_tracing || settings.reflections || settings.specular_occlusion;
   aa->ray_traced_reflections = settings.reflections || settings.specular_occlusion;
+  // The Light Bounce through rays: theirs alone (no screen-space resolution, Checkerboard or filters under RR).
+  light_bounce::SetRayTraced(settings.light_bounce, settings.light_bounce_resolution, dlaa_bridge::bridge.reconstructing);
 }
 
 // The TW games' view: DLAA's (anti_aliasing.hpp); a rigid draw DLAA's motion saw moving stays out of the scene.
@@ -1259,6 +1263,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 16.f,
           .format = "%d",
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightBounceResolution",
+          .binding = &sliders->light_bounce_resolution,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Ray-Traced Light Bounce Resolution",
+          .section = section,
+          .tooltip = "Its own resolution (the screen-space Light Bounce's settings no longer apply to it).\n"
+                     "Full: sharpest, about 4x Half's cost.",
+          .labels = {"Full", "Half", "Quarter"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce != 0.f; },
       },
       new renodx::utils::settings::Setting{

@@ -1517,6 +1517,16 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 3. Grass shadows settling 1-2 s: before their micromaps, sun rays through grass hit MAX_CANDIDATES (64) and count
           as blocked (dark); GPU bakes now 24 a request (was 8), set reads 32, 128 bakes in flight, OMM descriptor ring
           65536 (was 16384: 24 bakes x 3 requests would have wrapped onto descriptors in flight).
+      [x] 6. Water Caustics never patched (v107): both water shaders are also screen_space_shadows' forward shaders
+          (SHADOW_READER_SHADERS), patched after the render scale and before OnCreateWater; OriginalHash knew only
+          view_share's own code: the callback saw an unknown hash (no "Water Caustics" log line in debug29). Fixed:
+          view_share::Repatched(patched, code, hash) records every patch's code with the game's hash (called by
+          screen_space_shadows, grass_fade and OnCreateWater every time); OriginalHash looks it up.
+      [x] 7. Pure RT/PT Light Bounce (ATN's add-on to the batch: GT-VBGI's 1/4 resolution, checkerboard and filters on the
+          rays' light): light_bounce::SetRayTraced (from rt_scene::Configure, every present after light_bounce::Update):
+          the rays' resolution from the new RayTracedLightBounceResolution (Full / Half / Quarter, default Half), no
+          Checkerboard, and under RR raw (no resolve, no denoiser: the apply reads `traced`). Without RR the resolve
+          stays (noise).
       [ ] 4. Answers: GPU bake (already default in v107; the toggle stays as the CPU baker's fallback; nothing else bakes
           on the CPU: BLAS builds, compaction, placement, sway, garbage checks, light picks are GPU; cluster sets are
           made on the addon's worker threads, off the game's thread), PTLAS (TLAS ~0.4 ms of a 25 ms frame: at most

@@ -1289,7 +1289,7 @@ bool OnCreateWater(reshade::api::device* device, reshade::api::pipeline_layout, 
     if (entry->second.empty()) continue;
     desc->code = entry->second.data();
     desc->code_size = entry->second.size();
-    if (scaled.has_value()) twattila::view_share::Repatched(code.data(), desc->code);
+    twattila::view_share::Repatched(code.data(), desc->code, hash);
     modified = true;
   }
   return modified;

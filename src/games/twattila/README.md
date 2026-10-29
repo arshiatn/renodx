@@ -12,6 +12,11 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon3
   with micromaps skips its alpha tests (2-state, as NVIDIA suggests for shadow rays). Test field: 4.8 -> 2.1 ms.
 - **Grass shadows settle sooner**: three times as many grass micromaps baked a frame on the GPU (new grass's shadows
   were dark for 1-2 s until baked).
+- **Ray-Traced Light Bounce on its own**: with Rays or Path Tracing, the screen-space Light Bounce (GT-VBGI) no longer
+  shapes it: its own resolution (new **Ray-Traced Light Bounce Resolution**: Full / Half / Quarter, Half by default;
+  before it ran at the screen-space one's, e.g. a quarter), every texel each frame (no Checkerboard), and under Ray
+  Reconstruction its light goes in as traced (no screen-space resolve or denoiser: RR denoises it).
+- **Water Caustics work now**: v107's never reached the water (another patch changed the water shaders first).
 
 ## v107 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper46: ship them together)
 

@@ -83,6 +83,7 @@ struct Settings {
   bool light_bounce = false;
   uint32_t light_bounce_rays = 4;
   float light_bounce_range = 10.f;  // metres
+  float light_bounce_resolution = 1.f;  // its texels at 1 / 2^this of the render size
   // Path tracing (bridge v8, dlaa_helper/rt_path.hlsli): the ray-traced Light Bounce's rays become paths going on past
   // what the screen sees (`path_bounces` surfaces past the first), shaded from a world radiance cache and the game's
   // lighting learned from the screen; the reflections' paths too.

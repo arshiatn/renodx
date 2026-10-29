@@ -586,6 +586,8 @@ struct Runtime {
   // pipelines get (patched or the addon's render_scale shaders) and their pipelines, each with its reads.
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;
   std::unordered_map<const void*, Reads> wanted_code;
+  // Another patch's code on top of this module's (Repatched), by the game's hash it stands for (OriginalHash).
+  std::unordered_map<const void*, uint32_t> repatched;
   std::unordered_map<uint64_t, Reads> pipelines;
   // The addon's region reads by the game's shader hash, and the whole textures' names (Install).
   std::unordered_map<uint32_t, Reads> region_reads;
@@ -851,22 +853,27 @@ inline void Update(ID3D11DeviceContext* context, bool scaled, const std::array<u
   internal::runtime.bound = false;
 }
 
-// The game's hash of a shader this module patched as the game created it (`code`: the code it gave the game), else
-// none: another patch by the game's hashes on top (screen_space_shadows.hpp) then gives its code to Repatched.
+// The game's hash of a shader this module patched as the game created it (`code`: the code it gave the game, or another
+// patch's on top of it: Repatched), else none: another patch by the game's hashes on top (screen_space_shadows.hpp)
+// then gives its code to Repatched.
 inline std::optional<uint32_t> OriginalHash(const void* code) {
   const std::shared_lock lock(internal::runtime.mutex);
   for (const auto& [hash, patched] : internal::runtime.patched) {
     if (!patched.empty() && patched.data() == code) return hash;
   }
+  if (const auto found = internal::runtime.repatched.find(code); found != internal::runtime.repatched.end()) return found->second;
   return std::nullopt;
 }
 
-// Another patch's `code` in place of this module's (`patched`): its pipelines get cb12 the same.
-inline void Repatched(const void* patched, const void* code) {
+// Another patch's `code` (of the game's shader `hash`) in place of `patched` (this module's or another's): its pipelines
+// get cb12 as `patched`'s did, and a patch after it still finds the game's hash (ATN's debug29: Water Caustics never
+// found the water shaders, screen_space_shadows' code on top of this module's).
+inline void Repatched(const void* patched, const void* code, uint32_t hash) {
   const std::unique_lock lock(internal::runtime.mutex);
   if (const auto wanted = internal::runtime.wanted_code.find(patched); wanted != internal::runtime.wanted_code.end()) {
     internal::runtime.wanted_code.emplace(code, wanted->second);
   }
+  internal::runtime.repatched.insert_or_assign(code, hash);
 }
 
 // A game shader (by its hash) that reads render-space textures at the display's size: those slots' reads take the

@@ -676,7 +676,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     if (entry->second.empty()) continue;
     desc->code = entry->second.data();
     desc->code_size = entry->second.size();
-    if (scaled.has_value()) view_share::Repatched(code.data(), desc->code);
+    view_share::Repatched(code.data(), desc->code, hash);
     modified = true;
   }
   return modified;

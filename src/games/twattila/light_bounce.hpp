@@ -149,6 +149,7 @@ struct DeviceObjects {
   size_t history_index = 0;  // the one the last resolve wrote
   frame_history::Target denoised;
   uint64_t traced_frame = UINT64_MAX;
+  bool raw_frame = false;  // this frame's trace applied as traced (no resolve, no denoiser)
 };
 
 struct Runtime {
@@ -160,8 +161,14 @@ struct Runtime {
   UINT display_height = 0;
   bool apply_per_pixel = false;  // with the game's MSAA
   bool denoise = false;
+  bool raw = false;  // the rays' trace applied as traced (SetRayTraced)
   DeviceObjects objects;
 };
+
+// 2^`exponent` (0 to `most`).
+inline float PowerOfTwo(float exponent, float most) {
+  return static_cast<float>(1u << static_cast<uint32_t>(std::clamp(exponent, 0.f, most)));
+}
 
 static Runtime runtime;
 // The trace through rays (rt_scene.hpp: the prepared light's first level, its texels' size and scale, the raw target;
@@ -484,16 +491,19 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       // The trace through rays when ray tracing has it (the prepared textures no longer targets), else on screen.
       native->OMSetRenderTargets(0, nullptr, nullptr);
       const internal::RayTracedTrace ray_traced = internal::ray_traced_trace.load(std::memory_order_relaxed);
-      if (ray_traced == nullptr
-          || !ray_traced(native, objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
-                         static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get())) {
-        pass(objects.traced, objects.trace.Get());
-      }
+      const bool rays = ray_traced != nullptr
+                        && ray_traced(native, objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
+                                      static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get());
+      if (!rays) pass(objects.traced, objects.trace.Get());
+      // The rays' trace as traced under Ray Reconstruction (SetRayTraced): no resolve over frames, no denoiser.
+      objects.raw_frame = rays && runtime.raw;
       inputs[internal::LIGHT_VIEW] = objects.traced.srv.Get();
-      inputs[internal::FRAMES_VIEW] = objects.history_frames[previous_index].srv.Get();
-      pass(objects.history[objects.history_index], objects.resolve.Get(), &objects.history_frames[objects.history_index]);
-      inputs[internal::FRAMES_VIEW] = nullptr;
-      if (runtime.denoise) {
+      if (!objects.raw_frame) {
+        inputs[internal::FRAMES_VIEW] = objects.history_frames[previous_index].srv.Get();
+        pass(objects.history[objects.history_index], objects.resolve.Get(), &objects.history_frames[objects.history_index]);
+        inputs[internal::FRAMES_VIEW] = nullptr;
+      }
+      if (runtime.denoise && !objects.raw_frame) {
         inputs[internal::LIGHT_VIEW] = objects.history[objects.history_index].srv.Get();
         inputs[internal::HISTORY_VIEW] = nullptr;
         pass(objects.denoised, objects.denoise.Get());
@@ -514,10 +524,12 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
                                  game_depth.Get());
       objects.traced_frame = runtime.frame;
     }
-    // The apply: the game's draw again (its pixels), added to the light buffer (the denoised bounce with the Denoiser).
+    // The apply: the game's draw again (its pixels), added to the light buffer (the denoised bounce with the Denoiser, the
+    // rays' trace itself when applied as traced).
     inputs[internal::LIGHT_VIEW] = nullptr;
-    inputs[internal::HISTORY_VIEW] =
-        (runtime.denoise ? objects.denoised.srv.Get() : objects.history[objects.history_index].srv.Get());
+    inputs[internal::HISTORY_VIEW] = objects.raw_frame ? objects.traced.srv.Get()
+                                     : runtime.denoise ? objects.denoised.srv.Get()
+                                                       : objects.history[objects.history_index].srv.Get();
     inputs[internal::PREPARED_VIEW] = nullptr;
     inputs[internal::PREPARED_VIEW + 1] = nullptr;
     native->PSSetShaderResources(internal::VIEWS_SLOT, internal::VIEW_COUNT, inputs.data());
@@ -551,19 +563,16 @@ inline void Update(reshade::api::swapchain* swapchain, const Sliders& sliders) {
   if (sliders.strength > 0.f) {
     display = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
   }
-  const auto power_of_two = [](float exponent, float most) {
-    return static_cast<float>(1u << static_cast<uint32_t>(std::clamp(exponent, 0.f, most)));
-  };
   const bool temporal = (sliders.temporal != 0.f);
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.settings = {
       .strength = sliders.strength,
       .radius = sliders.radius,
       .thickness = sliders.thickness,
-      .steps = 8.f * power_of_two(sliders.quality, 5.f),
-      .slices = power_of_two(sliders.directions, 4.f),
+      .steps = 8.f * internal::PowerOfTwo(sliders.quality, 5.f),
+      .slices = internal::PowerOfTwo(sliders.directions, 4.f),
       // Effects at Output Resolution: the render scale's steps of 2 off the divisor (the detail of 100%).
-      .scale = power_of_two(sliders.resolution - frame_history::EffectSteps(), 3.f),
+      .scale = internal::PowerOfTwo(sliders.resolution - frame_history::EffectSteps(), 3.f),
       .history = (temporal ? internal::HISTORY_SHARE : 0.f),
       .frame = (temporal ? static_cast<float>(internal::runtime.frame % 64) : 0.f),
       .bounces = std::clamp(sliders.multi_bounce, 0.f, 1.f),
@@ -592,6 +601,18 @@ inline void Install(std::span<const SunDraw> draws) {
 // Ray tracing's trace in place of the screen-space one (rt_scene.hpp; null: none).
 inline void SetRayTracedTrace(internal::RayTracedTrace trace) {
   internal::ray_traced_trace.store(trace);
+}
+
+// Every present after Update, while ray tracing traces the Light Bounce (`on`): the rays at their own resolution (1 /
+// 2^`resolution`, not the screen-space search's), every texel each frame (no Checkerboard), and with `raw` (Ray
+// Reconstruction denoises the frame) applied as traced: no resolve over frames, no denoiser (ATN 2026-10-30: the
+// screen-space search's resolution and filters made the rays' light coarse and noisy).
+inline void SetRayTraced(bool on, float resolution, bool raw) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::runtime.raw = on && raw;
+  if (!on) return;
+  internal::runtime.settings.scale = internal::PowerOfTwo(resolution - frame_history::EffectSteps(), 3.f);
+  internal::runtime.settings.checkerboard = 0.f;
 }
 
 // The game's device is going away: the addon's objects on it with it.
