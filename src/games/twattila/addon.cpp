@@ -1157,7 +1157,8 @@ bool addon_registered = false;
 // Water Clarity (ATN: rivers more see-through): the river (2E9F5935) and lake (C9FBACCB) shaders blend toward the deep
 // water colour by g_sea_bed_light_scatter (lighting_VS_PS c10 at b2) to the power of the water they look through. At
 // their draws a copy of those constants with it raised to 1 / clarity is bound (water_clarity.cs), the game's put back
-// after the draw (later draws, and the game's updates of its own buffer, stay its).
+// after the draw (later draws, and the game's updates of its own buffer, stay its). Up to 16: murky rivers (ATN's
+// debug28: no change seen at 4) keep little light a metre, 4 times as far still dark. Logged once where it applies.
 constexpr std::array<uint32_t, 2> WATER_SHADERS = {0x2E9F5935, 0xC9FBACCB};
 constexpr UINT WATER_LIGHTING_SLOT = 2;
 float water_clarity = 1.f;
@@ -1173,6 +1174,7 @@ struct WaterObjects {
   ComPtr<ID3D11UnorderedAccessView> clarified_uav;
   ComPtr<ID3D11Buffer> lighting;       // the constant buffer bound for the draw
   ComPtr<ID3D11Buffer> game_lighting;  // the game's, put back after it
+  bool logged = false;
 };
 WaterObjects water_objects;
 
@@ -1224,6 +1226,9 @@ constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) 
   native->CopyResource(objects.lighting.Get(), objects.clarified.Get());
   objects.game_lighting = std::move(game_lighting);
   native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, objects.lighting.GetAddressOf());
+  if (!std::exchange(objects.logged, true)) {
+    renodx::utils::log::i("[Total War] Water Clarity: applied at a water draw (", objects.bytes, " bytes of lighting constants).");
+  }
   return {.post_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
     post_native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, water_objects.game_lighting.GetAddressOf());
@@ -1746,7 +1751,7 @@ void ConfigureAddon() {
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "How far you see into rivers and lakes. 1: the game's; higher: clearer water.",
       .min = 0.25f,
-      .max = 4.f,
+      .max = 16.f,
       .format = "%.2f",
   });
 

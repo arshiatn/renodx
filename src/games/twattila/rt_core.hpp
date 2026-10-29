@@ -440,7 +440,6 @@ struct Runtime {
   UINT bounce_scale = 1;
   uint64_t reflected_frame = UINT64_MAX;  // the frame the reflections were asked for
   bool reflected = false;                 // and whether they were traced
-  bool reflections_bound = false;         // the reflection pass's draw has them bound (no screen-space march)
   ID3D11ShaderResourceView* game_ao = nullptr;  // the AO it was made from (compared only)
   std::array<UINT, 2> traced_size = {};   // the render size traced
   std::array<float, 16> traced_view_projection = {};  // its camera's (the ray-traced Light Bounce's)

@@ -157,25 +157,16 @@ inline const Host TW_HOST = {
 };
 
 // The game's reflection pass (environment_specular_light, Attila's shaders: Attila, Thrones), before its draws: the
-// ray-traced reflections; without them the screen-space march's pyramid and resolve (ssr_hiz.hpp) as before. True:
-// draw.
+// ray-traced reflections, and the screen-space march's pyramid and resolve (ssr_hiz.hpp) for what keeps the march
+// (everything without them; with them water). True: draw.
 inline bool OnReflectionDraw(reshade::api::command_list* cmd_list) {
-  const bool reflected = BindReflections(cmd_list, false, true);
-  {
-    const std::unique_lock lock(internal::runtime.mutex);
-    internal::runtime.reflections_bound = reflected;
-  }
-  return reflected || ssr_hiz::OnReflectionDraw(cmd_list);
+  BindReflections(cmd_list, false, true);
+  return ssr_hiz::OnReflectionDraw(cmd_list);
 }
 
 // After its draws: the views unbound, the screen-space march's resolve when it ran.
 inline void OnReflectionDrawn(reshade::api::command_list* cmd_list) {
-  bool reflected = false;
-  {
-    const std::unique_lock lock(internal::runtime.mutex);
-    reflected = std::exchange(internal::runtime.reflections_bound, false);
-  }
-  if (!reflected) ssr_hiz::OnReflectionDrawn(cmd_list);
+  ssr_hiz::OnReflectionDrawn(cmd_list);
   BindReflections(cmd_list, false, false);
 }
 
