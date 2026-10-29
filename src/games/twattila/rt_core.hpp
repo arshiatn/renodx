@@ -223,6 +223,9 @@ constexpr uint64_t PLACE_TURNS = 4;
 constexpr size_t MAX_LOCAL_LIGHTS = 8192;
 // Compact draws (bridge v16): the cluster sets made a frame at most (a battle's first frames bring hundreds of meshes).
 constexpr uint32_t MAX_SET_BUILDS = 16;
+// The frames a set waits for its first instance's corners (its triangles' order) before it is made in the index order
+// (a grass patch's clusters each over the whole patch: a 4K harness field with ATN's settings traced 30 ms, sorted 7.6).
+constexpr uint64_t CORNER_FRAMES = 30;
 // Record Ray Tracing Profile's length.
 constexpr uint64_t PROFILE_MS = 30000;
 
@@ -409,7 +412,8 @@ struct Runtime {
     bool failed = false;  // no set: its triangles captured
     bool sent = false;
     std::future<dlaa_bridge::ClusterSetData> making;  // its set on a worker (PrepareClusterSet)
-    ComPtr<ID3D11Buffer> corners;  // its first instance's captured corners, copied with its indices (the set's order)
+    ComPtr<ID3D11Buffer> corners;  // its first instance's captured corners, copied at a full capture (the set's order)
+    bool unsorted = false;         // its set made without them
   };
   std::unordered_map<uint64_t, ClusterMesh> cluster_meshes;
   // This frame's compact draws (consecutive ones of a mesh joined), the sets its trace sends and their bytes, its
@@ -791,7 +795,8 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
     return;
   }
   if (runtime.frame < mesh.copied_frame + 2 || runtime.set_builds >= MAX_SET_BUILDS) return;
-  // Its corners (copied after its indices: ready, they are too).
+  if (!mesh.corners && runtime.frame < mesh.copied_frame + CORNER_FRAMES) return;
+  // Its corners (copied with its indices or at a later full capture; not yet read back: the next frame).
   std::vector<std::array<float, 4>> corners;
   if (mesh.corners) {
     D3D11_MAPPED_SUBRESOURCE mapped_corners = {};
@@ -818,6 +823,7 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
   }
   mesh.staging.Reset();
   mesh.corners.Reset();
+  mesh.unsorted = corners.size() < index_count;
   mesh.failed = FAILED(result);
   if (mesh.failed) return;
   mesh.making = std::async(std::launch::async, [indices = std::move(indices), corners = std::move(corners)]() mutable {
@@ -1096,11 +1102,15 @@ void Capture(Context& command, const SceneShader& shader) {
              && runtime.dynamic_vertices + block_texels <= MAX_DYNAMIC_VERTICES
              && runtime.dynamic_triangles + block_triangles <= dlaa_bridge::RT_DYNAMIC_TRIANGLES
              && runtime.dynamic_clusters + block_clusters <= dlaa_bridge::RT_DYNAMIC_CLUSTERS;
-      if (!sway && !moving && known->second.instances == instances && (key + runtime.frame) % PLACE_TURNS != 0) {
+      // One whose cluster set waits for its triangles' order (first captured before the helper took compact draws: its set
+      // made unsorted, each cluster over a whole grass patch) is captured once more in full (its corners: PrepareClusterSet).
+      const auto set = compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end();
+      const bool corners_wanted = set != runtime.cluster_meshes.end() && set->second.staging && !set->second.corners;
+      if (!sway && !moving && !corners_wanted && known->second.instances == instances && (key + runtime.frame) % PLACE_TURNS != 0) {
         known->second.frame = runtime.frame;
         return;
       }
-      place = true;
+      place = !corners_wanted;
     } else if (runtime.captured_keys.contains(key)) {
       if (!placed) return;
       place = true;
@@ -1289,11 +1299,11 @@ void Capture(Context& command, const SceneShader& shader) {
   native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
   native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
-  // A mesh whose cluster set is on its way (its indices copied this frame): its first instance's corners just captured
-  // copied too (PrepareClusterSet orders the set's triangles by place).
+  // A mesh whose cluster set is on its way (its indices copied): its first instance's corners just captured copied too
+  // (PrepareClusterSet orders the set's triangles by place), at the first full capture since.
   if constexpr (INDEXED) {
     if (const auto mesh = (compactable && !blocks && !place) ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end();
-        mesh != runtime.cluster_meshes.end() && mesh->second.staging && !mesh->second.corners && mesh->second.copied_frame == runtime.frame) {
+        mesh != runtime.cluster_meshes.end() && mesh->second.staging && !mesh->second.corners) {
       const D3D11_BUFFER_DESC corners_desc = {.ByteWidth = arguments.index_count * 16, .Usage = D3D11_USAGE_STAGING,
                                               .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
       if (SUCCEEDED(device->CreateBuffer(&corners_desc, nullptr, mesh->second.corners.GetAddressOf()))) {
@@ -2255,14 +2265,15 @@ inline void Update(const Settings& settings) {
       const double frame_ms = 1000.0 / static_cast<double>(frequency.QuadPart) / costs.frames;
       renodx::utils::log::i(std::format("[Total War] Ray tracing's own cost a frame: CPU {:.2f} ms capturing, {:.2f} ms tracing; GPU "
                                         "{:.2f} ms its passes, {:.2f} ms waiting for the helper; every frame {:.2f} M vertices captured "
-                                        "({:.0f} compact draws; {} cluster sets), {:.2f} M left out (their share full), {:.2f} M without "
-                                        "room (captures or vertex texture full).",
+                                        "({:.0f} compact draws; {} cluster sets, {} unsorted), {:.2f} M left out (their share full), {:.2f} M "
+                                        "without room (captures or vertex texture full).",
                                         costs.capture_ticks * frame_ms, costs.trace_ticks * frame_ms,
                                         (costs.timed != 0 ? costs.passes_ms / costs.timed : 0.0),
                                         (costs.timed != 0 ? costs.waiting_ms / costs.timed : 0.0),
                                         static_cast<double>(costs.dynamic_vertices) / 1.0e6 / costs.frames,
                                         static_cast<double>(costs.compact_draws) / costs.frames,
                                         std::ranges::count_if(runtime.cluster_meshes, [](const auto& entry) { return static_cast<bool>(entry.second.remap); }),
+                                        std::ranges::count_if(runtime.cluster_meshes, [](const auto& entry) { return entry.second.remap && entry.second.unsorted; }),
                                         static_cast<double>(costs.left_out) / 1.0e6 / costs.frames,
                                         static_cast<double>(costs.no_room) / 1.0e6 / costs.frames));
       // What was left out, and which share was full (the largest first).
