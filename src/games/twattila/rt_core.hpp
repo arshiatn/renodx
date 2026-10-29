@@ -108,6 +108,10 @@ struct Settings {
   // camera (0: everywhere), placed still past them; Off-Screen Sway (Experimental) off: also only near the view.
   float sway_range = 0.f;
   bool sway_off_screen = true;
+  // Fast Leaf Shadows (Experimental, with Leaf Micromaps): micromapped leaves without alpha tests (2-state); Grass Shadow
+  // Range (Experimental): pixels farther than these metres trace without grass (0: every pixel with it).
+  bool fast_leaves = false;
+  float grass_shadow_range = 0.f;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -1633,6 +1637,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.micromaps ? dlaa_bridge::RT_MICROMAPS : 0u)
                | ((runtime.settings.micromaps && runtime.settings.gpu_micromaps) ? dlaa_bridge::RT_GPU_MICROMAPS : 0u)
                | (runtime.settings.sway_off_screen ? 0u : dlaa_bridge::RT_SWAY_IN_VIEW)
+               | ((runtime.settings.micromaps && runtime.settings.fast_leaves) ? dlaa_bridge::RT_FAST_LEAVES : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u)
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u),
@@ -1655,6 +1660,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .light_size = runtime.settings.light_size,
       .shadow_rays = runtime.settings.shadow_rays,
       .sway_range = runtime.settings.sway_range,
+      .grass_shadow_range = runtime.settings.grass_shadow_range,
   };
   if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);

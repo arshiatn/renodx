@@ -147,6 +147,9 @@ constexpr uint32_t RT_PROFILE = 1024;
 constexpr uint32_t RT_GPU_MICROMAPS = 2048;
 // Off-Screen Sway off (v18): swaying placed draws' instances away from the view keep their placed (still) copies only.
 constexpr uint32_t RT_SWAY_IN_VIEW = 4096;
+// Fast Leaf Shadows (v18): the rays toward the sun, the ambient's and the lights' take micromapped leaves' unknown states
+// as known (2-state: no alpha tests for them).
+constexpr uint32_t RT_FAST_LEAVES = 8192;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -254,7 +257,9 @@ struct Shared {
   // The addon's (v6): soft shadows (the sun's disk, degrees; 0 hard) and the leaves' opacity masks (rt_atlas: the R8
   // texture array, shared again with every set of textures; 0: none) with each capture's slice in it.
   float rt_sun_softness = 0.f;
-  uint32_t rt_v6_padding = 0;
+  // The addon's (v18, in v6's padding): Grass Shadow Range: pixels farther (view depth, metres) trace without grass (0:
+  // every pixel with it).
+  float rt_grass_shadow_range = 0.f;
   uint64_t rt_atlas = 0;
   uint32_t rt_capture_slices[RT_CAPTURES] = {};
   // The addon's (v7): the ray-traced Light Bounce (light_bounce.hpp), a request of its own after the frame's trace

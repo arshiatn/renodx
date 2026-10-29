@@ -3639,6 +3639,7 @@ class RtScene12 {
         std::bit_cast<uint32_t>(soft ? std::tan(softness * 3.14159265f / 180.f) : 0.f),
         (version >= 18) ? std::clamp(shared.rt_shadow_rays, 1u, 4u) : 1u,
         std::bit_cast<uint32_t>((version >= 18) ? std::clamp(shared.rt_light_size, 0.f, 2.f) : 0.f),
+        std::bit_cast<uint32_t>((version >= 18) ? std::clamp(shared.rt_grass_shadow_range, 0.f, 1.0e4f) : 0.f),
     };
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());

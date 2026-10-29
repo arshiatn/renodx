@@ -68,6 +68,8 @@ struct Sliders {
   float grass_sway = 1.f;          // placed grass's swaying copies (Attila)
   float sway_range = 0.f;          // metres (0: everywhere)
   float sway_off_screen = 1.f;
+  float fast_leaves = 0.f;
+  float grass_shadow_range = 0.f;  // metres (0: everywhere)
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
   float ambient_range = 2.f;       // metres
   float ambient_rays = 2.f;
@@ -134,6 +136,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .grass_sway = sliders.grass_sway != 0.f,
       .sway_range = sliders.sway_range,
       .sway_off_screen = sliders.sway_off_screen != 0.f,
+      .fast_leaves = sliders.fast_leaves != 0.f,
+      .grass_shadow_range = sliders.grass_shadow_range,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .micromaps = sliders.micromaps != 0.f,
       .gpu_micromaps = sliders.gpu_micromaps != 0.f,
@@ -1045,6 +1049,22 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           },
       },
       new renodx::utils::settings::Setting{
+          .key = "RayTracedGrassShadowRange",
+          .binding = &sliders->grass_shadow_range,
+          .default_value = 0.f,
+          .label = "Grass Shadow Range (Experimental)",
+          .section = section,
+          .tooltip = "Past this distance grass casts no ray-traced shadows (on itself or the ground):\n"
+                     "faster over fields. 0 m: everywhere.",
+          .min = 0.f,
+          .max = 200.f,
+          .format = "%.0f m",
+          .is_enabled = dlaa_on,
+          .is_visible = [] {
+            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass; });
+          },
+      },
+      new renodx::utils::settings::Setting{
           .key = "RayTracedAmbientOcclusion",
           .binding = &sliders->ambient_occlusion,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
@@ -1117,6 +1137,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Leaf Micromaps baked on the GPU instead of CPU threads:\n"
                      "frees the CPU, and new grass's and leaves' shadows settle sooner.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->micromaps != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedFastLeafShadows",
+          .binding = &sliders->fast_leaves,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Fast Leaf Shadows (Experimental)",
+          .section = section,
+          .tooltip = "Leaves with Leaf Micromaps skip their alpha tests:\n"
+                     "faster shadows under trees, leaf edges a little coarser.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->micromaps != 0.f; },
       },

@@ -28,6 +28,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     light_mask[id.xy] = 0xFFFFFFFFu;
     return;
   }
+  SceneRayFlags();
   // Lights out of reach or behind a planar surface keep their bit: their own shading leaves those pixels dark (at
   // corners, cracks and edges the normal from the depth can be wrong: traced).
   const float3 normal = SurfaceNormal(int2(id.xy), position);

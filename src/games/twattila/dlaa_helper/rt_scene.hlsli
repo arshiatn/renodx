@@ -31,7 +31,8 @@ cbuffer Settings : register(b0) {
   float sun_cone;     // tan of the sun's angular radius for soft shadows (0: hard)
   uint shadow_rays;   // rays a pixel toward the sun and each light (v18; Ray Tracing at Output Resolution)
   float light_size;   // the local lights' radius in metres for soft shadows under Ray Reconstruction (v18; 0: hard)
-  uint3 settings_padding;
+  float grass_shadow_range;  // Grass Shadow Range (v18): rays from pixels farther (view depth, metres) pass grass; 0: none
+  uint2 settings_padding;
 };
 
 static const uint SUN_SHADOWS = 1u;
@@ -41,6 +42,9 @@ static const uint LOCAL_LIGHTS = 8u;     // the local lights' shadows (rt_trace.
 static const uint LEAF_LIGHT = 16u;      // leaves let a share of the sun through (rt_trace.cs_6_5.hlsl)
 static const uint RECONSTRUCTED = 256u;  // Ray Reconstruction denoises the frame (dlaa_bridge.h RT_RECONSTRUCTED)
 static const uint FOG_LIGHTS = 512u;     // the local lights' light in the fog too (rt_fog.cs_6_5.hlsl; v18)
+// Fast Leaf Shadows (v18, dlaa_bridge.h RT_FAST_LEAVES): the rays toward the sun, the ambient's and the lights' take
+// micromapped leaves' unknown states as known (no alpha tests for them: SceneRayFlags).
+static const uint FAST_LEAVES = 8192u;
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 static const uint RECORD_THIN = 2u;    // cloth and sails
 static const uint RECORD_SMOKE = 4u;   // smoke (Smoke Shadows): dims the sun's rays, blocks none
@@ -74,6 +78,16 @@ float2 UnpackUv(uint packed) {
 
 // The share of the sun's light past the smoke a ray met so far (SunRay starts it; AlphaPasses dims it).
 static float smoke_transmittance = 1.f;
+
+// The runtime ray flags of Occluded and TRACE_NEAREST (the sun's, the ambient's and the lights' rays): with Fast Leaf
+// Shadows 2-state micromaps (their unknown states opaque or transparent as they lean: no candidates from them).
+static uint scene_ray_flags = RAY_FLAG_NONE;
+
+void SceneRayFlags() {
+#if defined(OPACITY_MICROMAPS)
+  if ((flags & FAST_LEAVES) != 0u) scene_ray_flags = RAY_FLAG_FORCE_OMM_2_STATE;
+#endif
+}
 
 // Where a ray meets a smoke particle: its opacity (its UVs' scale less one) over a soft disk.
 float SmokeDensity(uint first, float2 barycentrics) {
@@ -132,7 +146,7 @@ bool Occluded(float3 origin, float3 direction, float range, uint instances) {
   ray.TMin = 0.f;
   ray.TMax = range;
   SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
-  query.TraceRayInline(scene, RAY_FLAG_NONE, instances, ray);
+  query.TraceRayInline(scene, scene_ray_flags, instances, ray);
   uint candidates = 0u;
   while (query.Proceed()) {
     if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
@@ -149,7 +163,7 @@ bool Occluded(float3 origin, float3 direction, float range, uint instances) {
 // none further.
 #define TRACE_NEAREST(query, ray, instances)                                                       \
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                                            \
-  query.TraceRayInline(scene, RAY_FLAG_NONE, (instances), (ray));                                    \
+  query.TraceRayInline(scene, scene_ray_flags, (instances), (ray));                                  \
   {                                                                                                  \
     uint trace_candidates = 0u;                                                                      \
     while (query.Proceed()) {                                                                        \

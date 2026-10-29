@@ -49,7 +49,7 @@ float LeafHit(float3 origin, float3 direction, float near, float far) {
   ray.TMin = near;
   ray.TMax = far;
   SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
-  query.TraceRayInline(scene, RAY_FLAG_NONE, LEAVES, ray);
+  query.TraceRayInline(scene, scene_ray_flags, LEAVES, ray);
   uint candidates = 0u;
   while (query.Proceed()) {
     if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) query.CommitNonOpaqueTriangleHit();
@@ -57,9 +57,10 @@ float LeafHit(float3 origin, float3 direction, float near, float far) {
   return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? query.CommittedRayT() : -1.f;
 }
 
-// The ray toward the sun: lit (1; 0 blocked; with Light Through Leaves the share the leaves met let through; the share
-// the smoke it met let through) and the nearest blocker's distance (soft shadows).
-float2 SunRay(float3 origin, float3 direction) {
+// The ray toward the sun against `instances` (all, or all but grass): lit (1; 0 blocked; with Light Through Leaves the
+// share the leaves met let through; the share the smoke it met let through) and the nearest blocker's distance (soft
+// shadows).
+float2 SunRay(float3 origin, float3 direction, uint instances) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
@@ -67,8 +68,8 @@ float2 SunRay(float3 origin, float3 direction) {
   ray.TMax = 1.0e4f;
   smoke_transmittance = 1.f;
   if ((flags & LEAF_LIGHT) == 0u) {
-    if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f, ALL_INSTANCES) ? 0.f : smoke_transmittance, 0.f);
-    TRACE_NEAREST(query, ray, ALL_INSTANCES)
+    if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f, instances) ? 0.f : smoke_transmittance, 0.f);
+    TRACE_NEAREST(query, ray, instances)
     return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(smoke_transmittance, 0.f);
   }
   // Light Through Leaves: one ray first against everything: none met, lit (most rays in the open; every lit pixel was
@@ -81,7 +82,7 @@ float2 SunRay(float3 origin, float3 direction) {
   float first_leaf = -1.f;
   {
     SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
-    query.TraceRayInline(scene, RAY_FLAG_NONE, ALL_INSTANCES, ray);
+    query.TraceRayInline(scene, scene_ray_flags, instances, ray);
     uint candidates = 0u;
     while (query.Proceed()) {
       if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
@@ -100,7 +101,7 @@ float2 SunRay(float3 origin, float3 direction) {
   float first = 0.f;
   {
     SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
-    query.TraceRayInline(scene, RAY_FLAG_NONE, NO_LEAVES, ray);
+    query.TraceRayInline(scene, scene_ray_flags, NO_LEAVES & instances, ray);
     uint candidates = 0u;
     while (query.Proceed()) {
       if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
@@ -115,7 +116,7 @@ float2 SunRay(float3 origin, float3 direction) {
       smoke_transmittance = 1.f;
       [loop]
       for (uint layer = 0u; layer < 4u; ++layer) {
-        TRACE_NEAREST(layered, ray, NO_LEAVES)
+        TRACE_NEAREST(layered, ray, NO_LEAVES & instances)
         if (layered.CommittedStatus() != COMMITTED_TRIANGLE_HIT) break;
         if (layer == 0u) first = layered.CommittedRayT();
         const uint record_flags = records[layered.CommittedInstanceID() + layered.CommittedGeometryIndex()].z >> 16;
@@ -150,6 +151,9 @@ void main(uint3 id : SV_DispatchThreadID) {
     if ((flags & PART_SUN) == 0u) ambient[id.xy] = 1.f;
     return;
   }
+  SceneRayFlags();
+  // Grass Shadow Range: pixels past it trace without grass (its shadows short, a field's blades around every ray's start).
+  const bool near_grass = grass_shadow_range <= 0.f || position.w <= grass_shadow_range;
   const float3 normal = SurfaceNormal(int2(id.xy), position);
   const bool planar = Planar(int2(id.xy), position, normal);
   const float3 origin = RayOrigin(position, normal, planar);
@@ -179,7 +183,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       }
       const float3 spot = (rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f;
       // Off along the normal and toward the sun; where not planar toward the camera.
-      sum += facing ? SunRay((planar ? origin + toward * offset : origin) + spot, toward)
+      sum += facing ? SunRay((planar ? origin + toward * offset : origin) + spot, toward, near_grass ? ALL_INSTANCES : NO_GRASS)
                     : float2(OccludedSolid(position.xyz + spot + toward * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
     }
     sun_visibility = sum.x / rays;
@@ -209,7 +213,8 @@ void main(uint3 id : SV_DispatchThreadID) {
       const float3 direction = CosineDirection(normal, ((float)ray + band_jitter) / (float)ambient_rays, frac(turn + (float)ray * 0.618034f));
       // Grass only within GRASS_AMBIENT_RANGE: its blades darken what they stand on, farther ones barely, and a ray
       // escaping through a field met every blade within the range.
-      if (!Occluded(origin, direction, ambient_range, NO_GRASS_SMOKE) && !Occluded(origin, direction, min(ambient_range, GRASS_AMBIENT_RANGE), GRASS)) {
+      if (!Occluded(origin, direction, ambient_range, NO_GRASS_SMOKE)
+          && !(near_grass && Occluded(origin, direction, min(ambient_range, GRASS_AMBIENT_RANGE), GRASS))) {
         ++escaped;
       }
     }
