@@ -50,6 +50,7 @@ cbuffer Lights : register(b4) {
   float4 lights[32];
   uint light_count;
   float4 light_colours[32];  // rgb
+  uint4 light_previous[2];   // each light's place in the last trace's list, a byte each (255: new)
 };
 
 // Where the rays toward a local light stop before it (metres; at most half the way): its lamp, torch or fire's wood.

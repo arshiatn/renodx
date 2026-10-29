@@ -49,6 +49,8 @@
 #include "rt_cache_resolve.h"     // dxc -Fh (build.ps1)
 #include "rt_compact.h"           // dxc -Fh (build.ps1)
 #include "rt_fog.h"               // dxc -Fh (build.ps1)
+#include "rt_lights.h"            // dxc -Fh (build.ps1)
+#include "rt_lights_omm.h"        // dxc -Fh (build.ps1)
 #include "rt_fog_omm.h"           // dxc -Fh (build.ps1)
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
@@ -510,7 +512,7 @@ class RtScene12 {
     dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_)
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
              && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_)
-             && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_);
+             && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_) && pipeline(RT_LIGHTS_OMM, sizeof(RT_LIGHTS_OMM), &lights_pipeline_);
     if (!dxr12_) {
       trace_pipeline_.Reset();
       bounce_pipeline_.Reset();
@@ -518,6 +520,7 @@ class RtScene12 {
       reflect_pipeline_.Reset();
       reuse_pipeline_.Reset();
       fog_pipeline_.Reset();
+      lights_pipeline_.Reset();
     }
     if ((!trace_pipeline_ && !pipeline(RT_TRACE, sizeof(RT_TRACE), &trace_pipeline_))
         || (!bounce_pipeline_ && !pipeline(RT_BOUNCE, sizeof(RT_BOUNCE), &bounce_pipeline_)) || !pipeline(RT_SOFT, sizeof(RT_SOFT), &soft_pipeline_)
@@ -526,6 +529,7 @@ class RtScene12 {
         || (!reflect_pipeline_ && !pipeline(RT_REFLECT, sizeof(RT_REFLECT), &reflect_pipeline_))
         || (!reuse_pipeline_ && !pipeline(RT_REUSE, sizeof(RT_REUSE), &reuse_pipeline_))
         || (!fog_pipeline_ && !pipeline(RT_FOG, sizeof(RT_FOG), &fog_pipeline_))
+        || (!lights_pipeline_ && !pipeline(RT_LIGHTS, sizeof(RT_LIGHTS), &lights_pipeline_))
         || !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_)
         || !pipeline(RT_CACHE_RESOLVE, sizeof(RT_CACHE_RESOLVE), &cache_resolve_pipeline_)
         || !pipeline(RT_REFLECT_FILTER, sizeof(RT_REFLECT_FILTER), &reflect_filter_pipeline_)
@@ -707,6 +711,7 @@ class RtScene12 {
     fog_.Reset();
     ambient_history_ = {};
     ambient_positions_.Reset();
+    light_history_ = {};
     previous_color_.Reset();
     guide_normals_.Reset();
     guide_albedo_.Reset();
@@ -1259,7 +1264,7 @@ class RtScene12 {
   static constexpr double SLOW_MS = 100.0;
   static constexpr uint32_t SLOW_REPORTS = 50;
   // The effects' history (EnsureHistory): its kinds, released after this many frames unused (~10 s).
-  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_KINDS };
+  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_LIGHTS, HISTORY_KINDS };
   static constexpr uint32_t HISTORY_FRAMES = 600;
   // The descriptor table: SRVs t1-t7, UAVs u0-u5.
   enum Descriptor : UINT {
@@ -1303,7 +1308,8 @@ class RtScene12 {
     AMBIENT_HISTORY,  // u28-u29: the ambient visibility kept over frames, two sets (v11)
     AMBIENT_POSITIONS = AMBIENT_HISTORY + 2,  // u30: the last trace's positions
     HIT_DISTANCE,  // u31: Ray Reconstruction's specular hit distance (v17)
-    DESCRIPTOR_COUNT,
+    LIGHT_HISTORY,  // u32-u33: the local lights' bits kept over frames, two sets
+    DESCRIPTOR_COUNT = LIGHT_HISTORY + 2,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
   // rt_path.hlsli's path flags and cache size.
@@ -1323,6 +1329,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
   static constexpr uint32_t PATH_AMBIENT_HISTORY = 16384;  // rt_camera.hlsli
   static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;
+  static constexpr uint32_t PATH_LIGHT_HISTORY = 131072;
   static constexpr uint32_t PATH_PERMUTE = 65536;
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
@@ -1585,7 +1592,8 @@ class RtScene12 {
     }
     for (const UINT descriptor : std::initializer_list<UINT>{SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY,
                                                              REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG, AMBIENT_HISTORY,
-                                                             AMBIENT_HISTORY + 1, AMBIENT_POSITIONS, HIT_DISTANCE}) {
+                                                             AMBIENT_HISTORY + 1, AMBIENT_POSITIONS, HIT_DISTANCE, LIGHT_HISTORY,
+                                                             LIGHT_HISTORY + 1}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     if (cache_keys_) return;
@@ -1702,6 +1710,17 @@ class RtScene12 {
         Written(ambient_positions_.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, AMBIENT_POSITIONS);
         ambient_frame_ = UINT32_MAX;
         return true;
+      case HISTORY_LIGHTS:
+        // The local lights' bits: two sets in turn (the ambient's parity, its positions).
+        if (light_history_[1]) return true;
+        if (!Texture(DXGI_FORMAT_R32_UINT, &light_history_[0]) || !Texture(DXGI_FORMAT_R32_UINT, &light_history_[1])) {
+          light_history_ = {};
+          return false;
+        }
+        Written(light_history_[0].Get(), DXGI_FORMAT_R32_UINT, LIGHT_HISTORY);
+        Written(light_history_[1].Get(), DXGI_FORMAT_R32_UINT, LIGHT_HISTORY + 1);
+        lights_frame_ = UINT32_MAX;
+        return true;
       default:
         return false;
     }
@@ -1739,6 +1758,9 @@ class RtScene12 {
     if (ambient_positions_ && unused(HISTORY_AMBIENT)) {
       release("ambient occlusion's", {std::addressof(ambient_history_[0]), std::addressof(ambient_history_[1]), std::addressof(ambient_positions_)},
               {AMBIENT_HISTORY, AMBIENT_HISTORY + 1, AMBIENT_POSITIONS});
+    }
+    if (light_history_[1] && unused(HISTORY_LIGHTS)) {
+      release("local lights'", {std::addressof(light_history_[0]), std::addressof(light_history_[1])}, {LIGHT_HISTORY, LIGHT_HISTORY + 1});
     }
   }
 
@@ -2933,10 +2955,24 @@ class RtScene12 {
     // The fog shadows (v11): a quarter of the render pixels each way.
     const bool fog = (shared.rt_flags & dlaa_bridge::RT_FOG_SHADOWS) != 0 && fog_;
     if (fog) textures.emplace_back(fog_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    // Their places in the last trace's list (the addon orders them by importance each frame; the same position and
+    // reach: the same light), a byte each after the colours (255: new).
+    std::array<uint8_t, dlaa_bridge::RT_MAX_LIGHTS> light_previous = {};
     if (local_lights) {
       textures.emplace_back(light_mask_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       std::memcpy(slot->light_data, shared.rt_lights, light_count * sizeof(shared.rt_lights[0]));
       std::memcpy(slot->light_data + sizeof(shared.rt_lights), &light_count, sizeof(light_count));
+      for (uint32_t light = 0; light < light_count; ++light) {
+        const auto found = std::ranges::find_if(previous_lights_.begin(), previous_lights_.begin() + previous_light_count_,
+                                                [&](const std::array<float, 4>& other) {
+                                                  return std::equal(other.begin(), other.end(), shared.rt_lights[light]);
+                                                });
+        light_previous[light] = (found != previous_lights_.begin() + previous_light_count_)
+                                    ? static_cast<uint8_t>(found - previous_lights_.begin())
+                                    : uint8_t{255};
+      }
+      std::memcpy(slot->light_data + sizeof(shared.rt_lights) + 16 + sizeof(shared.rt_light_colours), light_previous.data(),
+                  light_previous.size());
     }
     std::vector<D3D12_RESOURCE_BARRIER> barriers = {uav_barrier};
     for (const auto& [resource, used] : textures) {
@@ -2960,21 +2996,34 @@ class RtScene12 {
     };
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());
-    // The ambient's history: valid when the last trace was the frame before (its camera kept for the projection).
-    const bool ambient_kept = version >= 11 && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 && EnsureHistory(HISTORY_AMBIENT, frame);
-    if (ambient_kept) {
-      PathConstants constants = {.flags = (!reconstructed && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame ? PATH_AMBIENT_HISTORY : 0u)
+    // The trace's history: the ambient visibility and the local lights' bits kept over frames, valid when the last trace
+    // was the frame before (its positions and camera kept for the projection). Its constants bound every trace.
+    const bool lights_kept = local_lights && version >= 11 && EnsureHistory(HISTORY_LIGHTS, frame);
+    const bool ambient_kept = version >= 11 && ((shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 || lights_kept)
+                              && EnsureHistory(HISTORY_AMBIENT, frame);
+    {
+      const bool last_frame = ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
+      PathConstants constants = {.flags = (!reconstructed && last_frame ? PATH_AMBIENT_HISTORY : 0u)
+                                          | (lights_kept && last_frame && lights_frame_ + 1 == frame ? PATH_LIGHT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u)};
       std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
       constants.previous_view_projection = ambient_view_projection_;
       std::memcpy(slot->paths_data, &constants, sizeof(constants));
       list->SetComputeRootConstantBufferView(ROOT_PATHS, slot->paths->GetGPUVirtualAddress());
+    }
+    if (ambient_kept) {
       const auto to_uav = Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       list->ResourceBarrier(1, &to_uav);
     }
     Mark(list, L"trace");
     list->SetPipelineState(trace_pipeline_.Get());
     list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+    // The local lights' shadows (rt_lights: their own registers; before this trace's positions become the history).
+    if (local_lights) {
+      Mark(list, L"local lights");
+      list->SetPipelineState(lights_pipeline_.Get());
+      list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+    }
     if (ambient_kept) {
       // This trace's positions for the next one.
       const std::array<D3D12_RESOURCE_BARRIER, 2> to_copy = {
@@ -2995,6 +3044,12 @@ class RtScene12 {
       std::copy_n(shared.rt_view_projection, 16, ambient_view_projection_.begin());
       ambient_frame_ = frame;
       ambient_parity_ ^= 1u;
+    }
+    // This trace's lights for the next one's places.
+    if (lights_kept) {
+      for (uint32_t light = 0; light < light_count; ++light) std::copy_n(shared.rt_lights[light], 4, previous_lights_[light].begin());
+      previous_light_count_ = light_count;
+      lights_frame_ = frame;
     }
     if (fog) {
       Mark(list, L"fog");
@@ -3406,7 +3461,13 @@ class RtScene12 {
   std::array<float, 16> ambient_view_projection_ = {};
   uint32_t ambient_frame_ = UINT32_MAX;
   uint32_t ambient_parity_ = 0;
+  // The local lights' bits kept over frames (HISTORY_LIGHTS), the last trace that wrote them and its lights.
+  std::array<ComPtr<ID3D12Resource>, 2> light_history_;
+  uint32_t lights_frame_ = UINT32_MAX;
+  std::array<std::array<float, 4>, dlaa_bridge::RT_MAX_LIGHTS> previous_lights_ = {};
+  uint32_t previous_light_count_ = 0;
   ComPtr<ID3D12PipelineState> fog_pipeline_;
+  ComPtr<ID3D12PipelineState> lights_pipeline_;
   ComPtr<ID3D12PipelineState> bounce_pipeline_;
   // Paths (v8): last frame's colour (the DLAA input), the G-buffer guides, the reflections' outputs; the history and the
   // cache of the helper's own; the pipelines.

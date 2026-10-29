@@ -1087,7 +1087,19 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           map run twice); refraction / water (blend the guides toward the water surface: the water shaders would write
           the guides, later); DOF guide (luminance after - before DOF, same post-tone-map problem); SSR's hit distance
           (the game's SSR pixel shader would need a UAV, later).
-      [ ] 3 RTXDI (ReSTIR DI) for torches and fires: a few sampled lights a pixel instead of up to 32 shadow rays.
+      [x] 3 (step 11: a ray budget, not RTXDI) RTXDI (ReSTIR DI) for torches and fires: a few sampled lights a pixel instead of up to 32 shadow rays.
+          The game shades each light itself and reads our bit for it (light_mask), so a sampler choosing one light a pixel
+          (ReSTIR DI) leaves the others unknown. Instead (rt_lights.cs_6_5.hlsl, its own pass after the trace): with more
+          than 8 lights in a pixel's reach the list's first 4 (the addon orders it by importance) are traced every frame
+          and the others in turns, 4 a frame, each 8 x 8 block its own phase; one not traced keeps the last trace's bit
+          where it saw the same surface (light_history, two R32_UINT sets; lights matched to last frame's list by
+          position and reach: light_previous bytes in b4). Harness (HARNESS_LIGHT_STRESS: up to 32 lights reaching every
+          pixel): the bits equal tracing all once the turns came round; 4K 16 lights 3.80 -> 3.13 ms, 32 lights 6.64 ->
+          5.17 ms (each light every pixel reaches costs ~0.18 ms; 8 or fewer: unchanged). The same rays chosen by a plain
+          rule cost ~2.4 ms in a test pass; the gap is in the history code's shape, not found without a GPU profiler.
+          Also: the harness never passed its camera with the trace (the game's addon does), so the ambient history was
+          never exercised there; it is now. The trace binds its history constants every time (they were bound only
+          with the ambient's history).
       [-] 4 (step 10: assessed, not built) SHARC in place of our world radiance cache (A/B); NRC after (bigger: training each frame).
           SHARC v1.6.5.0 (NVIDIA RTX SDKs License, build\downloads\sharc) speeds a path tracer by ending paths at cached
           hits; ours already end at the first hit the screen or our cache knows (HitLight) and only go on for surfaces
