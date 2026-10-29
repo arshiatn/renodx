@@ -29,11 +29,12 @@ static const float AMBIENT_BLEND = 0.2f;
 static const uint PART_SUN = 1u << 30;
 static const uint PART_AMBIENT = 1u << 31;
 static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient rays (Occluded)
-// The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface.
+// The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface. Not under
+// Ray Reconstruction: NVIDIA's guide gives it the raw signal (it replaces the denoisers that accumulate frames).
 float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
   float kept = ambient_now;
   uint2 seen_pixel;
-  if ((path_flags & PATH_AMBIENT_HISTORY) != 0u && SeenByLastTrace(world, seen_pixel)) {
+  if ((path_flags & PATH_AMBIENT_HISTORY) != 0u && (flags & RECONSTRUCTED) == 0u && SeenByLastTrace(world, seen_pixel)) {
     kept = lerp(ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 1u : 0u][seen_pixel], ambient_now, AMBIENT_BLEND);
   }
   ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u][pixel] = kept;

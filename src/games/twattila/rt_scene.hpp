@@ -79,7 +79,7 @@ struct Sliders {
   float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
   float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
   float micromaps = 1.f;
-  float gpu_micromaps = 0.f;
+  float gpu_micromaps = 1.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
   float light_bounce = 0.f;  // the Light Bounce's tracer: 0 its own (screen space), 1 rays, 2 paths
   float light_bounce_rays = 4.f;
@@ -1151,10 +1151,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .key = "RayTracedGpuMicromaps",
           .binding = &sliders->gpu_micromaps,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "GPU Micromap Baking (Experimental)",
+          .default_value = 1.f,
+          .label = "GPU Micromap Baking",
           .section = section,
-          .tooltip = "Leaf Micromaps baked on the GPU instead of CPU threads:\n"
+          .tooltip = "Leaf Micromaps baked on the GPU (NVIDIA's way in game) instead of CPU threads:\n"
                      "frees the CPU, and new grass's and leaves' shadows settle sooner.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->micromaps != 0.f; },

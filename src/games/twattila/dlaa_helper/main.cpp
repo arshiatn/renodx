@@ -232,8 +232,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
     if (version >= 15) ++shared->rt_device;
     ReShadeLogMessage(nullptr, 0, (++scene_losses == 1)
-                                      ? "[TW ray tracing] Started again on a new device, with GPU Micromap Baking, Swaying Shadows Range, Off-Screen "
-                                        "Sway, Shader Execution Reordering and SHaRC Radiance Cache (Experimental) paused until the game restarts."
+                                      ? "[TW ray tracing] Started again on a new device, with GPU Micromap Baking and the Experimental Swaying "
+                                        "Shadows Range, Off-Screen Sway, Shader Execution Reordering and SHaRC Radiance Cache paused until the game "
+                                        "restarts."
                                       : "[TW ray tracing] Off until the game restarts (a second GPU reset).");
   };
   // The open set's objects in Ray Reconstruction and frame generation (their handles stay open: set_handles), on a new
