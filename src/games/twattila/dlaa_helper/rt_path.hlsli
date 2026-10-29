@@ -283,15 +283,10 @@ float3 LocalLight(float3 surface, float3 normal, float u) {
   float picked_distance = 0.f;
   [loop]
   for (uint index = 0u; index < min(light_count, 32u); ++index) {
-    const float3 to_light = lights[index].xyz - surface;
-    const float light_distance = length(to_light);
-    if (light_distance >= lights[index].w || light_distance <= 1e-3f) continue;
-    const float3 direction = to_light / light_distance;
-    const float n_dot_l = dot(normal, direction);
-    if (n_dot_l <= 0.f) continue;
-    const float falloff = 1.f - light_distance / lights[index].w;
-    const float3 arriving = max(light_colours[index].rgb, 0.f) * (falloff * falloff * n_dot_l);
-    const float weight = dot(arriving, float3(0.2126f, 0.7152f, 0.0722f));
+    float3 direction;
+    float light_distance;
+    const float3 arriving = LightArriving(index, surface, normal, direction, light_distance);
+    const float weight = Luminance(arriving);
     if (weight <= 0.f) continue;
     total += weight;
     const float odds = weight / total;
@@ -439,10 +434,6 @@ struct Reservoir {
   float weight;   // the resampling weights' sum while merging; W once finished
   float count;    // M: the samples it stands for
 };
-
-float Luminance(float3 color) {
-  return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
-}
 
 // The target function at a receiver: the sample's light (luminance) by the cosine toward it (the integrand without 1/pi).
 float ReuseTarget(float3 receiver, float3 receiver_normal, Reservoir reservoir) {

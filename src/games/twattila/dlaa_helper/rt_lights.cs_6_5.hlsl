@@ -9,7 +9,10 @@
 // LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS (a burning city: each light every pixel reaches cost ~0.18 ms at 4K) the list's
 // first are traced every frame and the others in turns; one not traced keeps the last trace's bit where it saw the same
 // surface (light_history, in the ambient's parity). The harness at 4K: 16 lights in every pixel's reach 3.80 -> 3.13 ms,
-// 32 lights 6.64 -> 5.17 ms, the bits the same as tracing all once the turns came round.
+// 32 lights 6.64 -> 5.17 ms, the bits the same as tracing all once the turns came round. Importance-Sampled Torch
+// Shadows (LIGHT_IMPORTANCE) instead: LIGHT_IMPORTANCE_RAYS lights a pixel, picked by what they give it (ReSTIR DI's
+// candidates: their colour, falloff and angle), stratified with one number a 8 x 8 block (its pixels refresh the same
+// lights); the others keep their bits (dim lights' shadows follow slower).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_lights.h -Vn RT_LIGHTS; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_LIGHTS_OMM.
 #include "./rt_scene.hlsli"
 #include "./rt_camera.hlsli"
@@ -19,6 +22,7 @@ RWTexture2D<uint> light_history[2] : register(u32);  // the bits kept over frame
 
 static const uint LIGHT_RAYS_ALWAYS = 4u;  // the list's first, traced every frame
 static const uint LIGHT_RAYS_TURNS = 4u;   // and the others' a frame
+static const uint LIGHT_IMPORTANCE_RAYS = 2u;
 
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
@@ -45,7 +49,8 @@ void main(uint3 id : SV_DispatchThreadID) {
   uint lit = 0xFFFFFFFFu;
   uint2 seen_pixel;
   const uint reached_count = countbits(reached);
-  if (reached_count > LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS && (path_flags & PATH_LIGHT_HISTORY) != 0u
+  const bool importance = (flags & LIGHT_IMPORTANCE) != 0u;
+  if (reached_count > (importance ? LIGHT_IMPORTANCE_RAYS : LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS) && (path_flags & PATH_LIGHT_HISTORY) != 0u
       && SeenByLastTrace(position.xyz, seen_pixel)) {
     // The list's first LIGHT_RAYS_ALWAYS (the addon orders it by importance) every frame, the others in turns by their
     // place, each 8 x 8 block its own phase (a light's shadows change a block at a time); a light new to the list is
@@ -54,6 +59,30 @@ void main(uint3 id : SV_DispatchThreadID) {
     const uint turns = (light_count - LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS - 1u) / LIGHT_RAYS_TURNS;
     const uint phase = frame + (id.x >> 3) + ((id.y >> 3) * 7u);
     uint chosen = 0u;
+    if (importance) {
+      // Systematic picks along the lights' weights (a light that gives more than one step takes one ray).
+      float total = 0.f;
+      [loop]
+      for (uint light = 0u; light < light_count; ++light) {
+        float3 direction;
+        float light_distance;
+        if (((reached >> light) & 1u) != 0u) total += Luminance(LightArriving(light, light_origin, normal, direction, light_distance));
+      }
+      const float step = total / (float)LIGHT_IMPORTANCE_RAYS;
+      float next = Random(uint3(id.xy >> 3u, frame * 4u + 7u)) * step;
+      float running = 0.f;
+      [loop]
+      for (uint light = 0u; light < light_count && total > 0.f; ++light) {
+        float3 direction;
+        float light_distance;
+        if (((reached >> light) & 1u) == 0u) continue;
+        running += Luminance(LightArriving(light, light_origin, normal, direction, light_distance));
+        if (running > next) {
+          chosen |= 1u << light;
+          next += step * ceil((running - next) / step);
+        }
+      }
+    }
     uint kept_dark = 0u;  // the others the last trace found blocked
     [loop]
     for (uint light = 0u; light < light_count; ++light) {
@@ -61,9 +90,9 @@ void main(uint3 id : SV_DispatchThreadID) {
       const uint4 words = light_previous[light >> 4u];
       const uint lane = (light >> 2u) & 3u;
       const uint previous = (((lane == 0u) ? words.x : (lane == 1u) ? words.y : (lane == 2u) ? words.z : words.w) >> ((light & 3u) * 8u)) & 0xFFu;
-      if (light < LIGHT_RAYS_ALWAYS || (light + phase) % turns == 0u || previous == 0xFFu) {
+      if (previous == 0xFFu || (!importance && (light < LIGHT_RAYS_ALWAYS || (light + phase) % turns == 0u))) {
         chosen |= 1u << light;
-      } else if (((kept_bits >> previous) & 1u) == 0u) {
+      } else if (((chosen >> light) & 1u) == 0u && ((kept_bits >> previous) & 1u) == 0u) {
         kept_dark |= 1u << light;
       }
     }

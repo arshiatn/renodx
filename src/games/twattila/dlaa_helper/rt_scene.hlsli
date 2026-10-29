@@ -45,6 +45,9 @@ static const uint FOG_LIGHTS = 512u;     // the local lights' light in the fog t
 // Fast Leaf Shadows (v18, dlaa_bridge.h RT_FAST_LEAVES): the rays toward the sun, the ambient's and the lights' take
 // micromapped leaves' unknown states as known (no alpha tests for them: SceneRayFlags).
 static const uint FAST_LEAVES = 8192u;
+// Importance-Sampled Torch Shadows (v18, dlaa_bridge.h RT_LIGHT_IMPORTANCE): rt_lights traces a few lights a pixel, picked
+// by what they give it (ReSTIR's candidates), the others keep their bits.
+static const uint LIGHT_IMPORTANCE = 16384u;
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 static const uint RECORD_THIN = 2u;    // cloth and sails
 static const uint RECORD_SMOKE = 4u;   // smoke (Smoke Shadows): dims the sun's rays, blocks none
@@ -64,6 +67,23 @@ cbuffer Lights : register(b4) {
 
 // Where the rays toward a local light stop before it (metres; at most half the way): its lamp, torch or fire's wood.
 static const float LIGHT_CLEARANCE = 0.5f;
+
+float Luminance(float3 color) {
+  return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+}
+
+// What local light `index` gives a surface at `surface` facing `normal` (its colour, the games' smooth falloff (1 -
+// distance / reach)^2, its angle; 0 out of reach or behind), its direction and distance.
+float3 LightArriving(uint index, float3 surface, float3 normal, out float3 direction, out float light_distance) {
+  const float3 to_light = lights[index].xyz - surface;
+  light_distance = length(to_light);
+  direction = to_light / max(light_distance, 1e-6f);
+  if (light_distance >= lights[index].w || light_distance <= 1e-3f) return 0.f;
+  const float n_dot_l = dot(normal, direction);
+  if (n_dot_l <= 0.f) return 0.f;
+  const float falloff = 1.f - light_distance / lights[index].w;
+  return max(light_colours[index].rgb, 0.f) * (falloff * falloff * n_dot_l);
+}
 
 
 #if defined(OPACITY_MICROMAPS)

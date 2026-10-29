@@ -72,6 +72,7 @@ struct Sliders {
   float grass_shadow_range = 0.f;  // metres (0: everywhere)
   float path_ser = 0.f;
   float sharc = 0.f;
+  float light_importance = 0.f;
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
   float ambient_range = 2.f;       // metres
   float ambient_rays = 2.f;
@@ -142,6 +143,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .grass_shadow_range = sliders.grass_shadow_range,
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
+      .light_importance = sliders.light_importance != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .micromaps = sliders.micromaps != 0.f,
       .gpu_micromaps = sliders.gpu_micromaps != 0.f,
@@ -960,6 +962,19 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 0.f,
           .max = 1.f,
           .format = "%.2f m",
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::point_lights_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightImportance",
+          .binding = &sliders->light_importance,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Importance-Sampled Torch Shadows (Experimental)",
+          .section = section,
+          .tooltip = "Two torch / fire shadow rays a pixel, picked by how much light they give (as ReSTIR DI picks lights):\n"
+                     "faster with many fires; dim fires' shadows follow moving units slower.",
+          .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
       },

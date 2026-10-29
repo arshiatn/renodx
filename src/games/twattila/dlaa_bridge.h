@@ -150,6 +150,9 @@ constexpr uint32_t RT_SWAY_IN_VIEW = 4096;
 // Fast Leaf Shadows (v18): the rays toward the sun, the ambient's and the lights' take micromapped leaves' unknown states
 // as known (2-state: no alpha tests for them).
 constexpr uint32_t RT_FAST_LEAVES = 8192;
+// Importance-Sampled Torch Shadows (v18): two shadow rays a pixel toward the local lights, picked by what they give it
+// (ReSTIR DI's candidates); the others keep their last bits.
+constexpr uint32_t RT_LIGHT_IMPORTANCE = 16384;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
