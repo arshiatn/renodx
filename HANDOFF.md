@@ -1532,7 +1532,7 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           made on the addon's worker threads, off the game's thread), PTLAS (TLAS ~0.4 ms of a 25 ms frame: at most
           that saved; needs rt_place to write partition updates; the 0.3 s stall was its CPU path, unrelated to the GPU
           bake / SHaRC fixes), ReSTIR reflections (pick: the GI reservoirs for rough reflections).
-      [x] 5. twattila_v108.zip (Downloads, 00:26; helper47, also in Attila's folder; release_zip.py names helper47),
+      [x] 5. twattila_v108.zip (Downloads, 00:33, with items 6-7; helper47, also in Attila's folder; release_zip.py names helper47),
           build32 Attila / Rome II / Thrones built, all_modes 38/38 (all_modes_h47.txt), README v108, memory. The
           harness cannot check PT AO's fix (no learned shade / ambient cube there): untested.
 
