@@ -1068,7 +1068,7 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     - NEXT BIG BATCH (ATN 2026-10-29, after the v94 test; ATN: size doesn't matter, anything that speeds RT/PT on or off).
       NVIDIA's SDKs are allowed (NVIDIA RTX SDKs License: RTXDI, SHARC, NRC, NRD, RTXPT, RTXGI; RTXMU MIT; Mega
       Geometry samples Apache 2.0): download at build time like OMM, binaries / compiled shaders only, credit in About.
-      [ ] 1 RR is the only denoiser (ATN: no NRD; RR/PT users use RR): under RR, SSR's denoiser + history (ssr_hiz)
+      [x] 1 (step 2: RT_RECONSTRUCTED 256; harness HARNESS_SUN_SOFTNESS) RR is the only denoiser (ATN: no NRD; RR/PT users use RR): under RR, SSR's denoiser + history (ssr_hiz)
           off, the helper's RT AO history (PATH_AMBIENT_HISTORY) off, sun shadows traced in the sun's cone (one jittered
           ray) instead of rt_soft's filter; any other temporal / spatial filter found off too. (GT-VBAO's filter and
           GT-VBGI's denoiser already step aside; ReSTIR and the radiance cache stay: samplers, not denoisers.)

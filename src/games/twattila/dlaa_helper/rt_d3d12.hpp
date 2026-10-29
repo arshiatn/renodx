@@ -2946,6 +2946,8 @@ class RtScene12 {
     list->SetComputeRootShaderResourceView(ROOT_SCENE, (ptlas_ != nullptr ? ptlas_ : tlas_.Get())->GetGPUVirtualAddress());
     const float softness = (version >= 6) ? std::clamp(shared.rt_sun_softness, 0.f, 5.f) : 0.f;
     const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.01f;
+    // Ray Reconstruction is the only denoiser: no ambient history, no soft-shadow filter (rt_trace jitters its sun ray).
+    const bool reconstructed = (shared.rt_flags & dlaa_bridge::RT_RECONSTRUCTED) != 0;
     const std::array<uint32_t, 8> settings = {
         frame,
         (shared.rt_flags & ~dlaa_bridge::RT_LOCAL_LIGHTS) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u),
@@ -2961,7 +2963,7 @@ class RtScene12 {
     // The ambient's history: valid when the last trace was the frame before (its camera kept for the projection).
     const bool ambient_kept = version >= 11 && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 && EnsureHistory(HISTORY_AMBIENT, frame);
     if (ambient_kept) {
-      PathConstants constants = {.flags = (ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame ? PATH_AMBIENT_HISTORY : 0u)
+      PathConstants constants = {.flags = (!reconstructed && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame ? PATH_AMBIENT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u)};
       std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
       constants.previous_view_projection = ambient_view_projection_;
@@ -2999,7 +3001,7 @@ class RtScene12 {
       list->SetPipelineState(fog_pipeline_.Get());
       list->Dispatch((shared.rt_width + 31) / 32, (shared.rt_height + 31) / 32, 1);
     }
-    if (soft) {
+    if (soft && !reconstructed) {
       // Soft shadows: the rays' penumbras.
       list->ResourceBarrier(1, &uav_barrier);
       Mark(list, L"soft");

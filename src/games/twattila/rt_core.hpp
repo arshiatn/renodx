@@ -1479,6 +1479,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.leaf_light ? dlaa_bridge::RT_LEAF_LIGHT : 0u)
                | (runtime.settings.fog_shadows ? dlaa_bridge::RT_FOG_SHADOWS : 0u)
                | (runtime.settings.micromaps ? dlaa_bridge::RT_MICROMAPS : 0u)
+               | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,

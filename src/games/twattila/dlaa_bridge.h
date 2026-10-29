@@ -125,6 +125,9 @@ constexpr uint32_t RT_FOG_SHADOWS = 32;
 constexpr uint32_t RT_NO_KEPT = 64;
 // Leaf micromaps: new leaves' opacity micromaps baked (NVIDIA's OMM SDK in the helper) and built with their BLAS.
 constexpr uint32_t RT_MICROMAPS = 128;
+// Ray Reconstruction denoises the frame (the only denoiser): the ambient's history off, soft sun shadows one ray toward
+// a point of the sun's disk instead of the rays' soft-shadow filter.
+constexpr uint32_t RT_RECONSTRUCTED = 256;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

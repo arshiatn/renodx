@@ -1188,7 +1188,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
-  twattila::feature_settings::UpdateSsr(&shader_injection, ssr_denoiser);
+  // Ray Reconstruction is the only denoiser: the reflections' denoiser (and its history) off under it.
+  twattila::feature_settings::UpdateSsr(&shader_injection, twattila::dlaa_bridge::bridge.reconstructing ? 0.f : ssr_denoiser);
   twattila::grass_fade::Update(shader_injection.grass_height_distance);
   twattila::rt_scene::Update(rt_settings);
   // Ray-traced ambient occlusion in place of the game's and GT-VBAO (theirs not drawn: their cost saved).

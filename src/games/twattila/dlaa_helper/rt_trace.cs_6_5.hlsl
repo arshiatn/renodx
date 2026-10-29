@@ -57,7 +57,7 @@ float2 SunRay(float3 origin, float3 direction) {
   ray.TMax = 1.0e4f;
   smoke_transmittance = 1.f;
   if ((flags & LEAF_LIGHT) == 0u) {
-    if (sun_cone == 0.f) return float2(Occluded(origin, direction, 1.0e4f) ? 0.f : smoke_transmittance, 0.f);
+    if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f) ? 0.f : smoke_transmittance, 0.f);
     TRACE_NEAREST(query, ray)
     return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(smoke_transmittance, 0.f);
   }
@@ -86,10 +86,13 @@ float2 SunRay(float3 origin, float3 direction) {
 void main(uint3 id : SV_DispatchThreadID) {
   if (id.x >= width || id.y >= height) return;
   const float4 position = positions[id.xy];
+  // Soft sun shadows: the rays' penumbras filtered (rt_soft), or under Ray Reconstruction one ray toward a point of the
+  // sun's disk (it denoises them).
+  const bool filtered = sun_cone > 0.f && (flags & RECONSTRUCTED) == 0u;
   if (position.w <= 0.f) {
     visibility[id.xy] = 1.f;
     ambient[id.xy] = 1.f;
-    if (sun_cone > 0.f) sun_rays[id.xy] = float2(1.f, 0.f);
+    if (filtered) sun_rays[id.xy] = float2(1.f, 0.f);
     if ((flags & LOCAL_LIGHTS) != 0u) light_mask[id.xy] = 0xFFFFFFFFu;
     return;
   }
@@ -99,11 +102,19 @@ void main(uint3 id : SV_DispatchThreadID) {
   float sun_visibility = 1.f;
   float blocker_distance = 0.f;
   if ((flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f && dot(normal, toward_sun.xyz) > 0.f) {
-    const float2 sun_ray = SunRay(position.xyz + (normal + toward_sun.xyz) * offset, toward_sun.xyz);
+    float3 toward = toward_sun.xyz;
+    if (sun_cone > 0.f && !filtered) {
+      // Uniform over the sun's disk (sun_cone: the tan of its angular radius).
+      const float3 tangent = normalize(cross((abs(toward.y) < 0.999f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f), toward));
+      const float radius = sqrt(Random(uint3(id.xy, frame * 16u + 1000u))) * sun_cone;
+      const float angle = Random(uint3(id.xy, frame * 16u + 1001u)) * 6.28318531f;
+      toward = normalize(toward + (tangent * cos(angle) + cross(toward, tangent) * sin(angle)) * radius);
+    }
+    const float2 sun_ray = SunRay(position.xyz + (normal + toward) * offset, toward);
     sun_visibility = sun_ray.x;
     blocker_distance = sun_ray.y;
   }
-  if (sun_cone > 0.f) {
+  if (filtered) {
     sun_rays[id.xy] = float2(sun_visibility, blocker_distance);
   } else {
     visibility[id.xy] = sun_visibility;
