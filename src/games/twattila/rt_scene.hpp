@@ -69,10 +69,9 @@ struct Sliders {
   float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
   float micromaps = 1.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
-  float light_bounce = 0.f;
+  float light_bounce = 0.f;  // the Light Bounce's tracer: 0 its own (screen space), 1 rays, 2 paths
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
-  float path_tracing = 0.f;
   float path_bounces = 2.f;
   float reflections = 0.f;
   float specular_occlusion = 0.f;
@@ -94,10 +93,10 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       // Effects at Output Resolution: every pixel each frame from one step of 2 down (as many rays on screen as at 100%).
       .ambient_quarter = sliders.ambient_quarter != 0.f && frame_history::EffectSteps() < 1.f,
       .sun_softness = sliders.sun_softness,
-      .light_bounce = (sliders.light_bounce != 0.f || sliders.path_tracing != 0.f) && bounce,
+      .light_bounce = sliders.light_bounce != 0.f && bounce,
       .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),
       .light_bounce_range = sliders.light_bounce_range,
-      .path_tracing = sliders.path_tracing != 0.f && bounce,
+      .path_tracing = sliders.light_bounce == 2.f && bounce,
       .path_bounces = static_cast<uint32_t>(sliders.path_bounces),
       .reflections = sliders.reflections != 0.f && dlaa,
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
@@ -781,11 +780,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
   // nothing, ATN 2026-10-28).
   const auto light_bounce_on = [light_bounce_strength] {
     if (light_bounce_strength == nullptr || *light_bounce_strength > 0.f) return;
-    for (const char* key : {"RayTracedLightBounce", "PathTracing"}) {
-      if (const auto* setting = renodx::utils::settings::FindSetting(key); setting != nullptr && setting->GetValue() != 0.f) {
-        renodx::utils::settings::UpdateSettings({{"light_bounce_strength", 1.f}});
-        return;
-      }
+    if (const auto* setting = renodx::utils::settings::FindSetting("RayTracedLightBounce"); setting != nullptr && setting->GetValue() != 0.f) {
+      renodx::utils::settings::UpdateSettings({{"light_bounce_strength", 1.f}});
     }
   };
   const auto quality_button = [&](const char* label, const char* tooltip, Values values) {
@@ -949,16 +945,19 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::smoke_shadows_installed; },
       },
+      // One tracer for the Light Bounce (ATN: Path Tracing and the rays could both be on, only one ran).
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounce",
           .binding = &sliders->light_bounce,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
           .default_value = 0.f,
           .label = "Ray-Traced Light Bounce (Experimental)",
           .section = section,
-          .tooltip = "The Light Bounce finds its light with rays through the scene: farther, and nothing guessed behind what\n"
-                     "the camera sees. Turns the Light Bounce on. Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
-          .labels = {"Off", "On"},
+          .tooltip = "What finds the Light Bounce's light in place of its screen-space search:\n"
+                     "Rays: one bounce through the scene, nothing guessed behind what the camera sees.\n"
+                     "Path Tracing: light bouncing several times, also from what is off screen. Heavy.\n"
+                     "Turns the Light Bounce on. Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
+          .labels = {"Off", "Rays", "Path Tracing"},
           .is_enabled = dlaa_on,
           .on_change = light_bounce_on,
       },
@@ -985,29 +984,15 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 50.f,
           .format = "%.0f m",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && (sliders->light_bounce != 0.f || sliders->path_tracing != 0.f); },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "PathTracing",
-          .binding = &sliders->path_tracing,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Path Tracing (Experimental)",
-          .section = section,
-          .tooltip = "The Light Bounce's light path traced: light bouncing several times, also from what is off screen.\n"
-                     "Turns the Light Bounce on. Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe. Heavy.",
-          .labels = {"Off", "On"},
-          .is_enabled = dlaa_on,
-          .on_change = light_bounce_on,
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "Light Bounce (Lighting) is off: Ray-Traced Light Bounce and Path Tracing do nothing without it.",
+          .label = "Light Bounce (Lighting) is off: the Ray-Traced Light Bounce does nothing without it.",
           .section = section,
           .tint = 0xFF5050,
           .is_visible = [sliders, light_bounce_strength] {
-            return light_bounce_strength != nullptr && *light_bounce_strength <= 0.f
-                   && (sliders->light_bounce != 0.f || sliders->path_tracing != 0.f);
+            return light_bounce_strength != nullptr && *light_bounce_strength <= 0.f && sliders->light_bounce != 0.f;
           },
       },
       new renodx::utils::settings::Setting{
@@ -1021,7 +1006,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 4.f,
           .format = "%d",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->path_tracing != 0.f; },
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f; },
       },
   });
   if (!reflection_pass) return;

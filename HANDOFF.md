@@ -1098,7 +1098,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       when do grass shadows vanish (near / far, moving camera, wind)? A screenshot.
     - NIGHT BATCH 2026-10-29 (ATN asleep: "really really big batch", commit often; shut the PC down when all is done:
       `shutdown /s /t 120`, no /f). One bridge bump (v18) for the new request fields. Tick items here as they land:
-      [ ] 6 GI: one selector (Off / Screen-Space GT-VBGI / Ray-Traced / Path-Traced); PT + RT GI could both be on (only
+      [x] 6 (RayTracedLightBounce: Off / Rays / Path Tracing; old PathTracing key dropped: pick it again; the Lighting
+          section's search-only settings (Radius, Quality, Directions, Checkerboard, Back-Face, Auto Thickness) off while
+          traced) GI: one selector (Off / Screen-Space GT-VBGI / Ray-Traced / Path-Traced); PT + RT GI could both be on (only
           one tracer runs, the toggles stacked); GT-VBGI's march settings only for Screen-Space.
       [ ] 2 Soft torch / fire shadows: each frame a ray to a jittered point of a light of radius R (bits; RR / DLAA
           average them); slider; bridge v18 field.

@@ -57,8 +57,10 @@ light_bounce::Sliders LightBounceSliders(const ShaderInjection& data) {
 // Both sections onto `settings`, bound to `data` (the addon's shader_injection). The ambient occlusion's 3/4 and 1/4
 // resolution: the games drawn by ao_pass.hpp's own targets (their shader_injection has ssao_scale); its Temporal
 // Smoothing, Edge Fix and Denoiser: those and the games with ao_filter.hpp (their shader_injection has ssao_temporal).
+// `traced`: whether rays or paths find the Light Bounce's light (rt_scene): its screen-space search's settings off then.
 template <typename ShaderInjection>
-void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInjection* data) {
+void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInjection* data,
+            const std::function<bool()>& traced = {}) {
   constexpr bool AO_SCALES = requires(const ShaderInjection& injection) { injection.ssao_scale; };
   constexpr bool AO_TEMPORAL = requires(const ShaderInjection& injection) { injection.ssao_temporal; };
   using renodx::utils::settings::Setting;
@@ -75,6 +77,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
   };
   const auto ao_enabled = [data] { return data->ssao_mode >= 1.f; };
   const auto gi_enabled = [data] { return data->light_bounce_strength > 0.f; };
+  const auto search_enabled = [data, traced] { return data->light_bounce_strength > 0.f && !(traced && traced()); };
   // Recommended: 3/4 resolution where the pass has it (with Temporal Smoothing and the Denoiser), else full. Temporal
   // Edge Fix off (ATN: ghosting).
   Values ao_defaults = {
@@ -330,7 +333,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
           .min = 0.5f,
           .max = 20.f,
           .format = "%.2f m",
-          .is_enabled = gi_enabled,
+          .is_enabled = search_enabled,
       },
       new Setting{
           .key = "light_bounce_resolution",
@@ -352,7 +355,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
           .section = GI_SECTION,
           .tooltip = "Samples per direction. More: small lit things still count at a large Radius. Heavier.",
           .labels = sample_labels,
-          .is_enabled = gi_enabled,
+          .is_enabled = search_enabled,
       },
       new Setting{
           .key = "light_bounce_directions",
@@ -363,7 +366,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
           .section = GI_SECTION,
           .tooltip = "Directions searched around each pixel. More: less noise, heavier.",
           .labels = {"1", "2", "4", "8", "16"},
-          .is_enabled = gi_enabled,
+          .is_enabled = search_enabled,
       },
       toggle("light_bounce_temporal", &data->light_bounce_temporal, "Temporal Smoothing", GI_SECTION,
              "Averages the last frames: much less noise. Off: the noise stands still.", gi_enabled),
@@ -383,14 +386,16 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
       toggle("light_bounce_checkerboard", &data->light_bounce_checkerboard, "Checkerboard", GI_SECTION,
              "Half the screen traced each frame, the rest kept from the last frames.\n"
              "About 2x faster; can lag a little behind fast motion.",
-             [data] { return data->light_bounce_strength > 0.f && data->light_bounce_temporal != 0.f; }),
+             [data, traced] {
+               return data->light_bounce_strength > 0.f && data->light_bounce_temporal != 0.f && !(traced && traced());
+             }),
       toggle("light_bounce_backface", &data->light_bounce_backface, "Back-Face Rejection (Experimental)", GI_SECTION,
-             "Ignores light from surfaces seen from behind. Heavier; not always better.", gi_enabled),
+             "Ignores light from surfaces seen from behind. Heavier; not always better.", search_enabled),
       toggle("light_bounce_auto_thickness", &data->light_bounce_auto_thickness, "Auto Thickness (Experimental)",
              GI_SECTION,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
-             gi_enabled),
+             search_enabled),
   });
   if constexpr (HAS_MSAA<ShaderInjection>) {
     settings->push_back(toggle("light_bounce_msaa_pixel", &data->light_bounce_msaa_pixel, "Fast MSAA (Once per Pixel)",

@@ -1653,7 +1653,7 @@ void ConfigureAddon() {
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
   // Appended Settings (Ambient Occlusion, Global Illumination)
-  twattila::lighting_settings::Append(&settings, &shader_injection);
+  twattila::lighting_settings::Append(&settings, &shader_injection, [] { return rt_sliders.light_bounce != 0.f && aa_sliders.method == 5.f; });
 
   // Appended Settings (Screen-Space Shadows, Anti-Aliasing: twattila/feature_settings.hpp)
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
