@@ -1346,19 +1346,28 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Menu fps 500 -> 140 (not Reflex: V-Sync off, 165 Hz; RT / DLSS not running in the menu): early-outs in every
           per-draw hook / per-frame pass whose effect is not running (RT capture without the bridge, motion redraws
           without DLSS, ...); note what else runs there.
-      [ ] 2. AO from path tracing: with PT Light Bounce (ReSTIR GI) the RT AO pass is redundant (noise, 5-7 ms): option
-          (experimental) to drop it under PT. ATN 18:50: do it properly (the paths take the sky light, the game's ambient
-          goes), however long it takes. The PT now adds bounce only (a camera ray that escapes adds nothing: the game's
-          ambient x our AO covers the sky).
-      [~] 3. RT reflections on water: rays from the water's own depth (its draws write depth) and normal, smooth; then
-          maybe RT refraction (experimental). Done: Reflections(native, surface_depth): positions again from the depth-stencil
-          (t8 of the reflection draw) + anti_aliasing::RewriteGuides (PS t0-t2; aa_rr_guides: material flag 4 = water:
-          roughness 0.03, specular 0.02, no diffuse), b10 flags -> RtWaterReflections; option RayTracedWaterReflections.
-      [ ] 4. GPU micromap baking (NVIDIA OMM SDK GPU baker) instead of the CPU baker: no read-back, no CPU threads, no
-          shadow delay. More CPU -> GPU where possible (the engine's CPU is the weak spot). ATN 18:50 (NVIDIA's integration
-          guide): no mid-frame GPU -> CPU read-backs, the inputs (indices, UVs, alpha) stay in VRAM, the GPU baker's CPU
-          setup (reuse pre-pass, subdivision) on a worker / cached per unique mesh, a per-frame bake budget (amortized,
-          async compute if it helps).
+      [x] 2. (e5b61213, helper37.) AO from path tracing: Path-Traced Ambient (RayTracedPathAmbient, Experimental, needs
+          Path Traced Light Bounce): the game's ambient cube zeroed in the sun draws' lighting CB (OnPathAmbientDraw:
+          CopyResource + CopySubresourceRegion of zeros at ambient_cube x 4), the paths add the sky light (light_kept[2]
+          = the cube's scale fitted in rt_cache_resolve before it goes; PATH_KEEP_LIGHT freezes the fit while the game's
+          ambient is off), RT AO off under it. Harness HARNESS_PATH_AMBIENT=<frame>.
+      [x] 3. (b4fbf967.) RT reflections on water: rays from the water's own depth (its draws write depth) and normal, smooth.
+          Reflections(native, surface_depth): positions again from the depth-stencil (t8 of the reflection draw) +
+          anti_aliasing::RewriteGuides (PS t0-t2; aa_rr_guides: material flag 4 = water: roughness 0.03, specular 0.02,
+          no diffuse), b10 flags -> RtWaterReflections; option RayTracedWaterReflections. RT refraction: item 7.
+      [x] 4. (3e0fba3a WIP, 436430cb helper38.) GPU micromap baking: RayTracedGpuMicromaps (Experimental, default Off,
+          bridge RT_GPU_MICROMAPS 2048): the OMM SDK's GPU baker (ommGpu, ComputeOnly, Force32BitIndices, no texcoord
+          dedup) at the end of a request, up to MICROMAP_GPU_BAKES (8) a request: each mask's atlas slice copied to a
+          texture of its own, UVs copied with garbage zeroed (rt_omm_uvs, |uv| <= 2), the SDK's chain (root signature
+          per pipeline: its descriptor table, the global CBV always, local root constants), outputs in VRAM, only the
+          small desc histogram read back after the GPU finished (no mid-frame read-back; the D3D12 array build needs
+          it on the CPU), then the normal array / BLAS build. The hang (DRED: the SDK's InitCs dispatch) was a
+          use-after-free: the histogram / post-dispatch buffers were dropped when the function returned (DRED page fault
+          on a freed resource; LostReport now also prints faults at VA 0). Harness: gpu_micromaps, _leaf_light,
+          _leaf_stress, and HARNESS_LEAF_QUARTER=1 (the leaf takes the quarter mask: the micromaps' known states matter)
+          pass the same as the CPU baker. Debug switches left: RENODX_TW_D3D12_DEBUG (the Agility debug layer still says
+          0x887A002D). Not done: async compute queue for bakes; the SDK's CPU setup is cheap (ommGpuDispatch per bake on
+          the record thread).
       [ ] 5. Mega Geometry: near-only sway (GPU, per instance by distance), off-screen sway left out, far sway at a lower
           rate, (cluster LOD / unit templates if time): experimental toggles where they cost nothing.
       [ ] 6. The game waits ~15 ms a frame for the helper's GPU work (sun 5-7 + AO 5-7 ms): speedups (foliage shadow

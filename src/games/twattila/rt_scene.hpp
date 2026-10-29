@@ -1081,8 +1081,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "GPU Micromap Baking (Experimental)",
           .section = section,
-          .tooltip = "Leaf Micromaps baked on the GPU instead of CPU threads: new grass's and leaves' shadows\n"
-                     "settle almost at once, and the CPU stays free. If the game freezes, turn it off.",
+          .tooltip = "Leaf Micromaps baked on the GPU instead of CPU threads:\n"
+                     "frees the CPU, and new grass's and leaves' shadows settle sooner.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->micromaps != 0.f; },
       },
