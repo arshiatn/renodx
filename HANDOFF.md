@@ -1450,8 +1450,22 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           (DRED left them unnamed), buffers named "rt_d3d12.hpp:<line>" (std::source_location). The first hang's cause
           (rt_sway's MODE_KEPT dispatch, no page fault) not found: bounded loops, bounded indices; next hang's report
           names it.
-      [ ] 2. River zoom (grass on the riverbed) destroys fps: find the cost, get performance back.
-      [ ] 3. Surfaces stay black a few seconds then "load": find it (Path-Traced Ambient? caches? AO history?).
+      [x] 2. River zoom fps (35f1ecc7). ATN's ReShade.log: the TRACE request 24-53 ms (bounce 2-3, reflections 1-4),
+          worst with AO; ATN's settings: AO 1 ray x 4 (Ray Tracing at Output Resolution, DLSS Performance), 4 sun rays,
+          softness 1.58, grass range 75. 4K harness field (HARNESS_COMPACT_FIELD 30) with those: UNSORTED grass sets
+          traced 30 ms, sorted 7.6 (grass AO alone 6.3 of 9.6 ms unsorted; candidate cap 4 or 2-state micromaps barely
+          helped: traversal, clusters each over the whole patch). Found: a swaying placed mesh got its triangles' order
+          only from a full capture in its index-copy frame; placed meshes first captured before the helper took compact
+          draws (a battle's first frames) were made unsorted. Fixed: corners from any later full capture (a placed mesh
+          captured once more), a set waits up to 30 frames for them; the cost log says "N cluster sets, K unsorted".
+          Not done: one grass AO ray a pixel (-1 ms sorted, noisier). Untested in game: ask ATN for the river again
+          (and a Record Ray Tracing Profile there if still slow).
+      [x] 3. Surfaces black a few seconds then lit (88556aff, helper46): kept placed instances stayed in the TLAS 300
+          frames after their last draw (off-screen casters); zooming switches levels of detail, the coarser copy kept
+          darkened the finer one in its place. rt_place drops a kept instance undrawn 16 frames (four placing turns)
+          whose origin is inside the view (NearView, margin 0); off-screen ones stay. HARNESS_UNDRAWN=12 kept, =20 gone
+          (all_modes undrawn_kept / undrawn_gone, also removal_sway). All Attila statics are placed (rows shaders): the
+          CPU path's RECENT_FRAMES unchanged. Untested in game.
       [ ] 4. NVIDIA guidelines audit: everything as NVIDIA's guides say (GPU micromap baking the default, OMM / Mega
           Geometry / DLSS RR / ReSTIR / SHaRC usage).
       [ ] 5. More ReSTIR: reflections, shadows, other effects; fewer rays, less noise, less VRAM.
