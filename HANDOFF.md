@@ -1256,6 +1256,29 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       NEXT BIG BATCH: ASK ATN for the two CSVs + ReShade.log + renodx-tw-dlaa64.log (every effect on, 1 ray / sample
       where there is a slider, press Record, pan over the map 30 s), then optimize from them (where the frame's time
       goes: game thread waits, helper CPU, GPU passes, hitches = frames far above the median and what they did).
+    - v101 (2026-10-29, helper33; ATN's first profile: Attila\debug25, Ctesiphon, 4K DLAA 100% + RR, every RT effect on at
+      1 ray, max LOD / grass density, height, distance, Grass Always Drawn). Findings (scratchpad profile_stats.py): frame
+      45 ms mean (p90 69); the addon's CPU 0.34 capture + 0.10 trace + ~0 answer waits; the game's GPU waited 19 ms for
+      the helper; helper GPU: scene 1.55 (clusters 1.06), TLAS 0.36, trace 17.0 (p90 31, max 43), bounce 3.1, reflections
+      6.3 (max 22); 46-65 K placed instances (grass patches since v99), 113-166 K clusters (all templated), cluster room
+      grew to 524 K = 4.8 GB. Done:
+      - RT_GRASS (bridge flag 64, capture / compact draw flags; old helpers ignore it): RECORD_GRASS; placed grass meshes
+        GRASS_INSTANCE 0x08 (mesh.grass, InstanceMask, rt_place PLACE_GRASS; table bit 1); the compact draws in four
+        runs (templated rest, templated grass, built grass, built rest) so the swaying grass's clusters are one run: four
+        cluster BLASes (the rest before / after the grass, the grass's GRASS_INSTANCE, the smoke's; cluster_blases_).
+      - Rays: sun meets grass, grass blocks (RECORD_GRASS, also under Light Through Leaves); AO meets grass within
+        GRASS_AMBIENT_RANGE 0.5 m (a second query, GRASS mask); lights, fog, bounce, paths, reflections pass it (NO_GRASS,
+        NO_GRASS_SMOKE, TRACE_SURFACE). Grass kept off-screen GRASS_KEPT_FRAMES 8 (two place turns), not 300.
+      - Cluster room: SizeClusterRoom(room, built), each run grown to 1.5x what the last request wanted (CLUSTER_STEP
+        8192), neither shrinking, within the GPU's limit (was: the whole room doubled at 3/4).
+      - Profile: STAMPS 9 a slot; with RT_PROFILE a UAV barrier + stamp after each part; helper CSV gpu_a..d: trace = sun
+        and AO, local lights, fog, rest (soft); bounce = cache (or the bounce rays), paths, reuse, rest; reflections =
+        cache, paths, reuse, reflections. The addon CSV's counts taken at the trace (Trace empties its lists).
+      Harness (tools\tw\rt_harness): HARNESS_PLACED_GRASS=<n> (n x n placed 2 m patches of 1000 blades, RT_GRASS),
+      HARNESS_GRASS_PLAIN (the compact grass stress without RT_GRASS), the grass card RT_GRASS (opaque to the sun). 4K
+      field 61 x 61, every effect: helper32 13.7 ms -> helper33 7.1 ms; no grass: +0.2 ms. All 16 modes pass.
+      NEXT: ATN's second profile (the same place and settings) shows each pass's share; then the next pass on whatever
+      leads (candidates: AO quarter-rate everywhere, sun at half rate under RR, fog step count, BLAS ops merged).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

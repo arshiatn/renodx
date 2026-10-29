@@ -40,11 +40,17 @@ static const uint MODE_DRAWN = 1u;
 static const uint MODE_KEPT = 2u;
 static const uint PLACE_FOLIAGE = 1u;  // alpha-tested: not forced opaque
 static const uint PLACE_HIDDEN = 2u;   // mask 0 while drawn
+static const uint PLACE_GRASS = 4u;    // GRASS_INSTANCE (most rays pass it), kept GRASS_KEPT_FRAMES off-screen
 static const uint INSTANCE_CULL_DISABLE = 1u;  // D3D12_RAYTRACING_INSTANCE_FLAG_*
 static const uint INSTANCE_FORCE_OPAQUE = 4u;
-// Instance masks (rt_d3d12.hpp): a solid mesh's, a leaves' mesh's (alpha-tested; Light Through Leaves counts them apart).
+// Instance masks (rt_d3d12.hpp): a solid mesh's, a leaves' mesh's (alpha-tested; Light Through Leaves counts them apart),
+// grass's.
 static const uint SOLID_INSTANCE = 0x01u;
 static const uint LEAF_INSTANCE = 0x04u;
+static const uint GRASS_INSTANCE = 0x08u;
+// Grass kept two turns (the addon places a still mesh every 4th frame): its shadows are short, and fields of it kept 5 s
+// multiplied the instances every ray met (ATN's 2026-10-29 profile: 46-65 K placed).
+static const uint GRASS_KEPT_FRAMES = 8u;
 static const uint STATE_WRITTEN = 0u;
 static const uint STATE_BEFORE = 4u;
 static const uint STATE_CPU_BEFORE = 8u;
@@ -114,12 +120,13 @@ void main(uint3 id : SV_DispatchThreadID) {
     const uint record = tail.x & FRAME_MASK;
     if ((tail.z | tail.w) == 0u || record >= record_count || ((frame - tail.y) & FRAME_MASK) > recent_frames) return;
     const uint2 blas = table.Load2(record * 8u);
-    if ((blas.x | blas.y) == 0u || (blas.x & 1u) != 0u) return;
+    const bool grass = (blas.x & 2u) != 0u;
+    if ((blas.x | blas.y) == 0u || (blas.x & 1u) != 0u || (grass && ((frame - tail.y) & FRAME_MASK) > GRASS_KEPT_FRAMES)) return;
     const uint4 row0 = instances_before.Load4(index * 64u);
     const uint4 row1 = instances_before.Load4(index * 64u + 16u);
     const uint4 row2 = instances_before.Load4(index * 64u + 32u);
     if (!Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w))))) return;
-    const uint kept_mask = (((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE;
+    const uint kept_mask = grass ? GRASS_INSTANCE : ((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE);
     Append(row0, row1, row2, uint4(record | (kept_mask << 24), tail.y, blas.x & ~0xFFu, blas.y));
     return;
   }
@@ -165,7 +172,10 @@ void main(uint3 id : SV_DispatchThreadID) {
   // InstanceID (the record) and mask (its group; 0 hidden); the frame drawn and the flags; the BLAS (its moving bit
   // cleared).
   const uint flags = INSTANCE_CULL_DISABLE | (((job.w & PLACE_FOLIAGE) != 0u) ? 0u : INSTANCE_FORCE_OPAQUE);
-  const uint mask = ((job.w & PLACE_HIDDEN) != 0u) ? 0u : (((job.w & PLACE_FOLIAGE) != 0u) ? LEAF_INSTANCE : SOLID_INSTANCE);
+  const uint mask = ((job.w & PLACE_HIDDEN) != 0u)  ? 0u
+                    : ((job.w & PLACE_GRASS) != 0u)  ? GRASS_INSTANCE
+                    : ((job.w & PLACE_FOLIAGE) != 0u) ? LEAF_INSTANCE
+                                                      : SOLID_INSTANCE;
   Append(asuint(float4(rotation[0], translation.x)), asuint(float4(rotation[1], translation.y)), asuint(float4(rotation[2], translation.z)),
          uint4(record | (mask << 24), (frame & FRAME_MASK) | (flags << 24), blas.x & ~0xFFu, blas.y));
 }

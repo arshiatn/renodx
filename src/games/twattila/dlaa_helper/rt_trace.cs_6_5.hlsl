@@ -25,6 +25,7 @@ RWTexture2D<float2> sun_rays : register(u2);  // soft shadows: lit, blocker dist
 RWTexture2D<float> ambient_history[2] : register(u28);  // the ambient visibility kept over frames (v11)
 
 static const float AMBIENT_BLEND = 0.2f;
+static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient rays (Occluded)
 // The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface.
 float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
   float kept = ambient_now;
@@ -68,8 +69,8 @@ float2 SunRay(float3 origin, float3 direction) {
     return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(smoke_transmittance, 0.f);
   }
   // Light Through Leaves: the leaves' meshes (their own instances) apart from the rest. The rest first, as without it
-  // (the first surface met: a solid blocks); where that is cloth, a sail or grass, the old way: the nearest surface each
-  // time, each passing its share, a solid blocking. Then the leaves: none, one or more than one (any-hit rays around
+  // (the first surface met: a solid or grass blocks); where that is cloth, a sail or a swaying leaf, the old way: the
+  // nearest surface each time, each passing its share, a solid or grass blocking. Then the leaves: none, one or more than one (any-hit rays around
   // the first met), each LEAF_TRANSMITTANCE. Stepping through every leaf layer took 16 ms at 4K in dense leaves (0.9
   // without Light Through Leaves; ATN's 17-18 ms traces, the stutters panning over forests).
   float lit = 1.f;
@@ -87,7 +88,7 @@ float2 SunRay(float3 origin, float3 direction) {
     }
     if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
       const uint met_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
-      if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u) return float2(0.f, query.CommittedRayT());
+      if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u || (met_flags & RECORD_GRASS) != 0u) return float2(0.f, query.CommittedRayT());
       smoke_transmittance = 1.f;
       [loop]
       for (uint layer = 0u; layer < 4u; ++layer) {
@@ -95,7 +96,10 @@ float2 SunRay(float3 origin, float3 direction) {
         if (layered.CommittedStatus() != COMMITTED_TRIANGLE_HIT) break;
         if (layer == 0u) first = layered.CommittedRayT();
         const uint record_flags = records[layered.CommittedInstanceID() + layered.CommittedGeometryIndex()].z >> 16;
-        lit *= ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
+        lit *= ((record_flags & RECORD_GRASS) != 0u)    ? 0.f
+               : ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE
+               : ((record_flags & RECORD_THIN) != 0u)   ? THIN_TRANSMITTANCE
+                                                        : 0.f;
         if (lit < 0.02f) return float2(0.f, first);
         ray.TMin = layered.CommittedRayT() + 0.01f;
       }
@@ -173,7 +177,11 @@ void main(uint3 id : SV_DispatchThreadID) {
     [loop]
     for (uint ray = 0; ray < ambient_rays; ++ray) {
       const float3 direction = CosineDirection(normal, ((float)ray + band_jitter) / (float)ambient_rays, frac(turn + (float)ray * 0.618034f));
-      if (!Occluded(origin, direction, ambient_range, NO_SMOKE)) ++escaped;
+      // Grass only within GRASS_AMBIENT_RANGE: its blades darken what they stand on, farther ones barely, and a ray
+      // escaping through a field met every blade within the range.
+      if (!Occluded(origin, direction, ambient_range, NO_GRASS_SMOKE) && !Occluded(origin, direction, min(ambient_range, GRASS_AMBIENT_RANGE), GRASS)) {
+        ++escaped;
+      }
     }
     ambient_visibility = (float)escaped / ambient_rays;
   }

@@ -303,6 +303,8 @@ struct Profile {
   uint64_t gpu_frame = 0;
   double passes_ms = 0.0;
   double waiting_ms = 0.0;
+  // The frame's trace's (Trace empties its lists): captures, compact draws, placements, new sets, texels captured, lights.
+  std::array<uint64_t, 6> counts = {};
 };
 // The shares a dynamic draw needs room in (Capture): all dynamic draws' texels, the helper's triangles and clusters, the
 // grass's corners, the units' three quarters of those.
@@ -1101,7 +1103,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // frame's RT_CAPTURES ran out with the terrain, units and grass all captured every frame).
   const uint32_t flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
                          | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
-                         | (shader.thin ? dlaa_bridge::RT_THIN : 0u);
+                         | (shader.thin ? dlaa_bridge::RT_THIN : 0u) | (shader.grass ? dlaa_bridge::RT_GRASS : 0u);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
   if (!dynamic || shader.foliage || joined == nullptr || joined->flags != flags
       || joined->first_vertex + joined->vertex_count != runtime.captured_vertices || joined->vertex_count % 3 != 0) {
@@ -1220,7 +1222,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // A compact draw's blocks (from the captured vertices' end): after the last compact draw of its mesh (its blocks right
   // after), more of its instances; its set sent with this frame's trace when the helper lacks it.
   const auto add_blocks = [&] {
-    const uint32_t compact_flags = flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN);
+    const uint32_t compact_flags = flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
         && last->first_vertex + (last->instances * (block_texels / draw_instances)) == runtime.captured_vertices) {
@@ -1603,6 +1605,10 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     runtime.traced_view_projection = camera.view_projection;
   }
   runtime.costs.compact_draws += runtime.compact.size();
+  if (runtime.profile.file.is_open()) {
+    runtime.profile.counts = {runtime.captures.size(), runtime.compact.size(), runtime.placements.size(), runtime.new_sets.size(),
+                              runtime.captured_vertices, runtime.lights.size()};
+  }
   runtime.captures.clear();
   runtime.captured_keys.clear();
   runtime.slices.clear();
@@ -2034,11 +2040,11 @@ inline void Update(const Settings& settings) {
                                 runtime.frame - 1, ms(now.QuadPart - profile.started.QuadPart), ms(now.QuadPart - profile.presented.QuadPart),
                                 ms(costs.capture_ticks - profile.capture_ticks), ms(costs.trace_ticks - profile.trace_ticks),
                                 ms(dlaa_bridge::bridge.answer_ticks - profile.answer_ticks), ms(set_ticks - profile.set_ticks), runtime.set_builds,
-                                runtime.captures.size(), runtime.compact.size(), runtime.placements.size(), runtime.new_sets.size(),
-                                runtime.captured_vertices / 1.0e6, runtime.dynamic_vertices / 1.0e6,
-                                static_cast<double>(costs.left_out - profile.left_out) / 1.0e6,
-                                static_cast<double>(costs.no_room - profile.no_room) / 1.0e6, runtime.lights_drawn.size(),
+                                profile.counts[0], profile.counts[1], profile.counts[2], profile.counts[3], static_cast<double>(profile.counts[4]) / 1.0e6,
+                                runtime.dynamic_vertices / 1.0e6, static_cast<double>(costs.left_out - profile.left_out) / 1.0e6,
+                                static_cast<double>(costs.no_room - profile.no_room) / 1.0e6, profile.counts[5],
                                 (runtime.traced_frame + 1 == runtime.frame) ? 1 : 0, profile.gpu_frame, profile.passes_ms, profile.waiting_ms);
+    profile.counts = {};
     profile.presented = now;
     profile.capture_ticks = costs.capture_ticks;
     profile.trace_ticks = costs.trace_ticks;

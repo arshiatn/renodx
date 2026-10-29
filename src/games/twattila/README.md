@@ -2,6 +2,20 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v101 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper33: ship them together)
+
+From ATN's first profile (Ctesiphon, 4K, every ray-traced effect on, grass maxed): the helper's GPU work was ~28 ms of a
+45 ms frame (the trace 17 ms, reflections up to 22 ms); the game's thread barely touched (0.4 ms).
+- **Grass much cheaper in ray tracing**: grass is its own group in the scene now. The sun's rays still meet it (a blade
+  blocks the sun, also with Light Through Leaves) and the AO's rays within 0.5 m, but point light shadows, fog, Light
+  Bounce, path tracing and reflections pass through it; grass off-screen leaves the scene after a few frames instead
+  of 5 s. A 4K test field of 3721 grass patches, every effect on: 13.7 -> 7.1 ms (reflections 5.7 -> 2.4, trace 4.9 ->
+  2.6, Light Bounce 1.9 -> 1.2).
+- **Less VRAM**: Mega Geometry's memory grows to what a battle needs (half again) instead of doubling (the profile's
+  166 K clusters had made it 4.8 GB).
+- **Profile**: Record Ray Tracing Profile now times each pass too (sun and AO, point lights, fog; radiance cache, paths,
+  reuse, reflections), and its per-frame counts are filled in.
+
 ## v100 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper32: ship them together)
 
 - **Record Ray Tracing Profile (30 s)** (end of the Ray Tracing section): every frame's ray tracing costs into

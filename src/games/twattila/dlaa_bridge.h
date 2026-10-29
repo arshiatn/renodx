@@ -111,6 +111,10 @@ constexpr uint32_t RT_THIN = 16;
 // Smoke (with RT_DYNAMIC | RT_FOLIAGE): particles as quads facing the sun, each corner's UV (+-1) times 1 + the
 // particle's opacity; the sun's rays pass them dimmed, nothing else meets them.
 constexpr uint32_t RT_SMOKE = 32;
+// Grass (with RT_FOLIAGE): its own instances (placed) and clusters (swaying) apart from the leaves'; the sun's and the
+// ambient's rays meet it (a blade blocks the sun), the others (point lights, fog, Light Bounce, path tracing,
+// reflections) pass it (most of a frame's rays crossed whole fields of it, ATN's 2026-10-29 profile).
+constexpr uint32_t RT_GRASS = 64;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;

@@ -90,7 +90,7 @@ void main(uint3 id : SV_DispatchThreadID) {
         to_light += DiskPoint(normalize(to_light), light_size, float2(Random(uint3(id.xy, seed)), Random(uint3(id.xy, seed + 1u))));
       }
       const float light_distance = length(to_light);
-      if (!Occluded(from, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_SMOKE)) ++reached_rays;
+      if (!Occluded(from, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS_SMOKE)) ++reached_rays;
     }
     if ((float)reached_rays <= threshold * (float)rays) lit &= ~(1u << light);
   }

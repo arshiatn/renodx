@@ -44,6 +44,7 @@ static const uint FOG_LIGHTS = 512u;     // the local lights' light in the fog t
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 static const uint RECORD_THIN = 2u;    // cloth and sails
 static const uint RECORD_SMOKE = 4u;   // smoke (Smoke Shadows): dims the sun's rays, blocks none
+static const uint RECORD_GRASS = 8u;   // grass (with RECORD_MASKED): blocks the sun's rays (no light through it)
 // The share of the sun a leaf lets through (Light Through Leaves; thin leaves pass about a quarter, each one met).
 static const float LEAF_TRANSMITTANCE = 0.25f;
 static const float THIN_TRANSMITTANCE = 0.35f;  // cloth and sails
@@ -114,6 +115,12 @@ static const uint ALL_INSTANCES = 0xFFu;
 static const uint NO_SMOKE = 0xFDu;
 static const uint NO_LEAVES = 0xFBu;
 static const uint LEAVES = 0x04u;
+// Grass's instances (0x08: placed, and the swaying grass's cluster BLAS) met only by the sun's and the ambient's rays: the
+// point lights', the fog's, the Light Bounce's, the paths' and the reflections' pass it (most of a frame's rays crossed
+// whole fields of it: ATN's 2026-10-29 profile, a 4K harness field of 3721 patches: reflections 11 ms).
+static const uint NO_GRASS = 0xF7u;
+static const uint NO_GRASS_SMOKE = 0xF5u;
+static const uint GRASS = 0x08u;
 
 // Whether anything among `instances` lies along `direction` from `origin` within `range` (alpha-tested: leaves, grass
 // and cloth by their masks, smoke dimming smoke_transmittance).
@@ -175,12 +182,12 @@ bool OccludedSolid(float3 origin, float3 direction, float range) {
 #if defined(OPACITY_MICROMAPS)
 #define TRACE_SURFACE(query, ray)                                                      \
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;     \
-  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_SMOKE, (ray));                           \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));                     \
   query.Proceed();
 #else
 #define TRACE_SURFACE(query, ray)                                         \
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                   \
-  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_SMOKE, (ray));              \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));        \
   {                                                                         \
     uint surface_candidates = 0u;                                           \
     while (query.Proceed()) {                                               \

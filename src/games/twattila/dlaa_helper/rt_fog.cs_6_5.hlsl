@@ -43,7 +43,7 @@ float3 FogLightAt(float3 at, float u) {
   const float light_distance = length(to_light);
   smoke_transmittance = 1.f;
   if (light_distance <= 1e-3f
-      || Occluded(at, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), ALL_INSTANCES)) {
+      || Occluded(at, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS)) {
     return 0.f;
   }
   const float falloff = saturate(1.f - (light_distance / max(lights[picked].w, 1e-3f)));
@@ -79,7 +79,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     const float along = (index + jitter) / FOG_SAMPLES;
     const float3 at = camera + direction * (along * along * range);
     smoke_transmittance = 1.f;
-    if (toward_sun.w != 0.f && !Occluded(at, toward_sun.xyz, FOG_SUN_RANGE, ALL_INSTANCES)) lit += along * smoke_transmittance;
+    if (toward_sun.w != 0.f && !Occluded(at, toward_sun.xyz, FOG_SUN_RANGE, NO_GRASS)) lit += along * smoke_transmittance;
     if (glowing) glow += along * FogLightAt(at, Random(uint3(id.xy, frame * 16u + index)));
     weights += along;
   }
