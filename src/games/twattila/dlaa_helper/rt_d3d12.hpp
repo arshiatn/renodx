@@ -780,6 +780,7 @@ class RtScene12 {
     }
     ReadTimes(slot_index);
     slot_traced_[slot_index] = true;
+    slot_clustered_[slot_index] = false;
     ExpireHistory(shared.rt_frame);
     const uint64_t completed = own_fence_->GetCompletedValue();
     std::erase_if(releases_, [completed](const Release& release) { return release.value <= completed; });
@@ -2331,10 +2332,15 @@ class RtScene12 {
             .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &clas_desc};
         const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS blas_params = {
             .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &blas_desc};
+        // Their build timed apart (a trace's slot leaves the paths' two stamps free).
         Mark(list, L"clusters");
+        Stamp(list, slot_index * 6 + 4);
         units_clustered = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &clas_params) == NVAPI_OK;
         list->ResourceBarrier(1, &uav_barrier);
         units_clustered = units_clustered && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &blas_params) == NVAPI_OK;
+        list->ResourceBarrier(1, &uav_barrier);
+        Stamp(list, slot_index * 6 + 5);
+        slot_clustered_[slot_index] = true;
         clusters_built = cluster_count;
         units_record = first_cluster_record;
       }
@@ -2698,8 +2704,8 @@ class RtScene12 {
                           units_clustered ? std::format("{} clusters, {} compact draws of {} sets", clusters_built, compact_drawn, sets_.size())
                                           : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"));
     if (timestamps_) {
-      timings_ = std::format(" | GPU ms: scene {:.2f}, TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0], gpu_ms_[1],
-                             gpu_ms_[2], gpu_ms_[3], gpu_ms_[4]);
+      timings_ = std::format(" | GPU ms: scene {:.2f} (clusters {:.2f}), TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0],
+                             gpu_ms_[5], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3], gpu_ms_[4]);
     }
     slot->status = status_;
     return true;
@@ -2727,6 +2733,7 @@ class RtScene12 {
       gpu_ms_[0] = ms(stamps[0], stamps[1]);
       gpu_ms_[1] = ms(stamps[1], stamps[2]);
       gpu_ms_[2] = ms(stamps[2], stamps[3]);
+      gpu_ms_[5] = slot_clustered_[slot_index] ? ms(stamps[4], stamps[5]) : 0.0;
       if (gpu_ms_[0] + gpu_ms_[1] + gpu_ms_[2] > SLOW_MS && slow_reports_ < SLOW_REPORTS) {
         slow_report_ = std::format("[TW ray tracing] A slow request, GPU ms: scene {:.1f}, TLAS {:.1f}, trace {:.1f}; {}", gpu_ms_[0], gpu_ms_[1],
                                    gpu_ms_[2], slots_[slot_index].status);
@@ -2938,7 +2945,9 @@ class RtScene12 {
   uint64_t timestamp_frequency_ = 0;
   std::array<bool, SLOTS> slot_traced_ = {};
   std::array<bool, SLOTS> slot_reflected_ = {};  // a path request's: the reflections (else the Light Bounce)
-  std::array<double, 5> gpu_ms_ = {};  // the scene (captures, BLASes), the TLAS, the trace; the Light Bounce, the reflections
+  std::array<bool, SLOTS> slot_clustered_ = {};  // a trace's: its clusters built (timed by the paths' stamps)
+  // The scene (captures, BLASes), the TLAS, the trace; the Light Bounce, the reflections; the scene's cluster build.
+  std::array<double, 6> gpu_ms_ = {};
   ComPtr<ID3D12StateObject> path_state_object_;
   ComPtr<ID3D12Resource> path_shader_table_;  // two ray generation records: the paths, the reflections
   std::array<float, 16> current_view_projection_ = {};

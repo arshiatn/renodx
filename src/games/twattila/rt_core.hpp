@@ -828,10 +828,11 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   mix(reinterpret_cast<uintptr_t>(index_buffer));
   mix((uint64_t{static_cast<uint32_t>(index_format)} << 32) | index_offset);
-  // A dynamic indexed draw can be compact (v16), so can a placed draw of leaves (its trees sway: their leaves where drawn
-  // also captured every frame, in the wind): its mesh's key (its index buffer and range) and that buffer.
-  const bool compactable = INDEXED && (placed ? (shader.foliage && !shader.capture_shader.empty()) : dynamic) && !shader.terrain
-                           && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
+  // A dynamic indexed draw can be compact (v16; the terrain's too: a vertex a texel, not three a triangle), so can a placed
+  // draw of leaves (its trees sway: their leaves where drawn also captured every frame, in the wind): its mesh's key (its
+  // index buffer and range) and that buffer.
+  const bool compactable = INDEXED && (placed ? (shader.foliage && !shader.capture_shader.empty()) : dynamic) && index_buffer != nullptr
+                           && dlaa_bridge::CompactState() != 0;
   uint64_t set_key = 14695981039346656037ull;
   ComPtr<ID3D11Buffer> compact_indices;
   if constexpr (INDEXED) {
@@ -1122,7 +1123,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // A compact draw's blocks (from the captured vertices' end): after the last compact draw of its mesh (its blocks right
   // after), more of its instances; its set sent with this frame's trace when the helper lacks it.
   const auto add_blocks = [&] {
-    const uint32_t compact_flags = flags & (dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN);
+    const uint32_t compact_flags = flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
         && last->first_vertex + (last->instances * (block_texels / draw_instances)) == runtime.captured_vertices) {
