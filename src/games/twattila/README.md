@@ -2,6 +2,27 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v105 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper41: ship them together)
+
+- **Menu frame rate**: the ray tracing's draw hooks and DLSS's motion redraws stop where they have nothing to do (the
+  menus, before the helper runs).
+- **Ray-Traced Water Reflections**: rivers and lakes reflect by ray tracing from their own surface (their depth, smooth),
+  on by default with Ray-Traced Reflections; off keeps their screen-space reflections.
+- **Path-Traced Ambient (Experimental)**: with Path Tracing the paths bring the sky's light in place of the game's
+  ambient light and the ray-traced AO (less noise, no AO pass; small contact shadows follow the Light Bounce's
+  resolution).
+- **GPU Micromap Baking (Experimental)**: Leaf Micromaps baked by NVIDIA's GPU baker, as NVIDIA's guide asks (no
+  mid-frame read-backs, inputs stay in VRAM, a budget of 8 bakes a frame): frees the CPU threads.
+- **Swaying Shadows Range (Experimental)**: trees and grass sway in the ray tracing only this close to the camera; farther
+  ones stay still (their still copy): faster. 0 m: everywhere.
+- **Off-Screen Sway (Experimental)**: off: trees and grass away from the view stay still in the ray tracing.
+- **Fast Leaf Shadows (Experimental, with Leaf Micromaps)**: leaves skip their alpha tests (2-state micromaps) for the
+  sun's, the AO's and the torches' rays.
+- **Grass Shadow Range (Experimental)**: past it grass casts no ray-traced shadows (4K test field: trace 4.1 -> 2.1 ms at
+  3 m). 0 m: everywhere.
+- **Path Tracing SER (Experimental)**: shader execution reordering for Path Tracing and Ray-Traced Reflections (slower in
+  the test scene; for tests in big cities).
+
 ## v104 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper36: ship them together)
 
 - **Ray Reconstruction keeps dark tones**: every RR preset lifted shadows below ~1.4 nits to one flat violet level (the

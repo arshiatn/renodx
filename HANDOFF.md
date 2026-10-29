@@ -1396,10 +1396,26 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Not done: RT one frame behind: the helper's CPU round trip is ~0.1 ms (async) and its GPU work runs in its own
           process (time-sliced with the game's, no overlap), so a frame-late trace would only hide that bubble while
           its shadows lag a frame (reprojection needed). The wait is the GPU work itself.
-      [ ] 7. NVIDIA advice not used yet, as experimental toggles even if slower now (ATN tests in a big city): ReSTIR DI
+      [~] 7. NVIDIA advice not used yet, as experimental toggles even if slower now (ATN tests in a big city): ReSTIR DI
           for torches / fires, reflections through the path tracer, SHaRC radiance cache, emissive lights in paths,
           SER; and the old list's misses (refraction, caustics, coloured shadows through glass / banners).
-      [ ] 8. Build (helper37, build32, 64-bit check), harness, twattila_v105.zip, README / HANDOFF / memory, report.
+          Done: SER (558c4689, helper41): Path Tracing SER (RayTracedPathSer; bridge path flag RT_PATH_SER 128, on both
+          the bounce and the reflections requests): rt_path_ser.lib_6_9.hlsl exports PathTraceRayGen / ReflectRayGen
+          (rt_path.hlsli REORDER after each TRACE_SURFACE: hint none / instance & 7, 4 bits), a state object with the
+          main root signature as global, records at 0 / 64; 4K harness slower (bounce 1.7 -> 3.1 ms, reflections
+          1.6 -> 4.1), as the v8 note found. Already there: reflections are path traced (rt_path with REFLECT); emissive
+          light reaches paths through the screen's light (HitLight), last frame's colour and the world radiance cache, and
+          torches / fires are RIS-picked in every path vertex (LocalLight, two picks).
+          Not done (next round): SHaRC (SDK v1.6.5 in build\downloads\sharc; our cache is a SHaRC-like hash grid filled
+          from the screen and the first unseen surface: SHaRC's update / resolve / query passes would replace
+          rt_cache_fill / rt_cache_resolve / CacheLookup); ReSTIR DI for torches (the game shades each light with our
+          per-light visibility bits: ReSTIR DI picks one light per pixel, so it needs our own torch shading in place of
+          the game's light draws, or importance-picked bit refreshes); refraction (the game's water refraction already
+          samples the underwater ground on screen; RT would help only at the shores), caustics (photon tracing),
+          coloured shadows through banners / sails (the visibility is one channel the sun shaders read: RGB needs
+          those shaders and the format changed).
+      [x] 8. Build (helper41, build32, 64-bit check), harness (30 modes pass, all_modes_h41), twattila_v105.zip, README /
+          HANDOFF / memory, report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
