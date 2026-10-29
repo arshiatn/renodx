@@ -1436,8 +1436,20 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       three restarts each lost at the cluster-destination copy after the BLAS builds (page faults on freed resources),
       then "Off until the next set" (RR off with RT); frame generation then failed "no D3D12 device for Streamline"
       (sticky Fail). Checklist ([ ] open, [x] done, [-] left out with the reason):
-      [ ] 1. The freeze and losing RR / MFG: DRED names (pass markers per slot, resource names), experimental options off
-          for the session after a GPU reset (the helper restarts without them), RT restarts' status, FG retries its device.
+      [x] 1. The freeze and losing RR / MFG (a350179a, helper45). Found: a removed D3D12 device leaves the SHARED fence at
+          all ones (harness: FFFFFFFFFFFFFFFF after RENODX_TW_TEST_REMOVAL), so every wait on it passed: the game, RR and
+          FG ran unsynchronized after the first loss (RR / MFG "not working", fps "better"); the harness's sway check
+          failed after a removal for that reason (results one frame late). Fixed: dlaa_bridge::Prepare makes a new set
+          (new fence) when its fence reads all ones (the harness now calls Prepare each frame and copies the old set's
+          contents: "new set after a removal" check). Windows refused the helper new devices after the 4 hangs (RT's
+          "needs DXR 1.1" at the next set and FG's "no D3D12 device" were D3D12CreateDevice failures): one restart a
+          session, with GPU Micromap Baking / sway range / Off-Screen Sway / SER / SHaRC paused (masked in main.cpp each
+          request), a second loss leaves RT off ("restart the game" status); RR / FG / RT device creation failures are
+          no longer sticky (tried at the next set, HRESULT in the status); RR / FG Lost() -> a new device (FG: Streamline
+          shut down and started again). DRED: each slot's request (kind, value, flags, sway), the passes' marker names
+          (DRED left them unnamed), buffers named "rt_d3d12.hpp:<line>" (std::source_location). The first hang's cause
+          (rt_sway's MODE_KEPT dispatch, no page fault) not found: bounded loops, bounded indices; next hang's report
+          names it.
       [ ] 2. River zoom (grass on the riverbed) destroys fps: find the cost, get performance back.
       [ ] 3. Surfaces stay black a few seconds then "load": find it (Path-Traced Ambient? caches? AO history?).
       [ ] 4. NVIDIA guidelines audit: everything as NVIDIA's guides say (GPU micromap baking the default, OMM / Mega
