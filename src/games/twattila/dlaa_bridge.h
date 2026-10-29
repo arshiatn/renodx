@@ -20,10 +20,10 @@ constexpr uint32_t OLDEST_VERSION = 2;
 
 // Ray tracing (v4, rt_scene.hpp / dlaa_helper/rt_d3d12.hpp): the captured triangles' world positions, RT_TRANSFER_WIDTH
 // per row of the shared vertex texture (RT_TRANSFER_HEIGHT rows; 4096 since the units' and the terrain's shares were
-// full in a battle, 5120 with swaying trees; a helper of either height reads the rows an addon fills); new captures and
-// drawn meshes a frame at most.
+// full in a battle, 5120 with swaying trees, 8192 since city walls were left out in a 4x battle; a helper of either
+// height reads the rows an addon fills); new captures and drawn meshes a frame at most.
 constexpr uint32_t RT_TRANSFER_WIDTH = 4096;
-constexpr uint32_t RT_TRANSFER_HEIGHT = 5120;
+constexpr uint32_t RT_TRANSFER_HEIGHT = 8192;
 constexpr uint32_t RT_CAPTURES = 256;
 constexpr uint32_t RT_DRAWN = 8192;
 // The leaves' opacity masks (v6): an R8 texture array of RT_ATLAS_SLICES slices RT_ATLAS_SIZE square.
@@ -79,10 +79,10 @@ constexpr uint32_t RT_NEW_SETS = 512;
 constexpr uint32_t RT_CLUSTER_DATA_BYTES = 16u << 20;
 constexpr uint32_t RT_CLUSTER_TRIANGLES = 128;
 constexpr uint32_t RT_CLUSTER_VERTICES = 128;
-// The frame's dynamic triangles and clusters at most (every-frame captures and compact draws; a helper on a GPU of 12 GB
-// or less takes half the clusters).
-constexpr uint32_t RT_DYNAMIC_TRIANGLES = 16u << 20;
-constexpr uint32_t RT_DYNAMIC_CLUSTERS = 1u << 18;
+// The frame's dynamic triangles and clusters at most (every-frame captures and compact draws; a helper on a GPU of 20 GB
+// or less takes half the clusters, of 12 GB or less a quarter).
+constexpr uint32_t RT_DYNAMIC_TRIANGLES = 32u << 20;
+constexpr uint32_t RT_DYNAMIC_CLUSTERS = 1u << 19;
 // An every-frame capture's clusters: this many triangles each (the last partial).
 constexpr uint32_t RT_CAPTURE_CLUSTER_TRIANGLES = 85;
 // The frame's alpha-tested dynamic triangles' corners at most (their UVs: grass's and swaying leaves').

@@ -271,11 +271,14 @@ class RtScene12 {
     // the sequential 8-bit indices, the arguments; a slot's captures' arguments and records written by the CPU
     // (cluster_data), its compact draws' table and new sets (compact_data); the sets' pool. A cluster has at most
     // RT_CLUSTER_TRIANGLES triangles (a compact draw's) over 255 vertices (a capture's sequential ones). Each takes ~6 KB
-    // of CLAS memory at most: half the clusters on GPUs of 12 GB or less (4x unit size battles: ~120,000 a frame).
+    // of CLAS memory at most: half the clusters on GPUs of 20 GB or less, a quarter on 12 GB or less (4x unit size battles
+    // filled 262,144 with city walls left out).
     if (clusters_) {
       DXGI_ADAPTER_DESC1 adapter_desc = {};
       adapter->GetDesc1(&adapter_desc);
-      cluster_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? MAX_CLUSTERS : MAX_CLUSTERS / 2;
+      cluster_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? MAX_CLUSTERS
+                       : (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? MAX_CLUSTERS / 2
+                                                                                  : MAX_CLUSTERS / 4;
       // A quarter of them built from triangles (the captures', the compact draws' whose set has no templates yet), the rest
       // instantiated.
       built_limit_ = cluster_limit_ / 4;

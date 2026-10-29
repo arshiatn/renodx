@@ -171,9 +171,11 @@ constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_T
 // MAX_GRASS_VERTICES of them), so the terrain keeps the rest. Doubled with the transfer texture (half the soldiers' draws
 // were left out: holes in their shadows, ATN 2026-10-28); grass 4M (3.5M drawn in ATN's battle: what fit changed as the
 // view did, flickering grass shadows).
-// 17M of the 20M texels since swaying trees (MAX_TREE_VERTICES: their leaves where drawn every frame).
-constexpr UINT MAX_DYNAMIC_VERTICES = 17u << 20;
-constexpr UINT MAX_UNIT_VERTICES = 10u << 20;
+// 17M of the 20M texels since swaying trees (MAX_TREE_VERTICES: their leaves where drawn every frame), 29M of 32M since
+// city walls were left out in a 4x battle (ATN 2026-10-29). Units (skinned soldiers and horses) take at most three
+// quarters of the frame's texels, triangles and clusters: what comes after them (walls and buildings in dynamic buffers,
+// the terrain, banners) keeps a quarter.
+constexpr UINT MAX_DYNAMIC_VERTICES = 29u << 20;
 constexpr UINT MAX_GRASS_VERTICES = 4u << 20;
 constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
@@ -267,9 +269,9 @@ struct Costs {
   // What was left out by vertex shader: its texels by the first of its shares that was full (SHARE_NAMES).
   std::unordered_map<uint32_t, std::array<uint64_t, 5>> left_out_shaders;
 };
-// The shares a dynamic draw needs room in (Capture): all dynamic draws' texels, the units', the grass's corners, the
-// helper's triangles and clusters.
-constexpr std::array<const char*, 5> SHARE_NAMES = {"dynamic texels", "units' texels", "grass corners", "triangles", "clusters"};
+// The shares a dynamic draw needs room in (Capture): all dynamic draws' texels, the helper's triangles and clusters, the
+// grass's corners, the units' three quarters of those.
+constexpr std::array<const char*, 5> SHARE_NAMES = {"dynamic texels", "triangles", "clusters", "grass corners", "units' three quarters"};
 
 // Adds its scope's CPU time to `ticks` (the cost report).
 class CpuTime {
@@ -300,8 +302,10 @@ struct Runtime {
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
   uint32_t dynamic_vertices = 0;
-  uint32_t unit_vertices = 0;   // of them all but the terrain's
-  uint32_t grass_vertices = 0;  // and grass
+  uint32_t unit_vertices = 0;   // of them the units' (skinned soldiers and horses), their triangles and clusters
+  uint32_t unit_triangles = 0;
+  uint32_t unit_clusters = 0;
+  uint32_t grass_vertices = 0;  // and grass's
   std::vector<uint64_t> drawn;
   // This frame's draws of placed meshes in the scene: their instances' rows in the captured vertices (bridge v14).
   std::vector<dlaa_bridge::RtPlacement> placements;
@@ -888,6 +892,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // its instances between).
   bool place = false;
   size_t full_share = SHARE_NAMES.size();  // the first of its shares that is full (none: their count)
+  const bool unit = shader.dynamic && !shader.grass && !shader.thin;  // skinned soldiers and horses
   // Compact (v16): its mesh's blocks in place of its triangles, once its set is made and can go with this frame's trace;
   // what it takes of the vertex texture and the helper's frame. A placed draw of leaves sways (`sway`): its blocks besides
   // its rows, within the trees' share.
@@ -927,10 +932,13 @@ void Capture(Context& command, const SceneShader& shader) {
     if (dynamic) {
       const std::array<bool, SHARE_NAMES.size()> full = {
           runtime.dynamic_vertices + texels > MAX_DYNAMIC_VERTICES,
-          !shader.terrain && runtime.unit_vertices + texels > MAX_UNIT_VERTICES,
-          shader.grass && runtime.grass_vertices + (triangles * 3) > MAX_GRASS_VERTICES,
           runtime.dynamic_triangles + triangles > dlaa_bridge::RT_DYNAMIC_TRIANGLES,
           runtime.dynamic_clusters + clusters > dlaa_bridge::RT_DYNAMIC_CLUSTERS,
+          shader.grass && runtime.grass_vertices + (triangles * 3) > MAX_GRASS_VERTICES,
+          unit
+              && (runtime.unit_vertices + texels > MAX_DYNAMIC_VERTICES / 4 * 3
+                  || runtime.unit_triangles + triangles > dlaa_bridge::RT_DYNAMIC_TRIANGLES / 4 * 3
+                  || runtime.unit_clusters + clusters > dlaa_bridge::RT_DYNAMIC_CLUSTERS / 4 * 3),
       };
       full_share = static_cast<size_t>(std::ranges::find(full, true) - full.begin());
     }
@@ -1198,7 +1206,11 @@ void Capture(Context& command, const SceneShader& shader) {
   runtime.captured_vertices += texels + row_texels;
   if (dynamic) {
     runtime.dynamic_vertices += texels;
-    if (!shader.terrain) runtime.unit_vertices += texels;
+    if (unit) {
+      runtime.unit_vertices += texels;
+      runtime.unit_triangles += triangles;
+      runtime.unit_clusters += clusters;
+    }
     if (shader.grass) runtime.grass_vertices += triangles * 3;
     runtime.dynamic_triangles += triangles;
     runtime.dynamic_clusters += clusters;
@@ -2030,6 +2042,8 @@ inline void Update(const Settings& settings) {
   runtime.captured_vertices = 0;
   runtime.dynamic_vertices = 0;
   runtime.unit_vertices = 0;
+  runtime.unit_triangles = 0;
+  runtime.unit_clusters = 0;
   runtime.grass_vertices = 0;
   runtime.dynamic_triangles = 0;
   runtime.dynamic_clusters = 0;
