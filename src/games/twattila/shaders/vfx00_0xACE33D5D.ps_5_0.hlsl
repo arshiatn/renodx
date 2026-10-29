@@ -618,8 +618,9 @@ void main(
         r10.xyz = sun_colour.xyz * r10.xyz;
         r10.xyz = r10.xyz * r6.zzz;
         r11.xyz = ambient_cube_tb[0].xyz * r6.xxx;
-        // Torches and fires light the smoke near them (ray tracing's local lights, isotropic: 1 / 4 pi).
-        r11.xyz += 0.0795774683 * RtLocalLightAt(v4.xyz);
+        // Torches and fires light the smoke near them (ray tracing's local lights; this path lights with the sun's colour
+        // as it is, no phase function: theirs too).
+        r11.xyz += RtLocalLightAt(v4.xyz);
         r9.xyz = r11.xyz * r9.xyz;
         r9.xyz = r9.xyz * r6.zzz;
         r9.xyz = r0.yyy * r10.xyz + r9.xyz;
@@ -675,7 +676,8 @@ void main(
         r0.z = r0.z * r0.w + r1.y;
         r7.xyz = sun_colour.xyz * r0.zzz;
         r0.yzw = r7.xyz * r0.yyy + r6.xyw;
-        // Torches and fires light the smoke near them (ray tracing's local lights, isotropic: 1 / 4 pi).
+        // Torches and fires light the smoke near them (ray tracing's local lights, isotropic: 1 / 4 pi, as the sun's
+        // phase functions here).
         r0.yzw += 0.0795774683 * RtLocalLightAt(v4.xyz);
         r6.xyw = r0.yzw * r6.zzz;
         r0.yzw = -r0.yzw * r6.zzz + ps_lighting_legacy_params[r0.x].zzz;

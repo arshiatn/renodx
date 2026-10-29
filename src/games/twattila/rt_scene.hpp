@@ -625,8 +625,8 @@ inline void InstallFogShadows(std::span<const uint32_t> shader_hashes) {
 
 // Attila's forward passes reading the sun's shadow map (ReShade.log 2026-10-28: lit everywhere under Ray-Traced Shadows
 // Only): two of the game's (patched: screen_space_shadows::PatchForwardShadows) and the particles' (shaders/vfx00, which
-// reads t49 itself).
-constexpr std::array<uint32_t, 3> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D};
+// reads t49 itself); with them the particles' other path (shaders/vfx01: no shadows, the traced lights at b9 alone).
+constexpr std::array<uint32_t, 4> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D, 0xF5379F78};
 
 // A forward pass's draw reading the sun's shadow map: under Ray-Traced Shadows Only (its map empty) the rays' occlusion
 // at t49 (the patched sun draws', this frame's), else none (t49 reads 0: the game's shadow).

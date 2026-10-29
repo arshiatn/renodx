@@ -1,4 +1,5 @@
 #include "../shared.h"
+#include "../rt_local_lights.hlsli"
 
 // ---- Reconstructed from vfx01_0xF5379F78.ps_5_0.cso
 // ---- Total War: Attila VFX pixel shader, alternate quality path (SM 5.0)
@@ -258,6 +259,9 @@ void main(
         r10.xyz = r9.xyz * r0.zzz;
         r10.xyz = sun_colour.xyz * r10.xyz;
         r11.xyz = ambient_cube_tb[0].xyz * r6.xxx;
+        // Torches and fires light the smoke near them (ray tracing's local lights, rt_scene.hpp binds them; this path
+        // lights with the sun's colour as it is, no phase function: theirs too).
+        r11.xyz += RtLocalLightAt(v4.xyz);
         r9.xyz = r11.xyz * r9.xyz;
         r9.xyz = r9.xyz * r6.zzz;
         r9.xyz = r10.xyz * r6.zzz + r9.xyz;
@@ -312,6 +316,9 @@ void main(
         r0.z = 1 + -r1.x;
         r0.y = r0.y * r0.z + r1.x;
         r6.xyw = r0.yyy * sun_colour.xyz + r6.xyw;
+        // Torches and fires light the smoke near them (ray tracing's local lights, isotropic: 1 / 4 pi, as the sun's
+        // phase functions here).
+        r6.xyw += 0.0795774683 * RtLocalLightAt(v4.xyz);
         r7.xyz = r6.xyw * r6.zzz;
         r6.xyz = -r6.xyw * r6.zzz + ps_lighting_legacy_params[r0.x].zzz;
         r0.yzw = r0.www * r6.xyz + r7.xyz;
