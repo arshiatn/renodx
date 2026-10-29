@@ -1477,8 +1477,25 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           templates for instanced sets, GPU-driven counts. Deviations kept on purpose: SHaRC propagation depth 2 (4
           hung the GPU), partitioned TLAS off (stalled; our TLAS 0.1-0.16 ms), SER Experimental (paused after a reset),
           GPU bake DisableTexCoordDeduplication.
-      [ ] 5. More ReSTIR: reflections, shadows, other effects; fewer rays, less noise, less VRAM.
-      [ ] 6. Water refraction (RT), caustics, coloured shadows through banners / sails.
+      [-] 5. More ReSTIR (analysis, nothing shipped): ReSTIR GI is already spatiotemporal and always on with Path
+          Tracing (16 candidates a texel, temporal reuse with validation, 5 neighbours with Jacobians, final visibility).
+          4K harness (noise_runs.py, "bounce near the wall: red spread"): 1 ray 0.149, 4 rays 0.080 (bounce 1.69 ms), 16
+          rays 0.064 (2.49 ms): tell ATN 4-8 rays. More neighbours (5 -> 8 -> 12): same spread, +0.4 / +0.9 ms: not
+          worth it. Sun shadows: one light, nothing to resample (RR denoises its one ray). Torches: Importance-Sampled
+          Torch Shadows is ReSTIR DI's light picking; full ReSTIR DI needs our own torch lighting (the game shades each
+          torch with our bits). Reflections share nothing with the bounce's rays (own samples, ATN 1); ReSTIR on the GGX
+          lobe needs full-resolution reservoirs (~0.25-0.5 GB at 4K: against ATN's VRAM wish); cheaper next step:
+          rough reflections (now not traced past ROUGH_LIMIT) from the GI reservoirs (no rays, no VRAM).
+      [~] 6. Water Caustics DONE (89a57ef7, untested in game): the river (2E9F5935, world v1, normal sampler s4) and lake
+          (C9FBACCB, v3, s3) PS patched at creation (addon.cpp PatchWaterCaustics: after sample_l r7.xyz from t2, mul /
+          frc / sample_l t51 / mad r7 *= 1 + c; t51 unbound = the game's); water_caustics.cs (tile 4 m, 256^2 R16F, two
+          layers of curved drifting cell borders, seamless) at the first water draw a frame; WaterCaustics slider 0-2
+          (default 1). Checked offline (scratchpad water_patch_test: WARP creates both, disassembly; caustics PNG).
+          Not done: coloured shadows (plan: the trace's cloth hits on screen tinted by RR's albedo guide / last frame's
+          colour into a new shared RGB texture (bridge v19), the patched sun shaders' sun_colour reads (lighting_VS_PS c1)
+          x (1 - t50); needs the sun shaders' bytecode (dump in game) to check the patch), RT refraction (the water is
+          drawn forward after the lighting, so the trace never sees its surface: needs a capture of the water surface at
+          its draw and a late trace, or last frame's, reprojected).
       [x] 7. v107 for items 1-4: twattila_v107.zip (Downloads, 21:57; helper46, release_zip.py now names
           build\tw_dlaa_helper46), build32 Attila / Rome II / Thrones and the 64-bit TW check built, all_modes 38/38
           (all_modes_h46.txt: new removal_sway, undrawn_kept, undrawn_gone), README v107. Items 5-6 go to v108.

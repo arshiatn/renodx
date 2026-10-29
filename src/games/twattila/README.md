@@ -19,6 +19,10 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon3
   the scene when they are inside the view (off-screen ones still cast shadows).
 - **NVIDIA's guidelines**: GPU Micromap Baking is on by default (NVIDIA's OMM SDK: the GPU baker for baking in game; no
   longer Experimental). Under Ray Reconstruction the AO goes to RR raw (RR replaces denoisers that accumulate frames).
+- **Water Caustics (Experimental, 1 by default, 0 off)**: rippling light on river and lake beds, seen through the water
+  (the game's two water shaders get it as they are created; the caustics follow the world, 4 m tiles, drifting).
+- Path Tracing: ReSTIR GI reuses every ray already; in the test scene 4 rays left 0.080 noise, 16 rays 0.064 at 1.5x the
+  cost: 4-8 rays are enough with it.
 
 ## v106 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper44: ship them together)
 
