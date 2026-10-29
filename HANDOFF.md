@@ -1340,6 +1340,25 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       - GRASS_MICROMAP_LEVEL 5 (MicromapRead / MicromapBake grass flag).
       NEXT: ATN's test of RR darks, water, torches; a profile with Grass Always Drawn ON; near-only grass sway (GPU-side
       per-instance distance in rt_place + rt_compact) if the sway's cost still matters.
+    - v105 BIG BATCH (ATN 2026-10-29 ~18:30, away a few hours, "no need to stop", commit often). Checklist (tick + commit
+      after each; [ ] open, [x] done, [-] left out with the reason):
+      [ ] 1. Menu fps 500 -> 140 (not Reflex: V-Sync off, 165 Hz; RT / DLSS not running in the menu): early-outs in every
+          per-draw hook / per-frame pass whose effect is not running (RT capture without the bridge, motion redraws
+          without DLSS, ...); note what else runs there.
+      [ ] 2. AO from path tracing: with PT Light Bounce (ReSTIR GI) the RT AO pass is redundant (noise, 5-7 ms): option
+          (experimental) to drop it under PT.
+      [ ] 3. RT reflections on water: rays from the water's own depth (its draws write depth) and normal, smooth; then
+          maybe RT refraction (experimental).
+      [ ] 4. GPU micromap baking (NVIDIA OMM SDK GPU baker) instead of the CPU baker: no read-back, no CPU threads, no
+          shadow delay. More CPU -> GPU where possible (the engine's CPU is the weak spot).
+      [ ] 5. Mega Geometry: near-only sway (GPU, per instance by distance), off-screen sway left out, far sway at a lower
+          rate, (cluster LOD / unit templates if time): experimental toggles where they cost nothing.
+      [ ] 6. The game waits ~15 ms a frame for the helper's GPU work (sun 5-7 + AO 5-7 ms): speedups (foliage shadow
+          rays through micromaps as opaque, RT one frame behind / overlap?), as experimental toggles.
+      [ ] 7. NVIDIA advice not used yet, as experimental toggles even if slower now (ATN tests in a big city): ReSTIR DI
+          for torches / fires, reflections through the path tracer, SHaRC radiance cache, emissive lights in paths,
+          SER; and the old list's misses (refraction, caustics, coloured shadows through glass / banners).
+      [ ] 8. Build (helper37, build32, 64-bit check), harness, twattila_v105.zip, README / HANDOFF / memory, report.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
