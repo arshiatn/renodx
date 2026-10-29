@@ -2,6 +2,14 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v100 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper32: ship them together)
+
+- **Record Ray Tracing Profile (30 s)** (end of the Ray Tracing section): every frame's ray tracing costs into
+  tw_rt_profile.csv, the helper's requests (each pass's CPU and GPU time, the scene's counts) into
+  tw_rt_profile_helper.csv, both next to the game's exe. The data for the next optimization batch.
+- **Less work on the game's thread**: new meshes' clusters are made on a worker thread (they were made inside the
+  game's draws, up to 16 meshes a frame: stutter when new meshes came into view).
+
 ## v99 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper31: ship them together)
 
 - **Light Through Leaves much cheaper**: sun rays no longer step through every leaf layer of a forest; they count the

@@ -15,8 +15,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <functional>
+#include <future>
 #include <limits>
 #include <mutex>
 #include <span>
@@ -34,6 +37,7 @@
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/hash.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/state.hpp"
 #include "./dlaa_bridge.hpp"
 #include "./dxbc.hpp"
@@ -194,6 +198,8 @@ constexpr uint64_t PLACE_TURNS = 4;
 constexpr size_t MAX_LOCAL_LIGHTS = 8192;
 // Compact draws (bridge v16): the cluster sets made a frame at most (a battle's first frames bring hundreds of meshes).
 constexpr uint32_t MAX_SET_BUILDS = 16;
+// Record Ray Tracing Profile's length.
+constexpr uint64_t PROFILE_MS = 30000;
 
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
@@ -251,6 +257,7 @@ struct DeviceObjects {
     ComPtr<ID3D11Query> disjoint;
     std::array<ComPtr<ID3D11Query>, 3> stamps;
     bool pending = false;
+    uint64_t frame = 0;  // its (the profile)
   };
   std::array<Timing, 4> timings;
   uint32_t timing_next = 0;
@@ -273,6 +280,29 @@ struct Costs {
   uint64_t particles = 0;  // Smoke Shadows' streamed out
   // What was left out by vertex shader: its texels by the first of its shares that was full (SHARE_NAMES).
   std::unordered_map<uint32_t, std::array<uint64_t, 5>> left_out_shaders;
+};
+// Record Ray Tracing Profile (StartProfile): a line a frame into tw_rt_profile.csv next to the exe for PROFILE_MS, the
+// helper writing its requests' into tw_rt_profile_helper.csv (RT_PROFILE). A frame's line: its CPU time present to
+// present; the addon's on the game's thread (capturing, tracing, of it waiting for the helper's answers); the cluster sets
+// made on workers; its scene's counts; the last GPU times that came back (their frame: the addon's passes, the game's
+// GPU waiting for the helper). The running totals as at the last line (Costs' since its report, the bridge's, the
+// workers') give the frame's share.
+struct Profile {
+  std::ofstream file;
+  std::filesystem::path path;
+  uint64_t end_time = 0;  // GetTickCount64's
+  uint32_t frames = 0;
+  LARGE_INTEGER started = {};
+  LARGE_INTEGER presented = {};
+  int64_t capture_ticks = 0;
+  int64_t trace_ticks = 0;
+  int64_t answer_ticks = 0;
+  int64_t set_ticks = 0;
+  uint64_t left_out = 0;
+  uint64_t no_room = 0;
+  uint64_t gpu_frame = 0;
+  double passes_ms = 0.0;
+  double waiting_ms = 0.0;
 };
 // The shares a dynamic draw needs room in (Capture): all dynamic draws' texels, the helper's triangles and clusters, the
 // grass's corners, the units' three quarters of those.
@@ -298,6 +328,8 @@ class CpuTime {
 struct Runtime {
   std::mutex mutex;
   Costs costs;  // the render thread's (as `frame`)
+  Profile profile;
+  std::atomic<int64_t> set_ticks = 0;  // the cluster sets' making on workers so far (CPU ticks; the profile)
   Settings settings;
   uint64_t frame = 0;
   // This frame's new captures (consecutive dynamic draws joined) and their draws' keys, the scene meshes it drew; the
@@ -333,6 +365,7 @@ struct Runtime {
     uint64_t used_frame = 0;
     bool failed = false;  // no set: its triangles captured
     bool sent = false;
+    std::future<dlaa_bridge::ClusterSetData> making;  // its set on a worker (PrepareClusterSet)
   };
   std::unordered_map<uint64_t, ClusterMesh> cluster_meshes;
   // This frame's compact draws (consecutive ones of a mesh joined), the sets its trace sends and their bytes, its
@@ -656,8 +689,9 @@ inline bool AtlasSlice(ID3D11DeviceContext* native, ID3D11ShaderResourceView* te
   return true;
 }
 
-// A compact draw's mesh (v16) without its cluster set yet: its index range copied for the CPU (new), or that copy read
-// (two frames on, never waiting; MAX_SET_BUILDS a frame) into its set and remap index buffer. runtime.mutex held.
+// A compact draw's mesh (v16) without its cluster set yet: its index range copied for the CPU (new), that copy read (two
+// frames on, never waiting; MAX_SET_BUILDS a frame) and its set made on a worker (MakeClusterSet took up to milliseconds
+// a mesh on the game's busy thread), at a later draw its set and remap index buffer taken. runtime.mutex held.
 inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3D11Buffer* index_buffer, DXGI_FORMAT format, UINT offset,
                               UINT first_index, UINT index_count) {
   auto& mesh = runtime.cluster_meshes[set_key];
@@ -665,6 +699,21 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
   if (mesh.failed || mesh.remap) return;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
+  if (mesh.making.valid()) {
+    if (mesh.making.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    dlaa_bridge::ClusterSetData set = mesh.making.get();
+    const D3D11_BUFFER_DESC remap_desc = {.ByteWidth = static_cast<UINT>(set.remap.size() * 4), .Usage = D3D11_USAGE_IMMUTABLE,
+                                          .BindFlags = D3D11_BIND_INDEX_BUFFER};
+    const D3D11_SUBRESOURCE_DATA remap_data = {.pSysMem = set.remap.data()};
+    mesh.failed = set.triangles == 0 || set.data.size() > dlaa_bridge::RT_CLUSTER_DATA_BYTES
+                  || FAILED(device->CreateBuffer(&remap_desc, &remap_data, mesh.remap.GetAddressOf()));
+    if (mesh.failed) return;
+    mesh.data = std::move(set.data);
+    mesh.vertices = static_cast<uint32_t>(set.remap.size());
+    mesh.clusters = set.clusters;
+    mesh.triangles = set.triangles;
+    return;
+  }
   const UINT index_bytes = (format == DXGI_FORMAT_R16_UINT) ? 2u : 4u;
   if (!mesh.staging) {
     D3D11_BUFFER_DESC desc = {};
@@ -698,17 +747,17 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
     native->Unmap(mesh.staging.Get(), 0);
   }
   mesh.staging.Reset();
-  dlaa_bridge::ClusterSetData set = SUCCEEDED(result) ? dlaa_bridge::MakeClusterSet(indices) : dlaa_bridge::ClusterSetData{};
-  const D3D11_BUFFER_DESC remap_desc = {.ByteWidth = static_cast<UINT>(set.remap.size() * 4), .Usage = D3D11_USAGE_IMMUTABLE,
-                                        .BindFlags = D3D11_BIND_INDEX_BUFFER};
-  const D3D11_SUBRESOURCE_DATA remap_data = {.pSysMem = set.remap.data()};
-  mesh.failed = set.triangles == 0 || set.data.size() > dlaa_bridge::RT_CLUSTER_DATA_BYTES
-                || FAILED(device->CreateBuffer(&remap_desc, &remap_data, mesh.remap.GetAddressOf()));
+  mesh.failed = FAILED(result);
   if (mesh.failed) return;
-  mesh.data = std::move(set.data);
-  mesh.vertices = static_cast<uint32_t>(set.remap.size());
-  mesh.clusters = set.clusters;
-  mesh.triangles = set.triangles;
+  mesh.making = std::async(std::launch::async, [indices = std::move(indices)] {
+    LARGE_INTEGER started;
+    LARGE_INTEGER ended;
+    QueryPerformanceCounter(&started);
+    dlaa_bridge::ClusterSetData set = dlaa_bridge::MakeClusterSet(indices);
+    QueryPerformanceCounter(&ended);
+    runtime.set_ticks += ended.QuadPart - started.QuadPart;
+    return set;
+  });
 }
 
 // After a scene draw of the main view: a draw not yet in the scene is drawn once more into the stream-output buffer.
@@ -1510,7 +1559,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | ((runtime.settings.fog_shadows && lights && runtime.settings.light_glow > 0.f) ? dlaa_bridge::RT_FOG_LIGHTS : 0u)
                | (runtime.settings.micromaps ? dlaa_bridge::RT_MICROMAPS : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
-               | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u),
+               | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u)
+               | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
@@ -1536,6 +1586,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     native->End(timing.stamps[2].Get());
     native->End(timing.disjoint.Get());
     timing.pending = true;
+    timing.frame = runtime.frame;
     ++objects.timing_next;
   }
   if (!traced) NotTraced("the helper did not trace: " + dlaa_bridge::TraceStatus());
@@ -1961,9 +2012,45 @@ inline void Update(const Settings& settings) {
       if (!ready) continue;
       timing.pending = false;
       if (disjoint.Disjoint || disjoint.Frequency == 0 || stamps[1] < stamps[0] || stamps[2] < stamps[1]) continue;
-      costs.passes_ms += static_cast<double>(stamps[1] - stamps[0]) * 1000.0 / static_cast<double>(disjoint.Frequency);
-      costs.waiting_ms += static_cast<double>(stamps[2] - stamps[1]) * 1000.0 / static_cast<double>(disjoint.Frequency);
+      const double passes_ms = static_cast<double>(stamps[1] - stamps[0]) * 1000.0 / static_cast<double>(disjoint.Frequency);
+      const double waiting_ms = static_cast<double>(stamps[2] - stamps[1]) * 1000.0 / static_cast<double>(disjoint.Frequency);
+      costs.passes_ms += passes_ms;
+      costs.waiting_ms += waiting_ms;
       ++costs.timed;
+      runtime.profile.gpu_frame = timing.frame;
+      runtime.profile.passes_ms = passes_ms;
+      runtime.profile.waiting_ms = waiting_ms;
+    }
+  }
+  // The profile's line for the frame that ended (runtime.frame - 1).
+  if (auto& profile = runtime.profile; profile.file.is_open()) {
+    LARGE_INTEGER now;
+    LARGE_INTEGER frequency;
+    QueryPerformanceCounter(&now);
+    QueryPerformanceFrequency(&frequency);
+    const auto ms = [&](int64_t ticks) { return static_cast<double>(ticks) * 1000.0 / static_cast<double>(frequency.QuadPart); };
+    const int64_t set_ticks = runtime.set_ticks.load();
+    profile.file << std::format("{},{:.2f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{:.3f},{:.3f}\n",
+                                runtime.frame - 1, ms(now.QuadPart - profile.started.QuadPart), ms(now.QuadPart - profile.presented.QuadPart),
+                                ms(costs.capture_ticks - profile.capture_ticks), ms(costs.trace_ticks - profile.trace_ticks),
+                                ms(dlaa_bridge::bridge.answer_ticks - profile.answer_ticks), ms(set_ticks - profile.set_ticks), runtime.set_builds,
+                                runtime.captures.size(), runtime.compact.size(), runtime.placements.size(), runtime.new_sets.size(),
+                                runtime.captured_vertices / 1.0e6, runtime.dynamic_vertices / 1.0e6,
+                                static_cast<double>(costs.left_out - profile.left_out) / 1.0e6,
+                                static_cast<double>(costs.no_room - profile.no_room) / 1.0e6, runtime.lights_drawn.size(),
+                                (runtime.traced_frame + 1 == runtime.frame) ? 1 : 0, profile.gpu_frame, profile.passes_ms, profile.waiting_ms);
+    profile.presented = now;
+    profile.capture_ticks = costs.capture_ticks;
+    profile.trace_ticks = costs.trace_ticks;
+    profile.answer_ticks = dlaa_bridge::bridge.answer_ticks;
+    profile.set_ticks = set_ticks;
+    profile.left_out = costs.left_out;
+    profile.no_room = costs.no_room;
+    ++profile.frames;
+    if (GetTickCount64() >= profile.end_time) {
+      profile.file.close();
+      renodx::utils::log::i(std::format("[Total War] Ray tracing profile: {} frames saved to {} (the helper's requests: tw_rt_profile_helper.csv).",
+                                        profile.frames, profile.path.string()));
     }
   }
   if (runtime.status_log_time != 0 && GetTickCount64() >= runtime.status_log_time) {
@@ -2054,6 +2141,10 @@ inline void Update(const Settings& settings) {
       }
     }
     costs = {};
+    runtime.profile.capture_ticks = 0;
+    runtime.profile.trace_ticks = 0;
+    runtime.profile.left_out = 0;
+    runtime.profile.no_room = 0;
     runtime.new_static_time = now;
     // Meshes not drawn for RELEASE_FRAMES give their sets (and the game's index buffers) back.
     std::erase_if(runtime.cluster_meshes, [&](const auto& entry) { return entry.second.used_frame + internal::RELEASE_FRAMES < runtime.frame; });
@@ -2083,6 +2174,34 @@ inline void Update(const Settings& settings) {
   if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second.frame + internal::RELEASE_FRAMES < runtime.frame; }) != 0) {
     std::erase_if(runtime.short_keys, [&](const auto& entry) { return !runtime.known.contains(entry.second.key); });
   }
+}
+
+// Record Ray Tracing Profile: PROFILE_MS of frames from the next present (Profile).
+inline void StartProfile() {
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  auto& profile = runtime.profile;
+  if (profile.file.is_open()) return;
+  profile = {};
+  profile.path = renodx::utils::platform::GetCurrentProcessPath().parent_path() / "tw_rt_profile.csv";
+  profile.file.open(profile.path, std::ios::trunc);
+  if (!profile.file) {
+    renodx::utils::log::w("[Total War] Ray tracing profile: ", profile.path.string(), " could not be written.");
+    return;
+  }
+  profile.file << "frame,time_ms,frame_ms,capture_ms,trace_ms,answer_wait_ms,set_worker_ms,sets_started,captures,compact_draws,placements,"
+                  "new_sets,captured_mtexels,dynamic_mtexels,left_out_mtexels,no_room_mtexels,lights,traced,gpu_frame,gpu_passes_ms,"
+                  "gpu_helper_wait_ms\n";
+  profile.end_time = GetTickCount64() + internal::PROFILE_MS;
+  QueryPerformanceCounter(&profile.started);
+  profile.presented = profile.started;
+  profile.capture_ticks = runtime.costs.capture_ticks;
+  profile.trace_ticks = runtime.costs.trace_ticks;
+  profile.answer_ticks = dlaa_bridge::bridge.answer_ticks;
+  profile.set_ticks = runtime.set_ticks.load();
+  profile.left_out = runtime.costs.left_out;
+  profile.no_room = runtime.costs.no_room;
+  renodx::utils::log::i("[Total War] Ray tracing profile: recording 30 s into ", profile.path.string(), ".");
 }
 
 // Whether ray tracing wants the bridge's textures (the anti-aliasing's DLAA makes them).

@@ -133,6 +133,9 @@ constexpr uint32_t RT_RECONSTRUCTED = 256;
 // Torch and fire light in fog (v18, with RT_FOG_SHADOWS): along each camera ray the local lights' light too (one light a
 // point, picked by what it gives there; through a shadow ray the smoke dims) into rt_fog_lights.
 constexpr uint32_t RT_FOG_LIGHTS = 512;
+// The addon's ray tracing profile (Record Ray Tracing Profile): the helper writes each request's costs into
+// tw_rt_profile_helper.csv next to it (older helpers ignore it).
+constexpr uint32_t RT_PROFILE = 1024;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

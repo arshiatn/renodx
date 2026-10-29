@@ -20,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <future>
 #include <map>
 #include <memory>
@@ -101,6 +102,7 @@ class RtScene12 {
   bool Initialize(IDXGIAdapter1* adapter, const std::filesystem::path& folder) {
     if (failed_) return false;
     if (device_) return true;
+    folder_ = folder;
     // The Agility SDK through a device factory of its own (no developer mode; frame generation and Ray Reconstruction
     // keep Windows' runtime).
     std::string sdk = "Windows' D3D12";
@@ -822,6 +824,15 @@ class RtScene12 {
     if (++test_traces == 3 && GetEnvironmentVariableW(L"RENODX_TW_TEST_REMOVAL", nullptr, 0) != 0) {
       if (ComPtr<ID3D12Device5> device5; SUCCEEDED(device_.As(&device5))) device5->RemoveDevice();
     }
+    // The addon's profile (RT_PROFILE): its file made again at a recording's first trace.
+    const bool profiling = (shared.rt_flags & dlaa_bridge::RT_PROFILE) != 0;
+    if (profiling && !profiling_) {
+      profile_ = std::ofstream(folder_ / L"tw_rt_profile_helper.csv", std::ios::trunc);
+      profile_ << "request,frame,kind,cpu_wait_ms,cpu_record_ms,cpu_submit_ms,dynamic_mtriangles,terrain_mtriangles,grass_mtriangles,"
+                  "clusters,templated,compact_draws,sets,new_sets,template_builds,meshes,new_blases,micromaps_built,micromaps_waiting,"
+                  "instances,placed,cluster_room,static_blas_mb,gpu_scene_ms,gpu_clusters_ms,gpu_tlas_ms,gpu_trace_ms,gpu_paths_ms\n";
+    }
+    profiling_ = profiling;
     const size_t slot_index = next_slot_;
     Slot& slot = slots_[slot_index];
     next_slot_ = (next_slot_ + 1) % SLOTS;
@@ -884,15 +895,9 @@ class RtScene12 {
     const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
                           && Record(shared, version, cluster_data, slot_index, &slot);
     if (!recorded) slot.capture_keys.clear();
-    if (timestamps_) {
-      LARGE_INTEGER cpu_recorded;
-      LARGE_INTEGER cpu_frequency;
-      QueryPerformanceCounter(&cpu_recorded);
-      QueryPerformanceFrequency(&cpu_frequency);
-      cpu_timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}",
-                              static_cast<double>(cpu_waited.QuadPart - cpu_start.QuadPart) * 1000.0 / cpu_frequency.QuadPart,
-                              static_cast<double>(cpu_recorded.QuadPart - cpu_waited.QuadPart) * 1000.0 / cpu_frequency.QuadPart);
-    }
+    LARGE_INTEGER cpu_recorded;
+    QueryPerformanceCounter(&cpu_recorded);
+    if (timestamps_) cpu_timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}", CpuMs(cpu_start, cpu_waited), CpuMs(cpu_waited, cpu_recorded));
     traced_ = traced_ || recorded;
     if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
     LARGE_INTEGER submit_start;
@@ -905,13 +910,13 @@ class RtScene12 {
     queue_->Signal(fence_.Get(), shared.value + 1);
     queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
-    if (timestamps_) {
-      LARGE_INTEGER submit_end;
-      LARGE_INTEGER submit_frequency;
-      QueryPerformanceCounter(&submit_end);
-      QueryPerformanceFrequency(&submit_frequency);
-      cpu_timings_ += std::format(", submit {:.2f}", static_cast<double>(submit_end.QuadPart - submit_start.QuadPart) * 1000.0 / submit_frequency.QuadPart);
-    }
+    LARGE_INTEGER submit_end;
+    QueryPerformanceCounter(&submit_end);
+    if (timestamps_) cpu_timings_ += std::format(", submit {:.2f}", CpuMs(submit_start, submit_end));
+    slot.profile = profiling_ ? std::format("{},{},trace,{:.3f},{:.3f},{:.3f}{}", own_value_, shared.rt_frame, CpuMs(cpu_start, cpu_waited),
+                                            CpuMs(cpu_waited, cpu_recorded), CpuMs(submit_start, submit_end),
+                                            recorded ? profile_counts_ : std::string(PROFILE_COUNTS, ','))
+                              : std::string();
     return recorded;
   }
 
@@ -925,7 +930,11 @@ class RtScene12 {
     const size_t slot_index = next_slot_;
     Slot& slot = slots_[slot_index];
     next_slot_ = (next_slot_ + 1) % SLOTS;
+    LARGE_INTEGER cpu_start;
+    QueryPerformanceCounter(&cpu_start);
     WaitFor(slot.value);
+    LARGE_INTEGER cpu_waited;
+    QueryPerformanceCounter(&cpu_waited);
     ReadTimes(slot_index);
     slot_traced_[slot_index] = false;
     slot_reflected_[slot_index] = reflections;
@@ -1138,6 +1147,8 @@ class RtScene12 {
       Resolve(list, slot_index);
       recorded = SUCCEEDED(list->Close());
     }
+    LARGE_INTEGER submit_start;
+    QueryPerformanceCounter(&submit_start);
     queue_->Wait(fence_.Get(), shared.value);
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
@@ -1146,6 +1157,12 @@ class RtScene12 {
     queue_->Signal(fence_.Get(), shared.value + 1);
     queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
+    LARGE_INTEGER submit_end;
+    QueryPerformanceCounter(&submit_end);
+    slot.profile = profiling_ ? std::format("{},{},{},{:.3f},{:.3f},{:.3f}{}", own_value_, frame, reflections ? "reflections" : "bounce",
+                                            CpuMs(cpu_start, cpu_waited), CpuMs(cpu_waited, submit_start), CpuMs(submit_start, submit_end),
+                                            std::string(PROFILE_COUNTS, ','))
+                              : std::string();
     return recorded;
   }
 
@@ -1410,6 +1427,7 @@ class RtScene12 {
     std::vector<uint64_t> capture_keys;
     std::vector<uint32_t> capture_flags;
     std::string status;  // its request's (a slow one's report)
+    std::string profile;  // its request's profile line but its GPU times (WriteProfile); empty: none
     ComPtr<ID3D12Resource> jobs;  // the records' BLAS addresses and its placement jobs (rt_place's t8)
     uint8_t* jobs_data = nullptr;
     uint8_t* light_data = nullptr;
@@ -3404,12 +3422,37 @@ class RtScene12 {
                           meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn,
                           ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
                           static_cast<double>(triangles) / 1.0e6);
+    profile_counts_ = std::format(",{:.3f},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                                  static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
+                                  static_cast<double>((units_built || units_clustered) ? terrain_triangles : 0u) / 1.0e6,
+                                  static_cast<double>((units_built || units_clustered) ? grass_triangles : 0u) / 1.0e6, clusters_built, templated_built,
+                                  compact_drawn, sets_.size(), new_set_count, template_builds, meshes_.size(), built, micromaps_built,
+                                  micromap_reads_.size() + micromap_queue_.size() + micromaps_baked_.size(), instance_count, placed_drawn,
+                                  cluster_room_, bytes >> 20);
     if (timestamps_) {
       gpu_timings_ = std::format("GPU ms: scene {:.2f} (clusters {:.2f}), TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0],
                              gpu_ms_[5], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3], gpu_ms_[4]);
     }
     slot->status = status_;
     return true;
+  }
+
+  // QueryPerformanceCounter's ticks from `from` to `to` in milliseconds.
+  static double CpuMs(const LARGE_INTEGER& from, const LARGE_INTEGER& to) {
+    LARGE_INTEGER frequency;
+    QueryPerformanceFrequency(&frequency);
+    return static_cast<double>(to.QuadPart - from.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart);
+  }
+
+  // A slot's request's profile line (RT_PROFILE) with its GPU times, once they came back.
+  void WriteProfile(size_t slot_index, const std::string& gpu_times) {
+    std::string& line = slots_[slot_index].profile;
+    if (line.empty()) return;
+    if (profile_.is_open()) {
+      profile_ << line << gpu_times << '\n';
+      if (!profiling_) profile_.flush();
+    }
+    line.clear();
   }
 
   // GPU times (but with RENODX_TW_NO_GPU_TIMES): a timestamp at `index`, a slot's resolved for reading, its last read back.
@@ -3435,6 +3478,7 @@ class RtScene12 {
       gpu_ms_[1] = ms(stamps[1], stamps[2]);
       gpu_ms_[2] = ms(stamps[2], stamps[3]);
       gpu_ms_[5] = slot_clustered_[slot_index] ? ms(stamps[4], stamps[5]) : 0.0;
+      WriteProfile(slot_index, std::format(",{:.3f},{:.3f},{:.3f},{:.3f},", gpu_ms_[0], gpu_ms_[5], gpu_ms_[1], gpu_ms_[2]));
       // The Light Bounce's and reflections' times only while they run (not their last).
       for (size_t kind = 0; kind < paths_age_.size(); ++kind) {
         if (++paths_age_[kind] > SLOTS * 2) gpu_ms_[3 + kind] = 0.0;
@@ -3446,6 +3490,7 @@ class RtScene12 {
       }
     } else {
       const double paths_ms = ms(stamps[4], stamps[5]);
+      WriteProfile(slot_index, std::format(",,,,,{:.3f}", paths_ms));
       gpu_ms_[slot_reflected_[slot_index] ? 4 : 3] = paths_ms;
       paths_age_[slot_reflected_[slot_index] ? 1 : 0] = 0;
       if (paths_ms > SLOW_MS && slow_reports_ < SLOW_REPORTS) {
@@ -3876,6 +3921,14 @@ class RtScene12 {
   // The last trace's times: the GPU's (after the status's label), the CPU's and the submit's (at its end).
   std::string gpu_timings_;
   std::string cpu_timings_;
+  // The addon's ray tracing profile (RT_PROFILE, Record Ray Tracing Profile): each request's line into
+  // tw_rt_profile_helper.csv in the helper's folder (made again at a recording's first trace), the last Record's counts
+  // (PROFILE_COUNTS fields).
+  static constexpr size_t PROFILE_COUNTS = 17;
+  std::filesystem::path folder_;
+  std::ofstream profile_;
+  bool profiling_ = false;
+  std::string profile_counts_;
 };
 
 }  // namespace twattila::dlaa_helper

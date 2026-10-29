@@ -217,6 +217,8 @@ struct Bridge {
   std::array<bool, REQUEST_KINDS> steady = {};
   bool pending = false;
   RequestKind pending_kind = EVALUATE;
+  // The game's thread waiting for the helper's answers so far (QueryPerformanceCounter ticks; the ray tracing profile).
+  int64_t answer_ticks = 0;
   std::atomic<uint64_t> waiting = 0;
   // The helper's value the game's GPU has yet to wait for (0: none): a frame generation present's (its copies of the
   // frame, depth and motion) or an unevaluated request's, waited for before the next request's signal or the next
@@ -351,8 +353,13 @@ inline bool Answer(DWORD timeout = 5000) {
   bridge.pending = false;
   const auto& shared = *bridge.shared;
   const std::array<HANDLE, 2> handles = {bridge.done, bridge.process};
+  LARGE_INTEGER started;
+  LARGE_INTEGER ended;
+  QueryPerformanceCounter(&started);
   const bool answered = WaitForMultipleObjects(2, handles.data(), FALSE, timeout) == WAIT_OBJECT_0
                         && shared.done_value >= bridge.value;
+  QueryPerformanceCounter(&ended);
+  bridge.answer_ticks += ended.QuadPart - started.QuadPart;
   if (const uint64_t waited = bridge.waiting.exchange(0); waited > (answered ? shared.done_value : 0)) Rescue(waited);
   if (!answered) return Fail("DLAA: NVIDIA's helper did not answer (off).");
   bridge.answered = true;

@@ -103,8 +103,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .ambient_quarter = sliders.ambient_quarter != 0.f && (density > 1u || frame_history::EffectSteps() < 1.f),
       .sun_softness = sliders.sun_softness,
       .light_size = sliders.light_softness,
-      .light_glow = sliders.light_glow,
       .shadow_rays = density,
+      .light_glow = sliders.light_glow,
       .light_bounce = sliders.light_bounce != 0.f && bounce,
       .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),
       .light_bounce_range = sliders.light_bounce_range,
@@ -1136,6 +1136,15 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .labels = {"Everything", "Terrain Only", "Objects and Trees Only", "No Leaves", "Nothing Kept Off-Screen"},
           .is_enabled = dlaa_on,
           .is_visible = [sliders] { return internal::debug_view_drawn.load() && sliders->debug_view != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Record Ray Tracing Profile (30 s)",
+          .section = section,
+          .tooltip = "30 s of every frame's ray tracing costs into tw_rt_profile.csv and tw_rt_profile_helper.csv\n"
+                     "(next to the game's exe). Turn the effects on, press, then move the camera over the map.",
+          .is_enabled = dlaa_on,
+          .on_change = [] { StartProfile(); },
       },
   });
 }

@@ -1237,6 +1237,25 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           a flat 150 m first instance). Placed keys mix the PS mask (a mesh drawn with two masks: two BLASes). TLAS
           MAX_INSTANCES 65536 -> 131072. Cost: a rows draw a swaying grass draw a frame (hidden copies), a quarter of
           one for still ones.
+    - v100 (2026-10-29, ATN: "find the optimizations from data, I record with every effect on and pan 30 s"; untested in
+      game; helper32, bridge v18 + RT_PROFILE 1024 (old helpers ignore it)). Record Ray Tracing Profile (30 s) button
+      (rt_scene.hpp, after the scene test; rt_core StartProfile / Profile, PROFILE_MS):
+      - tw_rt_profile.csv (addon, next to the exe; a line a present, written in Update): frame, time_ms, frame_ms (present
+        to present, CPU), capture_ms / trace_ms (the addon on the game's thread), answer_wait_ms (of it: Answer() waiting
+        for the helper, all request kinds: bridge.answer_ticks), set_worker_ms (MakeClusterSet on workers), sets_started,
+        captures, compact_draws, placements, new_sets, captured / dynamic / left_out / no_room M texels, lights, traced,
+        then the last GPU timing that came back: gpu_frame, gpu_passes_ms (the addon's passes), gpu_helper_wait_ms.
+      - tw_rt_profile_helper.csv (helper, its folder; a line a request once its timestamps came back, WriteProfile):
+        request, frame, kind (trace / bounce / reflections), cpu_wait / record / submit ms, 17 counts (M triangles
+        dynamic / terrain / grass, clusters, templated, compact draws, sets, new sets, template builds, meshes, new
+        BLASes, micromaps built / waiting, instances, placed, cluster room, static BLAS MB), gpu scene / clusters / TLAS /
+        trace / paths ms. The harness writes one with RT_EXTRA_TRACE_FLAGS=1024.
+      - MakeClusterSet off the game's thread: PrepareClusterSet maps the read-back indices, std::async makes the set,
+        a later draw of the mesh takes it (ClusterMesh::making; the remap buffer still made on the game's thread: its
+        device may be single-threaded).
+      NEXT BIG BATCH: ASK ATN for the two CSVs + ReShade.log + renodx-tw-dlaa64.log (every effect on, 1 ray / sample
+      where there is a slider, press Record, pan over the map 30 s), then optimize from them (where the frame's time
+      goes: game thread waits, helper CPU, GPU passes, hitches = frames far above the median and what they did).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
