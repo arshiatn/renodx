@@ -79,6 +79,7 @@ struct Sliders {
   float path_bounces = 2.f;
   float reflections = 0.f;
   float specular_occlusion = 0.f;
+  float water_reflections = 1.f;  // the water's from its own surface (games whose reflection pass OnReflectionDraw hooks)
   float reflection_samples = 1.f;
   float debug_view = 0.f;  // games whose tone mapper hook calls OnTonemapDrawn
   float scene_test = 0.f;  // with the Debug View on
@@ -113,6 +114,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .path_bounces = static_cast<uint32_t>(sliders.path_bounces),
       .reflections = sliders.reflections != 0.f && dlaa,
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
+      .water_reflections = sliders.water_reflections != 0.f,
       .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples) * density,
       // Ray-traced sun shadows are every shadow: the point lights' too (games whose light draws InstallPointLights hooks),
       // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
@@ -154,13 +156,23 @@ inline const Host TW_HOST = {
       return object_motion::MovingMesh(object_motion::MeshKey(native, arguments));
     },
     .main_view = frame_history::MainViewport,
+    .rewrite_guides = anti_aliasing::RewriteGuides,
 };
 
+namespace internal {
+// A reflection pass OnReflectionDraw hooks ran (Attila's shaders: Ray-Traced Water Reflections shown).
+static bool water_pass = false;
+}  // namespace internal
+
 // The game's reflection pass (environment_specular_light, Attila's shaders: Attila, Thrones), before its draws: the
-// ray-traced reflections, and the screen-space march's pyramid and resolve (ssr_hiz.hpp) for what keeps the march
-// (everything without them; with them water). True: draw.
+// ray-traced reflections (the water's from its own surface: the depth-stencil the draw reads its stencil from at t8),
+// and the screen-space march's pyramid and resolve (ssr_hiz.hpp) for what keeps the march (everything without them;
+// with them water, with Ray-Traced Water Reflections off). True: draw.
 inline bool OnReflectionDraw(reshade::api::command_list* cmd_list) {
-  BindReflections(cmd_list, false, true);
+  internal::water_pass = true;
+  ComPtr<ID3D11ShaderResourceView> depth_stencil;
+  if (auto* native = internal::NativeContext(cmd_list); native != nullptr) native->PSGetShaderResources(8, 1, depth_stencil.GetAddressOf());
+  BindReflections(cmd_list, false, true, depth_stencil.Get());
   return ssr_hiz::OnReflectionDraw(cmd_list);
 }
 
@@ -1107,6 +1119,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 8.f,
           .format = "%d",
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedWaterReflections",
+          .binding = &sliders->water_reflections,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Ray-Traced Water Reflections (Experimental)",
+          .section = section,
+          .tooltip = "Rivers and lakes reflect what the rays find, also off screen. Off: screen-space reflections there.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f; },
+          .is_visible = [] { return internal::water_pass; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedSpecularOcclusion",

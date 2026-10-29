@@ -1342,15 +1342,23 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       per-instance distance in rt_place + rt_compact) if the sway's cost still matters.
     - v105 BIG BATCH (ATN 2026-10-29 ~18:30, away a few hours, "no need to stop", commit often). Checklist (tick + commit
       after each; [ ] open, [x] done, [-] left out with the reason):
-      [ ] 1. Menu fps 500 -> 140 (not Reflex: V-Sync off, 165 Hz; RT / DLSS not running in the menu): early-outs in every
+      [x] 1. (68617ac6: RT captures / lit particles wait for the bridge's RT textures, object motion for the helper.)
+          Menu fps 500 -> 140 (not Reflex: V-Sync off, 165 Hz; RT / DLSS not running in the menu): early-outs in every
           per-draw hook / per-frame pass whose effect is not running (RT capture without the bridge, motion redraws
           without DLSS, ...); note what else runs there.
       [ ] 2. AO from path tracing: with PT Light Bounce (ReSTIR GI) the RT AO pass is redundant (noise, 5-7 ms): option
-          (experimental) to drop it under PT.
-      [ ] 3. RT reflections on water: rays from the water's own depth (its draws write depth) and normal, smooth; then
-          maybe RT refraction (experimental).
+          (experimental) to drop it under PT. ATN 18:50: do it properly (the paths take the sky light, the game's ambient
+          goes), however long it takes. The PT now adds bounce only (a camera ray that escapes adds nothing: the game's
+          ambient x our AO covers the sky).
+      [~] 3. RT reflections on water: rays from the water's own depth (its draws write depth) and normal, smooth; then
+          maybe RT refraction (experimental). Done: Reflections(native, surface_depth): positions again from the depth-stencil
+          (t8 of the reflection draw) + anti_aliasing::RewriteGuides (PS t0-t2; aa_rr_guides: material flag 4 = water:
+          roughness 0.03, specular 0.02, no diffuse), b10 flags -> RtWaterReflections; option RayTracedWaterReflections.
       [ ] 4. GPU micromap baking (NVIDIA OMM SDK GPU baker) instead of the CPU baker: no read-back, no CPU threads, no
-          shadow delay. More CPU -> GPU where possible (the engine's CPU is the weak spot).
+          shadow delay. More CPU -> GPU where possible (the engine's CPU is the weak spot). ATN 18:50 (NVIDIA's integration
+          guide): no mid-frame GPU -> CPU read-backs, the inputs (indices, UVs, alpha) stay in VRAM, the GPU baker's CPU
+          setup (reuse pre-pass, subdivision) on a worker / cached per unique mesh, a per-frame bake budget (amortized,
+          async compute if it helps).
       [ ] 5. Mega Geometry: near-only sway (GPU, per instance by distance), off-screen sway left out, far sway at a lower
           rate, (cluster LOD / unit templates if time): experimental toggles where they cost nothing.
       [ ] 6. The game waits ~15 ms a frame for the helper's GPU work (sun 5-7 + AO 5-7 ms): speedups (foliage shadow

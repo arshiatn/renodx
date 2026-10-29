@@ -12,6 +12,14 @@
 
 Texture2D<float4> t_rt_reflection : register(t47);
 Texture2D<float> t_rt_specular_occlusion : register(t46);
+cbuffer rt_reflection_flags : register(b10) {
+  uint4 rt_reflection_flags;  // x 1: traced from the water's own depth and normal (rt_core.hpp BindReflections; unbound 0)
+};
+
+// Whether the water (drawn after the G-buffer the rays start from) has its own reflections from them.
+bool RtWaterReflections() {
+  return rt_reflection_flags.x != 0u;
+}
 
 bool RtReflectionsBound() {
   uint width, height;

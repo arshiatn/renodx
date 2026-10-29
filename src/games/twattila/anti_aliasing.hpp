@@ -558,6 +558,41 @@ inline void OnBindScissorRects(reshade::api::command_list* cmd_list, uint32_t fi
   }
 }
 
+// The G-buffer guides (aa_rr_guides into the bridge's) from the main view's G-buffer channels 1-3 (`gbuffer`), the
+// compute bindings it changes put back. False: not single-sampled 2D views (nothing written).
+inline bool WriteGuides(ID3D11DeviceContext* native, const std::array<ID3D11ShaderResourceView*, 3>& gbuffer) {
+  const bool single_sample = std::ranges::all_of(gbuffer, [](ID3D11ShaderResourceView* view) {
+    D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {};
+    if (view != nullptr) view->GetDesc(&view_desc);
+    return view != nullptr && view_desc.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D;
+  });
+  if (!single_sample) return false;
+  auto& bridge = dlaa_bridge::bridge;
+  ComPtr<ID3D11ComputeShader> game_shader;
+  native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
+  std::array<ID3D11ShaderResourceView*, 3> game_views = {};
+  native->CSGetShaderResources(0, 3, game_views.data());
+  std::array<ID3D11UnorderedAccessView*, 4> game_uavs = {};
+  native->CSGetUnorderedAccessViews(0, 4, game_uavs.data());
+  const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                            bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
+  constexpr std::array<UINT, 4> KEEP_COUNTS = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+  native->CSSetShader(runtime.objects.rr_guides.Get(), nullptr, 0);
+  native->CSSetShaderResources(0, 3, gbuffer.data());
+  native->CSSetUnorderedAccessViews(0, 4, guides.data(), KEEP_COUNTS.data());
+  native->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+  native->CSSetShader(game_shader.Get(), nullptr, 0);
+  native->CSSetShaderResources(0, 3, game_views.data());
+  native->CSSetUnorderedAccessViews(0, 4, game_uavs.data(), KEEP_COUNTS.data());
+  for (auto* view : game_views) {
+    if (view != nullptr) view->Release();
+  }
+  for (auto* uav : game_uavs) {
+    if (uav != nullptr) uav->Release();
+  }
+  return true;
+}
+
 // The sun light draws (the main view's lighting): the camera they read (one the uploads noted) and the depth-stencil
 // buffer (the display's size, one sample) for this frame.
 constexpr auto OnSunDraw = []<typename T, typename Context>(
@@ -611,36 +646,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     // Channels 1-3 (normal, colour, constants: each game's aa_rr_guides reads what its G-buffer keeps there).
     std::array<ID3D11ShaderResourceView*, 3> gbuffer = {};
     native->PSGetShaderResources(sun_draw.gbuffer_slot, 3, gbuffer.data());
-    const bool single_sample = std::ranges::all_of(gbuffer, [](ID3D11ShaderResourceView* view) {
-      D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {};
-      if (view != nullptr) view->GetDesc(&view_desc);
-      return view != nullptr && view_desc.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D;
-    });
-    if (single_sample) {
-      ComPtr<ID3D11ComputeShader> game_shader;
-      native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
-      std::array<ID3D11ShaderResourceView*, 3> game_views = {};
-      native->CSGetShaderResources(0, 3, game_views.data());
-      std::array<ID3D11UnorderedAccessView*, 4> game_uavs = {};
-      native->CSGetUnorderedAccessViews(0, 4, game_uavs.data());
-      const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
-                                                                bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
-      constexpr std::array<UINT, 4> KEEP_COUNTS = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
-      native->CSSetShader(objects.rr_guides.Get(), nullptr, 0);
-      native->CSSetShaderResources(0, 3, gbuffer.data());
-      native->CSSetUnorderedAccessViews(0, 4, guides.data(), KEEP_COUNTS.data());
-      native->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
-      native->CSSetShader(game_shader.Get(), nullptr, 0);
-      native->CSSetShaderResources(0, 3, game_views.data());
-      native->CSSetUnorderedAccessViews(0, 4, game_uavs.data(), KEEP_COUNTS.data());
-      for (auto* view : game_views) {
-        if (view != nullptr) view->Release();
-      }
-      for (auto* uav : game_uavs) {
-        if (uav != nullptr) uav->Release();
-      }
-      objects.guides_frame = runtime.frame;
-    }
+    if (WriteGuides(native, gbuffer)) objects.guides_frame = runtime.frame;
     for (auto* view : gbuffer) {
       if (view != nullptr) view->Release();
     }
@@ -1512,6 +1518,20 @@ inline bool MainCamera(ID3D11Buffer* buffer, internal::Camera* camera) {
 inline bool GuidesWritten() {
   const std::unique_lock lock(internal::runtime.mutex);
   return internal::runtime.objects.guides_frame == internal::runtime.frame;
+}
+
+// The G-buffer guides again at the reflection pass (its G-buffer channels 1-3 at its pixel shader's first slots, with
+// what was drawn into it since the sun light draws: the water), where they were written this frame.
+inline void RewriteGuides(ID3D11DeviceContext* native) {
+  std::array<ID3D11ShaderResourceView*, 3> gbuffer = {};
+  native->PSGetShaderResources(0, 3, gbuffer.data());
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    if (internal::runtime.objects.guides_frame == internal::runtime.frame) internal::WriteGuides(native, gbuffer);
+  }
+  for (auto* view : gbuffer) {
+    if (view != nullptr) view->Release();
+  }
 }
 
 // DLAA's render size this frame (DLSS: below the display's).

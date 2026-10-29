@@ -91,6 +91,8 @@ struct Settings {
   // Ray-traced reflections and specular occlusion (bridge v8; the game's reflection pass reads them: Reflections()).
   bool reflections = false;
   bool specular_occlusion = false;
+  // The water's reflections from its own depth and normal (the reflection pass's; else it keeps the screen-space march).
+  bool water_reflections = false;
   uint32_t reflection_samples = 1;
   // The local lights' shadows (bridge v9): of the lights the game's light draws had (AddLocalLight) the last frame's
   // nearest and brightest go with the trace; their lit bits and positions for the light draws: BindLocalLights.
@@ -172,6 +174,8 @@ struct Host {
   bool (*moving_indexed)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) = nullptr;
   // Whether a draw is the main view's (null: every draw into its depth is).
   bool (*main_view)(ID3D11DeviceContext* native) = nullptr;
+  // The G-buffer guides again from the reflection pass's G-buffer (null: none; the water's reflections need it).
+  void (*rewrite_guides)(ID3D11DeviceContext* native) = nullptr;
 };
 
 namespace internal {
@@ -250,6 +254,9 @@ struct DeviceObjects {
   ComPtr<ID3D11ComputeShader> combine_shader;
   // The traced local lights' positions (RT_MAX_LIGHTS, then their count: rt_local_lights.hlsli's b12).
   ComPtr<ID3D11Buffer> light_constants;
+  ComPtr<ID3D11Buffer> water_flags;  // rt_reflection.hlsli's rt_reflection_flags: the water traced
+  ComPtr<ID3D11ShaderResourceView> surface_depth;  // the reflection pass's depth (the water's in it) as depth
+  ID3D11Resource* surface_depth_resource = nullptr;
   ComPtr<ID3D11Texture2D> combined;
   ComPtr<ID3D11ShaderResourceView> combined_srv;
   ComPtr<ID3D11UnorderedAccessView> combined_uav;
@@ -327,6 +334,13 @@ class CpuTime {
  private:
   int64_t* ticks_;
   LARGE_INTEGER start_ = {};
+};
+
+// rt_positions.cs's constants: world positions from a depth.
+struct PositionConstants {
+  std::array<float, 16> inverse_view_projection;
+  std::array<float, 4> camera;
+  std::array<uint32_t, 4> size;
 };
 
 struct Runtime {
@@ -440,6 +454,8 @@ struct Runtime {
   UINT bounce_scale = 1;
   uint64_t reflected_frame = UINT64_MAX;  // the frame the reflections were asked for
   bool reflected = false;                 // and whether they were traced
+  bool water_traced = false;              // the water's from its own depth and normal (the guides and positions again)
+  PositionConstants positions = {};       // the trace's positions pass's (the reflection pass runs it again for the water)
   ID3D11ShaderResourceView* game_ao = nullptr;  // the AO it was made from (compared only)
   std::array<UINT, 2> traced_size = {};   // the render size traced
   std::array<float, 16> traced_view_projection = {};  // its camera's (the ray-traced Light Bounce's)
@@ -518,6 +534,9 @@ inline bool PrepareDevice(ID3D11Device* device) {
   const D3D11_BUFFER_DESC sun_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC light_constants_desc = {.ByteWidth = ((dlaa_bridge::RT_MAX_LIGHTS * 2) + 1) * 16, .Usage = D3D11_USAGE_DEFAULT,
                                                   .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_BUFFER_DESC water_flags_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  constexpr std::array<uint32_t, 4> WATER_FLAGS = {1u, 0u, 0u, 0u};
+  const D3D11_SUBRESOURCE_DATA water_flags_data = {.pSysMem = WATER_FLAGS.data()};
   D3D11_BLEND_DESC multiply_desc = {};
   multiply_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ZERO, .DestBlend = D3D11_BLEND_SRC_COLOR,
                                    .BlendOp = D3D11_BLEND_OP_ADD, .SrcBlendAlpha = D3D11_BLEND_ZERO,
@@ -572,6 +591,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
          && compute(__rt_atlas, &objects.atlas_shader) && compute(__rt_ambient_combine, &objects.combine_shader)
          && SUCCEEDED(device->CreateSamplerState(&wrap_desc, objects.linear_wrap.GetAddressOf()))
          && SUCCEEDED(device->CreateBuffer(&light_constants_desc, nullptr, objects.light_constants.GetAddressOf()))
+         && SUCCEEDED(device->CreateBuffer(&water_flags_desc, &water_flags_data, objects.water_flags.GetAddressOf()))
          && SUCCEEDED(device->CreateVertexShader(__light_bounce_vs.data(), __light_bounce_vs.size(), nullptr,
                                                  objects.fullscreen_shader.GetAddressOf()))
          && SUCCEEDED(device->CreatePixelShader(__rt_ambient_apply.data(), __rt_ambient_apply.size(), nullptr,
@@ -1529,20 +1549,15 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       runtime.dynamic_vertices += runtime.particles * 6;
       runtime.particles = 0;
     }
-    struct PositionConstants {
-      std::array<float, 16> inverse_view_projection;
-      std::array<float, 4> camera;
-      std::array<uint32_t, 4> size;
-    };
-    const PositionConstants constants = {
+    runtime.positions = {
         .inverse_view_projection = camera.inverse_view_projection,
         .camera = {camera.position[0], camera.position[1], camera.position[2], 1.f},
         .size = {render_size[0], render_size[1], 0, 0},
     };
     if (depth != nullptr) {
       Dispatch(native, objects.positions_shader.Get(), {depth, nullptr},
-               {dlaa_bridge::bridge.rt_positions.uav.Get(), dlaa_bridge::bridge.rt_sun.uav.Get()}, &constants, sizeof(constants),
-               (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
+               {dlaa_bridge::bridge.rt_positions.uav.Get(), dlaa_bridge::bridge.rt_sun.uav.Get()}, &runtime.positions,
+               sizeof(runtime.positions), (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
     }
   }
   // The local lights: last frame's nearest and brightest (their reach over their distance, squared, by their colour's
@@ -1803,7 +1818,9 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
 // The reflections and specular occlusion (the reflection texture: reflected light, the share of samples that met a
 // surface; the occlusion: 1 open), traced once a frame at the game's reflection pass (after this frame's trace: its
 // G-buffer guides and positions); both null when off or not traced this frame (the pass keeps the game's then).
-inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext* native) {
+// `surface_depth` (with the water's reflections on): the pass's depth, the water's in it: the positions and the guides
+// again first (the water drawn since: its rays left from the riverbed with its normal, ATN's debug28).
+inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext* native, ID3D11ShaderResourceView* surface_depth = nullptr) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   auto& bridge = dlaa_bridge::bridge;
@@ -1813,6 +1830,42 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
   }
   if (runtime.reflected_frame != runtime.frame) {
     runtime.reflected_frame = runtime.frame;
+    runtime.water_traced = false;
+    if (runtime.settings.reflections && runtime.settings.water_reflections && surface_depth != nullptr
+        && internal::host.rewrite_guides != nullptr) {
+      auto& objects = runtime.objects;
+      ComPtr<ID3D11Resource> resource;
+      surface_depth->GetResource(resource.GetAddressOf());
+      if (objects.surface_depth_resource != resource.Get()) {
+        objects.surface_depth.Reset();
+        objects.surface_depth_resource = resource.Get();
+        ComPtr<ID3D11Texture2D> texture;
+        D3D11_TEXTURE2D_DESC desc = {};
+        if (SUCCEEDED(resource.As(&texture))) texture->GetDesc(&desc);
+        DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+        switch (desc.Format) {
+          case DXGI_FORMAT_R24G8_TYPELESS:    format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS; break;
+          case DXGI_FORMAT_R32G8X24_TYPELESS: format = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS; break;
+          case DXGI_FORMAT_R32_TYPELESS:      format = DXGI_FORMAT_R32_FLOAT; break;
+          case DXGI_FORMAT_R16_TYPELESS:      format = DXGI_FORMAT_R16_UNORM; break;
+          default:                            break;
+        }
+        ComPtr<ID3D11Device> device;
+        native->GetDevice(device.GetAddressOf());
+        D3D11_SHADER_RESOURCE_VIEW_DESC view = {.Format = format, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D};
+        view.Texture2D.MipLevels = 1;
+        if (format != DXGI_FORMAT_UNKNOWN && desc.SampleDesc.Count == 1) {
+          device->CreateShaderResourceView(resource.Get(), &view, objects.surface_depth.GetAddressOf());
+        }
+      }
+      if (objects.surface_depth) {
+        internal::Dispatch(native, objects.positions_shader.Get(), {objects.surface_depth.Get(), nullptr},
+                           {bridge.rt_positions.uav.Get(), bridge.rt_sun.uav.Get()}, &runtime.positions, sizeof(runtime.positions),
+                           (runtime.positions.size[0] + 7) / 8, (runtime.positions.size[1] + 7) / 8);
+        internal::host.rewrite_guides(native);
+        runtime.water_traced = true;
+      }
+    }
     const dlaa_bridge::ReflectRequest request = {
         .frame = static_cast<uint32_t>(runtime.frame),
         .width = runtime.traced_size[0],
@@ -1838,23 +1891,27 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
 }
 
 // Binds the ray-traced reflections (t47, with the reflections on) and the specular occlusion (t46) for the game's
-// reflection pass's draw or dispatch (`compute`), or unbinds them (`bind` false). True: the reflections are bound (the
-// pass leaves out its screen-space march; rt_reflection.hlsli).
-inline bool BindReflections(reshade::api::command_list* cmd_list, bool compute, bool bind) {
+// reflection pass's draw or dispatch (`compute`), or unbinds them (`bind` false); a draw's b10 says whether the water
+// was traced from its own surfaces (`surface_depth`: Reflections). True: the reflections are bound (the pass leaves out
+// its screen-space march; rt_reflection.hlsli).
+inline bool BindReflections(reshade::api::command_list* cmd_list, bool compute, bool bind, ID3D11ShaderResourceView* surface_depth = nullptr) {
   ID3D11DeviceContext* native = internal::NativeContext(cmd_list);
   if (native == nullptr) return false;
-  const auto views = (bind && internal::active.load(std::memory_order_relaxed)) ? Reflections(native)
+  const auto views = (bind && internal::active.load(std::memory_order_relaxed)) ? Reflections(native, surface_depth)
                                                                                  : std::array<ID3D11ShaderResourceView*, 2>{};
   bool reflected = false;
+  ID3D11Buffer* water = nullptr;
   {
     const std::unique_lock lock(internal::runtime.mutex);
     reflected = views[0] != nullptr && internal::runtime.settings.reflections;
+    if (reflected && internal::runtime.water_traced) water = internal::runtime.objects.water_flags.Get();
   }
   const std::array<ID3D11ShaderResourceView*, 2> bound = {views[1], reflected ? views[0] : nullptr};
   if (compute) {
     native->CSSetShaderResources(46, static_cast<UINT>(bound.size()), bound.data());
   } else {
     native->PSSetShaderResources(46, static_cast<UINT>(bound.size()), bound.data());
+    native->PSSetConstantBuffers(10, 1, &water);
   }
   return reflected;
 }
