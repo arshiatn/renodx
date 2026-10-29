@@ -112,6 +112,8 @@ struct Settings {
   // Range (Experimental): pixels farther than these metres trace without grass (0: every pixel with it).
   bool fast_leaves = false;
   float grass_shadow_range = 0.f;
+  // Path Tracing SER (Experimental): the paths' and reflections' rays with DXR 1.2's shader execution reordering.
+  bool path_ser = false;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -1739,7 +1741,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
       .view_projection = runtime.traced_view_projection,
       .path_flags = runtime.settings.path_tracing ? (dlaa_bridge::RT_PATH_TRACING | dlaa_bridge::RT_PATH_REUSE
                                                      | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u)
-                                                     | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u))
+                                                     | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u)
+                                                     | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u))
                                                   : 0u,
       .path_bounces = runtime.settings.path_bounces,
       .path_samples = runtime.settings.light_bounce_rays,
@@ -1909,7 +1912,8 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
         .height = runtime.traced_size[1],
         .flags = (runtime.settings.reflections ? dlaa_bridge::RT_REFLECTIONS : 0u)
                  | (runtime.settings.specular_occlusion ? dlaa_bridge::RT_SPECULAR_OCCLUSION : 0u)
-                 | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_REFLECTIONS_RAW : 0u),
+                 | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_REFLECTIONS_RAW : 0u)
+                 | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u),
         .samples = runtime.settings.reflection_samples,
         .bounces = runtime.settings.path_tracing ? runtime.settings.path_bounces : 0u,
         .range = runtime.settings.light_bounce_range,

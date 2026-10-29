@@ -96,6 +96,19 @@ static const float ROUGH_LIMIT = 0.75f;  // rougher surfaces keep the game's ref
 static const float MAX_SPECULAR_FRAMES = 12.f;
 static const float SKY_HIT_DISTANCE = 65504.f;  // NVIDIA's for the sky (FP16's most)
 
+#if defined(PATH_REORDER)
+// Shader execution reordering (DXR 1.2, rt_path_ser.lib_6_9.hlsl): threads regroup by what a ray met (none, or its
+// instance's group of eight) before shading it (the screen lookup, the cache, a shadow ray and the next rays diverge
+// most there).
+#define REORDER(query, hint)                                        \
+  {                                                                 \
+    dx::HitObject reorder_hit = dx::HitObject::FromRayQuery(query); \
+    dx::MaybeReorderThread(reorder_hit, (hint), 4);                 \
+  }
+#else
+#define REORDER(query, hint)
+#endif
+
 float3 Camera() {
   return sun[uint2(1, 0)].xyz;
 }
@@ -334,6 +347,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     ray.TMax = (vertex == 0u) ? range : bounce_range;
     TRACE_SURFACE(query, ray)
     const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    REORDER(query, hit ? 1u + (query.CommittedInstanceID() & 7u) : 0u)
     if (!hit) {
       // Past the first surface the sky (the game's ambient by direction); from the camera's pixel the game's own
       // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).

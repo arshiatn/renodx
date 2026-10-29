@@ -70,6 +70,7 @@ struct Sliders {
   float sway_off_screen = 1.f;
   float fast_leaves = 0.f;
   float grass_shadow_range = 0.f;  // metres (0: everywhere)
+  float path_ser = 0.f;
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
   float ambient_range = 2.f;       // metres
   float ambient_rays = 2.f;
@@ -138,6 +139,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .sway_off_screen = sliders.sway_off_screen != 0.f,
       .fast_leaves = sliders.fast_leaves != 0.f,
       .grass_shadow_range = sliders.grass_shadow_range,
+      .path_ser = sliders.path_ser != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .micromaps = sliders.micromaps != 0.f,
       .gpu_micromaps = sliders.gpu_micromaps != 0.f,
@@ -1204,6 +1206,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f; },
           .is_visible = [] { return internal::ambient_cube != 0; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedPathSer",
+          .binding = &sliders->path_ser,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Path Tracing SER (Experimental)",
+          .section = section,
+          .tooltip = "Shader execution reordering for Path Tracing and Ray-Traced Reflections\n"
+                     "(DXR 1.2, RTX 40 / 50 series): may be faster.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && (sliders->light_bounce == 2.f || sliders->reflections != 0.f); },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRays",

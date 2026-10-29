@@ -164,6 +164,8 @@ constexpr uint32_t RT_PATH_RECONSTRUCTED = 32;
 // Path-Traced Ambient: the bounce texels' paths that escape bring the sky's light too (the addon takes the game's
 // ambient away; helpers before 37 ignore it).
 constexpr uint32_t RT_PATH_AMBIENT = 64;
+// Path Tracing SER (v18, with the paths or the reflections): DXR 1.2's shader execution reordering for their rays.
+constexpr uint32_t RT_PATH_SER = 128;
 
 struct Shared {
   uint32_t version = VERSION;
