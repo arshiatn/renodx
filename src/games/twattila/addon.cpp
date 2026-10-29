@@ -1191,8 +1191,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::feature_settings::UpdateSsr(&shader_injection, ssr_denoiser);
   twattila::grass_fade::Update(shader_injection.grass_height_distance);
   twattila::rt_scene::Update(rt_settings);
-  // Ray-traced ambient occlusion Alone: the game's and GT-VBAO's not drawn (their cost saved).
-  shader_injection.rt_ambient_alone = (rt_settings.ambient_occlusion && rt_sliders.ambient_occlusion == 2.f) ? 1.f : 0.f;
+  // Ray-traced ambient occlusion in place of the game's and GT-VBAO (theirs not drawn: their cost saved).
+  shader_injection.rt_ambient_alone = rt_settings.ambient_occlusion ? 1.f : 0.f;
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);

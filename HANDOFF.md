@@ -1082,15 +1082,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [ ] 7 RTXMU: BLAS suballocation and compaction (fewer allocations, less memory).
       [ ] 8 Partitioned TLAS again (find the siege stall); Mega Geometry for the captures still on the CPU path
           (non-indexed or not yet compact dynamic draws: make them compact too).
-      [ ] 9 Each RT effect replaces its raster one, never both: RT AO replaces the game's SSAO and GT-VBAO (fold On /
+      [x] 9 (step 1) Each RT effect replaces its raster one, never both: RT AO replaces the game's SSAO and GT-VBAO (fold On /
           Alone into one On = Alone). Already: RT Shadows (shadow maps + SSS), RT Reflections (SSR skipped), RT Light
           Bounce / Path Tracing (GT-VBGI's screen trace replaced; its resolve shared).
-      [ ] 10 Ray-Traced Units and Ray-Traced Grass folded in (ATN): soldiers and grass always in the RT scene while any
+      [x] 10 (step 1) Ray-Traced Units and Ray-Traced Grass folded in (ATN): soldiers and grass always in the RT scene while any
           RT effect is on (they feed shadows, AO, bounce and reflections), the two toggles removed.
       [ ] 11 Walls without RT shadows (ATN debug24: grass before a city wall sunlit, the Debug View shows only a strip
           at its base): v94's log left ~37 M texels a frame out (a share full). 597b8473 logs which vertex shaders and
           which share; fix from that log (rebalance / raise the shares, walls must never be left out).
-      [ ] 12 Log polish: "Leaf micromaps" tally at most every 10 s (120 lines in one session), the status's stale
+      [x] 12 (step 1) Log polish: "Leaf micromaps" tally at most every 10 s (120 lines in one session), the status's stale
           "bounce" GPU ms while the Light Bounce is off.
       [ ] 13 Cluster LOD (ATN: add it): each mesh's clusters also built as coarser simplified versions (a hierarchy,
           as Nanite); every frame each instance traces the coarsest clusters right for its distance (far soldiers,

@@ -66,8 +66,6 @@ struct LocalLight {
 struct Settings {
   bool sun_shadows = false;
   bool ambient_occlusion = false;
-  bool units = true;  // the units in the scene (captured every frame)
-  bool grass = false;  // the grass in the scene (captured every frame, alpha-tested; with the units' budget)
   float ambient_range = 2.f;  // metres
   uint32_t ambient_rays = 2;
   bool ambient_quarter = false;  // a quarter of the rays (one pixel of each 2 x 2 traced a frame, in turn)
@@ -128,7 +126,7 @@ struct SceneShader {
   bool terrain = false;
   bool dynamic = false;
   bool foliage = false;
-  bool grass = false;  // in the scene only with Settings.grass
+  bool grass = false;  // within the grass's share (MAX_GRASS_VERTICES)
   bool thin = false;   // cloth and sails (RT_THIN)
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
@@ -910,8 +908,6 @@ void Capture(Context& command, const SceneShader& shader) {
       const auto [entry, added] = runtime.short_keys.try_emplace(short_key, Runtime::ShortKey{.key = key});
       if (!added && entry->second.key != key) entry->second.ambiguous = true;
     }
-    // Units: every frame, within their share (banners and sails always: the shadows are all the rays' now).
-    if (shader.grass ? !runtime.settings.grass : (shader.dynamic && !shader.thin && !runtime.settings.units)) return;
     if (const auto mesh = (compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end());
         mesh != runtime.cluster_meshes.end() && mesh->second.remap) {
       mesh->second.used_frame = runtime.frame;
@@ -1942,7 +1938,7 @@ inline void Update(const Settings& settings) {
                                    std::pair{settings.light_bounce, "Light Bounce"}, std::pair{settings.path_tracing, "path tracing"},
                                    std::pair{settings.reflections, "reflections"}, std::pair{settings.specular_occlusion, "specular occlusion"},
                                    std::pair{settings.local_lights, "point lights"}, std::pair{settings.fog_shadows, "fog shadows"},
-                                   std::pair{settings.grass, "grass"}, std::pair{settings.units, "units"}}) {
+                                   std::pair{settings.micromaps, "leaf micromaps"}, std::pair{settings.smoke_shadows, "smoke shadows"}}) {
       if (on) effects += (effects.empty() ? "" : ", ") + std::string(name);
     }
     constexpr std::array<const char*, 5> TESTS = {"", " (scene test: the terrain alone)", " (scene test: objects and trees alone)",

@@ -62,12 +62,10 @@ struct Sliders {
   float sun_shadows = 0.f;
   float sun_softness = 0.5f;       // degrees of the sun's disk (0: hard)
   float leaf_light = 0.f;
-  float ambient_occlusion = 0.f;   // off, on, alone (the game's and GT-VBAO's not drawn; Attila)
+  float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
   float ambient_range = 2.f;       // metres
   float ambient_rays = 2.f;
   float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
-  float units = 1.f;
-  float grass = 0.f;
   float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
   float micromaps = 1.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
@@ -91,8 +89,6 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
   return {
       .sun_shadows = sliders.sun_shadows != 0.f && dlaa,
       .ambient_occlusion = sliders.ambient_occlusion != 0.f && dlaa,
-      .units = sliders.units != 0.f,
-      .grass = sliders.grass != 0.f,
       .ambient_range = sliders.ambient_range,
       .ambient_rays = static_cast<uint32_t>(sliders.ambient_rays),
       // Effects at Output Resolution: every pixel each frame from one step of 2 down (as many rays on screen as at 100%).
@@ -764,7 +760,8 @@ inline void Uninstall() {
   UninstallScene();
 }
 
-// The settings after the anti-aliasing's (Attila's ambient occlusion also has Alone: `ambient_alone`).
+// The settings after the anti-aliasing's (`ambient_alone`: the ray-traced ambient occlusion in place of the game's and
+// GT-VBAO, Attila's).
 // `reflection_pass`: the game's reflection pass reads the ray-traced reflections (Attila, Thrones, Warhammer,
 // Warhammer II); the others get no reflection settings.
 // `light_bounce_strength`: the Light Bounce's (Lighting), for a note when the effects that replace its trace are on
@@ -775,8 +772,6 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                            const std::string& section = feature_settings::AA_SECTION,
                            const float* light_bounce_strength = nullptr) {
   const auto dlaa_on = [aa] { return aa->method == 5.f; };
-  const std::vector<std::string> ambient_labels = ambient_alone ? std::vector<std::string>{"Off", "On", "Alone"}
-                                                                : std::vector<std::string>{"Off", "On"};
   // Quality presets: the rays and passes of the effects that are on (which effects are on stays as it is).
   using Values = std::vector<std::pair<std::string, float>>;
   const auto preset = [](Values values) {
@@ -873,13 +868,11 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Ray-Traced Ambient Occlusion (Experimental)",
           .section = section,
-          .tooltip = ambient_alone ? "Darker crevices and contact shade from rays. Keep the game's ambient occlusion on.\n"
-                                     "On: on top of the game's or GT-VBAO. Alone: replaces them (faster; units, leaves\n"
-                                     "and grass then get only what the scene casts on them).\n"
-                                     "Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe."
+          .tooltip = ambient_alone ? "Darker crevices and contact shade from rays, in place of the game's ambient occlusion and\n"
+                                     "GT-VBAO. Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe."
                                    : "Darker crevices and contact shade from rays, on top of the game's ambient occlusion\n"
                                      "(keep it on). Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
-          .labels = ambient_labels,
+          .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
       },
       new renodx::utils::settings::Setting{
@@ -918,32 +911,6 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "smooth it over frames). Faster, a little softer at edges.",
           .labels = {"Every pixel", "Quarter"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->ambient_occlusion != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedUnits",
-          .binding = &sliders->units,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 1.f,
-          .label = "Ray-Traced Units",
-          .section = section,
-          .tooltip = "Soldiers and horses cast ray-traced shadows and shade (millions of triangles a frame in big battles). Heavier.",
-          .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] {
-            return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
-          },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedGrass",
-          .binding = &sliders->grass,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Ray-Traced Grass",
-          .section = section,
-          .tooltip = "Grass casts ray-traced shadows and shade too (with the units' share of triangles). Heavy with dense grass.",
-          .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] {
-            return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
-          },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLeafMicromaps",

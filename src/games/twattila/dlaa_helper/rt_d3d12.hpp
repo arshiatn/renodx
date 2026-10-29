@@ -3062,6 +3062,10 @@ class RtScene12 {
       gpu_ms_[1] = ms(stamps[1], stamps[2]);
       gpu_ms_[2] = ms(stamps[2], stamps[3]);
       gpu_ms_[5] = slot_clustered_[slot_index] ? ms(stamps[4], stamps[5]) : 0.0;
+      // The Light Bounce's and reflections' times only while they run (not their last).
+      for (size_t kind = 0; kind < paths_age_.size(); ++kind) {
+        if (++paths_age_[kind] > SLOTS * 2) gpu_ms_[3 + kind] = 0.0;
+      }
       if (gpu_ms_[0] + gpu_ms_[1] + gpu_ms_[2] > SLOW_MS && slow_reports_ < SLOW_REPORTS) {
         slow_report_ = std::format("[TW ray tracing] A slow request, GPU ms: scene {:.1f}, TLAS {:.1f}, trace {:.1f}; {}", gpu_ms_[0], gpu_ms_[1],
                                    gpu_ms_[2], slots_[slot_index].status);
@@ -3070,6 +3074,7 @@ class RtScene12 {
     } else {
       const double paths_ms = ms(stamps[4], stamps[5]);
       gpu_ms_[slot_reflected_[slot_index] ? 4 : 3] = paths_ms;
+      paths_age_[slot_reflected_[slot_index] ? 1 : 0] = 0;
       if (paths_ms > SLOW_MS && slow_reports_ < SLOW_REPORTS) {
         slow_report_ = std::format("[TW ray tracing] A slow {} request: {:.1f} GPU ms", slot_reflected_[slot_index] ? "reflections" : "Light Bounce",
                                    paths_ms);
@@ -3129,8 +3134,9 @@ class RtScene12 {
       micromap_queue_.erase(micromap_queue_.begin());
     }
 #endif
-    // A batch's tally once none are on their way (the log).
-    if (micromap_reads_.empty() && micromap_queue_.empty() && !micromap_baking_.valid() && (micromap_tally_[0] + micromap_tally_[2]) != 0) {
+    // The bakes' tally at most every 10 s (the log).
+    if ((micromap_tally_[0] + micromap_tally_[2]) != 0 && GetTickCount64() >= micromap_logged_ + 10000) {
+      micromap_logged_ = GetTickCount64();
       slow_report_ += std::format("{}[TW ray tracing] Leaf micromaps: {} meshes baked ({} KB), {} failed.", (slow_report_.empty() ? "" : "\n"),
                                   micromap_tally_[0], micromap_tally_[1] >> 10, micromap_tally_[2]);
       micromap_tally_ = {};
@@ -3252,6 +3258,7 @@ class RtScene12 {
   std::future<std::unique_ptr<MicromapBake>> micromap_baking_;
   std::vector<std::unique_ptr<MicromapBake>> micromaps_baked_;
   std::array<uint64_t, 3> micromap_tally_ = {};  // since the last log line: meshes baked, their data's bytes, failed
+  uint64_t micromap_logged_ = 0;                 // that line's time (GetTickCount64)
 #if defined(RENODX_OMM_SDK)
   OmmSdk omm_;
 #endif
@@ -3398,6 +3405,7 @@ class RtScene12 {
   std::array<bool, SLOTS> slot_traced_ = {};
   std::array<bool, SLOTS> slot_reflected_ = {};  // a path request's: the reflections (else the Light Bounce)
   std::array<bool, SLOTS> slot_clustered_ = {};  // a trace's: its clusters built (timed by the paths' stamps)
+  std::array<uint32_t, 2> paths_age_ = {};  // the sun traces since the Light Bounce's, the reflections' last times
   // The scene (captures, BLASes), the TLAS, the trace; the Light Bounce, the reflections; the scene's cluster build.
   std::array<double, 6> gpu_ms_ = {};
   ComPtr<ID3D12StateObject> path_state_object_;
