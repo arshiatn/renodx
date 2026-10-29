@@ -501,7 +501,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                     && (!ray_tracing
                         || (make(DXGI_FORMAT_R32G32B32A32_FLOAT, &bridge.rt_vertices, &shared.rt_vertices, RT_TRANSFER_WIDTH, RT_TRANSFER_HEIGHT)
                             && make(DXGI_FORMAT_R32G32B32A32_FLOAT, &bridge.rt_positions, &shared.rt_positions)
-                            && make(DXGI_FORMAT_R32G32B32A32_FLOAT, &bridge.rt_sun, &shared.rt_sun, 2, 1)
+                            && make(DXGI_FORMAT_R32G32B32A32_FLOAT, &bridge.rt_sun, &shared.rt_sun, 16, 1)
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_visibility, &shared.rt_visibility)
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_ambient, &shared.rt_ambient)
                             && make(DXGI_FORMAT_R11G11B10_FLOAT, &bridge.rt_light, &shared.rt_light)

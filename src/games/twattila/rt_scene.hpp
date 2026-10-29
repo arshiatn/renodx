@@ -315,6 +315,8 @@ static bool shadows_only_installed = false;
 static std::atomic_bool debug_view_drawn = false;
 static std::atomic<uint64_t> shadow_map = 0;
 static std::atomic_bool skipping_casters = false;
+// The sun draws' lighting buffer's ambient cube, its first float (InstallSunDraws; 0: none): the paths' sky.
+static UINT ambient_cube = 0;
 
 }  // namespace internal
 
@@ -414,7 +416,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
   const internal::ComputeState kept(native);
   ComPtr<ID3D11Buffer> game_second;
   native->CSGetConstantBuffers(1, 1, game_second.GetAddressOf());
-  const std::array<uint32_t, 4> offset = {draw.sun_direction, 0, 0, 0};
+  const std::array<uint32_t, 4> offset = {draw.sun_direction, internal::ambient_cube, 0, 0};
   native->UpdateSubresource(runtime.objects.sun_constants.Get(), 0, nullptr, offset.data(), 0, 0);
   native->CSSetShader(runtime.objects.sun_shader.Get(), nullptr, 0);
   ID3D11UnorderedAccessView* sun = dlaa_bridge::bridge.rt_sun.uav.Get();
@@ -747,7 +749,10 @@ inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pas
 
 // The sun light draws (the addon's, kept while installed): before the screen-space shadows (their occlusion reads this
 // frame's trace), the AO filter and the Light Bounce.
-inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws) {
+// `ambient_cube`: the first float of the lighting buffer's ambient cube (six colours: +x, -x, +y, -y, +z, -z; the paths'
+// sky), 0 none.
+inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws, UINT ambient_cube = 0) {
+  internal::ambient_cube = ambient_cube;
   for (const auto& draw : sun_draws) {
     internal::runtime.sun_draw_shaders.insert(draw.shader_hash);
     renodx::utils::command_action::Register(

@@ -286,6 +286,21 @@ float3 LocalLight(float3 surface, float3 normal, float u) {
   return picked * (total / picked_weight);
 }
 
+// The sky's light along a path that escapes: the game's own ambient cube by the direction (the sun texture's texels 3-8:
+// +x, -x, +y, -y, +z, -z; rt_sun.cs_5_0.hlsl), scaled so its mean over directions is the learned shade light (`shade`,
+// which stood for the whole sky before: bluer from above, the ground's colour from below now); the shade where the
+// game gave none.
+float3 SkyLight(float3 direction, float3 shade) {
+  if (sun[uint2(3, 0)].w == 0.f) return shade;
+  const float3 squared = direction * direction;
+  const float3 cube = squared.x * sun[uint2((direction.x < 0.f) ? 4u : 3u, 0)].rgb + squared.y * sun[uint2((direction.y < 0.f) ? 6u : 5u, 0)].rgb
+                      + squared.z * sun[uint2((direction.z < 0.f) ? 8u : 7u, 0)].rgb;
+  float3 mean = 0.f;
+  [unroll]
+  for (uint side = 3u; side < 9u; ++side) mean += sun[uint2(side, 0)].rgb;
+  return shade * cube / max(mean / 6.f, 1e-4f);
+}
+
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal).
 float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, uint path, out float first_distance, out float3 first_normal) {
   first_distance = 1e30f;
@@ -309,9 +324,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     TRACE_SURFACE(query, ray)
     const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
     if (!hit) {
-      // Past the first surface the learned shade light stands for the sky; from the camera's pixel the game's own
+      // Past the first surface the sky (the game's ambient by direction); from the camera's pixel the game's own
       // ambient covers it.
-      if (vertex > 0u) radiance += throughput * shade.rgb;
+      if (vertex > 0u) radiance += throughput * SkyLight(direction, shade.rgb);
       break;
     }
     const float3 position = origin + direction * query.CommittedRayT();
@@ -321,18 +336,28 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
       radiance += throughput * light_there;
       break;
     }
-    const float3 normal = HitNormal(query.CommittedInstanceID() + query.CommittedGeometryIndex(), query.CommittedPrimitiveIndex(), direction,
-                                    query.CommittedObjectToWorld3x4());
+    const uint record_index = query.CommittedInstanceID() + query.CommittedGeometryIndex();
+    const float3 normal = HitNormal(record_index, query.CommittedPrimitiveIndex(), direction, query.CommittedObjectToWorld3x4());
     if (vertex == 0u) first_normal = normal;
     const float3 albedo = HitAlbedo(position);
-    const float3 surface = position + normal * SurfaceOffset(distance(position, Camera()));
+    const float offset = SurfaceOffset(distance(position, Camera()));
+    const float3 surface = position + normal * offset;
+    // Leaves, cloth and sails pass their share of light through (the sun's from behind; the path goes on through them
+    // as often): green light under the trees.
+    const uint record_flags = records[record_index].z >> 16;
+    const float transmittance = ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
+    const float3 behind = position - normal * offset;
     float3 emitted = 0.f;
     const float n_dot_l = dot(normal, toward_sun.xyz);
-    if (toward_sun.w != 0.f && n_dot_l > 0.f && shade.w > 0.f && !Occluded(surface, toward_sun.xyz, 1.0e4f, NO_SMOKE)) {
-      emitted = albedo * sunlit * n_dot_l;
+    const float sun_share = (n_dot_l > 0.f) ? n_dot_l : (-n_dot_l * transmittance);
+    if (toward_sun.w != 0.f && sun_share > 0.f && shade.w > 0.f && !Occluded((n_dot_l > 0.f) ? surface : behind, toward_sun.xyz, 1.0e4f, NO_SMOKE)) {
+      emitted = albedo * sunlit * sun_share;
     }
     if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) {
-      emitted += albedo * LocalLight(surface, normal, Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 16384u)));
+      // Two lights picked (less noise from fires and torches than one).
+      const uint light_seed = frame * 64u + path * 8u + vertex * 2u;
+      emitted += albedo * (0.5f * (LocalLight(surface, normal, Random(uint3(seed, light_seed + 16384u)))
+                                   + LocalLight(surface, normal, Random(uint3(seed, light_seed + 24576u)))));
     }
     if (!unseen) {
       unseen = true;
@@ -346,8 +371,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     }
     radiance += throughput * emitted;
     throughput *= albedo;
-    origin = surface;
-    direction = CosineDirection(normal, Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8192u)),
+    const bool through = transmittance > 0.f && Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 32768u)) < transmittance;
+    origin = through ? behind : surface;
+    direction = CosineDirection(through ? -normal : normal, Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8192u)),
                                 Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8193u)));
   }
   // The first unseen surface's light feeds the cache once the learned lighting is solved.

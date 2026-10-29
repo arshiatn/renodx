@@ -1887,7 +1887,8 @@ bool AttachAddon() {
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection));
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Their lighting buffer's ambient cube at c2 (lighting_VS_PS): the paths' sky.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   twattila::grass_fade::Install();
   // The AO pass before the ray tracing (its multiply after the pass's own output), both before the Light Bounce (it
