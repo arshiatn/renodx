@@ -277,11 +277,11 @@ class RtScene12 {
 #if defined(RENODX_NVAPI_CLUSTERS)
     // Mega Geometry: the CLASes (placed by the driver, their addresses in clas_addresses_), the units' cluster BLAS (at
     // cluster_blas_, its address in cluster_destination_), the scratch and the arguments, all with room for a frame's
-    // clusters (SizeClusters); the sequential 8-bit indices; a slot's captures' arguments and records written by the CPU
+    // clusters (ClusterRoom); the sequential 8-bit indices; a slot's captures' arguments and records written by the CPU
     // (cluster_data), its compact draws' table and new sets (compact_data); the sets' pool. A cluster has at most
     // RT_CLUSTER_TRIANGLES triangles (a compact draw's) over 255 vertices (a capture's sequential ones) and takes ~6 KB of
     // CLAS memory at most: the room starts at CLUSTER_ROOM (ATN's battles drew 8,000-21,000 a frame) and doubles while a
-    // frame has more, up to MAX_CLUSTERS, half on GPUs of 20 GB or less, a quarter on 12 GB or less (4x unit size battles
+    // frame fills 3/4 of it, up to MAX_CLUSTERS, half on GPUs of 20 GB or less, a quarter on 12 GB or less (4x unit size battles
     // filled 262,144 with city walls left out).
     if (clusters_) {
       cluster_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? MAX_CLUSTERS
@@ -358,7 +358,13 @@ class RtScene12 {
       const auto size_clusters = [&] {
         auto one_template = template_inputs_;
         one_template.maxArgCount = 1;
-        return ClusterRequirements(one_template, &template_info) && SizeClusters(std::min(cluster_limit_, CLUSTER_ROOM));
+        ClusterRoom made;
+        if (!ClusterRequirements(one_template, &template_info) || !SizeClusterRoom(std::min(cluster_limit_, CLUSTER_ROOM), &made)
+            || !MakeClusterRoom(&made)) {
+          return false;
+        }
+        UseClusterRoom(&made);
+        return true;
       };
       allow_micromaps(dxr12_ && bake_micromaps_);
       clusters_ = size_clusters();
@@ -1147,6 +1153,9 @@ class RtScene12 {
     if (own_fence_) WaitFor(own_value_);
     if (event_ != nullptr) CloseHandle(event_);
     if (micromap_baking_.valid()) micromap_baking_.wait();
+#if defined(RENODX_NVAPI_CLUSTERS)
+    if (cluster_growing_.valid()) cluster_growing_.wait();
+#endif
 #if defined(RENODX_OMM_SDK)
     if (omm_.baker != nullptr) omm_.destroy_baker(omm_.baker);
     if (omm_.library != nullptr) FreeLibrary(omm_.library);
@@ -1462,9 +1471,14 @@ class RtScene12 {
     uint64_t value = 0;  // the reading request's
     uint32_t triangles = 0;
     bool set = false;  // a cluster set's (grass: its templates built with the micromaps), not a mesh's
-    ComPtr<ID3D12Resource> positions;  // its vertices (16 bytes each), for the rebuild
-    ComPtr<ID3D12Resource> uvs;        // read back: a packed half UV a corner
-    ComPtr<ID3D12Resource> mask;       // read back: its atlas slice
+    // Its request's buffers (one of each for all its reads) and its places in them: its vertices (16 bytes each) for the
+    // rebuild; read back: a packed half UV a corner, its atlas slice.
+    ComPtr<ID3D12Resource> positions;
+    uint64_t positions_offset = 0;
+    ComPtr<ID3D12Resource> uvs;
+    uint64_t uvs_offset = 0;
+    ComPtr<ID3D12Resource> mask;
+    uint64_t mask_offset = 0;
     std::vector<uint32_t> uv_data;
     std::vector<uint8_t> mask_data;
     // The bake's: the micromaps' data, descs, an index a triangle (32-bit; the special ones negative), their histogram.
@@ -1624,56 +1638,84 @@ class RtScene12 {
     return NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo(device_.Get(), &params) == NVAPI_OK;
   }
 
-  // Room for `room` clusters a frame (a quarter of them built from triangles, the rest instantiated from templates): the
-  // CLASes (the instantiated first), the cluster BLASes (the units', the smoke's), the scratch, the CLASes' addresses and arguments (32 and 64 bytes
-  // likewise); those they replace released once the GPU is past this request. False: no memory for them (the old kept).
-  bool SizeClusters(uint32_t room) {
+  // Room for `room` clusters a frame (a quarter of them built from triangles, the rest instantiated from templates): its
+  // operations' inputs and its buffers: the CLASes (the instantiated first), the cluster BLASes (the units', the smoke's),
+  // the scratch, the CLASes' addresses and arguments (32 and 64 bytes likewise). A bigger one is made on a worker while
+  // the scene grows (its CreateCommittedResource calls, up to GBs, stalled the request's thread: hitches panning over the
+  // map, ATN 2026-10-29) and put in at a request's start.
+  struct ClusterRoom {
+    uint32_t room = 0;
+    NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS clas_inputs = {};
+    NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS instantiate_inputs = {};
+    NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS blas_inputs = {};
+    uint64_t instantiated_bytes = 0;
+    std::array<uint64_t, 6> bytes = {};
+    std::array<ComPtr<ID3D12Resource>, 6> buffers;
+  };
+
+  // Its inputs and buffers' bytes (the operations' requirements, on the request's thread). False: none.
+  bool SizeClusterRoom(uint32_t room, ClusterRoom* made) const {
     const uint32_t built = room / 4;
-    auto clas_inputs = clas_inputs_;
-    clas_inputs.maxArgCount = built;
-    auto instantiate_inputs = instantiate_inputs_;
-    instantiate_inputs.maxArgCount = room - built;
-    auto blas_inputs = cluster_blas_inputs_;
-    blas_inputs.clasDesc = {.maxTotalClasCount = room, .maxClasCountPerArg = room};
+    made->room = room;
+    made->clas_inputs = clas_inputs_;
+    made->clas_inputs.maxArgCount = built;
+    made->instantiate_inputs = instantiate_inputs_;
+    made->instantiate_inputs.maxArgCount = room - built;
+    made->blas_inputs = cluster_blas_inputs_;
+    made->blas_inputs.clasDesc = {.maxTotalClasCount = room, .maxClasCountPerArg = room};
     NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO clas_info = {};
     NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO blas_info = {};
     NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO templates_info = {};
     NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO instantiate_info = {};
-    if (!ClusterRequirements(clas_inputs, &clas_info) || !ClusterRequirements(blas_inputs, &blas_info)
-        || !ClusterRequirements(template_inputs_, &templates_info) || !ClusterRequirements(instantiate_inputs, &instantiate_info)) {
+    if (!ClusterRequirements(made->clas_inputs, &clas_info) || !ClusterRequirements(made->blas_inputs, &blas_info)
+        || !ClusterRequirements(template_inputs_, &templates_info) || !ClusterRequirements(made->instantiate_inputs, &instantiate_info)) {
       return false;
     }
-    const uint64_t instantiated_bytes = Align(instantiate_info.resultDataMaxSizeInBytes, NVAPI_D3D12_RAYTRACING_CLAS_BYTE_ALIGNMENT);
-    const uint64_t scratch_bytes = std::max({clas_info.scratchDataSizeInBytes, blas_info.scratchDataSizeInBytes,
-                                             templates_info.scratchDataSizeInBytes, instantiate_info.scratchDataSizeInBytes});
-    ComPtr<ID3D12Resource> clas = ClusterBuffer(instantiated_bytes + clas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-    ComPtr<ID3D12Resource> blas = ClusterBuffer(blas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-    ComPtr<ID3D12Resource> smoke_blas = ClusterBuffer(blas_info.resultDataMaxSizeInBytes, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-    ComPtr<ID3D12Resource> scratch = ClusterBuffer(scratch_bytes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    ComPtr<ID3D12Resource> addresses = ClusterBuffer(uint64_t{room} * 8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    ComPtr<ID3D12Resource> args = ClusterBuffer((uint64_t{room - built} * 32) + (uint64_t{built} * 64), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    if (!clas || !blas || !smoke_blas || !scratch || !addresses || !args) return false;
-    for (ComPtr<ID3D12Resource>* old : {std::addressof(clas_), std::addressof(cluster_blas_), std::addressof(smoke_cluster_blas_),
-                                        std::addressof(cluster_scratch_), std::addressof(clas_addresses_), std::addressof(cluster_args_)}) {
-      if (*old) {
-        releases_.push_back({.value = own_value_ + 1, .resource = std::move(*old)});
-      }
-    }
-    clas_ = std::move(clas);
-    cluster_blas_ = std::move(blas);
-    smoke_cluster_blas_ = std::move(smoke_blas);
-    cluster_scratch_ = std::move(scratch);
-    clas_addresses_ = std::move(addresses);
-    cluster_args_ = std::move(args);
-    clas_inputs_ = clas_inputs;
-    instantiate_inputs_ = instantiate_inputs;
-    cluster_blas_inputs_ = blas_inputs;
-    instantiated_bytes_ = instantiated_bytes;
-    cluster_room_ = room;
-    built_limit_ = built;
-    cluster_bytes_ = instantiated_bytes + clas_info.resultDataMaxSizeInBytes + (blas_info.resultDataMaxSizeInBytes * 2) + scratch_bytes
-                     + (uint64_t{room} * 8) + (uint64_t{room - built} * 32) + (uint64_t{built} * 64);
+    made->instantiated_bytes = Align(instantiate_info.resultDataMaxSizeInBytes, NVAPI_D3D12_RAYTRACING_CLAS_BYTE_ALIGNMENT);
+    made->bytes = {
+        made->instantiated_bytes + clas_info.resultDataMaxSizeInBytes,
+        blas_info.resultDataMaxSizeInBytes,
+        blas_info.resultDataMaxSizeInBytes,
+        std::max({clas_info.scratchDataSizeInBytes, blas_info.scratchDataSizeInBytes, templates_info.scratchDataSizeInBytes,
+                  instantiate_info.scratchDataSizeInBytes}),
+        uint64_t{room} * 8,
+        (uint64_t{room - built} * 32) + (uint64_t{built} * 64),
+    };
     return true;
+  }
+
+  // Its buffers (any thread). False: no memory for them.
+  bool MakeClusterRoom(ClusterRoom* made) const {
+    constexpr std::array<D3D12_RESOURCE_STATES, 6> STATES = {
+        D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+        D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,                  D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+    };
+    for (size_t index = 0; index < made->buffers.size(); ++index) {
+      made->buffers[index] = ClusterBuffer(made->bytes[index], STATES[index]);
+      if (!made->buffers[index]) return false;
+    }
+    return true;
+  }
+
+  // In place of the room before (released once the GPU is past this request).
+  void UseClusterRoom(ClusterRoom* made) {
+    const std::array<ComPtr<ID3D12Resource>*, 6> room = {std::addressof(clas_),           std::addressof(cluster_blas_),
+                                                         std::addressof(smoke_cluster_blas_), std::addressof(cluster_scratch_),
+                                                         std::addressof(clas_addresses_), std::addressof(cluster_args_)};
+    for (size_t index = 0; index < room.size(); ++index) {
+      if (*room[index]) {
+        releases_.push_back({.value = own_value_ + 1, .resource = std::move(*room[index])});
+      }
+      *room[index] = std::move(made->buffers[index]);
+    }
+    clas_inputs_ = made->clas_inputs;
+    instantiate_inputs_ = made->instantiate_inputs;
+    cluster_blas_inputs_ = made->blas_inputs;
+    instantiated_bytes_ = made->instantiated_bytes;
+    cluster_room_ = made->room;
+    built_limit_ = made->room / 4;
+    cluster_bytes_ = std::accumulate(made->bytes.begin(), made->bytes.end(), uint64_t{0});
   }
 #endif
 
@@ -2079,16 +2121,29 @@ class RtScene12 {
       list->ResourceBarrier(1, &copied);
     }
 #if defined(RENODX_NVAPI_CLUSTERS)
-    // The last request's clusters had no room: twice the room for this one (no memory for it: the room stays).
-    if (clusters_ && clusters_short_ && cluster_room_ < cluster_limit_) {
-      if (SizeClusters(std::min(cluster_limit_, cluster_room_ * 2))) {
+    // The last request's clusters filled 3/4 of a run's room or more: twice the room, made on a worker and put in at the
+    // first request after (no memory for it: the room stays).
+    if (cluster_growing_.valid() && cluster_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+      if (const std::unique_ptr<ClusterRoom> made = cluster_growing_.get(); made) {
+        UseClusterRoom(made.get());
         slow_report_ += std::format("{}[TW ray tracing] Mega Geometry: room for {} clusters a frame now ({} MB).", (slow_report_.empty() ? "" : "\n"),
                                     cluster_room_, (cluster_bytes_ + TEMPLATE_POOL_BYTES) >> 20);
       } else {
         cluster_limit_ = cluster_room_;
       }
     }
-    clusters_short_ = false;
+    if (clusters_ && clusters_crowded_ && !cluster_growing_.valid() && cluster_room_ < cluster_limit_) {
+      auto made = std::make_unique<ClusterRoom>();
+      if (SizeClusterRoom(std::min(cluster_limit_, cluster_room_ * 2), made.get())) {
+        cluster_growing_ = std::async(std::launch::async, [this, made = std::move(made)]() mutable -> std::unique_ptr<ClusterRoom> {
+          if (!MakeClusterRoom(made.get())) return nullptr;
+          return std::move(made);
+        });
+      } else {
+        cluster_limit_ = cluster_room_;
+      }
+    }
+    clusters_crowded_ = false;
 #endif
     uint32_t dynamic_triangles_used = 0;  // this slot's turn of the normal and UV pools
     uint32_t dynamic_uvs_used = 0;
@@ -2169,8 +2224,9 @@ class RtScene12 {
         const uint64_t triangles = uint64_t{set.triangles} * draw.instances;
         const uint64_t block_end = uint64_t{draw.first_vertex} + (uint64_t{set.vertices} * draw.instances);
         const uint64_t run_clusters = templated_run ? compact_clusters : compact_clusters - templated_clusters;
-        const bool cluster_room = run_clusters + clusters <= (templated_run ? cluster_room_ - built_limit_ : built_limit_);
-        clusters_short_ = clusters_short_ || !cluster_room;
+        const uint64_t run_room = templated_run ? cluster_room_ - built_limit_ : built_limit_;
+        const bool cluster_room = run_clusters + clusters <= run_room;
+        clusters_crowded_ = clusters_crowded_ || (run_clusters + clusters) * 4 > run_room * 3;
         if (block_end > TRANSFER_VERTICES || !cluster_room || dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES || (masked && dynamic_uvs_used + (triangles * 3) > dynamic_uvs_)
             || cluster_vertices + (uint64_t{set.vertices} * draw.instances) > TRANSFER_VERTICES) {
           continue;
@@ -2604,7 +2660,7 @@ class RtScene12 {
             .IndexFormat = DXGI_FORMAT_UNKNOWN,
             .VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT,
             .VertexCount = mesh.triangles * 3,
-            .VertexBuffer = {.StartAddress = made.bake->positions->GetGPUVirtualAddress(), .StrideInBytes = 16},
+            .VertexBuffer = {.StartAddress = made.bake->positions->GetGPUVirtualAddress() + made.bake->positions_offset, .StrideInBytes = 16},
         };
         micromap_linkages[index] = {
             .OpacityMicromapIndexBuffer = {.StartAddress = made.inputs->GetGPUVirtualAddress() + made.indices_offset, .StrideInBytes = 4},
@@ -2755,8 +2811,8 @@ class RtScene12 {
         if (smoke_count == 0) {
           units_end = cluster_count;
         }
-        if (cluster_count - templated_clusters >= built_limit_) {
-          clusters_short_ = true;
+        if ((cluster_count - templated_clusters) * 4 >= built_limit_ * 3) {
+          clusters_crowded_ = true;
         }
         const NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS blas_args = {
             .clusterCount = units_end, .reserved = 0, .clusterVAs = clas_addresses_->GetGPUVirtualAddress()};
@@ -2892,41 +2948,61 @@ class RtScene12 {
           list->CopyBufferRegion(build_rows_.Get(), uint64_t{meshes_[built_rows.key].record} * 48, vertex_buffer_.Get(),
                                  uint64_t{built_rows.first_vertex} * 16, 48);
         }
-        std::map<uint32_t, ComPtr<ID3D12Resource>> masks;
+        // One buffer of each kind for all of them, their places 256-byte aligned (each read made its own two or three: up to
+        // 64 leaves a request, a few ms of allocations, hitches panning over new trees, ATN 2026-10-29).
+        constexpr uint64_t MASK_BYTES = uint64_t{dlaa_bridge::RT_ATLAS_SIZE} * dlaa_bridge::RT_ATLAS_SIZE;
+        std::map<uint32_t, uint64_t> masks;  // a slice's place in the masks read back
+        uint64_t positions_bytes = 0;
+        uint64_t uvs_bytes = 0;
+        for (const MicromapRead& read : micromap_reads) {
+          if (!read.set) positions_bytes = Align(positions_bytes + (uint64_t{read.triangles} * 48), 256);
+          uvs_bytes = Align(uvs_bytes + (uint64_t{read.triangles} * 12), 256);
+          masks.try_emplace(read.slice, masks.size() * MASK_BYTES);
+        }
         std::vector<D3D12_RESOURCE_BARRIER> positions_copied;
-        const D3D12_RESOURCE_DESC atlas_desc = micromap_reads.empty() ? D3D12_RESOURCE_DESC{} : atlas_->GetDesc();
+        ComPtr<ID3D12Resource> positions;
+        ComPtr<ID3D12Resource> uvs;
+        ComPtr<ID3D12Resource> mask;
+        if (!micromap_reads.empty()) {
+          if (positions_bytes != 0) {
+            positions = Buffer(positions_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+          }
+          uvs = Buffer(uvs_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+          mask = Buffer(masks.size() * MASK_BYTES, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+        }
+        if ((positions_bytes != 0 && !positions) || !uvs || !mask) micromap_reads.clear();
+        if (!micromap_reads.empty()) {
+          const D3D12_RESOURCE_DESC atlas_desc = atlas_->GetDesc();
+          for (const auto& [slice, offset] : masks) {
+            const D3D12_TEXTURE_COPY_LOCATION destination = {
+                .pResource = mask.Get(),
+                .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                .PlacedFootprint = {.Offset = offset,
+                                    .Footprint = {.Format = atlas_desc.Format, .Width = dlaa_bridge::RT_ATLAS_SIZE, .Height = dlaa_bridge::RT_ATLAS_SIZE,
+                                                  .Depth = 1, .RowPitch = dlaa_bridge::RT_ATLAS_SIZE}},
+            };
+            const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = atlas_.Get(),
+                                                        .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                                                        .SubresourceIndex = slice * atlas_desc.MipLevels};
+            list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+          }
+          if (positions) {
+            positions_copied.push_back(Transition(positions.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+          }
+        }
+        uint64_t positions_at = 0;
+        uint64_t uvs_at = 0;
         for (const MicromapRead& read : micromap_reads) {
           auto bake = std::make_unique<MicromapBake>();
-          *bake = {.key = read.key, .build = read.build, .value = own_value_ + 1, .triangles = read.triangles, .set = read.set};
+          *bake = {.key = read.key, .build = read.build, .value = own_value_ + 1, .triangles = read.triangles, .set = read.set,
+                   .positions = (read.set ? nullptr : positions), .positions_offset = positions_at, .uvs = uvs, .uvs_offset = uvs_at,
+                   .mask = mask, .mask_offset = masks.at(read.slice)};
           if (!read.set) {
-            bake->positions = Buffer(uint64_t{read.triangles} * 48, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+            list->CopyBufferRegion(positions.Get(), positions_at, vertex_buffer_.Get(), uint64_t{read.first_vertex} * 16, uint64_t{read.triangles} * 48);
+            positions_at = Align(positions_at + (uint64_t{read.triangles} * 48), 256);
           }
-          bake->uvs = Buffer(uint64_t{read.triangles} * 12, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
-          ComPtr<ID3D12Resource>& mask = masks[read.slice];
-          if (!mask) {
-            mask = Buffer(uint64_t{dlaa_bridge::RT_ATLAS_SIZE} * dlaa_bridge::RT_ATLAS_SIZE, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,
-                          D3D12_RESOURCE_STATE_COPY_DEST);
-            if (mask) {
-              const D3D12_TEXTURE_COPY_LOCATION destination = {
-                  .pResource = mask.Get(),
-                  .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-                  .PlacedFootprint = {.Offset = 0,
-                                      .Footprint = {.Format = atlas_desc.Format, .Width = dlaa_bridge::RT_ATLAS_SIZE, .Height = dlaa_bridge::RT_ATLAS_SIZE,
-                                                    .Depth = 1, .RowPitch = dlaa_bridge::RT_ATLAS_SIZE}},
-              };
-              const D3D12_TEXTURE_COPY_LOCATION source = {.pResource = atlas_.Get(),
-                                                          .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-                                                          .SubresourceIndex = read.slice * atlas_desc.MipLevels};
-              list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
-            }
-          }
-          bake->mask = mask;
-          if ((!read.set && !bake->positions) || !bake->uvs || !bake->mask) continue;
-          if (!read.set) {
-            list->CopyBufferRegion(bake->positions.Get(), 0, vertex_buffer_.Get(), uint64_t{read.first_vertex} * 16, uint64_t{read.triangles} * 48);
-            positions_copied.push_back(Transition(bake->positions.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-          }
-          list->CopyBufferRegion(bake->uvs.Get(), 0, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
+          list->CopyBufferRegion(uvs.Get(), uvs_at, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
+          uvs_at = Align(uvs_at + (uint64_t{read.triangles} * 12), 256);
           micromap_reads_.push_back(std::move(bake));
         }
         for (auto& barrier : to_source) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
@@ -3436,17 +3512,20 @@ class RtScene12 {
   void AdvanceMicromaps(uint64_t completed) {
     for (std::unique_ptr<MicromapBake>& read : micromap_reads_) {
       if (read->value > completed) continue;
-      const D3D12_RANGE uv_range = {.Begin = 0, .End = uint64_t{read->triangles} * 12};
-      const D3D12_RANGE mask_range = {.Begin = 0, .End = uint64_t{dlaa_bridge::RT_ATLAS_SIZE} * dlaa_bridge::RT_ATLAS_SIZE};
+      // Its places in its request's read-backs (Map points at a buffer's start).
+      const D3D12_RANGE uv_range = {.Begin = read->uvs_offset, .End = read->uvs_offset + (uint64_t{read->triangles} * 12)};
+      const D3D12_RANGE mask_range = {.Begin = read->mask_offset,
+                                      .End = read->mask_offset + (uint64_t{dlaa_bridge::RT_ATLAS_SIZE} * dlaa_bridge::RT_ATLAS_SIZE)};
       const D3D12_RANGE written = {};
-      const uint32_t* uvs = nullptr;
+      const uint8_t* uvs = nullptr;
       const uint8_t* mask = nullptr;
-      if (SUCCEEDED(read->uvs->Map(0, &uv_range, reinterpret_cast<void**>(const_cast<uint32_t**>(&uvs))))) {
-        read->uv_data.assign(uvs, uvs + (uint64_t{read->triangles} * 3));
+      if (SUCCEEDED(read->uvs->Map(0, &uv_range, reinterpret_cast<void**>(const_cast<uint8_t**>(&uvs))))) {
+        const auto* first = reinterpret_cast<const uint32_t*>(uvs + uv_range.Begin);
+        read->uv_data.assign(first, first + (uint64_t{read->triangles} * 3));
         read->uvs->Unmap(0, &written);
       }
       if (SUCCEEDED(read->mask->Map(0, &mask_range, reinterpret_cast<void**>(const_cast<uint8_t**>(&mask))))) {
-        read->mask_data.assign(mask, mask + mask_range.End);
+        read->mask_data.assign(mask + mask_range.Begin, mask + mask_range.End);
         read->mask->Unmap(0, &written);
       }
       read->uvs.Reset();
@@ -3620,8 +3699,8 @@ class RtScene12 {
   uint64_t smoke_bytes_ = 0;
   bool clusters_ = false;  // Mega Geometry's cluster operations for the units
   uint32_t cluster_limit_ = MAX_CLUSTERS;  // the most a frame (half on smaller GPUs)
-  uint32_t cluster_room_ = MAX_CLUSTERS;   // room for them now (SizeClusters: grown while a frame has more)
-  bool clusters_short_ = false;            // the last request's clusters had no room
+  uint32_t cluster_room_ = MAX_CLUSTERS;   // room for them now (ClusterRoom: grown while a frame fills 3/4 of it)
+  bool clusters_crowded_ = false;          // the last request's clusters filled 3/4 of a run's room or more
   uint32_t built_limit_ = MAX_CLUSTERS;    // of the room built from triangles (the rest instantiated from templates)
   uint64_t cluster_bytes_ = 0;             // the room's CLASes, cluster BLAS, scratch and arguments (the status)
   uint32_t dynamic_uvs_ = DYNAMIC_UVS;     // a request's alpha-tested corners (by the GPU's memory)
@@ -3631,6 +3710,7 @@ class RtScene12 {
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS cluster_blas_inputs_ = {};
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS template_inputs_ = {};
   NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS instantiate_inputs_ = {};
+  std::future<std::unique_ptr<ClusterRoom>> cluster_growing_;  // a bigger room being made (a worker's)
 #endif
   ComPtr<ID3D12Resource> clas_;
   ComPtr<ID3D12Resource> clas_addresses_;

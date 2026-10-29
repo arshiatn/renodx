@@ -1208,6 +1208,22 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       Not possible / no gain: DMM (not in DXR, dropped by NVIDIA), LSS (no strand geometry in Attila), AddToStateObject
       and indirect DispatchRays (no shader streaming; the helper's dispatch is not the cost), Mega Geometry for static
       meshes (built once already: no gain in tracing).
+    - v99 BATCH (ATN 2026-10-29 13:20, after testing v98: micro stutters panning over the map; grass shadows gone only
+      with Grass Always Drawn). Their log: only sun shadows + point lights on; trace 1-2 ms in the open, 17-18 ms over
+      forests (Light Through Leaves stepped every leaf layer: harness dense leaves 4K 16.2 ms, 0.9 without); helper
+      waits 3-35 ms; the cluster room grew 3 times (32k -> 262k clusters, 2.5 GB), each a stall; Grass Always Drawn:
+      ~70-95 M grass vertices a frame, 54-79 M left out (share full, whole instanced draws dropped, near ones too).
+      [x] 1 (d53c3023) Light Through Leaves cheap: leaves' meshes instance mask 4 (solids 1, smoke 2; rt_place too);
+          SunRay: one any-hit ray on the rest (cloth / sail / grass met first: the old stepping without the leaves),
+          then the leaves: none, one, or more (any-hit rays around the first): T or T^2. Harness: 16.2 -> 2.5 ms; leaf,
+          sail and grass checks unchanged.
+      [x] 2 Cluster room grown in the background: SizeClusters split (SizeClusterRoom: requirements on the request's
+          thread; MakeClusterRoom: the 6 buffers on a std::async worker; UseClusterRoom at a request's start), grown when
+          a run's clusters pass 3/4 of its room (was: once they ran out). Harness grass stress: 32k -> 262k on the worker.
+      [x] 3 Micromap reads: a request's reads share one buffer of each kind (positions, UVs, masks; each read made 2-3:
+          up to 64 leaves a request, a few ms of CreateCommittedResource). Arrays were already one a request (one bake
+          at a time); template rebuilds bounded by the addon's 16 new sets a frame: left as they are.
+      [ ] 4 Nearest grass first when the grass share is full.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
