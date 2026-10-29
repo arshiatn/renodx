@@ -402,7 +402,8 @@ class RtScene12 {
     }
     // The partitioned TLAS: an instance per static record (its index) and one for the units, PTLAS_PARTITION_SIZE a
     // partition; a slot's write and update arguments, its two operations and their count. Only with RENODX_TW_PTLAS:
-    // a city siege in Attila stalled each frame by ~0.3 s with it (the TLAS built whole costs well under a millisecond).
+    // a city siege in Attila stalled each frame by ~0.3 s with it, the TLAS built whole costs 0.10-0.16 ms (ATN's log
+    // 2026-10-29: all a PTLAS could save), and it has no placed meshes (v14: rt_place writes the TLAS's descs only).
     NvU32 ptlas_caps = 0;
     ptlas_ = nullptr;
     if (GetEnvironmentVariableW(L"RENODX_TW_PTLAS", nullptr, 0) != 0 && NvAPI_Initialize() == NVAPI_OK

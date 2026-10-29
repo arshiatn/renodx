@@ -1102,12 +1102,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           frees through releases_ once the GPU is past them, an empty chunk (but a pool's first) let go. Harness: 250
           leaf meshes of 40 triangles: under 1 MB of BLAS in 2 chunks where separate buffers took 15 MB (64 KB each at
           least); of 4000: 32 MB in 3-4 chunks vs 46 MB. The helper logs "Static BLASes: ..." when its chunks change.
-      [ ] 8 Partitioned TLAS again (find the siege stall); Mega Geometry for the captures still on the CPU path
+      [x] 8 (steps 4, 9: no gain in either half) Partitioned TLAS again (find the siege stall); Mega Geometry for the captures still on the CPU path
           (non-indexed or not yet compact dynamic draws: make them compact too). Step 4: the second half has no gain:
           ATN's 03:11 log (2026-10-29) has every cluster instantiated from templates after a battle's first frames
           (10 of 11 status lines; the first: 29,181 soup clusters before any set was made); every scene draw in the
           trace is indexed, a dynamic one is compact once its set arrives (2-3 frames). Soup templates would need <= 128
           vertices (the instantiation's limit): 42-triangle clusters, twice as many. Left as is.
+          Step 9: the PTLAS half has no gain either: the whole TLAS builds in 0.10-0.16 ms (ATN's 03:11 log), all a
+          PTLAS could save; and the PTLAS path predates placed meshes (v14: rt_place writes the TLAS's descs only), so
+          RENODX_TW_PTLAS would drop every rigid object and tree from the scene. Kept off (comment says so).
       [x] 9 (step 1) Each RT effect replaces its raster one, never both: RT AO replaces the game's SSAO and GT-VBAO (fold On /
           Alone into one On = Alone). Already: RT Shadows (shadow maps + SSS), RT Reflections (SSR skipped), RT Light
           Bounce / Path Tracing (GT-VBGI's screen trace replaced; its resolve shared).
