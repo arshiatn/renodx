@@ -1522,7 +1522,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           made on the addon's worker threads, off the game's thread), PTLAS (TLAS ~0.4 ms of a 25 ms frame: at most
           that saved; needs rt_place to write partition updates; the 0.3 s stall was its CPU path, unrelated to the GPU
           bake / SHaRC fixes), ReSTIR reflections (pick: the GI reservoirs for rough reflections).
-      [ ] 5. Build (helper47, build32, 64-bit check), harness, twattila_v108.zip, README / memory, report.
+      [x] 5. twattila_v108.zip (Downloads, 00:26; helper47, also in Attila's folder; release_zip.py names helper47),
+          build32 Attila / Rome II / Thrones built, all_modes 38/38 (all_modes_h47.txt), README v108, memory. The
+          harness cannot check PT AO's fix (no learned shade / ambient cube there): untested.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
