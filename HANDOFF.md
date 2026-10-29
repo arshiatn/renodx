@@ -1479,7 +1479,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           GPU bake DisableTexCoordDeduplication.
       [ ] 5. More ReSTIR: reflections, shadows, other effects; fewer rays, less noise, less VRAM.
       [ ] 6. Water refraction (RT), caustics, coloured shadows through banners / sails.
-      [ ] 7. Build (helper45+, build32, 64-bit check), harness, twattila_v107.zip, README / HANDOFF / memory, report.
+      [x] 7. v107 for items 1-4: twattila_v107.zip (Downloads, 21:57; helper46, release_zip.py now names
+          build\tw_dlaa_helper46), build32 Attila / Rome II / Thrones and the 64-bit TW check built, all_modes 38/38
+          (all_modes_h46.txt: new removal_sway, undrawn_kept, undrawn_gone), README v107. Items 5-6 go to v108.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
