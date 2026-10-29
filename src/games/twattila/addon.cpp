@@ -1793,7 +1793,8 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "NVIDIA DLSS (Super Resolution, Ray Reconstruction and Frame Generation), NVIDIA Reflex, Streamline, "
-                   "NVAPI and the Opacity Micro-Map SDK: NVIDIA Corporation, under NVIDIA's licenses. NVIDIA, GeForce "
+                   "NVAPI, the Opacity Micro-Map SDK and SHaRC: NVIDIA Corporation, under NVIDIA's licenses (this software "
+                   "contains source code provided by NVIDIA Corporation). NVIDIA, GeForce "
                    "RTX, DLSS and Reflex are trademarks and/or registered trademarks of NVIDIA Corporation. DirectX "
                    "Agility SDK: Microsoft. Ray tracing: ideas from Embark Studios' kajiya (MIT) and Bustanity's "
                    "Phantom FX (MIT). Every license is in the licenses folder.",

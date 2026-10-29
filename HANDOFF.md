@@ -1406,14 +1406,26 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           1.6 -> 4.1), as the v8 note found. Already there: reflections are path traced (rt_path with REFLECT); emissive
           light reaches paths through the screen's light (HitLight), last frame's colour and the world radiance cache, and
           torches / fires are RIS-picked in every path vertex (LocalLight, two picks).
-          Not done (next round): SHaRC (SDK v1.6.5 in build\downloads\sharc; our cache is a SHaRC-like hash grid filled
-          from the screen and the first unseen surface: SHaRC's update / resolve / query passes would replace
-          rt_cache_fill / rt_cache_resolve / CacheLookup); ReSTIR DI for torches (the game shades each light with our
-          per-light visibility bits: ReSTIR DI picks one light per pixel, so it needs our own torch shading in place of
-          the game's light draws, or importance-picked bit refreshes); refraction (the game's water refraction already
-          samples the underwater ground on screen; RT would help only at the shores), caustics (photon tracing),
-          coloured shadows through banners / sails (the visibility is one channel the sun shaders read: RGB needs
-          those shaders and the format changed).
+          v106 (ATN: "Start SHaRC/ReSTIR"; twattila_v106.zip, helper44):
+          SHaRC (34e8900b, helper43): SHaRC Radiance Cache (RayTracedSharc, with Path Tracing; bridge path flag
+          RT_PATH_SHARC 256): SHaRC 1.6.5 headers from build\downloads\sharc at build time (build.ps1 compiles
+          rt_path_sharc / rt_sharc_update / rt_sharc_resolve only when they are there; the .hlsl without a target suffix
+          so CMake's addon glob skips them; 64-bit atomics + -enable-16bit-types, cs_6_9); buffers at u6-u8 (root UAVs,
+          2^21 entries, 80 MB, made at first use), BUFFER_AT_OFFSET clamps every index. Update: a bounce texel of each
+          5 x 5 (screen light where known, else UnseenLight = the paths' sun + torch shading), SHARC_PROPAGATION_DEPTH 2
+          (SHaRC's 4 with its cache resampling hung the GPU: the hang bisected to that pair; -O1/-O3/-Gfp all hung,
+          -Od failed PSO creation); resolve each bounce frame (last camera from last frame's view-projection); the
+          Light Bounce's SHaRC variant reads it where the screen does not know a hit (normal + voxel-size rule). The
+          reflections' SHaRC variant hung the GPU at 4K: removed, the reflections keep the helper's cache. 4K harness:
+          bounce 1.66 -> 2.1 ms; values beside the unseen unit change (0.53/0.09/0.07 -> 0.43/0.12/0.09).
+          ReSTIR DI for torches (c4bc2524, helper44): Importance-Sampled Torch Shadows (RayTracedLightImportance;
+          RT_LIGHT_IMPORTANCE 16384): rt_lights traces 2 lights a pixel picked systematically along LightArriving's
+          luminance (one number an 8 x 8 block), new lights always, the rest keep their bits; 32 fires 4K: trace
+          2.98 -> 2.47 ms, the same bits once settled. Full ReSTIR DI shading not done: the game shades each torch
+          itself with our per-light bits (ReSTIR DI picks one light a pixel: it needs our own torch lighting).
+          Still not done: refraction (the game's water refraction already samples the underwater ground on screen; RT
+          would help only at the shores), caustics (photon tracing), coloured shadows through banners / sails (one-
+          channel visibility the sun shaders read: RGB needs those shaders and the format changed).
       [x] 8. Build (helper41, build32, 64-bit check), harness (30 modes pass, all_modes_h41), twattila_v105.zip, README /
           HANDOFF / memory, report.
 

@@ -2,6 +2,17 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v106 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper44: ship them together)
+
+- **SHaRC Radiance Cache (Experimental, with Path Tracing)**: NVIDIA's SHaRC holds the light of what the screen does not
+  show (more bounces off-screen, paths end sooner); about 0.4 ms at 4K in the test scene. The reflections keep the old
+  cache (SHaRC there hung the GPU at 4K in tests).
+- **Importance-Sampled Torch Shadows (Experimental)**: two torch / fire shadow rays a pixel, picked by how much light
+  they give (as ReSTIR DI picks lights); 32 fires at 4K: trace 2.98 -> 2.47 ms. Dim fires' shadows follow moving units
+  slower.
+- About: SHaRC credited (NVIDIA RTX SDKs License: SHARC_LICENSE.txt; this software contains source code provided by
+  NVIDIA Corporation).
+
 ## v105 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper41: ship them together)
 
 - **Menu frame rate**: the ray tracing's draw hooks and DLSS's motion redraws stop where they have nothing to do (the
