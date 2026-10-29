@@ -51,7 +51,6 @@
 #include "rt_fog.h"               // dxc -Fh (build.ps1)
 #include "rt_fog_omm.h"           // dxc -Fh (build.ps1)
 #include "rt_path.h"              // dxc -Fh (build.ps1)
-#include "rt_path_lib.h"          // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
 #include "rt_reflect.h"           // dxc -Fh (build.ps1)
@@ -79,7 +78,8 @@
 // ray-traced Light Bounce a second request each frame traces rt_bounce.cs_6_5.hlsl against that frame's TLAS; bridge v8
 // path traces it instead (rt_path.hlsli: a world radiance
 // cache and the learned lighting for what the screen never saw), and a third request traces reflections and specular
-// occlusion. With DXR 1.2 the paths run as ray generation shaders (DispatchRays) with shader execution reordering. With
+// occlusion. All run as compute shaders (DXR 1.2's shader execution reordering made each pass slower in the harness at
+// 640 x 360 to 4K, with and without clutter in view: the paths' hits need lookups, not divergent shading). With
 // NVAPI's cluster operations (RTX Mega Geometry; set RENODX_TW_NO_CLUSTERS to turn them off) the units are built each
 // frame as clusters (CLAS) into one cluster BLAS instead of the refitted BLAS; compact draws (bridge v16: a draw's
 // vertices streamed once each, its cluster set sent once and kept in a pool) become clusters on the GPU
@@ -532,46 +532,6 @@ class RtScene12 {
       return Fail("Ray tracing: the trace shaders failed (needs shader model 6.5)");
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
-    // DXR 1.2: the paths as ray generation shaders (shader execution reordering), dispatched with DispatchRays; their
-    // compute versions otherwise (or when the state object fails).
-    if (dxr12_) {
-      const std::array<D3D12_EXPORT_DESC, 2> exports = {{{.Name = L"PathTraceRayGen"}, {.Name = L"ReflectRayGen"}}};
-      const D3D12_DXIL_LIBRARY_DESC library = {
-          .DXILLibrary = {.pShaderBytecode = RT_PATH_LIB, .BytecodeLength = sizeof(RT_PATH_LIB)},
-          .NumExports = static_cast<UINT>(exports.size()),
-          .pExports = const_cast<D3D12_EXPORT_DESC*>(exports.data()),
-      };
-      const D3D12_RAYTRACING_SHADER_CONFIG shader_config = {.MaxPayloadSizeInBytes = 4, .MaxAttributeSizeInBytes = 8};
-      const D3D12_RAYTRACING_PIPELINE_CONFIG1 pipeline_config = {.MaxTraceRecursionDepth = 1,
-                                                                  .Flags = D3D12_RAYTRACING_PIPELINE_FLAG_ALLOW_OPACITY_MICROMAPS};
-      const D3D12_GLOBAL_ROOT_SIGNATURE global = {.pGlobalRootSignature = root_signature_.Get()};
-      const std::array<D3D12_STATE_SUBOBJECT, 4> subobjects = {{
-          {.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, .pDesc = &library},
-          {.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG, .pDesc = &shader_config},
-          {.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG1, .pDesc = &pipeline_config},
-          {.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, .pDesc = &global},
-      }};
-      const D3D12_STATE_OBJECT_DESC state_desc = {.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE,
-                                                  .NumSubobjects = static_cast<UINT>(subobjects.size()),
-                                                  .pSubobjects = subobjects.data()};
-      ComPtr<ID3D12StateObjectProperties> properties;
-      path_shader_table_ = Buffer(2 * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
-                                  D3D12_RESOURCE_STATE_GENERIC_READ);
-      uint8_t* table = nullptr;
-      const void* path_identifier = nullptr;
-      const void* reflect_identifier = nullptr;
-      if (FAILED(device_->CreateStateObject(&state_desc, IID_PPV_ARGS(path_state_object_.GetAddressOf())))
-          || FAILED(path_state_object_.As(&properties)) || (path_identifier = properties->GetShaderIdentifier(L"PathTraceRayGen")) == nullptr
-          || (reflect_identifier = properties->GetShaderIdentifier(L"ReflectRayGen")) == nullptr || !path_shader_table_
-          || FAILED(path_shader_table_->Map(0, nullptr, reinterpret_cast<void**>(&table)))) {
-        path_state_object_.Reset();
-        path_shader_table_.Reset();
-      } else {
-        std::memcpy(table, path_identifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-        std::memcpy(table + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT, reflect_identifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-        path_shader_table_->Unmap(0, nullptr);
-      }
-    }
     for (Slot& slot : slots_) {
       slot.lights = Buffer(LIGHT_CONSTANT_BYTES, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
       slot.paths = Buffer(256, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -604,7 +564,7 @@ class RtScene12 {
     device_->CreateUnorderedAccessView(uvs_.Get(), nullptr, &uvs_written, Descriptor(UVS_WRITTEN));
     device_->CreateUnorderedAccessView(normals_.Get(), nullptr, &normals_written, Descriptor(NORMALS_WRITTEN));
     WriteNullPathDescriptors();
-    status_ = std::format("Ray tracing ready ({}{}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1",
+    status_ = std::format("Ray tracing ready ({}{}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps" : "DXR 1.1",
                           (dxr12_ && bake_micromaps_) ? "; leaf micromaps: NVIDIA OMM SDK" : "", sdk,
                           clusters_ ? std::format("; Mega Geometry: {} clusters a frame ({} from templates of {} bytes), {} MB", cluster_limit_,
                                                   cluster_limit_ - built_limit_, template_bytes_, cluster_bytes >> 20)
@@ -1125,25 +1085,11 @@ class RtScene12 {
           cache_frame_ = frame;
           cache_filled_ = true;
         }
-        // The paths: ray generation shaders with shader execution reordering (DXR 1.2), else compute.
-        const auto dispatch = [&](ID3D12PipelineState* compute, uint64_t record, uint32_t across, uint32_t down) {
-          if (path_state_object_) {
-            list->SetPipelineState1(path_state_object_.Get());
-            const D3D12_DISPATCH_RAYS_DESC rays = {
-                .RayGenerationShaderRecord = {.StartAddress = path_shader_table_->GetGPUVirtualAddress() + record * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT,
-                                              .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
-                .Width = across,
-                .Height = down,
-                .Depth = 1,
-            };
-            list->DispatchRays(&rays);
-          } else {
-            list->SetPipelineState(compute);
-            list->Dispatch((across + 7) / 8, (down + 7) / 8, 1);
-          }
-        };
         Mark(list, L"path tracing");
-        if (path_traced) dispatch(path_pipeline_.Get(), 0, shared.rt_bounce_width, shared.rt_bounce_height);
+        if (path_traced) {
+          list->SetPipelineState(path_pipeline_.Get());
+          list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+        }
         if (reuse) {
           list->ResourceBarrier(1, &uav_barrier);
           Mark(list, L"reuse");
@@ -1155,7 +1101,8 @@ class RtScene12 {
         }
         if (reflections) {
           Mark(list, L"reflections");
-          dispatch(reflect_pipeline_.Get(), 1, width, height);
+          list->SetPipelineState(reflect_pipeline_.Get());
+          list->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
           list->ResourceBarrier(1, &uav_barrier);
           list->SetPipelineState(reflect_filter_pipeline_.Get());
           list->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
@@ -3381,7 +3328,7 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> fog_pipeline_;
   ComPtr<ID3D12PipelineState> bounce_pipeline_;
   // Paths (v8): last frame's colour (the DLAA input), the G-buffer guides, the reflections' outputs; the history and the
-  // cache of the helper's own; the pipelines (DXR 1.2: one state object with both ray generation shaders).
+  // cache of the helper's own; the pipelines.
   ComPtr<ID3D12Resource> previous_color_;
   ComPtr<ID3D12Resource> guide_normals_;
   ComPtr<ID3D12Resource> guide_albedo_;
@@ -3423,8 +3370,6 @@ class RtScene12 {
   std::array<uint32_t, 2> paths_age_ = {};  // the sun traces since the Light Bounce's, the reflections' last times
   // The scene (captures, BLASes), the TLAS, the trace; the Light Bounce, the reflections; the scene's cluster build.
   std::array<double, 6> gpu_ms_ = {};
-  ComPtr<ID3D12StateObject> path_state_object_;
-  ComPtr<ID3D12Resource> path_shader_table_;  // two ray generation records: the paths, the reflections
   std::array<float, 16> current_view_projection_ = {};
   std::array<float, 16> previous_view_projection_ = {};
   uint32_t paths_frame_ = UINT32_MAX;     // the frame of the last path request (the history copied then)

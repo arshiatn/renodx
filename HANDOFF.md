@@ -1089,7 +1089,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           (the game's SSR pixel shader would need a UAV, later).
       [ ] 3 RTXDI (ReSTIR DI) for torches and fires: a few sampled lights a pixel instead of up to 32 shadow rays.
       [ ] 4 SHARC in place of our world radiance cache (A/B); NRC after (bigger: training each frame).
-      [ ] 5 SER in the incoherent passes (AO, Light Bounce as ray generation shaders like the paths).
+      [x] 5 (step 7: measured, SER removed) SER in the incoherent passes (AO, Light Bounce as ray generation shaders like the paths).
+          The harness (tools\tw\rt_harness; 640 x 360, 1080p and 4K builds; base scene and HARNESS_STRESS_IN_VIEW: the leaf
+          stress and 20,000 boxes where the rays go) says SER is slower in every pass. Trace (AO, shadows) as a ray
+          generation shader: alone within 2% of compute; reordered by work and normal octant +4..17% (4K base), +1..7% (4K
+          in view; full rate compute 3.910, reorder 4.165 ms). The paths' existing SER (since helper19): 4K base bounce
+          1.182 vs 0.836 ms without, reflections 2.818 vs 2.106; 1080p in view (steady, frames 200+) bounce 1.714 vs
+          1.673, reflections 3.221 vs 2.769; 4K in view 12.7 / 25.5 vs 4.6 / 10.0. Our hits need lookups, not divergent
+          shading: all passes are compute again (rt_path_lib removed; DXR 1.2 keeps opacity micromaps).
       [ ] 7 RTXMU: BLAS suballocation and compaction (fewer allocations, less memory).
       [ ] 8 Partitioned TLAS again (find the siege stall); Mega Geometry for the captures still on the CPU path
           (non-indexed or not yet compact dynamic draws: make them compact too). Step 4: the second half has no gain:
@@ -1110,11 +1117,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           scene before).
       [x] 12 (step 1) Log polish: "Leaf micromaps" tally at most every 10 s (120 lines in one session), the status's stale
           "bounce" GPU ms while the Light Bounce is off.
-      [ ] 13 Cluster LOD (ATN: add it): each mesh's clusters also built as coarser simplified versions (a hierarchy,
+      [-] 13 (step 6: assessed, not built; ask ATN for a 4x battle log) Cluster LOD (ATN: add it): each mesh's clusters also built as coarser simplified versions (a hierarchy,
           as Nanite); every frame each instance traces the coarsest clusters right for its distance (far soldiers,
           buildings: several times fewer triangles to build and trace). NVIDIA's nv_cluster_lod_builder (hierarchy,
           Apache 2.0) with meshoptimizer (simplification, MIT); vk_lod_clusters (Apache 2.0) shows it with Mega Geometry
           ray tracing (Vulkan: port the method to NVAPI's cluster operations). Licence texts + credit in About.
+          Assessment (2026-10-29): ATN's 03:11 log has 2.3-2.7 M triangles a frame, of them terrain ~1.0 M and grass /
+          leaves ~1.55 M, units ~0.1 M; the terrain is regular patches the game already LODs (a coarser grid cracks at
+          patch borders: light leaks in shadows), grass blades do not simplify (density LOD instead), units come in
+          the game's own LOD meshes. Real gains only in 4x battles with units filling the clusters; the build would need
+          bind-pose positions (the static vertex buffers' layouts) or helper read-backs, meshoptimizer per set, LOD sets
+          with their own remaps (the addon's stream output) chosen per set by the nearest instance's distance (helper
+          read-back). Before that: a 4x battle's status line (every frame M triangles: terrain, grass, the rest = units).
       Not possible / no gain: DMM (not in DXR, dropped by NVIDIA), LSS (no strand geometry in Attila), AddToStateObject
       and indirect DispatchRays (no shader streaming; the helper's dispatch is not the cost), Mega Geometry for static
       meshes (built once already: no gain in tracing).

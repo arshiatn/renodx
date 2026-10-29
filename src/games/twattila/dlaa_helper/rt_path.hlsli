@@ -93,17 +93,6 @@ static const float ROUGH_LIMIT = 0.75f;  // rougher surfaces keep the game's ref
 static const float MAX_SPECULAR_FRAMES = 12.f;
 static const float SKY_HIT_DISTANCE = 65504.f;  // NVIDIA's for the sky (FP16's most)
 
-#if defined(PATH_REORDER)
-// Shader execution reordering (DXR 1.2): threads regroup by what their first hit is before shading it.
-#define REORDER(query, hint)                                        \
-  {                                                                 \
-    dx::HitObject reorder_hit = dx::HitObject::FromRayQuery(query); \
-    dx::MaybeReorderThread(reorder_hit, (hint), 4);                 \
-  }
-#else
-#define REORDER(query, hint)
-#endif
-
 float3 Camera() {
   return sun[uint2(1, 0)].xyz;
 }
@@ -319,9 +308,6 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     ray.TMax = (vertex == 0u) ? range : bounce_range;
     TRACE_NEAREST(query, ray)
     const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
-    if (vertex == 0u) {
-      REORDER(query, hit ? 1u + (query.CommittedInstanceID() & 7u) : 0u)
-    }
     if (!hit) {
       // Past the first surface the learned shade light stands for the sky; from the camera's pixel the game's own
       // ambient covers it.
