@@ -1342,7 +1342,7 @@ void CaptureParticles(Context& command) {
     first_vertex = command.arguments.first_vertex;
   }
   auto* native = NativeContext(command.cmd_list);
-  if (vertex_count == 0 || !runtime.settings.smoke_shadows || native == nullptr
+  if (vertex_count == 0 || !runtime.settings.smoke_shadows || !dlaa_bridge::bridge.ray_tracing || native == nullptr
       || renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache)
              != smoke_pixel_shader) {
     return;
@@ -1875,7 +1875,8 @@ constexpr auto OnSceneDraw = []<typename T, typename Context>(Context&) -> renod
                 && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
     return {};
   } else {
-    if (!internal::active.load(std::memory_order_relaxed)) return {};
+    // Nothing without the bridge's ray tracing textures (menus: the helper not started; ATN's debug28 menu at 140 fps).
+    if (!internal::active.load(std::memory_order_relaxed) || !dlaa_bridge::bridge.ray_tracing) return {};
     return {.post_callback = internal::CaptureDraw<Context>};
   }
 };

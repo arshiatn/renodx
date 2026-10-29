@@ -1387,7 +1387,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   const bool temporal =
       (settings.method == Method::SMAA_T2X || settings.method == Method::TAA || settings.method == Method::DLAA);
   internal::temporal.store(temporal, std::memory_order_relaxed);
-  object_motion::SetActive(settings.method == Method::DLAA && settings.object_motion);
+  // Objects' motion only once NVIDIA's helper runs (the menus before a battle draw none of it for nothing).
+  object_motion::SetActive(settings.method == Method::DLAA && settings.object_motion && dlaa_bridge::bridge.started);
   frame_generation::Update({
       .multiplier = (settings.method == Method::DLAA ? settings.frame_generation : 0u),
       .reflex_boost = (settings.reflex == 2),
