@@ -1500,6 +1500,30 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           build\tw_dlaa_helper46), build32 Attila / Rome II / Thrones and the 64-bit TW check built, all_modes 38/38
           (all_modes_h46.txt: new removal_sway, undrawn_kept, undrawn_gone), README v107. Items 5-6 go to v108.
 
+    - v108 BATCH (ATN 2026-10-30 ~00:10, debug29: PT AO pictures, a 30 s trace through grass to a river). ATN tested
+      v107 (0 unsorted sets). Checklist ([ ] open, [x] done, [-] left out with the reason):
+      [x] 1. PT AO dark after 1-2 s (201dd567, helper47): the "correct" first seconds were PATH_AMBIENT_FRAMES (120) of the
+          game's ambient before PT AO took over. Causes: rt_ambient_alone (the game's SSAO / GT-VBAO off) only for RT AO,
+          so both stacked on PT AO and biased its learned shade; paths meeting a surface on screen read the prepared
+          light, which lost the game's ambient (zeroed in the sun draws): walls brought back ~nothing. Fixed:
+          rt_ambient_alone = RT AO || Path-Traced Ambient; HitLight / rt_cache_fill add base colour x light_kept[0]
+          (the learned shade) under PATH_KEEP_LIGHT (SHaRC's update reads HitLight); warm-up 30 frames.
+      [x] 2. Grass / river fps (helper47): debug29 profile: the trace's SUN part 22-27 ms zoomed into grass and over the
+          river (AO 0.13, bounce ~1, reflections ~1-1.7, TLAS ~0.4); positions at the river = its grassy bed (the water
+          is drawn after the trace). Grass instances FORCE_OMM_2_STATE (DXR 1.2; CPU AddInstance + rt_place grass_flags at
+          b2[18]); the sun's ray split: everything but grass full length, grass only for 2.5 m of rise (min(2.5 /
+          sin(elevation), 40 m)): harness 4K field unsorted 4.84 -> 2.10 ms, sorted 1.27 -> 1.12, placed grass 1.16 ->
+          0.97. Untested in game (the harness's grass is sparser than the game's).
+      [x] 3. Grass shadows settling 1-2 s: before their micromaps, sun rays through grass hit MAX_CANDIDATES (64) and count
+          as blocked (dark); GPU bakes now 24 a request (was 8), set reads 32, 128 bakes in flight, OMM descriptor ring
+          65536 (was 16384: 24 bakes x 3 requests would have wrapped onto descriptors in flight).
+      [ ] 4. Answers: GPU bake (already default in v107; the toggle stays as the CPU baker's fallback; nothing else bakes
+          on the CPU: BLAS builds, compaction, placement, sway, garbage checks, light picks are GPU; cluster sets are
+          made on the addon's worker threads, off the game's thread), PTLAS (TLAS ~0.4 ms of a 25 ms frame: at most
+          that saved; needs rt_place to write partition updates; the 0.3 s stall was its CPU path, unrelated to the GPU
+          bake / SHaRC fixes), ReSTIR reflections (pick: the GI reservoirs for rough reflections).
+      [ ] 5. Build (helper47, build32, 64-bit check), harness, twattila_v108.zip, README / memory, report.
+
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
 rt_shadows.hpp; DLSS README v96 has the whole design). Stream output of the opaque depth prepass (vs C81C5E1F,
