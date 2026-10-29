@@ -70,6 +70,7 @@ struct Sliders {
   float grass = 0.f;
   float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
   float micromaps = 1.f;
+  float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
   float light_bounce = 0.f;
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
@@ -111,6 +112,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .leaf_light = sliders.leaf_light != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .micromaps = sliders.micromaps != 0.f,
+      .smoke_shadows = sliders.smoke_shadows != 0.f && sliders.sun_shadows != 0.f && dlaa,
       .shadows_only = sliders.sun_shadows != 0.f && dlaa,
       .debug_view = static_cast<uint32_t>(sliders.debug_view),
       .scene_test = ((sliders.debug_view != 0.f) ? static_cast<uint32_t>(sliders.scene_test) : 0u),
@@ -452,6 +454,7 @@ struct PointLightReadback {
 };
 static PointLightReadback point_light_readback;
 static bool fog_shadows_installed = false;
+static bool smoke_shadows_installed = false;
 
 inline void OnInitInputLayout(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
                               const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {
@@ -586,6 +589,27 @@ constexpr auto OnFogDraw = []<typename T, typename Context>(Context& command) ->
     if (post_native != nullptr) UnbindFogShadows(post_native);
   }};
 };
+
+// Attila's and Thrones' particles (particle_vfx_main: one vertex a particle, a geometry shader makes its quad) and the
+// main pass's lit pixel shader (ps_main_high_quality: smoke and dust; fire's glow is added, the overlay pass's).
+constexpr uint32_t PARTICLE_VERTEX_SHADER = 0xA7F257B5;
+constexpr uint32_t LIT_PARTICLE_PIXEL_SHADER = 0xACE33D5D;
+
+// A particle draw (Smoke Shadows): its lit particles streamed out for the next trace.
+constexpr auto OnParticleDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (internal::active.load(std::memory_order_relaxed)) internal::CaptureParticles(command);
+  return {};
+};
+
+// The particle draws (`vertex_shader`'s with `pixel_shader`), kept while installed (before the device: the vertex
+// shader's code is kept as it is made): Ray-Traced Smoke Shadows shown.
+inline void InstallSmokeShadows(uint32_t vertex_shader, uint32_t pixel_shader) {
+  internal::smoke_shadows_installed = true;
+  internal::smoke_vertex_shader = vertex_shader;
+  internal::smoke_pixel_shader = pixel_shader;
+  renodx::utils::command_action::Register(
+      OnParticleDraw, {.shader_hash = vertex_shader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+}
 
 // The fog draws (the addon's replaced pixel shaders reading rt_fog.hlsli), kept while installed: Ray-Traced Fog Shadows
 // shown.
@@ -724,6 +748,7 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
   if (std::exchange(internal::fog_shadows_installed, false)) renodx::utils::command_action::Unregister(OnFogDraw);
+  if (std::exchange(internal::smoke_shadows_installed, false)) renodx::utils::command_action::Unregister(OnParticleDraw);
   if (std::exchange(internal::shadow_readers_installed, false)) renodx::utils::command_action::Unregister(OnShadowReaderDraw);
   if (std::exchange(internal::shadows_only_installed, false)) {
     reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindTargets);
@@ -944,6 +969,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
           .is_visible = [] { return internal::fog_shadows_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSmokeShadows",
+          .binding = &sliders->smoke_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Smoke Shadows (Experimental)",
+          .section = section,
+          .tooltip = "Smoke and dust dim the ray-traced sunlight they drift through (with Ray-Traced Shadows).",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::smoke_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounce",

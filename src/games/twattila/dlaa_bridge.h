@@ -106,6 +106,9 @@ struct RtClusterSet {
 };
 // Thin (v11): cloth and sails; with RT_LEAF_LIGHT a share of the sun passes them as it passes leaves.
 constexpr uint32_t RT_THIN = 16;
+// Smoke (with RT_DYNAMIC | RT_FOLIAGE): particles as quads facing the sun, each corner's UV (+-1) times 1 + the
+// particle's opacity; the sun's rays pass them dimmed, nothing else meets them.
+constexpr uint32_t RT_SMOKE = 32;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;

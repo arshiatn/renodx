@@ -1029,7 +1029,17 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           (RT_PLACE_HIDDEN: mask 0) every such frame, kept ones shown again (rt_place restores mask 0xFF). Branches stay
           static. Transfer texture 5120 rows (20M texels), dynamic share 17M, RT_DYNAMIC_UVS 16M a slot (UV pool 224 MB).
           Harness HARNESS_HIDDEN=1 / 2 (hidden instance's shadow gone / back when not drawn) pass.
-      [ ] 4 Smoke shadows (Experimental): particles as see-through cards dimming the sun by their opacity.
+      [x] 4 Smoke shadows (Experimental, "Ray-Traced Smoke Shadows", off by default, with RT Shadows): Attila's /
+          Thrones' particles are GPU particles (vs A7F257B5 particle_vfx_main: one vertex a particle, SV_POSITION = world
+          centre, COLOR.w = opacity, TEXCOORD3.xy = size; a GS makes the quad). Draws with ps ACE33D5D
+          (ps_main_high_quality, lit: smoke, dust) and a non-additive blend are streamed out (CaptureParticles, after
+          the trace: kept for the next one). The next trace's rt_smoke makes each a quad facing the sun (rt_sun texel 0),
+          UV +-1 x (1 + opacity), a capture RT_DYNAMIC | RT_FOLIAGE | RT_SMOKE; the helper's RECORD_SMOKE candidates
+          never commit, they multiply smoke_transmittance (opacity x soft disk), SunRay returns it (Light Through Leaves:
+          the first pass's). AO, paths, reflections, point lights ignore smoke. Harness: rt_smoke compiled and run on one
+          0.6 m particle (opacity 0.5): 127 / 255 under it, 255 past it; all modes pass. UNVERIFIED in game: the size
+          output's scale (full width assumed), whether fire shares the lit alpha-blended draw (it would cast too), the
+          topology (POINTLIST assumed). rt_smoke stubs in the 9 other games (rt_core.hpp's compute list).
       [x] 5 Optimizations: [x] terrain compact (71eb3be0). [x] Cluster templates: a set's clusters built once as
           templates (opaque or alpha-tested), instantiated each frame with the vertices (3 KB each, 128 MB pool, the
           unused sets' templates given back when full); a quarter of the clusters still built from triangles (captures,

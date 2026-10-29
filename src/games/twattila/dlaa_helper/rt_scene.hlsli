@@ -39,6 +39,7 @@ static const uint LOCAL_LIGHTS = 8u;     // the local lights' shadows (rt_trace.
 static const uint LEAF_LIGHT = 16u;      // leaves let a share of the sun through (rt_trace.cs_6_5.hlsl)
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 static const uint RECORD_THIN = 2u;    // cloth and sails
+static const uint RECORD_SMOKE = 4u;   // smoke (Smoke Shadows): dims the sun's rays, blocks none
 // The share of the sun a leaf lets through (Light Through Leaves; thin leaves pass about a quarter, each one met).
 static const float LEAF_TRANSMITTANCE = 0.25f;
 static const float THIN_TRANSMITTANCE = 0.35f;  // cloth and sails
@@ -64,9 +65,25 @@ float2 UnpackUv(uint packed) {
   return f16tof32(uint2(packed, packed >> 16));
 }
 
-// Whether a candidate (a leaf) is solid where the ray meets it.
+// The share of the sun's light past the smoke a ray met so far (SunRay starts it; AlphaPasses dims it).
+static float smoke_transmittance = 1.f;
+
+// Where a ray meets a smoke particle: its opacity (its UVs' scale less one) over a soft disk.
+float SmokeDensity(uint first, float2 barycentrics) {
+  const float2 corner = UnpackUv(uv_pool[first]);
+  const float2 uv = corner * (1.f - barycentrics.x - barycentrics.y) + UnpackUv(uv_pool[first + 1u]) * barycentrics.x
+                    + UnpackUv(uv_pool[first + 2u]) * barycentrics.y;
+  const float scale = abs(corner.x);
+  return (scale - 1.f) * (1.f - smoothstep(0.25f, 1.f, length(uv) / scale));
+}
+
+// Whether a candidate (a leaf) is solid where the ray meets it; smoke never is (it dims smoke_transmittance).
 bool AlphaPasses(uint record_index, uint primitive, float2 barycentrics) {
   const uint4 record = records[record_index];
+  if (((record.z >> 16) & RECORD_SMOKE) != 0u) {
+    smoke_transmittance *= 1.f - SmokeDensity(record.x + primitive * 3u, barycentrics);
+    return false;
+  }
   if (((record.z >> 16) & RECORD_MASKED) == 0u) return true;
   const uint first = record.x + primitive * 3u;
   const float2 uv = UnpackUv(uv_pool[first]) * (1.f - barycentrics.x - barycentrics.y)

@@ -95,6 +95,9 @@ struct Settings {
   bool fog_shadows = false;
   // Leaf micromaps: the helper bakes new leaves' opacity micromaps (NVIDIA's OMM SDK): fewer alpha tests per ray.
   bool micromaps = false;
+  // Smoke shadows: the lit particles drawn since the last trace (InstallSmokeShadows' shaders: smoke and dust) dim the
+  // ray-traced sun, a frame late (CaptureParticles, rt_smoke).
+  bool smoke_shadows = false;
   // The game's sun shadow map gets no casters (InstallShadowsOnly; with the ray-traced sun shadows): the rays alone cast.
   bool shadows_only = false;
   // The Debug View (DrawDebugView): 0 off, 1 sun shadows, 2 ambient occlusion, 3 Light Bounce, 4 reflections, 5 specular
@@ -177,6 +180,9 @@ constexpr UINT MAX_GRASS_VERTICES = 4u << 20;
 constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
+// Smoke Shadows: the particles streamed out between traces at most (48 bytes each), their capture's key.
+constexpr UINT MAX_PARTICLES = 1u << 16;
+constexpr uint64_t SMOKE_KEY = 0x534D4F4B45ull;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
 constexpr uint64_t PLACE_TURNS = 4;
 // The local lights a frame keeps for the next trace to pick from.
@@ -217,6 +223,12 @@ struct DeviceObjects {
   ComPtr<ID3D11SamplerState> linear_clamp;
   ComPtr<ID3D11RasterizerState> rasterizer;
   ComPtr<ID3D11DepthStencilState> no_depth;
+  // Smoke Shadows: the lit particles' stream output (three float4 a particle: centre, colour and opacity, size; made at
+  // the first, from the particle vertex shader's own code), rt_smoke's quads from them.
+  ComPtr<ID3D11Buffer> particles;
+  ComPtr<ID3D11ShaderResourceView> particles_srv;
+  ComPtr<ID3D11GeometryShader> particle_output;
+  ComPtr<ID3D11ComputeShader> smoke_shader;
   // The sun's occlusion for the patched sun shaders (the display's size).
   ComPtr<ID3D11Texture2D> occlusion;
   ComPtr<ID3D11ShaderResourceView> occlusion_srv;
@@ -320,6 +332,10 @@ struct Runtime {
   uint32_t tree_corners = 0;
   uint32_t set_builds = 0;
   uint32_t compact_state = 0;  // the helper's CompactState as last seen
+  // Smoke Shadows: the particles streamed out since frame particles_frame began (the lit particles come after its
+  // trace: the next one takes them).
+  uint32_t particles = 0;
+  uint64_t particles_frame = 0;
   struct Known {
     uint64_t frame = 0;      // last drawn
     uint32_t instances = 0;  // a placed mesh's last placement's
@@ -393,6 +409,10 @@ static Host host;
 // The code of the scene shaders without a capture version, as the game made them (every vertex shader with
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
+// Smoke Shadows' particle shaders (InstallSmokeShadows; 0: none): the vertex shader (its code kept) and the lit pixel
+// shader its smoke is drawn with.
+static uint32_t smoke_vertex_shader = 0;
+static uint32_t smoke_pixel_shader = 0;
 static std::unordered_map<uint32_t, bool> skinned_code;
 // A scene draw's pixel shader (host.scene_draw: SceneCoverage): solid (none, or its discards dither only), alpha-tested
 // against its t0 at the input `uv_semantic` (xy: an opacity mask), or left out (t0 read otherwise: a tiled or computed
@@ -495,6 +515,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
                  && SUCCEEDED(device->CreateShaderResourceView(objects.captured_uv.Get(), &captured_uv_view,
                                                                objects.captured_uv_srv.GetAddressOf()))))
          && compute(__rt_vertices, &objects.vertices_shader) && compute(__rt_skies, &objects.skies_shader)
+         && compute(__rt_smoke, &objects.smoke_shader)
          && compute(__rt_debug, &objects.debug_shader) && compute(__rt_positions, &objects.positions_shader)
          && compute(__rt_sun, &objects.sun_shader) && compute(__rt_occlusion, &objects.occlusion_shader)
          && compute(__rt_atlas, &objects.atlas_shader) && compute(__rt_ambient_combine, &objects.combine_shader)
@@ -1194,6 +1215,82 @@ void Capture(Context& command, const SceneShader& shader) {
   }
 }
 
+// A lit particle draw (Smoke Shadows: InstallSmokeShadows' vertex shader with its lit pixel shader, blended over the
+// scene, not added to it: smoke and dust, not fire's glow): its particles (one a vertex) streamed out for the next
+// trace: centre, colour and opacity, size.
+template <typename Context>
+void CaptureParticles(Context& command) {
+  UINT vertex_count = 0;
+  UINT first_vertex = 0;
+  if constexpr (std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawArguments>) {
+    vertex_count = command.arguments.vertex_count;
+    first_vertex = command.arguments.first_vertex;
+  }
+  auto* native = NativeContext(command.cmd_list);
+  if (vertex_count == 0 || !runtime.settings.smoke_shadows || native == nullptr
+      || renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache)
+             != smoke_pixel_shader) {
+    return;
+  }
+  ComPtr<ID3D11BlendState> blend;
+  std::array<FLOAT, 4> blend_factor = {};
+  UINT sample_mask = 0;
+  native->OMGetBlendState(blend.GetAddressOf(), blend_factor.data(), &sample_mask);
+  D3D11_BLEND_DESC blend_desc = {};
+  if (blend) blend->GetDesc(&blend_desc);
+  if (blend_desc.RenderTarget[0].BlendEnable == FALSE || blend_desc.RenderTarget[0].DestBlend == D3D11_BLEND_ONE) return;
+  if (runtime.particles_frame != runtime.frame) {
+    runtime.particles = 0;
+    runtime.particles_frame = runtime.frame;
+  }
+  const UINT count = std::min(vertex_count, MAX_PARTICLES - runtime.particles);
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  if (count == 0 || !PrepareDevice(device.Get())) return;
+  auto& objects = runtime.objects;
+  if (!objects.particles) {
+    const D3D11_BUFFER_DESC particles_desc = {.ByteWidth = MAX_PARTICLES * 48, .Usage = D3D11_USAGE_DEFAULT,
+                                              .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
+    D3D11_SHADER_RESOURCE_VIEW_DESC particles_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+    particles_view.Buffer.NumElements = MAX_PARTICLES * 3;
+    const std::array<D3D11_SO_DECLARATION_ENTRY, 3> entries = {{
+        {.SemanticName = "SV_POSITION", .SemanticIndex = 0, .ComponentCount = 4},
+        {.SemanticName = "COLOR", .SemanticIndex = 0, .ComponentCount = 4},
+        {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
+    }};
+    constexpr UINT STRIDE = 48;
+    const auto code = game_code.find(smoke_vertex_shader);
+    if (FAILED(device->CreateBuffer(&particles_desc, nullptr, objects.particles.GetAddressOf()))
+        || FAILED(device->CreateShaderResourceView(objects.particles.Get(), &particles_view, objects.particles_srv.GetAddressOf()))
+        || code == game_code.end()
+        || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), entries.data(),
+                                                                static_cast<UINT>(entries.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM,
+                                                                nullptr, objects.particle_output.GetAddressOf()))) {
+      renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for the particles' vertex shader {:08X} (Smoke Shadows).",
+                                        smoke_vertex_shader));
+    }
+  }
+  if (!objects.particle_output) return;
+  ComPtr<ID3D11GeometryShader> game_geometry_shader;
+  ComPtr<ID3D11PixelShader> game_pixel_shader;
+  ComPtr<ID3D11Buffer> game_output;
+  native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
+  native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
+  native->SOGetTargets(1, game_output.GetAddressOf());
+  ID3D11Buffer* target = objects.particles.Get();
+  const UINT offset = runtime.particles * 48;
+  native->GSSetShader(objects.particle_output.Get(), nullptr, 0);
+  native->PSSetShader(nullptr, nullptr, 0);
+  native->SOSetTargets(1, &target, &offset);
+  native->Draw(count, first_vertex);
+  ID3D11Buffer* output = game_output.Get();
+  constexpr UINT APPEND = UINT_MAX;
+  native->SOSetTargets(1, &output, &APPEND);
+  native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
+  native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
+  runtime.particles += count;
+}
+
 // A listed scene shader's draw (its SceneShader the callback's data).
 template <typename Context>
 void CaptureDraw(Context& command, const void*) {
@@ -1301,6 +1398,20 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         Dispatch(native, objects.skies_shader.Get(), {objects.captured_srv.Get(), nullptr}, {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr},
                  &sky, sizeof(sky), 1, 1);
       }
+    }
+    // Smoke Shadows: the lit particles streamed out since the last trace as quads facing the sun after the captures
+    // (rt_smoke): a capture whose particles dim the helper's sun rays.
+    if (runtime.settings.smoke_shadows && runtime.particles != 0 && runtime.particles_frame + 1 >= runtime.frame
+        && runtime.captures.size() < dlaa_bridge::RT_CAPTURES && runtime.captured_vertices + (runtime.particles * 6) <= MAX_VERTICES) {
+      const std::array<uint32_t, 4> smoke = {runtime.captured_vertices, runtime.particles, dlaa_bridge::RT_TRANSFER_WIDTH, 0};
+      Dispatch(native, objects.smoke_shader.Get(), {objects.particles_srv.Get(), dlaa_bridge::bridge.rt_sun.srv.Get()},
+               {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr}, smoke.data(), sizeof(smoke), (runtime.particles + 63) / 64, 1);
+      runtime.captures.push_back({.key = SMOKE_KEY, .first_vertex = runtime.captured_vertices, .vertex_count = runtime.particles * 6,
+                                  .flags = dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_SMOKE});
+      runtime.slices.push_back(0);
+      runtime.captured_vertices += runtime.particles * 6;
+      runtime.dynamic_vertices += runtime.particles * 6;
+      runtime.particles = 0;
     }
     struct PositionConstants {
       std::array<float, 16> inverse_view_projection;
@@ -1542,7 +1653,7 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
     }
     if (subobjects[index].type != reshade::api::pipeline_subobject_type::vertex_shader) continue;
     const uint32_t hash = renodx::utils::hash::ComputeCRC32(code, desc->code_size);
-    if (host.scene_draw == nullptr
+    if (host.scene_draw == nullptr && hash != smoke_vertex_shader
         && std::ranges::none_of(scene_shaders, [hash](const SceneShader& shader) { return shader.hash == hash && shader.capture_shader.empty(); })) {
       continue;
     }

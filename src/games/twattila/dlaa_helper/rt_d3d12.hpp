@@ -1269,6 +1269,7 @@ class RtScene12 {
   static constexpr UINT UV_POOL = STATIC_UVS + SLOTS * DYNAMIC_UVS;
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
+  static constexpr uint32_t RECORD_SMOKE = 4;
   static constexpr float LEAF_ALPHA_CUTOFF = 0.5f;  // rt_scene_data.cs_6_5.hlsl
   static constexpr uint32_t PLACE_FOLIAGE = 1;  // rt_place.cs_6_5.hlsl
   static constexpr uint32_t PLACE_HIDDEN = 2;
@@ -3190,9 +3191,10 @@ class RtScene12 {
   }
 #endif
 
-  // A capture's record flags (rt_scene.hlsli): alpha-tested leaves, thin cloth and sails (v11).
+  // A capture's record flags (rt_scene.hlsli): alpha-tested leaves, thin cloth and sails (v11), smoke.
   static uint32_t RecordFlags(const dlaa_bridge::RtCapture& capture, bool masked, uint32_t version) {
-    return (masked ? RECORD_MASKED : 0u) | ((version >= 11 && (capture.flags & dlaa_bridge::RT_THIN) != 0) ? RECORD_THIN : 0u);
+    return (masked ? RECORD_MASKED : 0u) | ((version >= 11 && (capture.flags & dlaa_bridge::RT_THIN) != 0) ? RECORD_THIN : 0u)
+           | ((masked && (capture.flags & dlaa_bridge::RT_SMOKE) != 0) ? RECORD_SMOKE : 0u);
   }
 
   // A world-space BLAS into the slot's TLAS instances (leaves not opaque: their alpha is tested), its InstanceID its

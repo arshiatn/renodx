@@ -47,28 +47,31 @@ float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
   return kept;
 }
 
-// The ray toward the sun: lit (1; 0 blocked; with Light Through Leaves the share the leaves met let through) and the
-// nearest blocker's distance (soft shadows).
+// The ray toward the sun: lit (1; 0 blocked; with Light Through Leaves the share the leaves met let through; the share
+// the smoke it met let through) and the nearest blocker's distance (soft shadows).
 float2 SunRay(float3 origin, float3 direction) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
   ray.TMin = 0.f;
   ray.TMax = 1.0e4f;
+  smoke_transmittance = 1.f;
   if ((flags & LEAF_LIGHT) == 0u) {
-    if (sun_cone == 0.f) return float2(Occluded(origin, direction, 1.0e4f) ? 0.f : 1.f, 0.f);
+    if (sun_cone == 0.f) return float2(Occluded(origin, direction, 1.0e4f) ? 0.f : smoke_transmittance, 0.f);
     TRACE_NEAREST(query, ray)
-    return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(1.f, 0.f);
+    return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(smoke_transmittance, 0.f);
   }
   // The nearest surface each time: a leaf, cloth or sail lets its share through and the ray goes on past it (a leaf's
   // solid parts are opaque with opacity micromaps, so it comes as a hit, not a candidate); a solid surface, or layers
   // too many to let any through, block it.
   float lit = 1.f;
   float first = 0.f;
+  float smoke = 1.f;  // the first pass's (the later ones may meet its smoke again)
   [loop]
   for (uint layer = 0u; layer < 4u; ++layer) {
     TRACE_NEAREST(query, ray)
-    if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(lit, first);
+    if (layer == 0u) smoke = smoke_transmittance;
+    if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(lit * smoke, first);
     if (layer == 0u) first = query.CommittedRayT();
     const uint record_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
     if ((record_flags & (RECORD_MASKED | RECORD_THIN)) == 0u) break;
