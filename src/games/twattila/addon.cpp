@@ -11,12 +11,17 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <format>
+#include <mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -1162,7 +1167,27 @@ bool addon_registered = false;
 constexpr std::array<uint32_t, 2> WATER_SHADERS = {0x2E9F5935, 0xC9FBACCB};
 constexpr UINT WATER_LIGHTING_SLOT = 2;
 float water_clarity = 1.f;
+// Water Caustics (ATN): the shaders' refracted bed colour x (1 + t51 at their world position / WATER_CAUSTICS_TILE), the
+// tile water_caustics.cs makes at the first water draw of a frame; t51 unbound reads 0 (the game's water). Patched as
+// they are created (PatchWaterCaustics); their world positions' inputs (river v1, lake v3) by WATER_SHADERS' order.
+constexpr std::array<uint32_t, 2> WATER_WORLD_INPUTS = {1, 3};
+constexpr UINT WATER_CAUSTICS_SLOT = 51;
+constexpr float WATER_CAUSTICS_TILE = 4.f;  // metres
+constexpr UINT WATER_CAUSTICS_SIZE = 256;
+float water_caustics = 1.f;
 using Microsoft::WRL::ComPtr;
+struct CausticsObjects {
+  ComPtr<ID3D11Device> device;
+  ComPtr<ID3D11ComputeShader> shader;
+  ComPtr<ID3D11Buffer> constants;
+  ComPtr<ID3D11ShaderResourceView> srv;
+  ComPtr<ID3D11UnorderedAccessView> uav;
+  uint64_t made_tick = 0;  // its last time (one a frame: within 4 ms of it, the same frame's)
+};
+CausticsObjects caustics_objects;
+// The patched water shaders by the game's hash (kept: the game may create them again).
+std::unordered_map<uint32_t, std::vector<uint8_t>> water_patched;
+std::mutex water_mutex;
 struct WaterObjects {
   ComPtr<ID3D11Device> device;
   UINT bytes = 0;  // the game's lighting constants' (0: none made)
@@ -1178,18 +1203,140 @@ struct WaterObjects {
 };
 WaterObjects water_objects;
 
+// A water shader with the caustics (empty: not as expected): after the refraction's colour sample (sample_l rD.xyz, ...,
+// t2, ...), with rT one more temp and t51 declared:
+//   mul rT.xy, vW.xzxx, l(1 / tile) / frc rT.xy, rT.xyxx / sample_l rT.x, rT.xyxx, t51, s(the normal map's), l(0) /
+//   mad rD.xyz, rD.xyzx, rT.xxxx, rD.xyzx
+std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, uint32_t world_input) {
+  constexpr uint32_t OP_FRC = 26, OP_MAD = 50, OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_L = 72, OP_DCL_RESOURCE = 88, OP_DCL_TEMPS = 104;
+  constexpr uint32_t EXTENDED = 1u << 31;
+  twattila::dxbc::Program program = twattila::dxbc::Read(code);
+  auto& tokens = program.tokens;
+  if (tokens.empty()) return {};
+  size_t temps_at = 0;
+  size_t refraction_at = 0;  // the refraction's colour sample, its operands' start
+  size_t refraction_operands = 0;
+  std::array<uint32_t, 2> sampler = {};  // the normal map's (t0)
+  for (size_t at = 2; at < tokens.size();) {
+    const uint32_t opcode = tokens[at] & 0x7FF;
+    const size_t length = twattila::dxbc::Length(tokens, at);
+    if (length == 0) return {};
+    if (opcode == OP_DCL_TEMPS) temps_at = at;
+    if (opcode == OP_SAMPLE || opcode == OP_SAMPLE_L) {
+      size_t operands = at + 1;
+      if ((tokens[at] & EXTENDED) != 0) {
+        while ((tokens[operands] & EXTENDED) != 0) ++operands;
+        ++operands;
+      }
+      // dest, address, resource, sampler: two tokens each (one immediate index).
+      const bool plain = operands + 8 <= at + length && (tokens[operands + 4] & 0x001FF000) == 0x00107000
+                         && (tokens[operands + 6] & 0x001FF000) == 0x00106000;
+      if (plain && opcode == OP_SAMPLE && tokens[operands + 5] == 0 && sampler[0] == 0) sampler = {tokens[operands + 6], tokens[operands + 7]};
+      // sample_l into a temp's xyz from t2.
+      if (plain && opcode == OP_SAMPLE_L && tokens[operands + 5] == 2 && (tokens[operands] & 0x001FF0FF) == 0x00100072) {
+        if (refraction_at != 0) return {};
+        refraction_at = at;
+        refraction_operands = operands;
+      }
+    }
+    at += length;
+  }
+  if (temps_at == 0 || refraction_at == 0 || sampler[0] == 0) return {};
+  const uint32_t temp = tokens[temps_at + 1];
+  const uint32_t bed = tokens[refraction_operands + 1];
+  const uint32_t scale = std::bit_cast<uint32_t>(1.f / WATER_CAUSTICS_TILE);
+  const std::array<uint32_t, 37> added = {
+      // mul rT.xy, vW.xzxx, l(scale, scale, 0, 0) / frc rT.xy, rT.xyxx (the tile repeats whatever the sampler's address mode)
+      OP_MUL | (10u << 24), 0x00100032, temp, 0x00101086, world_input, 0x00004002, scale, scale, 0u, 0u,
+      OP_FRC | (5u << 24), 0x00100032, temp, 0x00100046, temp,
+      // sample_l_indexable(texture2d)(float,float,float,float) rT.x, rT.xyxx, t51.xyzw, sN, l(0)
+      tokens[refraction_at], tokens[refraction_at + 1], tokens[refraction_at + 2], 0x00100012, temp, 0x00100046,
+      temp, 0x00107E46, WATER_CAUSTICS_SLOT, sampler[0], sampler[1], 0x00004001, 0u,
+      // mad rD.xyz, rD.xyzx, rT.xxxx, rD.xyzx
+      OP_MAD | (9u << 24), 0x00100072, bed, 0x00100246, bed, 0x00100006, temp, 0x00100246, bed,
+  };
+  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(refraction_at + twattila::dxbc::Length(tokens, refraction_at)), added.begin(), added.end());
+  // dcl_resource_texture2d (float,float,float,float) t51, before dcl_temps (the declarations come first).
+  const std::array<uint32_t, 4> declaration = {OP_DCL_RESOURCE | (3u << 11) | (4u << 24), 0x00107000, WATER_CAUSTICS_SLOT, 0x5555};
+  ++tokens[temps_at + 1];
+  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(temps_at), declaration.begin(), declaration.end());
+  tokens[1] = static_cast<uint32_t>(tokens.size());
+  return twattila::dxbc::Write(code, program);
+}
+
+// The game creates a pipeline: the water shaders with the caustics (renodx keeps their original hash; one the render
+// scale patched first by its hash).
+bool OnCreateWater(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
+                   const reshade::api::pipeline_subobject* subobjects) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return false;
+  bool modified = false;
+  for (uint32_t index = 0; index < subobject_count; ++index) {
+    if (subobjects[index].type != reshade::api::pipeline_subobject_type::pixel_shader) continue;
+    auto* desc = static_cast<reshade::api::shader_desc*>(subobjects[index].data);
+    if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
+    const std::span<const uint8_t> code(static_cast<const uint8_t*>(desc->code), desc->code_size);
+    const auto scaled = twattila::view_share::OriginalHash(desc->code);
+    const uint32_t hash = scaled.value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
+    const auto water = std::ranges::find(WATER_SHADERS, hash);
+    if (water == WATER_SHADERS.end()) continue;
+    const std::unique_lock lock(water_mutex);
+    auto [entry, added] = water_patched.try_emplace(hash);
+    if (added) {
+      entry->second = PatchWaterCaustics(code, WATER_WORLD_INPUTS[water - WATER_SHADERS.begin()]);
+      renodx::utils::log::i(std::format("[Total War] Water Caustics: water shader {:08X} {}", hash,
+                                        entry->second.empty() ? "not as expected, left as it is." : "patched."));
+    }
+    if (entry->second.empty()) continue;
+    desc->code = entry->second.data();
+    desc->code_size = entry->second.size();
+    if (scaled.has_value()) twattila::view_share::Repatched(code.data(), desc->code);
+    modified = true;
+  }
+  return modified;
+}
+
 constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (std::abs(water_clarity - 1.f) < 0.01f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  ComPtr<ID3D11Buffer> game_lighting;
-  native->PSGetConstantBuffers(WATER_LIGHTING_SLOT, 1, game_lighting.GetAddressOf());
-  if (!game_lighting) return {};
-  D3D11_BUFFER_DESC game_desc = {};
-  game_lighting->GetDesc(&game_desc);
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
+  // Water Caustics: the tile made at the frame's first water draw, bound at t51 for the draw.
+  auto& caustics = caustics_objects;
+  if (water_caustics > 0.f && caustics.device != device) {
+    caustics = {.device = device};
+    const D3D11_TEXTURE2D_DESC tile_desc = {.Width = WATER_CAUSTICS_SIZE, .Height = WATER_CAUSTICS_SIZE, .MipLevels = 1, .ArraySize = 1,
+                                            .Format = DXGI_FORMAT_R16_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                            .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS};
+    const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    ComPtr<ID3D11Texture2D> tile;
+    const bool made = SUCCEEDED(device->CreateComputeShader(__water_caustics.data(), __water_caustics.size(), nullptr, caustics.shader.GetAddressOf()))
+                      && SUCCEEDED(device->CreateBuffer(&constants_desc, nullptr, caustics.constants.GetAddressOf()))
+                      && SUCCEEDED(device->CreateTexture2D(&tile_desc, nullptr, tile.GetAddressOf()))
+                      && SUCCEEDED(device->CreateShaderResourceView(tile.Get(), nullptr, caustics.srv.GetAddressOf()))
+                      && SUCCEEDED(device->CreateUnorderedAccessView(tile.Get(), nullptr, caustics.uav.GetAddressOf()));
+    if (!made) caustics.srv.Reset();
+  }
+  const bool caustics_on = water_caustics > 0.f && caustics.srv;
+  if (caustics_on) {
+    if (const uint64_t now = GetTickCount64(); now > caustics.made_tick + 4) {
+      caustics.made_tick = now;
+      const std::array<float, 4> constants = {static_cast<float>(now % 3600000) / 1000.f, water_caustics, 0.f, 0.f};
+      native->UpdateSubresource(caustics.constants.Get(), 0, nullptr, constants.data(), 0, 0);
+      native->CSSetShader(caustics.shader.Get(), nullptr, 0);
+      native->CSSetUnorderedAccessViews(0, 1, caustics.uav.GetAddressOf(), nullptr);
+      native->CSSetConstantBuffers(0, 1, caustics.constants.GetAddressOf());
+      native->Dispatch(WATER_CAUSTICS_SIZE / 8, WATER_CAUSTICS_SIZE / 8, 1);
+      ID3D11UnorderedAccessView* no_uav = nullptr;
+      native->CSSetUnorderedAccessViews(0, 1, &no_uav, nullptr);
+    }
+    native->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, caustics.srv.GetAddressOf());
+  }
+  // Water Clarity.
+  ComPtr<ID3D11Buffer> game_lighting;
+  if (std::abs(water_clarity - 1.f) >= 0.01f) native->PSGetConstantBuffers(WATER_LIGHTING_SLOT, 1, game_lighting.GetAddressOf());
+  D3D11_BUFFER_DESC game_desc = {};
+  if (game_lighting) game_lighting->GetDesc(&game_desc);
   auto& objects = water_objects;
-  if (objects.device != device || objects.bytes != game_desc.ByteWidth) {
+  if (game_lighting && (objects.device != device || objects.bytes != game_desc.ByteWidth)) {
     objects = {.device = device};
     const D3D11_BUFFER_DESC raw_in = {.ByteWidth = game_desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
                                       .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
@@ -1208,8 +1355,14 @@ constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) 
                       && SUCCEEDED(device->CreateBuffer(&raw_out, nullptr, objects.clarified.GetAddressOf()))
                       && SUCCEEDED(device->CreateUnorderedAccessView(objects.clarified.Get(), &uav_desc, objects.clarified_uav.GetAddressOf()))
                       && SUCCEEDED(device->CreateBuffer(&lighting_desc, nullptr, objects.lighting.GetAddressOf()));
-    if (!made) return {};
-    objects.bytes = game_desc.ByteWidth;
+    if (made) objects.bytes = game_desc.ByteWidth;
+  }
+  if (!game_lighting || objects.bytes != game_desc.ByteWidth) {
+    if (!caustics_on) return {};
+    return {.post_callback = [](Context& post, const void*) {
+      ID3D11ShaderResourceView* no_view = nullptr;
+      reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native())->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, &no_view);
+    }};
   }
   native->CopyResource(objects.copied.Get(), game_lighting.Get());
   const std::array<uint32_t, 4> constants = {objects.bytes / 4, std::bit_cast<uint32_t>(1.f / water_clarity), 0u, 0u};
@@ -1233,6 +1386,8 @@ constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) 
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
     post_native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, water_objects.game_lighting.GetAddressOf());
     water_objects.game_lighting.Reset();
+    ID3D11ShaderResourceView* no_view = nullptr;
+    post_native->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, &no_view);
   }};
 };
 
@@ -1754,6 +1909,16 @@ void ConfigureAddon() {
       .max = 16.f,
       .format = "%.2f",
   });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &water_caustics,
+      .default_value = 1.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on river and lake beds. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
 
   // Appended Settings (Output)
   {
@@ -1897,6 +2062,7 @@ bool AttachAddon() {
   // Their lighting buffer's ambient cube at c2 (lighting_VS_PS): the paths' sky.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  renodx::utils::pipeline::RegisterOnCreateCallback(OnCreateWater);
   twattila::grass_fade::Install();
   // The AO pass before the ray tracing (its multiply after the pass's own output), both before the Light Bounce (it
   // draws the sun draws itself: no callback after it runs).
@@ -1948,6 +2114,7 @@ void DetachAddon() {
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
+  renodx::utils::pipeline::UnregisterOnCreateCallback(OnCreateWater);
   twattila::grass_fade::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();
