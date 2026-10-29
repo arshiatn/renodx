@@ -1466,8 +1466,17 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           whose origin is inside the view (NearView, margin 0); off-screen ones stay. HARNESS_UNDRAWN=12 kept, =20 gone
           (all_modes undrawn_kept / undrawn_gone, also removal_sway). All Attila statics are placed (rows shaders): the
           CPU path's RECENT_FRAMES unchanged. Untested in game.
-      [ ] 4. NVIDIA guidelines audit: everything as NVIDIA's guides say (GPU micromap baking the default, OMM / Mega
-          Geometry / DLSS RR / ReSTIR / SHaRC usage).
+      [x] 4. NVIDIA guidelines audit (a545dbc0). OMM SDK integration guide: GPU baker for baking at runtime ("significantly
+          more efficient"), CPU baker for offline builds; a frame budget; 4-state + any-hit for the unknown states;
+          2-state suggested for secondary rays; the bake prepass with maxOutOmmArraySize; no per-ray mip bias. Ours:
+          GPU Micromap Baking now ON by default (no longer Experimental; CPU baker the fallback); budget
+          (MICROMAP_GPU_BAKES), PerformSetupAndBake + maxOutOmmArraySize, 4-state + alpha test at mip 0 already;
+          Fast Leaf Shadows (2-state) left an option (coarser leaf edges). DLSS RR: it replaces denoisers that
+          accumulate frames: the AO's history now off under RR (reflections raw, soft-shadow filter off, ReSTIR GI
+          permuted already; hit distance given). Mega Geometry: spatially coherent clusters (the sorting fix, item 2),
+          templates for instanced sets, GPU-driven counts. Deviations kept on purpose: SHaRC propagation depth 2 (4
+          hung the GPU), partitioned TLAS off (stalled; our TLAS 0.1-0.16 ms), SER Experimental (paused after a reset),
+          GPU bake DisableTexCoordDeduplication.
       [ ] 5. More ReSTIR: reflections, shadows, other effects; fewer rays, less noise, less VRAM.
       [ ] 6. Water refraction (RT), caustics, coloured shadows through banners / sails.
       [ ] 7. Build (helper45+, build32, 64-bit check), harness, twattila_v107.zip, README / HANDOFF / memory, report.
