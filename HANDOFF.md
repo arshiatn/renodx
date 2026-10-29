@@ -1213,6 +1213,10 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       forests (Light Through Leaves stepped every leaf layer: harness dense leaves 4K 16.2 ms, 0.9 without); helper
       waits 3-35 ms; the cluster room grew 3 times (32k -> 262k clusters, 2.5 GB), each a stall; Grass Always Drawn:
       ~70-95 M grass vertices a frame, 54-79 M left out (share full, whole instanced draws dropped, near ones too).
+      DONE as v99: Downloads	wattila_v99.zip, helper31 (build	w_dlaa_helper31, bridge v18 unchanged) in Attila's
+      folder; all 16 harness modes pass; the 10 TW addons build (Attila / Rome II / Thrones addon32). Untested in game.
+      ASK ATN: pan over forests with Light Through Leaves on (trace ms), Grass Always Drawn + max density / distance
+      (grass shadows everywhere? helper wait ms, CPU capturing ms), any hitch left (helper log lines).
       [x] 1 (d53c3023) Light Through Leaves cheap: leaves' meshes instance mask 4 (solids 1, smoke 2; rt_place too);
           SunRay: one any-hit ray on the rest (cloth / sail / grass met first: the old stepping without the leaves),
           then the leaves: none, one, or more (any-hit rays around the first): T or T^2. Harness: 16.2 -> 2.5 ms; leaf,
