@@ -682,6 +682,10 @@ class RtScene12 {
       if (shared.rt_reflection != 0 && shared.rt_specular != 0 && open(shared.rt_reflection, &reflection_) && open(shared.rt_specular, &specular_)) {
         Written(reflection_.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, REFLECTION);
         Written(specular_.Get(), DXGI_FORMAT_R8_UNORM, SPECULAR_OCCLUSION);
+        // Ray Reconstruction's specular hit distance (v17).
+        if (version >= 17 && shared.rr_hit_distance != 0 && open(shared.rr_hit_distance, &hit_distance_)) {
+          Written(hit_distance_.Get(), DXGI_FORMAT_R16_FLOAT, HIT_DISTANCE);
+        }
       } else {
         reflection_.Reset();
         specular_.Reset();
@@ -750,6 +754,7 @@ class RtScene12 {
     positions_copy_.Reset();
     reflection_.Reset();
     specular_.Reset();
+    hit_distance_.Reset();
     specular_accumulated_.Reset();
     specular_history_.Reset();
     specular_meta_.Reset();
@@ -1007,6 +1012,7 @@ class RtScene12 {
         if (reflections) {
           textures.emplace_back(reflection_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
           textures.emplace_back(specular_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          if (hit_distance_) textures.emplace_back(hit_distance_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
       }
       std::vector<D3D12_RESOURCE_BARRIER> barriers;
@@ -1074,6 +1080,7 @@ class RtScene12 {
                            && GetEnvironmentVariableW(L"RENODX_TW_NO_REUSE", nullptr, 0) == 0 && EnsureHistory(HISTORY_REUSE, frame);
         if (reuse) {
           flags |= PATH_REUSE | (reuse_parity_ != 0 ? PATH_REUSE_PARITY : 0u);
+          if ((requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) flags |= PATH_PERMUTE;
           if (history_valid_ && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 == frame && reuse_size_ == reuse_size) {
             flags |= PATH_REUSE_HISTORY;
           }
@@ -1332,6 +1339,7 @@ class RtScene12 {
     FOG = REUSE_DATA + 2,  // u27 (v11)
     AMBIENT_HISTORY,  // u28-u29: the ambient visibility kept over frames, two sets (v11)
     AMBIENT_POSITIONS = AMBIENT_HISTORY + 2,  // u30: the last trace's positions
+    HIT_DISTANCE,  // u31: Ray Reconstruction's specular hit distance (v17)
     DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
@@ -1352,6 +1360,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
   static constexpr uint32_t PATH_AMBIENT_HISTORY = 16384;  // rt_camera.hlsli
   static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;
+  static constexpr uint32_t PATH_PERMUTE = 65536;
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
   struct PathConstants {
@@ -1596,7 +1605,7 @@ class RtScene12 {
     }
     for (const UINT descriptor : std::initializer_list<UINT>{SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY,
                                                              REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG, AMBIENT_HISTORY,
-                                                             AMBIENT_HISTORY + 1, AMBIENT_POSITIONS}) {
+                                                             AMBIENT_HISTORY + 1, AMBIENT_POSITIONS, HIT_DISTANCE}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     if (cache_keys_) return;
@@ -3379,6 +3388,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> guide_roughness_;
   ComPtr<ID3D12Resource> reflection_;
   ComPtr<ID3D12Resource> specular_;
+  ComPtr<ID3D12Resource> hit_distance_;  // Ray Reconstruction's specular hit distance (v17; u31)
   ComPtr<ID3D12Resource> previous_positions_;  // last frame's positions (t11)
   ComPtr<ID3D12Resource> positions_copy_;      // this frame's, for the next
   ComPtr<ID3D12Resource> specular_accumulated_;

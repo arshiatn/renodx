@@ -1578,7 +1578,9 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
       .rays = runtime.settings.light_bounce_rays,
       .range = runtime.settings.light_bounce_range,
       .view_projection = runtime.traced_view_projection,
-      .path_flags = runtime.settings.path_tracing ? (dlaa_bridge::RT_PATH_TRACING | dlaa_bridge::RT_PATH_REUSE) : 0u,
+      .path_flags = runtime.settings.path_tracing ? (dlaa_bridge::RT_PATH_TRACING | dlaa_bridge::RT_PATH_REUSE
+                                                     | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u))
+                                                  : 0u,
       .path_bounces = runtime.settings.path_bounces,
       .path_samples = runtime.settings.light_bounce_rays,
       .guides = host.guides_written(),

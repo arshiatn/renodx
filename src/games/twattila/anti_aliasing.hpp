@@ -150,6 +150,7 @@ constexpr size_t TIME = 26;  // time_in_sec (.x)
 constexpr size_t SCREEN_SIZE = 27;
 constexpr size_t VIEWPORT = 29;
 constexpr uint32_t TAA_PHASES = 8;
+constexpr uint32_t RR_PHASES = 32;  // Ray Reconstruction: at least 32 (NVIDIA's DLSS-RR integration guide)
 
 // A main view camera.
 struct Camera {
@@ -1426,8 +1427,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   frame_history::render_height.store(scaled ? runtime.render_height : 0u);
   if ((settings.method == Method::TAA || settings.method == Method::DLAA) && ran) {
     // NVIDIA: 8 phases at native size, 8 / scale^2 below it.
-    const uint32_t phases = (scaled ? std::max(internal::TAA_PHASES, static_cast<uint32_t>(std::ceil(8.f / (render_scale * render_scale))))
-                                    : internal::TAA_PHASES);
+    const uint32_t least = (settings.method == Method::DLAA && settings.ray_reconstruction) ? internal::RR_PHASES : internal::TAA_PHASES;
+    const uint32_t phases = (scaled ? std::max(least, static_cast<uint32_t>(std::ceil(8.f / (render_scale * render_scale)))) : least);
     const auto phase = static_cast<uint32_t>(runtime.frame % phases) + 1;
     runtime.jitter = {internal::Halton(phase, 2) - 0.5f, internal::Halton(phase, 3) - 0.5f};
   } else if (settings.method == Method::SMAA_T2X && ran) {

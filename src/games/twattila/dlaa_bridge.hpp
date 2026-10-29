@@ -188,9 +188,12 @@ struct Bridge {
   Texture rt_bounce;
   Texture rt_light_mask;  // v9: the local lights' lit bits
   Texture rt_fog;         // v11: the fog shadows (a quarter of the size each way)
-  // The reflections' (v8, made when they are on): the reflected light and the specular occlusion out.
+  // The reflections' (v8, made when they are on): the reflected light and the specular occlusion out; Ray
+  // Reconstruction's specular hit distance (v17), written by this frame's reflections (`hit_distance_written`).
   Texture rt_reflection;
   Texture rt_specular;
+  Texture rr_hit_distance;
+  bool hit_distance_written = false;
   bool reflections = false;
   // The leaves' opacity masks (an RT_ATLAS_SLICES texture array, made with the first ray tracing textures and kept
   // across sizes: shared with the helper again with every set; `rt_atlas_generation` counts the arrays made).
@@ -395,6 +398,8 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.rt_fog = {};
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
+  bridge.rr_hit_distance = {};
+  bridge.hit_distance_written = false;
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();
   bridge.fg_hudless_rtv.Reset();
@@ -501,7 +506,8 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_fog, &shared.rt_fog, (width + 3) / 4, (height + 3) / 4) && share_atlas()))
                     && (!reflections
                         || (make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_reflection, &shared.rt_reflection)
-                            && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_specular, &shared.rt_specular)))
+                            && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_specular, &shared.rt_specular)
+                            && make(DXGI_FORMAT_R16_FLOAT, &bridge.rr_hit_distance, &shared.rr_hit_distance)))
                     && (fg_format == DXGI_FORMAT_UNKNOWN
                         || (make_frame(&bridge.fg_frame, &shared.fg_frame) && make_frame(&bridge.fg_hudless, &shared.fg_hudless)
                             && SUCCEEDED(device->CreateRenderTargetView(bridge.fg_hudless.Get(), nullptr,
@@ -538,6 +544,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   if (!reflections) {
     shared.rt_reflection = 0;
     shared.rt_specular = 0;
+    shared.rr_hit_distance = 0;
   }
   if (fg_format == DXGI_FORMAT_UNKNOWN) {
     shared.fg_frame = 0;
@@ -748,7 +755,7 @@ inline bool TraceBounce(ID3D11DeviceContext* context, const BounceRequest& reque
 // `bridge.rt_reflection` / `rt_specular`, which the game's GPU then waits for; false: not traced.
 inline bool TraceReflections(ID3D11DeviceContext* context, const ReflectRequest& request) {
   if (!bridge.ray_tracing || !bridge.rt_reflection.texture) return false;
-  return internal::Request(context, TRACE_REFLECTIONS, [&](Shared* shared) {
+  const bool traced = internal::Request(context, TRACE_REFLECTIONS, [&](Shared* shared) {
     shared->fg_request = 0;
     shared->rt_request = 3;
     shared->rt_frame = request.frame;
@@ -762,6 +769,9 @@ inline bool TraceReflections(ID3D11DeviceContext* context, const ReflectRequest&
     std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
     shared->rt_guides = (request.guides && bridge.guides) ? 1u : 0u;
   });
+  constexpr uint32_t RAW_REFLECTIONS = RT_REFLECTIONS | RT_REFLECTIONS_RAW;
+  bridge.hit_distance_written = traced && (request.flags & RAW_REFLECTIONS) == RAW_REFLECTIONS && bridge.rr_hit_distance.texture;
+  return traced;
 }
 
 // The helper's last ray tracing status (one line).
@@ -801,7 +811,9 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
       std::copy_n(ray_reconstruction->world_to_view.begin(), 16, shared->world_to_view);
       std::copy_n(ray_reconstruction->view_to_clip.begin(), 16, shared->view_to_clip);
     }
+    shared->rr_hit_distance_written = (shared->ray_reconstruction != 0 && bridge.hit_distance_written) ? 1u : 0u;
   });
+  bridge.hit_distance_written = false;
   bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides;
   if (bridge.shared != nullptr) {
     // Ray tracing's counts change every frame: its line is logged when the part before ": " changes, else each minute.
@@ -882,6 +894,7 @@ inline void Release() {
   bridge.rt_fog = {};
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
+  bridge.rr_hit_distance = {};
   bridge.rt_atlas = {};
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();

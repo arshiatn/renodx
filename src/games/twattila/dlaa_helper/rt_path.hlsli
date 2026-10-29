@@ -44,6 +44,7 @@ RWTexture2D<float2> specular_meta : register(u18);         // specular occlusion
 RWTexture2D<float2> specular_meta_history : register(u19);
 RWTexture2D<float4> reflection : register(u20);            // out: reflected light, the share of samples that met a surface
 RWTexture2D<unorm float> specular_occlusion : register(u21);
+RWTexture2D<float> specular_hit_distance : register(u31);  // out (PATH_RAW): Ray Reconstruction's guide, metres
 // ReSTIR GI (Ouyang et al. 2021, "ReSTIR GI: Path Resampling for Real-Time Path Tracing"): each bounce texel's paths
 // become a reservoir of one surface their first rays met (its position, normal and the light leaving it toward the
 // texel), merged with last frame's at the same surface (PathTraceTexel), then with neighbours' (ReuseTexel, which
@@ -67,6 +68,7 @@ static const uint PATH_REUSE = 1024u;         // ReSTIR GI
 static const uint PATH_REUSE_HISTORY = 2048u; // last frame's reservoirs are last frame's
 static const uint PATH_REUSE_PARITY = 4096u;  // this frame's set: 1 (else 0)
 static const uint PATH_LOCAL_LIGHTS = 8192u;  // the local lights light the surfaces the screen never saw (b4, v11)
+static const uint PATH_PERMUTE = 65536u;      // last frame's reservoir from a neighbour texel (Ray Reconstruction)
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
@@ -89,6 +91,7 @@ static const float LIGHT_FIT_BLEND = 0.1f;
 static const float UNSEEN_ALBEDO = 0.35f;
 static const float ROUGH_LIMIT = 0.75f;  // rougher surfaces keep the game's reflection: only their occlusion is traced
 static const float MAX_SPECULAR_FRAMES = 12.f;
+static const float SKY_HIT_DISTANCE = 65504.f;  // NVIDIA's for the sky (FP16's most)
 
 #if defined(PATH_REORDER)
 // Shader execution reordering (DXR 1.2): threads regroup by what their first hit is before shading it.
@@ -481,7 +484,11 @@ void PathTraceTexel(uint2 id) {
   }
   uint2 previous_pixel;
   if ((path_flags & PATH_REUSE_HISTORY) != 0u && SeenLastFrame(position.xyz, previous_pixel)) {
-    const uint2 previous_texel = min(previous_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u);
+    uint2 previous_texel = previous_pixel / bounce_scale;
+    // Under Ray Reconstruction a neighbour's in its 2 x 2 texels, a different one each frame (permutation sampling: it
+    // takes neighbouring texels' samples as independent).
+    if ((path_flags & PATH_PERMUTE) != 0u) previous_texel ^= uint2(frame & 1u, (frame >> 1) & 1u);
+    previous_texel = min(previous_texel, uint2(bounce_width, bounce_height) - 1u);
     Reservoir previous = LoadReservoir(1u - set, previous_texel);
     // Last frame's reservoir was made for a surface facing about the same way (else a new history starts).
     if (dot(LoadReceiverNormal(1u - set, previous_texel), normal) < 0.8f) previous.count = 0.f;
@@ -594,6 +601,7 @@ void ReflectPixel(uint2 id) {
   if (position.w <= 0.f || (path_flags & PATH_GUIDES) == 0u) {
     specular_accumulated[id] = 0.f;
     specular_meta[id] = float2(1.f, 0.f);
+    if ((path_flags & PATH_RAW) != 0u) specular_hit_distance[id] = SKY_HIT_DISTANCE;
     return;
   }
   const float3 normal = PixelNormal(id, position);
@@ -609,6 +617,7 @@ void ReflectPixel(uint2 id) {
   const float3 view_local = float3(dot(view, basis[0]), dot(view, basis[1]), n_dot_v);
   float3 gathered = 0.f;
   float weights = 0.f;
+  float distances = 0.f;  // of the samples that met a surface
   uint met = 0u;
   uint open = 0u;
   [loop]
@@ -628,6 +637,7 @@ void ReflectPixel(uint2 id) {
         const float weight = mirror ? 1.f : GgxSampleWeight(n_dot_v, n_dot_l, alpha);
         gathered += sample_light * weight;
         weights += weight;
+        distances += first_distance;
         ++met;
       }
       if (first_distance > reflection_range) ++open;
@@ -637,6 +647,9 @@ void ReflectPixel(uint2 id) {
   }
   const float4 current = float4((weights > 0.f) ? gathered / weights : 0.f, (float)met / samples);
   const float current_open = (float)open / samples;
+  // Ray Reconstruction's specular hit distance: the mean distance to what the samples met (the sky's where none did, as
+  // where none were traced: the game's reflection is the sky's or a cube map's).
+  if ((path_flags & PATH_RAW) != 0u) specular_hit_distance[id] = (met != 0u) ? distances / met : SKY_HIT_DISTANCE;
   // Mirrors keep no history; rougher lobes up to MAX_SPECULAR_FRAMES (last frame's where it saw this surface).
   float4 previous = 0.f;
   float2 previous_meta = float2(1.f, 0.f);

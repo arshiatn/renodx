@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <nvsdk_ngx.h>
 #include <nvsdk_ngx_helpers.h>
@@ -59,6 +60,8 @@ struct Request {
   uint32_t preset = 0;  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset
   std::array<float, 16> world_to_view = {};
   std::array<float, 16> view_to_clip = {};
+  // The addon's specular hit distance written this frame (Attila's v17: by its ray-traced reflections).
+  bool hit_distance = false;
   // NVSDK_NGX_DLSS_Feature_Flags (Tales: reversed depth too) and the colour's exposure.
   int create_flags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes
                      | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
@@ -118,8 +121,9 @@ class RayReconstruction12 {
     return true;
   }
 
-  // The addon's textures (bridge order; handles still open) and fence; false: not all could be opened.
-  bool Open(const std::array<uint64_t, INPUT_COUNT>& textures, uint64_t fence) {
+  // The addon's textures (bridge order; handles still open), fence and specular hit distance (0: none); false: not all
+  // could be opened (the hit distance may stay closed).
+  bool Open(const std::array<uint64_t, INPUT_COUNT>& textures, uint64_t fence, uint64_t hit_distance = 0) {
     Close();
     if (!device_) return false;
     for (size_t index = 0; index < INPUT_COUNT; ++index) {
@@ -132,11 +136,13 @@ class RayReconstruction12 {
       Close();
       return false;
     }
+    if (hit_distance != 0) device_->OpenSharedHandle(reinterpret_cast<HANDLE>(hit_distance), IID_PPV_ARGS(hit_distance_.GetAddressOf()));
     return true;
   }
 
   void Close() {
     inputs_ = {};
+    hit_distance_.Reset();
     fence_.Reset();
   }
 
@@ -263,19 +269,23 @@ class RayReconstruction12 {
       create_flags_ = request.create_flags;
       first_frame_ = true;
     }
-    std::array<D3D12_RESOURCE_BARRIER, INPUT_COUNT> barriers = {};
-    for (size_t index = 0; index < INPUT_COUNT; ++index) {
-      barriers[index] = {
+    // The inputs, then the specular hit distance when written this frame.
+    ID3D12Resource* hit_distance = request.hit_distance ? hit_distance_.Get() : nullptr;
+    std::vector<D3D12_RESOURCE_BARRIER> barriers;
+    for (size_t index = 0; index <= INPUT_COUNT; ++index) {
+      ID3D12Resource* resource = (index < INPUT_COUNT) ? inputs_[index].Get() : hit_distance;
+      if (resource == nullptr) continue;
+      barriers.push_back({
           .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
           .Transition = {
-              .pResource = inputs_[index].Get(),
+              .pResource = resource,
               .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
               .StateBefore = D3D12_RESOURCE_STATE_COMMON,
               .StateAfter = (index == OUTPUT ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
           },
-      };
+      });
     }
-    list->ResourceBarrier(INPUT_COUNT, barriers.data());
+    list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     // NVIDIA takes the matrices as writable pointers.
     auto world_to_view = request.world_to_view;
     auto view_to_clip = request.view_to_clip;
@@ -294,6 +304,7 @@ class RayReconstruction12 {
         .InReset = (request.reset || first_frame_) ? 1 : 0,
         .InMVScaleX = 1.f,
         .InMVScaleY = 1.f,
+        .pInSpecularHitDistance = hit_distance,
         .pInWorldToViewMatrix = world_to_view.data(),
         .pInViewToClipMatrix = view_to_clip.data(),
         .InPreExposure = request.pre_exposure,
@@ -301,7 +312,7 @@ class RayReconstruction12 {
     };
     evaluated_ = NVSDK_NGX_SUCCEED(NGX_D3D12_EVALUATE_DLSSD_EXT(list, feature_, parameters_, &parameters));
     for (auto& barrier : barriers) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-    list->ResourceBarrier(INPUT_COUNT, barriers.data());
+    list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     if (FAILED(list->Close())) return Fail("Ray Reconstruction: D3D12 stopped");
     first_frame_ = false;
     status_ = evaluated_ ? "DLSS Ray Reconstruction active (D3D12)" : "Ray Reconstruction evaluation failed";
@@ -317,6 +328,7 @@ class RayReconstruction12 {
   bool evaluated_ = false;
   HANDLE event_ = nullptr;
   std::array<ComPtr<ID3D12Resource>, INPUT_COUNT> inputs_;
+  ComPtr<ID3D12Resource> hit_distance_;  // the specular hit distance (none: not shared)
   ComPtr<ID3D12Fence> fence_;  // the addon's
   NVSDK_NGX_Parameter* parameters_ = nullptr;
   NVSDK_NGX_Handle* feature_ = nullptr;

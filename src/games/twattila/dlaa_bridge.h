@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 16;
+constexpr uint32_t VERSION = 17;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -136,6 +136,9 @@ constexpr uint32_t RT_SPECULAR_OCCLUSION = 4;
 constexpr uint32_t RT_REFLECTIONS_RAW = 8;
 // The path-traced Light Bounce's samples reused over time and between neighbours (ReSTIR GI; helpers before 21 ignore it).
 constexpr uint32_t RT_PATH_REUSE = 16;
+// Ray Reconstruction denoises the frame (v17): ReSTIR GI takes last frame's reservoir from a neighbouring texel, a
+// different one each frame (it takes the samples as independent: NVIDIA's DLSS-RR integration guide).
+constexpr uint32_t RT_PATH_RECONSTRUCTED = 32;
 
 struct Shared {
   uint32_t version = VERSION;
@@ -303,11 +306,19 @@ struct Shared {
   RtClusterSet rt_new_sets[RT_NEW_SETS] = {};
   uint32_t rt_compact_ok = 0;
   uint32_t rt_v16_padding = 0;
+  // The addon's (v17): Ray Reconstruction's specular hit distance (R16F at the textures' size, made with the reflections'
+  // textures, opened with the others; 0: none), which a reflections request with RT_REFLECTIONS_RAW writes (metres to
+  // what each pixel's reflection rays met; 65504, NVIDIA's value for the sky, where none met or none were traced). An
+  // evaluation with `rr_hit_distance_written` 1 (written this frame) gives it Ray Reconstruction.
+  uint64_t rr_hit_distance = 0;
+  uint32_t rr_hit_distance_written = 0;
+  uint32_t rr_v17_padding = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 16) return sizeof(Shared);
+  if (version >= 17) return sizeof(Shared);
+  if (version == 16) return offsetof(Shared, rr_hit_distance);
   if (version == 15) return offsetof(Shared, rt_compact_count);
   if (version == 14) return offsetof(Shared, rt_device);
   if (version == 13) return offsetof(Shared, rt_placement_count);

@@ -1072,10 +1072,21 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           off, the helper's RT AO history (PATH_AMBIENT_HISTORY) off, sun shadows traced in the sun's cone (one jittered
           ray) instead of rt_soft's filter; any other temporal / spatial filter found off too. (GT-VBAO's filter and
           GT-VBGI's denoiser already step aside; ReSTIR and the radiance cache stay: samplers, not denoisers.)
-      [ ] 2 RR's guides (we feed only albedos, normals, roughness, depth, motion): diffuse / specular hit distance
+      [x] 2 (step 5: bridge v17, helper27) RR's guides (we feed only albedos, normals, roughness, depth, motion): diffuse / specular hit distance
           (RT AO / GI / reflection rays), color before / after particles (the particle pass), bias-current-color mask
           (trails, smoke: no motion vectors), color before / after fog (battle fog), screen-space refraction guide
           (water), depth-of-field guide. Option "RR for screen-space effects" with RT off (A/B vs DLSS SR).
+          Done: specular hit distance (bridge v17 rr_hit_distance R16F, written by the raw reflections: mean metres to
+          what the rays met, 65504 sky / untraced; harness: 2.20 / 4.52 / 7.68 m vs 2.15 / 4.53 / 7.69), 32 jitter
+          phases under RR (NVIDIA's guide: at least 32), sky guides 0.5 / 0 (NVIDIA's defaults), ReSTIR GI's temporal
+          reuse permuted under RR (RT_PATH_RECONSTRUCTED 32; the guide: RR assumes independent samples). RR with RT off
+          already exists (its own AA setting; the AO filter, GT-VBGI's and SSR's denoisers step aside).
+          Not done, why: diffuse hit distance (not in NVIDIA's RR guide, only the struct); bias mask (NVIDIA: not for
+          the latest models, CNN preset F only); colour before particles / fog (Attila's DLAA input is after tone
+          mapping: a snapshot before them is pre-tone-map, RR would see transparency everywhere; would need the tone
+          map run twice); refraction / water (blend the guides toward the water surface: the water shaders would write
+          the guides, later); DOF guide (luminance after - before DOF, same post-tone-map problem); SSR's hit distance
+          (the game's SSR pixel shader would need a UAV, later).
       [ ] 3 RTXDI (ReSTIR DI) for torches and fires: a few sampled lights a pixel instead of up to 32 shadow rays.
       [ ] 4 SHARC in place of our world radiance cache (A/B); NRC after (bigger: training each frame).
       [ ] 5 SER in the incoherent passes (AO, Light Bounce as ray generation shaders like the paths).

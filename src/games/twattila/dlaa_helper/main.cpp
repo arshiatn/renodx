@@ -12,7 +12,7 @@
 // requests (bridge v4: the addon's rt_scene.hpp) run on another D3D12 device (rt_d3d12.hpp). Frame generation requests
 // (bridge v5: the addon's frame_generation.hpp, one per game present) present through Streamline's DLSS Frame Generation
 // into a child window over the game's (fg_d3d12.hpp). It quits with the game. It answers addons of bridge versions 2
-// to 16.
+// to 17.
 // Build (x64): see twattila/README.md.
 #include <windows.h>
 
@@ -230,6 +230,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (version >= 8) keep({shared->rt_reflection, shared->rt_specular});
       if (version >= 9) keep({shared->rt_light_mask});
       if (version >= 11) keep({shared->rt_fog});
+      if (version >= 17) keep({shared->rr_hit_distance});
       color.Reset();
       depth.Reset();
       motion.Reset();
@@ -241,7 +242,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         reconstruction_open = reconstruction.Initialize(adapter.Get(), folder)
                               && reconstruction.Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
                                                       shared->specular_albedo, shared->normals, shared->roughness},
-                                                     shared->fence);
+                                                     shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u);
       } else {
         reconstruction.Close();
       }
@@ -349,6 +350,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
           .jitter_y = shared->jitter_y,
           .reset = (shared->reset != 0),
           .preset = shared->ray_reconstruction_preset,
+          .hit_distance = version >= 17 && shared->rr_hit_distance_written != 0,
       };
       std::copy_n(shared->world_to_view, 16, reconstruct.world_to_view.begin());
       std::copy_n(shared->view_to_clip, 16, reconstruct.view_to_clip.begin());
