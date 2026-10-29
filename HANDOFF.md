@@ -1368,8 +1368,21 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           pass the same as the CPU baker. Debug switches left: RENODX_TW_D3D12_DEBUG (the Agility debug layer still says
           0x887A002D). Not done: async compute queue for bakes; the SDK's CPU setup is cheap (ommGpuDispatch per bake on
           the record thread).
-      [ ] 5. Mega Geometry: near-only sway (GPU, per instance by distance), off-screen sway left out, far sway at a lower
-          rate, (cluster LOD / unit templates if time): experimental toggles where they cost nothing.
+      [x] 5. (df8291a6, helper39.) Mega Geometry: near-only sway (GPU, per instance by distance), off-screen sway left out,
+          far sway at a lower rate, (cluster LOD / unit templates if time): experimental toggles where they cost nothing.
+          Done: Swaying Shadows Range (RayTracedSwayRange, 0 m = everywhere, default 0) and Off-Screen Sway
+          (RayTracedOffScreenSway, default On), bridge v18 rt_sway_range (v14's padding) + RT_SWAY_IN_VIEW 4096; the addon
+          marks a placed draw's swaying copy RT_INSTANCED (its rows after its blocks). Helper: the compact table's fourth
+          uint4 = the swaying draw's rows (only when its hidden placement goes in: mesh placed, rows copied); rt_compact
+          marks a turned-down instance's clusters (the argument's last word, SwayTraced from rt_sway.hlsli: |view depth| >
+          range, or 16 m outside the view) and skips its triangles; rt_sway MODE_KEPT packs the kept arguments (GPU counts
+          in sway_counts_) before the CLAS builds, MODE_LISTS writes each cluster BLAS's list after them (each BLAS keeps
+          its run's first cluster: none empty); rt_place shows a hidden instance SwayTraced turns down. Harness:
+          HARNESS_SWAY_CUT=<m> (+ HARNESS_SWAY_OFF_SCREEN, flag 4096): modes sway_near / sway_far / sway_off_screen.
+          Left out: far sway at a lower rate (the CLASes are rebuilt each frame into one buffer: a slower rate needs the
+          old ones kept per instance; alternating still / swaying frames would shimmer under DLSS), cluster LOD / unit
+          templates (time). The game-side capture still streams every instance (the cut saves the helper's CLAS / BLAS
+          builds and its scene data, not the addon's stream output).
       [ ] 6. The game waits ~15 ms a frame for the helper's GPU work (sun 5-7 + AO 5-7 ms): speedups (foliage shadow
           rays through micromaps as opaque, RT one frame behind / overlap?), as experimental toggles.
       [ ] 7. NVIDIA advice not used yet, as experimental toggles even if slower now (ATN tests in a big city): ReSTIR DI
