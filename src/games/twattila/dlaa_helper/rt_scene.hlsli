@@ -45,6 +45,7 @@ static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 static const uint RECORD_THIN = 2u;    // cloth and sails
 static const uint RECORD_SMOKE = 4u;   // smoke (Smoke Shadows): dims the sun's rays, blocks none
 static const uint RECORD_GRASS = 8u;   // grass (with RECORD_MASKED): blocks the sun's rays (no light through it)
+static const uint RECORD_LEAF = 16u;   // a leaves' mesh (its instances LEAF_INSTANCE), not a swaying copy
 // The share of the sun a leaf lets through (Light Through Leaves; thin leaves pass about a quarter, each one met).
 static const float LEAF_TRANSMITTANCE = 0.25f;
 static const float THIN_TRANSMITTANCE = 0.35f;  // cloth and sails

@@ -71,11 +71,31 @@ float2 SunRay(float3 origin, float3 direction) {
     TRACE_NEAREST(query, ray, ALL_INSTANCES)
     return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(smoke_transmittance, 0.f);
   }
-  // Light Through Leaves: the leaves' meshes (their own instances) apart from the rest. The rest first, as without it
-  // (the first surface met: a solid or grass blocks); where that is cloth, a sail or a swaying leaf, the old way: the
-  // nearest surface each time, each passing its share, a solid or grass blocking. Then the leaves: none, one or more than one (any-hit rays around
-  // the first met), each LEAF_TRANSMITTANCE. Stepping through every leaf layer took 16 ms at 4K in dense leaves (0.9
-  // without Light Through Leaves; ATN's 17-18 ms traces, the stutters panning over forests).
+  // Light Through Leaves: one ray first against everything: none met, lit (most rays in the open; every lit pixel was
+  // traced twice, the sun 10 of a frame's 34 ms in ATN's third profile); a solid or grass met first, blocked; a leaves'
+  // mesh met first, that the first leaf. Otherwise the leaves' meshes (their own instances) apart from the rest: the rest
+  // as without it (the first surface met: a solid or grass blocks); where that is cloth, a sail or a swaying leaf, the old
+  // way: the nearest surface each time, each passing its share, a solid or grass blocking. Then the leaves: none, one or
+  // more than one (any-hit rays around the first met), each LEAF_TRANSMITTANCE. Stepping through every leaf layer took
+  // 16 ms at 4K in dense leaves (0.9 without Light Through Leaves; ATN's 17-18 ms traces panning over forests).
+  float first_leaf = -1.f;
+  {
+    SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
+    query.TraceRayInline(scene, RAY_FLAG_NONE, ALL_INSTANCES, ray);
+    uint candidates = 0u;
+    while (query.Proceed()) {
+      if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
+        query.CommitNonOpaqueTriangleHit();
+      } else if (smoke_transmittance < SMOKE_DARK) {
+        query.Abort();
+      }
+    }
+    if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(smoke_transmittance, 0.f);
+    const uint met_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
+    if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u || (met_flags & RECORD_GRASS) != 0u) return float2(0.f, query.CommittedRayT());
+    if ((met_flags & RECORD_LEAF) != 0u) first_leaf = query.CommittedRayT();
+  }
+  smoke_transmittance = 1.f;
   float lit = 1.f;
   float first = 0.f;
   {
@@ -109,7 +129,7 @@ float2 SunRay(float3 origin, float3 direction) {
     }
   }
   const float smoke = smoke_transmittance;
-  const float leaf = LeafHit(origin, direction, 0.f, 1.0e4f);
+  const float leaf = (first_leaf >= 0.f) ? first_leaf : LeafHit(origin, direction, 0.f, 1.0e4f);
   if (leaf < 0.f) return float2(lit * smoke, first);
   const bool more = (leaf > 0.02f && LeafHit(origin, direction, 0.f, leaf - 0.01f) >= 0.f) || LeafHit(origin, direction, leaf + 0.01f, 1.0e4f) >= 0.f;
   return float2(lit * smoke * (more ? LEAF_TRANSMITTANCE * LEAF_TRANSMITTANCE : LEAF_TRANSMITTANCE), (first > 0.f) ? min(first, leaf) : leaf);
@@ -138,11 +158,13 @@ void main(uint3 id : SV_DispatchThreadID) {
   const bool facing = dot(normal, toward_sun.xyz) > 0.f;
   float sun_visibility = 1.f;
   float blocker_distance = 0.f;
-  // A planar surface facing away keeps 1 (its shading's angle darkens it; a leaf lit from behind stays lit, as with the
-  // game's shadow maps). Corners, cracks and edges are traced either way: their normal can be wrong (left lit, they let
-  // the sun into the cracks where wall parts meet, ATN 2026-10-29); those facing away against solid surfaces only, from
-  // past themselves (a leaf or blade does not shadow itself).
-  if ((flags & SUN_SHADOWS) != 0u && (flags & PART_AMBIENT) == 0u && toward_sun.w != 0.f && (facing || !planar)) {
+  // Every surface: facing the sun (by the depth's normal) with the sun's rays; facing away against solid surfaces only,
+  // from past itself (a thick one meets itself, as its back faces in a shadow map; through a leaf or blade what stands
+  // beyond: a leaf lit from behind stays lit). Planar ones facing away kept 1 before, their shading's angle trusted to
+  // darken them: grass shades with its own normal and normal-mapped walls light texels at grazing angles, both lit in
+  // other objects' shadows (grass behind a city wall, a tower's edge, ATN 2026-10-29). Corners, cracks and edges (normal
+  // from the depth wrong: the sun into the cracks where wall parts meet) start toward the camera.
+  if ((flags & SUN_SHADOWS) != 0u && (flags & PART_AMBIENT) == 0u && toward_sun.w != 0.f) {
     // With several rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel, averaged.
     const uint rays = clamp(shadow_rays, 1u, 4u);
     const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);

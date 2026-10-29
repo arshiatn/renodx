@@ -143,17 +143,21 @@ class RtScene12 {
       decltype(&ommCreateBaker) create_baker = nullptr;
       ommBakerCreationDesc creation = ommBakerCreationDescDefault();
       creation.type = ommBakerType_CPU;
-      if (load(&create_baker, "ommCreateBaker") && load(&omm_.destroy_baker, "ommDestroyBaker")
-          && load(&omm_.create_texture, "ommCpuCreateTexture") && load(&omm_.destroy_texture, "ommCpuDestroyTexture")
-          && load(&omm_.bake, "ommCpuBake") && load(&omm_.result_desc, "ommCpuGetBakeResultDesc")
-          && load(&omm_.destroy_result, "ommCpuDestroyBakeResult") && create_baker(&creation, &omm_.baker) == ommResult_SUCCESS) {
+      const bool loaded = load(&create_baker, "ommCreateBaker") && load(&omm_.destroy_baker, "ommDestroyBaker")
+                          && load(&omm_.create_texture, "ommCpuCreateTexture") && load(&omm_.destroy_texture, "ommCpuDestroyTexture")
+                          && load(&omm_.bake, "ommCpuBake") && load(&omm_.result_desc, "ommCpuGetBakeResultDesc")
+                          && load(&omm_.destroy_result, "ommCpuDestroyBakeResult");
+      if (loaded && std::ranges::all_of(omm_.bakers, [&](ommBaker& baker) { return create_baker(&creation, &baker) == ommResult_SUCCESS; })) {
         omm_.library = library;
       } else {
+        for (const ommBaker baker : omm_.bakers) {
+          if (baker != nullptr) omm_.destroy_baker(baker);
+        }
         FreeLibrary(library);
         omm_ = {};
       }
     }
-    bake_micromaps_ = omm_.baker != nullptr;
+    bake_micromaps_ = omm_.bakers[0] != nullptr;
 #endif
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
     if ((!device_ && FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf()))))
@@ -1174,12 +1178,16 @@ class RtScene12 {
   ~RtScene12() {
     if (own_fence_) WaitFor(own_value_);
     if (event_ != nullptr) CloseHandle(event_);
-    if (micromap_baking_.valid()) micromap_baking_.wait();
+    for (auto& baking : micromap_baking_) {
+      if (baking.valid()) baking.wait();
+    }
 #if defined(RENODX_NVAPI_CLUSTERS)
     if (cluster_growing_.valid()) cluster_growing_.wait();
 #endif
 #if defined(RENODX_OMM_SDK)
-    if (omm_.baker != nullptr) omm_.destroy_baker(omm_.baker);
+    for (const ommBaker baker : omm_.bakers) {
+      if (baker != nullptr) omm_.destroy_baker(baker);
+    }
     if (omm_.library != nullptr) FreeLibrary(omm_.library);
 #endif
   }
@@ -1290,6 +1298,7 @@ class RtScene12 {
   static constexpr uint32_t RECORD_THIN = 2;
   static constexpr uint32_t RECORD_SMOKE = 4;
   static constexpr uint32_t RECORD_GRASS = 8;
+  static constexpr uint32_t RECORD_LEAF = 16;
   // TLAS instance masks (rt_scene.hlsli; rt_place.cs_6_5.hlsl for the placed meshes): the smoke in an instance of its
   // own (the frame's last dynamic captures, a BLAS apart), which only the rays toward the sun meet; the leaves' meshes
   // their own group (Light Through Leaves counts them apart); everything else solid.
@@ -1306,6 +1315,7 @@ class RtScene12 {
   static constexpr uint32_t MICROMAP_MESH_BYTES = 8u << 20;
   static constexpr uint32_t MICROMAP_TRIANGLES = 1u << 18;
   static constexpr size_t MICROMAP_BAKES = 64;
+  static constexpr size_t MICROMAP_WORKERS = 4;  // bakes at once (each with the SDK's own threads)
   static constexpr size_t SET_MICROMAP_READS = 16;  // grass sets' micromap reads a request at most
   static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
   // The scene data pass's garbage count (rt_scene_data.cs_6_5.hlsl): three counts, the example's capture, its vertices.
@@ -1527,7 +1537,7 @@ class RtScene12 {
   // The OMM SDK's CPU baker and the calls the bakes use (omm-lib.dll's).
   struct OmmSdk {
     HMODULE library = nullptr;
-    ommBaker baker = nullptr;
+    std::array<ommBaker, MICROMAP_WORKERS> bakers = {};  // a worker's each
     decltype(&ommDestroyBaker) destroy_baker = nullptr;
     decltype(&ommCpuCreateTexture) create_texture = nullptr;
     decltype(&ommCpuDestroyTexture) destroy_texture = nullptr;
@@ -2159,10 +2169,11 @@ class RtScene12 {
       list->ResourceBarrier(1, &copied);
     }
 #if defined(RENODX_NVAPI_CLUSTERS)
-    // The last request's clusters filled 3/4 of a run's room or more: that run's room twice what it was or half again what
-    // it wanted (in steps of CLUSTER_STEP; doubling the whole room made 524 K clusters for 166 K, 4.8 GB, ATN's first
-    // profile; half again what it wanted grew it 12 times as the grass came into view, the second), made on a worker and
-    // put in at the first request after (no memory for it: the room stays).
+    // The last request's clusters filled 3/4 of a run's room or more: that run's room half again what it was or a quarter
+    // more than it wanted (in steps of CLUSTER_STEP; doubling the whole room made 524 K clusters for 166 K, 4.8 GB, ATN's
+    // first profile; half again what it wanted grew it 12 times as the grass came into view, the second; twice the room
+    // again 524 K for 186 K, the third), made on a worker and put in at the first request after (no memory for it: the
+    // room stays).
     if (cluster_growing_.valid() && cluster_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<ClusterRoom> made = cluster_growing_.get(); made) {
         UseClusterRoom(made.get());
@@ -2175,8 +2186,8 @@ class RtScene12 {
     if (clusters_ && clusters_crowded_ && !cluster_growing_.valid() && cluster_room_ < cluster_limit_) {
       const auto grown = [](uint32_t room, uint64_t wanted) {
         if (wanted * 4 <= uint64_t{room} * 3) return room;
-        const uint64_t step = std::max<uint64_t>(uint64_t{room} * 2, (wanted * 3 / 2 + CLUSTER_STEP - 1) / CLUSTER_STEP * CLUSTER_STEP);
-        return static_cast<uint32_t>(std::min<uint64_t>(step, MAX_CLUSTERS));
+        const uint64_t step = std::max<uint64_t>(uint64_t{room} * 3 / 2, wanted * 5 / 4);
+        return static_cast<uint32_t>(std::min<uint64_t>((step + CLUSTER_STEP - 1) / CLUSTER_STEP * CLUSTER_STEP, MAX_CLUSTERS));
       };
       // Within the GPU's limit neither run's room shrinks.
       const uint32_t templated = std::min(grown(cluster_room_ - built_limit_, templated_wanted_), cluster_limit_ - built_limit_);
@@ -2221,7 +2232,7 @@ class RtScene12 {
     std::vector<MicromapRead> set_micromap_reads;
     size_t set_micromap_room = (cluster_micromaps_ && bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
                                    ? std::min<size_t>(SET_MICROMAP_READS, MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
-                                                                                                      + (micromap_baking_.valid() ? 1u : 0u) + micromaps_baked_.size()))
+                                                                                                      + MicromapsBaking() + micromaps_baked_.size()))
                                    : 0u;
 #if defined(RENODX_NVAPI_CLUSTERS)
     auto* template_args =
@@ -2294,7 +2305,7 @@ class RtScene12 {
             compact_clusters, draw.first_vertex, set.offset * 16, set.clusters,
             set.vertices, set.triangles, STATIC_TRIANGLES + (static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES) + dynamic_triangles_used,
             masked ? STATIC_UVS + (static_cast<uint32_t>(slot_index) * dynamic_uvs_) + dynamic_uvs_used : UINT32_MAX,
-            draw.slice | (RecordFlags({.flags = draw.flags}, masked, version) << 16), capture_count + compact_drawn, draw.flags,
+            draw.slice | (RecordFlags({.flags = draw.flags | dlaa_bridge::RT_DYNAMIC}, masked, version) << 16), capture_count + compact_drawn, draw.flags,
             templated_run ? set.template_first : 0u,
         };
         std::memcpy(slot->compact_data + (uint64_t{compact_drawn} * 48), entry.data(), sizeof(entry));
@@ -2641,7 +2652,7 @@ class RtScene12 {
       std::vector<MicromapRead> micromap_reads = std::move(set_micromap_reads);
       size_t micromap_room = (bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
                                  ? MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
-                                                                                 + (micromap_baking_.valid() ? 1u : 0u) + micromaps_baked_.size())
+                                                                                 + MicromapsBaking() + micromaps_baked_.size())
                                  : 0u;
       // Instanced captures' rows to read back (their first texel in the vertex buffer).
       std::vector<Slot::RowRead> row_copies;
@@ -3633,6 +3644,11 @@ class RtScene12 {
 
   // The leaves' micromaps on their way: read once the GPU is past their request (their readbacks released), baked one at
   // a time on a thread, then waiting for a request to build them (Record).
+  // The bakes on their way on the workers.
+  size_t MicromapsBaking() const {
+    return static_cast<size_t>(std::ranges::count_if(micromap_baking_, [](const auto& baking) { return baking.valid(); }));
+  }
+
   void AdvanceMicromaps(uint64_t completed) {
     for (std::unique_ptr<MicromapBake>& read : micromap_reads_) {
       if (read->value > completed) continue;
@@ -3658,21 +3674,28 @@ class RtScene12 {
       read.reset();
     }
     std::erase(micromap_reads_, nullptr);
-    if (micromap_baking_.valid() && micromap_baking_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-      std::unique_ptr<MicromapBake> baked = micromap_baking_.get();
-      ++micromap_tally_[baked->indices.empty() ? 2 : 0];
-      micromap_tally_[1] += baked->data.size();
-      if (!baked->indices.empty()) micromaps_baked_.push_back(std::move(baked));
-    }
+    // MICROMAP_WORKERS bakes at once, each with its baker (one at a time, a battle's new grass sets waited seconds for
+    // theirs: without, dense grass met MAX_CANDIDATES and stayed dark, ATN 2026-10-29); grass sets first.
+    for (size_t worker = 0; worker < MICROMAP_WORKERS; ++worker) {
+      auto& baking = micromap_baking_[worker];
+      if (baking.valid() && baking.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        std::unique_ptr<MicromapBake> baked = baking.get();
+        ++micromap_tally_[baked->indices.empty() ? 2 : 0];
+        micromap_tally_[1] += baked->data.size();
+        if (!baked->indices.empty()) micromaps_baked_.push_back(std::move(baked));
+      }
 #if defined(RENODX_OMM_SDK)
-    if (!micromap_baking_.valid() && !micromap_queue_.empty()) {
-      micromap_baking_ = std::async(std::launch::async, [this, bake = std::move(micromap_queue_.front())]() mutable {
-        BakeMicromaps(bake.get());
-        return std::move(bake);
-      });
-      micromap_queue_.erase(micromap_queue_.begin());
-    }
+      if (!baking.valid() && !micromap_queue_.empty()) {
+        const auto next = std::ranges::find_if(micromap_queue_, [](const auto& queued) { return queued->set; });
+        const auto taken = (next != micromap_queue_.end()) ? next : micromap_queue_.begin();
+        baking = std::async(std::launch::async, [this, baker = omm_.bakers[worker], bake = std::move(*taken)]() mutable {
+          BakeMicromaps(bake.get(), baker);
+          return std::move(bake);
+        });
+        micromap_queue_.erase(taken);
+      }
 #endif
+    }
     // The bakes' tally at most every 10 s (the log).
     if ((micromap_tally_[0] + micromap_tally_[2]) != 0 && GetTickCount64() >= micromap_logged_ + 10000) {
       micromap_logged_ = GetTickCount64();
@@ -3688,7 +3711,7 @@ class RtScene12 {
   // wrapping, LEAF_ALPHA_CUTOFF), a micro-triangle about two texels across (at most level 6), the same ones shared, wholly
   // opaque or clear triangles the special indices (all of them so: no micromaps, no array); none (no indices) when the
   // SDK fails.
-  void BakeMicromaps(MicromapBake* bake) const {
+  void BakeMicromaps(MicromapBake* bake, ommBaker baker) const {
     ommCpuTextureMipDesc mip = ommCpuTextureMipDescDefault();
     mip.width = dlaa_bridge::RT_ATLAS_SIZE;
     mip.height = dlaa_bridge::RT_ATLAS_SIZE;
@@ -3700,7 +3723,7 @@ class RtScene12 {
     texture_desc.mipCount = 1;
     texture_desc.alphaCutoff = LEAF_ALPHA_CUTOFF;
     ommCpuTexture texture = nullptr;
-    if (omm_.create_texture(omm_.baker, &texture_desc, &texture) != ommResult_SUCCESS) return;
+    if (omm_.create_texture(baker, &texture_desc, &texture) != ommResult_SUCCESS) return;
     std::vector<uint32_t> corners(uint64_t{bake->triangles} * 3);
     std::iota(corners.begin(), corners.end(), 0u);
     ommCpuBakeInputDesc input = ommCpuBakeInputDescDefault();
@@ -3719,7 +3742,7 @@ class RtScene12 {
     input.maxWorkloadSize = MICROMAP_WORKLOAD;
     ommCpuBakeResult result = nullptr;
     const ommCpuBakeResultDesc* desc = nullptr;
-    if (omm_.bake(omm_.baker, &input, &result) == ommResult_SUCCESS && omm_.result_desc(result, &desc) == ommResult_SUCCESS
+    if (omm_.bake(baker, &input, &result) == ommResult_SUCCESS && omm_.result_desc(result, &desc) == ommResult_SUCCESS
         && desc->indexFormat == ommIndexFormat_UINT_32 && desc->indexCount == bake->triangles) {
       static_assert(sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC) == sizeof(ommCpuOpacityMicromapDesc));
       const auto* data = static_cast<const uint8_t*>(desc->arrayData);
@@ -3735,15 +3758,17 @@ class RtScene12 {
       bake->indices.assign(indices, indices + desc->indexCount);
     }
     if (result != nullptr) omm_.destroy_result(result);
-    omm_.destroy_texture(omm_.baker, texture);
+    omm_.destroy_texture(baker, texture);
   }
 #endif
 
-  // A capture's record flags (rt_scene.hlsli): alpha-tested leaves, thin cloth and sails (v11), smoke, grass.
+  // A capture's record flags (rt_scene.hlsli): alpha-tested leaves, thin cloth and sails (v11), smoke, grass, a leaves'
+  // mesh (static or placed: LEAF_INSTANCE; a compact draw's flags with RT_DYNAMIC: its swaying copy).
   static uint32_t RecordFlags(const dlaa_bridge::RtCapture& capture, bool masked, uint32_t version) {
     return (masked ? RECORD_MASKED : 0u) | ((version >= 11 && (capture.flags & dlaa_bridge::RT_THIN) != 0) ? RECORD_THIN : 0u)
            | ((masked && (capture.flags & dlaa_bridge::RT_SMOKE) != 0) ? RECORD_SMOKE : 0u)
-           | ((masked && (capture.flags & dlaa_bridge::RT_GRASS) != 0) ? RECORD_GRASS : 0u);
+           | ((masked && (capture.flags & dlaa_bridge::RT_GRASS) != 0) ? RECORD_GRASS : 0u)
+           | ((masked && (capture.flags & (dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SMOKE)) == 0) ? RECORD_LEAF : 0u);
   }
 
   // A static mesh's instances' group: grass, leaves (alpha-tested), or solid.
@@ -3799,7 +3824,7 @@ class RtScene12 {
   bool bake_micromaps_ = false;
   std::vector<std::unique_ptr<MicromapBake>> micromap_reads_;
   std::vector<std::unique_ptr<MicromapBake>> micromap_queue_;
-  std::future<std::unique_ptr<MicromapBake>> micromap_baking_;
+  std::array<std::future<std::unique_ptr<MicromapBake>>, MICROMAP_WORKERS> micromap_baking_;
   std::vector<std::unique_ptr<MicromapBake>> micromaps_baked_;
   // Since the last log line: meshes baked, their data's bytes, failed, of them grass sets (their templates rebuilt).
   std::array<uint64_t, 4> micromap_tally_ = {};

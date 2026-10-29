@@ -1296,6 +1296,25 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
         flags word): trace gpu_a = sun (with Light Through Leaves), b = AO, c = local lights, d = fog (+ soft).
       NEXT: ATN's third profile (same place): sun vs AO; then the sun's rays (Light Through Leaves' leaf query for every lit
       pixel?) or the AO (quarter rate already).
+    - v103 (2026-10-29, helper35; ATN's debug27: third profile + "grass shadow delay" + "RT shadows leak" screenshots).
+      Profile (v102): frame 34.5 ms; trace 13.5 = sun 10.2 (p90 15.5, max 24) + AO 3.0 + lights 0.14 + fog 0.17; bounce 1.1,
+      reflections 1.5, scene 1.4; the sun's cost follows none of grass / placed / clusters (highest, 12-15 ms, where the
+      view had the least grass: 4-7 K placed), so a city / terrain view cost; room grew to 524 K (4.9 GB). Done:
+      - Leak: rt_trace traces every pixel (the facing test only picks SunRay vs OccludedSolid from past itself): planar
+        pixels facing away (by the depth's normal) kept 1 before; grass (shaded with its own normal) and normal-mapped
+        walls at grazing angles were lit in other objects' shadows. Harness: a plate behind the wall (static key 13, z 9,
+        y 4.5..6.5) shadows the wall's camera side: check "facing away in a shadow" (helper34 255, helper35 0).
+      - Sun with Light Through Leaves: one query against everything first (none met: lit; solid or grass: blocked; a
+        leaves' mesh: its hit the first leaf, RECORD_LEAF = masked static / placed foliage, compact draws' records get
+        RT_DYNAMIC); else the old two-part logic. Harness 4K: open 0.250 -> 0.244, dense leaves 3.59 -> 3.67 (few leaf
+        instances there: the saved ray is cheap; in game it crosses the whole TLAS).
+      - Grass shadow delay = micromaps: until a new grass set / mesh is baked its blades are alpha-tested and dense grass
+        hits MAX_CANDIDATES (counted as blocked: too dark), seconds with one bake at a time. Now MICROMAP_WORKERS 4 (a
+        baker each, the SDK's internal threads on), grass sets first: harness leaf stress 48 meshes, 400 frames: 17 -> 33
+        built (6 workers without internal threads: 13).
+      - Room growth max(1.5x room, 1.25x wanted).
+      NEXT: ATN records twice at the same place, Light Through Leaves On / Off (and Swaying Grass Shadows Off), to see the
+      leaf logic's share of the sun; then the sun's rays (TMax, the leaves' query) or the AO.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

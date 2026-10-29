@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v103 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper35: ship them together)
+
+- **Shadow leaks fixed**: surfaces facing away from the sun are traced too (they were left lit, trusting the game's
+  shading to darken them): grass behind a big wall and the edge of a tower were lit in the wall's shadow.
+- **Grass shadows settle faster**: new grass's opacity micromaps bake 4 at a time, grass first (about twice as fast).
+  Before they are baked, dense grass is darker for a moment (the old delay was 2-3 s).
+- **Sun shadows with Light Through Leaves**: a pixel in the open takes one ray instead of two.
+- Mega Geometry's memory grows in steps of half again (it reached 4.9 GB in the third profile).
+
 ## v102 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper34: ship them together)
 
 ATN's second profile (the same place, v101): frame 45 -> 33 ms, the trace 17 -> 9 ms, reflections 6.3 -> 1.3 ms, Light
