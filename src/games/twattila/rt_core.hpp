@@ -362,7 +362,7 @@ class CpuTime {
 };
 
 // Path-Traced Ambient: the paths' frames with the game's ambient before it goes (the helper learns its sky's scale).
-constexpr uint32_t PATH_AMBIENT_FRAMES = 120;
+constexpr uint32_t PATH_AMBIENT_FRAMES = 30;
 
 // rt_positions.cs's constants: world positions from a depth.
 struct PositionConstants {

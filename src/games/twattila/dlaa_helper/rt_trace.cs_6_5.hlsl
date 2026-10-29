@@ -29,6 +29,10 @@ static const float AMBIENT_BLEND = 0.2f;
 static const uint PART_SUN = 1u << 30;
 static const uint PART_AMBIENT = 1u << 31;
 static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient rays (Occluded)
+// The sun's rays meet grass only while they are within GRASS_SHADOW_HEIGHT of their start's height (no blade is taller:
+// nothing past that can shade the start), at most GRASS_SHADOW_REACH along them (a sun near the horizon).
+static const float GRASS_SHADOW_HEIGHT = 2.5f;  // metres
+static const float GRASS_SHADOW_REACH = 40.f;   // metres
 // The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface. Not under
 // Ray Reconstruction: NVIDIA's guide gives it the raw signal (it replaces the denoisers that accumulate frames).
 float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
@@ -183,9 +187,26 @@ void main(uint3 id : SV_DispatchThreadID) {
                                                                         Random(uint3(id.xy, frame * 16u + 1001u + ray * 2u)))));
       }
       const float3 spot = (rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f;
-      // Off along the normal and toward the sun; where not planar toward the camera.
-      sum += facing ? SunRay((planar ? origin + toward * offset : origin) + spot, toward, near_grass ? ALL_INSTANCES : NO_GRASS)
-                    : float2(OccludedSolid(position.xyz + spot + toward * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
+      // Off along the normal and toward the sun; where not planar toward the camera. Grass apart, over the ray's first
+      // stretch only (rays skimming whole fields toward a low sun cost the sun 22-27 ms zoomed into grass, ATN's debug29).
+      const float3 start = (planar ? origin + toward * offset : origin) + spot;
+      float2 result = facing ? SunRay(start, toward, NO_GRASS)
+                             : float2(OccludedSolid(position.xyz + spot + toward * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
+      if (facing && near_grass && result.x > 0.f) {
+        RayDesc grass_ray;
+        grass_ray.Origin = start;
+        grass_ray.Direction = toward;
+        grass_ray.TMin = 0.f;
+        grass_ray.TMax = min(GRASS_SHADOW_HEIGHT / max(toward.y, 1e-3f), GRASS_SHADOW_REACH);
+        SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) grass;
+        grass.TraceRayInline(scene, scene_ray_flags, GRASS, grass_ray);
+        uint candidates = 0u;
+        while (grass.Proceed()) {
+          if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(grass)) grass.CommitNonOpaqueTriangleHit();
+        }
+        if (grass.CommittedStatus() == COMMITTED_TRIANGLE_HIT) result = float2(0.f, grass.CommittedRayT());
+      }
+      sum += result;
     }
     sun_visibility = sum.x / rays;
     blocker_distance = sum.y / rays;

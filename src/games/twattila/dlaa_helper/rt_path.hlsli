@@ -224,6 +224,11 @@ bool SeenLastFrame(float3 world, out uint2 pixel) {
   return seen.w > 0.f && distance(seen.xyz, world) < 0.03f + 0.01f * seen.w;
 }
 
+float3 HitAlbedo(float3 hit) {
+  float3 albedo;
+  return CacheAlbedo(hit, albedo) ? albedo : UNSEEN_ALBEDO;
+}
+
 // The light leaving a surface a ray met (false: nobody knows it): the screen's now, else last frame's, else the
 // radiance cache's (SHaRC's instead in PathRadiance with SHaRC Radiance Cache).
 bool HitLight(float3 hit, out float3 light_there) {
@@ -231,6 +236,11 @@ bool HitLight(float3 hit, out float3 light_there) {
   uint2 pixel;
   if ((path_flags & PATH_LIGHT) != 0u && SeenNow(hit, pixel)) {
     light_there = max(light[min(pixel / max(bounce_scale, 1u), uint2(bounce_width, bounce_height) - 1u)], 0.f);
+    // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the learned
+    // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
+    if ((path_flags & PATH_KEEP_LIGHT) != 0u) {
+      light_there += (((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit)) * light_kept[0].rgb;
+    }
     return true;
   }
   if (SeenLastFrame(hit, pixel)) {
@@ -244,10 +254,6 @@ bool HitLight(float3 hit, out float3 light_there) {
 #endif
 }
 
-float3 HitAlbedo(float3 hit) {
-  float3 albedo;
-  return CacheAlbedo(hit, albedo) ? albedo : UNSEEN_ALBEDO;
-}
 
 float3 OctahedralDecode(uint packed) {
   const float2 encoded = float2(int2(packed << 16, packed) >> 16) / 32767.f;

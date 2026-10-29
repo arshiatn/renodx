@@ -25,9 +25,11 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float4 position = positions[pixel];
   if (position.w <= 0.f) return;
   const float3 light_there = max(light[cell], 0.f);
-  CacheAdd(position.xyz, light_there);
+  const float3 base = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
+  // Path-Traced Ambient took the game's ambient away from the screen's light: the base colour x the learned shade in its
+  // place (rt_path.hlsli HitLight).
+  CacheAdd(position.xyz, light_there + (((path_flags & PATH_KEEP_LIGHT) != 0u) ? base * light_kept[0].rgb : 0.f));
   if ((path_flags & PATH_GUIDES) == 0u) return;
-  const float3 base = guide_albedo[pixel].rgb;
   CacheSetAlbedo(position.xyz, base);
 
   if (((id.x ^ id.y ^ (frame >> 2u)) & 1u) != 0u) return;

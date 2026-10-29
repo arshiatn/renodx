@@ -1508,13 +1508,15 @@ class RtScene12 {
   // triangles at most, the bakes on their way at most.
   static constexpr uint32_t MICROMAP_MESH_BYTES = 8u << 20;
   static constexpr uint32_t MICROMAP_TRIANGLES = 1u << 18;
-  static constexpr size_t MICROMAP_BAKES = 64;
+  static constexpr size_t MICROMAP_BAKES = 128;
   static constexpr size_t MICROMAP_WORKERS = 4;  // bakes at once (each with the SDK's own threads)
-  static constexpr size_t SET_MICROMAP_READS = 16;  // grass sets' micromap reads a request at most
+  static constexpr size_t SET_MICROMAP_READS = 32;  // grass sets' micromap reads a request at most
   static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
-  // GPU Micromap Baking: bakes a request at most, the SDK's descriptors (a ring: a few requests' bakes), its scratch.
-  static constexpr size_t MICROMAP_GPU_BAKES = 8;
-  static constexpr UINT OMM_DESCRIPTORS = 16384;
+  // GPU Micromap Baking: bakes a request at most (24: new grass in view baked within a few frames, ATN's debug29: its
+  // shadows settled after 1-2 s at 8), the SDK's descriptors (a ring: a few requests' bakes, room for 3 x 24), its
+  // scratch.
+  static constexpr size_t MICROMAP_GPU_BAKES = 24;
+  static constexpr UINT OMM_DESCRIPTORS = 65536;
   // Grass's finest micromap level (leaves': 6): new grass's shadows wait for its bakes (ATN's debug28: still a visible
   // delay), and level 6 is four times the work.
   static constexpr int GRASS_MICROMAP_LEVEL = 5;
@@ -3578,7 +3580,8 @@ class RtScene12 {
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, placed_state_->GetGPUVirtualAddress());
       // The camera (b2: grass outside the view stays out) and the sway's flags and range, then clear, drawn, kept (rt_place's
       // modes).
-      const std::array<uint32_t, 2> place_sway = {sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range)};
+      const std::array<uint32_t, 3> place_sway = {sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range),
+                                                  dxr12_ ? static_cast<uint32_t>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OMM_2_STATE) : 0u};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 16, shared.rt_view_projection, 0);
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(place_sway.size()), place_sway.data(), 16);
       for (const uint32_t mode : {0u, 1u, 2u}) {
@@ -4646,15 +4649,19 @@ class RtScene12 {
   // A world-space BLAS into the slot's TLAS instances (leaves not opaque: their alpha is tested), its InstanceID its
   // first geometry's record; placed by `transform` (null: where it was captured); `place` its partitioned TLAS index
   // (kept in InstanceContributionToHitGroupIndex: no hit groups here).
-  static void AddInstance(Slot* slot, UINT* instance_count, D3D12_GPU_VIRTUAL_ADDRESS blas, uint32_t record, bool foliage,
-                          const std::array<float, 12>* transform, uint32_t place, UINT mask) {
+  // Grass with micromaps (DXR 1.2): 2-state for every ray (NVIDIA's OMM guide: 2-state for secondary rays), its unknown
+  // states opaque or transparent as they lean: no alpha tests (ATN's debug29: sun rays 22-27 ms zoomed into grass and over
+  // a river's grassy bed).
+  void AddInstance(Slot* slot, UINT* instance_count, D3D12_GPU_VIRTUAL_ADDRESS blas, uint32_t record, bool foliage,
+                   const std::array<float, 12>* transform, uint32_t place, UINT mask) const {
     D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[(*instance_count)++];
     instance = {
         .InstanceID = record,
         .InstanceMask = mask,
         .InstanceContributionToHitGroupIndex = place,
         .Flags = static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
-                                   | (foliage ? 0u : static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE))),
+                                   | (foliage ? 0u : static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE))
+                                   | ((dxr12_ && mask == GRASS_INSTANCE) ? static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OMM_2_STATE) : 0u)),
         .AccelerationStructure = blas,
     };
     if (transform != nullptr) {
