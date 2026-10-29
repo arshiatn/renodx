@@ -2,6 +2,34 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v94 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper26, bridge v16 and omm-lib.dll: ship them together)
+
+- **Ray-Traced Shadows are every shadow**: the sun's (the game's sun shadow maps are no longer drawn and Screen-Space
+  Shadows turn off with them), the torches' and fires' (Ray-Traced Point Light Shadows folded in: a drawn light takes
+  the nearest traced one within 25 cm, carried torches keep theirs) and banners' and sails' (always cast). The forward
+  passes that read the game's shadow map (near grass, particles) take the rays' shadows. The separate Shadows Only and
+  Point Light toggles are gone.
+- **Moving shadows**: trees' leaves sway in their shadows (placed leaves streamed every frame with the wind within a
+  budget, their still copies hidden while drawn; branches stay still). Grass and banners were captured every frame with
+  the wind already.
+- **4x unit size battles**: compact capture (bridge v16): a soldier mesh's indices are read back once into cluster sets
+  and its vertices stream once each (not three a triangle), the terrain's too; 262,144 clusters a frame on GPUs over
+  12 GB (half on smaller ones). Placed meshes (bridge v14): rigid objects and trees keyed by their geometry, built once,
+  placed on the GPU every frame, kept 5 s off-screen.
+- **Faster scene builds** (RTX Mega Geometry cluster templates): a mesh's clusters are built once as templates and
+  instantiated each frame with their new positions (harness, 80,000 clusters: scene 1.48 -> 1.08 ms on the GPU).
+- **Leaf Micromaps (Experimental, on)**: NVIDIA's Opacity Micro-Map SDK bakes new leaves' opacity micromaps on the CPU
+  (the GPU bake that reset the GPU is gone), so shadow rays through trees run fewer alpha tests. omm-lib.dll and
+  OMM_SDK_LICENSE.txt ship with the helper; its log names each batch ("Leaf micromaps: N meshes baked").
+- **Ray-Traced Smoke Shadows (Experimental, off)**: smoke and dust dim the ray-traced sunlight they drift through, a
+  frame late (the lit particles streamed out, made soft disks facing the sun).
+- **Lighter helper**: its effects' histories (paths, ReSTIR GI, reflections, AO: ~1.3 GB at 4K) are made at first use
+  and released after 600 frames unused.
+- **Robustness**: garbage triangles left out before the BLAS builds; after a GPU reset the helper logs where the GPU
+  stopped (DRED) and starts a new device; the terrain captured without the game's camera-distance height push (the
+  black circle under the camera); the status line shows its GPU times first; a cost report every 10 s; the Debug
+  View's scene tests.
+
 ## v93 (2026-10-28, untested in game)
 
 - **Screen-space shadows no longer darken the campaign's sky** (ATN debug21, DLAA: the clouds past the map's edge

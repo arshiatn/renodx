@@ -1058,7 +1058,13 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           omm-lib.dll + OMM_SDK_LICENSE.txt; About credits the SDK.
           [-] early trace + late wait: no gap (the trace is asked at the AO pass, read right after). [-] CLAS memory to
           need: VRAM only (32 GB card). Both skipped.
-      [ ] 6 Grass / flags motion check; zip twattila_vN + helper; report.
+      [x] 6 Grass / flags: their captures use this frame's time_in_sec (grass wind, cloth), captured every frame: their
+          shadows move. All 10 other addons build (32-bit Rome II, Thrones; 64-bit Troy, Pharaoh, WH1-3, Ryse,
+          Expeditions, Shogun 2). Zip: Downloads\twattila_v94.zip (release_zip.py --helper: helper26, omm-lib.dll,
+          OMM_SDK_LICENSE.txt); README v94; helper + omm-lib.dll copied into Attila's folder. Morning report given.
+      NEXT (ATN's test): RT Shadows = all, swaying trees, 4x battles (cluster count / scene ms in the status line, GPU
+          times now first), Leaf Micromaps (log "Leaf micromaps: N meshes baked"; turn off if the GPU resets), Smoke
+          Shadows (Experimental, off: particle size scale, fire casting?).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
