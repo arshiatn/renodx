@@ -2,6 +2,20 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v102 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper34: ship them together)
+
+ATN's second profile (the same place, v101): frame 45 -> 33 ms, the trace 17 -> 9 ms, reflections 6.3 -> 1.3 ms, Light
+Bounce 3.1 -> 1.0 ms; the sun and AO now 8.7 of the trace's 9 ms.
+- **Faster swaying grass (and units, swaying leaves)**: each mesh's ray-traced clusters are grouped by place (they
+  followed the mesh's triangle order: a grass patch's clusters each spanned the whole patch). A 4K test field of swaying
+  grass: its share of the trace 0.34 -> 0.05 ms.
+- **Swaying Grass Shadows** (On / Off, in the Ray Tracing section): Off puts all grass in still, without the swaying
+  grass's per-frame work (~1.5 ms in the profile) and its memory (up to ~3 GB of VRAM).
+- **Fewer memory regrowths**: Mega Geometry's memory at least doubles when it grows (it regrew 12 times as the grass came
+  into view, reallocating GBs each time).
+- More room for placed grass (262 K instances; the profile reached 126 K of 131 K).
+- **Profile**: the sun's and the AO's costs timed apart.
+
 ## v101 (2026-10-29, untested in game; renodx-tw-dlaa64.exe helper33: ship them together)
 
 From ATN's first profile (Ctesiphon, 4K, every ray-traced effect on, grass maxed): the helper's GPU work was ~28 ms of a

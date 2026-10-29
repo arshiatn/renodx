@@ -65,6 +65,7 @@ struct Sliders {
   float light_glow = 1.f;          // torch and fire light in fog and smoke (0: none)
   float output_rays = 0.f;         // Ray Tracing at Output Resolution (below 100% render scale)
   float leaf_light = 0.f;
+  float grass_sway = 1.f;          // placed grass's swaying copies (Attila)
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
   float ambient_range = 2.f;       // metres
   float ambient_rays = 2.f;
@@ -117,6 +118,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
       .local_lights = sliders.sun_shadows != 0.f && dlaa,
       .leaf_light = sliders.leaf_light != 0.f,
+      .grass_sway = sliders.grass_sway != 0.f,
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
       .micromaps = sliders.micromaps != 0.f,
       .smoke_shadows = sliders.smoke_shadows != 0.f && sliders.sun_shadows != 0.f && dlaa,
@@ -918,6 +920,22 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_visible = [] {
             return std::ranges::any_of(internal::scene_shaders,
                                        [](const SceneShader& shader) { return (shader.foliage && !shader.dynamic) || shader.thin; });
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedGrassSway",
+          .binding = &sliders->grass_sway,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Swaying Grass Shadows",
+          .section = section,
+          .tooltip = "Ray-traced grass sways with the grass (as much as fits a frame).\n"
+                     "Off: still grass in the ray tracing, faster and less VRAM.",
+          .labels = {"Off", "On"},
+          .is_enabled = dlaa_on,
+          // Shown where grass is placed (Attila).
+          .is_visible = [] {
+            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass && !shader.rows_shader.empty(); });
           },
       },
       new renodx::utils::settings::Setting{

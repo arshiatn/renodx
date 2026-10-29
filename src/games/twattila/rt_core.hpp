@@ -97,6 +97,8 @@ struct Settings {
   bool local_lights = false;
   // Light through leaves (bridge v11): the sun's rays pass each leaf at a share (else leaves block it).
   bool leaf_light = false;
+  // Placed grass (Attila) sways within its share (its swaying copies traced; off: all of it placed still).
+  bool grass_sway = true;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -368,6 +370,7 @@ struct Runtime {
     bool failed = false;  // no set: its triangles captured
     bool sent = false;
     std::future<dlaa_bridge::ClusterSetData> making;  // its set on a worker (PrepareClusterSet)
+    ComPtr<ID3D11Buffer> corners;  // its first instance's captured corners, copied with its indices (the set's order)
   };
   std::unordered_map<uint64_t, ClusterMesh> cluster_meshes;
   // This frame's compact draws (consecutive ones of a mesh joined), the sets its trace sends and their bytes, its
@@ -691,9 +694,10 @@ inline bool AtlasSlice(ID3D11DeviceContext* native, ID3D11ShaderResourceView* te
   return true;
 }
 
-// A compact draw's mesh (v16) without its cluster set yet: its index range copied for the CPU (new), that copy read (two
-// frames on, never waiting; MAX_SET_BUILDS a frame) and its set made on a worker (MakeClusterSet took up to milliseconds
-// a mesh on the game's busy thread), at a later draw its set and remap index buffer taken. runtime.mutex held.
+// A compact draw's mesh (v16) without its cluster set yet: its index range copied for the CPU (new; Capture copies its
+// first instance's captured corners after), those copies read (two frames on, never waiting; MAX_SET_BUILDS a frame) and
+// its set made on a worker from its triangles in order of place (SortTriangles; MakeClusterSet took up to milliseconds a
+// mesh on the game's busy thread), at a later draw its set and remap index buffer taken. runtime.mutex held.
 inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3D11Buffer* index_buffer, DXGI_FORMAT format, UINT offset,
                               UINT first_index, UINT index_count) {
   auto& mesh = runtime.cluster_meshes[set_key];
@@ -735,6 +739,18 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
     return;
   }
   if (runtime.frame < mesh.copied_frame + 2 || runtime.set_builds >= MAX_SET_BUILDS) return;
+  // Its corners (copied after its indices: ready, they are too).
+  std::vector<std::array<float, 4>> corners;
+  if (mesh.corners) {
+    D3D11_MAPPED_SUBRESOURCE mapped_corners = {};
+    const HRESULT read = native->Map(mesh.corners.Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped_corners);
+    if (read == DXGI_ERROR_WAS_STILL_DRAWING) return;
+    if (SUCCEEDED(read)) {
+      const auto* first_corner = static_cast<const std::array<float, 4>*>(mapped_corners.pData);
+      corners.assign(first_corner, first_corner + index_count);
+      native->Unmap(mesh.corners.Get(), 0);
+    }
+  }
   D3D11_MAPPED_SUBRESOURCE mapped = {};
   const HRESULT result = native->Map(mesh.staging.Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
   if (result == DXGI_ERROR_WAS_STILL_DRAWING) return;
@@ -749,12 +765,14 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
     native->Unmap(mesh.staging.Get(), 0);
   }
   mesh.staging.Reset();
+  mesh.corners.Reset();
   mesh.failed = FAILED(result);
   if (mesh.failed) return;
-  mesh.making = std::async(std::launch::async, [indices = std::move(indices)] {
+  mesh.making = std::async(std::launch::async, [indices = std::move(indices), corners = std::move(corners)]() mutable {
     LARGE_INTEGER started;
     LARGE_INTEGER ended;
     QueryPerformanceCounter(&started);
+    dlaa_bridge::SortTriangles(indices, corners);
     dlaa_bridge::ClusterSetData set = dlaa_bridge::MakeClusterSet(indices);
     QueryPerformanceCounter(&ended);
     runtime.set_ticks += ended.QuadPart - started.QuadPart;
@@ -924,8 +942,8 @@ void Capture(Context& command, const SceneShader& shader) {
   // A dynamic indexed draw can be compact (v16; the terrain's too: a vertex a texel, not three a triangle), so can a placed
   // draw of leaves (its trees sway: their leaves where drawn also captured every frame, in the wind): its mesh's key (its
   // index buffer and range) and that buffer.
-  const bool compactable = INDEXED && (placed ? (shader.foliage && !shader.capture_shader.empty()) : dynamic) && index_buffer != nullptr
-                           && dlaa_bridge::CompactState() != 0;
+  const bool compactable = INDEXED && (placed ? (shader.foliage && !shader.capture_shader.empty() && !(shader.grass && !runtime.settings.grass_sway)) : dynamic)
+                           && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
   uint64_t set_key = 14695981039346656037ull;
   ComPtr<ID3D11Buffer> compact_indices;
   if constexpr (INDEXED) {
@@ -1020,7 +1038,7 @@ void Capture(Context& command, const SceneShader& shader) {
       // placed still: grass was left out, whole fields without shadows with Grass Always Drawn, ATN 2026-10-29); else not
       // its turn, its instances as many as at its last placement (none came into sight).
       sway = blocks
-             && (shader.grass ? runtime.grass_vertices + (block_triangles * 3) <= runtime.alpha_corners / 2
+             && (shader.grass ? runtime.settings.grass_sway && runtime.grass_vertices + (block_triangles * 3) <= runtime.alpha_corners / 2
                               : (runtime.tree_vertices + block_texels <= MAX_TREE_VERTICES
                                  && runtime.tree_corners + (block_triangles * 3) <= runtime.alpha_corners - (runtime.alpha_corners / 2)))
              && runtime.dynamic_vertices + block_texels <= MAX_DYNAMIC_VERTICES
@@ -1219,6 +1237,20 @@ void Capture(Context& command, const SceneShader& shader) {
   native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
   native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
+  // A mesh whose cluster set is on its way (its indices copied this frame): its first instance's corners just captured
+  // copied too (PrepareClusterSet orders the set's triangles by place).
+  if constexpr (INDEXED) {
+    if (const auto mesh = (compactable && !blocks && !place) ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end();
+        mesh != runtime.cluster_meshes.end() && mesh->second.staging && !mesh->second.corners && mesh->second.copied_frame == runtime.frame) {
+      const D3D11_BUFFER_DESC corners_desc = {.ByteWidth = arguments.index_count * 16, .Usage = D3D11_USAGE_STAGING,
+                                              .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+      if (SUCCEEDED(device->CreateBuffer(&corners_desc, nullptr, mesh->second.corners.GetAddressOf()))) {
+        const D3D11_BOX range = {.left = runtime.captured_vertices * 16, .top = 0, .front = 0,
+                                 .right = (runtime.captured_vertices + arguments.index_count) * 16, .bottom = 1, .back = 1};
+        native->CopySubresourceRegion(mesh->second.corners.Get(), 0, 0, 0, 0, objects.captured.Get(), 0, &range);
+      }
+    }
+  }
   // A compact draw's blocks (from the captured vertices' end): after the last compact draw of its mesh (its blocks right
   // after), more of its instances; its set sent with this frame's trace when the helper lacks it.
   const auto add_blocks = [&] {

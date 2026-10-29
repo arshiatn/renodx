@@ -25,6 +25,9 @@ RWTexture2D<float2> sun_rays : register(u2);  // soft shadows: lit, blocker dist
 RWTexture2D<float> ambient_history[2] : register(u28);  // the ambient visibility kept over frames (v11)
 
 static const float AMBIENT_BLEND = 0.2f;
+// The profile's split (RT_PROFILE, rt_d3d12.hpp): this dispatch the sun's part alone, or the ambient's.
+static const uint PART_SUN = 1u << 30;
+static const uint PART_AMBIENT = 1u << 31;
 static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient rays (Occluded)
 // The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface.
 float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
@@ -120,9 +123,11 @@ void main(uint3 id : SV_DispatchThreadID) {
   // sun's disk (it denoises them).
   const bool filtered = sun_cone > 0.f && (flags & RECONSTRUCTED) == 0u;
   if (position.w <= 0.f) {
-    visibility[id.xy] = 1.f;
-    ambient[id.xy] = 1.f;
-    if (filtered) sun_rays[id.xy] = float2(1.f, 0.f);
+    if ((flags & PART_AMBIENT) == 0u) {
+      visibility[id.xy] = 1.f;
+      if (filtered) sun_rays[id.xy] = float2(1.f, 0.f);
+    }
+    if ((flags & PART_SUN) == 0u) ambient[id.xy] = 1.f;
     return;
   }
   const float3 normal = SurfaceNormal(int2(id.xy), position);
@@ -137,7 +142,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   // game's shadow maps). Corners, cracks and edges are traced either way: their normal can be wrong (left lit, they let
   // the sun into the cracks where wall parts meet, ATN 2026-10-29); those facing away against solid surfaces only, from
   // past themselves (a leaf or blade does not shadow itself).
-  if ((flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f && (facing || !planar)) {
+  if ((flags & SUN_SHADOWS) != 0u && (flags & PART_AMBIENT) == 0u && toward_sun.w != 0.f && (facing || !planar)) {
     // With several rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel, averaged.
     const uint rays = clamp(shadow_rays, 1u, 4u);
     const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
@@ -158,11 +163,14 @@ void main(uint3 id : SV_DispatchThreadID) {
     sun_visibility = sum.x / rays;
     blocker_distance = sum.y / rays;
   }
-  if (filtered) {
-    sun_rays[id.xy] = float2(sun_visibility, blocker_distance);
-  } else {
-    visibility[id.xy] = sun_visibility;
+  if ((flags & PART_AMBIENT) == 0u) {
+    if (filtered) {
+      sun_rays[id.xy] = float2(sun_visibility, blocker_distance);
+    } else {
+      visibility[id.xy] = sun_visibility;
+    }
   }
+  if ((flags & PART_SUN) != 0u) return;
   // At a quarter rate the block's other pixels leave their ambient to the one tracing this frame.
   const bool quarter = (flags & AMBIENT_QUARTER) != 0u;
   if (quarter && any(id.xy != (id.xy & ~1u) + uint2(frame & 1u, (frame >> 1) & 1u))) return;

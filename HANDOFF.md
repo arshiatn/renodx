@@ -1279,6 +1279,23 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       field 61 x 61, every effect: helper32 13.7 ms -> helper33 7.1 ms; no grass: +0.2 ms. All 16 modes pass.
       NEXT: ATN's second profile (the same place and settings) shows each pass's share; then the next pass on whatever
       leads (candidates: AO quarter-rate everywhere, sun at half rate under RR, fog step count, BLAS ops merged).
+    - v102 (2026-10-29, helper34; ATN's second profile Attila\debug26, same place / settings as debug25, v101): frame 45.4 ->
+      33.0 ms mean (p90 69 -> 45), the game's GPU waiting for the helper 19.2 -> 11.7; trace 17.0 -> 9.0 (gpu_a sun+AO 8.66,
+      lights 0.14, fog 0.17), bounce 3.1 -> 1.03, reflections 6.3 -> 1.31, scene 1.55 -> 2.07 (clusters 1.48: 144 K clusters,
+      5.1 M grass triangles swaying), placed 65 K (max 126 K of 131 K), the room regrown 12 times to 352 K (3.3 GB). Done:
+      - Cluster sets in order of place: dlaa_bridge.hpp SortTriangles (Morton order of the triangles' centres, garbage last);
+        Capture copies a new mesh's first instance's captured corners (objects.captured, after its SO targets are put
+        back) the frame its indices are copied (ClusterMesh::corners), PrepareClusterSet reads both, the worker sorts and
+        makes the set. Harness HARNESS_COMPACT_FIELD=61 (3721 swaying 1000-blade patches) 4K every effect: trace 1.73 (blades
+        in random order) -> 1.44 ms sorted, 1.39 without the field; check "sorted cluster set".
+      - Swaying Grass Shadows (RayTracedGrassSway, default On; shown where grass is placed): Off = grass never sways in RT
+        (no compact grass, no sets made for it; all placed still in turns).
+      - Room growth: a crowded run's room max(2x, 1.5x wanted) (was 1.5x wanted: 12 regrowths).
+      - MAX_INSTANCES 262144, the placements' dedupe table 2^19.
+      - Profile: with RT_PROFILE the trace runs as two dispatches (rt_trace PART_SUN / PART_AMBIENT via the settings'
+        flags word): trace gpu_a = sun (with Light Through Leaves), b = AO, c = local lights, d = fog (+ soft).
+      NEXT: ATN's third profile (same place): sun vs AO; then the sun's rays (Light Through Leaves' leaf query for every lit
+      pixel?) or the AO (quarter rate already).
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,

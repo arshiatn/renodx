@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cfloat>
+#include <cmath>
 #include <mutex>
 #include <thread>
 #include <string_view>
@@ -701,6 +703,50 @@ inline uint32_t CompactState() {
 inline uint32_t DynamicUvs() {
   return (bridge.shared != nullptr && bridge.shared->rt_dynamic_uvs != 0) ? std::min(bridge.shared->rt_dynamic_uvs, RT_DYNAMIC_UVS)
                                                                          : RT_DYNAMIC_UVS / 2;
+}
+
+// A mesh's triangles (`indices`, three a triangle) in Morton order of their centres (`corners`: its first instance's
+// captured corners, three a triangle in index order; garbage ones last): a cluster set made from them has its clusters
+// close in space. In index order a grass patch's clusters each spanned the whole patch (its blades in no order), every
+// ray entering it went through all of them (the harness's field of 1000-blade patches at 4K: 0.35 ms of the trace in
+// random order, 0.03 sorted).
+inline void SortTriangles(std::span<uint32_t> indices, std::span<const std::array<float, 4>> corners) {
+  const size_t triangles = std::min(indices.size(), corners.size()) / 3;
+  if (triangles < 2) return;
+  std::array<float, 3> low = {FLT_MAX, FLT_MAX, FLT_MAX};
+  std::array<float, 3> high = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+  for (size_t corner = 0; corner < triangles * 3; ++corner) {
+    for (size_t axis = 0; axis < 3; ++axis) {
+      if (!std::isfinite(corners[corner][axis])) continue;
+      low[axis] = std::min(low[axis], corners[corner][axis]);
+      high[axis] = std::max(high[axis], corners[corner][axis]);
+    }
+  }
+  // 10 bits an axis of the centre in the mesh's box, interleaved.
+  const auto spread = [](uint32_t value) {
+    value = (value | (value << 16)) & 0x030000FFu;
+    value = (value | (value << 8)) & 0x0300F00Fu;
+    value = (value | (value << 4)) & 0x030C30C3u;
+    return (value | (value << 2)) & 0x09249249u;
+  };
+  std::vector<std::pair<uint32_t, uint32_t>> order(triangles);
+  for (size_t triangle = 0; triangle < triangles; ++triangle) {
+    uint32_t code = 0;
+    bool finite = true;
+    for (size_t axis = 0; axis < 3; ++axis) {
+      const float centre = (corners[triangle * 3][axis] + corners[triangle * 3 + 1][axis] + corners[triangle * 3 + 2][axis]) / 3.f;
+      finite = finite && std::isfinite(centre);
+      const float extent = high[axis] - low[axis];
+      const float unit = (finite && extent > 0.f) ? std::clamp((centre - low[axis]) / extent, 0.f, 1.f) : 0.f;
+      code |= spread(static_cast<uint32_t>(unit * 1023.f)) << axis;
+    }
+    order[triangle] = {finite ? code : UINT32_MAX, static_cast<uint32_t>(triangle)};
+  }
+  std::ranges::stable_sort(order, {}, &std::pair<uint32_t, uint32_t>::first);
+  std::vector<uint32_t> sorted;
+  sorted.reserve(triangles * 3);
+  for (const auto& [code, triangle] : order) sorted.insert(sorted.end(), indices.begin() + (triangle * 3), indices.begin() + (triangle * 3) + 3);
+  std::ranges::copy(sorted, indices.begin());
 }
 
 // A mesh's cluster set (v16) from its index list (three a triangle; degenerate ones left out): its triangles in order,

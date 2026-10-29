@@ -1209,11 +1209,14 @@ class RtScene12 {
   }};
   static constexpr size_t SLOTS = 3;
   // A slot's GPU timestamps: a trace's start, scene, TLAS, end, its clusters' start and end (a paths request's start and
-  // end at 4, 5), then the profile's (RT_PROFILE) parts' ends: a trace's sun and AO, local lights, fog; a paths request's
-  // radiance cache (or the Light Bounce's rays), paths, reuse.
+  // end at 4, 5), then the profile's (RT_PROFILE) parts' ends: a trace's sun, AO, local lights (fog after); a paths
+  // request's radiance cache (or the Light Bounce's rays), paths, reuse (reflections after).
   static constexpr size_t STAMPS = 9;
-  // The TLAS's instances at most (8 MB of descs; twice 65536 since grass past its share is placed: a patch an instance).
-  static constexpr UINT MAX_INSTANCES = 131072;
+  static constexpr uint32_t TRACE_PART_SUN = 1u << 30;  // rt_trace.cs_6_5.hlsl PART_*
+  static constexpr uint32_t TRACE_PART_AMBIENT = 1u << 31;
+  // The TLAS's instances at most (16 MB of descs; grass past its share is placed, a patch an instance: ATN's second
+  // profile placed up to 126 K).
+  static constexpr UINT MAX_INSTANCES = 262144;
   static constexpr UINT TRANSFER_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
   // Meshes drawn within this many frames cast (but the terrain only in frames that draw it); unseen longer: released.
   static constexpr uint32_t RECENT_FRAMES = 300;
@@ -1276,7 +1279,7 @@ class RtScene12 {
   // records' BLAS addresses in its upload buffer; the dedupe table's keys.
   static constexpr UINT PLACE_JOBS = dlaa_bridge::RT_CAPTURES + dlaa_bridge::RT_PLACEMENTS;
   static constexpr uint64_t PLACE_TABLE_BYTES = uint64_t{STATIC_RECORDS} * 8;
-  static constexpr UINT PLACE_TABLE = 1u << 18;
+  static constexpr UINT PLACE_TABLE = 1u << 19;  // rt_place's dedupe table (twice MAX_INSTANCES)
   static constexpr UINT CLUSTER_RECORDS = STATIC_RECORDS + SLOTS * dlaa_bridge::RT_CAPTURES;
   static constexpr UINT RECORD_COUNT = CLUSTER_RECORDS + SLOTS * MAX_CLUSTERS;
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
@@ -2156,9 +2159,10 @@ class RtScene12 {
       list->ResourceBarrier(1, &copied);
     }
 #if defined(RENODX_NVAPI_CLUSTERS)
-    // The last request's clusters filled 3/4 of a run's room or more: each run's room half again what it wanted (in steps
-    // of CLUSTER_STEP; ATN's 2026-10-29 profile wanted 166 K clusters, all from templates, and doubling the whole room
-    // made 524 K, 4.8 GB), made on a worker and put in at the first request after (no memory for it: the room stays).
+    // The last request's clusters filled 3/4 of a run's room or more: that run's room twice what it was or half again what
+    // it wanted (in steps of CLUSTER_STEP; doubling the whole room made 524 K clusters for 166 K, 4.8 GB, ATN's first
+    // profile; half again what it wanted grew it 12 times as the grass came into view, the second), made on a worker and
+    // put in at the first request after (no memory for it: the room stays).
     if (cluster_growing_.valid() && cluster_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<ClusterRoom> made = cluster_growing_.get(); made) {
         UseClusterRoom(made.get());
@@ -2170,7 +2174,9 @@ class RtScene12 {
     }
     if (clusters_ && clusters_crowded_ && !cluster_growing_.valid() && cluster_room_ < cluster_limit_) {
       const auto grown = [](uint32_t room, uint64_t wanted) {
-        return std::max(room, static_cast<uint32_t>(std::min<uint64_t>((wanted * 3 / 2 + CLUSTER_STEP - 1) / CLUSTER_STEP * CLUSTER_STEP, MAX_CLUSTERS)));
+        if (wanted * 4 <= uint64_t{room} * 3) return room;
+        const uint64_t step = std::max<uint64_t>(uint64_t{room} * 2, (wanted * 3 / 2 + CLUSTER_STEP - 1) / CLUSTER_STEP * CLUSTER_STEP);
+        return static_cast<uint32_t>(std::min<uint64_t>(step, MAX_CLUSTERS));
       };
       // Within the GPU's limit neither run's room shrinks.
       const uint32_t templated = std::min(grown(cluster_room_ - built_limit_, templated_wanted_), cluster_limit_ - built_limit_);
@@ -3402,8 +3408,18 @@ class RtScene12 {
     }
     Mark(list, L"trace");
     list->SetPipelineState(trace_pipeline_.Get());
-    list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
-    ProfileStamp(list, slot_index, 0);
+    if (profiling_) {
+      // The profile's split: the sun's part, then the ambient's (rt_trace's PART_*), timed apart.
+      list->SetComputeRoot32BitConstant(ROOT_SETTINGS, settings[1] | TRACE_PART_SUN, 1);
+      list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+      ProfileStamp(list, slot_index, 0);
+      list->SetComputeRoot32BitConstant(ROOT_SETTINGS, settings[1] | TRACE_PART_AMBIENT, 1);
+      list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+      ProfileStamp(list, slot_index, 1);
+      list->SetComputeRoot32BitConstant(ROOT_SETTINGS, settings[1], 1);
+    } else {
+      list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+    }
     // The local lights' shadows (rt_lights: their own registers; before this trace's positions become the history).
     if (local_lights) {
       Mark(list, L"local lights");
@@ -3431,7 +3447,7 @@ class RtScene12 {
       ambient_frame_ = frame;
       ambient_parity_ ^= 1u;
     }
-    ProfileStamp(list, slot_index, 1);
+    ProfileStamp(list, slot_index, 2);
     // This trace's lights for the next one's places.
     if (lights_kept) {
       for (uint32_t light = 0; light < light_count; ++light) std::copy_n(shared.rt_lights[light], 4, previous_lights_[light].begin());
@@ -3443,7 +3459,6 @@ class RtScene12 {
       list->SetPipelineState(fog_pipeline_.Get());
       list->Dispatch((shared.rt_width + 31) / 32, (shared.rt_height + 31) / 32, 1);
     }
-    ProfileStamp(list, slot_index, 2);
     if (soft && !reconstructed) {
       // Soft shadows: the rays' penumbras.
       list->ResourceBarrier(1, &uav_barrier);
