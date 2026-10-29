@@ -113,6 +113,10 @@ float3 Camera() {
   return sun[uint2(1, 0)].xyz;
 }
 
+#if defined(SHARC)
+#include "./rt_sharc.hlsli"
+#endif
+
 uint CacheHash(uint4 value) {
   uint hash = value.x * 0x8DA6B343u ^ value.y * 0xD8163841u ^ value.z * 0xCB1AB31Fu ^ value.w * 0x165667B1u;
   hash ^= hash >> 15;
@@ -220,7 +224,8 @@ bool SeenLastFrame(float3 world, out uint2 pixel) {
   return seen.w > 0.f && distance(seen.xyz, world) < 0.03f + 0.01f * seen.w;
 }
 
-// The light leaving a surface a ray met (false: nobody knows it).
+// The light leaving a surface a ray met (false: nobody knows it): the screen's now, else last frame's, else the
+// radiance cache's (SHaRC's instead in PathRadiance with SHaRC Radiance Cache).
 bool HitLight(float3 hit, out float3 light_there) {
   light_there = 0.f;
   uint2 pixel;
@@ -232,7 +237,11 @@ bool HitLight(float3 hit, out float3 light_there) {
     light_there = max(previous_color[pixel].rgb, 0.f);
     return true;
   }
+#if defined(SHARC)
+  return false;
+#else
   return (path_flags & PATH_CACHE_VALID) != 0u && CacheLookup(hit, light_there);
+#endif
 }
 
 float3 HitAlbedo(float3 hit) {
@@ -302,6 +311,25 @@ float3 LocalLight(float3 surface, float3 normal, float u) {
   return picked * (total / picked_weight);
 }
 
+// The light a surface the screen never saw sends back (its base colour lit): the sun's through a shadow ray from its
+// `surface` (or from `behind` it through leaves, cloth and sails at their `transmittance`) once the learned lighting is
+// solved, and with the local lights two of them picked (less noise from fires and torches than one) by `light_seed`.
+float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint2 seed, uint light_seed) {
+  const float4 toward_sun = sun[uint2(0, 0)];
+  const float n_dot_l = dot(normal, toward_sun.xyz);
+  const float sun_share = (n_dot_l > 0.f) ? n_dot_l : (-n_dot_l * transmittance);
+  float3 emitted = 0.f;
+  if (toward_sun.w != 0.f && sun_share > 0.f && light_kept[0].w > 0.f
+      && !Occluded((n_dot_l > 0.f) ? surface : behind, toward_sun.xyz, 1.0e4f, NO_GRASS_SMOKE)) {
+    emitted = albedo * light_kept[1].rgb * sun_share;
+  }
+  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) {
+    emitted += albedo * (0.5f * (LocalLight(surface, normal, Random(uint3(seed, light_seed + 16384u)))
+                                 + LocalLight(surface, normal, Random(uint3(seed, light_seed + 24576u)))));
+  }
+  return emitted;
+}
+
 // The game's ambient cube's mean over its six directions (the sun texture's texels 3-8; rt_sun.cs_5_0.hlsl).
 float3 AmbientCubeMean() {
   float3 mean = 0.f;
@@ -331,9 +359,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
   first_normal = 0.f;
   float3 radiance = 0.f;
   float3 throughput = 1.f;
-  const float4 toward_sun = sun[uint2(0, 0)];
   const float4 shade = light_kept[0];
-  const float3 sunlit = light_kept[1].rgb;
   bool unseen = false;
   float3 unseen_position = 0.f;
   float3 unseen_throughput = 1.f;
@@ -364,6 +390,15 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     const uint record_index = query.CommittedInstanceID() + query.CommittedGeometryIndex();
     const float3 normal = HitNormal(record_index, query.CommittedPrimitiveIndex(), direction, query.CommittedObjectToWorld3x4());
     if (vertex == 0u) first_normal = normal;
+#if defined(SHARC)
+    // SHaRC Radiance Cache: what the screen does not know from SHaRC (by the surface's normal; not for a ray shorter than
+    // its voxel).
+    const SharcHitData sharc_hit = {position, normal};
+    if (query.CommittedRayT() >= SharcVoxelSize(position) && SharcGetCachedRadiance(Sharc(), sharc_hit, light_there, false)) {
+      radiance += throughput * light_there;
+      break;
+    }
+#endif
     const float3 albedo = HitAlbedo(position);
     const float offset = SurfaceOffset(distance(position, Camera()));
     const float3 surface = position + normal * offset;
@@ -372,18 +407,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     const uint record_flags = records[record_index].z >> 16;
     const float transmittance = ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
     const float3 behind = position - normal * offset;
-    float3 emitted = 0.f;
-    const float n_dot_l = dot(normal, toward_sun.xyz);
-    const float sun_share = (n_dot_l > 0.f) ? n_dot_l : (-n_dot_l * transmittance);
-    if (toward_sun.w != 0.f && sun_share > 0.f && shade.w > 0.f && !Occluded((n_dot_l > 0.f) ? surface : behind, toward_sun.xyz, 1.0e4f, NO_GRASS_SMOKE)) {
-      emitted = albedo * sunlit * sun_share;
-    }
-    if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) {
-      // Two lights picked (less noise from fires and torches than one).
-      const uint light_seed = frame * 64u + path * 8u + vertex * 2u;
-      emitted += albedo * (0.5f * (LocalLight(surface, normal, Random(uint3(seed, light_seed + 16384u)))
-                                   + LocalLight(surface, normal, Random(uint3(seed, light_seed + 24576u)))));
-    }
+    const float3 emitted = UnseenLight(surface, behind, normal, albedo, transmittance, seed, frame * 64u + path * 8u + vertex * 2u);
     if (!unseen) {
       unseen = true;
       unseen_position = position;

@@ -68,6 +68,14 @@
 #include "rt_sway.h"              // dxc -Fh (build.ps1)
 #include "rt_trace.h"             // dxc -Fh (build.ps1)
 #include "rt_trace_omm.h"         // dxc -Fh (build.ps1)
+// NVIDIA's SHaRC (NVIDIA RTX SDKs License; build.ps1 compiles its headers into these when build\downloads\sharc holds
+// them): SHaRC Radiance Cache.
+#if __has_include("rt_path_sharc.h")
+#include "rt_path_sharc.h"
+#include "rt_sharc_resolve.h"
+#include "rt_sharc_update.h"
+#define RENODX_SHARC 1
+#endif
 
 // The DLAA helper's ray tracing (bridge v4-v6; the addon's rt_scene.hpp): DXR needs a 64-bit process, the Total War
 // games with the bridge are 32-bit. Its own D3D12 device keeps a BLAS per captured draw (its triangles in world space,
@@ -598,6 +606,23 @@ class RtScene12 {
       }
     }
     if (clusters_ && !pipeline(RT_SWAY, sizeof(RT_SWAY), &sway_pipeline_)) sway_pipeline_.Reset();
+#if defined(RENODX_SHARC)
+    // SHaRC Radiance Cache (shader model 6.9 here: 64-bit atomics, 16-bit types): its pipelines, or none (the status says
+    // which failed).
+    if (dxr12_) {
+      const std::array<std::tuple<const void*, size_t, ComPtr<ID3D12PipelineState>*, const char*>, 3> sharc_pipelines = {{
+          {RT_PATH_SHARC, sizeof(RT_PATH_SHARC), &sharc_path_pipeline_, "paths"},
+          {RT_SHARC_UPDATE, sizeof(RT_SHARC_UPDATE), &sharc_update_pipeline_, "update"},
+          {RT_SHARC_RESOLVE, sizeof(RT_SHARC_RESOLVE), &sharc_resolve_pipeline_, "resolve"},
+      }};
+      for (const auto& [code, bytes, state, name] : sharc_pipelines) {
+        if (sharc_failed_.empty() && !pipeline(code, bytes, state)) sharc_failed_ = name;
+      }
+      if (!sharc_failed_.empty()) {
+        for (const auto& sharc_pipeline : sharc_pipelines) std::get<2>(sharc_pipeline)->Reset();
+      }
+    }
+#endif
     std::string gpu_baker = "no micromaps";
 #if defined(RENODX_OMM_SDK)
     if (dxr12_ && bake_micromaps_) gpu_baker = pipeline(RT_OMM_UVS, sizeof(RT_OMM_UVS), &omm_gpu_.clamp) ? std::string() : "rt_omm_uvs";
@@ -636,7 +661,7 @@ class RtScene12 {
     device_->CreateUnorderedAccessView(normals_.Get(), nullptr, &normals_written, Descriptor(NORMALS_WRITTEN));
     WriteNullPathDescriptors();
     status_ = std::format("Ray tracing ready ({}{}{}; {}{})", dxr12_ ? "DXR 1.2: opacity micromaps" : "DXR 1.1",
-                          path_ser_ ? ", shader execution reordering" : "",
+                          std::string(path_ser_ ? ", shader execution reordering" : "") + (sharc_path_pipeline_ ? ", SHaRC" : (sharc_failed_.empty() ? "" : ", no SHaRC: its " + sharc_failed_ + " failed")),
                           (dxr12_ && bake_micromaps_) ? (gpu_micromaps_ ? "; leaf micromaps: NVIDIA OMM SDK (CPU, GPU)"
                                                                         : "; leaf micromaps: NVIDIA OMM SDK (CPU; GPU off: " + gpu_baker + ")")
                                                       : std::string(),
@@ -1217,6 +1242,30 @@ class RtScene12 {
           cache_frame_ = frame;
           cache_filled_ = true;
         }
+        // SHaRC Radiance Cache (bridge v18, with Path Tracing): its buffers at u6-u8, its update (a bounce texel of each
+        // SHARC_BLOCK x SHARC_BLOCK) and resolve, then the paths read it (their SHaRC variant). Not the reflections: their
+        // SHaRC variant hung the GPU at 4K in the harness (the 5090).
+        bool sharc = sharc_path_pipeline_ && path_traced && version >= 18 && (requested & dlaa_bridge::RT_PATH_SHARC) != 0;
+        for (size_t index = 0; index < sharc_buffers_.size() && sharc; ++index) {
+          sharc = GrowBuffer(&sharc_buffers_[index], uint64_t{SHARC_ENTRIES} * SHARC_STRIDES[index], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        }
+        if (sharc) {
+          list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, sharc_buffers_[0]->GetGPUVirtualAddress());
+          list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, sharc_buffers_[1]->GetGPUVirtualAddress());
+          list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, sharc_buffers_[2]->GetGPUVirtualAddress());
+          if (sharc_frame_ != frame) {
+            const uint32_t blocks_x = (shared.rt_bounce_width + SHARC_BLOCK - 1) / SHARC_BLOCK;
+            const uint32_t blocks_y = (shared.rt_bounce_height + SHARC_BLOCK - 1) / SHARC_BLOCK;
+            Mark(list, L"SHaRC");
+            list->SetPipelineState(sharc_update_pipeline_.Get());
+            list->Dispatch((blocks_x + 7) / 8, (blocks_y + 7) / 8, 1);
+            list->ResourceBarrier(1, &uav_barrier);
+            list->SetPipelineState(sharc_resolve_pipeline_.Get());
+            list->Dispatch(SHARC_ENTRIES / 64, 1, 1);
+            list->ResourceBarrier(1, &uav_barrier);
+            sharc_frame_ = frame;
+          }
+        }
         ProfileStamp(list, slot_index, 0);
         Mark(list, L"path tracing");
         // With Path Tracing SER (bridge v18) the ray generation shaders.
@@ -1232,7 +1281,10 @@ class RtScene12 {
           };
           list->DispatchRays(&rays);
         };
-        if (path_traced && ser) {
+        if (path_traced && sharc) {
+          list->SetPipelineState(sharc_path_pipeline_.Get());
+          list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+        } else if (path_traced && ser) {
           dispatch_rays(0, shared.rt_bounce_width, shared.rt_bounce_height);
         } else if (path_traced) {
           list->SetPipelineState(path_pipeline_.Get());
@@ -1262,6 +1314,12 @@ class RtScene12 {
           list->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
           specular_frame_ = frame;
           specular_history_valid_ = true;
+        }
+        // Unused root descriptors still point at a buffer.
+        if (sharc) {
+          for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
+            list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
+          }
         }
         const auto from_previous = Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
         list->ResourceBarrier(1, &from_previous);
@@ -4785,6 +4843,18 @@ class RtScene12 {
   ComPtr<ID3D12StateObject> path_ser_;
   ComPtr<ID3D12Resource> path_ser_table_;
   static constexpr uint64_t PATH_SER_RECORD = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
+  // SHaRC Radiance Cache (rt_sharc.hlsli; null pipelines: unavailable): the paths' SHaRC variant, its update and resolve,
+  // its buffers (SHARC_ENTRIES each of SHARC_STRIDES: the keys, a frame's sums, the resolved light;
+  // made at first use, zeroed as committed buffers are) and the frame its update last ran.
+  ComPtr<ID3D12PipelineState> sharc_path_pipeline_;
+  ComPtr<ID3D12PipelineState> sharc_update_pipeline_;
+  ComPtr<ID3D12PipelineState> sharc_resolve_pipeline_;
+  std::array<ComPtr<ID3D12Resource>, 3> sharc_buffers_;
+  uint32_t sharc_frame_ = UINT32_MAX;
+  std::string sharc_failed_;  // its pipeline that failed
+  static constexpr uint32_t SHARC_ENTRIES = 1u << 21;  // rt_sharc.hlsli SHARC_CAPACITY
+  static constexpr std::array<uint64_t, 3> SHARC_STRIDES = {8, 16, 16};
+  static constexpr uint32_t SHARC_BLOCK = 5;  // rt_sharc_update.hlsl's
   ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;

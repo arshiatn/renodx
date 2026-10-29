@@ -24,6 +24,18 @@ Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REUSE -D OPACITY_MICROMAPS -Fh "$out\rt_reuse_omm.h" -Vn RT_REUSE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
+# NVIDIA's SHaRC (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its 1.6.5 release) for SHaRC Radiance Cache when
+# it sits in build\downloads\sharc\extracted: its headers compiled into the paths' SHaRC variants (else none: the
+# helper builds without it).
+$sharc = Get-ChildItem (Join-Path $root "build\downloads\sharc\extracted") -Directory -ErrorAction SilentlyContinue |
+  Where-Object { Test-Path "$($_.FullName)\include\SharcCommon.h" } | Select-Object -First 1
+Remove-Item "$out\rt_path_sharc.h", "$out\rt_sharc_update.h", "$out\rt_sharc_resolve.h" -ErrorAction SilentlyContinue
+if ($sharc) {
+  $sharc_flags = @('-nologo', '-T', 'cs_6_9', '-E', 'main', '-O3', '-D', 'OPACITY_MICROMAPS', '-D', 'SHARC', '-enable-16bit-types', '-I', "$($sharc.FullName)\include")
+  & "$root\bin\dxc.exe" @sharc_flags -Fh "$out\rt_path_sharc.h" -Vn RT_PATH_SHARC "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  & "$root\bin\dxc.exe" @sharc_flags -D SHARC_UPDATE=1 -D SHARC_PROPAGATION_DEPTH=2 -Fh "$out\rt_sharc_update.h" -Vn RT_SHARC_UPDATE "$PSScriptRoot\rt_sharc_update.hlsl"
+  & "$root\bin\dxc.exe" @sharc_flags -Fh "$out\rt_sharc_resolve.h" -Vn RT_SHARC_RESOLVE "$PSScriptRoot\rt_sharc_resolve.hlsl"
+}
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_compact', 'RT_COMPACT'), @('rt_place', 'RT_PLACE'),
                       @('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'),
                       @('rt_omm_uvs', 'RT_OMM_UVS'), @('rt_sway', 'RT_SWAY'))) {

@@ -114,6 +114,8 @@ struct Settings {
   float grass_shadow_range = 0.f;
   // Path Tracing SER (Experimental): the paths' and reflections' rays with DXR 1.2's shader execution reordering.
   bool path_ser = false;
+  // SHaRC Radiance Cache (Experimental, with Path Tracing): NVIDIA's SHaRC for what the screen does not know.
+  bool sharc = false;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -1742,7 +1744,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
       .path_flags = runtime.settings.path_tracing ? (dlaa_bridge::RT_PATH_TRACING | dlaa_bridge::RT_PATH_REUSE
                                                      | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u)
                                                      | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u)
-                                                     | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u))
+                                                     | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
+                                                     | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u))
                                                   : 0u,
       .path_bounces = runtime.settings.path_bounces,
       .path_samples = runtime.settings.light_bounce_rays,
