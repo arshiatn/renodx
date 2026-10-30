@@ -68,6 +68,9 @@ constexpr uint32_t RT_PLACE_MOVING = 1;
 // Its instances also drawn this frame as a compact draw (swaying leaves): placed hidden (no ray meets them), kept for
 // when they are off-screen (shown again then).
 constexpr uint32_t RT_PLACE_HIDDEN = 2;
+// All of the mesh's instances this frame are in this frame's placements (helpers 59 on): a kept instance in view that was
+// not placed again is gone (the game drew another level of detail there).
+constexpr uint32_t RT_PLACE_WHOLE = 4;
 // Compact draws (v16, to a helper that says rt_compact_ok: RTX Mega Geometry's clusters): a dynamic indexed draw's
 // vertices streamed once each, in its mesh's cluster order: `instances` blocks of its set's `vertices` texels from
 // `first_vertex`. Its cluster set (the mesh's index list split into clusters of at most RT_CLUSTER_TRIANGLES triangles

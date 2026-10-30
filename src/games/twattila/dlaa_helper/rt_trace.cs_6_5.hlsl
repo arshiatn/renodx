@@ -279,7 +279,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       // Grass only within GRASS_AMBIENT_RANGE: its blades darken what they stand on, farther ones barely, and a ray
       // escaping through a field met every blade within the range.
       if (!Occluded(origin, direction, ambient_range, NO_GRASS_SMOKE)
-          && !(near_grass && Occluded(origin, direction, min(ambient_range, GRASS_AMBIENT_RANGE), GRASS))) {
+          && !(near_grass && Occluded(origin, direction, min(ambient_range, GRASS_AMBIENT_RANGE), GRASS_STILL))) {
         ++escaped;
       }
     }

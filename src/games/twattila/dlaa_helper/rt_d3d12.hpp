@@ -1556,7 +1556,8 @@ class RtScene12 {
   static constexpr UINT SOLID_INSTANCE = 0x01;
   static constexpr UINT SMOKE_INSTANCE = 0x02;
   static constexpr UINT LEAF_INSTANCE = 0x04;
-  static constexpr UINT GRASS_INSTANCE = 0x08;  // placed grass and the swaying grass's cluster BLAS (most rays pass it)
+  static constexpr UINT GRASS_INSTANCE = 0x08;       // placed grass (most rays pass it)
+  static constexpr UINT GRASS_SWAY_INSTANCE = 0x10;  // the swaying grass's cluster BLAS
   static constexpr float LEAF_ALPHA_CUTOFF = 0.5f;  // rt_scene_data.cs_6_5.hlsl
   static constexpr uint32_t PLACE_FOLIAGE = 1;  // rt_place.cs_6_5.hlsl
   static constexpr uint32_t PLACE_HIDDEN = 2;
@@ -3664,7 +3665,7 @@ class RtScene12 {
       for (const size_t blas : {size_t{0}, size_t{1}, size_t{2}}) {
         if (!cluster_built[blas] || instance_count >= MAX_INSTANCES) continue;
         AddInstance(slot, &instance_count, cluster_blases_[blas]->GetGPUVirtualAddress(), units_record_, blas == 1 || units_masked_, nullptr,
-                    MAX_INSTANCES, (blas == 1) ? GRASS_INSTANCE : SOLID_INSTANCE);
+                    MAX_INSTANCES, (blas == 1) ? GRASS_SWAY_INSTANCE : SOLID_INSTANCE);
       }
       triangles += dynamic_triangles;
     } else if (units_built && instance_count < MAX_INSTANCES) {
@@ -3683,7 +3684,8 @@ class RtScene12 {
     uint32_t placed_drawn = 0;
     if (ptlas_ == nullptr && std::ranges::any_of(meshes_, [](const auto& entry) { return entry.second.placed; })) {
       // The records' BLAS addresses (bit 0: drawn moving now, bit 1: grass, bit 2: drawn this frame: from the drawn list
-      // when it holds the placed meshes (RT_DRAWN_PLACED) and is not full, else every one), then the jobs.
+      // when it holds the placed meshes (RT_DRAWN_PLACED) and is not full, else every one; bit 3: all its instances in this
+      // request's placements), then the jobs.
       auto* record_blas = reinterpret_cast<uint64_t*>(slot->jobs_data);
       std::fill_n(record_blas, STATIC_RECORDS, uint64_t{0});
       const bool drawn_known = (shared.rt_flags & dlaa_bridge::RT_DRAWN_PLACED) != 0 && drawn_count < dlaa_bridge::RT_DRAWN;
@@ -3703,6 +3705,7 @@ class RtScene12 {
         mesh.drawn_frame = frame;
         record_blas[mesh.record] |= 4u;
         if ((draw.flags & dlaa_bridge::RT_PLACE_MOVING) != 0) record_blas[mesh.record] |= 1u;
+        if ((draw.flags & dlaa_bridge::RT_PLACE_WHOLE) != 0) record_blas[mesh.record] |= 8u;
         const std::array<uint32_t, 8> job = {placed_drawn, draw.instances, draw.first_vertex,
                                              (mesh.foliage ? PLACE_FOLIAGE : 0u) | ((draw.flags & dlaa_bridge::RT_PLACE_HIDDEN) != 0 ? PLACE_HIDDEN : 0u)
                                                  | (mesh.grass ? PLACE_GRASS : 0u),

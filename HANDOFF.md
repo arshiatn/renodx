@@ -1665,7 +1665,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           read the DRED report in renodx-tw-dlaa64.log; after a device loss the helper restarts once with GPU Micromap
           Baking / Swaying Shadows Range / Off-Screen Sway / SER / SHaRC paused until the game restarts (by design: tell
           ATN), a second loss leaves RT off. Check that reflections / Light Bounce work after the restart (the 30 s trace).
-      [ ] 2. Why 8 frames for kept LOD copies: the addon places a still placed mesh's instances only in its turn (PLACE_TURNS
+      [x] 2. Done (rt_core Known, RT_PLACE_WHOLE, rt_place bit 3 of the records): a mesh's draws are counted per frame; the
+          frame after their sum changed all its draws are placed (a sum over last frame's places at once); Trace flags the
+          placements of a mesh whose instances all went in, as many as last frame's (draws after the trace not in yet);
+          rt_place then drops its in-view kept instances not placed again at once. So a LOD switch: 0-1 frames; same count
+          but other instances: its turn (at most 4); KEPT_IN_VIEW_FRAMES 8 stays the fallback (partial placements).
+          Why 8 before (answer for ATN): still meshes are placed every 4th frame to save a stream-out draw per draw a
+          frame, so "not placed again" could mean "not its turn": two turns had to pass.
+          Was: Why 8 frames for kept LOD copies: the addon places a still placed mesh's instances only in its turn (PLACE_TURNS
           4: `(key + frame) % 4`, saves a stream-out draw per draw a frame); between turns the helper keeps them, so per
           instance "not re-placed" means "not its turn" or "gone" until a turn passed: KEPT_IN_VIEW_FRAMES 8 = two turns
           (one missed request of slack). v115 already drops them at once when the game drew none of that mesh this frame
@@ -1673,7 +1680,17 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           every drawn key every frame (measure the addon's CPU cost), or decide the turn once per key per frame (all its
           draw calls agree; counts differ between calls: 256 / 256 / 44 placed partially today) and drop in-view kept
           instances of records placed this request that were not re-placed.
-      [ ] 3. River fps (for_claude1.replay: move forward to the river, zoom down). German keys per ATN: y zooms down, x up;
+      [ ] 3. River fps. Reproduced: for_claude1.replay, -Keys "W:6.4,Y:2.5" (camera at the water; Y zooms down AND forward; W:6 =
+          the village, W:7 past the river), 53 ms a frame, sun rays 17 ms, paths 10 ms. Not smoke (2000 particles), not kept
+          instances (scene test 4), not hidden placed instances (tried inactive: no change), not leaves, soft sun, fog.
+          Found by removing one thing every 4 s of a profile (scratchpad windows.py, RENODX_TW_SET list):
+          (a) OccludedSolid (pixels facing away) had grass in its mask though it culls alpha-tested geometry: its rays walked
+          every field: now NO_GRASS_SMOKE: sun 17 -> 8.6 ms, same picture.
+          (b) the short ambient rays (PT AO, RT AO: GRASS_AMBIENT_RANGE) cost 4 x on the swaying grass's cluster BLAS than on
+          static BLASes: now masks split: 0x08 placed shown, 0x10 swaying clusters (sun's rays: GRASS), 0x20 still copies of
+          what sways (ambient rays: GRASS_STILL): paths 9.8 -> 5.95 ms. River frame 53 -> 41 ms (fps 18.6 -> 24.4).
+          Left at the river: sun solid 4.6 + grass 4.2, fog 2.3, paths 5.95, reuse 3.5, reflections 2.7.
+          Was: River fps (for_claude1.replay: move forward to the river, zoom down). German keys per ATN: y zooms down, x up;
           for SendInput use scan codes (0x2C = the key ATN calls y, 0x2D = x; W 0x11; verify). Scripts:
           tools/tw/test_scripts (move_profile.ps1: profile + keys; move_compare.py; shot_run3.ps1; ini_set.py; noise.py;
           scan_register.py) - their paths still point at the v115 session's scratchpad: adjust. debug33 profile at ATN's

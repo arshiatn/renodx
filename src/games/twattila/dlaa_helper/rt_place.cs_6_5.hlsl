@@ -8,11 +8,12 @@
 // request's draws' instances: their rows times the inverse of their mesh's build rows, its BLAS its first instance in
 // world space) and kept (the last dispatch's placed descs: their mesh's BLAS as it is now, but those drawn more than
 // `recent_frames` ago, of released meshes, of meshes drawn moving now, or undrawn inside the view: KEPT_IN_VIEW_FRAMES,
-// at once where the frame drew none of their mesh).
+// at once where the frame drew none of their mesh or placed all of it).
 // A mesh's instance at one place (1 cm) once,
 // the drawn first: instances stay while their mesh is drawn elsewhere (off-screen casters). Each desc keeps the frame
 // it was drawn in (InstanceContributionToHitGroupIndex: no hit groups here). Degenerate rows: left out. A hidden draw's
-// instances (swaying leaves, their compact copy traced instead) go in with mask 0 (no ray meets them), kept ones shown.
+// instances (swaying leaves, their compact copy traced instead) go in with mask 0 (no ray meets them; grass's: only the
+// short ambient rays, GRASS_STILL_INSTANCE), kept ones shown.
 // Grass outside the view (drawn or kept) stays out: GrassInView. A hidden draw's instance SwayTraced turns down (its
 // swaying copy left out: rt_sway.hlsli) is shown.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_place.h -Vn RT_PLACE.
@@ -21,7 +22,7 @@
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (the kept ones' source)
 Buffer<float4> vertex_positions : register(t7);     // the request's vertices: an instance's rows 0-2 in four texels
 // The records' BLAS addresses (two uints each: 0 not a placed mesh now, bit 0 drawn moving now, bit 1 grass, bit 2 drawn
-// this frame), then the jobs (two uint4 each: first drawn instance, instances, rows texel, flags; record, 0, 0, 0).
+// this frame, bit 3 all its instances placed this frame), then the jobs (two uint4 each: first drawn instance, instances, rows texel, flags; record, 0, 0, 0).
 ByteAddressBuffer table : register(t8);
 RWByteAddressBuffer instances_written : register(u6);  // D3D12_RAYTRACING_INSTANCE_DESC, 64 bytes each
 RWStructuredBuffer<float4> build_rows : register(u7);  // three per record
@@ -59,13 +60,15 @@ static const uint INSTANCE_FORCE_OPAQUE = 4u;
 static const uint SOLID_INSTANCE = 0x01u;
 static const uint LEAF_INSTANCE = 0x04u;
 static const uint GRASS_INSTANCE = 0x08u;
+static const uint GRASS_STILL_INSTANCE = 0x20u;
 // Grass kept two turns (the addon places a still mesh every 4th frame): its shadows are short, and fields of it kept 5 s
 // multiplied the instances every ray met (ATN's 2026-10-29 profile: 46-65 K placed).
 static const uint GRASS_KEPT_FRAMES = 8u;
 // A kept instance undrawn this many frames (two turns) with its origin inside the view is gone (the game drew another
 // level of detail there, or nothing): kept recent_frames, a coarser copy darkened the finer one for seconds (ATN
-// 2026-10-29: surfaces black a few seconds while zooming); at once where the frame drew none of its mesh. Off-screen
-// casters stay.
+// 2026-10-29: surfaces black a few seconds while zooming); at once where the frame drew none of its mesh or placed all of
+// it (the addon places a still mesh every 4th frame, and the frame after its instances changed; until then not placed
+// again need not mean gone). Off-screen casters stay.
 static const uint KEPT_IN_VIEW_FRAMES = 8u;
 static const uint STATE_WRITTEN = 0u;
 static const uint STATE_BEFORE = 4u;
@@ -156,7 +159,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     // Its rows place the BLAS (its first instance in world space): its origin there, the build's, where they put it.
     const float4 origin = float4(build_rows[record * 3u].w, build_rows[record * 3u + 1u].w, build_rows[record * 3u + 2u].w, 1.f);
     const float4 place = float4(dot(asfloat(row0), origin), dot(asfloat(row1), origin), dot(asfloat(row2), origin), 1.f);
-    const bool gone = ((blas.x & 4u) == 0u || ((frame - tail.y) & FRAME_MASK) > KEPT_IN_VIEW_FRAMES) && any(view_projection[3] != 0.f)
+    const bool gone = ((blas.x & 4u) == 0u || (blas.x & 8u) != 0u || ((frame - tail.y) & FRAME_MASK) > KEPT_IN_VIEW_FRAMES) && any(view_projection[3] != 0.f)
                       && NearView(place, view_projection[0], view_projection[1], view_projection[3], 0.f);
     if ((grass && !GrassInView(place.xyz)) || gone || !Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w)), grass))) return;
     const uint kept_mask = grass ? GRASS_INSTANCE : ((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE);
@@ -209,7 +212,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const bool hidden = (job.w & PLACE_HIDDEN) != 0u
                       && ((sway_flags & SWAY_CUT) == 0u
                           || SwayTraced(float3(now0.w, now1.w, now2.w), view_projection[0], view_projection[1], view_projection[3], sway_range, sway_flags));
-  const uint mask = hidden                          ? 0u
+  const uint mask = hidden                          ? (((job.w & PLACE_GRASS) != 0u) ? GRASS_STILL_INSTANCE : 0u)
                     : ((job.w & PLACE_GRASS) != 0u)  ? GRASS_INSTANCE
                     : ((job.w & PLACE_FOLIAGE) != 0u) ? LEAF_INSTANCE
                                                       : SOLID_INSTANCE;

@@ -145,17 +145,19 @@ static const float SMOKE_DARK = 0.05f;
 
 // The TLAS's instance masks (rt_d3d12.hpp: solids 1, the smoke's own instance 2, the leaves' meshes 4): the rays toward
 // the sun meet all (ALL_INSTANCES); the others (the ambient, the local lights, the paths, the reflections) leave the
-// smoke out in the hardware (NO_SMOKE); Light Through Leaves meets the leaves apart (NO_LEAVES, LEAVES).
+// smoke out in the hardware; Light Through Leaves meets the leaves apart (NO_LEAVES, LEAVES).
 static const uint ALL_INSTANCES = 0xFFu;
-static const uint NO_SMOKE = 0xFDu;
 static const uint NO_LEAVES = 0xFBu;
 static const uint LEAVES = 0x04u;
-// Grass's instances (0x08: placed, and the swaying grass's cluster BLAS) met only by the sun's and the ambient's rays: the
-// point lights', the fog's, the Light Bounce's, the paths' and the reflections' pass it (most of a frame's rays crossed
-// whole fields of it: ATN's 2026-10-29 profile, a 4K harness field of 3721 patches: reflections 11 ms).
-static const uint NO_GRASS = 0xF7u;
-static const uint NO_GRASS_SMOKE = 0xF5u;
-static const uint GRASS = 0x08u;
+// Grass's instances (0x08 placed and shown, 0x10 the swaying grass's cluster BLAS, 0x20 the still copies of what sways there)
+// met only by the sun's rays (GRASS) and the ambient's short ones (GRASS_STILL: contact shade needs no sway, and these
+// blades' rays cost a quarter of the clusters', ATN's river: 4 ms of the paths): the point lights', the fog's, the Light
+// Bounce's, the paths' and the reflections' pass it (most of a frame's rays crossed whole fields of it: ATN's 2026-10-29
+// profile, a 4K harness field of 3721 patches: reflections 11 ms).
+static const uint NO_GRASS = 0xC7u;
+static const uint NO_GRASS_SMOKE = 0xC5u;
+static const uint GRASS = 0x18u;
+static const uint GRASS_STILL = 0x28u;
 static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient's rays (the AO's and PT AO's)
 
 // Whether anything among `instances` lies along `direction` from `origin` within `range` (alpha-tested: leaves, grass
@@ -197,8 +199,9 @@ bool Occluded(float3 origin, float3 direction, float range, uint instances) {
   }
 
 // Whether a solid surface lies along a ray: alpha-tested ones are culled in the hardware (the solid parts of leaves with
-// opacity micromaps stay), the smoke's instance left out. A ray goes on through every culled one (through a canopy 5x
-// the cost of alpha tests ending at the first leaf), so only from surfaces facing away from the sun.
+// opacity micromaps stay), the smoke's and the grass's instances left out (a culled blade blocks nothing, and the ray
+// walked every field it crossed). A ray goes on through every culled one (through a canopy 5x the cost of alpha tests
+// ending at the first leaf), so only from surfaces facing away from the sun.
 bool OccludedSolid(float3 origin, float3 direction, float range) {
   RayDesc ray;
   ray.Origin = origin;
@@ -206,7 +209,7 @@ bool OccludedSolid(float3 origin, float3 direction, float range) {
   ray.TMin = 0.f;
   ray.TMax = range;
   SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;
-  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_SMOKE, ray);
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, ray);
   query.Proceed();
   return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }

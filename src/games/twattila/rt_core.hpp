@@ -441,8 +441,14 @@ struct Runtime {
   uint32_t particles = 0;
   uint64_t particles_frame = 0;
   struct Known {
-    uint64_t frame = 0;      // last drawn
-    uint32_t instances = 0;  // a placed mesh's last placement's
+    uint64_t frame = 0;  // last drawn
+    // A placed mesh's instances over a frame's draws: this frame's so far, those placed, the last frame's; a frame after
+    // they changed places all its draws.
+    uint64_t counted_frame = 0;
+    uint32_t instances = 0;
+    uint32_t placed = 0;
+    uint32_t last_instances = 0;
+    bool all_draws = false;
   };
   std::unordered_map<uint64_t, Known> known;
   // A static draw's short key (its shader, arguments, first vertex buffer and index buffer) and the full key it stood
@@ -1101,9 +1107,18 @@ void Capture(Context& command, const SceneShader& shader) {
         }
         return;
       }
+      Runtime::Known& seen = known->second;
+      if (seen.counted_frame != runtime.frame) {
+        seen.all_draws = seen.instances != seen.last_instances;
+        seen.last_instances = seen.instances;
+        seen.instances = 0;
+        seen.placed = 0;
+        seen.counted_frame = runtime.frame;
+      }
+      seen.instances += instances;
       // Its leaves sway within the trees' share, grass within its own (placed every frame then, hidden where drawn; past it
       // placed still: grass was left out, whole fields without shadows with Grass Always Drawn, ATN 2026-10-29); else not
-      // its turn, its instances as many as at its last placement (none came into sight).
+      // its turn, its instances no more than last frame's (none came into sight), they did not change the frame before.
       sway = blocks
              && (shader.grass ? runtime.settings.grass_sway && runtime.grass_vertices + (block_triangles * 3) <= runtime.alpha_corners / 2
                               : (runtime.tree_vertices + block_texels <= MAX_TREE_VERTICES
@@ -1115,10 +1130,10 @@ void Capture(Context& command, const SceneShader& shader) {
       // made unsorted, each cluster over a whole grass patch) is captured once more in full (its corners: PrepareClusterSet).
       const auto set = compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end();
       const bool corners_wanted = set != runtime.cluster_meshes.end() && set->second.staging && !set->second.corners;
-      if (!sway && !moving && !corners_wanted && known->second.instances == instances && (key + runtime.frame) % PLACE_TURNS != 0) {
+      if (!sway && !moving && !corners_wanted && !seen.all_draws && seen.instances <= seen.last_instances && (key + runtime.frame) % PLACE_TURNS != 0) {
         // Drawn all the same (RT_DRAWN_PLACED: its kept instances stay).
-        if (known->second.frame != runtime.frame && runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
-        known->second.frame = runtime.frame;
+        if (seen.frame != runtime.frame && runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
+        seen.frame = runtime.frame;
         return;
       }
       place = !corners_wanted;
@@ -1361,7 +1376,10 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.placements.push_back({.key = key, .first_vertex = rows_vertex, .instances = instances,
                                   .flags = (moving ? dlaa_bridge::RT_PLACE_MOVING : 0u) | (sway ? dlaa_bridge::RT_PLACE_HIDDEN : 0u)});
     runtime.captured_vertices += row_texels;
-    if (const auto known = runtime.known.find(key); known != runtime.known.end()) known->second = {.frame = runtime.frame, .instances = instances};
+    if (const auto known = runtime.known.find(key); known != runtime.known.end()) {
+      known->second.frame = runtime.frame;
+      known->second.placed += instances;
+    }
     return;
   }
   if (compact) {
@@ -1652,6 +1670,14 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     const auto& mesh = runtime.cluster_meshes.at(set_key);
     new_sets.push_back({.key = set_key, .vertices = mesh.vertices, .clusters = mesh.clusters, .triangles = mesh.triangles});
     new_set_data.emplace_back(mesh.data);
+  }
+  // A mesh whose instances this frame all went in, as many as last frame's (its draws after the trace are not in yet).
+  for (dlaa_bridge::RtPlacement& placement : runtime.placements) {
+    const auto known = runtime.known.find(placement.key);
+    if (known != runtime.known.end() && known->second.counted_frame == runtime.frame && known->second.placed >= known->second.instances
+        && known->second.instances >= known->second.last_instances) {
+      placement.flags |= dlaa_bridge::RT_PLACE_WHOLE;
+    }
   }
   const dlaa_bridge::TraceRequest request = {
       .flags = (runtime.settings.sun_shadows ? dlaa_bridge::RT_SUN_SHADOWS : 0u)

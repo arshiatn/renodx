@@ -399,7 +399,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
       // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).
       if (vertex > 0u) {
         radiance += throughput * SkyLight(direction, shade.rgb);
-      } else if ((path_flags & PATH_AMBIENT) != 0u && !Occluded(origin, direction, min(range, GRASS_AMBIENT_RANGE), GRASS)) {
+      } else if ((path_flags & PATH_AMBIENT) != 0u && !Occluded(origin, direction, min(range, GRASS_AMBIENT_RANGE), GRASS_STILL)) {
         radiance += SkyLight(direction, shade.rgb) * sky_calibration;
       }
       break;
