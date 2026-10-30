@@ -43,7 +43,6 @@ cbuffer Camera : register(b2) {
   float4 view_projection[4];  // the trace's camera registers: clip = (dot(position, [0]), ...); all 0: none
   uint sway_flags;            // rt_sway.hlsli
   float sway_range;
-  uint grass_flags;           // grass's instance flags besides (FORCE_OMM_2_STATE with DXR 1.2: rt_d3d12.hpp AddInstance)
 };
 
 static const uint MODE_CLEAR = 0u;
@@ -201,8 +200,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   }
   // InstanceID (the record) and mask (its group; 0 hidden); the frame drawn and the flags; the BLAS (its moving bit
   // cleared).
-  const uint flags = INSTANCE_CULL_DISABLE | (((job.w & PLACE_FOLIAGE) != 0u) ? 0u : INSTANCE_FORCE_OPAQUE)
-                     | (((job.w & PLACE_GRASS) != 0u) ? grass_flags : 0u);
+  const uint flags = INSTANCE_CULL_DISABLE | (((job.w & PLACE_FOLIAGE) != 0u) ? 0u : INSTANCE_FORCE_OPAQUE);
   const bool hidden = (job.w & PLACE_HIDDEN) != 0u
                       && ((sway_flags & SWAY_CUT) == 0u
                           || SwayTraced(float3(now0.w, now1.w, now2.w), view_projection[0], view_projection[1], view_projection[3], sway_range, sway_flags));

@@ -258,11 +258,6 @@ void main(uint3 id : SV_DispatchThreadID) {
   if (quarter && any(id.xy != (id.xy & ~1u) + uint2(frame & 1u, (frame >> 1) & 1u))) return;
   float ambient_visibility = 1.f;
   if ((flags & AMBIENT_OCCLUSION) != 0u && ambient_rays != 0u) {
-#if defined(OPACITY_MICROMAPS)
-    // Leaves and grass by their micromaps alone (2-state: no alpha tests): soft occlusion barely changes, and the rays
-    // through canopies and fields cost the most of ATN's traces (debug30: AO 6-11 ms of 10-17).
-    scene_ray_flags = RAY_FLAG_FORCE_OMM_2_STATE;
-#endif
     // The rays spread over the hemisphere: each its band of the cosine-weighted disk's radius, the golden angle from the
     // last, the set turned per pixel by interleaved gradient noise and jittered within the bands. Less noise than
     // independent rays (Ray Reconstruction left ~20% of theirs), and what is left settles faster.

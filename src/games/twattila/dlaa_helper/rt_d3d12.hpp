@@ -3610,9 +3610,9 @@ class RtScene12 {
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, build_rows_->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, placed_state_->GetGPUVirtualAddress());
       // The camera (b2: grass outside the view stays out) and the sway's flags and range, then clear, drawn, kept (rt_place's
-      // modes).
-      const std::array<uint32_t, 3> place_sway = {sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range),
-                                                  dxr12_ ? static_cast<uint32_t>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OMM_2_STATE) : 0u};
+      // modes). Grass keeps its alpha tests (v108 took its micromaps as 2-state: a micro-triangle part blade, part gap went
+      // solid, fields black in ATN's debug31; Fast Leaf Shadows still does that for every ray).
+      const std::array<uint32_t, 2> place_sway = {sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range)};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 16, shared.rt_view_projection, 0);
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(place_sway.size()), place_sway.data(), 16);
       for (const uint32_t mode : {0u, 1u, 2u}) {
@@ -4720,8 +4720,7 @@ class RtScene12 {
         .InstanceMask = mask,
         .InstanceContributionToHitGroupIndex = place,
         .Flags = static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
-                                   | (foliage ? 0u : static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE))
-                                   | ((dxr12_ && mask == GRASS_INSTANCE) ? static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OMM_2_STATE) : 0u)),
+                                   | (foliage ? 0u : static_cast<UINT>(D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE))),
         .AccelerationStructure = blas,
     };
     if (transform != nullptr) {

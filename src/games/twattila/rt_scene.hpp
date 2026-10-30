@@ -1189,8 +1189,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Fast Leaf Shadows (Experimental)",
           .section = section,
-          .tooltip = "Leaves with Leaf Micromaps skip their alpha tests:\n"
-                     "faster shadows under trees, leaf edges a little coarser.",
+          .tooltip = "Leaves and grass with Leaf Micromaps skip their alpha tests:\n"
+                     "faster shadows under trees and in fields, but coarser and darker.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->micromaps != 0.f; },
       },
