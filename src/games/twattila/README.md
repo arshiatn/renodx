@@ -2,6 +2,14 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v110 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper53: ship them together)
+
+- **Grass black after moving the camera**: v108 made grass skip its alpha tests (its micromaps taken as solid or clear),
+  so a little bit of blade made a whole patch of a grass card solid. The still grass copies, shown while the camera moves
+  with W/A/S/D and past the swaying range, then blocked the sun: whole fields dark. Grass does its alpha tests again (as
+  before v108). **Fast Leaf Shadows** (Experimental) still skips them, for leaves and grass, if you want the fps back.
+- The AO rays do their alpha tests again too (v109 had them skip them; same dark patches).
+
 ## v109 (2026-10-30; renodx-tw-dlaa64.exe helper52: ship them together)
 
 - **The freeze was the GPU micromap bake** (not the reflections: the log named a request made after the freeze). A bake

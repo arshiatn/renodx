@@ -1,5 +1,22 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
+- State: Attila v110 shipped (Downloads/twattila_v110.zip, helper53 = build/tw_dlaa_helper53, bridge v19), branch
+  atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
+  (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
+- tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
+- Read: the v109 NIGHT BATCH and v110 checklists below (search "v110 BATCH"), then "NEXT BATCH (v110...)" there: the
+  open items in order. ATN's last test: debug31 (C:/Program Files (x86)/Steam/steamapps/common/Total War Attila/debug31).
+- Round routine: helper build `src/games/twattila/dlaa_helper/build.ps1` (PowerShell), copy build/tw_dlaa_helper to a
+  new build/tw_dlaa_helperN; 32-bit `cmake --build build32 --config Release --target renodx-twattila.addon32
+  renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32`; 64-bit TW check `cmake --build build --config Release
+  --target renodx-twpharaohdynasties.addon64 renodx-twtroy.addon64 renodx-twwarhammer.addon64
+  renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64`; harness: copy the helper to build/tw_rt_harness, run
+  tools/tw/all_modes.sh (38 modes, all pass as of helper53; harness source tools/tw/rt_harness); profiles:
+  `python -I tools/tw/profile_debug29.py <tw_rt_profile_helper.csv> 40`; pictures: tools/tw/shrink.py; zip: `python -I
+  tools/tw/release_zip.py twattila twattila_v<old>.zip twattila_v<new>.zip --helper` (bump the helper folder in it; the
+  new zip must not exist); README section per version; commit after every step with the Co-Authored-By line.
+
 Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF.md`. This file supersedes its Ryse parts.
 
 ## Working with ATN
@@ -1578,6 +1595,26 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [ ] 2. The one-off Close failure (E_INVALIDARG) of the first trace request on auto_save.replay's desert map (v108's
           helper47 too): first get the D3D12 debug layer loading in the helper (0x887A002D with d3d12SDKLayers.dll next
           to D3D12Core.dll), then fix the invalid call it names.
+      [ ] 3. GPU bakes concurrent, never on the CPU (ATN 2026-10-30): BakeMicromapsOnGpu records bake after bake, a global
+          UAV barrier after each of a bake's ~11 dispatches and every bake on the same transient pools: all serialized.
+          Make them concurrent: give each bake (or group) its own transient pools, interleave the bakes stage by stage
+          (all bakes' pass k, one barrier, pass k+1), maybe an async compute queue; then spread the overflow over the next
+          frames on the GPU (a queue of reads keeping their positions / UVs / mask slices) instead of CPU bakes. Measure
+          with the profile's gpu_bakes_ms.
+    - BATCH AFTER THAT (ATN 2026-10-30): PT AO still looks clearly different from RT AO (ATN "really doesn't understand
+      the massive difference"): compare both in game (auto_save.replay's still view worked for A/B, v109 region means
+      were within 1-4 levels there; ATN's scenes differ: get ATN's pictures / settings first).
+    - v110 BATCH (ATN 2026-10-30 ~09:45, debug31: "first frame" / "after 1s" pictures right after a W/A/S/D move, a
+      trace): the whole grass field black after camera moves, still not see-through after 1 s. ATN: "since the grass
+      optimizations" (v108).
+      [x] 1. Cause (5d164d98, helper53): v108's FORCE_OMM_2_STATE on grass instances (AddInstance for GRASS_INSTANCE and
+          rt_place's grass_flags): grass micromaps (level 5: ~128 texels a micro-triangle) are mostly mixed micro-triangles;
+          2-state made them solid. The swaying copies near the camera (templates, mostly no micromaps: exact alpha test)
+          looked right, the placed copies (micromapped meshes) shown while moving and past the sway range blocked the
+          sun. debug31 profile: no bakes waiting (micromaps all there) yet the sun part 4 -> 8-11 ms and placed 3K ->
+          13-16K on moves. Removed: grass is exact again; Fast Leaf Shadows (ray flag, all rays) still makes every
+          micromap 2-state (tooltip says grass too). v109's AO 2-state ray flag reverted (same blobs). Untested in game.
+      [x] 2. twattila_v110.zip, builds (32 + 64-bit), all_modes, README v110, memory.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
