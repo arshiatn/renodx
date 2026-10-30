@@ -472,7 +472,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
 // the cube took that sheen too, the far ground came out darker and warmer), its foliage ones also t52 the sun texture
 // (their share of the bounce: light_bounce_apply); both unbound after it. Else the draw's lighting constants without the
 // game's ambient cube (the copy made once a frame), the game's put back after it. Only while the paths run (a frame
-// without them keeps the game's ambient).
+// without them keeps the game's ambient). Put back in finalize callbacks: the Light Bounce draws the sun draw itself
+// (bypass), which skips post callbacks (ATN's debug33: t51 left bound took the ambient away under Rays and Off).
 constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (!internal::active.load(std::memory_order_relaxed)) return {};
   const auto& draw = command.template GetCallbackData<light_bounce::SunDraw>();
@@ -496,7 +497,7 @@ constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& com
     }
     std::array<ID3D11ShaderResourceView*, 2> views = {objects.ambient_off.Get(), foliage ? dlaa_bridge::bridge.rt_sun.srv.Get() : nullptr};
     native->PSSetShaderResources(screen_space_shadows::internal::AMBIENT_SLOT, static_cast<UINT>(views.size()), views.data());
-    return {.post_callback = [](Context& post, const void*) {
+    return {.finalize_callback = [](Context& post, const void*) {
       auto* post_native = internal::NativeContext(post.cmd_list);
       if (post_native == nullptr) return;
       const std::array<ID3D11ShaderResourceView*, 2> none = {};
@@ -534,7 +535,7 @@ constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& com
   native->PSSetConstantBuffers(draw.lighting_slot, 1, objects.ambient_lighting.GetAddressOf());
   runtime.ambient_game_lighting = std::move(game_lighting);
   runtime.ambient_slot = draw.lighting_slot;
-  return {.post_callback = [](Context& post, const void*) {
+  return {.finalize_callback = [](Context& post, const void*) {
     auto* post_native = internal::NativeContext(post.cmd_list);
     auto& post_runtime = internal::runtime;
     const std::unique_lock post_lock(post_runtime.mutex);
