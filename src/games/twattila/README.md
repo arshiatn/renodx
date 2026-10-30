@@ -2,6 +2,24 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v115 (2026-10-30; renodx-tw-dlaa64.exe helper58: ship them together)
+
+- **RT AO, SSAO and GT-VBAO no longer dark after Path Tracing**: switching Light Bounce from Path Tracing to Rays or Off
+  left the game's ambient light switched off (a texture PT AO binds stayed bound; the Light Bounce redraws the lighting
+  itself, which skipped the step that unbinds it).
+- **Specular Occlusion works with RT reflections on**: the rougher surfaces (the ones the reflections leave to the game)
+  ignored it before; now it darkens the game's reflection there.
+- **Water Clarity and Water Caustics work**: their hook was never registered (also true for the river / lake /
+  particles' ray-traced shadows under Ray-Traced Shadows, torch shadows, fog shadows and Smoke Shadows: all hooked now).
+  Your Clarity 16 / Caustics 2 are strong: the river turns see-through; tune them.
+- **No fps loss while the camera moves, grass shadows no longer darker until it stops**: grass copies were doubled in
+  the ray tracing scene while moving (each blade's height changes with the camera's distance). Test, camera moving:
+  sun rays 3.0 -> 1.3 ms, Light Bounce 10.7 -> 6.1 ms.
+- **Level of detail changes**: the old level's copy now leaves the scene at once when the game stops drawing it (it
+  darkened the new one for 16 frames); 8 frames at most otherwise.
+- **Less noise in RT AO, PT AO and reflections under Ray Reconstruction**: their own smoothing over frames is back (v107
+  / v108 left it all to RR, which leaves part of the noise).
+
 ## v114 (2026-10-30; renodx-tw-dlaa64.exe helper57: ship them together)
 
 - **Ray tracing no longer stays off after a one-off error** (your debug32: one request failed at the battle's start;

@@ -1,9 +1,10 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v115 BATCH in progress (search "v115 BATCH" below for the checklist).
-- State: Attila v114 shipped (Downloads/twattila_v114.zip, helper57 = build/tw_dlaa_helper57, bridge v19; helper57 is in
-  Attila's folder too, its ReShade.ini as ATN left it), branch
+- NOW: v115 BATCH done (search "v115 BATCH" below); next: ATN's in-game test of v115.
+- State: Attila v115 shipped (Downloads/twattila_v115.zip, helper58 = build/tw_dlaa_helper58, bridge v19 + flag
+  RT_DRAWN_PLACED; v115 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
+  symlink to build32: copy it after each build), branch
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
   (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
@@ -1652,8 +1653,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 5. Grass shadows darker while moving, settle ~1 s: the same duplicates (item 4).
       [x] 6. LOD switches black: the old level of detail kept 16 frames in view; now gone at once when the game draws
           none of that mesh this frame, else 8 frames.
-      [ ] 7. RT AO / PT AO noisier than 1-2 days ago.
-      [ ] 8. Far shadows flicker (Ctesiphon towers; debug view 1 shots): terminator / jitter.
+      [x] 7. (8fff25ae) AO noisier: v107 made AO / reflections raw under RR, v108 the RT bounce; history (AO), history +
+          filter (reflections; hit distance still for RR) and the bounce's resolve are back under RR. In game 2vs3:
+          mid-ground speckle 1.23-1.28 -> 1.12-1.14 (scratchpad noise.py). Also the river's noise while moving (untested).
+      [-] 8. Far shadows flicker: ATN's shots are Debug View 1 (raw per-frame sun visibility: under RR one random ray to
+          the sun's disk a pixel), the towers' sun-facing edges (terminator). Not changed: the G-buffer normal at the
+          trace is last frame's (guides written after the sun draws). Ask ATN whether the final image flickers too.
+      [x] 9. twattila_v115.zip (Downloads, helper58 = build/tw_dlaa_helper58), README v115, build32 Attila / Rome II /
+          Thrones, 64-bit TW check + Shogun 2 / Ryse / Expeditions (shared rt_core) built, all_modes 45/45
+          (all_modes_h58.txt: new undrawn_all_kept / undrawn_all_gone). Game folder: v115 installed, ReShade.ini = ATN's.
     - NEXT BATCH (v110; ATN 2026-10-30: added, NOT started until ATN says):
       [x] 1. Reflection Reuse "Own ReSTIR" (v112, helper55, untested in game; setting RayTracedReflectionReuse 2, bridge
           bit RT_REFLECTIONS_OWN 1024): rt_path.hlsli ReflectReservoirTexel (pass RT_REFLECT_RESERVOIR, half res: the
