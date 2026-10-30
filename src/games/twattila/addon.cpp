@@ -1295,7 +1295,13 @@ bool OnCreateWater(reshade::api::device* device, reshade::api::pipeline_layout, 
   return modified;
 }
 
+std::atomic_bool water_drawn = false;  // logged once: which water shader the game draws
+
 constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!water_drawn.exchange(true)) {
+    renodx::utils::log::i(std::format("[Total War] Water: first draw of shader {:08X} (Clarity {}, Caustics {}).",
+                                      command.matched_shader_hash, water_clarity, water_caustics));
+  }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
@@ -1429,6 +1435,11 @@ void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
   };
   static const uint64_t shot_ms = seconds("RENODX_TW_SHOT");
   static const uint64_t profile_ms = seconds("RENODX_TW_PROFILE");
+  // RENODX_TW_SET=<seconds>:<key>=<value>: one setting changed then (as its slider would).
+  static std::string change = [] {
+    std::array<char, 128> value = {};
+    return std::string(value.data(), GetEnvironmentVariableA("RENODX_TW_SET", value.data(), static_cast<DWORD>(value.size())));
+  }();
   static const uint64_t loaded = GetTickCount64();
   static int taken = 0;
   static bool profiled = false;
@@ -1436,6 +1447,17 @@ void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
   if (profile_ms != 0 && !profiled && now >= loaded + profile_ms) {
     twattila::rt_scene::StartProfile();
     profiled = true;
+  }
+  if (const size_t colon = change.find(':'), equals = change.find('=');
+      colon != std::string::npos && equals > colon && equals != std::string::npos
+      && now >= loaded + (std::strtoull(change.c_str(), nullptr, 10) * 1000ull)) {
+    const std::string key = change.substr(colon + 1, equals - colon - 1);
+    for (auto* setting : settings) {
+      if (setting->key != key || setting->binding == nullptr) continue;
+      *setting->binding = std::strtof(change.c_str() + equals + 1, nullptr);
+      renodx::utils::log::i(std::format("[Total War] Test: {} set to {}.", key, *setting->binding));
+    }
+    change.clear();
   }
   if (shot_ms == 0 || taken == 2 || now < loaded + shot_ms + (taken * 5000ull)) return;
   runtime->save_screenshot("auto");
