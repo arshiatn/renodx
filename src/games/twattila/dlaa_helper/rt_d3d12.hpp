@@ -2636,6 +2636,14 @@ class RtScene12 {
     // GPU Micromap Baking: every read baked on the GPU (none read back for the CPU), waiting for the requests' bakes
     // (at the end of each, within its budget).
     const bool gpu_bakes = gpu_micromaps_ && (shared.rt_flags & dlaa_bridge::RT_GPU_MICROMAPS) != 0;
+    // RENODX_TW_OMM_CHURN=<frames>: every set baked again that often, the micromap path under load (finding GPU resets).
+    static const uint32_t omm_churn = [] {
+      std::array<wchar_t, 16> value = {};
+      return (GetEnvironmentVariableW(L"RENODX_TW_OMM_CHURN", value.data(), static_cast<DWORD>(value.size())) != 0) ? static_cast<uint32_t>(_wtoi(value.data())) : 0u;
+    }();
+    if (omm_churn != 0 && frame % omm_churn == 0) {
+      for (auto& [key, set] : sets_) set.micromaps_tried = false;
+    }
     size_t set_micromap_room = (cluster_micromaps_ && bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
                                    ? std::min<size_t>((gpu_bakes ? MICROMAP_GPU_BAKES : 0u) + SET_MICROMAP_READS,
                                                       MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
@@ -3015,6 +3023,10 @@ class RtScene12 {
               pending_set_frees_.push_back({.value = own_value_ + 1, .template_first = set->template_first,
                                             .templates = (set->template_first != UINT32_MAX) ? set->clusters : 0u});
               set->template_first = UINT32_MAX;
+              // Past this request's followers too: the Light Bounce's and reflections' requests trace its scene.
+              for (auto* kept : {std::addressof(set->micromaps), std::addressof(set->micromap_inputs)}) {
+                if (*kept) releases_.push_back({.value = own_value_ + 1 + SLOTS, .resource = std::move(*kept)});
+              }
               set->micromaps = std::move(array);
               set->micromap_inputs = std::move(inputs);
               set->micromap_indices = indices_offset;
