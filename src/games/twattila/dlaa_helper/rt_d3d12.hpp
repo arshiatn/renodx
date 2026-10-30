@@ -946,7 +946,7 @@ class RtScene12 {
       profile_ << "request,frame,kind,cpu_wait_ms,cpu_record_ms,cpu_submit_ms,dynamic_mtriangles,terrain_mtriangles,grass_mtriangles,"
                   "clusters,templated,compact_draws,sets,new_sets,template_builds,meshes,new_blases,micromaps_built,micromaps_waiting,"
                   "instances,placed,cluster_room,static_blas_mb,gpu_scene_ms,gpu_clusters_ms,gpu_tlas_ms,gpu_trace_ms,gpu_paths_ms,"
-                  "gpu_a_ms,gpu_b_ms,gpu_c_ms,gpu_d_ms\n";
+                  "gpu_a_ms,gpu_b_ms,gpu_c_ms,gpu_d_ms,gpu_bakes,gpu_bakes_ms\n";
     }
     profiling_ = profiling;
     const size_t slot_index = next_slot_;
@@ -1008,10 +1008,14 @@ class RtScene12 {
     AdvanceMicromaps(completed);
     gpu_timings_.clear();
     cpu_timings_.clear();
-    slot.marks.clear();
-    slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
-    const bool recorded = SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr))
-                          && Record(shared, version, cluster_data, slot_index, &slot);
+    // A removed device's slots keep their last request and passes (LostReport: the lists the GPU stopped in; debug30's
+    // named the request after the loss, whose recording failed).
+    const bool reset = !Lost() && SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
+    if (reset) {
+      slot.marks.clear();
+      slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
+    }
+    const bool recorded = reset && Record(shared, version, cluster_data, slot_index, &slot);
     if (!recorded) slot.capture_keys.clear();
     if (info_queue_) {
       for (UINT64 index = 0; index < std::min<UINT64>(info_queue_->GetNumStoredMessages(), 20); ++index) {
@@ -1075,13 +1079,15 @@ class RtScene12 {
     const bool wanted = reflections ? (reflection_ && (requested & (dlaa_bridge::RT_REFLECTIONS | dlaa_bridge::RT_SPECULAR_OCCLUSION)) != 0)
                                     : (light_ && bounce_);
     const bool uses_paths = path_traced || reflections;
-    slot.marks.clear();
-    slot.request = std::format("{} {}: flags 0x{:X}, paths 0x{:X}", reflections ? "reflections" : "Light Bounce", own_value_ + 1, shared.rt_flags, requested);
-    bool recorded = wanted && traced_
+    bool recorded = wanted && traced_ && !Lost()
                     && (!uses_paths
                         || (EnsureCache() && EnsureHistory(HISTORY_PATHS, frame) && (!reflections || EnsureHistory(HISTORY_SPECULAR, frame))))
                     && SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
     if (recorded) {
+      // (A removed device's slots keep their last request and passes: LostReport.)
+      slot.marks.clear();
+      slot.request = std::format("{} {}: flags 0x{:X}, paths 0x{:X}", reflections ? "reflections" : "Light Bounce", own_value_ + 1, shared.rt_flags,
+                                 requested);
       auto* list = slot.list.Get();
       Stamp(list, slot_index * STAMPS + 4);
       const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
@@ -1409,7 +1415,7 @@ class RtScene12 {
   // A slot's GPU timestamps: a trace's start, scene, TLAS, end, its clusters' start and end (a paths request's start and
   // end at 4, 5), then the profile's (RT_PROFILE) parts' ends: a trace's sun, AO, local lights (fog after); a paths
   // request's radiance cache (or the Light Bounce's rays), paths, reuse (reflections after).
-  static constexpr size_t STAMPS = 9;
+  static constexpr size_t STAMPS = 10;
   static constexpr uint32_t TRACE_PART_SUN = 1u << 30;  // rt_trace.cs_6_5.hlsl PART_*
   static constexpr uint32_t TRACE_PART_AMBIENT = 1u << 31;
   // The TLAS's instances at most (16 MB of descs; grass past its share is placed, a patch an instance: ATN's second
@@ -1512,10 +1518,10 @@ class RtScene12 {
   static constexpr size_t MICROMAP_WORKERS = 4;  // bakes at once (each with the SDK's own threads)
   static constexpr size_t SET_MICROMAP_READS = 32;  // grass sets' micromap reads a request at most
   static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
-  // GPU Micromap Baking: bakes a request at most (24: new grass in view baked within a few frames, ATN's debug29: its
-  // shadows settled after 1-2 s at 8), the SDK's descriptors (a ring: a few requests' bakes, room for 3 x 24), its
-  // scratch.
-  static constexpr size_t MICROMAP_GPU_BAKES = 24;
+  // GPU Micromap Baking: bakes a request at most and their triangles (past either the CPU bakes them: none left without),
+  // the SDK's descriptors (a ring: about 71 a bake, room for 14 requests' bakes), its scratch.
+  static constexpr size_t MICROMAP_GPU_BAKES = 64;
+  static constexpr uint32_t MICROMAP_GPU_TRIANGLES = 1u << 17;
   static constexpr UINT OMM_DESCRIPTORS = 65536;
   // Grass's finest micromap level (leaves': 6): new grass's shadows wait for its bakes (ATN's debug28: still a visible
   // delay), and level 6 is four times the work.
@@ -1632,6 +1638,7 @@ class RtScene12 {
     // Its last request and passes (LostReport).
     std::string request;
     std::vector<const wchar_t*> marks;
+    uint32_t gpu_bakes = 0;  // GPU Micromap Baking's bakes in its last trace (the profile)
     ComPtr<ID3D12Resource> instances;
     D3D12_RAYTRACING_INSTANCE_DESC* instance_data = nullptr;
     ComPtr<ID3D12Resource> table;  // the scene data pass's capture table
@@ -1888,6 +1895,7 @@ class RtScene12 {
     uint32_t slice = 0;
     bool set = false;
     bool grass = false;
+    bool gpu = false;  // baked on the GPU (BakeMicromapsOnGpu), else read back for the CPU
   };
 
   bool Fail(const char* status) {
@@ -2525,12 +2533,20 @@ class RtScene12 {
     // Grass micromaps (with the Leaf Micromaps setting and Mega Geometry's micromap support): an alpha-tested set's first
     // instance's UVs read back once, a few sets a request (the bakes' room shared with the leaves').
     std::vector<MicromapRead> set_micromap_reads;
-    // GPU Micromap Baking: this request's bakes on the GPU at its end (at most MICROMAP_GPU_BAKES: the SDK's guide asks
-    // for a frame budget).
+    // GPU Micromap Baking: this request's bakes on the GPU at its end (the SDK's guide asks for a frame budget:
+    // MICROMAP_GPU_BAKES and MICROMAP_GPU_TRIANGLES, the first bake whatever its size); the others read back for the CPU.
     const bool gpu_bakes = gpu_micromaps_ && (shared.rt_flags & dlaa_bridge::RT_GPU_MICROMAPS) != 0;
     std::vector<MicromapBake*> gpu_baking;
+    size_t gpu_bake_room = gpu_bakes ? MICROMAP_GPU_BAKES : 0u;
+    uint32_t gpu_bake_triangles = 0;
+    const auto bake_on_gpu = [&](uint32_t triangles) {
+      if (gpu_bake_room == 0 || (gpu_bake_triangles != 0 && gpu_bake_triangles + triangles > MICROMAP_GPU_TRIANGLES)) return false;
+      --gpu_bake_room;
+      gpu_bake_triangles += triangles;
+      return true;
+    };
     size_t set_micromap_room = (cluster_micromaps_ && bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
-                                   ? std::min<size_t>(gpu_bakes ? MICROMAP_GPU_BAKES : SET_MICROMAP_READS,
+                                   ? std::min<size_t>(gpu_bake_room + SET_MICROMAP_READS,
                                                       MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                                     + MicromapsBaking() + micromaps_baked_.size()))
                                    : 0u;
@@ -2616,7 +2632,8 @@ class RtScene12 {
           set.micromaps_tried = true;
           --set_micromap_room;
           set_micromap_reads.push_back({.key = draw.set, .build = set.generation, .triangles = set.triangles, .uv_offset = entry[7],
-                                        .slice = draw.slice, .set = true, .grass = (draw.flags & dlaa_bridge::RT_GRASS) != 0});
+                                        .slice = draw.slice, .set = true, .grass = (draw.flags & dlaa_bridge::RT_GRASS) != 0,
+                                        .gpu = bake_on_gpu(set.triangles)});
         }
         compact_keys.push_back(draw.set);
         compact_flags.push_back(draw.flags);
@@ -2976,7 +2993,6 @@ class RtScene12 {
                                  ? MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                  + MicromapsBaking() + micromaps_baked_.size())
                                  : 0u;
-      if (gpu_bakes) micromap_room = std::min(micromap_room, MICROMAP_GPU_BAKES - std::min(MICROMAP_GPU_BAKES, micromap_reads.size()));
       // Instanced captures' rows to read back (their first texel in the vertex buffer).
       std::vector<Slot::RowRead> row_copies;
       std::vector<uint32_t> row_sources;
@@ -3034,7 +3050,8 @@ class RtScene12 {
         }
         if (placement.masked && micromap_room != 0 && mesh.triangles <= MICROMAP_TRIANGLES) {
           micromap_reads.push_back({.key = capture.key, .build = mesh.build, .first_vertex = capture.first_vertex, .triangles = mesh.triangles,
-                                    .uv_offset = placement.uv_offset, .slice = shared.rt_capture_slices[index], .grass = mesh.grass});
+                                    .uv_offset = placement.uv_offset, .slice = shared.rt_capture_slices[index], .grass = mesh.grass,
+                                    .gpu = bake_on_gpu(mesh.triangles)});
           --micromap_room;
         }
         slot->compactions.emplace_back(capture.key, mesh.build);
@@ -3407,7 +3424,7 @@ class RtScene12 {
         uint64_t uvs_bytes = 0;
         for (const MicromapRead& read : micromap_reads) {
           if (!read.set) positions_bytes = Align(positions_bytes + (uint64_t{read.triangles} * 48), 256);
-          if (gpu_bakes) continue;
+          if (read.gpu) continue;
           uvs_bytes = Align(uvs_bytes + (uint64_t{read.triangles} * 12), 256);
           masks.try_emplace(read.slice, masks.size() * MASK_BYTES);
         }
@@ -3419,12 +3436,12 @@ class RtScene12 {
           if (positions_bytes != 0) {
             positions = Buffer(positions_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
           }
-          if (!gpu_bakes) {
+          if (uvs_bytes != 0) {
             uvs = Buffer(uvs_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
             mask = Buffer(masks.size() * MASK_BYTES, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
           }
         }
-        if ((positions_bytes != 0 && !positions) || (!gpu_bakes && (!uvs || !mask))) micromap_reads.clear();
+        if ((positions_bytes != 0 && !positions) || (uvs_bytes != 0 && (!uvs || !mask))) micromap_reads.clear();
         if (!micromap_reads.empty()) {
           const D3D12_RESOURCE_DESC atlas_desc = atlas_->GetDesc();
           for (const auto& [slice, offset] : masks) {
@@ -3450,13 +3467,13 @@ class RtScene12 {
           auto bake = std::make_unique<MicromapBake>();
           *bake = {.key = read.key, .build = read.build, .value = own_value_ + 1, .triangles = read.triangles, .set = read.set,
                    .grass = read.grass, .positions = (read.set ? nullptr : positions), .positions_offset = positions_at, .uvs = uvs, .uvs_offset = uvs_at,
-                   .mask = mask, .mask_offset = gpu_bakes ? 0u : masks.at(read.slice), .gpu = gpu_bakes, .uv_offset = read.uv_offset,
+                   .mask = mask, .mask_offset = read.gpu ? 0u : masks.at(read.slice), .gpu = read.gpu, .uv_offset = read.uv_offset,
                    .slice = read.slice};
           if (!read.set) {
             list->CopyBufferRegion(positions.Get(), positions_at, vertex_buffer_.Get(), uint64_t{read.first_vertex} * 16, uint64_t{read.triangles} * 48);
             positions_at = Align(positions_at + (uint64_t{read.triangles} * 48), 256);
           }
-          if (gpu_bakes) {
+          if (read.gpu) {
             gpu_baking.push_back(bake.get());
           } else {
             list->CopyBufferRegion(uvs.Get(), uvs_at, uvs_.Get(), uint64_t{read.uv_offset} * 4, uint64_t{read.triangles} * 12);
@@ -3868,10 +3885,12 @@ class RtScene12 {
     }
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     Stamp(list, slot_index * STAMPS + 3);
-    Resolve(list, slot_index);
+    slot->gpu_bakes = static_cast<uint32_t>(gpu_baking.size());
 #if defined(RENODX_OMM_SDK)
     BakeMicromapsOnGpu(list, gpu_baking);
 #endif
+    Stamp(list, slot_index * STAMPS + 9);
+    Resolve(list, slot_index);
     if (FAILED(list->Close())) return Fail("Ray tracing: D3D12 stopped");
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
     std::erase_if(meshes_, [&](auto& entry) {
@@ -3953,8 +3972,9 @@ class RtScene12 {
       gpu_ms_[1] = ms(stamps[1], stamps[2]);
       gpu_ms_[2] = ms(stamps[2], stamps[3]);
       gpu_ms_[5] = slot_clustered_[slot_index] ? ms(stamps[4], stamps[5]) : 0.0;
-      WriteProfile(slot_index, std::format(",{:.3f},{:.3f},{:.3f},{:.3f},,{:.3f},{:.3f},{:.3f},{:.3f}", gpu_ms_[0], gpu_ms_[5], gpu_ms_[1], gpu_ms_[2],
-                                           ms(stamps[2], stamps[6]), ms(stamps[6], stamps[7]), ms(stamps[7], stamps[8]), ms(stamps[8], stamps[3])));
+      WriteProfile(slot_index, std::format(",{:.3f},{:.3f},{:.3f},{:.3f},,{:.3f},{:.3f},{:.3f},{:.3f},{},{:.3f}", gpu_ms_[0], gpu_ms_[5], gpu_ms_[1],
+                                           gpu_ms_[2], ms(stamps[2], stamps[6]), ms(stamps[6], stamps[7]), ms(stamps[7], stamps[8]),
+                                           ms(stamps[8], stamps[3]), slots_[slot_index].gpu_bakes, ms(stamps[3], stamps[9])));
       // The Light Bounce's and reflections' times only while they run (not their last).
       for (size_t kind = 0; kind < paths_age_.size(); ++kind) {
         if (++paths_age_[kind] > SLOTS * 2) gpu_ms_[3 + kind] = 0.0;
@@ -3966,7 +3986,7 @@ class RtScene12 {
       }
     } else {
       const double paths_ms = ms(stamps[4], stamps[5]);
-      WriteProfile(slot_index, std::format(",,,,,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}", paths_ms, ms(stamps[4], stamps[6]), ms(stamps[6], stamps[7]),
+      WriteProfile(slot_index, std::format(",,,,,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},,", paths_ms, ms(stamps[4], stamps[6]), ms(stamps[6], stamps[7]),
                                            ms(stamps[7], stamps[8]), ms(stamps[8], stamps[5])));
       gpu_ms_[slot_reflected_[slot_index] ? 4 : 3] = paths_ms;
       paths_age_[slot_reflected_[slot_index] ? 1 : 0] = 0;
@@ -4371,11 +4391,11 @@ class RtScene12 {
     list->SetComputeRootSignature(root_signature_.Get());
     list->SetPipelineState(gpu.clamp.Get());
     for (const Planned& plan : planned) {
-      const std::array<uint32_t, 8> constants = {plan.bake->triangles * 3};
+      const std::array<uint32_t, 8> constants = {plan.bake->triangles};
       list->SetComputeRootShaderResourceView(ROOT_SCENE, uvs_->GetGPUVirtualAddress() + (uint64_t{plan.bake->uv_offset} * 4));
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, gpu.uvs->GetGPUVirtualAddress() + plan.offsets[0]);
       list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(constants.size()), constants.data(), 0);
-      list->Dispatch((plan.bake->triangles * 3 + 63) / 64, 1, 1);
+      list->Dispatch((plan.bake->triangles + 63) / 64, 1, 1);
     }
     const auto clamped = Transition(gpu.uvs.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     list->ResourceBarrier(1, &clamped);
@@ -4391,6 +4411,12 @@ class RtScene12 {
     states[gpu.uvs.Get()] = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     const D3D12_CPU_DESCRIPTOR_HANDLE cpu_start = gpu.heap->GetCPUDescriptorHandleForHeapStart();
     const D3D12_GPU_DESCRIPTOR_HANDLE gpu_start = gpu.heap->GetGPUDescriptorHandleForHeapStart();
+    const auto state_for = [&](ID3D12Resource* resource, D3D12_RESOURCE_STATES needed) {
+      const auto tracked = states.find(resource);
+      if (tracked == states.end() || tracked->second == needed) return;
+      barriers.push_back(Transition(resource, tracked->second, needed));
+      tracked->second = needed;
+    };
     for (size_t index = 0; index < planned.size(); ++index) {
       Planned& plan = planned[index];
       const ommGpuDispatchChain* chain = nullptr;
@@ -4433,12 +4459,6 @@ class RtScene12 {
           case ommGpuResourceType_STATIC_INDEX_BUFFER:  return whole(gpu.statics[1]);
           default:                                      return nullptr;
         }
-      };
-      const auto state_for = [&](ID3D12Resource* resource, D3D12_RESOURCE_STATES needed) {
-        const auto tracked = states.find(resource);
-        if (tracked == states.end() || tracked->second == needed) return;
-        barriers.push_back(Transition(resource, tracked->second, needed));
-        tracked->second = needed;
       };
       for (uint32_t step = 0; step < chain->numDispatches && !plan.bake->gpu_failed; ++step) {
         const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
@@ -4528,6 +4548,22 @@ class RtScene12 {
         list->ResourceBarrier(1, &uav_barrier);
       }
     }
+    // The collapsed triangles' micromaps unknown opaque (rt_omm_uvs: the rays' alpha test decides there).
+    barriers.clear();
+    state_for(outputs[3].Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    state_for(gpu.uvs.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    if (!barriers.empty()) list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+    list->SetComputeRootSignature(root_signature_.Get());
+    list->SetPipelineState(gpu.clamp.Get());
+    for (const Planned& plan : planned) {
+      if (plan.bake->gpu_failed) continue;
+      const std::array<uint32_t, 8> constants = {plan.bake->triangles, 1u};
+      list->SetComputeRootShaderResourceView(ROOT_SCENE, gpu.uvs->GetGPUVirtualAddress() + plan.offsets[0]);
+      list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, outputs[3]->GetGPUVirtualAddress() + plan.offsets[4]);
+      list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(constants.size()), constants.data(), 0);
+      list->Dispatch((plan.bake->triangles + 63) / 64, 1, 1);
+    }
+    list->ResourceBarrier(1, &uav_barrier);
     // What the builds read (array data, descs, indices) readable from now on, the histograms copied to the read-back, the
     // kept ones back to their resting states.
     barriers.clear();
