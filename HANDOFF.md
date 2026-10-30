@@ -1,7 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v115 BATCH done (search "v115 BATCH" below); next: ATN's in-game test of v115.
+- NOW: v116 BIG BATCH (search "v116 BIG BATCH" below): not started; do item 0 FIRST (copy ATN's logs before any game
+  launch). v115 batch done (search "v115 BATCH").
 - State: Attila v115 shipped (Downloads/twattila_v115.zip, helper58 = build/tw_dlaa_helper58, bridge v19 + flag
   RT_DRAWN_PLACED; v115 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
   symlink to build32: copy it after each build), branch
@@ -1623,6 +1624,48 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 6. Explained in the round report: SHaRC = two extra passes a frame (update traces from 1 of 25 texels, resolve
           walks 2 M entries) for paths that are short and mostly end on surfaces the screen knows; SER = a ray tracing
           pipeline instead of the inline compute plus a sort by hit, worth it only for long divergent shading.
+    - v116 BIG BATCH (ATN 2026-10-30 ~21:25, NOT STARTED; written for the next account). ATN's words, as given:
+      "1) I am just in the game, you can see the shadow flicker on the tower. I am like really close. IT was flickering in
+      distant already too. Please check it out. In the same exact battle as now (log is probably here. I traced the RT for
+      30s too after the freeze.), the game froze when I was truing out light bounce Off instead of Rays/Paths and at the
+      same time RT Reflection. The reflection were flickering for a bit, then the game froze then it came back but I am not
+      sure if everything is working correctly now.
+      2) To "LOD switches black": is there any reason why we don't switch instantly? (Like what are the reasons for those 8
+      frames?
+      3) On german keyboard: you can press y to zoom down or x to zoom up on a map. Maybe you can load the
+      for_claude1.replay move forward until you arrive at the river, zoom down and see what I mean by "big" fps hit. when
+      around rivers. Maybe you can fix that too. Thanks again!"
+      Checklist ([ ] open, [x] done):
+      [ ] 0. FIRST, before launching the game: ATN's evidence is in C:/Program Files (x86)/Steam/steamapps/common/Total
+          War Attila/debug34 (6 screenshots 21:18-21:23 incl. the tower flicker, the addon's 30 s tw_rt_profile.csv,
+          ReShade.log as of 21:25). The game was still running then: renodx-tw-dlaa64.log (the freeze's DRED report) and
+          tw_rt_profile_helper.csv were still empty (written when the helper closes) -> copy renodx-tw-dlaa64.log,
+          tw_rt_profile_helper.csv and ReShade.log from the game folder into debug34 now (a game launch overwrites them).
+          Back up ATN's CURRENT ReShade.ini (changed 21:22; tools/tw/test_scripts/ReShade.ini.atn33 is the older 17:18
+          one) and restore it after tests.
+      [ ] 1a. Tower shadow flicker, close and far (v115 item 8: not changed; Debug View 1 showed raw per-frame visibility at
+          the towers' sun-facing edges = terminator; candidates: depth-derived normals (SurfaceNormal) flipping `facing` /
+          Planar per frame with jitter, the soft sun's one random disk ray under RR, ray start offsets). Note: the G-buffer
+          guides at the trace are LAST frame's (written after the sun draws), so not usable as this frame's normals as is.
+      [ ] 1b. Freeze toggling Light Bounce Off + RT Reflections together (reflections flickered, then freeze, then back):
+          read the DRED report in renodx-tw-dlaa64.log; after a device loss the helper restarts once with GPU Micromap
+          Baking / Swaying Shadows Range / Off-Screen Sway / SER / SHaRC paused until the game restarts (by design: tell
+          ATN), a second loss leaves RT off. Check that reflections / Light Bounce work after the restart (the 30 s trace).
+      [ ] 2. Why 8 frames for kept LOD copies: the addon places a still placed mesh's instances only in its turn (PLACE_TURNS
+          4: `(key + frame) % 4`, saves a stream-out draw per draw a frame); between turns the helper keeps them, so per
+          instance "not re-placed" means "not its turn" or "gone" until a turn passed: KEPT_IN_VIEW_FRAMES 8 = two turns
+          (one missed request of slack). v115 already drops them at once when the game drew none of that mesh this frame
+          (RT_DRAWN_PLACED). Left: a mesh still drawn elsewhere (same house elsewhere on screen). Instant options: place
+          every drawn key every frame (measure the addon's CPU cost), or decide the turn once per key per frame (all its
+          draw calls agree; counts differ between calls: 256 / 256 / 44 placed partially today) and drop in-view kept
+          instances of records placed this request that were not re-placed.
+      [ ] 3. River fps (for_claude1.replay: move forward to the river, zoom down). German keys per ATN: y zooms down, x up;
+          for SendInput use scan codes (0x2C = the key ATN calls y, 0x2D = x; W 0x11; verify). Scripts:
+          tools/tw/test_scripts (move_profile.ps1: profile + keys; move_compare.py; shot_run3.ps1; ini_set.py; noise.py;
+          scan_register.py) - their paths still point at the v115 session's scratchpad: adjust. debug33 profile at ATN's
+          river view (before v115's fix): sun rays 8 ms still, bounce 9 ms; positions there are the riverbed (water drawn
+          after the trace), with grass in it.
+      [ ] 4. v116 zip, README, HANDOFF, memory, report.
     - v115 BATCH (ATN 2026-10-30 ~17:20, away for hours; debug33 = C:/Program Files (x86)/Steam/steamapps/common/Total
       War Attila/debug33; new replay for_claude1.replay = Large Ctesiphon, day): checklist ([ ] open, [x] done):
       [x] 1. (e5bf7dd3) RT AO / SSAO / GT-VBAO "dark" under Rays / Off after PT: the Light Bounce bypasses the sun draw
