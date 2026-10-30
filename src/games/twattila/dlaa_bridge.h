@@ -178,6 +178,9 @@ constexpr uint32_t RT_PATH_SHARC = 256;
 // Reflection Reuse from ReSTIR GI (v19, a reflections request's, with the paths' ReSTIR GI this frame): the reflections'
 // rougher lobes resample the Light Bounce's reservoir at their texel with their own rays' light.
 constexpr uint32_t RT_REFLECTIONS_REUSE = 512;
+// Own ReSTIR (v19, a reflections request's; helpers before 55 ignore it): the reflections' rougher lobes resample their
+// own reservoirs (half resolution, reused over frames and between neighbours) with their own rays' light.
+constexpr uint32_t RT_REFLECTIONS_OWN = 1024;
 
 struct Shared {
   uint32_t version = VERSION;

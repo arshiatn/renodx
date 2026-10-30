@@ -54,6 +54,10 @@ RWTexture2D<float> specular_hit_distance : register(u31);  // out (PATH_RAW): Ra
 // and every third frame its sample re-checked (still in view, its light now): changed light shortens the history.
 RWTexture2D<float4> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
 RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
+// Own ReSTIR (Reflection Reuse): the reflections' own reservoirs at half the render pixels (ReflectReservoirTexel), laid
+// out as ReSTIR GI's; two sets, this frame's at PATH_REFLECT_PARITY.
+RWTexture2D<float4> reflect_samples[2] : register(u36);
+RWTexture2D<uint4> reflect_data[2] : register(u38);
 
 static const uint PATH_TRACING = 1u;          // the bounce texels' light path traced
 static const uint PATH_REFLECTIONS = 2u;
@@ -74,6 +78,12 @@ static const uint PATH_AMBIENT = 262144u;     // Path-Traced Ambient: a camera r
 static const uint PATH_KEEP_LIGHT = 524288u;  // the learned lighting kept (the game's ambient away: Path-Traced Ambient)
 static const uint PATH_REFLECT_REUSE = 4194304u;  // the reflections resample ReSTIR GI's reservoirs (PATH_REUSE_PARITY: its set)
 static const float REFLECT_REUSE_ROUGHNESS = 0.3f;  // the lobes broad enough for the bounce's samples to land in
+static const uint PATH_REFLECT_OWN = 8388608u;          // Own ReSTIR: the reflections' own reservoirs
+static const uint PATH_REFLECT_OWN_HISTORY = 16777216u; // last frame's are last frame's
+static const uint PATH_REFLECT_PARITY = 33554432u;      // this frame's set: 1 (else 0)
+static const uint REFLECT_NEIGHBOURS = 4u;
+static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
+static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
@@ -483,36 +493,65 @@ void Merge(inout Reservoir reservoir, Reservoir other, float weight, float rando
   }
 }
 
-// W = the weights' sum over M times the target at the receiver (0: nothing to show).
-void Finish(inout Reservoir reservoir, float3 receiver, float3 receiver_normal) {
-  const float target = ReuseTarget(receiver, receiver_normal, reservoir);
+// W = the weights' sum over M times `target` (the sample kept's at the receiver; 0: nothing to show).
+void Finish(inout Reservoir reservoir, float target) {
   reservoir.weight = (reservoir.count > 0.f && target > 0.f) ? reservoir.weight / (reservoir.count * target) : 0.f;
 }
 
 // The texel's own normal its reservoir was made for (0: none).
-float3 LoadReceiverNormal(uint set, uint2 texel) {
-  const uint packed = reuse_data[set][texel].w;
+float3 LoadReceiverNormal(RWTexture2D<uint4> data, uint2 texel) {
+  const uint packed = data[texel].w;
   return (packed != 0u) ? OctahedralDecode(packed) : 0.f;
 }
 
-Reservoir LoadReservoir(uint set, uint2 texel) {
-  const float4 sample_point = reuse_samples[set][texel];
-  const uint4 data = reuse_data[set][texel];
+Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel) {
+  const float4 sample_point = samples[texel];
+  const uint4 packed = data[texel];
   Reservoir reservoir;
   reservoir.hit = sample_point.xyz;
   reservoir.weight = sample_point.w;
-  reservoir.light = float3(f16tof32(data.x), f16tof32(data.x >> 16), f16tof32(data.y));
-  reservoir.count = (float)(data.y >> 16);
-  reservoir.hit_normal = (data.z != 0u) ? OctahedralDecode(data.z) : 0.f;
+  reservoir.light = float3(f16tof32(packed.x), f16tof32(packed.x >> 16), f16tof32(packed.y));
+  reservoir.count = (float)(packed.y >> 16);
+  reservoir.hit_normal = (packed.z != 0u) ? OctahedralDecode(packed.z) : 0.f;
   return reservoir;
 }
 
-void StoreReservoir(uint set, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
-  reuse_samples[set][texel] = float4(reservoir.hit, reservoir.weight);
-  reuse_data[set][texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
-                                 f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
-                                 (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u,
-                                 (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
+void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
+  samples[texel] = float4(reservoir.hit, reservoir.weight);
+  data[texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
+                      f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
+                      (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u,
+                      (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
+}
+
+// Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
+// screen or the cache knows it) takes the stored light's place, and a change shortens the history (bright changes
+// dimmed until they settle). The change (0: none, 1: all of the history goes).
+float Validate(inout Reservoir previous, float3 origin) {
+  const float3 to_hit = previous.hit - origin;
+  const float hit_distance = length(to_hit);
+  if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
+    previous.count = 0.f;
+    return 0.f;
+  }
+  float3 light_now;
+  if (!HitLight(previous.hit, light_now)) return 0.f;
+  const float3 change = abs(previous.light - light_now) / max(previous.light + light_now, 1e-3f);
+  const float ratio = Luminance(previous.light) / max(Luminance(light_now), 1e-8f);
+  previous.count *= clamp(ratio, 0.03f, 1.f);
+  previous.weight *= clamp(ratio * 10.f, 0.01f, 1.f);
+  previous.light = light_now;
+  return smoothstep(0.1f, 0.5f, length(change) / 1.7320508f);
+}
+
+// A neighbour's sample moved to this receiver: the Jacobian of its surface's solid angles from here over from there (the
+// sky's samples, no surface, as far as the sky: the same solid angle from either).
+float ReuseJacobian(Reservoir other, float3 other_origin, float3 origin) {
+  if (all(other.hit_normal == 0.f)) return 1.f;
+  const float3 to_other = other_origin - other.hit;
+  const float3 to_here = origin - other.hit;
+  return abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
+         / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
 }
 
 // The surface a bounce texel shows: its render pixel, world position (w: depth; 0: the sky), normal, rays' origin.
@@ -539,7 +578,7 @@ void PathTraceTexel(uint2 id) {
   Reservoir reservoir = (Reservoir)0;
   if (position.w <= 0.f) {
     bounce[id] = 0.f;
-    if (reuse) StoreReservoir(set, id, reservoir, 0.f);
+    if (reuse) StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, 0.f);
     return;
   }
   const uint samples = max(path_samples, 1u);
@@ -580,34 +619,18 @@ void PathTraceTexel(uint2 id) {
     // takes neighbouring texels' samples as independent).
     if ((path_flags & PATH_PERMUTE) != 0u) previous_texel ^= uint2(frame & 1u, (frame >> 1) & 1u);
     previous_texel = min(previous_texel, uint2(bounce_width, bounce_height) - 1u);
-    Reservoir previous = LoadReservoir(1u - set, previous_texel);
+    Reservoir previous = LoadReservoir(reuse_samples[1u - set], reuse_data[1u - set], previous_texel);
     // Last frame's reservoir was made for a surface facing about the same way (else a new history starts).
-    if (dot(LoadReceiverNormal(1u - set, previous_texel), normal) < 0.8f) previous.count = 0.f;
+    if (dot(LoadReceiverNormal(reuse_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
     float invalidity = 0.f;
-    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) {
-      // Validation: its surface out of view now drops it; its light now (where the screen or the cache knows it) takes
-      // the stored light's place, and a change shortens the history (bright changes dimmed until they settle).
-      const float3 to_hit = previous.hit - origin;
-      const float hit_distance = length(to_hit);
-      float3 light_now;
-      if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
-        previous.count = 0.f;
-      } else if (HitLight(previous.hit, light_now)) {
-        const float3 change = abs(previous.light - light_now) / max(previous.light + light_now, 1e-3f);
-        invalidity = smoothstep(0.1f, 0.5f, length(change) / 1.7320508f);
-        const float ratio = Luminance(previous.light) / max(Luminance(light_now), 1e-8f);
-        previous.count *= clamp(ratio, 0.03f, 1.f);
-        previous.weight *= clamp(ratio * 10.f, 0.01f, 1.f);
-        previous.light = light_now;
-      }
-    }
+    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin);
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * samples);
     Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
           Random(uint3(id, frame * 16u + 6144u)));
   }
-  Finish(reservoir, origin, normal);
+  Finish(reservoir, ReuseTarget(origin, normal, reservoir));
   reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP);
-  StoreReservoir(set, id, reservoir, normal);
+  StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
 }
 
 // ReSTIR GI's spatial reuse: a texel's reservoir merged with neighbours' on the same surface (their samples' density
@@ -623,7 +646,7 @@ void ReuseTexel(uint2 id) {
     return;
   }
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
-  const Reservoir own = LoadReservoir(set, id);
+  const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
   Reservoir combined = (Reservoir)0;
   Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint3(id, frame * 16u + 7168u)));
   [loop]
@@ -636,19 +659,14 @@ void ReuseTexel(uint2 id) {
     float3 other_origin;
     const float4 other_position = TexelSurface(uint2(texel), other_normal, other_origin);
     if (other_position.w <= 0.f || abs(other_position.w - position.w) > 0.1f * position.w || dot(other_normal, normal) < 0.9f) continue;
-    const Reservoir other = LoadReservoir(set, uint2(texel));
+    const Reservoir other = LoadReservoir(reuse_samples[set], reuse_data[set], uint2(texel));
     if (other.count <= 0.f) continue;
-    const float3 to_other = other_origin - other.hit;
-    const float3 to_here = origin - other.hit;
-    // The sky's samples (no surface) as far as the sky: the same solid angle from either.
-    const float jacobian = any(other.hit_normal != 0.f) ? abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
-                                                              / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f)
-                                                        : 1.f;
+    const float jacobian = ReuseJacobian(other, other_origin, origin);
     if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
     Merge(combined, other, ReuseTarget(origin, normal, other) * other.weight * other.count * jacobian,
           Random(uint3(id, frame * 16u + neighbour + 7300u)));
   }
-  Finish(combined, origin, normal);
+  Finish(combined, ReuseTarget(origin, normal, combined));
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
   const float3 to_hit = combined.hit - origin;
   const float hit_distance = length(to_hit);
@@ -697,6 +715,78 @@ float GgxReflectionDensity(float n_dot_v, float n_dot_h, float alpha) {
   return g1 * d / max(4.f * n_dot_v, 1e-6f);
 }
 
+// A reflected direction of a pixel's GGX lobe (`basis`: Basis(normal); `view_local`: the view in it).
+float3 GgxDirection(float3x3 basis, float3 view, float3 view_local, float alpha, float2 random) {
+  return reflect(-view, mul(GgxVisibleNormal(view_local, alpha, random.x, random.y), basis));
+}
+
+// A pixel's GGX lobe's density toward a point (of its reflected directions; 0: below the surface). Reflection Reuse's
+// target: a sample's light (luminance) by it.
+float LobeDensity(float3 receiver, float3 normal, float3 view, float alpha, float3 target) {
+  const float3 direction = normalize(target - receiver);
+  if (dot(normal, direction) <= 0.f) return 0.f;
+  return GgxReflectionDensity(max(dot(normal, view), 1e-3f), saturate(dot(normal, normalize(view + direction))), alpha);
+}
+
+// The render pixel an Own ReSTIR texel stands for this frame: one of its 2 x 2, a different one each frame.
+uint2 ReservoirPixel(uint2 texel) {
+  return min(texel * 2u + uint2(frame & 1u, (frame >> 1) & 1u), uint2(width, height) - 1u);
+}
+
+// Own ReSTIR's reservoirs (at half the render pixels, for the lobes Reflection Reuse takes): a GGX sample of the lobe a
+// frame (its target over its density: its light's luminance; the samples that met a surface only, as the reflections'
+// light: the sky's is the game's), merged with last frame's at the same surface as the texel's lobe (its pixel changes
+// each frame: near walls a pixel's shift moves the lobe's density at a sample far); kept with the weights' mean in
+// place of W (ReflectPixel merges neighbours').
+void ReflectReservoirTexel(uint2 id) {
+  if (any(id >= (uint2(width, height) + 1u) / 2u)) return;
+  const uint set = ((path_flags & PATH_REFLECT_PARITY) != 0u) ? 1u : 0u;
+  const uint2 pixel = ReservoirPixel(id);
+  const float4 position = positions[pixel];
+  const float roughness = saturate(guide_roughness[pixel]);
+  Reservoir reservoir = (Reservoir)0;
+  if (position.w <= 0.f || roughness < REFLECT_REUSE_ROUGHNESS || roughness > ROUGH_LIMIT) {
+    StoreReservoir(reflect_samples[set], reflect_data[set], id, reservoir, 0.f);
+    return;
+  }
+  const float3 normal = PixelNormal(pixel, position);
+  const float3 view = normalize(Camera() - position.xyz);
+  const float n_dot_v = max(dot(normal, view), 1e-3f);
+  const float3 origin = RayOrigin(position, normal, Planar(int2(pixel), position, normal));
+  const float alpha = roughness * roughness;
+  const float3x3 basis = Basis(normal);
+  const float3 direction = GgxDirection(basis, view, float3(dot(view, basis[0]), dot(view, basis[1]), n_dot_v), alpha,
+                                        float2(Random(uint3(pixel, frame * 16u + 9216u)), Random(uint3(pixel, frame * 16u + 9217u))));
+  if (dot(normal, direction) > 0.f) {
+    float first_distance;
+    float3 first_normal;
+    const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, pixel, 24u, first_distance, first_normal);
+    if (first_distance < 1e29f) {
+      Reservoir candidate;
+      candidate.hit = origin + direction * first_distance;
+      candidate.hit_normal = first_normal;
+      candidate.light = sample_light;
+      candidate.count = 1.f;
+      candidate.weight = 0.f;
+      Merge(reservoir, candidate, Luminance(sample_light), Random(uint3(pixel, frame * 16u + 9218u)));
+    }
+  }
+  uint2 previous_pixel;
+  if ((path_flags & PATH_REFLECT_OWN_HISTORY) != 0u && SeenLastFrame(position.xyz, previous_pixel)) {
+    const uint2 previous_texel = min(previous_pixel / 2u, (uint2(width, height) + 1u) / 2u - 1u);
+    Reservoir previous = LoadReservoir(reflect_samples[1u - set], reflect_data[1u - set], previous_texel);
+    if (dot(LoadReceiverNormal(reflect_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
+    float invalidity = 0.f;
+    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin);
+    previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)));
+    if (LobeDensity(origin, normal, view, alpha, previous.hit) > 0.f) {
+      Merge(reservoir, previous, previous.weight * previous.count, Random(uint3(pixel, frame * 16u + 9219u)));
+    }
+  }
+  reservoir.weight = (reservoir.count > 0.f) ? reservoir.weight / reservoir.count : 0.f;
+  StoreReservoir(reflect_samples[set], reflect_data[set], id, reservoir, normal);
+}
+
 // Reflections and specular occlusion of a render pixel (accumulated by world position).
 void ReflectPixel(uint2 id) {
   if (id.x >= width || id.y >= height) return;
@@ -725,11 +815,10 @@ void ReflectPixel(uint2 id) {
   uint open = 0u;
   [loop]
   for (uint sample = 0u; sample < samples; ++sample) {
-    const float3 half_local = mirror ? float3(0.f, 0.f, 1.f)
-                                     : GgxVisibleNormal(view_local, alpha, Random(uint3(id, frame * 16u + sample * 2u + 3072u)),
-                                                        Random(uint3(id, frame * 16u + sample * 2u + 3073u)));
-    const float3 half_vector = half_local.x * basis[0] + half_local.y * basis[1] + half_local.z * normal;
-    const float3 direction = reflect(-view, half_vector);
+    const float3 direction = mirror ? reflect(-view, normal)
+                                    : GgxDirection(basis, view, view_local, alpha,
+                                                   float2(Random(uint3(id, frame * 16u + sample * 2u + 3072u)),
+                                                          Random(uint3(id, frame * 16u + sample * 2u + 3073u))));
     const float n_dot_l = dot(normal, direction);
     if (n_dot_l <= 0.f) continue;
     if (traced) {
@@ -753,16 +842,14 @@ void ReflectPixel(uint2 id) {
   // by its target over their density, the reservoir's by the lobe's density at it times its W); one ray to the chosen
   // reservoir sample.
   if ((path_flags & PATH_REFLECT_REUSE) != 0u && traced && !mirror && roughness >= REFLECT_REUSE_ROUGHNESS) {
-    const Reservoir bounce = LoadReservoir(((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u,
-                                           min(id / bounce_scale, uint2(bounce_width, bounce_height) - 1u));
+    const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
+    const Reservoir bounce = LoadReservoir(reuse_samples[set], reuse_data[set], min(id / bounce_scale, uint2(bounce_width, bounce_height) - 1u));
     const float3 to_hit = bounce.hit - origin;
     const float hit_distance = length(to_hit);
     const float3 own = (weights > 0.f) ? gathered / weights : 0.f;
-    float bounce_weight = 0.f;
-    if (bounce.weight > 0.f && hit_distance > 1e-3f && dot(normal, to_hit) > 0.f) {
-      const float3 half_vector = normalize(view + to_hit / hit_distance);
-      bounce_weight = Luminance(bounce.light) * GgxReflectionDensity(n_dot_v, saturate(dot(normal, half_vector)), alpha) * bounce.weight;
-    }
+    const float bounce_weight = (bounce.weight > 0.f && hit_distance > 1e-3f)
+                                    ? Luminance(bounce.light) * LobeDensity(origin, normal, view, alpha, bounce.hit) * bounce.weight
+                                    : 0.f;
     const float own_weight = Luminance(own);
     const float total = own_weight + bounce_weight;
     if (total > 0.f) {
@@ -777,7 +864,83 @@ void ReflectPixel(uint2 id) {
       }
     }
   }
-  const float4 current = float4((weights > 0.f) ? gathered / weights : 0.f, (float)met / samples);
+  // Own ReSTIR (PATH_REFLECT_OWN, rougher lobes): the reflections' own reservoirs at this pixel's texel and neighbours' on
+  // a surface alike (normal, roughness) resampled by this lobe's target, each by the generalized balance heuristic (this
+  // lobe's density at its sample over the reservoirs' lobes' mean there; moved here by the Jacobian; at most
+  // REUSE_W_CLAMP: no fireflies). The chosen sample's colour at the reservoirs' mean weight (their luminance: by the
+  // lobes' ratios it was far noisier, near walls a pixel's shift moves a lobe's density at a sample far), if in view,
+  // joins the rays' own by the samples each stands for (the share that met a surface stays the rays': the reservoirs
+  // keep only those).
+  if ((path_flags & PATH_REFLECT_OWN) != 0u && traced && !mirror && roughness >= REFLECT_REUSE_ROUGHNESS) {
+    const uint set = ((path_flags & PATH_REFLECT_PARITY) != 0u) ? 1u : 0u;
+    Reservoir candidates[REFLECT_NEIGHBOURS + 1u];
+    float3 receivers[REFLECT_NEIGHBOURS + 1u];
+    float3 receiver_normals[REFLECT_NEIGHBOURS + 1u];
+    float3 receiver_views[REFLECT_NEIGHBOURS + 1u];
+    float receiver_alphas[REFLECT_NEIGHBOURS + 1u];
+    float total_count = 0.f;
+    [unroll]
+    for (uint neighbour = 0u; neighbour <= REFLECT_NEIGHBOURS; ++neighbour) {
+      candidates[neighbour] = (Reservoir)0;
+      receivers[neighbour] = origin;
+      receiver_normals[neighbour] = normal;
+      receiver_views[neighbour] = view;
+      receiver_alphas[neighbour] = alpha;
+      int2 texel = int2(id / 2u);
+      if (neighbour != 0u) {
+        const float angle = 6.2831853f * Random(uint3(id, frame * 16u + neighbour * 2u + 9300u));
+        const float radius = max(REFLECT_RADIUS * roughness, 1.f) * sqrt(Random(uint3(id, frame * 16u + neighbour * 2u + 9301u)));
+        texel += int2(round(float2(cos(angle), sin(angle)) * radius));
+      }
+      if (any(texel < 0) || any(texel >= int2((uint2(width, height) + 1u) / 2u))) continue;
+      const uint2 other_pixel = ReservoirPixel(uint2(texel));
+      const float4 other_position = positions[other_pixel];
+      if (other_position.w <= 0.f || abs(other_position.w - position.w) > 0.1f * position.w) continue;
+      const float3 other_normal = PixelNormal(other_pixel, other_position);
+      const float other_roughness = saturate(guide_roughness[other_pixel]);
+      if (dot(other_normal, normal) < 0.95f || abs(other_roughness - roughness) > 0.1f) continue;
+      const Reservoir other = LoadReservoir(reflect_samples[set], reflect_data[set], uint2(texel));
+      // Its sample seen from here at an angle within this lobe's width (near a wall neighbours a few pixels apart see it
+      // far apart).
+      if (neighbour != 0u && distance(other_position.xyz, position.xyz) > REFLECT_SHIFT * alpha * distance(other.hit, origin)) continue;
+      candidates[neighbour] = other;
+      receivers[neighbour] = other_position.xyz;
+      receiver_normals[neighbour] = other_normal;
+      receiver_views[neighbour] = normalize(Camera() - other_position.xyz);
+      receiver_alphas[neighbour] = max(other_roughness * other_roughness, 1e-3f);
+      total_count += candidates[neighbour].count;
+    }
+    Reservoir combined = (Reservoir)0;
+    float weight_sum = 0.f;
+    float counted = 0.f;
+    [unroll]
+    for (uint index = 0u; index <= REFLECT_NEIGHBOURS; ++index) {
+      const Reservoir other = candidates[index];
+      if (other.count <= 0.f || other.weight <= 0.f) continue;
+      const float jacobian = ReuseJacobian(other, receivers[index], origin);
+      if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
+      float densities = 0.f;
+      [unroll]
+      for (uint source = 0u; source <= REFLECT_NEIGHBOURS; ++source) {
+        densities += candidates[source].count
+                     * LobeDensity(receivers[source], receiver_normals[source], receiver_views[source], receiver_alphas[source], other.hit);
+      }
+      if (densities <= 0.f) continue;
+      const float ratio = LobeDensity(origin, normal, view, alpha, other.hit) * jacobian * total_count / densities;
+      Merge(combined, other, other.weight * other.count * min(ratio, REUSE_W_CLAMP), Random(uint3(id, frame * 16u + index + 9400u)));
+      weight_sum += other.weight * other.count;
+      counted += other.count;
+    }
+    const float3 to_hit = combined.hit - origin;
+    const float hit_distance = length(to_hit);
+    if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
+      const float3 reused = combined.light / max(Luminance(combined.light), 1e-6f) * (weight_sum / counted);
+      const float own_count = (weights > 0.f) ? (float)met : 0.f;
+      gathered = (((weights > 0.f) ? gathered / weights : 0.f) * own_count + reused * counted) / (own_count + counted);
+      weights = 1.f;
+    }
+  }
+  const float4 current = float4((weights > 0.f) ? gathered / weights : 0.f, min((float)met / samples, 1.f));
   const float current_open = (float)open / samples;
   // Ray Reconstruction's specular hit distance: the mean distance to what the samples met (the sky's where none did, as
   // where none were traced: the game's reflection is the sky's or a cube map's).

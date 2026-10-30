@@ -2,6 +2,16 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v112 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper55: ship them together)
+
+- **Reflection Reuse: Own ReSTIR** (Experimental, the third choice next to From ReSTIR GI, so you can compare; needs no
+  Path Tracing): rough reflections (roughness 0.3-0.75) keep their own samples (at half resolution, ~130 MB at 4K) and
+  reuse them over frames and between neighbouring pixels on the same surface. Test scene, 1 reflection ray a pixel:
+  colour error 0.114 against plain rays' 0.148; after the reflections' smoothing 0.092 against 0.175 (plain 1-ray
+  reflections also came out too dark there; Own ReSTIR not). The reflection pass costs ~60% more.
+- From ReSTIR GI is unchanged; in the same test it was worse than plain rays (0.30 against 0.09 after smoothing, 4 rays):
+  compare all three in game.
+
 ## v111 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper54: ship them together)
 
 - **PT AO closer to RT AO**: what blocks the sky now follows RT AO's rules: its range (the AO Range setting; before, PT

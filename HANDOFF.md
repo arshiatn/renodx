@@ -1,8 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- State: Attila v111 shipped (Downloads/twattila_v111.zip, helper54 = build/tw_dlaa_helper54, bridge v19; helper54 is in Attila's
-  folder too), branch
+- State: Attila v112 shipped (Downloads/twattila_v112.zip, helper55 = build/tw_dlaa_helper55, bridge v19; Attila's folder still
+  has helper54), branch
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
   (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
@@ -1589,10 +1589,17 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           helper47; the D3D12 debug layer would not load: 0x887A002D). Status now carries the HRESULT.
       [x] 8. twattila_v109.zip, builds, all_modes, README v109, memory (see the commits after 524954cf).
     - NEXT BATCH (v110; ATN 2026-10-30: added, NOT started until ATN says):
-      [ ] 1. Reflection Reuse "Own ReSTIR" (the second option next to From ReSTIR GI, so ATN can compare): the
-          reflections' own reservoirs (GGX-sampled candidates, target lum(L) x the lobe's density; temporal reuse by
-          reprojection, spatial over neighbours of similar normal and roughness; half resolution: two full-res sets
-          would be ~265 MB at 4K).
+      [x] 1. Reflection Reuse "Own ReSTIR" (v112, helper55, untested in game; setting RayTracedReflectionReuse 2, bridge
+          bit RT_REFLECTIONS_OWN 1024): rt_path.hlsli ReflectReservoirTexel (pass RT_REFLECT_RESERVOIR, half res: the
+          pixel of each 2 x 2 rotates per frame; one GGX candidate, met surfaces only, temporal merge receiver-agnostic,
+          the reservoir keeps the weights' mean in place of W; u36-u39, HISTORY_REFLECT ~130 MB at 4K) and ReflectPixel's
+          spatial step (own texel + 4 neighbours, near-field rejection REFLECT_SHIFT, generalized balance heuristic for
+          the choice, magnitude = the reservoirs' mean weight: lobe ratios made it noisy near walls; mixed with the rays'
+          own by sample counts; the met share stays the rays'). Harness (rough reflection RMSE vs 16 spp, scratchpad
+          rmse.py / compare.sh, new all_modes modes reflect_own*): 1 spp raw colour 0.114 vs rays 0.148, accumulated
+          0.092 vs 0.175 (plain 1-spp accumulation is biased dark: frames with no met sample put rgb 0 in the history; a
+          fix for later). From ReSTIR GI measured worse than plain rays (0.30 vs 0.09 accumulated, 4 spp). Cost: the
+          reflection pass ~+60% (0.12 -> 0.19 ms at 640x360).
       [ ] 2. The one-off Close failure (E_INVALIDARG) of the first trace request on auto_save.replay's desert map (v108's
           helper47 too): first get the D3D12 debug layer loading in the helper (0x887A002D with d3d12SDKLayers.dll next
           to D3D12Core.dll), then fix the invalid call it names. v111 session (2026-10-30): the debug layer fails the same

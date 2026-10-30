@@ -92,7 +92,7 @@ struct Sliders {
   float specular_occlusion = 0.f;
   float water_reflections = 1.f;  // the water's from its own surface (games whose reflection pass OnReflectionDraw hooks)
   float reflection_samples = 1.f;
-  float reflection_reuse = 0.f;  // 0 off, 1 from ReSTIR GI
+  float reflection_reuse = 0.f;  // 0 off, 1 from ReSTIR GI, 2 Own ReSTIR
   float debug_view = 0.f;  // games whose tone mapper hook calls OnTonemapDrawn
   float scene_test = 0.f;  // with the Debug View on
 };
@@ -136,7 +136,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
       .water_reflections = sliders.water_reflections != 0.f,
       .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples) * density,
-      .reflection_reuse = sliders.reflection_reuse != 0.f && sliders.light_bounce == 2.f,
+      .reflection_reuse = sliders.reflection_reuse == 1.f && sliders.light_bounce == 2.f,
+      .reflection_own = sliders.reflection_reuse == 2.f,
       // Ray-traced sun shadows are every shadow: the point lights' too (games whose light draws InstallPointLights hooks),
       // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
       .local_lights = sliders.sun_shadows != 0.f && dlaa,
@@ -1365,10 +1366,11 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Reflection Reuse (Experimental)",
           .section = section,
-          .tooltip = "From ReSTIR GI: rough reflections also take the path-traced Light Bounce's samples. Less noise.\n"
-                     "Needs Path Tracing.",
-          .labels = {"Off", "From ReSTIR GI"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f && sliders->light_bounce == 2.f; },
+          .tooltip = "Less noise on rough reflections.\n"
+                     "From ReSTIR GI: also the path-traced Light Bounce's samples (needs Path Tracing).\n"
+                     "Own ReSTIR: their own samples, reused over frames and between neighbours.",
+          .labels = {"Off", "From ReSTIR GI", "Own ReSTIR"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedWaterReflections",

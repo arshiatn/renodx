@@ -64,6 +64,8 @@
 #include "rt_reflect_omm.h"       // dxc -Fh (build.ps1)
 #include "rt_reuse.h"             // dxc -Fh (build.ps1)
 #include "rt_reuse_omm.h"         // dxc -Fh (build.ps1)
+#include "rt_reflect_reservoir.h"      // dxc -Fh (build.ps1)
+#include "rt_reflect_reservoir_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
 #include "rt_soft.h"              // dxc -Fh (build.ps1)
 #include "rt_sway.h"              // dxc -Fh (build.ps1)
@@ -553,6 +555,7 @@ class RtScene12 {
     dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_)
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
              && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_)
+             && pipeline(RT_REFLECT_RESERVOIR_OMM, sizeof(RT_REFLECT_RESERVOIR_OMM), &reflect_reservoir_pipeline_)
              && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_) && pipeline(RT_LIGHTS_OMM, sizeof(RT_LIGHTS_OMM), &lights_pipeline_);
     if (!dxr12_) {
       trace_pipeline_.Reset();
@@ -560,6 +563,7 @@ class RtScene12 {
       path_pipeline_.Reset();
       reflect_pipeline_.Reset();
       reuse_pipeline_.Reset();
+      reflect_reservoir_pipeline_.Reset();
       fog_pipeline_.Reset();
       lights_pipeline_.Reset();
     }
@@ -569,6 +573,7 @@ class RtScene12 {
         || (!path_pipeline_ && !pipeline(RT_PATH, sizeof(RT_PATH), &path_pipeline_))
         || (!reflect_pipeline_ && !pipeline(RT_REFLECT, sizeof(RT_REFLECT), &reflect_pipeline_))
         || (!reuse_pipeline_ && !pipeline(RT_REUSE, sizeof(RT_REUSE), &reuse_pipeline_))
+        || (!reflect_reservoir_pipeline_ && !pipeline(RT_REFLECT_RESERVOIR, sizeof(RT_REFLECT_RESERVOIR), &reflect_reservoir_pipeline_))
         || (!fog_pipeline_ && !pipeline(RT_FOG, sizeof(RT_FOG), &fog_pipeline_))
         || (!lights_pipeline_ && !pipeline(RT_LIGHTS, sizeof(RT_LIGHTS), &lights_pipeline_))
         || !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_)
@@ -842,6 +847,8 @@ class RtScene12 {
     specular_meta_history_.Reset();
     reuse_samples_ = {};
     reuse_data_ = {};
+    reflect_samples_ = {};
+    reflect_data_ = {};
     if (descriptors_) WriteNullPathDescriptors();
     fence_.Reset();
   }
@@ -1209,6 +1216,19 @@ class RtScene12 {
         if (reflections && version >= 19 && (requested & dlaa_bridge::RT_REFLECTIONS_REUSE) != 0 && reuse_frame_ == frame) {
           flags |= PATH_REFLECT_REUSE | (reuse_parity_ == 0 ? PATH_REUSE_PARITY : 0u);
         }
+        // Own ReSTIR (v19, helpers 55 on): the reflections' own reservoirs, made once a frame (set reflect_parity_, then
+        // turned; a second request that frame takes them as made); last frame's when made at this size.
+        const bool reflect_own = reflections && guides && (flags & PATH_REFLECTIONS) != 0 && version >= 19
+                                 && (requested & dlaa_bridge::RT_REFLECTIONS_OWN) != 0 && EnsureHistory(HISTORY_REFLECT, frame);
+        const bool reflect_made = reflect_own && reflect_frame_ == frame;
+        if (reflect_own) {
+          const uint32_t reflect_set = (reflect_made ? (reflect_parity_ ^ 1u) : reflect_parity_);
+          flags |= PATH_REFLECT_OWN | (reflect_set != 0 ? PATH_REFLECT_PARITY : 0u);
+          if (!reflect_made && history_valid_ && reflect_frame_ != UINT32_MAX && reflect_frame_ + 1 == frame
+              && reflect_size_ == std::array<uint32_t, 2>{width, height}) {
+            flags |= PATH_REFLECT_OWN_HISTORY;
+          }
+        }
         if (guides) flags |= PATH_GUIDES;
         if (sun_traced_frame_ == frame) flags |= PATH_SUN_TRACED;
         if (light_frame_ == frame) flags |= PATH_LIGHT;
@@ -1330,6 +1350,15 @@ class RtScene12 {
           reuse_size_ = reuse_size;
         }
         ProfileStamp(list, slot_index, 2);
+        if (reflect_own && !reflect_made) {
+          Mark(list, L"reflection reservoirs");
+          list->SetPipelineState(reflect_reservoir_pipeline_.Get());
+          list->Dispatch(((width + 1) / 2 + 7) / 8, ((height + 1) / 2 + 7) / 8, 1);
+          list->ResourceBarrier(1, &uav_barrier);
+          reflect_frame_ = frame;
+          reflect_parity_ ^= 1u;
+          reflect_size_ = {width, height};
+        }
         if (reflections) {
           Mark(list, L"reflections");
           if (ser) {
@@ -1543,7 +1572,7 @@ class RtScene12 {
   static constexpr double SLOW_MS = 100.0;
   static constexpr uint32_t SLOW_REPORTS = 50;
   // The effects' history (EnsureHistory): its kinds, released after this many frames unused (~10 s).
-  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_LIGHTS, HISTORY_KINDS };
+  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_LIGHTS, HISTORY_REFLECT, HISTORY_KINDS };
   static constexpr uint32_t HISTORY_FRAMES = 600;
   // The descriptor table: SRVs t1-t7, UAVs u0-u5.
   enum Descriptor : UINT {
@@ -1590,7 +1619,9 @@ class RtScene12 {
     LIGHT_HISTORY,  // u32-u33: the local lights' bits kept over frames, two sets
     FOG_LIGHTS = LIGHT_HISTORY + 2,  // u34 (v18): the local lights' light in the fog
     TINT,  // u35 (v19): Coloured Shadows' filter
-    DESCRIPTOR_COUNT,
+    REFLECT_SAMPLES,  // u36-u37 (v19, helpers 55 on): Own ReSTIR's reservoirs, two sets
+    REFLECT_DATA = REFLECT_SAMPLES + 2,  // u38-u39
+    DESCRIPTOR_COUNT = REFLECT_DATA + 2,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
   // rt_path.hlsli's path flags and cache size.
@@ -1608,6 +1639,9 @@ class RtScene12 {
   static constexpr uint32_t PATH_REUSE_HISTORY = 2048;
   static constexpr uint32_t PATH_REUSE_PARITY = 4096;
   static constexpr uint32_t PATH_REFLECT_REUSE = 4194304;
+  static constexpr uint32_t PATH_REFLECT_OWN = 8388608;
+  static constexpr uint32_t PATH_REFLECT_OWN_HISTORY = 16777216;
+  static constexpr uint32_t PATH_REFLECT_PARITY = 33554432;
   static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
   static constexpr uint32_t PATH_AMBIENT_HISTORY = 16384;  // rt_camera.hlsli
   static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;
@@ -2074,8 +2108,9 @@ class RtScene12 {
     }
     const D3D12_UNORDERED_ACCESS_VIEW_DESC texture_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
     for (UINT set = 0; set < 2; ++set) {
-      device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(REUSE_SAMPLES + set));
-      device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(REUSE_DATA + set));
+      for (const UINT descriptor : {REUSE_SAMPLES, REUSE_DATA, REFLECT_SAMPLES, REFLECT_DATA}) {
+        device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor + set));
+      }
     }
     for (const UINT descriptor : std::initializer_list<UINT>{SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY,
                                                              REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG, AMBIENT_HISTORY,
@@ -2115,11 +2150,14 @@ class RtScene12 {
     return false;
   }
 
-  // A texture of the helper's own at the shared textures' size, and a UAV of one at `descriptor`.
-  bool Texture(DXGI_FORMAT format, ComPtr<ID3D12Resource>* resource, D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS) const {
+  // A texture of the helper's own at the shared textures' size (over `divisor`, rounded up), and a UAV of one at
+  // `descriptor`.
+  bool Texture(DXGI_FORMAT format, ComPtr<ID3D12Resource>* resource, D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+               UINT divisor = 1) const {
     const D3D12_RESOURCE_DESC positions = positions_->GetDesc();
     const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
-    const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = positions.Width, .Height = positions.Height,
+    const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = (positions.Width + divisor - 1) / divisor,
+                                      .Height = (positions.Height + divisor - 1) / divisor,
                                       .DepthOrArraySize = 1, .MipLevels = 1, .Format = format, .SampleDesc = {.Count = 1},
                                       .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
     return SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr, IID_PPV_ARGS(resource->GetAddressOf())));
@@ -2165,6 +2203,21 @@ class RtScene12 {
           Written(reuse_data_[set].Get(), DXGI_FORMAT_R32G32B32A32_UINT, REUSE_DATA + set);
         }
         reuse_frame_ = UINT32_MAX;
+        return true;
+      case HISTORY_REFLECT:
+        // Own ReSTIR's two sets (half the render pixels: ~130 MB at 4K).
+        if (reflect_samples_[0]) return true;
+        for (UINT set = 0; set < 2; ++set) {
+          if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reflect_samples_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)
+              || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &reflect_data_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)) {
+            reflect_samples_ = {};
+            reflect_data_ = {};
+            return false;
+          }
+          Written(reflect_samples_[set].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, REFLECT_SAMPLES + set);
+          Written(reflect_data_[set].Get(), DXGI_FORMAT_R32G32B32A32_UINT, REFLECT_DATA + set);
+        }
+        reflect_frame_ = UINT32_MAX;
         return true;
       case HISTORY_SPECULAR:
         // The reflections' accumulation and its metadata, this frame's and the last.
@@ -2236,6 +2289,10 @@ class RtScene12 {
     if (reuse_samples_[0] && unused(HISTORY_REUSE)) {
       release("ReSTIR GI", {std::addressof(reuse_samples_[0]), std::addressof(reuse_samples_[1]), std::addressof(reuse_data_[0]), std::addressof(reuse_data_[1])},
               {REUSE_SAMPLES, REUSE_SAMPLES + 1, REUSE_DATA, REUSE_DATA + 1});
+    }
+    if (reflect_samples_[0] && unused(HISTORY_REFLECT)) {
+      release("Own ReSTIR", {std::addressof(reflect_samples_[0]), std::addressof(reflect_samples_[1]), std::addressof(reflect_data_[0]), std::addressof(reflect_data_[1])},
+              {REFLECT_SAMPLES, REFLECT_SAMPLES + 1, REFLECT_DATA, REFLECT_DATA + 1});
     }
     if (specular_accumulated_ && unused(HISTORY_SPECULAR)) {
       release("reflections'", {std::addressof(specular_accumulated_), std::addressof(specular_history_), std::addressof(specular_meta_),
@@ -4952,6 +5009,12 @@ class RtScene12 {
   uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in
   uint32_t reuse_parity_ = 0;          // this frame's set
   std::array<uint32_t, 3> reuse_size_ = {};  // the bounce's size and scale they are at
+  ComPtr<ID3D12PipelineState> reflect_reservoir_pipeline_;  // Own ReSTIR's reservoirs
+  std::array<ComPtr<ID3D12Resource>, 2> reflect_samples_;
+  std::array<ComPtr<ID3D12Resource>, 2> reflect_data_;
+  uint32_t reflect_frame_ = UINT32_MAX;  // the frame they were last made in
+  uint32_t reflect_parity_ = 0;          // this frame's set
+  std::array<uint32_t, 2> reflect_size_ = {};  // the render size they are at
   ComPtr<ID3D12PipelineState> cache_fill_pipeline_;
   ComPtr<ID3D12PipelineState> cache_resolve_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_filter_pipeline_;

@@ -22,6 +22,8 @@ Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_omm.h" -Vn RT_REFLECT_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REUSE -Fh "$out\rt_reuse.h" -Vn RT_REUSE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REUSE -D OPACITY_MICROMAPS -Fh "$out\rt_reuse_omm.h" -Vn RT_REUSE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+& "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REFLECT_RESERVOIR -Fh "$out\rt_reflect_reservoir.h" -Vn RT_REFLECT_RESERVOIR "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+& "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_reservoir_omm.h" -Vn RT_REFLECT_RESERVOIR_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
 # NVIDIA's SHaRC (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its 1.6.5 release) for SHaRC Radiance Cache when
