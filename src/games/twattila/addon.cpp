@@ -42,6 +42,7 @@
 #include "./engine_tests.hpp"
 #include "./feature_settings.hpp"
 #include "./grass_fade.hpp"
+#include "./graphics_page.hpp"
 #include "./light_bounce.hpp"
 #include "./lighting_settings.hpp"
 #include "./rt_scene.hpp"
@@ -2072,7 +2073,11 @@ void ConfigureAddon() {
       setting->is_visible = [] { return false; };
     }
   }
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
+  // Graphics 1 of 2's layout (graphics_page.hpp), then Settings Mode's pages.
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
+                                             .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .ssr_hierarchical = &shader_injection.ssr_hierarchical});
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }

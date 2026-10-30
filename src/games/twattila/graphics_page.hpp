@@ -1,0 +1,463 @@
+/*
+ * Copyright (C) 2026 ArshiaTN
+ * SPDX-License-Identifier: MIT
+ */
+
+#pragma once
+
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "../../utils/settings.hpp"
+#include "./feature_settings.hpp"
+#include "./lighting_settings.hpp"
+#include "./rt_scene.hpp"
+
+// Attila's Graphics 1 of 2 (ATN): one section per job (anti-aliasing, ambient occlusion, shadows, Global Illumination,
+// reflections, ray tracing), each with a method slider and only that method's settings, the less important ones under
+// More Options. Every setting keeps its key (saved settings and presets stay as they are): this file only moves them,
+// hides them and renames them. The method sliders hold nothing themselves: they read and write the keys that decide
+// the method, so a loaded preset shows through at once.
+namespace twattila::graphics_page {
+
+using renodx::utils::settings::Setting;
+using renodx::utils::settings::SettingValueType;
+
+inline const std::string AA_SECTION = "Anti-Aliasing and DLSS";
+inline const std::string AO_SECTION = "Ambient Occlusion";
+inline const std::string SHADOWS_SECTION = "Shadows";
+inline const std::string GI_SECTION = "Global Illumination";
+inline const std::string REFLECTIONS_SECTION = "Reflections and Water";
+inline const std::string RT_SECTION = "Ray Tracing";
+constexpr uint32_t TITLE_TINT = 0x7FBFFF;
+constexpr uint32_t MORE_TINT = 0xFFB86B;
+constexpr uint32_t WARNING_TINT = 0xFF5050;
+
+// What the page reads.
+struct Bindings {
+  feature_settings::AaSliders* aa = nullptr;
+  feature_settings::SssSliders* sss = nullptr;
+  rt_scene::Sliders* rt = nullptr;
+  float* ssao_mode = nullptr;
+  float* light_bounce_strength = nullptr;
+  float* ssr_hierarchical = nullptr;
+};
+
+enum AoMethod : int { AO_GAME, AO_GTVBAO, AO_RAYS, AO_PATHS };
+enum ShadowMethod : int { SHADOW_GAME, SHADOW_SCREEN, SHADOW_RAYS };
+enum GiMethod : int { GI_OFF, GI_GTVBGI, GI_RAYS, GI_PATHS };
+enum ReflectionMethod : int { REFLECTION_GAME, REFLECTION_HIERARCHICAL, REFLECTION_RAYS };
+
+inline int AoMethodOf(const Bindings& b) {
+  if (b.rt->path_ambient != 0.f && b.rt->light_bounce == 2.f && *b.light_bounce_strength > 0.f) return AO_PATHS;
+  if (b.rt->ambient_occlusion != 0.f) return AO_RAYS;
+  return (*b.ssao_mode >= 1.f) ? AO_GTVBAO : AO_GAME;
+}
+
+inline int ShadowMethodOf(const Bindings& b) {
+  if (b.rt->sun_shadows != 0.f) return SHADOW_RAYS;
+  return (b.sss->enabled != 0.f) ? SHADOW_SCREEN : SHADOW_GAME;
+}
+
+inline int GiMethodOf(const Bindings& b) {
+  if (*b.light_bounce_strength <= 0.f) return GI_OFF;
+  return GI_GTVBGI + static_cast<int>(b.rt->light_bounce);
+}
+
+inline int ReflectionMethodOf(const Bindings& b) {
+  if (b.rt->reflections != 0.f) return REFLECTION_RAYS;
+  return (*b.ssr_hierarchical != 0.f) ? REFLECTION_HIERARCHICAL : REFLECTION_GAME;
+}
+
+// The choices write what the method needs. Path-traced AO is Global Illumination's paths bringing the sky's light: it
+// turns them on, and leaving them falls back to ray-traced AO (the game's ambient would come back with no AO on it).
+inline void ChooseAo(const Bindings& b, int method) {
+  std::vector<std::pair<std::string, float>> values = {{"RayTracedPathAmbient", (method == AO_PATHS) ? 1.f : 0.f}};
+  if (method == AO_GAME || method == AO_GTVBAO) values.emplace_back("ssao_mode", (method == AO_GTVBAO) ? 1.f : 0.f);
+  values.emplace_back("RayTracedAmbientOcclusion", (method == AO_RAYS) ? 1.f : 0.f);
+  if (method == AO_PATHS) {
+    values.emplace_back("RayTracedLightBounce", 2.f);
+    values.emplace_back("light_bounce_strength", std::max(*b.light_bounce_strength, 1.f));
+  }
+  renodx::utils::settings::UpdateSettings(values);
+}
+
+inline void ChooseShadows(const Bindings& b, int method) {
+  // Screen-space shadows stay set under ray-traced ones: they come back without DLSS.
+  std::vector<std::pair<std::string, float>> values = {{"RayTracedSunShadows", (method == SHADOW_RAYS) ? 1.f : 0.f}};
+  if (method != SHADOW_RAYS) values.emplace_back("ScreenSpaceShadows", (method == SHADOW_SCREEN) ? 1.f : 0.f);
+  renodx::utils::settings::UpdateSettings(values);
+}
+
+inline void ChooseGi(const Bindings& b, int method) {
+  const bool leaves_paths = AoMethodOf(b) == AO_PATHS && method != GI_PATHS;
+  std::vector<std::pair<std::string, float>> values = {
+      {"light_bounce_strength", (method == GI_OFF) ? 0.f : std::max(*b.light_bounce_strength, 1.f)},
+      {"RayTracedLightBounce", (method >= GI_RAYS) ? static_cast<float>(method - GI_GTVBGI) : 0.f},
+  };
+  if (leaves_paths) {
+    values.emplace_back("RayTracedPathAmbient", 0.f);
+    values.emplace_back("RayTracedAmbientOcclusion", 1.f);
+  }
+  renodx::utils::settings::UpdateSettings(values);
+}
+
+inline void ChooseReflections(const Bindings& b, int method) {
+  std::vector<std::pair<std::string, float>> values = {{"RayTracedReflections", (method == REFLECTION_RAYS) ? 1.f : 0.f}};
+  if (method != REFLECTION_RAYS) values.emplace_back("ssr_hierarchical", (method == REFLECTION_HIERARCHICAL) ? 1.f : 0.f);
+  renodx::utils::settings::UpdateSettings(values);
+}
+
+// A section's method slider.
+inline Setting* MethodSlider(const std::string& label, const std::string& section, const std::string& tooltip, std::vector<std::string> labels,
+                             std::function<int()> current, std::function<void(int)> choose) {
+  return new Setting{
+      .value_type = SettingValueType::CUSTOM,
+      .label = label,
+      .section = section,
+      .tooltip = tooltip,
+      .on_draw = [label, labels = std::move(labels), current = std::move(current), choose = std::move(choose)] {
+        int value = current();
+        const int last = static_cast<int>(labels.size()) - 1;
+        const bool changed = ImGui::SliderInt(label.c_str(), &value, 0, last, labels[std::clamp(value, 0, last)].c_str(),
+                                              ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+        if (changed) choose(value);
+        return changed;
+      },
+  };
+}
+
+inline Setting* Note(const std::string& label, const std::string& section, uint32_t tint, std::function<bool()> shown) {
+  return new Setting{.value_type = SettingValueType::TEXT, .label = label, .section = section, .tint = tint, .is_visible = std::move(shown)};
+}
+
+inline Setting* EmptyLine(const std::string& section) {
+  return new Setting{.value_type = SettingValueType::TEXT, .label = "", .section = section};
+}
+
+// A section's More Options: closed at each start, its colour the same on every section. It reads back into `open`, which
+// its rows' visibility reads as they are drawn after it.
+inline Setting* MoreOptions(const std::string& section, bool* open, std::function<bool()> shown) {
+  return new Setting{
+      .value_type = SettingValueType::CUSTOM,
+      .label = "More Options##" + section,
+      .section = section,
+      .on_draw = [open] {
+        ImGui::PushStyleColor(ImGuiCol_Text, renodx::utils::settings::ImVec4FromHex(MORE_TINT));
+        *open = ImGui::TreeNodeEx("More Options", ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanFullWidth);
+        ImGui::PopStyleColor();
+        return false;
+      },
+      .is_visible = std::move(shown),
+  };
+}
+
+// A row of the page: the settings with this key, or this button group, or this label; `shown` when the method needs it.
+struct Row {
+  std::string match;
+  std::string section;
+  std::function<bool()> shown;
+  std::string label = {};
+  std::string tooltip = {};
+  std::function<bool()> enabled = {};
+};
+
+// Moves settings out of `settings`, into the page's order. Returns the place they took.
+class Page {
+ public:
+  explicit Page(std::vector<Setting*>* settings) : settings_(settings) {}
+
+  void Add(Setting* setting) { page_.push_back(setting); }
+
+  void Take(const Row& row) {
+    bool found = false;
+    for (auto entry = settings_->begin(); entry != settings_->end();) {
+      Setting* setting = *entry;
+      if (setting->key != row.match && setting->group != row.match && !(setting->key.empty() && setting->label == row.match)) {
+        ++entry;
+        continue;
+      }
+      found = true;
+      place_ = std::min(place_, static_cast<size_t>(entry - settings_->begin()));
+      entry = settings_->erase(entry);
+      setting->section = row.section;
+      if (!row.label.empty()) setting->label = row.label;
+      if (!row.tooltip.empty()) setting->tooltip = row.tooltip;
+      if (row.enabled) setting->is_enabled = row.enabled;
+      setting->is_visible = [shown = row.shown, own = setting->is_visible] { return shown() && (own == nullptr || own()); };
+      page_.push_back(setting);
+    }
+    if (!found) renodx::utils::log::w("[Total War] Graphics page: no setting ", row.match.c_str());
+  }
+
+  // A setting the method sliders hold: it stays among the saved ones, not drawn.
+  void Keep(const std::string& key) {
+    kept_.insert(key);
+    for (Setting* setting : *settings_) {
+      if (setting->key == key) setting->is_visible = [] { return false; };
+    }
+  }
+
+  // The page in at the place its first setting had; what stayed in `old_sections` follows under the last section (none is
+  // lost if a game adds a setting), empty lines dropped.
+  void Finish(const std::vector<std::string>& old_sections, const std::string& last_section) {
+    std::vector<Setting*> left;
+    std::erase_if(*settings_, [&](Setting* setting) {
+      if (kept_.contains(setting->key) || std::ranges::find(old_sections, setting->section) == old_sections.end()) return false;
+      if (setting->value_type != SettingValueType::TEXT || !setting->label.empty()) {
+        setting->section = last_section;
+        left.push_back(setting);
+      }
+      return true;
+    });
+    page_.insert(page_.end(), left.begin(), left.end());
+    settings_->insert(settings_->begin() + static_cast<ptrdiff_t>(std::min(place_, settings_->size())), page_.begin(), page_.end());
+  }
+
+ private:
+  std::vector<Setting*>* settings_;
+  std::vector<Setting*> page_;
+  std::set<std::string> kept_;
+  size_t place_ = SIZE_MAX;
+};
+
+// The page's sections, `Graphics 1 of 2`'s for AssignPages.
+inline std::vector<std::string> Sections() {
+  return {AA_SECTION, AO_SECTION, SHADOWS_SECTION, GI_SECTION, REFLECTIONS_SECTION, RT_SECTION};
+}
+
+inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
+  static bool more_aa = false;
+  static bool more_ao = false;
+  static bool more_shadows = false;
+  static bool more_gi = false;
+  static bool more_rt = false;
+
+  const auto always = [] { return true; };
+  const auto dlss = [b] { return b.aa->method == 5.f; };
+  const auto no_dlss = [b] { return b.aa->method != 5.f; };
+  const auto frame_generation = [b] { return b.aa->method == 5.f && b.aa->frame_generation != 0.f; };
+  const auto ao_is = [b](int method) { return [b, method] { return AoMethodOf(b) == method; }; };
+  const auto shadows_are = [b](int method) { return [b, method] { return ShadowMethodOf(b) == method; }; };
+  const auto gi_is = [b](int method) { return [b, method] { return GiMethodOf(b) == method; }; };
+  const auto gi_traced = [b] { return GiMethodOf(b) >= GI_RAYS; };
+  const auto reflections_are = [b](int method) { return [b, method] { return ReflectionMethodOf(b) == method; }; };
+  const auto more = [](const bool* open, std::function<bool()> shown) {
+    return [open, shown = std::move(shown)] { return *open && shown(); };
+  };
+
+  Page page(settings);
+  for (const auto& key : {"ssao_mode", "RayTracedAmbientOcclusion", "RayTracedPathAmbient", "ScreenSpaceShadows", "RayTracedSunShadows",
+                          "RayTracedLightBounce", "ssr_hierarchical", "RayTracedReflections"}) {
+    page.Keep(key);
+  }
+
+  // Anti-aliasing, then DLSS's parts in the order of the frame: upscaling, denoising, generated frames, latency.
+  {
+    const std::string& section = AA_SECTION;
+    for (Setting* setting : *settings) {
+      if (setting->key == "AntiAliasing") setting->labels = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS"};
+    }
+    page.Take({.match = "AntiAliasing", .section = section, .shown = always,
+               .tooltip = "Smooths jagged edges. Turn the in-game anti-aliasing off.\n"
+                          "SMAA: catches more edges. CMAA2: sharper, keeps more fine detail.\n"
+                          "SMAA T2x: SMAA with two frames blended. TAA: blends frames, best on grass, softer.\n"
+                          "DLSS: NVIDIA's (RTX), the best; every ray-traced effect needs it.\n"
+                          "Needs renodx-tw-dlaa64.exe and nvngx_dlss.dll in the game folder."});
+    page.Take({.match = "AntiAliasingQuality", .section = section,
+               .shown = [b] { return b.aa->method == 1.f || b.aa->method == 2.f || b.aa->method == 3.f; }});
+    page.Take({.match = "AntiAliasingTaaStrength", .section = section, .shown = [b] { return b.aa->method == 4.f; }});
+    page.Take({.match = "AntiAliasingSharpening", .section = section, .shown = [b] { return b.aa->method == 3.f || b.aa->method == 4.f; },
+               .label = "Sharpening"});
+    page.Take({.match = "AntiAliasingDlssMode", .section = section, .shown = dlss, .label = "DLSS Mode",
+               .tooltip = "DLAA: the game at your resolution. The others draw it smaller and DLSS upscales it (faster)."});
+    page.Take({.match = "AntiAliasingRenderScale", .section = section, .shown = dlss});
+    page.Take({.match = "AntiAliasingDlaaPreset", .section = section, .shown = dlss, .label = "DLSS Preset",
+               .tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default)."});
+    page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "Ray Reconstruction",
+               .tooltip = "NVIDIA's denoiser for ray tracing in place of DLSS's usual model: much less noise in everything\n"
+                          "ray-traced. Needs nvngx_dlssd.dll next to nvngx_dlss.dll."});
+    page.Take({.match = "FrameGeneration", .section = section, .shown = dlss, .label = "Frame Generation",
+               .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
+                          "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
+                          "Needs Output HDR10 or SDR, a windowed or borderless game, and Streamline's files next to\n"
+                          "renodx-tw-dlaa64.exe."});
+    page.Take({.match = "Reflex", .section = section, .shown = always});
+    page.Take({.match = "FrameGenerationFrameLimit", .section = section, .shown = always});
+    const auto cmaa = [b] { return b.aa->method == 2.f; };
+    page.Add(MoreOptions(section, &more_aa, [b] { return b.aa->method == 5.f || b.aa->method == 2.f; }));
+    page.Take({.match = "AntiAliasingExtraSharpness", .section = section, .shown = more(&more_aa, cmaa), .label = "Extra Sharpness"});
+    page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, dlss)});
+    page.Take({.match = "AntiAliasingEffectsAtOutput", .section = section, .shown = more(&more_aa, dlss), .label = "Effects at Output Resolution"});
+    page.Take({.match = "AntiAliasingObjectMotion", .section = section, .shown = more(&more_aa, dlss)});
+    page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, frame_generation)});
+    page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, frame_generation)});
+    page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, dlss)});
+    page.Take({.match = "FrameGenerationDebugView", .section = section, .shown = more(&more_aa, frame_generation)});
+    page.Add(EmptyLine(section));
+  }
+
+  // Ambient occlusion.
+  {
+    const std::string& section = AO_SECTION;
+    const auto gtvbao = ao_is(AO_GTVBAO);
+    const auto rays = ao_is(AO_RAYS);
+    page.Add(MethodSlider("Method", section,
+                          "Soft shadows in corners and where objects meet the ground.\n"
+                          "Game's: everything counts as solid, so soldiers and trees get dark halos.\n"
+                          "GT-VBAO: objects have a thickness, so light gets behind thin ones. Needs in-game SSAO on.\n"
+                          "Ray-Traced: from rays through the scene, in place of both. Needs DLSS.\n"
+                          "Path-Traced: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                          "turns Path-Traced Global Illumination on. Needs DLSS.",
+                          {"Game's", "GT-VBAO", "Ray-Traced", "Path-Traced"}, [b] { return AoMethodOf(b); }, [b](int method) { ChooseAo(b, method); }));
+    page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
+                  [b] { return AoMethodOf(b) >= AO_RAYS && b.aa->method != 5.f; }));
+    page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao});
+    page.Take({.match = "ao-presets", .section = section, .shown = gtvbao});
+    page.Take({.match = "ssao_strength", .section = section, .shown = gtvbao});
+    page.Take({.match = "ssao_radius", .section = section, .shown = gtvbao});
+    page.Take({.match = "ssao_thickness", .section = section, .shown = [b] { return AoMethodOf(b) == AO_GTVBAO || GiMethodOf(b) == GI_GTVBGI; },
+               .tooltip = "How thick objects are taken to be (GT-VBAO and GT-VBGI).\n"
+                          "Lower: light gets behind thin things; higher: darker behind them.",
+               .enabled = always});
+    page.Take({.match = "ssao_resolution", .section = section, .shown = gtvbao});
+    page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
+    page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
+    page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
+    page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
+    page.Add(MoreOptions(section, &more_ao, gtvbao));
+    const auto more_gtvbao = more(&more_ao, gtvbao);
+    for (const auto* key : {"ssao_quality", "ssao_directions", "ssao_auto_thickness", "ssao_temporal", "ssao_edge_fix", "ssao_denoise"}) {
+      page.Take({.match = key, .section = section, .shown = more_gtvbao});
+    }
+    page.Add(EmptyLine(section));
+  }
+
+  // Shadows.
+  {
+    const std::string& section = SHADOWS_SECTION;
+    const auto screen = shadows_are(SHADOW_SCREEN);
+    const auto rays = shadows_are(SHADOW_RAYS);
+    page.Add(MethodSlider("Method", section,
+                          "Game's: its shadow maps. Screen-Space: those plus fine contact shadows from what is on screen\n"
+                          "(Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                          "Ray-Traced: every shadow from rays, the sun's and the torches' and fires', in place of both. Needs DLSS.",
+                          {"Game's", "Screen-Space", "Ray-Traced"}, [b] { return ShadowMethodOf(b); }, [b](int method) { ChooseShadows(b, method); }));
+    page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
+                  [b] { return ShadowMethodOf(b) == SHADOW_RAYS && b.aa->method != 5.f; }));
+    page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
+    page.Take({.match = "ScreenSpaceShadowsSoftness", .section = section, .shown = screen});
+    page.Take({.match = "ScreenSpaceShadowsThickness", .section = section, .shown = screen});
+    page.Take({.match = "RayTracedShadowSoftness", .section = section, .shown = rays, .label = "Softness"});
+    page.Take({.match = "RayTracedLeafLight", .section = section, .shown = rays});
+    page.Take({.match = "RayTracedColouredShadows", .section = section, .shown = rays});
+    page.Take({.match = "RayTracedSmokeShadows", .section = section, .shown = rays, .label = "Smoke Shadows"});
+    page.Add(MoreOptions(section, &more_shadows, [b] { return ShadowMethodOf(b) != SHADOW_GAME; }));
+    const auto more_screen = more(&more_shadows, screen);
+    for (const auto* key : {"ScreenSpaceShadowsContrast", "ScreenSpaceShadowsHardSamples", "ScreenSpaceShadowsFadeSamples", "ScreenSpaceShadowsEdgeThreshold",
+                            "ScreenSpaceShadowsIgnoreEdges", "ScreenSpaceShadowsPrecisionOffset", "ScreenSpaceShadowsAlongRay",
+                            "ScreenSpaceShadowsMirrorEdges", "ScreenSpaceShadowsDebugView"}) {
+      page.Take({.match = key, .section = section, .shown = more_screen});
+    }
+    const auto more_rays = more(&more_shadows, rays);
+    page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_rays, .label = "Importance-Sampled Torch Shadows"});
+    page.Take({.match = "RayTracedLightGlow", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedGrassSway", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedSwayRange", .section = section, .shown = more_rays, .label = "Swaying Shadows Range"});
+    page.Take({.match = "RayTracedOffScreenSway", .section = section, .shown = more_rays, .label = "Off-Screen Sway"});
+    page.Take({.match = "RayTracedGrassShadowRange", .section = section, .shown = more_rays, .label = "Grass Shadow Range"});
+    page.Add(EmptyLine(section));
+  }
+
+  // Global Illumination.
+  {
+    const std::string& section = GI_SECTION;
+    const auto gtvbgi = gi_is(GI_GTVBGI);
+    const auto on = [b] { return GiMethodOf(b) != GI_OFF; };
+    page.Add(MethodSlider("Method", section,
+                          "Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n"
+                          "GT-VBGI: from what is on screen. Ray-Traced: one bounce through the scene, nothing guessed behind\n"
+                          "what the camera sees. Path-Traced: several bounces, also from off screen. Heavy.\n"
+                          "The last two need DLSS.",
+                          {"Off", "GT-VBGI", "Ray-Traced", "Path-Traced"}, [b] { return GiMethodOf(b); }, [b](int method) { ChooseGi(b, method); }));
+    page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
+                  [b] { return GiMethodOf(b) >= GI_RAYS && b.aa->method != 5.f; }));
+    page.Take({.match = "gi-presets", .section = section, .shown = gtvbgi});
+    page.Take({.match = "light_bounce_strength", .section = section, .shown = on});
+    page.Take({.match = "light_bounce_radius", .section = section, .shown = gtvbgi});
+    page.Take({.match = "light_bounce_resolution", .section = section, .shown = gtvbgi});
+    page.Take({.match = "RayTracedLightBounceRays", .section = section, .shown = gi_traced, .label = "Rays"});
+    page.Take({.match = "RayTracedLightBounceResolution", .section = section, .shown = gi_traced, .label = "Resolution"});
+    page.Take({.match = "RayTracedLightBounceRange", .section = section, .shown = gi_traced, .label = "Range"});
+    page.Take({.match = "PathTracingBounces", .section = section, .shown = gi_is(GI_PATHS), .label = "Bounces"});
+    page.Add(MoreOptions(section, &more_gi, on));
+    const auto more_on = more(&more_gi, on);
+    const auto more_search = more(&more_gi, gtvbgi);
+    page.Take({.match = "light_bounce_quality", .section = section, .shown = more_search});
+    page.Take({.match = "light_bounce_directions", .section = section, .shown = more_search});
+    page.Take({.match = "light_bounce_temporal", .section = section, .shown = more_on});
+    page.Take({.match = "light_bounce_denoise", .section = section, .shown = more_on});
+    page.Take({.match = "light_bounce_multi_bounce", .section = section, .shown = more_on});
+    page.Take({.match = "light_bounce_checkerboard", .section = section, .shown = more_search});
+    page.Take({.match = "light_bounce_backface", .section = section, .shown = more_search});
+    page.Take({.match = "light_bounce_auto_thickness", .section = section, .shown = more_search});
+    const auto more_paths = more(&more_gi, gi_is(GI_PATHS));
+    page.Take({.match = "RayTracedPathSer", .section = section, .shown = more_paths, .label = "Shader Execution Reordering"});
+    page.Take({.match = "RayTracedSharc", .section = section, .shown = more_paths, .label = "SHaRC Radiance Cache"});
+    page.Add(EmptyLine(section));
+  }
+
+  // Reflections, and the water they fall on.
+  {
+    const std::string& section = REFLECTIONS_SECTION;
+    const auto hierarchical = reflections_are(REFLECTION_HIERARCHICAL);
+    const auto rays = reflections_are(REFLECTION_RAYS);
+    page.Add(MethodSlider("Method", section,
+                          "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
+                          "Game's: the original. Hierarchical: exact, no gaps, reaching across the screen, usually faster\n"
+                          "(AMD FidelityFX's ray march). Ray-Traced: from rays, also what is off screen or hidden. Needs DLSS.",
+                          {"Game's", "Hierarchical", "Ray-Traced"}, [b] { return ReflectionMethodOf(b); }, [b](int method) { ChooseReflections(b, method); }));
+    page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
+                  [b] { return ReflectionMethodOf(b) == REFLECTION_RAYS && b.aa->method != 5.f; }));
+    page.Take({.match = "ssr_quality", .section = section, .shown = [b] { return ReflectionMethodOf(b) != REFLECTION_RAYS; }, .label = "Quality"});
+    page.Take({.match = "ssr_rays", .section = section, .shown = hierarchical, .label = "Rays"});
+    page.Take({.match = "SSRDenoiser", .section = section, .shown = hierarchical, .label = "Denoiser"});
+    page.Take({.match = "RayTracedReflectionSamples", .section = section, .shown = rays, .label = "Samples"});
+    page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = rays, .label = "Reuse"});
+    page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = "Water Reflections"});
+    page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = "Ray-Traced Specular Occlusion"});
+    page.Take({.match = "WaterClarity", .section = section, .shown = always});
+    page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = "Water Caustics"});
+    page.Add(EmptyLine(section));
+  }
+
+  // What every ray-traced effect shares.
+  {
+    const std::string& section = RT_SECTION;
+    page.Take({.match = "Ray tracing and path tracing do not work correctly yet (fixed in the next update).", .section = section, .shown = always});
+    page.Take({.match = "rt-quality", .section = section, .shown = dlss});
+    page.Take({.match = "RayTracingOutputResolution", .section = section, .shown = dlss});
+    page.Take({.match = "RayTracedFogShadows", .section = section, .shown = dlss, .label = "Fog Shadows"});
+    page.Add(Note("Needs DLSS (Anti-Aliasing above).", section, MORE_TINT, no_dlss));
+    page.Add(MoreOptions(section, &more_rt, dlss));
+    const auto more_rt_rows = more(&more_rt, dlss);
+    page.Take({.match = "RayTracedLeafMicromaps", .section = section, .shown = more_rt_rows, .label = "Leaf Micromaps"});
+    page.Take({.match = "RayTracedGpuMicromaps", .section = section, .shown = more_rt_rows});
+    page.Take({.match = "RayTracedFastLeafShadows", .section = section, .shown = more_rt_rows, .label = "Fast Leaf Shadows"});
+    page.Take({.match = "RayTracedDebugView", .section = section, .shown = more_rt_rows});
+    page.Take({.match = "RayTracedSceneTest", .section = section, .shown = more_rt_rows});
+    page.Take({.match = "Record Ray Tracing Profile (30 s)", .section = section, .shown = more_rt_rows});
+    page.Add(EmptyLine(section));
+  }
+
+  page.Finish({lighting_settings::AO_SECTION, lighting_settings::GI_SECTION, feature_settings::SSS_SECTION, feature_settings::AA_SECTION}, RT_SECTION);
+  for (const std::string& section : Sections()) renodx::utils::settings::section_tints.emplace_back(section, TITLE_TINT);
+}
+
+}  // namespace twattila::graphics_page

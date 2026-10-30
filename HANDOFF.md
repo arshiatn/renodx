@@ -1,7 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v117 HUGE BATCH (search "v117 HUGE BATCH"): in progress, its checklist says what is done. v116 batch done (search
+- NOW: v117 HUGE BATCH (search "v117 HUGE BATCH"): stopped at a usage limit on 2026-10-31 ~00:55, NOT finished, read its
+  "STATE" lines first. No v117 zip yet; Attila's folder holds v116 (helper59), ReShade.ini = ATN's. v116 batch done (search
   "v116 BIG BATCH").
 - State: Attila v116 shipped (Downloads/twattila_v116.zip, helper59 = build/tw_dlaa_helper59, bridge v19 + placement flag
   RT_PLACE_WHOLE; v116 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
@@ -1627,6 +1628,21 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     - v117 HUGE BATCH (ATN 2026-10-31 ~00:20, away for hours / days: don't stop, don't wait for answers, commit after every step,
       tick off here, new issues found: fix them in the following batch; debug35 = C:/Program Files (x86)/Steam/steamapps/common/
       Total War Attila/debug35: logs copied there, ATN's ini also tools/tw/test_scripts/ReShade.ini.atn35). ATN's items:
+      STATE (usage limit 00:55): graphics_page.hpp (item 3) BUILDS but was NEVER RUN in game: run it, check every section, the
+      method sliders, More Options, ini load / presets. Committed as work in progress. Not started: 2, 2.1, 2.2, 4, 5, 6, 7, 8.
+      Item 2 plan: place every placed mesh every frame while the camera moves (view-projection changed): v116's RT_PLACE_WHOLE
+      can drop the old LOD up to 3 frames before the new one's turn: that gap is the "disappears and appears" ATN sees.
+      Item 2.2 plan: rt_scene SurfaceOffset 2 cm + 0.1% depth (plus the same along the sun) starts rays past cheek guards and
+      helmet rims 1-3 cm off the skin: try a much smaller offset near the camera, check walls / ground for acne.
+      Item 4 plan: foliage has its own sun shaders (addon.cpp LIGHT_BOUNCE_DRAWS): in screen_space_shadows' Patch scale t49 for
+      those by a new setting (add ScreenSpaceShadowsFoliage to graphics_page.hpp's Shadows rows).
+      Item 7: Ray Tracing at Output Resolution only reaches sun, local lights, AO, reflections (rt_scene SettingsOf density),
+      NOT the Light Bounce paths: ATN is right. Shading runs at render size, so "above 1080p" = more rays a pixel, not bigger
+      textures: add a density slider (1-4 rays a pixel) and bring path samples in.
+      Other found issues for the next batch: (a) after a SECOND GPU reset the helper crashes (VCOMP140.DLL_unloaded, the OMM
+      library unloaded under its threads) and then Attila.exe crashes (e06d7363, then fault at 0xdededede): seen in churn2;
+      (b) ReadTimes `slow_report_ = ...` overwrites waiting reports; (c) dead Attila / helper processes pin the exe and addon:
+      rename aside (leftovers in the game folder: *.in-use-*, delete after a reboot).
       [ ] 0. Logs next to the exe: it froze again while ATN toggled every slider. "Maybe you can find out why. It is really
           random. Maybe it got something to do with my togglings all the time."
           Found so far: CORRECTION to v116: the freeze DID reproduce in my refl1 run (22:48:42, 8 s after reflections on): I
@@ -1638,6 +1654,16 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Micromap Baking became the default (v107): 10-29 23:29, 10-30 00:52, 09:31, 16:57, 17:41, 21:14, 22:48, 23:36.
           After a hang (GPU bakes paused) no session hung again. So: the GPU bake path, also where the hang shows elsewhere
           (those stages consume the micromaps). The CPU baker has a workload cap (MICROMAP_WORKLOAD), the GPU one had none.
+          REPRODUCED 2026-10-31 (soak.ps1, kept in tools/tw/test_scripts): for_claude1.replay, RENODX_TW_SET
+          "40:RayTracedLightBounce=0;42:RayTracedReflections=1", keys W:6,D:1.6,Y:1.2: 3 of 5 runs hung (86 s a run), all three in
+          a slot's TAIL list inside the OMM bake chain (ops 22, 31, 47 of 46-64). Workload cap NOT the fix: harness random-UV
+          stress bakes 33 meshes in 68 ms. RENODX_TW_OMM_CHURN=30 (416 grass sets baked again every 30 frames, ~2500 bakes in 3
+          min, Light Bounce on, no toggles): 0 resets. So next: run soak.ps1 with RayTracedGpuMicromaps=0 in the -Set list (does
+          it stop?), then with bakes moved back from the tail into the main list (v114 item 5 made them run beside the game's
+          frame; debug30's hang predates the tail, so check), then Own ReSTIR off (RayTracedReflectionReuse=0), and only then
+          change a default. Lesson: reading freed GPU memory hangs this driver with NO page fault in DRED (my first churn build
+          did that): "no page fault" rules out nothing. Also v116's report was wrong: refl1 hung, I had not checked it.
+          Item 1.1 answer: Water Caustics is not RT: water_caustics.cs_5_0.hlsl makes an animated pattern, multiplied on the bed.
       [ ] 1.1 Quick question: is Water Caustics "RT Caustics"?
       [ ] 2. LOD change with RT Shadows still obvious: "shadow disappearing when the LOD changes and appearing really fast after";
           hide it. ATN: this, 2.1 and 2.2 are the only remaining RT Shadows issues.

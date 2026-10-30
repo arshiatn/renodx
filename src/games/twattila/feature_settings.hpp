@@ -609,14 +609,15 @@ inline void UpdateSsr(Injection* injection, float denoiser = 0.f) {
 // occlusion, Global Illumination, screen-space shadows and anti-aliasing; Graphics 2 of 2 (`engine_sections`): the engine
 // graphics and their tests. About on every page. `mode`: the Settings Mode slider's value.
 inline void AssignPages(std::vector<renodx::utils::settings::Setting*>* settings, const float* mode,
-                        const std::vector<std::string>& engine_sections) {
+                        const std::vector<std::string>& engine_sections, const std::vector<std::string>& graphics_sections = {}) {
   for (auto* setting : *settings) {
     if (setting->key == "SettingsMode" || setting->section == "About") continue;
     int page = 0;
     if (std::ranges::find(engine_sections, setting->section) != engine_sections.end()) {
       page = 2;
     } else if (setting->section == lighting_settings::AO_SECTION || setting->section == lighting_settings::GI_SECTION
-               || setting->section == SSS_SECTION || setting->section == AA_SECTION || setting->section == DLSS_SECTION) {
+               || setting->section == SSS_SECTION || setting->section == AA_SECTION || setting->section == DLSS_SECTION
+               || std::ranges::find(graphics_sections, setting->section) != graphics_sections.end()) {
       page = 1;
     }
     setting->is_visible = [page, mode, shown = setting->is_visible] {
