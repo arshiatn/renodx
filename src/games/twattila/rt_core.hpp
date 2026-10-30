@@ -2510,7 +2510,7 @@ inline bool SkinnedVertexShader(uint32_t hash) {
 }
 
 // Any draw (host.scene_draw tells the scene's apart).
-constexpr auto OnAnyDraw = []<typename T, typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnAnyDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
                 && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {

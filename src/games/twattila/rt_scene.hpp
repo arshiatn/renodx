@@ -609,7 +609,7 @@ inline void OnDestroyInputLayout(reshade::api::device*, reshade::api::pipeline p
 
 // A point light draw (the addon's replaced light shaders with rt_local_lights.hlsli): its instances copied for the next
 // traces; this frame's traced lights' bits and positions bound (put back after).
-constexpr auto OnPointLightDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (!internal::active.load(std::memory_order_relaxed)) return {};
   auto* native = internal::NativeContext(command.cmd_list);
   if (native == nullptr) return {};
@@ -668,10 +668,15 @@ constexpr auto OnPointLightDraw = []<typename T, typename Context>(Context& comm
   if (input_layout) native->IAGetVertexBuffers(layout.slot, 1, instances.GetAddressOf(), &stride, &offset);
   auto& buffer = readback.staging[readback.current];
   UINT& used = readback.used[readback.current];
-  const auto& arguments = command.arguments;
-  const UINT count = stride == 0 ? 0 : std::min(arguments.instance_count, (internal::POINT_LIGHT_BYTES - used) / stride);
+  UINT instance_count = 0;
+  UINT first_instance = 0;
+  if constexpr (requires { command.arguments.instance_count; }) {
+    instance_count = command.arguments.instance_count;
+    first_instance = command.arguments.first_instance;
+  }
+  const UINT count = (stride == 0) ? 0 : std::min(instance_count, (internal::POINT_LIGHT_BYTES - used) / stride);
   if (instances && buffer && count != 0 && std::max(layout.colour, layout.position) + 16 <= stride) {
-    const UINT first = offset + (arguments.first_instance * stride);
+    const UINT first = offset + (first_instance * stride);
     const D3D11_BOX box = {.left = first, .top = 0, .front = 0, .right = first + (count * stride), .bottom = 1, .back = 1};
     native->CopySubresourceRegion(buffer.Get(), 0, used, 0, 0, instances.Get(), 0, &box);
     readback.copies[readback.current].push_back({.offset = used, .count = count, .stride = stride, .layout = layout});
@@ -705,7 +710,7 @@ inline void InstallPointLights(std::span<const uint32_t> shader_hashes) {
 constexpr std::array<uint32_t, 1> FOG_SHADERS = {0xA6A0F887};
 
 // A fog draw (the addon's replaced fog shaders with rt_fog.hlsli): this frame's fog shadows bound (put back after).
-constexpr auto OnFogDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnFogDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (!internal::active.load(std::memory_order_relaxed)) return {};
   auto* native = internal::NativeContext(command.cmd_list);
   if (native == nullptr || !BindFogShadows(native)) return {};
@@ -721,17 +726,19 @@ constexpr uint32_t PARTICLE_VERTEX_SHADER = 0xA7F257B5;
 constexpr uint32_t LIT_PARTICLE_PIXEL_SHADER = 0xACE33D5D;
 
 // A particle draw (Smoke Shadows): its lit particles streamed out for the next trace.
-constexpr auto OnParticleDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (internal::active.load(std::memory_order_relaxed)) internal::CaptureParticles(command);
   return {};
 };
 
-// The particle draws (`vertex_shader`'s with `pixel_shader`), kept while installed (before the device: the vertex
-// shader's code is kept as it is made): Ray-Traced Smoke Shadows shown.
+// The particle draws (`vertex_shader`'s with `pixel_shader`), kept while installed (after Install, before the device:
+// the vertex shader's code is kept as it is made, by the scene's code hook, made here when the scene has none):
+// Ray-Traced Smoke Shadows shown.
 inline void InstallSmokeShadows(uint32_t vertex_shader, uint32_t pixel_shader) {
   internal::smoke_shadows_installed = true;
   internal::smoke_vertex_shader = vertex_shader;
   internal::smoke_pixel_shader = pixel_shader;
+  if (!internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   renodx::utils::command_action::Register(
       OnParticleDraw, {.shader_hash = vertex_shader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 }
@@ -753,7 +760,7 @@ constexpr std::array<uint32_t, 4> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F593
 
 // A forward pass's draw reading the sun's shadow map: under Ray-Traced Shadows Only (its map empty) the rays' occlusion
 // at t49 (the patched sun draws', this frame's), else none (t49 reads 0: the game's shadow).
-constexpr auto OnShadowReaderDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnShadowReaderDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* native = internal::NativeContext(command.cmd_list);
   if (native == nullptr) return {};
   ID3D11ShaderResourceView* occlusion = nullptr;
@@ -890,7 +897,10 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(OnSunDraw);
   if (internal::ambient_cube != 0) renodx::utils::command_action::Unregister(OnPathAmbientDraw);
   if (std::exchange(internal::fog_shadows_installed, false)) renodx::utils::command_action::Unregister(OnFogDraw);
-  if (std::exchange(internal::smoke_shadows_installed, false)) renodx::utils::command_action::Unregister(OnParticleDraw);
+  if (std::exchange(internal::smoke_shadows_installed, false)) {
+    renodx::utils::command_action::Unregister(OnParticleDraw);
+    if (!internal::clip_captures) reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
+  }
   if (std::exchange(internal::shadow_readers_installed, false)) renodx::utils::command_action::Unregister(OnShadowReaderDraw);
   if (std::exchange(internal::shadows_only_installed, false)) {
     reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindTargets);

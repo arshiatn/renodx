@@ -1199,6 +1199,8 @@ struct WaterObjects {
   ComPtr<ID3D11UnorderedAccessView> clarified_uav;
   ComPtr<ID3D11Buffer> lighting;       // the constant buffer bound for the draw
   ComPtr<ID3D11Buffer> game_lighting;  // the game's, put back after it
+  ID3D11Buffer* source = nullptr;      // the game's buffer `lighting` was made from (compared only)
+  uint64_t made_tick = 0;              // its last time (within 4 ms: the same frame's)
   bool logged = false;
 };
 WaterObjects water_objects;
@@ -1297,7 +1299,7 @@ bool OnCreateWater(reshade::api::device* device, reshade::api::pipeline_layout, 
 
 std::atomic_bool water_drawn = false;  // logged once: which water shader the game draws
 
-constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (!water_drawn.exchange(true)) {
     renodx::utils::log::i(std::format("[Total War] Water: first draw of shader {:08X} (Clarity {}, Caustics {}).",
                                       command.matched_shader_hash, water_clarity, water_caustics));
@@ -1322,17 +1324,17 @@ constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) 
     if (!made) caustics.srv.Reset();
   }
   const bool caustics_on = water_caustics > 0.f && caustics.srv;
+  const uint64_t now = GetTickCount64();
   if (caustics_on) {
-    if (const uint64_t now = GetTickCount64(); now > caustics.made_tick + 4) {
+    if (now > caustics.made_tick + 4) {
       caustics.made_tick = now;
+      const twattila::rt_scene::internal::ComputeState kept(native);
       const std::array<float, 4> constants = {static_cast<float>(now % 3600000) / 1000.f, water_caustics, 0.f, 0.f};
       native->UpdateSubresource(caustics.constants.Get(), 0, nullptr, constants.data(), 0, 0);
       native->CSSetShader(caustics.shader.Get(), nullptr, 0);
       native->CSSetUnorderedAccessViews(0, 1, caustics.uav.GetAddressOf(), nullptr);
       native->CSSetConstantBuffers(0, 1, caustics.constants.GetAddressOf());
       native->Dispatch(WATER_CAUSTICS_SIZE / 8, WATER_CAUSTICS_SIZE / 8, 1);
-      ID3D11UnorderedAccessView* no_uav = nullptr;
-      native->CSSetUnorderedAccessViews(0, 1, &no_uav, nullptr);
     }
     native->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, caustics.srv.GetAddressOf());
   }
@@ -1365,30 +1367,34 @@ constexpr auto OnWaterDraw = []<typename T, typename Context>(Context& command) 
   }
   if (!game_lighting || objects.bytes != game_desc.ByteWidth) {
     if (!caustics_on) return {};
-    return {.post_callback = [](Context& post, const void*) {
+    return {.finalize_callback = [](Context& post, const void*) {
       ID3D11ShaderResourceView* no_view = nullptr;
       reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native())->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, &no_view);
     }};
   }
-  native->CopyResource(objects.copied.Get(), game_lighting.Get());
-  const std::array<uint32_t, 4> constants = {objects.bytes / 4, std::bit_cast<uint32_t>(1.f / water_clarity), 0u, 0u};
-  native->UpdateSubresource(objects.constants.Get(), 0, nullptr, constants.data(), 0, 0);
-  native->CSSetShader(objects.shader.Get(), nullptr, 0);
-  native->CSSetShaderResources(0, 1, objects.copied_srv.GetAddressOf());
-  native->CSSetUnorderedAccessViews(0, 1, objects.clarified_uav.GetAddressOf(), nullptr);
-  native->CSSetConstantBuffers(0, 1, objects.constants.GetAddressOf());
-  native->Dispatch(((objects.bytes / 4) + 63) / 64, 1, 1);
-  ID3D11ShaderResourceView* no_view = nullptr;
-  ID3D11UnorderedAccessView* no_uav = nullptr;
-  native->CSSetShaderResources(0, 1, &no_view);
-  native->CSSetUnorderedAccessViews(0, 1, &no_uav, nullptr);
-  native->CopyResource(objects.lighting.Get(), objects.clarified.Get());
+  // Once a frame (its water draws share the game's lighting buffer; the river is dozens of draws).
+  if (now > objects.made_tick + 4 || objects.source != game_lighting.Get()) {
+    objects.made_tick = now;
+    objects.source = game_lighting.Get();
+    const twattila::rt_scene::internal::ComputeState kept(native);
+    native->CopyResource(objects.copied.Get(), game_lighting.Get());
+    const std::array<uint32_t, 4> constants = {objects.bytes / 4, std::bit_cast<uint32_t>(1.f / water_clarity), 0u, 0u};
+    native->UpdateSubresource(objects.constants.Get(), 0, nullptr, constants.data(), 0, 0);
+    native->CSSetShader(objects.shader.Get(), nullptr, 0);
+    native->CSSetShaderResources(0, 1, objects.copied_srv.GetAddressOf());
+    native->CSSetUnorderedAccessViews(0, 1, objects.clarified_uav.GetAddressOf(), nullptr);
+    native->CSSetConstantBuffers(0, 1, objects.constants.GetAddressOf());
+    native->Dispatch(((objects.bytes / 4) + 63) / 64, 1, 1);
+    ID3D11UnorderedAccessView* no_uav = nullptr;
+    native->CSSetUnorderedAccessViews(0, 1, &no_uav, nullptr);
+    native->CopyResource(objects.lighting.Get(), objects.clarified.Get());
+  }
   objects.game_lighting = std::move(game_lighting);
   native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, objects.lighting.GetAddressOf());
   if (!std::exchange(objects.logged, true)) {
     renodx::utils::log::i("[Total War] Water Clarity: applied at a water draw (", objects.bytes, " bytes of lighting constants).");
   }
-  return {.post_callback = [](Context& post, const void*) {
+  return {.finalize_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
     post_native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, water_objects.game_lighting.GetAddressOf());
     water_objects.game_lighting.Reset();

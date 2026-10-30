@@ -1367,7 +1367,7 @@ constexpr auto OnMovingDraw = []<typename T, typename Context>(
 
 // Any draw: the game's bindings back first where in-draw motion draws left theirs bound, but for a moving draw (which
 // keeps them or puts them back itself, OnMovingDraw).
-constexpr auto OnAnyDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnAnyDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (!targets_kept.load(std::memory_order_relaxed) && !bindings_kept.load(std::memory_order_relaxed)) return {};
   using Arguments = typename Context::ArgumentType;
   if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
