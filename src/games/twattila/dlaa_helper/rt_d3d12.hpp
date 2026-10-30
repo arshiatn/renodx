@@ -2326,6 +2326,13 @@ class RtScene12 {
   // The request's commands into the slot's list (closed); false: nothing usable recorded.
   bool Record(const dlaa_bridge::Shared& shared, uint32_t version, std::span<const uint8_t> cluster_data, size_t slot_index, Slot* slot) {
     auto* list = slot->list.Get();
+    // A request that cannot be recorded: its list closed (the slot's next request resets it), the scene kept (unlike Fail:
+    // ATN's debug32, one bad request then left ray tracing off once the textures were made again).
+    const auto skip = [&](std::string why) {
+      list->Close();
+      status_ = std::move(why);
+      return false;
+    };
     Stamp(list, slot_index * STAMPS);
     const uint32_t frame = shared.rt_frame;
     const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
@@ -3237,7 +3244,7 @@ class RtScene12 {
           smoke_built = true;
         }
       }
-      if (!ensure_scratch(scratch_needed)) return Fail("Ray tracing: the BLAS scratch allocation failed");
+      if (!ensure_scratch(scratch_needed)) return skip("Ray tracing: the BLAS scratch allocation failed");
       Mark(list, L"BLAS");
       size_t compact_slot = 0;
       for (auto& build : builds) {
@@ -3815,7 +3822,7 @@ class RtScene12 {
         };
         const NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS params = {.version = NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS_VER,
                                                                                 .pDesc = &desc};
-        if (NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list, &params) != NVAPI_OK) return Fail("Ray tracing: the partitioned TLAS failed");
+        if (NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list, &params) != NVAPI_OK) return skip("Ray tracing: the partitioned TLAS failed");
         const auto to_copy = Transition(slot->ptlas_device.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
         list->ResourceBarrier(1, &to_copy);
         ptlas_current_ = 1 - ptlas_current_;
@@ -4025,7 +4032,8 @@ class RtScene12 {
     Stamp(list, slot_index * STAMPS + 9);
     Resolve(list, slot_index);
     if (const HRESULT closed = list->Close(); FAILED(closed)) {
-      return Fail(std::format("Ray tracing: D3D12 stopped (0x{:08X})", static_cast<uint32_t>(closed)).c_str());
+      status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
+      return false;
     }
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
     std::erase_if(meshes_, [&](auto& entry) {
