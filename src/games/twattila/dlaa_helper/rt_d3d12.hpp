@@ -888,7 +888,7 @@ class RtScene12 {
         if (done >= node->BreadcrumbCount) continue;
         const auto slot = std::ranges::find_if(slots_, [&](const Slot& slot) { return slot.list.Get() == node->pCommandList; });
         report += std::format("\n  {}{}: {} of {} operations done:", narrow(node->pCommandListDebugNameW),
-                              (slot != slots_.end()) ? " (" + slot->request + ")" : std::string(), done, node->BreadcrumbCount);
+                              (slot != slots_.end()) ? " (" + slot->request + slot->micromap_builds + ")" : std::string(), done, node->BreadcrumbCount);
         const uint32_t first = (done > 12 ? done - 12 : 0u);
         auto marker = static_cast<size_t>(std::count(node->pCommandHistory, node->pCommandHistory + first, D3D12_AUTO_BREADCRUMB_OP_SETMARKER));
         for (uint32_t op = first; op < std::min(node->BreadcrumbCount, done + 4); ++op) {
@@ -1030,6 +1030,7 @@ class RtScene12 {
     const bool reset = !Lost() && SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
     if (reset) {
       slot.marks.clear();
+      slot.micromap_builds.clear();
       slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
     }
     const bool recorded = reset && Record(shared, version, cluster_data, slot_index, &slot);
@@ -1703,6 +1704,7 @@ class RtScene12 {
     // Its last request and passes (LostReport).
     std::string request;
     std::vector<const wchar_t*> marks;
+    std::string micromap_builds;  // LostReport: the BLASes built with micromaps (debug34: the GPU hung in one's build)
     uint32_t gpu_bakes = 0;  // GPU Micromap Baking's bakes in its last trace (the profile)
     bool tail_recorded = false;
     ComPtr<ID3D12Resource> instances;
@@ -3176,6 +3178,9 @@ class RtScene12 {
         uint64_t bytes = 0;
         BlasPlace blas = build_static(&micromap_geometries[index], &bytes);
         if (blas.address == 0) continue;
+        slot->micromap_builds += std::format("; micromap BLAS {} triangles, {} KB, {} levels, {}", mesh.triangles,
+                                             made.array ? (made.array->GetDesc().Width >> 10) : 0u, made.bake->histogram.size(),
+                                             made.bake->gpu ? "GPU bake" : "CPU bake");
         ReleaseBlas(&mesh.blas);
         mesh.blas = std::move(blas);
         mesh.bytes = bytes;
