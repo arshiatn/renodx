@@ -1,8 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- State: Attila v111 shipped (Downloads/twattila_v111.zip, helper54 = build/tw_dlaa_helper54, bridge v19; helper54 is
-  in Attila's folder too), branch
+- State: Attila v111 shipped (Downloads/twattila_v111.zip, helper54 = build/tw_dlaa_helper54, bridge v19; Attila's folder still
+  has helper53: the game was running, copy build/tw_dlaa_helper54/renodx-tw-dlaa64.exe there once it is closed), branch
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
   (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
