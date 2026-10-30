@@ -1,8 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v116 BIG BATCH (search "v116 BIG BATCH" below): not started; do item 0 FIRST (copy ATN's logs before any game
-  launch). v115 batch done (search "v115 BATCH").
+- NOW: v116 BIG BATCH (search "v116 BIG BATCH" below): in progress, its checklist says what is done. v115 batch done
+  (search "v115 BATCH").
 - State: Attila v115 shipped (Downloads/twattila_v115.zip, helper58 = build/tw_dlaa_helper58, bridge v19 + flag
   RT_DRAWN_PLACED; v115 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
   symlink to build32: copy it after each build), branch
@@ -1624,7 +1624,7 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 6. Explained in the round report: SHaRC = two extra passes a frame (update traces from 1 of 25 texels, resolve
           walks 2 M entries) for paths that are short and mostly end on surfaces the screen knows; SER = a ray tracing
           pipeline instead of the inline compute plus a sort by hit, worth it only for long divergent shading.
-    - v116 BIG BATCH (ATN 2026-10-30 ~21:25, NOT STARTED; written for the next account). ATN's words, as given:
+    - v116 BIG BATCH (ATN 2026-10-30 ~21:25; started ~21:35, ATN away for hours). ATN's words, as given:
       "1) I am just in the game, you can see the shadow flicker on the tower. I am like really close. IT was flickering in
       distant already too. Please check it out. In the same exact battle as now (log is probably here. I traced the RT for
       30s too after the freeze.), the game froze when I was truing out light bounce Off instead of Rays/Paths and at the
@@ -1636,14 +1636,28 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       for_claude1.replay move forward until you arrive at the river, zoom down and see what I mean by "big" fps hit. when
       around rivers. Maybe you can fix that too. Thanks again!"
       Checklist ([ ] open, [x] done):
-      [ ] 0. FIRST, before launching the game: ATN's evidence is in C:/Program Files (x86)/Steam/steamapps/common/Total
+      [x] 0. Done: logs in debug34 (the game was still running: closed through its window, the helper's log then readable;
+          ReShade.ini = the ini as ATN left it, also tools/tw/test_scripts/ReShade.ini.atn34: restore it after tests, it
+          now has [SCREENSHOT] SavePath = this session's scratchpad). Test runs: scratchpad run_game.ps1 (-Shot, -Profile,
+          -Set "s:key=value;s:key=value", -Keys "W:6,Y:2.5"; closes the game through its window: the session's
+          permission check refused Stop-Process -Force), kept in tools/tw/test_scripts. RENODX_TW_SET takes a list now.
+          Was: FIRST, before launching the game: ATN's evidence is in C:/Program Files (x86)/Steam/steamapps/common/Total
           War Attila/debug34 (6 screenshots 21:18-21:23 incl. the tower flicker, the addon's 30 s tw_rt_profile.csv,
           ReShade.log as of 21:25). The game was still running then: renodx-tw-dlaa64.log (the freeze's DRED report) and
           tw_rt_profile_helper.csv were still empty (written when the helper closes) -> copy renodx-tw-dlaa64.log,
           tw_rt_profile_helper.csv and ReShade.log from the game folder into debug34 now (a game launch overwrites them).
           Back up ATN's CURRENT ReShade.ini (changed 21:22; tools/tw/test_scripts/ReShade.ini.atn33 is the older 17:18
           one) and restore it after tests.
-      [ ] 1a. Tower shadow flicker, close and far (v115 item 8: not changed; Debug View 1 showed raw per-frame visibility at
+      [x] 1a. Tower flicker: ATN's debug34 pairs (21-23-14/15, 21-23-19/19) differ by ONE WHOLE FACET of the round tower, the
+          one at the terminator, half lit; debug33's Debug View 1 shows it salt-and-pepper per pixel. Cause: `facing` from the
+          depth's normal: within a degree or so of edge-on (more with distance) its sign is noise, and the two branches
+          disagree there: "facing" starts off the plane and a ray at a tiny angle leaves the facet before it crosses the
+          plane (lit), "away" hits the tower (shadow). Fix: rt_trace asks the triangle (rt_scene ShownNormal: a short ray
+          to the pixel, HitNormal, moved to rt_scene with OctahedralDecode) where |n.l| < EDGE_ON 0.1 + 0.002 per metre,
+          and starts an edge-on away-facing ray behind the plane. Raw view, W:6 view, two shots 5 s apart: pixels changed
+          near tower 4.46 -> 2.74%, city 4.13 -> 2.53%; left: thin jitter edges. The facet stays as hard an edge as the
+          mesh is (the game's smooth normal is not the triangle's: not flicker).
+          Was: Tower shadow flicker, close and far (v115 item 8: not changed; Debug View 1 showed raw per-frame visibility at
           the towers' sun-facing edges = terminator; candidates: depth-derived normals (SurfaceNormal) flipping `facing` /
           Planar per frame with jitter, the soft sun's one random disk ray under RR, ray start offsets). Note: the G-buffer
           guides at the trace are LAST frame's (written after the sun draws), so not usable as this frame's normals as is.

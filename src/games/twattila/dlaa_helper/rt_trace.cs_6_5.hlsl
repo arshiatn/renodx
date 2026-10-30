@@ -51,6 +51,10 @@ static const uint PART_AMBIENT = 1u << 31;
 // nothing past that can shade the start), at most GRASS_SHADOW_REACH along them (a sun near the horizon).
 static const float GRASS_SHADOW_HEIGHT = 2.5f;  // metres
 static const float GRASS_SHADOW_REACH = 40.f;   // metres
+// A surface this edge-on to the sun (the cosine; more with distance: the depth's normal gets worse) asks its triangle which
+// way it faces (ShownNormal).
+static const float EDGE_ON = 0.1f;
+static const float EDGE_ON_PER_METRE = 0.002f;
 // The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface. Also under
 // Ray Reconstruction (NVIDIA's guide gives it the raw signal, but RR alone left ~20% of the noise: ATN's debug33, AO
 // noisier since v107 took the history away).
@@ -180,18 +184,23 @@ void main(uint3 id : SV_DispatchThreadID) {
   SceneRayFlags();
   // Grass Shadow Range: pixels past it trace without grass (its shadows short, a field's blades around every ray's start).
   const bool near_grass = grass_shadow_range <= 0.f || position.w <= grass_shadow_range;
-  const float3 normal = SurfaceNormal(int2(id.xy), position);
+  const float4 toward_sun = sun[uint2(0, 0)];
+  float3 normal = SurfaceNormal(int2(id.xy), position);
+  // By the depth's normal such a surface turned to the sun and away pixel by pixel, frame by frame: whole facets of round
+  // towers flickered between lit and shadowed, near and far (ATN's debug33-34).
+  const bool exact = (flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f
+                     && abs(dot(normal, toward_sun.xyz)) < EDGE_ON + (EDGE_ON_PER_METRE * position.w) && ShownNormal(position, normal);
   const bool planar = Planar(int2(id.xy), position, normal);
   const float3 origin = RayOrigin(position, normal, planar);
   const float offset = SurfaceOffset(position.w);
-  const float4 toward_sun = sun[uint2(0, 0)];
   const bool facing = dot(normal, toward_sun.xyz) > 0.f;
   float sun_visibility = 1.f;
   float blocker_distance = 0.f;
   float3 tint_out = 0.f;  // Coloured Shadows: 1 - the colour of the light that came through (0: none)
   // Every surface: facing the sun (by the depth's normal) with the sun's rays; facing away against solid surfaces only,
   // from past itself (a thick one meets itself, as its back faces in a shadow map; through a leaf or blade what stands
-  // beyond: a leaf lit from behind stays lit). Planar ones facing away kept 1 before, their shading's angle trusted to
+  // beyond: a leaf lit from behind stays lit), an edge-on one's start behind it (in front a ray at its tiny angle left the
+  // facet before it crossed its plane: lit). Planar ones facing away kept 1 before, their shading's angle trusted to
   // darken them: grass shades with its own normal and normal-mapped walls light texels at grazing angles, both lit in
   // other objects' shadows (grass behind a city wall, a tower's edge, ATN 2026-10-29). Corners, cracks and edges (normal
   // from the depth wrong: the sun into the cracks where wall parts meet) start toward the camera.
@@ -215,7 +224,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       // stretch only (rays skimming whole fields toward a low sun cost the sun 22-27 ms zoomed into grass, ATN's debug29).
       const float3 start = (planar ? origin + toward * offset : origin) + spot;
       float2 result = facing ? SunRay(start, toward, NO_GRASS)
-                             : float2(OccludedSolid(position.xyz + spot + toward * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
+                             : float2(OccludedSolid(position.xyz + spot + (toward - (exact ? normal : 0.f)) * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
       if (facing && near_grass && result.x > 0.f) {
         RayDesc grass_ray;
         grass_ray.Origin = start;

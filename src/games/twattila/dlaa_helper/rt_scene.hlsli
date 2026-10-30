@@ -244,6 +244,20 @@ uint OctahedralEncode(float3 normal) {
   return (uint(quantized.x) & 0xFFFFu) | (uint(quantized.y) << 16);
 }
 
+float3 OctahedralDecode(uint packed) {
+  const float2 encoded = float2(int2(packed << 16, packed) >> 16) / 32767.f;
+  float3 normal = float3(encoded, 1.f - abs(encoded.x) - abs(encoded.y));
+  if (normal.z < 0.f) normal.xy = (1.f - abs(normal.yx)) * select(normal.xy >= 0.f, 1.f, -1.f);
+  return normalize(normal);
+}
+
+// A hit triangle's normal (the record's pool, in its BLAS's space: turned by the instance's transform), facing back
+// along the ray.
+float3 HitNormal(uint record_index, uint primitive, float3 direction, float3x4 object_to_world) {
+  const float3 normal = normalize(mul((float3x3)object_to_world, OctahedralDecode(normal_pool[records[record_index].y + primitive])));
+  return (dot(normal, direction) > 0.f) ? -normal : normal;
+}
+
 // The surface's normal from the neighbour nearer in depth on each axis (none across depth edges), facing the camera.
 float3 SurfaceNormal(int2 pixel, float4 position) {
   const int2 last = int2(width, height) - 1;
@@ -284,6 +298,23 @@ bool Planar(int2 pixel, float4 position, float3 normal) {
 // where wall parts meet, ATN 2026-10-29).
 float3 RayOrigin(float4 position, float3 normal, bool planar) {
   return position.xyz + (planar ? normal : normalize(sun[uint2(1, 0)].xyz - position.xyz)) * SurfaceOffset(position.w);
+}
+
+// The solid triangle a pixel shows: its normal into `normal`, facing the camera (false: none there, a leaf or a blade).
+// Exact where the depth's normal is noise: every frame's jitter and the depth's steps turn that by a degree or more.
+bool ShownNormal(float4 position, inout float3 normal) {
+  const float3 to_camera = normalize(sun[uint2(1, 0)].xyz - position.xyz);
+  const float reach = 2.f * SurfaceOffset(position.w);
+  RayDesc ray;
+  ray.Origin = position.xyz + to_camera * reach;
+  ray.Direction = -to_camera;
+  ray.TMin = 0.f;
+  ray.TMax = 2.f * reach;
+  TRACE_SURFACE(query, ray)
+  if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return false;
+  normal = HitNormal(query.CommittedInstanceID() + query.CommittedGeometryIndex(), query.CommittedPrimitiveIndex(), ray.Direction,
+                     query.CommittedObjectToWorld3x4());
+  return true;
 }
 
 // Interleaved gradient noise (Jimenez 2014, "Next Generation Post Processing in Call of Duty: Advanced Warfare"): a value

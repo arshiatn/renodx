@@ -268,20 +268,6 @@ bool HitLight(float3 hit, out float3 light_there) {
 }
 
 
-float3 OctahedralDecode(uint packed) {
-  const float2 encoded = float2(int2(packed << 16, packed) >> 16) / 32767.f;
-  float3 normal = float3(encoded, 1.f - abs(encoded.x) - abs(encoded.y));
-  if (normal.z < 0.f) normal.xy = (1.f - abs(normal.yx)) * select(normal.xy >= 0.f, 1.f, -1.f);
-  return normalize(normal);
-}
-
-// A hit triangle's normal (the record's pool, in its BLAS's space: turned by the instance's transform), facing back
-// along the ray.
-float3 HitNormal(uint record_index, uint primitive, float3 direction, float3x4 object_to_world) {
-  const float3 normal = normalize(mul((float3x3)object_to_world, OctahedralDecode(normal_pool[records[record_index].y + primitive])));
-  return (dot(normal, direction) > 0.f) ? -normal : normal;
-}
-
 // The pixel's normal: the G-buffer's when the guides hold it, else from the positions.
 float3 PixelNormal(uint2 pixel, float4 position) {
   if ((path_flags & PATH_GUIDES) != 0u) {
