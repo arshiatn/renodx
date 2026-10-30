@@ -1,7 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- State: Attila v110 shipped (Downloads/twattila_v110.zip, helper53 = build/tw_dlaa_helper53, bridge v19), branch
+- State: Attila v111 shipped (Downloads/twattila_v111.zip, helper54 = build/tw_dlaa_helper54, bridge v19; helper54 is
+  in Attila's folder too), branch
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
   (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
@@ -1594,16 +1595,27 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           would be ~265 MB at 4K).
       [ ] 2. The one-off Close failure (E_INVALIDARG) of the first trace request on auto_save.replay's desert map (v108's
           helper47 too): first get the D3D12 debug layer loading in the helper (0x887A002D with d3d12SDKLayers.dll next
-          to D3D12Core.dll), then fix the invalid call it names.
+          to D3D12Core.dll), then fix the invalid call it names. v111 session (2026-10-30): the debug layer fails the same
+          way in the harness (build/tw_rt_harness has both DLLs, 1.619.6): factory->GetConfigurationInterface(
+          CLSID_D3D12Debug) gives 0x887A002D; System32 has no d3d12SDKLayers.dll (Windows' Graphics Tools not installed:
+          installing them is ATN's call). The failing request carries ~5 GPU bakes and the battle's first BLAS builds;
+          read so far without finding the bad call: BakeMicromapsOnGpu (masks, clamp / fix-up passes, chain barriers),
+          the micromap read copies, static BLAS builds (zero-triangle captures are skipped). Reproduce: auto_save.replay,
+          ReShade.log line "Ray tracing: D3D12 stopped (0x80070057)" ~1 s into the battle. Harmless (the next frame
+          traces).
       [ ] 3. GPU bakes concurrent, never on the CPU (ATN 2026-10-30): BakeMicromapsOnGpu records bake after bake, a global
           UAV barrier after each of a bake's ~11 dispatches and every bake on the same transient pools: all serialized.
           Make them concurrent: give each bake (or group) its own transient pools, interleave the bakes stage by stage
           (all bakes' pass k, one barrier, pass k+1), maybe an async compute queue; then spread the overflow over the next
           frames on the GPU (a queue of reads keeping their positions / UVs / mask slices) instead of CPU bakes. Measure
           with the profile's gpu_bakes_ms.
-    - BATCH AFTER THAT (ATN 2026-10-30): PT AO still looks clearly different from RT AO (ATN "really doesn't understand
-      the massive difference"): compare both in game (auto_save.replay's still view worked for A/B, v109 region means
-      were within 1-4 levels there; ATN's scenes differ: get ATN's pictures / settings first).
+    - [x] PT AO vs RT AO (ATN asked for it in the v111 session; b0bd2639, helper54, untested in game): what blocked PT
+      AO's sky differed: the Light Bounce's range (ATN 50 m) and no grass, against RT AO's reach (ATN 6 m) and grass
+      within 0.5 m. Now PT AO's camera rays stop at min(bounce range, AO range) (rt_camera.hlsli sky_range = the
+      bridge's rt_ambient_range; past it: the calibrated sky, the reservoir sample at that distance) and grass within
+      GRASS_AMBIENT_RANGE (now in rt_scene.hlsli) blocks the sky. Left: PT AO's bounce texels are half res (RT AO full res
+      at a quarter rate); if ATN still sees a difference, A/B both on the same view (auto_save.replay still view).
+      Next batch order then: 1 (Own ReSTIR), 2 (above), 3 (concurrent GPU bakes).
     - v110 BATCH (ATN 2026-10-30 ~09:45, debug31: "first frame" / "after 1s" pictures right after a W/A/S/D move, a
       trace): the whole grass field black after camera moves, still not see-through after 1 s. ATN: "since the grass
       optimizations" (v108).

@@ -2,6 +2,12 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v111 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper54: ship them together)
+
+- **PT AO closer to RT AO**: what blocks the sky now follows RT AO's rules: its range (the AO Range setting; before, PT
+  AO used the Light Bounce range, e.g. 50 m against RT AO's 6 m, so far more of the sky was blocked) and grass close by.
+  Light bounced off nearby surfaces stays.
+
 ## v110 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper53: ship them together)
 
 - **Grass black after moving the camera**: v108 made grass skip its alpha tests (its micromaps taken as solid or clear),
