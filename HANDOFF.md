@@ -1588,6 +1588,18 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 7. Known: auto_save (desert) replay: the first trace request's Close fails once (E_INVALIDARG, also with v108's
           helper47; the D3D12 debug layer would not load: 0x887A002D). Status now carries the HRESULT.
       [x] 8. twattila_v109.zip, builds, all_modes, README v109, memory (see the commits after 524954cf).
+    - v114 BATCH (ATN 2026-10-30 ~11:45, away for hours; debug32 = C:/Program Files (x86)/Steam/steamapps/common/Total
+      War Attila/debug32):
+      [ ] 1. Graphics Tools installed: the D3D12 debug layer in the helper; run auto_save.replay with RENODX_TW_D3D12_DEBUG=1
+          (d3d12SDKLayers.dll into Attila's D3D12 folder for the test only), fix the Close E_INVALIDARG.
+      [ ] 2. debug32: above the river 20-30 fps, then fps up and the RT / PT toggles did nothing (helper dead?); RT trace
+          button pressed after. Find why.
+      [ ] 2.1 PT AO still "cooked" (like SDR with less gamma) next to RT AO (debug32/rt ao vs pt ao); sun shaders before /
+          after our HDR tonemapper?
+      [ ] 3. CPU / GPU limits (debug layer, profiles): find and remove or reduce them.
+      [ ] 4. What else falls back to the CPU: move to the GPU where possible.
+      [ ] 5. What in the helper (RT / PT) can run side by side instead of in turn (GPU queues, CPU threads): do it.
+      [ ] 6. Explain shortly why SHaRC Radiance Cache and Path Tracing SER are slower when GPU limited.
     - NEXT BATCH (v110; ATN 2026-10-30: added, NOT started until ATN says):
       [x] 1. Reflection Reuse "Own ReSTIR" (v112, helper55, untested in game; setting RayTracedReflectionReuse 2, bridge
           bit RT_REFLECTIONS_OWN 1024): rt_path.hlsli ReflectReservoirTexel (pass RT_REFLECT_RESERVOIR, half res: the
