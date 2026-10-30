@@ -15,6 +15,9 @@
 #include "./light_bounce.h"
 
 Texture2D<float4> t_bounce : register(t41);
+// Bound by the includer's game for some draws: texel (5, 0)'s w their share of the bounce (Attila's Path-Traced Ambient on
+// its foliage: their ambient's scale, rt_sun.cs_5_0.hlsl); unbound reads 0: all of it.
+Texture2D<float4> t_bounce_share : register(t52);
 
 void main(float4 v0 : SV_Position0,
 #if defined(LIGHT_BOUNCE_MSAA) && !defined(LIGHT_BOUNCE_PIXEL)
@@ -44,5 +47,6 @@ void main(float4 v0 : SV_Position0,
     }
   }
   const float3 bounce = (sum.a > 0.f) ? (sum.rgb / sum.a) : 0.f;
-  o0 = float4(BounceDiffuseAlbedo(texel) * bounce * LB.strength, 0.f);
+  const float share = t_bounce_share.Load(int3(5, 0, 0)).w;
+  o0 = float4(BounceDiffuseAlbedo(texel) * bounce * LB.strength * ((share > 0.f) ? share : 1.f), 0.f);
 }

@@ -467,9 +467,12 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
 };
 
 // Path-Traced Ambient, at each sun light draw after OnSunDraw (its rt_sun read the game's ambient cube first: the
-// paths' sky): the draw's lighting constants without the game's ambient cube (the paths bring the occluded sky's light
-// instead; the copy made once a frame), the game's put back after it. Only while the paths run (a frame without them
-// keeps the game's ambient).
+// paths' sky; the paths bring the occluded sky's light instead). A sun shader whose diffuse ambient screen_space_shadows
+// patched: t51 a texel of 1 (its diffuse ambient off, the foliage's sky sheen from the cube kept; ATN's debug32: zeroing
+// the cube took that sheen too, the far ground came out darker and warmer), its foliage ones also t52 the sun texture
+// (their share of the bounce: light_bounce_apply); both unbound after it. Else the draw's lighting constants without the
+// game's ambient cube (the copy made once a frame), the game's put back after it. Only while the paths run (a frame
+// without them keeps the game's ambient).
 constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (!internal::active.load(std::memory_order_relaxed)) return {};
   const auto& draw = command.template GetCallbackData<light_bounce::SunDraw>();
@@ -478,6 +481,28 @@ constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& com
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   if (!runtime.path_ambient_on || runtime.bounced_frame + 1 < runtime.frame) return {};
+  auto& objects = runtime.objects;
+  if (bool foliage = false; screen_space_shadows::AmbientPatched(draw.shader_hash, &foliage)) {
+    if (!objects.ambient_off) {
+      constexpr float ONE = 1.f;
+      const D3D11_TEXTURE2D_DESC one = {.Width = 1, .Height = 1, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                        .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+      const D3D11_SUBRESOURCE_DATA data = {.pSysMem = &ONE, .SysMemPitch = 4};
+      ComPtr<ID3D11Texture2D> texture;
+      if (FAILED(objects.device->CreateTexture2D(&one, &data, texture.GetAddressOf()))
+          || FAILED(objects.device->CreateShaderResourceView(texture.Get(), nullptr, objects.ambient_off.GetAddressOf()))) {
+        return {};
+      }
+    }
+    std::array<ID3D11ShaderResourceView*, 2> views = {objects.ambient_off.Get(), foliage ? dlaa_bridge::bridge.rt_sun.srv.Get() : nullptr};
+    native->PSSetShaderResources(screen_space_shadows::internal::AMBIENT_SLOT, static_cast<UINT>(views.size()), views.data());
+    return {.post_callback = [](Context& post, const void*) {
+      auto* post_native = internal::NativeContext(post.cmd_list);
+      if (post_native == nullptr) return;
+      const std::array<ID3D11ShaderResourceView*, 2> none = {};
+      post_native->PSSetShaderResources(screen_space_shadows::internal::AMBIENT_SLOT, static_cast<UINT>(none.size()), none.data());
+    }};
+  }
   ComPtr<ID3D11Buffer> game_lighting;
   native->PSGetConstantBuffers(draw.lighting_slot, 1, game_lighting.GetAddressOf());
   if (!game_lighting) return {};
@@ -486,7 +511,6 @@ constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& com
   constexpr UINT CUBE_BYTES = 96;  // six float3 registers
   const UINT cube_offset = internal::ambient_cube * 4;
   if (desc.ByteWidth < cube_offset + CUBE_BYTES) return {};
-  auto& objects = runtime.objects;
   if (objects.ambient_lighting_bytes != desc.ByteWidth) {
     objects.ambient_lighting.Reset();
     objects.ambient_lighting_bytes = 0;

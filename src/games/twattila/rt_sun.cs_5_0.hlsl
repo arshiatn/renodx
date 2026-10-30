@@ -7,7 +7,9 @@
 // sun_direction points from it, as the screen-space shadows read it) into the sun texture's texel 0 for the next trace.
 // The draw's lighting buffer at b0; where its sun_direction starts (in floats: Attila's c0.y is 1) at b1. With the
 // ambient cube's place (v18: Attila's c2, the game's own ambient, six colours: +x, -x, +y, -y, +z, -z) its colours
-// into texels 3-8 (w 1; texel 3's w 0: none), the paths' sky (dlaa_helper/rt_path.hlsli SkyLight).
+// into texels 3-8 (w 1; texel 3's w 0: none), the paths' sky (dlaa_helper/rt_path.hlsli SkyLight). Attila's sun light
+// shaders scale that ambient by c11.x's choice: 360 x 0.004 (c11.x > 0) or 1, their foliage ones 0.6 or 0.8 of that:
+// texel 4's w the first (the paths' sky in the game's units), texel 5's w the foliage's share (light_bounce_apply).
 cbuffer lighting_VS_PS : register(b0)
 {
   float4 lighting[16];
@@ -31,10 +33,13 @@ void main()
   const float3 sun_direction = float3(LightingValue(rt_sun.x), LightingValue(rt_sun.x + 1u), LightingValue(rt_sun.x + 2u));
   const float length_squared = dot(sun_direction, sun_direction);
   sun[uint2(0, 0)] = (length_squared > 0.f) ? float4(-sun_direction * rsqrt(length_squared), 1.f) : 0.f;
+  // c11.x: nine registers past the cube's c2.
+  const bool scaled = rt_sun.y != 0u && LightingValue(rt_sun.y + 36u) > 0.f;
   [unroll]
   for (uint side = 0u; side < 6u; ++side)
   {
     const uint first = rt_sun.y + side * 4u;
-    sun[uint2(3u + side, 0)] = (rt_sun.y != 0u) ? float4(LightingValue(first), LightingValue(first + 1u), LightingValue(first + 2u), 1.f) : 0.f;
+    const float w = (side == 1u) ? (scaled ? 1.44f : 1.f) : ((side == 2u) ? (scaled ? 0.6f : 0.8f) : 1.f);
+    sun[uint2(3u + side, 0)] = (rt_sun.y != 0u) ? float4(LightingValue(first), LightingValue(first + 1u), LightingValue(first + 2u), w) : 0.f;
   }
 }

@@ -1419,6 +1419,22 @@ void OnInitDevice(reshade::api::device*) {
   twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size));
 }
 
+// RENODX_TW_SHOT=<seconds> (tests without input): ReShade screenshots (its save path, "auto") that long after the addon
+// loaded and 5 s later.
+void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
+  static const uint64_t shot_ms = [] {
+    std::array<char, 32> value = {};
+    return (GetEnvironmentVariableA("RENODX_TW_SHOT", value.data(), static_cast<DWORD>(value.size())) != 0)
+               ? std::strtoull(value.data(), nullptr, 10) * 1000ull
+               : 0ull;
+  }();
+  static const uint64_t loaded = GetTickCount64();
+  static int taken = 0;
+  if (shot_ms == 0 || taken == 2 || GetTickCount64() < loaded + shot_ms + (taken * 5000ull)) return;
+  runtime->save_screenshot("auto");
+  ++taken;
+}
+
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
@@ -2026,6 +2042,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
+  reshade::register_event<reshade::addon_event::reshade_present>(OnReshadePresentShot);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
@@ -2098,6 +2115,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  reshade::unregister_event<reshade::addon_event::reshade_present>(OnReshadePresentShot);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);

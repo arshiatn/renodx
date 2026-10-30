@@ -372,8 +372,9 @@ float3 SkyLight(float3 direction, float3 shade) {
 
 // Path-Traced Ambient: the camera rays' sky scaled so an open surface gets the game's own ambient at its normal, in the
 // game's colour and brightness (ATN's debug29-30: the learned scale's sky came out darker and warmer): the cube at
-// `normal` as Attila's sun light shaders take it (its y four times over, normalized) over the sky's light a
-// cosine-weighted ray brings there on average (SKY_DIRECTIONS fixed rays). 1 without.
+// `normal` as Attila's sun light shaders take it (its y four times over, normalized; x their scale, texel 4's w: 1.44
+// with c11.x, ATN's debug32 desert came out darker and warmer without) over the sky's light a cosine-weighted ray
+// brings there on average (SKY_DIRECTIONS fixed rays). 1 without.
 float3 SkyCalibration(float3 normal) {
   if ((path_flags & PATH_AMBIENT) == 0u || sun[uint2(3, 0)].w == 0.f) return 1.f;
   float3 open = 0.f;
@@ -381,7 +382,7 @@ float3 SkyCalibration(float3 normal) {
   for (uint ray = 0u; ray < SKY_DIRECTIONS; ++ray) {
     open += SkyLight(CosineDirection(normal, (ray + 0.5f) / SKY_DIRECTIONS, frac(ray * 0.618034f)), light_kept[0].rgb);
   }
-  return AmbientCube(normalize(normal * float3(1.f, 4.f, 1.f))) / max(open / SKY_DIRECTIONS, 1e-4f);
+  return AmbientCube(normalize(normal * float3(1.f, 4.f, 1.f))) * sun[uint2(4, 0)].w / max(open / SKY_DIRECTIONS, 1e-4f);
 }
 
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal;

@@ -74,6 +74,7 @@ namespace internal {
 
 constexpr UINT MASK_SLOT = 49;      // the patched sun shaders' occlusion
 constexpr UINT TINT_SLOT = 50;      // their sun colour's filter (Coloured Shadows: 1 - the colour; unbound reads 0, none)
+constexpr UINT AMBIENT_SLOT = 51;   // their diffuse ambient's share taken away (texel 0's x; unbound reads 0: the game's)
 
 // Another occlusion of the sun's light (Attila's ray-traced sun shadows: rt_scene::Occlusion): given the screen-space
 // shadow's mask this frame (null: off), the occlusion to bind instead (the darker of both), or null (the mask alone).
@@ -337,6 +338,113 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   return dxbc::Write(code, program);
 }
 
+// A sun light shader's diffuse ambient (Attila: the ambient cube at the normal, lighting_VS_PS c2-c7, the first of its
+// cube reads; the foliage ones read it again at the reflection for a sky sheen, which stays) x (1 - t51's texel 0 x):
+// after its cube's last step (the second mad after the movc of c7 / c6)
+//   ld rA.x, l(0, 0, 0, 0), t51.xyzw / mad rA.x, rA.x, l(-1), l(1) / mul rC.xyz, rC.xyzx, rA.xxxx
+// with rA one more temp and t51 declared. Path-Traced Ambient binds a texel of 1 there (the paths bring the ambient), the
+// game's ambient otherwise. `foliage`: the foliage shaders' (their ambient 0.6 or 0.8 of the others', and the sheen).
+// Empty: no such cube read.
+inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* foliage) {
+  constexpr uint32_t OP_LD = 45, OP_MAD = 50, OP_MOVC = 55, OP_MUL = 56, OP_CUSTOMDATA = 53;
+  constexpr uint32_t OP_DCL_TEMPS = 104;
+  constexpr uint32_t TYPE_TEMP = 0, TYPE_IMMEDIATE = 4, TYPE_RESOURCE = 7, TYPE_CONSTANT_BUFFER = 8;
+  constexpr uint32_t EXTENDED = 1u << 31;
+  dxbc::Program program = dxbc::Read(code);
+  auto& tokens = program.tokens;
+  if (tokens.empty()) return {};
+  // The foliage shaders' ambient factors (c11.x > 0: 0.004, 360, 0.6, 1).
+  constexpr std::array<uint32_t, 4> FOLIAGE_FACTORS = {0x3B83126F, 0x43B40000, 0x3F19999A, 0x3F800000};
+  *foliage = std::ranges::search(tokens, FOLIAGE_FACTORS).begin() != tokens.end();
+  uint32_t lighting_slot = UINT32_MAX;
+  for (const uint32_t offset : program.offsets) {
+    if (std::memcmp(code.data() + offset, "RDEF", 4) != 0) continue;
+    const size_t data = offset + 8;
+    const auto read = [&](size_t at) {
+      uint32_t value = 0;
+      if (at + 4 <= code.size()) std::memcpy(&value, code.data() + at, 4);
+      return value;
+    };
+    const uint32_t bindings = read(data + 8);
+    const size_t binding_at = data + read(data + 12);
+    for (uint32_t index = 0; index < bindings && binding_at + 32 * (index + 1) <= code.size(); ++index) {
+      const size_t binding = binding_at + 32 * size_t{index};
+      const size_t name = data + read(binding);
+      if (read(binding + 4) == 0 && name + 15 <= code.size() && std::memcmp(code.data() + name, "lighting_VS_PS", 15) == 0) {
+        lighting_slot = read(binding + 20);
+      }
+    }
+  }
+  if (lighting_slot == UINT32_MAX) return {};
+  size_t temps_at = 0;
+  size_t cube_at = 0;    // the movc reading c7 / c6
+  size_t mads = 0;       // after it
+  size_t insert_at = 0;  // after the cube's last step
+  uint32_t cube_temp = UINT32_MAX;
+  for (size_t at = 2; at < tokens.size() && insert_at == 0;) {
+    const uint32_t opcode = tokens[at] & 0x7FF;
+    const size_t length = dxbc::Length(tokens, at);
+    if (length == 0) return {};
+    if (opcode == OP_DCL_TEMPS) temps_at = at;
+    size_t operand_at = at + 1;
+    if ((tokens[at] & EXTENDED) != 0 && opcode != OP_CUSTOMDATA) {
+      while (operand_at < at + length && (tokens[operand_at] & EXTENDED) != 0) ++operand_at;
+      ++operand_at;
+    }
+    if (opcode == OP_MOVC && cube_at == 0) {
+      // movc rX, rY, cbL[7], cbL[6]: its last two operands.
+      std::array<dxbc::Operand, 4> operands = {};
+      size_t next = operand_at;
+      size_t count = 0;
+      while (next < at + length && count < operands.size()) {
+        const size_t operand_length = dxbc::ParseOperand(tokens, next, at + length, &operands[count]);
+        if (operand_length == 0) return {};
+        next += operand_length;
+        ++count;
+      }
+      const auto reads = [&](const dxbc::Operand& operand, uint32_t index) {
+        return operand.type == TYPE_CONSTANT_BUFFER && !operand.relative && operand.index[0] == lighting_slot && operand.index[1] == index;
+      };
+      if (count == 4 && reads(operands[2], 7) && reads(operands[3], 6)) cube_at = at;
+    } else if (opcode == OP_MAD && cube_at != 0 && ++mads == 2) {
+      dxbc::Operand dest;
+      if (dxbc::ParseOperand(tokens, operand_at, at + length, &dest) == 0 || dest.type != TYPE_TEMP || dest.mode != 0 || dest.relative
+          || (dest.select & 0b0111) != 0b0111) {
+        return {};
+      }
+      cube_temp = dest.index[0];
+      insert_at = at + length;
+    }
+    at += length;
+  }
+  if (temps_at == 0 || insert_at == 0) return {};
+  const uint32_t temp = tokens[temps_at + 1];
+  const auto masked = [](uint32_t index, uint32_t mask) { return std::array<uint32_t, 2>{2u | (mask << 4) | (1u << 20), index}; };
+  const auto swizzled = [](uint32_t type, uint32_t index, uint32_t swizzle) {
+    return std::array<uint32_t, 2>{2u | (1u << 2) | (swizzle << 4) | (type << 12) | (1u << 20), index};
+  };
+  constexpr uint32_t XYZX = 0x24, XYZW = 0xE4, XXXX = 0x00;
+  constexpr uint32_t MINUS_ONE = 0xBF800000, ONE = 0x3F800000;
+  const std::array<uint32_t, 2> taken = masked(temp, 0b0001);
+  const std::array<uint32_t, 2> resource = swizzled(TYPE_RESOURCE, AMBIENT_SLOT, XYZW);
+  const std::array<uint32_t, 2> cube = masked(cube_temp, 0b0111);
+  const std::array<uint32_t, 2> cube_read = swizzled(TYPE_TEMP, cube_temp, XYZX);
+  const std::array<uint32_t, 2> share = swizzled(TYPE_TEMP, temp, XXXX);
+  const std::vector<uint32_t> scale = {
+      OP_LD | (10u << 24), taken[0], taken[1], 2u | (TYPE_IMMEDIATE << 12), 0, 0, 0, 0, resource[0], resource[1],
+      OP_MAD | (9u << 24), taken[0], taken[1], share[0], share[1], 1u | (TYPE_IMMEDIATE << 12), MINUS_ONE, 1u | (TYPE_IMMEDIATE << 12), ONE,
+      OP_MUL | (7u << 24), cube[0], cube[1], cube_read[0], cube_read[1], share[0], share[1],
+  };
+  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(insert_at), scale.begin(), scale.end());
+  // dcl_resource_texture2d (float,float,float,float) t51 before dcl_temps (the declarations come first); one more temp.
+  tokens[temps_at + 1] += 1;
+  constexpr uint32_t OP_DCL_RESOURCE = 88;
+  const std::array<uint32_t, 4> declaration = {OP_DCL_RESOURCE | (3u << 11) | (4u << 24), (TYPE_RESOURCE << 12) | (1u << 20), AMBIENT_SLOT, 0x5555};
+  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(temps_at), declaration.begin(), declaration.end());
+  tokens[1] = static_cast<uint32_t>(tokens.size());
+  return dxbc::Write(code, program);
+}
+
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11ComputeShader> depth_copy;
@@ -396,6 +504,8 @@ struct Runtime {
   bool probe_pending = true;
   // The patched sun shaders by their original hash (kept: the game may create them again), the forward passes' too.
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;
+  // The sun shaders whose diffuse ambient t51 takes away (PatchAmbient), by hash: whether they are foliage ones.
+  std::unordered_map<uint32_t, bool> ambient_patched;
   std::vector<uint32_t> sun_hashes;
   std::vector<uint32_t> forward_hashes;
   DeviceObjects objects;
@@ -752,6 +862,14 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
       std::stringstream s;
       s << "[Total War] Screen-space shadows: " << (forward ? "forward shader " : "sun shader ") << PRINT_CRC32(hash)
         << (entry->second.empty() ? " has no shadow to patch." : " patched.");
+      // Its diffuse ambient for Path-Traced Ambient (on the shadow's patch, else on the game's code).
+      bool foliage = false;
+      std::vector<uint8_t> ambient = forward ? std::vector<uint8_t>() : PatchAmbient(entry->second.empty() ? code : std::span<const uint8_t>(entry->second), &foliage);
+      if (!ambient.empty()) {
+        entry->second = std::move(ambient);
+        runtime.ambient_patched[hash] = foliage;
+        s << " Its diffuse ambient patched" << (foliage ? " (foliage)." : ".");
+      }
       reshade::log::message(reshade::log::level::info, s.str().c_str());
     }
     if (entry->second.empty()) continue;
@@ -857,6 +975,15 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
   ++internal::runtime.frame;
+}
+
+// Whether the sun shader `hash` takes its diffuse ambient away at t51 (PatchAmbient; `foliage`: one of the foliage ones).
+inline bool AmbientPatched(uint32_t hash, bool* foliage) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  const auto found = internal::runtime.ambient_patched.find(hash);
+  if (found == internal::runtime.ambient_patched.end()) return false;
+  *foliage = found->second;
+  return true;
 }
 
 // Another occlusion of the sun's light from now on (null: none).

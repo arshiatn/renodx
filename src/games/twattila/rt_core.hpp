@@ -288,6 +288,7 @@ struct DeviceObjects {
   ComPtr<ID3D11Buffer> ambient_lighting;  // Path-Traced Ambient: the sun light draws' lighting constants, no ambient cube
   UINT ambient_lighting_bytes = 0;
   ComPtr<ID3D11Buffer> no_ambient;  // the ambient cube's 96 bytes of zeros
+  ComPtr<ID3D11ShaderResourceView> ambient_off;  // Path-Traced Ambient: a texel of 1 (the patched sun shaders' t51)
   ComPtr<ID3D11ShaderResourceView> surface_depth;  // the reflection pass's depth (the water's in it) as depth
   ID3D11Resource* surface_depth_resource = nullptr;
   ComPtr<ID3D11Texture2D> combined;
