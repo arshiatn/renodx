@@ -1101,6 +1101,7 @@ class RtScene12 {
       slot.request = std::format("{} {}: flags 0x{:X}, paths 0x{:X}", reflections ? "reflections" : "Light Bounce", own_value_ + 1, shared.rt_flags,
                                  requested);
       auto* list = slot.list.Get();
+      StampSlot(list, slot_index);
       Stamp(list, slot_index * STAMPS + 4);
       const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
       ID3D12DescriptorHeap* heaps[] = {descriptors_.Get()};
@@ -2333,6 +2334,7 @@ class RtScene12 {
       status_ = std::move(why);
       return false;
     };
+    StampSlot(list, slot_index);
     Stamp(list, slot_index * STAMPS);
     const uint32_t frame = shared.rt_frame;
     const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
@@ -4088,6 +4090,11 @@ class RtScene12 {
   // GPU times (but with RENODX_TW_NO_GPU_TIMES): a timestamp at `index`, a slot's resolved for reading, its last read back.
   void Stamp(ID3D12GraphicsCommandList* list, size_t index) const {
     if (timestamps_) list->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, static_cast<UINT>(index));
+  }
+  // All of a slot's timestamps at its list's start (Resolve reads them all; the debug layer flagged the ones a request
+  // never wrote, every request).
+  void StampSlot(ID3D12GraphicsCommandList* list, size_t slot_index) const {
+    for (size_t index = 0; index < STAMPS; ++index) Stamp(list, (slot_index * STAMPS) + index);
   }
   // A request's profile part's end (RT_PROFILE): after the passes before it (a UAV barrier: they overlap otherwise).
   void ProfileStamp(ID3D12GraphicsCommandList* list, size_t slot_index, size_t part) const {
