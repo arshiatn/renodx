@@ -2,6 +2,20 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v114 (2026-10-30; renodx-tw-dlaa64.exe helper57: ship them together)
+
+- **Ray tracing no longer stays off after a one-off error** (your debug32: one request failed at the battle's start;
+  when you later turned Specular Occlusion off, ray tracing could not start again until a restart, so the RT / PT
+  toggles did nothing and the fps went up). Such an error now costs one frame. If it happens again, renodx-tw-dlaa64.log
+  names the passes of the failing request (it did not happen in game with the D3D12 debug layer).
+- **PT AO no longer "cooked"**: the game's sun light shaders scale their ambient (x1.44 on your desert map) and their
+  foliage ones add a sky sheen from the same ambient cube. PT AO took the whole cube away, sheen included, and its sky
+  ignored that scale: darker and warmer. Now only the game's diffuse ambient is replaced, at the game's scale. In game,
+  same view: PT AO vs RT AO -0.4% brightness, blue -3% (the sand's bounced light, which RT AO does not have).
+- **GPU micromap bakes no longer hold up the frame**: they run after the frame's ray tracing, beside the game (a battle's
+  start bakes up to ~70 ms of them).
+- The D3D12 debug layer's only complaint (GPU timers read before they were written) fixed; no visible change.
+
 ## v113 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper56: ship them together)
 
 - **GPU micromap bakes run side by side**: with GPU Micromap Baking, a frame's leaf / grass bakes now run together

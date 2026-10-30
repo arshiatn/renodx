@@ -1419,18 +1419,25 @@ void OnInitDevice(reshade::api::device*) {
   twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size));
 }
 
-// RENODX_TW_SHOT=<seconds> (tests without input): ReShade screenshots (its save path, "auto") that long after the addon
-// loaded and 5 s later.
+// Tests without input, that many seconds after the addon loaded: RENODX_TW_SHOT=<seconds> ReShade screenshots (its save
+// path, "auto"; a second 5 s later), RENODX_TW_PROFILE=<seconds> Record Ray Tracing Profile.
 void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
-  static const uint64_t shot_ms = [] {
+  const auto seconds = [](const char* name) {
     std::array<char, 32> value = {};
-    return (GetEnvironmentVariableA("RENODX_TW_SHOT", value.data(), static_cast<DWORD>(value.size())) != 0)
-               ? std::strtoull(value.data(), nullptr, 10) * 1000ull
-               : 0ull;
-  }();
+    return (GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size())) != 0) ? std::strtoull(value.data(), nullptr, 10) * 1000ull
+                                                                                                : 0ull;
+  };
+  static const uint64_t shot_ms = seconds("RENODX_TW_SHOT");
+  static const uint64_t profile_ms = seconds("RENODX_TW_PROFILE");
   static const uint64_t loaded = GetTickCount64();
   static int taken = 0;
-  if (shot_ms == 0 || taken == 2 || GetTickCount64() < loaded + shot_ms + (taken * 5000ull)) return;
+  static bool profiled = false;
+  const uint64_t now = GetTickCount64();
+  if (profile_ms != 0 && !profiled && now >= loaded + profile_ms) {
+    twattila::rt_scene::StartProfile();
+    profiled = true;
+  }
+  if (shot_ms == 0 || taken == 2 || now < loaded + shot_ms + (taken * 5000ull)) return;
   runtime->save_screenshot("auto");
   ++taken;
 }

@@ -1,8 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- State: Attila v113 shipped (Downloads/twattila_v113.zip, helper56 = build/tw_dlaa_helper56, bridge v19; Attila's folder still
-  has helper54), branch
+- State: Attila v114 shipped (Downloads/twattila_v114.zip, helper57 = build/tw_dlaa_helper57, bridge v19; helper57 is in
+  Attila's folder too, its ReShade.ini as ATN left it), branch
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
   (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
@@ -1604,10 +1604,23 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Now PatchAmbient (screen_space_shadows) scales the first cube read by 1 - t51 (PT AO binds 1), rt_sun gives
           the scale (texel 4 w: SkyCalibration) and the foliage share (texel 5 w: light_bounce_apply t52). In game,
           same view: PT vs RT AO -0.4% brightness, blue -3% (open ground: the sand's bounce; ReSTIR's W clamp ~1%).
-      [ ] 3. CPU / GPU limits (debug layer, profiles): find and remove or reduce them.
-      [ ] 4. What else falls back to the CPU: move to the GPU where possible.
-      [ ] 5. What in the helper (RT / PT) can run side by side instead of in turn (GPU queues, CPU threads): do it.
-      [ ] 6. Explain shortly why SHaRC Radiance Cache and Path Tracing SER are slower when GPU limited.
+      [x] 3. CPU / GPU limits (the debug layer measures nothing: profiles instead; RENODX_TW_PROFILE=<s> starts Record
+          Ray Tracing Profile, RENODX_TW_SHOT=<s> takes ReShade screenshots; scratchpad profile_run.ps1 / shot_run2.ps1).
+          2vs3.replay start view (river map, 4K, ATN's ini): frame ~20 ms; the game's GPU waits 4.4 ms a frame for the
+          helper; helper GPU: sun rays 2.9 (grass / leaves alpha tests; debug32 above the river 9-14), bounce 2.0,
+          reflections 0.7, scene 0.7, TLAS 0.3; CPU: addon 0.25 ms a frame, helper trace record 1.2 ms on its worker
+          (parallel). Sun rays already first-hit with 64 alpha tests at most. Left for ATN: Grass Shadow Range (his 200 m)
+          lower, Fast Leaf Shadows per instance for tree leaves only (grass exact) would need AddInstance, rt_place, the
+          PTLAS conversion and cluster templates to carry FORCE_OMM_2_STATE: not done.
+      [x] 4. CPU fallbacks: with GPU Micromap Baking (default on) none; CPU bakes only with it off or its baker failing.
+          CPU reads left are D3D12's own needs (OMM histograms for the array builds, BLAS compaction sizes).
+      [x] 5. Side by side (135b8af4): a trace's GPU bakes (and the timestamps' end) in a second list after the game's
+          fence signal: the game stops waiting for them. The trace's own passes (sun / AO, lights, fog) already run without
+          barriers between them; bounce and reflections depend on this frame's lit image (no earlier start); the helper
+          records on its own worker thread already.
+      [x] 6. Explained in the round report: SHaRC = two extra passes a frame (update traces from 1 of 25 texels, resolve
+          walks 2 M entries) for paths that are short and mostly end on surfaces the screen knows; SER = a ray tracing
+          pipeline instead of the inline compute plus a sort by hit, worth it only for long divergent shading.
     - NEXT BATCH (v110; ATN 2026-10-30: added, NOT started until ATN says):
       [x] 1. Reflection Reuse "Own ReSTIR" (v112, helper55, untested in game; setting RayTracedReflectionReuse 2, bridge
           bit RT_REFLECTIONS_OWN 1024): rt_path.hlsli ReflectReservoirTexel (pass RT_REFLECT_RESERVOIR, half res: the
