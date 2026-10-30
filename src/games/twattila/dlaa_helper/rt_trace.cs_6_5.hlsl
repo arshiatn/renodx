@@ -51,12 +51,13 @@ static const uint PART_AMBIENT = 1u << 31;
 // nothing past that can shade the start), at most GRASS_SHADOW_REACH along them (a sun near the horizon).
 static const float GRASS_SHADOW_HEIGHT = 2.5f;  // metres
 static const float GRASS_SHADOW_REACH = 40.f;   // metres
-// The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface. Not under
-// Ray Reconstruction: NVIDIA's guide gives it the raw signal (it replaces the denoisers that accumulate frames).
+// The ambient visibility at a pixel kept over frames: the last trace's history where it saw the same surface. Also under
+// Ray Reconstruction (NVIDIA's guide gives it the raw signal, but RR alone left ~20% of the noise: ATN's debug33, AO
+// noisier since v107 took the history away).
 float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
   float kept = ambient_now;
   uint2 seen_pixel;
-  if ((path_flags & PATH_AMBIENT_HISTORY) != 0u && (flags & RECONSTRUCTED) == 0u && SeenByLastTrace(world, seen_pixel)) {
+  if ((path_flags & PATH_AMBIENT_HISTORY) != 0u && SeenByLastTrace(world, seen_pixel)) {
     kept = lerp(ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 1u : 0u][seen_pixel], ambient_now, AMBIENT_BLEND);
   }
   ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u][pixel] = kept;

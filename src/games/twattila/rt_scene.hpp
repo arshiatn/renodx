@@ -168,8 +168,8 @@ inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
                     || settings.specular_occlusion || settings.local_lights || settings.fog_shadows;
   aa->ray_traced_guides = settings.path_tracing || settings.reflections || settings.specular_occlusion;
   aa->ray_traced_reflections = settings.reflections || settings.specular_occlusion;
-  // The Light Bounce through rays: theirs alone (no screen-space resolution, Checkerboard or filters under RR).
-  light_bounce::SetRayTraced(settings.light_bounce, settings.light_bounce_resolution, dlaa_bridge::bridge.reconstructing);
+  // The Light Bounce through rays: at their own resolution, no Checkerboard.
+  light_bounce::SetRayTraced(settings.light_bounce, settings.light_bounce_resolution);
 }
 
 // The TW games' view: DLAA's (anti_aliasing.hpp); a rigid draw DLAA's motion saw moving stays out of the scene.

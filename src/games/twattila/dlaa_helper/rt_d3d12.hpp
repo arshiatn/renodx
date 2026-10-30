@@ -1217,10 +1217,11 @@ class RtScene12 {
         if (reflections && (requested & dlaa_bridge::RT_SPECULAR_OCCLUSION) != 0) flags |= PATH_SPECULAR_OCCLUSION;
         if (history_valid_) flags |= PATH_HISTORY_VALID;
         if (cache_filled_) flags |= PATH_CACHE_VALID;
-        // Ray Reconstruction denoises the frame: the reflections as traced (no history, no filter).
+        // Ray Reconstruction denoises the frame: the reflections' hit distance for it (their history and filter stay: RR
+        // alone left them noisy, ATN's debug33).
         const bool raw = reflections && (requested & dlaa_bridge::RT_REFLECTIONS_RAW) != 0;
         if (raw) flags |= PATH_RAW;
-        if (reflections && !raw && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
+        if (reflections && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
         // Reflection Reuse from ReSTIR GI (v19): this frame's reservoirs (the Light Bounce's request before this one used set
         // reuse_parity_ then and turned it).
         if (reflections && version >= 19 && (requested & dlaa_bridge::RT_REFLECTIONS_REUSE) != 0 && reuse_frame_ == frame) {
