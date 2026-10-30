@@ -2,6 +2,25 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v116 (2026-10-30; renodx-tw-dlaa64.exe helper59: ship them together)
+
+- **Tower shadow flicker fixed, near and far**: on a round tower one wall facet at a time flickered between lit and
+  shadowed. A surface almost edge-on to the sun was judged by a normal from the depth buffer, which changes a little
+  every frame. Those pixels now ask the triangle itself. Test (two shots of a dome at its shadow edge): pixels that change
+  1.24% -> 0.23%. The facet stays as hard an edge as the mesh is: the game's smooth shading and the real geometry differ
+  there.
+- **River: 53 -> 41 ms a frame** (camera down at the water, 19 -> 24.5 fps), same picture. Rays from surfaces facing away
+  from the sun walked every grass field they crossed although they ignore grass (sun rays 17 -> 8.6 ms). The short
+  grass rays of PT AO and RT AO now use the still copies of the grass (a quarter of the cost, Light Bounce 10 -> 6 ms); only
+  the sun's rays use the swaying grass.
+- **Level of detail changes at once**: the old level's copy now leaves the scene the frame after the game stops drawing it,
+  even while the same mesh is still drawn elsewhere (it took up to 8 frames). Why it ever waited: still meshes are only
+  updated every 4th frame to save CPU, so "not updated" could mean "not its turn".
+- **Freeze report**: the log now names the leaf meshes being built when the GPU hangs. Checked with a forced GPU reset:
+  reflections, RT AO and Light Bounce all work after ray tracing restarts.
+- After a GPU reset, GPU Micromap Baking, Swaying Shadows Range, Off-Screen Sway, Shader Execution Reordering and SHaRC stay
+  paused until the game restarts (by design); a second reset leaves ray tracing off.
+
 ## v115 (2026-10-30; renodx-tw-dlaa64.exe helper58: ship them together)
 
 - **RT AO, SSAO and GT-VBAO no longer dark after Path Tracing**: switching Light Bounce from Path Tracing to Rays or Off

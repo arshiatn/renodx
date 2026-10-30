@@ -3,9 +3,9 @@
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
 - NOW: v116 BIG BATCH (search "v116 BIG BATCH" below): in progress, its checklist says what is done. v115 batch done
   (search "v115 BATCH").
-- State: Attila v115 shipped (Downloads/twattila_v115.zip, helper58 = build/tw_dlaa_helper58, bridge v19 + flag
-  RT_DRAWN_PLACED; v115 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
-  symlink to build32: copy it after each build), branch
+- State: Attila v116 shipped (Downloads/twattila_v116.zip, helper59 = build/tw_dlaa_helper59, bridge v19 + placement flag
+  RT_PLACE_WHOLE; v116 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
+  symlink to build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
   (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
@@ -1661,7 +1661,16 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           the towers' sun-facing edges = terminator; candidates: depth-derived normals (SurfaceNormal) flipping `facing` /
           Planar per frame with jitter, the soft sun's one random disk ray under RR, ray start offsets). Note: the G-buffer
           guides at the trace are LAST frame's (written after the sun draws), so not usable as this frame's normals as is.
-      [ ] 1b. Freeze toggling Light Bounce Off + RT Reflections together (reflections flickered, then freeze, then back):
+      [x] 1b. Freeze: debug34's DRED: 0x887A0006 hung (no page fault), slot 2 trace at op 36 of 95: "micromaps BuildAS BuildAS
+          Barrier BLAS BuildAS BuildAS >BuildAS BuildAS": in a BLAS build right after two micromap array builds, probably the
+          first micromap BLAS (2 meshes baked, 237 KB, just before), 13 s after reflections went on. Not reproduced:
+          same toggles at the river 60 s clean (freeze1). Forced loss (RENODX_TW_TEST_REMOVAL, lost1): reflections, RT AO,
+          Light Bounce off and on all work after the restart, same costs. System log: nvlddmkm 153 in pairs 2-3 s apart,
+          5 times on 10-30 alone, at different stages (v109 bake, v115 cluster build, this BLAS): not these two settings.
+          Read without finding an invalid call: array / BLAS builds, scratch, compaction, the tail list's fence order, release
+          order. Driver 32.0.15.9579 dates from 2026-03: told ATN to try a newer one. LostReport now names the request's
+          micromap BLASes (triangles, KB, levels, GPU / CPU bake): read that line next time.
+          Was: Freeze toggling Light Bounce Off + RT Reflections together (reflections flickered, then freeze, then back):
           read the DRED report in renodx-tw-dlaa64.log; after a device loss the helper restarts once with GPU Micromap
           Baking / Swaying Shadows Range / Off-Screen Sway / SER / SHaRC paused until the game restarts (by design: tell
           ATN), a second loss leaves RT off. Check that reflections / Light Bounce work after the restart (the 30 s trace).
@@ -1680,7 +1689,7 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           every drawn key every frame (measure the addon's CPU cost), or decide the turn once per key per frame (all its
           draw calls agree; counts differ between calls: 256 / 256 / 44 placed partially today) and drop in-view kept
           instances of records placed this request that were not re-placed.
-      [ ] 3. River fps. Reproduced: for_claude1.replay, -Keys "W:6.4,Y:2.5" (camera at the water; Y zooms down AND forward; W:6 =
+      [x] 3. River fps. Reproduced: for_claude1.replay, -Keys "W:6.4,Y:2.5" (camera at the water; Y zooms down AND forward; W:6 =
           the village, W:7 past the river), 53 ms a frame, sun rays 17 ms, paths 10 ms. Not smoke (2000 particles), not kept
           instances (scene test 4), not hidden placed instances (tried inactive: no change), not leaves, soft sun, fog.
           Found by removing one thing every 4 s of a profile (scratchpad windows.py, RENODX_TW_SET list):
@@ -1689,7 +1698,9 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           (b) the short ambient rays (PT AO, RT AO: GRASS_AMBIENT_RANGE) cost 4 x on the swaying grass's cluster BLAS than on
           static BLASes: now masks split: 0x08 placed shown, 0x10 swaying clusters (sun's rays: GRASS), 0x20 still copies of
           what sways (ambient rays: GRASS_STILL): paths 9.8 -> 5.95 ms. River frame 53 -> 41 ms (fps 18.6 -> 24.4).
-          Left at the river: sun solid 4.6 + grass 4.2, fog 2.3, paths 5.95, reuse 3.5, reflections 2.7.
+          Left at the river: sun solid 4.6 + grass 4.2, fog 2.3, paths 5.95, reuse 3.5, reflections 2.7 (solid rays there
+          ~2 G rays/s: normal). Tried, no gain: TLAS PREFER_FAST_TRACE, cluster BLAS and CLAS FAST_TRACE, hidden instances
+          inactive, Off-Screen Sway off; Swaying Shadows Range 30 / 15 m: sun -0.5 / -1.8 ms (left at ATN's 100).
           Was: River fps (for_claude1.replay: move forward to the river, zoom down). German keys per ATN: y zooms down, x up;
           for SendInput use scan codes (0x2C = the key ATN calls y, 0x2D = x; W 0x11; verify). Scripts:
           tools/tw/test_scripts (move_profile.ps1: profile + keys; move_compare.py; shot_run3.ps1; ini_set.py; noise.py;
