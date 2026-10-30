@@ -200,9 +200,16 @@ void main(uint3 id : SV_DispatchThreadID) {
         grass_ray.TMax = min(GRASS_SHADOW_HEIGHT / max(toward.y, 1e-3f), GRASS_SHADOW_REACH);
         SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) grass;
         grass.TraceRayInline(scene, scene_ray_flags, GRASS, grass_ray);
+        // Past MAX_CANDIDATES blades the grass counts as letting the sun through: grass whose micromaps are still on their
+        // way (its set's corners, bake and templates: 1-2 s) makes every blade a candidate, and counted as blocked it went
+        // black after each camera move until they came (ATN's debug29-30).
         uint candidates = 0u;
         while (grass.Proceed()) {
-          if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(grass)) grass.CommitNonOpaqueTriangleHit();
+          if (++candidates > MAX_CANDIDATES) {
+            grass.Abort();
+          } else if (CANDIDATE_PASSES(grass)) {
+            grass.CommitNonOpaqueTriangleHit();
+          }
         }
         if (grass.CommittedStatus() == COMMITTED_TRIANGLE_HIT) result = float2(0.f, grass.CommittedRayT());
       }

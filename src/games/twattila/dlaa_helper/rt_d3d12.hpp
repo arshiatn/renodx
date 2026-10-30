@@ -3891,7 +3891,9 @@ class RtScene12 {
 #endif
     Stamp(list, slot_index * STAMPS + 9);
     Resolve(list, slot_index);
-    if (FAILED(list->Close())) return Fail("Ray tracing: D3D12 stopped");
+    if (const HRESULT closed = list->Close(); FAILED(closed)) {
+      return Fail(std::format("Ray tracing: D3D12 stopped (0x{:08X})", static_cast<uint32_t>(closed)).c_str());
+    }
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
     std::erase_if(meshes_, [&](auto& entry) {
       if (entry.second.drawn_frame + RELEASE_FRAMES >= frame) return false;
