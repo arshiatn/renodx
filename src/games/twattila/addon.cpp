@@ -1431,8 +1431,8 @@ void OnInitDevice(reshade::api::device*) {
   twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size));
 }
 
-// Tests without input, that many seconds after the addon loaded: RENODX_TW_SHOT=<seconds> ReShade screenshots (its save
-// path, "auto"; a second 5 s later), RENODX_TW_PROFILE=<seconds> Record Ray Tracing Profile.
+// Tests without input, that many seconds after the addon loaded: RENODX_TW_SHOT=<seconds>[,<count>[,<gap>]] ReShade
+// screenshots (its save path, "auto"; by default a second 5 s later), RENODX_TW_PROFILE=<seconds> Record Ray Tracing Profile.
 void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
   const auto seconds = [](const char* name) {
     std::array<char, 32> value = {};
@@ -1440,6 +1440,13 @@ void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
                                                                                                 : 0ull;
   };
   static const uint64_t shot_ms = seconds("RENODX_TW_SHOT");
+  static const auto [shot_count, shot_gap_ms] = [] {
+    std::array<char, 32> value = {};
+    GetEnvironmentVariableA("RENODX_TW_SHOT", value.data(), static_cast<DWORD>(value.size()));
+    const char* comma = std::strchr(value.data(), ',');
+    const char* gap = (comma != nullptr) ? std::strchr(comma + 1, ',') : nullptr;
+    return std::pair<int, uint64_t>{(comma != nullptr) ? std::atoi(comma + 1) : 2, (gap != nullptr) ? std::strtoull(gap + 1, nullptr, 10) * 1000ull : 5000ull};
+  }();
   static const uint64_t profile_ms = seconds("RENODX_TW_PROFILE");
   // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...]: settings changed then (as their sliders would).
   static std::string changes = [] {
@@ -1467,7 +1474,7 @@ void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
     const size_t next = changes.find(';');
     changes.erase(0, (next == std::string::npos) ? next : next + 1);
   }
-  if (shot_ms == 0 || taken == 2 || now < loaded + shot_ms + (taken * 5000ull)) return;
+  if (shot_ms == 0 || taken >= shot_count || now < loaded + shot_ms + (taken * shot_gap_ms)) return;
   runtime->save_screenshot("auto");
   ++taken;
 }
