@@ -98,6 +98,8 @@ struct Settings {
   // The water's reflections from its own depth and normal (the reflection pass's; else it keeps the screen-space march).
   bool water_reflections = false;
   uint32_t reflection_samples = 1;
+  // Reflection Reuse (bridge v19, with path tracing): the reflections' rougher lobes resample ReSTIR GI's reservoirs.
+  bool reflection_reuse = false;
   // The local lights' shadows (bridge v9): of the lights the game's light draws had (AddLocalLight) the last frame's
   // nearest and brightest go with the trace; their lit bits and positions for the light draws: BindLocalLights.
   bool local_lights = false;
@@ -1934,7 +1936,8 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
         .flags = (runtime.settings.reflections ? dlaa_bridge::RT_REFLECTIONS : 0u)
                  | (runtime.settings.specular_occlusion ? dlaa_bridge::RT_SPECULAR_OCCLUSION : 0u)
                  | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_REFLECTIONS_RAW : 0u)
-                 | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u),
+                 | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
+                 | (runtime.settings.reflection_reuse ? dlaa_bridge::RT_REFLECTIONS_REUSE : 0u),
         .samples = runtime.settings.reflection_samples,
         .bounces = runtime.settings.path_tracing ? runtime.settings.path_bounces : 0u,
         .range = runtime.settings.light_bounce_range,

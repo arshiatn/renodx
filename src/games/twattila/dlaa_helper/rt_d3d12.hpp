@@ -1204,6 +1204,11 @@ class RtScene12 {
         const bool raw = reflections && (requested & dlaa_bridge::RT_REFLECTIONS_RAW) != 0;
         if (raw) flags |= PATH_RAW;
         if (reflections && !raw && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
+        // Reflection Reuse from ReSTIR GI (v19): this frame's reservoirs (the Light Bounce's request before this one used set
+        // reuse_parity_ then and turned it).
+        if (reflections && version >= 19 && (requested & dlaa_bridge::RT_REFLECTIONS_REUSE) != 0 && reuse_frame_ == frame) {
+          flags |= PATH_REFLECT_REUSE | (reuse_parity_ == 0 ? PATH_REUSE_PARITY : 0u);
+        }
         if (guides) flags |= PATH_GUIDES;
         if (sun_traced_frame_ == frame) flags |= PATH_SUN_TRACED;
         if (light_frame_ == frame) flags |= PATH_LIGHT;
@@ -1601,6 +1606,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_REUSE = 1024;
   static constexpr uint32_t PATH_REUSE_HISTORY = 2048;
   static constexpr uint32_t PATH_REUSE_PARITY = 4096;
+  static constexpr uint32_t PATH_REFLECT_REUSE = 4194304;
   static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
   static constexpr uint32_t PATH_AMBIENT_HISTORY = 16384;  // rt_camera.hlsli
   static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;

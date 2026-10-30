@@ -175,6 +175,9 @@ constexpr uint32_t RT_PATH_SER = 128;
 // SHaRC Radiance Cache (v18, with the paths): NVIDIA's SHaRC in place of the helper's own world radiance cache for what
 // the screen does not know (the reflections keep the helper's).
 constexpr uint32_t RT_PATH_SHARC = 256;
+// Reflection Reuse from ReSTIR GI (v19, a reflections request's, with the paths' ReSTIR GI this frame): the reflections'
+// rougher lobes resample the Light Bounce's reservoir at their texel with their own rays' light.
+constexpr uint32_t RT_REFLECTIONS_REUSE = 512;
 
 struct Shared {
   uint32_t version = VERSION;

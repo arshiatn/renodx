@@ -72,6 +72,8 @@ static const uint PATH_LOCAL_LIGHTS = 8192u;  // the local lights light the surf
 static const uint PATH_PERMUTE = 65536u;      // last frame's reservoir from a neighbour texel (Ray Reconstruction)
 static const uint PATH_AMBIENT = 262144u;     // Path-Traced Ambient: a camera ray that escapes brings the sky's light
 static const uint PATH_KEEP_LIGHT = 524288u;  // the learned lighting kept (the game's ambient away: Path-Traced Ambient)
+static const uint PATH_REFLECT_REUSE = 4194304u;  // the reflections resample ReSTIR GI's reservoirs (PATH_REUSE_PARITY: its set)
+static const float REFLECT_REUSE_ROUGHNESS = 0.3f;  // the lobes broad enough for the bounce's samples to land in
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
@@ -682,6 +684,16 @@ float GgxSampleWeight(float n_dot_v, float n_dot_l, float alpha) {
   return g2 / max(g1, 1e-6f);
 }
 
+// The density of a reflected direction under visible-normal sampling (GgxVisibleNormal, then reflected): G1(v) D(h) /
+// (4 n.v).
+float GgxReflectionDensity(float n_dot_v, float n_dot_h, float alpha) {
+  const float alpha2 = alpha * alpha;
+  const float denominator = n_dot_h * n_dot_h * (alpha2 - 1.f) + 1.f;
+  const float d = alpha2 / max(3.14159265f * denominator * denominator, 1e-8f);
+  const float g1 = 2.f * n_dot_v / max(n_dot_v + sqrt(alpha2 + (1.f - alpha2) * n_dot_v * n_dot_v), 1e-6f);
+  return g1 * d / max(4.f * n_dot_v, 1e-6f);
+}
+
 // Reflections and specular occlusion of a render pixel (accumulated by world position).
 void ReflectPixel(uint2 id) {
   if (id.x >= width || id.y >= height) return;
@@ -731,6 +743,35 @@ void ReflectPixel(uint2 id) {
       if (first_distance > reflection_range) ++open;
     } else if (!Occluded(origin, direction, reflection_range, NO_GRASS_SMOKE)) {
       ++open;
+    }
+  }
+  // Reflection Reuse from ReSTIR GI (PATH_REFLECT_REUSE, rougher lobes): the Light Bounce's reservoir at this pixel's
+  // texel as a second candidate, resampled with the rays' own light (generalized RIS, its weights 1/2: the rays' light
+  // by its target over their density, the reservoir's by the lobe's density at it times its W); one ray to the chosen
+  // reservoir sample.
+  if ((path_flags & PATH_REFLECT_REUSE) != 0u && traced && !mirror && roughness >= REFLECT_REUSE_ROUGHNESS) {
+    const Reservoir bounce = LoadReservoir(((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u,
+                                           min(id / bounce_scale, uint2(bounce_width, bounce_height) - 1u));
+    const float3 to_hit = bounce.hit - origin;
+    const float hit_distance = length(to_hit);
+    const float3 own = (weights > 0.f) ? gathered / weights : 0.f;
+    float bounce_weight = 0.f;
+    if (bounce.weight > 0.f && hit_distance > 1e-3f && dot(normal, to_hit) > 0.f) {
+      const float3 half_vector = normalize(view + to_hit / hit_distance);
+      bounce_weight = Luminance(bounce.light) * GgxReflectionDensity(n_dot_v, saturate(dot(normal, half_vector)), alpha) * bounce.weight;
+    }
+    const float own_weight = Luminance(own);
+    const float total = own_weight + bounce_weight;
+    if (total > 0.f) {
+      const bool bounce_chosen = Random(uint3(id, frame * 16u + 3584u)) * total < bounce_weight
+                                 && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE);
+      const float3 chosen = bounce_chosen ? bounce.light : own;
+      gathered = chosen / max(Luminance(chosen), 1e-6f) * (0.5f * total);
+      weights = 1.f;
+      if (bounce_chosen) {
+        distances += hit_distance;
+        ++met;
+      }
     }
   }
   const float4 current = float4((weights > 0.f) ? gathered / weights : 0.f, (float)met / samples);
