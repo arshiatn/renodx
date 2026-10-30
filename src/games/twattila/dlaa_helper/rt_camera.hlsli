@@ -20,6 +20,7 @@ cbuffer Paths : register(b3) {
   uint path_samples;
   float bounce_range;      // metres
   float reflection_range;  // metres (specular occlusion's reach)
+  float sky_range;         // metres: what blocks Path-Traced Ambient's sky (the AO's reach, as Ray-Traced AO)
 };
 static const uint PATH_AMBIENT_HISTORY = 16384u;  // path_flags in the trace: last trace's ambient and positions are valid
 static const uint PATH_AMBIENT_PARITY = 32768u;   // its history read from set 1 (else 0)

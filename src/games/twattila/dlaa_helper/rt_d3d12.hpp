@@ -1250,6 +1250,7 @@ class RtScene12 {
             .samples = std::clamp(shared.rt_path_samples, 1u, 16u),
             .bounce_range = bounce_range,
             .reflection_range = std::clamp(shared.rt_reflection_range, 0.5f, 200.f),
+            .sky_range = std::clamp(shared.rt_ambient_range, 0.1f, 100.f),
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -1629,6 +1630,7 @@ class RtScene12 {
     uint32_t samples = 1;
     float bounce_range = 10.f;
     float reflection_range = 10.f;
+    float sky_range = 2.f;  // rt_camera.hlsli
   };
   enum Root : UINT {
     ROOT_SCENE,

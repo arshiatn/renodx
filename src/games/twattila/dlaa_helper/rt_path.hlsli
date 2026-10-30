@@ -402,7 +402,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
       // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).
       if (vertex > 0u) {
         radiance += throughput * SkyLight(direction, shade.rgb);
-      } else if ((path_flags & PATH_AMBIENT) != 0u) {
+      } else if ((path_flags & PATH_AMBIENT) != 0u && !Occluded(origin, direction, min(range, GRASS_AMBIENT_RANGE), GRASS)) {
         radiance += SkyLight(direction, shade.rgb) * sky_calibration;
       }
       break;
@@ -544,6 +544,9 @@ void PathTraceTexel(uint2 id) {
   }
   const uint samples = max(path_samples, 1u);
   const float3 sky_calibration = SkyCalibration(normal);
+  // Path-Traced Ambient's sky blocked as Ray-Traced AO's (within its reach, grass within GRASS_AMBIENT_RANGE): past it the
+  // sky (ATN 2026-10-30: the Light Bounce's 50 m made it far darker than RT AO's 6 m); the light bounced within it stays.
+  const float first_range = ((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range;
   // Path-Traced Ambient: the sky's samples too (ATN's debug29-30: without them its ambient was the ground's bounce alone,
   // darker and warmer over the reservoirs' 1-2 s).
   const bool sky_samples = (path_flags & PATH_AMBIENT) != 0u;
@@ -554,11 +557,11 @@ void PathTraceTexel(uint2 id) {
                                              Random(uint3(id, frame * 16u + path * 2u + 1025u)));
     float first_distance;
     float3 first_normal;
-    const float3 sample_light = PathRadiance(origin, direction, bounce_range, sky_calibration, id, path, first_distance, first_normal);
+    const float3 sample_light = PathRadiance(origin, direction, first_range, sky_calibration, id, path, first_distance, first_normal);
     arriving += sample_light;
     // Cosine-weighted rays: the target over their density is pi times the light's luminance.
     Reservoir candidate;
-    candidate.hit = origin + direction * min(first_distance, bounce_range);
+    candidate.hit = origin + direction * min(first_distance, first_range);
     candidate.hit_normal = first_normal;
     candidate.light = sample_light;
     candidate.count = 1.f;

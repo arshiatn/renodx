@@ -156,6 +156,7 @@ static const uint LEAVES = 0x04u;
 static const uint NO_GRASS = 0xF7u;
 static const uint NO_GRASS_SMOKE = 0xF5u;
 static const uint GRASS = 0x08u;
+static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient's rays (the AO's and PT AO's)
 
 // Whether anything among `instances` lies along `direction` from `origin` within `range` (alpha-tested: leaves, grass
 // and cloth by their masks, smoke dimming smoke_transmittance).

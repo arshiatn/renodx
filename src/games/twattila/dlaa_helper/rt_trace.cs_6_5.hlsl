@@ -47,7 +47,6 @@ static const float AMBIENT_BLEND = 0.2f;
 // The profile's split (RT_PROFILE, rt_d3d12.hpp): this dispatch the sun's part alone, or the ambient's.
 static const uint PART_SUN = 1u << 30;
 static const uint PART_AMBIENT = 1u << 31;
-static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient rays (Occluded)
 // The sun's rays meet grass only while they are within GRASS_SHADOW_HEIGHT of their start's height (no blade is taller:
 // nothing past that can shade the start), at most GRASS_SHADOW_REACH along them (a sun near the horizon).
 static const float GRASS_SHADOW_HEIGHT = 2.5f;  // metres
