@@ -7,7 +7,8 @@
 // CPU's, in three passes (`mode`): clear (the dedupe table, the descs past the CPU's, the counters), drawn (this
 // request's draws' instances: their rows times the inverse of their mesh's build rows, its BLAS its first instance in
 // world space) and kept (the last dispatch's placed descs: their mesh's BLAS as it is now, but those drawn more than
-// `recent_frames` ago, of released meshes, of meshes drawn moving now, or undrawn inside the view: KEPT_IN_VIEW_FRAMES).
+// `recent_frames` ago, of released meshes, of meshes drawn moving now, or undrawn inside the view: KEPT_IN_VIEW_FRAMES,
+// at once where the frame drew none of their mesh).
 // A mesh's instance at one place (1 cm) once,
 // the drawn first: instances stay while their mesh is drawn elsewhere (off-screen casters). Each desc keeps the frame
 // it was drawn in (InstanceContributionToHitGroupIndex: no hit groups here). Degenerate rows: left out. A hidden draw's
@@ -19,8 +20,8 @@
 
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (the kept ones' source)
 Buffer<float4> vertex_positions : register(t7);     // the request's vertices: an instance's rows 0-2 in four texels
-// The records' BLAS addresses (two uints each: 0 not a placed mesh now, bit 0 drawn moving now), then the jobs (two
-// uint4 each: first drawn instance, instances, rows texel, flags; record, 0, 0, 0).
+// The records' BLAS addresses (two uints each: 0 not a placed mesh now, bit 0 drawn moving now, bit 1 grass, bit 2 drawn
+// this frame), then the jobs (two uint4 each: first drawn instance, instances, rows texel, flags; record, 0, 0, 0).
 ByteAddressBuffer table : register(t8);
 RWByteAddressBuffer instances_written : register(u6);  // D3D12_RAYTRACING_INSTANCE_DESC, 64 bytes each
 RWStructuredBuffer<float4> build_rows : register(u7);  // three per record
@@ -61,10 +62,11 @@ static const uint GRASS_INSTANCE = 0x08u;
 // Grass kept two turns (the addon places a still mesh every 4th frame): its shadows are short, and fields of it kept 5 s
 // multiplied the instances every ray met (ATN's 2026-10-29 profile: 46-65 K placed).
 static const uint GRASS_KEPT_FRAMES = 8u;
-// A kept instance undrawn this many frames (four turns) with its origin inside the view is gone (the game drew another
+// A kept instance undrawn this many frames (two turns) with its origin inside the view is gone (the game drew another
 // level of detail there, or nothing): kept recent_frames, a coarser copy darkened the finer one for seconds (ATN
-// 2026-10-29: surfaces black a few seconds while zooming). Off-screen casters stay.
-static const uint KEPT_IN_VIEW_FRAMES = 16u;
+// 2026-10-29: surfaces black a few seconds while zooming); at once where the frame drew none of its mesh. Off-screen
+// casters stay.
+static const uint KEPT_IN_VIEW_FRAMES = 8u;
 static const uint STATE_WRITTEN = 0u;
 static const uint STATE_BEFORE = 4u;
 static const uint STATE_CPU_BEFORE = 8u;
@@ -85,9 +87,11 @@ bool GrassInView(float3 position) {
          || NearView(float4(position, 1.f), view_projection[0], view_projection[1], view_projection[3], GRASS_VIEW_MARGIN);
 }
 
-// A desc's key: its record and its place in centimetres.
-uint PlaceKey(uint record, float3 position) {
-  const int3 cell = int3(floor(position * 100.f));
+// A desc's key: its record and its place in centimetres; grass's across only, in 10 cm cells (its blades' shrink with the
+// camera's distance lifts it: a moving camera made a new key at each placement, its kept copy stayed beside the new one,
+// twice the grass in the shadows and in every ray's TLAS until it stopped, ATN's debug33).
+uint PlaceKey(uint record, float3 position, bool grass) {
+  const int3 cell = grass ? int3(floor(float3(position.x, 0.f, position.z) * 10.f)) : int3(floor(position * 100.f));
   uint key = record * 0x9E3779B1u;
   key = (key ^ asuint(cell.x)) * 0x85EBCA77u;
   key = (key ^ asuint(cell.y)) * 0xC2B2AE3Du;
@@ -152,9 +156,9 @@ void main(uint3 id : SV_DispatchThreadID) {
     // Its rows place the BLAS (its first instance in world space): its origin there, the build's, where they put it.
     const float4 origin = float4(build_rows[record * 3u].w, build_rows[record * 3u + 1u].w, build_rows[record * 3u + 2u].w, 1.f);
     const float4 place = float4(dot(asfloat(row0), origin), dot(asfloat(row1), origin), dot(asfloat(row2), origin), 1.f);
-    const bool gone = ((frame - tail.y) & FRAME_MASK) > KEPT_IN_VIEW_FRAMES && any(view_projection[3] != 0.f)
+    const bool gone = ((blas.x & 4u) == 0u || ((frame - tail.y) & FRAME_MASK) > KEPT_IN_VIEW_FRAMES) && any(view_projection[3] != 0.f)
                       && NearView(place, view_projection[0], view_projection[1], view_projection[3], 0.f);
-    if ((grass && !GrassInView(place.xyz)) || gone || !Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w))))) return;
+    if ((grass && !GrassInView(place.xyz)) || gone || !Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w)), grass))) return;
     const uint kept_mask = grass ? GRASS_INSTANCE : ((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE);
     Append(row0, row1, row2, uint4(record | (kept_mask << 24), tail.y, blas.x & ~0xFFu, blas.y));
     return;
@@ -195,7 +199,8 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float scale = max(max(length(rotation[0]), length(rotation[1])), length(rotation[2]));
   if (!(abs(determinant) > 1e-12f) || !all(isfinite(rotation[0])) || !all(isfinite(rotation[1])) || !all(isfinite(rotation[2]))
       || !all(isfinite(translation)) || any(abs(translation) > MAX_TRANSLATION) || !(scale < MAX_SCALE)
-      || ((job.w & PLACE_GRASS) != 0u && !GrassInView(float3(now0.w, now1.w, now2.w))) || !Insert(PlaceKey(record, translation))) {
+      || ((job.w & PLACE_GRASS) != 0u && !GrassInView(float3(now0.w, now1.w, now2.w)))
+      || !Insert(PlaceKey(record, translation, (job.w & PLACE_GRASS) != 0u))) {
     return;
   }
   // InstanceID (the record) and mask (its group; 0 hidden); the frame drawn and the flags; the BLAS (its moving bit

@@ -1116,6 +1116,8 @@ void Capture(Context& command, const SceneShader& shader) {
       const auto set = compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end();
       const bool corners_wanted = set != runtime.cluster_meshes.end() && set->second.staging && !set->second.corners;
       if (!sway && !moving && !corners_wanted && known->second.instances == instances && (key + runtime.frame) % PLACE_TURNS != 0) {
+        // Drawn all the same (RT_DRAWN_PLACED: its kept instances stay).
+        if (known->second.frame != runtime.frame && runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
         known->second.frame = runtime.frame;
         return;
       }
@@ -1666,7 +1668,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | ((runtime.settings.micromaps && runtime.settings.fast_leaves) ? dlaa_bridge::RT_FAST_LEAVES : 0u)
                | (runtime.settings.light_importance ? dlaa_bridge::RT_LIGHT_IMPORTANCE : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
-               | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u)
+               | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,

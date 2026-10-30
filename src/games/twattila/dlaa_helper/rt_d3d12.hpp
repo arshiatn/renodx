@@ -3681,11 +3681,15 @@ class RtScene12 {
     UINT tlas_instances = instance_count;
     uint32_t placed_drawn = 0;
     if (ptlas_ == nullptr && std::ranges::any_of(meshes_, [](const auto& entry) { return entry.second.placed; })) {
-      // The records' BLAS addresses (bit 0: drawn moving now, bit 1: grass), then the jobs.
+      // The records' BLAS addresses (bit 0: drawn moving now, bit 1: grass, bit 2: drawn this frame: from the drawn list
+      // when it holds the placed meshes (RT_DRAWN_PLACED) and is not full, else every one), then the jobs.
       auto* record_blas = reinterpret_cast<uint64_t*>(slot->jobs_data);
       std::fill_n(record_blas, STATIC_RECORDS, uint64_t{0});
+      const bool drawn_known = (shared.rt_flags & dlaa_bridge::RT_DRAWN_PLACED) != 0 && drawn_count < dlaa_bridge::RT_DRAWN;
       for (const auto& [key, mesh] : meshes_) {
-        if (mesh.placed) record_blas[mesh.record] = mesh.blas.address | (mesh.grass ? 2u : 0u);
+        if (mesh.placed) {
+          record_blas[mesh.record] = mesh.blas.address | (mesh.grass ? 2u : 0u) | ((!drawn_known || mesh.drawn_frame == frame) ? 4u : 0u);
+        }
       }
       uint32_t job_count = 0;
       const auto place = [&](const dlaa_bridge::RtPlacement& draw) {
@@ -3696,6 +3700,7 @@ class RtScene12 {
         }
         Mesh& mesh = found->second;
         mesh.drawn_frame = frame;
+        record_blas[mesh.record] |= 4u;
         if ((draw.flags & dlaa_bridge::RT_PLACE_MOVING) != 0) record_blas[mesh.record] |= 1u;
         const std::array<uint32_t, 8> job = {placed_drawn, draw.instances, draw.first_vertex,
                                              (mesh.foliage ? PLACE_FOLIAGE : 0u) | ((draw.flags & dlaa_bridge::RT_PLACE_HIDDEN) != 0 ? PLACE_HIDDEN : 0u)

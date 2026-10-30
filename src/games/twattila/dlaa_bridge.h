@@ -156,6 +156,10 @@ constexpr uint32_t RT_LIGHT_IMPORTANCE = 16384;
 // Coloured Shadows (v19, with RT_LEAF_LIGHT): the sun's light through cloth and sails takes their colour (where the
 // screen shows them: Ray Reconstruction's diffuse albedo guide) into rt_tint.
 constexpr uint32_t RT_COLOURED_SHADOWS = 32768;
+// The drawn list (rt_drawn) holds the placed meshes drawn this frame too, also those not placed in it (helpers 58 on):
+// a placed mesh the frame did not draw has its kept instances in view gone at once (the game drew another level of
+// detail there; they darkened it for 16 frames).
+constexpr uint32_t RT_DRAWN_PLACED = 65536;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
