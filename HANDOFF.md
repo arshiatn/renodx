@@ -1590,12 +1590,20 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 8. twattila_v109.zip, builds, all_modes, README v109, memory (see the commits after 524954cf).
     - v114 BATCH (ATN 2026-10-30 ~11:45, away for hours; debug32 = C:/Program Files (x86)/Steam/steamapps/common/Total
       War Attila/debug32):
-      [ ] 1. Graphics Tools installed: the D3D12 debug layer in the helper; run auto_save.replay with RENODX_TW_D3D12_DEBUG=1
-          (d3d12SDKLayers.dll into Attila's D3D12 folder for the test only), fix the Close E_INVALIDARG.
-      [ ] 2. debug32: above the river 20-30 fps, then fps up and the RT / PT toggles did nothing (helper dead?); RT trace
-          button pressed after. Find why.
-      [ ] 2.1 PT AO still "cooked" (like SDR with less gamma) next to RT AO (debug32/rt ao vs pt ao); sun shaders before /
-          after our HDR tonemapper?
+      [x] 1. Debug layer works (Graphics Tools). In game (auto_save.replay, RENODX_TW_D3D12_DEBUG=1, d3d12SDKLayers.dll in
+          Attila's D3D12 folder: remove after tests) with helper57 and with helper54: no Close failure, the only error
+          "Resolve query never performed" (fixed: 4d9f75c6, all slot stamps written first). A failed Close now logs the
+          request's passes and counts (debug32's recorded in 0.01 ms). Not reproduced: next time read that line.
+      [x] 2. debug32: the 11:34 one-off Close failure went through Fail (sticky failed_); at 11:39:23 ATN turned Specular
+          Occlusion off, the shared textures were made again and the scene's re-open refused (Initialize: failed_): RT off
+          until a restart, fps up. Fixed (2412c943): Record's Close / BLAS scratch / PTLAS failures only set the status.
+          The 20-30 fps: GPU trace 9-14 ms above the river (grass and leaves 0.45-0.56 M triangles): item 3.
+      [x] 2.1 PT AO "cooked" (4db7aa68): not the tonemapper (the sun shaders light the scene before it). The sun shaders
+          scale the diffuse ambient by c11.x's choice (x1.44 or x1; foliage 0.6 / 0.8 of that) and the foliage ones add a
+          sky sheen from the cube at the reflection: zeroing the cube lost the sheen, the paths' sky ignored the scale.
+          Now PatchAmbient (screen_space_shadows) scales the first cube read by 1 - t51 (PT AO binds 1), rt_sun gives
+          the scale (texel 4 w: SkyCalibration) and the foliage share (texel 5 w: light_bounce_apply t52). In game,
+          same view: PT vs RT AO -0.4% brightness, blue -3% (open ground: the sand's bounce; ReSTIR's W clamp ~1%).
       [ ] 3. CPU / GPU limits (debug layer, profiles): find and remove or reduce them.
       [ ] 4. What else falls back to the CPU: move to the GPU where possible.
       [ ] 5. What in the helper (RT / PT) can run side by side instead of in turn (GPU queues, CPU threads): do it.
