@@ -262,7 +262,11 @@ class RtScene12 {
       if (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf())))
           || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
                                                IID_PPV_ARGS(slot.list.GetAddressOf())))
-          || FAILED(slot.list->Close()) || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs
+          || FAILED(slot.list->Close())
+          || FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.tail_allocator.GetAddressOf())))
+          || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.tail_allocator.Get(), nullptr,
+                                               IID_PPV_ARGS(slot.tail_list.GetAddressOf())))
+          || FAILED(slot.tail_list->Close()) || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs
           || !slot.left_out || !slot.left_out_readback
           || FAILED(slot.left_out_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.left_out_data)))
           || FAILED(slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data)))
@@ -271,6 +275,7 @@ class RtScene12 {
         return Fail("Ray tracing: no D3D12 command lists");
       }
       slot.list->SetName(std::format(L"slot {}", &slot - slots_.data()).c_str());
+      slot.tail_list->SetName(std::format(L"slot {} tail", &slot - slots_.data()).c_str());
     }
     // The vertex copy (BLAS inputs), the TLAS for the most instances, the records and pools.
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS top_inputs = {
@@ -1055,6 +1060,10 @@ class RtScene12 {
       queue_->ExecuteCommandLists(1, lists);
     }
     queue_->Signal(fence_.Get(), shared.value + 1);
+    if (recorded && slot.tail_recorded) {
+      ID3D12CommandList* tail[] = {slot.tail_list.Get()};
+      queue_->ExecuteCommandLists(1, tail);
+    }
     queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
     LARGE_INTEGER submit_end;
@@ -1686,10 +1695,14 @@ class RtScene12 {
   struct Slot {
     ComPtr<ID3D12CommandAllocator> allocator;
     ComPtr<ID3D12GraphicsCommandList4> list;
+    // A trace's work the game does not wait for (its GPU micromap bakes, the timestamps' end), run after the game's signal.
+    ComPtr<ID3D12CommandAllocator> tail_allocator;
+    ComPtr<ID3D12GraphicsCommandList4> tail_list;
     // Its last request and passes (LostReport).
     std::string request;
     std::vector<const wchar_t*> marks;
     uint32_t gpu_bakes = 0;  // GPU Micromap Baking's bakes in its last trace (the profile)
+    bool tail_recorded = false;
     ComPtr<ID3D12Resource> instances;
     D3D12_RAYTRACING_INSTANCE_DESC* instance_data = nullptr;
     ComPtr<ID3D12Resource> table;  // the scene data pass's capture table
@@ -2334,6 +2347,7 @@ class RtScene12 {
       status_ = std::move(why);
       return false;
     };
+    slot->tail_recorded = false;
     StampSlot(list, slot_index);
     Stamp(list, slot_index * STAMPS);
     const uint32_t frame = shared.rt_frame;
@@ -4028,11 +4042,17 @@ class RtScene12 {
     }
     std::erase(micromap_reads_, nullptr);
     slot->gpu_bakes = static_cast<uint32_t>(gpu_baking.size());
+    // The bakes and the timestamps' end in the tail list (Trace runs it after the game's signal: the game no longer waits
+    // for them, they run beside its frame); without it here.
+    auto* tail = (SUCCEEDED(slot->tail_allocator->Reset()) && SUCCEEDED(slot->tail_list->Reset(slot->tail_allocator.Get(), nullptr)))
+                     ? slot->tail_list.Get()
+                     : list;
 #if defined(RENODX_OMM_SDK)
-    BakeMicromapsOnGpu(list, gpu_baking);
+    BakeMicromapsOnGpu(tail, gpu_baking);
 #endif
-    Stamp(list, slot_index * STAMPS + 9);
-    Resolve(list, slot_index);
+    Stamp(tail, slot_index * STAMPS + 9);
+    Resolve(tail, slot_index);
+    slot->tail_recorded = (tail != list) && SUCCEEDED(tail->Close());
     if (const HRESULT closed = list->Close(); FAILED(closed)) {
       status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
       // Which passes it held (the one-off E_INVALIDARG of debug32 recorded in 0.01 ms; with RENODX_TW_D3D12_DEBUG the
