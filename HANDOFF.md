@@ -1,8 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v116 BIG BATCH (search "v116 BIG BATCH" below): in progress, its checklist says what is done. v115 batch done
-  (search "v115 BATCH").
+- NOW: v116 batch done (search "v116 BIG BATCH"), waiting for ATN's in-game test. Open: the GPU hang's cause (read the new
+  "micromap BLAS" part of the next DRED report in renodx-tw-dlaa64.log).
 - State: Attila v116 shipped (Downloads/twattila_v116.zip, helper59 = build/tw_dlaa_helper59, bridge v19 + placement flag
   RT_PLACE_WHOLE; v116 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
   symlink to build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch
@@ -1707,7 +1707,13 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           scan_register.py) - their paths still point at the v115 session's scratchpad: adjust. debug33 profile at ATN's
           river view (before v115's fix): sun rays 8 ms still, bounce 9 ms; positions there are the riverbed (water drawn
           after the trace), with grass in it.
-      [ ] 4. v116 zip, README, HANDOFF, memory, report.
+      [x] 4. twattila_v116.zip (Downloads, helper59 = build/tw_dlaa_helper59), README v116, memory. build32 Attila / Rome II /
+          Thrones, 64-bit TW + Shogun 2 / Ryse / Expeditions (shared rt_core) built without errors; all_modes 44/44
+          (all_modes_h59.txt, new mode undrawn_whole_gone). Stress on the final build (for_claude1.replay, camera moves,
+          Light Bounce / reflections toggled 36 times): 12 minutes, no GPU reset. Reflections with Light Bounce off: a series of
+          10 shots (RENODX_TW_SHOT=50,10,3) steady within 0.1 level, no lasting flicker (ATN's "flickering for a bit" not
+          seen). Game folder: v116, ReShade.ini = ATN's. Left there: renodx-twattila.addon32.in-use-2159 (an old test build,
+          not loaded: pinned by dead Attila.exe processes until a reboot, then delete it).
     - v115 BATCH (ATN 2026-10-30 ~17:20, away for hours; debug33 = C:/Program Files (x86)/Steam/steamapps/common/Total
       War Attila/debug33; new replay for_claude1.replay = Large Ctesiphon, day): checklist ([ ] open, [x] done):
       [x] 1. (e5bf7dd3) RT AO / SSAO / GT-VBAO "dark" under Rays / Off after PT: the Light Bounce bypasses the sun draw
