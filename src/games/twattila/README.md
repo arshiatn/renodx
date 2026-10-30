@@ -2,6 +2,14 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v113 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper56: ship them together)
+
+- **GPU micromap bakes run side by side**: with GPU Micromap Baking, a frame's leaf / grass bakes now run together
+  (step by step) instead of one after another with a pause after each of their ~11 small passes. Test: 33 large bakes
+  171 ms -> 68 ms of GPU time, 4 bakes 18 -> 11 ms; real leaves are smaller, so they should gain more.
+- **No more CPU bakes** with GPU Micromap Baking on: what does not fit a frame's budget waits and is baked on the GPU over
+  the next frames (its UVs and mask are copied right away). Before, the overflow went to the CPU.
+
 ## v112 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper55: ship them together)
 
 - **Reflection Reuse: Own ReSTIR** (Experimental, the third choice next to From ReSTIR GI, so you can compare; needs no

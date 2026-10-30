@@ -1,7 +1,7 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- State: Attila v112 shipped (Downloads/twattila_v112.zip, helper55 = build/tw_dlaa_helper55, bridge v19; Attila's folder still
+- State: Attila v113 shipped (Downloads/twattila_v113.zip, helper56 = build/tw_dlaa_helper56, bridge v19; Attila's folder still
   has helper54), branch
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
   (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
@@ -1600,7 +1600,10 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           0.092 vs 0.175 (plain 1-spp accumulation is biased dark: frames with no met sample put rgb 0 in the history; a
           fix for later). From ReSTIR GI measured worse than plain rays (0.30 vs 0.09 accumulated, 4 spp). Cost: the
           reflection pass ~+60% (0.12 -> 0.19 ms at 640x360).
-      [ ] 2. The one-off Close failure (E_INVALIDARG) of the first trace request on auto_save.replay's desert map (v108's
+      [ ] 2. (2026-10-30 v113 session: still blocked on the debug layer; v113 records the GPU bakes differently in that
+          same first request (staged, masks / UVs copied at read time), so ATN's next auto_save.replay run also shows
+          whether it is gone. Static checks done: dispatch sizes within 65535, atlas slices < 256.)
+          The one-off Close failure (E_INVALIDARG) of the first trace request on auto_save.replay's desert map (v108's
           helper47 too): first get the D3D12 debug layer loading in the helper (0x887A002D with d3d12SDKLayers.dll next
           to D3D12Core.dll), then fix the invalid call it names. v111 session (2026-10-30): the debug layer fails the same
           way in the harness (build/tw_rt_harness has both DLLs, 1.619.6): factory->GetConfigurationInterface(
@@ -1610,12 +1613,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           the micromap read copies, static BLAS builds (zero-triangle captures are skipped). Reproduce: auto_save.replay,
           ReShade.log line "Ray tracing: D3D12 stopped (0x80070057)" ~1 s into the battle. Harmless (the next frame
           traces).
-      [ ] 3. GPU bakes concurrent, never on the CPU (ATN 2026-10-30): BakeMicromapsOnGpu records bake after bake, a global
-          UAV barrier after each of a bake's ~11 dispatches and every bake on the same transient pools: all serialized.
-          Make them concurrent: give each bake (or group) its own transient pools, interleave the bakes stage by stage
-          (all bakes' pass k, one barrier, pass k+1), maybe an async compute queue; then spread the overflow over the next
-          frames on the GPU (a queue of reads keeping their positions / UVs / mask slices) instead of CPU bakes. Measure
-          with the profile's gpu_bakes_ms.
+      [x] 3. GPU bakes concurrent, never on the CPU (v113, helper56, untested in game): BakeMicromapsOnGpu copies each
+          chain (the SDK reuses its chain memory), gives each bake its own place in one transient buffer per pool (pools
+          are small: ~300 KB for a 4000-triangle bake, the 64 MB budget is not what they take) and records stage by stage
+          (all bakes' step k, one barrier; a step whose states clash waits a wave). Every read with GPU Micromap Baking is
+          a GPU bake: its UVs copied into a GPU buffer and its mask into a pooled texture (OmmGpu::masks, mask_index) when
+          read, value UINT64_MAX while waiting; each request bakes the oldest within MICROMAP_GPU_BAKES /
+          MICROMAP_GPU_TRIANGLES, stale ones (mesh / set rebuilt) dropped. Harness (scratchpad bakes.sh, stress 4/48/100,
+          profile): 33 bakes 171 -> 68 ms, 4 bakes 18 -> 11 ms, results identical; stress 100 baked over 4 frames on the
+          GPU. No async compute (not needed so far).
     - [x] PT AO vs RT AO (ATN asked for it in the v111 session; b0bd2639, helper54, untested in game): what blocked PT
       AO's sky differed: the Light Bounce's range (ATN 50 m) and no grass, against RT AO's reach (ATN 6 m) and grass
       within 0.5 m. Now PT AO's camera rays stop at min(bounce range, AO range) (rt_camera.hlsli sky_range = the
