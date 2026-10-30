@@ -1570,6 +1570,14 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 7. Known: auto_save (desert) replay: the first trace request's Close fails once (E_INVALIDARG, also with v108's
           helper47; the D3D12 debug layer would not load: 0x887A002D). Status now carries the HRESULT.
       [x] 8. twattila_v109.zip, builds, all_modes, README v109, memory (see the commits after 524954cf).
+    - NEXT BATCH (v110; ATN 2026-10-30: added, NOT started until ATN says):
+      [ ] 1. Reflection Reuse "Own ReSTIR" (the second option next to From ReSTIR GI, so ATN can compare): the
+          reflections' own reservoirs (GGX-sampled candidates, target lum(L) x the lobe's density; temporal reuse by
+          reprojection, spatial over neighbours of similar normal and roughness; half resolution: two full-res sets
+          would be ~265 MB at 4K).
+      [ ] 2. The one-off Close failure (E_INVALIDARG) of the first trace request on auto_save.replay's desert map (v108's
+          helper47 too): first get the D3D12 debug layer loading in the helper (0x887A002D with d3d12SDKLayers.dll next
+          to D3D12Core.dll), then fix the invalid call it names.
 
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
