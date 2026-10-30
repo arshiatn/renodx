@@ -1,6 +1,7 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
+- NOW: v115 BATCH in progress (search "v115 BATCH" below for the checklist).
 - State: Attila v114 shipped (Downloads/twattila_v114.zip, helper57 = build/tw_dlaa_helper57, bridge v19; helper57 is in
   Attila's folder too, its ReShade.ini as ATN left it), branch
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
@@ -1621,6 +1622,22 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 6. Explained in the round report: SHaRC = two extra passes a frame (update traces from 1 of 25 texels, resolve
           walks 2 M entries) for paths that are short and mostly end on surfaces the screen knows; SER = a ray tracing
           pipeline instead of the inline compute plus a sort by hit, worth it only for long divergent shading.
+    - v115 BATCH (ATN 2026-10-30 ~17:20, away for hours; debug33 = C:/Program Files (x86)/Steam/steamapps/common/Total
+      War Attila/debug33; new replay for_claude1.replay = Large Ctesiphon, day): checklist ([ ] open, [x] done):
+      [ ] 1. RT AO / SSAO / GT-VBAO "dark" with Light Bounce Rays or Off (PT AO fine): A/B v113 vs v114 in game.
+      [ ] 2. Specular Occlusion does nothing: found: with RT reflections on, the reflection pass (ssr00/01) applies
+          t46 only when the reflections are not bound; rough pixels (> ROUGH_LIMIT 0.75, not traced) keep the game's
+          environment unoccluded. Fix: occlusion on the environment share everywhere (helper: 1 where reflections
+          traced), t46 bound only with Specular Occlusion on.
+      [ ] 3. Water Clarity / Caustics do nothing: "Water Clarity: applied" never in any log (OnWaterDraw never ran with
+          b2); ATN's river pixel trace = rigidstandard D63DD3C3 (no water shader at the pixel). Find the river's real
+          draw. River noise while moving (reflections?).
+      [ ] 4. River fps (30 s profile in debug33 "above river 30s rt trace"; a GPU hang 0x887A0006 at a trace's cluster
+          build, then GPU bakes / SER / SHaRC paused): why lose-then-regain fps after stops, grass in the river bed.
+      [ ] 5. Grass shadows settle up to 1 s after W/A/S/D: why new grass needs new bakes each move.
+      [ ] 6. LOD switches: buildings black until AO converges.
+      [ ] 7. RT AO / PT AO noisier than 1-2 days ago.
+      [ ] 8. Far shadows flicker (Ctesiphon towers; debug view 1 shots): terminator / jitter.
     - NEXT BATCH (v110; ATN 2026-10-30: added, NOT started until ATN says):
       [x] 1. Reflection Reuse "Own ReSTIR" (v112, helper55, untested in game; setting RayTracedReflectionReuse 2, bridge
           bit RT_REFLECTIONS_OWN 1024): rt_path.hlsli ReflectReservoirTexel (pass RT_REFLECT_RESERVOIR, half res: the
