@@ -1536,6 +1536,41 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           build32 Attila / Rome II / Thrones built, all_modes 38/38 (all_modes_h47.txt), README v108, memory. The
           harness cannot check PT AO's fix (no learned shade / ambient cube there): untested.
 
+    - v109 NIGHT BATCH (ATN 2026-10-30 ~00:40, debug30: freeze, PT AO pictures, a trace through grass to a river and the
+      city; ATN asleep, "turn off my pc" after). Checklist:
+      [x] 1. Freeze (6306778d): DRED's "reflections" request was stale: the slot's request / marks were overwritten before
+          the failed Reset after the loss; the hung list was a trace request's GPU micromap bake (marker, copy, clamp,
+          OMM chain dispatch 4). Now a removed device keeps the slots' last request. Probe (scratchpad omm_chain): a bake
+          = 11 dispatches, ~71 descriptors (the 65536 ring holds ~900 bakes). rt_omm_uvs a triangle a thread: a corner
+          past |2| or not finite, or a triangle over 1.1 texture widths -> COLLAPSED (no texels), its micromap index
+          set to -4 (unknown opaque) after the chain. MICROMAP_GPU_BAKES 64 + MICROMAP_GPU_TRIANGLES 131072 a request;
+          past them CPU bakes (MicromapRead.gpu; before, meshes past 24 never got micromaps). Profile: gpu_bakes,
+          gpu_bakes_ms (STAMPS 10).
+      [x] 2. PT AO (0254ad1b, 35048c6f): ReSTIR GI is always on with Path Tracing and gave escaped rays weight 0: no sky
+          in PT AO, only the ground's warm bounce. Misses join the reservoirs (Jacobian 1 for sky samples), the camera
+          rays' sky x SkyCalibration (the game's cube at the normal, its y x4 normalized as Attila's sun shaders take
+          it, over 16 fixed cosine rays' sky). In game (auto_save desert replay, same view): PT vs RT AO region means
+          within 1-4 levels.
+      [x] 3. Grass dark after camera moves (ad70391a): past MAX_CANDIDATES the grass-only sun query now aborts (lit)
+          instead of committing (black) while micromaps are missing. Not reproduced in my replays (2vs3 hill: no change
+          with or without, camera could not zoom into dense grass; the wheel / F did nothing).
+      [x] 4. Optimizations: AO rays FORCE_OMM_2_STATE (harness 4K leaf stress: 2.14 -> 2.10 ms; ATN's debug30 AO 6-11 ms
+          was RT AO 8 rays quarter in grass). debug30's bounce column 0 = ATN had switched to RT AO for the profile.
+      [x] 5. Coloured Shadows (10ce5cba, bridge v19 rt_tint RGBA8 = 1 - filter, RT_COLOURED_SHADOWS): rt_trace multiplies
+          each cloth / sail / masked layer's ThinColour (RR diffuse albedo guide where positions match) into the ray's
+          tint; screen_space_shadows' Patch replaces every lighting_VS_PS c1 (sun_colour) read with rC = c1 x (1 - t50)
+          (loads at the code start now, the shadow mul at the saturate). Sun shader dumps: scratchpad sun_attila
+          (B6DA03C5 etc.; their ambient: normalize(n * (1, 4, 1)) squared x cube c2-c7). WARP test: all 10 shadowed
+          variants create; in game 8 patched, picture fine; the tint itself untested (no cloth near the camera).
+      [x] 6. Reflection Reuse From ReSTIR GI (524954cf, RT_REFLECTIONS_REUSE path flag): ReflectPixel at roughness >= 0.3
+          resamples the GI reservoir at its texel (this frame's set: 1 - reuse_parity_ after the bounce request) with its
+          own estimate (GRIS, weights lum(own) and lum(L) x GgxReflectionDensity x W, one visibility ray). In game:
+          reflections 0.71 ms, no errors; looks untested. [ ] "Own ReSTIR" not done: full-res reservoirs (~265 MB at 4K
+          for two sets) or half-res ones plus temporal + spatial passes; ~2-3 h.
+      [x] 7. Known: auto_save (desert) replay: the first trace request's Close fails once (E_INVALIDARG, also with v108's
+          helper47; the D3D12 debug layer would not load: 0x887A002D). Status now carries the HRESULT.
+      [x] 8. twattila_v109.zip, builds, all_modes, README v109, memory (see the commits after 524954cf).
+
 ### Tales DXR plan (item 7, started 2026-10-26)
 DONE 2026-10-26: DLSS v96 / HDR v66 (zips in Downloads, untested in game): Ray-traced sun shadows (Experimental,
 rt_shadows.hpp; DLSS README v96 has the whole design). Stream output of the opaque depth prepass (vs C81C5E1F,

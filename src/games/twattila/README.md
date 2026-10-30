@@ -2,6 +2,33 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v109 (2026-10-30; renodx-tw-dlaa64.exe helper52: ship them together)
+
+- **The freeze was the GPU micromap bake** (not the reflections: the log named a request made after the freeze). A bake
+  goes through every texel its triangles cover; a triangle stretched over more than one texture width (garbage UVs in
+  some of the game's meshes) could take seconds. Such triangles are now left to the rays' alpha test, so no bake can
+  run long. The freeze log now names the right request.
+- **More GPU micromap bakes**: up to 64 a frame (131072 triangles); past that the CPU bakes them. Before, leaves past
+  the GPU's share (24) never got micromaps. The profile has the bakes' GPU time (gpu_bakes, gpu_bakes_ms).
+- **PT AO fixed (dark, warm, "cooked")**: ReSTIR GI (always on with Path Tracing) dropped every ray that reached the
+  sky, so PT AO was only the ground's warm bounce light, getting darker over the reservoirs' 1-2 s. The sky is in the
+  reservoirs now, scaled so open ground gets exactly the game's own ambient (its formula, its colour). Checked in game:
+  PT AO and RT AO now match within a few levels over the whole picture (debug30's PT AO was clearly darker and warmer).
+- **Grass going dark after camera moves**: new grass has no micromaps for 1-2 s (its cluster set, bake and templates),
+  so each blade is an alpha test; past 64 of them a sun ray counted as blocked: black. Now it counts as lit (the grass
+  is only briefly a bit lighter instead). Not reproduced in my replays (no way to zoom into dense grass there).
+- **AO cheaper in forests and fields**: the AO rays take leaves' and grass's micromaps as they are (2-state: no alpha
+  tests; soft AO barely changes).
+- **Coloured Shadows** (new, Ray Tracing section, on): sunlight through cloth, sails and banners takes their colour. Needs
+  Light Through Leaves and Ray Reconstruction (the colour comes from RR's albedo where the screen shows the cloth).
+  Checked in game: the sun shaders take it and the picture is unchanged elsewhere; the coloured light itself is
+  untested (no banners close to the camera in my replays).
+- **Reflection Reuse (Experimental, Off by default)**: "From ReSTIR GI": rough reflections also take the path-traced
+  Light Bounce's ReSTIR GI samples (less noise; needs Path Tracing). Runs in game; how it looks is untested. The second
+  option ("Own ReSTIR": reflections with their own reservoirs) is not done yet.
+- Known: on one desert map the first ray tracing request of a battle fails once (also in v108; harmless: the next
+  frame traces).
+
 ## v108 (2026-10-30, untested in game; renodx-tw-dlaa64.exe helper47: ship them together)
 
 - **PT AO no longer goes dark**: its first 1-2 s were still the game's ambient (PT AO takes over after a short warm-up,
