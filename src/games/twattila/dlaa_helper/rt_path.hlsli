@@ -806,6 +806,7 @@ void ReflectPixel(uint2 id) {
   const float alpha = max(roughness * roughness, 1e-3f);
   const bool mirror = roughness < 0.05f;
   const bool traced = (path_flags & PATH_REFLECTIONS) != 0u && roughness <= ROUGH_LIMIT;
+  const bool occlusion = (path_flags & PATH_SPECULAR_OCCLUSION) != 0u && !traced;
   const uint samples = mirror ? 1u : max(path_samples, 1u);
   const float3x3 basis = Basis(normal);
   const float3 view_local = float3(dot(view, basis[0]), dot(view, basis[1]), n_dot_v);
@@ -833,8 +834,7 @@ void ReflectPixel(uint2 id) {
         distances += first_distance;
         ++met;
       }
-      if (first_distance > reflection_range) ++open;
-    } else if (!Occluded(origin, direction, reflection_range, NO_GRASS_SMOKE)) {
+    } else if (occlusion && !Occluded(origin, direction, reflection_range, NO_GRASS_SMOKE)) {
       ++open;
     }
   }
@@ -942,7 +942,9 @@ void ReflectPixel(uint2 id) {
     }
   }
   const float4 current = float4((weights > 0.f) ? gathered / weights : 0.f, min((float)met / samples, 1.f));
-  const float current_open = (float)open / samples;
+  // The share of the lobe open to the game's environment: where the rays were traced what they met stands in for it
+  // (the reflection pass dims the rest by this too: 1), without Specular Occlusion 1.
+  const float current_open = occlusion ? (float)open / samples : 1.f;
   // Ray Reconstruction's specular hit distance: the mean distance to what the samples met (the sky's where none did, as
   // where none were traced: the game's reflection is the sky's or a cube map's).
   if ((path_flags & PATH_RAW) != 0u) specular_hit_distance[id] = (met != 0u) ? distances / met : SKY_HIT_DISTANCE;

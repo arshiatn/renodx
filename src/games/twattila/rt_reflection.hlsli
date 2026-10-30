@@ -5,8 +5,9 @@
 
 // Ray-traced reflections and specular occlusion in the games' reflection passes (rt_scene.hpp BindReflections; the
 // helper's rt_path.hlsli traces them at the render pixels): t47 the rays' light and the share of samples that met a
-// surface (bound only with Ray-Traced Reflections on), t46 the share of the lobe open (bound with either on). Where the
-// rays met something their light replaces the screen-space march; the game's environment stays for the rest (the sky).
+// surface (bound only with Ray-Traced Reflections on), t46 the share of the lobe open (bound with Specular Occlusion on;
+// 1 where the reflections were traced). Where the rays met something their light replaces the screen-space march; the
+// game's environment, dimmed by t46, stays for the rest (the sky; the rougher surfaces they leave to it).
 #ifndef SRC_GAMES_TWATTILA_RT_REFLECTION_HLSLI_
 #define SRC_GAMES_TWATTILA_RT_REFLECTION_HLSLI_
 

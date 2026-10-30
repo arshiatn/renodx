@@ -163,14 +163,15 @@ void main(
   r6.xyz = r6.xyz * r1.www + -r1.xyz;
   r1.xyz = r2.zzz * r6.xyz + r1.xyz;
   // RenoDX: ray-traced reflections (rt_reflection.hlsli): with them the screen-space march is skipped (their light
-  // where the rays met something, this environment for the rest); with the specular occlusion alone the environment
-  // is dimmed where something blocks it. Surfaces drawn after the G-buffer the rays start from (the game's material
-  // flag 4, its own test for them below: water) take them where they left from their own depth and normal
-  // (RtWaterReflections), else keep the march; the march's resolve (ssr_resolve.cs) passes the rays' pixels through.
+  // where the rays met something, this environment for the rest); the specular occlusion dims the environment where
+  // something blocks it (1 where the rays were traced: what they met stands in). Surfaces drawn after the G-buffer the
+  // rays start from (the game's material flag 4, its own test for them below: water) take them where they left from
+  // their own depth and normal (RtWaterReflections), else keep the march; the march's resolve (ssr_resolve.cs) passes
+  // the rays' pixels through.
   const float2 rt_pixel = v0.xy / g_buffers_scale;
   const bool rt_surface = ((int)r2.y & 4) == 0 || RtWaterReflections();
   const bool rt_reflected = RtReflectionsBound() && rt_surface;
-  if (!rt_reflected && rt_surface) r1.xyz = RtOccludedEnvironment(rt_pixel, r1.xyz);
+  if (rt_surface) r1.xyz = RtOccludedEnvironment(rt_pixel, r1.xyz);
   if (rt_reflected) o2 = float2(0.f, -2.f);
   r1.w = dot(r5.xyz, -r3.xyw);
   r1.w = max(0, r1.w);

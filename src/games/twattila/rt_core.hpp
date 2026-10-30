@@ -1959,7 +1959,7 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
   return {bridge.rt_reflection.srv.Get(), bridge.rt_specular.srv.Get()};
 }
 
-// Binds the ray-traced reflections (t47, with the reflections on) and the specular occlusion (t46) for the game's
+// Binds the ray-traced reflections (t47, with the reflections on) and the specular occlusion (t46, with it on) for the game's
 // reflection pass's draw or dispatch (`compute`), or unbinds them (`bind` false); a draw's b10 says whether the water
 // was traced from its own surfaces (`surface_depth`: Reflections). True: the reflections are bound (the pass leaves out
 // its screen-space march; rt_reflection.hlsli).
@@ -1969,13 +1969,15 @@ inline bool BindReflections(reshade::api::command_list* cmd_list, bool compute, 
   const auto views = (bind && internal::active.load(std::memory_order_relaxed)) ? Reflections(native, surface_depth)
                                                                                  : std::array<ID3D11ShaderResourceView*, 2>{};
   bool reflected = false;
+  bool occluded = false;
   ID3D11Buffer* water = nullptr;
   {
     const std::unique_lock lock(internal::runtime.mutex);
     reflected = views[0] != nullptr && internal::runtime.settings.reflections;
+    occluded = views[1] != nullptr && internal::runtime.settings.specular_occlusion;
     if (reflected && internal::runtime.water_traced) water = internal::runtime.objects.water_flags.Get();
   }
-  const std::array<ID3D11ShaderResourceView*, 2> bound = {views[1], reflected ? views[0] : nullptr};
+  const std::array<ID3D11ShaderResourceView*, 2> bound = {occluded ? views[1] : nullptr, reflected ? views[0] : nullptr};
   if (compute) {
     native->CSSetShaderResources(46, static_cast<UINT>(bound.size()), bound.data());
   } else {
