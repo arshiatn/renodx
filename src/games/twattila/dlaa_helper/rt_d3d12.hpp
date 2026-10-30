@@ -4353,21 +4353,36 @@ class RtScene12 {
   // GPU Micromap Baking at the end of a request: `bakes` (its new leaves' and grass sets': their UVs in uvs_, their masks
   // in the atlas) baked by the OMM SDK's GPU baker (ComputeOnly, 4-state as the ray queries test them, the CPU bakes'
   // settings): each mask's slice copied to a texture of its own, the UVs copied with garbage coordinates zeroed
-  // (rt_omm_uvs), then each bake's dispatch chain, every resource in the state its descriptor needs and a UAV barrier
-  // after each dispatch, into outputs the request's bakes share (256-byte aligned places); the histograms copied to a
+  // (rt_omm_uvs), then the bakes' dispatch chains stage by stage (all bakes' step k, then a UAV barrier; every resource
+  // in the state its descriptor needs), into outputs and transient pools the request's bakes share (256-byte aligned
+  // places of their own); the histograms copied to a
   // read-back (AdvanceMicromaps: the bakes' builds wait for them, the rest stays on the GPU). A bake the SDK refuses keeps
   // its leaves alpha-tested.
   void BakeMicromapsOnGpu(ID3D12GraphicsCommandList4* list, const std::vector<MicromapBake*>& bakes) {
     if (bakes.empty()) return;
     auto& gpu = omm_gpu_;
+    // A dispatch of a bake's chain, copied.
+    struct Step {
+      bool indirect = false;
+      uint16_t pipeline_index = 0;
+      std::vector<ommGpuResource> resources;
+      std::vector<uint8_t> constants;
+      uint32_t grid_width = 0;
+      uint32_t grid_height = 0;
+      ommGpuResource arguments = {};
+      uint64_t arguments_offset = 0;
+    };
     struct Planned {
       MicromapBake* bake = nullptr;
       ommGpuDispatchConfigDesc config = {};
       ommGpuPreDispatchInfo info = {};
       // The clamped UVs', then the outputs' (array data, descs, desc histogram, indices, index histogram, post-dispatch
-      // info): places and sizes.
+      // info): places and sizes; its transient pools' places in the request's (one buffer each).
       std::array<uint64_t, 7> offsets = {};
       std::array<uint64_t, 7> sizes = {};
+      std::array<uint64_t, OMM_MAX_TRANSIENT_POOL_BUFFERS> transient_offsets = {};
+      std::array<uint64_t, OMM_MAX_TRANSIENT_POOL_BUFFERS> transient_sizes = {};
+      std::vector<Step> steps;
     };
     std::vector<Planned> planned;
     std::string why;  // the last failure (logged once a request)
@@ -4408,7 +4423,9 @@ class RtScene12 {
         totals[kind] = Align(totals[kind] + std::max<uint64_t>(plan.sizes[kind], 4), 256);
       }
       for (uint32_t pool = 0; pool < plan.info.numTransientPoolBuffers && pool < OMM_MAX_TRANSIENT_POOL_BUFFERS; ++pool) {
-        transient_bytes[pool] = std::max<uint64_t>(transient_bytes[pool], plan.info.transientPoolBufferSizeInBytes[pool]);
+        plan.transient_offsets[pool] = transient_bytes[pool];
+        plan.transient_sizes[pool] = std::max<uint64_t>(plan.info.transientPoolBufferSizeInBytes[pool], 4);
+        transient_bytes[pool] = Align(transient_bytes[pool] + plan.transient_sizes[pool], 256);
       }
       planned.push_back(plan);
     }
@@ -4482,9 +4499,51 @@ class RtScene12 {
     }
     const auto clamped = Transition(gpu.uvs.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     list->ResourceBarrier(1, &clamped);
-    // The SDK's chains.
+    // The SDK's chains (its chain memory is its own again at its next call: each step copied), then recorded stage by
+    // stage: every bake's step k together (their resources' states in one barrier, their dispatches, one UAV barrier),
+    // as their outputs and transient pools are places of their own (bake after bake, a barrier after each of ~11 small
+    // dispatches, left the GPU mostly idle). A step whose states clash with another's in its stage waits for a wave of
+    // its own.
     ID3D12DescriptorHeap* heaps[] = {gpu.heap.Get()};
     list->SetDescriptorHeaps(1, heaps);
+    size_t stages = 0;
+    for (size_t index = 0; index < planned.size(); ++index) {
+      Planned& plan = planned[index];
+      const ommGpuDispatchChain* chain = nullptr;
+      if (const ommResult result = omm_.gpu_dispatch(omm_.gpu_pipeline, &plan.config, &chain); result != ommResult_SUCCESS || chain == nullptr) {
+        plan.bake->gpu_failed = true;
+        why = std::format("dispatch {}", static_cast<int>(result));
+        continue;
+      }
+      if (chain->globalCBufferDataSize > globals_stride) {
+        plan.bake->gpu_failed = true;
+        why = std::format("its constants ({} bytes)", chain->globalCBufferDataSize);
+        continue;
+      }
+      std::memcpy(globals_data + (index * globals_stride), chain->globalCBufferData, chain->globalCBufferDataSize);
+      for (uint32_t step = 0; step < chain->numDispatches; ++step) {
+        const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
+        if (dispatch.type == ommGpuDispatchType_BeginLabel || dispatch.type == ommGpuDispatchType_EndLabel) continue;
+        if (dispatch.type == ommGpuDispatchType_ComputeIndirect) {
+          const ommGpuComputeIndirectDesc& indirect = dispatch.computeIndirect;
+          plan.steps.push_back({.indirect = true, .pipeline_index = indirect.pipelineIndex,
+                                .resources = {indirect.resources, indirect.resources + indirect.resourceNum},
+                                .constants = {indirect.localConstantBufferData, indirect.localConstantBufferData + indirect.localConstantBufferDataSize},
+                                .arguments = indirect.indirectArg, .arguments_offset = indirect.indirectArgByteOffset});
+        } else if (dispatch.type == ommGpuDispatchType_Compute) {
+          const ommGpuComputeDesc& compute = dispatch.compute;
+          plan.steps.push_back({.pipeline_index = compute.pipelineIndex, .resources = {compute.resources, compute.resources + compute.resourceNum},
+                                .constants = {compute.localConstantBufferData, compute.localConstantBufferData + compute.localConstantBufferDataSize},
+                                .grid_width = compute.gridWidth, .grid_height = compute.gridHeight});
+        } else {
+          plan.bake->gpu_failed = true;
+          why = std::format("dispatch type {}", static_cast<int>(dispatch.type));
+          plan.steps.clear();
+          break;
+        }
+      }
+      stages = std::max(stages, plan.steps.size());
+    }
     std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> states;  // the tracked ones' states now (upload buffers stay readable)
     for (const auto& output : outputs) states[output.Get()] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     for (const auto& pool : gpu.transient) {
@@ -4500,135 +4559,153 @@ class RtScene12 {
       barriers.push_back(Transition(resource, tracked->second, needed));
       tracked->second = needed;
     };
-    for (size_t index = 0; index < planned.size(); ++index) {
-      Planned& plan = planned[index];
-      const ommGpuDispatchChain* chain = nullptr;
-      if (const ommResult result = omm_.gpu_dispatch(omm_.gpu_pipeline, &plan.config, &chain); result != ommResult_SUCCESS || chain == nullptr) {
-        plan.bake->gpu_failed = true;
-        why = std::format("dispatch {}", static_cast<int>(result));
-        continue;
-      }
-      if (chain->globalCBufferDataSize > globals_stride) {
-        plan.bake->gpu_failed = true;
-        why = std::format("its constants ({} bytes)", chain->globalCBufferDataSize);
-        continue;
-      }
-      std::memcpy(globals_data + (index * globals_stride), chain->globalCBufferData, chain->globalCBufferDataSize);
-      // A resource the chain names: its buffer (or the mask's texture), its place and size there.
-      const auto locate = [&](const ommGpuResource& resource, uint64_t* offset, uint64_t* bytes) -> ID3D12Resource* {
-        const auto output = [&](size_t kind) {
-          *offset = plan.offsets[kind + 1];
-          *bytes = std::max<uint64_t>(plan.sizes[kind + 1], 4);
-          return outputs[kind].Get();
-        };
-        const auto whole = [&](const ComPtr<ID3D12Resource>& buffer) -> ID3D12Resource* {
-          *offset = 0;
-          *bytes = buffer ? buffer->GetDesc().Width : 0;
-          return buffer.Get();
-        };
-        switch (resource.type) {
-          case ommGpuResourceType_IN_ALPHA_TEXTURE:             return gpu.masks[index].Get();
-          case ommGpuResourceType_IN_TEXCOORD_BUFFER:           return whole(gpu.uvs);
-          case ommGpuResourceType_IN_INDEX_BUFFER:              return whole(gpu.indices);
-          case ommGpuResourceType_OUT_OMM_ARRAY_DATA:           return output(0);
-          case ommGpuResourceType_OUT_OMM_DESC_ARRAY:           return output(1);
-          case ommGpuResourceType_OUT_OMM_DESC_ARRAY_HISTOGRAM: return output(2);
-          case ommGpuResourceType_OUT_OMM_INDEX_BUFFER:         return output(3);
-          case ommGpuResourceType_OUT_OMM_INDEX_HISTOGRAM:      return output(4);
-          case ommGpuResourceType_OUT_POST_DISPATCH_INFO:       return output(5);
-          case ommGpuResourceType_TRANSIENT_POOL_BUFFER:
-            return (resource.indexInPool < gpu.transient.size()) ? whole(gpu.transient[resource.indexInPool]) : nullptr;
-          case ommGpuResourceType_STATIC_VERTEX_BUFFER: return whole(gpu.statics[0]);
-          case ommGpuResourceType_STATIC_INDEX_BUFFER:  return whole(gpu.statics[1]);
-          default:                                      return nullptr;
-        }
+    // A resource a chain names: its buffer (or the mask's texture), the bake's place and size there.
+    const auto locate = [&](size_t index, const ommGpuResource& resource, uint64_t* offset, uint64_t* bytes) -> ID3D12Resource* {
+      const Planned& plan = planned[index];
+      const auto output = [&](size_t kind) {
+        *offset = plan.offsets[kind + 1];
+        *bytes = std::max<uint64_t>(plan.sizes[kind + 1], 4);
+        return outputs[kind].Get();
       };
-      for (uint32_t step = 0; step < chain->numDispatches && !plan.bake->gpu_failed; ++step) {
-        const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
-        if (dispatch.type == ommGpuDispatchType_BeginLabel || dispatch.type == ommGpuDispatchType_EndLabel) continue;
-        const bool indirect = dispatch.type == ommGpuDispatchType_ComputeIndirect;
-        if (!indirect && dispatch.type != ommGpuDispatchType_Compute) {
-          plan.bake->gpu_failed = true;
-          why = std::format("dispatch type {}", static_cast<int>(dispatch.type));
-          break;
-        }
-        const ommGpuResource* resources = indirect ? dispatch.computeIndirect.resources : dispatch.compute.resources;
-        const uint32_t resource_count = indirect ? dispatch.computeIndirect.resourceNum : dispatch.compute.resourceNum;
-        const uint8_t* constants = indirect ? dispatch.computeIndirect.localConstantBufferData : dispatch.compute.localConstantBufferData;
-        const uint32_t constant_bytes = indirect ? dispatch.computeIndirect.localConstantBufferDataSize : dispatch.compute.localConstantBufferDataSize;
-        const uint16_t pipeline_index = indirect ? dispatch.computeIndirect.pipelineIndex : dispatch.compute.pipelineIndex;
-        if (pipeline_index >= gpu.pipelines.size() || !gpu.pipelines[pipeline_index].state) {
-          plan.bake->gpu_failed = true;
-          why = std::format("pipeline {}", pipeline_index);
-          break;
-        }
-        const OmmGpu::Pipeline& pipeline = gpu.pipelines[pipeline_index];
-        if (gpu.next + resource_count > OMM_DESCRIPTORS) gpu.next = 0;
-        barriers.clear();
-        for (uint32_t number = 0; number < resource_count; ++number) {
-          const ommGpuResource& resource = resources[number];
+      const auto whole = [&](const ComPtr<ID3D12Resource>& buffer) -> ID3D12Resource* {
+        *offset = 0;
+        *bytes = buffer ? buffer->GetDesc().Width : 0;
+        return buffer.Get();
+      };
+      switch (resource.type) {
+        case ommGpuResourceType_IN_ALPHA_TEXTURE:             return gpu.masks[index].Get();
+        case ommGpuResourceType_IN_TEXCOORD_BUFFER:           return whole(gpu.uvs);
+        case ommGpuResourceType_IN_INDEX_BUFFER:              return whole(gpu.indices);
+        case ommGpuResourceType_OUT_OMM_ARRAY_DATA:           return output(0);
+        case ommGpuResourceType_OUT_OMM_DESC_ARRAY:           return output(1);
+        case ommGpuResourceType_OUT_OMM_DESC_ARRAY_HISTOGRAM: return output(2);
+        case ommGpuResourceType_OUT_OMM_INDEX_BUFFER:         return output(3);
+        case ommGpuResourceType_OUT_OMM_INDEX_HISTOGRAM:      return output(4);
+        case ommGpuResourceType_OUT_POST_DISPATCH_INFO:       return output(5);
+        case ommGpuResourceType_TRANSIENT_POOL_BUFFER:
+          if (resource.indexInPool >= gpu.transient.size()) return nullptr;
+          *offset = plan.transient_offsets[resource.indexInPool];
+          *bytes = plan.transient_sizes[resource.indexInPool];
+          return gpu.transient[resource.indexInPool].Get();
+        case ommGpuResourceType_STATIC_VERTEX_BUFFER: return whole(gpu.statics[0]);
+        case ommGpuResourceType_STATIC_INDEX_BUFFER:  return whole(gpu.statics[1]);
+        default:                                      return nullptr;
+      }
+    };
+    for (size_t stage = 0; stage < stages; ++stage) {
+      std::vector<size_t> waiting;
+      for (size_t index = 0; index < planned.size(); ++index) {
+        if (!planned[index].bake->gpu_failed && stage < planned[index].steps.size()) waiting.push_back(index);
+      }
+      while (!waiting.empty()) {
+        // A wave: the waiting steps whose states agree, their descriptors written, then their barrier and dispatches.
+        struct Ready {
+          size_t index = 0;
+          UINT table = 0;
+          ID3D12Resource* arguments = nullptr;
+          uint64_t arguments_offset = 0;
+        };
+        struct Located {
+          ID3D12Resource* target = nullptr;
           uint64_t offset = 0;
           uint64_t bytes = 0;
-          ID3D12Resource* target = locate(resource, &offset, &bytes);
-          if (target == nullptr) {
+          D3D12_RESOURCE_STATES needed = D3D12_RESOURCE_STATE_COMMON;
+        };
+        std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> wave_states;
+        std::vector<Ready> ready;
+        std::vector<size_t> later;
+        for (const size_t index : waiting) {
+          Planned& plan = planned[index];
+          const Step& step = plan.steps[stage];
+          if (step.pipeline_index >= gpu.pipelines.size() || !gpu.pipelines[step.pipeline_index].state) {
             plan.bake->gpu_failed = true;
-            why = std::format("resource type {} ({})", static_cast<int>(resource.type), resource.indexInPool);
-            break;
+            why = std::format("pipeline {}", step.pipeline_index);
+            continue;
           }
-          const D3D12_CPU_DESCRIPTOR_HANDLE handle = {.ptr = cpu_start.ptr + (uint64_t{gpu.next + number} * descriptor_size_)};
-          if (resource.stateNeeded == ommGpuDescriptorType_TextureRead) {
-            D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = DXGI_FORMAT_R8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
-                                                    .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING};
-            view.Texture2D = {.MostDetailedMip = resource.mipOffset, .MipLevels = std::max<UINT>(resource.mipNum, 1u)};
-            device_->CreateShaderResourceView(target, &view, handle);
-            state_for(target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-          } else if (resource.stateNeeded == ommGpuDescriptorType_RawBufferWrite) {
-            D3D12_UNORDERED_ACCESS_VIEW_DESC view = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER};
-            view.Buffer = {.FirstElement = offset / 4, .NumElements = static_cast<UINT>(bytes / 4), .Flags = D3D12_BUFFER_UAV_FLAG_RAW};
-            device_->CreateUnorderedAccessView(target, nullptr, &view, handle);
-            state_for(target, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-          } else {
-            const bool raw = resource.stateNeeded == ommGpuDescriptorType_RawBufferRead;
-            D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = raw ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_R32_UINT,
-                                                    .ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
-                                                    .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING};
-            view.Buffer = {.FirstElement = offset / 4, .NumElements = static_cast<UINT>(bytes / 4),
-                           .Flags = raw ? D3D12_BUFFER_SRV_FLAG_RAW : D3D12_BUFFER_SRV_FLAG_NONE};
-            device_->CreateShaderResourceView(target, &view, handle);
-            state_for(target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+          std::vector<Located> located;
+          for (const ommGpuResource& resource : step.resources) {
+            Located place = {.needed = (resource.stateNeeded == ommGpuDescriptorType_RawBufferWrite) ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                                                                                                     : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
+            place.target = locate(index, resource, &place.offset, &place.bytes);
+            if (place.target == nullptr) {
+              plan.bake->gpu_failed = true;
+              why = std::format("resource type {} ({})", static_cast<int>(resource.type), resource.indexInPool);
+              break;
+            }
+            located.push_back(place);
           }
+          Located arguments = {.needed = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT};
+          if (step.indirect && !plan.bake->gpu_failed) {
+            arguments.target = locate(index, step.arguments, &arguments.offset, &arguments.bytes);
+            if (arguments.target == nullptr) {
+              plan.bake->gpu_failed = true;
+              why = std::format("indirect arguments' type {}", static_cast<int>(step.arguments.type));
+            }
+            arguments.offset += step.arguments_offset;
+          }
+          if (plan.bake->gpu_failed) continue;
+          const auto clashes = [&](const Located& place) {
+            const auto found = wave_states.find(place.target);
+            return found != wave_states.end() && found->second != place.needed;
+          };
+          if (std::ranges::any_of(located, clashes) || (arguments.target != nullptr && clashes(arguments))) {
+            later.push_back(index);
+            continue;
+          }
+          const UINT resource_count = static_cast<UINT>(located.size());
+          if (gpu.next + resource_count > OMM_DESCRIPTORS) gpu.next = 0;
+          for (UINT number = 0; number < resource_count; ++number) {
+            const auto& [target, offset, bytes, needed] = located[number];
+            const D3D12_CPU_DESCRIPTOR_HANDLE handle = {.ptr = cpu_start.ptr + (uint64_t{gpu.next + number} * descriptor_size_)};
+            const ommGpuDescriptorType type = step.resources[number].stateNeeded;
+            if (type == ommGpuDescriptorType_TextureRead) {
+              D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = DXGI_FORMAT_R8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                                      .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING};
+              view.Texture2D = {.MostDetailedMip = step.resources[number].mipOffset, .MipLevels = std::max<UINT>(step.resources[number].mipNum, 1u)};
+              device_->CreateShaderResourceView(target, &view, handle);
+            } else if (type == ommGpuDescriptorType_RawBufferWrite) {
+              D3D12_UNORDERED_ACCESS_VIEW_DESC view = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER};
+              view.Buffer = {.FirstElement = offset / 4, .NumElements = static_cast<UINT>(bytes / 4), .Flags = D3D12_BUFFER_UAV_FLAG_RAW};
+              device_->CreateUnorderedAccessView(target, nullptr, &view, handle);
+            } else {
+              const bool raw = type == ommGpuDescriptorType_RawBufferRead;
+              D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = raw ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_R32_UINT,
+                                                      .ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+                                                      .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING};
+              view.Buffer = {.FirstElement = offset / 4, .NumElements = static_cast<UINT>(bytes / 4),
+                             .Flags = raw ? D3D12_BUFFER_SRV_FLAG_RAW : D3D12_BUFFER_SRV_FLAG_NONE};
+              device_->CreateShaderResourceView(target, &view, handle);
+            }
+            wave_states[target] = needed;
+          }
+          if (arguments.target != nullptr) wave_states[arguments.target] = arguments.needed;
+          ready.push_back({.index = index, .table = gpu.next, .arguments = arguments.target, .arguments_offset = arguments.offset});
+          gpu.next += resource_count;
         }
-        if (plan.bake->gpu_failed) break;
-        ID3D12Resource* arguments = nullptr;
-        uint64_t arguments_offset = 0;
-        if (indirect) {
-          uint64_t bytes = 0;
-          arguments = locate(dispatch.computeIndirect.indirectArg, &arguments_offset, &bytes);
-          if (arguments == nullptr) {
-            plan.bake->gpu_failed = true;
-            why = std::format("indirect arguments' type {}", static_cast<int>(dispatch.computeIndirect.indirectArg.type));
-            break;
-          }
-          arguments_offset += dispatch.computeIndirect.indirectArgByteOffset;
-          state_for(arguments, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-        }
+        barriers.clear();
+        for (const auto& [resource, needed] : wave_states) state_for(resource, needed);
         if (!barriers.empty()) list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
-        list->SetComputeRootSignature(pipeline.root.Get());
-        list->SetPipelineState(pipeline.state.Get());
-        if (pipeline.table >= 0) {
-          list->SetComputeRootDescriptorTable(pipeline.table, {.ptr = gpu_start.ptr + (uint64_t{gpu.next} * descriptor_size_)});
+        for (const Ready& entry : ready) {
+          const Step& step = planned[entry.index].steps[stage];
+          const OmmGpu::Pipeline& pipeline = gpu.pipelines[step.pipeline_index];
+          list->SetComputeRootSignature(pipeline.root.Get());
+          list->SetPipelineState(pipeline.state.Get());
+          if (pipeline.table >= 0) list->SetComputeRootDescriptorTable(pipeline.table, {.ptr = gpu_start.ptr + (uint64_t{entry.table} * descriptor_size_)});
+          if (pipeline.global >= 0) {
+            list->SetComputeRootConstantBufferView(pipeline.global, globals->GetGPUVirtualAddress() + (entry.index * globals_stride));
+          }
+          if (pipeline.constants >= 0 && step.constants.size() >= 4) {
+            list->SetComputeRoot32BitConstants(pipeline.constants, std::min(static_cast<UINT>(step.constants.size() / 4), pipeline.constant_count),
+                                               step.constants.data(), 0);
+          }
+          if (step.indirect) {
+            list->ExecuteIndirect(gpu.dispatch.Get(), 1, entry.arguments, entry.arguments_offset, nullptr, 0);
+          } else {
+            list->Dispatch(step.grid_width, step.grid_height, 1);
+          }
         }
-        if (pipeline.global >= 0) list->SetComputeRootConstantBufferView(pipeline.global, globals->GetGPUVirtualAddress() + (index * globals_stride));
-        if (pipeline.constants >= 0 && constant_bytes >= 4) {
-          list->SetComputeRoot32BitConstants(pipeline.constants, std::min(constant_bytes / 4, pipeline.constant_count), constants, 0);
-        }
-        gpu.next += resource_count;
-        if (indirect) {
-          list->ExecuteIndirect(gpu.dispatch.Get(), 1, arguments, arguments_offset, nullptr, 0);
-        } else {
-          list->Dispatch(dispatch.compute.gridWidth, dispatch.compute.gridHeight, 1);
-        }
-        list->ResourceBarrier(1, &uav_barrier);
+        if (!ready.empty()) list->ResourceBarrier(1, &uav_barrier);
+        waiting = std::move(later);
       }
     }
     // The collapsed triangles' micromaps unknown opaque (rt_omm_uvs: the rays' alpha test decides there).
