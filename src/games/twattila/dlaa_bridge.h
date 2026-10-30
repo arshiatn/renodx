@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 18;
+constexpr uint32_t VERSION = 19;
 // The helper still answers addons of this version (their block ends before v3's fields).
 constexpr uint32_t OLDEST_VERSION = 2;
 
@@ -153,6 +153,9 @@ constexpr uint32_t RT_FAST_LEAVES = 8192;
 // Importance-Sampled Torch Shadows (v18): two shadow rays a pixel toward the local lights, picked by what they give it
 // (ReSTIR DI's candidates); the others keep their last bits.
 constexpr uint32_t RT_LIGHT_IMPORTANCE = 16384;
+// Coloured Shadows (v19, with RT_LEAF_LIGHT): the sun's light through cloth and sails takes their colour (where the
+// screen shows them: Ray Reconstruction's diffuse albedo guide) into rt_tint.
+constexpr uint32_t RT_COLOURED_SHADOWS = 32768;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -356,11 +359,15 @@ struct Shared {
   float rt_light_size = 0.f;
   uint32_t rt_shadow_rays = 0;
   uint64_t rt_fog_lights = 0;  // RT_FOG_LIGHTS' output (RGBA16F at rt_fog's size)
+  // The addon's (v19): RT_COLOURED_SHADOWS' output (RGBA8 at rt_visibility's size: 1 - the sun light's colour filter, 0
+  // none), which a trace with it writes every pixel.
+  uint64_t rt_tint = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 18) return sizeof(Shared);
+  if (version >= 19) return sizeof(Shared);
+  if (version == 18) return offsetof(Shared, rt_tint);
   if (version == 17) return offsetof(Shared, rt_light_size);
   if (version == 16) return offsetof(Shared, rr_hit_distance);
   if (version == 15) return offsetof(Shared, rt_compact_count);

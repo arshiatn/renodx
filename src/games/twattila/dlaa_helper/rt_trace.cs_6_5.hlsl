@@ -23,6 +23,25 @@ RWTexture2D<unorm float> visibility : register(u0);
 RWTexture2D<unorm float> ambient : register(u1);
 RWTexture2D<float2> sun_rays : register(u2);  // soft shadows: lit, blocker distance
 RWTexture2D<float> ambient_history[2] : register(u28);  // the ambient visibility kept over frames (v11)
+RWTexture2D<unorm float4> tint : register(u35);         // Coloured Shadows (PATH_TINT): 1 - the sun light's filter
+Texture2D<float4> guide_albedo : register(t13);          // Ray Reconstruction's diffuse albedo guide (PATH_TINT_GUIDES)
+
+// Coloured Shadows: the colour the sun's light took through cloth and sails on this ray (SunRay).
+static float3 sun_tint = 1.f;
+
+// The colour of cloth or a sail at `world` where the screen shows it (the diffuse albedo guide), as a filter brightest at
+// 1; none elsewhere.
+float3 ThinColour(float3 world) {
+  if ((path_flags & PATH_TINT_GUIDES) == 0u) return 1.f;
+  const float4 clip = ClipOf(world, view_projection);
+  const float2 uv = clip.xy / max(clip.w, 1e-6f) * float2(0.5f, -0.5f) + 0.5f;
+  if (clip.w <= 0.f || any(uv < 0.f) || any(uv >= 1.f)) return 1.f;
+  const uint2 pixel = min(uint2(uv * float2(width, height)), uint2(width, height) - 1u);
+  const float4 seen = positions[pixel];
+  if (seen.w <= 0.f || distance(seen.xyz, world) > 0.05f + 0.01f * seen.w) return 1.f;
+  const float3 albedo = guide_albedo[pixel].rgb;
+  return albedo / max(max(albedo.r, max(albedo.g, albedo.b)), 1e-3f);
+}
 
 static const float AMBIENT_BLEND = 0.2f;
 // The profile's split (RT_PROFILE, rt_d3d12.hpp): this dispatch the sun's part alone, or the ambient's.
@@ -130,6 +149,7 @@ float2 SunRay(float3 origin, float3 direction, uint instances) {
                : ((record_flags & RECORD_THIN) != 0u)   ? THIN_TRANSMITTANCE
                                                         : 0.f;
         if (lit < 0.02f) return float2(0.f, first);
+        if ((path_flags & PATH_TINT) != 0u) sun_tint *= ThinColour(ray.Origin + ray.Direction * layered.CommittedRayT());
         ray.TMin = layered.CommittedRayT() + 0.01f;
       }
     }
@@ -151,6 +171,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   if (position.w <= 0.f) {
     if ((flags & PART_AMBIENT) == 0u) {
       visibility[id.xy] = 1.f;
+      if ((path_flags & PATH_TINT) != 0u) tint[id.xy] = 0.f;
       if (filtered) sun_rays[id.xy] = float2(1.f, 0.f);
     }
     if ((flags & PART_SUN) == 0u) ambient[id.xy] = 1.f;
@@ -167,6 +188,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const bool facing = dot(normal, toward_sun.xyz) > 0.f;
   float sun_visibility = 1.f;
   float blocker_distance = 0.f;
+  float3 tint_out = 0.f;  // Coloured Shadows: 1 - the colour of the light that came through (0: none)
   // Every surface: facing the sun (by the depth's normal) with the sun's rays; facing away against solid surfaces only,
   // from past itself (a thick one meets itself, as its back faces in a shadow map; through a leaf or blade what stands
   // beyond: a leaf lit from behind stays lit). Planar ones facing away kept 1 before, their shading's angle trusted to
@@ -178,8 +200,10 @@ void main(uint3 id : SV_DispatchThreadID) {
     const uint rays = clamp(shadow_rays, 1u, 4u);
     const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
     float2 sum = 0.f;
+    float3 tint_sum = 0.f;
     [loop]
     for (uint ray = 0u; ray < rays; ++ray) {
+      sun_tint = 1.f;
       float3 toward = toward_sun.xyz;
       if (sun_cone > 0.f && !filtered) {
         // Uniform over the sun's disk (sun_cone: the tan of its angular radius).
@@ -214,11 +238,14 @@ void main(uint3 id : SV_DispatchThreadID) {
         if (grass.CommittedStatus() == COMMITTED_TRIANGLE_HIT) result = float2(0.f, grass.CommittedRayT());
       }
       sum += result;
+      tint_sum += result.x * sun_tint;
     }
     sun_visibility = sum.x / rays;
+    if (sum.x > 0.f) tint_out = 1.f - tint_sum / sum.x;
     blocker_distance = sum.y / rays;
   }
   if ((flags & PART_AMBIENT) == 0u) {
+    if ((path_flags & PATH_TINT) != 0u) tint[id.xy] = float4(tint_out, 0.f);
     if (filtered) {
       sun_rays[id.xy] = float2(sun_visibility, blocker_distance);
     } else {
@@ -231,6 +258,11 @@ void main(uint3 id : SV_DispatchThreadID) {
   if (quarter && any(id.xy != (id.xy & ~1u) + uint2(frame & 1u, (frame >> 1) & 1u))) return;
   float ambient_visibility = 1.f;
   if ((flags & AMBIENT_OCCLUSION) != 0u && ambient_rays != 0u) {
+#if defined(OPACITY_MICROMAPS)
+    // Leaves and grass by their micromaps alone (2-state: no alpha tests): soft occlusion barely changes, and the rays
+    // through canopies and fields cost the most of ATN's traces (debug30: AO 6-11 ms of 10-17).
+    scene_ray_flags = RAY_FLAG_FORCE_OMM_2_STATE;
+#endif
     // The rays spread over the hemisphere: each its band of the cosine-weighted disk's radius, the golden angle from the
     // last, the set turned per pixel by interleaved gradient noise and jittered within the bands. Less noise than
     // independent rays (Ray Reconstruction left ~20% of theirs), and what is left settles faster.

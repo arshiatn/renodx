@@ -145,19 +145,83 @@ inline size_t Length(const std::vector<uint32_t>& tokens, size_t at) {
   return (at + length > tokens.size()) ? 0 : length;
 }
 
+// An operand of an instruction: its type (D3D10_SB_OPERAND_TYPE), its component mode and selection, modifier, its
+// indices (immediate; `relative` when not) or an immediate's values.
+constexpr uint32_t OPERAND_IMMEDIATE = 4;
+struct Operand {
+  size_t at = 0;
+  size_t length = 0;
+  uint32_t type = 0;
+  uint32_t mode = 0;    // 0 mask, 1 swizzle, 2 one component
+  uint32_t select = 0;  // its mask, swizzle or component
+  bool modified = false;
+  bool negated = false;  // its modifier: negate only
+  bool relative = false;
+  std::array<uint32_t, 2> index = {};
+  std::array<uint32_t, 4> values = {};  // an immediate's (a scalar's for every component)
+};
+
+// An operand at `at` (before `end`); its length 0: malformed.
+inline size_t ParseOperand(const std::vector<uint32_t>& tokens, size_t at, size_t end, Operand* operand) {
+  if (at >= end) return 0;
+  const uint32_t token = tokens[at];
+  size_t next = at + 1;
+  operand->at = at;
+  operand->type = (token >> 12) & 0xFF;
+  operand->mode = (token >> 2) & 3;
+  operand->select = (token >> 4) & 0xFF;
+  if ((token >> 31) != 0) {
+    uint32_t extended = 0;
+    do {
+      if (next >= end) return 0;
+      extended = tokens[next++];
+      // A modifier (type 1) other than none.
+      if ((extended & 0x3F) == 1 && ((extended >> 6) & 0xFF) != 0) operand->modified = true;
+      if ((extended & 0x3F) == 1 && ((extended >> 6) & 0xFF) == 1) operand->negated = true;
+    } while ((extended >> 31) != 0);
+  }
+  if (operand->type == OPERAND_IMMEDIATE) {
+    const size_t count = ((token & 3) == 1) ? 1 : 4;
+    if (next + count > end) return 0;
+    for (size_t component = 0; component < 4; ++component) operand->values[component] = tokens[next + (count == 1 ? 0 : component)];
+    next += count;
+  }
+  const uint32_t dimensions = (token >> 20) & 3;
+  for (uint32_t dimension = 0; dimension < dimensions; ++dimension) {
+    const uint32_t representation = (token >> (22 + 3 * dimension)) & 7;
+    if (representation == 0 || representation == 3) {
+      if (next >= end) return 0;
+      if (dimension < 2) operand->index[dimension] = tokens[next];
+      ++next;
+    } else if (representation == 1 || representation == 4) {
+      next += 2;
+    }
+    if (representation >= 2) {
+      operand->relative = true;
+      Operand nested;
+      const size_t nested_length = ParseOperand(tokens, next, end, &nested);
+      if (nested_length == 0) return 0;
+      next += nested_length;
+    }
+  }
+  if (next > end) return 0;
+  operand->length = next - at;
+  return operand->length;
+}
+
 // `code` with `program`'s tokens (grown, their count in the second) as its program: every chunk after it moved, the
 // size and the checksum again.
 inline std::vector<uint8_t> Write(std::span<const uint8_t> code, const Program& program) {
   uint32_t old_size;
   std::memcpy(&old_size, code.data() + program.offsets[program.chunk] + 4, 4);
   const auto new_size = static_cast<uint32_t>(program.tokens.size() * 4);
-  const uint32_t growth = new_size - old_size;
-  std::vector<uint8_t> patched(code.size() + growth);
+  const uint32_t growth = new_size - old_size;  // wraps when the program shrinks: unsigned sums below wrap back
+  std::vector<uint8_t> patched(static_cast<size_t>(static_cast<uint32_t>(code.size()) + growth));
   const uint32_t program_start = program.offsets[program.chunk] + 8;
   const uint32_t program_end = program_start + old_size;
   std::memcpy(patched.data(), code.data(), program_start);
   std::memcpy(patched.data() + program_start, program.tokens.data(), new_size);
-  std::memcpy(patched.data() + program_end + growth, code.data() + program_end, code.size() - program_end);
+  std::memcpy(patched.data() + static_cast<uint32_t>(program_end + growth), code.data() + program_end, code.size() - program_end);
   const auto write = [&](size_t at, uint32_t value) { std::memcpy(patched.data() + at, &value, 4); };
   write(program_start - 4, new_size);
   write(24, static_cast<uint32_t>(patched.size()));

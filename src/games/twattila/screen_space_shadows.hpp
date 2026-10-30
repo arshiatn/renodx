@@ -73,6 +73,7 @@ struct Settings {
 namespace internal {
 
 constexpr UINT MASK_SLOT = 49;      // the patched sun shaders' occlusion
+constexpr UINT TINT_SLOT = 50;      // their sun colour's filter (Coloured Shadows: 1 - the colour; unbound reads 0, none)
 
 // Another occlusion of the sun's light (Attila's ray-traced sun shadows: rt_scene::Occlusion): given the screen-space
 // shadow's mask this frame (null: off), the occlusion to bind instead (the darker of both), or null (the mask alone).
@@ -106,13 +107,17 @@ struct ShaderSettings {
 
 // A shadowed sun light shader with the screen-space shadow, its shadow x (1 - t49 at the pixel), rT = 1 - t49 from
 //   ftou rT.xy, vP.xyxx / mov rT.zw, l(0) / ld rT.x, rT.xyzw, t49.xyzw / mad rT.x, rT.x, l(-1), l(1)
-// with rT one more temp and t49 declared (texture2d, float):
+// first, with rT one more temp and t49 declared (texture2d, float):
 // - Attila, Thrones, Rome II: after its shadow's last step right before div r0.xy, r0.xyxx, r0.wwww (mov_sat rN.c,
-//   rN.c; Rome II: min rN.c, rN.c, rM.c, its cascades joined; the one such pair in each shader): rT, then
+//   rN.c; Rome II: min rN.c, rN.c, rM.c, its cascades joined; the one such pair in each shader):
 //   mul_sat rN.c, rN.c, rT.xxxx.
-// - Else (Troy, Pharaoh, Warhammer: their shadow ends differently in each shader): rT first, and after each shadow map
-//   comparison (sample_c, sample_c_lz, gather4_c, gather4_po_c) mul rX.mask, rX.xyzw, rT.xxxx: the shadow is their
-//   filtered average, so it is scaled the same.
+// - Else (Troy, Pharaoh, Warhammer: their shadow ends differently in each shader): after each shadow map comparison
+//   (sample_c, sample_c_lz, gather4_c, gather4_po_c) mul rX.mask, rX.xyzw, rT.xxxx: the shadow is their filtered
+//   average, so it is scaled the same.
+// - With lighting_VS_PS (Attila's and the others' sun colour at its c1, the RDEF's slot for it): every read of c1 from
+//   rC (one more temp), the colour x the filter at t50 (Coloured Shadows: light through cloth and sails), before rT's
+//   ld: ld rC.xyzw, rT.xyzw, t50.xyzw / mad rC.xyz, rC.xyzx, l(-1), l(1) / mul rC.xyz, rC.xyzx, cbL[1].xyzx. None when
+//   one reads c1 relatively or its w.
 // - Else (Warhammer III's shadow mask): rT first, and after each read of the texture named t_shadow (ld / sample) the
 //   same mul.
 // - A forward pass reading the sun's shadow map (`forward`: Attila's under Ray-Traced Shadows Only) as Troy's.
@@ -126,12 +131,15 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   constexpr uint32_t SATURATE = 1u << 13;
   constexpr uint32_t EXTENDED = 1u << 31;
   constexpr uint32_t NAME_POSITION = 1;
+  constexpr uint32_t TYPE_TEMP = 0, TYPE_INPUT = 1, TYPE_IMMEDIATE = 4, TYPE_RESOURCE = 7, TYPE_CONSTANT_BUFFER = 8;
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
   if (tokens.empty()) return {};
 
-  // The shadow mask's slot: the RDEF chunk's texture (shader input type 2) named t_shadow (32-byte bindings, SM 5.0).
+  // The shadow mask's slot: the RDEF chunk's texture (shader input type 2) named t_shadow (32-byte bindings, SM 5.0);
+  // the lighting constants' (type 0, lighting_VS_PS).
   uint32_t mask_slot = UINT32_MAX;
+  uint32_t lighting_slot = UINT32_MAX;
   for (const uint32_t offset : program.offsets) {
     if (std::memcmp(code.data() + offset, "RDEF", 4) != 0) continue;
     const size_t data = offset + 8;
@@ -148,7 +156,67 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
       if (read(binding + 4) == 2 && name + 9 <= code.size() && std::memcmp(code.data() + name, "t_shadow", 9) == 0) {
         mask_slot = read(binding + 20);
       }
+      if (read(binding + 4) == 0 && name + 15 <= code.size() && std::memcmp(code.data() + name, "lighting_VS_PS", 15) == 0) {
+        lighting_slot = read(binding + 20);
+      }
     }
+  }
+
+  // The sun colour's reads (c1 of lighting_VS_PS) from rC, the temp after rT.
+  const auto temps = std::ranges::find_if(tokens.begin() + 2, tokens.end(), [](uint32_t token) { return (token & 0x7FF) == OP_DCL_TEMPS; });
+  const uint32_t colour_temp = (temps != tokens.end() && temps + 1 != tokens.end()) ? *(temps + 1) + 1 : UINT32_MAX;
+  bool coloured = lighting_slot != UINT32_MAX && colour_temp != UINT32_MAX;
+  std::vector<uint32_t> recoloured(tokens.begin(), tokens.begin() + 2);
+  for (size_t at = 2; at < tokens.size() && coloured;) {
+    const uint32_t opcode = tokens[at] & 0x7FF;
+    const size_t length = dxbc::Length(tokens, at);
+    if (length == 0) return {};
+    size_t operand_at = at + 1;
+    if ((tokens[at] & EXTENDED) != 0 && opcode != OP_CUSTOMDATA && length > 1) {
+      while (operand_at < at + length && (tokens[operand_at] & EXTENDED) != 0) ++operand_at;
+      ++operand_at;
+    }
+    const bool declaration = (opcode >= OP_DCL_RESOURCE && opcode <= OP_DCL_GLOBAL_FLAGS) || (opcode >= 143 && opcode <= 162) || opcode == OP_CUSTOMDATA;
+    if (declaration) operand_at = at + length;
+    const size_t first = recoloured.size();
+    recoloured.insert(recoloured.end(), tokens.begin() + static_cast<ptrdiff_t>(at), tokens.begin() + static_cast<ptrdiff_t>(operand_at));
+    bool changed = false;
+    while (operand_at < at + length) {
+      dxbc::Operand operand;
+      const size_t operand_length = dxbc::ParseOperand(tokens, operand_at, at + length, &operand);
+      if (operand_length == 0) break;
+      const bool sun_colour = operand.type == TYPE_CONSTANT_BUFFER && operand.index[0] == lighting_slot && operand.index[1] == 1;
+      if (sun_colour) {
+        const bool reads_w = (operand.mode == 1) ? std::ranges::any_of(std::array{0u, 2u, 4u, 6u}, [&](uint32_t shift) { return ((operand.select >> shift) & 3) == 3; })
+                                                 : (operand.mode == 2 && operand.select == 3);
+        if (operand.relative || reads_w) {
+          coloured = false;
+          break;
+        }
+        // The same selection from rC: a temp, one immediate index; its modifiers (extended tokens) kept.
+        const size_t indices_at = operand_at + operand_length - 2;
+        recoloured.push_back((tokens[operand_at] & ~((0xFFu << 12) | (3u << 20) | (0x3Fu << 22))) | (TYPE_TEMP << 12) | (1u << 20));
+        recoloured.insert(recoloured.end(), tokens.begin() + static_cast<ptrdiff_t>(operand_at + 1),
+                          tokens.begin() + static_cast<ptrdiff_t>(indices_at));
+        recoloured.push_back(colour_temp);
+        changed = true;
+      } else {
+        recoloured.insert(recoloured.end(), tokens.begin() + static_cast<ptrdiff_t>(operand_at),
+                          tokens.begin() + static_cast<ptrdiff_t>(operand_at + operand_length));
+      }
+      operand_at += operand_length;
+    }
+    recoloured.insert(recoloured.end(), tokens.begin() + static_cast<ptrdiff_t>(operand_at), tokens.begin() + static_cast<ptrdiff_t>(at + length));
+    if (changed) {
+      recoloured[first] = (recoloured[first] & ~(0x7Fu << 24)) | (static_cast<uint32_t>(recoloured.size() - first) << 24);
+    }
+    at += length;
+  }
+  if (coloured && recoloured.size() != tokens.size()) {
+    tokens = std::move(recoloured);
+    tokens[1] = static_cast<uint32_t>(tokens.size());
+  } else {
+    coloured = false;
   }
 
   // The declarations (where the code starts), the shadow's last step, the comparisons and the shadow mask's reads.
@@ -208,8 +276,7 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   const auto swizzled = [](uint32_t type, uint32_t index, uint32_t swizzle) {
     return std::array<uint32_t, 2>{2u | (1u << 2) | (swizzle << 4) | (type << 12) | (1u << 20), index};
   };
-  constexpr uint32_t TYPE_TEMP = 0, TYPE_INPUT = 1, TYPE_IMMEDIATE = 4, TYPE_RESOURCE = 7;
-  constexpr uint32_t XYXX = 0x04, XYZW = 0xE4, XXXX = 0x00;
+  constexpr uint32_t XYXX = 0x04, XYZX = 0x24, XYZW = 0xE4, XXXX = 0x00;
   constexpr uint32_t MINUS_ONE = 0xBF800000, ONE = 0x3F800000;
   const auto instruction = [](std::vector<uint32_t>* added, uint32_t opcode,
                               std::initializer_list<std::array<uint32_t, 2>> operands, uint32_t flags = 0) {
@@ -219,18 +286,28 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   std::vector<uint32_t> load;
   instruction(&load, OP_FTOU, {masked(temp, 0b0011), swizzled(TYPE_INPUT, position, XYXX)});
   load.insert(load.end(), {OP_MOV | (8u << 24), masked(temp, 0b1100)[0], temp, 2u | (TYPE_IMMEDIATE << 12), 0, 0, 0, 0});
+  if (coloured) {
+    const uint32_t colour = temp + 1;
+    instruction(&load, OP_LD, {masked(colour, 0b1111), swizzled(TYPE_TEMP, temp, XYZW), swizzled(TYPE_RESOURCE, TINT_SLOT, XYZW)});
+    load.insert(load.end(), {OP_MAD | (15u << 24), masked(colour, 0b0111)[0], colour, swizzled(TYPE_TEMP, colour, XYZX)[0], colour,
+                             2u | (TYPE_IMMEDIATE << 12), MINUS_ONE, MINUS_ONE, MINUS_ONE, MINUS_ONE,
+                             2u | (TYPE_IMMEDIATE << 12), ONE, ONE, ONE, ONE});
+    load.insert(load.end(), {OP_MUL | (8u << 24), masked(colour, 0b0111)[0], colour, swizzled(TYPE_TEMP, colour, XYZX)[0], colour,
+                             (swizzled(TYPE_CONSTANT_BUFFER, lighting_slot, XYZX)[0] & ~(3u << 20)) | (2u << 20), lighting_slot, 1});
+  }
   instruction(&load, OP_LD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XYZW), swizzled(TYPE_RESOURCE, MASK_SLOT, XYZW)});
   instruction(&load, OP_MAD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XXXX), {1u | (TYPE_IMMEDIATE << 12), MINUS_ONE},
                               {1u | (TYPE_IMMEDIATE << 12), ONE}});
   if (saturate_at != 0) {
-    instruction(&load, OP_MUL,
+    std::vector<uint32_t> scale;
+    instruction(&scale, OP_MUL,
                 {{tokens[saturate_at + 1], tokens[saturate_at + 2]}, {tokens[saturate_at + 3], tokens[saturate_at + 4]},
                  swizzled(TYPE_TEMP, temp, XXXX)},
                 SATURATE);
-    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(saturate_at + ((tokens[saturate_at] >> 24) & 0x7F)), load.begin(),
-                  load.end());
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(saturate_at + ((tokens[saturate_at] >> 24) & 0x7F)), scale.begin(),
+                  scale.end());
   } else {
-    // From the last one back (the earlier ones keep their place), then rT where the code starts.
+    // From the last one back (the earlier ones keep their place).
     for (auto at = scaled.rbegin(); at != scaled.rend(); ++at) {
       size_t dest_at = *at + 1;
       if ((tokens[*at] & EXTENDED) != 0) {
@@ -245,13 +322,17 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
                                    swizzled(TYPE_TEMP, temp, XXXX)});
       tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(*at + ((tokens[*at] >> 24) & 0x7F)), scale.begin(), scale.end());
     }
-    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(code_at), load.begin(), load.end());
   }
-  // dcl_resource_texture2d (float,float,float,float) t49, before dcl_temps (the declarations come first).
-  const std::array<uint32_t, 4> declaration = {OP_DCL_RESOURCE | (3u << 11) | (4u << 24), (TYPE_RESOURCE << 12) | (1u << 20),
-                                               MASK_SLOT, 0x5555};
-  ++tokens[temps_at + 1];
-  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(temps_at), declaration.begin(), declaration.end());
+  // rT (and rC) where the code starts.
+  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(code_at), load.begin(), load.end());
+  // dcl_resource_texture2d (float,float,float,float) t49 (and t50), before dcl_temps (the declarations come first).
+  std::vector<uint32_t> declarations;
+  for (const UINT slot : {MASK_SLOT, TINT_SLOT}) {
+    if (slot == TINT_SLOT && !coloured) continue;
+    declarations.insert(declarations.end(), {OP_DCL_RESOURCE | (3u << 11) | (4u << 24), (TYPE_RESOURCE << 12) | (1u << 20), slot, 0x5555});
+  }
+  tokens[temps_at + 1] += coloured ? 2 : 1;
+  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(temps_at), declarations.begin(), declarations.end());
   tokens[1] = static_cast<uint32_t>(tokens.size());
   return dxbc::Write(code, program);
 }

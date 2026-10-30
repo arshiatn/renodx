@@ -728,6 +728,10 @@ class RtScene12 {
       const D3D12_UNORDERED_ACCESS_VIEW_DESC fog_lights_view = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
       device_->CreateUnorderedAccessView(fog_lights_.Get(), nullptr, &fog_lights_view, Descriptor(FOG_LIGHTS));
     }
+    if (version >= 19 && shared.rt_tint != 0 && open(shared.rt_tint, &tint_)) {
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC tint_view = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
+      device_->CreateUnorderedAccessView(tint_.Get(), nullptr, &tint_view, Descriptor(TINT));
+    }
     // Paths (v8): last frame's scene colour (the DLAA input), the G-buffer guides and the reflections' outputs as the
     // addon shares them (the history of the helper's own made when first used: EnsureHistory).
     if (version >= 8) {
@@ -819,6 +823,7 @@ class RtScene12 {
     light_mask_.Reset();
     fog_.Reset();
     fog_lights_.Reset();
+    tint_.Reset();
     ambient_history_ = {};
     ambient_positions_.Reset();
     light_history_ = {};
@@ -1578,6 +1583,7 @@ class RtScene12 {
     HIT_DISTANCE,  // u31: Ray Reconstruction's specular hit distance (v17)
     LIGHT_HISTORY,  // u32-u33: the local lights' bits kept over frames, two sets
     FOG_LIGHTS = LIGHT_HISTORY + 2,  // u34 (v18): the local lights' light in the fog
+    TINT,  // u35 (v19): Coloured Shadows' filter
     DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
@@ -1598,6 +1604,8 @@ class RtScene12 {
   static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
   static constexpr uint32_t PATH_AMBIENT_HISTORY = 16384;  // rt_camera.hlsli
   static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;
+  static constexpr uint32_t PATH_TINT = 1048576;  // rt_camera.hlsli
+  static constexpr uint32_t PATH_TINT_GUIDES = 2097152;
   static constexpr uint32_t PATH_LIGHT_HISTORY = 131072;
   static constexpr uint32_t PATH_PERMUTE = 65536;
   static constexpr uint32_t PATH_AMBIENT = 262144;  // rt_path.hlsli
@@ -2064,7 +2072,7 @@ class RtScene12 {
     for (const UINT descriptor : std::initializer_list<UINT>{SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY,
                                                              REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG, AMBIENT_HISTORY,
                                                              AMBIENT_HISTORY + 1, AMBIENT_POSITIONS, HIT_DISTANCE, LIGHT_HISTORY,
-                                                             LIGHT_HISTORY + 1, FOG_LIGHTS}) {
+                                                             LIGHT_HISTORY + 1, FOG_LIGHTS, TINT}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     if (cache_keys_) return;
@@ -3750,6 +3758,13 @@ class RtScene12 {
     if (fog && fog_lights_ && (shared.rt_flags & dlaa_bridge::RT_FOG_LIGHTS) != 0) {
       textures.emplace_back(fog_lights_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
+    // Coloured Shadows (v19, with Light Through Leaves): the sun's filter through cloth and sails, their colour from Ray
+    // Reconstruction's diffuse albedo guide (last frame's: written after this frame's sun draws) where the screen shows them.
+    constexpr uint32_t COLOURED = dlaa_bridge::RT_COLOURED_SHADOWS | dlaa_bridge::RT_LEAF_LIGHT;
+    const bool tint = tint_ && version >= 19 && (shared.rt_flags & COLOURED) == COLOURED;
+    const bool tint_guides = tint && guide_albedo_ && shared.rt_guides != 0;
+    if (tint) textures.emplace_back(tint_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    if (tint_guides) textures.emplace_back(guide_albedo_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     // Their places in the last trace's list (the addon orders them by importance each frame; the same position and
     // reach: the same light), a byte each after the colours (255: new).
     std::array<uint8_t, dlaa_bridge::RT_MAX_LIGHTS> light_previous = {};
@@ -3809,7 +3824,8 @@ class RtScene12 {
       const bool last_frame = ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
       PathConstants constants = {.flags = (last_frame ? PATH_AMBIENT_HISTORY : 0u)
                                           | (lights_kept && last_frame && lights_frame_ + 1 == frame ? PATH_LIGHT_HISTORY : 0u)
-                                          | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u)};
+                                          | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u) | (tint ? PATH_TINT : 0u)
+                                          | (tint_guides ? PATH_TINT_GUIDES : 0u)};
       std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
       constants.previous_view_projection = ambient_view_projection_;
       std::memcpy(slot->paths_data, &constants, sizeof(constants));
@@ -4867,6 +4883,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> light_mask_;  // the local lights' lit bits (v9)
   ComPtr<ID3D12Resource> fog_;         // the fog shadows (v11)
   ComPtr<ID3D12Resource> fog_lights_;  // the local lights' light in the fog (v18)
+  ComPtr<ID3D12Resource> tint_;        // Coloured Shadows' filter (v19)
   // The ambient visibility kept over frames (v11): its two sets, the last trace's positions, camera, frame and set.
   std::array<ComPtr<ID3D12Resource>, 2> ambient_history_;
   ComPtr<ID3D12Resource> ambient_positions_;

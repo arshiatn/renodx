@@ -65,6 +65,7 @@ struct Sliders {
   float light_glow = 1.f;          // torch and fire light in fog and smoke (0: none)
   float output_rays = 0.f;         // Ray Tracing at Output Resolution (below 100% render scale)
   float leaf_light = 0.f;
+  float coloured_shadows = 1.f;    // Attila (its sun light shaders' colour)
   float grass_sway = 1.f;          // placed grass's swaying copies (Attila)
   float sway_range = 0.f;          // metres (0: everywhere)
   float sway_off_screen = 1.f;
@@ -138,6 +139,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
       .local_lights = sliders.sun_shadows != 0.f && dlaa,
       .leaf_light = sliders.leaf_light != 0.f,
+      .coloured_shadows = sliders.coloured_shadows != 0.f && sliders.leaf_light != 0.f && internal::ambient_cube != 0,
       .grass_sway = sliders.grass_sway != 0.f,
       .sway_range = sliders.sway_range,
       .sway_off_screen = sliders.sway_off_screen != 0.f,
@@ -727,17 +729,20 @@ constexpr auto OnShadowReaderDraw = []<typename T, typename Context>(Context& co
   auto* native = internal::NativeContext(command.cmd_list);
   if (native == nullptr) return {};
   ID3D11ShaderResourceView* occlusion = nullptr;
+  ID3D11ShaderResourceView* tint = nullptr;  // Coloured Shadows' filter (t50)
   ID3D11Buffer* lights = nullptr;  // the particles' (vfx00): torches and fires light the smoke and dust near them
   if (internal::active.load(std::memory_order_relaxed)) {
     const std::unique_lock lock(internal::runtime.mutex);
     if (internal::runtime.settings.shadows_only && internal::runtime.occlusion_frame == internal::runtime.frame) {
       occlusion = internal::runtime.objects.occlusion_srv.Get();
+      if (internal::runtime.settings.coloured_shadows) tint = dlaa_bridge::bridge.rt_tint.srv.Get();
     }
     if (internal::runtime.lights_traced && internal::runtime.traced_frame == internal::runtime.frame) {
       lights = internal::runtime.objects.light_constants.Get();
     }
   }
   native->PSSetShaderResources(49, 1, &occlusion);
+  native->PSSetShaderResources(50, 1, &tint);
   native->PSSetConstantBuffers(9, 1, &lights);
   return {};
 };
@@ -1024,6 +1029,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             return std::ranges::any_of(internal::scene_shaders,
                                        [](const SceneShader& shader) { return (shader.foliage && !shader.dynamic) || shader.thin; });
           },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedColouredShadows",
+          .binding = &sliders->coloured_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Coloured Shadows",
+          .section = section,
+          .tooltip = "Sunlight through cloth, sails and banners takes their colour.\nNeeds Light Through Leaves and Ray Reconstruction.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f && sliders->leaf_light != 0.f; },
+          .is_visible = [] { return internal::ambient_cube != 0; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedGrassSway",

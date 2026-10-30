@@ -103,6 +103,9 @@ struct Settings {
   bool local_lights = false;
   // Light through leaves (bridge v11): the sun's rays pass each leaf at a share (else leaves block it).
   bool leaf_light = false;
+  // Coloured Shadows (bridge v19, with leaf_light): the sun's light through cloth and sails takes their colour (the sun
+  // light draws' t50: Occlusion).
+  bool coloured_shadows = false;
   // Placed grass (Attila) sways within its share (its swaying copies traced; off: all of it placed still).
   bool grass_sway = true;
   // Swaying Shadows Range (Experimental): swaying placed instances keep their swaying copies within these metres of the
@@ -1649,6 +1652,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.ambient_quarter ? dlaa_bridge::RT_AMBIENT_QUARTER : 0u)
                | (lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
                | (runtime.settings.leaf_light ? dlaa_bridge::RT_LEAF_LIGHT : 0u)
+               | (runtime.settings.coloured_shadows ? dlaa_bridge::RT_COLOURED_SHADOWS : 0u)
                | (runtime.settings.fog_shadows ? dlaa_bridge::RT_FOG_SHADOWS : 0u)
                | ((runtime.settings.fog_shadows && lights && runtime.settings.light_glow > 0.f) ? dlaa_bridge::RT_FOG_LIGHTS : 0u)
                | (runtime.settings.micromaps ? dlaa_bridge::RT_MICROMAPS : 0u)
@@ -2002,6 +2006,9 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   auto& objects = runtime.objects;
+  // Coloured Shadows' filter at t50 (screen_space_shadows' TINT_SLOT) with this frame's trace, else none.
+  ID3D11ShaderResourceView* tint = (runtime.settings.coloured_shadows && runtime.traced_frame == runtime.frame) ? dlaa_bridge::bridge.rt_tint.srv.Get() : nullptr;
+  native->PSSetShaderResources(50, 1, &tint);
   if (!runtime.settings.sun_shadows || runtime.traced_frame != runtime.frame) return nullptr;
   if (runtime.occlusion_frame == runtime.frame) return objects.occlusion_srv.Get();
   D3D11_TEXTURE2D_DESC current = {};

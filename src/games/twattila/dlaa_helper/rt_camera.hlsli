@@ -24,6 +24,8 @@ cbuffer Paths : register(b3) {
 static const uint PATH_AMBIENT_HISTORY = 16384u;  // path_flags in the trace: last trace's ambient and positions are valid
 static const uint PATH_AMBIENT_PARITY = 32768u;   // its history read from set 1 (else 0)
 static const uint PATH_LIGHT_HISTORY = 131072u;   // the last trace's positions and local lights' bits are valid
+static const uint PATH_TINT = 1048576u;           // Coloured Shadows: the trace writes its filter (rt_trace's tint)
+static const uint PATH_TINT_GUIDES = 2097152u;    // with the diffuse albedo guide's colours
 
 RWTexture2D<float4> ambient_positions : register(u30);  // the last trace's positions (its histories')
 

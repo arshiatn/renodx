@@ -69,18 +69,8 @@ constexpr uint32_t CUSTOMDATA_IMMEDIATE_CONSTANT_BUFFER = 3;
 constexpr uint32_t TWO = 0x40000000, MINUS_TWO = 0xC0000000, FOUR = 0x40800000, MINUS_FOUR = 0xC0800000, ONE = 0x3F800000,
                    MINUS_ONE = 0xBF800000, HALF = 0x3F000000, MINUS_HALF = 0xBF000000;
 
-struct Operand {
-  size_t at = 0;
-  size_t length = 0;
-  uint32_t type = 0;
-  uint32_t mode = 0;    // 0 mask, 1 swizzle, 2 one component
-  uint32_t select = 0;  // its mask, swizzle or component
-  bool modified = false;
-  bool negated = false;  // its modifier: negate only
-  bool relative = false;
-  std::array<uint32_t, 2> index = {};
-  std::array<uint32_t, 4> values = {};  // an immediate's (a scalar's for every component)
-};
+using dxbc::Operand;
+using dxbc::ParseOperand;
 
 struct Instruction {
   size_t at = 0;
@@ -88,54 +78,6 @@ struct Instruction {
   uint32_t opcode = 0;
   std::vector<Operand> operands;
 };
-
-// An operand at `at` (before `end`); its length 0: malformed.
-inline size_t ParseOperand(const std::vector<uint32_t>& tokens, size_t at, size_t end, Operand* operand) {
-  if (at >= end) return 0;
-  const uint32_t token = tokens[at];
-  size_t next = at + 1;
-  operand->at = at;
-  operand->type = (token >> 12) & 0xFF;
-  operand->mode = (token >> 2) & 3;
-  operand->select = (token >> 4) & 0xFF;
-  if ((token >> 31) != 0) {
-    uint32_t extended = 0;
-    do {
-      if (next >= end) return 0;
-      extended = tokens[next++];
-      // A modifier (type 1) other than none.
-      if ((extended & 0x3F) == 1 && ((extended >> 6) & 0xFF) != 0) operand->modified = true;
-      if ((extended & 0x3F) == 1 && ((extended >> 6) & 0xFF) == 1) operand->negated = true;
-    } while ((extended >> 31) != 0);
-  }
-  if (operand->type == TYPE_IMMEDIATE) {
-    const size_t count = ((token & 3) == 1) ? 1 : 4;
-    if (next + count > end) return 0;
-    for (size_t component = 0; component < 4; ++component) operand->values[component] = tokens[next + (count == 1 ? 0 : component)];
-    next += count;
-  }
-  const uint32_t dimensions = (token >> 20) & 3;
-  for (uint32_t dimension = 0; dimension < dimensions; ++dimension) {
-    const uint32_t representation = (token >> (22 + 3 * dimension)) & 7;
-    if (representation == 0 || representation == 3) {
-      if (next >= end) return 0;
-      if (dimension < 2) operand->index[dimension] = tokens[next];
-      ++next;
-    } else if (representation == 1 || representation == 4) {
-      next += 2;
-    }
-    if (representation >= 2) {
-      operand->relative = true;
-      Operand nested;
-      const size_t nested_length = ParseOperand(tokens, next, end, &nested);
-      if (nested_length == 0) return 0;
-      next += nested_length;
-    }
-  }
-  if (next > end) return 0;
-  operand->length = next - at;
-  return operand->length;
-}
 
 inline bool IsDeclaration(uint32_t opcode, uint32_t token) {
   return (opcode >= OP_DCL_RESOURCE && opcode <= OP_DCL_GLOBAL_FLAGS) || (opcode >= 143 && opcode <= 162)
