@@ -9,8 +9,8 @@
   atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
   (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
-- Read: the v109 NIGHT BATCH and v110 checklists below (search "v110 BATCH"), then "NEXT BATCH (v110...)" there: the
-  open items in order. ATN's last test: debug31 (C:/Program Files (x86)/Steam/steamapps/common/Total War Attila/debug31).
+- Read: "v116 BIG BATCH" (the open items, in order), then the v115 and v114 checklists under it for recent context.
+  ATN's last test: debug34 (C:/Program Files (x86)/Steam/steamapps/common/Total War Attila/debug34).
 - Round routine: helper build `src/games/twattila/dlaa_helper/build.ps1` (PowerShell), copy build/tw_dlaa_helper to a
   new build/tw_dlaa_helperN; 32-bit `cmake --build build32 --config Release --target renodx-twattila.addon32
   renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32`; 64-bit TW check `cmake --build build --config Release
