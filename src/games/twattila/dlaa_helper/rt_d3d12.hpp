@@ -4035,6 +4035,17 @@ class RtScene12 {
     Resolve(list, slot_index);
     if (const HRESULT closed = list->Close(); FAILED(closed)) {
       status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
+      // Which passes it held (the one-off E_INVALIDARG of debug32 recorded in 0.01 ms; with RENODX_TW_D3D12_DEBUG the
+      // debug layer's messages follow).
+      std::string passes;
+      for (const wchar_t* pass : slot->marks) {
+        passes += passes.empty() ? "" : ", ";
+        for (; *pass != L'\0'; ++pass) passes += static_cast<char>(*pass);
+      }
+      slow_report_ += std::format("{}[TW ray tracing] {} could not be recorded (0x{:08X}; {} captures, {} compact draws, {} placements, {} GPU "
+                                  "bakes); its passes: {}.",
+                                  slow_report_.empty() ? "" : "\n", slot->request, static_cast<uint32_t>(closed), shared.rt_capture_count,
+                                  shared.rt_compact_count, shared.rt_placement_count, slot->gpu_bakes, passes.empty() ? "none" : passes);
       return false;
     }
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
