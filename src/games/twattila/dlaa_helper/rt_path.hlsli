@@ -95,6 +95,7 @@ static const float UNSEEN_ALBEDO = 0.35f;
 static const float ROUGH_LIMIT = 0.75f;  // rougher surfaces keep the game's reflection: only their occlusion is traced
 static const float MAX_SPECULAR_FRAMES = 12.f;
 static const float SKY_HIT_DISTANCE = 65504.f;  // NVIDIA's for the sky (FP16's most)
+static const uint SKY_DIRECTIONS = 16u;  // SkyCalibration's fixed rays
 
 #if defined(PATH_REORDER)
 // Shader execution reordering (DXR 1.2, rt_path_ser.lib_6_9.hlsl): threads regroup by what a ray met (none, or its
@@ -339,23 +340,41 @@ float3 AmbientCubeMean() {
   return mean / 6.f;
 }
 
-// The sky's light along a path that escapes: the game's own ambient cube by the direction (the sun texture's texels 3-8:
-// +x, -x, +y, -y, +z, -z; rt_sun.cs_5_0.hlsl), scaled so its mean over directions is the learned shade light (`shade`,
-// which stood for the whole sky before: bluer from above, the ground's colour from below now); the shade where the
-// game gave none. With Path-Traced Ambient (the screen's shade the paths' own sky then) the cube by the scale learned
-// before it (light_kept[2]).
-float3 SkyLight(float3 direction, float3 shade) {
-  if (sun[uint2(3, 0)].w == 0.f) return shade;
+// The game's ambient cube by a direction (the sun texture's texels 3-8: +x, -x, +y, -y, +z, -z; rt_sun.cs_5_0.hlsl).
+float3 AmbientCube(float3 direction) {
   const float3 squared = direction * direction;
-  const float3 cube = squared.x * sun[uint2((direction.x < 0.f) ? 4u : 3u, 0)].rgb + squared.y * sun[uint2((direction.y < 0.f) ? 6u : 5u, 0)].rgb
-                      + squared.z * sun[uint2((direction.z < 0.f) ? 8u : 7u, 0)].rgb;
-  const float4 scale = light_kept[2];
-  if ((path_flags & PATH_AMBIENT) != 0u && scale.w > 0.f) return scale.rgb * cube;
-  return shade * cube / max(AmbientCubeMean(), 1e-4f);
+  return squared.x * sun[uint2((direction.x < 0.f) ? 4u : 3u, 0)].rgb + squared.y * sun[uint2((direction.y < 0.f) ? 6u : 5u, 0)].rgb
+         + squared.z * sun[uint2((direction.z < 0.f) ? 8u : 7u, 0)].rgb;
 }
 
-// The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal).
-float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, uint path, out float first_distance, out float3 first_normal) {
+// The sky's light along a path that escapes: the game's own ambient cube by the direction, scaled so its mean over
+// directions is the learned shade light (`shade`, which stood for the whole sky before: bluer from above, the ground's
+// colour from below now); the shade where the game gave none. With Path-Traced Ambient (the screen's shade the paths' own
+// sky then) the cube by the scale learned before it (light_kept[2]).
+float3 SkyLight(float3 direction, float3 shade) {
+  if (sun[uint2(3, 0)].w == 0.f) return shade;
+  const float4 scale = light_kept[2];
+  if ((path_flags & PATH_AMBIENT) != 0u && scale.w > 0.f) return scale.rgb * AmbientCube(direction);
+  return shade * AmbientCube(direction) / max(AmbientCubeMean(), 1e-4f);
+}
+
+// Path-Traced Ambient: the camera rays' sky scaled so an open surface gets the game's own ambient at its normal, in the
+// game's colour and brightness (ATN's debug29-30: the learned scale's sky came out darker and warmer): the cube at
+// `normal` over the sky's light a cosine-weighted ray brings there on average (SKY_DIRECTIONS fixed rays). 1 without.
+float3 SkyCalibration(float3 normal) {
+  if ((path_flags & PATH_AMBIENT) == 0u || sun[uint2(3, 0)].w == 0.f) return 1.f;
+  float3 open = 0.f;
+  [unroll]
+  for (uint ray = 0u; ray < SKY_DIRECTIONS; ++ray) {
+    open += SkyLight(CosineDirection(normal, (ray + 0.5f) / SKY_DIRECTIONS, frac(ray * 0.618034f)), light_kept[0].rgb);
+  }
+  return AmbientCube(normal) / max(open / SKY_DIRECTIONS, 1e-4f);
+}
+
+// The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal;
+// `sky_calibration`: SkyCalibration's, for the sky it meets first).
+float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_calibration, uint2 seed, uint path, out float first_distance,
+                    out float3 first_normal) {
   first_distance = 1e30f;
   first_normal = 0.f;
   float3 radiance = 0.f;
@@ -378,7 +397,11 @@ float3 PathRadiance(float3 origin, float3 direction, float range, uint2 seed, ui
     if (!hit) {
       // Past the first surface the sky (the game's ambient by direction); from the camera's pixel the game's own
       // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).
-      if (vertex > 0u || (path_flags & PATH_AMBIENT) != 0u) radiance += throughput * SkyLight(direction, shade.rgb);
+      if (vertex > 0u) {
+        radiance += throughput * SkyLight(direction, shade.rgb);
+      } else if ((path_flags & PATH_AMBIENT) != 0u) {
+        radiance += SkyLight(direction, shade.rgb) * sky_calibration;
+      }
       break;
     }
     const float3 position = origin + direction * query.CommittedRayT();
@@ -517,6 +540,10 @@ void PathTraceTexel(uint2 id) {
     return;
   }
   const uint samples = max(path_samples, 1u);
+  const float3 sky_calibration = SkyCalibration(normal);
+  // Path-Traced Ambient: the sky's samples too (ATN's debug29-30: without them its ambient was the ground's bounce alone,
+  // darker and warmer over the reservoirs' 1-2 s).
+  const bool sky_samples = (path_flags & PATH_AMBIENT) != 0u;
   float3 arriving = 0.f;
   [loop]
   for (uint path = 0u; path < samples; ++path) {
@@ -524,7 +551,7 @@ void PathTraceTexel(uint2 id) {
                                              Random(uint3(id, frame * 16u + path * 2u + 1025u)));
     float first_distance;
     float3 first_normal;
-    const float3 sample_light = PathRadiance(origin, direction, bounce_range, id, path, first_distance, first_normal);
+    const float3 sample_light = PathRadiance(origin, direction, bounce_range, sky_calibration, id, path, first_distance, first_normal);
     arriving += sample_light;
     // Cosine-weighted rays: the target over their density is pi times the light's luminance.
     Reservoir candidate;
@@ -533,7 +560,7 @@ void PathTraceTexel(uint2 id) {
     candidate.light = sample_light;
     candidate.count = 1.f;
     candidate.weight = 0.f;
-    Merge(reservoir, candidate, (first_distance < 1e29f) ? 3.14159265f * Luminance(sample_light) : 0.f,
+    Merge(reservoir, candidate, (first_distance < 1e29f || sky_samples) ? 3.14159265f * Luminance(sample_light) : 0.f,
           Random(uint3(id, frame * 16u + path * 2u + 5120u)));
   }
   if (!reuse) {
@@ -607,8 +634,10 @@ void ReuseTexel(uint2 id) {
     if (other.count <= 0.f) continue;
     const float3 to_other = other_origin - other.hit;
     const float3 to_here = origin - other.hit;
-    const float jacobian = abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
-                           / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+    // The sky's samples (no surface) as far as the sky: the same solid angle from either.
+    const float jacobian = any(other.hit_normal != 0.f) ? abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
+                                                              / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f)
+                                                        : 1.f;
     if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
     Merge(combined, other, ReuseTarget(origin, normal, other) * other.weight * other.count * jacobian,
           Random(uint3(id, frame * 16u + neighbour + 7300u)));
@@ -690,7 +719,7 @@ void ReflectPixel(uint2 id) {
     if (traced) {
       float first_distance;
       float3 first_normal;
-      const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, id, sample + 4u, first_distance, first_normal);
+      const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, id, sample + 4u, first_distance, first_normal);
       if (first_distance < 1e29f) {
         const float weight = mirror ? 1.f : GgxSampleWeight(n_dot_v, n_dot_l, alpha);
         gathered += sample_light * weight;
