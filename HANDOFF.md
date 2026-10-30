@@ -1624,18 +1624,34 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           pipeline instead of the inline compute plus a sort by hit, worth it only for long divergent shading.
     - v115 BATCH (ATN 2026-10-30 ~17:20, away for hours; debug33 = C:/Program Files (x86)/Steam/steamapps/common/Total
       War Attila/debug33; new replay for_claude1.replay = Large Ctesiphon, day): checklist ([ ] open, [x] done):
-      [ ] 1. RT AO / SSAO / GT-VBAO "dark" with Light Bounce Rays or Off (PT AO fine): A/B v113 vs v114 in game.
-      [ ] 2. Specular Occlusion does nothing: found: with RT reflections on, the reflection pass (ssr00/01) applies
-          t46 only when the reflections are not bound; rough pixels (> ROUGH_LIMIT 0.75, not traced) keep the game's
-          environment unoccluded. Fix: occlusion on the environment share everywhere (helper: 1 where reflections
-          traced), t46 bound only with Specular Occlusion on.
-      [ ] 3. Water Clarity / Caustics do nothing: "Water Clarity: applied" never in any log (OnWaterDraw never ran with
-          b2); ATN's river pixel trace = rigidstandard D63DD3C3 (no water shader at the pixel). Find the river's real
-          draw. River noise while moving (reflections?).
-      [ ] 4. River fps (30 s profile in debug33 "above river 30s rt trace"; a GPU hang 0x887A0006 at a trace's cluster
-          build, then GPU bakes / SER / SHaRC paused): why lose-then-regain fps after stops, grass in the river bed.
-      [ ] 5. Grass shadows settle up to 1 s after W/A/S/D: why new grass needs new bakes each move.
-      [ ] 6. LOD switches: buildings black until AO converges.
+      [x] 1. (e5bf7dd3) RT AO / SSAO / GT-VBAO "dark" under Rays / Off after PT: the Light Bounce bypasses the sun draw
+          (draws it itself), command_action then skips post callbacks: OnPathAmbientDraw's t51 unbind never ran, t51
+          stayed 1 = the game's diffuse ambient gone. Now finalize callbacks. In game PT then Off (RENODX_TW_SET):
+          equal to Off from start; old build blue -10% in the far desert view.
+      [x] 2. (1405fe61) Specular Occlusion with RT reflections on: ssr00/01 dim the environment always (helper writes
+          1 where reflections traced, skips occlusion rays when the setting is off); t46 bound only with it on.
+          WH1 / WH2 / Shogun 2 shaders still `if (!rt_reflected)` (port later). In game: on vs off differs now.
+          Test switch RENODX_TW_SET=<s>:<key>=<value> (b1fbe98e). NOTE: the game folder's addon is now a COPY (the
+          symlink to build32 was replaced; making symlinks needs admin): copy after each build.
+      [x] 3. (daec47ba) Water Clarity / Caustics did nothing: command_action::Register WITHOUT callback data drops
+          lambdas declared <typename T, typename Context> (not invocable, no command types: silently not registered).
+          Never ran: OnWaterDraw, OnShadowReaderDraw (river / lake / particles' RT shadows), OnPointLightDraw (torch
+          shadows + light picks), OnFogDraw, OnParticleDraw (Smoke Shadows; also its VS code was never kept: code hook
+          only with clip captures), object_motion OnAnyDraw, rt_core OnAnyDraw (Ryse / Expeditions / Shogun 2 scene).
+          Scanner: scratchpad scan_register.py (clean now). In game: water clarified, smoke 58-65 K particles (~0.2 ms).
+          [ ] River noise while moving (RR / reflections).
+      [x] 4. (6fe88cde) Lose-then-regain fps: kept duplicates while moving. Test without input: scratchpad
+          move_profile.ps1 (SendInput scan codes W/S/A during a RENODX_TW_PROFILE; move_compare.py still vs slowest).
+          2vs3: sun 0.96 -> 3.04, bounce 5.2 -> 10.7 ms moving; not grass rays (range 1 m same), not sway, not leaf light,
+          not RR, not queue priority (HIGH tried, reverted), not the game (PresentMon GPU busy flat 8.0 ms); RT_NO_KEPT
+          (scene test 4) removed it all. Cause: grass rows carry the camera-distance shrink (lift in y) -> new dedupe
+          key each placement -> kept copy beside the new one (profile "placed" counts drawn only). Fix: grass key x/z
+          10 cm; RT_DRAWN_PLACED (addon lists placed meshes drawn but not placed) -> in-view kept instances of meshes not
+          drawn at all gone at once; KEPT_IN_VIEW_FRAMES 16 -> 8. After: sun 1.29, bounce 6.1 moving. ATN's river view
+          was also after a GPU hang (0x887A0006 in a trace's cluster build) that paused GPU bakes / SER / SHaRC.
+      [x] 5. Grass shadows darker while moving, settle ~1 s: the same duplicates (item 4).
+      [x] 6. LOD switches black: the old level of detail kept 16 frames in view; now gone at once when the game draws
+          none of that mesh this frame, else 8 frames.
       [ ] 7. RT AO / PT AO noisier than 1-2 days ago.
       [ ] 8. Far shadows flicker (Ctesiphon towers; debug view 1 shots): terminator / jitter.
     - NEXT BATCH (v110; ATN 2026-10-30: added, NOT started until ATN says):
