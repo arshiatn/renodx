@@ -1,8 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v116 batch done (search "v116 BIG BATCH"), waiting for ATN's in-game test. Open: the GPU hang's cause (read the new
-  "micromap BLAS" part of the next DRED report in renodx-tw-dlaa64.log).
+- NOW: v117 HUGE BATCH (search "v117 HUGE BATCH"): in progress, its checklist says what is done. v116 batch done (search
+  "v116 BIG BATCH").
 - State: Attila v116 shipped (Downloads/twattila_v116.zip, helper59 = build/tw_dlaa_helper59, bridge v19 + placement flag
   RT_PLACE_WHOLE; v116 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
   symlink to build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch
@@ -1624,6 +1624,43 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 6. Explained in the round report: SHaRC = two extra passes a frame (update traces from 1 of 25 texels, resolve
           walks 2 M entries) for paths that are short and mostly end on surfaces the screen knows; SER = a ray tracing
           pipeline instead of the inline compute plus a sort by hit, worth it only for long divergent shading.
+    - v117 HUGE BATCH (ATN 2026-10-31 ~00:20, away for hours / days: don't stop, don't wait for answers, commit after every step,
+      tick off here, new issues found: fix them in the following batch; debug35 = C:/Program Files (x86)/Steam/steamapps/common/
+      Total War Attila/debug35: logs copied there, ATN's ini also tools/tw/test_scripts/ReShade.ini.atn35). ATN's items:
+      [ ] 0. Logs next to the exe: it froze again while ATN toggled every slider. "Maybe you can find out why. It is really
+          random. Maybe it got something to do with my togglings all the time."
+          Found so far: CORRECTION to v116: the freeze DID reproduce in my refl1 run (22:48:42, 8 s after reflections on): I
+          only looked at the stress runs. Five DRED reports now, none inside a ray tracing pass (those take most of the GPU
+          time): debug30 GPU bake Dispatch; debug33 cluster instantiate (trace, "clusters >Barrier"); debug34 BLAS BuildAS; refl1
+          bake ExecuteIndirect in a tail list; debug35 sway list Dispatch after the CLAS builds. No page fault in any.
+          nvlddmkm 153 incidents by time: none from 10-29 00:00 to 18:49 (ATN testing v94-v104, CPU micromap bakes), my
+          bake development 18:49-19:16 (helper38), SHaRC work 20:13-20:59, then one in ~each of ATN's sessions since GPU
+          Micromap Baking became the default (v107): 10-29 23:29, 10-30 00:52, 09:31, 16:57, 17:41, 21:14, 22:48, 23:36.
+          After a hang (GPU bakes paused) no session hung again. So: the GPU bake path, also where the hang shows elsewhere
+          (those stages consume the micromaps). The CPU baker has a workload cap (MICROMAP_WORKLOAD), the GPU one had none.
+      [ ] 1.1 Quick question: is Water Caustics "RT Caustics"?
+      [ ] 2. LOD change with RT Shadows still obvious: "shadow disappearing when the LOD changes and appearing really fast after";
+          hide it. ATN: this, 2.1 and 2.2 are the only remaining RT Shadows issues.
+      [ ] 2.1 Soldiers' LOD ends as 2D sprites: give them shadows too.
+      [ ] 2.2 Light goes through soldiers' helmets (debug35/solder helmet: 1.png his right side, thick helmet; 2.png from the front,
+          no shadow on the right side of his face; with SSS it is there). Game limit or RT ignoring helmets and more?
+      [ ] 3. VERY IMPORTANT, "make sure you don't break anything": redesign Graphics 1 of 2. Reflection moves there from Graphics
+          2 of 2. Grouped: AA, DLSS SR, RR, MFG, Reflex on top; all titles the same colour. "DLAA" in AA renamed DLSS. Each AA
+          option's settings hidden unless selected. Simple and short: a "More Options" (closed by default, its own distinct
+          colour, the same for every More Options, not the title colour) holds what normal people don't care about (e.g. motion
+          vectors). Then an ambient occlusion section (a slider like AA: Off (game's), GT-VBAO, RT-AO, PT-AO; each mode's
+          important settings shown, the rest under More Options), then Shadows (Off (raster), SSS (raster + SSS), RT Shadows
+          which replaces those), the rest in the same spirit. Check what depends on what / can't run together. Update tooltips.
+      [ ] 4. debug35/SSS or AO grass or tree mask: is it doable for SSS? Soft shadows for grass / trees so light goes through
+          them a bit and the shadows are not that dark. (Free licences allowed.)
+      [ ] 5. With RT Reflections, does the game's own reflection still run? GT-VBAO / RT-AO: is the game's SSAO bypassed? If not,
+          double work: fix without breaking anything.
+      [ ] 6. More double work or leftovers? Debug lines that write all the time must not exist for release (keep them, off),
+          the game's CPU is atrocious.
+      [ ] 7. Rethink Ray Tracing at Output Resolution: does it act on every RT/PT effect? Costs a lot, not enough. PT AO 1 ray 1
+          sample at Full resolution looks almost noise free: can the toggle make DLSS Performance trace above 1920x1080, like
+          3840x2160? Finer sliders / toggles.
+      [ ] 8. v117 zip (helper60), README, HANDOFF, memory, report.
     - v116 BIG BATCH (ATN 2026-10-30 ~21:25; started ~21:35, ATN away for hours). ATN's words, as given:
       "1) I am just in the game, you can see the shadow flicker on the tower. I am like really close. IT was flickering in
       distant already too. Please check it out. In the same exact battle as now (log is probably here. I traced the RT for
