@@ -1,7 +1,7 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v119 BIG BATCH done (search "v119 BIG BATCH"), its "Left" list next. v118 done (search "v118 HUGE BATCH").
+- NOW: v120 BATCH, saved and NOT started (search "v120 BATCH"). v119 done (search "v119 BIG BATCH"), v118 done ("v118 HUGE BATCH").
 - State: Attila v119 shipped (Downloads/twattila_v119.zip, helper62 = build/tw_dlaa_helper62, bridge v19; v119 is in Attila's
   folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn38); the addon there is a COPY, not the symlink to
   build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
@@ -22,6 +22,40 @@
   new zip must not exist); README section per version; commit after every step with the Co-Authored-By line.
 
 Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF.md`. This file supersedes its Ryse parts.
+
+## v120 BATCH (ATN 2026-10-31 night; saved, NOT started: ATN starts it from their other account, same PC; commit after every step, never push, tick here)
+ATN's words, verbatim:
+"These don't need any tests in the game:
+1) Reset on Graphics 1 of 2 should put in AO back to Game's SSAO, Reflection back to Game's SSAO, Water clarity, water caustics to their game's default
+2) I was thinking that we bring Shadow map size and the 4k mod compatibility to graphics 1 of 2 and both only get showed when Game's Shadow Maps is selected. (4K Mod compatibility is on by default)
+3) Let's add newest FSR and FSR Frame Generation please. (You are allowed to download whatever you need from AMD)
+4) Let AMD and Intel GPUs use the RT/PT stuff but they probably can only do DXR 1.0/1.1 or 1.2, right? Just like something like 2080? (Idk what the "least" version is that a gpu can use but can we check what version a gpu uses and still let them try RT/PT despite it being much slower probably?)
+5) There are some cities in campaign mode (I saved as "claude1" and "claude2". You can open them if you want and fix the "jittering" stuffs. But if it is easier for you, I can open them and log or something for you)"
+
+- [ ] 1 Reset (graphics_page.hpp, preset_button("Reset", ..., {})): its changes {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}.
+      "Reflection back to Game's SSAO" is ATN's typo for Game's SSR. Water Caustics 0 = the game's. Only Reset: No RT/PT and RT/PT keep GT-VBAO and SSSR as defaults
+      (page_defaults stays the sliders' defaults).
+- [ ] 2 Shadow Map Size + UI 4K Mod Compatibility to the Shadows section, both shown only with SHADOW_GAME (shadows_are(SHADOW_GAME)). The compatibility slider is a CUSTOM setting
+      in addon.cpp without key or label: give it a label so Page::Take finds it (or page.Add it). Traps: Page::Defaults would put GraphicsShadowMapSize into page_defaults, then No RT/PT and
+      RT/PT would reset it: keep it out of those; Graphics 2 of 2's two presets still write the key (tooltips say 8192). Compatibility stays on by default ([Attila] DisableGraphics missing = on).
+      README, tooltips, attila_nexus_text ("Graphics 2 of 2" paragraph) follow.
+- [ ] 3 Newest FSR + FSR Frame Generation: look up AMD's newest FidelityFX SDK first (WebSearch, GitHub GPUOpen-LibrariesAndSDKs; ATN allows any AMD download; follow its licence, add it to
+      licenses and About). Attila is 32-bit: it has to run in the 64-bit helper on the shared textures like DLSS (D3D12 there: rr_d3d12.hpp, fg_d3d12.hpp's child window for presenting; read them).
+      Addon side: Method::DLAA has 14 uses in twattila/*.hpp, `method == 5.f` 48: FSR needs its own AntiAliasing method, render scale, jitter, DLSS Mode labels. Any GPU should get it.
+- [ ] 4 RT/PT on AMD and Intel. Answer for ATN: the least is DXR 1.1 (our shaders use inline ray queries, cs_6_5), the RTX 2080's level too; 1.2 (micromaps, SER) is checked at start and used only
+      when there (dxr12_); Mega Geometry only on NVIDIA (clusters_, falls back). Remove the VendorId lock v119 added (rt_d3d12.hpp Initialize). Its path = RENODX_TW_NO_DXR12=1 + RENODX_TW_NO_CLUSTERS=1,
+      harness modes no_dxr12_no_clusters; the game ran it at 30 fps against 60 on the 5090. Work left there: everything RT is gated on DLSS (`aa->method == 5`, labels "Needs DLSS"): needs "DLSS or FSR"; no Ray
+      Reconstruction there, so the denoisers' non-RR paths must carry it (AO history, reflections' accumulation, Light Bounce denoiser). No AMD card here: say so, simulated only. Update README, Nexus text
+      (Requirements: "NVIDIA RTX only for now", "AMD and Intel: DLSS and ray tracing stay off").
+- [ ] 5 Jittering in campaign cities: saves claude1.save and claude2.save (Attila save_games, 2026-10-31 23:03 / 23:04). ATN offers to log if that is easier. Way that found the animals: test_scripts/run_game.ps1
+      -Campaign "claude1.save" -Shot "35,6,10" -Set "33:AntiAliasingDebugView=1" -Seconds 75, zoom into what is coloured with a still camera; Object Motion view = 2; FrameTrace=1 in [renodx] with DLSS below 100%
+      gives tw_frame_trace.txt, test_scripts/pairs.py names its draws. Remember campaign_frames (frame_history): bone history is off there (animals). Candidates: rigid 347F3DD9 draws in dynamic buffers, cloth.
+- [ ] 6 ATN's test of v119 first if they sent one; v119's Left list below stays open.
+- [ ] 7 Zip twattila_v120.zip (release_zip.py: bump tw_dlaa_helper62 if the helper changes), README, memory, short report.
+
+Testing notes: all scripts are now in tools/tw/test_scripts (run_game.ps1, overlay_test.ps1, soak.ps1, install.ps1, ini_set.py, pairs.py, sheet.py, names_scan.py; logs and shots in its logs/ and shots/ folders). Back up
+ATN's ReShade.ini first as ReShade.ini.atn39 and restore it after every test; compare with cmp. install.ps1 copies build32 + build/tw_dlaa_helper into Attila's folder. Downloads/attila_nexus_text_v119.txt has two
+placeholders for ATN (Google Drive link, commit link): keep them when updating it.
 
 ## v119 BIG BATCH (ATN 2026-10-31 evening; ATN's debug37; commit after every step, never push, tick here)
 ATN's words, short: Graphics 1 of 2: Shadows on top (above Ambient Occlusion), Ray Tracing Low/Medium/High/Ultra presets gone, on top of
