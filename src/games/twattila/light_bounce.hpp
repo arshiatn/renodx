@@ -450,26 +450,34 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       native->PSSetShader(prepare.Get(), nullptr, 0);
       native->Draw(3, 0);
 
-      // The prepared light and geometry's levels, each from the one above (that level only, at t46-t47).
-      native->PSSetShader(objects.levels.Get(), nullptr, 0);
-      for (UINT level = 1; level < objects.prepared_levels; ++level) {
-        ID3D11RenderTargetView* level_targets[] = {objects.prepared_light.level_rtvs[level].Get(),
-                                                   objects.prepared_geometry.level_rtvs[level].Get()};
-        native->OMSetRenderTargets(2, level_targets, nullptr);
-        ID3D11ShaderResourceView* above[] = {objects.prepared_light.level_srvs[level - 1].Get(),
-                                             objects.prepared_geometry.level_srvs[level - 1].Get()};
-        native->PSSetShaderResources(internal::VIEWS_SLOT + internal::PREPARED_VIEW, 2, above);
-        const D3D11_VIEWPORT level_viewport = {
-            .Width = static_cast<FLOAT>(std::max(1u, prepared_desc.Width >> level)),
-            .Height = static_cast<FLOAT>(std::max(1u, prepared_desc.Height >> level)),
-            .MaxDepth = 1.f,
-        };
-        native->RSSetViewports(1, &level_viewport);
-        native->Draw(3, 0);
+      // The trace through rays when ray tracing has it (the prepared textures no longer targets; it reads their first level).
+      native->OMSetRenderTargets(0, nullptr, nullptr);
+      const internal::RayTracedTrace ray_traced = internal::ray_traced_trace.load(std::memory_order_relaxed);
+      const bool rays = ray_traced != nullptr
+                        && ray_traced(native, objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
+                                      static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get());
+      // Else the prepared light and geometry's levels, each from the one above (that level only, at t46-t47).
+      if (!rays) {
+        native->PSSetShader(objects.levels.Get(), nullptr, 0);
+        for (UINT level = 1; level < objects.prepared_levels; ++level) {
+          ID3D11RenderTargetView* level_targets[] = {objects.prepared_light.level_rtvs[level].Get(),
+                                                     objects.prepared_geometry.level_rtvs[level].Get()};
+          native->OMSetRenderTargets(2, level_targets, nullptr);
+          ID3D11ShaderResourceView* above[] = {objects.prepared_light.level_srvs[level - 1].Get(),
+                                               objects.prepared_geometry.level_srvs[level - 1].Get()};
+          native->PSSetShaderResources(internal::VIEWS_SLOT + internal::PREPARED_VIEW, 2, above);
+          const D3D11_VIEWPORT level_viewport = {
+              .Width = static_cast<FLOAT>(std::max(1u, prepared_desc.Width >> level)),
+              .Height = static_cast<FLOAT>(std::max(1u, prepared_desc.Height >> level)),
+              .MaxDepth = 1.f,
+          };
+          native->RSSetViewports(1, &level_viewport);
+          native->Draw(3, 0);
+        }
+        native->RSSetViewports(1, &trace_viewport);
       }
-      native->RSSetViewports(1, &trace_viewport);
 
-      // The trace (the last history at t41 for Checkerboard), the resolve into the other history and its frame counts
+      // The screen-space trace (the last history at t41 for Checkerboard), the resolve into the other history and its frame counts
       // (this frame's trace at t40, the last history at t41, its counts at t48), with the Denoiser its output smoothed
       // (at t40) into the denoised target. Each target set before its input, so no texture is bound as both.
       const auto pass = [&](const frame_history::Target& target, ID3D11PixelShader* shader,
@@ -486,12 +494,6 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       inputs[internal::HISTORY_VIEW] = objects.history[previous_index].srv.Get();
       inputs[internal::PREPARED_VIEW] = objects.prepared_light.srv.Get();
       inputs[internal::PREPARED_VIEW + 1] = objects.prepared_geometry.srv.Get();
-      // The trace through rays when ray tracing has it (the prepared textures no longer targets), else on screen.
-      native->OMSetRenderTargets(0, nullptr, nullptr);
-      const internal::RayTracedTrace ray_traced = internal::ray_traced_trace.load(std::memory_order_relaxed);
-      const bool rays = ray_traced != nullptr
-                        && ray_traced(native, objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
-                                      static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get());
       if (!rays) pass(objects.traced, objects.trace.Get());
       // The resolve over frames also under Ray Reconstruction (ATN's debug33: the rays' trace applied as traced, RR alone,
       // was noisier); the denoiser not (Update).

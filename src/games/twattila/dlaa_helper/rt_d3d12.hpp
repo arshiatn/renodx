@@ -263,10 +263,7 @@ class RtScene12 {
           || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
                                                IID_PPV_ARGS(slot.list.GetAddressOf())))
           || FAILED(slot.list->Close())
-          || FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.tail_allocator.GetAddressOf())))
-          || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.tail_allocator.Get(), nullptr,
-                                               IID_PPV_ARGS(slot.tail_list.GetAddressOf())))
-          || FAILED(slot.tail_list->Close()) || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs
+          || !slot.instances || !slot.table || !slot.sizes || !slot.readback || !slot.rows_readback || !slot.jobs
           || !slot.left_out || !slot.left_out_readback
           || FAILED(slot.left_out_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.left_out_data)))
           || FAILED(slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data)))
@@ -275,7 +272,6 @@ class RtScene12 {
         return Fail("Ray tracing: no D3D12 command lists");
       }
       slot.list->SetName(std::format(L"slot {}", &slot - slots_.data()).c_str());
-      slot.tail_list->SetName(std::format(L"slot {} tail", &slot - slots_.data()).c_str());
     }
     // The vertex copy (BLAS inputs), the TLAS for the most instances, the records and pools.
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS top_inputs = {
@@ -886,8 +882,7 @@ class RtScene12 {
       for (const D3D12_AUTO_BREADCRUMB_NODE1* node = breadcrumbs.pHeadAutoBreadcrumbNode; node != nullptr; node = node->pNext) {
         const uint32_t done = (node->pLastBreadcrumbValue != nullptr) ? *node->pLastBreadcrumbValue : 0u;
         if (done >= node->BreadcrumbCount) continue;
-        const auto slot = std::ranges::find_if(slots_, [&](const Slot& slot) { return slot.list.Get() == node->pCommandList || slot.tail_list.Get() == node->pCommandList; });
-        const bool tail = slot != slots_.end() && slot->tail_list.Get() == node->pCommandList;
+        const auto slot = std::ranges::find_if(slots_, [&](const Slot& slot) { return slot.list.Get() == node->pCommandList; });
         report += std::format("\n  {}{}: {} of {} operations done:", narrow(node->pCommandListDebugNameW),
                               (slot != slots_.end()) ? " (" + slot->request + slot->micromap_builds + ")" : std::string(), done, node->BreadcrumbCount);
         const uint32_t first = (done > 12 ? done - 12 : 0u);
@@ -897,9 +892,8 @@ class RtScene12 {
           for (uint32_t context = 0; context < node->BreadcrumbContextsCount; ++context) {
             if (node->pBreadcrumbContexts[context].BreadcrumbIndex == op) name = narrow(node->pBreadcrumbContexts[context].pContextString);
           }
-          if (node->pCommandHistory[op] == D3D12_AUTO_BREADCRUMB_OP_SETMARKER && slot != slots_.end()) {
-            const auto& marks = tail ? slot->tail_marks : slot->marks;
-            if (marker < marks.size()) name = narrow(marks[marker++]);
+          if (node->pCommandHistory[op] == D3D12_AUTO_BREADCRUMB_OP_SETMARKER && slot != slots_.end() && marker < slot->marks.size()) {
+            name = narrow(slot->marks[marker++]);
           }
           if (name.empty()) {
             const auto known = std::ranges::find(OPERATION_NAMES, node->pCommandHistory[op], &OperationName::op);
@@ -1032,7 +1026,6 @@ class RtScene12 {
     const bool reset = !Lost() && SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
     if (reset) {
       slot.marks.clear();
-      slot.tail_marks.clear();
       slot.micromap_builds.clear();
       slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
     }
@@ -1064,10 +1057,6 @@ class RtScene12 {
       queue_->ExecuteCommandLists(1, lists);
     }
     queue_->Signal(fence_.Get(), shared.value + 1);
-    if (recorded && slot.tail_recorded) {
-      ID3D12CommandList* tail[] = {slot.tail_list.Get()};
-      queue_->ExecuteCommandLists(1, tail);
-    }
     queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
     LARGE_INTEGER submit_end;
@@ -1111,7 +1100,6 @@ class RtScene12 {
     if (recorded) {
       // (A removed device's slots keep their last request and passes: LostReport.)
       slot.marks.clear();
-      slot.tail_marks.clear();
       slot.request = std::format("{} {}: flags 0x{:X}, paths 0x{:X}", reflections ? "reflections" : "Light Bounce", own_value_ + 1, shared.rt_flags,
                                  requested);
       auto* list = slot.list.Get();
@@ -1576,10 +1564,10 @@ class RtScene12 {
   static constexpr size_t MICROMAP_WORKERS = 4;  // bakes at once (each with the SDK's own threads)
   static constexpr size_t SET_MICROMAP_READS = 32;  // grass sets' micromap reads a request at most
   static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
-  // GPU Micromap Baking: bakes a request at most and their triangles (past either the CPU bakes them: none left without),
-  // the SDK's descriptors (a ring: about 71 a bake, room for 14 requests' bakes), its scratch.
-  static constexpr size_t MICROMAP_GPU_BAKES = 64;
-  static constexpr uint32_t MICROMAP_GPU_TRIANGLES = 1u << 17;
+  // GPU Micromap Baking: bakes a request at most and their triangles (the game waits for them: the rest in the next requests,
+  // a battle's few hundred within a second or two), the SDK's descriptors (a ring: about 71 a bake), its scratch.
+  static constexpr size_t MICROMAP_GPU_BAKES = 8;
+  static constexpr uint32_t MICROMAP_GPU_TRIANGLES = 1u << 15;
   static constexpr UINT OMM_DESCRIPTORS = 65536;
   // Grass's finest micromap level (leaves': 6): new grass's shadows wait for its bakes (ATN's debug28: still a visible
   // delay), and level 6 is four times the work.
@@ -1704,15 +1692,11 @@ class RtScene12 {
     ComPtr<ID3D12CommandAllocator> allocator;
     ComPtr<ID3D12GraphicsCommandList4> list;
     // A trace's work the game does not wait for (its GPU micromap bakes, the timestamps' end), run after the game's signal.
-    ComPtr<ID3D12CommandAllocator> tail_allocator;
-    ComPtr<ID3D12GraphicsCommandList4> tail_list;
     // Its last request and passes (LostReport).
     std::string request;
     std::vector<const wchar_t*> marks;
-    std::vector<const wchar_t*> tail_marks;
     std::string micromap_builds;  // LostReport: the BLASes built with micromaps (debug34: the GPU hung in one's build)
     uint32_t gpu_bakes = 0;  // GPU Micromap Baking's bakes in its last trace (the profile)
-    bool tail_recorded = false;
     ComPtr<ID3D12Resource> instances;
     D3D12_RAYTRACING_INSTANCE_DESC* instance_data = nullptr;
     ComPtr<ID3D12Resource> table;  // the scene data pass's capture table
@@ -2337,7 +2321,6 @@ class RtScene12 {
     list->SetMarker(0, pass, static_cast<UINT>((std::wcslen(pass) + 1) * sizeof(wchar_t)));
     for (Slot& slot : slots_) {
       if (slot.list.Get() == list) slot.marks.push_back(pass);
-      if (slot.tail_list.Get() == list) slot.tail_marks.push_back(pass);
     }
   }
 
@@ -2358,7 +2341,6 @@ class RtScene12 {
       status_ = std::move(why);
       return false;
     };
-    slot->tail_recorded = false;
     StampSlot(list, slot_index);
     Stamp(list, slot_index * STAMPS);
     const uint32_t frame = shared.rt_frame;
@@ -4078,18 +4060,13 @@ class RtScene12 {
     for (const MicromapBake* bake : gpu_baking) {
       slot->micromap_builds += std::format("; GPU bake {} triangles{}", bake->triangles, bake->set ? ", grass set" : "");
     }
-    // The bakes and the timestamps' end in the tail list (Trace runs it after the game's signal: the game no longer waits
-    // for them, they run beside its frame); without it here.
-    static const bool no_tail = GetEnvironmentVariableW(L"RENODX_TW_NO_TAIL", nullptr, 0) != 0;
-    auto* tail = (!no_tail && SUCCEEDED(slot->tail_allocator->Reset()) && SUCCEEDED(slot->tail_list->Reset(slot->tail_allocator.Get(), nullptr)))
-                     ? slot->tail_list.Get()
-                     : list;
+    // Before the game's signal, so the game waits for them (MICROMAP_GPU_BAKES keeps that short). In a list of their own after
+    // it, beside the game's frame, the GPU reset in 3 runs of 5 at their dispatches; here in none of 8 (ATN's freezes).
 #if defined(RENODX_OMM_SDK)
-    BakeMicromapsOnGpu(tail, gpu_baking);
+    BakeMicromapsOnGpu(list, gpu_baking);
 #endif
-    Stamp(tail, slot_index * STAMPS + 9);
-    Resolve(tail, slot_index);
-    slot->tail_recorded = (tail != list) && SUCCEEDED(tail->Close());
+    Stamp(list, slot_index * STAMPS + 9);
+    Resolve(list, slot_index);
     if (const HRESULT closed = list->Close(); FAILED(closed)) {
       status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
       // Which passes it held (the one-off E_INVALIDARG of debug32 recorded in 0.01 ms; with RENODX_TW_D3D12_DEBUG the
