@@ -975,6 +975,9 @@ class RtScene12 {
     LARGE_INTEGER cpu_start;
     QueryPerformanceCounter(&cpu_start);
     WaitFor(slot.value);
+    // The last trace done first: recorded over its run the GPU reset at its sway or micromap passes (ATN's debug36). Three
+    // requests a frame bring that about (the same slot); with fewer the traces change slots (Light Bounce off).
+    WaitFor(trace_value_);
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
     if (!slot.capture_keys.empty()) {
@@ -1074,6 +1077,7 @@ class RtScene12 {
     queue_->Signal(fence_.Get(), shared.value + 1);
     queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
+    trace_value_ = own_value_;
     LARGE_INTEGER submit_end;
     QueryPerformanceCounter(&submit_end);
     if (details_) {
@@ -1715,7 +1719,6 @@ class RtScene12 {
   struct Slot {
     ComPtr<ID3D12CommandAllocator> allocator;
     ComPtr<ID3D12GraphicsCommandList4> list;
-    // A trace's work the game does not wait for (its GPU micromap bakes, the timestamps' end), run after the game's signal.
     // Its last request and passes (LostReport).
     std::string request;
     std::vector<const wchar_t*> marks;
@@ -2383,7 +2386,7 @@ class RtScene12 {
     for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
       list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
     }
-    // Instanced meshes this slot captured SLOTS requests back: each instance's transform from the first one's space
+    // Instanced meshes captured at this slot's last trace: each instance's transform from the first one's space
     // (rows_k times the inverse of rows_0; degenerate rows: the first instance only).
     if (!slot->row_reads.empty()) {
       const D3D12_RANGE read = {.Begin = 0, .End = uint64_t{ROWS_READBACK} * 64};
@@ -2429,7 +2432,7 @@ class RtScene12 {
       }
       slot->row_reads.clear();
     }
-    // Compactions: the BLASes this slot built SLOTS requests back (done) copied into places their compacted size (the
+    // Compactions: the BLASes built at this slot's last trace (done) copied into places their compacted size (the
     // kept pool).
     if (!slot->compactions.empty()) {
       const D3D12_RANGE read = {.Begin = 0, .End = slot->compactions.size() * sizeof(uint64_t)};
@@ -2959,9 +2962,9 @@ class RtScene12 {
         list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
       }
 
-      // Opacity micromaps (DXR 1.2) baked for leaves built SLOTS requests back or more (their first compaction and rows
-      // read): their arrays built now from the bakes' upload buffers (none when every triangle has a special index), their
-      // BLASes again below.
+      // Opacity micromaps (DXR 1.2) baked for leaves built two rounds of the slots back or more (their first compaction and
+      // rows read: that slot's next trace, the third after with two requests a frame): their arrays built now from the bakes'
+      // upload buffers (none when every triangle has a special index), their BLASes again below.
       struct MicromapArray {
         std::unique_ptr<MicromapBake> bake;
         ComPtr<ID3D12Resource> array;
@@ -2988,7 +2991,7 @@ class RtScene12 {
             baked.reset();
             continue;
           }
-          if (own_value_ + 1 < baked->value + SLOTS) continue;
+          if (own_value_ + 1 < baked->value + (2 * SLOTS)) continue;
           // Its data, descs and indices: a GPU bake's where the bake left them (its request's shared outputs, kept until
           // this request's builds are past), a CPU bake's uploaded.
           ComPtr<ID3D12Resource> inputs;
@@ -5026,6 +5029,7 @@ class RtScene12 {
   size_t next_slot_ = 0;
   ComPtr<ID3D12Fence> own_fence_;
   uint64_t own_value_ = 0;
+  uint64_t trace_value_ = 0;  // own_fence_'s value after the last trace
   HANDLE event_ = nullptr;
   ComPtr<ID3D12Resource> vertex_buffer_;
   ComPtr<ID3D12Resource> scratch_;
