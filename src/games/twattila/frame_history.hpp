@@ -79,6 +79,8 @@ inline std::atomic<uint32_t> render_height = 0;
 // with the option on, else 1. The effects' own resolutions follow it (their divisors x it), so they keep the detail
 // they have at 100%.
 inline std::atomic<float> effect_share = 1.f;
+// Frames left of the campaign map: its border, shroud and sea draws set it (Attila's addon), each present takes one.
+inline std::atomic<uint32_t> campaign_frames = 0;
 
 // The steps of 2 between full and `effect_share` (nearest; 0 at 1): what a divisor of 2^n drops by; `dimensions` 2 for
 // counts per area (the reflections' rays: Half, Quarter).

@@ -989,7 +989,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     }
   }
   MotionConstants constants = view.constants;
-  constants.unit = {mesh_key, (objects.previous_placements ? 1u : 0u), 0u, draw_word};
+  constants.unit = {mesh_key, (objects.previous_placements ? 1u : 0u), (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? 1u : 0u), draw_word};
   constants.draw = draw_range;
   if (std::memcmp(&constants, &objects.motion_uploaded, sizeof(constants)) != 0 || !view.camera_copies.empty()) {
     native->UpdateSubresource(objects.motion_constants.Get(), 0, nullptr, &constants, 0, 0);

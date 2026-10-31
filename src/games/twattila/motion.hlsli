@@ -18,8 +18,9 @@ cbuffer motion_VS : register(b12)
   float4 motion_current[4];   // the camera's view-projection rows (Attila's c9-c12 without the jitter)
   float4 motion_previous[4];  // last frame's
   float4 motion_times;        // x last frame's time_in_sec, zw the render size
-  uint4 motion_unit;          // x the draw's mesh key, y 1: last frame's placements recorded, w units: the draw's
-                              // animation texture (part of the bone key), rigid objects and deformed meshes: the draw's slot
+  uint4 motion_unit;          // x the draw's mesh key, y 1: last frame's placements recorded, z 1: last frame's bones
+                              // unknown (the campaign map), w units: the draw's animation texture (part of the bone key),
+                              // rigid objects and deformed meshes: the draw's slot
   uint4 motion_draw;          // deformed meshes: x the draw's first position, y its positions, z its first vertex
   float4 motion_jitter;       // the rows' jitter in clip space (xy this frame's, zw last frame's; Shogun 2), else 0
   float4 motion_game_jitter;  // in-draw motion (motion_draw_*.vs): the jitter the game's rows hold (xy, clip per w)
@@ -177,6 +178,9 @@ bool MotionPreviousPlacement(float4 rows[3], out float4 previous[3], out uint4 p
       found = true;
     }
   }
+  // The campaign's animals: their poses at the frame's end are not what they drew with (rainbow motion, jittering under DLAA,
+  // ATN's debug37): this frame's pose at last frame's place.
+  if (motion_unit.z != 0u) previous_bones = 0u;
   return found;
 }
 

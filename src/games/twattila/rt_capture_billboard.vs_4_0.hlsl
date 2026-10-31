@@ -2,19 +2,9 @@
 // tracing's stream output (rt_core.hpp, SceneShader::sun_facing): the card turned to the sun instead of the camera and
 // showing the tree from there, so its shadow keeps its shape and does not swing with the view. t0: rt_sun, its first
 // texel the direction toward the sun.
+#include "./rt_capture.hlsli"
 
 Texture2D<float4> t_rt_sun : register(t0);
-
-// A float as a half's bits (truncated; tiny values 0, huge ones infinite).
-uint HalfBits(float value)
-{
-  const uint bits = asuint(value);
-  const uint sign = (bits >> 16) & 0x8000;
-  const int exponent = int((bits >> 23) & 0xFF) - 112;
-  if (exponent <= 0) return sign;
-  if (exponent >= 31) return sign | 0x7C00;
-  return sign | (uint(exponent) << 10) | ((bits >> 13) & 0x3FF);
-}
 
 void main(
   float4 v0 : POSITION0,
@@ -41,6 +31,6 @@ void main(
   const float2 uv = float2(v1.x + 0.25f * fmod(floor(view + 0.5f), 4.f), v1.y);
 
   // A card the game has faded out away (v2.w 0: its pixel shader discards all of it): a NaN, which DXR skips.
-  world_uv = float4((v2.w > 0.f) ? world : asfloat(0x7FC00000u).xxx, asfloat(HalfBits(uv.x) | (HalfBits(uv.y) << 16)));
+  world_uv = RtWorldUv((v2.w > 0.f) ? world : asfloat(0x7FC00000u).xxx, uv);
   position = 0.f;
 }

@@ -829,8 +829,9 @@ struct RegionRead {
 };
 
 // The names Attila's, Thrones of Britannia's and Rome II's shaders give their whole passes' outputs: the AO blur's
-// (ssao.hlsl blur_y, read by the lights) and the water refraction's (waterrefraction.hlsl, read by water and rivers).
-constexpr std::array<const char*, 2> WHOLE_TEXTURES = {"s_ssao", "s_terrain_refraction"};
+// (ssao.hlsl blur_y, read by the lights) and the water refraction's (waterrefraction.hlsl: s_terrain_refraction in rivers
+// and lakes, refraction_texture_sampler in ocean and the campaign's sea and lakes, s_refraction_sampler in ocean2).
+constexpr std::array<const char*, 4> WHOLE_TEXTURES = {"s_ssao", "s_terrain_refraction", "refraction_texture_sampler", "s_refraction_sampler"};
 
 // `vertex_shaders`: the game's vertex shaders (by hash) the addon replaces with render_scale ones (cb12 at b12);
 // `whole_textures`: the names the game's shaders give the whole passes' outputs.

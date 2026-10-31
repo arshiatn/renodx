@@ -168,6 +168,9 @@ struct SceneShader {
   // version, one point per instance with its rows at TEXCOORD0-2 (object_motion's): the mesh captured once (its first
   // instance; RT_INSTANCED), each draw's instances placed in the helper every frame (bridge v14 placements).
   std::span<const uint8_t> rows_shader;
+  // A mesh the game's shadow pass alpha-tests (its diffuse map in Runtime::cut_out_textures: palm and pine cards, fences) is
+  // captured by this version, with the UV, cut out as leaves are but still.
+  std::span<const uint8_t> cut_out_shader;
   bool terrain = false;
   bool dynamic = false;
   bool foliage = false;
@@ -175,6 +178,7 @@ struct SceneShader {
   bool thin = false;   // cloth and sails (RT_THIN)
   bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at t0
   bool far_tree = false;    // a far tree's billboard (with sun_facing): its opacity mask at t1
+  bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
 };
@@ -251,6 +255,8 @@ struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   std::vector<ComPtr<ID3D11VertexShader>> capture_shaders;  // as the scene shaders
   std::vector<ComPtr<ID3D11VertexShader>> rows_shaders;     // as the scene shaders (placed ones)
+  std::vector<ComPtr<ID3D11VertexShader>> cut_out_shaders;  // as the scene shaders (SceneShader::cut_out_shader)
+  std::vector<ComPtr<ID3D11GeometryShader>> cut_out_outputs;
   std::vector<ComPtr<ID3D11GeometryShader>> rows_outputs;
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
@@ -533,6 +539,8 @@ struct Runtime {
   // The atlas's textures (kept alive while they have a slice; for the bridge's atlas `atlas_generation`), its free
   // slices and the frame each was last used.
   std::unordered_map<ID3D11Resource*, std::pair<ComPtr<ID3D11Resource>, uint32_t>> atlas_slices;
+  // The diffuse maps of the meshes the game's shadow pass alpha-tests (only compared).
+  std::unordered_set<ID3D11Resource*> cut_out_textures;
   std::vector<uint32_t> free_slices;
   std::array<uint64_t, dlaa_bridge::RT_ATLAS_SLICES> slice_used = {};
   uint32_t atlas_generation = 0;
@@ -635,7 +643,13 @@ inline bool PrepareDevice(ID3D11Device* device) {
     auto& stream_output = objects.capture_outputs.emplace_back();
     auto& rows_shader = objects.rows_shaders.emplace_back();
     auto& rows_output_shader = objects.rows_outputs.emplace_back();
-    return (shader.capture_shader.empty()
+    auto& cut_out_shader = objects.cut_out_shaders.emplace_back();
+    auto& cut_out_output = objects.cut_out_outputs.emplace_back();
+    return (shader.cut_out_shader.empty()
+            || (SUCCEEDED(device->CreateVertexShader(shader.cut_out_shader.data(), shader.cut_out_shader.size(), nullptr, cut_out_shader.GetAddressOf()))
+                && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.cut_out_shader.data(), shader.cut_out_shader.size(), &output, 1, &STRIDE,
+                                                                          1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, cut_out_output.GetAddressOf()))))
+           && (shader.capture_shader.empty()
             || (SUCCEEDED(device->CreateVertexShader(shader.capture_shader.data(), shader.capture_shader.size(), nullptr,
                                                      vertex_shader.GetAddressOf()))
                 && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.capture_shader.data(), shader.capture_shader.size(), &output,
@@ -977,9 +991,18 @@ void Capture(Context& command, const SceneShader& shader) {
       }
     }
   }
-  // A leaf's opacity mask: its pixel shader's diffuse map.
+  // A leaf's opacity mask: its pixel shader's diffuse map; a rigid mesh's, when the game's shadow pass alpha-tests it.
   ComPtr<ID3D11ShaderResourceView> mask;
-  if (shader.foliage) native->PSGetShaderResources(shader.far_tree ? 1u : 0u, 1, mask.GetAddressOf());
+  if (shader.foliage || !shader.cut_out_shader.empty()) native->PSGetShaderResources(shader.far_tree ? 1u : 0u, 1, mask.GetAddressOf());
+  bool cut_out = false;
+  if (!shader.foliage && mask) {
+    ComPtr<ID3D11Resource> mask_resource;
+    mask->GetResource(mask_resource.GetAddressOf());
+    const std::unique_lock lock(runtime.mutex);
+    cut_out = runtime.cut_out_textures.contains(mask_resource.Get());
+    if (!cut_out) mask.Reset();
+  }
+  const bool foliage = shader.foliage || cut_out;
   // The draw's identity: its buffers, ranges, textures and constant buffers (but the camera's at b0); a placed draw's its
   // geometry alone (its ranges, first vertex buffer and index buffer) and its mask (one grass mesh might be drawn with
   // more than one: its BLAS's alpha test is its first capture's).
@@ -1034,7 +1057,9 @@ void Capture(Context& command, const SceneShader& shader) {
   // A dynamic indexed draw can be compact (v16; the terrain's too: a vertex a texel, not three a triangle), so can a placed
   // draw of leaves (its trees sway: their leaves where drawn also captured every frame, in the wind): its mesh's key (its
   // index buffer and range) and that buffer.
-  const bool compactable = INDEXED && (placed ? (shader.foliage && !shader.capture_shader.empty() && !(shader.grass && !runtime.settings.grass_sway)) : dynamic)
+  const bool compactable = INDEXED
+                           && (placed ? (shader.foliage && !shader.capture_shader.empty() && !shader.still && !(shader.grass && !runtime.settings.grass_sway))
+                                      : dynamic)
                            && !shader.sun_facing && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
   uint64_t set_key = 14695981039346656037ull;
   ComPtr<ID3D11Buffer> compact_indices;
@@ -1229,7 +1254,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // A dynamic draw right after one of its kind (with its opacity mask) joins its capture, the helper takes them as one (the
   // frame's RT_CAPTURES ran out with the terrain, units and grass all captured every frame).
   const uint32_t flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
-                         | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
+                         | (foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
                          | (shader.thin ? dlaa_bridge::RT_THIN : 0u)
                          // Sprite soldiers and far trees block the sun's rays as grass does (leaves let some through).
                          | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u)
@@ -1243,7 +1268,7 @@ void Capture(Context& command, const SceneShader& shader) {
   sway = sway && runtime.compact.size() < dlaa_bridge::RT_COMPACT_DRAWS && runtime.captured_vertices + block_texels + row_texels <= MAX_VERTICES;
   if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || runtime.captured_vertices + row_texels > MAX_VERTICES)
             : (((compact ? runtime.compact.size() >= dlaa_bridge::RT_COMPACT_DRAWS
-                         : ((joined == nullptr || shader.foliage) && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)))
+                         : ((joined == nullptr || foliage) && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)))
                || runtime.captured_vertices + texels + row_texels > MAX_VERTICES)) {
     if (dynamic) runtime.costs.no_room += texels;
     return;
@@ -1261,9 +1286,9 @@ void Capture(Context& command, const SceneShader& shader) {
   if ((placed && index >= objects.rows_shaders.size()) || (!clip_space && index >= objects.capture_shaders.size())) return;
   // Leaves wait for a slice of the atlas (none: not in the scene this frame).
   uint32_t slice = 0;
-  if (!place && shader.foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
+  if (!place && foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
   sway = sway && mask && AtlasSlice(native, mask.Get(), &slice);
-  if (joined != nullptr && shader.foliage && runtime.slices.back() != slice) {
+  if (joined != nullptr && foliage && runtime.slices.back() != slice) {
     joined = nullptr;
   }
   ID3D11VertexShader* capture_vertex_shader = nullptr;
@@ -1289,8 +1314,8 @@ void Capture(Context& command, const SceneShader& shader) {
     if (!made->second) return;
     stream_output = made->second.Get();
   } else if (!place || sway) {
-    capture_vertex_shader = objects.capture_shaders[index].Get();
-    stream_output = objects.capture_outputs[index].Get();
+    capture_vertex_shader = (cut_out ? objects.cut_out_shaders : objects.capture_shaders)[index].Get();
+    stream_output = (cut_out ? objects.cut_out_outputs : objects.capture_outputs)[index].Get();
   }
 
   // The same draw into the stream output only (not rasterized): a new mesh's triangles (a placed one's first instance's;
@@ -1676,7 +1701,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     runtime.positions = {
         .inverse_view_projection = camera.inverse_view_projection,
         .camera = {camera.position[0], camera.position[1], camera.position[2], 1.f},
-        .size = {render_size[0], render_size[1], 0, 0},
+        .size = {render_size[0], render_size[1], (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? 1u : 0u), 0},
     };
     if (depth != nullptr) {
       Dispatch(native, objects.positions_shader.Get(), {depth, nullptr},

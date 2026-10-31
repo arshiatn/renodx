@@ -777,7 +777,9 @@ inline void InstallFogShadows(std::span<const uint32_t> shader_hashes) {
 // Attila's forward passes reading the sun's shadow map (ReShade.log 2026-10-28: lit everywhere under Ray-Traced Shadows
 // Only): two of the game's (patched: screen_space_shadows::PatchForwardShadows) and the particles' (shaders/vfx00, which
 // reads t49 itself); with them the particles' other path (shaders/vfx01: no shadows, the traced lights at b9 alone).
-constexpr std::array<uint32_t, 4> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D, 0xF5379F78};
+// The campaign's sea too (waterplane ps30_campaign: high to ultra, low; ATN's debug37: lit in the rays' shadows).
+constexpr std::array<uint32_t, 2> CAMPAIGN_SEA_SHADERS = {0x05A111E1, 0x450F6992};
+constexpr std::array<uint32_t, 6> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D, 0xF5379F78, CAMPAIGN_SEA_SHADERS[0], CAMPAIGN_SEA_SHADERS[1]};
 
 // A forward pass's draw reading the sun's shadow map: under Ray-Traced Shadows Only (its map empty) the rays' occlusion
 // at t49 (the patched sun draws', this frame's), else none (t49 reads 0: the game's shadow).
@@ -815,6 +817,27 @@ inline void InstallShadowReaders(std::span<const uint32_t> shader_hashes) {
     renodx::utils::command_action::Register(
         OnShadowReaderDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
+}
+
+// A shadow pass draw that alpha-tests its mesh: its diffuse map (t0) noted, the scene's meshes with it cut out as well (ATN's
+// debug37: campaign palms and pines were solid cards, blocks of black shadow). Runs before OnCasterDraw: skipped casters too.
+constexpr auto OnCutOutShadowDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  auto* native = internal::NativeContext(command.cmd_list);
+  if (native == nullptr || !internal::active.load(std::memory_order_relaxed)) return {};
+  ComPtr<ID3D11ShaderResourceView> view;
+  native->PSGetShaderResources(0, 1, view.GetAddressOf());
+  if (!view) return {};
+  ComPtr<ID3D11Resource> resource;
+  view->GetResource(resource.GetAddressOf());
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::runtime.cut_out_textures.insert(resource.Get());
+  return {};
+};
+
+// The game's shadow pass pixel shader that alpha-tests its meshes.
+inline void InstallCutOuts(uint32_t shadow_shader_hash) {
+  renodx::utils::command_action::Register(
+      OnCutOutShadowDraw, {.shader_hash = shadow_shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 }
 
 // Ray-Traced Shadows Only: draws are skipped while the sun's shadow map is bound alone (depth only) for drawing.
@@ -936,6 +959,7 @@ inline void Uninstall() {
     reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
     reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
   }
+  renodx::utils::command_action::Unregister(OnCutOutShadowDraw);
   UninstallScene();
 }
 
