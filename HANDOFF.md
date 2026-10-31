@@ -1,7 +1,7 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v118 HUGE BATCH (search "v118 HUGE BATCH"), see its ticks. v117 batch done (search "v117 HUGE BATCH").
+- NOW: v119 BIG BATCH (search "v119 BIG BATCH"), see its ticks. v118 done (search "v118 HUGE BATCH").
 - State: Attila v118 shipped (Downloads/twattila_v118.zip, helper61 = build/tw_dlaa_helper61, bridge v19; v118 is in Attila's
   folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn37); the addon there is a COPY, not the symlink to
   build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
@@ -22,6 +22,27 @@
   new zip must not exist); README section per version; commit after every step with the Co-Authored-By line.
 
 Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF.md`. This file supersedes its Ryse parts.
+
+## v119 BIG BATCH (ATN 2026-10-31 evening; ATN's debug37; commit after every step, never push, tick here)
+ATN's words, short: Graphics 1 of 2: Shadows on top (above Ambient Occlusion), Ray Tracing Low/Medium/High/Ultra presets gone, on top of
+Shadows three presets: Reset (everything but the DLSS section), No RT/PT (SSS default but range 480, AMD SSSR default, GT-VBGI Recommended,
+GT-VBAO Recommended), RT/PT (ATN's screenshot debug37/RT pt preset settings). All HDR presets (not SDR) and PsychoV31 defaults: Highlight
+Saturation 0.7, Highlight Hue Shift 0.04. Graphics 2 of 2: 4K UI compatibility locks only the shadow resolutions, the rest changeable; last 3
+Shadow Tests sliders removed; Grass Detail Distance + Grass Density next to Grass Height Distance in Grass & Trees (Tests); Grass Always
+Drawn removed.
+- [ ] 0 Questions for the report: PT AO / IL real path tracing? HDR-only use of the addon? RTX 2080/3080/AMD and RT/PT, crash or not?
+- [ ] 1 Item 2: GT-VBAO + GT-VBGI same rays? Only if it needs no same resolution / length: else just report.
+- [ ] 2 Item 2.1: campaign things jittering under DLAA (colourful in the motion debug): how ATN traces them, or find them.
+- [ ] 3 Item 3: presets + Shadows on top.
+- [ ] 4 Item 4: campaign shadows missing / too much (debug37). rigidcampaigntrees 0x4657DA8A, rigidcampaignvegetation 0x924D7813 / 0x819A414C
+      are not in the scene; pine cards come out solid (rigid draws have no alpha test in the scene).
+- [ ] 5 Item 5: campaign beaches below 100% (debug37 Scaling issue): campaignterrain coast 0x647DB547 / 0x6F9A3968, waterplane campaign.
+- [ ] 6 Item 6: campaign profile + log (Attila folder, tw_rt_profile*.csv, ReShade.log).
+- [ ] 7 Item 7: HDR presets Highlight Saturation 0.7, Hue Shift 0.04.
+- [ ] 8 Item 8: Graphics 2 of 2.
+- [ ] 9 Nexus / GitHub / Steam text: short summary, requirements, what we have, dead body slider, grass over 100 m, pictures on Discord / Google
+      Drive on top, Ko-fi + hot chocolate at the end (ATN's current text: Downloads/My current text for nexus (ATN).txt).
+- [ ] 10 Zip twattila_v119.zip, README, memory, report.
 
 ## Working with ATN
 - Very short answers, short code comments. Deliver changed files as a zip in `C:\Users\arshi\Downloads` (game folder
