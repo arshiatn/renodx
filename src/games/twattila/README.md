@@ -4,12 +4,19 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon3
 
 ## v118 (2026-10-31; renodx-tw-dlaa64.exe helper61: ship them together)
 
-- **Shadows, AO or GI gone, and the freeze after it, fixed at the cause**: a ray tracing request could overflow one buffer: 256 new
-  meshes in a frame plus a finished micromap bake. That request failed, and it stayed failed: one of the three request slots
-  never recorded again, so one effect at a time was gone (first the sun shadows, after toggles the Global Illumination), and its lost
-  work (new cluster sets) later hung the GPU. That GPU reset was what brought everything back, not the AO toggle. The test that
-  reproduces it (256 new leaves a frame with micromaps) failed the same way before and passes now. Should a request ever fail
-  again, ray tracing starts again by itself in a moment, nothing paused (the fourth failure turns it off).
+- **Shadows, AO or GI gone, fixed at the cause**: a ray tracing request could overflow one buffer: 256 new meshes in a frame plus
+  a finished micromap bake. That request failed, and it stayed failed: one of the three request slots never recorded again, so one
+  effect at a time was gone (first the sun shadows, after toggles the Global Illumination). What brought everything back was the
+  GPU reset below, not the AO toggle. The test that reproduces it (256 new leaves a frame with micromaps) failed the same way
+  before and passes now. Should a request ever fail again, ray tracing starts again by itself in a moment, nothing paused (the
+  fourth failure turns it off).
+- **The freeze is fixed, the real one**: a trace could be recorded while the last trace was still running on the GPU, and the GPU
+  reset at its sway or GPU micromap passes. With Light Bounce on that cannot happen: the traces take turns in one slot, and each
+  waits for the last. With it off they change slots: right after the toggle, or with Light Bounce off from the start at the
+  battle's second trace. A reset pauses sway and GPU micromaps until the game restarts, so it showed as one freeze, with those
+  options quietly off after it. Now a trace always waits for the last one, at no cost. Test with ATN's settings: 33 of 33 runs reset
+  before, 0 of 19 now (the sequence that froze, 18 toggles in a battle, traces alone, Light Bounce off from the start). What
+  exactly goes wrong inside the driver is not known. v117's fix was real but only half of it: its test settings could not show this.
 - **Water that looked like screen-space reflections** under SSAO / GT-VBAO / RT AO was the same failure: the log says the
   reflections stopped exactly then, and came back exactly then. The AO method has nothing to do with it.
 - **Smoke Shadows came back for good**: a particle draw holds its whole list, nearly all of it invisible (742 of 47884 had any
@@ -24,7 +31,8 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon3
   Global Illumination +1 ms. Sprites and far trees are met by the sun's rays alone now, so sprites got cheaper.
 - **Dead bodies** (and anything lying on the ground) in the shade: under Path-Traced GI a ray from their underside met the ground
   right beside it and brought back that ground's full shade light, so their lower edges glowed and no contact shadow showed. What
-  a ray meets within 30 cm now counts for less, the closer the less.
+  a ray meets within 30 cm now counts for less, the closer the less. Found by reading the code: not yet seen on a body (the test
+  replays can't bring the camera to one in the shade). Corners in the city came out soft, not crushed.
 - **The page names its technology**: Game's SSAO, GT-VBAO, Ray-Traced (RTAO), Path-Traced (ReSTIR GI); Game's Shadow Maps, Bend
   Screen-Space, Ray-Traced (DXR); GT-VBGI, Ray-Traced (One Bounce), Path-Traced (ReSTIR GI); Game's SSR, FidelityFX SSSR, Ray-Traced
   (DXR); DLSS Ray Reconstruction, DLSS Frame Generation, Opacity Micromaps. Saved settings and presets stay as they are.

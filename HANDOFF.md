@@ -3,7 +3,7 @@
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
 - NOW: v118 HUGE BATCH (search "v118 HUGE BATCH"), see its ticks. v117 batch done (search "v117 HUGE BATCH").
 - State: Attila v118 shipped (Downloads/twattila_v118.zip, helper61 = build/tw_dlaa_helper61, bridge v19; v118 is in Attila's
-  folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn36); the addon there is a COPY, not the symlink to
+  folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn37); the addon there is a COPY, not the symlink to
   build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
   everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory (MEMORY.md index;
   project_attila_first.md, reference_gpu_beside_game.md, reference_attila_frame_facts.md, reference_tw_ingame_testing.md,
@@ -1666,12 +1666,37 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Fix: MAX_PARTICLES 1 << 19; rt_smoke.cs gives a quad only to particles with opacity (u1 counter), MAX_SMOKE_QUADS 32768, a second
           dispatch empties the rest: at most 196608 vertices a frame (the old cap 393216). A/B in auto_save.replay, sun debug view: the two
           catapult trails' shadows there with it on, gone with it off. GPU its passes 0.24 ms.
-      [x] 3. The freeze at the toggle: GPU reset at the sway Dispatch.
-          Not reproduced on its own: the reset came 6 minutes after the failed request, as ATN's camera came back to that side of the battle:
-          the failed list held the new cluster sets' copies, the sets the CPU then counted on held garbage, and CLAS builds from them hung (0x887A0006,
-          no page fault, DRED: slot 2, sway Dispatch before the clusters' NVAPI operations, which DRED does not list). debug34 and debug36 both had
-          a failed request before a hang. With item 1 no request fails that way and any other that does restarts the scene before its garbage is used.
-          The soak below on the final build shows no reset.
+      [x] 3. The freeze: GPU reset at the sway Dispatch. NOT the failed request (my first note was wrong: withdrawn).
+          CAUSE (by test, not by a driver explanation): a trace RECORDED while the last trace still ran on the GPU. Requests take the
+          slots in turn and only a slot's own last request is waited for. Three requests a frame: every trace lands in the last trace's
+          slot, so it always waited. Light Bounce off (2 a frame, or traces alone): traces change slots and nothing waits. Reflections off
+          (T + B) changes slots too, but the long bounce list sits between two traces: clean. FIX: Trace does WaitFor(trace_value_) before
+          recording (no cost: the GPU is busy with that list anyway; also covers any toggle that shifts the order for a frame).
+          AFTER (ATN's ini, all runs valid, no driver events, closes 2-3 s, frame costs unchanged): sequence 0/8, ATN's 18-toggle list 0/4, traces
+          alone 0/3, Light Bounce off from the start 0/4: 0/19.
+          BEFORE, soak.ps1 with test_scripts/ReShade.ini.atn37, keys W:6,D:1.6,Y:1.2, RENODX_TW_SET "40:RayTracedLightBounce=0;42:RayTracedReflections=1":
+          default 3/3, Off-Screen Sway on 2/2, range 0 + Off-Screen on 2/2, far trees + sprites + smoke off 2/2, GPU bakes off 2/2, full room from
+          the start 2/2, Log Details off 3/3, RT AO in place of Path AO 2/2, GI strength 0 2/2, ATN's old grass 2/2, Reflections off too 2/2, Reflex
+          off 3/3, Light Bounce off from the start 3/3: 33/33. Sway fully off 1/2 (at a GPU bake's first Dispatch), no camera move 1/2, debug layer
+          0/1 (no errors). Sway AND GPU bakes off 0/3: what a reset pauses, which is why no run ever hung twice.
+          Light Bounce on: camera move alone 0/2, Path AO off 0/2, Path AO to RT AO 0/2, Reflections off 0/3 (slots and pool sizes are fine).
+          REPRO IN A MINUTE: RENODX_TW_SET "1:RayTracedLightBounce=0", no keys: hangs at the battle's second trace (trace 3), first sway Dispatch,
+          128 groups, so not workload: 3/3, and 2/2 with the wait taken out again (whyA). No toggle is needed: every battle with Light Bounce off
+          and sway on did this, then ran on with sway and bakes paused. Tried on it: without the mid-list SetComputeRootSignature (sway, first bake
+          pass) still 3/3, same op (whyB): not that. The wait only before the submit, after recording: still 3/3 (whyC): the RECORDING must not
+          overlap, not the submit. Inside the driver: unknown. By reading: every CPU write is per slot, every release fenced, no descriptors change.
+          Pattern for whoever digs: stops are the first sway Dispatch with the room growing, the CLAS operation with a full room from the start (and
+          10-18 s later instead of 0.2-5 s after the toggle), a bake's first Dispatch with sway off, or a list's start; never in a ray pass, no page
+          fault, two nvlddmkm 153 about 2 s apart (the first can come 0.2 s after the cause), only the RT device removed.
+          v117's "0 of 8" held only for ini atn35. Sway WAS on there (range 100); what kept it clean is not known: most likely 1 ray a pixel
+          (Rays a Pixel Match Output makes the trace long enough to overlap). I once wrote "sway 0": wrong.
+          TEST TRAP: a second Attila.exe fails while an earlier game still closes, and the old log's copy made waitA / waitB look like 0 of 4
+          (found by their identical logs; one waitA game took 6.5 minutes to close, not seen again: closes are logged now). soak.ps1 marks runs
+          without a new log INVALID, run_game waits for the earlier game, logs/closing.txt has the times.
+          Side fix: micromap BLAS rebuilds waited SLOTS requests "for the first compaction and rows read": with 2 requests a frame that slot's next
+          trace comes later, so a rebuild dropped an instanced leaf mesh's rows. Now 2 x SLOTS.
+          ATN's card (read-only, nvidia-smi): Afterburner, core locked ~2190 MHz, memory 17001 MHz (NVML's max 14001). GPU at 99% with Light Bounce
+          off too. Not the cause as far as the tests show (the rows split sharply), but if a reset ever comes back: try stock memory first.
       [x] 4. RT reflections: screen sides; water without RT reflections under SSAO / GT-VBAO / RT AO.
           Three causes. (a) Water "without RT reflections, looks like SSR": ReShade.log "Ray-traced reflections: not traced (the game's)" exactly
           09:47:33 to 09:49:31: the failed request of item 1 (its dead slot), nothing to do with the AO method.
@@ -1712,7 +1737,8 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 9. v118 zip (helper61), README, HANDOFF, memory, report.
       Left for the next batch (found on the way): bounce +1 ms with Far Tree Shadows though its rays pass the cards (probably the TLAS's
       map-wide smoke instance: try a BLAS for the cards of its own, or a smaller box); off-screen surfaces take the screen edge's
-      colour but are lit without grass shadows (a grass bank off screen is brighter than on screen); ContactShade not seen on bodies.
+      colour but are lit without grass shadows (a grass bank off screen is brighter than on screen); ContactShade not seen on bodies; why a
+      trace recorded over the last one hangs the GPU (repro above; only if it comes back in another shape).
       Harness: smoke, no_details, no_details_removal, bad_list, leaf_storm modes added; its rt_smoke call follows the shader's counter.
     - v117 HUGE BATCH (ATN 2026-10-31 ~00:20, away for hours / days: don't stop, don't wait for answers, commit after every step,
       tick off here, new issues found: fix them in the following batch; debug35 = C:/Program Files (x86)/Steam/steamapps/common/
