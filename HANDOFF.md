@@ -1,22 +1,22 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v119 BIG BATCH (search "v119 BIG BATCH"), see its ticks. v118 done (search "v118 HUGE BATCH").
-- State: Attila v118 shipped (Downloads/twattila_v118.zip, helper61 = build/tw_dlaa_helper61, bridge v19; v118 is in Attila's
-  folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn37); the addon there is a COPY, not the symlink to
+- NOW: v119 BIG BATCH done (search "v119 BIG BATCH"), its "Left" list next. v118 done (search "v118 HUGE BATCH").
+- State: Attila v119 shipped (Downloads/twattila_v119.zip, helper62 = build/tw_dlaa_helper62, bridge v19; v119 is in Attila's
+  folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn38); the addon there is a COPY, not the symlink to
   build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
   everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory (MEMORY.md index;
   project_attila_first.md, reference_gpu_beside_game.md, reference_attila_frame_facts.md, reference_tw_ingame_testing.md,
   reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
-- Read: "v118 HUGE BATCH", then v117 under it for recent context. ATN's last test: debug36 (C:/Program Files (x86)/Steam/
-  steamapps/common/Total War Attila/debug36). Next open: ATN's test of v118, its "Left for the next batch" list.
+- Read: "v119 BIG BATCH", then v118 under it for recent context. ATN's last test: debug37 (C:/Program Files (x86)/Steam/
+  steamapps/common/Total War Attila/debug37). Next open: ATN's test of v119, its "Left" list.
 - Round routine: helper build `src/games/twattila/dlaa_helper/build.ps1` (PowerShell), copy build/tw_dlaa_helper to a
   new build/tw_dlaa_helperN; 32-bit `cmake --build build32 --config Release --target renodx-twattila.addon32
   renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32`; 64-bit TW check `cmake --build build --config Release
   --target renodx-twpharaohdynasties.addon64 renodx-twtroy.addon64 renodx-twwarhammer.addon64
   renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64`; harness: copy the helper to build/tw_rt_harness, run
-  tools/tw/all_modes.sh (38 modes, all pass as of helper53; harness source tools/tw/rt_harness); profiles:
+  tools/tw/all_modes.sh (50 modes, all pass as of helper62; harness source tools/tw/rt_harness); profiles:
   `python -I tools/tw/profile_debug29.py <tw_rt_profile_helper.csv> 40`; pictures: tools/tw/shrink.py; zip: `python -I
   tools/tw/release_zip.py twattila twattila_v<old>.zip twattila_v<new>.zip --helper` (bump the helper folder in it; the
   new zip must not exist); README section per version; commit after every step with the Co-Authored-By line.
@@ -42,7 +42,26 @@ Drawn removed.
 - [x] 8 Item 8: Graphics 2 of 2.
 - [x] 9 Nexus / GitHub / Steam text: short summary, requirements, what we have, dead body slider, grass over 100 m, pictures on Discord / Google
       Drive on top, Ko-fi + hot chocolate at the end (ATN's current text: Downloads/My current text for nexus (ATN).txt).
-- [ ] 10 Zip twattila_v119.zip, README, memory, report.
+- [x] 10 Zip twattila_v119.zip, README, memory, report.
+Results (commits 729681ca, 43dddcf3, 5693b7cb, 4e85adc4; all in README v119):
+- Campaign: plants placed (rt_rows_campaign_vegetation, standing, .still), 62 fps against 66 without plants, 45 when captured every frame.
+  Cut-outs: rigid meshes whose t0 the shadow pass alpha-tests (ps F79BFB14). Sea reads the rays' shadows, its rays start on y = 0
+  (rt_positions, frame_history::campaign_frames). Refraction names added to WHOLE_TEXTURES. Animals: no bone history on the campaign
+  (motion_unit.z), one colour each in the debug view. ATN: the yellow glow over forests in the fire save is the game's own.
+- DLSS missing: picture stuck top-left below 100%, fixed (upscaled_frame). RT refused on non-NVIDIA (VendorId in Initialize).
+- Questions: PT is path tracing of the indirect light only (camera image rasterized, direct light the game's with ray-traced shadows,
+  hits take screen light / cache / learned lighting). HDR-only: the addon alone works (tested, helper missing, no crash). GT-VBAO +
+  GT-VBGI same rays: not done, they would need one resolution, radius, directions and samples (3/4 12.5 m against 1/4 20 m).
+- Tests: presets clicked in the overlay, 63 values match; Graphics 2 of 2 seen with compatibility on; battle frame has no campaign shader,
+  220 unit draws; harness 50 of 50; the 8 TW targets build.
+Left:
+- Pines near Augusta Treverorum not seen (under the shroud in the saves here); ATN to look. rigidcampaigntrees 0x4657DA8A never drawn in
+  my frames: its capture is untested.
+- A real RTX 20 / 30 and AMD card: only simulated (RENODX_TW_NO_DXR12, RENODX_TW_NO_CLUSTERS, DLSS files hidden).
+- Rome II, Thrones and the rest: port campaign capture, cut-outs, campaign_frames, trace wait in their rounds. Their highlight presets
+  unchanged (per-game hue defaults).
+- From the v118 list: bounce +1 ms with Far Tree Shadows, grass-lit off-screen banks.
+- The red "do not work correctly yet" note in Ray Tracing is still there: ATN's call when to take it off.
 
 ## Working with ATN
 - Very short answers, short code comments. Deliver changed files as a zip in `C:\Users\arshi\Downloads` (game folder
