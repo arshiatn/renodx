@@ -1640,7 +1640,10 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           beside the frame hangs is unknown (any op of the chain, also plain clear dispatches: no data pattern; the helper's queue
           and the game's D3D11 share the GPU only there: the game waits for every other list). The tail only ever helped with Light
           Bounce off (with it on the game waited for the follower anyway). Fix: tail removed, bakes back in the request's list,
-          8 bakes / 32768 triangles a request (profile: at most 1.5 ms a request, 47 of 3459 requests).
+          8 bakes / 32768 triangles a request (profile: at most 1.5 ms a request, 47 of 3459 requests). Final build (soakD, soakE):
+          0 of 8 on the sequence, 0 of 6 with 18 toggles in a battle (Light Bounce, reflections, AO, sun shadows, path ambient,
+          reuse modes, micromaps, Rays a Pixel, fog), no driver events. Harness: 44 of 44 modes pass. Rays a Pixel 4 in game: frame 26
+          -> 31 ms in the replay's first view, paths 1.39 -> 3.54 ms, sun 1.45 -> 3.23 ms.
           ATN's words: "Logs next to the exe: it froze again while ATN toggled every slider. "Maybe you can find out why. It is really
           random. Maybe it got something to do with my togglings all the time."
           Found so far: CORRECTION to v116: the freeze DID reproduce in my refl1 run (22:48:42, 8 s after reflections on): I

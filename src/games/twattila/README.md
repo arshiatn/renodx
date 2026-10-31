@@ -6,8 +6,9 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon3
 
 - **The freeze is fixed**: the GPU reset came from GPU Micromap Baking running beside the game's frame (since v114). Test
   (86 s a run, the sequence that froze): 3 of 5 runs hung that way, 0 of 8 with the bakes back where the game waits for them,
-  0 of 8 with GPU baking off. They cost at most 1.5 ms a frame, now 8 bakes a frame at most, and only when something new
-  appears. A second GPU reset no longer crashes the helper and the game.
+  0 of 8 with GPU baking off. The finished build: 0 of 8 on that sequence, 0 of 6 toggling 18 settings during a battle. The
+  bakes cost at most 1.5 ms a frame, 8 bakes a frame at most, and only when something new appears. A second GPU reset no longer
+  crashes the helper and the game.
 - **New Graphics 1 of 2**: one section per job (Anti-Aliasing and DLSS, Ambient Occlusion, Shadows, Global Illumination,
   Reflections and Water, Ray Tracing), all titles one colour. Each has a Method slider and shows only that method's settings;
   the rest is under More Options (closed, its own colour). DLAA in Anti-Aliasing is called DLSS now. Saved settings and presets
