@@ -1659,7 +1659,13 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           A failed request now counts as Lost: nothing of it ran but CPU state says it did (meshes_, sets_), the list never resets. main.cpp:
           new scene, addon captures again, nothing paused, the fourth failure leaves RT off (scene_off). skip() the same (BLAS scratch, PTLAS).
           Harness bad_list (RENODX_TW_TEST_BAD_LIST) passes all checks after the restart.
-      [ ] 2. Smoke shadows stop: the smoke is the LAST capture, skipped with RT_CAPTURES full; check why else.
+      [x] 2. Smoke shadows stop: the smoke is the LAST capture, skipped with RT_CAPTURES full; check why else.
+          CAUSE: a particle draw streams its whole list, nearly all without opacity (a one-off readback: 742 of 47884, 0-18 of 262144 in
+          2vs3.replay, whose one draw holds 262144). MAX_PARTICLES was 65536, first come: a big list drawn first filled it and the catapults'
+          smoke, drawn later, was dropped for as long as that list stayed. Not the failed request, not the toggles.
+          Fix: MAX_PARTICLES 1 << 19; rt_smoke.cs gives a quad only to particles with opacity (u1 counter), MAX_SMOKE_QUADS 32768, a second
+          dispatch empties the rest: at most 196608 vertices a frame (the old cap 393216). A/B in auto_save.replay, sun debug view: the two
+          catapult trails' shadows there with it on, gone with it off. GPU its passes 0.24 ms.
       [ ] 3. The freeze at the toggle: GPU reset at the sway Dispatch.
       [ ] 4. RT reflections: screen sides; water without RT reflections under SSAO / GT-VBAO / RT AO.
       [ ] 5. Dead bodies lit at their corners.

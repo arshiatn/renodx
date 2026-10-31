@@ -227,8 +227,11 @@ constexpr UINT MAX_DYNAMIC_VERTICES = 29u << 20;
 constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
-// Smoke Shadows: the particles streamed out between traces at most (48 bytes each), their capture's key.
-constexpr UINT MAX_PARTICLES = 1u << 16;
+// Smoke Shadows: the particles streamed out between traces at most (48 bytes each; a draw holds its whole list, nearly all
+// without opacity: 742 of a battle's 47884 had some, and at 65536 a list drawn first took the place of the catapults' smoke
+// for good, ATN's debug36), the quads for those with opacity at most (rt_smoke), their capture's key.
+constexpr UINT MAX_PARTICLES = 1u << 19;
+constexpr UINT MAX_SMOKE_QUADS = 1u << 15;
 constexpr uint64_t SMOKE_KEY = 0x534D4F4B45ull;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
 constexpr uint64_t PLACE_TURNS = 4;
@@ -276,11 +279,13 @@ struct DeviceObjects {
   ComPtr<ID3D11RasterizerState> rasterizer;
   ComPtr<ID3D11DepthStencilState> no_depth;
   // Smoke Shadows: the lit particles' stream output (three float4 a particle: centre, colour and opacity, size; made at
-  // the first, from the particle vertex shader's own code), rt_smoke's quads from them.
+  // the first, from the particle vertex shader's own code), rt_smoke's quads from them and its count of those taken.
   ComPtr<ID3D11Buffer> particles;
   ComPtr<ID3D11ShaderResourceView> particles_srv;
   ComPtr<ID3D11GeometryShader> particle_output;
   ComPtr<ID3D11ComputeShader> smoke_shader;
+  ComPtr<ID3D11Buffer> smoke_quads;
+  ComPtr<ID3D11UnorderedAccessView> smoke_quads_uav;
   // The sun's occlusion for the patched sun shaders (the display's size).
   ComPtr<ID3D11Texture2D> occlusion;
   ComPtr<ID3D11ShaderResourceView> occlusion_srv;
@@ -1483,6 +1488,9 @@ void CaptureParticles(Context& command) {
                                               .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
     D3D11_SHADER_RESOURCE_VIEW_DESC particles_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
     particles_view.Buffer.NumElements = MAX_PARTICLES * 3;
+    const D3D11_BUFFER_DESC quads_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS};
+    D3D11_UNORDERED_ACCESS_VIEW_DESC quads_view = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER};
+    quads_view.Buffer.NumElements = 1;
     const std::array<D3D11_SO_DECLARATION_ENTRY, 3> entries = {{
         {.SemanticName = "SV_POSITION", .SemanticIndex = 0, .ComponentCount = 4},
         {.SemanticName = "COLOR", .SemanticIndex = 0, .ComponentCount = 4},
@@ -1492,6 +1500,8 @@ void CaptureParticles(Context& command) {
     const auto code = game_code.find(smoke_vertex_shader);
     if (FAILED(device->CreateBuffer(&particles_desc, nullptr, objects.particles.GetAddressOf()))
         || FAILED(device->CreateShaderResourceView(objects.particles.Get(), &particles_view, objects.particles_srv.GetAddressOf()))
+        || FAILED(device->CreateBuffer(&quads_desc, nullptr, objects.smoke_quads.GetAddressOf()))
+        || FAILED(device->CreateUnorderedAccessView(objects.smoke_quads.Get(), &quads_view, objects.smoke_quads_uav.GetAddressOf()))
         || code == game_code.end()
         || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), entries.data(),
                                                                 static_cast<UINT>(entries.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM,
@@ -1630,18 +1640,25 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                  &sky, sizeof(sky), 1, 1);
       }
     }
-    // Smoke Shadows: the lit particles streamed out since the last trace as quads facing the sun after the captures
-    // (rt_smoke): a capture whose particles dim the helper's sun rays.
-    if (runtime.settings.smoke_shadows && runtime.particles != 0 && runtime.particles_frame + 1 >= runtime.frame
-        && runtime.captures.size() < dlaa_bridge::RT_CAPTURES && runtime.captured_vertices + (runtime.particles * 6) <= MAX_VERTICES) {
-      const std::array<uint32_t, 4> smoke = {runtime.captured_vertices, runtime.particles, dlaa_bridge::RT_TRANSFER_WIDTH, 0};
-      Dispatch(native, objects.smoke_shader.Get(), {objects.particles_srv.Get(), dlaa_bridge::bridge.rt_sun.srv.Get()},
-               {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr}, smoke.data(), sizeof(smoke), (runtime.particles + 63) / 64, 1);
-      runtime.captures.push_back({.key = SMOKE_KEY, .first_vertex = runtime.captured_vertices, .vertex_count = runtime.particles * 6,
+    // Smoke Shadows: the lit particles streamed out since the last trace, those with opacity as quads facing the sun after
+    // the captures (rt_smoke; its second dispatch empties the quads left): a capture whose particles dim the helper's sun rays.
+    const UINT smoke_quads = std::min(runtime.particles, MAX_SMOKE_QUADS);
+    if (runtime.settings.smoke_shadows && smoke_quads != 0 && runtime.particles_frame + 1 >= runtime.frame
+        && runtime.captures.size() < dlaa_bridge::RT_CAPTURES && runtime.captured_vertices + (smoke_quads * 6) <= MAX_VERTICES) {
+      const auto smoke_pass = [&](UINT particles, UINT items) {
+        const std::array<uint32_t, 4> smoke = {runtime.captured_vertices, particles, dlaa_bridge::RT_TRANSFER_WIDTH, smoke_quads};
+        Dispatch(native, objects.smoke_shader.Get(), {objects.particles_srv.Get(), dlaa_bridge::bridge.rt_sun.srv.Get()},
+                 {dlaa_bridge::bridge.rt_vertices.uav.Get(), objects.smoke_quads_uav.Get()}, smoke.data(), sizeof(smoke), (items + 63) / 64, 1);
+      };
+      constexpr std::array<UINT, 4> NO_QUADS = {};
+      native->ClearUnorderedAccessViewUint(objects.smoke_quads_uav.Get(), NO_QUADS.data());
+      smoke_pass(runtime.particles, runtime.particles);
+      smoke_pass(0, smoke_quads);
+      runtime.captures.push_back({.key = SMOKE_KEY, .first_vertex = runtime.captured_vertices, .vertex_count = smoke_quads * 6,
                                   .flags = dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_SMOKE});
       runtime.slices.push_back(0);
-      runtime.captured_vertices += runtime.particles * 6;
-      runtime.dynamic_vertices += runtime.particles * 6;
+      runtime.captured_vertices += smoke_quads * 6;
+      runtime.dynamic_vertices += smoke_quads * 6;
       runtime.particles = 0;
     }
     runtime.positions = {
