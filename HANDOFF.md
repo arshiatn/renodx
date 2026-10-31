@@ -23,7 +23,9 @@
   tools/tw/all_modes.sh (50 modes, all pass as of helper62; harness source tools/tw/rt_harness); profiles:
   `python -I tools/tw/profile_debug29.py <tw_rt_profile_helper.csv> 40`; pictures: tools/tw/shrink.py; zip: `python -I
   tools/tw/release_zip.py twattila twattila_v<old>.zip twattila_v<new>.zip --helper` (bump the helper folder in it; the
-  new zip must not exist); README section per version; commit after every step with the Co-Authored-By line.
+  new zip must not exist); players get only the slim zip (ATN 2026-11-01: no sources / other games): `python -I
+  tools/tw/player_zip.py twattila_v<new>.zip RenoDX_Attila_v<old>.zip RenoDX_Attila_v<new>.zip <READ ME .txt>` (the READ ME
+  text is the last player zip's "RenoDX Attila - READ ME.txt", updated); README section per version; commit after every step with the Co-Authored-By line.
 
 Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF.md`. This file supersedes its Ryse parts.
 
