@@ -1753,6 +1753,7 @@ void ConfigureAddon() {
       note,
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+          .label = "UI 4K Mod Compatibility",  // the Graphics page takes it by this (graphics_page.hpp)
           .section = "Graphics (Experimental)",
           .on_draw = [] {
             const char* state = (ui_mod_compatibility != 0) ? "On" : "Off";

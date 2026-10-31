@@ -32,10 +32,10 @@ ATN's words, verbatim:
 4) Let AMD and Intel GPUs use the RT/PT stuff but they probably can only do DXR 1.0/1.1 or 1.2, right? Just like something like 2080? (Idk what the "least" version is that a gpu can use but can we check what version a gpu uses and still let them try RT/PT despite it being much slower probably?)
 5) There are some cities in campaign mode (I saved as "claude1" and "claude2". You can open them if you want and fix the "jittering" stuffs. But if it is easier for you, I can open them and log or something for you)"
 
-- [ ] 1 Reset (graphics_page.hpp, preset_button("Reset", ..., {})): its changes {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}.
+- [x] 1 Reset (graphics_page.hpp, preset_button("Reset", ..., {})): its changes {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}.
       "Reflection back to Game's SSAO" is ATN's typo for Game's SSR. Water Caustics 0 = the game's. Only Reset: No RT/PT and RT/PT keep GT-VBAO and SSSR as defaults
       (page_defaults stays the sliders' defaults).
-- [ ] 2 Shadow Map Size + UI 4K Mod Compatibility to the Shadows section, both shown only with SHADOW_GAME (shadows_are(SHADOW_GAME)). The compatibility slider is a CUSTOM setting
+- [x] 2 Shadow Map Size + UI 4K Mod Compatibility to the Shadows section, both shown only with SHADOW_GAME (shadows_are(SHADOW_GAME)). The compatibility slider is a CUSTOM setting
       in addon.cpp without key or label: give it a label so Page::Take finds it (or page.Add it). Traps: Page::Defaults would put GraphicsShadowMapSize into page_defaults, then No RT/PT and
       RT/PT would reset it: keep it out of those; Graphics 2 of 2's two presets still write the key (tooltips say 8192). Compatibility stays on by default ([Attila] DisableGraphics missing = on).
       README, tooltips, attila_nexus_text ("Graphics 2 of 2" paragraph) follow.

@@ -337,7 +337,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           },
       };
     };
-    page.Add(preset_button("Reset", "Everything on this page but Anti-Aliasing and DLSS back to its default.", {}));
+    page.Add(preset_button("Reset",
+                           "Everything on this page but Anti-Aliasing and DLSS back to the game's: its SSAO, SSR and water.\n"
+                           "The rest at its default.",
+                           {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}));
     page.Add(preset_button("No RT/PT (Recommended)",
                            "Bend Screen-Space Shadows (Length 480), FidelityFX SSSR, GT-VBAO and GT-VBGI at their Recommended\n"
                            "settings. The rest of this page at its default.",
@@ -384,6 +387,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           [](int method) { ChooseShadows(method); }));
     page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ShadowMethodOf(b) == SHADOW_RAYS && b.aa->method != 5.f; }));
+    // The game's shadow maps' size and the UI 4K mod's lock on it (Graphics 2 of 2's before v120), with the game's shadows only.
+    const auto game = shadows_are(SHADOW_GAME);
+    page.Take({.match = "GraphicsShadowMapSize", .section = section, .shown = game});
+    page.Take({.match = "UI 4K Mod Compatibility", .section = section, .shown = game});
     page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
     page.Take({.match = "ScreenSpaceShadowsSoftness", .section = section, .shown = screen});
     page.Take({.match = "ScreenSpaceShadowsThickness", .section = section, .shown = screen});
@@ -551,6 +558,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
 
   page.Finish({lighting_settings::AO_SECTION, lighting_settings::GI_SECTION, feature_settings::SSS_SECTION, feature_settings::AA_SECTION}, RT_SECTION);
   page_defaults = page.Defaults(AA_SECTION);
+  // The presets leave Shadow Map Size alone (it needs a restart; Graphics 2 of 2's presets set it).
+  std::erase_if(page_defaults, [](const auto& value) { return value.first == "GraphicsShadowMapSize"; });
   for (const std::string& section : Sections()) renodx::utils::settings::section_tints.emplace_back(section, TITLE_TINT);
 }
 
