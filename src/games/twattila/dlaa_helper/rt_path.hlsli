@@ -104,6 +104,7 @@ static const float LIGHT_FIT_Y = 64.f;
 static const float LIGHT_FIT_MAX_Y = 16.f;
 static const float LIGHT_FIT_BLEND = 0.1f;
 static const float UNSEEN_ALBEDO = 0.35f;
+static const float CONTACT_RANGE = 0.3f;  // metres (ContactShade)
 static const float ROUGH_LIMIT = 0.75f;  // rougher surfaces keep the game's reflection: only their occlusion is traced
 static const float MAX_SPECULAR_FRAMES = 12.f;
 static const float SKY_HIT_DISTANCE = 65504.f;  // NVIDIA's for the sky (FP16's most)
@@ -522,10 +523,17 @@ void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 
                       (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
 }
 
+// What a camera ray meets right beside its start lies in that start's own shade, which the light it brings back does not
+// know: the underside of a dead body saw the ground under it as lit as the open ground, the body's lower edges glowed in
+// the shade and no contact shadow showed (ATN's debug36 list).
+float ContactShade(float hit_distance) {
+  return saturate(hit_distance / CONTACT_RANGE);
+}
+
 // Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
 // screen or the cache knows it) takes the stored light's place, and a change shortens the history (bright changes
-// dimmed until they settle). The change (0: none, 1: all of the history goes).
-float Validate(inout Reservoir previous, float3 origin) {
+// dimmed until they settle). The change (0: none, 1: all of the history goes). `contact`: its light in ContactShade's.
+float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
   const float hit_distance = length(to_hit);
   if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
@@ -534,6 +542,9 @@ float Validate(inout Reservoir previous, float3 origin) {
   }
   float3 light_now;
   if (!HitLight(previous.hit, light_now)) return 0.f;
+  if (contact) {
+    light_now *= ContactShade(hit_distance);
+  }
   const float3 change = abs(previous.light - light_now) / max(previous.light + light_now, 1e-3f);
   const float ratio = Luminance(previous.light) / max(Luminance(light_now), 1e-8f);
   previous.count *= clamp(ratio, 0.03f, 1.f);
@@ -594,7 +605,8 @@ void PathTraceTexel(uint2 id) {
                                              Random(uint3(id, frame * 16u + path * 2u + 1025u)));
     float first_distance;
     float3 first_normal;
-    const float3 sample_light = PathRadiance(origin, direction, first_range, sky_calibration, id, path, first_distance, first_normal);
+    const float3 sample_light = PathRadiance(origin, direction, first_range, sky_calibration, id, path, first_distance, first_normal)
+                                * ContactShade(first_distance);
     arriving += sample_light;
     // Cosine-weighted rays: the target over their density is pi times the light's luminance.
     Reservoir candidate;
@@ -621,7 +633,7 @@ void PathTraceTexel(uint2 id) {
     // Last frame's reservoir was made for a surface facing about the same way (else a new history starts).
     if (dot(LoadReceiverNormal(reuse_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
     float invalidity = 0.f;
-    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin);
+    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin, true);
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * samples);
     Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
           Random(uint3(id, frame * 16u + 6144u)));
@@ -775,7 +787,7 @@ void ReflectReservoirTexel(uint2 id) {
     Reservoir previous = LoadReservoir(reflect_samples[1u - set], reflect_data[1u - set], previous_texel);
     if (dot(LoadReceiverNormal(reflect_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
     float invalidity = 0.f;
-    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin);
+    if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin, false);
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)));
     if (LobeDensity(origin, normal, view, alpha, previous.hit) > 0.f) {
       Merge(reservoir, previous, previous.weight * previous.count, Random(uint3(pixel, frame * 16u + 9219u)));

@@ -898,13 +898,14 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
   bridge.hit_distance_written = false;
   bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides;
   if (bridge.shared != nullptr) {
-    // Ray tracing's counts change every frame: its line is logged when the part before ": " changes, else each minute.
+    // Ray tracing's counts change every frame: its line is logged when the part before ": " changes, else with Log Details
+    // each minute.
     const std::string_view ray_tracing = bridge.shared->rt_status;
     const std::array<std::string_view, 3> lines = {bridge.status, bridge.shared->fg_status,
                                                    ray_tracing.substr(0, ray_tracing.find(": "))};
     const uint64_t now = GetTickCount64();
     for (size_t index = 0; index < lines.size(); ++index) {
-      if (bridge.logged[index] == lines[index] && (index != 2 || lines[index].empty() || now < bridge.logged_time + 60000)) continue;
+      if (bridge.logged[index] == lines[index] && (index != 2 || lines[index].empty() || !bridge.details || now < bridge.logged_time + 60000)) continue;
       bridge.logged[index] = lines[index];
       if (index == 2) bridge.logged_time = now;
       if (!lines[index].empty()) renodx::utils::log::i("[Total War] ", (index == 2 ? ray_tracing : lines[index]));
