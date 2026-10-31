@@ -264,6 +264,7 @@ struct Runtime {
   uint64_t camera_frame = UINT64_MAX;      // the frame `camera` and `scene_depth` are from (a sun light draw's)
   uint64_t tonemapped_frame = UINT64_MAX;  // after it: no jitter
   uint64_t applied_frame = UINT64_MAX;     // the last frame TAA / SMAA T2x ran
+  uint64_t upscaled_frame = UINT64_MAX;    // the last frame DLSS answered
   uint64_t depth_upscaled_frame = UINT64_MAX;  // DLSS below 100%: the last frame UpscaleDepth ran
   Camera camera;
   Camera previous_camera;
@@ -1236,6 +1237,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       generation = inputs;
     }
     runtime.applied_frame = runtime.frame;
+    if (resolved) runtime.upscaled_frame = runtime.frame;
   }
   bind(nullptr, {}, {});
   if (resolved) native->CopyResource(target, objects.result.Get());
@@ -1413,9 +1415,10 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   ++runtime.frame;
   frame_history::tonemapped.store(false, std::memory_order_relaxed);
   runtime.scene_depth.Reset();
-  const bool ran = (runtime.applied_frame + 1 == runtime.frame);
-  // DLSS: below 100% once DLAA ran last frame (a frame without it, a menu, ends the scaling), at the display's exact
-  // aspect (whole aspect units).
+  const bool ran = (runtime.upscaled_frame + 1 == runtime.frame);
+  // DLSS: below 100% once DLAA ran last frame (a frame without it, a menu, ends the scaling: nothing would stretch the 3D
+  // image to the display, also where DLSS cannot start, AMD and Intel GPUs), at the display's exact aspect (whole aspect
+  // units).
   const float render_scale = std::clamp(settings.render_scale, 0.01f, 1.f);
   const bool scaled = settings.method == Method::DLAA && render_scale < 0.999f && ran && display.texture.width != 0;
   const auto render = (scaled ? frame_history::AspectSize(display.texture.width, display.texture.height, render_scale)

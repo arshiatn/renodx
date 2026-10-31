@@ -121,6 +121,10 @@ class RtScene12 {
     if (failed_) return false;
     if (device_) return true;
     folder_ = folder;
+    // NVIDIA's for now: its scene needs Ray Reconstruction, and no other driver has run it.
+    if (DXGI_ADAPTER_DESC1 adapter_identity = {}; FAILED(adapter->GetDesc1(&adapter_identity)) || adapter_identity.VendorId != 0x10DE) {
+      return Fail("Ray tracing needs an NVIDIA RTX GPU");
+    }
     // The Agility SDK through a device factory of its own (no developer mode; frame generation and Ray Reconstruction
     // keep Windows' runtime).
     std::string sdk = "Windows' D3D12";
@@ -211,7 +215,7 @@ class RtScene12 {
       return Fail("Ray tracing needs a GPU and driver with DXR 1.1");
     }
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model = {.HighestShaderModel = D3D_SHADER_MODEL_6_9};
-    dxr12_ = options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_2
+    dxr12_ = options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_2 && GetEnvironmentVariableW(L"RENODX_TW_NO_DXR12", nullptr, 0) == 0
              && SUCCEEDED(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model)))
              && shader_model.HighestShaderModel >= D3D_SHADER_MODEL_6_9;
 #if defined(RENODX_NVAPI_CLUSTERS)
