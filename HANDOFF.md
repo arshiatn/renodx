@@ -1672,8 +1672,8 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           slot, so it always waited. Light Bounce off (2 a frame, or traces alone): traces change slots and nothing waits. Reflections off
           (T + B) changes slots too, but the long bounce list sits between two traces: clean. FIX: Trace does WaitFor(trace_value_) before
           recording (no cost: the GPU is busy with that list anyway; also covers any toggle that shifts the order for a frame).
-          AFTER (ATN's ini, all runs valid, no driver events, closes 2-3 s, frame costs unchanged): sequence 0/8, ATN's 18-toggle list 0/4, traces
-          alone 0/3, Light Bounce off from the start 0/4: 0/19.
+          AFTER (ATN's ini, all runs valid, no driver events, closes 2-6 s, frame costs unchanged): sequence 0/11, ATN's 18-toggle list 0/4, traces
+          alone 0/3, Light Bounce off from the start 0/6: 0/24, the last 5 with the shipped binaries. Harness 48 of 48 modes.
           BEFORE, soak.ps1 with test_scripts/ReShade.ini.atn37, keys W:6,D:1.6,Y:1.2, RENODX_TW_SET "40:RayTracedLightBounce=0;42:RayTracedReflections=1":
           default 3/3, Off-Screen Sway on 2/2, range 0 + Off-Screen on 2/2, far trees + sprites + smoke off 2/2, GPU bakes off 2/2, full room from
           the start 2/2, Log Details off 3/3, RT AO in place of Path AO 2/2, GI strength 0 2/2, ATN's old grass 2/2, Reflections off too 2/2, Reflex
@@ -1738,7 +1738,8 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       Left for the next batch (found on the way): bounce +1 ms with Far Tree Shadows though its rays pass the cards (probably the TLAS's
       map-wide smoke instance: try a BLAS for the cards of its own, or a smaller box); off-screen surfaces take the screen edge's
       colour but are lit without grass shadows (a grass bank off screen is brighter than on screen); ContactShade not seen on bodies; why a
-      trace recorded over the last one hangs the GPU (repro above; only if it comes back in another shape).
+      trace recorded over the last one hangs the GPU (repro above; only if it comes back in another shape); the other TW games' helpers
+      get the trace wait in their port rounds (older zips can still hit it with Light Bounce off and GPU bakes or sway on).
       Harness: smoke, no_details, no_details_removal, bad_list, leaf_storm modes added; its rt_smoke call follows the shader's counter.
     - v117 HUGE BATCH (ATN 2026-10-31 ~00:20, away for hours / days: don't stop, don't wait for answers, commit after every step,
       tick off here, new issues found: fix them in the following batch; debug35 = C:/Program Files (x86)/Steam/steamapps/common/

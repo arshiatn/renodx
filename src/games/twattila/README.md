@@ -15,7 +15,7 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon3
   waits for the last. With it off they change slots: right after the toggle, or with Light Bounce off from the start at the
   battle's second trace. A reset pauses sway and GPU micromaps until the game restarts, so it showed as one freeze, with those
   options quietly off after it. Now a trace always waits for the last one, at no cost. Test with ATN's settings: 33 of 33 runs reset
-  before, 0 of 19 now (the sequence that froze, 18 toggles in a battle, traces alone, Light Bounce off from the start). What
+  before, 0 of 24 now (the sequence that froze, 18 toggles in a battle, traces alone, Light Bounce off from the start). What
   exactly goes wrong inside the driver is not known. v117's fix was real but only half of it: its test settings could not show this.
 - **Water that looked like screen-space reflections** under SSAO / GT-VBAO / RT AO was the same failure: the log says the
   reflections stopped exactly then, and came back exactly then. The AO method has nothing to do with it.
