@@ -82,8 +82,8 @@ bool IsModdedAutoExposureEnabled() {
 // PsychoV30 has no V25-style highlight-only saturation control. Recommended
 // saturation values therefore target V30's adaptation-relative LMS purity.
 // rendering_mode: PsychoV31 (2) in all of them, with V31's own sliders (ATN; Reset too: no Extended mode here).
-// ATN: Highlight Hue Shift 0.15 everywhere (its default), video AutoHDR 0.20 in the Recommended ones, off in Reset; Sky
-// Debanding off (too heavy).
+// ATN: Highlight Saturation 0.70 and Hue Shift 0.04 in the HDR ones (their defaults; the SDR preset keeps 1 and 0.15),
+// video AutoHDR 0.20 in the Recommended ones, off in Reset; Sky Debanding off (too heavy).
 void ApplyHDRPreset(
     float rendering_mode,
     float highlights,
@@ -95,7 +95,9 @@ void ApplyHDRPreset(
     float vfx_weather,
     float vfx_snow,
     float hue_shift,
-    float video_autohdr) {
+    float video_autohdr,
+    float highlight_saturation = 0.7f,
+    float highlight_hue_shift = 0.04f) {
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", rendering_mode},
       {"highlights", highlights},
@@ -124,11 +126,11 @@ void ApplyHDRPreset(
       {"v31_flare", 0.f},
       {"v31_saturation", 1.f},
       {"v31_dechroma", 0.f},
-      {"v31_highlight_saturation", 1.f},
+      {"v31_highlight_saturation", highlight_saturation},
       {"v31_roll_off", 1.f},
       {"v31_gamut_compression", 1.f},
       {"v31_gamut_compression_mode", 1.f},
-      {"v31_highlight_hue_shift", 0.15f},
+      {"v31_highlight_hue_shift", highlight_hue_shift},
       {"v31_highlight_saturation_shift", 0.f},
       {"video_autohdr", video_autohdr},
       {"sky_deband", 0.f},
@@ -371,7 +373,7 @@ void BuildRuntimeData() {
                    "no video AutoHDR. In SDR the game's and the UI's white are your monitor's own white.",
         .tint = 0xFFC107,
         .on_change = []() {
-          ApplyHDRPreset(2.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.f);
+          ApplyHDRPreset(2.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.f, 1.f, 0.15f);
           renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
@@ -579,11 +581,11 @@ void BuildRuntimeData() {
         .is_visible = IsPsychoV31Mode,
     },
     v31_slider("v31_highlight_saturation", &shader_injection.v31_highlight_saturation, "Highlight Saturation",
-               "Saturation of bright colors. 0 = less, 1 = PsychoV31's own, 2 = more."),
+               "Saturation of bright colors. 0 = less, 1 = PsychoV31's own, 2 = more. Default 0.70.", 2.f, 0.7f),
     v31_slider("v31_highlight_hue_shift", &shader_injection.v31_highlight_hue_shift, "Highlight Hue Shift",
                "Bright colors take the SDR image's hues: fire more orange / yellow, less pink.\n"
-               "0 = off, 1 = SDR hues. Default 0.15.",
-               1.f, 0.15f),
+               "0 = off, 1 = SDR hues. Default 0.04.",
+               1.f, 0.04f),
     v31_slider("v31_highlight_saturation_shift", &shader_injection.v31_highlight_saturation_shift,
                "Highlight Saturation Shift",
                "Gives bright colors the saturation of the SDR image (fire cores less pale and pink).\n"
@@ -943,10 +945,6 @@ tw::engine_tweaks::Option grass_density;
 tw::engine_tweaks::Option campaign_plants;
 tw::engine_tweaks::Option campaign_props;
 tw::engine_tweaks::Option building_detail;
-// Shadow tests (ATN debug5: buildings' own shadows come and go with small camera moves, also without RenoDX).
-tw::engine_tweaks::Option shadow_extrusion;
-tw::engine_tweaks::Option shadow_camera_depth;
-tw::engine_tweaks::Option shadow_margin;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
 // Every engine option above, then the tests' (their addresses fixed once engine_tests is filled).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
@@ -961,10 +959,9 @@ void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle
 renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
 bool graphics_hooks_installed = false;
-// ReShade.ini [Attila] DisableGraphics=1: none of the engine changes above (hooks, code, tweaks) and their sliders
-// hidden, for mods that change the same engine code (the UI 4K mod). The SSR Quality (a shader option) stays. On
-// without the key (ATN: the UI 4K mod is common).
-bool graphics_disabled = true;
+// ReShade.ini [Attila] DisableGraphics=1: Shadow Map Size locked at the game's: the UI 4K mod changes the same engine code
+// (ATN: nothing else needs locking). On without the key (ATN: the UI 4K mod is common).
+bool shadow_size_locked = true;
 int ui_mod_compatibility = 0;  // its slider: written to ReShade.ini, used from the next start
 
 
@@ -1436,7 +1433,7 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 
 // The shadow map size, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
-  if (graphics_disabled) return;
+  if (shadow_size_locked) return;
   twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size));
 }
 
@@ -1513,9 +1510,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 shader_injection.ssao_temporal != 0.f,
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
-  if (graphics_disabled || !at_start_done.load()) return;
+  if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
-  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size));
+  if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size));
   twattila::graphics_hooks::Update(
       {
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},
@@ -1634,26 +1631,17 @@ void ConfigureAddon() {
       {.name = "campaign_grass_lod4_distance"},
   };
   campaign_props.tweaks = {{.name = "campaign_props_max_distance"}};
-  // Objects' shadow volumes for culling (their size x it x 1.2, +0x441ae8), the sun's shadow camera's reach towards the
-  // sun beyond each cascade (150 m; 5000 m with battle terrain shadows, +0x1732afe) and the cascades' margin (1.05).
-  shadow_extrusion.tweaks = {{.name = "entity_display_shadow_extrusion_multiplier"}};
-  shadow_camera_depth.tweaks = {
-      {.name = "shadow_cam_depth_offset_battle"},
-      {.name = "g_battle_terrain_on_shadow_cam_depth_offset_battle"},
-  };
-  shadow_margin.tweaks = {{.name = "shadow_split_enlargement_safe_zone"}};
 
   // Graphics 2 of 2's tests (twattila/engine_tests.hpp).
   engine_tests = twattila::engine_tests::Attila();
-  graphics_options = {&object_detail,  &building_detail,  &campaign_trees,      &campaign_plants,
-                      &campaign_props, &shadow_extrusion, &shadow_camera_depth, &shadow_margin};
+  graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   for (auto& test : engine_tests) {
     graphics_options.push_back(&test.option);
   }
   talesofarise::pixel_trace::file_prefix = "attila";
   graphics_status = tw::engine_tweaks::StatusLine();
-  reshade::get_config_value(nullptr, "Attila", "DisableGraphics", graphics_disabled);
-  ui_mod_compatibility = graphics_disabled ? 1 : 0;
+  reshade::get_config_value(nullptr, "Attila", "DisableGraphics", shadow_size_locked);
+  ui_mod_compatibility = shadow_size_locked ? 1 : 0;
   // Every Graphics (Experimental) setting at its default: the presets change some, the rest goes back (none left over).
   // Not the ambient occlusion or the Light Bounce (their own sections); the tests too.
   std::vector<std::pair<std::string, float>> graphics_defaults = {
@@ -1732,11 +1720,6 @@ void ConfigureAddon() {
   auto* note = tw::engine_tweaks::Note();
   note->label += " Some apply only after loading a battle or a save.\n"
                  "The two presets below are the settings I would use myself.";
-  if (graphics_disabled) {
-    note->label = "Off while UI 4K Mod Compatibility is On (the default, for the UI 4K mod).\n"
-                  "To use these settings: turn it Off below, then restart the game.";
-    note->tint = 0xFF5050;
-  }
   const auto unit_distance = [](size_t index, const std::string& key, const std::string& label,
                                 const std::string& units) {
     return tw::engine_tweaks::Slider(&unit_detail[index], key, label,
@@ -1764,12 +1747,12 @@ void ConfigureAddon() {
               reshade::set_config_value(nullptr, "Attila", "DisableGraphics", ui_mod_compatibility);
             }
             if (ImGui::IsItemHovered()) {
-              ImGui::SetTooltip("On (default): none of this page's engine changes, for the UI 4K mod (it changes the\n"
-                                "same game code). Off: this page's settings work. SSR Quality works either way.\n"
+              ImGui::SetTooltip("On (default): Shadow Map Size stays at the game's, for the UI 4K mod (it changes the\n"
+                                "same game code). Everything else on this page works either way.\n"
                                 "Takes effect after restarting the game. By hand: ReShade.ini, [Attila] DisableGraphics.");
             }
             ImGui::SameLine();
-            const bool restart_pending = (ui_mod_compatibility != 0) != graphics_disabled;
+            const bool restart_pending = (ui_mod_compatibility != 0) != shadow_size_locked;
             ImGui::TextColored(ImVec4(1.f, 0.31f, 0.31f, 1.f), "%s",
                                (restart_pending ? "Restart the game now to apply this!" : "Changing this needs a game restart."));
             return false;
@@ -1846,14 +1829,6 @@ void ConfigureAddon() {
                                 "How far soldiers' footsteps kick up dust. Higher: heavier.", 4.f, 0.1f),
       tw::engine_tweaks::Slider(&object_detail, "GraphicsObjectDetail", "Model Detail Distance",
                                 "Battle: trees and other objects keep their detailed versions farther away.", 8.f),
-      tw::engine_tweaks::Slider(&grass_distance, "GraphicsGrassDistance", "Grass Detail Distance",
-                                "Battle: grass and plants keep their fuller versions farther away, and their cells reach\n"
-                                "farther (the game: 200 m). Heavier for the CPU. How far grass shows: Grass Height Distance.",
-                                4.f),
-      tw::engine_tweaks::Slider(&grass_density, "GraphicsGrassDensity", "Grass Density",
-                                "Battle: more grass and plants (the game leaves some out, more of them farther away;\n"
-                                "2x: all of them near the camera). Grass Always Drawn On already draws all of them.",
-                                8.f),
       tw::engine_tweaks::Slider(&building_detail, "GraphicsBuildingDetail", "Building Detail Distance",
                                 "Battle: buildings keep their detailed versions farther away. From the next battle.",
                                 8.f),
@@ -1871,8 +1846,9 @@ void ConfigureAddon() {
           .label = "Shadow Map Size",
           .section = "Graphics (Experimental)",
           .tooltip = "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
-                     "with it). More video memory. Applies after a restart.",
+                     "with it). More video memory. Applies after a restart. Locked by UI 4K Mod Compatibility.",
           .labels = {"2048 (Game's)", "4096", "8192"},
+          .is_enabled = [] { return !shadow_size_locked; },
       },
       new renodx::utils::settings::Setting{
           .key = "GraphicsBigBattleFix",
@@ -1885,17 +1861,6 @@ void ConfigureAddon() {
                      "jump around. On: while that happens, the farthest soldiers turn into sprites a bit sooner.",
           .labels = {"Off", "On"},
       },
-      tw::engine_tweaks::Slider(&shadow_extrusion, "GraphicsShadowTestExtrusion", "Shadow Test: Caster Reach",
-                                "Test (buildings losing their own shadows): how far objects' shadows are taken to reach\n"
-                                "when the game picks what casts shadows.",
-                                20.f),
-      tw::engine_tweaks::Slider(&shadow_camera_depth, "GraphicsShadowTestDepth", "Shadow Test: Sun Camera Depth",
-                                "Test (buildings losing their own shadows): how far towards the sun the shadow map still\n"
-                                "takes in objects.",
-                                40.f),
-      tw::engine_tweaks::Slider(&shadow_margin, "GraphicsShadowTestMargin", "Shadow Test: Cascade Margin",
-                                "Test (buildings losing their own shadows): the shadow map areas' margin around the view.",
-                                2.f),
       // The pixel trace (talesofarise_dlss/pixel_trace.hpp), one frame on request; its marker only while it is open.
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
@@ -1948,6 +1913,17 @@ void ConfigureAddon() {
       .max = 10.f,
       .format = "%.2fx",
   });
+  for (auto* setting : {tw::engine_tweaks::Slider(&grass_distance, "GraphicsGrassDistance", "Grass Detail Distance",
+                                                  "Battle: grass and plants keep their fuller versions farther away, and their cells reach\n"
+                                                  "farther (the game: 200 m). Heavier for the CPU. How far grass shows: Grass Height Distance.",
+                                                  4.f),
+                        tw::engine_tweaks::Slider(&grass_density, "GraphicsGrassDensity", "Grass Density",
+                                                  "Battle: more grass and plants (the game leaves some out, more of them farther away;\n"
+                                                  "2x: all of them near the camera).",
+                                                  8.f)}) {
+    setting->section = twattila::engine_tests::GRASS;
+    settings.push_back(setting);
+  }
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::BUTTON,
       .label = "Grass Trace",
@@ -2070,17 +2046,6 @@ void ConfigureAddon() {
       {"General", "Psycho V30", "PsychoV31", "Extra", "Extra (Experimental)", "Output (Restart Required)", "About"},
       engine_sections);
 
-  // With the engine changes off: their sliders hidden (the texts, the compatibility switch, the pixel trace and the SSR
-  // stay); then Settings Mode's pages.
-  for (auto* setting : settings) {
-    const bool engine = std::ranges::find(engine_sections, setting->section) != engine_sections.end();
-    if (graphics_disabled && engine && setting->value_type != renodx::utils::settings::SettingValueType::TEXT
-        && setting->value_type != renodx::utils::settings::SettingValueType::CUSTOM && setting->key != "ssr_quality"
-        && setting->key != "ssr_hierarchical" && setting->key != "ssr_rays" && setting->key != "SSRDenoiser"
-        && setting->key != "GrassHeightDistance") {
-      setting->is_visible = [] { return false; };
-    }
-  }
   // Graphics 1 of 2's layout (graphics_page.hpp), then Settings Mode's pages.
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
@@ -2116,11 +2081,7 @@ bool AttachAddon() {
   // The at-start tests (audio memory, read once as the game's audio starts): written as soon as the game has set its own
   // values, on a thread of their own (the addon may load before the game's code runs: SyncEarlyLoad). Up to a minute.
   SyncEarlyLoad();
-  if (graphics_disabled) {
-    at_start_done = true;
-  } else {
-    twattila::engine_tests::StartAtStart(L"empire.retail.dll", &engine_tests, &at_start_done, &at_start_stop);
-  }
+  twattila::engine_tests::StartAtStart(L"empire.retail.dll", &engine_tests, &at_start_done, &at_start_stop);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 

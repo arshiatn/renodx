@@ -18,7 +18,7 @@
 #include "./lighting_settings.hpp"
 #include "./rt_scene.hpp"
 
-// Attila's Graphics 1 of 2 (ATN): one section per job (anti-aliasing, ambient occlusion, shadows, Global Illumination,
+// Attila's Graphics 1 of 2 (ATN): one section per job (anti-aliasing, shadows, ambient occlusion, Global Illumination,
 // reflections, ray tracing), each with a method slider and only that method's settings, the less important ones under
 // More Options. Every setting keeps its key (saved settings and presets stay as they are): this file only moves them,
 // hides them and renames them. The method sliders hold nothing themselves: they read and write the keys that decide
@@ -27,6 +27,7 @@ namespace twattila::graphics_page {
 
 using renodx::utils::settings::Setting;
 using renodx::utils::settings::SettingValueType;
+using Values = std::vector<std::pair<std::string, float>>;
 
 inline const std::string AA_SECTION = "Anti-Aliasing and DLSS";
 inline const std::string AO_SECTION = "Ambient Occlusion";
@@ -77,7 +78,7 @@ inline int ReflectionMethodOf(const Bindings& b) {
 // The choices write what the method needs. Path-traced AO is Global Illumination's paths bringing the sky's light: it
 // turns them on, and leaving them falls back to ray-traced AO (the game's ambient would come back with no AO on it).
 inline void ChooseAo(const Bindings& b, int method) {
-  std::vector<std::pair<std::string, float>> values = {{"RayTracedPathAmbient", (method == AO_PATHS) ? 1.f : 0.f}};
+  Values values = {{"RayTracedPathAmbient", (method == AO_PATHS) ? 1.f : 0.f}};
   if (method == AO_GAME || method == AO_GTVBAO) values.emplace_back("ssao_mode", (method == AO_GTVBAO) ? 1.f : 0.f);
   values.emplace_back("RayTracedAmbientOcclusion", (method == AO_RAYS) ? 1.f : 0.f);
   if (method == AO_PATHS) {
@@ -89,14 +90,14 @@ inline void ChooseAo(const Bindings& b, int method) {
 
 inline void ChooseShadows(int method) {
   // Screen-space shadows stay set under ray-traced ones: they come back without DLSS.
-  std::vector<std::pair<std::string, float>> values = {{"RayTracedSunShadows", (method == SHADOW_RAYS) ? 1.f : 0.f}};
+  Values values = {{"RayTracedSunShadows", (method == SHADOW_RAYS) ? 1.f : 0.f}};
   if (method != SHADOW_RAYS) values.emplace_back("ScreenSpaceShadows", (method == SHADOW_SCREEN) ? 1.f : 0.f);
   renodx::utils::settings::UpdateSettings(values);
 }
 
 inline void ChooseGi(const Bindings& b, int method) {
   const bool leaves_paths = AoMethodOf(b) == AO_PATHS && method != GI_PATHS;
-  std::vector<std::pair<std::string, float>> values = {
+  Values values = {
       {"light_bounce_strength", (method == GI_OFF) ? 0.f : std::max(*b.light_bounce_strength, 1.f)},
       {"RayTracedLightBounce", (method >= GI_RAYS) ? static_cast<float>(method - GI_GTVBGI) : 0.f},
   };
@@ -108,7 +109,7 @@ inline void ChooseGi(const Bindings& b, int method) {
 }
 
 inline void ChooseReflections(int method) {
-  std::vector<std::pair<std::string, float>> values = {{"RayTracedReflections", (method == REFLECTION_RAYS) ? 1.f : 0.f}};
+  Values values = {{"RayTracedReflections", (method == REFLECTION_RAYS) ? 1.f : 0.f}};
   if (method != REFLECTION_RAYS) values.emplace_back("ssr_hierarchical", (method == REFLECTION_HIERARCHICAL) ? 1.f : 0.f);
   renodx::utils::settings::UpdateSettings(values);
 }
@@ -222,6 +223,16 @@ class Page {
     settings_->insert(settings_->begin() + static_cast<ptrdiff_t>(std::min(place_, settings_->size())), page_.begin(), page_.end());
   }
 
+  // Every setting of the finished page outside `section`, the method sliders' too, at its default.
+  [[nodiscard]] Values Defaults(const std::string& section) const {
+    Values values;
+    for (const Setting* setting : *settings_) {
+      const bool on_page = std::ranges::find(page_, setting) != page_.end() && setting->section != section;
+      if (!setting->key.empty() && (on_page || kept_.contains(setting->key))) values.emplace_back(setting->key, setting->default_value);
+    }
+    return values;
+  }
+
  private:
   std::vector<Setting*>* settings_;
   std::vector<Setting*> page_;
@@ -231,7 +242,7 @@ class Page {
 
 // The page's sections, `Graphics 1 of 2`'s for AssignPages.
 inline std::vector<std::string> Sections() {
-  return {AA_SECTION, AO_SECTION, SHADOWS_SECTION, GI_SECTION, REFLECTIONS_SECTION, RT_SECTION};
+  return {AA_SECTION, SHADOWS_SECTION, AO_SECTION, GI_SECTION, REFLECTIONS_SECTION, RT_SECTION};
 }
 
 inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
@@ -240,6 +251,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   static bool more_shadows = false;
   static bool more_gi = false;
   static bool more_rt = false;
+  static Values page_defaults;
 
   const auto always = [] { return true; };
   const auto dlss = [b] { return b.aa->method == 5.f; };
@@ -305,49 +317,64 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(EmptyLine(section));
   }
 
-  // Ambient occlusion.
-  {
-    const std::string& section = AO_SECTION;
-    const auto gtvbao = ao_is(AO_GTVBAO);
-    const auto rays = ao_is(AO_RAYS);
-    page.Add(MethodSlider(section,
-                          "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
-                          "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
-                          "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
-                          "thin ones.\n"
-                          "RTAO: from rays through the scene, in place of both. Needs DLSS.\n"
-                          "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
-                          "turns it on below. Needs DLSS.",
-                          {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)", "Path-Traced (ReSTIR GI)"}, [b] { return AoMethodOf(b); },
-                          [b](int method) { ChooseAo(b, method); }));
-    page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
-                  [b] { return AoMethodOf(b) >= AO_RAYS && b.aa->method != 5.f; }));
-    page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao});
-    page.Take({.match = "ao-presets", .section = section, .shown = gtvbao});
-    page.Take({.match = "ssao_strength", .section = section, .shown = gtvbao});
-    page.Take({.match = "ssao_radius", .section = section, .shown = gtvbao});
-    page.Take({.match = "ssao_thickness", .section = section, .shown = [b] { return AoMethodOf(b) == AO_GTVBAO || GiMethodOf(b) == GI_GTVBGI; },
-               .tooltip = "How thick objects are taken to be (GT-VBAO and GT-VBGI).\n"
-                          "Lower: light gets behind thin things; higher: darker behind them.",
-               .enabled = always});
-    page.Take({.match = "ssao_resolution", .section = section, .shown = gtvbao});
-    page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
-    page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
-    page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
-    page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
-    page.Add(MoreOptions(section, &more_ao, gtvbao));
-    const auto more_gtvbao = more(&more_ao, gtvbao);
-    for (const auto* key : {"ssao_quality", "ssao_directions", "ssao_auto_thickness", "ssao_temporal", "ssao_edge_fix", "ssao_denoise"}) {
-      page.Take({.match = key, .section = section, .shown = more_gtvbao});
-    }
-    page.Add(EmptyLine(section));
-  }
-
   // Shadows.
   {
     const std::string& section = SHADOWS_SECTION;
     const auto screen = shadows_are(SHADOW_SCREEN);
     const auto rays = shadows_are(SHADOW_RAYS);
+    // ATN's presets: every setting of the page but Anti-Aliasing and DLSS's, at its default but for theirs (Page::Defaults).
+    const auto preset_button = [&section](const std::string& label, const std::string& tooltip, const Values& changes) {
+      return new Setting{
+          .value_type = SettingValueType::BUTTON,
+          .label = label,
+          .section = section,
+          .group = "page-presets",
+          .tooltip = tooltip,
+          .tint = TITLE_TINT,
+          .on_change = [changes] {
+            renodx::utils::settings::UpdateSettings(page_defaults);
+            renodx::utils::settings::UpdateSettings(changes);
+          },
+      };
+    };
+    page.Add(preset_button("Reset", "Everything on this page but Anti-Aliasing and DLSS back to its default.", {}));
+    page.Add(preset_button("No RT/PT (Recommended)",
+                           "Bend Screen-Space Shadows (Length 480), FidelityFX SSSR, GT-VBAO and GT-VBGI at their Recommended\n"
+                           "settings. The rest of this page at its default.",
+                           {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}}));
+    page.Add(preset_button("RT/PT",
+                           "Ray-traced shadows and reflections, path-traced ambient occlusion and Global Illumination at my\n"
+                           "settings. The rest of this page at its default. Needs DLSS (Anti-Aliasing above).",
+                           {{"RayTracedSunShadows", 1.f},
+                            {"RayTracedShadowSoftness", 0.75f},
+                            {"RayTracedLeafLight", 1.f},
+                            {"RayTracedColouredShadows", 1.f},
+                            {"RayTracedSmokeShadows", 0.f},
+                            {"RayTracedLightSoftness", 0.25f},
+                            {"RayTracedLightImportance", 0.f},
+                            {"RayTracedSpriteShadows", 1.f},
+                            {"RayTracedFarTreeShadows", 1.f},
+                            {"RayTracedLightGlow", 1.f},
+                            {"RayTracedGrassSway", 1.f},
+                            {"RayTracedSwayRange", 75.f},
+                            {"RayTracedOffScreenSway", 1.f},
+                            {"RayTracedGrassShadowRange", 90.f},
+                            {"RayTracedPathAmbient", 1.f},
+                            {"RayTracedLightBounce", 2.f},
+                            {"light_bounce_strength", 1.f},
+                            {"RayTracedLightBounceRays", 1.f},
+                            {"RayTracedLightBounceResolution", 0.f},
+                            {"RayTracedLightBounceRange", 50.f},
+                            {"PathTracingBounces", 1.f},
+                            {"RayTracedReflections", 1.f},
+                            {"RayTracedReflectionSamples", 1.f},
+                            {"RayTracedReflectionReuse", 2.f},
+                            {"RayTracedWaterReflections", 1.f},
+                            {"RayTracedSpecularOcclusion", 1.f},
+                            {"WaterClarity", 1.f},
+                            {"WaterCaustics", 1.f},
+                            {"RayTracingOutputResolution", 0.f},
+                            {"RayTracedFogShadows", 1.f}}));
     page.Add(MethodSlider(section,
                           "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                           "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
@@ -394,6 +421,44 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedSwayRange", .section = section, .shown = more_rays, .label = "Swaying Shadows Range"});
     page.Take({.match = "RayTracedOffScreenSway", .section = section, .shown = more_rays, .label = "Off-Screen Sway"});
     page.Take({.match = "RayTracedGrassShadowRange", .section = section, .shown = more_rays, .label = "Grass Shadow Range"});
+    page.Add(EmptyLine(section));
+  }
+
+  // Ambient occlusion.
+  {
+    const std::string& section = AO_SECTION;
+    const auto gtvbao = ao_is(AO_GTVBAO);
+    const auto rays = ao_is(AO_RAYS);
+    page.Add(MethodSlider(section,
+                          "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
+                          "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
+                          "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
+                          "thin ones.\n"
+                          "RTAO: from rays through the scene, in place of both. Needs DLSS.\n"
+                          "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                          "turns it on below. Needs DLSS.",
+                          {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)", "Path-Traced (ReSTIR GI)"}, [b] { return AoMethodOf(b); },
+                          [b](int method) { ChooseAo(b, method); }));
+    page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
+                  [b] { return AoMethodOf(b) >= AO_RAYS && b.aa->method != 5.f; }));
+    page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao});
+    page.Take({.match = "ao-presets", .section = section, .shown = gtvbao});
+    page.Take({.match = "ssao_strength", .section = section, .shown = gtvbao});
+    page.Take({.match = "ssao_radius", .section = section, .shown = gtvbao});
+    page.Take({.match = "ssao_thickness", .section = section, .shown = [b] { return AoMethodOf(b) == AO_GTVBAO || GiMethodOf(b) == GI_GTVBGI; },
+               .tooltip = "How thick objects are taken to be (GT-VBAO and GT-VBGI).\n"
+                          "Lower: light gets behind thin things; higher: darker behind them.",
+               .enabled = always});
+    page.Take({.match = "ssao_resolution", .section = section, .shown = gtvbao});
+    page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
+    page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
+    page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
+    page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
+    page.Add(MoreOptions(section, &more_ao, gtvbao));
+    const auto more_gtvbao = more(&more_ao, gtvbao);
+    for (const auto* key : {"ssao_quality", "ssao_directions", "ssao_auto_thickness", "ssao_temporal", "ssao_edge_fix", "ssao_denoise"}) {
+      page.Take({.match = key, .section = section, .shown = more_gtvbao});
+    }
     page.Add(EmptyLine(section));
   }
 
@@ -466,7 +531,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   {
     const std::string& section = RT_SECTION;
     page.Take({.match = "Ray tracing and path tracing do not work correctly yet (fixed in the next update).", .section = section, .shown = always});
-    page.Take({.match = "rt-quality", .section = section, .shown = dlss});
     page.Take({.match = "RayTracingOutputResolution", .section = section, .shown = dlss});
     page.Take({.match = "RayTracedFogShadows", .section = section, .shown = dlss, .label = "Fog Shadows"});
     page.Add(Note("Needs DLSS (Anti-Aliasing above).", section, MORE_TINT, no_dlss));
@@ -486,6 +550,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   }
 
   page.Finish({lighting_settings::AO_SECTION, lighting_settings::GI_SECTION, feature_settings::SSS_SECTION, feature_settings::AA_SECTION}, RT_SECTION);
+  page_defaults = page.Defaults(AA_SECTION);
   for (const std::string& section : Sections()) renodx::utils::settings::section_tints.emplace_back(section, TITLE_TINT);
 }
 

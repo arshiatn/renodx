@@ -33,13 +33,13 @@ Drawn removed.
 - [ ] 0 Questions for the report: PT AO / IL real path tracing? HDR-only use of the addon? RTX 2080/3080/AMD and RT/PT, crash or not?
 - [ ] 1 Item 2: GT-VBAO + GT-VBGI same rays? Only if it needs no same resolution / length: else just report.
 - [ ] 2 Item 2.1: campaign things jittering under DLAA (colourful in the motion debug): how ATN traces them, or find them.
-- [ ] 3 Item 3: presets + Shadows on top.
+- [x] 3 Item 3: presets + Shadows on top.
 - [ ] 4 Item 4: campaign shadows missing / too much (debug37). rigidcampaigntrees 0x4657DA8A, rigidcampaignvegetation 0x924D7813 / 0x819A414C
       are not in the scene; pine cards come out solid (rigid draws have no alpha test in the scene).
 - [ ] 5 Item 5: campaign beaches below 100% (debug37 Scaling issue): campaignterrain coast 0x647DB547 / 0x6F9A3968, waterplane campaign.
 - [ ] 6 Item 6: campaign profile + log (Attila folder, tw_rt_profile*.csv, ReShade.log).
-- [ ] 7 Item 7: HDR presets Highlight Saturation 0.7, Hue Shift 0.04.
-- [ ] 8 Item 8: Graphics 2 of 2.
+- [x] 7 Item 7: HDR presets Highlight Saturation 0.7, Hue Shift 0.04.
+- [x] 8 Item 8: Graphics 2 of 2.
 - [ ] 9 Nexus / GitHub / Steam text: short summary, requirements, what we have, dead body slider, grass over 100 m, pictures on Discord / Google
       Drive on top, Ko-fi + hot chocolate at the end (ATN's current text: Downloads/My current text for nexus (ATN).txt).
 - [ ] 10 Zip twattila_v119.zip, README, memory, report.

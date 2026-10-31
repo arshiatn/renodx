@@ -119,8 +119,6 @@ inline std::vector<EngineTest> Attila() {
        .label = "Tree LOD Scale",
        .tooltip = "Trees' detail by their size on screen (with Projected Tree LODs on). Game: 1.35.",
        .option = {.tweaks = {{.name = "tree_lod_scaler"}}}},
-      Switch(GRASS, "GraphicsGrassAlwaysDrawn", "Grass Always Drawn",
-             "Grass cells drawn even where the game would skip them.", "scrub_node_always_render"),
       Switch(GRASS, "GraphicsProjectedTreeLods", "Projected Tree LODs",
              "Trees' detail by their size on screen instead of their distance.", "tree_lodding_method"),
       Switch(GRASS, "GraphicsFarTreeBlocks", "Far Tree Blocks", "Far trees drawn as merged flat blocks.",

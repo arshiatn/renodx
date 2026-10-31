@@ -951,11 +951,6 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                            const std::string& section = feature_settings::AA_SECTION,
                            const float* light_bounce_strength = nullptr) {
   const auto dlaa_on = [aa] { return aa->method == 5.f; };
-  // Quality presets: the rays and passes of the effects that are on (which effects are on stays as it is).
-  using Values = std::vector<std::pair<std::string, float>>;
-  const auto preset = [](Values values) {
-    return [values = std::move(values)]() { renodx::utils::settings::UpdateSettings(values); };
-  };
   // Turned on: the Light Bounce (Lighting) on with them when it was off (they trace its light: without it they did
   // nothing, ATN 2026-10-28).
   const auto light_bounce_on = [light_bounce_strength] {
@@ -964,17 +959,6 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
       renodx::utils::settings::UpdateSettings({{"light_bounce_strength", 1.f}});
     }
   };
-  const auto quality_button = [&](const char* label, const char* tooltip, Values values) {
-    return new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-        .label = label,
-        .section = section,
-        .group = "rt-quality",
-        .tooltip = tooltip,
-        .is_enabled = dlaa_on,
-        .on_change = preset(std::move(values)),
-    };
-  };
   settings->insert(settings->end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -982,18 +966,6 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tint = 0xFF5050,
       },
-      quality_button("Ray Tracing: Low", "Hard shadows, AO 1 ray at a quarter rate, bounce 2 rays, 1 path bounce, 1 reflection sample.",
-                     {{"RayTracedShadowSoftness", 0.f}, {"RayTracedAORays", 1.f}, {"RayTracedAOQuarter", 1.f},
-                      {"RayTracedLightBounceRays", 2.f}, {"PathTracingBounces", 1.f}, {"RayTracedReflectionSamples", 1.f}}),
-      quality_button("Medium", "AO 2 rays at a quarter rate, bounce 4 rays, 1 path bounce, 1 reflection sample.",
-                     {{"RayTracedShadowSoftness", 0.5f}, {"RayTracedAORays", 2.f}, {"RayTracedAOQuarter", 1.f},
-                      {"RayTracedLightBounceRays", 4.f}, {"PathTracingBounces", 1.f}, {"RayTracedReflectionSamples", 1.f}}),
-      quality_button("High", "AO 2 rays every pixel, bounce 4 rays, 2 path bounces, 1 reflection sample (the defaults).",
-                     {{"RayTracedShadowSoftness", 0.5f}, {"RayTracedAORays", 2.f}, {"RayTracedAOQuarter", 0.f},
-                      {"RayTracedLightBounceRays", 4.f}, {"PathTracingBounces", 2.f}, {"RayTracedReflectionSamples", 1.f}}),
-      quality_button("Ultra", "AO 4 rays every pixel, bounce 8 rays, 3 path bounces, 4 reflection samples.",
-                     {{"RayTracedShadowSoftness", 0.5f}, {"RayTracedAORays", 4.f}, {"RayTracedAOQuarter", 0.f},
-                      {"RayTracedLightBounceRays", 8.f}, {"PathTracingBounces", 3.f}, {"RayTracedReflectionSamples", 4.f}}),
   });
   settings->insert(settings->end(), {
       new renodx::utils::settings::Setting{
