@@ -2,6 +2,37 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v119 (2026-10-31; renodx-tw-dlaa64.exe helper62: ship them together)
+
+- **The campaign map's plants and forests are in the ray-traced scene**: rigidcampaignvegetation (0x924D7813, 0x819A414C) and
+  rigidcampaigntrees (0x4657DA8A) were never captured, so forests had no ray-traced shadows at all. They are placed as the
+  battle's trees are: each mesh once, its copies from their instance rows, so they cost little (62 fps with them, 66 without, in
+  the save's first view; 45 fps when they were captured every frame). They stand upright in the scene: the game leans each plant
+  by the camera's height, and a shadow leaning with the camera would swing.
+- **Blocks of black shadow on the campaign map**: palm and pine meshes are rigid meshes with cut-out cards. The scene had no alpha
+  test for rigid meshes, so every card was a solid rectangle. The game's own shadow pass knows which meshes are cut out
+  (ps30_shadow_alpha_test): their diffuse maps are noted there, and those meshes are cut out in the scene too, in battles as well.
+- **The campaign's sea takes the rays' shadows** (it was lit everywhere under Ray-Traced Shadows). Its rays start on the water, not
+  on the sea floor under it: the floor's tile edges shaded themselves, a thin stepped line over the open sea.
+- **Beaches below 100%**: the water refraction pass fills its whole half-size target, and the water reads it by its name. Ocean,
+  ocean2 and the campaign's sea and lakes call it by other names than rivers do, so they read the wrong part of it. Fixed for all
+  of them, naval battles too. The audit of a whole campaign frame found nothing else.
+- **Campaign animals jittering under DLAA**: their rainbow in the Motion Vectors view was last frame's bones: at the frame's end the
+  animation texture no longer holds what they drew with. On the campaign map they now move by their place alone: smooth, one
+  colour each.
+- **Below 100% without DLSS running** (DLSS's files missing, or an AMD or Intel GPU): the picture stayed in the top-left part of the
+  screen over grey. The render scale now only runs while DLSS answers.
+- **Ray tracing is NVIDIA only for now**: on other GPUs it stays off (it needs Ray Reconstruction, and no other driver has run it).
+- **Graphics 1 of 2**: Shadows moved above Ambient Occlusion, with three presets on top: Reset (everything but Anti-Aliasing and
+  DLSS), No RT/PT (Recommended) and RT/PT (ATN's settings). The Ray Tracing Low / Medium / High / Ultra buttons are gone, in every
+  game that shares them.
+- **HDR presets and PsychoV31's defaults**: Highlight Saturation 0.70, Highlight Hue Shift 0.04. The SDR preset keeps 1 and 0.15.
+- **Graphics 2 of 2**: UI 4K Mod Compatibility only locks Shadow Map Size now, everything else works with it on. The three Shadow
+  Test sliders are gone. Grass Detail Distance and Grass Density moved next to Grass Height Distance. Grass Always Drawn is gone.
+- Tested in game: both campaign saves here, a battle, DLSS's files missing, the helper missing, the DXR 1.1 path without micromaps
+  or Mega Geometry (test switches RENODX_TW_NO_DXR12, RENODX_TW_NO_CLUSTERS; 30 fps against 60 on the RTX 5090). Harness: 50 of 50
+  modes. Not seen: ATN's pines near Augusta Treverorum (under the save's shroud here), a real RTX 20 / 30 or AMD card.
+
 ## v118 (2026-10-31; renodx-tw-dlaa64.exe helper61: ship them together)
 
 - **Shadows, AO or GI gone, fixed at the cause**: a ray tracing request could overflow one buffer: 256 new meshes in a frame plus
