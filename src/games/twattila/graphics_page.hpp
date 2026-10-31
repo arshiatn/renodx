@@ -308,9 +308,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto gtvbao = ao_is(AO_GTVBAO);
     const auto rays = ao_is(AO_RAYS);
     page.Add(MethodSlider("Method", section,
-                          "Soft shadows in corners and where objects meet the ground.\n"
+                          "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                           "Game's: everything counts as solid, so soldiers and trees get dark halos.\n"
-                          "GT-VBAO: objects have a thickness, so light gets behind thin ones. Needs in-game SSAO on.\n"
+                          "GT-VBAO: objects have a thickness, so light gets behind thin ones.\n"
                           "Ray-Traced: from rays through the scene, in place of both. Needs DLSS.\n"
                           "Path-Traced: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
                           "turns Path-Traced Global Illumination on. Needs DLSS.",

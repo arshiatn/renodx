@@ -364,13 +364,14 @@ inline ID3D11DeviceContext* ImmediateContext(reshade::api::command_list* cmd_lis
 
 // Before the game's reflection draw (the depth it reads at `depth_slot`): this frame's pyramid (once) at its t10; with it
 // off, none (the game's march). With the resolve: the hit target (cleared once a frame) bound as the third target.
-inline bool OnReflectionDraw(reshade::api::command_list* cmd_list, UINT depth_slot = internal::DEPTH_SLOT) {
+// `march` false: no pixel of the draw marches (ray-traced reflections on all of them), neither.
+inline bool OnReflectionDraw(reshade::api::command_list* cmd_list, UINT depth_slot = internal::DEPTH_SLOT, bool march = true) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   auto* native = internal::ImmediateContext(cmd_list);
   if (native == nullptr) return true;
   ID3D11ShaderResourceView* pyramid = nullptr;
-  if (runtime.enabled) {
+  if (runtime.enabled && march) {
     ComPtr<ID3D11ShaderResourceView> depth_view;
     native->PSGetShaderResources(depth_slot, 1, depth_view.GetAddressOf());
     D3D11_SHADER_RESOURCE_VIEW_DESC depth_desc = {};

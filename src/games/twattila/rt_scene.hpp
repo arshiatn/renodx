@@ -205,8 +205,13 @@ inline bool OnReflectionDraw(reshade::api::command_list* cmd_list) {
   internal::water_pass = true;
   ComPtr<ID3D11ShaderResourceView> depth_stencil;
   if (auto* native = internal::NativeContext(cmd_list); native != nullptr) native->PSGetShaderResources(8, 1, depth_stencil.GetAddressOf());
-  BindReflections(cmd_list, false, true, depth_stencil.Get());
-  return ssr_hiz::OnReflectionDraw(cmd_list);
+  const bool reflected = BindReflections(cmd_list, false, true, depth_stencil.Get());
+  bool water_traced = false;
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    water_traced = internal::runtime.water_traced;
+  }
+  return ssr_hiz::OnReflectionDraw(cmd_list, ssr_hiz::internal::DEPTH_SLOT, !(reflected && water_traced));
 }
 
 // After its draws: the views unbound, the screen-space march's resolve when it ran.
