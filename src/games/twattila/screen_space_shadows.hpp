@@ -915,22 +915,6 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     auto& runtime = internal::runtime;
     const std::unique_lock lock(runtime.mutex);
     const auto& sun_draw = command.template GetCallbackData<T>();
-    // PROBE
-    {
-      static std::unordered_map<uint64_t, uint32_t> probe_seen;
-      ComPtr<ID3D11DepthStencilState> probe_state;
-      UINT probe_ref = 0;
-      native->OMGetDepthStencilState(probe_state.GetAddressOf(), &probe_ref);
-      D3D11_DEPTH_STENCIL_DESC probe_desc = {};
-      if (probe_state) probe_state->GetDesc(&probe_desc);
-      const uint64_t probe_key = (uint64_t{sun_draw.shader_hash} << 8) ^ probe_ref;
-      if (probe_seen[probe_key]++ == 0) {
-        renodx::utils::log::i(std::format("[PROBE] sun {:08X}: stencil {} ref {} read {:02X} write {:02X} func {} / {} depth {} frame {}", sun_draw.shader_hash,
-                                          static_cast<int>(probe_desc.StencilEnable), probe_ref, probe_desc.StencilReadMask, probe_desc.StencilWriteMask,
-                                          static_cast<int>(probe_desc.FrontFace.StencilFunc), static_cast<int>(probe_desc.BackFace.StencilFunc),
-                                          static_cast<int>(probe_desc.DepthEnable), runtime.frame));
-      }
-    }
     // The patched shaders' occlusion: this frame's on the main view, else none (reads 0: the game's light); with another
     // (extra_occlusion), the darker. The foliage ones under the screen-space shadow alone: Foliage Light's texel at t53.
     ID3D11ShaderResourceView* occlusion = nullptr;

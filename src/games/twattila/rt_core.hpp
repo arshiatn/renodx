@@ -147,6 +147,8 @@ struct Settings {
   uint32_t scene_test = 0;
   // Log Details: the numbers in the log every 10 s, the clocks and GPU timing queries behind them.
   bool debug_log = false;
+  // Sprite Soldier Shadows: the flat far soldiers in the scene (SceneShader::sun_facing).
+  bool sprite_shadows = false;
 
   bool operator==(const Settings&) const = default;
 };
@@ -170,6 +172,7 @@ struct SceneShader {
   bool foliage = false;
   bool grass = false;  // within the grass's share (half the helper's alpha-tested corners)
   bool thin = false;   // cloth and sails (RT_THIN)
+  bool sun_facing = false;  // sprite soldiers: never compact (a quad each), their capture version reads rt_sun at t0
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
 };
@@ -878,6 +881,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // The Debug View's scene test: a part of the scene alone.
   const uint32_t test = runtime.settings.scene_test;
   if ((test == 1 && !shader.terrain) || (test == 2 && shader.rows_shader.empty()) || (test == 3 && shader.foliage)) return;
+  if (shader.sun_facing && !runtime.settings.sprite_shadows) return;
   const auto& arguments = command.arguments;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   // A placed draw (a shader with a record version, v14: rigid objects, tree branches and leaves): its BLAS keyed by its
@@ -1024,7 +1028,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // draw of leaves (its trees sway: their leaves where drawn also captured every frame, in the wind): its mesh's key (its
   // index buffer and range) and that buffer.
   const bool compactable = INDEXED && (placed ? (shader.foliage && !shader.capture_shader.empty() && !(shader.grass && !runtime.settings.grass_sway)) : dynamic)
-                           && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
+                           && !shader.sun_facing && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
   uint64_t set_key = 14695981039346656037ull;
   ComPtr<ID3D11Buffer> compact_indices;
   if constexpr (INDEXED) {
@@ -1219,7 +1223,9 @@ void Capture(Context& command, const SceneShader& shader) {
   // frame's RT_CAPTURES ran out with the terrain, units and grass all captured every frame).
   const uint32_t flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
                          | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
-                         | (shader.thin ? dlaa_bridge::RT_THIN : 0u) | (shader.grass ? dlaa_bridge::RT_GRASS : 0u);
+                         | (shader.thin ? dlaa_bridge::RT_THIN : 0u)
+                         // Sprite soldiers block the sun's rays as grass does (leaves let some through).
+                         | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
   if (!dynamic || shader.foliage || joined == nullptr || joined->flags != flags
       || joined->first_vertex + joined->vertex_count != runtime.captured_vertices || joined->vertex_count % 3 != 0) {
@@ -1294,6 +1300,7 @@ void Capture(Context& command, const SceneShader& shader) {
     if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
+    if (shader.sun_facing) native->VSSetShaderResources(0, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
     if constexpr (INDEXED) {
       if (compact || sway) {
         // Each block's vertices once: points through the mesh's remap indices (the game's index buffer and topology put
@@ -1310,6 +1317,10 @@ void Capture(Context& command, const SceneShader& shader) {
     } else {
       native->DrawInstanced(arguments.vertex_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_vertex,
                             arguments.first_instance);
+    }
+    if (shader.sun_facing) {
+      ID3D11ShaderResourceView* no_view = nullptr;
+      native->VSSetShaderResources(0, 1, &no_view);
     }
   }
   const UINT rows_vertex = runtime.captured_vertices + (sway ? block_texels : (place ? 0u : vertex_count));

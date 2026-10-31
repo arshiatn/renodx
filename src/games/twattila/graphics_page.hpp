@@ -380,6 +380,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto more_rays = more(&more_shadows, rays);
     page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_rays, .label = "Importance-Sampled Torch Shadows"});
+    page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedLightGlow", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedGrassSway", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedSwayRange", .section = section, .shown = more_rays, .label = "Swaying Shadows Range"});
@@ -420,6 +421,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "light_bounce_checkerboard", .section = section, .shown = more_search});
     page.Take({.match = "light_bounce_backface", .section = section, .shown = more_search});
     page.Take({.match = "light_bounce_auto_thickness", .section = section, .shown = more_search});
+    page.Take({.match = "light_bounce_msaa_pixel", .section = section, .shown = more_on});
     const auto more_paths = more(&more_gi, gi_is(GI_PATHS));
     page.Take({.match = "RayTracedPathSer", .section = section, .shown = more_paths, .label = "Shader Execution Reordering"});
     page.Take({.match = "RayTracedSharc", .section = section, .shown = more_paths, .label = "SHaRC Radiance Cache"});

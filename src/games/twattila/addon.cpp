@@ -1117,7 +1117,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the main view's terrain (rigidterrain geom / custom geom, shader models 3 and
 // 4.1, old and new), rigid objects and tree branches, and their capture versions (world positions).
-constexpr std::array<twattila::rt_scene::SceneShader, 33> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x2FF76986, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0x6ECB6C09, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1154,6 +1154,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 33> SCENE_SHADERS = {{
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
+    // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
+    {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
 }};
 
 bool configured = false;

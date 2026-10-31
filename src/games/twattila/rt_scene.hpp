@@ -69,6 +69,7 @@ struct Sliders {
   float rays_reflections = 1.f;
   float rays_paths = 1.f;
   float debug_log = 0.f;           // the statistics in the log every 10 s
+  float sprite_shadows = 1.f;      // the flat far soldiers in the scene (Attila)
   float leaf_light = 0.f;
   float coloured_shadows = 1.f;    // Attila (its sun light shaders' colour)
   float grass_sway = 1.f;          // placed grass's swaying copies (Attila)
@@ -167,6 +168,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .debug_view = static_cast<uint32_t>(sliders.debug_view),
       .scene_test = ((sliders.debug_view != 0.f) ? static_cast<uint32_t>(sliders.scene_test) : 0u),
       .debug_log = sliders.debug_log != 0.f,
+      .sprite_shadows = sliders.sprite_shadows != 0.f,
   };
 }
 
@@ -204,6 +206,8 @@ inline const Host TW_HOST = {
 namespace internal {
 // A reflection pass OnReflectionDraw hooks ran (Attila's shaders: Ray-Traced Water Reflections shown).
 static bool water_pass = false;
+// The game has sprite soldiers in its scene shaders (Sprite Soldier Shadows shown).
+static bool sprite_shadows_installed = false;
 }  // namespace internal
 
 // The game's reflection pass (environment_specular_light, Attila's shaders: Attila, Thrones), before its draws: the
@@ -879,6 +883,7 @@ inline void InstallShadowsOnly() {
 inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pass::AmbientOcclusionDraw> ambient_draws,
                     const Host& host = TW_HOST) {
   InstallScene(shaders, host);
+  internal::sprite_shadows_installed = std::ranges::any_of(shaders, &SceneShader::sun_facing);
   light_bounce::SetRayTracedTrace(&internal::TraceLightBounce);
   for (const auto& draw : ambient_draws) {
     renodx::utils::command_action::Register(
@@ -1110,6 +1115,18 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "(up to 16 a pixel). The heaviest of the four.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSpriteShadows",
+          .binding = &sliders->sprite_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Sprite Soldier Shadows",
+          .section = section,
+          .tooltip = "The flat far soldiers cast ray-traced shadows too.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::sprite_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedDebugLog",
