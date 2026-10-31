@@ -1117,7 +1117,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the main view's terrain (rigidterrain geom / custom geom, shader models 3 and
 // 4.1, old and new), rigid objects and tree branches, and their capture versions (world positions).
-constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x2FF76986, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0x6ECB6C09, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1156,6 +1156,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
     // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
     {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
+    // Far trees' billboards: the same, each showing the tree from the sun.
+    {.hash = 0x4D50E1C7, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true},
 }};
 
 // Light Through Foliage: grass and leaves (SCENE_SHADERS), and the rigid objects drawn after them.
@@ -2097,7 +2099,10 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
-  reshade::register_event<reshade::addon_event::reshade_present>(OnReshadePresentShot);
+  if (GetEnvironmentVariableA("RENODX_TW_SHOT", nullptr, 0) != 0 || GetEnvironmentVariableA("RENODX_TW_PROFILE", nullptr, 0) != 0
+      || GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) != 0) {
+    reshade::register_event<reshade::addon_event::reshade_present>(OnReshadePresentShot);
+  }
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);

@@ -70,6 +70,7 @@ struct Sliders {
   float rays_paths = 1.f;
   float debug_log = 0.f;           // the statistics in the log every 10 s
   float sprite_shadows = 1.f;      // the flat far soldiers in the scene (Attila)
+  float far_tree_shadows = 1.f;    // the flat far trees in the scene (Attila)
   float leaf_light = 0.f;
   float coloured_shadows = 1.f;    // Attila (its sun light shaders' colour)
   float grass_sway = 1.f;          // placed grass's swaying copies (Attila)
@@ -169,6 +170,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .scene_test = ((sliders.debug_view != 0.f) ? static_cast<uint32_t>(sliders.scene_test) : 0u),
       .debug_log = sliders.debug_log != 0.f,
       .sprite_shadows = sliders.sprite_shadows != 0.f,
+      .far_tree_shadows = sliders.far_tree_shadows != 0.f,
   };
 }
 
@@ -208,6 +210,7 @@ namespace internal {
 static bool water_pass = false;
 // The game has sprite soldiers in its scene shaders (Sprite Soldier Shadows shown).
 static bool sprite_shadows_installed = false;
+static bool far_tree_shadows_installed = false;
 }  // namespace internal
 
 // The game's reflection pass (environment_specular_light, Attila's shaders: Attila, Thrones), before its draws: the
@@ -884,6 +887,7 @@ inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pas
                     const Host& host = TW_HOST) {
   InstallScene(shaders, host);
   internal::sprite_shadows_installed = std::ranges::any_of(shaders, &SceneShader::sun_facing);
+  internal::far_tree_shadows_installed = std::ranges::any_of(shaders, &SceneShader::far_tree);
   light_bounce::SetRayTracedTrace(&internal::TraceLightBounce);
   for (const auto& draw : ambient_draws) {
     renodx::utils::command_action::Register(
@@ -1129,13 +1133,26 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_visible = [] { return internal::sprite_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
+          .key = "RayTracedFarTreeShadows",
+          .binding = &sliders->far_tree_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Far Tree Shadows",
+          .section = section,
+          .tooltip = "The flat far trees cast ray-traced shadows too.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::far_tree_shadows_installed; },
+      },
+      new renodx::utils::settings::Setting{
           .key = "RayTracedDebugLog",
           .binding = &sliders->debug_log,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
           .default_value = 0.f,
           .label = "Log Details",
           .section = section,
-          .tooltip = "Ray tracing's numbers in ReShade.log every 10 s, for bug reports. Off: a little less CPU.",
+          .tooltip = "Ray tracing's numbers in the logs every 10 s, for bug reports. With it on when a battle starts,\n"
+                     "also where a GPU reset stopped. Off: nothing of this runs.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

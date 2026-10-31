@@ -250,6 +250,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                         "restarts."
                                       : "[TW ray tracing] Off until the game restarts (a second GPU reset).");
   };
+  const auto open_scene = [&] {
+    const bool details = (shared->rt_flags & twattila::dlaa_bridge::RT_DETAILS) != 0;
+    scene_open = !scene_off() && scene->Initialize(adapter.Get(), folder, details) && scene->Open(*shared, version);
+  };
   // The open set's objects in Ray Reconstruction and frame generation (their handles stay open: set_handles), on a new
   // device when a GPU reset removed theirs.
   const auto open_reconstruction = [&] {
@@ -310,7 +314,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (scene->Lost()) replace_lost_scene();
       scene_open = false;
       if (version >= 4 && shared->rt_vertices != 0) {
-        scene_open = !scene_off() && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
+        open_scene();
         if (!scene_open) strncpy_s(shared->rt_status, scene_off() ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
       } else {
         scene->Close();
@@ -362,7 +366,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       // shared reads all ones, dlaa_bridge::Prepare).
       if (scene_open && scene->Lost()) {
         replace_lost_scene();
-        scene_open = !scene_off() && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
+        open_scene();
       }
       // After a GPU reset the paused Experimental options stay off (the addon writes them again each request).
       if (scene_losses != 0) {

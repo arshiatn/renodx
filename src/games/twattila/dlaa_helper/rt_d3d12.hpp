@@ -116,7 +116,8 @@ class RtScene12 {
  public:
   // The device on the game's GPU, with DXR 1.1 (1.2 through the Agility SDK in `folder`\D3D12 when the driver has shader
   // model 6.9); false: unavailable (the status says why).
-  bool Initialize(IDXGIAdapter1* adapter, const std::filesystem::path& folder) {
+  // `details` (the addon's Log Details at the device's start): DRED, below.
+  bool Initialize(IDXGIAdapter1* adapter, const std::filesystem::path& folder, bool details) {
     if (failed_) return false;
     if (device_) return true;
     folder_ = folder;
@@ -129,10 +130,11 @@ class RtScene12 {
     // DRED (Device Removed Extended Data): after a GPU fault or hang (ATN 2026-10-28: frozen, then no ray tracing until
     // the game restarts), each command list's operations up to where the GPU stopped, the passes' markers, a page fault's
     // allocations (LostReport).
-    const auto record_removal = [](ID3D12DeviceRemovedExtendedDataSettings1* settings) {
-      settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
-      settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
-      settings->SetBreadcrumbContextEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    const auto record_removal = [details](ID3D12DeviceRemovedExtendedDataSettings1* settings) {
+      const D3D12_DRED_ENABLEMENT enablement = (details ? D3D12_DRED_ENABLEMENT_FORCED_ON : D3D12_DRED_ENABLEMENT_FORCED_OFF);
+      settings->SetAutoBreadcrumbsEnablement(enablement);
+      settings->SetPageFaultEnablement(enablement);
+      settings->SetBreadcrumbContextEnablement(enablement);
     };
     if (std::filesystem::exists(agility / L"D3D12Core.dll")
         && SUCCEEDED(D3D12GetInterface(SDK_CONFIGURATION, IID_PPV_ARGS(configuration.GetAddressOf())))
@@ -966,6 +968,7 @@ class RtScene12 {
                   "gpu_a_ms,gpu_b_ms,gpu_c_ms,gpu_d_ms,gpu_bakes,gpu_bakes_ms\n";
     }
     profiling_ = profiling;
+    details_ = profiling || (shared.rt_flags & dlaa_bridge::RT_DETAILS) != 0;
     const size_t slot_index = next_slot_;
     Slot& slot = slots_[slot_index];
     next_slot_ = (next_slot_ + 1) % SLOTS;
@@ -1031,7 +1034,9 @@ class RtScene12 {
     if (reset) {
       slot.marks.clear();
       slot.micromap_builds.clear();
-      slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
+      if (details_) {
+        slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
+      }
     }
     // The GPU harness's RENODX_TW_TEST_BAD_LIST: an invalid call in the third trace's list.
     if (reset && test_traces == 3 && GetEnvironmentVariableW(L"RENODX_TW_TEST_BAD_LIST", nullptr, 0) != 0) {
@@ -1054,7 +1059,7 @@ class RtScene12 {
     }
     LARGE_INTEGER cpu_recorded;
     QueryPerformanceCounter(&cpu_recorded);
-    if (timestamps_) cpu_timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}", CpuMs(cpu_start, cpu_waited), CpuMs(cpu_waited, cpu_recorded));
+    if (details_) cpu_timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}", CpuMs(cpu_start, cpu_waited), CpuMs(cpu_waited, cpu_recorded));
     traced_ = traced_ || recorded;
     if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
     LARGE_INTEGER submit_start;
@@ -1069,7 +1074,7 @@ class RtScene12 {
     slot.value = own_value_;
     LARGE_INTEGER submit_end;
     QueryPerformanceCounter(&submit_end);
-    if (timestamps_) cpu_timings_ += std::format(", submit {:.2f}", CpuMs(submit_start, submit_end));
+    if (details_) cpu_timings_ += std::format(", submit {:.2f}", CpuMs(submit_start, submit_end));
     slot.profile = profiling_ ? std::format("{},{},trace,{:.3f},{:.3f},{:.3f}{}", own_value_, shared.rt_frame, CpuMs(cpu_start, cpu_waited),
                                             CpuMs(cpu_waited, cpu_recorded), CpuMs(submit_start, submit_end),
                                             recorded ? profile_counts_ : std::string(PROFILE_COUNTS, ','))
@@ -1108,8 +1113,10 @@ class RtScene12 {
     if (recorded) {
       // (A removed device's slots keep their last request and passes: LostReport.)
       slot.marks.clear();
-      slot.request = std::format("{} {}: flags 0x{:X}, paths 0x{:X}", reflections ? "reflections" : "Light Bounce", own_value_ + 1, shared.rt_flags,
-                                 requested);
+      if (details_) {
+        slot.request = std::format("{} {}: flags 0x{:X}, paths 0x{:X}", reflections ? "reflections" : "Light Bounce", own_value_ + 1, shared.rt_flags,
+                                   requested);
+      }
       auto* list = slot.list.Get();
       StampSlot(list, slot_index);
       Stamp(list, slot_index * STAMPS + 4);
@@ -1709,6 +1716,7 @@ class RtScene12 {
     std::string request;
     std::vector<const wchar_t*> marks;
     std::string micromap_builds;  // LostReport: the BLASes built with micromaps (debug34: the GPU hung in one's build)
+    bool stamped = false;  // its last request wrote GPU times (Resolve)
     uint32_t gpu_bakes = 0;  // GPU Micromap Baking's bakes in its last trace (the profile)
     ComPtr<ID3D12Resource> instances;
     D3D12_RAYTRACING_INSTANCE_DESC* instance_data = nullptr;
@@ -2296,8 +2304,10 @@ class RtScene12 {
         if (*texture) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*texture)});
       }
       for (const UINT descriptor : written) device_->CreateUnorderedAccessView(nullptr, nullptr, &null_written, Descriptor(descriptor));
-      slow_report_ += std::format("{}[TW ray tracing] The {} history released (unused for {} frames).", (slow_report_.empty() ? "" : "\n"), effect,
-                                  HISTORY_FRAMES);
+      if (details_) {
+        slow_report_ += std::format("{}[TW ray tracing] The {} history released (unused for {} frames).", (slow_report_.empty() ? "" : "\n"), effect,
+                                    HISTORY_FRAMES);
+      }
     };
     const auto unused = [&](History kind) { return history_used_[kind] + HISTORY_FRAMES < frame; };
     if (previous_positions_ && unused(HISTORY_PATHS)) {
@@ -2331,6 +2341,7 @@ class RtScene12 {
 
   // A pass's name among the list's DRED breadcrumbs, kept with its slot (LostReport: DRED leaves markers unnamed).
   void Mark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
+    if (!details_) return;
     list->SetMarker(0, pass, static_cast<UINT>((std::wcslen(pass) + 1) * sizeof(wchar_t)));
     for (Slot& slot : slots_) {
       if (slot.list.Get() == list) slot.marks.push_back(pass);
@@ -2564,8 +2575,10 @@ class RtScene12 {
     if (cluster_growing_.valid() && cluster_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<ClusterRoom> made = cluster_growing_.get(); made) {
         UseClusterRoom(made.get());
-        slow_report_ += std::format("{}[TW ray tracing] Mega Geometry: room for {} clusters a frame now ({} MB).", (slow_report_.empty() ? "" : "\n"),
-                                    cluster_room_, (cluster_bytes_ + TEMPLATE_POOL_BYTES) >> 20);
+        if (details_) {
+          slow_report_ += std::format("{}[TW ray tracing] Mega Geometry: room for {} clusters a frame now ({} MB).", (slow_report_.empty() ? "" : "\n"),
+                                      cluster_room_, (cluster_bytes_ + TEMPLATE_POOL_BYTES) >> 20);
+        }
       } else {
         cluster_limit_ = cluster_room_;
       }
@@ -2864,8 +2877,8 @@ class RtScene12 {
       // texels an instance, so a capture after them is off the vertex texture's threes; read as threes, the grass's UVs
       // came from the wrong vertices, its alpha test changing every frame).
       uint32_t scene_triangles = 0;
-      slot->capture_keys.resize(capture_count);
-      slot->capture_flags.resize(capture_count);
+      slot->capture_keys.resize(details_ ? capture_count : 0u);
+      slot->capture_flags.resize(details_ ? capture_count : 0u);
       for (uint32_t index = 0; index < capture_count; ++index) {
         const dlaa_bridge::RtCapture& capture = shared.rt_captures[index];
         const auto& placement = placements[index];
@@ -2875,11 +2888,15 @@ class RtScene12 {
                                                scene_triangles, capture.flags};
         std::memcpy(slot->table_data + index * 8, entry.data(), sizeof(entry));
         if (placement.record != UINT32_MAX) scene_triangles += capture.vertex_count / 3;
-        slot->capture_keys[index] = capture.key;
-        slot->capture_flags[index] = capture.flags;
+        if (details_) {
+          slot->capture_keys[index] = capture.key;
+          slot->capture_flags[index] = capture.flags;
+        }
       }
-      slot->capture_keys.insert(slot->capture_keys.end(), compact_keys.begin(), compact_keys.end());
-      slot->capture_flags.insert(slot->capture_flags.end(), compact_flags.begin(), compact_flags.end());
+      if (details_) {
+        slot->capture_keys.insert(slot->capture_keys.end(), compact_keys.begin(), compact_keys.end());
+        slot->capture_flags.insert(slot->capture_flags.end(), compact_flags.begin(), compact_flags.end());
+      }
       // In rows of 65535 groups (D3D12's most along x: a frame of over 4.2 M triangles went past it).
       const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, 0, 0};
       const uint32_t scene_groups = (scene_triangles + 63) / 64;
@@ -2929,7 +2946,9 @@ class RtScene12 {
           Transition(slot->left_out.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
       };
       list->ResourceBarrier(static_cast<UINT>(scene_written.size()), scene_written.data());
-      list->CopyBufferRegion(slot->left_out_readback.Get(), 0, slot->left_out.Get(), 0, LEFT_OUT_BYTES);
+      if (details_) {
+        list->CopyBufferRegion(slot->left_out_readback.Get(), 0, slot->left_out.Get(), 0, LEFT_OUT_BYTES);
+      }
       const auto left_out_back = Transition(slot->left_out.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
       list->ResourceBarrier(1, &left_out_back);
       for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES}) {
@@ -3059,8 +3078,8 @@ class RtScene12 {
       std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometries(capture_count);
       std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> unit_geometries;
       std::vector<uint32_t> unit_layout;  // their vertices (the top bit: alpha-tested)
-      // Each unit draw's first vertex, triangles, normals, record flags, UVs and atlas slice (Mega Geometry's clusters).
-      std::vector<std::array<uint32_t, 6>> unit_sources;
+      // Each unit draw's first vertex, triangles, normals, record flags, UVs, atlas slice and flags (Mega Geometry's clusters).
+      std::vector<std::array<uint32_t, 7>> unit_sources;
       uint32_t units_record = UINT32_MAX;
       bool units_masked = false;  // grass among them (not forced opaque)
       struct Build {
@@ -3123,7 +3142,7 @@ class RtScene12 {
           unit_geometries.push_back(geometries[index]);
           unit_layout.push_back((capture.vertex_count / 3 * 3) | (placement.masked ? 0x80000000u : 0u));
           unit_sources.push_back({capture.first_vertex, capture.vertex_count / 3, placement.normal_offset, RecordFlags(capture, placement.masked, version),
-                                  placement.uv_offset, (version >= 6) ? shared.rt_capture_slices[index] : 0u});
+                                  placement.uv_offset, (version >= 6) ? shared.rt_capture_slices[index] : 0u, capture.flags});
           units_masked = units_masked || placement.masked;
           dynamic_triangles += capture.vertex_count / 3;
           if (placement.masked) grass_triangles += capture.vertex_count / 3;
@@ -3193,9 +3212,11 @@ class RtScene12 {
         uint64_t bytes = 0;
         BlasPlace blas = build_static(&micromap_geometries[index], &bytes);
         if (blas.address == 0) continue;
-        slot->micromap_builds += std::format("; micromap BLAS {} triangles, {} KB, {} levels, {}", mesh.triangles,
-                                             made.array ? (made.array->GetDesc().Width >> 10) : 0u, made.bake->histogram.size(),
-                                             made.bake->gpu ? "GPU bake" : "CPU bake");
+        if (details_) {
+          slot->micromap_builds += std::format("; micromap BLAS {} triangles, {} KB, {} levels, {}", mesh.triangles,
+                                               made.array ? (made.array->GetDesc().Width >> 10) : 0u, made.bake->histogram.size(),
+                                               made.bake->gpu ? "GPU bake" : "CPU bake");
+        }
         ReleaseBlas(&mesh.blas);
         mesh.blas = std::move(blas);
         mesh.bytes = bytes;
@@ -3213,10 +3234,17 @@ class RtScene12 {
       }
       // The smoke (the addon's last capture: rt_smoke's quads) in BLASes of its own, its instance met only by the rays
       // toward the sun: the ambient's, the local lights' and the paths' rays went through its particles, an alpha test each
-      // and their traversal (at 4K through 1000 of them 30-40 ms a frame each). Smoke before other dynamic captures (not
-      // their tail) stays in the units'.
+      // and their traversal (at 4K through 1000 of them 30-40 ms a frame each). Sprite soldiers and far trees (RT_SUN_ONLY)
+      // with it, moved there (with clusters each has its own record). Smoke before other dynamic captures (not their tail)
+      // stays in the units'.
+      const auto sun_alone = [](const std::array<uint32_t, 7>& source) {
+        return (source[3] & RECORD_SMOKE) != 0 || (source[6] & dlaa_bridge::RT_SUN_ONLY) != 0;
+      };
+      if (clusters_) {
+        std::ranges::stable_partition(unit_sources, [&](const std::array<uint32_t, 7>& source) { return !sun_alone(source); });
+      }
       size_t unit_count = unit_sources.size();
-      while (unit_count != 0 && (unit_sources[unit_count - 1][3] & RECORD_SMOKE) != 0) {
+      while (unit_count != 0 && sun_alone(unit_sources[unit_count - 1])) {
         --unit_count;
       }
       const size_t smoke_count = unit_sources.size() - unit_count;
@@ -3306,11 +3334,12 @@ class RtScene12 {
           if (source == unit_count) {
             units_end = cluster_count;
           }
-          const auto& [first_vertex, unit_triangles, normal_offset, record_flags, uv_offset, slice] = unit_sources[source];
+          const auto& [first_vertex, unit_triangles, normal_offset, record_flags, uv_offset, slice, capture_flags] = unit_sources[source];
           const bool masked = (record_flags & RECORD_MASKED) != 0;
-          built_wanted_ += (unit_triangles + CLUSTER_TRIANGLES - 1) / CLUSTER_TRIANGLES;
-          for (uint32_t first = 0; first < unit_triangles && cluster_count - templated_clusters < built_limit_; first += CLUSTER_TRIANGLES) {
-            const uint32_t count = std::min(CLUSTER_TRIANGLES, unit_triangles - first);
+          const uint32_t cluster_triangles = ((capture_flags & dlaa_bridge::RT_SCATTERED) != 0) ? 2u : CLUSTER_TRIANGLES;
+          built_wanted_ += (unit_triangles + cluster_triangles - 1) / cluster_triangles;
+          for (uint32_t first = 0; first < unit_triangles && cluster_count - templated_clusters < built_limit_; first += cluster_triangles) {
+            const uint32_t count = std::min(cluster_triangles, unit_triangles - first);
             auto& arg = args[cluster_count - templated_clusters];
             arg = {};
             arg.clusterId = cluster_count;
@@ -3674,7 +3703,7 @@ class RtScene12 {
     }
     // The pools' chunks logged when they change, against what separate buffers took.
     const auto held = [](const std::vector<BlasChunk>& chunks) { return std::ranges::count_if(chunks, [](const BlasChunk& chunk) { return chunk.buffer != nullptr; }); };
-    if (const auto chunks = static_cast<size_t>(held(blas_pools_[BUILD_POOL]) + held(blas_pools_[KEPT_POOL])); chunks != blas_chunks_logged_) {
+    if (const auto chunks = static_cast<size_t>(held(blas_pools_[BUILD_POOL]) + held(blas_pools_[KEPT_POOL])); details_ && chunks != blas_chunks_logged_) {
       blas_chunks_logged_ = chunks;
       slow_report_ += std::format("{}[TW ray tracing] Static BLASes: {} meshes, {} MB in {} pool chunks of {} MB (as buffers of their own {} MB).",
                                   (slow_report_.empty() ? "" : "\n"), meshes_.size(), bytes >> 20, chunks, BLAS_CHUNK_BYTES >> 20,
@@ -4072,7 +4101,7 @@ class RtScene12 {
     std::erase(micromap_reads_, nullptr);
     slot->gpu_bakes = static_cast<uint32_t>(gpu_baking.size());
     for (const MicromapBake* bake : gpu_baking) {
-      slot->micromap_builds += std::format("; GPU bake {} triangles{}", bake->triangles, bake->set ? ", grass set" : "");
+      if (details_) slot->micromap_builds += std::format("; GPU bake {} triangles{}", bake->triangles, bake->set ? ", grass set" : "");
     }
     // Before the game's signal, so the game waits for them (MICROMAP_GPU_BAKES keeps that short). In a list of their own after
     // it, beside the game's frame, the GPU reset in 3 runs of 5 at their dispatches; here in none of 8 (ATN's freezes).
@@ -4091,9 +4120,9 @@ class RtScene12 {
         passes += passes.empty() ? "" : ", ";
         for (; *pass != L'\0'; ++pass) passes += static_cast<char>(*pass);
       }
-      slow_report_ += std::format("{}[TW ray tracing] {} could not be recorded (0x{:08X}; {} captures, {} compact draws, {} placements, {} GPU "
+      slow_report_ += std::format("{}[TW ray tracing] Trace {} could not be recorded (0x{:08X}; {} captures, {} compact draws, {} placements, {} GPU "
                                   "bakes); its passes: {}.",
-                                  slow_report_.empty() ? "" : "\n", slot->request, static_cast<uint32_t>(closed), shared.rt_capture_count,
+                                  slow_report_.empty() ? "" : "\n", own_value_ + 1, static_cast<uint32_t>(closed), shared.rt_capture_count,
                                   shared.rt_compact_count, shared.rt_placement_count, slot->gpu_bakes, passes.empty() ? "none" : passes);
       return false;
     }
@@ -4103,6 +4132,7 @@ class RtScene12 {
       ReleaseMesh(&entry.second);
       return true;
     });
+    if (!details_) return true;
     status_ = std::format("Ray tracing ({}): every frame {:.2f} M triangles (terrain {:.2f}, grass and leaves {:.2f}; {}) | {} meshes ({} new, {} "
                           "micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles",
                           dxr12_ ? "DXR 1.2" : "DXR 1.1", static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
@@ -4121,7 +4151,7 @@ class RtScene12 {
                                   compact_drawn, sets_.size(), new_set_count, template_builds, meshes_.size(), built, micromaps_built,
                                   micromap_reads_.size() + micromap_queue_.size() + micromaps_baked_.size(), instance_count, placed_drawn,
                                   cluster_room_, bytes >> 20);
-    if (timestamps_) {
+    if (slot->stamped) {
       gpu_timings_ = std::format("GPU ms: scene {:.2f} (clusters {:.2f}), TLAS {:.2f}, trace {:.2f}, bounce {:.2f}, reflections {:.2f}", gpu_ms_[0],
                              gpu_ms_[5], gpu_ms_[1], gpu_ms_[2], gpu_ms_[3], gpu_ms_[4]);
     }
@@ -4147,9 +4177,10 @@ class RtScene12 {
     line.clear();
   }
 
-  // GPU times (but with RENODX_TW_NO_GPU_TIMES): a timestamp at `index`, a slot's resolved for reading, its last read back.
+  // GPU times (with Log Details or the profile, but with RENODX_TW_NO_GPU_TIMES): a timestamp at `index`, a slot's resolved
+  // for reading, its last read back.
   void Stamp(ID3D12GraphicsCommandList* list, size_t index) const {
-    if (timestamps_) list->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, static_cast<UINT>(index));
+    if (timestamps_ && details_) list->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, static_cast<UINT>(index));
   }
   // All of a slot's timestamps at its list's start (Resolve reads them all; the debug layer flagged the ones a request
   // never wrote, every request).
@@ -4163,14 +4194,15 @@ class RtScene12 {
     list->ResourceBarrier(1, &uav_barrier);
     Stamp(list, (slot_index * STAMPS) + 6 + part);
   }
-  void Resolve(ID3D12GraphicsCommandList* list, size_t slot_index) const {
-    if (timestamps_) {
+  void Resolve(ID3D12GraphicsCommandList* list, size_t slot_index) {
+    slots_[slot_index].stamped = timestamps_ && details_;
+    if (slots_[slot_index].stamped) {
       list->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, static_cast<UINT>(slot_index * STAMPS), STAMPS, timestamp_readback_.Get(),
                              slot_index * STAMPS * sizeof(uint64_t));
     }
   }
   void ReadTimes(size_t slot_index) {
-    if (!timestamps_) return;
+    if (!slots_[slot_index].stamped) return;
     if (timestamp_frequency_ == 0) queue_->GetTimestampFrequency(&timestamp_frequency_);
     const D3D12_RANGE range = {.Begin = slot_index * STAMPS * sizeof(uint64_t), .End = (slot_index + 1) * STAMPS * sizeof(uint64_t)};
     uint64_t* mapped = nullptr;
@@ -4346,7 +4378,7 @@ class RtScene12 {
 #endif
     }
     // The bakes' tally at most every 10 s (the log).
-    if ((micromap_tally_[0] + micromap_tally_[2]) != 0 && GetTickCount64() >= micromap_logged_ + 10000) {
+    if (details_ && (micromap_tally_[0] + micromap_tally_[2]) != 0 && GetTickCount64() >= micromap_logged_ + 10000) {
       micromap_logged_ = GetTickCount64();
       slow_report_ += std::format("{}[TW ray tracing] Leaf micromaps: {} meshes baked ({} KB), {} failed; {} grass sets given theirs.",
                                   (slow_report_.empty() ? "" : "\n"), micromap_tally_[0], micromap_tally_[1] >> 10, micromap_tally_[2],
@@ -5243,6 +5275,7 @@ class RtScene12 {
   size_t blas_chunks_logged_ = 0;  // their chunks at the last log line
   bool failed_ = false;
   std::atomic_bool request_failed_ = false;  // Lost (the worker sets it, main.cpp reads it)
+  bool details_ = false;  // the addon's Log Details or profile (this request's): GPU times, markers, the status, the log's lines
   std::string status_ = "Ray tracing off";
   // The last trace's times: the GPU's (after the status's label), the CPU's and the submit's (at its end).
   std::string gpu_timings_;

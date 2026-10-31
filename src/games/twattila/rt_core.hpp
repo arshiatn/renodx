@@ -149,6 +149,7 @@ struct Settings {
   bool debug_log = false;
   // Sprite Soldier Shadows: the flat far soldiers in the scene (SceneShader::sun_facing).
   bool sprite_shadows = false;
+  bool far_tree_shadows = false;
 
   bool operator==(const Settings&) const = default;
 };
@@ -172,7 +173,8 @@ struct SceneShader {
   bool foliage = false;
   bool grass = false;  // within the grass's share (half the helper's alpha-tested corners)
   bool thin = false;   // cloth and sails (RT_THIN)
-  bool sun_facing = false;  // sprite soldiers: never compact (a quad each), their capture version reads rt_sun at t0
+  bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at t0
+  bool far_tree = false;    // a far tree's billboard (with sun_facing): its opacity mask at t1
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
 };
@@ -886,7 +888,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // The Debug View's scene test: a part of the scene alone.
   const uint32_t test = runtime.settings.scene_test;
   if ((test == 1 && !shader.terrain) || (test == 2 && shader.rows_shader.empty()) || (test == 3 && shader.foliage)) return;
-  if (shader.sun_facing && !runtime.settings.sprite_shadows) return;
+  if (shader.sun_facing && !(shader.far_tree ? runtime.settings.far_tree_shadows : runtime.settings.sprite_shadows)) return;
   const auto& arguments = command.arguments;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   // A placed draw (a shader with a record version, v14: rigid objects, tree branches and leaves): its BLAS keyed by its
@@ -977,7 +979,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   // A leaf's opacity mask: its pixel shader's diffuse map.
   ComPtr<ID3D11ShaderResourceView> mask;
-  if (shader.foliage) native->PSGetShaderResources(0, 1, mask.GetAddressOf());
+  if (shader.foliage) native->PSGetShaderResources(shader.far_tree ? 1u : 0u, 1, mask.GetAddressOf());
   // The draw's identity: its buffers, ranges, textures and constant buffers (but the camera's at b0); a placed draw's its
   // geometry alone (its ranges, first vertex buffer and index buffer) and its mask (one grass mesh might be drawn with
   // more than one: its BLAS's alpha test is its first capture's).
@@ -1197,7 +1199,7 @@ void Capture(Context& command, const SceneShader& shader) {
       PrepareClusterSet(native, set_key, compact_indices.Get(), index_format, index_offset, arguments.first_index, arguments.index_count);
     }
   }
-  if (runtime.logged_draws[shader.hash]++ < 2) {
+  if (runtime.settings.debug_log && runtime.logged_draws[shader.hash]++ < 2) {
     std::array<ID3D11Buffer*, 3> buffers = {};
     std::array<UINT, 3> buffer_strides = {};
     std::array<UINT, 3> buffer_offsets = {};
@@ -1224,23 +1226,24 @@ void Capture(Context& command, const SceneShader& shader) {
                                       vertex_count, arguments.instance_count, arguments.first_instance, described,
                                       (moving ? ", moving" : "")));
   }
-  // A dynamic draw right after one of its kind (no opacity mask) joins its capture, the helper takes them as one (the
+  // A dynamic draw right after one of its kind (with its opacity mask) joins its capture, the helper takes them as one (the
   // frame's RT_CAPTURES ran out with the terrain, units and grass all captured every frame).
   const uint32_t flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
                          | (shader.foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
                          | (shader.thin ? dlaa_bridge::RT_THIN : 0u)
-                         // Sprite soldiers block the sun's rays as grass does (leaves let some through).
-                         | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u);
+                         // Sprite soldiers and far trees block the sun's rays as grass does (leaves let some through).
+                         | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u)
+                         | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
-  if (!dynamic || shader.foliage || joined == nullptr || joined->flags != flags
-      || joined->first_vertex + joined->vertex_count != runtime.captured_vertices || joined->vertex_count % 3 != 0) {
+  if (!dynamic || joined == nullptr || joined->flags != flags || joined->first_vertex + joined->vertex_count != runtime.captured_vertices
+      || joined->vertex_count % 3 != 0) {
     joined = nullptr;
   }
   // No room for the swaying copy: its placed copies alone.
   sway = sway && runtime.compact.size() < dlaa_bridge::RT_COMPACT_DRAWS && runtime.captured_vertices + block_texels + row_texels <= MAX_VERTICES;
   if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || runtime.captured_vertices + row_texels > MAX_VERTICES)
             : (((compact ? runtime.compact.size() >= dlaa_bridge::RT_COMPACT_DRAWS
-                         : (joined == nullptr && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)))
+                         : ((joined == nullptr || shader.foliage) && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)))
                || runtime.captured_vertices + texels + row_texels > MAX_VERTICES)) {
     if (dynamic) runtime.costs.no_room += texels;
     return;
@@ -1260,6 +1263,7 @@ void Capture(Context& command, const SceneShader& shader) {
   uint32_t slice = 0;
   if (!place && shader.foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
   sway = sway && mask && AtlasSlice(native, mask.Get(), &slice);
+  if (joined != nullptr && shader.foliage && runtime.slices.back() != slice) joined = nullptr;
   ID3D11VertexShader* capture_vertex_shader = nullptr;
   ID3D11GeometryShader* stream_output = nullptr;
   if (!place && clip_space) {
@@ -1383,7 +1387,7 @@ void Capture(Context& command, const SceneShader& shader) {
       runtime.new_sets.push_back(set_key);
       runtime.new_set_bytes += static_cast<uint32_t>((runtime.cluster_meshes.at(set_key).data.size() + 15) / 16 * 16);
     }
-    runtime.key_shaders[set_key] = shader.hash;
+    if (runtime.settings.debug_log) runtime.key_shaders[set_key] = shader.hash;
   };
   if (place) {
     if (sway) {
@@ -1416,7 +1420,7 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count, .flags = flags,
                                 .instances = (placed ? instances : 0u)});
     runtime.slices.push_back(slice);
-    runtime.key_shaders[key] = shader.hash;
+    if (runtime.settings.debug_log) runtime.key_shaders[key] = shader.hash;
   }
   runtime.captured_keys.insert(key);
   runtime.captured_vertices += texels + row_texels;
@@ -1430,8 +1434,8 @@ void Capture(Context& command, const SceneShader& shader) {
     if (shader.grass) runtime.grass_vertices += triangles * 3;
     runtime.dynamic_triangles += triangles;
     runtime.dynamic_clusters += clusters;
-    if (!shader.dynamic) ++runtime.dynamic_buffers[shader.hash];
-  } else {
+    if (!shader.dynamic && runtime.settings.debug_log) ++runtime.dynamic_buffers[shader.hash];
+  } else if (runtime.settings.debug_log) {
     ++runtime.new_static[shader.hash];
     // Its geometry (Update's report: what changed between captures of a mesh that came again).
     uint32_t first = 0;
@@ -1733,7 +1737,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.light_importance ? dlaa_bridge::RT_LIGHT_IMPORTANCE : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
-               | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u),
+               | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
+               | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
@@ -2207,6 +2212,7 @@ inline void Update(const Settings& settings) {
   const std::unique_lock lock(runtime.mutex);
   if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + 3000;
   runtime.settings = settings;
+  dlaa_bridge::bridge.details = settings.debug_log;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
   // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed): every mesh
@@ -2310,11 +2316,8 @@ inline void Update(const Settings& settings) {
   }
   if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
     if (!settings.debug_log) {
-      runtime.new_static.clear();
-      runtime.new_static_examples.clear();
       runtime.left_out_shaders.clear();
       runtime.shadow_readers.clear();
-      runtime.dynamic_buffers.clear();
     }
     if (!runtime.new_static.empty()) {
       std::vector<std::pair<uint32_t, uint32_t>> counts(runtime.new_static.begin(), runtime.new_static.end());

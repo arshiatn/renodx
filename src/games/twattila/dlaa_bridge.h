@@ -120,6 +120,12 @@ constexpr uint32_t RT_SMOKE = 32;
 // ambient's rays meet it (a blade blocks the sun), the others (point lights, fog, Light Bounce, path tracing,
 // reflections) pass it (most of a frame's rays crossed whole fields of it, ATN's 2026-10-29 profile).
 constexpr uint32_t RT_GRASS = 64;
+// Met by the sun's rays alone (with RT_DYNAMIC | RT_FOLIAGE | RT_GRASS): sprite soldiers and far trees, in the smoke's BLAS
+// (among the units every ray crossed them: far trees took bounce from 5.5 to 11 ms, reflections from 1.9 to 3.8).
+constexpr uint32_t RT_SUN_ONLY = 128;
+// Its quads scattered over the map (far trees): a cluster each (85 triangles' boxes reached across whole tiles, trace 2.4 ->
+// 6.2 ms).
+constexpr uint32_t RT_SCATTERED = 256;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;
@@ -163,6 +169,9 @@ constexpr uint32_t RT_COLOURED_SHADOWS = 32768;
 // a placed mesh the frame did not draw has its kept instances in view gone at once (the game drew another level of
 // detail there; they darkened it for 16 frames).
 constexpr uint32_t RT_DRAWN_PLACED = 65536;
+// Log Details: the helper keeps its GPU times, status and log lines (none without), and its D3D12 device, made with this
+// set (the flag is written then too), DRED's record of where a GPU reset stopped.
+constexpr uint32_t RT_DETAILS = 131072;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

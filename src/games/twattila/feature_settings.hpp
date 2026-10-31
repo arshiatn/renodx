@@ -570,7 +570,7 @@ inline std::vector<renodx::utils::settings::Setting*> SsrSettings(Injection* inj
             .default_value = 1.f,
             .label = "Reflection Denoiser",
             .section = GRAPHICS_SECTION,
-            .tooltip = "Hierarchical: reflections steadied over frames (less flicker on water).",
+            .tooltip = "Reflections steadied over frames (less flicker on water).",
             .labels = {"Off", "On"},
             .is_enabled = hierarchical,
         },
@@ -581,7 +581,7 @@ inline std::vector<renodx::utils::settings::Setting*> SsrSettings(Injection* inj
             .default_value = 0.f,
             .label = "Reflection Rays",
             .section = GRAPHICS_SECTION,
-            .tooltip = "Hierarchical: Half / Quarter trace that share of the pixels each frame, the rest filled in\n"
+            .tooltip = "Half / Quarter trace that share of the pixels each frame, the rest filled in\n"
                        "(faster, softer; best with the Denoiser).",
             .labels = {"Every Pixel", "Half", "Quarter"},
             .is_enabled = hierarchical,

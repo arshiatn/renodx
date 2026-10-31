@@ -13,11 +13,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <iomanip>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
-#include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -486,13 +484,6 @@ struct DeviceObjects {
   ComPtr<ID3D11Texture2D> after_foliage;
   ComPtr<ID3D11ShaderResourceView> after_foliage_srv;
   bool logged_gbuffer_depth = false;
-  // The one-time report (sss_probe): the G-buffer's depth copied as Bend's is, its output and its readback.
-  ComPtr<ID3D11ComputeShader> probe;
-  ComPtr<ID3D11UnorderedAccessView> probe_depth_uav;
-  ComPtr<ID3D11ShaderResourceView> probe_depth_srv;
-  ComPtr<ID3D11Buffer> probe_output;
-  ComPtr<ID3D11UnorderedAccessView> probe_output_uav;
-  ComPtr<ID3D11Buffer> probe_readback;
   ShaderSettings uploaded = {};
 };
 
@@ -507,7 +498,6 @@ struct Runtime {
   uint64_t computed_frame = UINT64_MAX;
   uint64_t debug_frame = UINT64_MAX;  // the Debug View drawn (OnTonemapDrawn)
   // A report into ReShade.log at the next computed frame (each time the shadows are turned on).
-  bool probe_pending = true;
   // The frames those copies are of.
   uint64_t before_foliage_frame = UINT64_MAX;
   uint64_t after_foliage_frame = UINT64_MAX;
@@ -680,10 +670,8 @@ inline ID3D11ShaderResourceView* SceneDepth(ID3D11Device* device, ID3D11DeviceCo
 }
 
 // This frame's occlusion from the scene's depth (`depth_view`; `msaa`: multisampled), camera and sun constants, with
-// the compute stage's bindings put back after. `gbuffer_depth` (the G-buffer's depth channel; `gbuffer_msaa`) only for
-// the report.
-inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth_view, bool msaa,
-                    ID3D11ShaderResourceView* gbuffer_depth, bool gbuffer_msaa, ID3D11Buffer* camera, ID3D11Buffer* lighting,
+// the compute stage's bindings put back after.
+inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth_view, bool msaa, ID3D11Buffer* camera, ID3D11Buffer* lighting,
                     UINT sun_direction) {
   auto& objects = runtime.objects;
   // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%;
@@ -771,74 +759,6 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     bind(objects.blur.Get(), {objects.depth_srv.Get(), objects.occlusion_srv.Get()}, {objects.soft_uav.Get(), nullptr},
          {nullptr, nullptr, objects.settings.Get(), nullptr});
     native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
-  }
-
-  // The report (ATN debug5: flat ground shadowed near the camera): the camera's and the sun's registers, the light
-  // coordinate, Bend's depth and the G-buffer's at 8 points, read back once (a stall) into ReShade.log.
-  if (runtime.probe_pending) {
-    runtime.probe_pending = false;
-    ComPtr<ID3D11Device> device;
-    native->GetDevice(device.GetAddressOf());
-    constexpr UINT PROBE_COUNT = 46;
-    if (!objects.probe) {
-      const D3D11_TEXTURE2D_DESC depth_desc = {
-          .Width = objects.width,
-          .Height = objects.height,
-          .MipLevels = 1,
-          .ArraySize = 1,
-          .Format = DXGI_FORMAT_R32_FLOAT,
-          .SampleDesc = {.Count = 1},
-          .Usage = D3D11_USAGE_DEFAULT,
-          .BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE,
-      };
-      const D3D11_BUFFER_DESC output_desc = {
-          .ByteWidth = PROBE_COUNT * 16,
-          .Usage = D3D11_USAGE_DEFAULT,
-          .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
-          .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
-          .StructureByteStride = 16,
-      };
-      const D3D11_BUFFER_DESC readback_desc = {.ByteWidth = PROBE_COUNT * 16, .Usage = D3D11_USAGE_STAGING,
-                                               .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
-      ComPtr<ID3D11Texture2D> depth_texture;
-      const bool made =
-          SUCCEEDED(device->CreateComputeShader(__sss_probe.data(), __sss_probe.size(), nullptr, objects.probe.GetAddressOf()))
-          && SUCCEEDED(device->CreateTexture2D(&depth_desc, nullptr, depth_texture.GetAddressOf()))
-          && SUCCEEDED(device->CreateUnorderedAccessView(depth_texture.Get(), nullptr, objects.probe_depth_uav.GetAddressOf()))
-          && SUCCEEDED(device->CreateShaderResourceView(depth_texture.Get(), nullptr, objects.probe_depth_srv.GetAddressOf()))
-          && SUCCEEDED(device->CreateBuffer(&output_desc, nullptr, objects.probe_output.GetAddressOf()))
-          && SUCCEEDED(device->CreateUnorderedAccessView(objects.probe_output.Get(), nullptr, objects.probe_output_uav.GetAddressOf()))
-          && SUCCEEDED(device->CreateBuffer(&readback_desc, nullptr, objects.probe_readback.GetAddressOf()));
-      if (!made) objects.probe.Reset();
-    }
-    if (objects.probe && gbuffer_depth != nullptr) {
-      const ComPtr<ID3D11ComputeShader>& gbuffer_copy = (gbuffer_msaa ? objects.depth_copy_ms : objects.depth_copy);
-      bind(gbuffer_copy.Get(), {gbuffer_depth, nullptr}, {objects.probe_depth_uav.Get(), nullptr}, {});
-      native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
-      bind(objects.probe.Get(), {objects.depth_srv.Get(), objects.probe_depth_srv.Get()},
-           {objects.probe_output_uav.Get(), nullptr}, {camera, lighting, nullptr, nullptr});
-      native->CSSetShaderResources(2, 1, objects.parameters_srv.GetAddressOf());
-      native->Dispatch(1, 1, 1);
-      native->CopyResource(objects.probe_readback.Get(), objects.probe_output.Get());
-      D3D11_MAPPED_SUBRESOURCE mapped = {};
-      if (SUCCEEDED(native->Map(objects.probe_readback.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
-        std::array<std::array<float, 4>, PROBE_COUNT> values = {};
-        std::memcpy(values.data(), mapped.pData, sizeof(values));
-        native->Unmap(objects.probe_readback.Get(), 0);
-        const auto line = [](const std::string& name, const std::array<float, 4>& value) {
-          std::stringstream s;
-          s << std::setprecision(9) << "[Total War] Screen-space shadows report: " << name << " " << value[0] << " "
-            << value[1] << " " << value[2] << " " << value[3];
-          reshade::log::message(reshade::log::level::info, s.str().c_str());
-        };
-        for (UINT index = 0; index < 36; ++index) line("camera c" + std::to_string(index), values[index]);
-        line("lighting c0 (sun_direction yzw)", values[36]);
-        line("light coordinate", values[37]);
-        for (UINT index = 38; index < PROBE_COUNT; ++index) {
-          line("depth (Bend's, G-buffer's, x, y)", values[index]);
-        }
-      }
-    }
   }
 
   native->CSSetShader(game_shader.Get(), nullptr, 0);
@@ -958,10 +878,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
                 runtime.objects.logged_gbuffer_depth = true;
               }
             }
-            internal::Compute(native, scene_depth, msaa, depth_view.Get(),
-                              depth_desc.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2DMS,
-                              frame_history::AttilaCamera(device.Get(), native, camera[0], sun_draw.camera_layout,
-                                                          &runtime.objects.camera),
+            internal::Compute(native, scene_depth, msaa,
+                              frame_history::AttilaCamera(device.Get(), native, camera[0], sun_draw.camera_layout, &runtime.objects.camera),
                               lighting[0], sun_draw.sun_direction);
             runtime.computed_frame = runtime.frame;
           }
@@ -1050,7 +968,6 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
     display = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
   }
   const std::unique_lock lock(internal::runtime.mutex);
-  if (settings.enabled && !internal::runtime.settings.enabled) internal::runtime.probe_pending = true;
   internal::runtime.settings = settings;
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;

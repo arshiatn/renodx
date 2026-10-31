@@ -1677,9 +1677,28 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           (c) Rays turned into their own surface by a normal map (waves at a grazing view) now bounce off it (surface_normal from the depth):
           lit share at the left edge 57 -> 38%. river view (for_claude1, W:6.4,Y:2.5): the bank's dark green streaks now reach the sides.
       [ ] 5. Dead bodies lit at their corners.
-      [ ] 6. Far tree billboards in the RT scene; toggles for them and the sprites under Shadows' More Options.
-      [ ] 7. Technology names on the settings page.
-      [ ] 8. Last check: nothing debug runs unless asked, nothing wasted with the overlay closed, last optimizations.
+      [x] 6. Far tree billboards in the RT scene; toggles for them and the sprites under Shadows' More Options.
+          rt_capture_billboard (0x4D50E1C7, mask t1, four views 0.25 wide, alpha 0.5): cards turned to the sun, the view of the tree from the
+          sun, NaN when faded out (v2.w 0). Dynamic capture a frame (47 quads a draw instanced, ~184 draws: ~55000 vertices). Joined by atlas
+          slice now (RtCapture: foliage draws of one slice join: 184 draws no longer eat RT_CAPTURES). First build: trace 2.4 -> 6.2 ms, bounce 5.5
+          -> 11, reflections 1.9 -> 3.8: among the units' cluster BLAS every ray crossed them and 42 scattered quads a cluster had boxes across
+          whole tiles. RT_SUN_ONLY: sprites and far trees moved to the smoke's BLAS (instance mask 2, sun's rays alone; stable_partition with
+          clusters); RT_SCATTERED: far trees a cluster a quad. Now on vs off: trace 2.60 -> 2.66, reflections 2.02 -> 2.05, scene 0.94 -> 1.25,
+          bounce 5.8 -> 6.9 (rays don't meet them, probably the TLAS's map-wide instance). Sprites gain the same (no more GI / reflection rays).
+          A/B in one run, sun debug view: the far specks are the difference. Toggles: Far Tree Shadows, Sprite Soldier Shadows in Shadows' More Options.
+      [x] 7. Technology names on the settings page.
+          Method labels: AO Game's SSAO / GT-VBAO / Ray-Traced (RTAO) / Path-Traced (ReSTIR GI). Shadows Game's Shadow Maps / Bend Screen-Space /
+          Ray-Traced (DXR). GI Off / GT-VBGI / Ray-Traced (One Bounce) / Path-Traced (ReSTIR GI). Reflections Game's SSR / FidelityFX SSSR / Ray-Traced
+          (DXR). Rows: DLSS Ray Reconstruction, DLSS Frame Generation, Opacity Micromaps (Leaves), Opacity Micromaps: GPU Baking, Importance-Sampled
+          Torch Shadows (RIS). Tooltips say what each is. Keys unchanged: saved settings and presets stay.
+      [x] 8. Last check: nothing debug runs unless asked, nothing wasted with the overlay closed, last optimizations.
+          RT_DETAILS (Log Details or the profile) now decides, in the helper: GPU timestamps and their readback, the status and profile strings
+          (status_ stays the ready line without it), PIX markers, slot.request, micromap_builds, the left-out readback + capture keys, the log's
+          history / room / BLAS / micromap lines. DRED only when Log Details was on as the device was made (shared.rt_flags written with the set;
+          D3D12_DRED_ENABLEMENT_FORCED_OFF else). A GPU reset's report then says only the error: Log Details' tooltip tells so.
+          Addon: new_static + examples, dynamic_buffers, key_shaders, logged_draws behind debug_log; the SSS one-time report (46 log lines and a
+          stall each time SSS came on) removed with sss_probe.cs and its parameters; OnReshadePresentShot registered only with a RENODX_TW_ test switch.
+          Already right: runtime.timed (D3D11 timestamps), frame_trace, shadow reader notes, ImGui only with the overlay open.
       [ ] 9. v118 zip (helper61), README, HANDOFF, memory, report.
     - v117 HUGE BATCH (ATN 2026-10-31 ~00:20, away for hours / days: don't stop, don't wait for answers, commit after every step,
       tick off here, new issues found: fix them in the following batch; debug35 = C:/Program Files (x86)/Steam/steamapps/common/

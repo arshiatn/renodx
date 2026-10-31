@@ -282,10 +282,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "AntiAliasingRenderScale", .section = section, .shown = dlss});
     page.Take({.match = "AntiAliasingDlaaPreset", .section = section, .shown = dlss, .label = "DLSS Preset",
                .tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default)."});
-    page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "Ray Reconstruction",
+    page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "DLSS Ray Reconstruction",
                .tooltip = "NVIDIA's denoiser for ray tracing in place of DLSS's usual model: much less noise in everything\n"
                           "ray-traced. Needs nvngx_dlssd.dll next to nvngx_dlss.dll."});
-    page.Take({.match = "FrameGeneration", .section = section, .shown = dlss, .label = "Frame Generation",
+    page.Take({.match = "FrameGeneration", .section = section, .shown = dlss, .label = "DLSS Frame Generation",
                .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
                           "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
                           "Needs Output HDR10 or SDR, a windowed or borderless game, and Streamline's files next to\n"
@@ -312,12 +312,14 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto rays = ao_is(AO_RAYS);
     page.Add(MethodSlider(section,
                           "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
-                          "Game's: everything counts as solid, so soldiers and trees get dark halos.\n"
-                          "GT-VBAO: objects have a thickness, so light gets behind thin ones.\n"
-                          "Ray-Traced: from rays through the scene, in place of both. Needs DLSS.\n"
-                          "Path-Traced: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
-                          "turns Path-Traced Global Illumination on. Needs DLSS.",
-                          {"Game's", "GT-VBAO", "Ray-Traced", "Path-Traced"}, [b] { return AoMethodOf(b); }, [b](int method) { ChooseAo(b, method); }));
+                          "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
+                          "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
+                          "thin ones.\n"
+                          "RTAO: from rays through the scene, in place of both. Needs DLSS.\n"
+                          "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                          "turns it on below. Needs DLSS.",
+                          {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)", "Path-Traced (ReSTIR GI)"}, [b] { return AoMethodOf(b); },
+                          [b](int method) { ChooseAo(b, method); }));
     page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return AoMethodOf(b) >= AO_RAYS && b.aa->method != 5.f; }));
     page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao});
@@ -347,10 +349,12 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto screen = shadows_are(SHADOW_SCREEN);
     const auto rays = shadows_are(SHADOW_RAYS);
     page.Add(MethodSlider(section,
-                          "Game's: its shadow maps. Screen-Space: those plus fine contact shadows from what is on screen\n"
-                          "(Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                          "Ray-Traced: every shadow from rays, the sun's and the torches' and fires', in place of both. Needs DLSS.",
-                          {"Game's", "Screen-Space", "Ray-Traced"}, [b] { return ShadowMethodOf(b); }, [](int method) { ChooseShadows(method); }));
+                          "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
+                          "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                          "DXR: DirectX Raytracing, every shadow from rays, the sun's and the torches' and fires', in place of\n"
+                          "both. Needs DLSS.",
+                          {"Game's Shadow Maps", "Bend Screen-Space", "Ray-Traced (DXR)"}, [b] { return ShadowMethodOf(b); },
+                          [](int method) { ChooseShadows(method); }));
     page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ShadowMethodOf(b) == SHADOW_RAYS && b.aa->method != 5.f; }));
     page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
@@ -382,8 +386,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     }
     const auto more_rays = more(&more_shadows, rays);
     page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_rays});
-    page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_rays, .label = "Importance-Sampled Torch Shadows"});
+    page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_rays, .label = "Importance-Sampled Torch Shadows (RIS)"});
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedLightGlow", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedGrassSway", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedSwayRange", .section = section, .shown = more_rays, .label = "Swaying Shadows Range"});
@@ -399,10 +404,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto on = [b] { return GiMethodOf(b) != GI_OFF; };
     page.Add(MethodSlider(section,
                           "Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n"
-                          "GT-VBGI: from what is on screen. Ray-Traced: one bounce through the scene, nothing guessed behind\n"
-                          "what the camera sees. Path-Traced: several bounces, also from off screen. Heavy.\n"
-                          "The last two need DLSS.",
-                          {"Off", "GT-VBGI", "Ray-Traced", "Path-Traced"}, [b] { return GiMethodOf(b); }, [b](int method) { ChooseGi(b, method); }));
+                          "GT-VBGI (visibility bitmask): from what is on screen. One Bounce: DXR rays through the scene,\n"
+                          "nothing guessed behind what the camera sees. ReSTIR GI: path tracing, several bounces, also from off\n"
+                          "screen, its samples reused over frames and between neighbours. Heavy. The last two need DLSS.",
+                          {"Off", "GT-VBGI", "Ray-Traced (One Bounce)", "Path-Traced (ReSTIR GI)"}, [b] { return GiMethodOf(b); },
+                          [b](int method) { ChooseGi(b, method); }));
     page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return GiMethodOf(b) >= GI_RAYS && b.aa->method != 5.f; }));
     page.Take({.match = "gi-presets", .section = section, .shown = gtvbgi});
@@ -438,9 +444,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto rays = reflections_are(REFLECTION_RAYS);
     page.Add(MethodSlider(section,
                           "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
-                          "Game's: the original. Hierarchical: exact, no gaps, reaching across the screen, usually faster\n"
-                          "(AMD FidelityFX's ray march). Ray-Traced: from rays, also what is off screen or hidden. Needs DLSS.",
-                          {"Game's", "Hierarchical", "Ray-Traced"}, [b] { return ReflectionMethodOf(b); }, [](int method) { ChooseReflections(method); }));
+                          "Game's SSR: the original. FidelityFX SSSR: AMD's hierarchical ray march, exact, no gaps, reaching\n"
+                          "across the screen, usually faster. DXR: from rays, also what is off screen or hidden. Needs DLSS.",
+                          {"Game's SSR", "FidelityFX SSSR", "Ray-Traced (DXR)"}, [b] { return ReflectionMethodOf(b); },
+                          [](int method) { ChooseReflections(method); }));
     page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ReflectionMethodOf(b) == REFLECTION_RAYS && b.aa->method != 5.f; }));
     page.Take({.match = "ssr_quality", .section = section, .shown = [b] { return ReflectionMethodOf(b) != REFLECTION_RAYS; }, .label = "Quality"});
@@ -468,8 +475,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     for (const auto* key : {"RayTracingRaysShadows", "RayTracingRaysAmbient", "RayTracingRaysReflections", "RayTracingRaysPaths"}) {
       page.Take({.match = key, .section = section, .shown = more_rt_rows});
     }
-    page.Take({.match = "RayTracedLeafMicromaps", .section = section, .shown = more_rt_rows, .label = "Leaf Micromaps"});
-    page.Take({.match = "RayTracedGpuMicromaps", .section = section, .shown = more_rt_rows});
+    page.Take({.match = "RayTracedLeafMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps (Leaves)"});
+    page.Take({.match = "RayTracedGpuMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps: GPU Baking"});
     page.Take({.match = "RayTracedFastLeafShadows", .section = section, .shown = more_rt_rows, .label = "Fast Leaf Shadows"});
     page.Take({.match = "RayTracedDebugView", .section = section, .shown = more_rt_rows});
     page.Take({.match = "RayTracedSceneTest", .section = section, .shown = more_rt_rows});
