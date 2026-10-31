@@ -189,6 +189,8 @@ class Page {
       setting->section = row.section;
       if (!row.label.empty()) setting->label = row.label;
       if (!row.tooltip.empty()) setting->tooltip = row.tooltip;
+      // This page's Anti-Aliasing calls it DLSS.
+      if (const size_t at = setting->tooltip.find("Needs DLAA"); at != std::string::npos) setting->tooltip.replace(at + 6, 4, "DLSS");
       if (row.enabled) setting->is_enabled = row.enabled;
       setting->is_visible = [shown = row.shown, own = setting->is_visible] { return shown() && (own == nullptr || own()); };
       page_.push_back(setting);

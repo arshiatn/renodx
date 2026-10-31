@@ -2,6 +2,37 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v117 (2026-10-31; renodx-tw-dlaa64.exe helper60: ship them together)
+
+- **The freeze is fixed**: the GPU reset came from GPU Micromap Baking running beside the game's frame (since v114). Test
+  (86 s a run, the sequence that froze): 3 of 5 runs hung that way, 0 of 8 with the bakes back where the game waits for them,
+  0 of 8 with GPU baking off. They cost at most 1.5 ms a frame, now 8 bakes a frame at most, and only when something new
+  appears. A second GPU reset no longer crashes the helper and the game.
+- **New Graphics 1 of 2**: one section per job (Anti-Aliasing and DLSS, Ambient Occlusion, Shadows, Global Illumination,
+  Reflections and Water, Ray Tracing), all titles one colour. Each has a Method slider and shows only that method's settings;
+  the rest is under More Options (closed, its own colour). DLAA in Anti-Aliasing is called DLSS now. Saved settings and presets
+  stay as they were: the Method sliders read and write the same keys. Leaving Path-Traced Global Illumination while on
+  Path-Traced AO moves AO to Ray-Traced (the game's ambient would come back with no AO on it). The settings
+  page needs ReShade's overlay in game to check: every method and More Options was clicked through once.
+- **LOD changes under RT Shadows**: while the camera moves, every mesh is updated every frame, so the old level no longer leaves
+  up to 3 frames before the new one comes in. About 0.1 ms CPU while moving, nothing when still.
+- **Sprite soldiers have ray-traced shadows** (Shadows > More Options > Sprite Soldier Shadows, on): cards facing the sun, cut
+  out by the sprite's alpha, so the shadow keeps its width and does not swing with the camera.
+- **Helmets**: rays started 3-5 cm off the surface at close range, past cheek guards and helmet rims. Now 3 mm plus 0.1% of the
+  distance. No acne in the tower view; a close-up soldier is not tested (the test keys can't get there).
+- **Light Through Foliage** (Screen-Space shadows, 0.5): shadows cast by grass and leaves let that share of the sun through; walls
+  and soldiers keep full shadows, on foliage too. The game marks foliage nowhere, so the addon compares the depth before and
+  after the foliage's depth pass.
+- **Rays a Pixel** replaces Ray Tracing at Output Resolution (same saved key): 1, Match Output (its old On), 2, 3, 4, also at
+  DLAA; More Options switches it per effect. Global Illumination and Path-Traced AO take it now, they never did. A ray-traced
+  image above the render size is not possible: shading runs at the render size until DLSS. Extra rays from their own spots of a
+  pixel are the same rays a higher resolution would trace.
+- **Double work removed**: no depth pyramid when ray-traced reflections take every pixel; the Light Bounce's depth levels only for
+  its screen-space trace. RT reflections, GT-VBAO, RT / PT AO and RT Shadows were already replacing the game's passes.
+- **Log Details** (Ray Tracing > More Options, off): the statistics written every 10 s, their clocks and GPU queries, and a slow
+  frame every 10 s under RT Shadows are off unless asked for. Turn it on for bug reports.
+- Water Caustics is not ray traced: an animated pattern on the river bed.
+
 ## v116 (2026-10-30; renodx-tw-dlaa64.exe helper59: ship them together)
 
 - **Tower shadow flicker fixed, near and far**: on a round tower one wall facet at a time flickered between lit and
