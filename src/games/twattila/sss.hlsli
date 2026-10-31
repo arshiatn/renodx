@@ -28,6 +28,7 @@ cbuffer sss_settings : register(b2)
   float g_sss_mirror_edges;   // Bend's MirrorEdges (RenoDX)
   float g_sss_sun_direction;  // sss_setup: sun_direction's first float in lighting_VS_PS (Attila c0.y: 1)
   float2 g_sss_render_size;   // the 3D image's (DLSS: the depth's top-left corner; else the depth's size)
+  float g_sss_foliage_light;  // Light Through Foliage: the sun's share through what grass and leaves shadow (sss_depth, sss_bend)
 }
 
 #endif  // SRC_GAMES_TWATTILA_SSS_HLSLI_

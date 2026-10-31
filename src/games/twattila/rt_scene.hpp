@@ -1109,7 +1109,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .binding = &sliders->rays_paths,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
           .default_value = 1.f,
-          .label = "Rays a Pixel: Global Illumination and Path-Traced AO",
+          .label = "Rays a Pixel: Global Illumination",
           .section = section,
           .tooltip = "Ray-traced and path-traced Global Illumination and Path-Traced AO take the extra rays\n"
                      "(up to 16 a pixel). The heaviest of the four.",

@@ -113,9 +113,10 @@ inline void ChooseReflections(const Bindings& b, int method) {
   renodx::utils::settings::UpdateSettings(values);
 }
 
-// A section's method slider.
-inline Setting* MethodSlider(const std::string& label, const std::string& section, const std::string& tooltip, std::vector<std::string> labels,
-                             std::function<int()> current, std::function<void(int)> choose) {
+// A section's method slider ("Method" on every section: its section in its ImGui id, or they are one slider to ImGui).
+inline Setting* MethodSlider(const std::string& section, const std::string& tooltip, std::vector<std::string> labels, std::function<int()> current,
+                             std::function<void(int)> choose) {
+  const std::string label = "Method##" + section;
   return new Setting{
       .value_type = SettingValueType::CUSTOM,
       .label = label,
@@ -307,7 +308,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = AO_SECTION;
     const auto gtvbao = ao_is(AO_GTVBAO);
     const auto rays = ao_is(AO_RAYS);
-    page.Add(MethodSlider("Method", section,
+    page.Add(MethodSlider(section,
                           "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                           "Game's: everything counts as solid, so soldiers and trees get dark halos.\n"
                           "GT-VBAO: objects have a thickness, so light gets behind thin ones.\n"
@@ -343,7 +344,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = SHADOWS_SECTION;
     const auto screen = shadows_are(SHADOW_SCREEN);
     const auto rays = shadows_are(SHADOW_RAYS);
-    page.Add(MethodSlider("Method", section,
+    page.Add(MethodSlider(section,
                           "Game's: its shadow maps. Screen-Space: those plus fine contact shadows from what is on screen\n"
                           "(Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
                           "Ray-Traced: every shadow from rays, the sun's and the torches' and fires', in place of both. Needs DLSS.",
@@ -359,8 +360,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .default_value = 0.5f,
         .label = "Light Through Foliage",
         .section = section,
-        .tooltip = "How much sun grass and leaves keep inside these shadows: they are thin, the light comes through.\n"
-                   "0: as dark as everything else.",
+        .tooltip = "How much sun comes through the shadows grass and leaves cast: they are thin. Walls and soldiers\n"
+                   "keep their full shadows, on foliage too. 0: as dark as any other shadow.",
         .min = 0.f,
         .max = 1.f,
         .format = "%.2f",
@@ -394,7 +395,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = GI_SECTION;
     const auto gtvbgi = gi_is(GI_GTVBGI);
     const auto on = [b] { return GiMethodOf(b) != GI_OFF; };
-    page.Add(MethodSlider("Method", section,
+    page.Add(MethodSlider(section,
                           "Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n"
                           "GT-VBGI: from what is on screen. Ray-Traced: one bounce through the scene, nothing guessed behind\n"
                           "what the camera sees. Path-Traced: several bounces, also from off screen. Heavy.\n"
@@ -433,7 +434,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = REFLECTIONS_SECTION;
     const auto hierarchical = reflections_are(REFLECTION_HIERARCHICAL);
     const auto rays = reflections_are(REFLECTION_RAYS);
-    page.Add(MethodSlider("Method", section,
+    page.Add(MethodSlider(section,
                           "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
                           "Game's: the original. Hierarchical: exact, no gaps, reaching across the screen, usually faster\n"
                           "(AMD FidelityFX's ray march). Ray-Traced: from rays, also what is off screen or hidden. Needs DLSS.",

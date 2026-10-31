@@ -1,9 +1,7 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v117 HUGE BATCH (search "v117 HUGE BATCH"): stopped at a usage limit on 2026-10-31 ~00:55, NOT finished, read its
-  "STATE" lines first. No v117 zip yet; Attila's folder holds v116 (helper59), ReShade.ini = ATN's. v116 batch done (search
-  "v116 BIG BATCH").
+- NOW: v117 HUGE BATCH (search "v117 HUGE BATCH"), see its ticks. v116 batch done (search "v116 BIG BATCH").
 - State: Attila v116 shipped (Downloads/twattila_v116.zip, helper59 = build/tw_dlaa_helper59, bridge v19 + placement flag
   RT_PLACE_WHOLE; v116 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
   symlink to build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch
@@ -1628,22 +1626,21 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
     - v117 HUGE BATCH (ATN 2026-10-31 ~00:20, away for hours / days: don't stop, don't wait for answers, commit after every step,
       tick off here, new issues found: fix them in the following batch; debug35 = C:/Program Files (x86)/Steam/steamapps/common/
       Total War Attila/debug35: logs copied there, ATN's ini also tools/tw/test_scripts/ReShade.ini.atn35). ATN's items:
-      STATE (usage limit 00:55): graphics_page.hpp (item 3) BUILDS but was NEVER RUN in game: run it, check every section, the
-      method sliders, More Options, ini load / presets. Committed as work in progress. Not started: 2, 2.1, 2.2, 4, 5, 6, 7, 8.
-      Item 2 plan: place every placed mesh every frame while the camera moves (view-projection changed): v116's RT_PLACE_WHOLE
-      can drop the old LOD up to 3 frames before the new one's turn: that gap is the "disappears and appears" ATN sees.
-      Item 2.2 plan: rt_scene SurfaceOffset 2 cm + 0.1% depth (plus the same along the sun) starts rays past cheek guards and
-      helmet rims 1-3 cm off the skin: try a much smaller offset near the camera, check walls / ground for acne.
-      Item 4 plan: foliage has its own sun shaders (addon.cpp LIGHT_BOUNCE_DRAWS): in screen_space_shadows' Patch scale t49 for
-      those by a new setting (add ScreenSpaceShadowsFoliage to graphics_page.hpp's Shadows rows).
-      Item 7: Ray Tracing at Output Resolution only reaches sun, local lights, AO, reflections (rt_scene SettingsOf density),
-      NOT the Light Bounce paths: ATN is right. Shading runs at render size, so "above 1080p" = more rays a pixel, not bigger
-      textures: add a density slider (1-4 rays a pixel) and bring path samples in.
-      Other found issues for the next batch: (a) after a SECOND GPU reset the helper crashes (VCOMP140.DLL_unloaded, the OMM
-      library unloaded under its threads) and then Attila.exe crashes (e06d7363, then fault at 0xdededede): seen in churn2;
-      (b) ReadTimes `slow_report_ = ...` overwrites waiting reports; (c) dead Attila / helper processes pin the exe and addon:
-      rename aside (leftovers in the game folder: *.in-use-*, delete after a reboot).
-      [ ] 0. Logs next to the exe: it froze again while ATN toggled every slider. "Maybe you can find out why. It is really
+      New issues found and fixed in this batch: second GPU reset crash (omm-lib.dll unloaded under OpenMP's idle threads: it
+      stays loaded now); ReadTimes' `slow_report_ =` overwrote waiting reports; bakes in flight counted as "failed" after a
+      removal (that misled me: "failed" lines before each hang are a RESULT of the removal, the fence reads all ones).
+      Left for the next batch: (a) far tree billboards (rigidtreebillboard vs 0x4D50E1C7, ps E0D24DBB) are not in the ray-traced
+      scene: their shadows are missing as the sprites' were; (b) dead Attila / helper processes pin the exe and addon: rename
+      aside (leftovers in the game folder: *.in-use-*, delete after a reboot).
+      [x] 0. FIXED, soak-tested. Cause: v114 moved the GPU micromap bakes into a list of their own after the game's fence signal,
+          so they ran beside the game's frame. Soaks (for_claude1.replay, Light Bounce off + reflections on, keys W:6,D:1.6,Y:1.2,
+          86 s a run): bakes beside the frame 3 of 5 runs hung; GPU bakes off 0 of 8; bakes in the request's own list 0 of 8
+          with about 90 bakes a run. nvlddmkm 153: 5 in 7 hours after the tail landed (10-30 15:54), 1 in the 14 hours before. Why
+          beside the frame hangs is unknown (any op of the chain, also plain clear dispatches: no data pattern; the helper's queue
+          and the game's D3D11 share the GPU only there: the game waits for every other list). The tail only ever helped with Light
+          Bounce off (with it on the game waited for the follower anyway). Fix: tail removed, bakes back in the request's list,
+          8 bakes / 32768 triangles a request (profile: at most 1.5 ms a request, 47 of 3459 requests).
+          ATN's words: "Logs next to the exe: it froze again while ATN toggled every slider. "Maybe you can find out why. It is really
           random. Maybe it got something to do with my togglings all the time."
           Found so far: CORRECTION to v116: the freeze DID reproduce in my refl1 run (22:48:42, 8 s after reflections on): I
           only looked at the stress runs. Five DRED reports now, none inside a ray tracing pass (those take most of the GPU
@@ -1664,26 +1661,48 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           change a default. Lesson: reading freed GPU memory hangs this driver with NO page fault in DRED (my first churn build
           did that): "no page fault" rules out nothing. Also v116's report was wrong: refl1 hung, I had not checked it.
           Item 1.1 answer: Water Caustics is not RT: water_caustics.cs_5_0.hlsl makes an animated pattern, multiplied on the bed.
-      [ ] 1.1 Quick question: is Water Caustics "RT Caustics"?
-      [ ] 2. LOD change with RT Shadows still obvious: "shadow disappearing when the LOD changes and appearing really fast after";
+      [x] 1.1 Quick question: is Water Caustics "RT Caustics"? No: water_caustics.cs_5_0.hlsl, an animated pattern on the bed.
+      [x] 2. (rt_core camera_moving: every placed mesh placed every frame while the camera's place changes; 0.42 -> 0.49 ms
+          capture on average, p95 0.63, placements up to 756.) LOD change with RT Shadows still obvious: "shadow disappearing when the LOD changes and appearing really fast after";
           hide it. ATN: this, 2.1 and 2.2 are the only remaining RT Shadows issues.
-      [ ] 2.1 Soldiers' LOD ends as 2D sprites: give them shadows too.
-      [ ] 2.2 Light goes through soldiers' helmets (debug35/solder helmet: 1.png his right side, thick helmet; 2.png from the front,
+      [x] 2.1 (imposter.hlsl vs30_main 0x1B9E7692: rt_capture_imposter.vs: the card turned to the sun with rt_sun at t0, cut out by
+          its diffuse alpha, blocks as grass does (RT_GRASS); Sprite Soldier Shadows in Shadows' More Options; shot compared on / off.)
+          Soldiers' LOD ends as 2D sprites: give them shadows too.
+      [x] 2.2 (rays started 2 cm + 0.1% depth off the surface along the normal AND again toward the sun: 3-5 cm at close range, past
+          cheek guards. SurfaceOffset 3 mm + 0.1%: tower view shows no acne. Not tested on a close-up soldier: keys can't get there.)
+          Light goes through soldiers' helmets (debug35/solder helmet: 1.png his right side, thick helmet; 2.png from the front,
           no shadow on the right side of his face; with SSS it is there). Game limit or RT ignoring helmets and more?
-      [ ] 3. VERY IMPORTANT, "make sure you don't break anything": redesign Graphics 1 of 2. Reflection moves there from Graphics
+      [x] 3. (graphics_page.hpp, run in game with the overlay: overlay_test.ps1 in tools/tw/test_scripts. Every section seen, every
+          More Options opened, AO / Shadows / GI / Reflections methods clicked through and read back from ReShade.ini. Found and
+          fixed there: the four "Method" sliders had one ImGui id. A click after a ReShade screenshot does nothing: test artefact.)
+          VERY IMPORTANT, "make sure you don't break anything": redesign Graphics 1 of 2. Reflection moves there from Graphics
           2 of 2. Grouped: AA, DLSS SR, RR, MFG, Reflex on top; all titles the same colour. "DLAA" in AA renamed DLSS. Each AA
           option's settings hidden unless selected. Simple and short: a "More Options" (closed by default, its own distinct
           colour, the same for every More Options, not the title colour) holds what normal people don't care about (e.g. motion
           vectors). Then an ambient occlusion section (a slider like AA: Off (game's), GT-VBAO, RT-AO, PT-AO; each mode's
           important settings shown, the rest under More Options), then Shadows (Off (raster), SSS (raster + SSS), RT Shadows
           which replaces those), the rest in the same spirit. Check what depends on what / can't run together. Update tooltips.
-      [ ] 4. debug35/SSS or AO grass or tree mask: is it doable for SSS? Soft shadows for grass / trees so light goes through
+      [x] 4. (Light Through Foliage, ScreenSpaceShadowsFoliage 0.5: what foliage SHADOWS keeps that share of the sun; solid objects
+          stay whole, on foliage too. Nothing in the game marks foliage: the whole scene has one stencil value, the "foliage" sun
+          shaders never draw, the material byte is 0 for leaves, grass and most objects. Mask: the depth buffer copied at the
+          first foliage draw and at the first rigid draw after it (foliage's prefill follows the terrain's), compared in sss_depth;
+          foliage pixels negative in the depth, bend_sss_gpu.hlsli BEND_SSS_LIGHT_CASTERS keeps a least delta for them. Shot: 1.0
+          removes palm and grass shadows, walls keep theirs.) debug35/SSS or AO grass or tree mask: is it doable for SSS? Soft shadows for grass / trees so light goes through
           them a bit and the shadows are not that dark. (Free licences allowed.)
-      [ ] 5. With RT Reflections, does the game's own reflection still run? GT-VBAO / RT-AO: is the game's SSAO bypassed? If not,
+      [x] 5. (RT Reflections: rt_reflected already skipped the march per pixel; the depth pyramid and its resolve no longer run when
+          every pixel of the pass is traced. GT-VBAO: the addon's shader in place of the game's. RT / PT AO: ssao00 returns 1 without
+          the game's code. RT Shadows: no sun shadow map casters. So: no double work left there.)
+          With RT Reflections, does the game's own reflection still run? GT-VBAO / RT-AO: is the game's SSAO bypassed? If not,
           double work: fix without breaking anything.
-      [ ] 6. More double work or leftovers? Debug lines that write all the time must not exist for release (keep them, off),
+      [x] 6. (Log Details, RayTracedDebugLog off by default: the 10 s statistics, the shadow-reader frame every 10 s (16 view reads a
+          draw), the D3D11 timing queries, the clock reads per captured draw. Light Bounce: its depth levels only for the screen-space
+          trace, rays read level 0. Helper logs stay: rare and on its thread.)
+          More double work or leftovers? Debug lines that write all the time must not exist for release (keep them, off),
           the game's CPU is atrocious.
-      [ ] 7. Rethink Ray Tracing at Output Resolution: does it act on every RT/PT effect? Costs a lot, not enough. PT AO 1 ray 1
+      [x] 7. (Rays a Pixel, same key RayTracingOutputResolution: 1, Match Output, 2, 3, 4, also at DLAA; More Options: on / off for
+          shadows, RT AO, reflections, GI. Paths now take it, they did not before. Above render size is impossible: the shading
+          runs at render size until DLSS, so more rays a pixel from their own spots IS 4K's rays.)
+          Rethink Ray Tracing at Output Resolution: does it act on every RT/PT effect? Costs a lot, not enough. PT AO 1 ray 1
           sample at Full resolution looks almost noise free: can the toggle make DLSS Performance trace above 1920x1080, like
           3840x2160? Finer sliders / toggles.
       [ ] 8. v117 zip (helper60), README, HANDOFF, memory, report.

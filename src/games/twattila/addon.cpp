@@ -1158,6 +1158,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
 }};
 
+// Light Through Foliage: grass and leaves (SCENE_SHADERS), and the rigid objects drawn after them.
+constexpr std::array<uint32_t, 5> FOLIAGE_VERTEX_SHADERS = {0x46C616F0, 0x5B880546, 0xCABCB9D1, 0xF3741248, 0x01FA9CDE};
+constexpr std::array<uint32_t, 4> AFTER_FOLIAGE_VERTEX_SHADERS = {0x347F3DD9, 0xD830AD9B, 0xB06CB969, 0x10FE7EBC};
+
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
@@ -2131,6 +2135,7 @@ bool AttachAddon() {
   // Their lighting buffer's ambient cube at c2 (lighting_VS_PS): the paths' sky.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  twattila::screen_space_shadows::InstallFoliage(FOLIAGE_VERTEX_SHADERS, AFTER_FOLIAGE_VERTEX_SHADERS);
   renodx::utils::pipeline::RegisterOnCreateCallback(OnCreateWater);
   twattila::grass_fade::Install();
   // The AO pass before the ray tracing (its multiply after the pass's own output), both before the Light Bounce (it

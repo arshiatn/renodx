@@ -5,11 +5,19 @@
 
 // Screen-space shadows (screen_space_shadows.hpp): the scene's depth (a copy of the depth-stencil buffer, or the
 // G-buffer's channel 4; its x; with the game's MSAA its sample 0, SSS_DEPTH_MS) into a single-channel texture Bend's
-// sampler reads.
+// sampler reads. With Light Through Foliage the foliage's pixels (t1, t2 the depth before and after the foliage's depth
+// pass, none bound reads 0: it changed the pixel, nothing nearer came after) negative: Bend's march lets the light
+// through what they shadow (sss_bend).
+#include "./sss.hlsli"
+
 #ifdef SSS_DEPTH_MS
 Texture2DMS<float4> t_scene_depth : register(t0);
+Texture2DMS<float4> t_before_foliage : register(t1);
+Texture2DMS<float4> t_after_foliage : register(t2);
 #else
 Texture2D<float4> t_scene_depth : register(t0);
+Texture2D<float4> t_before_foliage : register(t1);
+Texture2D<float4> t_after_foliage : register(t2);
 #endif
 RWTexture2D<float> t_rw_depth : register(u0);
 
@@ -17,8 +25,13 @@ RWTexture2D<float> t_rw_depth : register(u0);
 void main(uint3 coords : SV_DispatchThreadID)
 {
 #ifdef SSS_DEPTH_MS
-  t_rw_depth[coords.xy] = t_scene_depth.Load(int2(coords.xy), 0).x;
+  const float depth = t_scene_depth.Load(int2(coords.xy), 0).x;
+  const float before = t_before_foliage.Load(int2(coords.xy), 0).x;
+  const float after = t_after_foliage.Load(int2(coords.xy), 0).x;
 #else
-  t_rw_depth[coords.xy] = t_scene_depth.Load(int3(coords.xy, 0)).x;
+  const float depth = t_scene_depth.Load(int3(coords.xy, 0)).x;
+  const float before = t_before_foliage.Load(int3(coords.xy, 0)).x;
+  const float after = t_after_foliage.Load(int3(coords.xy, 0)).x;
 #endif
+  t_rw_depth[coords.xy] = (g_sss_foliage_light > 0.f && after != before && after == depth) ? -depth : depth;
 }

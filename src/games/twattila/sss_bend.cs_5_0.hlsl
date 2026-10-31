@@ -13,6 +13,7 @@
 #define HARD_SHADOW_SAMPLES 4
 #define FADE_OUT_SAMPLES    8
 #define BEND_SSS_OCCLUSION
+#define BEND_SSS_LIGHT_CASTERS
 #include "../twshogun2completeedition/shaders/bend_sss_gpu.hlsli"
 
 cbuffer sss_dispatch : register(b3)
@@ -45,6 +46,7 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   dp.HardShadowSamples = (int)g_sss_hard_samples;
   dp.FadeOutSamples = (int)g_sss_fade_samples;
   dp.MirrorEdges = (g_sss_mirror_edges != 0.f);
+  dp.CasterLight = g_sss_foliage_light;
   // None past 60% of the far plane's distance (from 40%): Attila's campaign backdrop sits near 75%; battles' far plane
   // is 13 km away.
   dp.FarFade = float2(0.4f, 0.6f);

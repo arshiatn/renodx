@@ -68,7 +68,7 @@ struct Settings {
   float softness = 0.f;          // sss_blur's tap spacing in pixels, 0 off
   int debug_view = 0;            // 0 off, 1 the occlusion, 2 with the screen edge's limit (sss_debug)
   bool mirror_edges = false;     // past the left, right and bottom edges: the depth mirrored (Bend's MirrorEdges)
-  float foliage_light = 0.f;     // the sun's share the shadow leaves on grass and leaves (their sun shaders; Attila)
+  float foliage_light = 0.f;     // the sun's share through the shadows grass and leaves cast (InstallFoliage)
 };
 
 namespace internal {
@@ -76,10 +76,6 @@ namespace internal {
 constexpr UINT MASK_SLOT = 49;      // the patched sun shaders' occlusion
 constexpr UINT TINT_SLOT = 50;      // their sun colour's filter (Coloured Shadows: 1 - the colour; unbound reads 0, none)
 constexpr UINT AMBIENT_SLOT = 51;   // their diffuse ambient's share taken away (texel 0's x; unbound reads 0: the game's)
-constexpr UINT FOLIAGE_SLOT = 53;   // the foliage ones' share of t49 left out (texel 0's x; unbound reads 0: all of it counts)
-
-// The foliage sun shaders' ambient factors (c11.x > 0: 0.004, 360, 0.6, 1).
-constexpr std::array<uint32_t, 4> FOLIAGE_FACTORS = {0x3B83126F, 0x43B40000, 0x3F19999A, 0x3F800000};
 
 // Another occlusion of the sun's light (Attila's ray-traced sun shadows: rt_scene::Occlusion): given the screen-space
 // shadow's mask this frame (null: off), the occlusion to bind instead (the darker of both), or null (the mask alone).
@@ -108,7 +104,7 @@ struct ShaderSettings {
   float sun_direction = 0.f;  // its first float in the sun draw's lighting_VS_PS
   float render_width = 0.f;   // the 3D image's (DLSS: the top-left corner of the depth)
   float render_height = 0.f;
-  float padding = 0.f;
+  float foliage_light = 0.f;  // sss_depth, sss_bend
 };
 
 // A shadowed sun light shader with the screen-space shadow, its shadow x (1 - t49 at the pixel), rT = 1 - t49 from
@@ -127,9 +123,6 @@ struct ShaderSettings {
 // - Else (Warhammer III's shadow mask): rT first, and after each read of the texture named t_shadow (ld / sample) the
 //   same mul.
 // - A forward pass reading the sun's shadow map (`forward`: Attila's under Ray-Traced Shadows Only) as Troy's.
-// - A foliage shader (FOLIAGE_FACTORS): t49 x (1 - t53's texel 0) before the 1 -, grass and leaves let some sun through
-//   their screen-space shadows (t53 bound with Foliage Light only, never under the rays: they have Light Through Leaves):
-//   ld rT.y, l(0, 0, 0, 0), t53.xxxx / mad rT.y, rT.y, l(-1), l(1) / mul rT.x, rT.x, rT.y.
 // Empty: not such a shader.
 inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = false) {
   constexpr uint32_t OP_CUSTOMDATA = 53, OP_DIV = 14, OP_FTOU = 28, OP_LD = 45, OP_MAD = 50, OP_MIN = 51, OP_MOV = 54,
@@ -285,9 +278,8 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   const auto swizzled = [](uint32_t type, uint32_t index, uint32_t swizzle) {
     return std::array<uint32_t, 2>{2u | (1u << 2) | (swizzle << 4) | (type << 12) | (1u << 20), index};
   };
-  constexpr uint32_t XYXX = 0x04, XYZX = 0x24, XYZW = 0xE4, XXXX = 0x00, YYYY = 0x55;
+  constexpr uint32_t XYXX = 0x04, XYZX = 0x24, XYZW = 0xE4, XXXX = 0x00;
   constexpr uint32_t MINUS_ONE = 0xBF800000, ONE = 0x3F800000;
-  const bool foliage = std::ranges::search(tokens, FOLIAGE_FACTORS).begin() != tokens.end();
   const auto instruction = [](std::vector<uint32_t>* added, uint32_t opcode,
                               std::initializer_list<std::array<uint32_t, 2>> operands, uint32_t flags = 0) {
     added->push_back(opcode | flags | (static_cast<uint32_t>(1 + 2 * operands.size()) << 24));
@@ -306,13 +298,6 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
                              (swizzled(TYPE_CONSTANT_BUFFER, lighting_slot, XYZX)[0] & ~(3u << 20)) | (2u << 20), lighting_slot, 1});
   }
   instruction(&load, OP_LD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XYZW), swizzled(TYPE_RESOURCE, MASK_SLOT, XYZW)});
-  if (foliage) {
-    const auto share = masked(temp, 0b0010);
-    const auto resource = swizzled(TYPE_RESOURCE, FOLIAGE_SLOT, XXXX);
-    load.insert(load.end(), {OP_LD | (10u << 24), share[0], share[1], 2u | (TYPE_IMMEDIATE << 12), 0, 0, 0, 0, resource[0], resource[1]});
-    instruction(&load, OP_MAD, {share, swizzled(TYPE_TEMP, temp, YYYY), {1u | (TYPE_IMMEDIATE << 12), MINUS_ONE}, {1u | (TYPE_IMMEDIATE << 12), ONE}});
-    instruction(&load, OP_MUL, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XXXX), swizzled(TYPE_TEMP, temp, YYYY)});
-  }
   instruction(&load, OP_MAD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XXXX), {1u | (TYPE_IMMEDIATE << 12), MINUS_ONE},
                               {1u | (TYPE_IMMEDIATE << 12), ONE}});
   if (saturate_at != 0) {
@@ -342,10 +327,10 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   }
   // rT (and rC) where the code starts.
   tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(code_at), load.begin(), load.end());
-  // dcl_resource_texture2d (float,float,float,float) t49 (and t50, t53), before dcl_temps (the declarations come first).
+  // dcl_resource_texture2d (float,float,float,float) t49 (and t50), before dcl_temps (the declarations come first).
   std::vector<uint32_t> declarations;
-  for (const UINT slot : {MASK_SLOT, TINT_SLOT, FOLIAGE_SLOT}) {
-    if ((slot == TINT_SLOT && !coloured) || (slot == FOLIAGE_SLOT && !foliage)) continue;
+  for (const UINT slot : {MASK_SLOT, TINT_SLOT}) {
+    if (slot == TINT_SLOT && !coloured) continue;
     declarations.insert(declarations.end(), {OP_DCL_RESOURCE | (3u << 11) | (4u << 24), (TYPE_RESOURCE << 12) | (1u << 20), slot, 0x5555});
   }
   tokens[temps_at + 1] += coloured ? 2 : 1;
@@ -369,6 +354,8 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
   if (tokens.empty()) return {};
+  // The foliage shaders' ambient factors (c11.x > 0: 0.004, 360, 0.6, 1).
+  constexpr std::array<uint32_t, 4> FOLIAGE_FACTORS = {0x3B83126F, 0x43B40000, 0x3F19999A, 0x3F800000};
   *foliage = std::ranges::search(tokens, FOLIAGE_FACTORS).begin() != tokens.end();
   uint32_t lighting_slot = UINT32_MAX;
   for (const uint32_t offset : program.offsets) {
@@ -486,10 +473,6 @@ struct DeviceObjects {
   // The occlusion after Softness (sss_blur).
   ComPtr<ID3D11UnorderedAccessView> soft_uav;
   ComPtr<ID3D11ShaderResourceView> soft_srv;
-  // Foliage Light's texel for t53.
-  ComPtr<ID3D11Texture2D> foliage;
-  ComPtr<ID3D11ShaderResourceView> foliage_srv;
-  float foliage_uploaded = -1.f;
   // Debug View: the tone mapper's output's size and format, made when first shown.
   ComPtr<ID3D11Texture2D> debug_texture;
   ComPtr<ID3D11UnorderedAccessView> debug_uav;
@@ -497,6 +480,11 @@ struct DeviceObjects {
   ComPtr<ID3D11Texture2D> scene_depth;
   ComPtr<ID3D11Texture2D> scene_depth_copy;
   ComPtr<ID3D11ShaderResourceView> scene_depth_srv;
+  // The depth buffer before and after the foliage's depth pass (OnFoliageOrder).
+  ComPtr<ID3D11Texture2D> before_foliage;
+  ComPtr<ID3D11ShaderResourceView> before_foliage_srv;
+  ComPtr<ID3D11Texture2D> after_foliage;
+  ComPtr<ID3D11ShaderResourceView> after_foliage_srv;
   bool logged_gbuffer_depth = false;
   // The one-time report (sss_probe): the G-buffer's depth copied as Bend's is, its output and its readback.
   ComPtr<ID3D11ComputeShader> probe;
@@ -520,6 +508,9 @@ struct Runtime {
   uint64_t debug_frame = UINT64_MAX;  // the Debug View drawn (OnTonemapDrawn)
   // A report into ReShade.log at the next computed frame (each time the shadows are turned on).
   bool probe_pending = true;
+  // The frames those copies are of.
+  uint64_t before_foliage_frame = UINT64_MAX;
+  uint64_t after_foliage_frame = UINT64_MAX;
   // The patched sun shaders by their original hash (kept: the game may create them again), the forward passes' too.
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;
   // The sun shaders whose diffuse ambient t51 takes away (PatchAmbient), by hash: whether they are foliage ones.
@@ -636,6 +627,33 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
   return true;
 }
 
+// A readable copy of a depth-stencil buffer (`desc`) and its depth's view; false: none.
+inline bool MakeDepthCopy(ID3D11Device* device, const D3D11_TEXTURE2D_DESC& desc, ComPtr<ID3D11Texture2D>* copy, ComPtr<ID3D11ShaderResourceView>* view) {
+  copy->Reset();
+  view->Reset();
+  const auto [typeless, view_format] = frame_history::DepthFormats(desc.Format);
+  D3D11_TEXTURE2D_DESC copy_desc = desc;
+  copy_desc.Format = typeless;
+  copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+  copy_desc.CPUAccessFlags = 0;
+  copy_desc.MiscFlags = 0;
+  copy_desc.Usage = D3D11_USAGE_DEFAULT;
+  D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = view_format};
+  if (desc.SampleDesc.Count > 1) {
+    view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DMS;
+  } else {
+    view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    view_desc.Texture2D = {.MostDetailedMip = 0, .MipLevels = 1};
+  }
+  const bool made = (typeless != DXGI_FORMAT_UNKNOWN) && SUCCEEDED(device->CreateTexture2D(&copy_desc, nullptr, copy->GetAddressOf()))
+                    && SUCCEEDED(device->CreateShaderResourceView(copy->Get(), &view_desc, view->GetAddressOf()));
+  if (!made) {
+    copy->Reset();
+    view->Reset();
+  }
+  return made;
+}
+
 // The scene's depth-stencil buffer (`depth_stencil`, the sun draw's) copied for the compute (`msaa`: multisampled);
 // null: none at the screen's size or not a depth format.
 inline ID3D11ShaderResourceView* SceneDepth(ID3D11Device* device, ID3D11DeviceContext* native,
@@ -652,32 +670,9 @@ inline ID3D11ShaderResourceView* SceneDepth(ID3D11Device* device, ID3D11DeviceCo
   *msaa = (desc.SampleDesc.Count > 1);
   if (objects.scene_depth.Get() != texture.Get()) {
     objects.scene_depth = texture;
-    objects.scene_depth_copy.Reset();
-    objects.scene_depth_srv.Reset();
-    const auto [typeless, view_format] = frame_history::DepthFormats(desc.Format);
-    D3D11_TEXTURE2D_DESC copy_desc = desc;
-    copy_desc.Format = typeless;
-    copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    copy_desc.CPUAccessFlags = 0;
-    copy_desc.MiscFlags = 0;
-    copy_desc.Usage = D3D11_USAGE_DEFAULT;
-    D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = view_format};
-    if (*msaa) {
-      view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DMS;
-    } else {
-      view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-      view_desc.Texture2D = {.MostDetailedMip = 0, .MipLevels = 1};
-    }
-    const bool made = (typeless != DXGI_FORMAT_UNKNOWN)
-                      && SUCCEEDED(device->CreateTexture2D(&copy_desc, nullptr, objects.scene_depth_copy.GetAddressOf()))
-                      && SUCCEEDED(device->CreateShaderResourceView(objects.scene_depth_copy.Get(), &view_desc,
-                                                                    objects.scene_depth_srv.GetAddressOf()));
+    const bool made = MakeDepthCopy(device, desc, &objects.scene_depth_copy, &objects.scene_depth_srv);
     renodx::utils::log::i("[Total War] Screen-space shadows: the depth-stencil buffer (format ", static_cast<int>(desc.Format),
                           ", ", desc.SampleDesc.Count, " samples) ", (made ? "copied for the shadows." : "unusable."));
-    if (!made) {
-      objects.scene_depth_copy.Reset();
-      objects.scene_depth_srv.Reset();
-    }
   }
   if (!objects.scene_depth_srv) return nullptr;
   native->CopyResource(objects.scene_depth_copy.Get(), texture.Get());
@@ -720,6 +715,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
       .sun_direction = static_cast<float>(sun_direction),
       .render_width = static_cast<float>(render[0]),
       .render_height = static_cast<float>(render[1]),
+      .foliage_light = runtime.settings.foliage_light,
   };
   if (std::memcmp(&settings, &objects.uploaded, sizeof(ShaderSettings)) != 0) {
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
@@ -750,9 +746,14 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     native->CSSetShaderResources(0, 2, views.data());
     native->CSSetConstantBuffers(0, 4, constants.data());
   };
-  // The depth (8 x 8 groups), the dispatch list, the occlusion cleared, Bend's dispatches.
+  // The depth (8 x 8 groups; with Light Through Foliage its foliage marked), the dispatch list, the occlusion cleared,
+  // Bend's dispatches.
   const ComPtr<ID3D11ComputeShader>& depth_copy = (msaa ? objects.depth_copy_ms : objects.depth_copy);
-  bind(depth_copy.Get(), {depth_view, nullptr}, {objects.depth_uav.Get(), nullptr}, {});
+  const bool foliage_marked = runtime.before_foliage_frame == runtime.frame && runtime.after_foliage_frame == runtime.frame;
+  bind(depth_copy.Get(), {depth_view, foliage_marked ? objects.before_foliage_srv.Get() : nullptr}, {objects.depth_uav.Get(), nullptr},
+       {nullptr, nullptr, objects.settings.Get(), nullptr});
+  ID3D11ShaderResourceView* after_foliage = foliage_marked ? objects.after_foliage_srv.Get() : nullptr;
+  native->CSSetShaderResources(2, 1, &after_foliage);
   native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
   bind(objects.setup.Get(), {}, {objects.arguments_uav.Get(), objects.parameters_uav.Get()},
        {camera, lighting, objects.settings.Get(), nullptr});
@@ -916,9 +917,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     const std::unique_lock lock(runtime.mutex);
     const auto& sun_draw = command.template GetCallbackData<T>();
     // The patched shaders' occlusion: this frame's on the main view, else none (reads 0: the game's light); with another
-    // (extra_occlusion), the darker. The foliage ones under the screen-space shadow alone: Foliage Light's texel at t53.
+    // (extra_occlusion), the darker.
     ID3D11ShaderResourceView* occlusion = nullptr;
-    ID3D11ShaderResourceView* foliage_light = nullptr;
     const auto patched = runtime.patched.find(sun_draw.shader_hash);
     if ((runtime.settings.enabled || internal::extra_occlusion != nullptr) && patched != runtime.patched.end() && !patched->second.empty()
         && frame_history::MainViewport(native)) {
@@ -971,40 +971,77 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
         if (runtime.settings.enabled && runtime.computed_frame == runtime.frame) {
           const auto& mask = (runtime.settings.softness > 0.f ? runtime.objects.soft_srv : runtime.objects.occlusion_srv);
           occlusion = mask.Get();
-          const auto ambient = runtime.ambient_patched.find(sun_draw.shader_hash);
-          if (runtime.settings.foliage_light > 0.f && ambient != runtime.ambient_patched.end() && ambient->second) {
-            auto& objects = runtime.objects;
-            if (!objects.foliage) {
-              ComPtr<ID3D11Device> device;
-              native->GetDevice(device.GetAddressOf());
-              const D3D11_TEXTURE2D_DESC texel = {.Width = 1, .Height = 1, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
-                                                  .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
-              if (SUCCEEDED(device->CreateTexture2D(&texel, nullptr, objects.foliage.GetAddressOf()))) {
-                device->CreateShaderResourceView(objects.foliage.Get(), nullptr, objects.foliage_srv.GetAddressOf());
-              }
-            }
-            if (objects.foliage_srv) {
-              if (objects.foliage_uploaded != runtime.settings.foliage_light) {
-                native->UpdateSubresource(objects.foliage.Get(), 0, nullptr, &runtime.settings.foliage_light, 4, 0);
-                objects.foliage_uploaded = runtime.settings.foliage_light;
-              }
-              foliage_light = objects.foliage_srv.Get();
-            }
-          }
         }
         if (internal::extra_occlusion != nullptr) {
-          if (auto* combined = internal::extra_occlusion(native, occlusion); combined != nullptr) {
-            occlusion = combined;
-            foliage_light = nullptr;
-          }
+          if (auto* combined = internal::extra_occlusion(native, occlusion); combined != nullptr) occlusion = combined;
         }
       }
     }
     native->PSSetShaderResources(internal::MASK_SLOT, 1, &occlusion);
-    native->PSSetShaderResources(internal::FOLIAGE_SLOT, 1, &foliage_light);
     return {};
   }
 };
+
+// Light Through Foliage: Bend's march has to know what casts a shadow, and neither the game's stencil nor its material byte
+// tell foliage apart. Its depth pass follows the terrain's and comes before the rigid objects': the depth buffer copied at
+// the frame's first foliage draw (`after` false) and at the first draw of the rest after it (`after` true) differs where it
+// drew (sss_depth; branches among the leaves count as leaves).
+constexpr auto OnFoliageOrder = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  using Arguments = typename Context::ArgumentType;
+  if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    return {};
+  } else {
+    auto& runtime = internal::runtime;
+    const bool after = command.template GetCallbackData<T>();
+    const std::unique_lock lock(runtime.mutex);
+    if (!runtime.settings.enabled || runtime.settings.foliage_light <= 0.f
+        || (after ? (runtime.before_foliage_frame != runtime.frame || runtime.after_foliage_frame == runtime.frame)
+                  : runtime.before_foliage_frame == runtime.frame)) {
+      return {};
+    }
+    if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || !frame_history::MainViewport(native)) return {};
+    ComPtr<ID3D11DepthStencilView> depth;
+    native->OMGetRenderTargets(0, nullptr, depth.GetAddressOf());
+    if (!depth) return {};
+    ComPtr<ID3D11Resource> resource;
+    depth->GetResource(resource.GetAddressOf());
+    ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(resource.As(&texture))) return {};
+    D3D11_TEXTURE2D_DESC desc = {};
+    texture->GetDesc(&desc);
+    ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    auto& objects = runtime.objects;
+    auto& copy = after ? objects.after_foliage : objects.before_foliage;
+    auto& view = after ? objects.after_foliage_srv : objects.before_foliage_srv;
+    D3D11_TEXTURE2D_DESC held = {};
+    if (copy) copy->GetDesc(&held);
+    if ((held.Width != desc.Width || held.Height != desc.Height || held.SampleDesc.Count != desc.SampleDesc.Count)
+        && !internal::MakeDepthCopy(device.Get(), desc, &copy, &view)) {
+      return {};
+    }
+    native->CopyResource(copy.Get(), texture.Get());
+    (after ? runtime.after_foliage_frame : runtime.before_foliage_frame) = runtime.frame;
+    return {};
+  }
+};
+
+// The foliage's vertex shaders and those of the draws after it (OnFoliageOrder; a game without them keeps every shadow
+// whole).
+inline void InstallFoliage(std::span<const uint32_t> foliage_shaders, std::span<const uint32_t> following_shaders) {
+  static constexpr bool BEFORE = false;
+  static constexpr bool AFTER = true;
+  for (const uint32_t hash : foliage_shaders) {
+    renodx::utils::command_action::Register(OnFoliageOrder, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &BEFORE);
+  }
+  for (const uint32_t hash : following_shaders) {
+    renodx::utils::command_action::Register(OnFoliageOrder, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &AFTER);
+  }
+}
 
 // Every present: the settings and the main view's size (the display's).
 inline void Update(reshade::api::swapchain* swapchain, const Settings& settings) {
@@ -1150,6 +1187,7 @@ inline void PatchForwardShadows(std::span<const uint32_t> hashes) {
 inline void Uninstall() {
   renodx::utils::pipeline::UnregisterOnCreateCallback(internal::OnCreatePipeline);
   renodx::utils::command_action::Unregister(OnSunDraw);
+  renodx::utils::command_action::Unregister(OnFoliageOrder);
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.objects = {};
 }

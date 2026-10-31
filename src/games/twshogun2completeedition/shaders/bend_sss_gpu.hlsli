@@ -126,6 +126,10 @@ struct DispatchParameters
 	bool MirrorEdges;
 	// RenoDX: the shadow fades out between these shares of the far plane's distance (y <= x: none).
 	float2 FarFade;
+#ifdef BEND_SSS_LIGHT_CASTERS
+	// RenoDX (Attila's Light Through Foliage): what a depth marked negative shadows keeps this share of the light.
+	float CasterLight;
+#endif
 
 	// Set sensible starting tuning values
 	void SetDefaults()
@@ -278,6 +282,10 @@ struct DispatchParameters
 
 	// Common shared data
 	groupshared float DepthData[READ_COUNT * WAVE_SIZE];
+#ifdef BEND_SSS_LIGHT_CASTERS
+	// RenoDX: the least a sample's depth delta counts for (0 a solid caster).
+	groupshared float LightData[READ_COUNT * WAVE_SIZE];
+#endif
 	groupshared bool LdsEarlyOut;
 
 	// Generate the shadow
@@ -341,6 +349,11 @@ struct DispatchParameters
 			depths.y = inParameters.DepthTexture.SampleLevel(inParameters.PointBorderSampler, read_xy * inParameters.InvDepthTextureSize, 0, offset_xy);
 		#endif
 
+#ifdef BEND_SSS_LIGHT_CASTERS
+			const bool light_caster = depths.x < 0;
+			depths = abs(depths);
+#endif
+
 			// Depth thresholds (bilinear/shadow thickness) are based on a fractional ratio of the difference between sampled depth and the far clip depth
 			const float depth_thickness_scale = abs(inParameters.FarDepthValue - depths.x);
 
@@ -401,6 +414,10 @@ struct DispatchParameters
 				// Store the depth values in groupshared
 				int idx = (i * WAVE_SIZE) + inGroupThreadID.x;
 				DepthData[idx] = stored_depth;
+#ifdef BEND_SSS_LIGHT_CASTERS
+				// The contrast below turns this least delta into the caster's share of the light.
+				LightData[idx] = light_caster ? 1 - (1 - inParameters.CasterLight) / inParameters.ShadowContrast : 0;
+#endif
 			}
 
 			// Iterate to the next pixel along the ray. This will be WAVE_SIZE pixels along the ray...
@@ -486,6 +503,9 @@ struct DispatchParameters
 		[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
 		{
 			float depth_delta = abs(start_depth - DepthData[sample_index + i] * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+			depth_delta = max(depth_delta, LightData[sample_index + i]);
+#endif
 
 			// We want to find the distance of the sample that is closest to the reference depth
 			hard_shadow = min(hard_shadow, depth_delta);
@@ -499,6 +519,10 @@ struct DispatchParameters
 		{
 			float4 depth_delta = abs(start_depth - float4(DepthData[sample_index + i], DepthData[sample_index + i + 1],
 			                                              DepthData[sample_index + i + 2], DepthData[sample_index + i + 3]) * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+			depth_delta = max(depth_delta, float4(LightData[sample_index + i], LightData[sample_index + i + 1],
+			                                      LightData[sample_index + i + 2], LightData[sample_index + i + 3]));
+#endif
 
 			// Do the same as the hard_shadow code above, but this will accumulate to 4 separate values.
 			// By using 4 values, the average shadow can be taken, which can help soften single-pixel shadows.
@@ -509,6 +533,9 @@ struct DispatchParameters
 		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade++)
 		{
 			float depth_delta = abs(start_depth - DepthData[sample_index + inSampleCount - inParameters.FadeOutSamples + fade] * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+			depth_delta = max(depth_delta, LightData[sample_index + inSampleCount - inParameters.FadeOutSamples + fade]);
+#endif
 
 			// Add the fade value to these samples
 			const float fade_out = (float)(fade + 1) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
