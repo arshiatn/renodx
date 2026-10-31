@@ -12,8 +12,8 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon3
   Reflections and Water, Ray Tracing), all titles one colour. Each has a Method slider and shows only that method's settings;
   the rest is under More Options (closed, its own colour). DLAA in Anti-Aliasing is called DLSS now. Saved settings and presets
   stay as they were: the Method sliders read and write the same keys. Leaving Path-Traced Global Illumination while on
-  Path-Traced AO moves AO to Ray-Traced (the game's ambient would come back with no AO on it). The settings
-  page needs ReShade's overlay in game to check: every method and More Options was clicked through once.
+  Path-Traced AO moves AO to Ray-Traced (the game's ambient would come back with no AO on it). Every method slider and More
+  Options was clicked through in game.
 - **LOD changes under RT Shadows**: while the camera moves, every mesh is updated every frame, so the old level no longer leaves
   up to 3 frames before the new one comes in. About 0.1 ms CPU while moving, nothing when still.
 - **Sprite soldiers have ray-traced shadows** (Shadows > More Options > Sprite Soldier Shadows, on): cards facing the sun, cut
