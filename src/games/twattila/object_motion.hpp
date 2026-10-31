@@ -1479,6 +1479,8 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
   }
   if (objects.placement_frame != frame || (objects.unit_record_draws.empty() && objects.rigid_record_count == 0)) return;
   const size_t current = objects.placement_index;
+  // The campaign map's placements a twentieth apart (motion.hlsli PlacementScale).
+  const uint32_t campaign = (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? 1u : 0u);
   // The game's compute bindings: the shader, b0, t0, t14-t15 and u0-u5.
   ComPtr<ID3D11ComputeShader> game_shader;
   native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
@@ -1517,7 +1519,7 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
         count += draws[next].count;
         ++next;
       }
-      const std::array<uint32_t, 4> range = {draws[first].first, count, 0u, 0u};
+      const std::array<uint32_t, 4> range = {draws[first].first, count, campaign, 0u};
       native->UpdateSubresource(unit_constants, 0, nullptr, range.data(), 0, 0);
       ID3D11ShaderResourceView* animation_map = draws[first].animation_map.Get();
       native->CSSetShaderResources(ANIMATION_SRV_SLOT, 1, &animation_map);
@@ -1532,7 +1534,7 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
   }
 
   if (objects.rigid_record_count != 0) {
-    const std::array<uint32_t, 4> rigid = {objects.rigid_record_count, (objects.previous_placements ? 1u : 0u), 0u, 0u};
+    const std::array<uint32_t, 4> rigid = {objects.rigid_record_count, (objects.previous_placements ? 1u : 0u), campaign, 0u};
     native->UpdateSubresource(objects.rigid_constants.Get(), 0, nullptr, rigid.data(), 0, 0);
     constexpr std::array<UINT, 4> EMPTY = {};
     native->ClearUnorderedAccessViewUint(objects.rigid_flags_uav.Get(), EMPTY.data());

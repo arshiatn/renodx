@@ -56,15 +56,15 @@ void ClaimBones(uint key, float raw_base, float width)
 
 // The unit's placement (its world rows) and bones (x its base in the animation texture, y the texture's width) of its
 // draw's mesh and animation texture (object_motion.hpp's keys): one key per placement (every caller for the unit records
-// the same; the first one in a slot wins it), its bones claimed by the caller that took a slot.
-void RecordUnit(float4 row0, float4 row1, float4 row2, float4 bones, uint mesh_key, uint animation_key)
+// the same; the first one in a slot wins it), its bones claimed by the caller that took a slot. `scale`: PlacementScale.
+void RecordUnit(float4 row0, float4 row1, float4 row2, float4 bones, uint mesh_key, uint animation_key, float scale)
 {
   const uint key = ((mesh_key * 2654435761u) ^ (asuint(row0.w) * 2246822519u) ^ (asuint(row1.w) * 3266489917u)
                     ^ (asuint(row2.w) * 668265263u)) | 1u;
   const uint bone_key = BoneKey(bones.x, animation_key);
   float4 rows[3] = {row0, row1, row2};
   if (MotionRecord(motion_keys, motion_placements, key, float2(row0.w, row2.w), rows,
-                   uint4(mesh_key, bone_key, asuint(bones.x), asuint(bones.y)))) {
+                   uint4(mesh_key, bone_key, asuint(bones.x), asuint(bones.y)), scale)) {
     ClaimBones(bone_key, bones.x, bones.y);
   }
 }

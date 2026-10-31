@@ -23,5 +23,6 @@ void main(float4 position : SV_Position, float4 world : TEXCOORD0, nointerpolati
   const uint key = ((motion_unit.x * 2654435761u) ^ (asuint(world.x) * 2246822519u) ^ (asuint(world.y) * 3266489917u)
                     ^ (asuint(world.z) * 668265263u)) | 1u;
   float4 rows[3] = {float4(1.f, 0.f, 0.f, world.x), float4(0.f, 1.f, 0.f, world.y), float4(0.f, 0.f, 1.f, world.z)};
-  MotionRecord(motion_keys, motion_placements, key, world.xz, rows, uint4(motion_unit.x, motion_draw.x, motion_draw.y, vertex));
+  MotionRecord(motion_keys, motion_placements, key, world.xz, rows, uint4(motion_unit.x, motion_draw.x, motion_draw.y, vertex),
+               PlacementScale(motion_unit.z));
 }

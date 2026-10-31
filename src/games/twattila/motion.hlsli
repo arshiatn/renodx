@@ -18,9 +18,9 @@ cbuffer motion_VS : register(b12)
   float4 motion_current[4];   // the camera's view-projection rows (Attila's c9-c12 without the jitter)
   float4 motion_previous[4];  // last frame's
   float4 motion_times;        // x last frame's time_in_sec, zw the render size
-  uint4 motion_unit;          // x the draw's mesh key, y 1: last frame's placements recorded, z 1: last frame's bones
-                              // unknown (the campaign map), w units: the draw's animation texture (part of the bone key),
-                              // rigid objects and deformed meshes: the draw's slot
+  uint4 motion_unit;          // x the draw's mesh key, y 1: last frame's placements recorded, z 1: the campaign map
+                              // (PlacementScale; last frame's bones unknown), w units: the draw's animation texture (part
+                              // of the bone key), rigid objects and deformed meshes: the draw's slot
   uint4 motion_draw;          // deformed meshes: x the draw's first position, y its positions, z its first vertex
   float4 motion_jitter;       // the rows' jitter in clip space (xy this frame's, zw last frame's; Shogun 2), else 0
   float4 motion_game_jitter;  // in-draw motion (motion_draw_*.vs): the jitter the game's rows hold (xy, clip per w)
@@ -71,6 +71,14 @@ static const uint PLACEMENT_CELLS = 65536u;
 static const uint PLACEMENT_SLOTS = 8u;
 static const float PLACEMENT_REACH = 0.5f;
 static const float PLACEMENT_CELL = 1.f;
+
+// The cells' and reach's scale: the campaign map's world is about a twentieth of the battle's (its camera's near plane 1,
+// far 500; a city's pieces a tenth of a unit wide), else a city shares a cell's slots and its pieces take a neighbour's
+// place (ATN's v120 trace: city walls jittering, ~95 pixels of motion with a still camera).
+float PlacementScale(uint campaign)
+{
+  return (campaign != 0u) ? 0.05f : 1.f;
+}
 // The bone pool: a soldier's first BONE_TEXELS texels (96 bones) from its bone base, BONE_SOLDIERS soldiers a frame,
 // found by bone key in a table of BONE_SLOTS.
 static const uint BONE_TEXELS = 288u;
@@ -95,12 +103,13 @@ uint PlacementCell(int2 cell)
 
 // A placement into this frame's table (`keys`: a key per slot, 0 empty; `placements`: four rows per slot) in every cell
 // within PLACEMENT_REACH of `position` (x, z), under `key` (one per placement: its first writer in a cell takes a slot,
-// later ones find it); true when this call took one.
-bool MotionRecord(RWBuffer<uint> keys, RWBuffer<uint4> placements, uint key, float2 position, float4 rows[3], uint4 extra)
+// later ones find it); true when this call took one. `scale`: PlacementScale.
+bool MotionRecord(RWBuffer<uint> keys, RWBuffer<uint4> placements, uint key, float2 position, float4 rows[3], uint4 extra,
+                  float scale)
 {
   bool took = false;
-  const float2 low = floor((position - PLACEMENT_REACH) / PLACEMENT_CELL);
-  const float2 high = floor((position + PLACEMENT_REACH) / PLACEMENT_CELL);
+  const float2 low = floor((position - PLACEMENT_REACH * scale) / (PLACEMENT_CELL * scale));
+  const float2 high = floor((position + PLACEMENT_REACH * scale) / (PLACEMENT_CELL * scale));
   [loop]
   for (float z = low.y; z <= high.y; ++z) {
     [loop]
@@ -156,8 +165,9 @@ bool MotionPreviousPlacement(float4 rows[3], out float4 previous[3], out uint4 p
   previous_bones = 0u;
   if (motion_unit.y == 0u) return false;
   const float2 position = float2(rows[0].w, rows[2].w);
-  const uint first = PlacementCell(int2(floor(position / PLACEMENT_CELL))) * PLACEMENT_SLOTS;
-  float nearest = PLACEMENT_REACH * PLACEMENT_REACH;
+  const float scale = PlacementScale(motion_unit.z);
+  const uint first = PlacementCell(int2(floor(position / (PLACEMENT_CELL * scale)))) * PLACEMENT_SLOTS;
+  float nearest = PLACEMENT_REACH * PLACEMENT_REACH * scale * scale;
   bool found = false;
   [loop]
   for (uint slot = first; slot < first + PLACEMENT_SLOTS; ++slot) {
@@ -192,8 +202,9 @@ bool MotionPreviousRigidPlacement(float4 rows[3], out float4 previous[3])
   previous = rows;
   if (motion_unit.y == 0u) return false;
   const float3 position = float3(rows[0].w, rows[1].w, rows[2].w);
-  const uint first = PlacementCell(int2(floor(position.xz / PLACEMENT_CELL))) * PLACEMENT_SLOTS;
-  float nearest = PLACEMENT_REACH * PLACEMENT_REACH;
+  const float scale = PlacementScale(motion_unit.z);
+  const uint first = PlacementCell(int2(floor(position.xz / (PLACEMENT_CELL * scale)))) * PLACEMENT_SLOTS;
+  float nearest = PLACEMENT_REACH * PLACEMENT_REACH * scale * scale;
   bool found = false;
   [loop]
   for (uint slot = first; slot < first + PLACEMENT_SLOTS; ++slot) {

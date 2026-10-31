@@ -18,7 +18,7 @@ RWBuffer<uint> motion_slot_flags : register(u2);
 
 cbuffer motion_rigid : register(b0)
 {
-  uint4 motion_rigid;  // x the records, y 1: last frame's table written
+  uint4 motion_rigid;  // x the records, y 1: last frame's table written, z 1: the campaign map (PlacementScale)
 }
 
 // Further out for a record not found by its prediction: a new fast object (its first frame had no velocity yet).
@@ -38,13 +38,14 @@ void main(uint3 id : SV_DispatchThreadID)
   bool found = false;
   float3 previous_position = position;
   float4 previous_rows[3] = rows;
+  const float scale = PlacementScale(motion_rigid.z);
   if (motion_rigid.y != 0u) {
-    float nearest = PLACEMENT_REACH * PLACEMENT_REACH;
-    const int2 center = int2(floor(position.xz / PLACEMENT_CELL));
+    float nearest = PLACEMENT_REACH * PLACEMENT_REACH * scale * scale;
+    const int2 center = int2(floor(position.xz / (PLACEMENT_CELL * scale)));
     const int reach = (int)ceil(BOOTSTRAP_REACH / PLACEMENT_CELL);
     for (int search = 0; search < 2 && !found; ++search) {
       const int spread = (search == 0) ? 0 : reach;
-      if (search == 1) nearest = BOOTSTRAP_REACH * BOOTSTRAP_REACH;
+      if (search == 1) nearest = BOOTSTRAP_REACH * BOOTSTRAP_REACH * scale * scale;
       [loop]
       for (int z = -spread; z <= spread; ++z) {
         [loop]
@@ -86,5 +87,5 @@ void main(uint3 id : SV_DispatchThreadID)
   const float3 predicted = position + velocity;
   const uint key = ((mesh * 2654435761u) ^ (asuint(rows[0].w) * 2246822519u) ^ (asuint(rows[1].w) * 3266489917u)
                     ^ (asuint(rows[2].w) * 668265263u)) | 1u;
-  MotionRecord(motion_keys, motion_placements, key, predicted.xz, rows, uint4(mesh, asuint(velocity)));
+  MotionRecord(motion_keys, motion_placements, key, predicted.xz, rows, uint4(mesh, asuint(velocity)), scale);
 }

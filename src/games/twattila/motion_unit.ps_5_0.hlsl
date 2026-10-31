@@ -18,7 +18,7 @@ uint2 main(float4 position : SV_Position, float4 clip : TEXCOORD0, float4 previo
             nointerpolation float4 row2 : TEXCOORD4, nointerpolation float4 bones : TEXCOORD5) : SV_Target
 {
 #ifndef MOTION_UNIT_RECORDED
-  RecordUnit(row0, row1, row2, bones, motion_unit.x, motion_unit.w);
+  RecordUnit(row0, row1, row2, bones, motion_unit.x, motion_unit.w, PlacementScale(motion_unit.z));
 #endif
   return MotionTexel(MotionPixels(clip, previous_clip), position.z);
 }

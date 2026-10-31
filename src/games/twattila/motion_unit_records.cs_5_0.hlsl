@@ -12,7 +12,7 @@ Buffer<float4> unit_records : register(t0);
 
 cbuffer unit_record_range : register(b0)
 {
-  uint4 unit_record_range;  // x the first record, y the records
+  uint4 unit_record_range;  // x the first record, y the records, z 1: the campaign map (PlacementScale)
 }
 
 [numthreads(64, 1, 1)]
@@ -21,5 +21,6 @@ void main(uint index : SV_DispatchThreadID)
   if (index >= unit_record_range.y) return;
   const uint record = (unit_record_range.x + index) * 4u;
   const float4 bones = unit_records[record + 3u];
-  RecordUnit(unit_records[record], unit_records[record + 1u], unit_records[record + 2u], bones, asuint(bones.z), asuint(bones.w));
+  RecordUnit(unit_records[record], unit_records[record + 1u], unit_records[record + 2u], bones, asuint(bones.z), asuint(bones.w),
+             PlacementScale(unit_record_range.z));
 }

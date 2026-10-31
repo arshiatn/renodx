@@ -39,15 +39,23 @@ ATN's words, verbatim:
       in addon.cpp without key or label: give it a label so Page::Take finds it (or page.Add it). Traps: Page::Defaults would put GraphicsShadowMapSize into page_defaults, then No RT/PT and
       RT/PT would reset it: keep it out of those; Graphics 2 of 2's two presets still write the key (tooltips say 8192). Compatibility stays on by default ([Attila] DisableGraphics missing = on).
       README, tooltips, attila_nexus_text ("Graphics 2 of 2" paragraph) follow.
-- [ ] 3 Newest FSR + FSR Frame Generation: look up AMD's newest FidelityFX SDK first (WebSearch, GitHub GPUOpen-LibrariesAndSDKs; ATN allows any AMD download; follow its licence, add it to
+- [ ] 3 NOT DONE in v120 (ATN's weekly limit ran out; ATN releases v120 without it): moved to the v121 batch. Newest FSR + FSR Frame Generation: look up AMD's newest FidelityFX SDK first (WebSearch, GitHub GPUOpen-LibrariesAndSDKs; ATN allows any AMD download; follow its licence, add it to
       licenses and About). Attila is 32-bit: it has to run in the 64-bit helper on the shared textures like DLSS (D3D12 there: rr_d3d12.hpp, fg_d3d12.hpp's child window for presenting; read them).
       Addon side: Method::DLAA has 14 uses in twattila/*.hpp, `method == 5.f` 48: FSR needs its own AntiAliasing method, render scale, jitter, DLSS Mode labels. Any GPU should get it.
-- [ ] 4 RT/PT on AMD and Intel. Answer for ATN: the least is DXR 1.1 (our shaders use inline ray queries, cs_6_5), the RTX 2080's level too; 1.2 (micromaps, SER) is checked at start and used only
+- [ ] 4 NOT DONE in v120 (same; v121 batch, with NVIDIA NRD as the non-RR denoiser, ATN 2026-10-31: "Maybe just use Nvidia NRD and call it a day"). RT/PT on AMD and Intel. Answer for ATN: the least is DXR 1.1 (our shaders use inline ray queries, cs_6_5), the RTX 2080's level too; 1.2 (micromaps, SER) is checked at start and used only
       when there (dxr12_); Mega Geometry only on NVIDIA (clusters_, falls back). Remove the VendorId lock v119 added (rt_d3d12.hpp Initialize). Its path = RENODX_TW_NO_DXR12=1 + RENODX_TW_NO_CLUSTERS=1,
       harness modes no_dxr12_no_clusters; the game ran it at 30 fps against 60 on the 5090. Work left there: everything RT is gated on DLSS (`aa->method == 5`, labels "Needs DLSS"): needs "DLSS or FSR"; no Ray
       Reconstruction there, so the denoisers' non-RR paths must carry it (AO history, reflections' accumulation, Light Bounce denoiser). No AMD card here: say so, simulated only. Update README, Nexus text
       (Requirements: "NVIDIA RTX only for now", "AMD and Intel: DLSS and ray tracing stay off").
-- [-] 5 (2026-10-31, v120 session: needs ATN) Three runs (logs/jitter1-3, claude1 Tyrus with Motion Vectors, claude2 Hadrumetum with No Camera Motion): at the
+- [x] 5 FIXED (2026-10-31, ATN's live session + attila_pixel_trace.txt at Carthago Nova): the jittering wall / tower pieces are rigid 347F3DD9
+      (every campaign rigid draw); their motion redraw wrote ~95 px of motion with a still camera (the camera's own: 0.0008 px). Cause: the campaign
+      map's world is ~1/20-1/100 of the battle's (n 1 / f 500; the traced piece 7.9 units away, 0.09 wide, its same-mesh twin 0.25 away), and the
+      placement table's 1-unit cells and 0.5 reach (made for metres) put whole cities in one cell: 8 slots overflowed, pieces took a neighbour's
+      place, were flagged moving and jittered. Fix: motion.hlsli PlacementScale (campaign 0.05: cells 0.05, reach 0.025, rigid bootstrap 0.125)
+      in MotionRecord, both lookups, motion_rigid.cs, unit records and cloth captures (campaign flag: motion_unit.z, the two compute constants' z).
+      Not tested in game (ATN's game was running: v120 addon copied in, the old one renamed .addon32.v119). Rome II / Thrones / 64-bit TW games
+      have their own motion.hlsli copies: port PlacementScale with their campaign work.
+      Before: three runs (logs/jitter1-3, claude1 Tyrus with Motion Vectors, claude2 Hadrumetum with No Camera Motion): at the
       saves' start views nothing in the cities moves wrongly (motion view grey but UI; two still shots 4 s apart differ only in sea, surf, smoke). The campaign camera
       ignored Y (zoom) from the script: ATN to zoom where it jitters, Anti-Aliasing Debug View = Motion Vectors, F11 (and say what jitters).
       Jittering in campaign cities: saves claude1.save and claude2.save (Attila save_games, 2026-10-31 23:03 / 23:04). ATN offers to log if that is easier. Way that found the animals: test_scripts/run_game.ps1
