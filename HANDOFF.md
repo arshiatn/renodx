@@ -1,7 +1,7 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v117 HUGE BATCH (search "v117 HUGE BATCH"), see its ticks. v116 batch done (search "v116 BIG BATCH").
+- NOW: v118 HUGE BATCH (search "v118 HUGE BATCH"), see its ticks. v117 batch done (search "v117 HUGE BATCH").
 - State: Attila v117 shipped (Downloads/twattila_v117.zip, helper60 = build/tw_dlaa_helper60, bridge v19; v117 is in Attila's
   folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn35); the addon there is a COPY, not the symlink to
   build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
@@ -1624,6 +1624,43 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       [x] 6. Explained in the round report: SHaRC = two extra passes a frame (update traces from 1 of 25 texels, resolve
           walks 2 M entries) for paths that are short and mostly end on surfaces the screen knows; SER = a ray tracing
           pipeline instead of the inline compute plus a sort by hit, worth it only for long divergent shading.
+    - v118 HUGE BATCH (ATN 2026-10-31 ~10:00, away for hours / days: don't stop midway, don't wait for answers, commit after every
+      step, never push, tick off here; new issues found: fix them in the following batch. debug36 = C:/Program Files (x86)/Steam/
+      steamapps/common/Total War Attila/debug36: logs started mid game, a profile, two pictures). ATN's words:
+      "3 things, maybe you can find it in the logs: Shadows on the smokes (smoke of catapults shots) looks insane but Idk why or how,
+      when I was playing around with the toggles, they just stopped working (Smoke shadow and RT shadows are are on.) They just don't
+      come back anymore. (There was a short freeze when I went to GT-VBAO then back to PT AO too)
+      Subfolder "RT Reflection leak", I have realized that sides of the screen (no matter what DLSS or how many samples RT reflection
+      takes), has this "issue" it seems like screen space reflection. Idk if you see it or not. (on left and right sides). It is not in
+      this folder but sometimes, It seems that SSAO/GT-VBAO/RT AO don't use RT Reflection at all for Water. It looks like SSR for me.
+      Subfolder "shadows or ao missing". I was on the other side of the map looking at the water reflections and testing things out:
+      "RT Reflection leak". Then I came back to this side of the battle and saw the Shadows are missing. I put RT Shadows back to SSS
+      (which brought the shadows back) then back to RT Shadows but the shadows didn't come back anymore. I changed AO (if I remember
+      correctly) to GT-VBAO then back to PT AO then the shadows and etc. came back. Why is this?
+      One more thing, I got no picture of it but "dead bodies" on the the ground in shadows have lit up bodies on their corners/bottom.
+      What I mean is, it looks like they don't get shadows under their dead bodies.
+      Add: Far tree billboards aren't in the RT scene, so they have the same missing-shadow problem sprites had.
+      Btw. can we get a toggle for these tree billboards and 2d unit spirits a toggle in More Options when RT Shadows is selected too
+      please?
+      For the settings, could you please, for example name the technology that is being used too please. Like for Reflection. You don't
+      say the AMD SSR (or whatever it is called) but Hiarchical (or whatever). There are probably more stuff on that page.
+      One last check please: check that NO debug or anything runs when the debug sliders isn't on. Please make sure that no CPU/GPU time
+      is wasted when the reshade window is closed. Optimize for last time please."
+      Findings from debug36 so far (timeline, helper log has no times, ReShade.log has): 09:47:33 trace 4144 Close failed E_INVALIDARG
+      (256 captures, 162 compact, 733 placements), then "no trace" (record 0.01 ms) until 09:49:31: a failed Close seems to leave the
+      slot's list open, so allocator->Reset fails for good: that SLOT never records again. With 3 requests a frame one effect dies:
+      first the trace, after ATN's toggles shifted the order the Light Bounce (bounce stuck at 0.51 ms 09:49:41-09:53:23, PT AO and GI
+      gone: the picture "shadows or ao missing"). Nothing but the GPU reset at 09:53:17 (nvlddmkm 153 x2) cured it: new helper, new
+      slots: ATN's "came back" after the AO change was that reset. That reset: trace 46119, 26 of 69 ops, first sway Dispatch.
+      [ ] 1. Failed Close: remake the slot's list and allocator; find what made it fail (256 captures).
+      [ ] 2. Smoke shadows stop: the smoke is the LAST capture, skipped with RT_CAPTURES full; check why else.
+      [ ] 3. The freeze at the toggle: GPU reset at the sway Dispatch.
+      [ ] 4. RT reflections: screen sides; water without RT reflections under SSAO / GT-VBAO / RT AO.
+      [ ] 5. Dead bodies lit at their corners.
+      [ ] 6. Far tree billboards in the RT scene; toggles for them and the sprites under Shadows' More Options.
+      [ ] 7. Technology names on the settings page.
+      [ ] 8. Last check: nothing debug runs unless asked, nothing wasted with the overlay closed, last optimizations.
+      [ ] 9. v118 zip (helper61), README, HANDOFF, memory, report.
     - v117 HUGE BATCH (ATN 2026-10-31 ~00:20, away for hours / days: don't stop, don't wait for answers, commit after every step,
       tick off here, new issues found: fix them in the following batch; debug35 = C:/Program Files (x86)/Steam/steamapps/common/
       Total War Attila/debug35: logs copied there, ATN's ini also tools/tw/test_scripts/ReShade.ini.atn35). ATN's items:
