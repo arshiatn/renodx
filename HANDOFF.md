@@ -1,7 +1,11 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW: v120 BATCH, saved and NOT started (search "v120 BATCH"). v119 done (search "v119 BIG BATCH"), v118 done ("v118 HUGE BATCH").
+- NOW (2026-10-31 night): v120 shipped (Downloads/twattila_v120.zip, helper62 unchanged; items 1, 2, 5 done; 3 FSR + FSR FG and 4 RT/PT
+  on AMD / Intel with NVIDIA NRD NOT done: ATN's weekly limit ran out, they are the v121 batch, search "v120 BATCH" for their hints).
+  Pushed to ATN's fork (origin arshiatn/renodx, branch atn-mods, tag twattila-v120); ATN attaches the zip to a GitHub release there
+  (Nexus blocks the zip). v120 addon is in Attila's folder (old one renamed .addon32.v119), not tested in game. v119 done
+  (search "v119 BIG BATCH"), v118 done ("v118 HUGE BATCH").
 - State: Attila v119 shipped (Downloads/twattila_v119.zip, helper62 = build/tw_dlaa_helper62, bridge v19; v119 is in Attila's
   folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn38); the addon there is a COPY, not the symlink to
   build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
@@ -62,7 +66,10 @@ ATN's words, verbatim:
       -Campaign "claude1.save" -Shot "35,6,10" -Set "33:AntiAliasingDebugView=1" -Seconds 75, zoom into what is coloured with a still camera; Object Motion view = 2; FrameTrace=1 in [renodx] with DLSS below 100%
       gives tw_frame_trace.txt, test_scripts/pairs.py names its draws. Remember campaign_frames (frame_history): bone history is off there (animals). Candidates: rigid 347F3DD9 draws in dynamic buffers, cloth.
 - [ ] 6 ATN's test of v119 first if they sent one; v119's Left list below stays open.
-- [ ] 7 Zip twattila_v120.zip (release_zip.py: bump tw_dlaa_helper62 if the helper changes), README, memory, short report.
+- [x] 7 Zip twattila_v120.zip (helper62 carried over: the helper did not change), README v120 + download / fastest-GPU lines, Downloads/
+      attila_nexus_text_v120.txt (download line, RTX 40 / 50 + DXR 1.2 line, Shadow Map Size + UI 4K Mod Compatibility moved to Graphics 1 of 2;
+      ATN's two placeholders kept), memory, report.
+- [ ] 6 stays open: ATN's v119 / v120 test (campaign walls and towers in the Object Motion view should stay grey).
 
 Testing notes: all scripts are now in tools/tw/test_scripts (run_game.ps1, overlay_test.ps1, soak.ps1, install.ps1, ini_set.py, pairs.py, sheet.py, names_scan.py; logs and shots in its logs/ and shots/ folders). Back up
 ATN's ReShade.ini first as ReShade.ini.atn39 and restore it after every test; compare with cmp. install.ps1 copies build32 + build/tw_dlaa_helper into Attila's folder. Downloads/attila_nexus_text_v119.txt has two

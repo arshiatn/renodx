@@ -2,6 +2,20 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Steam Workshop takes only the game's .pack
+mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
+current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
+
+## v120 (2026-10-31; renodx-tw-dlaa64.exe helper62 as v119: ship them together)
+- Graphics 1 of 2: Reset brings back the game's SSAO, SSR, Water Clarity and Water Caustics (the rest at its default).
+  Shadow Map Size and UI 4K Mod Compatibility moved there (Shadows), shown only with the game's shadow maps; the
+  presets leave Shadow Map Size alone (it needs a restart).
+- Campaign cities no longer jitter under DLSS: the campaign map's world is about a twentieth of the battle's, so its
+  object motion's placement table (made for metres) put whole cities in one cell, and wall and tower pieces took a
+  neighbour's place (ATN's trace at Carthago Nova: ~95 pixels of motion with a still camera). Its cells and reach now
+  shrink there (motion.hlsli PlacementScale). Not tested in game yet.
+- Not in v120 (next batch): newest FSR + FSR Frame Generation, ray tracing on AMD and Intel with NVIDIA NRD denoisers.
+
 ## v119 (2026-10-31; renodx-tw-dlaa64.exe helper62: ship them together)
 
 - **The campaign map's plants and forests are in the ray-traced scene**: rigidcampaignvegetation (0x924D7813, 0x819A414C) and
