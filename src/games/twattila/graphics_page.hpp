@@ -87,7 +87,7 @@ inline void ChooseAo(const Bindings& b, int method) {
   renodx::utils::settings::UpdateSettings(values);
 }
 
-inline void ChooseShadows(const Bindings& b, int method) {
+inline void ChooseShadows(int method) {
   // Screen-space shadows stay set under ray-traced ones: they come back without DLSS.
   std::vector<std::pair<std::string, float>> values = {{"RayTracedSunShadows", (method == SHADOW_RAYS) ? 1.f : 0.f}};
   if (method != SHADOW_RAYS) values.emplace_back("ScreenSpaceShadows", (method == SHADOW_SCREEN) ? 1.f : 0.f);
@@ -107,7 +107,7 @@ inline void ChooseGi(const Bindings& b, int method) {
   renodx::utils::settings::UpdateSettings(values);
 }
 
-inline void ChooseReflections(const Bindings& b, int method) {
+inline void ChooseReflections(int method) {
   std::vector<std::pair<std::string, float>> values = {{"RayTracedReflections", (method == REFLECTION_RAYS) ? 1.f : 0.f}};
   if (method != REFLECTION_RAYS) values.emplace_back("ssr_hierarchical", (method == REFLECTION_HIERARCHICAL) ? 1.f : 0.f);
   renodx::utils::settings::UpdateSettings(values);
@@ -350,7 +350,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           "Game's: its shadow maps. Screen-Space: those plus fine contact shadows from what is on screen\n"
                           "(Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
                           "Ray-Traced: every shadow from rays, the sun's and the torches' and fires', in place of both. Needs DLSS.",
-                          {"Game's", "Screen-Space", "Ray-Traced"}, [b] { return ShadowMethodOf(b); }, [b](int method) { ChooseShadows(b, method); }));
+                          {"Game's", "Screen-Space", "Ray-Traced"}, [b] { return ShadowMethodOf(b); }, [](int method) { ChooseShadows(method); }));
     page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ShadowMethodOf(b) == SHADOW_RAYS && b.aa->method != 5.f; }));
     page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
@@ -440,7 +440,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
                           "Game's: the original. Hierarchical: exact, no gaps, reaching across the screen, usually faster\n"
                           "(AMD FidelityFX's ray march). Ray-Traced: from rays, also what is off screen or hidden. Needs DLSS.",
-                          {"Game's", "Hierarchical", "Ray-Traced"}, [b] { return ReflectionMethodOf(b); }, [b](int method) { ChooseReflections(b, method); }));
+                          {"Game's", "Hierarchical", "Ray-Traced"}, [b] { return ReflectionMethodOf(b); }, [](int method) { ChooseReflections(method); }));
     page.Add(Note("Ray-traced effects need DLSS (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ReflectionMethodOf(b) == REFLECTION_RAYS && b.aa->method != 5.f; }));
     page.Take({.match = "ssr_quality", .section = section, .shown = [b] { return ReflectionMethodOf(b) != REFLECTION_RAYS; }, .label = "Quality"});

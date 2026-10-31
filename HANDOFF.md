@@ -2,14 +2,15 @@
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
 - NOW: v117 HUGE BATCH (search "v117 HUGE BATCH"), see its ticks. v116 batch done (search "v116 BIG BATCH").
-- State: Attila v116 shipped (Downloads/twattila_v116.zip, helper59 = build/tw_dlaa_helper59, bridge v19 + placement flag
-  RT_PLACE_WHOLE; v116 is in Attila's folder, its ReShade.ini as ATN left it; the addon there is a COPY now, not the
-  symlink to build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch
-  atn-mods, everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory
-  (MEMORY.md index; project_attila_first.md, reference_tw_ingame_testing.md, reference_attila_sun_shaders.md).
+- State: Attila v117 shipped (Downloads/twattila_v117.zip, helper60 = build/tw_dlaa_helper60, bridge v19; v117 is in Attila's
+  folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn35); the addon there is a COPY, not the symlink to
+  build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
+  everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory (MEMORY.md index;
+  project_attila_first.md, reference_gpu_beside_game.md, reference_attila_frame_facts.md, reference_tw_ingame_testing.md,
+  reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
-- Read: "v116 BIG BATCH" (the open items, in order), then the v115 and v114 checklists under it for recent context.
-  ATN's last test: debug34 (C:/Program Files (x86)/Steam/steamapps/common/Total War Attila/debug34).
+- Read: "v117 HUGE BATCH", then v116 and v115 under it for recent context. ATN's last test: debug35 (C:/Program Files (x86)/Steam/
+  steamapps/common/Total War Attila/debug35). Next open: far tree billboards in the scene, then ATN's list.
 - Round routine: helper build `src/games/twattila/dlaa_helper/build.ps1` (PowerShell), copy build/tw_dlaa_helper to a
   new build/tw_dlaa_helperN; 32-bit `cmake --build build32 --config Release --target renodx-twattila.addon32
   renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32`; 64-bit TW check `cmake --build build --config Release
@@ -1705,7 +1706,7 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Rethink Ray Tracing at Output Resolution: does it act on every RT/PT effect? Costs a lot, not enough. PT AO 1 ray 1
           sample at Full resolution looks almost noise free: can the toggle make DLSS Performance trace above 1920x1080, like
           3840x2160? Finer sliders / toggles.
-      [ ] 8. v117 zip (helper60), README, HANDOFF, memory, report.
+      [x] 8. v117 zip (helper60), README, HANDOFF, memory, report.
     - v116 BIG BATCH (ATN 2026-10-30 ~21:25; started ~21:35, ATN away for hours). ATN's words, as given:
       "1) I am just in the game, you can see the shadow flicker on the tower. I am like really close. IT was flickering in
       distant already too. Please check it out. In the same exact battle as now (log is probably here. I traced the RT for
