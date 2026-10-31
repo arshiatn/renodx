@@ -1667,7 +1667,15 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           dispatch empties the rest: at most 196608 vertices a frame (the old cap 393216). A/B in auto_save.replay, sun debug view: the two
           catapult trails' shadows there with it on, gone with it off. GPU its passes 0.24 ms.
       [ ] 3. The freeze at the toggle: GPU reset at the sway Dispatch.
-      [ ] 4. RT reflections: screen sides; water without RT reflections under SSAO / GT-VBAO / RT AO.
+      [x] 4. RT reflections: screen sides; water without RT reflections under SSAO / GT-VBAO / RT AO.
+          Three causes. (a) Water "without RT reflections, looks like SSR": ReShade.log "Ray-traced reflections: not traced (the game's)" exactly
+          09:47:33 to 09:49:31: the failed request of item 1 (its dead slot), nothing to do with the AO method.
+          (b) The sides: a diagnostic build painted each hit by where its light came from: on screen the screen's light, past the screen's left and
+          right edges the cache: in the water's reflection the far bank (hits at 15-200 m) goes off screen at the sides, and those surfaces took a
+          grey or the screen's mean as base colour: pale at the sides, right in the middle, as SSR. HitAlbedo: the cell's, past the edge the
+          edge pixel's on the way there (banks and walls go on), else the screen's mean (light_kept[3], new sums in the fit).
+          (c) Rays turned into their own surface by a normal map (waves at a grazing view) now bounce off it (surface_normal from the depth):
+          lit share at the left edge 57 -> 38%. river view (for_claude1, W:6.4,Y:2.5): the bank's dark green streaks now reach the sides.
       [ ] 5. Dead bodies lit at their corners.
       [ ] 6. Far tree billboards in the RT scene; toggles for them and the sprites under Shadows' More Options.
       [ ] 7. Technology names on the settings page.

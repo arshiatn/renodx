@@ -26,6 +26,8 @@ void SolveLightFit() {
   const float3 intercept = max((sum_y - slope * sum_x) / count, 0.f);
   const float blend = (shade.w > 0.f) ? LIGHT_FIT_BLEND : 1.f;
   light_kept[1] = float4(lerp(sunlit.rgb, slope, blend), 1.f);
+  const float3 mean_base = float3(light_fit[9], light_fit[10], light_fit[11]) / (LIGHT_FIT_X * count);
+  light_kept[3] = float4(lerp(light_kept[3].rgb, mean_base, (light_kept[3].w > 0.f) ? LIGHT_FIT_BLEND : 1.f), 1.f);
   // With Path-Traced Ambient the screen's shade is the paths' own sky (learned from it, it would only darken): the shade
   // and the ambient cube's scale stay as learned with the game's ambient.
   if ((path_flags & PATH_KEEP_LIGHT) != 0u) return;
@@ -40,7 +42,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   if (entry == 0u) {
     SolveLightFit();
     [unroll]
-    for (uint sum = 0u; sum < 9u; ++sum) {
+    for (uint sum = 0u; sum < 12u; ++sum) {
       light_fit[sum] = 0u;
     }
   }

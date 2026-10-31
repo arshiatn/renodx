@@ -2163,7 +2163,7 @@ class RtScene12 {
         && pool(DXGI_FORMAT_R32_UINT, CACHE_ENTRIES * 4, 4, &cache_sums_, CACHE_SUMS)
         && pool(DXGI_FORMAT_R32G32_UINT, CACHE_ENTRIES, 8, &cache_albedo_, CACHE_ALBEDO)
         && pool(DXGI_FORMAT_R32_UINT, 16, 4, &light_fit_, LIGHT_FIT)
-        && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, 3, 16, &light_kept_, LIGHT_KEPT)) {
+        && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, 4, 16, &light_kept_, LIGHT_KEPT)) {
       return true;
     }
     cache_keys_.Reset();

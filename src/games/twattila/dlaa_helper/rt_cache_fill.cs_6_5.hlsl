@@ -6,8 +6,8 @@
 // The helper's radiance cache, filled (rt_path.hlsli; before the paths). With the frame's prepared light (PATH_LIGHT):
 // one bounce texel of every 2 x 2 (another each frame) adds it to its world cell; with the G-buffer guides it also writes
 // its base colour there, and one in eight adds to the learned lighting's sums: y = the light / the base colour, x = the
-// sun's visibility (the ray-traced one when traced) x N.L. Without it (reflections only): one render pixel of every
-// 2 x 2 adds last frame's scene colour where last frame saw it.
+// sun's visibility (the ray-traced one when traced) x N.L, and the base colour. Without it (reflections only): one render
+// pixel of every 2 x 2 adds last frame's scene colour where last frame saw it.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_cache_fill.h -Vn RT_CACHE_FILL.
 #include "./rt_path.hlsli"
 
@@ -40,6 +40,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 y = min(light_there / max(base, 0.05f), LIGHT_FIT_MAX_Y);
   const uint3 fixed_y = (uint3)(y * LIGHT_FIT_Y + 0.5f);
   const uint3 fixed_xy = (uint3)(x * y * LIGHT_FIT_Y + 0.5f);
+  const uint3 fixed_base = (uint3)(saturate(base) * LIGHT_FIT_X + 0.5f);
   InterlockedAdd(light_fit[0], 1u);
   InterlockedAdd(light_fit[1], (uint)(x * LIGHT_FIT_X + 0.5f));
   InterlockedAdd(light_fit[2], (uint)(x * x * LIGHT_FIT_X + 0.5f));
@@ -49,4 +50,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   InterlockedAdd(light_fit[6], fixed_xy.r);
   InterlockedAdd(light_fit[7], fixed_xy.g);
   InterlockedAdd(light_fit[8], fixed_xy.b);
+  InterlockedAdd(light_fit[9], fixed_base.r);
+  InterlockedAdd(light_fit[10], fixed_base.g);
+  InterlockedAdd(light_fit[11], fixed_base.b);
 }

@@ -36,8 +36,8 @@ RWBuffer<uint> cache_keys : register(u10);            // 0: empty
 RWBuffer<float4> cache_radiance : register(u11);      // rgb, the frame it was last seen + 1 (0: never)
 RWBuffer<uint> cache_sums : register(u12);            // this frame's r, g, b (CACHE_SCALE fixed point), count
 RWBuffer<uint2> cache_albedo : register(u13);         // rgba8 base colour (a 255; 0: none), that frame + 1
-RWBuffer<uint> light_fit : register(u14);             // count, x, x^2, y rgb, x y rgb
-RWBuffer<float4> light_kept : register(u15);          // [0] rgb in shade, [1] rgb the sun adds, [2] the ambient
+RWBuffer<uint> light_fit : register(u14);             // count, x, x^2, y rgb, x y rgb, base colour rgb
+RWBuffer<float4> light_kept : register(u15);          // [0] rgb in shade, [1] rgb the sun adds, [2] the ambient, [3] base colour
                                                       // cube's scale to them (w 1: solved)
 RWTexture2D<float4> specular_accumulated : register(u16);
 RWTexture2D<float4> specular_history : register(u17);
@@ -237,9 +237,20 @@ bool SeenLastFrame(float3 world, out uint2 pixel) {
   return seen.w > 0.f && distance(seen.xyz, world) < 0.03f + 0.01f * seen.w;
 }
 
+// A surface's base colour: its cell's, else (never seen; a grey made reflections go pale toward the screen's sides, as
+// screen-space ones do, ATN's debug36) past the screen's edge the edge's on the way there (banks and walls go on past it),
+// else the screen's mean.
 float3 HitAlbedo(float3 hit) {
   float3 albedo;
-  return CacheAlbedo(hit, albedo) ? albedo : UNSEEN_ALBEDO;
+  if (CacheAlbedo(hit, albedo)) return albedo;
+  const float4 clip = ClipOf(hit, view_projection);
+  if ((path_flags & PATH_GUIDES) != 0u && clip.w > 0.f) {
+    const float2 uv = clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f;
+    const uint2 edge = min(uint2(saturate(uv) * float2(width, height)), uint2(width, height) - 1u);
+    if (any(uv != saturate(uv)) && positions[edge].w > 0.f) return guide_albedo[edge].rgb;
+  }
+  const float4 mean = light_kept[3];
+  return (mean.w > 0.f) ? mean.rgb : UNSEEN_ALBEDO;
 }
 
 // The light leaving a surface a ray met (false: nobody knows it): the screen's now, else last frame's, else the
@@ -785,6 +796,7 @@ void ReflectPixel(uint2 id) {
     return;
   }
   const float3 normal = PixelNormal(id, position);
+  const float3 surface_normal = SurfaceNormal(int2(id), position);
   const float3 view = normalize(Camera() - position.xyz);
   const float n_dot_v = max(dot(normal, view), 1e-3f);
   const float3 origin = RayOrigin(position, normal, Planar(int2(id), position, normal));
@@ -803,12 +815,15 @@ void ReflectPixel(uint2 id) {
   uint open = 0u;
   [loop]
   for (uint sample = 0u; sample < samples; ++sample) {
-    const float3 direction = mirror ? reflect(-view, normal)
-                                    : GgxDirection(basis, view, view_local, alpha,
-                                                   float2(Random(uint3(id, frame * 16u + sample * 2u + 3072u)),
-                                                          Random(uint3(id, frame * 16u + sample * 2u + 3073u))));
+    float3 direction = mirror ? reflect(-view, normal)
+                              : GgxDirection(basis, view, view_local, alpha,
+                                             float2(Random(uint3(id, frame * 16u + sample * 2u + 3072u)),
+                                                    Random(uint3(id, frame * 16u + sample * 2u + 3073u))));
     const float n_dot_l = dot(normal, direction);
     if (n_dot_l <= 0.f) continue;
+    // A normal map can turn a ray into its own surface: on waves, the more the view grazes them (the sides of the screen),
+    // the riverbed under the water showed in them (ATN's debug36). Such a ray bounces off the surface, as off the next wave.
+    direction -= 2.f * min(dot(direction, surface_normal), 0.f) * surface_normal;
     if (traced) {
       float first_distance;
       float3 first_normal;
