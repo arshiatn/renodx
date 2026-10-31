@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <chrono>
 #include <cmath>
@@ -250,9 +251,9 @@ class RtScene12 {
                               D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
       slot.table = Buffer(uint64_t{dlaa_bridge::RT_CAPTURES} * 32, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
                           D3D12_RESOURCE_STATE_GENERIC_READ);
-      slot.sizes = Buffer(uint64_t{dlaa_bridge::RT_CAPTURES} * sizeof(uint64_t), D3D12_HEAP_TYPE_DEFAULT,
+      slot.sizes = Buffer(uint64_t{COMPACTIONS} * sizeof(uint64_t), D3D12_HEAP_TYPE_DEFAULT,
                           D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-      slot.readback = Buffer(uint64_t{dlaa_bridge::RT_CAPTURES} * sizeof(uint64_t), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,
+      slot.readback = Buffer(uint64_t{COMPACTIONS} * sizeof(uint64_t), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,
                              D3D12_RESOURCE_STATE_COPY_DEST);
       slot.rows_readback = Buffer(uint64_t{ROWS_READBACK} * 64, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
       slot.jobs = Buffer(PLACE_TABLE_BYTES + uint64_t{PLACE_JOBS} * 32, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
@@ -861,9 +862,12 @@ class RtScene12 {
     if (gpu_timings_.empty() || label == std::string::npos) return status_ + cpu_timings_;
     return std::format("{}{} | {}{}", status_.substr(0, label + 3), gpu_timings_, status_.substr(label + 3), cpu_timings_);
   }
-  // A GPU fault or hang (Windows' timeout detection) removed the device: nothing runs on it again (main.cpp makes a new
-  // one).
-  [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
+  // A GPU fault or hang (Windows' timeout detection) removed the device: nothing runs on it again.
+  [[nodiscard]] bool Removed() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
+  // Removed, or a request could not be recorded: nothing of it ran but the scene's state says it did (new BLASes, cluster
+  // sets' data), and a list that failed its Close never resets (debug36: one effect gone for six minutes, then a GPU
+  // reset). main.cpp makes a new scene either way.
+  [[nodiscard]] bool Lost() const { return request_failed_ || Removed(); }
 
   // Why the device was removed and, from DRED, where: each command list the GPU did not finish, its operations around
   // the one it stopped in (">"; the passes' markers by name), and a page fault's address with the allocations there.
@@ -1028,6 +1032,10 @@ class RtScene12 {
       slot.marks.clear();
       slot.micromap_builds.clear();
       slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
+    }
+    // The GPU harness's RENODX_TW_TEST_BAD_LIST: an invalid call in the third trace's list.
+    if (reset && test_traces == 3 && GetEnvironmentVariableW(L"RENODX_TW_TEST_BAD_LIST", nullptr, 0) != 0) {
+      slot.list->CopyBufferRegion(slot.readback.Get(), 0, slot.sizes.Get(), 0, slot.sizes->GetDesc().Width + sizeof(uint64_t));
     }
     const bool recorded = reset && Record(shared, version, cluster_data, slot_index, &slot);
     if (!recorded) slot.capture_keys.clear();
@@ -1392,6 +1400,9 @@ class RtScene12 {
       Stamp(list, slot_index * STAMPS + 5);
       Resolve(list, slot_index);
       recorded = SUCCEEDED(list->Close());
+      if (!recorded) {
+        request_failed_ = true;
+      }
     }
     LARGE_INTEGER submit_start;
     QueryPerformanceCounter(&submit_start);
@@ -1561,6 +1572,8 @@ class RtScene12 {
   static constexpr uint32_t MICROMAP_MESH_BYTES = 8u << 20;
   static constexpr uint32_t MICROMAP_TRIANGLES = 1u << 18;
   static constexpr size_t MICROMAP_BAKES = 128;
+  // The BLASes a request can build for compaction: a new one each capture, one with its micromaps each bake finished.
+  static constexpr size_t COMPACTIONS = dlaa_bridge::RT_CAPTURES + MICROMAP_BAKES;
   static constexpr size_t MICROMAP_WORKERS = 4;  // bakes at once (each with the SDK's own threads)
   static constexpr size_t SET_MICROMAP_READS = 32;  // grass sets' micromap reads a request at most
   static constexpr uint64_t MICROMAP_WORKLOAD = 1ull << 28;  // a bake's texel tests at most (coarser micromaps past it)
@@ -2334,10 +2347,11 @@ class RtScene12 {
   // The request's commands into the slot's list (closed); false: nothing usable recorded.
   bool Record(const dlaa_bridge::Shared& shared, uint32_t version, std::span<const uint8_t> cluster_data, size_t slot_index, Slot* slot) {
     auto* list = slot->list.Get();
-    // A request that cannot be recorded: its list closed (the slot's next request resets it), the scene kept (unlike Fail:
-    // ATN's debug32, one bad request then left ray tracing off once the textures were made again).
+    // A request that cannot be recorded: its list closed, a new scene next (Lost; unlike Fail: ATN's debug32, one bad request
+    // then left ray tracing off once the textures were made again).
     const auto skip = [&](std::string why) {
       list->Close();
+      request_failed_ = true;
       status_ = std::move(why);
       return false;
     };
@@ -4068,6 +4082,7 @@ class RtScene12 {
     Stamp(list, slot_index * STAMPS + 9);
     Resolve(list, slot_index);
     if (const HRESULT closed = list->Close(); FAILED(closed)) {
+      request_failed_ = true;
       status_ = std::format("Ray tracing: a request failed (0x{:08X})", static_cast<uint32_t>(closed));
       // Which passes it held (the one-off E_INVALIDARG of debug32 recorded in 0.01 ms; with RENODX_TW_D3D12_DEBUG the
       // debug layer's messages follow).
@@ -5227,6 +5242,7 @@ class RtScene12 {
   std::array<std::vector<BlasChunk>, 2> blas_pools_;
   size_t blas_chunks_logged_ = 0;  // their chunks at the last log line
   bool failed_ = false;
+  std::atomic_bool request_failed_ = false;  // Lost (the worker sets it, main.cpp reads it)
   std::string status_ = "Ray tracing off";
   // The last trace's times: the GPU's (after the status's label), the CPU's and the submit's (at its end).
   std::string gpu_timings_;

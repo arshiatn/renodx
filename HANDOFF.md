@@ -1652,7 +1652,13 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
       first the trace, after ATN's toggles shifted the order the Light Bounce (bounce stuck at 0.51 ms 09:49:41-09:53:23, PT AO and GI
       gone: the picture "shadows or ao missing"). Nothing but the GPU reset at 09:53:17 (nvlddmkm 153 x2) cured it: new helper, new
       slots: ATN's "came back" after the AO change was that reset. That reset: trace 46119, 26 of 69 ops, first sway Dispatch.
-      [ ] 1. Failed Close: remake the slot's list and allocator; find what made it fail (256 captures).
+      [x] 1. Failed Close: remake the slot's list and allocator; find what made it fail (256 captures).
+          CAUSE PROVEN: slot.sizes / readback held RT_CAPTURES entries, a request compacts up to RT_CAPTURES new BLASes + its finished
+          bakes' BLASes: 256 + 1 = CopyBufferRegion past the buffer = E_INVALIDARG at Close. Harness leaf_storm (256 new leaves a frame with
+          micromaps) failed the same way with the old size ("256 captures ... 0x80070057"), passes with COMPACTIONS = RT_CAPTURES + MICROMAP_BAKES.
+          A failed request now counts as Lost: nothing of it ran but CPU state says it did (meshes_, sets_), the list never resets. main.cpp:
+          new scene, addon captures again, nothing paused, the fourth failure leaves RT off (scene_off). skip() the same (BLAS scratch, PTLAS).
+          Harness bad_list (RENODX_TW_TEST_BAD_LIST) passes all checks after the restart.
       [ ] 2. Smoke shadows stop: the smoke is the LAST capture, skipped with RT_CAPTURES full; check why else.
       [ ] 3. The freeze at the toggle: GPU reset at the sway Dispatch.
       [ ] 4. RT reflections: screen sides; water without RT reflections under SSAO / GT-VBAO / RT AO.

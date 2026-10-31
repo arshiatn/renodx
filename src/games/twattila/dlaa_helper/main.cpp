@@ -131,13 +131,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there. After a GPU reset removed
   // it, a new one with the Experimental options that build the scene in their own way paused until the game restarts; a
   // second removal leaves ray tracing off (ATN 2026-10-29: a hang, then three new devices lost at once, and Windows then
-  // refused the helper new devices: frame generation's too).
+  // refused the helper new devices: frame generation's too). A request that could not be recorded takes a new scene too,
+  // nothing paused; the fourth leaves it off (whatever made it fail would come back each time).
   auto scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
   bool scene_open = false;
   uint32_t scene_losses = 0;
+  uint32_t scene_failures = 0;
+  const auto scene_off = [&] { return scene_losses >= 2 || scene_failures >= 4; };
   constexpr uint32_t PAUSED_TRACE_FLAGS = twattila::dlaa_bridge::RT_GPU_MICROMAPS | twattila::dlaa_bridge::RT_SWAY_IN_VIEW;
   constexpr uint32_t PAUSED_PATH_FLAGS = twattila::dlaa_bridge::RT_PATH_SER | twattila::dlaa_bridge::RT_PATH_SHARC;
-  constexpr const char* RT_OFF = "Ray tracing off after a second GPU reset (renodx-tw-dlaa64.log): restart the game";
+  constexpr const char* RT_OFF = "Ray tracing off after repeated failures (renodx-tw-dlaa64.log): restart the game";
   // The handles the addon shared for the open set (its textures and fence, duplicated into this process), kept until the
   // next set: a new ray tracing device opens them again.
   std::vector<HANDLE> set_handles;
@@ -186,7 +189,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // Its status for the addon, (v15) the garbage triangles its scene left out so far, the last such capture's key, and
   // (v16) whether it takes compact draws.
   const auto publish = [&] {
-    strncpy_s(shared->rt_status, (scene_losses >= 2) ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
+    strncpy_s(shared->rt_status, scene_off() ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
     if (const std::string reports = scene->TakeReports(); !reports.empty()) ReShadeLogMessage(nullptr, 0, reports.c_str());
     if (version >= 15) {
       const auto& left_out = scene->LeftOutSoFar();
@@ -219,11 +222,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     std::unique_lock lock(rt_work.mutex);
     rt_work.changed.wait(lock, [&] { return rt_work.pending.empty() && !rt_work.busy; });
   };
-  // A GPU fault or hang (Windows' timeout detection) removed the ray tracing's device: where the GPU stopped logged (DRED),
-  // a new scene (opened by the caller after the first) and the addon told to capture its scene again.
+  // A GPU fault or hang (Windows' timeout detection) removed the ray tracing's device, or a request could not be recorded:
+  // where the GPU stopped logged (DRED), a new scene (opened by the caller after the first) and the addon told to capture
+  // its scene again.
   const auto replace_lost_scene = [&] {
     rt_drain();
-    ReShadeLogMessage(nullptr, 0, scene->LostReport().c_str());
+    const bool removed = scene->Removed();
+    if (removed) {
+      ReShadeLogMessage(nullptr, 0, scene->LostReport().c_str());
+    }
     scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
     scene_open = false;
     {
@@ -231,6 +238,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       rt_work.ran = {};
     }
     if (version >= 15) ++shared->rt_device;
+    if (!removed) {
+      ++scene_failures;
+      ReShadeLogMessage(nullptr, 0, scene_off() ? "[TW ray tracing] Off until the game restarts (a fourth failed request)."
+                                                : "[TW ray tracing] Started again after a failed request.");
+      return;
+    }
     ReShadeLogMessage(nullptr, 0, (++scene_losses == 1)
                                       ? "[TW ray tracing] Started again on a new device, with GPU Micromap Baking and the Experimental Swaying "
                                         "Shadows Range, Off-Screen Sway, Shader Execution Reordering and SHaRC Radiance Cache paused until the game "
@@ -297,8 +310,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (scene->Lost()) replace_lost_scene();
       scene_open = false;
       if (version >= 4 && shared->rt_vertices != 0) {
-        scene_open = scene_losses < 2 && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
-        if (!scene_open) strncpy_s(shared->rt_status, (scene_losses >= 2) ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
+        scene_open = !scene_off() && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
+        if (!scene_open) strncpy_s(shared->rt_status, scene_off() ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
       } else {
         scene->Close();
       }
@@ -349,7 +362,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       // shared reads all ones, dlaa_bridge::Prepare).
       if (scene_open && scene->Lost()) {
         replace_lost_scene();
-        scene_open = scene_losses < 2 && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
+        scene_open = !scene_off() && scene->Initialize(adapter.Get(), folder) && scene->Open(*shared, version);
       }
       // After a GPU reset the paused Experimental options stay off (the addon writes them again each request).
       if (scene_losses != 0) {

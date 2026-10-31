@@ -2192,15 +2192,14 @@ inline void Update(const Settings& settings) {
   runtime.settings = settings;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
-  // The helper started its ray tracing on a new device (a GPU fault or hang removed the last): every mesh captured again.
+  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed): every mesh
+  // captured again.
   if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {
     runtime.helper_device = device;
     runtime.known.clear();
     runtime.short_keys.clear();
     for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
-    renodx::utils::log::w("[Total War] Ray tracing: the helper started again after a GPU reset (renodx-tw-dlaa64.log), the scene is captured "
-                          "again; its GPU Micromap Baking, swaying shadows options, Shader Execution Reordering and SHaRC stay paused until the "
-                          "game restarts.");
+    renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
   }
   // Its full set pool dropped sets (v16): each sent again as it is drawn.
   if (const uint32_t state = dlaa_bridge::CompactState(); state != runtime.compact_state) {
