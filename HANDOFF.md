@@ -47,7 +47,10 @@ ATN's words, verbatim:
       harness modes no_dxr12_no_clusters; the game ran it at 30 fps against 60 on the 5090. Work left there: everything RT is gated on DLSS (`aa->method == 5`, labels "Needs DLSS"): needs "DLSS or FSR"; no Ray
       Reconstruction there, so the denoisers' non-RR paths must carry it (AO history, reflections' accumulation, Light Bounce denoiser). No AMD card here: say so, simulated only. Update README, Nexus text
       (Requirements: "NVIDIA RTX only for now", "AMD and Intel: DLSS and ray tracing stay off").
-- [ ] 5 Jittering in campaign cities: saves claude1.save and claude2.save (Attila save_games, 2026-10-31 23:03 / 23:04). ATN offers to log if that is easier. Way that found the animals: test_scripts/run_game.ps1
+- [-] 5 (2026-10-31, v120 session: needs ATN) Three runs (logs/jitter1-3, claude1 Tyrus with Motion Vectors, claude2 Hadrumetum with No Camera Motion): at the
+      saves' start views nothing in the cities moves wrongly (motion view grey but UI; two still shots 4 s apart differ only in sea, surf, smoke). The campaign camera
+      ignored Y (zoom) from the script: ATN to zoom where it jitters, Anti-Aliasing Debug View = Motion Vectors, F11 (and say what jitters).
+      Jittering in campaign cities: saves claude1.save and claude2.save (Attila save_games, 2026-10-31 23:03 / 23:04). ATN offers to log if that is easier. Way that found the animals: test_scripts/run_game.ps1
       -Campaign "claude1.save" -Shot "35,6,10" -Set "33:AntiAliasingDebugView=1" -Seconds 75, zoom into what is coloured with a still camera; Object Motion view = 2; FrameTrace=1 in [renodx] with DLSS below 100%
       gives tw_frame_trace.txt, test_scripts/pairs.py names its draws. Remember campaign_frames (frame_history): bone history is off there (animals). Candidates: rigid 347F3DD9 draws in dynamic buffers, cloth.
 - [ ] 6 ATN's test of v119 first if they sent one; v119's Left list below stays open.
