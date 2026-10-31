@@ -353,6 +353,19 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
     page.Take({.match = "ScreenSpaceShadowsSoftness", .section = section, .shown = screen});
     page.Take({.match = "ScreenSpaceShadowsThickness", .section = section, .shown = screen});
+    page.Add(new Setting{
+        .key = "ScreenSpaceShadowsFoliage",
+        .binding = &b.sss->foliage_light,
+        .default_value = 0.5f,
+        .label = "Light Through Foliage",
+        .section = section,
+        .tooltip = "How much sun grass and leaves keep inside these shadows: they are thin, the light comes through.\n"
+                   "0: as dark as everything else.",
+        .min = 0.f,
+        .max = 1.f,
+        .format = "%.2f",
+        .is_visible = screen,
+    });
     page.Take({.match = "RayTracedShadowSoftness", .section = section, .shown = rays, .label = "Softness"});
     page.Take({.match = "RayTracedLeafLight", .section = section, .shown = rays});
     page.Take({.match = "RayTracedColouredShadows", .section = section, .shown = rays});
@@ -447,12 +460,16 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(Note("Needs DLSS (Anti-Aliasing above).", section, MORE_TINT, no_dlss));
     page.Add(MoreOptions(section, &more_rt, dlss));
     const auto more_rt_rows = more(&more_rt, dlss);
+    for (const auto* key : {"RayTracingRaysShadows", "RayTracingRaysAmbient", "RayTracingRaysReflections", "RayTracingRaysPaths"}) {
+      page.Take({.match = key, .section = section, .shown = more_rt_rows});
+    }
     page.Take({.match = "RayTracedLeafMicromaps", .section = section, .shown = more_rt_rows, .label = "Leaf Micromaps"});
     page.Take({.match = "RayTracedGpuMicromaps", .section = section, .shown = more_rt_rows});
     page.Take({.match = "RayTracedFastLeafShadows", .section = section, .shown = more_rt_rows, .label = "Fast Leaf Shadows"});
     page.Take({.match = "RayTracedDebugView", .section = section, .shown = more_rt_rows});
     page.Take({.match = "RayTracedSceneTest", .section = section, .shown = more_rt_rows});
     page.Take({.match = "Record Ray Tracing Profile (30 s)", .section = section, .shown = more_rt_rows});
+    page.Take({.match = "RayTracedDebugLog", .section = section, .shown = more_rt_rows});
     page.Add(EmptyLine(section));
   }
 

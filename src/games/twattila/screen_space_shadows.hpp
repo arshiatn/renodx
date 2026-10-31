@@ -68,6 +68,7 @@ struct Settings {
   float softness = 0.f;          // sss_blur's tap spacing in pixels, 0 off
   int debug_view = 0;            // 0 off, 1 the occlusion, 2 with the screen edge's limit (sss_debug)
   bool mirror_edges = false;     // past the left, right and bottom edges: the depth mirrored (Bend's MirrorEdges)
+  float foliage_light = 0.f;     // the sun's share the shadow leaves on grass and leaves (their sun shaders; Attila)
 };
 
 namespace internal {
@@ -75,6 +76,10 @@ namespace internal {
 constexpr UINT MASK_SLOT = 49;      // the patched sun shaders' occlusion
 constexpr UINT TINT_SLOT = 50;      // their sun colour's filter (Coloured Shadows: 1 - the colour; unbound reads 0, none)
 constexpr UINT AMBIENT_SLOT = 51;   // their diffuse ambient's share taken away (texel 0's x; unbound reads 0: the game's)
+constexpr UINT FOLIAGE_SLOT = 53;   // the foliage ones' share of t49 left out (texel 0's x; unbound reads 0: all of it counts)
+
+// The foliage sun shaders' ambient factors (c11.x > 0: 0.004, 360, 0.6, 1).
+constexpr std::array<uint32_t, 4> FOLIAGE_FACTORS = {0x3B83126F, 0x43B40000, 0x3F19999A, 0x3F800000};
 
 // Another occlusion of the sun's light (Attila's ray-traced sun shadows: rt_scene::Occlusion): given the screen-space
 // shadow's mask this frame (null: off), the occlusion to bind instead (the darker of both), or null (the mask alone).
@@ -122,6 +127,9 @@ struct ShaderSettings {
 // - Else (Warhammer III's shadow mask): rT first, and after each read of the texture named t_shadow (ld / sample) the
 //   same mul.
 // - A forward pass reading the sun's shadow map (`forward`: Attila's under Ray-Traced Shadows Only) as Troy's.
+// - A foliage shader (FOLIAGE_FACTORS): t49 x (1 - t53's texel 0) before the 1 -, grass and leaves let some sun through
+//   their screen-space shadows (t53 bound with Foliage Light only, never under the rays: they have Light Through Leaves):
+//   ld rT.y, l(0, 0, 0, 0), t53.xxxx / mad rT.y, rT.y, l(-1), l(1) / mul rT.x, rT.x, rT.y.
 // Empty: not such a shader.
 inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = false) {
   constexpr uint32_t OP_CUSTOMDATA = 53, OP_DIV = 14, OP_FTOU = 28, OP_LD = 45, OP_MAD = 50, OP_MIN = 51, OP_MOV = 54,
@@ -277,8 +285,9 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   const auto swizzled = [](uint32_t type, uint32_t index, uint32_t swizzle) {
     return std::array<uint32_t, 2>{2u | (1u << 2) | (swizzle << 4) | (type << 12) | (1u << 20), index};
   };
-  constexpr uint32_t XYXX = 0x04, XYZX = 0x24, XYZW = 0xE4, XXXX = 0x00;
+  constexpr uint32_t XYXX = 0x04, XYZX = 0x24, XYZW = 0xE4, XXXX = 0x00, YYYY = 0x55;
   constexpr uint32_t MINUS_ONE = 0xBF800000, ONE = 0x3F800000;
+  const bool foliage = std::ranges::search(tokens, FOLIAGE_FACTORS).begin() != tokens.end();
   const auto instruction = [](std::vector<uint32_t>* added, uint32_t opcode,
                               std::initializer_list<std::array<uint32_t, 2>> operands, uint32_t flags = 0) {
     added->push_back(opcode | flags | (static_cast<uint32_t>(1 + 2 * operands.size()) << 24));
@@ -297,6 +306,13 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
                              (swizzled(TYPE_CONSTANT_BUFFER, lighting_slot, XYZX)[0] & ~(3u << 20)) | (2u << 20), lighting_slot, 1});
   }
   instruction(&load, OP_LD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XYZW), swizzled(TYPE_RESOURCE, MASK_SLOT, XYZW)});
+  if (foliage) {
+    const auto share = masked(temp, 0b0010);
+    const auto resource = swizzled(TYPE_RESOURCE, FOLIAGE_SLOT, XXXX);
+    load.insert(load.end(), {OP_LD | (10u << 24), share[0], share[1], 2u | (TYPE_IMMEDIATE << 12), 0, 0, 0, 0, resource[0], resource[1]});
+    instruction(&load, OP_MAD, {share, swizzled(TYPE_TEMP, temp, YYYY), {1u | (TYPE_IMMEDIATE << 12), MINUS_ONE}, {1u | (TYPE_IMMEDIATE << 12), ONE}});
+    instruction(&load, OP_MUL, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XXXX), swizzled(TYPE_TEMP, temp, YYYY)});
+  }
   instruction(&load, OP_MAD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XXXX), {1u | (TYPE_IMMEDIATE << 12), MINUS_ONE},
                               {1u | (TYPE_IMMEDIATE << 12), ONE}});
   if (saturate_at != 0) {
@@ -326,10 +342,10 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   }
   // rT (and rC) where the code starts.
   tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(code_at), load.begin(), load.end());
-  // dcl_resource_texture2d (float,float,float,float) t49 (and t50), before dcl_temps (the declarations come first).
+  // dcl_resource_texture2d (float,float,float,float) t49 (and t50, t53), before dcl_temps (the declarations come first).
   std::vector<uint32_t> declarations;
-  for (const UINT slot : {MASK_SLOT, TINT_SLOT}) {
-    if (slot == TINT_SLOT && !coloured) continue;
+  for (const UINT slot : {MASK_SLOT, TINT_SLOT, FOLIAGE_SLOT}) {
+    if ((slot == TINT_SLOT && !coloured) || (slot == FOLIAGE_SLOT && !foliage)) continue;
     declarations.insert(declarations.end(), {OP_DCL_RESOURCE | (3u << 11) | (4u << 24), (TYPE_RESOURCE << 12) | (1u << 20), slot, 0x5555});
   }
   tokens[temps_at + 1] += coloured ? 2 : 1;
@@ -353,8 +369,6 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
   if (tokens.empty()) return {};
-  // The foliage shaders' ambient factors (c11.x > 0: 0.004, 360, 0.6, 1).
-  constexpr std::array<uint32_t, 4> FOLIAGE_FACTORS = {0x3B83126F, 0x43B40000, 0x3F19999A, 0x3F800000};
   *foliage = std::ranges::search(tokens, FOLIAGE_FACTORS).begin() != tokens.end();
   uint32_t lighting_slot = UINT32_MAX;
   for (const uint32_t offset : program.offsets) {
@@ -472,6 +486,10 @@ struct DeviceObjects {
   // The occlusion after Softness (sss_blur).
   ComPtr<ID3D11UnorderedAccessView> soft_uav;
   ComPtr<ID3D11ShaderResourceView> soft_srv;
+  // Foliage Light's texel for t53.
+  ComPtr<ID3D11Texture2D> foliage;
+  ComPtr<ID3D11ShaderResourceView> foliage_srv;
+  float foliage_uploaded = -1.f;
   // Debug View: the tone mapper's output's size and format, made when first shown.
   ComPtr<ID3D11Texture2D> debug_texture;
   ComPtr<ID3D11UnorderedAccessView> debug_uav;
@@ -898,8 +916,9 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     const std::unique_lock lock(runtime.mutex);
     const auto& sun_draw = command.template GetCallbackData<T>();
     // The patched shaders' occlusion: this frame's on the main view, else none (reads 0: the game's light); with another
-    // (extra_occlusion), the darker.
+    // (extra_occlusion), the darker. The foliage ones under the screen-space shadow alone: Foliage Light's texel at t53.
     ID3D11ShaderResourceView* occlusion = nullptr;
+    ID3D11ShaderResourceView* foliage_light = nullptr;
     const auto patched = runtime.patched.find(sun_draw.shader_hash);
     if ((runtime.settings.enabled || internal::extra_occlusion != nullptr) && patched != runtime.patched.end() && !patched->second.empty()
         && frame_history::MainViewport(native)) {
@@ -952,13 +971,37 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
         if (runtime.settings.enabled && runtime.computed_frame == runtime.frame) {
           const auto& mask = (runtime.settings.softness > 0.f ? runtime.objects.soft_srv : runtime.objects.occlusion_srv);
           occlusion = mask.Get();
+          const auto ambient = runtime.ambient_patched.find(sun_draw.shader_hash);
+          if (runtime.settings.foliage_light > 0.f && ambient != runtime.ambient_patched.end() && ambient->second) {
+            auto& objects = runtime.objects;
+            if (!objects.foliage) {
+              ComPtr<ID3D11Device> device;
+              native->GetDevice(device.GetAddressOf());
+              const D3D11_TEXTURE2D_DESC texel = {.Width = 1, .Height = 1, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                                  .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+              if (SUCCEEDED(device->CreateTexture2D(&texel, nullptr, objects.foliage.GetAddressOf()))) {
+                device->CreateShaderResourceView(objects.foliage.Get(), nullptr, objects.foliage_srv.GetAddressOf());
+              }
+            }
+            if (objects.foliage_srv) {
+              if (objects.foliage_uploaded != runtime.settings.foliage_light) {
+                native->UpdateSubresource(objects.foliage.Get(), 0, nullptr, &runtime.settings.foliage_light, 4, 0);
+                objects.foliage_uploaded = runtime.settings.foliage_light;
+              }
+              foliage_light = objects.foliage_srv.Get();
+            }
+          }
         }
         if (internal::extra_occlusion != nullptr) {
-          if (auto* combined = internal::extra_occlusion(native, occlusion); combined != nullptr) occlusion = combined;
+          if (auto* combined = internal::extra_occlusion(native, occlusion); combined != nullptr) {
+            occlusion = combined;
+            foliage_light = nullptr;
+          }
         }
       }
     }
     native->PSSetShaderResources(internal::MASK_SLOT, 1, &occlusion);
+    native->PSSetShaderResources(internal::FOLIAGE_SLOT, 1, &foliage_light);
     return {};
   }
 };

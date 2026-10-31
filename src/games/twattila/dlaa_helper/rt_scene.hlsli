@@ -277,9 +277,11 @@ float3 SurfaceNormal(int2 pixel, float4 position) {
   return (dot(normal, to_camera) < 0.f) ? -normal : normal;
 }
 
-// Off a surface by 2 cm plus 0.1% of the depth (depth precision and coarser far geometry grow with distance).
+// Off a surface by 3 mm plus 0.1% of the depth (depth precision and coarser far geometry grow with distance). The rays leave
+// by this along the normal and again toward the sun: at 2 cm they started past cheek guards and helmet rims, the sun came
+// through them (ATN's debug35).
 float SurfaceOffset(float depth) {
-  return 0.02f + depth * 0.001f;
+  return 0.003f + depth * 0.001f;
 }
 
 // Whether the four neighbours lie on the pixel's surface (`normal`: its plane): not a corner, crack or edge, where the

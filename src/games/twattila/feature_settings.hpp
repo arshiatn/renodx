@@ -44,6 +44,7 @@ struct SssSliders {
   float softness = 0.f;  // pixels
   float debug_view = 0.f;
   float mirror_edges = 0.f;
+  float foliage_light = 0.f;  // Attila's (graphics_page.hpp)
 };
 
 struct AaSliders {
@@ -84,6 +85,7 @@ inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
       .softness = std::round(sliders.softness * frame_history::effect_share.load(std::memory_order_relaxed)),
       .debug_view = static_cast<int>(sliders.debug_view),
       .mirror_edges = (sliders.mirror_edges != 0.f),
+      .foliage_light = sliders.foliage_light,
   };
 }
 

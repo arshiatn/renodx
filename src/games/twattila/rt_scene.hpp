@@ -63,7 +63,12 @@ struct Sliders {
   float sun_softness = 0.5f;       // degrees of the sun's disk (0: hard)
   float light_softness = 0.25f;    // the torches' and fires' radius (metres; 0: hard)
   float light_glow = 1.f;          // torch and fire light in fog and smoke (0: none)
-  float output_rays = 0.f;         // Ray Tracing at Output Resolution (below 100% render scale)
+  float output_rays = 0.f;         // Rays a Pixel: 0 one, 1 the output pixels a render pixel stands for, 2-4 that many
+  float rays_shadows = 1.f;        // what it counts for
+  float rays_ambient = 1.f;
+  float rays_reflections = 1.f;
+  float rays_paths = 1.f;
+  float debug_log = 0.f;           // the statistics in the log every 10 s
   float leaf_light = 0.f;
   float coloured_shadows = 1.f;    // Attila (its sun light shaders' colour)
   float grass_sway = 1.f;          // placed grass's swaying copies (Attila)
@@ -108,25 +113,28 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
   const bool dlaa = aa.method == 5.f;
   const bool bounce = light_bounce_strength > 0.f && dlaa;
   const bool path_ambient = sliders.path_ambient != 0.f && sliders.light_bounce == 2.f && bounce && internal::ambient_cube != 0;
-  // Ray Tracing at Output Resolution: below 100% each render pixel traces the rays of the output pixels it stands for
-  // (at most 4: Performance), as many on screen as at DLAA (ATN: RR Performance's 1080p rays looked noisy at 4K).
+  // Rays a Pixel: the picture is at the render size until DLSS, nothing traced can be kept finer than that: each render pixel
+  // traces more rays instead, each from its own spot of it. Match Output: those of the output pixels it stands for (at most
+  // 4: Performance), as many on screen as at DLAA (ATN: RR Performance's 1080p rays looked noisy at 4K).
   const float render_scale = feature_settings::RenderScale(aa);
   const auto density = static_cast<uint32_t>(
-      (sliders.output_rays != 0.f) ? std::clamp(std::lround(1.f / (render_scale * render_scale)), 1l, 4l) : 1l);
+      (sliders.output_rays == 1.f) ? std::clamp(std::lround(1.f / (render_scale * render_scale)), 1l, 4l)
+                                   : std::clamp(std::lround(sliders.output_rays), 1l, 4l));
+  const auto rays_of = [density](float on) { return (on != 0.f) ? density : 1u; };
   return {
       .sun_shadows = sliders.sun_shadows != 0.f && dlaa,
       .ambient_occlusion = sliders.ambient_occlusion != 0.f && dlaa && !path_ambient,
       .ambient_range = sliders.ambient_range,
-      .ambient_rays = static_cast<uint32_t>(sliders.ambient_rays) * density,
+      .ambient_rays = static_cast<uint32_t>(sliders.ambient_rays) * rays_of(sliders.rays_ambient),
       // Effects at Output Resolution: every pixel each frame from one step of 2 down (as many rays on screen as at 100%;
-      // with Ray Tracing at Output Resolution the rays a pixel make up for it).
-      .ambient_quarter = sliders.ambient_quarter != 0.f && (density > 1u || frame_history::EffectSteps() < 1.f),
+      // with Rays a Pixel the rays make up for it).
+      .ambient_quarter = sliders.ambient_quarter != 0.f && (rays_of(sliders.rays_ambient) > 1u || frame_history::EffectSteps() < 1.f),
       .sun_softness = sliders.sun_softness,
       .light_size = sliders.light_softness,
-      .shadow_rays = density,
+      .shadow_rays = rays_of(sliders.rays_shadows),
       .light_glow = sliders.light_glow,
       .light_bounce = sliders.light_bounce != 0.f && bounce,
-      .light_bounce_rays = static_cast<uint32_t>(sliders.light_bounce_rays),
+      .light_bounce_rays = std::min(static_cast<uint32_t>(sliders.light_bounce_rays) * rays_of(sliders.rays_paths), 16u),
       .light_bounce_range = sliders.light_bounce_range,
       .light_bounce_resolution = sliders.light_bounce_resolution,
       .path_tracing = sliders.light_bounce == 2.f && bounce,
@@ -135,7 +143,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reflections = sliders.reflections != 0.f && dlaa,
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
       .water_reflections = sliders.water_reflections != 0.f,
-      .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples) * density,
+      .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples) * rays_of(sliders.rays_reflections),
       .reflection_reuse = sliders.reflection_reuse == 1.f && sliders.light_bounce == 2.f,
       .reflection_own = sliders.reflection_reuse == 2.f,
       // Ray-traced sun shadows are every shadow: the point lights' too (games whose light draws InstallPointLights hooks),
@@ -158,6 +166,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .shadows_only = sliders.sun_shadows != 0.f && dlaa,
       .debug_view = static_cast<uint32_t>(sliders.debug_view),
       .scene_test = ((sliders.debug_view != 0.f) ? static_cast<uint32_t>(sliders.scene_test) : 0u),
+      .debug_log = sliders.debug_log != 0.f,
   };
 }
 
@@ -1047,15 +1056,70 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
       new renodx::utils::settings::Setting{
           .key = "RayTracingOutputResolution",
           .binding = &sliders->output_rays,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Rays a Pixel",
+          .section = section,
+          .tooltip = "More rays for every rendered pixel, each from its own spot of it: less noise, finer shadow edges.\n"
+                     "The cost grows with the rays. Match Output: as many rays on screen as at DLAA (up to 4 a pixel,\n"
+                     "1 at DLAA). 2 to 4 rays also work at DLAA. The rendered image stays at DLSS's size.",
+          .labels = {"1", "Match Output", "2", "3", "4"},
+          .is_enabled = [aa] { return aa->method == 5.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracingRaysShadows",
+          .binding = &sliders->rays_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Rays a Pixel: Shadows",
+          .section = section,
+          .tooltip = "The sun's and the torches' and fires' shadows take the extra rays.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracingRaysAmbient",
+          .binding = &sliders->rays_ambient,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Rays a Pixel: Ray-Traced AO",
+          .section = section,
+          .tooltip = "Ray-Traced AO takes the extra rays.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracingRaysReflections",
+          .binding = &sliders->rays_reflections,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Rays a Pixel: Reflections",
+          .section = section,
+          .tooltip = "Ray-traced reflections take the extra rays.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracingRaysPaths",
+          .binding = &sliders->rays_paths,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Rays a Pixel: Global Illumination and Path-Traced AO",
+          .section = section,
+          .tooltip = "Ray-traced and path-traced Global Illumination and Path-Traced AO take the extra rays\n"
+                     "(up to 16 a pixel). The heaviest of the four.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedDebugLog",
+          .binding = &sliders->debug_log,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
           .default_value = 0.f,
-          .label = "Ray Tracing at Output Resolution",
+          .label = "Log Details",
           .section = section,
-          .tooltip = "Below 100% render scale: as many shadow, AO and reflection rays as at DLAA (up to 4 a pixel).\n"
-                     "Less noise and finer shadow edges, at DLAA's ray tracing cost. The Light Bounce follows\n"
-                     "Effects at Output Resolution.",
+          .tooltip = "Ray tracing's numbers in ReShade.log every 10 s, for bug reports. Off: a little less CPU.",
           .labels = {"Off", "On"},
-          .is_enabled = [aa] { return aa->method == 5.f && feature_settings::RenderScale(*aa) < 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLeafLight",

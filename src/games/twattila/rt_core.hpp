@@ -145,6 +145,8 @@ struct Settings {
   // Its scene test (with the Debug View on): 0 everything, 1 the terrain alone, 2 objects and trees alone, 3 no leaves,
   // 4 none kept off-screen.
   uint32_t scene_test = 0;
+  // Log Details: the numbers in the log every 10 s, the clocks and GPU timing queries behind them.
+  bool debug_log = false;
 
   bool operator==(const Settings&) const = default;
 };
@@ -353,11 +355,14 @@ struct Profile {
 // grass's corners, the units' three quarters of those.
 constexpr std::array<const char*, 5> SHARE_NAMES = {"dynamic texels", "triangles", "clusters", "grass corners", "units' three quarters"};
 
-// Adds its scope's CPU time to `ticks` (the cost report).
+// Adds its scope's CPU time to `ticks` (the cost report; null: Log Details off, no clock read: a capture runs per draw).
 class CpuTime {
  public:
-  explicit CpuTime(int64_t* ticks) : ticks_(ticks) { QueryPerformanceCounter(&start_); }
+  explicit CpuTime(int64_t* ticks) : ticks_(ticks) {
+    if (ticks_ != nullptr) QueryPerformanceCounter(&start_);
+  }
   ~CpuTime() {
+    if (ticks_ == nullptr) return;
     LARGE_INTEGER end;
     QueryPerformanceCounter(&end);
     *ticks_ += end.QuadPart - start_.QuadPart;
@@ -485,6 +490,7 @@ struct Runtime {
   // Under Ray-Traced Shadows Only, one frame every 10 s: the pixel shaders reading the game's sun shadow map that are
   // not the patched sun draws (forward-lit grass and the like: lit everywhere, the map has no casters).
   uint64_t readers_frame = UINT64_MAX;
+  bool timed = false;  // the cost report's clocks and GPU queries run (Log Details, a profile)
   std::unordered_set<uint32_t> sun_draw_shaders;
   std::unordered_set<uint32_t> reader_shaders;  // the forward passes given the rays' shadows (InstallShadowReaders)
   std::unordered_set<uint64_t> shadow_readers;  // pixel shader << 32 | its draw's vertex shader
@@ -511,6 +517,8 @@ struct Runtime {
   ID3D11ShaderResourceView* game_ao = nullptr;  // the AO it was made from (compared only)
   std::array<UINT, 2> traced_size = {};   // the render size traced
   std::array<float, 16> traced_view_projection = {};  // its camera's (the ray-traced Light Bounce's)
+  std::array<float, 3> traced_position = {};          // its camera's place
+  bool camera_moving = false;                         // it moved at the last trace: every placed mesh is placed every frame
   bool logged_bounce = false;  // the ray-traced Light Bounce's last state, as logged
   // The atlas's textures (kept alive while they have a slice; for the bridge's atlas `atlas_generation`), its free
   // slices and the frame each was last used.
@@ -863,7 +871,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   auto* native = NativeContext(command.cmd_list);
   if (native == nullptr) return;
-  const CpuTime timed(&runtime.costs.capture_ticks);
+  const CpuTime timed(runtime.timed ? &runtime.costs.capture_ticks : nullptr);
   // Draws after this frame's trace (past its pass: forward and transparent ones) stay out (Trace and Update run on this
   // thread too).
   if (runtime.traced_frame == runtime.frame) return;
@@ -1038,7 +1046,8 @@ void Capture(Context& command, const SceneShader& shader) {
   // A mesh in the scene is marked drawn; a placed one (also one captured earlier this frame) is placed where this draw's
   // instances are (their rows only: a placement; marked drawn once placed, so one left out is forgotten and captured
   // again as the helper releases it), one not seen moving only in its turn, every PLACE_TURNS frames (the helper keeps
-  // its instances between).
+  // its instances between), every frame while the camera moves: its level of detail changes then, and a mesh placed in its
+  // turn dropped the old level up to 3 frames before the new one's turn (ATN: shadows gone and back at each change).
   bool place = false;
   size_t full_share = SHARE_NAMES.size();  // the first of its shares that is full (none: their count)
   const bool unit = shader.dynamic && !shader.grass && !shader.thin;  // skinned soldiers and horses
@@ -1130,7 +1139,8 @@ void Capture(Context& command, const SceneShader& shader) {
       // made unsorted, each cluster over a whole grass patch) is captured once more in full (its corners: PrepareClusterSet).
       const auto set = compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end();
       const bool corners_wanted = set != runtime.cluster_meshes.end() && set->second.staging && !set->second.corners;
-      if (!sway && !moving && !corners_wanted && !seen.all_draws && seen.instances <= seen.last_instances && (key + runtime.frame) % PLACE_TURNS != 0) {
+      if (!sway && !moving && !corners_wanted && !seen.all_draws && !runtime.camera_moving && seen.instances <= seen.last_instances
+          && (key + runtime.frame) % PLACE_TURNS != 0) {
         // Drawn all the same (RT_DRAWN_PLACED: its kept instances stay).
         if (seen.frame != runtime.frame && runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
         seen.frame = runtime.frame;
@@ -1535,7 +1545,7 @@ inline void NotTraced(const std::string& reason) {
 inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, const Camera& camera) {
   auto& objects = runtime.objects;
   if (!Enabled() || runtime.traced_frame == runtime.frame) return false;
-  const CpuTime timed(&runtime.costs.trace_ticks);
+  const CpuTime timed(runtime.timed ? &runtime.costs.trace_ticks : nullptr);
   if (!dlaa_bridge::bridge.ray_tracing || !objects.constants) {
     NotTraced(dlaa_bridge::bridge.ray_tracing ? "its objects were not made" : "DLAA's bridge has no ray tracing textures");
     return false;
@@ -1556,7 +1566,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   }
   // The cost report's timestamps (a set still pending: this frame without).
   auto& timing = objects.timings[objects.timing_next % objects.timings.size()];
-  const bool stamped = timing.disjoint && timing.stamps[2] && !timing.pending;
+  const bool stamped = runtime.timed && timing.disjoint && timing.stamps[2] && !timing.pending;
   if (stamped) {
     native->Begin(timing.disjoint.Get());
     native->End(timing.stamps[0].Get());
@@ -1738,6 +1748,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     runtime.traced_frame = runtime.frame;
     runtime.traced_size = render_size;
     runtime.traced_view_projection = camera.view_projection;
+    runtime.camera_moving = camera.position != runtime.traced_position;
+    runtime.traced_position = camera.position;
   }
   runtime.costs.compact_draws += runtime.compact.size();
   if (runtime.profile.file.is_open()) {
@@ -2195,7 +2207,9 @@ inline void Update(const Settings& settings) {
     ++costs.frames;
     costs.dynamic_vertices += runtime.dynamic_vertices;
   }
-  if (auto& objects = runtime.objects; objects.device) {
+  const bool timed = runtime.timed;
+  runtime.timed = settings.debug_log || runtime.profile.file.is_open();
+  if (auto& objects = runtime.objects; timed && objects.device) {
     ComPtr<ID3D11DeviceContext> context;
     objects.device->GetImmediateContext(context.GetAddressOf());
     for (auto& timing : objects.timings) {
@@ -2268,6 +2282,13 @@ inline void Update(const Settings& settings) {
                           TESTS[std::min<size_t>(settings.scene_test, TESTS.size() - 1)], ": ", dlaa_bridge::TraceStatus());
   }
   if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
+    if (!settings.debug_log) {
+      runtime.new_static.clear();
+      runtime.new_static_examples.clear();
+      runtime.left_out_shaders.clear();
+      runtime.shadow_readers.clear();
+      runtime.dynamic_buffers.clear();
+    }
     if (!runtime.new_static.empty()) {
       std::vector<std::pair<uint32_t, uint32_t>> counts(runtime.new_static.begin(), runtime.new_static.end());
       std::ranges::sort(counts, std::ranges::greater{}, &std::pair<uint32_t, uint32_t>::second);
@@ -2298,13 +2319,13 @@ inline void Update(const Settings& settings) {
                             "(lit everywhere under Ray-Traced Shadows Only): ", readers, ".");
       runtime.shadow_readers.clear();
     }
-    if (runtime.settings.shadows_only) runtime.readers_frame = runtime.frame + 1;
+    if (runtime.settings.shadows_only && settings.debug_log) runtime.readers_frame = runtime.frame + 1;
     for (const auto& [hash, draws] : runtime.dynamic_buffers) {
       renodx::utils::log::i(std::format("[Total War] Ray tracing: {:08X} in dynamic vertex buffers, captured every frame: {} draws in 10 s.",
                                         hash, draws));
     }
     runtime.dynamic_buffers.clear();
-    if (costs.frames != 0) {
+    if (costs.frames != 0 && settings.debug_log) {
       LARGE_INTEGER frequency;
       QueryPerformanceFrequency(&frequency);
       const double frame_ms = 1000.0 / static_cast<double>(frequency.QuadPart) / costs.frames;

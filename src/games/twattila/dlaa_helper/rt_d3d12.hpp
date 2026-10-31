@@ -886,7 +886,8 @@ class RtScene12 {
       for (const D3D12_AUTO_BREADCRUMB_NODE1* node = breadcrumbs.pHeadAutoBreadcrumbNode; node != nullptr; node = node->pNext) {
         const uint32_t done = (node->pLastBreadcrumbValue != nullptr) ? *node->pLastBreadcrumbValue : 0u;
         if (done >= node->BreadcrumbCount) continue;
-        const auto slot = std::ranges::find_if(slots_, [&](const Slot& slot) { return slot.list.Get() == node->pCommandList; });
+        const auto slot = std::ranges::find_if(slots_, [&](const Slot& slot) { return slot.list.Get() == node->pCommandList || slot.tail_list.Get() == node->pCommandList; });
+        const bool tail = slot != slots_.end() && slot->tail_list.Get() == node->pCommandList;
         report += std::format("\n  {}{}: {} of {} operations done:", narrow(node->pCommandListDebugNameW),
                               (slot != slots_.end()) ? " (" + slot->request + slot->micromap_builds + ")" : std::string(), done, node->BreadcrumbCount);
         const uint32_t first = (done > 12 ? done - 12 : 0u);
@@ -896,8 +897,9 @@ class RtScene12 {
           for (uint32_t context = 0; context < node->BreadcrumbContextsCount; ++context) {
             if (node->pBreadcrumbContexts[context].BreadcrumbIndex == op) name = narrow(node->pBreadcrumbContexts[context].pContextString);
           }
-          if (node->pCommandHistory[op] == D3D12_AUTO_BREADCRUMB_OP_SETMARKER && slot != slots_.end() && marker < slot->marks.size()) {
-            name = narrow(slot->marks[marker++]);
+          if (node->pCommandHistory[op] == D3D12_AUTO_BREADCRUMB_OP_SETMARKER && slot != slots_.end()) {
+            const auto& marks = tail ? slot->tail_marks : slot->marks;
+            if (marker < marks.size()) name = narrow(marks[marker++]);
           }
           if (name.empty()) {
             const auto known = std::ranges::find(OPERATION_NAMES, node->pCommandHistory[op], &OperationName::op);
@@ -1030,6 +1032,7 @@ class RtScene12 {
     const bool reset = !Lost() && SUCCEEDED(slot.allocator->Reset()) && SUCCEEDED(slot.list->Reset(slot.allocator.Get(), nullptr));
     if (reset) {
       slot.marks.clear();
+      slot.tail_marks.clear();
       slot.micromap_builds.clear();
       slot.request = std::format("trace {}: flags 0x{:X}, sway {} m", own_value_ + 1, shared.rt_flags, (version >= 18) ? shared.rt_sway_range : 0.f);
     }
@@ -1108,6 +1111,7 @@ class RtScene12 {
     if (recorded) {
       // (A removed device's slots keep their last request and passes: LostReport.)
       slot.marks.clear();
+      slot.tail_marks.clear();
       slot.request = std::format("{} {}: flags 0x{:X}, paths 0x{:X}", reflections ? "reflections" : "Light Bounce", own_value_ + 1, shared.rt_flags,
                                  requested);
       auto* list = slot.list.Get();
@@ -1435,7 +1439,8 @@ class RtScene12 {
     }
     if (omm_.gpu_pipeline != nullptr) omm_.gpu_destroy_pipeline(omm_.gpu_baker, omm_.gpu_pipeline);
     if (omm_.gpu_baker != nullptr) omm_.destroy_baker(omm_.gpu_baker);
-    if (omm_.library != nullptr) FreeLibrary(omm_.library);
+    // omm-lib.dll stays loaded: the CPU bakes' OpenMP threads idle in the runtime it brought, unloading it under them crashed
+    // the helper at the second GPU reset (the first has no CPU bakes before it).
 #endif
   }
 
@@ -1704,6 +1709,7 @@ class RtScene12 {
     // Its last request and passes (LostReport).
     std::string request;
     std::vector<const wchar_t*> marks;
+    std::vector<const wchar_t*> tail_marks;
     std::string micromap_builds;  // LostReport: the BLASes built with micromaps (debug34: the GPU hung in one's build)
     uint32_t gpu_bakes = 0;  // GPU Micromap Baking's bakes in its last trace (the profile)
     bool tail_recorded = false;
@@ -2331,6 +2337,7 @@ class RtScene12 {
     list->SetMarker(0, pass, static_cast<UINT>((std::wcslen(pass) + 1) * sizeof(wchar_t)));
     for (Slot& slot : slots_) {
       if (slot.list.Get() == list) slot.marks.push_back(pass);
+      if (slot.tail_list.Get() == list) slot.tail_marks.push_back(pass);
     }
   }
 
@@ -4068,9 +4075,13 @@ class RtScene12 {
     }
     std::erase(micromap_reads_, nullptr);
     slot->gpu_bakes = static_cast<uint32_t>(gpu_baking.size());
+    for (const MicromapBake* bake : gpu_baking) {
+      slot->micromap_builds += std::format("; GPU bake {} triangles{}", bake->triangles, bake->set ? ", grass set" : "");
+    }
     // The bakes and the timestamps' end in the tail list (Trace runs it after the game's signal: the game no longer waits
     // for them, they run beside its frame); without it here.
-    auto* tail = (SUCCEEDED(slot->tail_allocator->Reset()) && SUCCEEDED(slot->tail_list->Reset(slot->tail_allocator.Get(), nullptr)))
+    static const bool no_tail = GetEnvironmentVariableW(L"RENODX_TW_NO_TAIL", nullptr, 0) != 0;
+    auto* tail = (!no_tail && SUCCEEDED(slot->tail_allocator->Reset()) && SUCCEEDED(slot->tail_list->Reset(slot->tail_allocator.Get(), nullptr)))
                      ? slot->tail_list.Get()
                      : list;
 #if defined(RENODX_OMM_SDK)
@@ -4187,7 +4198,7 @@ class RtScene12 {
         if (++paths_age_[kind] > SLOTS * 2) gpu_ms_[3 + kind] = 0.0;
       }
       if (gpu_ms_[0] + gpu_ms_[1] + gpu_ms_[2] > SLOW_MS && slow_reports_ < SLOW_REPORTS) {
-        slow_report_ = std::format("[TW ray tracing] A slow request, GPU ms: scene {:.1f}, TLAS {:.1f}, trace {:.1f}; {}", gpu_ms_[0], gpu_ms_[1],
+        slow_report_ += std::format("{}[TW ray tracing] A slow request, GPU ms: scene {:.1f}, TLAS {:.1f}, trace {:.1f}; {}", slow_report_.empty() ? "" : "\n", gpu_ms_[0], gpu_ms_[1],
                                    gpu_ms_[2], slots_[slot_index].status);
         ++slow_reports_;
       }
@@ -4198,7 +4209,7 @@ class RtScene12 {
       gpu_ms_[slot_reflected_[slot_index] ? 4 : 3] = paths_ms;
       paths_age_[slot_reflected_[slot_index] ? 1 : 0] = 0;
       if (paths_ms > SLOW_MS && slow_reports_ < SLOW_REPORTS) {
-        slow_report_ = std::format("[TW ray tracing] A slow {} request: {:.1f} GPU ms", slot_reflected_[slot_index] ? "reflections" : "Light Bounce",
+        slow_report_ += std::format("{}[TW ray tracing] A slow {} request: {:.1f} GPU ms", slow_report_.empty() ? "" : "\n", slot_reflected_[slot_index] ? "reflections" : "Light Bounce",
                                    paths_ms);
         ++slow_reports_;
       }
@@ -4265,6 +4276,8 @@ class RtScene12 {
   }
 
   void AdvanceMicromaps(uint64_t completed) {
+    // A removed device's fence reads all ones: nothing finished, the bakes on their way are no failures.
+    if (completed == UINT64_MAX) return;
     for (std::unique_ptr<MicromapBake>& read : micromap_reads_) {
       if (read->value > completed) continue;
 #if defined(RENODX_OMM_SDK)
@@ -4486,6 +4499,7 @@ class RtScene12 {
     auto& gpu = omm_gpu_;
     // A dispatch of a bake's chain, copied.
     struct Step {
+      const wchar_t* name = nullptr;
       bool indirect = false;
       uint16_t pipeline_index = 0;
       std::vector<ommGpuResource> resources;
@@ -4622,15 +4636,20 @@ class RtScene12 {
       for (uint32_t step = 0; step < chain->numDispatches; ++step) {
         const ommGpuDispatchDesc& dispatch = chain->dispatches[step];
         if (dispatch.type == ommGpuDispatchType_BeginLabel || dispatch.type == ommGpuDispatchType_EndLabel) continue;
+        // The SDK's names are its own again at its next call: kept for the markers (LostReport).
+        static std::unordered_set<std::wstring> step_names;
+        const auto step_name = [](const char* name) {
+          return step_names.emplace(name, name + std::strlen(name)).first->c_str();
+        };
         if (dispatch.type == ommGpuDispatchType_ComputeIndirect) {
           const ommGpuComputeIndirectDesc& indirect = dispatch.computeIndirect;
-          plan.steps.push_back({.indirect = true, .pipeline_index = indirect.pipelineIndex,
+          plan.steps.push_back({.name = step_name(indirect.name), .indirect = true, .pipeline_index = indirect.pipelineIndex,
                                 .resources = {indirect.resources, indirect.resources + indirect.resourceNum},
                                 .constants = {indirect.localConstantBufferData, indirect.localConstantBufferData + indirect.localConstantBufferDataSize},
                                 .arguments = indirect.indirectArg, .arguments_offset = indirect.indirectArgByteOffset});
         } else if (dispatch.type == ommGpuDispatchType_Compute) {
           const ommGpuComputeDesc& compute = dispatch.compute;
-          plan.steps.push_back({.pipeline_index = compute.pipelineIndex, .resources = {compute.resources, compute.resources + compute.resourceNum},
+          plan.steps.push_back({.name = step_name(compute.name), .pipeline_index = compute.pipelineIndex, .resources = {compute.resources, compute.resources + compute.resourceNum},
                                 .constants = {compute.localConstantBufferData, compute.localConstantBufferData + compute.localConstantBufferDataSize},
                                 .grid_width = compute.gridWidth, .grid_height = compute.gridHeight});
         } else {
@@ -4780,6 +4799,7 @@ class RtScene12 {
           ready.push_back({.index = index, .table = gpu.next, .arguments = arguments.target, .arguments_offset = arguments.offset});
           gpu.next += resource_count;
         }
+        if (!ready.empty()) Mark(list, planned[ready.front().index].steps[stage].name);
         barriers.clear();
         for (const auto& [resource, needed] : wave_states) state_for(resource, needed);
         if (!barriers.empty()) list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
