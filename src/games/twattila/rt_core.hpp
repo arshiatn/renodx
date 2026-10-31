@@ -1263,7 +1263,9 @@ void Capture(Context& command, const SceneShader& shader) {
   uint32_t slice = 0;
   if (!place && shader.foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
   sway = sway && mask && AtlasSlice(native, mask.Get(), &slice);
-  if (joined != nullptr && shader.foliage && runtime.slices.back() != slice) joined = nullptr;
+  if (joined != nullptr && shader.foliage && runtime.slices.back() != slice) {
+    joined = nullptr;
+  }
   ID3D11VertexShader* capture_vertex_shader = nullptr;
   ID3D11GeometryShader* stream_output = nullptr;
   if (!place && clip_space) {
@@ -1387,7 +1389,9 @@ void Capture(Context& command, const SceneShader& shader) {
       runtime.new_sets.push_back(set_key);
       runtime.new_set_bytes += static_cast<uint32_t>((runtime.cluster_meshes.at(set_key).data.size() + 15) / 16 * 16);
     }
-    if (runtime.settings.debug_log) runtime.key_shaders[set_key] = shader.hash;
+    if (runtime.settings.debug_log) {
+      runtime.key_shaders[set_key] = shader.hash;
+    }
   };
   if (place) {
     if (sway) {
@@ -1420,7 +1424,9 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count, .flags = flags,
                                 .instances = (placed ? instances : 0u)});
     runtime.slices.push_back(slice);
-    if (runtime.settings.debug_log) runtime.key_shaders[key] = shader.hash;
+    if (runtime.settings.debug_log) {
+      runtime.key_shaders[key] = shader.hash;
+    }
   }
   runtime.captured_keys.insert(key);
   runtime.captured_vertices += texels + row_texels;
@@ -1434,7 +1440,9 @@ void Capture(Context& command, const SceneShader& shader) {
     if (shader.grass) runtime.grass_vertices += triangles * 3;
     runtime.dynamic_triangles += triangles;
     runtime.dynamic_clusters += clusters;
-    if (!shader.dynamic && runtime.settings.debug_log) ++runtime.dynamic_buffers[shader.hash];
+    if (!shader.dynamic && runtime.settings.debug_log) {
+      ++runtime.dynamic_buffers[shader.hash];
+    }
   } else if (runtime.settings.debug_log) {
     ++runtime.new_static[shader.hash];
     // Its geometry (Update's report: what changed between captures of a mesh that came again).

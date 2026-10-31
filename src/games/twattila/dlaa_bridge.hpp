@@ -579,7 +579,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   }
   shared.fg_format = static_cast<uint32_t>(fg_format);
   shared.fg_failed = 0;
-  shared.rt_flags = bridge.details ? RT_DETAILS : 0u;
+  shared.rt_flags = (bridge.details ? RT_DETAILS : 0u);
   ++shared.generation;
   bridge.width = width;
   bridge.height = height;

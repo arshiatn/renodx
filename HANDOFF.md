@@ -2,15 +2,15 @@
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
 - NOW: v118 HUGE BATCH (search "v118 HUGE BATCH"), see its ticks. v117 batch done (search "v117 HUGE BATCH").
-- State: Attila v117 shipped (Downloads/twattila_v117.zip, helper60 = build/tw_dlaa_helper60, bridge v19; v117 is in Attila's
-  folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn35); the addon there is a COPY, not the symlink to
+- State: Attila v118 shipped (Downloads/twattila_v118.zip, helper61 = build/tw_dlaa_helper61, bridge v19; v118 is in Attila's
+  folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn36); the addon there is a COPY, not the symlink to
   build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
   everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory (MEMORY.md index;
   project_attila_first.md, reference_gpu_beside_game.md, reference_attila_frame_facts.md, reference_tw_ingame_testing.md,
   reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
-- Read: "v117 HUGE BATCH", then v116 and v115 under it for recent context. ATN's last test: debug35 (C:/Program Files (x86)/Steam/
-  steamapps/common/Total War Attila/debug35). Next open: far tree billboards in the scene, then ATN's list.
+- Read: "v118 HUGE BATCH", then v117 under it for recent context. ATN's last test: debug36 (C:/Program Files (x86)/Steam/
+  steamapps/common/Total War Attila/debug36). Next open: ATN's test of v118, its "Left for the next batch" list.
 - Round routine: helper build `src/games/twattila/dlaa_helper/build.ps1` (PowerShell), copy build/tw_dlaa_helper to a
   new build/tw_dlaa_helperN; 32-bit `cmake --build build32 --config Release --target renodx-twattila.addon32
   renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32`; 64-bit TW check `cmake --build build --config Release
@@ -1666,7 +1666,12 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Fix: MAX_PARTICLES 1 << 19; rt_smoke.cs gives a quad only to particles with opacity (u1 counter), MAX_SMOKE_QUADS 32768, a second
           dispatch empties the rest: at most 196608 vertices a frame (the old cap 393216). A/B in auto_save.replay, sun debug view: the two
           catapult trails' shadows there with it on, gone with it off. GPU its passes 0.24 ms.
-      [ ] 3. The freeze at the toggle: GPU reset at the sway Dispatch.
+      [x] 3. The freeze at the toggle: GPU reset at the sway Dispatch.
+          Not reproduced on its own: the reset came 6 minutes after the failed request, as ATN's camera came back to that side of the battle:
+          the failed list held the new cluster sets' copies, the sets the CPU then counted on held garbage, and CLAS builds from them hung (0x887A0006,
+          no page fault, DRED: slot 2, sway Dispatch before the clusters' NVAPI operations, which DRED does not list). debug34 and debug36 both had
+          a failed request before a hang. With item 1 no request fails that way and any other that does restarts the scene before its garbage is used.
+          The soak below on the final build shows no reset.
       [x] 4. RT reflections: screen sides; water without RT reflections under SSAO / GT-VBAO / RT AO.
           Three causes. (a) Water "without RT reflections, looks like SSR": ReShade.log "Ray-traced reflections: not traced (the game's)" exactly
           09:47:33 to 09:49:31: the failed request of item 1 (its dead slot), nothing to do with the AO method.
@@ -1676,7 +1681,12 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           edge pixel's on the way there (banks and walls go on), else the screen's mean (light_kept[3], new sums in the fit).
           (c) Rays turned into their own surface by a normal map (waves at a grazing view) now bounce off it (surface_normal from the depth):
           lit share at the left edge 57 -> 38%. river view (for_claude1, W:6.4,Y:2.5): the bank's dark green streaks now reach the sides.
-      [ ] 5. Dead bodies lit at their corners.
+      [x] 5. Dead bodies lit at their corners.
+          Not seen on a live picture (ATN has none; replays' cameras can't get to bodies in the shade; debug36's picture shows bodies only in the
+          sun, plus black ones while the GI slot was dead). Cause by reading the paths: a camera ray from a body's underside meets the ground beside
+          it and HitLight brings back `light + albedo x shade`, the open ground's ambient: nothing knows that ground lies under the body. Fix:
+          ContactShade: PathTraceTexel's sample light x saturate(distance / 0.3 m), Validate the same for ReSTIR GI (reflections' Own ReSTIR not).
+          UNTESTED ON BODIES: ask ATN to look again; CONTACT_RANGE in rt_path.hlsli is the one number.
       [x] 6. Far tree billboards in the RT scene; toggles for them and the sprites under Shadows' More Options.
           rt_capture_billboard (0x4D50E1C7, mask t1, four views 0.25 wide, alpha 0.5): cards turned to the sun, the view of the tree from the
           sun, NaN when faded out (v2.w 0). Dynamic capture a frame (47 quads a draw instanced, ~184 draws: ~55000 vertices). Joined by atlas
@@ -1699,7 +1709,11 @@ DONE 11 (2026-10-26): patch notes in Downloads (tw_patch_notes.txt prepended + t
           Addon: new_static + examples, dynamic_buffers, key_shaders, logged_draws behind debug_log; the SSS one-time report (46 log lines and a
           stall each time SSS came on) removed with sss_probe.cs and its parameters; OnReshadePresentShot registered only with a RENODX_TW_ test switch.
           Already right: runtime.timed (D3D11 timestamps), frame_trace, shadow reader notes, ImGui only with the overlay open.
-      [ ] 9. v118 zip (helper61), README, HANDOFF, memory, report.
+      [x] 9. v118 zip (helper61), README, HANDOFF, memory, report.
+      Left for the next batch (found on the way): bounce +1 ms with Far Tree Shadows though its rays pass the cards (probably the TLAS's
+      map-wide smoke instance: try a BLAS for the cards of its own, or a smaller box); off-screen surfaces take the screen edge's
+      colour but are lit without grass shadows (a grass bank off screen is brighter than on screen); ContactShade not seen on bodies.
+      Harness: smoke, no_details, no_details_removal, bad_list, leaf_storm modes added; its rt_smoke call follows the shader's counter.
     - v117 HUGE BATCH (ATN 2026-10-31 ~00:20, away for hours / days: don't stop, don't wait for answers, commit after every step,
       tick off here, new issues found: fix them in the following batch; debug35 = C:/Program Files (x86)/Steam/steamapps/common/
       Total War Attila/debug35: logs copied there, ATN's ini also tools/tw/test_scripts/ReShade.ini.atn35). ATN's items:

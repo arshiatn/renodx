@@ -1059,7 +1059,9 @@ class RtScene12 {
     }
     LARGE_INTEGER cpu_recorded;
     QueryPerformanceCounter(&cpu_recorded);
-    if (details_) cpu_timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}", CpuMs(cpu_start, cpu_waited), CpuMs(cpu_waited, cpu_recorded));
+    if (details_) {
+      cpu_timings_ += std::format(" | CPU ms: wait {:.2f}, record {:.2f}", CpuMs(cpu_start, cpu_waited), CpuMs(cpu_waited, cpu_recorded));
+    }
     traced_ = traced_ || recorded;
     if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
     LARGE_INTEGER submit_start;
@@ -1074,7 +1076,9 @@ class RtScene12 {
     slot.value = own_value_;
     LARGE_INTEGER submit_end;
     QueryPerformanceCounter(&submit_end);
-    if (details_) cpu_timings_ += std::format(", submit {:.2f}", CpuMs(submit_start, submit_end));
+    if (details_) {
+      cpu_timings_ += std::format(", submit {:.2f}", CpuMs(submit_start, submit_end));
+    }
     slot.profile = profiling_ ? std::format("{},{},trace,{:.3f},{:.3f},{:.3f}{}", own_value_, shared.rt_frame, CpuMs(cpu_start, cpu_waited),
                                             CpuMs(cpu_waited, cpu_recorded), CpuMs(submit_start, submit_end),
                                             recorded ? profile_counts_ : std::string(PROFILE_COUNTS, ','))
@@ -3336,7 +3340,7 @@ class RtScene12 {
           }
           const auto& [first_vertex, unit_triangles, normal_offset, record_flags, uv_offset, slice, capture_flags] = unit_sources[source];
           const bool masked = (record_flags & RECORD_MASKED) != 0;
-          const uint32_t cluster_triangles = ((capture_flags & dlaa_bridge::RT_SCATTERED) != 0) ? 2u : CLUSTER_TRIANGLES;
+          const uint32_t cluster_triangles = (((capture_flags & dlaa_bridge::RT_SCATTERED) != 0) ? 2u : CLUSTER_TRIANGLES);
           built_wanted_ += (unit_triangles + cluster_triangles - 1) / cluster_triangles;
           for (uint32_t first = 0; first < unit_triangles && cluster_count - templated_clusters < built_limit_; first += cluster_triangles) {
             const uint32_t count = std::min(cluster_triangles, unit_triangles - first);
@@ -4101,7 +4105,9 @@ class RtScene12 {
     std::erase(micromap_reads_, nullptr);
     slot->gpu_bakes = static_cast<uint32_t>(gpu_baking.size());
     for (const MicromapBake* bake : gpu_baking) {
-      if (details_) slot->micromap_builds += std::format("; GPU bake {} triangles{}", bake->triangles, bake->set ? ", grass set" : "");
+      if (details_) {
+        slot->micromap_builds += std::format("; GPU bake {} triangles{}", bake->triangles, bake->set ? ", grass set" : "");
+      }
     }
     // Before the game's signal, so the game waits for them (MICROMAP_GPU_BAKES keeps that short). In a list of their own after
     // it, beside the game's frame, the GPU reset in 3 runs of 5 at their dispatches; here in none of 8 (ATN's freezes).
@@ -4180,7 +4186,9 @@ class RtScene12 {
   // GPU times (with Log Details or the profile, but with RENODX_TW_NO_GPU_TIMES): a timestamp at `index`, a slot's resolved
   // for reading, its last read back.
   void Stamp(ID3D12GraphicsCommandList* list, size_t index) const {
-    if (timestamps_ && details_) list->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, static_cast<UINT>(index));
+    if (timestamps_ && details_) {
+      list->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, static_cast<UINT>(index));
+    }
   }
   // All of a slot's timestamps at its list's start (Resolve reads them all; the debug layer flagged the ones a request
   // never wrote, every request).

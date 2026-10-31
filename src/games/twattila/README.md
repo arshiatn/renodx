@@ -2,6 +2,36 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
+## v118 (2026-10-31; renodx-tw-dlaa64.exe helper61: ship them together)
+
+- **Shadows, AO or GI gone, and the freeze after it, fixed at the cause**: a ray tracing request could overflow one buffer: 256 new
+  meshes in a frame plus a finished micromap bake. That request failed, and it stayed failed: one of the three request slots
+  never recorded again, so one effect at a time was gone (first the sun shadows, after toggles the Global Illumination), and its lost
+  work (new cluster sets) later hung the GPU. That GPU reset was what brought everything back, not the AO toggle. The test that
+  reproduces it (256 new leaves a frame with micromaps) failed the same way before and passes now. Should a request ever fail
+  again, ray tracing starts again by itself in a moment, nothing paused (the fourth failure turns it off).
+- **Water that looked like screen-space reflections** under SSAO / GT-VBAO / RT AO was the same failure: the log says the
+  reflections stopped exactly then, and came back exactly then. The AO method has nothing to do with it.
+- **Smoke Shadows came back for good**: a particle draw holds its whole list, nearly all of it invisible (742 of 47884 had any
+  opacity in a battle frame). The first 65536 taken filled up with those, and the catapults' smoke, drawn later, was left out as
+  long as that list stayed. Now only particles with opacity go into the scene: up to 524288 are read, 32768 kept.
+- **Sides of the screen in RT reflections**: what a reflection shows past the screen's edge has no colour known yet, so it came out
+  pale, right in the middle and wrong at the sides, as screen-space reflections are. It takes the colour at the screen's edge
+  now (banks and walls go on past it). Rays a wave's normal turned into the water no longer show the riverbed: they bounce off,
+  as off the next wave.
+- **Far trees have ray-traced shadows** (Shadows > More Options > Far Tree Shadows, on), next to Sprite Soldier Shadows: cards
+  turned to the sun, showing the tree from there. Cost in the replay's tower view: scene +0.3 ms, trace +0.06, reflections +0.03,
+  Global Illumination +1 ms. Sprites and far trees are met by the sun's rays alone now, so sprites got cheaper.
+- **Dead bodies** (and anything lying on the ground) in the shade: under Path-Traced GI a ray from their underside met the ground
+  right beside it and brought back that ground's full shade light, so their lower edges glowed and no contact shadow showed. What
+  a ray meets within 30 cm now counts for less, the closer the less.
+- **The page names its technology**: Game's SSAO, GT-VBAO, Ray-Traced (RTAO), Path-Traced (ReSTIR GI); Game's Shadow Maps, Bend
+  Screen-Space, Ray-Traced (DXR); GT-VBGI, Ray-Traced (One Bounce), Path-Traced (ReSTIR GI); Game's SSR, FidelityFX SSSR, Ray-Traced
+  (DXR); DLSS Ray Reconstruction, DLSS Frame Generation, Opacity Micromaps. Saved settings and presets stay as they are.
+- **Nothing debug runs unless asked**: with Log Details off the helper writes no GPU timestamps, no status text, no pass markers
+  and no log lines but errors, and D3D12's crash recording (DRED) is off. Log Details on when a battle starts turns all of it on,
+  also where a GPU reset stopped. The one-time Screen-Space Shadows report (46 log lines and a stall each time they came on) is gone.
+
 ## v117 (2026-10-31; renodx-tw-dlaa64.exe helper60: ship them together)
 
 - **The freeze is fixed**: the GPU reset came from GPU Micromap Baking running beside the game's frame (since v114). Test
