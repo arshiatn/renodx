@@ -61,7 +61,8 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       cluster room grew four times in the first seconds (32 K -> 320 K -> 467 K) and the swaying grass that did not fit
       was left out meanwhile. GPUs over 20 GB now start at half their limit (262,144 clusters, ~2.5 GB). In steady play
       186 K of 467 K used. Placed counts cycling 56-110 K with a still camera are PLACE_TURNS (kept ones fill in): fine.
-- [x] helper65 (build/tw_dlaa_helper65), ATN's 01:38 stress battle (shadows "100% flickering", smoke still slow):
+- [x] helper65 (build/tw_dlaa_helper65; harness 50 of 50; HARNESS_SMOKE_STRESS=30000 trace 1.05 -> 0.17 ms, scene +0.4 ms
+      for the sorted build; installed in Attila's folder), ATN's 01:38 stress battle (shadows "100% flickering", smoke still slow):
       (a) the TLAS's MAX_INSTANCES 262,144 ran out: 70-184 K placed a frame (grass placed every frame with sway, the
       still meshes in PLACE_TURNS), the kept ones past the limit dropped (rt_place Append), others each frame: now 524,288
       (PLACE_TABLE / rt_place TABLE_ENTRIES 1 << 20). (b) The trace went 3.6 -> 194 ms the frame the volley's smoke came
