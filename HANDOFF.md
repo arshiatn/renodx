@@ -1,7 +1,9 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW (2026-11-01): v121 shipped (Downloads/RenoDX_Attila_v2.1.zip for players: ATN names them v2.0 = v120, v2.1 = v121, twattila_v121.zip full; helper66 =
+- NOW (2026-11-01): v122 = players' RenoDX_Attila_v2.01.zip shipped (helper67 = build/tw_dlaa_helper67: Rays a Pixel up to 8,
+  the red RT note removed, "Ray Tracing Extra Options", RT/PT preset with Smoke Shadows). NEXT: "MONDAY BATCH" below.
+- Before (2026-11-01): v121 shipped (Downloads/RenoDX_Attila_v2.1.zip for players: ATN names them v2.0 = v120, v2.1 = v121, twattila_v121.zip full; helper66 =
   build/tw_dlaa_helper66, bridge v20; search "v121 (ATN 2026-11-01"); pushed to origin atn-mods + tag twattila-v121
   (ATN 2026-11-01: push every commit to their fork from now on). Next batch: v120 items 3-4 (FSR + FSR FG, RT/PT on
   AMD / Intel with NRD) and the v121 NEXT BATCH lines (TLAS growing on its own).
@@ -32,6 +34,19 @@
   text is the last player zip's "RenoDX Attila - READ ME.txt", updated); README section per version; commit after every step with the Co-Authored-By line.
 
 Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF.md`. This file supersedes its Ryse parts.
+
+## MONDAY BATCH (ATN 2026-11-01: "let's do it on monday"; push every commit to origin atn-mods; tick here)
+ATN's words, short:
+- [ ] 1 Mega Geometry's limit higher on 24-32 GB GPUs: up to 1,000,000 clusters a frame (really big battles: arrows, grass,
+      soldiers). Now MAX_CLUSTERS 524,288 (RT_DYNAMIC_CLUSTERS, bridge) on GPUs over 20 GB, ~9.5 KB a cluster (~9.5 GB at
+      1 M): a tier for over 28 GB (5090) and one for 24 GB (4090), the start room as now; check NVAPI's caps
+      (maxClusterCount / CLAS limits), the records (RECORD_COUNT = ... + SLOTS * MAX_CLUSTERS) and the bridge's arrays.
+      With it: TLAS instances growing on their own (the v121 NEXT BATCH line).
+- [ ] 2 XeSS (Intel; runs on any GPU with SM 6.4 / DP4a) and XeSS Frame Generation if Intel ships one usable here (XeSS 2:
+      XeFG + XeLL, Intel Arc only? check the SDK's licence and GPU support), then FSR + FSR Frame Generation (v120 item 3)
+      and RT/PT on AMD / Intel with NVIDIA NRD (v120 item 4). Attila is 32-bit: all of them in the 64-bit helper like DLSS.
+- [ ] 3 TAA: a choice of motion vectors: the game's own (now) or ours (DLSS's: object motion + camera, anti_aliasing.hpp).
+- [ ] 4 Then WH3 (project_wh3_dlss memory: our DLSS on WH3's TAA inputs via the TW helper).
 
 ## v121 (ATN 2026-11-01, quick asks; commit after every step, never push unless ATN asks, tick here)
 - [x] RT/PT preset (graphics_page.hpp): Swaying Shadows Range 75 -> 50 m, Grass Shadow Range 90 -> 0 m (everywhere).

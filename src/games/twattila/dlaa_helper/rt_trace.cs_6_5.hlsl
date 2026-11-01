@@ -206,7 +206,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   // from the depth wrong: the sun into the cracks where wall parts meet) start toward the camera.
   if ((flags & SUN_SHADOWS) != 0u && (flags & PART_AMBIENT) == 0u && toward_sun.w != 0.f) {
     // With several rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel, averaged.
-    const uint rays = clamp(shadow_rays, 1u, 4u);
+    const uint rays = clamp(shadow_rays, 1u, 8u);
     const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
     float2 sum = 0.f;
     float3 tint_sum = 0.f;

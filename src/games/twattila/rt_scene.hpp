@@ -63,7 +63,7 @@ struct Sliders {
   float sun_softness = 0.5f;       // degrees of the sun's disk (0: hard)
   float light_softness = 0.25f;    // the torches' and fires' radius (metres; 0: hard)
   float light_glow = 1.f;          // torch and fire light in fog and smoke (0: none)
-  float output_rays = 0.f;         // Rays a Pixel: 0 one, 1 the output pixels a render pixel stands for, 2-4 that many
+  float output_rays = 0.f;         // Rays a Pixel: 0 one, 1 the output pixels a render pixel stands for, 2-8 that many
   float rays_shadows = 1.f;        // what it counts for
   float rays_ambient = 1.f;
   float rays_reflections = 1.f;
@@ -117,11 +117,11 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
   const bool path_ambient = sliders.path_ambient != 0.f && sliders.light_bounce == 2.f && bounce && internal::ambient_cube != 0;
   // Rays a Pixel: the picture is at the render size until DLSS, nothing traced can be kept finer than that: each render pixel
   // traces more rays instead, each from its own spot of it. Match Output: those of the output pixels it stands for (at most
-  // 4: Performance), as many on screen as at DLAA (ATN: RR Performance's 1080p rays looked noisy at 4K).
+  // 8), as many on screen as at DLAA (ATN: RR Performance's 1080p rays looked noisy at 4K).
   const float render_scale = feature_settings::RenderScale(aa);
   const auto density = static_cast<uint32_t>(
-      (sliders.output_rays == 1.f) ? std::clamp(std::lround(1.f / (render_scale * render_scale)), 1l, 4l)
-                                   : std::clamp(std::lround(sliders.output_rays), 1l, 4l));
+      (sliders.output_rays == 1.f) ? std::clamp(std::lround(1.f / (render_scale * render_scale)), 1l, 8l)
+                                   : std::clamp(std::lround(sliders.output_rays), 1l, 8l));
   const auto rays_of = [density](float on) { return (on != 0.f) ? density : 1u; };
   return {
       .sun_shadows = sliders.sun_shadows != 0.f && dlaa,
@@ -985,14 +985,6 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
   };
   settings->insert(settings->end(), {
       new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "Ray tracing and path tracing do not work correctly yet (fixed in the next update).",
-          .section = section,
-          .tint = 0xFF5050,
-      },
-  });
-  settings->insert(settings->end(), {
-      new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
           .binding = &sliders->sun_shadows,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -1063,12 +1055,12 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .binding = &sliders->output_rays,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
           .default_value = 0.f,
-          .label = "Rays a Pixel",
+          .label = "Rays a Pixel (Use higher for lower scalings)",
           .section = section,
           .tooltip = "More rays for every rendered pixel, each from its own spot of it: less noise, finer shadow edges.\n"
-                     "The cost grows with the rays. Match Output: as many rays on screen as at DLAA (up to 4 a pixel,\n"
-                     "1 at DLAA). 2 to 4 rays also work at DLAA. The rendered image stays at DLSS's size.",
-          .labels = {"1", "Match Output", "2", "3", "4"},
+                     "The cost grows with the rays. Match Output: as many rays on screen as at DLAA (up to 8 a pixel,\n"
+                     "1 at DLAA). 2 to 8 rays also work at DLAA. The rendered image stays at DLSS's size.",
+          .labels = {"1", "Match Output", "2", "3", "4", "5", "6", "7", "8"},
           .is_enabled = [aa] { return aa->method == 5.f; },
       },
       new renodx::utils::settings::Setting{

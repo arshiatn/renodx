@@ -34,7 +34,7 @@ inline const std::string AO_SECTION = "Ambient Occlusion";
 inline const std::string SHADOWS_SECTION = "Shadows";
 inline const std::string GI_SECTION = "Global Illumination";
 inline const std::string REFLECTIONS_SECTION = "Reflections and Water";
-inline const std::string RT_SECTION = "Ray Tracing";
+inline const std::string RT_SECTION = "Ray Tracing Extra Options";
 constexpr uint32_t TITLE_TINT = 0x7FBFFF;
 constexpr uint32_t MORE_TINT = 0xFFB86B;
 constexpr uint32_t WARNING_TINT = 0xFF5050;
@@ -352,7 +352,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"RayTracedShadowSoftness", 0.75f},
                             {"RayTracedLeafLight", 1.f},
                             {"RayTracedColouredShadows", 1.f},
-                            {"RayTracedSmokeShadows", 0.f},
+                            {"RayTracedSmokeShadows", 1.f},
                             {"RayTracedLightSoftness", 0.25f},
                             {"RayTracedLightImportance", 0.f},
                             {"RayTracedSpriteShadows", 0.f},
@@ -537,7 +537,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   // What every ray-traced effect shares.
   {
     const std::string& section = RT_SECTION;
-    page.Take({.match = "Ray tracing and path tracing do not work correctly yet (fixed in the next update).", .section = section, .shown = always});
     page.Take({.match = "RayTracingOutputResolution", .section = section, .shown = dlss});
     page.Take({.match = "RayTracedFogShadows", .section = section, .shown = dlss, .label = "Fog Shadows"});
     page.Add(Note("Needs DLSS (Anti-Aliasing above).", section, MORE_TINT, no_dlss));

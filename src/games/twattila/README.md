@@ -6,6 +6,12 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v122 = players' v2.01 (2026-11-01; renodx-tw-dlaa64.exe helper67, bridge v20: ship them together)
+- The red "ray tracing and path tracing do not work correctly yet" note is gone; Graphics 1 of 2's last section is "Ray
+  Tracing Extra Options".
+- Rays a Pixel (Use higher for lower scalings): up to 8 rays a rendered pixel (Match Output too: up to 8).
+- RT/PT preset: Smoke Shadows on (cheap since v121).
+
 ## v121 (2026-11-01; renodx-tw-dlaa64.exe helper66, bridge v20: ship them together)
 - Smoke Shadows no longer kill the frame rate under arrow volleys (ATN's battles: 100-300 ms traces, now 4-11 ms): the
   smoke is traced on a ray of its own (8 particles a sun ray at most, 2 a fog sample) in a TLAS of its own, built as a
