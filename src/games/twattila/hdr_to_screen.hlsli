@@ -72,12 +72,13 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
   return float4(renodx::color::gamma::EncodeSafe(color, 2.f), saturate(alpha));
 }
 
-// SDR: the stock result, clipped as the original 8-bit target, at Paper White relative to UI (2.0 encoded).
+// SDR: the stock result, clipped as the original 8-bit target, at Paper White relative to UI. Gamma Correction starts
+// from gamma 2.0 whatever the in-game Gamma (the proxy takes it to 2.2); off, the in-game Gamma stays.
 float4 SdrToScreenOutput(float4 stock)
 {
   stock = saturate(stock);
   stock.xyz = renodx::color::gamma::DecodeSafe(stock.xyz, g_gamma_output) * ATTILA_PAPER_WHITE;
-  stock.xyz = renodx::color::gamma::EncodeSafe(stock.xyz, 2.f);
+  stock.xyz = renodx::color::gamma::EncodeSafe(stock.xyz, (SI.gamma_correction != 0.f) ? 2.f : g_gamma_output);
   return stock;
 }
 

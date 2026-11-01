@@ -100,7 +100,7 @@ void ApplyHDRPreset(
     float highlight_hue_shift = 0.04f) {
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", rendering_mode},
-      {"gamma_correction", 0.f},
+      {"gamma_correction", 1.f},
       {"highlights", highlights},
       {"shadows", 1.f},
       {"contrast", 1.f},
@@ -330,12 +330,12 @@ void BuildRuntimeData() {
         .key = "gamma_correction",
         .binding = &shader_injection.gamma_correction,
         .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-        .default_value = 0.f,
+        .default_value = 1.f,
         .label = "Gamma Correction",
         .section = "General",
-        .tooltip = "Rendering Mode SDR: the game's gamma 2.0 picture turned into gamma 2.2.\n"
-                   "Off: the game's own picture. In-game Gamma changes nothing here.",
-        .labels = {"Off (Gamma 2.0)", "On (Gamma 2.2)"},
+        .tooltip = "Rendering Mode SDR: the game's picture at gamma 2.0, turned into gamma 2.2.\n"
+                   "Off: the game's own picture, at the in-game Gamma.",
+        .labels = {"Off (In-game Gamma value)", "On (Gamma 2.2)"},
         .is_visible = [] { return !IsHDRMode(); },
     },
         new renodx::utils::settings::Setting{
