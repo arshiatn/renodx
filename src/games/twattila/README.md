@@ -10,7 +10,11 @@ current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader E
 - Gamma Correction (Rendering Mode SDR) is on by default, also in the presets and on a first start on an SDR monitor. Settings saved with v129 keep their value.
 - Off now keeps the in-game Gamma: the 3D picture follows the in-game setting again (the SDR path forced 2.0 whatever it said). On still forces 2.0, then 2.2.
 - On with Output SDR brightens the darks (2.0 to 2.2 for the monitor's own decode), on an HDR output it darkens them (decoded at 2.2), both as in v129.
-- Built only, not run in game (ATN's game was open).
+- **Fog & Sky Smoothing** (Extra, off by default): removes the vertical lines and blocks in thick fog. The game's own: the sky cube is made at run time (the
+  .environment's SKYGEN), low resolution and 8-bit (a texel ~53 px at 4K in ATN's battle). The fog takes its colour from it and all below the horizon reads its horizon row (y clamped at
+  0), so each texel of that row runs straight down the screen; the lines start at the horizon, as wide as the blocks above them. 9 taps (sky_smooth.hlsli) in the fog and the sky dome,
+  when on; smoke and dust particles keep the game's sample. A stand-in for the taps on ATN's picture takes the lines from 0.13 to 0.033 codes.
+- Both built only, not run in game: ATN tests them.
 
 ## v129 = players' v2.01g (2026-11-01; renodx-tw-dlaa64.exe helper70 as v127, bridge v20: ship them together)
 - **The fog's haze is back, in battles and on the campaign, in every mode.** Since the fog shader was replaced for Fog Shadows, its sun-lit

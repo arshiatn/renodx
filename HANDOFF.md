@@ -2,9 +2,9 @@
 
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
 - State: Attila v130 = players' v2.01h, the last build. Downloads/RenoDX_Attila_v2.01h.zip (players), twattila_v130.zip (full), helper70 =
-  build/tw_dlaa_helper70, bridge v20, tag twattila-v130. All committed and pushed (origin atn-mods). v130's addon is NOT in Attila's folder yet (ATN's game was open).
-- Open: ATN finds the fog in battles "weird", with and without the addon (the campaign / battle fog that was missing is fixed). Their battle picture and description are pending. If
-  it can be fixed: a toggle, off by default, in Extra before Video AutoHDR.
+  build/tw_dlaa_helper70, bridge v20, tag twattila-v130, installed in Attila's folder. All committed and pushed (origin atn-mods).
+- ATN's vertical lines in battle fog: cause found (the sky cube's horizon row, README v130). Fog & Sky Smoothing (Extra, off) waits for ATN's test in that spot, nothing of v130 ran in
+  game. If lines stay: the particles' own sky sample (vfx00 / vfx01), a wider tap spread in sky_smooth.hlsli.
 - ATN's tests: v2.01e FG fixed, v2.01f gamma fixed. v2.01g: the campaign's haze was the fog shader's wrong constant (battlefog00: decompiler), Gamma Correction for
   Rendering Mode SDR, the SDR preset on a first start on an SDR monitor (README v129); v2.01h: Gamma Correction on by default, Off = in-game Gamma. tools: scratchpad cb_audit.py is in tools/tw/test_scripts: original vs built shaders' constants.
 - NEXT, on ATN's word: "MONDAY BATCH" below, in its order (Mega Geometry 1M, XeSS / FSR / NRD, FG on scRGB, SSS smoke shadows, TAA motion, leak check,
