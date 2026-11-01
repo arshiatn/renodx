@@ -100,6 +100,7 @@ void ApplyHDRPreset(
     float highlight_hue_shift = 0.04f) {
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", rendering_mode},
+      {"gamma_correction", 0.f},
       {"highlights", highlights},
       {"shadows", 1.f},
       {"contrast", 1.f},
@@ -135,6 +136,12 @@ void ApplyHDRPreset(
       {"video_autohdr", video_autohdr},
       {"sky_deband", 0.f},
   });
+}
+
+// SDR: Attila's own tonemapper and look (ATN 2026-11-01: this ran the HDR pipeline, PsychoV31, darker than the game);
+// the game's and the UI's white are the monitor's own (no Paper White / UI nits to set), so the HDR boosts off.
+void ApplySdrPreset() {
+  ApplyHDRPreset(0.f, 1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f, 1.f, 0.f, 1.f, 0.15f);
 }
 
 #define UpgradeRTVReplaceShader(value)                                                                \
@@ -319,6 +326,18 @@ void BuildRuntimeData() {
                    "HDR (PsychoV31): the HDR pipeline with PsychoV31, more grading sliders.",
         .labels = {"SDR", "HDR (PsychoV30)", "HDR (PsychoV31)"},
     },
+    new renodx::utils::settings::Setting{
+        .key = "gamma_correction",
+        .binding = &shader_injection.gamma_correction,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Gamma Correction",
+        .section = "General",
+        .tooltip = "Rendering Mode SDR: the game's gamma 2.0 picture turned into gamma 2.2.\n"
+                   "Off: the game's own picture. In-game Gamma changes nothing here.",
+        .labels = {"Off (Gamma 2.0)", "On (Gamma 2.2)"},
+        .is_visible = [] { return !IsHDRMode(); },
+    },
         new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "Reset to default",
@@ -364,8 +383,6 @@ void BuildRuntimeData() {
           ApplyHDRPreset(2.f, 1.f, 1.00f, 0.1f, 1.f, 4.f, 1.8f, 0.7f, 1.5f, 2.f, 0.2f);
         },
     },
-    // SDR: Attila's own tonemapper and look (ATN 2026-11-01: this ran the HDR pipeline, PsychoV31, darker than the game);
-    // the game's and the UI's white are the monitor's own (no Paper White / UI nits to set), so the HDR boosts off.
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "SDR (monitors without HDR)",
@@ -374,7 +391,7 @@ void BuildRuntimeData() {
                    "HDR), no VFX boost, no video AutoHDR. The game's and the UI's white are your monitor's own white.",
         .tint = 0xFFC107,
         .on_change = []() {
-          ApplyHDRPreset(0.f, 1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f, 1.f, 0.f, 1.f, 0.15f);
+          ApplySdrPreset();
           renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
@@ -1560,6 +1577,8 @@ void SetOutputEncoding(int encoding) {
 // turned on in a game started in it did nothing, ATN 2026-11-01). Set at the first swap chain, before the swapchain mod's
 // create_swapchain (registered after this).
 bool auto_output_pending = false;
+// No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (ATN 2026-11-01).
+bool first_start = false;
 
 bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
   if (!auto_output_pending) {
@@ -1572,6 +1591,7 @@ bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, 
   const auto path = renodx::utils::platform::GetPathInfo(monitor);
   const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
   SetOutputEncoding(windows_hdr ? 0 : 2);
+  if (first_start && !windows_hdr) ApplySdrPreset();
   return false;
 }
 
@@ -2000,6 +2020,8 @@ void ConfigureAddon() {
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
     auto_output_pending = (value == 3);
+    float saved_mode = 0.f;
+    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     SetOutputEncoding(auto_output_pending ? 0 : value);
     settings.push_back(setting);
   }

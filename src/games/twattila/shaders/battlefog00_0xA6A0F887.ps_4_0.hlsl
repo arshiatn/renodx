@@ -117,13 +117,15 @@ void main(
   r0.z = sqrt(r0.z);
   r1.xyz = g_volume_fog_colour.xyz * sun_colour.xyz * RtFogSun(v0.xy);
   r1.xyz = float3(1.5,1.5,1.5) * r1.xyz;
-  r1.xyz = abs(g_apply_environment_specular) * r1.xyz;
+  // The game's |cb1[0].z|; the decompiler wrote g_apply_environment_specular (c0.x, unused here): 0 on the campaign, so its
+  // fog lost the sun-lit colour and came out black instead of a haze (ATN 2026-11-01).
+  r1.xyz = abs(sun_direction.y) * r1.xyz;
   r0.w = cmp(0 < g_hdr_on);
   r0.w = r0.w ? 0.00400000019 : 1;
   r2.xyz = -r1.xyz * r0.www + r2.xyz;
   r1.xyz = r1.xyz * r0.www;
   o0.xyz = r0.yyy * r2.xyz + r1.xyz;
-  o0.xyz += g_volume_fog_colour.xyz * RtFogLights(v0.xy) * (1.5 * abs(g_apply_environment_specular) * r0.w);
+  o0.xyz += g_volume_fog_colour.xyz * RtFogLights(v0.xy) * (1.5 * r0.w);
   r0.y = max(0.00100000005, g_fog_clear_distance);
   r0.y = 1 / r0.y;
   r0.y = r0.z * r0.y;
