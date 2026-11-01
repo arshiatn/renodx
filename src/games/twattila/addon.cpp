@@ -364,16 +364,17 @@ void BuildRuntimeData() {
           ApplyHDRPreset(2.f, 1.f, 1.00f, 0.1f, 1.f, 4.f, 1.8f, 0.7f, 1.5f, 2.f, 0.2f);
         },
     },
-    // SDR: the game's and the UI's white are the monitor's own (no Paper White / UI nits to set), so the HDR boosts off.
+    // SDR: Attila's own tonemapper and look (ATN 2026-11-01: this ran the HDR pipeline, PsychoV31, darker than the game);
+    // the game's and the UI's white are the monitor's own (no Paper White / UI nits to set), so the HDR boosts off.
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "SDR (monitors without HDR)",
         .group = "preset-line-3",
-        .tooltip = "For SDR monitors: Output SDR (restart the game if it was HDR), Recommended without VFX boost,\n"
-                   "no video AutoHDR. In SDR the game's and the UI's white are your monitor's own white.",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (Attila's own picture) and Output SDR (restart the game if it was\n"
+                   "HDR), no VFX boost, no video AutoHDR. The game's and the UI's white are your monitor's own white.",
         .tint = 0xFFC107,
         .on_change = []() {
-          ApplyHDRPreset(2.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.f, 1.f, 0.15f);
+          ApplyHDRPreset(0.f, 1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f, 1.f, 0.f, 1.f, 0.15f);
           renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },

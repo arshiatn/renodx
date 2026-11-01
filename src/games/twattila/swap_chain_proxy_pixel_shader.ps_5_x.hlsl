@@ -13,6 +13,10 @@ float4 main(float4 vpos: SV_POSITION, float2 uv: TEXCOORD0)
     : SV_TARGET {
   float3 x = t0.Sample(s0, uv).xyz;
 
+  // Rendering Mode SDR on an SDR display: the game's picture as it is (decoded at its gamma 2.0 and encoded at 2.2 below, its
+  // darks came out brighter than the game's, ATN 2026-11-01).
+  if (ATTILA_SDR_OUTPUT && HDR < 0.5f) return float4(saturate(x), 1.f);
+
   // intermediate encode inv
   //  x = max(0, x); // Do not clamp here: PsychoV uses signed BT.709 to represent BT.2020.
   x = renodx::color::gamma::DecodeSafe(x, 2.0f);  // in-game gamma 20

@@ -1,7 +1,9 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW (2026-11-01): v127 = players' RenoDX_Attila_v2.01e.zip shipped (full twattila_v127.zip, tag twattila-v127, helper70 =
+- NOW (2026-11-01): v128 = players' RenoDX_Attila_v2.01f.zip shipped (full twattila_v128.zip, tag twattila-v128, helper70 as v127: SDR
+  preset = Rendering Mode SDR, the proxy passes SDR mode + SDR output through). ATN's pictures: Attila's pictures\SDR. NEXT: "MONDAY BATCH".
+- Before (2026-11-01): v127 = players' RenoDX_Attila_v2.01e.zip shipped (full twattila_v127.zip, tag twattila-v127, helper70 =
   build/tw_dlaa_helper70: FG off = slFreeResources + swap chain + window, Streamline stays; ATN tests it). NEXT: "MONDAY BATCH".
 - Before (2026-11-01): v126 = players' RenoDX_Attila_v2.01d.zip shipped (withdrawn: it hung, see MONDAY BATCH item 5) (full twattila_v126.zip, tag twattila-v126, helper69 =
   build/tw_dlaa_helper69: frame generation's memory released 10 s after it is off). NEXT: "MONDAY BATCH".

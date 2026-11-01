@@ -6,6 +6,10 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v128 = players' v2.01f (2026-11-01; renodx-tw-dlaa64.exe helper70 as v127, bridge v20: ship them together)
+- SDR preset: Rendering Mode SDR (it set HDR PsychoV31: darker and more contrast than the game), the game's bloom.
+- Rendering Mode SDR with Output SDR: the game's picture as it is (it went through gamma 2.0 to 2.2: brighter darks).
+
 ## v127 = players' v2.01e (2026-11-01; renodx-tw-dlaa64.exe helper70, bridge v20: ship them together)
 - Fixed from v126: DLSS, ray tracing and frame generation could stay off until a restart after using frame generation and
   then turning RT/PT on. Streamline is no longer stopped: turned off, frame generation frees its resources, swap chain and
