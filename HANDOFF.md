@@ -1,11 +1,10 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
-- State: Attila v128 = players' v2.01f, the last build. Downloads/RenoDX_Attila_v2.01f.zip (players), twattila_v128.zip (full), helper70 =
-  build/tw_dlaa_helper70, bridge v20, tag twattila-v128, installed in Attila's folder. All committed and pushed (origin atn-mods, 04c34823 + this).
-- ATN still has to test in game (nothing here ran in game): v2.01e: use FG, turn it off, wait 10+ s; Reset or No RT/PT, wait 10+ s; RT/PT: DLSS,
-  RT and MFG must come back (v2.01d hung here: "NVIDIA's helper did not answer", DLSS off until a restart). v2.01f: the yellow SDR preset against
-  Attila's pictures\SDR\Without the addon, SDR.png. If v2.01e still fails: its log first (ReShade.log, renodx-tw-dlaa64.log, sl.log in Attila's folder).
+- State: Attila v129 = players' v2.01g, the last build. Downloads/RenoDX_Attila_v2.01g.zip (players), twattila_v129.zip (full), helper70 =
+  build/tw_dlaa_helper70, bridge v20, tag twattila-v129, installed in Attila's folder. All committed and pushed (origin atn-mods).
+- ATN's tests: v2.01e FG fixed, v2.01f gamma fixed. v2.01g: the campaign's haze was the fog shader's wrong constant (battlefog00: decompiler), Gamma Correction for
+  Rendering Mode SDR, the SDR preset on a first start on an SDR monitor (README v129). tools: scratchpad cb_audit.py is in tools/tw/test_scripts: original vs built shaders' constants.
 - NEXT, on ATN's word: "MONDAY BATCH" below, in its order (Mega Geometry 1M, XeSS / FSR / NRD, FG on scRGB, SSS smoke shadows, TAA motion, leak check,
   then WH3). Don't start it unasked.
 - Rules: ATN wants very short answers in English, they/them. Push every commit to origin (arshiatn/renodx, branch atn-mods), NEVER upstream (clshortfuse).

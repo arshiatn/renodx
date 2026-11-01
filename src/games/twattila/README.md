@@ -6,6 +6,19 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v129 = players' v2.01g (2026-11-01; renodx-tw-dlaa64.exe helper70 as v127, bridge v20: ship them together)
+- **The fog's haze is back, in battles and on the campaign, in every mode.** Since the fog shader was replaced for Fog Shadows, its sun-lit
+  colour took the wrong constant: the game's |sun_direction.y| (cb1[0].z) was decompiled as g_apply_environment_specular (c0.x, which the
+  game's shader never reads). On the campaign that is 0: the fog went black, so the map lost its haze. All 46 converted shaders checked against the
+  game's (which constants they read): the fog and two UI shaders were the only wrong ones.
+- UI shaders (uiMap00, uiMenuText00): g_switch_diffuse_channels was read as the text flag, so sprites that swap red and blue did not.
+- **Gamma Correction** (Rendering Mode SDR only, off by default): the game's gamma 2.0 picture turned into gamma 2.2. Any in-game Gamma works for the
+  3D picture: the SDR path already fixes it at 2.0.
+- **First start on an SDR monitor**: no settings saved yet and Windows HDR off: the SDR preset is picked by itself, Output stays Auto.
+- Tested in game: claude1.save against ATN's picture without the addon, each region within 1%. An SDR monitor simulated by a temporary build (first start, no
+  hang, the SDR preset, Gamma Correction brightens). HDR PsychoV31 shows the haze too. Battles not looked at after the fog fix: their fog was too bright by 1 / |sun_direction.y|
+  where the flag is on, it now matches the game's.
+
 ## v128 = players' v2.01f (2026-11-01; renodx-tw-dlaa64.exe helper70 as v127, bridge v20: ship them together)
 - SDR preset: Rendering Mode SDR (it set HDR PsychoV31: darker and more contrast than the game), the game's bloom.
 - Rendering Mode SDR with Output SDR: the game's picture as it is (it went through gamma 2.0 to 2.2: brighter darks).
