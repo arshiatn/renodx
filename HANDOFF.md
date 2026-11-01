@@ -53,7 +53,7 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       disk as wide as it was long), particles under 0.05 m^2 of full opacity take none. Addon only; not tested in game.
       Next if smoke still costs: the smoke in a TLAS of its own (its ray now walks the whole TLAS, ~150K instances here).
 - [x] Far Tree Shadows and Sprite Shadows ("unit sprites") off by default and in the RT/PT preset (ATN).
-- [x] helper64 (build/tw_dlaa_helper64): the smoke in a TLAS of its own (smoke_tlas_, root SRV t15 ROOT_SMOKE, its one
+- [x] helper64 (build/tw_dlaa_helper64; harness 50 of 50, all_modes_h64.txt; installed in Attila's folder): the smoke in a TLAS of its own (smoke_tlas_, root SRV t15 ROOT_SMOKE, its one
       desc the slot's last instance desc; SmokeTransmittance traces smoke_scene), out of the scene's TLAS. ATN asked about
       Mega Geometry / OMM for smoke: the smoke is rebuilt every request (cluster BLAS where Mega Geometry runs); OMM holds
       only opaque / transparent / unknown, smoke is partly see-through everywhere: no gain past the disks' corners.
