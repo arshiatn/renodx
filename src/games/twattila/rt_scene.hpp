@@ -179,6 +179,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
 inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
   aa->ray_tracing = settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections
                     || settings.specular_occlusion || settings.local_lights || settings.fog_shadows;
+  // Ray Reconstruction only with rays to denoise: without them DLSS's usual model (ATN 2026-11-01).
+  aa->ray_reconstruction = aa->ray_reconstruction && aa->ray_tracing;
   aa->ray_traced_guides = settings.path_tracing || settings.reflections || settings.specular_occlusion;
   aa->ray_traced_reflections = settings.reflections || settings.specular_occlusion;
   // The Light Bounce through rays: at their own resolution, no Checkerboard.

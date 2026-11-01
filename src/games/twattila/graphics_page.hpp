@@ -296,7 +296,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                .tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default)."});
     page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "DLSS Ray Reconstruction",
                .tooltip = "NVIDIA's denoiser for ray tracing in place of DLSS's usual model: much less noise in everything\n"
-                          "ray-traced. Needs nvngx_dlssd.dll next to nvngx_dlss.dll."});
+                          "ray-traced. Runs only while something is ray-traced. Needs nvngx_dlssd.dll next to nvngx_dlss.dll."});
     page.Take({.match = "FrameGeneration", .section = section, .shown = dlss, .label = "DLSS Frame Generation",
                .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
                           "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"

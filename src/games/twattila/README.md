@@ -6,6 +6,10 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v125 = players' v2.01c (2026-11-01; renodx-tw-dlaa64.exe helper67 as v122, bridge v20: ship them together)
+- DLSS Ray Reconstruction runs only while something is ray-traced: without rays DLSS uses its usual model (the setting
+  stays as chosen for when ray tracing comes back).
+
 ## v124 = players' v2.01b (2026-11-01; renodx-tw-dlaa64.exe helper67 as v122, bridge v20: ship them together)
 - RT/PT preset: turns DLSS Ray Reconstruction on if it is off (without it nothing denoises the rays: grass shadows flickered
   when moving).

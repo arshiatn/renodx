@@ -1,7 +1,9 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW (2026-11-01): v124 = players' RenoDX_Attila_v2.01b.zip shipped (full twattila_v124.zip, tag twattila-v124, helper67 as v122: the
+- NOW (2026-11-01): v125 = players' RenoDX_Attila_v2.01c.zip shipped (full twattila_v125.zip, tag twattila-v125, helper67 as v122: Ray
+  Reconstruction only while something is ray-traced, rt_scene.hpp Configure). NEXT: "MONDAY BATCH".
+- Before (2026-11-01): v124 = players' RenoDX_Attila_v2.01b.zip shipped (full twattila_v124.zip, tag twattila-v124, helper67 as v122: the
   RT/PT preset turns Ray Reconstruction on if it is off). NEXT: "MONDAY BATCH".
 - Before (2026-11-01): v123 = players' RenoDX_Attila_v2.01a.zip shipped (full twattila_v123.zip, tag twattila-v123, helper67 as v122:
   Output Auto = HDR10, RIS on in RT/PT). NEXT: "MONDAY BATCH".
