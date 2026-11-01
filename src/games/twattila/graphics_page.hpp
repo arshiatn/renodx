@@ -349,9 +349,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            "Bend Screen-Space Shadows (Length 480), FidelityFX SSSR, GT-VBAO and GT-VBGI at their Recommended\n"
                            "settings. The rest of this page at its default.",
                            {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}}));
-    page.Add(preset_button("RT/PT",
+    auto* rays_preset = preset_button("RT/PT",
                            "Ray-traced shadows and reflections, path-traced ambient occlusion and Global Illumination at my\n"
-                           "settings. The rest of this page at its default. Needs DLSS (Anti-Aliasing above).",
+                           "settings. The rest of this page at its default. Needs DLSS (Anti-Aliasing above).\n"
+                           "Also turns DLSS Ray Reconstruction on if it is off.",
                            {{"RayTracedSunShadows", 1.f},
                             {"RayTracedShadowSoftness", 0.75f},
                             {"RayTracedLeafLight", 1.f},
@@ -381,7 +382,14 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"WaterClarity", 1.f},
                             {"WaterCaustics", 1.f},
                             {"RayTracingOutputResolution", 0.f},
-                            {"RayTracedFogShadows", 1.f}}));
+                            {"RayTracedFogShadows", 1.f}});
+    // Ray Reconstruction where it was off: the presets leave the rest of DLSS alone, and without it nothing denoises the
+    // rays (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays.
+    rays_preset->on_change = [apply = rays_preset->on_change, b] {
+      apply();
+      if (b.aa->ray_reconstruction == 0.f) renodx::utils::settings::UpdateSettings({{"AntiAliasingRayReconstruction", 4.f}});
+    };
+    page.Add(rays_preset);
     page.Add(MethodSlider(section,
                           "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                           "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
