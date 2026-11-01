@@ -257,7 +257,7 @@ class FrameGeneration12 {
       preset_ = shared->fg_preset;
       std::thread([this, preset = preset_] { preset_result_.store(SavePreset(preset)); }).detach();
     }
-    if (!PrepareWindow(game_window)) {
+    if (!PrepareWindow(game_window, shared->fg_sdr != 0)) {
       SignalOnly(value);
       return false;
     }
@@ -594,7 +594,7 @@ class FrameGeneration12 {
 
   // The window over the game's client area (made with its swap chain at the frame's size and format; resized with the
   // game's window). False: no window or swap chain.
-  bool PrepareWindow(HWND game_window) {
+  bool PrepareWindow(HWND game_window, bool sdr) {
     if (window_ != nullptr && !IsWindow(window_)) {
       window_ = nullptr;
       chain_.Reset();
@@ -688,8 +688,9 @@ class FrameGeneration12 {
         || FAILED(created.As(&chain_))) {
       return Fail("its swap chain could not be made");
     }
-    // HDR10 (R10G10B10A2) and scRGB (RGBA16F) frames as the game's swap chain shows them.
-    if (format_ == DXGI_FORMAT_R10G10B10A2_UNORM) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+    // HDR10 (R10G10B10A2) and scRGB (RGBA16F) frames as the game's swap chain shows them. SDR frames (gamma 2.2, in
+    // R10G10B10A2 too) keep the chain's default: taken for HDR10 they came out red (ATN 2026-11-01).
+    if (format_ == DXGI_FORMAT_R10G10B10A2_UNORM && !sdr) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
     if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
     chain_width_ = width_;
     chain_height_ = height_;

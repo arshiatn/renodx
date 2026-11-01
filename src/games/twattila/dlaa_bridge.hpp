@@ -124,6 +124,7 @@ struct FrameRequest {
   uint32_t preset = 0;       // NVIDIA's A-C as 1-3 (0: the driver's)
   bool hud_recomposition = false;
   uint32_t debug_view = 0;  // 1 the HUD-less image, 2 the UI layer tinted (0: off)
+  bool sdr_output = false;
   bool hudless = false;
   bool inputs = false;
   uint32_t frame_index = 0;
@@ -929,6 +930,7 @@ inline bool PresentFrame(ID3D11DeviceContext* context, const FrameRequest& reque
     shared->fg_preset = request.preset;
     shared->fg_ui = (request.hud_recomposition ? 1u : 0u);
     shared->fg_debug = request.debug_view;
+    shared->fg_sdr = (request.sdr_output ? 1u : 0u);
     shared->fg_hudless_valid = (request.hudless ? 1u : 0u);
     shared->fg_inputs = (request.inputs ? 1u : 0u);
     shared->fg_frame_index = request.frame_index;

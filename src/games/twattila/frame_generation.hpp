@@ -42,6 +42,7 @@ struct Settings {
   uint32_t preset = 0;       // NVIDIA's A-C as 1-3 (0: the driver's)
   bool hud_recomposition = true;
   uint32_t debug_view = 0;  // what the helper presents: 1 the HUD-less image, 2 the UI layer tinted (0: the frame)
+  bool sdr_output = false;  // the frames are SDR (gamma 2.2), whatever the swap chain's format
 };
 
 // A frame's DLAA inputs (their size and jitter, the depth and motion are the bridge's) and its camera (row vectors,
@@ -141,6 +142,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     request.preset = settings.preset;
     request.hud_recomposition = settings.hud_recomposition;
     request.debug_view = settings.debug_view;
+    request.sdr_output = settings.sdr_output;
     request.hudless = hudless;
     request.inputs = kept;
     request.frame_index = ++state.frame_index;

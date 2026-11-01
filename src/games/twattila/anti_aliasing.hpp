@@ -98,6 +98,7 @@ struct Settings {
   uint32_t frame_preset = 0;  // frame generation's NVIDIA preset A-C as 1-3 (0: the driver's)
   bool hud_recomposition = true;
   uint32_t frame_debug_view = 0;  // frame generation's: 1 the HUD-less image, 2 the UI layer tinted (0: off)
+  bool sdr_output = false;        // the swap chain shows SDR: frame generation's window too
   // DLSS: the textures' levels below 100% (texture_lod_bias.hpp): 0 the game's, 1 as sharp as at the display size, 2
   // one step sharper (NVIDIA's advice), 3 two.
   int texture_lod_bias = 2;
@@ -1404,6 +1405,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
       .preset = settings.frame_preset,
       .hud_recomposition = settings.hud_recomposition,
       .debug_view = settings.frame_debug_view,
+      .sdr_output = settings.sdr_output,
   });
   reflex::Update(swapchain, settings.reflex, settings.frame_limit);
   const std::unique_lock lock(internal::runtime.mutex);

@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 20;
+constexpr uint32_t VERSION = 21;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -288,7 +288,8 @@ struct Shared {
   float fg_far = 0.f;
   // The helper's (v5): 1 when frame generation cannot run here (the addon stops asking), and its state (one line).
   uint32_t fg_failed = 0;
-  uint32_t fg_helper_padding = 0;
+  // The addon's (v21, in v5's padding): 1 the frames are SDR (gamma 2.2), in HDR10's format all the same.
+  uint32_t fg_sdr = 0;
   char fg_status[256] = {};
   // The addon's (v6): soft shadows (the sun's disk, degrees; 0 hard) and the leaves' opacity masks (rt_atlas: the R8
   // texture array, shared again with every set of textures; 0: none) with each capture's slice in it.

@@ -1545,6 +1545,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // under Path-Traced Ambient they stacked on it, ATN's debug29).
   shader_injection.rt_ambient_alone = (rt_settings.ambient_occlusion || rt_settings.path_ambient) ? 1.f : 0.f;
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
+  aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
