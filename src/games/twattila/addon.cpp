@@ -1680,6 +1680,7 @@ void ConfigureAddon() {
       {"GraphicsCampaignDetail", 1.f},
       {"GraphicsGrassDistance", 1.f},
       {"GraphicsGrassDensity", 1.f},
+      {"GrassHeightDistance", 1.f},
       {"GraphicsCampaignPlants", 1.f},
       {"GraphicsCampaignProps", 1.f},
   };

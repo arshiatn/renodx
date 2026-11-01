@@ -6,6 +6,22 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v121 (2026-11-01; renodx-tw-dlaa64.exe helper66, bridge v20: ship them together)
+- Smoke Shadows no longer kill the frame rate under arrow volleys (ATN's battles: 100-300 ms traces, now 4-11 ms): the
+  smoke is traced on a ray of its own (8 particles a sun ray at most, 2 a fog sample) in a TLAS of its own, built as a
+  sorted BLAS (Mega Geometry's clusters of it spanned the battlefield); its quads have the particle's area (an arrow's thin
+  trail took a disk as wide as it was long) and faint or tiny particles none.
+- Flickering shadows in huge battles: the TLAS takes 524,288 instances (262,144 ran out: kept meshes left out, others each
+  frame); captures 1024 a frame, drawn meshes and placements 16,384 (bridge v20: addon and helper ship together).
+- Swaying grass at a battle's start: Mega Geometry's room starts at half its limit on GPUs over 20 GB (it grew four times
+  in the first seconds, what did not fit left out meanwhile).
+- Turning RT/PT off gives its video memory back after 10 s (the helper kept its ray tracing and Ray Reconstruction devices:
+  15 GB after switching off, 7.5 GB never on); they start again when turned on.
+- RT/PT preset: Swaying Shadows Range 50 m, Grass Shadow Range 0 m (everywhere); Far Tree Shadows and Sprite Shadows off
+  by default and in the preset. Graphics 2 of 2: Grass Height Distance back to 1.00x in both presets and Reset.
+- Effects at Output Resolution checked: GT-VBAO, Light Bounce, SSSR, the game's SSR blur, RT shadow softness, SSS's length
+  and the game's SSAO follow it; ray-traced effects trace at the render size by design.
+
 ## v120 (2026-10-31; renodx-tw-dlaa64.exe helper62 as v119: ship them together)
 - Graphics 1 of 2: Reset brings back the game's SSAO, SSR, Water Clarity and Water Caustics (the rest at its default).
   Shadow Map Size and UI 4K Mod Compatibility moved there (Shadows), shown only with the game's shadow maps; the

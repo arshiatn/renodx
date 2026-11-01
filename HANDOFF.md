@@ -1,7 +1,11 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW (2026-10-31 night): v120 shipped (Downloads/twattila_v120.zip, helper62 unchanged; items 1, 2, 5 done; 3 FSR + FSR FG and 4 RT/PT
+- NOW (2026-11-01): v121 shipped (Downloads/RenoDX_Attila_v2.1.zip for players: ATN names them v2.0 = v120, v2.1 = v121, twattila_v121.zip full; helper66 =
+  build/tw_dlaa_helper66, bridge v20; search "v121 (ATN 2026-11-01"); pushed to origin atn-mods + tag twattila-v121
+  (ATN 2026-11-01: push every commit to their fork from now on). Next batch: v120 items 3-4 (FSR + FSR FG, RT/PT on
+  AMD / Intel with NRD) and the v121 NEXT BATCH lines (TLAS growing on its own).
+- Before (2026-10-31 night): v120 shipped (Downloads/twattila_v120.zip, helper62 unchanged; items 1, 2, 5 done; 3 FSR + FSR FG and 4 RT/PT
   on AMD / Intel with NVIDIA NRD NOT done: ATN's weekly limit ran out, they are the v121 batch, search "v120 BATCH" for their hints).
   Pushed to ATN's fork (origin arshiatn/renodx, branch atn-mods, tag twattila-v120); ATN attaches the zip to a GitHub release there
   (Nexus blocks the zip). v120 addon is in Attila's folder (old one renamed .addon32.v119), not tested in game. v119 done
