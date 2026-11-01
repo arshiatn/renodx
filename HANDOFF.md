@@ -54,6 +54,12 @@ ATN's words, short:
       PQ for fg_frame / fg_hudless; then Auto can go back to scRGB (ask ATN) and the note goes.
 - [ ] 3 TAA: a choice of motion vectors: the game's own (now) or ours (DLSS's: object motion + camera, anti_aliasing.hpp).
 - [ ] 4 Then WH3 (project_wh3_dlss memory: our DLSS on WH3's TAA inputs via the TW helper).
+- [ ] 5 AT THE END of this batch (ATN 2026-11-01: "a whoooooole check"): every VRAM / RAM leak or leftover. First ATN's report: with
+      MFG turned off the VRAM does not come back. Frame generation's device (FrameGeneration12: Streamline, its child window's swap
+      chain, the shared fg_frame / fg_hudless) has no idle release yet, unlike ray tracing and Ray Reconstruction (main.cpp
+      IDLE_RELEASE). Then all of it: effects turned on and off (GT-VBAO, GT-VBGI, SSS, SSSR, TAA, CMAA2, SMAA, RT/PT, FG), battle <->
+      campaign <-> menu, resolution and render scale changes, repeated battles; addon (32-bit: its address space too) and helper;
+      measure with QueryVideoMemoryInfo / process memory before and after each.
 
 ## v121 (ATN 2026-11-01, quick asks; commit after every step, never push unless ATN asks, tick here)
 - [x] RT/PT preset (graphics_page.hpp): Swaying Shadows Range 75 -> 50 m, Grass Shadow Range 90 -> 0 m (everywhere).
