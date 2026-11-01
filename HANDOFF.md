@@ -1,7 +1,9 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW (2026-11-01): v126 = players' RenoDX_Attila_v2.01d.zip shipped (full twattila_v126.zip, tag twattila-v126, helper69 =
+- NOW (2026-11-01): v127 = players' RenoDX_Attila_v2.01e.zip shipped (full twattila_v127.zip, tag twattila-v127, helper70 =
+  build/tw_dlaa_helper70: FG off = slFreeResources + swap chain + window, Streamline stays; ATN tests it). NEXT: "MONDAY BATCH".
+- Before (2026-11-01): v126 = players' RenoDX_Attila_v2.01d.zip shipped (withdrawn: it hung, see MONDAY BATCH item 5) (full twattila_v126.zip, tag twattila-v126, helper69 =
   build/tw_dlaa_helper69: frame generation's memory released 10 s after it is off). NEXT: "MONDAY BATCH".
 - Before (2026-11-01): v125 = players' RenoDX_Attila_v2.01c.zip shipped (full twattila_v125.zip, tag twattila-v125, helper67 as v122: Ray
   Reconstruction only while something is ray-traced, rt_scene.hpp Configure). NEXT: "MONDAY BATCH".
@@ -70,7 +72,10 @@ ATN's words, short:
       it stayed; slFreeResources + swap chain gone left +590 MiB (Streamline, its device); Shutdown + a new FrameGeneration12 leaves +65, +131,
       +180 MiB after 1, 2, 3 cycles, helper private +43, +52, +74 MB, the game's flat. So ~60 MiB a cycle stays: about fg_frame + fg_hudless's
       size (R10G10B10A2 at 4K: 2 x 31.6 MiB), find out who holds them (the helper's closed handles, the addon's fg_hudless_rtv, Streamline's
-      restart). Then all of it: effects turned on and off (GT-VBAO, GT-VBGI, SSS, SSSR, TAA, CMAA2, SMAA, RT/PT, FG), battle <->
+      restart). v126's Streamline restart hung the helper: ATN's log 16:12-16:16: FG used, slShutdown at 16:12:12, then the first RT + RR start
+      (RR's NGX init runs first at the set change) never answered, no "Ray tracing ready", DLAA off for good. Not reproduced, inferred; NGX after
+      Streamline's "Shutting down NGX" is the suspect. v127 keeps Streamline: FreeResources frees ~950 of 1540 MiB, ~590 stays. To get all of
+      it: frame generation in a process of its own (it exits, everything goes, no NGX shared with RR). Then all of it: effects turned on and off (GT-VBAO, GT-VBGI, SSS, SSSR, TAA, CMAA2, SMAA, RT/PT, FG), battle <->
       campaign <-> menu, resolution and render scale changes, repeated battles; addon (32-bit: its address space too) and helper;
       measure with QueryVideoMemoryInfo / process memory before and after each.
 

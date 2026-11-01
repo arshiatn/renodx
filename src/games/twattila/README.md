@@ -6,6 +6,11 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v127 = players' v2.01e (2026-11-01; renodx-tw-dlaa64.exe helper70, bridge v20: ship them together)
+- Fixed from v126: DLSS, ray tracing and frame generation could stay off until a restart after using frame generation and
+  then turning RT/PT on. Streamline is no longer stopped: turned off, frame generation frees its resources, swap chain and
+  window after 10 s (about 0.95 of its 1.54 GB; the rest stays until the game closes).
+
 ## v126 = players' v2.01d (2026-11-01; renodx-tw-dlaa64.exe helper69, bridge v20: ship them together)
 - Turning Frame Generation off gives its memory back after 10 s: 1.54 GB of video memory in a 4x replay at 4K stayed before.
   The helper stops Streamline and its device, and starts them again when it is turned on (~2.5 s). ReShade's menu open does

@@ -138,15 +138,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   bool scene_open = false;
   // Ray tracing's and Ray Reconstruction's devices let go after IDLE_RELEASE without a request of theirs (gigabytes of the
   // GPU's memory: 15 GB stayed after RT/PT was turned off, 7.5 GB with it never on, ATN 2026-11-01), opened again with
-  // their next one (the addon then captures its scene again: rt_device). Frame generation's the same, once its set has no
-  // textures of it: turned off in the settings, not ReShade's menu open (1.5 GB stayed: eRetainResourcesWhenOff keeps its
-  // resources through that menu, and freeing them left 0.6 GB with Streamline and its device, ATN 2026-11-01).
+  // their next one (the addon then captures its scene again: rt_device). Frame generation's resources, swap chain and window
+  // too, once its set has no textures of it: turned off in the settings, not ReShade's menu open (1.5 GB stayed; ~0.6 GB of
+  // it, Streamline and its device, still does: FreeResources).
   constexpr auto IDLE_RELEASE = std::chrono::seconds(10);
   auto rt_used = std::chrono::steady_clock::now();
   auto rr_used = rt_used;
   auto fg_used = rt_used;
-  bool generation_idle = false;
-  bool generation_live = false;
+  bool generation_resources = false;
   bool scene_idle = false;
   bool reconstruction_idle = false;
   bool scene_live = false;           // its device made (open or closed: a set without ray tracing closes it, its memory stays)
@@ -285,7 +284,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                                   shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u);
   };
   const auto open_generation = [&] {
-    generation_live = true;
     if (generation->Lost()) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: Streamline started again.");
       generation->Shutdown();
@@ -317,12 +315,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       reconstruction_idle = true;
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] Ray Reconstruction off for 10 s: its memory released.");
     }
-    if (generation_live && now - fg_used > IDLE_RELEASE) {
-      generation->Shutdown();
-      generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
-      generation_open = false;
-      generation_live = false;
-      generation_idle = true;
+    if (generation_resources && now - fg_used > IDLE_RELEASE) {
+      generation->FreeResources();
+      generation_resources = false;
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] Frame generation off for 10 s: its memory released.");
     }
   };
@@ -376,7 +371,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         scene->Close();
       }
       generation_open = false;
-      if (version >= 5 && shared->fg_frame != 0 && !generation_idle) {
+      if (version >= 5 && shared->fg_frame != 0) {
         open_generation();
       } else {
         generation->Close();
@@ -418,10 +413,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
     if (shared->fg_frame != 0) {
       fg_used = now;
-      if (generation_idle) {
-        generation_idle = false;
-        open_generation();
-      }
+      generation_resources = true;
     }
     release_idle();
     bool evaluated = false;

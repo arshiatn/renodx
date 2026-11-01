@@ -74,7 +74,7 @@ class FrameGeneration12 {
                             && Resolve(&set_device_, "slSetD3DDevice") && Resolve(&upgrade_, "slUpgradeInterface")
                             && Resolve(&native_, "slGetNativeInterface") && Resolve(&feature_function_, "slGetFeatureFunction")
                             && Resolve(&frame_token_, "slGetNewFrameToken") && Resolve(&set_tags_, "slSetTagForFrame")
-                            && Resolve(&set_constants_, "slSetConstants");
+                            && Resolve(&set_constants_, "slSetConstants") && Resolve(&free_resources_, "slFreeResources");
       if (!resolved) return Fail("sl.interposer.dll lacks Streamline's functions");
 
       std::array<const wchar_t*, 1> paths = {folder.c_str()};
@@ -405,8 +405,21 @@ class FrameGeneration12 {
     return SUCCEEDED(presented);
   }
 
-  // The window and swap chain gone, Streamline stopped (the helper quits, a GPU reset, or turned off for long: main.cpp's
-  // IDLE_RELEASE, a new object starts it again).
+  // Off for long (main.cpp's IDLE_RELEASE): as NVIDIA's guide asks of a feature turned off in the settings, its resources
+  // freed (eRetainResourcesWhenOff keeps them through menus: MFG's video memory did not come back, ATN 2026-11-01), the
+  // window and swap chain gone too. The next present with it on makes them again. Streamline stays: stopping it here (v126)
+  // left the helper silent at the first Ray Reconstruction + ray tracing start after it (ATN's log, 2026-11-01).
+  void FreeResources() {
+    WaitIdle();
+    SetGeneration(0, false, false, false);
+    if (free_resources_ != nullptr) free_resources_(sl::kFeatureDLSS_G, VIEWPORT);
+    chain_.Reset();
+    if (window_ != nullptr) PostMessageW(window_, WM_CLOSE, 0, 0);
+    if (window_thread_.joinable()) window_thread_.join();
+    window_ = nullptr;
+  }
+
+  // The window and swap chain gone, Streamline stopped (the helper quits, or a GPU reset).
   void Shutdown() {
     WaitIdle();
     chain_.Reset();
@@ -821,6 +834,7 @@ class FrameGeneration12 {
   PFun_slGetNewFrameToken* frame_token_ = nullptr;
   PFun_slSetTagForFrame* set_tags_ = nullptr;
   PFun_slSetConstants* set_constants_ = nullptr;
+  PFun_slFreeResources* free_resources_ = nullptr;
   PFun_slDLSSGSetOptions* set_options_ = nullptr;
   PFun_slDLSSGGetState* get_state_ = nullptr;
   PFun_slReflexSetOptions* set_reflex_ = nullptr;
