@@ -46,6 +46,9 @@ ATN's words, short:
 - [ ] 2 XeSS (Intel; runs on any GPU with SM 6.4 / DP4a) and XeSS Frame Generation if Intel ships one usable here (XeSS 2:
       XeFG + XeLL, Intel Arc only? check the SDK's licence and GPU support), then FSR + FSR Frame Generation (v120 item 3)
       and RT/PT on AMD / Intel with NVIDIA NRD (v120 item 4). Attila is 32-bit: all of them in the 64-bit helper like DLSS.
+- [ ] 2b Frame generation without a restart: turned on in game it did nothing (ATN 2026-11-01: the swap chain was made scRGB,
+      OnCreateSwapchain picks HDR10 only with DLSS + FG on at the start; Streamline takes no scRGB). Now a red note says to
+      restart. Better: the helper's FG swap chain always HDR10, the addon converting scRGB to PQ for fg_frame / fg_hudless.
 - [ ] 3 TAA: a choice of motion vectors: the game's own (now) or ours (DLSS's: object motion + camera, anti_aliasing.hpp).
 - [ ] 4 Then WH3 (project_wh3_dlss memory: our DLSS on WH3's TAA inputs via the TW helper).
 

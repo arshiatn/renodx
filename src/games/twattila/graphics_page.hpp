@@ -300,8 +300,13 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "FrameGeneration", .section = section, .shown = dlss, .label = "DLSS Frame Generation",
                .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
                           "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
-                          "Needs Output HDR10 or SDR, a windowed or borderless game, and Streamline's files next to\n"
-                          "renodx-tw-dlaa64.exe."});
+                          "Output Auto: on when the game starts, or restart it after turning this on. Needs a windowed or\n"
+                          "borderless game, and Streamline's files next to renodx-tw-dlaa64.exe."});
+    // The game started without it: its swap chain is scRGB, which frame generation cannot use; Auto takes HDR10 at the next
+    // start (ATN 2026-11-01: turned on in game, nothing happened).
+    page.Add(Note("Restart the game for Frame Generation: it started in scRGB, Frame Generation needs HDR10 (Output Auto then uses it).",
+                  section, WARNING_TINT,
+                  [frame_generation] { return frame_generation() && dlaa_bridge::FrameGenerationStatus().find("scRGB") != std::string::npos; }));
     page.Take({.match = "Reflex", .section = section, .shown = always});
     page.Take({.match = "FrameGenerationFrameLimit", .section = section, .shown = always});
     const auto cmaa = [b] { return b.aa->method == 2.f; };
