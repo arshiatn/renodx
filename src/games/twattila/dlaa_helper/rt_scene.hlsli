@@ -179,10 +179,15 @@ float SmokeTransmittance(float3 origin, float3 direction, float range, uint part
   query.TraceRayInline(smoke_scene, RAY_FLAG_NONE, SMOKE, ray);
   uint met = 0u;
   while (query.Proceed()) {
-    CANDIDATE_PASSES(query);
-    if (++met >= particles || smoke_transmittance < SMOKE_DARK) query.Abort();
+    // A sprite soldier or far tree with it (RT_SUN_ONLY) blocks where its alpha test passes.
+    if (CANDIDATE_PASSES(query)) {
+      query.CommitNonOpaqueTriangleHit();
+      query.Abort();
+    } else if (++met >= particles || smoke_transmittance < SMOKE_DARK) {
+      query.Abort();
+    }
   }
-  return smoke_transmittance;
+  return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? 0.f : smoke_transmittance;
 }
 
 // Whether anything among `instances` lies along `direction` from `origin` within `range` (alpha-tested: leaves, grass

@@ -1505,9 +1505,10 @@ class RtScene12 {
   static constexpr size_t STAMPS = 10;
   static constexpr uint32_t TRACE_PART_SUN = 1u << 30;  // rt_trace.cs_6_5.hlsl PART_*
   static constexpr uint32_t TRACE_PART_AMBIENT = 1u << 31;
-  // The TLAS's instances at most (16 MB of descs; grass past its share is placed, a patch an instance: ATN's second
-  // profile placed up to 126 K).
-  static constexpr UINT MAX_INSTANCES = 262144;
+  // The TLAS's instances at most (32 MB of descs; grass past its share is placed, a patch an instance: ATN's second
+  // profile placed up to 126 K; 524,288 since 262,144 ran out in ATN's 2026-11-01 stress battle: 70-184 K placed a frame,
+  // the kept ones past the limit left out, others each frame: shadows flickering).
+  static constexpr UINT MAX_INSTANCES = 524288;
   static constexpr UINT TRANSFER_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
   // Meshes drawn within this many frames cast (but the terrain only in frames that draw it); unseen longer: released.
   static constexpr uint32_t RECENT_FRAMES = 300;
@@ -1574,7 +1575,7 @@ class RtScene12 {
   // records' BLAS addresses in its upload buffer; the dedupe table's keys.
   static constexpr UINT PLACE_JOBS = dlaa_bridge::RT_CAPTURES + dlaa_bridge::RT_PLACEMENTS;
   static constexpr uint64_t PLACE_TABLE_BYTES = uint64_t{STATIC_RECORDS} * 8;
-  static constexpr UINT PLACE_TABLE = 1u << 19;  // rt_place's dedupe table (twice MAX_INSTANCES)
+  static constexpr UINT PLACE_TABLE = 1u << 20;  // rt_place's dedupe table (twice MAX_INSTANCES)
   static constexpr UINT CLUSTER_RECORDS = STATIC_RECORDS + SLOTS * dlaa_bridge::RT_CAPTURES;
   static constexpr UINT RECORD_COUNT = CLUSTER_RECORDS + SLOTS * MAX_CLUSTERS;
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
@@ -3257,22 +3258,23 @@ class RtScene12 {
           if (*resource) releases_.push_back({.value = own_value_ + 1, .resource = std::move(*resource)});
         }
       }
-      // The smoke (the addon's last capture: rt_smoke's quads) in BLASes of its own, its instance met only by the rays
+      // The smoke (the addon's last capture: rt_smoke's quads) in a BLAS of its own, its instance met only by the rays
       // toward the sun: the ambient's, the local lights' and the paths' rays went through its particles, an alpha test each
       // and their traversal (at 4K through 1000 of them 30-40 ms a frame each). Sprite soldiers and far trees (RT_SUN_ONLY)
-      // with it, moved there (with clusters each has its own record). Smoke before other dynamic captures (not their tail)
-      // stays in the units'.
+      // right before it with it. Smoke before other dynamic captures (not their tail) stays in the units'. Never Mega
+      // Geometry's clusters: made from the particles in their list's order, each spanned the battlefield and every ray
+      // went into hundreds of them (the trace 3.6 -> 194 ms as an arrow volley's smoke came, ATN's 2026-11-01 stress
+      // battle); the BLAS build sorts them by place.
       const auto sun_alone = [](const std::array<uint32_t, 7>& source) {
         return (source[3] & RECORD_SMOKE) != 0 || (source[6] & dlaa_bridge::RT_SUN_ONLY) != 0;
       };
-      if (clusters_) {
-        std::ranges::stable_partition(unit_sources, [&](const std::array<uint32_t, 7>& source) { return !sun_alone(source); });
-      }
       size_t unit_count = unit_sources.size();
       while (unit_count != 0 && sun_alone(unit_sources[unit_count - 1])) {
         --unit_count;
       }
       const size_t smoke_count = unit_sources.size() - unit_count;
+      // The smoke's records follow the units' captures' (one each, in capture order).
+      smoke_record = units_record + static_cast<uint32_t>(unit_count);
       unit_layout.resize(unit_count);
       // The units: refitted in place while the request's unit draws are those of the last build (without Mega Geometry).
       if (unit_count != 0 && !clusters_) {
@@ -3306,11 +3308,11 @@ class RtScene12 {
           units_refitted = refit;
         }
       }
-      // The smoke: built anew each request (its particles change).
-      if (smoke_count != 0 && !clusters_) {
+      // The smoke: built anew each request (its particles change), for its rays' traversal.
+      if (smoke_count != 0) {
         const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
             .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
-            .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD,
+            .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE,
             .NumDescs = static_cast<UINT>(smoke_count),
             .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
             .pGeometryDescs = unit_geometries.data() + unit_count,
@@ -3354,11 +3356,7 @@ class RtScene12 {
         auto* args = reinterpret_cast<NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS*>(data + CLUSTER_ARGS_OFFSET);
         auto* cluster_records = reinterpret_cast<std::array<uint32_t, 4>*>(data + CLUSTER_RECORDS_OFFSET);
         uint32_t cluster_count = compact_clusters;
-        uint32_t units_end = 0;  // the clusters before the smoke's
-        for (size_t source = 0; source < unit_sources.size(); ++source) {
-          if (source == unit_count) {
-            units_end = cluster_count;
-          }
+        for (size_t source = 0; source < unit_count; ++source) {
           const auto& [first_vertex, unit_triangles, normal_offset, record_flags, uv_offset, slice, capture_flags] = unit_sources[source];
           const bool masked = (record_flags & RECORD_MASKED) != 0;
           const uint32_t cluster_triangles = (((capture_flags & dlaa_bridge::RT_SCATTERED) != 0) ? 2u : CLUSTER_TRIANGLES);
@@ -3383,9 +3381,7 @@ class RtScene12 {
             ++cluster_count;
           }
         }
-        if (smoke_count == 0) {
-          units_end = cluster_count;
-        }
+        const uint32_t units_end = cluster_count;  // the smoke's run stays empty (its own BLAS)
         if ((cluster_count - templated_clusters) * 4 >= built_limit_ * 3) {
           clusters_crowded_ = true;
         }
@@ -3554,8 +3550,6 @@ class RtScene12 {
       list->ResourceBarrier(1, &uav_barrier);
       units_record_ = units_record;
       units_masked_ = units_masked || compact_masked;
-      // The smoke's records follow the units' captures' (its clusters' geometry indices are the frame's: the same base).
-      smoke_record = (smoke_clustered ? first_cluster_record : units_record + static_cast<uint32_t>(unit_count));
       // The new placed meshes' build rows (their first instance's) by record (v14); older addons' instanced captures' rows
       // into the slot's readback (four texels an instance), the CPU's once it comes round; the new leaves' micromap
       // inputs (their positions kept, their UVs and mask slice read back: a slice once a request).

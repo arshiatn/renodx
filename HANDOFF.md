@@ -61,6 +61,17 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       cluster room grew four times in the first seconds (32 K -> 320 K -> 467 K) and the swaying grass that did not fit
       was left out meanwhile. GPUs over 20 GB now start at half their limit (262,144 clusters, ~2.5 GB). In steady play
       186 K of 467 K used. Placed counts cycling 56-110 K with a still camera are PLACE_TURNS (kept ones fill in): fine.
+- [x] helper65 (build/tw_dlaa_helper65), ATN's 01:38 stress battle (shadows "100% flickering", smoke still slow):
+      (a) the TLAS's MAX_INSTANCES 262,144 ran out: 70-184 K placed a frame (grass placed every frame with sway, the
+      still meshes in PLACE_TURNS), the kept ones past the limit dropped (rt_place Append), others each frame: now 524,288
+      (PLACE_TABLE / rt_place TABLE_ENTRIES 1 << 20). (b) The trace went 3.6 -> 194 ms the frame the volley's smoke came
+      (one capture, 772 clusters = the 32 K quad cap): with Mega Geometry the smoke was clusters of 85 triangles in the
+      particles' list order, each spanning the battlefield. Now the smoke (the trailing RT_SUN_ONLY captures) is always a
+      regular BLAS (PREFER_FAST_TRACE, sorted by the builder), never clusters (no stable_partition any more: sprites and
+      far trees before the smoke stay in the units' clusters, as without Mega Geometry); smoke_record = units_record +
+      unit_count (capture records). SmokeTransmittance: a sprite or far tree in the smoke's BLAS blocks (helper64 lost their
+      sun shadows with Mega Geometry). Partitioned TLAS (ATN's question): no help, the TLAS build is 0.5 ms; it stays behind
+      RENODX_TW_PTLAS (a siege stalled with it).
 - [x] Effects at Output Resolution audit (ATN): GT-VBAO resolution (ao_pass ResolutionScale), Light Bounce scale and
       SSSR rays (EffectSteps), the game's SSR blur (effects_share), RT shadow softness, RT AO quarter off: follow it; SSS's
       length x the render share always (screen_space_shadows Compute); the game's SSAO and water refraction are read
