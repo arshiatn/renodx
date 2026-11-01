@@ -46,6 +46,13 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       sample's 2, only when the helper built the smoke (TRACE_SMOKE / SMOKE_MET, flag bit 18). A ray stopped at smoke no
       longer misses what lies behind it. helper63 (01:06). Not tested in game; installed in Attila's folder with the v121
       addon. Next if still slow: fewer quads (opacity floor, arrow trails out), refit instead of rebuild.
+- [x] ATN's second log (01:11, 6 x 480 archers, the three grass sliders maxed): no limit hit (captures at most 64 of the old
+      256, placements 1240 of 8192, nothing left out or without room); sun 5-33 ms, fog 5-46 ms (were 138 / 143); 262144
+      particles a frame (the game's whole list), frames ~68 ms (helper-bound: trace 13-65, Light Bounce 6-15, reflections
+      2-4 ms). rt_smoke.cs: a quad's disk now has the particle's area (radius 0.5 sqrt(w h); an arrow's thin trail took a
+      disk as wide as it was long), particles under 0.05 m^2 of full opacity take none. Addon only; not tested in game.
+      Next if smoke still costs: the smoke in a TLAS of its own (its ray now walks the whole TLAS, ~150K instances here).
+- [x] Far Tree Shadows and Sprite Shadows ("unit sprites") off by default and in the RT/PT preset (ATN).
 
 ## v120 BATCH (ATN 2026-10-31 night; saved, NOT started: ATN starts it from their other account, same PC; commit after every step, never push, tick here)
 ATN's words, verbatim:

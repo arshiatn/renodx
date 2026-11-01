@@ -7,7 +7,9 @@
 // vertex shader's outputs: centre, colour and opacity, size) as quads facing the sun after the frame's captures, two
 // triangles (six texels) a quad: a smoke capture (RT_SMOKE) whose particles dim the helper's sun rays
 // (dlaa_helper/rt_scene.hlsli). A corner's w: its UV (+-1 at the quad's corners) times 1 + the particle's opacity, as two
-// halves (the helper finds both). Only particles with opacity, size and a finite centre take a quad; a second dispatch
+// halves (the helper finds both). Only particles with a finite centre and opacity over area enough to show take a
+// quad, its disk as large as the particle (an arrow's thin trail took a disk as wide as it was long: big overlapping
+// shadows under volleys, the sun's and fog's rays up to 46 ms with 6 x 480 archers, ATN 2026-11-01); a second dispatch
 // (y 0) empties those left (a NaN x, which DXR skips).
 Buffer<float4> particles : register(t0);  // three a particle: centre (w its age), colour (w its opacity), size (xy)
 Texture2D<float4> sun : register(t1);     // texel 0: toward the sun (w 0: none yet)
@@ -43,11 +45,12 @@ void main(uint3 id : SV_DispatchThreadID)
   const float3 centre = particles[id.x * 3u].xyz;
   const float opacity = saturate(particles[id.x * 3u + 1u].w);
   const float2 size = particles[id.x * 3u + 2u].xy;  // the particle's width and height
-  const float radius = 0.5f * max(size.x, size.y);
+  const float radius = 0.5f * sqrt(max(size.x * size.y, 0.f));
   const float4 toward_sun = sun.Load(int3(0, 0, 0));
   // The quad's plane faces the sun: two directions across it.
   const float3 normal = normalize(toward_sun.xyz);
-  if (toward_sun.w == 0.f || opacity < 1.f / 255.f || !(radius > 0.f) || !all(isfinite(centre)) || !all(isfinite(normal))) return;
+  // Less than 0.05 m^2 of full opacity (a 0.25 m square, or 1 m^2 at 5%): no shadow anyone sees.
+  if (toward_sun.w == 0.f || !(opacity * radius * radius * 4.f >= 0.05f) || !all(isfinite(centre)) || !all(isfinite(normal))) return;
   uint quad = 0u;
   InterlockedAdd(quads_taken[0], 1u, quad);
   if (quad >= rt_smoke.w) return;
