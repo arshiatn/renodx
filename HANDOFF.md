@@ -37,10 +37,15 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       in place: OLDEST_VERSION = 20, addon and helper63 (build/tw_dlaa_helper63) must ship together; Rome II / Thrones addons
       share the header (their next zips need helper63+). Harness rebuilt: default mode passed; the other 49 modes not run
       (ATN's game was running: run tools/tw/all_modes.sh with the game closed). Not tested in game, not zipped, not installed.
-      Confirm with ATN's Log Details log of Constantinople: "left out (their share full)" / "without room" in ReShade.log.
-- [ ] Next batch: Smoke Shadows kill the frame rate when many arrows fly (ATN). Ideas: smoke quads only for particles with
-      opacity above a floor and a minimum screen size, arrow trails / projectile particles out, a quad budget by distance,
-      the smoke BLAS refitted instead of rebuilt, or smoke traced every other frame.
+      ATN's Log Details log + 30 s profile of Constantinople (01:00, v120): nothing left out, nothing without room (captures
+      156-217 of 256: kept the raise anyway). The real cause is below: traces of 150-336 ms.
+- [x] Smoke Shadows killed the frame rate with arrows (ATN) and made the grass shadows flicker (late traces): 120K-235K
+      particles a frame, the trace's sun part 14 -> 138 ms and fog 6 -> 143 ms (frames up to 280 ms). Each particle was a
+      candidate of the sun's and fog's rays (up to MAX_CANDIDATES 64 a ray). Now (rt_scene.hlsli SmokeTransmittance) those
+      rays leave the smoke out (NO_GRASS_SMOKE) and meet it on a ray of its own: the sun's first 8 particles, a fog
+      sample's 2, only when the helper built the smoke (TRACE_SMOKE / SMOKE_MET, flag bit 18). A ray stopped at smoke no
+      longer misses what lies behind it. helper63 (01:06). Not tested in game; installed in Attila's folder with the v121
+      addon. Next if still slow: fewer quads (opacity floor, arrow trails out), refit instead of rebuild.
 
 ## v120 BATCH (ATN 2026-10-31 night; saved, NOT started: ATN starts it from their other account, same PC; commit after every step, never push, tick here)
 ATN's words, verbatim:

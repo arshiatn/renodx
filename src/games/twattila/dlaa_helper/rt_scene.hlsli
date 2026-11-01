@@ -48,6 +48,7 @@ static const uint FAST_LEAVES = 8192u;
 // Importance-Sampled Torch Shadows (v18, dlaa_bridge.h RT_LIGHT_IMPORTANCE): rt_lights traces a few lights a pixel, picked
 // by what they give it (ReSTIR's candidates), the others keep their bits.
 static const uint LIGHT_IMPORTANCE = 16384u;
+static const uint SMOKE_MET = 262144u;  // Smoke Shadows' particles are in the scene (the helper: their instance built)
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 static const uint RECORD_THIN = 2u;    // cloth and sails
 static const uint RECORD_SMOKE = 4u;   // smoke (Smoke Shadows): dims the sun's rays, blocks none
@@ -148,6 +149,7 @@ static const float SMOKE_DARK = 0.05f;
 // smoke out in the hardware; Light Through Leaves meets the leaves apart (NO_LEAVES, LEAVES).
 static const uint ALL_INSTANCES = 0xFFu;
 static const uint NO_LEAVES = 0xFBu;
+static const uint SMOKE = 0x02u;
 static const uint LEAVES = 0x04u;
 // Grass's instances (0x08 placed and shown, 0x10 the swaying grass's cluster BLAS, 0x20 the still copies of what sways there)
 // met only by the sun's rays (GRASS) and the ambient's short ones (GRASS_STILL: contact shade needs no sway, and these
@@ -159,6 +161,28 @@ static const uint NO_GRASS_SMOKE = 0xC5u;
 static const uint GRASS = 0x18u;
 static const uint GRASS_STILL = 0x28u;
 static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient's rays (the AO's and PT AO's)
+
+// The share of the sun's light the smoke along a ray lets through, of the first `particles` it meets at most. The sun's
+// and the fog's rays meet the smoke apart from the rest (NO_GRASS_SMOKE): each particle is a candidate, and with up to
+// MAX_CANDIDATES of them a ray, 120K-235K particles of arrows' smoke a frame took the sun's rays from 14 to 138 ms and
+// the fog's from 6 to 143 ms (ATN's 2026-11-01 Constantinople profile; its late traces left grass shadows flickering).
+float SmokeTransmittance(float3 origin, float3 direction, float range, uint particles) {
+  smoke_transmittance = 1.f;
+  if ((flags & SMOKE_MET) == 0u) return 1.f;
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = direction;
+  ray.TMin = 0.f;
+  ray.TMax = range;
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
+  query.TraceRayInline(scene, RAY_FLAG_NONE, SMOKE, ray);
+  uint met = 0u;
+  while (query.Proceed()) {
+    CANDIDATE_PASSES(query);
+    if (++met >= particles || smoke_transmittance < SMOKE_DARK) query.Abort();
+  }
+  return smoke_transmittance;
+}
 
 // Whether anything among `instances` lies along `direction` from `origin` within `range` (alpha-tested: leaves, grass
 // and cloth by their masks, smoke dimming smoke_transmittance).

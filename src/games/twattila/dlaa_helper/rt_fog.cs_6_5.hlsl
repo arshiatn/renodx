@@ -41,13 +41,14 @@ float3 FogLightAt(float3 at, float u) {
   if (picked == 32u) return 0.f;
   const float3 to_light = lights[picked].xyz - at;
   const float light_distance = length(to_light);
-  smoke_transmittance = 1.f;
-  if (light_distance <= 1e-3f
-      || Occluded(at, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS)) {
+  const float reach = light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance);
+  if (light_distance <= 1e-3f || Occluded(at, to_light / light_distance, reach, NO_GRASS_SMOKE)) {
     return 0.f;
   }
   const float falloff = saturate(1.f - (light_distance / max(lights[picked].w, 1e-3f)));
-  return light_colours[picked].rgb * (falloff * falloff * total / picked_weight * smoke_transmittance);
+  // The smoke apart (rt_scene.hlsli SmokeTransmittance): a fog sample's ray meets its first 2 particles.
+  return light_colours[picked].rgb
+         * (falloff * falloff * total / picked_weight * SmokeTransmittance(at, to_light / light_distance, reach, 2u));
 }
 
 static const uint FOG_SAMPLES = 8u;
@@ -78,8 +79,9 @@ void main(uint3 id : SV_DispatchThreadID) {
     // Squared spacing: a point at `along` stands for a stretch in proportion to it.
     const float along = (index + jitter) / FOG_SAMPLES;
     const float3 at = camera + direction * (along * along * range);
-    smoke_transmittance = 1.f;
-    if (toward_sun.w != 0.f && !Occluded(at, toward_sun.xyz, FOG_SUN_RANGE, NO_GRASS)) lit += along * smoke_transmittance;
+    if (toward_sun.w != 0.f && !Occluded(at, toward_sun.xyz, FOG_SUN_RANGE, NO_GRASS_SMOKE)) {
+      lit += along * SmokeTransmittance(at, toward_sun.xyz, FOG_SUN_RANGE, 2u);
+    }
     if (glowing) glow += along * FogLightAt(at, Random(uint3(id.xy, frame * 16u + index)));
     weights += along;
   }

@@ -1572,6 +1572,7 @@ class RtScene12 {
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
   static constexpr uint32_t RECORD_SMOKE = 4;
+  static constexpr uint32_t TRACE_SMOKE = 1u << 18;  // rt_scene.hlsli SMOKE_MET: the smoke's instance is in the scene
   static constexpr uint32_t RECORD_GRASS = 8;
   static constexpr uint32_t RECORD_LEAF = 16;
   // TLAS instance masks (rt_scene.hlsli; rt_place.cs_6_5.hlsl for the placed meshes): the smoke in an instance of its
@@ -3992,7 +3993,8 @@ class RtScene12 {
     // v18: rays a pixel toward the sun and each light, the lights' radius for soft shadows (rt_lights: under RR).
     const std::array<uint32_t, 12> settings = {
         frame,
-        (shared.rt_flags & ~dlaa_bridge::RT_LOCAL_LIGHTS) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u),
+        (shared.rt_flags & ~dlaa_bridge::RT_LOCAL_LIGHTS) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
+            | ((smoke_built || smoke_clustered) ? TRACE_SMOKE : 0u),
         std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.f)),
         std::clamp(shared.rt_ambient_rays, 1u, 16u),
         shared.rt_width,

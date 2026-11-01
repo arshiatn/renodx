@@ -223,7 +223,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       // Off along the normal and toward the sun; where not planar toward the camera. Grass apart, over the ray's first
       // stretch only (rays skimming whole fields toward a low sun cost the sun 22-27 ms zoomed into grass, ATN's debug29).
       const float3 start = (planar ? origin + toward * offset : origin) + spot;
-      float2 result = facing ? SunRay(start, toward, NO_GRASS)
+      float2 result = facing ? SunRay(start, toward, NO_GRASS_SMOKE)
                              : float2(OccludedSolid(position.xyz + spot + (toward - (exact ? normal : 0.f)) * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
       if (facing && near_grass && result.x > 0.f) {
         RayDesc grass_ray;
@@ -246,6 +246,8 @@ void main(uint3 id : SV_DispatchThreadID) {
         }
         if (grass.CommittedStatus() == COMMITTED_TRIANGLE_HIT) result = float2(0.f, grass.CommittedRayT());
       }
+      // The smoke apart where the sun still comes through: its first 8 particles.
+      if (facing && result.x > 0.f) result.x *= SmokeTransmittance(start, toward, 1.0e4f, 8u);
       sum += result;
       tint_sum += result.x * sun_tint;
     }
