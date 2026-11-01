@@ -14,25 +14,28 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 19;
-// The helper still answers addons of this version (their block ends before v3's fields).
-constexpr uint32_t OLDEST_VERSION = 2;
+constexpr uint32_t VERSION = 20;
+// The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
+// addons' blocks no longer match).
+constexpr uint32_t OLDEST_VERSION = 20;
 
 // Ray tracing (v4, rt_scene.hpp / dlaa_helper/rt_d3d12.hpp): the captured triangles' world positions, RT_TRANSFER_WIDTH
 // per row of the shared vertex texture (RT_TRANSFER_HEIGHT rows; 4096 since the units' and the terrain's shares were
 // full in a battle, 5120 with swaying trees, 8192 since city walls were left out in a 4x battle; a helper of either
-// height reads the rows an addon fills); new captures and drawn meshes a frame at most.
+// height reads the rows an addon fills); new captures and drawn meshes a frame at most (v20: 1024 and 16384, from 256
+// and 8192: Constantinople's grass shadows flickered, ATN 2026-11-01; a grass draw that is not placed takes a capture,
+// what did not fit changed every frame).
 constexpr uint32_t RT_TRANSFER_WIDTH = 4096;
 constexpr uint32_t RT_TRANSFER_HEIGHT = 8192;
-constexpr uint32_t RT_CAPTURES = 256;
-constexpr uint32_t RT_DRAWN = 8192;
+constexpr uint32_t RT_CAPTURES = 1024;
+constexpr uint32_t RT_DRAWN = 16384;
 // The leaves' opacity masks (v6): an R8 texture array of RT_ATLAS_SLICES slices RT_ATLAS_SIZE square.
 constexpr uint32_t RT_ATLAS_SIZE = 512;
 constexpr uint32_t RT_ATLAS_SLICES = 256;
 // Local lights' shadows (v9): at most this many lights a request (a bit each in the lit mask).
 constexpr uint32_t RT_MAX_LIGHTS = 32;
-// Placed draws (v14) a frame at most, besides the new captures.
-constexpr uint32_t RT_PLACEMENTS = 8192;
+// Placed draws (v14) a frame at most, besides the new captures (v20: 16384).
+constexpr uint32_t RT_PLACEMENTS = 16384;
 
 // A draw captured this frame (its key, its triangles' vertices in the vertex texture) or drawn this frame (key only).
 struct RtCapture {

@@ -29,6 +29,19 @@
 
 Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF.md`. This file supersedes its Ryse parts.
 
+## v121 (ATN 2026-11-01, quick asks; commit after every step, never push unless ATN asks, tick here)
+- [x] RT/PT preset (graphics_page.hpp): Swaying Shadows Range 75 -> 50 m, Grass Shadow Range 90 -> 0 m (everywhere).
+- [x] Grass RT shadows flickering in Constantinople ("we are running out of budget again"; ATN asked for a toggle): bridge v20
+      raises RT_CAPTURES 256 -> 1024 (a grass draw that is not placed takes a capture; ATN's v120 log already showed 0.03 M
+      "without room"), RT_DRAWN and RT_PLACEMENTS 8192 -> 16384; no toggle needed (~0.3 MB more shared memory). Arrays grew
+      in place: OLDEST_VERSION = 20, addon and helper63 (build/tw_dlaa_helper63) must ship together; Rome II / Thrones addons
+      share the header (their next zips need helper63+). Harness rebuilt: default mode passed; the other 49 modes not run
+      (ATN's game was running: run tools/tw/all_modes.sh with the game closed). Not tested in game, not zipped, not installed.
+      Confirm with ATN's Log Details log of Constantinople: "left out (their share full)" / "without room" in ReShade.log.
+- [ ] Next batch: Smoke Shadows kill the frame rate when many arrows fly (ATN). Ideas: smoke quads only for particles with
+      opacity above a floor and a minimum screen size, arrow trails / projectile particles out, a quad budget by distance,
+      the smoke BLAS refitted instead of rebuilt, or smoke traced every other frame.
+
 ## v120 BATCH (ATN 2026-10-31 night; saved, NOT started: ATN starts it from their other account, same PC; commit after every step, never push, tick here)
 ATN's words, verbatim:
 "These don't need any tests in the game:
