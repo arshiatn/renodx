@@ -73,6 +73,16 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       unit_count (capture records). SmokeTransmittance: a sprite or far tree in the smoke's BLAS blocks (helper64 lost their
       sun shadows with Mega Geometry). Partitioned TLAS (ATN's question): no help, the TLAS build is 0.5 ms; it stays behind
       RENODX_TW_PTLAS (a siege stalled with it).
+- [ ] NEXT BATCH (ATN 2026-11-01): TLAS instances growing on their own instead of a fixed MAX_INSTANCES (ATN asked for a
+      slider up to 5,000,000 for future huge battles): read back rt_place's STATE_WRITTEN each request, grow x2 when 3/4
+      full (as the cluster room: on a worker, put in between requests) up to D3D12's 16,777,216; the TLAS built for the
+      last written count + margin, not the whole cap (now every frame builds all 524,288 descs: ~0.55 ms). A fixed 5 M cap
+      would cost ~2-3 GB and ~8-10 ms a frame of TLAS build. rt_place's TABLE_ENTRIES from a constant, not compile time.
+- [ ] NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:52 log + profile): no limit hit (no
+      slow request, no room growth, nothing left out, placed at most 293 K, compact draws steady with a still camera).
+      Suspects: Ray Reconstruction on thin moving shadows over still ground (no motion for shadows), the sway copy's time
+      a frame behind the picture, grass flipping between sway and still at the share's edge while moving. Test: Swaying
+      Shadows Range 50 m / Off-Screen Sway Off / RR off (DLSS without RR) to tell them apart.
 - [x] Effects at Output Resolution audit (ATN): GT-VBAO resolution (ao_pass ResolutionScale), Light Bounce scale and
       SSSR rays (EffectSteps), the game's SSR blur (effects_share), RT shadow softness, RT AO quarter off: follow it; SSS's
       length x the render share always (screen_space_shadows Compute); the game's SSAO and water refraction are read
