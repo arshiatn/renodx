@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -135,6 +136,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // nothing paused; the fourth leaves it off (whatever made it fail would come back each time).
   auto scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
   bool scene_open = false;
+  // Ray tracing's and Ray Reconstruction's devices let go after IDLE_RELEASE without a request of theirs (gigabytes of the
+  // GPU's memory: 15 GB stayed after RT/PT was turned off, 7.5 GB with it never on, ATN 2026-11-01), opened again with
+  // their next one (the addon then captures its scene again: rt_device).
+  constexpr auto IDLE_RELEASE = std::chrono::seconds(10);
+  auto rt_used = std::chrono::steady_clock::now();
+  auto rr_used = rt_used;
+  bool scene_idle = false;
+  bool reconstruction_idle = false;
+  bool scene_live = false;           // its device made (open or closed: a set without ray tracing closes it, its memory stays)
+  bool reconstruction_live = false;
   uint32_t scene_losses = 0;
   uint32_t scene_failures = 0;
   const auto scene_off = [&] { return scene_losses >= 2 || scene_failures >= 4; };
@@ -252,7 +263,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   };
   const auto open_scene = [&] {
     const bool details = (shared->rt_flags & twattila::dlaa_bridge::RT_DETAILS) != 0;
-    scene_open = !scene_off() && scene->Initialize(adapter.Get(), folder, details) && scene->Open(*shared, version);
+    scene_live = !scene_off();
+    scene_open = scene_live && scene->Initialize(adapter.Get(), folder, details) && scene->Open(*shared, version);
   };
   // The open set's objects in Ray Reconstruction and frame generation (their handles stay open: set_handles), on a new
   // device when a GPU reset removed theirs.
@@ -261,6 +273,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed Ray Reconstruction's device: a new one.");
       reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
     }
+    reconstruction_live = true;
     reconstruction_open = reconstruction->Initialize(adapter.Get(), folder)
                           && reconstruction->Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
                                                    shared->specular_albedo, shared->normals, shared->roughness},
@@ -306,14 +319,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       fence.Reset();
       // The guides serve Ray Reconstruction and the paths.
       reconstruction_open = false;
-      if (version >= 3 && shared->diffuse_albedo != 0) {
+      if (version >= 3 && shared->diffuse_albedo != 0 && !reconstruction_idle) {
         open_reconstruction();
       } else {
         reconstruction->Close();
       }
       if (scene->Lost()) replace_lost_scene();
       scene_open = false;
-      if (version >= 4 && shared->rt_vertices != 0) {
+      if (version >= 4 && shared->rt_vertices != 0 && !scene_idle) {
         open_scene();
         if (!scene_open) strncpy_s(shared->rt_status, scene_off() ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
       } else {
@@ -345,6 +358,39 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     // pass without them).
     if (reconstruction_open && reconstruction->Lost()) open_reconstruction();
     if (generation_open && generation->Lost()) open_generation();
+    const auto now = std::chrono::steady_clock::now();
+    if (shared->rt_request != 0) {
+      rt_used = now;
+      if (scene_idle) {
+        scene_idle = false;
+        open_scene();
+      }
+    } else if (scene_live && version >= 15 && now - rt_used > IDLE_RELEASE) {
+      rt_drain();
+      scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
+      scene_open = false;
+      scene_live = false;
+      scene_idle = true;
+      {
+        const std::unique_lock lock(rt_work.mutex);
+        rt_work.ran = {};
+      }
+      ++shared->rt_device;
+      ReShadeLogMessage(nullptr, 0, "[TW ray tracing] Off for 10 s: its memory released (it starts again when turned on).");
+    }
+    if (shared->ray_reconstruction != 0) {
+      rr_used = now;
+      if (reconstruction_idle) {
+        reconstruction_idle = false;
+        open_reconstruction();
+      }
+    } else if (reconstruction_live && now - rr_used > IDLE_RELEASE) {
+      reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
+      reconstruction_open = false;
+      reconstruction_live = false;
+      reconstruction_idle = true;
+      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] Ray Reconstruction off for 10 s: its memory released.");
+    }
     bool evaluated = false;
     bool answered = false;
     if (fence && version >= 5 && shared->fg_request != 0) {

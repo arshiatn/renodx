@@ -73,6 +73,16 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       unit_count (capture records). SmokeTransmittance: a sprite or far tree in the smoke's BLAS blocks (helper64 lost their
       sun shadows with Mega Geometry). Partitioned TLAS (ATN's question): no help, the TLAS build is 0.5 ms; it stays behind
       RENODX_TW_PTLAS (a siege stalled with it).
+- [x] helper66 (build/tw_dlaa_helper66): RT memory released when RT is off (ATN: 6.9 GB Reset, 7.5 GB No RT, 18 GB RT/PT,
+      but only back to 15 GB after switching RT/PT off). The addon already remade its set without the RT textures, the
+      helper only Closed its scene (device, pools, cluster room: GBs stayed). main.cpp: no RT request for 10 s (IDLE_RELEASE)
+      -> scene replaced by a fresh object (scene_live / scene_idle, ++rt_device: the addon captures again), Ray
+      Reconstruction the same (reconstruction_live / _idle, by shared->ray_reconstruction); opened again with their next
+      request, not at a set change while idle. Swaying shadows "a bit": ATN's eyes (dropped). Not tested in game.
+      VRAM by tier (code): fixed ~1.5 GB (vertex copy 512 MB, normals 416 MB, UVs 416 / 224 / 128 MB, TLAS + descs ~0.3 GB),
+      Mega Geometry room >20 GB 2.5 GB at start up to ~5 GB, 12-20 GB up to ~2.4 GB, <=12 GB up to ~1.2 GB (ATN's stress
+      battle needed ~200 K clusters: over the 12 GB tier's 131 K), render-size textures ~1-1.5 GB at 4K native, the addon's
+      shared RT textures ~1 GB, Ray Reconstruction ~1 GB.
 - [ ] NEXT BATCH (ATN 2026-11-01): TLAS instances growing on their own instead of a fixed MAX_INSTANCES (ATN asked for a
       slider up to 5,000,000 for future huge battles): read back rt_place's STATE_WRITTEN each request, grow x2 when 3/4
       full (as the cluster room: on a worker, put in between requests) up to D3D12's 16,777,216; the TLAS built for the
