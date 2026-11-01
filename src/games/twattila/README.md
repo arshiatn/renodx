@@ -6,6 +6,12 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v130 = players' v2.01h (2026-11-01; renodx-tw-dlaa64.exe helper70 as v127, bridge v20: ship them together)
+- Gamma Correction (Rendering Mode SDR) is on by default, also in the presets and on a first start on an SDR monitor. Settings saved with v129 keep their value.
+- Off now keeps the in-game Gamma: the 3D picture follows the in-game setting again (the SDR path forced 2.0 whatever it said). On still forces 2.0, then 2.2.
+- On with Output SDR brightens the darks (2.0 to 2.2 for the monitor's own decode), on an HDR output it darkens them (decoded at 2.2), both as in v129.
+- Built only, not run in game (ATN's game was open).
+
 ## v129 = players' v2.01g (2026-11-01; renodx-tw-dlaa64.exe helper70 as v127, bridge v20: ship them together)
 - **The fog's haze is back, in battles and on the campaign, in every mode.** Since the fog shader was replaced for Fog Shadows, its sun-lit
   colour took the wrong constant: the game's |sun_direction.y| (cb1[0].z) was decompiled as g_apply_environment_specular (c0.x, which the

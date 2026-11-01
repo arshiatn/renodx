@@ -1,10 +1,12 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
-- State: Attila v129 = players' v2.01g, the last build. Downloads/RenoDX_Attila_v2.01g.zip (players), twattila_v129.zip (full), helper70 =
-  build/tw_dlaa_helper70, bridge v20, tag twattila-v129, installed in Attila's folder. All committed and pushed (origin atn-mods).
+- State: Attila v130 = players' v2.01h, the last build. Downloads/RenoDX_Attila_v2.01h.zip (players), twattila_v130.zip (full), helper70 =
+  build/tw_dlaa_helper70, bridge v20, tag twattila-v130. All committed and pushed (origin atn-mods). v130's addon is NOT in Attila's folder yet (ATN's game was open).
+- Open: ATN finds the fog in battles "weird", with and without the addon (the campaign / battle fog that was missing is fixed). Their battle picture and description are pending. If
+  it can be fixed: a toggle, off by default, in Extra before Video AutoHDR.
 - ATN's tests: v2.01e FG fixed, v2.01f gamma fixed. v2.01g: the campaign's haze was the fog shader's wrong constant (battlefog00: decompiler), Gamma Correction for
-  Rendering Mode SDR, the SDR preset on a first start on an SDR monitor (README v129). tools: scratchpad cb_audit.py is in tools/tw/test_scripts: original vs built shaders' constants.
+  Rendering Mode SDR, the SDR preset on a first start on an SDR monitor (README v129); v2.01h: Gamma Correction on by default, Off = in-game Gamma. tools: scratchpad cb_audit.py is in tools/tw/test_scripts: original vs built shaders' constants.
 - NEXT, on ATN's word: "MONDAY BATCH" below, in its order (Mega Geometry 1M, XeSS / FSR / NRD, FG on scRGB, SSS smoke shadows, TAA motion, leak check,
   then WH3). Don't start it unasked.
 - Rules: ATN wants very short answers in English, they/them. Push every commit to origin (arshiatn/renodx, branch atn-mods), NEVER upstream (clshortfuse).
