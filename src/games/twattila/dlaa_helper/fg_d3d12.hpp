@@ -405,7 +405,8 @@ class FrameGeneration12 {
     return SUCCEEDED(presented);
   }
 
-  // The window and swap chain gone, Streamline stopped (the helper quits).
+  // The window and swap chain gone, Streamline stopped (the helper quits, a GPU reset, or turned off for long: main.cpp's
+  // IDLE_RELEASE, a new object starts it again).
   void Shutdown() {
     WaitIdle();
     chain_.Reset();

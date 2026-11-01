@@ -6,6 +6,12 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v126 = players' v2.01d (2026-11-01; renodx-tw-dlaa64.exe helper69, bridge v20: ship them together)
+- Turning Frame Generation off gives its memory back after 10 s: 1.54 GB of video memory in a 4x replay at 4K stayed before.
+  The helper stops Streamline and its device, and starts them again when it is turned on (~2.5 s). ReShade's menu open does
+  not count as off. With DLSS off altogether (no requests to the helper) ray tracing, Ray Reconstruction and frame generation
+  are released too.
+
 ## v125 = players' v2.01c (2026-11-01; renodx-tw-dlaa64.exe helper67 as v122, bridge v20: ship them together)
 - DLSS Ray Reconstruction runs only while something is ray-traced: without rays DLSS uses its usual model (the setting
   stays as chosen for when ray tracing comes back).

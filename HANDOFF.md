@@ -1,7 +1,9 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW (2026-11-01): v125 = players' RenoDX_Attila_v2.01c.zip shipped (full twattila_v125.zip, tag twattila-v125, helper67 as v122: Ray
+- NOW (2026-11-01): v126 = players' RenoDX_Attila_v2.01d.zip shipped (full twattila_v126.zip, tag twattila-v126, helper69 =
+  build/tw_dlaa_helper69: frame generation's memory released 10 s after it is off). NEXT: "MONDAY BATCH".
+- Before (2026-11-01): v125 = players' RenoDX_Attila_v2.01c.zip shipped (full twattila_v125.zip, tag twattila-v125, helper67 as v122: Ray
   Reconstruction only while something is ray-traced, rt_scene.hpp Configure). NEXT: "MONDAY BATCH".
 - Before (2026-11-01): v124 = players' RenoDX_Attila_v2.01b.zip shipped (full twattila_v124.zip, tag twattila-v124, helper67 as v122: the
   RT/PT preset turns Ray Reconstruction on if it is off). NEXT: "MONDAY BATCH".
@@ -58,12 +60,17 @@ ATN's words, short:
       chain was made scRGB; Streamline takes no scRGB). v123 stopgap: Output Auto = HDR10 from the start (OnCreateSwapchain), a
       red note to restart with Output scRGB. The change: the helper's FG swap chain always HDR10, the addon converting scRGB to
       PQ for fg_frame / fg_hudless; then Auto can go back to scRGB (ask ATN) and the note goes.
+- [ ] 2c SSS with smoke shadows (ATN 2026-11-01, "like RT Shadows with its own softness"): Bend SSS marches the depth and particles write
+      none, so not in its march. Way: the particles (rt_smoke's stream) into a small opacity map from the sun, soft by its own blur, read
+      by the sun draws as a dimming with SSS or the game's shadows (no rays, any GPU; off-screen smoke too). Its own softness slider.
 - [ ] 3 TAA: a choice of motion vectors: the game's own (now) or ours (DLSS's: object motion + camera, anti_aliasing.hpp).
 - [ ] 4 Then WH3 (project_wh3_dlss memory: our DLSS on WH3's TAA inputs via the TW helper).
-- [ ] 5 AT THE END of this batch (ATN 2026-11-01: "a whoooooole check"): every VRAM / RAM leak or leftover. First ATN's report: with
-      MFG turned off the VRAM does not come back. Frame generation's device (FrameGeneration12: Streamline, its child window's swap
-      chain, the shared fg_frame / fg_hudless) has no idle release yet, unlike ray tracing and Ray Reconstruction (main.cpp
-      IDLE_RELEASE). Then all of it: effects turned on and off (GT-VBAO, GT-VBGI, SSS, SSSR, TAA, CMAA2, SMAA, RT/PT, FG), battle <->
+- [ ] 5 AT THE END of this batch (ATN 2026-11-01: "a whoooooole check"): every VRAM / RAM leak or leftover. MFG done first (v126,
+      measured in for_claude1.replay at 4x, tools/tw/test_scripts/fg_mem_test.ps1, logs fgbase / fgfix / fgfull): FG on +1540 MiB; before, all of
+      it stayed; slFreeResources + swap chain gone left +590 MiB (Streamline, its device); Shutdown + a new FrameGeneration12 leaves +65, +131,
+      +180 MiB after 1, 2, 3 cycles, helper private +43, +52, +74 MB, the game's flat. So ~60 MiB a cycle stays: about fg_frame + fg_hudless's
+      size (R10G10B10A2 at 4K: 2 x 31.6 MiB), find out who holds them (the helper's closed handles, the addon's fg_hudless_rtv, Streamline's
+      restart). Then all of it: effects turned on and off (GT-VBAO, GT-VBGI, SSS, SSSR, TAA, CMAA2, SMAA, RT/PT, FG), battle <->
       campaign <-> menu, resolution and render scale changes, repeated battles; addon (32-bit: its address space too) and helper;
       measure with QueryVideoMemoryInfo / process memory before and after each.
 
