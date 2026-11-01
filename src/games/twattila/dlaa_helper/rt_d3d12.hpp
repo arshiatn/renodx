@@ -302,6 +302,15 @@ class RtScene12 {
                    D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
     tlas_scratch_ = Buffer(top_info.ScratchDataSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    // The smoke's TLAS: its one instance (none: the smoke stays out of the trace).
+    top_inputs.NumDescs = 1;
+    top_inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO smoke_info = {};
+    device_->GetRaytracingAccelerationStructurePrebuildInfo(&top_inputs, &smoke_info);
+    smoke_tlas_ = Buffer(smoke_info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                         D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+    smoke_tlas_scratch_ = Buffer(smoke_info.ScratchDataSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     const auto pool = [&](uint64_t bytes) {
       return Buffer(bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     };
@@ -415,7 +424,9 @@ class RtScene12 {
         auto one_template = template_inputs_;
         one_template.maxArgCount = 1;
         ClusterRoom made;
-        const uint32_t room = std::min(cluster_limit_, CLUSTER_ROOM);
+        // GPUs over 20 GB start at half their limit (~2.5 GB): ATN's battle start grew it four times (32 K to 320 K, 2026-11-01),
+        // the swaying grass that did not fit left out meanwhile (its shadows flickered).
+        const uint32_t room = (cluster_limit_ == MAX_CLUSTERS) ? MAX_CLUSTERS / 2 : std::min(cluster_limit_, CLUSTER_ROOM);
         if (!ClusterRequirements(one_template, &template_info) || !SizeClusterRoom(room, room / 4, &made) || !MakeClusterRoom(&made)) {
           return false;
         }
@@ -519,7 +530,7 @@ class RtScene12 {
         {.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV, .NumDescriptors = DESCRIPTOR_COUNT - CACHE_KEYS, .BaseShaderRegister = 10,
          .OffsetInDescriptorsFromTableStart = CACHE_KEYS},
     }};
-    const std::array<D3D12_ROOT_PARAMETER, 11> parameters = {{
+    const std::array<D3D12_ROOT_PARAMETER, 12> parameters = {{
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV, .Descriptor = {.ShaderRegister = 0}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
          .DescriptorTable = {.NumDescriptorRanges = static_cast<UINT>(ranges.size()), .pDescriptorRanges = ranges.data()}},
@@ -532,6 +543,7 @@ class RtScene12 {
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .Constants = {.ShaderRegister = 2, .Num32BitValues = 20}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV, .Descriptor = {.ShaderRegister = 3}},
         {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV, .Descriptor = {.ShaderRegister = 4}},
+        {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV, .Descriptor = {.ShaderRegister = 15}},
     }};
     const D3D12_STATIC_SAMPLER_DESC sampler = {
         .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -1572,7 +1584,7 @@ class RtScene12 {
   static constexpr uint32_t RECORD_MASKED = 1;  // rt_scene.hlsli
   static constexpr uint32_t RECORD_THIN = 2;
   static constexpr uint32_t RECORD_SMOKE = 4;
-  static constexpr uint32_t TRACE_SMOKE = 1u << 18;  // rt_scene.hlsli SMOKE_MET: the smoke's instance is in the scene
+  static constexpr uint32_t TRACE_SMOKE = 1u << 18;  // rt_scene.hlsli SMOKE_MET: the smoke's TLAS holds it
   static constexpr uint32_t RECORD_GRASS = 8;
   static constexpr uint32_t RECORD_LEAF = 16;
   // TLAS instance masks (rt_scene.hlsli; rt_place.cs_6_5.hlsl for the placed meshes): the smoke in an instance of its
@@ -1717,6 +1729,7 @@ class RtScene12 {
     ROOT_BOUNCE,  // b2: the ray-traced Light Bounce's constants
     ROOT_PATHS,   // b3: the paths' constants (rt_path.hlsli)
     ROOT_LIGHTS,  // b4: the trace's local lights
+    ROOT_SMOKE,   // t15: the smoke's TLAS (rt_scene.hlsli smoke_scene)
   };
   // b4: RT_MAX_LIGHTS of world position and reach, then their count (a CBV's 256-byte multiple).
   static constexpr UINT LIGHT_CONSTANT_BYTES = 1280;  // positions, count, colours (v11)
@@ -3733,8 +3746,13 @@ class RtScene12 {
       AddInstance(slot, &instance_count, units_blas_->GetGPUVirtualAddress(), units_record_, units_masked_, nullptr, MAX_INSTANCES, SOLID_INSTANCE);
       triangles += dynamic_triangles;
     }
-    if ((smoke_built || smoke_clustered) && instance_count < MAX_INSTANCES) {
-      AddInstance(slot, &instance_count, (smoke_clustered ? cluster_blases_[3] : smoke_blas_)->GetGPUVirtualAddress(), smoke_record, true, nullptr,
+    // The smoke in a TLAS of its own (built after the scene's), its instance the slot's last desc (the CPU's stay far below):
+    // its rays (rt_scene.hlsli SmokeTransmittance) walked the scene's TLAS too, ~150 K placed instances in ATN's archer
+    // battle (2026-11-01), and its overlapping particles widened the scene's for every ray.
+    const bool smoke_scene = (smoke_built || smoke_clustered) && smoke_tlas_ && smoke_tlas_scratch_ && instance_count < MAX_INSTANCES - 1;
+    if (smoke_scene) {
+      UINT smoke_desc = MAX_INSTANCES - 1;
+      AddInstance(slot, &smoke_desc, (smoke_clustered ? cluster_blases_[3] : smoke_blas_)->GetGPUVirtualAddress(), smoke_record, true, nullptr,
                   MAX_INSTANCES, SMOKE_INSTANCE);
     }
     // Placed meshes (v14; not with the partitioned TLAS): rt_place writes their descs after the CPU's instances, this
@@ -3930,6 +3948,19 @@ class RtScene12 {
       Mark(list, L"TLAS");
       list->BuildRaytracingAccelerationStructure(&top_build, 0, nullptr);
     }
+    if (smoke_scene) {
+      const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC smoke_build = {
+          .DestAccelerationStructureData = smoke_tlas_->GetGPUVirtualAddress(),
+          .Inputs = {.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
+                     .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE,
+                     .NumDescs = 1,
+                     .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+                     .InstanceDescs = slot->instances->GetGPUVirtualAddress() + (uint64_t{MAX_INSTANCES - 1} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC))},
+          .ScratchAccelerationStructureData = smoke_tlas_scratch_->GetGPUVirtualAddress(),
+      };
+      Mark(list, L"smoke TLAS");
+      list->BuildRaytracingAccelerationStructure(&smoke_build, 0, nullptr);
+    }
     Stamp(list, slot_index * STAMPS + 2);
     // The shared textures: COMMON between the APIs, read or written here.
     std::vector<std::pair<ID3D12Resource*, D3D12_RESOURCE_STATES>> textures = {
@@ -3984,6 +4015,7 @@ class RtScene12 {
     }
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     list->SetComputeRootShaderResourceView(ROOT_SCENE, (ptlas_ != nullptr ? ptlas_ : tlas_.Get())->GetGPUVirtualAddress());
+    list->SetComputeRootShaderResourceView(ROOT_SMOKE, (smoke_scene ? smoke_tlas_.Get() : (ptlas_ != nullptr ? ptlas_ : tlas_.Get()))->GetGPUVirtualAddress());
     const float softness = (version >= 6) ? std::clamp(shared.rt_sun_softness, 0.f, 5.f) : 0.f;
     const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.01f;
     // Under Ray Reconstruction no soft-shadow filter (rt_trace jitters its sun ray) and no ambient history (NVIDIA's guide:
@@ -3994,7 +4026,7 @@ class RtScene12 {
     const std::array<uint32_t, 12> settings = {
         frame,
         (shared.rt_flags & ~dlaa_bridge::RT_LOCAL_LIGHTS) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
-            | ((smoke_built || smoke_clustered) ? TRACE_SMOKE : 0u),
+            | (smoke_scene ? TRACE_SMOKE : 0u),
         std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.f)),
         std::clamp(shared.rt_ambient_rays, 1u, 16u),
         shared.rt_width,
@@ -5076,6 +5108,8 @@ class RtScene12 {
   std::string garbage_example_;
   uint64_t garbage_example_time_ = 0;
   std::array<ComPtr<ID3D12Resource>, 2> placed_instances_;
+  ComPtr<ID3D12Resource> smoke_tlas_;  // the smoke's TLAS (SmokeTransmittance), its one instance
+  ComPtr<ID3D12Resource> smoke_tlas_scratch_;
   uint32_t placed_last_ = 0;
   ComPtr<ID3D12Resource> placed_state_;
   ComPtr<ID3D12PipelineState> place_pipeline_;

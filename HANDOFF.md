@@ -53,6 +53,20 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       disk as wide as it was long), particles under 0.05 m^2 of full opacity take none. Addon only; not tested in game.
       Next if smoke still costs: the smoke in a TLAS of its own (its ray now walks the whole TLAS, ~150K instances here).
 - [x] Far Tree Shadows and Sprite Shadows ("unit sprites") off by default and in the RT/PT preset (ATN).
+- [x] helper64 (build/tw_dlaa_helper64): the smoke in a TLAS of its own (smoke_tlas_, root SRV t15 ROOT_SMOKE, its one
+      desc the slot's last instance desc; SmokeTransmittance traces smoke_scene), out of the scene's TLAS. ATN asked about
+      Mega Geometry / OMM for smoke: the smoke is rebuilt every request (cluster BLAS where Mega Geometry runs); OMM holds
+      only opaque / transparent / unknown, smoke is partly see-through everywhere: no gain past the disks' corners.
+- [x] Swaying grass shadows flickering at a battle's start (ATN, 01:22 log): no share or capture full; Mega Geometry's
+      cluster room grew four times in the first seconds (32 K -> 320 K -> 467 K) and the swaying grass that did not fit
+      was left out meanwhile. GPUs over 20 GB now start at half their limit (262,144 clusters, ~2.5 GB). In steady play
+      186 K of 467 K used. Placed counts cycling 56-110 K with a still camera are PLACE_TURNS (kept ones fill in): fine.
+- [x] Effects at Output Resolution audit (ATN): GT-VBAO resolution (ao_pass ResolutionScale), Light Bounce scale and
+      SSSR rays (EffectSteps), the game's SSR blur (effects_share), RT shadow softness, RT AO quarter off: follow it; SSS's
+      length x the render share always (screen_space_shadows Compute); the game's SSAO and water refraction are read
+      whole (view_share WHOLE_TEXTURES: s_ssao, refraction): 100% detail. Not following it (by design): ray-traced
+      effects trace at the render size (Ray Reconstruction upscales; Rays a Pixel: Match Output gives 100%'s ray count),
+      fog shadows a quarter of the render pixels each way.
 
 ## v120 BATCH (ATN 2026-10-31 night; saved, NOT started: ATN starts it from their other account, same PC; commit after every step, never push, tick here)
 ATN's words, verbatim:
