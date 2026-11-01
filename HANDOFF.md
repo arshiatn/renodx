@@ -1,9 +1,10 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
-- State: Attila v130 = players' v2.01h, the last build. Downloads/RenoDX_Attila_v2.01h.zip (players), twattila_v130.zip (full), helper70 =
-  build/tw_dlaa_helper70, bridge v20, installed in Attila's folder. All committed and pushed (origin atn-mods). Tag twattila-v130 is still at f5f4ee3e, before the toggle: moving it needs a force push, which
-  Claude's permissions refuse; ATN decides (the zips are the branch's head).
+- State: Attila v131 = players' v2.01i, the last build. Downloads/RenoDX_Attila_v2.01i.zip (players), twattila_v131.zip (full), helper71 =
+  build/tw_dlaa_helper71, bridge v21, tag twattila-v131, installed in Attila's folder. All committed and pushed (origin atn-mods). Tag twattila-v130 stayed before the toggle: use v131.
+- v2.01i: frame generation with Output SDR was red (the helper took 10-bit SDR frames for HDR10, README v131), not run in game yet: ATN tests. Other TW games with SDR output and frame
+  generation have the same line in their helper until they take bridge v21.
 - ATN's vertical lines in battle fog: cause found (the sky cube's horizon row, README v130). Fog & Sky Smoothing (Extra, off) waits for ATN's test in that spot, nothing of v130 ran in
   game. If lines stay: the particles' own sky sample (vfx00 / vfx01), a wider tap spread in sky_smooth.hlsli.
 - ATN's tests: v2.01e FG fixed, v2.01f gamma fixed. v2.01g: the campaign's haze was the fog shader's wrong constant (battlefog00: decompiler), Gamma Correction for

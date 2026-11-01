@@ -6,6 +6,12 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v131 = players' v2.01i (2026-11-01; renodx-tw-dlaa64.exe helper71, bridge v21: ship them together)
+- **Frame generation with Output SDR**: the picture no longer turns red. SDR output runs on a 10-bit swap chain and the helper took every 10-bit frame for HDR10, so its window showed the
+  gamma 2.2 BT.709 image as PQ BT.2020 (ATN's sl.log: format 24). ReShade's screenshots come from the game's own swap chain, so they looked right. The addon tells the helper now
+  (fg_sdr, in v5's padding), and SDR frames keep the chain's default colour space. HDR10 is unchanged.
+- Built only, not run in game: ATN tests it.
+
 ## v130 = players' v2.01h (2026-11-01; renodx-tw-dlaa64.exe helper70 as v127, bridge v20: ship them together)
 - Gamma Correction (Rendering Mode SDR) is on by default, also in the presets and on a first start on an SDR monitor. Settings saved with v129 keep their value.
 - Off now keeps the in-game Gamma: the 3D picture follows the in-game setting again (the SDR path forced 2.0 whatever it said). On still forces 2.0, then 2.2.
