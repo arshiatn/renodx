@@ -1,7 +1,8 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW (2026-11-01): v122 = players' RenoDX_Attila_v2.01.zip shipped (helper67 = build/tw_dlaa_helper67: Rays a Pixel up to 8,
+- NOW (2026-11-01): v122 = players' RenoDX_Attila_v2.01.zip shipped (Downloads; full twattila_v122.zip; tag twattila-v122;
+  helper67 = build/tw_dlaa_helper67, harness 50 of 50, installed in Attila's folder: Rays a Pixel up to 8,
   the red RT note removed, "Ray Tracing Extra Options", RT/PT preset with Smoke Shadows). NEXT: "MONDAY BATCH" below.
 - Before (2026-11-01): v121 shipped (Downloads/RenoDX_Attila_v2.1.zip for players: ATN names them v2.0 = v120, v2.1 = v121, twattila_v121.zip full; helper66 =
   build/tw_dlaa_helper66, bridge v20; search "v121 (ATN 2026-11-01"); pushed to origin atn-mods + tag twattila-v121
