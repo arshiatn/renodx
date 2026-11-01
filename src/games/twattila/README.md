@@ -6,6 +6,11 @@ Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Ste
 mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
+## v123 = players' v2.01a (2026-11-01; renodx-tw-dlaa64.exe helper67 as v122, bridge v20: ship them together)
+- Output Auto is HDR10 with Windows HDR on (was scRGB): Frame Generation takes no scRGB, and turned on in a game started
+  in it did nothing. With Output scRGB a red note says to restart (the next start uses HDR10).
+- RT/PT preset: Importance-Sampled Torch Shadows (RIS) on.
+
 ## v122 = players' v2.01 (2026-11-01; renodx-tw-dlaa64.exe helper67, bridge v20: ship them together)
 - The red "ray tracing and path tracing do not work correctly yet" note is gone; Graphics 1 of 2's last section is "Ray
   Tracing Extra Options".

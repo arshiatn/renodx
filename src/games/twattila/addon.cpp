@@ -1555,22 +1555,22 @@ void SetOutputEncoding(int encoding) {
   }
 }
 
-// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
-// before the swapchain mod's create_swapchain (registered after this).
+// Output Auto: HDR10 with Windows HDR on for the game's display (or unknown), else SDR (frame generation takes no scRGB, and
+// turned on in a game started in it did nothing, ATN 2026-11-01). Set at the first swap chain, before the swapchain mod's
+// create_swapchain (registered after this).
 bool auto_output_pending = false;
 
 bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  // Frame generation takes no scRGB: HDR10 with it.
-  const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
   if (!auto_output_pending) {
-    if (frame_generation && shader_injection.swap_chain_encoding == 1.f) SetOutputEncoding(0);
+    // Output scRGB: HDR10 with frame generation.
+    if (aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f && shader_injection.swap_chain_encoding == 1.f) SetOutputEncoding(0);
     return false;
   }
   auto_output_pending = false;
   const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
   const auto path = renodx::utils::platform::GetPathInfo(monitor);
   const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  SetOutputEncoding(windows_hdr ? (frame_generation ? 0 : 1) : 2);
+  SetOutputEncoding(windows_hdr ? 0 : 2);
   return false;
 }
 
@@ -1990,15 +1990,16 @@ void ConfigureAddon() {
         .default_value = 3.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "Auto: scRGB with Windows HDR on, else SDR. Default. Frame generation uses HDR10 for scRGB.\n"
-                   "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR (all fixes and options stay).",
+        .tooltip = "Auto: HDR10 with Windows HDR on, else SDR. Default.\n"
+                   "HDR10: 10-bit. scRGB: 16-bit, frame generation uses HDR10 instead. SDR: displays without HDR (all fixes\n"
+                   "and options stay).",
         .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
     auto_output_pending = (value == 3);
-    SetOutputEncoding(auto_output_pending ? 1 : value);
+    SetOutputEncoding(auto_output_pending ? 0 : value);
     settings.push_back(setting);
   }
 

@@ -300,11 +300,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "FrameGeneration", .section = section, .shown = dlss, .label = "DLSS Frame Generation",
                .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
                           "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
-                          "Output Auto: on when the game starts, or restart it after turning this on. Needs a windowed or\n"
-                          "borderless game, and Streamline's files next to renodx-tw-dlaa64.exe."});
-    // The game started without it: its swap chain is scRGB, which frame generation cannot use; Auto takes HDR10 at the next
-    // start (ATN 2026-11-01: turned on in game, nothing happened).
-    page.Add(Note("Restart the game for Frame Generation: it started in scRGB, Frame Generation needs HDR10 (Output Auto then uses it).",
+                          "Needs Output Auto, HDR10 or SDR (scRGB: restart after turning this on), a windowed or borderless\n"
+                          "game, and Streamline's files next to renodx-tw-dlaa64.exe."});
+    // Output scRGB, the game started without it: frame generation cannot use its swap chain; HDR10 at the next start.
+    page.Add(Note("Restart the game for Frame Generation: it started in scRGB, Frame Generation needs HDR10.",
                   section, WARNING_TINT,
                   [frame_generation] { return frame_generation() && dlaa_bridge::FrameGenerationStatus().find("scRGB") != std::string::npos; }));
     page.Take({.match = "Reflex", .section = section, .shown = always});
@@ -359,7 +358,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"RayTracedColouredShadows", 1.f},
                             {"RayTracedSmokeShadows", 1.f},
                             {"RayTracedLightSoftness", 0.25f},
-                            {"RayTracedLightImportance", 0.f},
+                            {"RayTracedLightImportance", 1.f},
                             {"RayTracedSpriteShadows", 0.f},
                             {"RayTracedFarTreeShadows", 0.f},
                             {"RayTracedLightGlow", 1.f},

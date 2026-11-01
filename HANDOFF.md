@@ -1,7 +1,9 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
 ## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
-- NOW (2026-11-01): v122 = players' RenoDX_Attila_v2.01.zip shipped (Downloads; full twattila_v122.zip; tag twattila-v122;
+- NOW (2026-11-01): v123 = players' RenoDX_Attila_v2.01a.zip shipped (full twattila_v123.zip, tag twattila-v123, helper67 as v122:
+  Output Auto = HDR10, RIS on in RT/PT). NEXT: "MONDAY BATCH".
+- Before (2026-11-01): v122 = players' RenoDX_Attila_v2.01.zip shipped (Downloads; full twattila_v122.zip; tag twattila-v122;
   helper67 = build/tw_dlaa_helper67, harness 50 of 50, installed in Attila's folder: Rays a Pixel up to 8,
   the red RT note removed, "Ray Tracing Extra Options", RT/PT preset with Smoke Shadows). NEXT: "MONDAY BATCH" below.
 - Before (2026-11-01): v121 shipped (Downloads/RenoDX_Attila_v2.1.zip for players: ATN names them v2.0 = v120, v2.1 = v121, twattila_v121.zip full; helper66 =
@@ -46,9 +48,10 @@ ATN's words, short:
 - [ ] 2 XeSS (Intel; runs on any GPU with SM 6.4 / DP4a) and XeSS Frame Generation if Intel ships one usable here (XeSS 2:
       XeFG + XeLL, Intel Arc only? check the SDK's licence and GPU support), then FSR + FSR Frame Generation (v120 item 3)
       and RT/PT on AMD / Intel with NVIDIA NRD (v120 item 4). Attila is 32-bit: all of them in the 64-bit helper like DLSS.
-- [ ] 2b Frame generation without a restart: turned on in game it did nothing (ATN 2026-11-01: the swap chain was made scRGB,
-      OnCreateSwapchain picks HDR10 only with DLSS + FG on at the start; Streamline takes no scRGB). Now a red note says to
-      restart. Better: the helper's FG swap chain always HDR10, the addon converting scRGB to PQ for fg_frame / fg_hudless.
+- [ ] 2b Frame generation on scRGB without a restart (ATN 2026-11-01: do it Monday): turned on in game it did nothing (the swap
+      chain was made scRGB; Streamline takes no scRGB). v123 stopgap: Output Auto = HDR10 from the start (OnCreateSwapchain), a
+      red note to restart with Output scRGB. The change: the helper's FG swap chain always HDR10, the addon converting scRGB to
+      PQ for fg_frame / fg_hudless; then Auto can go back to scRGB (ask ATN) and the note goes.
 - [ ] 3 TAA: a choice of motion vectors: the game's own (now) or ours (DLSS's: object motion + camera, anti_aliasing.hpp).
 - [ ] 4 Then WH3 (project_wh3_dlss memory: our DLSS on WH3's TAA inputs via the TW helper).
 
