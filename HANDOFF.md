@@ -2,7 +2,8 @@
 
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
 - State: Attila v130 = players' v2.01h, the last build. Downloads/RenoDX_Attila_v2.01h.zip (players), twattila_v130.zip (full), helper70 =
-  build/tw_dlaa_helper70, bridge v20, tag twattila-v130, installed in Attila's folder. All committed and pushed (origin atn-mods).
+  build/tw_dlaa_helper70, bridge v20, installed in Attila's folder. All committed and pushed (origin atn-mods). Tag twattila-v130 is still at f5f4ee3e, before the toggle: moving it needs a force push, which
+  Claude's permissions refuse; ATN decides (the zips are the branch's head).
 - ATN's vertical lines in battle fog: cause found (the sky cube's horizon row, README v130). Fog & Sky Smoothing (Extra, off) waits for ATN's test in that spot, nothing of v130 ran in
   game. If lines stay: the particles' own sky sample (vfx00 / vfx01), a wider tap spread in sky_smooth.hlsli.
 - ATN's tests: v2.01e FG fixed, v2.01f gamma fixed. v2.01g: the campaign's haze was the fog shader's wrong constant (battlefog00: decompiler), Gamma Correction for
