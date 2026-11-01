@@ -73,7 +73,7 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       unit_count (capture records). SmokeTransmittance: a sprite or far tree in the smoke's BLAS blocks (helper64 lost their
       sun shadows with Mega Geometry). Partitioned TLAS (ATN's question): no help, the TLAS build is 0.5 ms; it stays behind
       RENODX_TW_PTLAS (a siege stalled with it).
-- [x] helper66 (build/tw_dlaa_helper66): RT memory released when RT is off (ATN: 6.9 GB Reset, 7.5 GB No RT, 18 GB RT/PT,
+- [x] helper66 (build/tw_dlaa_helper66; harness 50 of 50; installed in Attila's folder): RT memory released when RT is off (ATN: 6.9 GB Reset, 7.5 GB No RT, 18 GB RT/PT,
       but only back to 15 GB after switching RT/PT off). The addon already remade its set without the RT textures, the
       helper only Closed its scene (device, pools, cluster room: GBs stayed). main.cpp: no RT request for 10 s (IDLE_RELEASE)
       -> scene replaced by a fresh object (scene_live / scene_idle, ++rt_device: the addon captures again), Ray
