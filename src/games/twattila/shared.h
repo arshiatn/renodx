@@ -122,6 +122,7 @@ struct ShaderInjectData {
   float rt_ambient_alone;         // ssao00: 1 no ambient occlusion of its own (the ray-traced one replaces it)
   float effects_share;            // Effects at Output Resolution: DLSS's render share (1 off); ssr00 / ssr01's blur x it
   float ssr_traced;               // ssr_rays less the render scale's steps (Effects at Output Resolution), each frame
+  float sky_smooth;               // the fog's and the sky's sky cube smoothed (sky_smooth.hlsli): 1 on
 };
 
 #define SI shader_injection

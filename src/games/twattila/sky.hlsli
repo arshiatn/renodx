@@ -1,6 +1,4 @@
-#ifndef SI
-#include "./shared.h"
-#endif
+#include "./sky_smooth.hlsli"
 
 // skydome.hlsl (ps30_main, ps30_gbuffer): the sky cube, banded (its gradients are compressed). Sky Debanding
 // (SI.sky_deband 1-3, low / medium / high, as Pharaoh's sky): 12 taps on two rings around the view direction (24 and 64
@@ -45,7 +43,13 @@ float4 SkySample(float3 direction, float2 pixel)
   // The gradients from the whole quad, before the branch.
   const float3 gradient_x = ddx(view_direction);
   const float3 gradient_y = ddy(view_direction);
-  float4 color = s_sky.Sample(s_sky_s, float3(view_direction.x, max(0.f, view_direction.y), view_direction.z));
+  const float3 sky_direction = float3(view_direction.x, max(0.f, view_direction.y), view_direction.z);
+  float4 color = s_sky.Sample(s_sky_s, sky_direction);
+  [branch]
+  if (SI.sky_smooth != 0.f)
+  {
+    color.rgb = SkySmooth(s_sky, s_sky_s, sky_direction);
+  }
   [branch]
   if (SI.sky_deband > 0.f)
   {

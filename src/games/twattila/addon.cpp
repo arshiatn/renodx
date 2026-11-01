@@ -135,6 +135,7 @@ void ApplyHDRPreset(
       {"v31_highlight_saturation_shift", 0.f},
       {"video_autohdr", video_autohdr},
       {"sky_deband", 0.f},
+      {"sky_smooth", 0.f},
   });
 }
 
@@ -669,6 +670,16 @@ void BuildRuntimeData() {
         .max = 2.f,
         .format = "%.2f",
         .is_enabled = IsHDRMode,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sky_smooth",
+        .binding = &shader_injection.sky_smooth,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Fog & Sky Smoothing",
+        .section = "Extra",
+        .tooltip = "Removes the vertical lines and blocks the game's low-resolution sky leaves in thick fog.",
+        .labels = {"Off", "On"},
     },
     new renodx::utils::settings::Setting{
         .key = "video_autohdr",

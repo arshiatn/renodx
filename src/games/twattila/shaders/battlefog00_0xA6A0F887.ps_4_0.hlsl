@@ -3,6 +3,7 @@
 // torches' and fires' light along it (twattila/rt_scene.hpp InstallFogShadows; rt_fog.hlsli).
 #include "../render_scale.hlsli"
 #include "../rt_fog.hlsli"
+#include "../sky_smooth.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -113,6 +114,11 @@ void main(
   r0.y = saturate(dot(r0.xx, g_fog_colour_blend));
   r1.w = max(0, r1.y);
   r2.xyzw = s_sky.Sample(s_sky_s, r1.xwz).xyzw;
+  // No fog or no sky in it: not needed.
+  [branch]
+  if (SI.sky_smooth != 0.f && r0.x > 0.f && r0.y > 0.f) {
+    r2.xyz = SkySmooth(s_sky, s_sky_s, r1.xwz);
+  }
   r0.z = dot(r1.xz, r1.xz);
   r0.z = sqrt(r0.z);
   r1.xyz = g_volume_fog_colour.xyz * sun_colour.xyz * RtFogSun(v0.xy);
