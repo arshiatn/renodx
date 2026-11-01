@@ -35,8 +35,8 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
       raises RT_CAPTURES 256 -> 1024 (a grass draw that is not placed takes a capture; ATN's v120 log already showed 0.03 M
       "without room"), RT_DRAWN and RT_PLACEMENTS 8192 -> 16384; no toggle needed (~0.3 MB more shared memory). Arrays grew
       in place: OLDEST_VERSION = 20, addon and helper63 (build/tw_dlaa_helper63) must ship together; Rome II / Thrones addons
-      share the header (their next zips need helper63+). Harness rebuilt: default mode passed; the other 49 modes not run
-      (ATN's game was running: run tools/tw/all_modes.sh with the game closed). Not tested in game, not zipped, not installed.
+      share the header (their next zips need helper63+). Harness rebuilt: 50 of 50 modes pass (helper63 with the smoke change,
+      tools/tw/all_modes_h63.txt). Not tested in game, not zipped, not installed.
       ATN's Log Details log + 30 s profile of Constantinople (01:00, v120): nothing left out, nothing without room (captures
       156-217 of 256: kept the raise anyway). The real cause is below: traces of 150-336 ms.
 - [x] Smoke Shadows killed the frame rate with arrows (ATN) and made the grass shadows flicker (late traces): 120K-235K
