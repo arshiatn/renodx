@@ -1,6 +1,19 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
-## START HERE (2026-10-30, ATN moves to another account): Total War Attila ray tracing
+## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
+- State: Attila v128 = players' v2.01f, the last build. Downloads/RenoDX_Attila_v2.01f.zip (players), twattila_v128.zip (full), helper70 =
+  build/tw_dlaa_helper70, bridge v20, tag twattila-v128, installed in Attila's folder. All committed and pushed (origin atn-mods, 04c34823 + this).
+- ATN still has to test in game (nothing here ran in game): v2.01e: use FG, turn it off, wait 10+ s; Reset or No RT/PT, wait 10+ s; RT/PT: DLSS,
+  RT and MFG must come back (v2.01d hung here: "NVIDIA's helper did not answer", DLSS off until a restart). v2.01f: the yellow SDR preset against
+  Attila's pictures\SDR\Without the addon, SDR.png. If v2.01e still fails: its log first (ReShade.log, renodx-tw-dlaa64.log, sl.log in Attila's folder).
+- NEXT, on ATN's word: "MONDAY BATCH" below, in its order (Mega Geometry 1M, XeSS / FSR / NRD, FG on scRGB, SSS smoke shadows, TAA motion, leak check,
+  then WH3). Don't start it unasked.
+- Rules: ATN wants very short answers in English, they/them. Push every commit to origin (arshiatn/renodx, branch atn-mods), NEVER upstream (clshortfuse).
+  ATN uploads the zips to GitHub releases themselves: each release = a tag twattila-v<internal>, a slim zip RenoDX_Attila_v<name>.zip (ATN names them:
+  v2.0 = v120, v2.1 = v121, v2.01 = v122, a-f = v123-v128) from tools/tw/player_zip.py (READ ME: tools/tw/player_readme/RenoDX Attila - READ ME.txt, update
+  its title and text), after the full one by tools/tw/release_zip.py (--helper when the helper changed: bump tw_dlaa_helperN in it). ATN's weekly limit
+  matters: no game runs or big workflows unless they ask or it is needed; say plainly what was not tested. Back up ATN's ReShade.ini around game runs
+  (tools/tw/test_scripts/fg_mem_test.ps1 does: a replay with timed settings, memory every 5 s). Never stop Streamline in the helper (v2.01d).
 - NOW (2026-11-01): v128 = players' RenoDX_Attila_v2.01f.zip shipped (full twattila_v128.zip, tag twattila-v128, helper70 as v127: SDR
   preset = Rendering Mode SDR, the proxy passes SDR mode + SDR output through). ATN's pictures: Attila's pictures\SDR. NEXT: "MONDAY BATCH".
 - Before (2026-11-01): v127 = players' RenoDX_Attila_v2.01e.zip shipped (full twattila_v127.zip, tag twattila-v127, helper70 =
@@ -25,10 +38,10 @@
   Pushed to ATN's fork (origin arshiatn/renodx, branch atn-mods, tag twattila-v120); ATN attaches the zip to a GitHub release there
   (Nexus blocks the zip). v120 addon is in Attila's folder (old one renamed .addon32.v119), not tested in game. v119 done
   (search "v119 BIG BATCH"), v118 done ("v118 HUGE BATCH").
-- State: Attila v119 shipped (Downloads/twattila_v119.zip, helper62 = build/tw_dlaa_helper62, bridge v19; v119 is in Attila's
+- Older state: Attila v119 shipped (Downloads/twattila_v119.zip, helper62 = build/tw_dlaa_helper62, bridge v19; v119 is in Attila's
   folder, its ReShade.ini as ATN left it (test_scripts/ReShade.ini.atn38); the addon there is a COPY, not the symlink to
   build32: copy it after each build; a dead Attila.exe can pin it: rename it aside, see the v116 notes), branch atn-mods,
-  everything committed locally (never push). Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory (MEMORY.md index;
+  everything committed. Memory: C:/Users/arshi/.claude/projects/D--Dev-renodx/memory (MEMORY.md index;
   project_attila_first.md, reference_gpu_beside_game.md, reference_attila_frame_facts.md, reference_tw_ingame_testing.md,
   reference_attila_sun_shaders.md).
 - tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw (not in the repo).
