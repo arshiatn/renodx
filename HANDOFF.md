@@ -13,7 +13,7 @@
   then WH3). Don't start it unasked.
 - Rules: ATN wants very short answers in English, they/them. Push every commit to origin (arshiatn/renodx, branch atn-mods), NEVER upstream (clshortfuse).
   ATN uploads the zips to GitHub releases themselves: each release = a tag twattila-v<internal>, a slim zip RenoDX_Attila_v<name>.zip (ATN names them:
-  v2.0 = v120, v2.1 = v121, v2.01 = v122, a-f = v123-v128) from tools/tw/player_zip.py (READ ME: tools/tw/player_readme/RenoDX Attila - READ ME.txt, update
+  v2.0 = v120, v2.1 = v121, v2.01 = v122, a-i = v123-v131, next j = v132) from tools/tw/player_zip.py (READ ME: tools/tw/player_readme/RenoDX Attila - READ ME.txt, update
   its title and text), after the full one by tools/tw/release_zip.py (--helper when the helper changed: bump tw_dlaa_helperN in it). ATN's weekly limit
   matters: no game runs or big workflows unless they ask or it is needed; say plainly what was not tested. Back up ATN's ReShade.ini around game runs
   (tools/tw/test_scripts/fg_mem_test.ps1 does: a replay with timed settings, memory every 5 s). Never stop Streamline in the helper (v2.01d).
