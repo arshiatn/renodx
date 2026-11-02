@@ -87,7 +87,7 @@ void main(
   // Distortion
   r0.zw = distortion_sampler.SampleLevel(distortion_sampler_s, (r0.xy) * FrameRenderShare(), r0.y).xy;
   r0.zw = float2(-0.498039216,-0.498039216) + r0.zw;
-  r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * ((HDR >= 1.f) ? SI.uvdistort : 1.f) + r0.xy;  // Distortion slider (HDR only)
+  r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * SI.uvdistort + r0.xy;  // Distortion slider
 
   // Depth of Field (multisample depth)
   r1.xy = (int2)v0.xy;
@@ -156,7 +156,7 @@ void main(
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);
   r0.z = 1 + -r0.z;
-  r0.z *= (HDR >= 1.f) ? SI.dof : 1.f;  // DOF slider (HDR only): scales the blur size, 0 = off
+  r0.z *= SI.dof;  // DOF slider: scales the blur size, 0 = off
   r1.xyzw = float4(0,0,0,0);
   r0.w = 0;
   r3.x = 0;

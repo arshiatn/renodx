@@ -136,6 +136,7 @@ void ApplyHDRPreset(
       {"video_autohdr", video_autohdr},
       {"sky_deband", 0.f},
       {"sky_smooth", 0.f},
+      {"sky_smooth_strength", 1.f},
   });
 }
 
@@ -621,7 +622,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "lensflare",
@@ -633,7 +633,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "vignette",
@@ -645,7 +644,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "dof",
@@ -657,7 +655,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "distortion",
@@ -669,7 +666,18 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sky_smooth_strength",
+        .binding = &shader_injection.sky_smooth_strength,
+        .default_value = 1.f,
+        .label = "Fog & Sky Smoothing Strength",
+        .section = "Extra",
+        .tooltip = "How wide Fog & Sky Smoothing below reaches. 1 = default.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_enabled = [] { return shader_injection.sky_smooth != 0.f; },
     },
     new renodx::utils::settings::Setting{
         .key = "sky_smooth",
@@ -678,8 +686,9 @@ void BuildRuntimeData() {
         .default_value = 0.f,
         .label = "Fog & Sky Smoothing",
         .section = "Extra",
-        .tooltip = "Removes the vertical lines and blocks the game's low-resolution sky leaves in thick fog.",
-        .labels = {"Off", "On"},
+        .tooltip = "Removes the vertical lines and blocks the game's low-resolution sky leaves in thick fog.\n"
+                   "Higher: smoother, a little heavier.",
+        .labels = {"Off", "Low", "Medium", "High"},
     },
     new renodx::utils::settings::Setting{
         .key = "video_autohdr",
@@ -2083,6 +2092,14 @@ void ConfigureAddon() {
           .group = "line_1",
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarattila/mods/158"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
       },
   });
 

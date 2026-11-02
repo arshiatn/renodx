@@ -86,7 +86,7 @@ void main(
   // Distortion
   r0.zw = distortion_sampler.SampleLevel(distortion_sampler_s, (r0.xy) * FrameRenderShare(), r0.y).xy;
   r0.zw = float2(-0.498039216,-0.498039216) + r0.zw;
-  r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * ((HDR >= 1.f) ? SI.uvdistort : 1.f) + r0.xy;  // Distortion slider (HDR only)
+  r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * SI.uvdistort + r0.xy;  // Distortion slider
 
   // sample
   r1.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r0.xy, r0.y).xyzw;

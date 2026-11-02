@@ -73,8 +73,8 @@ void main(
       sdr_color *= scene_highlight_limit / scene_luminance;
     }
 
-    // Stock bloom is added at full strength.
-    sdr_color += bloom_sample.xyz;
+    // Bloom, its slider's 1 stock.
+    sdr_color += bloom_sample.xyz * SI.bloom;
 
     // Stock highlight whitening/desaturation.
     float sdr_luminance = dot(sdr_color, float3(0.212599993, 0.715200007, 0.0722000003));

@@ -241,6 +241,17 @@ static Bridge bridge;
 
 namespace internal {
 
+// renodx-tw-dlaa64.exe next to this addon.
+inline std::wstring HelperPath() {
+  HMODULE addon = nullptr;
+  static const int ANCHOR = 0;
+  GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                     reinterpret_cast<LPCWSTR>(&ANCHOR), &addon);
+  std::wstring path(MAX_PATH, L'\0');
+  path.resize(GetModuleFileNameW(addon, path.data(), MAX_PATH));
+  return path.substr(0, path.find_last_of(L"\\/") + 1) + L"renodx-tw-dlaa64.exe";
+}
+
 inline bool Fail(const std::string& status) {
   bridge.failed = true;
   bridge.status = status;
@@ -309,14 +320,7 @@ inline bool Start(ID3D11Device* device) {
     bridge.shared->adapter_luid_high = adapter_desc.AdapterLuid.HighPart;
   }
 
-  // renodx-tw-dlaa64.exe next to this addon.
-  HMODULE addon = nullptr;
-  static const int ANCHOR = 0;
-  GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                     reinterpret_cast<LPCWSTR>(&ANCHOR), &addon);
-  std::wstring path(MAX_PATH, L'\0');
-  path.resize(GetModuleFileNameW(addon, path.data(), MAX_PATH));
-  path = path.substr(0, path.find_last_of(L"\\/") + 1) + L"renodx-tw-dlaa64.exe";
+  const std::wstring path = internal::HelperPath();
   std::wstring command = L"\"" + path + L"\" " + std::to_wstring(GetCurrentProcessId());
   STARTUPINFOW startup = {.cb = sizeof(STARTUPINFOW)};
   PROCESS_INFORMATION information = {};
@@ -860,6 +864,12 @@ inline bool TraceReflections(ID3D11DeviceContext* context, const ReflectRequest&
 // The helper's last ray tracing status (one line).
 inline std::string TraceStatus() {
   return (bridge.shared != nullptr) ? std::string(bridge.shared->rt_status) : std::string();
+}
+
+// False: only the HDR addon is installed (no renodx-tw-dlaa64.exe next to it): no DLSS, frame generation or ray tracing.
+inline bool HelperInstalled() {
+  static const bool installed = GetFileAttributesW(internal::HelperPath().c_str()) != INVALID_FILE_ATTRIBUTES;
+  return installed;
 }
 
 // The helper's ray tracing device count (a new device after a GPU fault or hang: its scene empty).

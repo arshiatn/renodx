@@ -82,7 +82,7 @@ struct Sliders {
   float sharc = 0.f;
   float light_importance = 0.f;
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
-  float ambient_range = 2.f;       // metres
+  float ambient_range = 6.f;       // metres
   float ambient_rays = 2.f;
   float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
   float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
@@ -1252,7 +1252,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
       new renodx::utils::settings::Setting{
           .key = "RayTracedAORange",
           .binding = &sliders->ambient_range,
-          .default_value = 2.f,
+          .default_value = 6.f,
           .label = "Ray-Traced AO Range",
           .section = section,
           .tooltip = "How far its rays look for something in the way.",

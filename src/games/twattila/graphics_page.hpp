@@ -278,6 +278,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     for (Setting* setting : *settings) {
       if (setting->key == "AntiAliasing") setting->labels = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS"};
     }
+    page.Add(Note("DLSS, Frame Generation and ray tracing need the full download, not only this addon: github.com/arshiatn/renodx/releases or Nexus.",
+                  section, WARNING_TINT, [] { return !dlaa_bridge::HelperInstalled(); }));
     page.Take({.match = "AntiAliasing", .section = section, .shown = always,
                .tooltip = "Smooths jagged edges. Turn the in-game anti-aliasing off.\n"
                           "SMAA: catches more edges. CMAA2: sharper, keeps more fine detail.\n"

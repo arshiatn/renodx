@@ -67,11 +67,11 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
 
 ## ENORMOUS BATCH (ATN 2026-11-02; away for hours / days: don't stop; push every now and then; new bugs found: fix in this batch; avoid in-game tests, allowed if really needed; WH3 only after all of this)
 ATN's test of v2.01i: FG with Output SDR correct, Gamma Correction correct in SDR. Their words, short:
-- [ ] 1 Fog & Sky Smoothing stronger: Low (what we have), Medium, High; and a slider above it, a multiplier 0 to 2.
-- [ ] 2 SDR: let people change everything in Extra but AutoHDR too (make sure they have effects).
+- [x] 1 Fog & Sky Smoothing stronger: Low (what we have), Medium, High; and a slider above it, a multiplier 0 to 2.
+- [x] 2 SDR: let people change everything in Extra but AutoHDR too (make sure they have effects).
 - [ ] 3 FG SDR fix, Gamma Correction, Fog & Sky Smoothing: "important for our other TW games too": port.
-- [ ] 4 RTAO range 6 m by default (every other preset too).
-- [ ] 5 GitHub link at the bottom (About); a red notice for people who only have the HDR addon: for DLSS / RT / PT download everything from git / Nexus.
+- [x] 4 RTAO range 6 m by default (every other preset too).
+- [x] 5 GitHub link at the bottom (About); a red notice for people who only have the HDR addon: for DLSS / RT / PT download everything from git / Nexus.
 - [ ] 6 Motion vectors on in DLSS are very hard on the CPU when lots of soldiers fight at one spot (off ~40 fps, on 24). Improve. Trace: Attila\debug38\ctesphon full battle (won)
       (~15000 men, grass back to 1x; the RT trace at the end was lost to a ReShade screenshot crash: 32-bit, ReShade takes 2 pictures).
 - [ ] 7 "Are we sure FG / MFG are 100% working correctly?" Check and answer.
