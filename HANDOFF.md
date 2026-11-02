@@ -1,5 +1,6 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## START HERE (2026-11-02): ENORMOUS BATCH RUNNING: search "ENORMOUS BATCH", tick it as you go, push often (origin atn-mods)
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
 - State: Attila v131 = players' v2.01i, the last build. Downloads/RenoDX_Attila_v2.01i.zip (players), twattila_v131.zip (full), helper71 =
   build/tw_dlaa_helper71, bridge v21, tag twattila-v131, installed in Attila's folder. All committed and pushed (origin atn-mods). Tag twattila-v130 stayed before the toggle: use v131.
@@ -63,6 +64,32 @@
   text is the last player zip's "RenoDX Attila - READ ME.txt", updated); README section per version; commit after every step with the Co-Authored-By line.
 
 Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF.md`. This file supersedes its Ryse parts.
+
+## ENORMOUS BATCH (ATN 2026-11-02; away for hours / days: don't stop; push every now and then; new bugs found: fix in this batch; avoid in-game tests, allowed if really needed; WH3 only after all of this)
+ATN's test of v2.01i: FG with Output SDR correct, Gamma Correction correct in SDR. Their words, short:
+- [ ] 1 Fog & Sky Smoothing stronger: Low (what we have), Medium, High; and a slider above it, a multiplier 0 to 2.
+- [ ] 2 SDR: let people change everything in Extra but AutoHDR too (make sure they have effects).
+- [ ] 3 FG SDR fix, Gamma Correction, Fog & Sky Smoothing: "important for our other TW games too": port.
+- [ ] 4 RTAO range 6 m by default (every other preset too).
+- [ ] 5 GitHub link at the bottom (About); a red notice for people who only have the HDR addon: for DLSS / RT / PT download everything from git / Nexus.
+- [ ] 6 Motion vectors on in DLSS are very hard on the CPU when lots of soldiers fight at one spot (off ~40 fps, on 24). Improve. Trace: Attila\debug38\ctesphon full battle (won)
+      (~15000 men, grass back to 1x; the RT trace at the end was lost to a ReShade screenshot crash: 32-bit, ReShade takes 2 pictures).
+- [ ] 7 "Are we sure FG / MFG are 100% working correctly?" Check and answer.
+- [ ] 8 LotR mod, lots of vegetation: grass shadows flicker even at default grass. Zoomed out looking down: no flicker, moving or not. Zoomed in (camera near the ground hides a lot of grass:
+      the 100 m cap): flicker. ATN: maybe RT shadows switch those on and off, or the moving camera does; same as Constantinople, 99.99% sure. Attila\debug38\lord of the rings mod with a lot of vegitation
+      (logs, profile, two back to back screenshots zoomed in).
+- [ ] 9 Black spots (main game too, some spots and buildings): Attila\debug38\black spots (Normal / RT / SSS): why with SSS, and much darker with RT Shadows? The beard and leaves of the tree unit.
+- [ ] 10 RT Reflections look wrong with and without RT/PT AO / GI. Is it full resolution? Samples make no difference, noisy and low quality. Improve.
+- [ ] 11 More rivers for Water Clarity / Water Caustics: find their shaders.
+- [ ] 12 TAA with real motion vectors, an option (a slider). Answer: are camera motion vectors off when DLSS uses real motion vectors? If yes, doesn't that cost performance?
+- [ ] 13 PT AO noisy at Ultra Performance; "Rays a Pixel" 1 to 8 show no difference on it: maybe not included (more missing?). PT AO noisier in general: Own ReSTIR like RT reflections? Does that just cost VRAM or fps too?
+- [ ] 14 Smoke shadows since the optimizations: blocky when artillery hits and smoke comes out, holes in the middle of shadows; arrows and shots in the air look normal; smoke of explosions, burning houses,
+      dust of units in the desert look bad and flicker. Fix without losing performance, maybe an extra slider.
+- [ ] 15 The wrong decompiled fog shader (fixed in 2.01g, Attila) probably exists in Rome II, Thrones and the other TW games: check (tools/tw/test_scripts/cb_audit.py).
+- [ ] 16 MONDAY BATCH below: 1 (Mega Geometry 1M, TLAS growing), 2 + 2a (upscalers), 2b (FG on scRGB), 2c (SSS smoke shadows).
+      ATN on upscalers: probably only FSR 4 SR + MFG (or the newest) for AMD (does it run on Intel and NVIDIA too?) and XeSS 2 / 3 SR + MFG (?) for Intel, AMD and old NVIDIA. Answer what we think.
+- [ ] 17 At the end: VRAM / RAM leftovers cleanup and checks (MONDAY BATCH 5).
+- [ ] 18 Zip (next name v2.01j = v132 or ask), README, Nexus text, HANDOFF, memory, per-game report. WH3 comes after all of this, not in this batch.
 
 ## MONDAY BATCH (ATN 2026-11-01: "let's do it on monday"; push every commit to origin atn-mods; tick here)
 ATN's words, short:
