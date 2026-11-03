@@ -110,10 +110,14 @@ ATN's words, short:
       1 M): a tier for over 28 GB (5090) and one for 24 GB (4090), the start room as now; check NVAPI's caps
       (maxClusterCount / CLAS limits), the records (RECORD_COUNT = ... + SLOTS * MAX_CLUSTERS) and the bridge's arrays.
       With it: TLAS instances growing on their own (the v121 NEXT BATCH line).
-- [ ] 2 XeSS (Intel; runs on any GPU with SM 6.4 / DP4a) and XeSS Frame Generation if Intel ships one usable here (XeSS 2:
+- [ ] 2 UPSCALING PART DONE 2026-11-03 (Attila only; helper + addon, bridge v22, ship together; left: FSR / XeSS frame generation, NRD). FSR 2.4.0 SDK and XeSS 3.0.2 SDK downloads, signed DLLs next to the helper
+      (amd_fidelityfx_loader_dx12.dll, amd_fidelityfx_upscaler_dx12.dll, libxess.dll: dlaa_helper/upscale_d3d12.hpp), Methods FSR 6 / XeSS 7, DLSS hidden off NVIDIA (RENODX_TW_FAKE_VENDOR tests), RT/PT Experimental on AMD / Intel (DXR 1.1, built-in denoisers, only under FSR / XeSS: other TW games keep refusing).
+      Harness 73 lines all PASS (tools/tw/all_modes_h72.txt; helper build/tw_dlaa_helper): jitter sign pairs (FSR 0.081 right vs 0.18-0.24 wrong, XeSS 0.097 vs 0.26-0.35, DLSS K 0.106 vs 0.20-0.28): the bridge's values unchanged; motion sign right; dark ramp 0.99-1.00 (no sqrt needed). XeSS takes sizes under its minimum (848 x 477 of 2560 x 1440): no clamp, no scale flip.
+      In game, for_claude1.replay 50% (camera stood in the grass): FSR 3.1.6, XeSS-SR 2.0.2 on the status line; shots' colours alike, sharpness 3.9-4.3 / 3.8-4.2 vs DLSS 5.0-5.1; VRAM no RT: DLSS 8987, FSR 9696, XeSS 9687, DLSS back 8989 MiB after 10 s. Faked AMD: list without DLSS (overlay shot), saved DLSS -> FSR, saved XeSS survives restart, slider maps right, no nvngx / sl in the helper, RT on DXR 1.1 at 66 fps. Untested: FSR 4, Arc, real AMD / Intel drivers, moving units' smear, campaign, DLSS FG under FSR / XeSS.
+      XeSS (Intel; runs on any GPU with SM 6.4 / DP4a) and XeSS Frame Generation if Intel ships one usable here (XeSS 2:
       XeFG + XeLL, Intel Arc only? check the SDK's licence and GPU support), then FSR + FSR Frame Generation (v120 item 3)
       and RT/PT on AMD / Intel with NVIDIA NRD (v120 item 4). Attila is 32-bit: all of them in the 64-bit helper like DLSS.
-- [ ] 2a With RT/PT on AMD / Intel (item 2): the RT/PT preset turns DLSS Ray Reconstruction on where it was off (graphics_page.hpp,
+- [x] 2a DONE 2026-11-03 (the preset turns RR on only on NVIDIA, whatever the method; code only, not pressed in game). With RT/PT on AMD / Intel (item 2): the RT/PT preset turns DLSS Ray Reconstruction on where it was off (graphics_page.hpp,
       since 2026-11-01): harmless today (DLSS and RT do not start there); by then it must follow the GPU (their denoiser instead).
 - [x] 2b DONE 2026-11-03 (Attila only; helper unchanged; fg_hdr10 pass; Auto stays HDR10; other TW games: ported 2026-11-03 with item 3, Auto stays scRGB there; WH3 / Shogun 2 have another FG module, not ported; not run in game). Frame generation on scRGB without a restart (ATN 2026-11-01: do it Monday): turned on in game it did nothing (the swap
       chain was made scRGB; Streamline takes no scRGB). v123 stopgap: Output Auto = HDR10 from the start (OnCreateSwapchain), a
