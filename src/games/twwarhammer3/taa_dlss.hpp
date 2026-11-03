@@ -74,6 +74,7 @@ struct Objects {
   ComPtr<ID3D11ComputeShader> inputs;
   ComPtr<ID3D11ComputeShader> output;
   ComPtr<ID3D11ComputeShader> guides;
+  ComPtr<ID3D11Buffer> shader_settings;  // dlss_inputs' and dlss_output's
   bool failed = false;
 };
 
@@ -105,12 +106,14 @@ inline bool Create(ID3D11Device* device) {
   objects = {.device = device};
   ComPtr<ID3D11Device1> device1;
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
+  const D3D11_BUFFER_DESC settings_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   objects.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                    || FAILED(device1->CreateDeviceContextState(0, &level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device),
                                                                nullptr, objects.private_state.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__dlss_inputs.data(), __dlss_inputs.size(), nullptr, objects.inputs.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__dlss_output.data(), __dlss_output.size(), nullptr, objects.output.GetAddressOf()))
-                   || FAILED(device->CreateComputeShader(__rr_guides.data(), __rr_guides.size(), nullptr, objects.guides.GetAddressOf()));
+                   || FAILED(device->CreateComputeShader(__rr_guides.data(), __rr_guides.size(), nullptr, objects.guides.GetAddressOf()))
+                   || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.shader_settings.GetAddressOf()));
   if (objects.failed) renodx::utils::log::i("[Warhammer III] DLSS: its shaders could not be made.");
   return !objects.failed;
 }
@@ -188,17 +191,21 @@ inline void Resolve(ID3D11DeviceContext* native) {
   twattila::dlaa_bridge::BeforeSharedWrites(native);
   {
     talesofarise::dlss::ContextStateScope scope(context1.Get(), state.objects.private_state.Get());
+    const bool reconstruct = state.settings.ray_reconstruction && state.guides_frame == state.frame && bridge.guides;
+    // NVSDK_NGX_DLSS_Hint_Render_Preset L, M; K takes the light as it is.
+    const std::array<float, 4> shader_settings = {(reconstruct || state.settings.dlaa_preset == 12u || state.settings.dlaa_preset == 13u) ? 1.f : 0.f};
+    context1->UpdateSubresource(state.objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
     const std::array<ID3D11ShaderResourceView*, 3> sources = {inputs[0], inputs[2], inputs[4]};
     const std::array<ID3D11UnorderedAccessView*, 3> destinations = {bridge.color.uav.Get(), bridge.depth.uav.Get(), bridge.motion.uav.Get()};
     context1->CSSetShader(state.objects.inputs.Get(), nullptr, 0);
     context1->CSSetShaderResources(0, static_cast<UINT>(sources.size()), sources.data());
     context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(destinations.size()), destinations.data(), nullptr);
+    context1->CSSetConstantBuffers(0, 1, state.objects.shader_settings.GetAddressOf());
     context1->Dispatch((color_desc.Width + 7) / 8, (color_desc.Height + 7) / 8, 1);
     context1->ClearState();
     // Ray Reconstruction (its guides written this frame): view = inverse projection x view-projection (the camera's
     // registers act on column vectors), given NVIDIA as row-vector matrices (their transposes).
     twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = state.settings.ray_reconstruction_preset};
-    const bool reconstruct = state.settings.ray_reconstruction && state.guides_frame == state.frame && bridge.guides;
     if (reconstruct) {
       for (size_t row = 0; row < 4; ++row) {
         for (size_t column = 0; column < 4; ++column) {
@@ -217,6 +224,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
       context1->CSSetShader(state.objects.output.Get(), nullptr, 0);
       context1->CSSetShaderResources(0, 1, &result);
       context1->CSSetUnorderedAccessViews(0, 1, &destination, nullptr);
+      context1->CSSetConstantBuffers(0, 1, state.objects.shader_settings.GetAddressOf());
       context1->Dispatch((output_desc.Width + 7) / 8, (output_desc.Height + 7) / 8, 1);
     }
   }
