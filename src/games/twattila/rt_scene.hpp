@@ -114,7 +114,7 @@ static UINT ambient_cube = 0;
 // `light_bounce_strength`: the game's Light Bounce (its rays and paths replace the Light Bounce's trace; off, nothing to
 // trace for them, so they keep ray tracing off).
 inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa, float light_bounce_strength) {
-  const bool dlaa = aa.method == 5.f;
+  const bool dlaa = feature_settings::Upscaling(aa);
   const bool bounce = light_bounce_strength > 0.f && dlaa;
   const bool path_ambient = sliders.path_ambient != 0.f && sliders.light_bounce == 2.f && bounce && internal::ambient_cube != 0;
   // Rays a Pixel: the picture is at the render size until DLSS, nothing traced can be kept finer than that: each render pixel
@@ -987,7 +987,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                            bool ambient_alone = false, bool reflection_pass = false,
                            const std::string& section = feature_settings::AA_SECTION,
                            const float* light_bounce_strength = nullptr) {
-  const auto dlaa_on = [aa] { return aa->method == 5.f; };
+  const auto dlaa_on = [aa] { return feature_settings::Upscaling(*aa); };
   // Turned on: the Light Bounce (Lighting) on with them when it was off (they trace its light: without it they did
   // nothing, ATN 2026-10-28).
   const auto light_bounce_on = [light_bounce_strength] {
@@ -1020,7 +1020,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 0.f,
           .max = 3.f,
           .format = "%.2f",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightSoftness",
@@ -1033,7 +1033,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 0.f,
           .max = 1.f,
           .format = "%.2f m",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
       },
       new renodx::utils::settings::Setting{
@@ -1046,7 +1046,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Two torch / fire shadow rays a pixel, picked by how much light they give (as ReSTIR DI picks lights):\n"
                      "faster with many fires; dim fires' shadows follow moving units slower.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
       },
       new renodx::utils::settings::Setting{
@@ -1060,7 +1060,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 0.f,
           .max = 2.f,
           .format = "%.2f",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
       },
       new renodx::utils::settings::Setting{
@@ -1074,7 +1074,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "The cost grows with the rays. Match Output: as many rays on screen as at DLAA (up to 8 a pixel,\n"
                      "1 at DLAA). 2 to 8 rays also work at DLAA. The rendered image stays at DLSS's size.",
           .labels = {"1", "Match Output", "2", "3", "4", "5", "6", "7", "8"},
-          .is_enabled = [aa] { return aa->method == 5.f; },
+          .is_enabled = [aa] { return feature_settings::Upscaling(*aa); },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracingRaysShadows",
@@ -1085,7 +1085,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "The sun's and the torches' and fires' shadows take the extra rays.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->output_rays != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracingRaysAmbient",
@@ -1096,7 +1096,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Ray-Traced AO takes the extra rays.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->output_rays != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracingRaysReflections",
@@ -1107,7 +1107,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Ray-traced reflections take the extra rays.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->output_rays != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracingRaysPaths",
@@ -1119,7 +1119,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Ray-traced and path-traced Global Illumination and Path-Traced AO take the extra rays\n"
                      "(up to 16 a pixel). The heaviest of the four.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->output_rays != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->output_rays != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedSpriteShadows",
@@ -1130,7 +1130,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "The flat far soldiers cast ray-traced shadows too.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::sprite_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
@@ -1142,7 +1142,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "The flat far trees cast ray-traced shadows too.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::far_tree_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
@@ -1165,7 +1165,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Leaves, cloth and sails let some sunlight through ray-traced shadows (where they reach past the game's).",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           // Shown where the scene has alpha-tested leaves or cloth (Warhammer III's has neither).
           .is_visible = [] {
             return std::ranges::any_of(internal::scene_shaders,
@@ -1181,7 +1181,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Sunlight through cloth, sails and banners takes their colour.\nNeeds Light Through Leaves and Ray Reconstruction.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f && sliders->leaf_light != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f && sliders->leaf_light != 0.f; },
           .is_visible = [] { return internal::ambient_cube != 0; },
       },
       new renodx::utils::settings::Setting{
@@ -1270,7 +1270,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 0.5f,
           .max = 10.f,
           .format = "%.1f m",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->ambient_occlusion != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->ambient_occlusion != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAORays",
@@ -1283,7 +1283,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 8.f,
           .format = "%d",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->ambient_occlusion != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->ambient_occlusion != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAOQuarter",
@@ -1295,7 +1295,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Quarter: one pixel of each 2 x 2 traced a frame, in turn (a quarter of the rays; DLAA / DLSS\n"
                      "smooth it over frames). Faster, a little softer at edges.",
           .labels = {"Every pixel", "Quarter"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->ambient_occlusion != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->ambient_occlusion != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLeafMicromaps",
@@ -1307,7 +1307,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Faster ray-traced shadows through leaves: their cut-outs are baked once (NVIDIA Opacity Micro-Map SDK).",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] {
-            return aa->method == 5.f && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
+            return feature_settings::Upscaling(*aa) && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
           },
       },
       new renodx::utils::settings::Setting{
@@ -1320,7 +1320,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Leaf Micromaps baked on the GPU (NVIDIA's way in game) instead of CPU threads:\n"
                      "frees the CPU, and new grass's and leaves' shadows settle sooner.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->micromaps != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->micromaps != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedFastLeafShadows",
@@ -1332,7 +1332,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Leaves and grass with Leaf Micromaps skip their alpha tests:\n"
                      "faster shadows under trees and in fields, but coarser and darker.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->micromaps != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->micromaps != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedFogShadows",
@@ -1355,7 +1355,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Smoke and dust dim the ray-traced sunlight they drift through (with Ray-Traced Shadows).",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::smoke_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
@@ -1367,7 +1367,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Layers of smoke and dust a sun ray counts. Higher: fewer holes and less flicker in thick smoke, slower there.",
           .labels = {"Low", "Medium", "High"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->sun_shadows != 0.f && sliders->smoke_shadows != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f && sliders->smoke_shadows != 0.f; },
           .is_visible = [] { return internal::smoke_shadows_installed; },
       },
       // One tracer for the Light Bounce (ATN: Path Tracing and the rays could both be on, only one ran).
@@ -1396,7 +1396,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "With Path Tracing: the paths bring the sky's light too, in place of the game's ambient light and the\n"
                      "ray-traced AO (less noise, faster). Small contact shadows follow the Light Bounce's resolution.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
           .is_visible = [] { return internal::ambient_cube != 0; },
       },
       new renodx::utils::settings::Setting{
@@ -1409,7 +1409,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "The sky's light averaged from each pixel's own rays, as in Ray-Traced AO:\n"
                      "less noise, and more rays help. Off: through ReSTIR GI.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f && sliders->path_ambient != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f && sliders->path_ambient != 0.f; },
           .is_visible = [] { return internal::ambient_cube != 0; },
       },
       new renodx::utils::settings::Setting{
@@ -1422,7 +1422,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Shader execution reordering for Path Tracing and Ray-Traced Reflections\n"
                      "(DXR 1.2, RTX 40 / 50 series): may be faster.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && (sliders->light_bounce == 2.f || sliders->reflections != 0.f); },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && (sliders->light_bounce == 2.f || sliders->reflections != 0.f); },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedSharc",
@@ -1434,7 +1434,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "With Path Tracing: NVIDIA's SHaRC for the light of what the screen does not show\n"
                      "(more bounces off-screen, paths end sooner).",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRays",
@@ -1447,7 +1447,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 16.f,
           .format = "%d",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceResolution",
@@ -1459,7 +1459,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Its own resolution (the screen-space Light Bounce's settings no longer apply to it).\n"
                      "Full: sharpest, about 4x Half's cost.",
           .labels = {"Full", "Half", "Quarter"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRange",
@@ -1471,7 +1471,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 50.f,
           .format = "%.0f m",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -1493,7 +1493,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 4.f,
           .format = "%d",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },
   });
   if (!reflection_pass) return;
@@ -1521,7 +1521,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .min = 1.f,
           .max = 8.f,
           .format = "%d",
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedReflectionReuse",
@@ -1534,7 +1534,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "From ReSTIR GI: also the path-traced Light Bounce's samples (needs Path Tracing).\n"
                      "Own ReSTIR: their own samples, reused over frames and between neighbours.",
           .labels = {"Off", "From ReSTIR GI", "Own ReSTIR"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedWaterReflections",
@@ -1545,7 +1545,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Rivers and lakes reflect what the rays find, also off screen. Off: screen-space reflections there.",
           .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->reflections != 0.f; },
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
           .is_visible = [] { return internal::water_pass; },
       },
       new renodx::utils::settings::Setting{

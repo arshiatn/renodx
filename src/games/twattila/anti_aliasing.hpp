@@ -71,7 +71,11 @@ enum class Method : uint8_t {
   SMAA_T2X = 3,
   TAA = 4,
   DLAA = 5,  // NVIDIA's, through the 64-bit helper (dlaa_bridge.hpp)
+  FSR = 6,   // AMD's, the same way (dlaa_helper/upscale_d3d12.hpp)
 };
+
+// An upscaler in the helper: the same frame path, textures, jitter, render scale and object motion for all.
+constexpr bool Upscales(Method method) { return method >= Method::DLAA; }
 
 // The object motion's types under their old names (the addons' MOTION_SHADERS).
 using object_motion::MotionKind;
@@ -643,7 +647,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     // Ray Reconstruction's guides from the G-buffer (normal, colour at the draw's first slots), once a frame.
     auto& objects = runtime.objects;
     auto& bridge = dlaa_bridge::bridge;
-    if (runtime.settings.method != Method::DLAA || !(runtime.settings.ray_reconstruction || runtime.settings.ray_traced_guides)
+    if (!Upscales(runtime.settings.method) || !(runtime.settings.ray_reconstruction || runtime.settings.ray_traced_guides)
         || objects.guides_frame == runtime.frame || !objects.rr_guides || !bridge.guides) {
       return {};
     }
@@ -997,17 +1001,18 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   bool continued = false;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (method == Method::SMAA_T2X || method == Method::TAA || method == Method::DLAA) {
+  if (method == Method::SMAA_T2X || method == Method::TAA || Upscales(method)) {
     if (runtime.camera_frame != runtime.frame || !runtime.scene_depth || runtime.applied_frame == runtime.frame) return;
     depth_view = CopyDepth(device.Get(), native, runtime.scene_depth.Get());
     if (depth_view == nullptr) return;
-    if (method == Method::DLAA
+    if (Upscales(method)
         && !dlaa_bridge::Prepare(device.Get(), objects.width, objects.height,
                                  runtime.settings.ray_reconstruction || runtime.settings.ray_traced_guides, runtime.settings.ray_tracing,
-                                 frame_generation::Format(), runtime.settings.ray_traced_reflections)) {
+                                 frame_generation::Format(), runtime.settings.ray_traced_reflections,
+                                 static_cast<uint32_t>(method) - static_cast<uint32_t>(Method::DLAA))) {
       return;
     }
-    continued = (objects.history_valid || method == Method::DLAA) && runtime.applied_frame + 1 == runtime.frame
+    continued = (objects.history_valid || Upscales(method)) && runtime.applied_frame + 1 == runtime.frame
                 && runtime.previous_camera.valid;
     const TaaConstants taa = {
         .view_projection = runtime.camera.view_projection,
@@ -1086,7 +1091,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
   ComPtr<ID3D11DepthStencilView> game_depth_target;
   bool targets_off = false;
-  if (method == Method::DLAA) {
+  if (Upscales(method)) {
     if (objects.frame_texture.Get() != target) {
       objects.frame_texture = target;
       objects.frame_srv.Reset();
@@ -1165,7 +1170,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   }
   bool resolved = true;
   std::optional<frame_generation::Inputs> generation;
-  if (method == Method::DLAA) {
+  if (Upscales(method)) {
     // NVIDIA's inputs into the shared textures (DLSS: the render size's top-left, its metrics for the preparation), its
     // DLAA / DLSS in the helper (the GPU waits for it), back into the result; no result (helper not ready or gone): the
     // frame as it is.
@@ -1188,10 +1193,11 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       objects.uploaded = settings;
     }
     // Ray Reconstruction (its guides written this frame): its camera, view = inverse projection x view-projection (the
-    // registers' matrices act on column vectors), given NVIDIA as row-vector matrices (their transposes).
+    // registers' matrices act on column vectors), given NVIDIA as row-vector matrices (their transposes). FSR and XeSS: the
+    // projection alone.
     dlaa_bridge::RayReconstruction reconstruction = {.preset = runtime.settings.ray_reconstruction_preset};
     const bool reconstruct = runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame;
-    if (reconstruct) {
+    if (reconstruct || method != Method::DLAA) {
       const Camera& camera = runtime.camera;
       for (size_t row = 0; row < 4; ++row) {
         for (size_t column = 0; column < 4; ++column) {
@@ -1204,7 +1210,8 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     }
     // The camera's jitter (y up) as it moves the picture (y down), as TAA's.
     resolved = dlaa_bridge::Evaluate(native, input_width, input_height, runtime.jitter[0], -runtime.jitter[1], !continued,
-                                     runtime.settings.dlaa_preset, reconstruct ? &reconstruction : nullptr);
+                                     runtime.settings.dlaa_preset, reconstruct ? &reconstruction : nullptr,
+                                     (method != Method::DLAA ? &reconstruction.view_to_clip : nullptr));
     if (resolved) {
       bind(objects.dlaa_finish.Get(),
            {dlaa_bridge::bridge.output.srv.Get(), frame_view, dlaa_bridge::bridge.motion.srv.Get(),
@@ -1280,7 +1287,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
 // this frame, and last frame's is known (the sun light draws': this frame's once they ran).
 inline bool MotionView(ID3D11Buffer* camera, object_motion::View* view) {
   const std::shared_lock lock(runtime.mutex);
-  if ((runtime.settings.method != Method::DLAA && runtime.settings.method != Method::TAA) || runtime.applied_frame + 1 != runtime.frame) return false;
+  if ((!Upscales(runtime.settings.method) && runtime.settings.method != Method::TAA) || runtime.applied_frame + 1 != runtime.frame) return false;
   const auto upload = std::ranges::find(runtime.uploads, camera, &Upload::buffer);
   const Camera& previous = (runtime.camera_frame == runtime.frame ? runtime.previous_camera : runtime.camera);
   if (upload == runtime.uploads.end() || !upload->camera.valid || !previous.valid) return false;
@@ -1415,13 +1422,14 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
     display = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
   }
   const bool temporal =
-      (settings.method == Method::SMAA_T2X || settings.method == Method::TAA || settings.method == Method::DLAA);
+      (settings.method == Method::SMAA_T2X || settings.method == Method::TAA || Upscales(settings.method));
   internal::temporal.store(temporal, std::memory_order_relaxed);
-  // Objects' motion: TAA's at once (all in this D3D11 addon; MotionView waits for TAA's first frame), DLSS's once NVIDIA's
+  // Objects' motion: TAA's at once (all in this D3D11 addon; MotionView waits for TAA's first frame), an upscaler's once the
   // helper runs (the menus before a battle draw none of it for nothing).
-  object_motion::SetActive(settings.object_motion && (settings.method == Method::TAA || (settings.method == Method::DLAA && dlaa_bridge::bridge.started)));
+  object_motion::SetActive(settings.object_motion && (settings.method == Method::TAA || (Upscales(settings.method) && dlaa_bridge::bridge.started)));
   frame_generation::Update({
-      .multiplier = (settings.method == Method::DLAA ? settings.frame_generation : 0u),
+      // Streamline's: NVIDIA's GPUs only (it would start at the set change).
+      .multiplier = ((Upscales(settings.method) && dlaa_bridge::OnNvidia()) ? settings.frame_generation : 0u),
       .reflex_boost = (settings.reflex == 2),
       .frame_limit = settings.frame_limit,
       .preset = settings.frame_preset,
@@ -1439,13 +1447,12 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   ++runtime.frame;
   frame_history::tonemapped.store(false, std::memory_order_relaxed);
   runtime.scene_depth.Reset();
-  // What ran last frame: DLSS once NVIDIA answered (render scale, jitter), TAA and SMAA T2x once they ran (jitter).
-  const bool ran = ((settings.method == Method::DLAA ? runtime.upscaled_frame : runtime.applied_frame) + 1 == runtime.frame);
-  // DLSS: below 100% once DLAA ran last frame (a frame without it, a menu, ends the scaling: nothing would stretch the 3D
-  // image to the display, also where DLSS cannot start, AMD and Intel GPUs), at the display's exact aspect (whole aspect
-  // units).
+  // What ran last frame: an upscaler once it answered (render scale, jitter), TAA and SMAA T2x once they ran (jitter).
+  const bool ran = ((Upscales(settings.method) ? runtime.upscaled_frame : runtime.applied_frame) + 1 == runtime.frame);
+  // An upscaler: below 100% once it ran last frame (a frame without it, a menu, ends the scaling: nothing would stretch the
+  // 3D image to the display, also where it cannot start), at the display's exact aspect (whole aspect units).
   const float render_scale = std::clamp(settings.render_scale, 0.01f, 1.f);
-  const bool scaled = settings.method == Method::DLAA && render_scale < 0.999f && ran && display.texture.width != 0;
+  const bool scaled = Upscales(settings.method) && render_scale < 0.999f && ran && display.texture.width != 0;
   const auto render = (scaled ? frame_history::AspectSize(display.texture.width, display.texture.height, render_scale)
                               : std::array<uint32_t, 2>{display.texture.width, display.texture.height});
   runtime.render_width = render[0];
@@ -1462,8 +1469,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   }
   frame_history::render_width.store(scaled ? runtime.render_width : 0u);
   frame_history::render_height.store(scaled ? runtime.render_height : 0u);
-  if ((settings.method == Method::TAA || settings.method == Method::DLAA) && ran) {
-    // NVIDIA: 8 phases at native size, 8 / scale^2 below it.
+  if ((settings.method == Method::TAA || Upscales(settings.method)) && ran) {
+    // NVIDIA and AMD: 8 phases at native size, 8 / scale^2 below it.
     const uint32_t least = (settings.method == Method::DLAA && settings.ray_reconstruction) ? internal::RR_PHASES : internal::TAA_PHASES;
     const uint32_t phases = (scaled ? std::max(least, static_cast<uint32_t>(std::ceil(8.f / (render_scale * render_scale)))) : least);
     const auto phase = static_cast<uint32_t>(runtime.frame % phases) + 1;

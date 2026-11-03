@@ -13,6 +13,7 @@
 #include <atomic>
 #include <bit>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -1604,6 +1605,26 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  // The GPU's vendor, once. RENODX_TW_FAKE_VENDOR (tests): another's. Before any setting is read this frame: DLSS never
+  // starts on another vendor's GPU, a saved DLSS or a preset's is FSR there.
+  if (auto& vendor = twattila::dlaa_bridge::gpu_vendor; vendor.load(std::memory_order_relaxed) == 0) {
+    auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&device);
+    Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
+    Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+    if (DXGI_ADAPTER_DESC description = {}; device != nullptr && SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(dxgi_device.GetAddressOf())))
+                                            && SUCCEEDED(dxgi_device->GetAdapter(adapter.GetAddressOf())) && SUCCEEDED(adapter->GetDesc(&description))) {
+      vendor.store(description.VendorId);
+      std::array<char, 16> fake = {};
+      if (GetEnvironmentVariableA("RENODX_TW_FAKE_VENDOR", fake.data(), static_cast<DWORD>(fake.size())) != 0) {
+        vendor.store(std::strtoul(fake.data(), nullptr, 16));
+      }
+      renodx::utils::log::i("[Total War] GPU vendor ", std::format("0x{:04X}", vendor.load()));
+    }
+  }
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", 6.f}});
+  }
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -2058,7 +2079,7 @@ void ConfigureAddon() {
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
   // Appended Settings (Ambient Occlusion, Global Illumination)
-  twattila::lighting_settings::Append(&settings, &shader_injection, [] { return rt_sliders.light_bounce != 0.f && aa_sliders.method == 5.f; });
+  twattila::lighting_settings::Append(&settings, &shader_injection, [] { return rt_sliders.light_bounce != 0.f && twattila::feature_settings::Upscaling(aa_sliders); });
 
   // Appended Settings (Screen-Space Shadows, Anti-Aliasing: twattila/feature_settings.hpp)
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);

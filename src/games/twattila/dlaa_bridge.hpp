@@ -155,6 +155,7 @@ struct Bridge {
   // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
   // accumulation and filter) leave its noise to it.
   bool reconstructing = false;
+  uint32_t upscaler = UPSCALER_DLSS;
   HANDLE mapping = nullptr;
   HANDLE request = nullptr;
   HANDLE done = nullptr;
@@ -240,6 +241,15 @@ struct Bridge {
 };
 
 static Bridge bridge;
+
+// The game's GPU's PCI vendor (the addon's first present; 0: not known yet, or a game that does not ask).
+inline std::atomic<uint32_t> gpu_vendor = 0;
+
+// DLSS, Ray Reconstruction and Streamline's frame generation start on NVIDIA's GPUs only.
+inline bool OnNvidia() {
+  const uint32_t vendor = gpu_vendor.load(std::memory_order_relaxed);
+  return vendor == 0 || vendor == 0x10DE;
+}
 
 namespace internal {
 
@@ -346,7 +356,7 @@ inline bool Start(ID3D11Device* device) {
     WaitForSingleObject(process, INFINITE);
     if (const uint64_t value = bridge.waiting.exchange(0); value != 0) Rescue(value);
   }).detach();
-  bridge.status = "DLAA: starting NVIDIA's helper";
+  bridge.status = "DLAA: starting the helper";
   renodx::utils::log::i("[Total War] DLAA: renodx-tw-dlaa64.exe started.");
   return true;
 }
@@ -374,7 +384,7 @@ inline bool Answer(DWORD timeout = 5000) {
   QueryPerformanceCounter(&ended);
   bridge.answer_ticks += ended.QuadPart - started.QuadPart;
   if (const uint64_t waited = bridge.waiting.exchange(0); waited > (answered ? shared.done_value : 0)) Rescue(waited);
-  if (!answered) return Fail("DLAA: NVIDIA's helper did not answer (off).");
+  if (!answered) return Fail("DLAA: the helper did not answer (off).");
   bridge.answered = true;
   // The value it signalled after its work (one higher; also after a failure, so the next request starts above it).
   bridge.value = shared.done_value;
@@ -386,9 +396,9 @@ inline bool Answer(DWORD timeout = 5000) {
 
 // The shared objects for `width` x `height` on `device` (with Ray Reconstruction's guides when `guides`, ray tracing's
 // textures when `ray_tracing`, frame generation's in `fg_format` unless unknown, the reflections' with ray tracing when
-// `reflections`; made again when any changes); false: not available.
+// `reflections`, `upscaler` the helper's UPSCALER_*; made again when any changes); false: not available.
 inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool guides = false, bool ray_tracing = false,
-                    DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false) {
+                    DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false, uint32_t upscaler = UPSCALER_DLSS) {
   reflections = reflections && ray_tracing;
   if (!internal::Start(native_device)) return false;
   ComPtr<ID3D11Device5> device;
@@ -399,7 +409,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   // once and nothing is in order (ATN 2026-10-29: Ray Reconstruction and frame generation broken after a freeze), so all
   // are made again with a new fence.
   if (bridge.device == device && bridge.width == width && bridge.height == height && bridge.guides == guides
-      && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format && bridge.reflections == reflections
+      && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format && bridge.reflections == reflections && bridge.upscaler == upscaler
       && (!bridge.fence || bridge.fence->GetCompletedValue() != UINT64_MAX)) {
     return true;
   }
@@ -589,6 +599,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   shared.fg_format = static_cast<uint32_t>(fg_format);
   shared.fg_failed = 0;
   shared.rt_flags = (bridge.details ? RT_DETAILS : 0u);
+  shared.upscaler = upscaler;
   ++shared.generation;
   bridge.width = width;
   bridge.height = height;
@@ -596,6 +607,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.ray_tracing = ray_tracing;
   bridge.fg_format = fg_format;
   bridge.reflections = reflections;
+  bridge.upscaler = upscaler;
   return true;
 }
 
@@ -611,7 +623,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   auto& shared = *bridge.shared;
   if (shared.ready == 0) {
     if (WaitForSingleObject(bridge.process, 0) == WAIT_OBJECT_0) {
-      return Fail(std::string("DLAA: NVIDIA's helper stopped (") + shared.status + "; renodx-tw-dlaa64.log next to the addon).");
+      return Fail(std::string("DLAA: the helper stopped (") + shared.status + "; renodx-tw-dlaa64.log next to the addon).");
     }
     return false;
   }
@@ -889,8 +901,10 @@ inline std::pair<uint32_t, uint64_t> RayTracingLeftOut() {
 // The inputs (written on `context` before this; their top-left `input_width` x `input_height`) through NVIDIA's DLAA
 // (or DLSS, when that is below the textures' size; Ray Reconstruction with `ray_reconstruction` and the guides) into
 // `bridge.output`, which the game's GPU then waits for; false: no result this frame (helper not ready, or no answer).
+// FSR and XeSS take the camera's near, far and field of view from `view_to_clip` (row vectors).
 inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_height, float jitter_x, float jitter_y,
-                     bool reset, uint32_t preset, const RayReconstruction* ray_reconstruction = nullptr) {
+                     bool reset, uint32_t preset, const RayReconstruction* ray_reconstruction = nullptr,
+                     const std::array<float, 16>* view_to_clip = nullptr) {
   const bool evaluated = internal::Request(context, EVALUATE, [&](Shared* shared) {
     shared->fg_request = 0;
     shared->rt_request = 0;
@@ -908,6 +922,7 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
       std::copy_n(ray_reconstruction->world_to_view.begin(), 16, shared->world_to_view);
       std::copy_n(ray_reconstruction->view_to_clip.begin(), 16, shared->view_to_clip);
     }
+    if (view_to_clip != nullptr) std::copy_n(view_to_clip->begin(), 16, shared->view_to_clip);
     shared->rr_hit_distance_written = (shared->ray_reconstruction != 0 && bridge.hit_distance_written) ? 1u : 0u;
   });
   bridge.hit_distance_written = false;

@@ -94,6 +94,9 @@ inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
 // Performance; then Custom.
 constexpr std::array<float, 6> DLSS_MODE_SCALES = {1.f, 0.77f, 2.f / 3.f, 0.58f, 0.5f, 1.f / 3.f};
 
+// An upscaler in the helper: DLSS, FSR or XeSS (only Attila's list has more than DLSS).
+inline bool Upscaling(const AaSliders& sliders) { return sliders.method >= 5.f; }
+
 inline float RenderScale(const AaSliders& sliders) {
   const auto mode = static_cast<size_t>(std::clamp(sliders.dlss_mode, 0.f, static_cast<float>(DLSS_MODE_SCALES.size())));
   return (mode < DLSS_MODE_SCALES.size()) ? DLSS_MODE_SCALES[mode] : std::clamp(sliders.render_scale, 1.f, 100.f) / 100.f;
@@ -101,7 +104,7 @@ inline float RenderScale(const AaSliders& sliders) {
 
 inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
   return {
-      .method = static_cast<twattila::anti_aliasing::Method>(std::clamp(static_cast<int>(sliders.method), 0, 5)),
+      .method = static_cast<twattila::anti_aliasing::Method>(std::clamp(static_cast<int>(sliders.method), 0, 6)),
       .quality = static_cast<int>(sliders.quality),
       .extra_sharpness = (sliders.extra_sharpness != 0.f),
       .history_weight = sliders.taa_strength,
@@ -110,7 +113,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .dlaa_preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(sliders.dlaa_preset), 0, 2)],
       .render_scale = RenderScale(sliders),
       .effects_at_output = (sliders.effects_at_output != 0.f),
-      .ray_reconstruction = (sliders.ray_reconstruction != 0.f),
+      .ray_reconstruction = sliders.method == 5.f && sliders.ray_reconstruction != 0.f,
       // NVSDK_NGX_RayReconstruction_Hint_Render_Preset Default, D, E, F.
       .ray_reconstruction_preset = std::array<uint32_t, 5>{0u, 0u, 4u, 5u, 6u}[std::clamp(static_cast<int>(sliders.ray_reconstruction), 0, 4)],
       // 2-6 frames shown per rendered frame, 1 Dynamic (frame_generation.hpp), 0 off.
@@ -365,7 +368,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .tooltip = "DLAA: the game at your resolution. The others draw it smaller and DLSS upscales it (faster).",
         .labels = {"DLAA (100%)", "Ultra Quality (77%)", "Quality (66.7%)", "Balanced (58%)", "Performance (50%)",
                    "Ultra Performance (33.3%)", "Custom"},
-        .is_enabled = [sliders] { return sliders->method == 5.f; },
+        .is_enabled = [sliders] { return Upscaling(*sliders); },
     });
     settings->push_back(new renodx::utils::settings::Setting{
         .key = "AntiAliasingRenderScale",
@@ -377,7 +380,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .min = 1.f,
         .max = 100.f,
         .format = "%.0f%%",
-        .is_enabled = [sliders] { return sliders->method == 5.f; },
+        .is_enabled = [sliders] { return Upscaling(*sliders); },
         .is_visible = [sliders] { return sliders->dlss_mode >= static_cast<float>(DLSS_MODE_SCALES.size()); },
     });
     settings->push_back(new renodx::utils::settings::Setting{
@@ -391,7 +394,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                    "Matched: as sharp as at your display's resolution. Sharper / Sharpest: one / two steps more\n"
                    "(more detail, can shimmer).",
         .labels = {"Off (the game's own)", "Matched", "Sharper", "Sharpest"},
-        .is_enabled = [sliders] { return sliders->method == 5.f && RenderScale(*sliders) < 1.f; },
+        .is_enabled = [sliders] { return Upscaling(*sliders) && RenderScale(*sliders) < 1.f; },
     });
     settings->push_back(new renodx::utils::settings::Setting{
         .key = "AntiAliasingEffectsAtOutput",
@@ -403,7 +406,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .tooltip = "While DLSS renders below 100%, ambient occlusion, Light Bounce, reflections and shadow softness\n"
                    "keep their 100% detail. Looks better, can cost some performance.",
         .labels = {"Off", "On"},
-        .is_enabled = [sliders] { return sliders->method == 5.f && RenderScale(*sliders) < 1.f; },
+        .is_enabled = [sliders] { return Upscaling(*sliders) && RenderScale(*sliders) < 1.f; },
     });
     settings->push_back(new renodx::utils::settings::Setting{
         .key = "AntiAliasingObjectMotion",
@@ -415,7 +418,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .tooltip = "Soldiers, props and cloth tell DLSS how they move: sharper while they move.\n"
                    "Off: faster with many soldiers on screen (they can smear a little when moving).",
         .labels = {"Off", "On"},
-        .is_enabled = [sliders] { return sliders->method == 5.f; },
+        .is_enabled = [sliders] { return Upscaling(*sliders); },
     });
     settings->push_back(new renodx::utils::settings::Setting{
         .key = "AntiAliasingDebugView",
@@ -428,7 +431,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                    "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
                    "No Camera Motion: DLSS gets the objects' motion alone.",
         .labels = {"Off", "Motion Vectors", "Object Motion", "No Camera Motion"},
-        .is_enabled = [sliders] { return sliders->method == 5.f; },
+        .is_enabled = [sliders] { return Upscaling(*sliders); },
     });
   }
   if (ray_reconstruction) {
@@ -459,7 +462,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                                        "Needs DLAA, a windowed or borderless game,\n"
                                                        "and Streamline's files next to renodx-tw-dlaa64.exe.",
                                             .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
-                                            .is_enabled = [sliders] { return sliders->method == 5.f; },
+                                            .is_enabled = [sliders] { return Upscaling(*sliders); },
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "Reflex",
@@ -485,7 +488,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .min = 0.f,
                                             .max = 240.f,
                                             .format = "%d fps",
-                                            .is_enabled = [sliders] { return sliders->reflex != 0.f || (sliders->method == 5.f && sliders->frame_generation != 0.f); },
+                                            .is_enabled = [sliders] { return sliders->reflex != 0.f || (Upscaling(*sliders) && sliders->frame_generation != 0.f); },
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "FrameGenerationHudRecomposition",
@@ -496,7 +499,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .section = AA_SECTION,
                                             .tooltip = "Lays the HUD over the generated frames instead of warping it with the scene (no HUD smears).",
                                             .labels = {"Off", "On"},
-                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                            .is_enabled = [sliders] { return Upscaling(*sliders) && sliders->frame_generation != 0.f; },
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "FrameGenerationPreset",
@@ -510,7 +513,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                                        "C (Lite): lighter but lower quality, HUD recomposition off.\n"
                                                        "Saved in the NVIDIA driver profile of renodx-tw-dlaa64.exe; applies after restarting the game.",
                                             .labels = {"Driver's", "A", "B", "C"},
-                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                            .is_enabled = [sliders] { return Upscaling(*sliders) && sliders->frame_generation != 0.f; },
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "FrameGenerationDebugView",
@@ -523,7 +526,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                                        "picture without the HUD (any HUD left in it smears). UI Layer: the HUD laid over the\n"
                                                        "generated frames, in magenta (the rest moves).",
                                             .labels = {"Off", "HUD-less Image", "UI Layer"},
-                                            .is_enabled = [sliders] { return sliders->method == 5.f && sliders->frame_generation != 0.f; },
+                                            .is_enabled = [sliders] { return Upscaling(*sliders) && sliders->frame_generation != 0.f; },
                                         },
                                     });
 }

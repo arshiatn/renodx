@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 21;
+constexpr uint32_t VERSION = 22;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -209,6 +209,10 @@ constexpr uint32_t RT_REFLECTIONS_LIGHT = 2048;
 // Own Sky Rays (with RT_PATH_AMBIENT; older helpers ignore it): Path-Traced AO's sky past ReSTIR GI's reservoirs, the
 // plain mean of each texel's rays.
 constexpr uint32_t RT_PATH_SKY_APART = 4096;
+// The upscaler (v22): NVIDIA's DLSS and Ray Reconstruction, AMD's FSR or Intel's XeSS (dlaa_helper/upscale_d3d12.hpp).
+constexpr uint32_t UPSCALER_DLSS = 0;
+constexpr uint32_t UPSCALER_FSR = 1;
+constexpr uint32_t UPSCALER_XESS = 2;
 
 struct Shared {
   uint32_t version = VERSION;
@@ -398,11 +402,16 @@ struct Shared {
   // The addon's (v19): RT_COLOURED_SHADOWS' output (RGBA8 at rt_visibility's size: 1 - the sun light's colour filter, 0
   // none), which a trace with it writes every pixel.
   uint64_t rt_tint = 0;
+  // The addon's (v22): which upscaler serves this set of textures (UPSCALER_*; a change makes a new set), which frame
+  // generation backend (0: Streamline's DLSS-G, the only one yet). FSR and XeSS read `view_to_clip` of every evaluation.
+  uint32_t upscaler = 0;
+  uint32_t fg_backend = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 19) return sizeof(Shared);
+  if (version >= 22) return sizeof(Shared);
+  if (version >= 19) return offsetof(Shared, upscaler);
   if (version == 18) return offsetof(Shared, rt_tint);
   if (version == 17) return offsetof(Shared, rt_light_size);
   if (version == 16) return offsetof(Shared, rr_hit_distance);

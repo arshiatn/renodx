@@ -11,8 +11,8 @@
 // addon asks with its guides, runs through D3D12 (rr_d3d12.hpp; nvngx_dlssd.dll next to nvngx_dlss.dll). Ray tracing
 // requests (bridge v4: the addon's rt_scene.hpp) run on another D3D12 device (rt_d3d12.hpp). Frame generation requests
 // (bridge v5: the addon's frame_generation.hpp, one per game present) present through Streamline's DLSS Frame Generation
-// into a child window over the game's (fg_d3d12.hpp). It quits with the game. It answers addons of bridge versions 2
-// to 17.
+// into a child window over the game's (fg_d3d12.hpp). AMD's FSR and Intel's XeSS (bridge v22) run on D3D12 too, in DLSS's
+// place (upscale_d3d12.hpp). It quits with the game. It answers addons from bridge version OLDEST_VERSION on.
 // Build (x64): see twattila/README.md.
 #include <windows.h>
 
@@ -42,6 +42,7 @@
 #include "./fg_d3d12.hpp"
 #include "./rr_d3d12.hpp"
 #include "./rt_d3d12.hpp"
+#include "./upscale_d3d12.hpp"
 
 using Microsoft::WRL::ComPtr;
 
@@ -129,6 +130,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // after a GPU reset removed it).
   auto reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
   bool reconstruction_open = false;
+  // FSR or XeSS (v22 addons choosing one): opened with their first request of a set; NGX stays out of it (DLSS and Ray
+  // Reconstruction are for NVIDIA's GPUs: their licence).
+  auto upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+  bool upscaler_tried = false;
+  bool upscaler_open = false;
+  bool upscaler_live = false;
+  const auto other_upscaler = [&] { return version >= 22 && shared->upscaler != twattila::dlaa_bridge::UPSCALER_DLSS; };
   // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there. After a GPU reset removed
   // it, a new one with the Experimental options that build the scene in their own way paused until the game restarts; a
   // second removal leaves ray tracing off (ATN 2026-10-29: a hang, then three new devices lost at once, and Windows then
@@ -138,13 +146,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   bool scene_open = false;
   // Ray tracing's and Ray Reconstruction's devices let go after IDLE_RELEASE without a request of theirs (gigabytes of the
   // GPU's memory: 15 GB stayed after RT/PT was turned off, 7.5 GB with it never on, ATN 2026-11-01), opened again with
-  // their next one (the addon then captures its scene again: rt_device). Frame generation's resources, swap chain and window
+  // their next one (the addon then captures its scene again: rt_device). FSR's and XeSS's too. Frame generation's resources, swap chain and window
   // too, once its set has no textures of it: turned off in the settings, not ReShade's menu open (1.5 GB stayed; ~0.6 GB of
   // it, Streamline and its device, still does: FreeResources).
   constexpr auto IDLE_RELEASE = std::chrono::seconds(10);
   auto rt_used = std::chrono::steady_clock::now();
   auto rr_used = rt_used;
   auto fg_used = rt_used;
+  auto upscale_used = rt_used;
   bool generation_resources = false;
   bool scene_idle = false;
   bool reconstruction_idle = false;
@@ -315,6 +324,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       reconstruction_idle = true;
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] Ray Reconstruction off for 10 s: its memory released.");
     }
+    if (upscaler_live && now - upscale_used > IDLE_RELEASE) {
+      upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+      upscaler_tried = false;
+      upscaler_open = false;
+      upscaler_live = false;
+      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] FSR / XeSS off for 10 s: their memory released.");
+    }
     if (generation_resources && now - fg_used > IDLE_RELEASE) {
       generation->FreeResources();
       generation_resources = false;
@@ -355,9 +371,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       motion.Reset();
       output.Reset();
       fence.Reset();
+      upscaler->Close();
+      upscaler_tried = false;
+      upscaler_open = false;
       // The guides serve Ray Reconstruction and the paths.
       reconstruction_open = false;
-      if (version >= 3 && shared->diffuse_albedo != 0 && !reconstruction_idle) {
+      if (version >= 3 && shared->diffuse_albedo != 0 && !reconstruction_idle && !other_upscaler()) {
         open_reconstruction();
       } else {
         reconstruction->Close();
@@ -396,6 +415,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     // pass without them).
     if (reconstruction_open && reconstruction->Lost()) open_reconstruction();
     if (generation_open && generation->Lost()) open_generation();
+    if (upscaler_open && upscaler->Lost()) upscaler_tried = false;
     const auto now = std::chrono::steady_clock::now();
     if (shared->rt_request != 0) {
       rt_used = now;
@@ -475,6 +495,37 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         }
         publish();
       }
+    } else if (fence && other_upscaler()) {
+      // FSR or XeSS (D3D12): its queue waits for the addon's value and signals the next.
+      upscale_used = now;
+      if (!upscaler_tried) {
+        upscaler_tried = true;
+        if (upscaler->Lost()) ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed FSR's / XeSS's device: a new one.");
+        if (upscaler->Lost() || upscaler->Backend() != shared->upscaler) upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+        upscaler_live = true;
+        upscaler_open = upscaler->Initialize(adapter.Get(), folder, shared->upscaler)
+                        && upscaler->Open({shared->color, shared->depth, shared->motion, shared->output}, shared->fence);
+      }
+      if (std::exchange(super_resolution_ran, false)) backend.Reset();
+      reconstruction->ReleaseFeature();
+      twattila::dlaa_helper::Request upscale = {
+          .value = shared->value,
+          .width = shared->width,
+          .height = shared->height,
+          .output_width = shared->output_width,
+          .output_height = shared->output_height,
+          .jitter_x = shared->jitter_x,
+          .jitter_y = shared->jitter_y,
+          .reset = (shared->reset != 0),
+      };
+      std::copy_n(shared->view_to_clip, 16, upscale.view_to_clip.begin());
+      evaluated = upscaler_open && upscaler->Evaluate(upscale);
+      if (!upscaler_open) {
+        context4->Wait(fence.Get(), shared->value);
+        context4->Signal(fence.Get(), shared->value + 1);
+        context->Flush();
+      }
+      set_status(upscaler->Status().c_str());
     } else if (fence && reconstruction_open && shared->ray_reconstruction != 0) {
       // Ray Reconstruction (D3D12): its queue waits for the addon's value and signals the next.
       twattila::dlaa_helper::Request reconstruct = {

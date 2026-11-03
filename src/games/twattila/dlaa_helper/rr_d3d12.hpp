@@ -44,6 +44,8 @@ enum Input : size_t {
   ROUGHNESS,
   INPUT_COUNT,
 };
+// What FSR and XeSS read of them (upscale_d3d12.hpp).
+constexpr size_t UPSCALE_INPUTS = OUTPUT + 1;
 
 // Requests in flight: each with its own command allocator and list.
 constexpr size_t SLOTS = 3;
