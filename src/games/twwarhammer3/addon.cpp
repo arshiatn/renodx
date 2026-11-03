@@ -791,16 +791,20 @@ void OnDestroyDevice(reshade::api::device* device) {
       },                                    \
   }
 
-// t00: starts the AA chain in our texture (replaces UpgradeRTVReplaceShader here).
-#define AATonemapShader(value)                   \
-  {                                              \
-      value,                                     \
-      {                                          \
-          .crc32 = value,                        \
-          .code = __##value,                     \
-          .on_draw = &aa_target::OnDrawTonemap,  \
-          .on_drawn = &aa_target::OnDrawnRestore, \
-      },                                         \
+// t00: starts the AA chain in our texture (replaces UpgradeRTVReplaceShader here). The Debug Views while that texture is
+// still its target (their tests want 16 bits at the display's size; the game's own is 8-bit).
+#define AATonemapShader(value)                                     \
+  {                                                                \
+      value,                                                       \
+      {                                                            \
+          .crc32 = value,                                          \
+          .code = __##value,                                       \
+          .on_draw = &aa_target::OnDrawTonemap,                    \
+          .on_drawn = [](auto* cmd_list) {                         \
+            twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); \
+            twattila::rt_scene::OnTonemapDrawn(cmd_list);          \
+            aa_target::OnDrawnRestore(cmd_list); },                \
+      },                                                           \
   }
 
 // Vignette / lens flares / cutscene: follow t00 into our texture.
@@ -2118,8 +2122,9 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  // The DLSS rows' values in the shape of Attila's rows.
-  aa_sliders.method = (dlss_sliders.enabled != 0.f) ? 5.f : 0.f;
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  // The DLSS rows' values in the shape of Attila's rows; DLSS never starts on another vendor's GPU.
+  aa_sliders.method = (dlss_sliders.enabled != 0.f && twattila::dlaa_bridge::OnNvidia()) ? 5.f : 0.f;
   aa_sliders.dlaa_preset = dlss_sliders.preset;
   aa_sliders.ray_reconstruction = dlss_sliders.ray_reconstruction;
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
@@ -2546,6 +2551,11 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::feature_settings::HELPER_CREDITS,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
           .section = "About",
       },
@@ -2564,6 +2574,14 @@ void ConfigureAddon() {
           .group = "line_1",
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarwarhammer3/mods/408"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
       },
   });
 

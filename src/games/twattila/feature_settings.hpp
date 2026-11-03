@@ -95,6 +95,16 @@ inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
 // Performance; then Custom.
 constexpr std::array<float, 6> DLSS_MODE_SCALES = {1.f, 0.77f, 2.f / 3.f, 0.58f, 0.5f, 1.f / 3.f};
 
+// About's line for what ships with the helper.
+constexpr const char* HELPER_CREDITS =
+    "NVIDIA DLSS (Super Resolution, Ray Reconstruction and Frame Generation), NVIDIA Reflex, Streamline, "
+    "NVAPI, the Opacity Micro-Map SDK, SHaRC and NRD: NVIDIA Corporation, under NVIDIA's licenses (this software "
+    "contains source code provided by NVIDIA Corporation). NVIDIA, GeForce "
+    "RTX, DLSS and Reflex are trademarks and/or registered trademarks of NVIDIA Corporation. DirectX "
+    "Agility SDK: Microsoft. Ray tracing: ideas from Embark Studios' kajiya (MIT) and Bustanity's "
+    "Phantom FX (MIT). AMD FSR: Advanced Micro Devices, Inc. (MIT License). XeSS: Intel Corporation (Intel "
+    "Simplified Software License). Every license is in the licenses folder.";
+
 // An upscaler in the helper: DLSS, FSR or XeSS (only Attila's list has more than DLSS).
 inline bool Upscaling(const AaSliders& sliders) { return sliders.method >= 5.f; }
 

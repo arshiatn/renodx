@@ -16,6 +16,8 @@
 #include <atomic>
 #include <cfloat>
 #include <cmath>
+#include <cstdlib>
+#include <format>
 #include <mutex>
 #include <thread>
 #include <string_view>
@@ -257,6 +259,23 @@ inline std::atomic<uint32_t> gpu_vendor = 0;
 inline bool OnNvidia() {
   const uint32_t vendor = gpu_vendor.load(std::memory_order_relaxed);
   return vendor == 0 || vendor == 0x10DE;
+}
+
+// The game's GPU's vendor from its device (ReShade's proxy or not), once. RENODX_TW_FAKE_VENDOR (tests): another's.
+inline void ReadGpuVendor(ID3D11Device* device) {
+  if (gpu_vendor.load(std::memory_order_relaxed) != 0) return;
+  renodx::utils::directx::NativeFromReShadeProxy(&device);
+  ComPtr<IDXGIDevice> dxgi_device;
+  ComPtr<IDXGIAdapter> adapter;
+  if (DXGI_ADAPTER_DESC description = {}; device != nullptr && SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(dxgi_device.GetAddressOf())))
+                                          && SUCCEEDED(dxgi_device->GetAdapter(adapter.GetAddressOf())) && SUCCEEDED(adapter->GetDesc(&description))) {
+    gpu_vendor.store(description.VendorId);
+    std::array<char, 16> fake = {};
+    if (GetEnvironmentVariableA("RENODX_TW_FAKE_VENDOR", fake.data(), static_cast<DWORD>(fake.size())) != 0) {
+      gpu_vendor.store(std::strtoul(fake.data(), nullptr, 16));
+    }
+    renodx::utils::log::i("[Total War] GPU vendor ", std::format("0x{:04X}", gpu_vendor.load()));
+  }
 }
 
 namespace internal {

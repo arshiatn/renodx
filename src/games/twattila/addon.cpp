@@ -1620,23 +1620,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  // The GPU's vendor, once. RENODX_TW_FAKE_VENDOR (tests): another's. Before any setting is read this frame: DLSS never
-  // starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on Intel's, else FSR.
-  if (auto& vendor = twattila::dlaa_bridge::gpu_vendor; vendor.load(std::memory_order_relaxed) == 0) {
-    auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&device);
-    Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
-    Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
-    if (DXGI_ADAPTER_DESC description = {}; device != nullptr && SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(dxgi_device.GetAddressOf())))
-                                            && SUCCEEDED(dxgi_device->GetAdapter(adapter.GetAddressOf())) && SUCCEEDED(adapter->GetDesc(&description))) {
-      vendor.store(description.VendorId);
-      std::array<char, 16> fake = {};
-      if (GetEnvironmentVariableA("RENODX_TW_FAKE_VENDOR", fake.data(), static_cast<DWORD>(fake.size())) != 0) {
-        vendor.store(std::strtoul(fake.data(), nullptr, 16));
-      }
-      renodx::utils::log::i("[Total War] GPU vendor ", std::format("0x{:04X}", vendor.load()));
-    }
-  }
+  // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS
+  // on Intel's, else FSR.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
@@ -2163,13 +2149,7 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "NVIDIA DLSS (Super Resolution, Ray Reconstruction and Frame Generation), NVIDIA Reflex, Streamline, "
-                   "NVAPI, the Opacity Micro-Map SDK, SHaRC and NRD: NVIDIA Corporation, under NVIDIA's licenses (this software "
-                   "contains source code provided by NVIDIA Corporation). NVIDIA, GeForce "
-                   "RTX, DLSS and Reflex are trademarks and/or registered trademarks of NVIDIA Corporation. DirectX "
-                   "Agility SDK: Microsoft. Ray tracing: ideas from Embark Studios' kajiya (MIT) and Bustanity's "
-                   "Phantom FX (MIT). AMD FSR: Advanced Micro Devices, Inc. (MIT License). XeSS: Intel Corporation (Intel "
-                   "Simplified Software License). Every license is in the licenses folder.",
+          .label = twattila::feature_settings::HELPER_CREDITS,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
