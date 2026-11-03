@@ -2,6 +2,16 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twrome2.addon32` (32-bit game).
 
+## v46 (2026-11-03, built only, not run in game)
+
+- **Frame generation with Output SDR**: the picture no longer turns red (as Attila).
+- **Frame generation with Output scRGB**: works when turned on in game, no restart (as Attila). Ship with the helper built from
+  this commit or later, not helper71.
+- **Gamma Correction** (Rendering Mode SDR, on by default). On: any in-game Gamma shown as gamma 2.2, today's picture. Off:
+  the game's own picture at the in-game Gamma. Rendering Mode SDR on Output SDR ignores Paper White (as Attila).
+- **Fog & Sky Smoothing** (Off / Low / Medium / High + Strength, off by default, as Attila): the sky cube's vertical lines in thick fog. The fog shader 0x259AEC56 is now replaced.
+- **Extra in Rendering Mode SDR**: Bloom, Lens Flare, God Rays, Vignette, DOF and Distortion work there (at 1 the picture is unchanged). Film Grain and Indicators stay HDR-only.
+
 ## v45 (2026-10-28, untested in game)
 
 - Screen-space shadows fade out from 40% to 60% of the far plane's distance (Attila v93: the campaign's sky backdrop

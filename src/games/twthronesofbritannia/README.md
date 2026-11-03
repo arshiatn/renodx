@@ -2,6 +2,17 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twthronesofbritannia.addon32` (32-bit game).
 
+## v46 (2026-11-03, built only, not run in game)
+
+- **Frame generation with Output SDR**: the picture no longer turns red (as Attila).
+- **Frame generation with Output scRGB**: works when turned on in game, no restart (as Attila). Ship with the helper built from
+  this commit or later, not helper71.
+- **Gamma Correction** (Rendering Mode SDR, on by default, as Attila; its frame is gamma 2.0). On: any in-game Gamma shown as
+  gamma 2.2: on an HDR output, darks and the UI get darker than before. Off: the game's own picture. Rendering Mode SDR on
+  Output SDR ignores Paper White.
+- **Fog & Sky Smoothing** (Off / Low / Medium / High + Strength, off by default, as Attila): the sky cube's vertical lines in thick fog. Attila's fog shader, now with Thrones' constants.
+- **Extra in Rendering Mode SDR**: Bloom, Lens Flare, God Rays, Vignette and Distortion work there (at 1 the picture is unchanged). Film Grain and Indicators stay HDR-only.
+
 ## v45 (2026-10-28, untested in game)
 
 - Screen-space shadows fade out from 40% to 60% of the far plane's distance (Attila v93: the campaign's sky backdrop

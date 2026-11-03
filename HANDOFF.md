@@ -69,7 +69,8 @@ Older handoff (other games, Ryse HDR history): `C:\Users\arshi\Downloads\HANDOFF
 ATN's test of v2.01i: FG with Output SDR correct, Gamma Correction correct in SDR. Their words, short:
 - [x] 1 Fog & Sky Smoothing stronger: Low (what we have), Medium, High; and a slider above it, a multiplier 0 to 2.
 - [x] 2 SDR: let people change everything in Extra but AutoHDR too (make sure they have effects).
-- [ ] 3 FG SDR fix, Gamma Correction, Fog & Sky Smoothing: "important for our other TW games too": port.
+- [x] 3 FG SDR fix, Gamma Correction, Fog & Sky Smoothing: "important for our other TW games too": port.
+      DONE 2026-11-03: FG SDR + FG scRGB in Rome II, Thrones, Troy, Pharaoh, WH1, WH2; Gamma + Paper White gate on Output SDR + Extra's sliders in SDR in those + WH3; Smoothing in Rome II, Thrones, WH1. All 8 addons build, 60/60 harness modes; NOT run in game. Film Grain, Indicators, Troy / Pharaoh Sharpening (RenoDX's own) stay HDR-only. Left to ATN: FG + Output SDR in WH3 / Shogun 2, WH1's fog drawn at all? Their zips need a helper newer than helper71.
 - [x] 4 RTAO range 6 m by default (every other preset too).
 - [x] 5 GitHub link at the bottom (About); a red notice for people who only have the HDR addon: for DLSS / RT / PT download everything from git / Nexus.
 - [x] 6 Motion vectors on in DLSS are very hard on the CPU when lots of soldiers fight at one spot (off ~40 fps, on 24). Improve. Trace: Attila\debug38\ctesphon full battle (won)
@@ -105,7 +106,7 @@ ATN's words, short:
       and RT/PT on AMD / Intel with NVIDIA NRD (v120 item 4). Attila is 32-bit: all of them in the 64-bit helper like DLSS.
 - [ ] 2a With RT/PT on AMD / Intel (item 2): the RT/PT preset turns DLSS Ray Reconstruction on where it was off (graphics_page.hpp,
       since 2026-11-01): harmless today (DLSS and RT do not start there); by then it must follow the GPU (their denoiser instead).
-- [x] 2b DONE 2026-11-03 (Attila only; helper unchanged; fg_hdr10 pass; Auto stays HDR10; other TW games: same port pending, item 3; not run in game). Frame generation on scRGB without a restart (ATN 2026-11-01: do it Monday): turned on in game it did nothing (the swap
+- [x] 2b DONE 2026-11-03 (Attila only; helper unchanged; fg_hdr10 pass; Auto stays HDR10; other TW games: ported 2026-11-03 with item 3, Auto stays scRGB there; WH3 / Shogun 2 have another FG module, not ported; not run in game). Frame generation on scRGB without a restart (ATN 2026-11-01: do it Monday): turned on in game it did nothing (the swap
       chain was made scRGB; Streamline takes no scRGB). v123 stopgap: Output Auto = HDR10 from the start (OnCreateSwapchain), a
       red note to restart with Output scRGB. The change: the helper's FG swap chain always HDR10, the addon converting scRGB to
       PQ for fg_frame / fg_hudless; then Auto can go back to scRGB (ask ATN) and the note goes.

@@ -2,6 +2,16 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer.addon64`.
 
+## v35 (2026-11-03, built only, not run in game)
+
+- **Frame generation with Output SDR**: the picture no longer turns red (as Attila).
+- **Frame generation with Output scRGB**: works when turned on in game, no restart (as Attila). Ship with the helper built from
+  this commit or later, not helper71.
+- **Gamma Correction** (Rendering Mode SDR, on by default). On: any in-game Gamma shown as gamma 2.2, today's picture. Off:
+  the game's own picture at the in-game Gamma. Rendering Mode SDR on Output SDR ignores Paper White (as Attila).
+- **Fog & Sky Smoothing** (Off / Low / Medium / High + Strength, off by default, as Attila): the sky cube's vertical lines in thick fog. The fog shader 0xE684D54E is now replaced; it was never seen drawn in a trace, and its MSAA variant stays stock.
+- **Extra in Rendering Mode SDR**: Lens Flare, Vignette and Distortion work there (at 1 the picture is unchanged). Film Grain and Indicators stay HDR-only.
+
 ## v34 (2026-10-27, batch 5, untested in game; the helper GPU-tested)
 
 - renodx-tw-dlaa64.exe **helper22** (in the zip; bridge v11, needs this addon): **ReSTIR GI v2** (compared with
