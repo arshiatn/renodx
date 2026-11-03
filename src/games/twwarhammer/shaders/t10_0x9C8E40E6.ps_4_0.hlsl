@@ -82,7 +82,7 @@ void main(
   r1.xyz = float3(1,1,1) + -r1.xyz;
   r1.w = dot(r0.xyz, float3(0.212599993,0.715200007,0.0722000003));
   r2.x = g_luma_white_point + -g_luma_black_point;
-  r2.yz = r2.xx * g_whiteout_start + g_luma_white_point;
+  r2.yz = r2.xx * float2(g_whiteout_start, g_whiteout_end) + g_luma_white_point;
   r2.w = -r2.y + r1.w;
   r2.y = r2.z + -r2.y;
   r2.y = saturate(r2.w / r2.y);

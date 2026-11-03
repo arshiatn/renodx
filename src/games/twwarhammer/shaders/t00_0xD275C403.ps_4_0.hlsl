@@ -106,7 +106,7 @@ void main(
   r0.w = dot(r0.xyz, float3(0.212599993,0.715200007,0.0722000003));
   r2.xyzw = g_black_and_white_points.SampleLevel(g_black_and_white_points_sampler_s, float2(0.5,0.5), 0).xyzw;
   r1.w = r2.y + -r2.x;
-  r2.zw = r1.ww * g_whiteout_start + r2.yy;
+  r2.zw = r1.ww * float2(g_whiteout_start, g_whiteout_end) + r2.yy;
   r3.x = -r2.z + r0.w;
   r2.z = r2.w + -r2.z;
   r2.z = saturate(r3.x / r2.z);

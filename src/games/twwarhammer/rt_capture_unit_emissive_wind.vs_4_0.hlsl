@@ -226,7 +226,7 @@ void GameMain(
   r0.yz = cmp(v3.xy >= -v3.xy);
   r2.xy = frac(abs(v3.xy));
   r0.yz = r0.yz ? r2.xy : -r2.xy;
-  r0.yz = sp_WindMask_SizeX * abs(r0.yz);
+  r0.yz = float2(sp_WindMask_SizeX, sp_WindMask_SizeY) * abs(r0.yz);
   r2.xy = floor(r0.yz);
   r2.zw = float2(0,0);
   r2.xyzw = (int4)r2.xyzw;

@@ -11,6 +11,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer.add
   the game's own picture at the in-game Gamma. Rendering Mode SDR on Output SDR ignores Paper White (as Attila).
 - **Fog & Sky Smoothing** (Off / Low / Medium / High + Strength, off by default, as Attila): the sky cube's vertical lines in thick fog. The fog shader 0xE684D54E is now replaced; it was never seen drawn in a trace, and its MSAA variant stays stock.
 - **Extra in Rendering Mode SDR**: Lens Flare, Vignette and Distortion work there (at 1 the picture is unchanged). Film Grain and Indicators stay HDR-only.
+- **Wrong constants from the decompiler** (checked against the game's own shaders):
+  - In-game depth of field: the sharp range around the focus was about 30% too narrow (f x f, the game has 2 x f x f).
+  - Rendering Mode SDR: bright colours fade to white softly as in the game (start read twice: a hard contour). HDR unchanged.
+  - Motion vectors and ray tracing: emissive wind mask Y of units with it.
 
 ## v34 (2026-10-27, batch 5, untested in game; the helper GPU-tested)
 
