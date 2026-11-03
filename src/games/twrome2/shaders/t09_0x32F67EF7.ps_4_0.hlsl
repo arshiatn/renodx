@@ -121,7 +121,7 @@ void main(
   r0.w = 1 + -r0.z;
   r0.w = r0.w + -r0.y;
   r0.y = max(0.00100000005, r0.y);
-  r1.xy = g_log_Y_white_point + -g_log_Y_black_point;
+  r1.xy = float2(g_log_Y_white_point, g_white_point) + -float2(g_log_Y_black_point, g_black_point);
   r2.x = r0.x / r1.x;
   r2.y = 0.5;
   r2.xyzw = g_scurve_texture_sampler.Sample(g_scurve_texture_sampler_s, r2.xy).xyzw;

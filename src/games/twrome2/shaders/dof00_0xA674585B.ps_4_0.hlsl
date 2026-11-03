@@ -73,7 +73,7 @@ void main(
   r0.y = min(500, g_focus_distance);
   r0.x = r0.x + -r0.y;
   r0.x = r0.x * r0.x;
-  r0.y = dot(g_focal_length, g_focal_length);
+  r0.y = dot(g_focal_length.xx, g_focal_length.xx);
   r0.x = r0.x / r0.y;
   r0.x = -1.44269502 * r0.x;
   r0.x = exp2(r0.x);

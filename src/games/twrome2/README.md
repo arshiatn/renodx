@@ -11,6 +11,10 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twrome2.addon32
   the game's own picture at the in-game Gamma. Rendering Mode SDR on Output SDR ignores Paper White (as Attila).
 - **Fog & Sky Smoothing** (Off / Low / Medium / High + Strength, off by default, as Attila): the sky cube's vertical lines in thick fog. The fog shader 0x259AEC56 is now replaced.
 - **Extra in Rendering Mode SDR**: Bloom, Lens Flare, God Rays, Vignette, DOF and Distortion work there (at 1 the picture is unchanged). Film Grain and Indicators stay HDR-only.
+- **Wrong constants from the decompiler** (checked against the game's own shaders):
+  - In-game depth of field: the sharp range around the focus was about 30% too narrow (f x f, the game has 2 x f x f).
+  - UI and the historical battle map: sprites the game flags to swap red and blue now swap.
+  - Constant tone mappers (0x32F67EF7, 0x682B15ED) in Rendering Mode SDR: brightness used the log range, now the game's. HDR unchanged.
 
 ## v45 (2026-10-28, untested in game)
 
