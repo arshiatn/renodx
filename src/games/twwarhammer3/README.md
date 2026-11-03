@@ -10,6 +10,9 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   cubes' reflection where they meet something, and occlusion dims the cubes where something blocks them. Both off, the game's own shaders run
   untouched. Needs in-game Screen Space Reflections on. If the sun shader is one of the 3 of 7 that add the cubes differently, the
   game's reflections stay and the log says so once. FidelityFX SSSR isn't offered: the game's march already is a hierarchical one.
+- **Water Clarity and Water Caustics (Experimental, off, Reflections section):** Clarity on the water plane and the sea (the shaders that read the
+  game's scatter), Caustics on the two water plane shaders where it was read. battle_water, battle_river and the rest take a colour per material:
+  neither row changes them. `ReShade.log`'s "Water: first draw of shader" says which one a map draws.
 - **Ray Reconstruction's and the paths' guides had the wrong material channels** since batch 3: roughness was 1 - the AO channel (0 on much of
   the scene), specular a flat 0.04, normals from 8 of 10 bits. Now as the sun light and the resolve read them: roughness in the
   material's y, specular from metal, water its own.

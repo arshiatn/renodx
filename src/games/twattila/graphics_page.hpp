@@ -115,6 +115,7 @@ struct Bindings {
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   bool rays_preset_path_ambient = true;  // The RT/PT preset takes it; false: ray-traced AO, over the game's.
+  bool rays_preset_caustics = true;      // The RT/PT preset turns Water Caustics on.
   bool has_reflections = true;
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
 };
@@ -542,6 +543,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"RayTracedFogShadows", 1.f}};
     // No paths for the sky's light here: ray-traced AO, over the game's.
     if (!b.has_path_ambient || !b.rays_preset_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
+    if (!b.rays_preset_caustics) rays_values.emplace_back("WaterCaustics", 0.f);
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the

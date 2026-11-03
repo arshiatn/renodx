@@ -70,6 +70,8 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | Nothing marks foliage in stencil or G-buffer | Don't assume; depth copies around the prefill | Trace, dump |
 | Foliage fix via an extra target at SV_Target3 wrote nothing, fought kept targets | Don't | - |
 | Water refraction read by several shader names | Pass the slots as parameters, find every name | Dump; `OnReflectionDraw`'s t6, t8 are Attila's |
+| One game's reflection pass isn't another's: WH3's SSR gates on water alone, its branch for the rest is dead code, an SSSR row would have had nothing to add | Read the gate and the march in that game's bytes before carrying rows over | Asm: the flag test before the march |
+| A delta over what another pass added must take back exactly that: the dead branch's dielectric 0.04 against the sun's 0.08 x colour alpha | Run the adding pass with its input and without; the difference against the delta | WARP, with a control that must fail |
 
 ## 4. Memory and lifetime (helper, D3D12, shared handles)
 
@@ -140,6 +142,9 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | 3Dmigoto names the wrong constant: campaign's haze gone, UI swapped [e06a18da] | Audit every new replacement, re-read from bytecode | [cb_audit.py](../scripts/cb_audit.py) |
 | `rN.xy = scalar * ...` loses a component; `dot(c,c)` on a scalar drops the 2 (DOF in 7 games) | `dot(c.xx, c.xx)`, compare | cb_audit + interpreter 24 random runs |
 | Generated motion or RT VS: regenerating brings fixed lines back | Fix the decompile input | cb_audit's generated VS part |
+| Edits among decompiled lines: `r0.w` written before a line reads `r0.yzw` lost one colour of the result | Keep each register's order; test with the same inputs by another route | WARP: half the rays against half the result |
+| A pass whose result is added has no `max(0, ...)` to hide what another pass's clamp hid (0 / 0 in the cubes' share) | Guard the new output for NaN and infinity | Read the adding pass's last line |
+| A replacement needed only with a feature on | Keep the game's bytes when off: no `code` on the entry, CSSetShader ours in `on_draw`, the game's back in `on_drawn` | Default state needs no proof then |
 | WH1's trees silently wrong in 3Dmigoto | `RT_ASM=labels`, fxc's own disassembly | Compare test |
 | Hooks that never ran: `Register` without data plus `<typename T, typename Context>` dropped silently, for days [daec47ba] | Without data use `[]<typename Context>`; check an "applied" line | [scan_register.py](../scripts/scan_register.py) |
 | `.bypass` skips later callbacks' post callbacks: t51 stayed bound, ambient gone [e5bf7dd3] | State back in `finalize_callback`, or swap + `.replay` | Read each new `post_callback` under Light Bounce's bypass |

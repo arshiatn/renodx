@@ -42,6 +42,7 @@
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/water_effects.hpp"
 #include "./taa_dlss.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -2148,6 +2149,21 @@ std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
+// Water Clarity and Caustics (twattila/water_effects.hpp): the shaders that read g_sea_bed_light_scatter (each one's RDEF: lighting_VS_PS
+// at that slot, offset 160). battle_water, battle_river and the rest don't: their colour is per material. Caustics where one
+// colour sample of the refraction and the normal map's slot were read; the others have their samples under branches.
+constexpr std::array<twattila::water_effects::WaterShader, 10> WATER_SHADERS = {{
+    {.hash = 0xE3CA2AAE, .lighting_slot = 3, .world_input = 3, .refraction_slot = 6, .normal_slot = 5},  // fx_waterplane (traced)
+    {.hash = 0x598DB0CE, .lighting_slot = 2, .world_input = 3, .refraction_slot = 3, .normal_slot = 2},  // fx_waterplane
+    {.hash = 0x928CB5E0, .lighting_slot = 3, .world_input = 3, .refraction_slot = 5, .caustics = false},  // fx_waterplane
+    {.hash = 0xE668E3BD, .lighting_slot = 3, .world_input = 3, .refraction_slot = 5, .caustics = false},
+    {.hash = 0xEB1CCC82, .lighting_slot = 3, .world_input = 3, .refraction_slot = 5, .caustics = false},
+    {.hash = 0x2DD3026D, .lighting_slot = 4, .world_input = 3, .refraction_slot = 8, .caustics = false},
+    {.hash = 0xE7FC60E9, .lighting_slot = 4, .world_input = 3, .refraction_slot = 8, .caustics = false},
+    {.hash = 0x0468A49E, .lighting_slot = 2, .world_input = 2, .refraction_slot = 6, .caustics = false},  // fx_ocean
+    {.hash = 0x1618909A, .lighting_slot = 3, .world_input = 2, .refraction_slot = 9, .caustics = false},
+    {.hash = 0x182ADF39, .lighting_slot = 2, .world_input = 2, .refraction_slot = 4, .caustics = false},
+}};
 // The upscaler in place of the game's TAA (taa_dlss.hpp): 0 the game's TAA, 5 DLSS, 6 FSR, 7 XeSS.
 twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
@@ -2681,6 +2697,29 @@ void ConfigureAddon() {
   // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into water. 1: the game's; higher: clearer water.\n"
+                 "Not all water takes it: rivers and lakes with a colour of their own stay as they are.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on the bed under the battle's large water plane. 0: off.\n"
+                 "Not all water takes it: rivers and lakes with a colour of their own stay as they are.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
 
   // Appended Settings (HDR10)
   {
@@ -2771,6 +2810,7 @@ void ConfigureAddon() {
                                              .has_scale_rows = false,
                                              .has_foliage_light = false,
                                              .rays_preset_path_ambient = false,
+                                             .rays_preset_caustics = false,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
@@ -2799,6 +2839,12 @@ bool AttachAddon() {
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   // Registration order is run order at a sun draw. The guides first: the trace asks whether they were written this frame.
   for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
     renodx::utils::command_action::Register(
@@ -2864,6 +2910,8 @@ void DetachAddon() {
   twattila::ao_filter::Uninstall();
   twattila::rt_scene::Uninstall();
   renodx::utils::command_action::Unregister(OnSunDrawGuides);
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);
