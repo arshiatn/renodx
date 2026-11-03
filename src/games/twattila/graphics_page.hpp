@@ -437,7 +437,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"RayTracedLeafLight", 1.f},
                             {"RayTracedColouredShadows", 1.f},
                             {"RayTracedSmokeShadows", 1.f},
-                            {"RayTracedSmokeQuality", 1.f},
+                            {"RayTracedSmokeQuality", 2.f},
                             {"RayTracedLightSoftness", 0.25f},
                             {"RayTracedLightImportance", 1.f},
                             {"RayTracedSpriteShadows", 0.f},

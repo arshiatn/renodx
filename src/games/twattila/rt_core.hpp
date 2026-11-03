@@ -138,7 +138,7 @@ struct Settings {
   // Smoke shadows: the lit particles drawn since the last trace (InstallSmokeShadows' shaders: smoke and dust) dim the
   // ray-traced sun, a frame late (CaptureParticles, rt_smoke).
   bool smoke_shadows = false;
-  uint32_t smoke_quality = 1;  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT)
+  uint32_t smoke_quality = 1;  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT; 3, Ultra: High's rays, more room)
   bool nrd = false;            // Ray Tracing Denoiser: NRD without Ray Reconstruction (dlaa_bridge.h RT_NRD)
   // The lit particles streamed out with no ray tracing (smoke_map.hpp: any GPU, no helper).
   bool stream_particles = false;
@@ -242,8 +242,8 @@ constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 constexpr uint64_t RELEASE_FRAMES = 3600;
 // Smoke Shadows: the particles streamed out between traces at most (48 bytes each; a draw holds its whole list, nearly all
 // without opacity: 742 of a battle's 47884 had some, and at 65536 a list drawn first took the place of the catapults' smoke
-// for good, ATN's debug36), the quads for those with opacity at most (rt_smoke; Smoke Shadow Quality High twice these), their
-// capture's key.
+// for good, ATN's debug36), the quads for those with opacity at most (rt_smoke; Smoke Shadow Quality High twice these, Ultra
+// four times), their capture's key.
 constexpr UINT MAX_PARTICLES = 1u << 19;
 constexpr UINT MAX_SMOKE_QUADS = 1u << 15;
 constexpr float SMOKE_LEAST = 0.05f;  // the opacity over area a particle needs for a quad, at the least
@@ -1753,7 +1753,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     }
     // Smoke Shadows: the lit particles streamed out since the last trace, those with opacity as quads facing the sun after
     // the captures (rt_smoke; its second dispatch empties the quads left): a capture whose particles dim the helper's sun rays.
-    const UINT smoke_room = (runtime.settings.smoke_quality >= 2u ? MAX_SMOKE_QUADS * 2u : MAX_SMOKE_QUADS);
+    const UINT smoke_room = MAX_SMOKE_QUADS << (std::max(runtime.settings.smoke_quality, 1u) - 1u);
     const UINT smoke_quads = std::min(runtime.particles, smoke_room);
     if (runtime.settings.smoke_shadows && smoke_quads != 0 && runtime.particles_frame + 1 >= runtime.frame
         && runtime.captures.size() < dlaa_bridge::RT_CAPTURES && runtime.captured_vertices + (smoke_quads * 6) <= MAX_VERTICES) {
@@ -1867,7 +1867,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)
-               | (runtime.settings.smoke_quality << dlaa_bridge::RT_SMOKE_QUALITY_SHIFT),
+               | (std::min(runtime.settings.smoke_quality, 2u) << dlaa_bridge::RT_SMOKE_QUALITY_SHIFT),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
