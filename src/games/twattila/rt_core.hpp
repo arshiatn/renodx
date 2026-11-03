@@ -559,10 +559,11 @@ static Host host;
 // The code of the scene shaders without a capture version, as the game made them (every vertex shader with
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
-// Smoke Shadows' particle shaders (InstallSmokeShadows; 0: none): the vertex shader (its code kept) and the lit pixel
-// shader its smoke is drawn with.
+// Smoke Shadows' particle shaders (InstallSmokeShadows; 0: none): the vertex shader (its code kept) and the two lit pixel
+// shaders its smoke is drawn with.
 static uint32_t smoke_vertex_shader = 0;
 static uint32_t smoke_pixel_shader = 0;
+static uint32_t smoke_other_pixel_shader = 0;
 static std::unordered_map<uint32_t, bool> skinned_code;
 // A scene draw's pixel shader (host.scene_draw: SceneCoverage): solid (none, or its discards dither only), alpha-tested
 // against its t0 at the input `uv_semantic` (xy: an opacity mask), or left out (t0 read otherwise: a tiled or computed
@@ -1534,11 +1535,9 @@ void CaptureParticles(Context& command) {
     first_vertex = command.arguments.first_vertex;
   }
   auto* native = NativeContext(command.cmd_list);
-  if (vertex_count == 0 || !runtime.settings.smoke_shadows || !dlaa_bridge::bridge.ray_tracing || native == nullptr
-      || renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache)
-             != smoke_pixel_shader) {
-    return;
-  }
+  if (vertex_count == 0 || !runtime.settings.smoke_shadows || !dlaa_bridge::bridge.ray_tracing || native == nullptr) return;
+  const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
+  if (pixel_shader != smoke_pixel_shader && pixel_shader != smoke_other_pixel_shader) return;
   ComPtr<ID3D11BlendState> blend;
   std::array<FLOAT, 4> blend_factor = {};
   UINT sample_mask = 0;

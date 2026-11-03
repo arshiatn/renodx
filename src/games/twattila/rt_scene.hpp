@@ -746,9 +746,11 @@ constexpr auto OnFogDraw = []<typename Context>(Context& command) -> renodx::uti
 };
 
 // Attila's and Thrones' particles (particle_vfx_main: one vertex a particle, a geometry shader makes its quad) and the
-// main pass's lit pixel shader (ps_main_high_quality: smoke and dust; fire's glow is added, the overlay pass's).
+// main pass's lit pixel shaders (ps_main_high_quality: smoke and dust; ps_main: torch and fire smoke; fire's glow is added,
+// the overlay pass's).
 constexpr uint32_t PARTICLE_VERTEX_SHADER = 0xA7F257B5;
 constexpr uint32_t LIT_PARTICLE_PIXEL_SHADER = 0xACE33D5D;
+constexpr uint32_t OTHER_PARTICLE_PIXEL_SHADER = 0xF5379F78;
 
 // A particle draw (Smoke Shadows): its lit particles streamed out for the next trace.
 constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
@@ -756,13 +758,14 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   return {};
 };
 
-// The particle draws (`vertex_shader`'s with `pixel_shader`), kept while installed (after Install, before the device:
+// The particle draws (`vertex_shader`'s with `pixel_shader` or `other_pixel_shader`), kept while installed (after Install, before the device:
 // the vertex shader's code is kept as it is made, by the scene's code hook, made here when the scene has none):
 // Ray-Traced Smoke Shadows shown.
-inline void InstallSmokeShadows(uint32_t vertex_shader, uint32_t pixel_shader) {
+inline void InstallSmokeShadows(uint32_t vertex_shader, uint32_t pixel_shader, uint32_t other_pixel_shader) {
   internal::smoke_shadows_installed = true;
   internal::smoke_vertex_shader = vertex_shader;
   internal::smoke_pixel_shader = pixel_shader;
+  internal::smoke_other_pixel_shader = other_pixel_shader;
   if (!internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   renodx::utils::command_action::Register(
       OnParticleDraw, {.shader_hash = vertex_shader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
