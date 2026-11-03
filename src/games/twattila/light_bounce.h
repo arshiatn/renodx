@@ -25,7 +25,7 @@ struct LightBounceConstants {
   float region_width;
   float region_height;
   float level0_width;
-  float padding;
+  float diffuse_rule;  // SunDraw::diffuse_rule: which rule the draw's G-buffer follows (only games with more than one read it)
 };
 
 

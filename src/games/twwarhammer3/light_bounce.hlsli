@@ -6,6 +6,8 @@
 // Light Bounce (Experimental): Warhammer III's G-buffer and camera for the passes (twattila/light_bounce_prepare.hlsli,
 // light_bounce_trace.hlsli, light_bounce_apply.hlsli), as its deferred sun light (directionallight.hlsl) reads them;
 // twattila/light_bounce.hpp binds that draw's channels 1-4 at t42-t45 and its camera at b11 (the last frame's at b10).
+#include "../twattila/light_bounce.h"
+
 cbuffer camera : register(b11) {
   float3 camera_position : packoffset(c0);
   float3 prev_camera_position : packoffset(c1);
@@ -39,9 +41,10 @@ cbuffer previous_camera : register(b10) {
 
 #include "../twattila/light_bounce_gbuffer.hlsli"
 
-BounceGBuffer gbuffer_normal : register(t42);  // channel 1: view-space normal (10 bits, its upper 8 in xy)
-BounceGBuffer gbuffer_colour : register(t43);  // channel 2: albedo
-BounceGBuffer gbuffer_depth : register(t45);   // channel 4
+BounceGBuffer gbuffer_normal : register(t42);    // channel 1: view-space normal in xy
+BounceGBuffer gbuffer_colour : register(t43);    // channel 2: albedo; LB.diffuse_rule 1, its a: the F0's scale
+BounceGBuffer gbuffer_material : register(t44);  // channel 3: x metalness, with LB.diffuse_rule above 0
+BounceGBuffer gbuffer_depth : register(t45);     // channel 4
 
 float BounceDepth(int2 texel) {
   return BounceLoad(gbuffer_depth, texel).x;
@@ -59,17 +62,22 @@ float3 BounceViewPosition(int2 texel) {
   return BounceViewPositionAt(texel, BounceDepth(texel));
 }
 
-// As the game: xy from the upper 8 of each 10 bits, a unit vector rebuilt around the view axis.
+// As the game: a unit vector rebuilt around the view axis, from xy (LB.diffuse_rule 0: the upper 8 of each 10 bits).
 float3 BounceViewNormal(int2 texel) {
-  const uint2 encoded = uint2(round(BounceLoad(gbuffer_normal, texel).xy * 1023.f)) >> 2;
-  const float2 e = float2(encoded) * (2.f / 255.f) - 1.f;
+  const float2 stored = BounceLoad(gbuffer_normal, texel).xy;
+  const float2 e = (LB.diffuse_rule > 0.f) ? (stored * 2.f - 1.f) : (float2(uint2(round(stored * 1023.f)) >> 2) * (2.f / 255.f) - 1.f);
   const float rest = 1.f - dot(e, e);
   return normalize(float3(2.f * e * sqrt(max(rest, 0.f)), 1.f - 2.f * rest));
 }
 
-// As the game's ambient: albedo x 0.96.
+// As each of the game's sun shaders takes its ambient (LB.diffuse_rule 0: albedo x 0.96, no metal; else albedo x (1 - metal)
+// x (1 - F0), F0 from 0.08 x channel 2's a (1) or 0.04 (2) on dielectrics to the albedo on metal).
 float3 BounceDiffuseAlbedo(int2 texel) {
-  return BounceLoad(gbuffer_colour, texel).rgb * 0.96f;
+  const float4 colour = BounceLoad(gbuffer_colour, texel);
+  if (LB.diffuse_rule == 0.f) return colour.rgb * 0.96f;
+  const float metal = BounceLoad(gbuffer_material, texel).x;
+  const float dielectric = (LB.diffuse_rule == 1.f) ? colour.a * 0.08f : 0.04f;
+  return colour.rgb * (1.f - metal) * (1.f - lerp(dielectric.xxx, colour.rgb, metal));
 }
 
 float BouncePixelsPerMetre(float distance) {

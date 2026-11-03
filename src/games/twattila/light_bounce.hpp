@@ -71,6 +71,8 @@ struct SunDraw {
   UINT ao_slot = UINT_MAX;
   // How many places its final ambient is made in (screen_space_shadows::PatchAmbient; 0: the first cube read, Attila's).
   uint32_t ambient_final_sites = 0;
+  // For its light_bounce.hlsli's BounceDiffuseAlbedo, where a game's sun shaders differ.
+  float diffuse_rule = 0.f;
 };
 
 // The Light Bounce sliders, as the addon's settings hold them (strength 0: off).
@@ -364,6 +366,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     const bool msaa = (light_desc.SampleDesc.Count > 1);
     if (!internal::Prepare(native, device.Get(), light_desc, light_view.Format, scale)) return {};
     auto& objects = runtime.objects;
+    const auto& sun_draw = command.template GetCallbackData<T>();
+    runtime.settings.diffuse_rule = sun_draw.diffuse_rule;
     if (std::memcmp(&objects.uploaded, &runtime.settings, sizeof(LightBounceConstants)) != 0) {
       native->UpdateSubresource(objects.constants.Get(), 0, nullptr, &runtime.settings, 0, 0);
       objects.uploaded = runtime.settings;
@@ -384,7 +388,6 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     native->OMGetBlendState(game_blend.GetAddressOf(), game_blend_factor.data(), &game_sample_mask);
 
     // This draw's G-buffer and camera at the addon's slots, with the last frame's camera and the constants.
-    const auto& sun_draw = command.template GetCallbackData<T>();
     std::array<ID3D11ShaderResourceView*, internal::VIEW_COUNT> inputs = {};
     native->PSGetShaderResources(sun_draw.gbuffer_slot, 4, &inputs[internal::GBUFFER_VIEW]);
     std::array<ID3D11Buffer*, internal::CONSTANTS_COUNT> constants = {
