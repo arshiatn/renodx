@@ -6,7 +6,8 @@ The plan lives outside the repo: tools/tw/wh3_batch/plan_final.md (tools/tw = C:
 
 Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 > P9 > P10 > P6c > P11 > P13.
 
-- [ ] P0 Ground work: skill, this list, raw NUL, baseline builds and harness log
+- [x] P0 Ground work: skill `tw-port-checklist` (cb_audit.py, scan_register.py moved there), this list, raw NUL, both baseline builds. ATN's check: nothing.
+      NOT DONE: its own harness run. Attila was running (21.9 GB of VRAM), and the harness doesn't run beside another GPU job. tools/tw/all_modes_wh3_base.txt is the 18:05 log of the same helper code, 116 of 116, marked as a copy. Smallest step: P1's all_modes.sh with no game running.
 - [ ] P1 Correctness at 100%, no layout change (`Configure`, `Release(true)`, camera per frame, sqrt test)
 - [ ] P2 Data kit for ATN (indirect draws in traces, WH3 camera registers, RT debug rows, applied lines)
 - [ ] P3 Rows, FSR, XeSS, Reflex, Motion Debug View at 100%
