@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+## v30 (not released, built only, not run in game)
+
+- **FSR and XeSS** beside DLSS, in place of the game's TAA at Resolution Scale 100% (Experimental: never run in this game).
+  **The row is one now: Anti-Aliasing, on the keys the other Total War addons use. Saved `Dlss*` settings stop applying:**
+  choose DLSS again; its preset default is L (was M). A saved DLSS on a GPU that isn't NVIDIA's becomes XeSS on Intel's, else FSR.
+- **NVIDIA Reflex** with any anti-aliasing (it needed frame generation before), and its Frame Rate Limit.
+- **Upscaling Debug View**: the motion the upscaler gets, over the picture (colour: direction, brighter: faster).
+- A red line on the first page when only the add-on is installed, without the helper.
+
 ## v29 (2026-11-03, built only, not run in game)
 
 - **Gamma Correction** (Rendering Mode SDR, on by default). On: any in-game Gamma shown as gamma 2.2, today's picture. Off:

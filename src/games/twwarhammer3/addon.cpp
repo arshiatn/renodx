@@ -805,6 +805,7 @@ void OnDestroyDevice(reshade::api::device* device) {
           .on_drawn = [](auto* cmd_list) {                         \
             twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); \
             twattila::rt_scene::OnTonemapDrawn(cmd_list);          \
+            twwarhammer3::taa_dlss::OnTonemapDrawn(cmd_list);      \
             aa_target::OnDrawnRestore(cmd_list); },                \
       },                                                           \
   }
@@ -1060,6 +1061,13 @@ void BuildRuntimeData() {
         .label = "Settings Mode",
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases",
+        .section = "General",
+        .tint = 0xFF5050,
+        .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
     },
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
@@ -1997,19 +2005,10 @@ std::atomic<bool> at_start_done = false;
 std::atomic<bool> at_start_stop = false;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
-// DLSS in place of the game's TAA (taa_dlss.hpp) and frame generation on it (dlss_frame_generation.hpp: started at
-// launch from ReShade.ini [Warhammer III]).
-struct DlssSliders {
-  float enabled = 0.f;
-  float preset = 1.f;  // K, M, L
-  float frame_generation = 0.f;  // off, 2x-6x, Dynamic (restart to turn it on)
-  float reflex_boost = 0.f;      // (restart)
-  float frame_limit = 0.f;       // Reflex's, rendered frames per second (0: off)
-  float ray_reconstruction = 0.f;  // NVIDIA's Ray Reconstruction (taa_dlss.hpp)
-} dlss_sliders;
-// Ray tracing's (twattila/rt_scene.hpp, through DLSS's helper): enabled with DLSS (aa_sliders.method 5 while it is on).
+// Ray tracing's (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
 twattila::rt_scene::Sliders rt_sliders;
-bool frame_generation = false;  // started at launch
+bool frame_generation = false;  // dlss_frame_generation.hpp: started at launch from ReShade.ini [Warhammer III]
+// The upscaler in place of the game's TAA (taa_dlss.hpp): 0 the game's TAA, 5 DLSS, 6 FSR, 7 XeSS.
 twattila::feature_settings::AaSliders aa_sliders;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
@@ -2154,10 +2153,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
-  // The DLSS rows' values in the shape of Attila's rows; DLSS never starts on another vendor's GPU.
-  aa_sliders.method = (dlss_sliders.enabled != 0.f && twattila::dlaa_bridge::OnNvidia()) ? 5.f : 0.f;
-  aa_sliders.dlaa_preset = dlss_sliders.preset;
-  aa_sliders.ray_reconstruction = dlss_sliders.ray_reconstruction;
+  // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS is XeSS on Intel's, else FSR.
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -2176,10 +2175,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
-  twwarhammer3::taa_dlss::Update(aa_settings, frame_generation);
-  talesofarise::frame_generation::frame_limit.store(static_cast<uint32_t>(std::clamp(dlss_sliders.frame_limit, 0.f, 240.f)));
+  twwarhammer3::taa_dlss::Update(swapchain, aa_settings, frame_generation);
+  talesofarise::frame_generation::frame_limit.store(aa_settings.frame_limit);
   // The multiplier applies live (turning frame generation on needs a restart): 0 Dynamic in the shared module.
-  if (const int choice = static_cast<int>(dlss_sliders.frame_generation); choice != 0) {
+  if (const int choice = static_cast<int>(aa_sliders.frame_generation); choice != 0) {
     talesofarise::frame_generation::multiplier.store(choice >= 6 ? 0u : static_cast<uint32_t>(choice + 1));
   }
   // After the at-start tests' thread (one writer at a time).
@@ -2445,105 +2444,56 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   {
-    const auto dlss_on = [] { return dlss_sliders.enabled != 0.f; };
     // Frame generation's choices are read at launch: written to ReShade.ini [Warhammer III].
     const auto write_frame_generation = [] {
-      const int choice = static_cast<int>(dlss_sliders.frame_generation);
+      const int choice = static_cast<int>(aa_sliders.frame_generation);
       reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "FrameGeneration", choice != 0);
       reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "FrameGenerationMultiplier",
                                 (choice >= 6 ? 0u : static_cast<uint32_t>(std::max(choice + 1, 2))));
-      reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "ReflexBoost",
-                                dlss_sliders.reflex_boost != 0.f);
+      reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "ReflexBoost", aa_sliders.reflex == 2.f);
     };
-    settings.insert(settings.end(), {
-        new renodx::utils::settings::Setting{
-            .key = "Dlss",
-            .binding = &dlss_sliders.enabled,
-            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-            .default_value = 0.f,
-            .label = "DLSS",
-            .section = twattila::feature_settings::DLSS_SECTION,
-            .tooltip = "NVIDIA's DLSS (DLAA) in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High\n"
-                       "and Resolution Scale at 100% (below it the game's TAA and upscale stay). Needs an RTX GPU and\n"
-                       "renodx-tw-dlaa64.exe and nvngx_dlss.dll next to Warhammer3.exe.",
-            .labels = {"Off", "On"},
+    const size_t first_row = settings.size();
+    twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
+    // Attila's rows with what is true here: the game owns its scale, has its own TAA and keeps it running.
+    constexpr std::array<std::string_view, 9> ATTILA_ONLY = {"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength",
+                                                             "AntiAliasingSharpening", "AntiAliasingDlssMode", "AntiAliasingRenderScale",
+                                                             "AntiAliasingTextureLodBias", "AntiAliasingEffectsAtOutput", "AntiAliasingObjectMotion"};
+    for (auto* setting : std::span(settings).subspan(first_row)) {
+      setting->section = twattila::feature_settings::DLSS_SECTION;
+      if (std::ranges::find(ATTILA_ONLY, setting->key) != ATTILA_ONLY.end()) setting->is_visible = [] { return false; };
+      if (setting->key == "AntiAliasing") {
+        // 8 long: a saved value is clamped to them. SMAA's to TAA's places are none here.
+        setting->labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"};
+        setting->tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High and Resolution\n"
+                           "Scale at 100% (below it the game's TAA and upscale stay).\n"
+                           "DLSS: NVIDIA's (RTX). FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
+                           "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs next to Warhammer3.exe.";
+      } else if (setting->key == "AntiAliasingDebugView") {
+        setting->label = "Upscaling Debug View";
+        setting->tooltip = "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).";
+        setting->labels = {"Off", "Motion Vectors"};
+      } else if (setting->key == "FrameGeneration") {
+        setting->label = "Frame Generation (Restart Required)";
+        setting->tooltip = "NVIDIA's DLSS Frame Generation (RTX 40 and newer) on the upscaler. Output becomes HDR10 with it.\n"
+                           "5x, 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.";
+        setting->on_change = write_frame_generation;
+      } else if (setting->key == "Reflex") {
+        setting->on_change = write_frame_generation;
+      }
+    }
+    // What really runs, or why nothing does.
+    settings.insert(settings.begin() + static_cast<ptrdiff_t>(first_row) + 1, new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+        .section = twattila::feature_settings::DLSS_SECTION,
+        .on_draw = [] {
+          ImGui::TextWrapped("%s", twwarhammer3::taa_dlss::Status().c_str());
+          return false;
         },
-        // What really runs, or why nothing does.
-        new renodx::utils::settings::Setting{
-            .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
-            .section = twattila::feature_settings::DLSS_SECTION,
-            .on_draw = [] {
-              ImGui::TextWrapped("%s", twwarhammer3::taa_dlss::Status().c_str());
-              return false;
-            },
-            .is_visible = dlss_on,
-        },
-        new renodx::utils::settings::Setting{
-            .key = "DlssPreset",
-            .binding = &dlss_sliders.preset,
-            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-            .default_value = 1.f,
-            .label = "DLSS Preset",
-            .section = twattila::feature_settings::DLSS_SECTION,
-            .tooltip = "NVIDIA's models: K the first transformer, M the second (default), L the sharpest.",
-            .labels = {"K", "M", "L"},
-            .is_enabled = dlss_on,
-        },
-        new renodx::utils::settings::Setting{
-            .key = "DlssRayReconstruction",
-            .binding = &dlss_sliders.ray_reconstruction,
-            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-            .default_value = 0.f,
-            .label = "Ray Reconstruction (Experimental)",
-            .section = twattila::feature_settings::DLSS_SECTION,
-            .tooltip = "NVIDIA's Ray Reconstruction in place of DLSS: one model denoising the picture and the ray tracing.\n"
-                       "Heavier. Best with ray tracing on.",
-            .labels = {"Off", "On"},
-            .is_enabled = dlss_on,
-        },
-        new renodx::utils::settings::Setting{
-            .key = "DlssFrameGeneration",
-            .binding = &dlss_sliders.frame_generation,
-            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-            .default_value = 0.f,
-            .label = "Frame Generation (Restart Required)",
-            .section = twattila::feature_settings::DLSS_SECTION,
-            .tooltip = "NVIDIA's DLSS Frame Generation (RTX 40 and newer) on DLSS. Output becomes HDR10 with it.\n"
-                       "5x, 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.",
-            .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
-            .is_enabled = dlss_on,
-            .on_change = write_frame_generation,
-        },
-        new renodx::utils::settings::Setting{
-            .key = "DlssReflexBoost",
-            .binding = &dlss_sliders.reflex_boost,
-            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-            .default_value = 0.f,
-            .label = "Reflex Boost (Restart Required)",
-            .section = twattila::feature_settings::DLSS_SECTION,
-            .tooltip = "Keeps the GPU's clocks up for lower latency with frame generation.",
-            .labels = {"Off", "On"},
-            .is_enabled = [] { return dlss_sliders.enabled != 0.f && dlss_sliders.frame_generation != 0.f; },
-            .on_change = write_frame_generation,
-        },
-        new renodx::utils::settings::Setting{
-            .key = "DlssFrameLimit",
-            .binding = &dlss_sliders.frame_limit,
-            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-            .default_value = 0.f,
-            .label = "Frame Rate Limit",
-            .section = twattila::feature_settings::DLSS_SECTION,
-            .tooltip = "Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it). A cap the\n"
-                       "game always reaches keeps the frame rate steady: less VRR flicker on OLED displays. 0: off.",
-            .min = 0.f,
-            .max = 240.f,
-            .format = "%.0f fps",
-            .is_enabled = [] { return dlss_sliders.enabled != 0.f && dlss_sliders.frame_generation != 0.f; },
-        },
+        .is_visible = [] { return twattila::feature_settings::Upscaling(aa_sliders); },
     });
   }
 
-  // Ray tracing (twattila/rt_scene.hpp) with DLSS.
+  // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, false, twattila::feature_settings::DLSS_SECTION,
                                      &shader_injection.light_bounce_strength);
 
