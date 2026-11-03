@@ -97,6 +97,8 @@ struct Bindings {
   // The smoke's shadows without rays (smoke_map.hpp); null: no such rows.
   float* smoke_strength = nullptr;
   float* smoke_softness = nullptr;
+  // The game owns its scale (has_scale_rows false): the upscalers also below its 100%; null: no such row.
+  float* below_100 = nullptr;
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
   // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
@@ -381,7 +383,20 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            return false;
                          },
                          .is_visible = [b] { return (b.upscaler_status != nullptr) ? feature_settings::Upscaling(*b.aa) : b.aa->method > 5.f; }});
-    if (!b.has_scale_rows) page.Add(Note("Upscaling needs the in-game Resolution Scale at 100%.", section, MORE_TINT, upscaling));
+    if (b.below_100 != nullptr) {
+      page.Add(new Setting{
+          .key = "AntiAliasingBelow100",
+          .binding = b.below_100,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Below 100% Resolution Scale (Experimental)",
+          .section = section,
+          .tooltip = "Below 100% in-game Resolution Scale. Game's TAA: its own TAA and upscale, no upscaler here.\n"
+                     "Upscaler: the game's picture goes through the upscaler above, in place of both.",
+          .labels = {"Game's TAA", "Upscaler"},
+          .is_visible = upscaling,
+      });
+    }
     page.Take({.match = "AntiAliasingQuality", .section = section,
                .shown = [b] { return b.aa->method == 1.f || b.aa->method == 2.f || b.aa->method == 3.f; }});
     page.Take({.match = "AntiAliasingTaaStrength", .section = section, .shown = [b] { return b.aa->method == 4.f; }});

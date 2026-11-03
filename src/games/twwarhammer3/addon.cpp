@@ -687,45 +687,6 @@ void OnDrawnRestore(reshade::api::command_list* cmd_list) {
   saved_dsv = nullptr;
 }
 
-// FXAA / TAA: read our texture instead of the 8-bit RT.
-bool OnDrawResolve(reshade::api::command_list* cmd_list) {
-  srv_swapped = false;
-  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return true;
-  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  ID3D11ShaderResourceView* srv = nullptr;
-  context->PSGetShaderResources(0, 1, &srv);
-  if (srv == nullptr) return true;
-  const auto resource = ResourceOf(srv);
-  ID3D11ShaderResourceView* ours = nullptr;
-  {
-    const std::scoped_lock lock(mutex);
-    if (valid && resource != 0u && resource == game_target) ours = data.srv;
-  }
-  if (ours == nullptr) {
-    srv->Release();
-    return true;
-  }
-  saved_srv = srv;  // ref kept until restored
-  context->PSSetShaderResources(0, 1, &ours);
-  srv_swapped = true;
-  return true;
-}
-
-void OnDrawnResolve(reshade::api::command_list* cmd_list) {
-  if (!srv_swapped) return;
-  srv_swapped = false;
-  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  context->PSSetShaderResources(0, 1, &saved_srv);
-  if (saved_srv != nullptr) saved_srv->Release();
-  saved_srv = nullptr;
-  {
-    const std::scoped_lock lock(mutex);
-    valid = false;  // frame consumed
-  }
-  // The frame's resolve only (its view swapped): FXAA's shader also composites portraits after the UI, never in the HUD-less image.
-  twwarhammer3::taa_dlss::KeepOutput(cmd_list);
-}
-
 // DLSS mod path: the game copies the 8-bit RT to the back buffer. Copy ours instead.
 // Registered after RenoDX, which drops that copy (8 -> 16-bit, or its 16-bit clone in HDR10).
 bool TryCopy(reshade::api::command_list* cmd_list, reshade::api::resource source, reshade::api::resource dest,
@@ -760,6 +721,58 @@ bool TryCopy(reshade::api::command_list* cmd_list, reshade::api::resource source
   const std::scoped_lock lock(mutex);
   valid = false;  // frame consumed
   return true;
+}
+
+// FXAA / TAA: read our texture instead of the 8-bit RT.
+bool OnDrawResolve(reshade::api::command_list* cmd_list) {
+  srv_swapped = false;
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return true;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  ID3D11ShaderResourceView* srv = nullptr;
+  context->PSGetShaderResources(0, 1, &srv);
+  if (srv == nullptr) return true;
+  const auto resource = ResourceOf(srv);
+  ID3D11ShaderResourceView* ours = nullptr;
+  {
+    const std::scoped_lock lock(mutex);
+    if (valid && resource != 0u && resource == game_target) ours = data.srv;
+  }
+  if (ours == nullptr) {
+    srv->Release();
+    return true;
+  }
+  // Below 100%: the picture went whole through the upscaler; FXAA would read its flags at display pixels (their data is the render
+  // size's corner) and mix misaligned. Our texture instead of the draw; no copy possible: the draw as ever.
+  if (twwarhammer3::taa_dlss::ScaledThisFrame()) {
+    ID3D11RenderTargetView* target_view = nullptr;
+    context->OMGetRenderTargets(1, &target_view, nullptr);
+    const bool copied = target_view != nullptr && TryCopy(cmd_list, {resource}, {ResourceOf(target_view)});
+    if (target_view != nullptr) target_view->Release();
+    if (copied) {
+      srv->Release();
+      twwarhammer3::taa_dlss::KeepOutput(cmd_list);
+      return false;
+    }
+  }
+  saved_srv = srv;  // ref kept until restored
+  context->PSSetShaderResources(0, 1, &ours);
+  srv_swapped = true;
+  return true;
+}
+
+void OnDrawnResolve(reshade::api::command_list* cmd_list) {
+  if (!srv_swapped) return;
+  srv_swapped = false;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  context->PSSetShaderResources(0, 1, &saved_srv);
+  if (saved_srv != nullptr) saved_srv->Release();
+  saved_srv = nullptr;
+  {
+    const std::scoped_lock lock(mutex);
+    valid = false;  // frame consumed
+  }
+  // The frame's resolve only (its view swapped): FXAA's shader also composites portraits after the UI, never in the HUD-less image.
+  twwarhammer3::taa_dlss::KeepOutput(cmd_list);
 }
 
 bool OnCopyResource(reshade::api::command_list* cmd_list, reshade::api::resource source, reshade::api::resource dest) {
@@ -818,6 +831,7 @@ void OnDestroyDevice(reshade::api::device* device) {
           .on_draw = &aa_target::OnDrawTonemap,                    \
           .on_drawn = [](auto* cmd_list) {                         \
             twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); \
+            twwarhammer3::taa_dlss::OnTonemapDrawnAtRenderSize(cmd_list, aa_target::data.srv); \
             twattila::rt_scene::OnTonemapDrawn(cmd_list);          \
             twwarhammer3::taa_dlss::OnTonemapDrawn(cmd_list);      \
             twwarhammer3::taa_dlss::KeepFrame(cmd_list);           \
@@ -1012,10 +1026,10 @@ void BuildRuntimeData() {
   };
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&native);
     // A traced frame's: its camera (b1) and hdr_to_screen_PS's overscan (b4, c6.y).
     if (twattila::frame_trace::Tracing()) {
-      auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-      renodx::utils::directx::NativeFromReShadeProxy(&native);
       Microsoft::WRL::ComPtr<ID3D11Buffer> camera;
       Microsoft::WRL::ComPtr<ID3D11Buffer> hdr_to_screen;
       native->PSGetConstantBuffers(1, 1, camera.GetAddressOf());
@@ -1027,7 +1041,10 @@ void BuildRuntimeData() {
         }
       }
     }
-    return aa_target::OnDrawTonemap(cmd_list);
+    const bool draw = aa_target::OnDrawTonemap(cmd_list);
+    // Before the mod pushes the constants to this draw.
+    shader_injection.tonemap_at_render_size = twwarhammer3::taa_dlss::OnTonemapDraw(native, aa_target::rt_swapped, aa_target::data.width, aa_target::data.height) ? 1.f : 0.f;
+    return draw;
   };
   // Each hook's first run in the log: one that never ran looks like one that did nothing.
   for (auto& [hash, shader] : custom_shaders) {
@@ -2032,11 +2049,12 @@ twattila::rt_scene::Sliders rt_sliders;
 // The upscaler in place of the game's TAA (taa_dlss.hpp): 0 the game's TAA, 5 DLSS, 6 FSR, 7 XeSS.
 twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
+float below_100_row = 0.f;  // the upscaler also when the game's Resolution Scale is below 100% (Experimental)
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
-    .aa_tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High and Resolution\n"
-                  "Scale at 100% (below it the game's TAA and upscale stay).\n"
+    .aa_tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High.\n"
+                  "Below 100% in-game Resolution Scale: the row below.\n"
                   "DLSS: NVIDIA's (RTX). FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
                   "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs next to Warhammer3.exe.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion\n"
@@ -2195,6 +2213,7 @@ const twattila::rt_scene::Host RT_HOST = {
     },
     .render_size = twwarhammer3::taa_dlss::RenderSize,
     .guides_written = twwarhammer3::taa_dlss::GuidesWritten,
+    .main_view = twattila::frame_history::MainViewport,
 };
 
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};
@@ -2227,6 +2246,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (rt_sliders.ambient_occlusion != 0.f && shader_injection.ssao_mode >= 1.f) {
     renodx::utils::settings::UpdateSettings({{"ssao_mode", 0.f}});
   }
+  // Rays a Pixel's Match Output by the game's scale, through the hidden rows' values (nothing saved; they are the page's, not the game's).
+  const float render_share = twwarhammer3::taa_dlss::RenderShare();
+  aa_sliders.dlss_mode = (render_share < 1.f) ? static_cast<float>(twattila::feature_settings::DLSS_MODE_SCALES.size()) : 0.f;
+  aa_sliders.render_scale = render_share * 100.f;
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -2245,7 +2268,13 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
-  twwarhammer3::taa_dlss::Update(swapchain, aa_settings);
+#if FIX_BLOOM
+  // A third-party DLSS mod runs its own upscale: the row leaves it alone.
+  const bool third_party_upscale = bloom_fix::upscaled.load(std::memory_order_relaxed);
+#else
+  const bool third_party_upscale = false;
+#endif
+  twwarhammer3::taa_dlss::Update(swapchain, aa_settings, below_100_row != 0.f && !third_party_upscale);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
@@ -2589,6 +2618,7 @@ void ConfigureAddon() {
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
+                                             .below_100 = &below_100_row,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
                                              .has_scale_rows = false,
                                              .has_foliage_light = false,

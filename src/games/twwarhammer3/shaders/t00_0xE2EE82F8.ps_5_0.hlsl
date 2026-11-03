@@ -310,12 +310,15 @@ void main(
   float distortion_scale = SI.uvdistort;
   float bloom_scale = SI.bloom;
 
+  // Upscaling below 100% draws this at the render size (taa_dlss.hpp): its pixels are the scene's, nothing to scale.
+  float scene_overscan = (SI.tonemap_at_render_size != 0.f) ? 1.f : overscan;
+
   // Distortion composite (stock, offsets scaled by the slider).
   r0.xy = g_screen_size.zw * v0.xy;
-  r0.zw = overscan * r0.xy;
-  r1.xy = overscan * g_screen_size.zw;
+  r0.zw = scene_overscan * r0.xy;
+  r1.xy = scene_overscan * g_screen_size.zw;
   r1.zw = float2(0.5,0.5) * r1.xy;
-  r0.xy = r0.xy * overscan + -r1.zw;
+  r0.xy = r0.xy * scene_overscan + -r1.zw;
   r2.xyzw = distortion_texture.SampleLevel(distortion_sampler_s, r0.xy, 0).xyzw;
   r1.zw = r2.ww * -r2.xy + r2.xy;
   r1.zw = r1.zw * (0.0199999996 * distortion_scale) + r0.xy;

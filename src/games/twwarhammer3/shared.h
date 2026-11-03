@@ -126,6 +126,7 @@ struct ShaderInjectData {
   float ssao_edge_fix;  // Temporal Smoothing's Edge Fix (ao_filter.hpp)
   float ssao_denoise;   // the Denoiser (ao_filter.hpp)
   float fog_strength;   // battlefog00 / 01: x the fog's opacity and light (1: the game's)
+  float tonemap_at_render_size;  // t00: 1 drawn at the render size, top-left (taa_dlss.hpp, below 100%), its overscan not used
 };
 
 #define SI shader_injection

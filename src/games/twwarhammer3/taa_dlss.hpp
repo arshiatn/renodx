@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <format>
@@ -31,6 +32,7 @@
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/dlaa_bridge.hpp"
 #include "../twattila/frame_generation.hpp"
+#include "../twattila/frame_history.hpp"
 #include "../twattila/frame_trace.hpp"
 #include "../twattila/reflex.hpp"
 
@@ -38,9 +40,15 @@
 // after its TAA resolve (cs 0x1ADBFF18 TAA / 0x6A8FC282 TAA High: t0 the G-buffer depth in x, t2 the velocity, t4 this
 // frame's colour, jittered; u1 its result), the colour, depth and motion go through the upscaler in the TW helper
 // (twattila/dlaa_bridge.hpp, renodx-tw-dlaa64.exe) and its result replaces the TAA's. The game's jitter (camera
-// g_camera_jitter) and velocity (everything it draws) are its own. At the game's Resolution Scale of 100% only: below it
-// the main view's camera never passes Upload's test, so the game's TAA and upscale stay and the helper doesn't start. In
-// the addon's own context state (the game's put back after). Frame generation: the helper's too (twattila/frame_generation.hpp).
+// g_camera_jitter) and velocity (everything it draws) are its own. At the game's Resolution Scale of 100%: below it the main
+// view's camera never passes Upload's test, so the game's TAA and upscale stay and the helper doesn't start. In the addon's
+// own context state (the game's put back after). Frame generation: the helper's too (twattila/frame_generation.hpp).
+//
+// Below 100% with its row on (Experimental), after the tone mapper instead: the game's chain stays at the render size, top-left
+// of its display-size textures, so nothing of it needs to know. The TAA's output takes the raw colour (dlss_scaled_inputs), the
+// tone mapper draws at the render size with its overscan unused, and that picture goes through the upscaler into its target
+// (dlss_scaled_prepare, dlss_scaled_finish). Effects drawn after it stay at the display's size. A size is used only after its first
+// frame showed the constants as expected (OnTonemapDraw).
 namespace twwarhammer3::taa_dlss {
 
 using Microsoft::WRL::ComPtr;
@@ -60,7 +68,9 @@ constexpr size_t NEAR_FAR = 34 * 4;
 constexpr size_t TIME = 35 * 4;
 constexpr size_t SCREEN_SIZE = 37 * 4;
 constexpr size_t VIEWPORT = 39 * 4;
+constexpr size_t VIEWPORT_ORIGIN = 40 * 4;
 constexpr size_t CAMERA_JITTER = 257;
+constexpr UINT OVERSCAN_BYTE = (6 * 16) + 4;  // the tone mapper's hdr_to_screen_PS (b4), overscan at c6.y
 
 struct Objects {
   ComPtr<ID3D11Device> device;
@@ -68,10 +78,37 @@ struct Objects {
   ComPtr<ID3D11ComputeShader> inputs;
   ComPtr<ID3D11ComputeShader> output;
   ComPtr<ID3D11ComputeShader> guides;
-  ComPtr<ID3D11Buffer> shader_settings;  // dlss_inputs' and dlss_output's
-  ComPtr<ID3D11Texture2D> motion_view;   // the Motion Debug View's, while it is on
-  ComPtr<ID3D11UnorderedAccessView> motion_view_uav;
+  ComPtr<ID3D11ComputeShader> scaled_inputs;
+  ComPtr<ID3D11ComputeShader> scaled_prepare;
+  ComPtr<ID3D11ComputeShader> scaled_finish;
+  ComPtr<ID3D11SamplerState> linear_sampler;  // dlss_scaled_finish's
+  ComPtr<ID3D11Buffer> shader_settings;       // the compute shaders'
+  // Written by a compute shader, then copied over the picture (its texture takes no UAV): while the Motion Debug View is on, or below 100%.
+  ComPtr<ID3D11Texture2D> display_copy;
+  ComPtr<ID3D11UnorderedAccessView> display_copy_uav;
   bool failed = false;
+};
+
+// Below 100%: what the game's constants have shown about its Resolution Scale.
+enum class ScaleProof : uint8_t {
+  NONE,     // the row off, or the game at 100%
+  WAITING,  // a new size: the TAA left alone until the tone mapper's draw has checked it
+  GOOD,
+  REFUSED,  // not as expected: the game's own TAA and upscale until the size or the row changes
+};
+
+// What the game's TAA pass does this time.
+enum class ScaleChoice : uint8_t {
+  WHOLE,   // 100%: the upscaler right here
+  STOCK,   // the game's result stays
+  SCALED,  // the raw colour in its output, the upscaler after the tone mapper
+};
+
+// A camera-sized buffer's last upload: g_screen_size, g_viewport_dimensions, g_viewport_origin.
+struct UploadedSize {
+  std::array<float, 2> screen = {};
+  std::array<float, 2> viewport = {};
+  std::array<float, 2> origin = {};
 };
 
 struct State {
@@ -98,6 +135,24 @@ struct State {
   uint32_t taa_logged_hash = 0;
   bool camera_logged = false;
   bool guides_logged = false;
+  // Below 100%, its row on.
+  bool below_100 = false;
+  std::unordered_map<uint64_t, UploadedSize> uploaded_sizes;
+  ScaleProof scale_proof = ScaleProof::NONE;
+  ScaleChoice scale_choice = ScaleChoice::WHOLE;  // this frame's first TAA pass
+  std::array<UINT, 2> learned_size = {};          // g_viewport_dimensions of the buffer the TAA reads
+  float learned_share = 1.f;                      // its part of the display's width
+  uint64_t scale_frame = UINT64_MAX;              // the first TAA pass chose
+  uint64_t scale_refused_frame = UINT64_MAX;
+  uint64_t scaled_frame = UINT64_MAX;       // its output holds the raw colour
+  uint64_t scaled_done_frame = UINT64_MAX;  // the addon's texture holds the whole picture
+  uint64_t tonemap_frame = UINT64_MAX;      // the frame's first tone mapper draw came
+  bool tonemap_at_render_size = false;      // it is drawing so
+  D3D11_VIEWPORT tonemap_viewport = {};     // the game's for it
+  // The TAA's for the tone mapper's evaluation.
+  std::array<float, CAMERA_BYTES / 4> taa_camera = {};
+  std::array<float, 2> taa_jitter = {};
+  bool taa_reset = false;
 };
 static State state;
 
@@ -108,12 +163,21 @@ inline bool Create(ID3D11Device* device) {
   ComPtr<ID3D11Device1> device1;
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   const D3D11_BUFFER_DESC settings_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+                                           .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .MaxLOD = D3D11_FLOAT32_MAX};
   objects.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                    || FAILED(device1->CreateDeviceContextState(0, &level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device),
                                                                nullptr, objects.private_state.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__dlss_inputs.data(), __dlss_inputs.size(), nullptr, objects.inputs.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__dlss_output.data(), __dlss_output.size(), nullptr, objects.output.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__rr_guides.data(), __rr_guides.size(), nullptr, objects.guides.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__dlss_scaled_inputs.data(), __dlss_scaled_inputs.size(), nullptr, objects.scaled_inputs.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__dlss_scaled_prepare.data(), __dlss_scaled_prepare.size(), nullptr, objects.scaled_prepare.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__dlss_scaled_finish.data(), __dlss_scaled_finish.size(), nullptr, objects.scaled_finish.GetAddressOf()))
+                   || FAILED(device->CreateSamplerState(&sampler_desc, objects.linear_sampler.GetAddressOf()))
                    || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.shader_settings.GetAddressOf()));
   if (objects.failed) renodx::utils::log::i("[Warhammer III] DLSS: its shaders could not be made.");
   return !objects.failed;
@@ -127,7 +191,135 @@ inline ComPtr<ID3D11Texture2D> TextureOf(ID3D11View* view) {
   return texture;
 }
 
-// After the game's TAA resolve: its inputs through DLSS, the result into its output.
+// `display_copy` at `desc`'s size (state.mutex held); false: not made.
+inline bool MakeDisplayCopy(D3D11_TEXTURE2D_DESC desc) {
+  auto& objects = state.objects;
+  D3D11_TEXTURE2D_DESC made = {};
+  if (objects.display_copy) objects.display_copy->GetDesc(&made);
+  if (made.Width == desc.Width && made.Height == desc.Height) return true;
+  objects.display_copy_uav.Reset();
+  objects.display_copy.Reset();
+  desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+  desc.MiscFlags = 0;
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT, .ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D};
+  if (FAILED(objects.device->CreateTexture2D(&desc, nullptr, objects.display_copy.GetAddressOf()))
+      || FAILED(objects.device->CreateUnorderedAccessView(objects.display_copy.Get(), &uav_desc, objects.display_copy_uav.GetAddressOf()))) {
+    objects.display_copy.Reset();
+    return false;
+  }
+  return true;
+}
+
+// Whether this frame's evaluation is Ray Reconstruction's (its guides written).
+inline bool Reconstructs() {
+  return state.settings.ray_reconstruction && state.guides_frame == state.frame && twattila::dlaa_bridge::bridge.guides;
+}
+
+// NVSDK_NGX_DLSS_Hint_Render_Preset L, M and Ray Reconstruction take the colour's square root; K, FSR and XeSS the light as it is.
+inline bool SquareRootInput(bool reconstruct) {
+  return state.settings.method == twattila::anti_aliasing::Method::DLAA
+         && (reconstruct || state.settings.dlaa_preset == 12u || state.settings.dlaa_preset == 13u);
+}
+
+// The inputs written (their top-left `width` x `height`) through the upscaler (state.mutex held, the addon's context state), the
+// camera `c` as uploaded.
+inline bool EvaluateInputs(ID3D11DeviceContext* context, UINT width, UINT height, const std::array<float, 2>& jitter, bool reset, bool reconstruct, const float* c) {
+  const bool nvidia_model = state.settings.method == twattila::anti_aliasing::Method::DLAA;
+  // Ray Reconstruction (its guides written this frame): view = inverse projection x view-projection (the camera's
+  // registers act on column vectors), given NVIDIA as row-vector matrices (their transposes). FSR and XeSS: the
+  // projection alone (its z row and c7.y hold near, far and the field of view; the jitter is in its column 2).
+  twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = state.settings.ray_reconstruction_preset};
+  if (reconstruct || !nvidia_model) {
+    for (size_t row = 0; row < 4; ++row) {
+      for (size_t column = 0; column < 4; ++column) {
+        float sum = 0.f;
+        for (size_t k = 0; k < 4; ++k) sum += c[INVERSE_PROJECTION + (row * 4) + k] * c[VIEW_PROJECTION + (k * 4) + column];
+        reconstruction.world_to_view[(column * 4) + row] = sum;
+        reconstruction.view_to_clip[(column * 4) + row] = c[PROJECTION + (row * 4) + column];
+      }
+    }
+  }
+  return twattila::dlaa_bridge::Evaluate(context, width, height, jitter[0], jitter[1], reset, state.settings.dlaa_preset,
+                                         reconstruct ? &reconstruction : nullptr, nvidia_model ? nullptr : &reconstruction.view_to_clip);
+}
+
+// After an evaluation of `width` x `height` with the camera `c` (state.mutex held).
+inline void OnEvaluated(UINT width, UINT height, const std::array<float, 2>& jitter, bool reset, const float* c) {
+  state.evaluated_frame = state.frame;
+  // Frame generation's camera has no jitter, the uploaded view-projection does: made again from the view and the projection
+  // without its jitter terms (c6.z, c7.z). Near and far as uploaded; depth is forward (the helper's assumption).
+  std::array<float, 16> view = {};
+  std::array<float, 16> projection = {};
+  std::copy_n(c + VIEW, 16, view.begin());
+  std::copy_n(c + PROJECTION, 16, projection.begin());
+  projection[2] = 0.f;
+  projection[6] = 0.f;
+  std::array<float, 16> view_projection = {};
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t column = 0; column < 4; ++column) {
+      for (size_t k = 0; k < 4; ++k) view_projection[(row * 4) + column] += projection[(row * 4) + k] * view[(k * 4) + column];
+    }
+  }
+  if (twattila::frame_generation::Wanted()) {
+    state.generation = {
+        .width = width,
+        .height = height,
+        .jitter_x = jitter[0],
+        .jitter_y = jitter[1],
+        .reset = reset,
+        .near_plane = c[NEAR_FAR],
+        .far_plane = c[NEAR_FAR + 1],
+    };
+    twattila::frame_generation::SetCamera(&state.generation, projection, view, view_projection,
+                                           (reset ? view_projection : state.previous_view_projection), {c[0], c[1], c[2]});
+    state.generation_frame = state.frame;
+  }
+  state.previous_view_projection = view_projection;
+}
+
+// At the frame's first TAA pass with the row on (state.mutex held): the size it worked at, from the buffer it reads (`output` its
+// output texture). A new size is only learned here: the tone mapper's draw checks it this frame, the upscaler from the next.
+inline ScaleChoice ChooseScale(ID3D11DeviceContext* native, const D3D11_TEXTURE2D_DESC& output) {
+  if (!state.below_100) return ScaleChoice::WHOLE;
+  // Later passes are other views': what the first chose at 100%, else the game's.
+  if (state.scale_frame == state.frame) return (state.scale_choice == ScaleChoice::WHOLE) ? ScaleChoice::WHOLE : ScaleChoice::STOCK;
+  state.scale_frame = state.frame;
+  ComPtr<ID3D11Buffer> camera;
+  native->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
+  const auto found = state.uploaded_sizes.find(reinterpret_cast<uint64_t>(camera.Get()));
+  if (found == state.uploaded_sizes.end()) {
+    // Nothing to learn from. With the main view's camera seen it is 100%, as without the row.
+    if (!state.camera_seen) state.scale_refused_frame = state.frame;
+    state.scale_choice = (state.camera_seen ? ScaleChoice::WHOLE : ScaleChoice::STOCK);
+    return state.scale_choice;
+  }
+  const auto& [screen, viewport, origin] = found->second;
+  if (viewport == screen) {
+    state.scale_proof = ScaleProof::NONE;
+    state.learned_size = {};
+    state.learned_share = 1.f;
+    state.scale_choice = ScaleChoice::WHOLE;
+    return state.scale_choice;
+  }
+  if (const std::array<UINT, 2> size = {static_cast<UINT>(viewport[0]), static_cast<UINT>(viewport[1])}; size != state.learned_size) {
+    state.learned_size = size;
+    state.learned_share = viewport[0] / screen[0];
+    const bool expected = screen[0] == static_cast<float>(output.Width) && screen[1] == static_cast<float>(output.Height)
+                          && origin[0] == 0.f && origin[1] == 0.f
+                          && viewport[0] > 0.f && viewport[1] > 0.f && viewport[0] <= screen[0] && viewport[1] <= screen[1]
+                          && viewport[0] == std::floor(viewport[0]) && viewport[1] == std::floor(viewport[1]);
+    state.scale_proof = (expected ? ScaleProof::WAITING : ScaleProof::REFUSED);
+    if (!expected) {
+      renodx::utils::log::i(std::format("[Warhammer III] Upscaling below 100%: refused: the TAA's camera has screen {}x{}, viewport {}x{}, origin {} {}, its output is {}x{}.",
+                                        screen[0], screen[1], viewport[0], viewport[1], origin[0], origin[1], output.Width, output.Height));
+    }
+  }
+  if (state.scale_proof == ScaleProof::REFUSED) state.scale_refused_frame = state.frame;
+  state.scale_choice = ((state.scale_proof == ScaleProof::GOOD) ? ScaleChoice::SCALED : ScaleChoice::STOCK);
+  return state.scale_choice;
+}
+
+// After the game's TAA resolve: its inputs through DLSS, the result into its output. Below 100%: see the namespace's comment.
 inline void Resolve(ID3D11DeviceContext* native) {
   std::array<ID3D11ShaderResourceView*, 5> inputs = {};
   native->CSGetShaderResources(0, static_cast<UINT>(inputs.size()), inputs.data());
@@ -153,7 +345,13 @@ inline void Resolve(ID3D11DeviceContext* native) {
   ComPtr<ID3D11DeviceContext1> context1;
   const std::unique_lock lock(state.mutex);
   const auto method = state.settings.method;
-  const bool nvidia_model = method == twattila::anti_aliasing::Method::DLAA;
+  const ScaleChoice scale = ChooseScale(native, output_desc);
+  // The row on and no camera: a scale that just changed, the next frame's.
+  if (scale == ScaleChoice::STOCK || (state.below_100 && !state.camera_seen)) {
+    release();
+    return;
+  }
+  const bool scaled = scale == ScaleChoice::SCALED;
   if (!state.camera_seen) {
     state.no_camera_frame = state.frame;
     if (!state.no_camera_logged) {
@@ -174,10 +372,20 @@ inline void Resolve(ID3D11DeviceContext* native) {
     release();
     return;
   }
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  // Until the helper is up the game's TAA and upscale stay whole. The finish's texture first: nothing may leave the picture half done.
+  if (scaled && (bridge.shared == nullptr || bridge.shared->ready == 0
+                 || !MakeDisplayCopy({.Width = output_desc.Width, .Height = output_desc.Height, .MipLevels = 1, .ArraySize = 1,
+                                      .Format = DXGI_FORMAT_R16G16B16A16_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT}))) {
+    release();
+    return;
+  }
+  const UINT render_width = (scaled ? state.learned_size[0] : color_desc.Width);
+  const UINT render_height = (scaled ? state.learned_size[1] : color_desc.Height);
   // The game's jitter (clip space, y up) in render pixels as it moves the picture (y down).
   const float* c = state.camera.data();
-  const std::array<float, 2> jitter = {c[CAMERA_JITTER] * 0.5f * static_cast<float>(color_desc.Width),
-                                       -c[CAMERA_JITTER + 1] * 0.5f * static_cast<float>(color_desc.Height)};
+  const std::array<float, 2> jitter = {c[CAMERA_JITTER] * 0.5f * static_cast<float>(render_width),
+                                       -c[CAMERA_JITTER + 1] * 0.5f * static_cast<float>(render_height)};
   const bool reset = state.evaluated_frame + 1 != state.frame;
   if (!state.logged && (c[CAMERA_JITTER] != 0.f || c[CAMERA_JITTER + 1] != 0.f)) {
     state.logged = true;
@@ -191,40 +399,22 @@ inline void Resolve(ID3D11DeviceContext* native) {
                                       depth_desc.Width, depth_desc.Height, c[SCREEN_SIZE], c[SCREEN_SIZE + 1], c[VIEWPORT],
                                       c[VIEWPORT + 1], c[CAMERA_JITTER], c[CAMERA_JITTER + 1], c[PROJECTION + 2], c[PROJECTION + 6]));
   }
-  auto& bridge = twattila::dlaa_bridge::bridge;
   bool evaluated = false;
   twattila::dlaa_bridge::BeforeSharedWrites(native);
   {
     talesofarise::dlss::ContextStateScope scope(context1.Get(), state.objects.private_state.Get());
-    const bool reconstruct = state.settings.ray_reconstruction && state.guides_frame == state.frame && bridge.guides;
-    // NVSDK_NGX_DLSS_Hint_Render_Preset L, M; K, FSR and XeSS take the light as it is.
-    const std::array<float, 4> shader_settings = {(nvidia_model && (reconstruct || state.settings.dlaa_preset == 12u || state.settings.dlaa_preset == 13u)) ? 1.f : 0.f};
+    const bool reconstruct = Reconstructs();
+    const std::array<float, 4> shader_settings = {(!scaled && SquareRootInput(reconstruct)) ? 1.f : 0.f, 0.f, static_cast<float>(render_width), static_cast<float>(render_height)};
     context1->UpdateSubresource(state.objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
     const std::array<ID3D11ShaderResourceView*, 3> sources = {inputs[0], inputs[2], inputs[4]};
-    const std::array<ID3D11UnorderedAccessView*, 3> destinations = {bridge.color.uav.Get(), bridge.depth.uav.Get(), bridge.motion.uav.Get()};
-    context1->CSSetShader(state.objects.inputs.Get(), nullptr, 0);
+    const std::array<ID3D11UnorderedAccessView*, 3> destinations = {(scaled ? target.Get() : bridge.color.uav.Get()), bridge.depth.uav.Get(), bridge.motion.uav.Get()};
+    context1->CSSetShader((scaled ? state.objects.scaled_inputs.Get() : state.objects.inputs.Get()), nullptr, 0);
     context1->CSSetShaderResources(0, static_cast<UINT>(sources.size()), sources.data());
     context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(destinations.size()), destinations.data(), nullptr);
     context1->CSSetConstantBuffers(0, 1, state.objects.shader_settings.GetAddressOf());
-    context1->Dispatch((color_desc.Width + 7) / 8, (color_desc.Height + 7) / 8, 1);
+    context1->Dispatch((render_width + 7) / 8, (render_height + 7) / 8, 1);
     context1->ClearState();
-    // Ray Reconstruction (its guides written this frame): view = inverse projection x view-projection (the camera's
-    // registers act on column vectors), given NVIDIA as row-vector matrices (their transposes). FSR and XeSS: the
-    // projection alone (its z row and c7.y hold near, far and the field of view; the jitter is in its column 2).
-    twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = state.settings.ray_reconstruction_preset};
-    if (reconstruct || !nvidia_model) {
-      for (size_t row = 0; row < 4; ++row) {
-        for (size_t column = 0; column < 4; ++column) {
-          float sum = 0.f;
-          for (size_t k = 0; k < 4; ++k) sum += c[INVERSE_PROJECTION + (row * 4) + k] * c[VIEW_PROJECTION + (k * 4) + column];
-          reconstruction.world_to_view[(column * 4) + row] = sum;
-          reconstruction.view_to_clip[(column * 4) + row] = c[PROJECTION + (row * 4) + column];
-        }
-      }
-    }
-    evaluated = twattila::dlaa_bridge::Evaluate(context1.Get(), color_desc.Width, color_desc.Height, jitter[0], jitter[1], reset,
-                                                state.settings.dlaa_preset, reconstruct ? &reconstruction : nullptr,
-                                                nvidia_model ? nullptr : &reconstruction.view_to_clip);
+    if (!scaled) evaluated = EvaluateInputs(context1.Get(), render_width, render_height, jitter, reset, reconstruct, c);
     if (evaluated) {
       ID3D11ShaderResourceView* result = bridge.output.srv.Get();
       ID3D11UnorderedAccessView* destination = target.Get();
@@ -236,37 +426,14 @@ inline void Resolve(ID3D11DeviceContext* native) {
     }
   }
   release();
-  if (!evaluated) return;
-  state.evaluated_frame = state.frame;
-  // Frame generation's camera has no jitter, the uploaded view-projection does: made again from the view and the projection
-  // without its jitter terms (c6.z, c7.z). Near and far as uploaded; depth is forward (the helper's assumption).
-  std::array<float, 16> view = {};
-  std::array<float, 16> projection = {};
-  std::copy_n(c + VIEW, 16, view.begin());
-  std::copy_n(c + PROJECTION, 16, projection.begin());
-  projection[2] = 0.f;
-  projection[6] = 0.f;
-  std::array<float, 16> view_projection = {};
-  for (size_t row = 0; row < 4; ++row) {
-    for (size_t column = 0; column < 4; ++column) {
-      for (size_t k = 0; k < 4; ++k) view_projection[(row * 4) + column] += projection[(row * 4) + k] * view[(k * 4) + column];
-    }
+  if (scaled) {
+    state.scaled_frame = state.frame;
+    state.taa_camera = state.camera;
+    state.taa_jitter = jitter;
+    state.taa_reset = reset;
+    return;
   }
-  if (twattila::frame_generation::Wanted()) {
-    state.generation = {
-        .width = color_desc.Width,
-        .height = color_desc.Height,
-        .jitter_x = jitter[0],
-        .jitter_y = jitter[1],
-        .reset = reset,
-        .near_plane = c[NEAR_FAR],
-        .far_plane = c[NEAR_FAR + 1],
-    };
-    twattila::frame_generation::SetCamera(&state.generation, projection, view, view_projection,
-                                           (reset ? view_projection : state.previous_view_projection), {c[0], c[1], c[2]});
-    state.generation_frame = state.frame;
-  }
-  state.previous_view_projection = view_projection;
+  if (evaluated) OnEvaluated(render_width, render_height, jitter, reset, c);
 }
 
 // The picture's target on `native` for frame generation: bound as the first render target, its size the upscaler's, 16 bits
@@ -350,6 +517,132 @@ inline void MarkCamera(ID3D11DeviceContext* native, ID3D11Buffer* buffer, std::s
                                           c[internal::CAMERA_JITTER], c[internal::CAMERA_JITTER + 1]));
 }
 
+// The tone mapper's on_draw, after aa_target's (`redirected`: it draws into the addon's `width` x `height` texture). Below 100%: a
+// frame whose TAA left its colour raw draws at the render size (true: its overscan is not to be used); a new size's first frame
+// only has its constants checked. Not as expected: the game's draw and this size refused, its TAA's result back from the next frame.
+inline bool OnTonemapDraw(ID3D11DeviceContext* native, bool redirected, UINT width, UINT height) {
+  using internal::state;
+  using internal::ScaleProof;
+  const std::unique_lock lock(state.mutex);
+  // Later draws are other views' (portraits): MainViewport.
+  if (state.scale_proof == ScaleProof::GOOD) twattila::frame_history::tonemapped.store(true, std::memory_order_relaxed);
+  state.tonemap_at_render_size = false;
+  const bool checking = state.scale_proof == ScaleProof::WAITING && state.scale_frame == state.frame;
+  const bool scaled = state.scaled_frame == state.frame;
+  if ((!checking && !scaled) || state.tonemap_frame == state.frame) return false;
+  state.tonemap_frame = state.frame;
+  const auto refuse = [](const std::string& why) {
+    state.scale_proof = ScaleProof::REFUSED;
+    state.scale_refused_frame = state.frame;
+    renodx::utils::log::i(std::format("[Warhammer III] Upscaling below 100%: refused at {}x{}: {}.", state.learned_size[0], state.learned_size[1], why));
+    return false;
+  };
+  if (!redirected) return refuse("the tone mapper doesn't draw into the addon's texture");
+  UINT viewports = 0;
+  native->RSGetViewports(&viewports, nullptr);
+  if (viewports != 1) return refuse(std::format("{} viewports at the tone mapper", viewports));
+  D3D11_VIEWPORT viewport = {};
+  native->RSGetViewports(&viewports, &viewport);
+  if (viewport.TopLeftX != 0.f || viewport.TopLeftY != 0.f || viewport.Width != static_cast<float>(width) || viewport.Height != static_cast<float>(height)) {
+    return refuse(std::format("the tone mapper's viewport is {}x{} at {} {}, its target {}x{}", viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY, width, height));
+  }
+  ComPtr<ID3D11Buffer> camera;
+  native->PSGetConstantBuffers(1, 1, camera.GetAddressOf());
+  if (!camera) return refuse("the tone mapper has no camera");
+  if (scaled) {
+    const auto& bridge = twattila::dlaa_bridge::bridge;
+    if (bridge.width != width || bridge.height != height) return refuse(std::format("the upscaler's output is {}x{}, the tone mapper's target {}x{}", bridge.width, bridge.height, width, height));
+    const auto found = state.uploaded_sizes.find(reinterpret_cast<uint64_t>(camera.Get()));
+    if (found != state.uploaded_sizes.end() && found->second.screen != std::array<float, 2>{static_cast<float>(width), static_cast<float>(height)}) {
+      return refuse(std::format("the tone mapper's camera has screen {}x{}, its target is {}x{}", found->second.screen[0], found->second.screen[1], width, height));
+    }
+    state.tonemap_viewport = viewport;
+    D3D11_VIEWPORT render_viewport = viewport;
+    render_viewport.Width = static_cast<float>(state.learned_size[0]);
+    render_viewport.Height = static_cast<float>(state.learned_size[1]);
+    native->RSSetViewports(1, &render_viewport);
+    state.tonemap_at_render_size = true;
+    return true;
+  }
+  // Once per size: reading them back makes the game wait.
+  ComPtr<ID3D11DeviceContext1> context1;
+  ComPtr<ID3D11Buffer> hdr_to_screen;
+  UINT first_constant = 0;
+  UINT constant_count = 0;
+  if (FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return refuse("no ID3D11DeviceContext1");
+  context1->PSGetConstantBuffers1(4, 1, hdr_to_screen.GetAddressOf(), &first_constant, &constant_count);
+  if (!hdr_to_screen || first_constant != 0) return refuse(std::format("the tone mapper's b4 starts at constant {}", first_constant));
+  const auto screen = twattila::frame_trace::ReadBuffer<float>(native, camera.Get(), internal::SCREEN_SIZE * 4, 2);
+  const auto overscan = twattila::frame_trace::ReadBuffer<float>(native, hdr_to_screen.Get(), internal::OVERSCAN_BYTE, 1);
+  if (screen.empty() || overscan.empty()) return refuse("the tone mapper's constants can't be read");
+  const std::string values = std::format("target {}x{}, its camera's screen {}x{}, overscan {}", width, height, screen[0], screen[1], overscan[0]);
+  if (screen[0] != static_cast<float>(width) || screen[1] != static_cast<float>(height)) return refuse(values);
+  if (std::abs((overscan[0] * static_cast<float>(width)) - static_cast<float>(state.learned_size[0])) > 1.f
+      || std::abs((overscan[0] * static_cast<float>(height)) - static_cast<float>(state.learned_size[1])) > 1.f) {
+    return refuse(values);
+  }
+  state.scale_proof = ScaleProof::GOOD;
+  renodx::utils::log::i(std::format("[Warhammer III] Upscaling below 100%: {}x{} as expected: {}.", state.learned_size[0], state.learned_size[1], values));
+  return false;
+}
+
+// The tone mapper drew at the render size into `picture` (its on_drawn; its target that texture, still bound): through the upscaler,
+// over the whole display. The viewport back first: nothing after it is at the render size. No result: stretched, never only the corner.
+inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3D11ShaderResourceView* picture) {
+  using internal::state;
+  const std::unique_lock lock(state.mutex);
+  if (!state.tonemap_at_render_size) return;
+  state.tonemap_at_render_size = false;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  native->RSSetViewports(1, &state.tonemap_viewport);
+  ComPtr<ID3D11RenderTargetView> target_view;
+  native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  const auto target = internal::TextureOf(target_view.Get());
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (!target || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  auto& objects = state.objects;
+  const auto& bridge = twattila::dlaa_bridge::bridge;
+  const auto [width, height] = state.learned_size;
+  bool evaluated = false;
+  twattila::dlaa_bridge::BeforeSharedWrites(native);
+  {
+    talesofarise::dlss::ContextStateScope scope(context1.Get(), objects.private_state.Get());
+    const bool reconstruct = internal::Reconstructs();
+    std::array<float, 4> shader_settings = {internal::SquareRootInput(reconstruct) ? 1.f : 0.f, 0.f, static_cast<float>(width), static_cast<float>(height)};
+    context1->UpdateSubresource(objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
+    context1->CSSetShader(objects.scaled_prepare.Get(), nullptr, 0);
+    context1->CSSetShaderResources(0, 1, &picture);
+    context1->CSSetUnorderedAccessViews(0, 1, bridge.color.uav.GetAddressOf(), nullptr);
+    context1->CSSetConstantBuffers(0, 1, objects.shader_settings.GetAddressOf());
+    context1->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+    context1->ClearState();
+    evaluated = internal::EvaluateInputs(context1.Get(), width, height, state.taa_jitter, state.taa_reset, reconstruct, state.taa_camera.data());
+    shader_settings[1] = evaluated ? 0.f : 1.f;
+    context1->UpdateSubresource(objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
+    const std::array<ID3D11ShaderResourceView*, 2> sources = {bridge.output.srv.Get(), bridge.color.srv.Get()};
+    D3D11_TEXTURE2D_DESC desc = {};
+    target->GetDesc(&desc);
+    context1->CSSetShader(objects.scaled_finish.Get(), nullptr, 0);
+    context1->CSSetShaderResources(0, static_cast<UINT>(sources.size()), sources.data());
+    context1->CSSetSamplers(0, 1, objects.linear_sampler.GetAddressOf());
+    context1->CSSetUnorderedAccessViews(0, 1, objects.display_copy_uav.GetAddressOf(), nullptr);
+    context1->CSSetConstantBuffers(0, 1, objects.shader_settings.GetAddressOf());
+    context1->Dispatch((desc.Width + 7) / 8, (desc.Height + 7) / 8, 1);
+    context1->ClearState();
+  }
+  native->CopyResource(target.Get(), objects.display_copy.Get());
+  state.scaled_done_frame = state.frame;
+  if (evaluated) internal::OnEvaluated(width, height, state.taa_jitter, state.taa_reset, state.taa_camera.data());
+}
+
+// Whether this frame's picture came through the upscaler below 100%: the game's FXAA on it would read its flags at display pixels,
+// which hold data only in the render size's corner.
+inline bool ScaledThisFrame() {
+  const std::unique_lock lock(internal::state.mutex);
+  return internal::state.scaled_done_frame == internal::state.frame;
+}
+
 // The tone mapper drew (its on_drawn, its target still the addon's 16-bit texture): the Motion Debug View in place of the
 // picture. Here, not at the TAA pass: there the game's exposure, bloom and grading would still act on its colours.
 inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
@@ -372,21 +665,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
       || (desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT && desc.Format != DXGI_FORMAT_R16G16B16A16_TYPELESS)) {
     return;
   }
-  D3D11_TEXTURE2D_DESC made = {};
-  if (objects.motion_view) objects.motion_view->GetDesc(&made);
-  if (made.Width != desc.Width || made.Height != desc.Height) {
-    objects.motion_view_uav.Reset();
-    objects.motion_view.Reset();
-    D3D11_TEXTURE2D_DESC view_desc = desc;
-    view_desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
-    view_desc.MiscFlags = 0;
-    const D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT, .ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D};
-    if (FAILED(objects.device->CreateTexture2D(&view_desc, nullptr, objects.motion_view.GetAddressOf()))
-        || FAILED(objects.device->CreateUnorderedAccessView(objects.motion_view.Get(), &uav_desc, objects.motion_view_uav.GetAddressOf()))) {
-      objects.motion_view.Reset();
-      return;
-    }
-  }
+  if (!internal::MakeDisplayCopy(desc)) return;
   const D3D11_SHADER_RESOURCE_VIEW_DESC picture_desc = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
                                                         .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
                                                         .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
@@ -394,17 +673,20 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (FAILED(objects.device->CreateShaderResourceView(target.Get(), &picture_desc, picture.GetAddressOf()))) return;
   {
     talesofarise::dlss::ContextStateScope scope(context1.Get(), objects.private_state.Get());
-    constexpr std::array<float, 4> SHADER_SETTINGS = {0.f, 1.f};
-    context1->UpdateSubresource(objects.shader_settings.Get(), 0, nullptr, SHADER_SETTINGS.data(), 0, 0);
+    // Below 100% the motion is in its texture's top-left: stretched over the picture.
+    const bool scaled = state.scaled_done_frame == state.frame;
+    const std::array<float, 4> shader_settings = {0.f, 1.f, scaled ? static_cast<float>(state.learned_size[0]) / static_cast<float>(desc.Width) : 1.f,
+                                                  scaled ? static_cast<float>(state.learned_size[1]) / static_cast<float>(desc.Height) : 1.f};
+    context1->UpdateSubresource(objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
     const std::array<ID3D11ShaderResourceView*, 2> sources = {picture.Get(), bridge.motion.srv.Get()};
     context1->CSSetShader(objects.output.Get(), nullptr, 0);
     context1->CSSetShaderResources(0, static_cast<UINT>(sources.size()), sources.data());
-    context1->CSSetUnorderedAccessViews(0, 1, objects.motion_view_uav.GetAddressOf(), nullptr);
+    context1->CSSetUnorderedAccessViews(0, 1, objects.display_copy_uav.GetAddressOf(), nullptr);
     context1->CSSetConstantBuffers(0, 1, objects.shader_settings.GetAddressOf());
     context1->Dispatch((desc.Width + 7) / 8, (desc.Height + 7) / 8, 1);
     context1->ClearState();
   }
-  native->CopyResource(target.Get(), objects.motion_view.Get());
+  native->CopyResource(target.Get(), objects.display_copy.Get());
 }
 
 // After OnTonemapDrawn (its target still the addon's 16-bit texture, with what the Debug View drew: the HUD-less image shows
@@ -471,11 +753,19 @@ inline void OnMapBufferRegion(reshade::api::device* device, reshade::api::resour
 }
 
 // The main view's camera (state.mutex held): a perspective projection (its last register 0, 0, 1, 0) over the whole
-// screen, uploaded to `buffer`.
+// screen, or below 100% over the size the TAA was seen at, uploaded to `buffer`.
 inline void Upload(const float* c, uint64_t buffer) {
+  if (state.below_100) {
+    state.uploaded_sizes[buffer] = {.screen = {c[SCREEN_SIZE], c[SCREEN_SIZE + 1]},
+                                    .viewport = {c[VIEWPORT], c[VIEWPORT + 1]},
+                                    .origin = {c[VIEWPORT_ORIGIN], c[VIEWPORT_ORIGIN + 1]}};
+  }
+  const bool scaled = state.scale_proof == ScaleProof::GOOD;
+  const float main_width = (scaled ? static_cast<float>(state.learned_size[0]) : c[SCREEN_SIZE]);
+  const float main_height = (scaled ? static_cast<float>(state.learned_size[1]) : c[SCREEN_SIZE + 1]);
   const float* last = c + PROJECTION + 12;
   if (last[0] != 0.f || last[1] != 0.f || last[2] != 1.f || last[3] != 0.f || c[SCREEN_SIZE] <= 0.f
-      || c[VIEWPORT] != c[SCREEN_SIZE] || c[VIEWPORT + 1] != c[SCREEN_SIZE + 1]) {
+      || c[VIEWPORT] != main_width || c[VIEWPORT + 1] != main_height) {
     return;
   }
   std::copy_n(c, state.camera.size(), state.camera.begin());
@@ -520,6 +810,12 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
     ++state.frame;
     state.camera_seen = false;
     state.trace_wanted = twattila::frame_trace::Wanted();
+    // The addon's passes follow the game's size (without the row: 0, 1, never set).
+    const bool scaled = state.scale_proof == ScaleProof::GOOD;
+    twattila::frame_history::tonemapped.store(false, std::memory_order_relaxed);
+    twattila::frame_history::render_width.store(scaled ? state.learned_size[0] : 0u, std::memory_order_relaxed);
+    twattila::frame_history::render_height.store(scaled ? state.learned_size[1] : 0u, std::memory_order_relaxed);
+    twattila::frame_history::effect_share.store(scaled ? state.learned_share : 1.f, std::memory_order_relaxed);
   }
   // FrameTrace: a frame of the 3D view (600 presents with its camera or its TAA: any Resolution Scale, DLSS on or off), or
   // the next one when renodx_trace_now sits next to the exe (checked each second; removed).
@@ -537,8 +833,8 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
 
 }  // namespace internal
 
-// Every present.
-inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_aliasing::Settings& settings) {
+// Every present. `below_100`: the upscaler also when the game's Resolution Scale is below 100%.
+inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_aliasing::Settings& settings, bool below_100) {
   twattila::frame_generation::Update({
       .multiplier = (twattila::anti_aliasing::Upscales(settings.method) ? settings.frame_generation : 0u),
       .reflex_boost = (settings.reflex == 2),
@@ -551,9 +847,16 @@ inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_alia
   twattila::reflex::Update(swapchain, settings.reflex, settings.frame_limit);
   const std::unique_lock lock(internal::state.mutex);
   internal::state.settings = settings;
-  if (settings.debug_view != 1u || !twattila::anti_aliasing::Upscales(settings.method)) {
-    internal::state.objects.motion_view_uav.Reset();
-    internal::state.objects.motion_view.Reset();
+  if (internal::state.below_100 != below_100) {
+    internal::state.below_100 = below_100;
+    internal::state.scale_proof = internal::ScaleProof::NONE;
+    internal::state.learned_size = {};
+    internal::state.learned_share = 1.f;
+    internal::state.uploaded_sizes.clear();
+  }
+  if ((settings.debug_view != 1u && internal::state.scale_proof != internal::ScaleProof::GOOD) || !twattila::anti_aliasing::Upscales(settings.method)) {
+    internal::state.objects.display_copy_uav.Reset();
+    internal::state.objects.display_copy.Reset();
   }
   // Off, frame generation's window hidden: the shared set and the helper's upscaler back (their VRAM).
   if (auto& bridge = twattila::dlaa_bridge::bridge; !twattila::anti_aliasing::Upscales(settings.method) && bridge.width != 0
@@ -570,7 +873,8 @@ inline std::string Status() {
   const auto& bridge = twattila::dlaa_bridge::bridge;
   if (bridge.failed) return bridge.status;
   if (in_last_second(state.evaluated_frame)) return (bridge.shared != nullptr) ? bridge.shared->status : bridge.status;
-  if (in_last_second(state.no_camera_frame)) return "Not running: in-game Resolution Scale is below 100%. The game's own TAA and upscale stay.";
+  if (in_last_second(state.scale_refused_frame)) return "Not running: unexpected constants at this in-game Resolution Scale (values in ReShade.log). The game's own TAA and upscale stay.";
+  if (in_last_second(state.no_camera_frame)) return "Not running: in-game Resolution Scale is below 100%. The game's own TAA and upscale stay (or turn on Below 100% Resolution Scale).";
   if (in_last_second(state.taa_frame)) return bridge.status;
   return "Not running: keep in-game Anti-aliasing on TAA or TAA High (menus have none).";
 }
@@ -588,6 +892,12 @@ inline std::array<UINT, 2> RenderSize() {
   const std::unique_lock lock(internal::state.mutex);
   if (!internal::state.camera_seen) return {};
   return {static_cast<UINT>(internal::state.camera[internal::VIEWPORT]), static_cast<UINT>(internal::state.camera[internal::VIEWPORT + 1])};
+}
+
+// The game's render size against the display's (width), below 100% with the row on; else 1.
+inline float RenderShare() {
+  const std::unique_lock lock(internal::state.mutex);
+  return (internal::state.scale_proof == internal::ScaleProof::GOOD) ? internal::state.learned_share : 1.f;
 }
 
 inline void Install() {
@@ -623,6 +933,9 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   const std::unique_lock lock(internal::state.mutex);
   if (internal::state.objects.device.Get() != native) return;
   internal::state.objects = {};
+  internal::state.scale_proof = internal::ScaleProof::NONE;
+  internal::state.learned_size = {};
+  internal::state.uploaded_sizes.clear();
   twattila::dlaa_bridge::Release();
 }
 
