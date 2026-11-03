@@ -189,7 +189,7 @@ void main(
   r1.xyzw = frame_texture.SampleLevel(frame_sampler_s, r0.xy, 0).xyzw;
   r0.z = -focus_distance + r1.w;
   r0.z = r0.z * r0.z;
-  r0.w = dot(focal_length, focal_length);
+  r0.w = dot(focal_length.xx, focal_length.xx);
   r0.z = r0.z / r0.w;
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);

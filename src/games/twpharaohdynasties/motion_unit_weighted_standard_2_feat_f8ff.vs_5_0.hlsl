@@ -323,7 +323,7 @@ void GameMain(
   r1.zw = float2(0,0);
   r0.yz = t_Feather_Mask_Texture.Load(r1.xyz).xy;
   r0.zw = log2(r0.yz);
-  r0.zw = sp_Feather_Mask_Main_Gamma * r0.zw;
+  r0.zw = float2(sp_Feather_Mask_Main_Gamma, sp_Feather_Mask_Edges_Gamma) * r0.zw;
   r0.zw = exp2(r0.zw);
   r1.x = dot(g_wind_vector_main.xy, g_wind_vector_main.xy);
   r1.y = rsqrt(r1.x);

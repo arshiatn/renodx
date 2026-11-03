@@ -223,7 +223,7 @@ void GameMain(
   r2.zw = float2(0,0);
   r0.x = t_Noise_Texture.Load(r2.xyz).x;
   r0.x = -0.5 + r0.x;
-  r2.xy = sp_Noise_Multiplier_X * r0.xx;
+  r2.xy = float2(sp_Noise_Multiplier_X, sp_Noise_Multiplier_Y) * r0.xx;
   r2.z = sp_Noise_Multiplier_Z * r0.x;
   r0.x = 1 + -v1.w;
   r0.x = log2(r0.x);

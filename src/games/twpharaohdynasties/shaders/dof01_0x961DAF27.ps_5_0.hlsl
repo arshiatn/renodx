@@ -295,7 +295,7 @@ void main(
   r3.w = min(r3.w, r6.z);
   r3.z = r3.z ? r6.z : 0;
   r3.z = r5.y ? r3.w : r3.z;
-  r6.xy = g_fog_height_bottom + -camera_position.yy;
+  r6.xy = float2(g_fog_height_bottom, g_fog_height_top) + -camera_position.yy;
   r6.xy = r6.xy / r0.ww;
   r6.xy = max(float2(0,0), r6.xy);
   r6.xy = min(r6.xy, r6.zz);

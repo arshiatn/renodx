@@ -378,7 +378,7 @@ void GameMain(
   r8.xyz = r8.xyz / r0.www;
   r1.x = dot(r2.xyz, r8.xyz);
   r0.w = r1.x / r0.w;
-  r1.xw = sp_OctA_Uniformity_X * v3.xy + r5.xy;
+  r1.xw = float2(sp_OctA_Uniformity_X, sp_OctA_Uniformity_Y) * v3.xy + r5.xy;
   r2.w = sp_OctA_Speed * motion_time;
   r2.w = r2.w * r3.w;
   r5.x = -r2.w;
