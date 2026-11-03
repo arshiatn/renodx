@@ -267,7 +267,7 @@ void main(
       o0.w = r1.w;
 
       o0.xyzw = saturate(o0.xyzw);
-      o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, g_gamma_output);
+      o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, SDR_STOCK_GAMMA);
       o0.xyz *= (SI.diffuse_white_nits / SI.graphics_white_nits);
       o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
       return;
@@ -635,7 +635,7 @@ void main(
       // Restore the UNORM write clamp on the upgraded target.
       o0.xyzw = saturate(o0.xyzw);
 
-      o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, g_gamma_output);
+      o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, SDR_STOCK_GAMMA);
       o0.xyz *= (SI.diffuse_white_nits / SI.graphics_white_nits);
       o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
       return;

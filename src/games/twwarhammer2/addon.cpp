@@ -467,6 +467,18 @@ void BuildRuntimeData() {
                    "HDR (PsychoV31): PsychoV31 as tone mapper, more grading sliders.",
         .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)", "HDR (PsychoV31)"},
     },
+    new renodx::utils::settings::Setting{
+        .key = "gamma_correction",
+        .binding = &shader_injection.gamma_correction,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Gamma Correction",
+        .section = "General",
+        .tooltip = "Rendering Mode SDR: any in-game Gamma shown as gamma 2.2.\n"
+                   "Off: the game's own picture, at the in-game Gamma.",
+        .labels = {"Off (In-game Gamma value)", "On (Gamma 2.2)"},
+        .is_visible = [] { return !IsHDRMode(); },
+    },
     // new renodx::utils::settings::Setting{
     //     .value_type = renodx::utils::settings::SettingValueType::TEXT,
     //     .label =

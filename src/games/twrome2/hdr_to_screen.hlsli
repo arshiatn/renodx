@@ -74,7 +74,7 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
 float4 SdrToScreenOutput(float4 stock)
 {
   stock = saturate(stock);
-  stock.xyz = renodx::color::gamma::DecodeSafe(stock.xyz, g_gamma_output) * (SI.diffuse_white_nits / SI.graphics_white_nits);
+  stock.xyz = renodx::color::gamma::DecodeSafe(stock.xyz, SDR_STOCK_GAMMA) * (SI.diffuse_white_nits / SI.graphics_white_nits);
   stock.xyz = renodx::color::gamma::EncodeSafe(stock.xyz);
   return stock;
 }

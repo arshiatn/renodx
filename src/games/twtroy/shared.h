@@ -124,6 +124,9 @@ struct ShaderInjectData {
 };
 
 #define SI shader_injection
+// Rendering Mode SDR: what the game's encoded picture is decoded with. Gamma Correction on: its own gamma, so any in-game
+// Gamma lands on the frame's 2.2; off: 2.2, what a 2.2 display shows of it, at the in-game Gamma.
+#define SDR_STOCK_GAMMA ((SI.gamma_correction != 0.f) ? g_gamma_output : 2.2f)
 #define AO_NOISE_FRAME SI.ssao_frame  // twwarhammer2/bitmask_ao.hlsli
 #define HDR_PEAK max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 0.0001f) //added guard
 #define HDR_INTSCALING SI.diffuse_white_nits / SI.graphics_white_nits

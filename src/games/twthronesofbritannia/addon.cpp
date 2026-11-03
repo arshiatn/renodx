@@ -358,6 +358,18 @@ void BuildRuntimeData() {
         .labels = {"SDR", "HDR (PsychoV30)", "HDR (PsychoV31)"},
     },
     new renodx::utils::settings::Setting{
+        .key = "gamma_correction",
+        .binding = &shader_injection.gamma_correction,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Gamma Correction",
+        .section = "General",
+        .tooltip = "Rendering Mode SDR: the game's picture at gamma 2.0, turned into gamma 2.2.\n"
+                   "Off: the game's own picture, at the in-game Gamma.",
+        .labels = {"Off (In-game Gamma value)", "On (Gamma 2.2)"},
+        .is_visible = [] { return !IsHDRMode(); },
+    },
+    new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "Recommended",
         .section = "Presets",
