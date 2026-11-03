@@ -81,8 +81,9 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   the game. Checked in game: generating 2x with the HUD-less frame.
 - Not yet: DLSS below 100% (the post chain after the TAA would have to run at the display's size), Ray Reconstruction
   (its guides from WH3's G-buffer) and ray tracing (Attila's rt_scene needs WH3's scene shaders and camera layout).
-- Debug: renodx_trace_now next to Warhammer3.exe traces the next frame of the 3D view into tw_frame_trace.txt (checked
-  each second, the file removed); [renodx] FrameTrace=1 traces after 600 presents with the 3D view's camera.
+- Debug: renodx_trace_now next to Warhammer3.exe traces the next frame into tw_frame_trace.txt (checked each second, the
+  file removed), direct and indirect draws, with the tone mapper's overscan and the camera's near, far and depth direction;
+  [renodx] FrameTrace=1 traces after 600 presents with the 3D view's camera or TAA. The log says when each hook first ran.
 
 ## v23 (2026-10-26, untested in game)
 

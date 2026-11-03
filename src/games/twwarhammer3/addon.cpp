@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <format>
+#include <memory>
 #include <mutex>
 #include <cmath>
 #include <string>
@@ -1004,8 +1006,32 @@ void BuildRuntimeData() {
   };
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
+    // A traced frame's: its camera (b1) and hdr_to_screen_PS's overscan (b4, c6.y).
+    if (twattila::frame_trace::Tracing()) {
+      auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+      renodx::utils::directx::NativeFromReShadeProxy(&native);
+      Microsoft::WRL::ComPtr<ID3D11Buffer> camera;
+      Microsoft::WRL::ComPtr<ID3D11Buffer> hdr_to_screen;
+      native->PSGetConstantBuffers(1, 1, camera.GetAddressOf());
+      native->PSGetConstantBuffers(4, 1, hdr_to_screen.GetAddressOf());
+      twwarhammer3::taa_dlss::MarkCamera(native, camera.Get(), "tone mapper");
+      if (hdr_to_screen) {
+        if (const auto c = twattila::frame_trace::ReadBuffer<float>(native, hdr_to_screen.Get(), 0, 7 * 4); !c.empty()) {
+          twattila::frame_trace::Mark(std::format("tone mapper: overscan {}", c[(6 * 4) + 1]));
+        }
+      }
+    }
     return aa_target::OnDrawTonemap(cmd_list);
   };
+  // Each hook's first run in the log: one that never ran looks like one that did nothing.
+  for (auto& [hash, shader] : custom_shaders) {
+    shader.on_draw = [hash = hash, on_draw = shader.on_draw, logged = std::make_shared<std::atomic_bool>(false)](auto* cmd_list) {
+      if (!logged->load(std::memory_order_relaxed) && !logged->exchange(true)) {
+        renodx::utils::log::i(std::format("[Warhammer III] First run: shader {:08X}.", hash));
+      }
+      return on_draw == nullptr || on_draw(cmd_list);
+    };
+  }
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
   auto v31_slider = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
@@ -2110,9 +2136,14 @@ const twattila::rt_scene::Host RT_HOST = {
     .guides_written = [] { return false; },
 };
 
+std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};
+
 // Ray Reconstruction's guides (taa_dlss.hpp) at the sun light draws: the frame's first writes them.
 constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
+  if (!sun_draw_logged[&draw - LIGHT_BOUNCE_DRAWS.data()].exchange(true, std::memory_order_relaxed)) {
+    renodx::utils::log::i(std::format("[Warhammer III] First run: sun light draw, ps {:08X}.", draw.shader_hash));
+  }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native != nullptr) twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot);

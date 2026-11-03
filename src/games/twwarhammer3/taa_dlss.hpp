@@ -17,6 +17,7 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include <include/reshade.hpp>
@@ -63,6 +64,7 @@ constexpr uint32_t CAMERA_MAX_BYTES = 2048;
 constexpr size_t PROJECTION = 6 * 4;
 constexpr size_t VIEW_PROJECTION = 10 * 4;
 constexpr size_t INVERSE_PROJECTION = 26 * 4;
+constexpr size_t NEAR_FAR = 34 * 4;
 constexpr size_t TIME = 35 * 4;
 constexpr size_t SCREEN_SIZE = 37 * 4;
 constexpr size_t VIEWPORT = 39 * 4;
@@ -97,6 +99,10 @@ struct State {
   uint64_t last_frame = UINT64_MAX;
   bool logged = false;
   bool no_camera_logged = false;
+  // A hook's first run, in the log (one that never ran looks like one that did nothing).
+  uint32_t taa_logged_hash = 0;
+  bool camera_logged = false;
+  bool guides_logged = false;
 };
 static State state;
 
@@ -151,7 +157,6 @@ inline void Resolve(ID3D11DeviceContext* native) {
   native->GetDevice(device.GetAddressOf());
   ComPtr<ID3D11DeviceContext1> context1;
   const std::unique_lock lock(state.mutex);
-  state.taa_frame = state.frame;
   if (!state.camera_seen) {
     state.no_camera_frame = state.frame;
     if (!state.no_camera_logged) {
@@ -275,17 +280,47 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT cam
     context1->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
     context1->ClearState();
     state.guides_frame = state.frame;
+    if (!state.guides_logged) {
+      state.guides_logged = true;
+      renodx::utils::log::i("[Warhammer III] First run: Ray Reconstruction's guides written.");
+    }
   }
   for (auto* view : gbuffer) {
     if (view != nullptr) view->Release();
   }
 }
 
+// While a frame is traced: the camera in `buffer` as `pass` has it: near, far, the depth at the near plane (0: forward Z,
+// 1: reversed) and what the trace's lines can't show.
+inline void MarkCamera(ID3D11DeviceContext* native, ID3D11Buffer* buffer, std::string_view pass) {
+  if (buffer == nullptr) return;
+  const auto c = twattila::frame_trace::ReadBuffer<float>(native, buffer, 0, internal::CAMERA_BYTES / 4);
+  if (c.empty()) return;
+  const float near_plane = c[internal::NEAR_FAR];
+  twattila::frame_trace::Mark(std::format("{}: camera screen {} {} {} {}, viewport {} {} {} {}, near {} far {}, depth at near {}, jitter {} {}", pass,
+                                          c[internal::SCREEN_SIZE], c[internal::SCREEN_SIZE + 1], c[internal::SCREEN_SIZE + 2], c[internal::SCREEN_SIZE + 3],
+                                          c[internal::VIEWPORT], c[internal::VIEWPORT + 1], c[internal::VIEWPORT + 2], c[internal::VIEWPORT + 3],
+                                          near_plane, c[internal::NEAR_FAR + 1], c[(8 * 4) + 2] + (c[(8 * 4) + 3] / near_plane),
+                                          c[internal::CAMERA_JITTER], c[internal::CAMERA_JITTER + 1]));
+}
+
 namespace internal {
 
-constexpr auto OnTaa = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnTaa = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (twattila::frame_trace::Tracing()) {
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    ComPtr<ID3D11Buffer> camera;
+    if (native != nullptr) native->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
+    MarkCamera(native, camera.Get(), "the game's TAA");
+  }
   {
     const std::unique_lock lock(state.mutex);
+    state.taa_frame = state.frame;
+    if (state.taa_logged_hash != command.matched_shader_hash) {
+      state.taa_logged_hash = command.matched_shader_hash;
+      renodx::utils::log::i(std::format("[Warhammer III] First run: the game's TAA, cs {:08X}.", command.matched_shader_hash));
+    }
     if (!twattila::anti_aliasing::Upscales(state.settings.method)) return {};
   }
   return {.post_callback = [](Context& command, const void*) {
@@ -320,6 +355,13 @@ inline void Upload(const float* c, uint64_t buffer) {
   std::copy_n(c, state.camera.size(), state.camera.begin());
   state.camera_buffer = buffer;
   state.camera_seen = true;
+  if (!state.camera_logged) {
+    state.camera_logged = true;
+    // Frame generation's depth test too: above 0.5 reversed.
+    renodx::utils::log::i(std::format("[Warhammer III] First run: the main view's camera, screen {}x{}, near {} far {}, depth at near {}.",
+                                      c[SCREEN_SIZE], c[SCREEN_SIZE + 1], c[NEAR_FAR], c[NEAR_FAR + 1],
+                                      c[(8 * 4) + 2] + (c[(8 * 4) + 3] / c[NEAR_FAR])));
+  }
 }
 
 inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource resource) {
@@ -345,23 +387,26 @@ inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data,
 
 inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  bool camera_seen = false;
+  bool view_3d = false;
   {
     const std::unique_lock lock(state.mutex);
+    view_3d = state.camera_seen || state.taa_frame == state.frame;
     ++state.frame;
-    camera_seen = state.camera_seen;
     state.camera_seen = false;
     state.trace_wanted = twattila::frame_trace::Wanted();
   }
-  // FrameTrace: a frame of the 3D view (600 presents with its camera), or the next one when renodx_trace_now sits next
-  // to the exe (checked each second; removed).
+  // FrameTrace: a frame of the 3D view (600 presents with its camera or its TAA: any Resolution Scale, DLSS on or off), or
+  // the next one when renodx_trace_now sits next to the exe (checked each second; removed).
   if (static uint32_t presents = 0; ++presents % 60 == 0) {
     std::wstring exe(32768, L'\0');
     exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
     const auto marker = std::filesystem::path(exe).parent_path() / L"renodx_trace_now";
-    if (DeleteFileW(marker.c_str()) != 0) twattila::frame_trace::StartSoon();
+    if (DeleteFileW(marker.c_str()) != 0) {
+      twattila::frame_trace::StartSoon();
+      view_3d = true;
+    }
   }
-  twattila::frame_trace::OnPresent(camera_seen);
+  twattila::frame_trace::OnPresent(view_3d);
 }
 
 }  // namespace internal
@@ -422,7 +467,7 @@ inline uint64_t Presents() {
 }
 
 inline void Install() {
-  twattila::frame_trace::Install();
+  twattila::frame_trace::Install(internal::SCREEN_SIZE / 4, internal::VIEWPORT / 4);
   for (const uint32_t shader_hash : internal::TAA_SHADERS) {
     renodx::utils::command_action::Register(internal::OnTaa, {
                                                                  .shader_hash = shader_hash,
