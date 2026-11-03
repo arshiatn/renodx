@@ -252,8 +252,6 @@ struct InDraw {
   ComPtr<ID3D11Buffer> vs_constants;  // ours: the motion constants
   std::array<ComPtr<ID3D11ShaderResourceView>, MOTION_VIEWS> motion_views;  // t9-t23
   std::array<ComPtr<ID3D11ShaderResourceView>, MOTION_VIEWS> our_views;
-  ComPtr<ID3D11Buffer> stream_output;
-  ComPtr<ID3D11Buffer> our_stream_output;  // the records (none of the game's then)
   std::array<ComPtr<ID3D11RenderTargetView>, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets;
   ComPtr<ID3D11DepthStencilView> depth_stencil;
   D3D11_TEXTURE2D_DESC depth_desc = {};  // its texture's (checked at the targets' first draw)
@@ -519,13 +517,6 @@ inline void RestoreBindings(ID3D11DeviceContext* native) {
     if (view != nullptr) {
       view->Release();
     }
-  }
-  ComPtr<ID3D11Buffer> output;
-  native->SOGetTargets(1, output.GetAddressOf());
-  if (output && output == kept.our_stream_output) {
-    ID3D11Buffer* game_output = kept.stream_output.Get();
-    constexpr UINT APPEND = UINT_MAX;
-    native->SOSetTargets(1, &game_output, &APPEND);
   }
 }
 
@@ -1080,8 +1071,6 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   }
   // Records or captures change the shaders (bound again after them).
   bool shaders_changed = false;
-  ID3D11Buffer* game_stream_output = nullptr;
-  ComPtr<ID3D11Buffer> streamed;  // the records' buffer left bound (in-draw, none of the game's)
   ComPtr<ID3D11ShaderResourceView> game_animation_view;
   if (unit_table) {
     native->PSGetShaderResources(ANIMATION_SRV_SLOT, 1, game_animation_view.GetAddressOf());
@@ -1114,14 +1103,13 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   }
   // Records (rigid objects, units): one point per instance (its first vertex) through its record shader's stream output
   // into `records` at `offset`, not rasterized (the game's targets stay bound: a pixel shader writing them cost ~4 ms a
-  // frame with a unit of cavalry on screen). In-draw, without a stream output of the game's, the records' stays bound
-  // (inert without a geometry shader that streams; RestoreBindings).
+  // frame with a unit of cavalry on screen). The game's stream output back at once: the records' left bound through the
+  // game's draws cost ~10 us of GPU time a unit draw.
   const auto stream_records = [&](ID3D11Buffer* records, UINT offset) {
     ComPtr<ID3D11GeometryShader> game_geometry_shader;
     native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
-    ComPtr<ID3D11Buffer> bound_output;
-    native->SOGetTargets(1, bound_output.GetAddressOf());
-    game_stream_output = GameBinding(bound_output, kept.our_stream_output, kept.stream_output);
+    ComPtr<ID3D11Buffer> game_output;
+    native->SOGetTargets(1, game_output.GetAddressOf());
     shaders_changed = true;
     native->VSSetShader(objects.record_shaders[index].Get(), nullptr, 0);
     native->GSSetShader(objects.record_outputs[index].Get(), nullptr, 0);
@@ -1133,13 +1121,9 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     } else {
       native->DrawInstanced(1, arguments.instance_count, arguments.first_vertex, arguments.first_instance);
     }
-    if (drawn && !game_stream_output) {
-      streamed = records;
-    } else {
-      ID3D11Buffer* output = game_stream_output;
-      constexpr UINT APPEND = UINT_MAX;
-      native->SOSetTargets(1, &output, &APPEND);
-    }
+    ID3D11Buffer* output = game_output.Get();
+    constexpr UINT APPEND = UINT_MAX;
+    native->SOSetTargets(1, &output, &APPEND);
     native->IASetPrimitiveTopology(topology);
     native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   };
@@ -1272,10 +1256,6 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     for (UINT slot = first_view; slot < first_view + view_count; ++slot) {
       keep.motion_views[slot] = game_motion_views[slot];
       keep.our_views[slot] = motion_views[slot];
-    }
-    if (streamed) {
-      keep.stream_output = game_stream_output;
-      keep.our_stream_output = streamed;
     }
     for (size_t slot = 0; slot < game_targets.size(); ++slot) {
       keep.targets[slot] = game_targets[slot];
