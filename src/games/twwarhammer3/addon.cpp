@@ -2001,11 +2001,9 @@ tw::engine_tweaks::Option object_draw;
 tw::engine_tweaks::Option terrain_draw;
 tw::engine_tweaks::Option grass_density;
 tw::engine_tweaks::Option terrain_tessellation;
-// Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
+// Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
-std::atomic<bool> at_start_done = false;
-std::atomic<bool> at_start_stop = false;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
 // Ray tracing's (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
@@ -2040,7 +2038,6 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .rays_a_pixel_paths_tooltip = "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a pixel). The heaviest.",
 };
 
-void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
 // The graphics watch's values (4 hardware breakpoints).
@@ -2211,8 +2208,6 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twwarhammer3::taa_dlss::Update(swapchain, aa_settings);
-  // After the at-start tests' thread (one writer at a time).
-  if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
@@ -2331,12 +2326,7 @@ void ConfigureAddon() {
       {.name = "terrain_tessellation_quality_battle"},
       {.name = "terrain_tessellation_quality_campaign"},
   };
-  // Graphics 2 of 2's tests: Attila's that this game has, then More Tests (more_tests.h).
-  engine_tests = twattila::engine_tests::Only(twattila::engine_tests::Attila(), more_tests::ATTILA_TESTS);
-  {
-    auto more = more_tests::MoreTests();
-    engine_tests.insert(engine_tests.end(), more.begin(), more.end());
-  }
+  engine_tests = more_tests::MoreTests();
   graphics_options = {&unit_detail, &building_detail, &tree_detail, &grass_detail, &object_detail, &terrain_detail, &effects_detail, &unit_draw, &building_draw, &tree_draw, &grass_draw, &object_draw, &terrain_draw, &grass_density, &terrain_tessellation};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
   graphics_status = new renodx::utils::settings::Setting{
@@ -2462,13 +2452,12 @@ void ConfigureAddon() {
   // Appended Settings (Graphics 2 of 2's tests)
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = "Tests: each changes the game's own values (1x / Game's: unchanged). Many apply from the next\n"
-               "battle or after a restart; some may do nothing or crash. More Tests: every other graphics\n"
-               "value the game reads (unsure ones).",
-      .section = engine_tests.empty() ? std::string("More Tests") : engine_tests.front().section,
+      .label = "Tests: each changes the game's own values (1x, 0 m: unchanged). Many apply from the next\n"
+               "battle; some may do nothing or crash.",
+      .section = engine_tests.front().section,
       .tint = 0xFFD23C,
   });
-  twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
+  twattila::engine_tests::Append(&settings, &engine_tests, nullptr);
 
   // Appended Settings (Ambient Occlusion, Global Illumination, Screen-Space Shadows, Anti-Aliasing)
   twattila::lighting_settings::Append(&settings, &shader_injection);
@@ -2585,9 +2574,8 @@ bool AttachAddon() {
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
-  // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
-  SyncEarlyLoad();
-  twattila::engine_tests::StartAtStart(nullptr, &engine_tests, &at_start_done, &at_start_stop);
+  // An earlier version's changed audio memory left this addon in ReShade.ini's early load list: taken out.
+  twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
@@ -2650,10 +2638,6 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
-  at_start_stop = true;
-  while (!at_start_done.load()) {
-    Sleep(1);
-  }
   twattila::screen_space_shadows::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_filter::Uninstall();

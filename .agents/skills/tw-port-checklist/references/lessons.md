@@ -18,6 +18,9 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | Any capture list works | `rt_core.hpp` returns on anything but a triangle list, and has no HS / DS handling: tessellated meshes stream nothing | Stream-out test on WARP with the real bytes; a "left out" log line |
 | Depth is reversed as in Attila | Read it: TAA's nearest-depth test tells the direction, and it decides inversion flags for FSR, XeSS, FG | TAA CS bytes |
 | Tweak names exist in today's exe | Lists rot. Lookup needs a NUL-preceded whole string (`twrome2/engine_tweaks.hpp`) | Scan the exe offline for each name, count what resolves |
+| A tweak name that resolves is a value | `Find` also lands on plain words passed to other calls, and on a preference's flag byte instead of its value. Writing there corrupts data or faults. List names from the value constructors' own call sites, not from strings | Replay `Find` offline, check each address against the constructor that built it |
+| A factor changes any tweak | A value of 0 stays 0. WH3's shadow splits are 0 and the game then uses a table, so they need `.absolute`. A cap of 0 can also mean "no cap": read the reader's early exit before setting a slider's minimum | Read the reader's branch on the value |
+| An at-start test can stay when its names don't exist | `StartAtStart` retries, and the addon's present path waits for it, so a missing name holds every slider back | Grep the list against the replay; a list with no at-start test skips the thread |
 | Shown rows have effect | A hidden row's labels still clamp the saved value (`graphics_page.hpp`); an `EmptyLine` has no `shown`, so a hidden section can leave a stray title | Key and label diff; read `utils/settings.hpp` |
 
 ## 2. Checks a port tends to miss

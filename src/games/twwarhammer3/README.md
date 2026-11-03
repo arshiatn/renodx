@@ -2,6 +2,19 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+## v31 (not released, built only, not run in game)
+
+- **Graphics 2 of 2 on values that exist.** Of its 430 entries the game had 31 (a status line said so): its names changed. Now 45 of
+  45: the same main rows, and 17 values in Grass & Trees, Shadows and Units (Tests), found by reading the game's own list of values
+  in Warhammer3.exe. New: Grass Size, Grass Height, Grass Edge Blend, Edge Blend, the eight shadow maps' reach (in metres, 0: the
+  game's), Point Lights With Shadows, Cloth Smoothing, Ragdoll Limit. At their defaults they write nothing.
+- Everything else on that page is gone: those rows did nothing, or three threading switches nobody needs. Their saved values no
+  longer apply. Audio Memory is gone too, and with it a thread that retried for a long time at start and kept the sliders from
+  applying until it ended. A saved changed audio memory's entry in ReShade.ini's early load list is taken out.
+- `engine_values.txt` is now the real list: every plain value's type, default and direct reads.
+
+Verify: Graphics 2 of 2's status line says 45 of 45 in `ReShade.log`; Battle Shadow Map 1 at 500 m: nearby shadows softer, at once.
+
 ## v30 (not released, built only, not run in game)
 
 v29 is used twice: the zip twwarhammer3_v29.zip (2026-10-28, its README ends at v28) and the notes below (2026-11-03, never zipped). This zip has both.
