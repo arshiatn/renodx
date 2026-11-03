@@ -978,6 +978,10 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   internal::runtime.settings = settings;
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
+  // Off: its memory back (Prepare makes it again; the other occlusions use nothing of it).
+  if (!settings.enabled && internal::runtime.objects.device) {
+    internal::runtime.objects = {};
+  }
   ++internal::runtime.frame;
 }
 

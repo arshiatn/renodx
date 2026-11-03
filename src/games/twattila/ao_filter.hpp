@@ -293,6 +293,10 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
     internal::runtime.settings.temporal = false;
     internal::runtime.settings.denoise = false;
   }
+  // Off: its memory back (made again with its next pass).
+  if (!internal::Enabled() && internal::runtime.objects.device) {
+    internal::runtime.objects = {};
+  }
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
   ++internal::runtime.frame;

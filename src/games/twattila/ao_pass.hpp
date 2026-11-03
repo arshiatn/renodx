@@ -357,6 +357,12 @@ inline float Update(bool bitmask, bool temporal, float scale, bool denoise) {
   internal::runtime.temporal = bitmask && temporal;
   internal::runtime.scale = std::max(scale, 1.f);
   internal::runtime.denoise = bitmask && denoise;
+  // Off: its memory and its depth levels' back (made again with its next pass).
+  if (!bitmask && internal::runtime.objects.device) {
+    internal::runtime.objects = {};
+    const std::unique_lock levels_lock(depth_levels::internal::runtime.mutex);
+    depth_levels::internal::runtime.objects = {};
+  }
   ++internal::runtime.frame;
   return internal::runtime.temporal ? static_cast<float>(internal::runtime.frame % 64) : 0.f;
 }

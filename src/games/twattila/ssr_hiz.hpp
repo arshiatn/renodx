@@ -457,6 +457,10 @@ inline void Update(bool enabled, bool denoise, int rays) {
   internal::runtime.enabled = enabled;
   internal::runtime.denoise = denoise;
   internal::runtime.rays = rays;
+  // Off: its memory back (made again at the next reflection draw).
+  if (!enabled && internal::runtime.objects.device) {
+    internal::runtime.objects = {};
+  }
   ++internal::runtime.frame;
 }
 

@@ -580,6 +580,10 @@ inline void Update(reshade::api::swapchain* swapchain, const Sliders& sliders) {
   internal::runtime.apply_per_pixel = (sliders.msaa_pixel != 0.f);
   // Ray Reconstruction or NRD denoises it (the bounce's resolve over frames stays: its texels are coarser).
   internal::runtime.denoise = (sliders.denoise != 0.f) && !dlaa_bridge::bridge.reconstructing && !dlaa_bridge::bridge.nrd_bounce;
+  // Off: its memory back (Prepare makes it again).
+  if (!(sliders.strength > 0.f) && internal::runtime.objects.device) {
+    internal::runtime.objects = {};
+  }
   ++internal::runtime.frame;
 }
 

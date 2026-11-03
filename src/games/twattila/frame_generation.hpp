@@ -160,6 +160,8 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
       objects.scrgb = {};
       objects.scene.Reset();
       objects.scene_srv.Reset();
+      objects.target.Reset();
+      objects.target_srv.Reset();
     }
     auto& bridge = dlaa_bridge::bridge;
     // ReShade's menu open: the game's frames only (generated ones warped the menu, ATN 2026-10-28). Textures that no longer

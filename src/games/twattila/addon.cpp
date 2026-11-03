@@ -1569,8 +1569,9 @@ void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
   static const uint64_t profile_ms = seconds("RENODX_TW_PROFILE");
   // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...]: settings changed then (as their sliders would).
   static std::string changes = [] {
-    std::array<char, 1024> value = {};
-    return std::string(value.data(), GetEnvironmentVariableA("RENODX_TW_SET", value.data(), static_cast<DWORD>(value.size())));
+    std::array<char, 8192> value = {};
+    const DWORD length = GetEnvironmentVariableA("RENODX_TW_SET", value.data(), static_cast<DWORD>(value.size()));
+    return std::string(value.data(), length < value.size() ? length : 0);
   }();
   static const uint64_t loaded = GetTickCount64();
   static int taken = 0;

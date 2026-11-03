@@ -514,6 +514,7 @@ struct Runtime {
   std::vector<std::array<float, 4>> light_colours;
   bool lights_traced = false;
   uint32_t helper_device = 0;             // the helper's ray tracing device (a new one: its scene empty)
+  uint64_t wanted_tick = 0;               // when ray tracing was last on (GetTickCount64)
   // The garbage triangles the helper left out (far off or stretched) as last read, the captures' vertex shaders by key
   // (since the last report) and what was left out since then by vertex shader (Update's report).
   uint32_t helper_left_out = 0;
@@ -2361,6 +2362,15 @@ inline void Update(const Settings& settings) {
     for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
     renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
   }
+  // Off for longer than the helper's IDLE_RELEASE: its scene is gone and nothing points at these, the addon's memory and
+  // its hold on the game's mask textures back.
+  if (const uint64_t tick = GetTickCount64(); internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
+    runtime.wanted_tick = tick;
+  } else if (runtime.objects.device && tick > runtime.wanted_tick + 15000) {
+    runtime.objects = {};
+    runtime.atlas_slices.clear();
+    dlaa_bridge::bridge.rt_atlas = {};
+  }
   // Its full set pool dropped sets (v16): each sent again as it is drawn.
   if (const uint32_t state = dlaa_bridge::CompactState(); state != runtime.compact_state) {
     runtime.compact_state = state;
@@ -2536,6 +2546,13 @@ inline void Update(const Settings& settings) {
     runtime.new_static_time = now;
     // Meshes not drawn for RELEASE_FRAMES give their sets (and the game's index buffers) back.
     std::erase_if(runtime.cluster_meshes, [&](const auto& entry) { return entry.second.used_frame + internal::RELEASE_FRAMES < runtime.frame; });
+    // Mask textures not used for as long give their atlas slices (and the textures themselves) back.
+    std::erase_if(runtime.atlas_slices, [&](const auto& entry) {
+      const uint32_t slice = entry.second.second;
+      if (runtime.slice_used[slice] + internal::RELEASE_FRAMES >= runtime.frame) return false;
+      runtime.free_slices.push_back(slice);
+      return true;
+    });
   }
   runtime.captures.clear();
   runtime.captured_keys.clear();
