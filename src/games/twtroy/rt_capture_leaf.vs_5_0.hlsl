@@ -183,7 +183,7 @@ void GameMain(
   r1.y = v14.x * 2 + motion_time;
   r1.y = 0.300000012 * r1.y;
   r1.y = sin(r1.y);
-  r1.xy = g_wind_vegetation_hstrength * r1.xy;
+  r1.xy = float2(g_wind_vegetation_hstrength, g_wind_vegetation_vstrength) * r1.xy;
   r1.z = motion_time + r0.x;
   r1.z = 6 * r1.z;
   r1.z = sin(r1.z);

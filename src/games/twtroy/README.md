@@ -11,6 +11,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twtroy.addon64`
   the game's own picture at the in-game Gamma. Rendering Mode SDR on Output SDR ignores Paper White (as Attila).
 - **Extra in Rendering Mode SDR**: Bloom, Lens Flare, God Rays, Vignette, Distortion and Chromatic Aberration work there (at 1 the picture is
   unchanged). Film Grain and Indicators stay HDR-only. So does Sharpening: RenoDX's own, which stock SDR doesn't have.
+- **Wrong constants from the decompiler** (checked against the game's own shaders):
+  - In-game depth of field: the sharp range around the focus was about 30% too narrow (f x f, the game has 2 x f x f).
+  - Battle sky's fog: thins toward its top as in the game (the bottom plane read the top one: a hard ceiling).
+  - Branches and leaves in motion vectors and ray tracing: vertical wind strength (read the horizontal one).
 
 ## v33 (2026-10-27, batch 5, untested in game; the helper GPU-tested)
 
