@@ -104,7 +104,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   // rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel.
   const bool reconstructed = (flags & RECONSTRUCTED) != 0u;
   const bool soft = reconstructed && light_size > 0.f;
-  const uint rays = clamp(shadow_rays, 1u, 4u);
+  const uint rays = clamp(shadow_rays, 1u, 8u);
   const float threshold = (reconstructed && (soft || rays > 1u)) ? InterleavedGradientNoise(float2(id.xy)) : 0.5f;
   const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
   [loop]
