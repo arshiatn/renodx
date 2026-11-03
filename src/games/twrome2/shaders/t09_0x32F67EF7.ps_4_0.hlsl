@@ -77,6 +77,7 @@ void main(
   r0.xy = g_screen_size.zw * r0.xy;
   r1.xyzw = g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, r0.xy, 0).xyzw;
   r0.xyzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (r0.xy) / DrawRenderShare()).xyzw;
+  r0.xyz *= SI.bloom;
   r2.x = dot(float3(0.0193000007,0.119199999,0.950500011), r1.xyz);
   r2.y = dot(float3(0.412400007,0.357600003,0.180500001), r1.xyz);
   r2.z = dot(float3(0.212599993,0.715200007,0.0722000003), r1.xyz);

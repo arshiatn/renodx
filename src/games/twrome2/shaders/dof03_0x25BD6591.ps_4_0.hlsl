@@ -72,6 +72,6 @@ void main(
   r0.x = exp2(r0.x);
   r0.x = 1 + -r0.x;
   r0.y = 0.600000024 * g_coc_blur_kernel_scale;
-  o0.w = saturate(r0.y * r0.x * ((HDR >= 1.f) ? SI.dof : 1.f));  // DOF slider
+  o0.w = saturate(r0.y * r0.x * SI.dof);  // DOF slider
   return;
 }

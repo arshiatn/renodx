@@ -666,7 +666,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "lensflare",
@@ -678,7 +677,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,  
     },
     new renodx::utils::settings::Setting{
         .key = "godrays",
@@ -690,7 +688,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,  
     },
     new renodx::utils::settings::Setting{
         .key = "vignette",
@@ -702,7 +699,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "dof",
@@ -714,7 +710,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "distortion",
@@ -726,7 +721,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "filmgrain",

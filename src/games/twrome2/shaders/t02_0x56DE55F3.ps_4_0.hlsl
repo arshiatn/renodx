@@ -84,10 +84,10 @@ void main(
   r1.xyzw = distortion_sampler.SampleLevel(distortion_sampler_s, r0.xy, r0.y).xyzw;
   r0.zw = float2(-0.498039216,-0.498039216) + r1.xy;
   r0.xy = r0.zw * float2(0.0199999996,0.0199999996)
-          * (HDR >= 1.f ? SI.uvdistort : 1.f) + r0.xy;
+          * SI.uvdistort + r0.xy;
   r1.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r0.xy, r0.y).xyzw;
   r2.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy).xyzw;
-  float god_rays_multiplier = HDR >= 1.f ? SI.godrays : 1.f;
+  float god_rays_multiplier = SI.godrays;
   r2.xyz = r2.xxx * (float3(0.100000001,0.100000001,0.100000001) * god_rays_multiplier) + r1.xyz;
   r3.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
   r3.xy = r0.xy * float2(2,-2) + float2(-1,1);

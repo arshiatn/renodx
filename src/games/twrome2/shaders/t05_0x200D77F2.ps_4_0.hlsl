@@ -86,7 +86,7 @@ void main(
   r1.xyzw = distortion_sampler.SampleLevel(distortion_sampler_s, r0.xy, r0.y).xyzw;
   r0.zw = float2(-0.498039216,-0.498039216) + r1.xy;
   r0.xy = r0.zw * float2(0.0199999996,0.0199999996)
-          * (HDR >= 1.f ? SI.uvdistort : 1.f) + r0.xy;
+          * SI.uvdistort + r0.xy;
   r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
   r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r1.w = 1;
@@ -103,7 +103,7 @@ void main(
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);
   r0.z = 1 + -r0.z;
-  r0.z *= (HDR >= 1.f) ? SI.dof : 1.f;  // DOF slider (HDR only): scales the blur size, 0 = off
+  r0.z *= SI.dof;  // DOF slider: scales the blur size, 0 = off
   r2.xyzw = float4(0,0,0,0);
   r0.w = 0;
   r1.z = 0;
@@ -124,7 +124,7 @@ void main(
   r2.xyzw = r2.xyzw + -r3.xyzw;
   r2.xyzw = blur_kernel_scale * r2.xyzw + r3.xyzw;
   r3.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy).xyzw;
-  float god_rays_multiplier = HDR >= 1.f ? SI.godrays : 1.f;
+  float god_rays_multiplier = SI.godrays;
   r3.xyz = r3.xxx * (float3(0.100000001,0.100000001,0.100000001) * god_rays_multiplier) + r2.xyz;
   r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
   r0.xyw = r1.xyw;

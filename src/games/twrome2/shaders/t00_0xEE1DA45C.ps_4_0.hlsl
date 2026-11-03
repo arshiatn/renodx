@@ -71,6 +71,7 @@ void main(
   r0.xy = g_screen_size.zw * r0.xy;
   r1.xyzw = g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, r0.xy, 0).xyzw;
   r0.xyzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture_sampler, (r0.xy) / DrawRenderShare()).xyzw;
+  r0.xyz *= SI.bloom;
 
   // 2. CONVERT RGB TO CIE xyY COLOR SPACE
   // r2.x = Z, r2.y = X, r2.z = Y (Luminance)
