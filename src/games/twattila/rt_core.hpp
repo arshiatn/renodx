@@ -41,6 +41,7 @@
 #include "../../utils/state.hpp"
 #include "./dlaa_bridge.hpp"
 #include "./dxbc.hpp"
+#include "./frame_history.hpp"
 #include "./frame_trace.hpp"
 
 // Ray tracing through the DLAA helper, the part any D3D11 game can use (rt_scene.hpp adds the Total War games' passes and
