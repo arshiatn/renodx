@@ -1274,7 +1274,12 @@ class RtScene12 {
         }
         if (guides) flags |= PATH_GUIDES;
         if (sun_traced_frame_ == frame) flags |= PATH_SUN_TRACED;
-        if (light_frame_ == frame) flags |= PATH_LIGHT;
+        // A reflections request's light buffer (RT_REFLECTIONS_LIGHT): what their hits read; without the paths' prepared
+        // light this frame the radiance cache's too, at the render pixels.
+        const bool final_light = reflections && light_ && (requested & dlaa_bridge::RT_REFLECTIONS_LIGHT) != 0;
+        if (light_frame_ == frame || final_light) flags |= PATH_LIGHT;
+        if (final_light) flags |= PATH_LIGHT_FINAL;
+        const bool render_pixels = final_light && light_frame_ != frame;
         // ReSTIR GI (RENODX_TW_NO_REUSE: off); last frame's reservoirs when it ran with these texels.
         const std::array<uint32_t, 3> reuse_size = {shared.rt_bounce_width, shared.rt_bounce_height, std::max(shared.rt_bounce_scale, 1u)};
         const bool reuse = path_traced && (requested & dlaa_bridge::RT_PATH_REUSE) != 0
@@ -1306,9 +1311,9 @@ class RtScene12 {
         }
         list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot.lights->GetGPUVirtualAddress());
         PathConstants constants = {
-            .bounce_width = shared.rt_bounce_width,
-            .bounce_height = shared.rt_bounce_height,
-            .bounce_scale = std::max(shared.rt_bounce_scale, 1u),
+            .bounce_width = render_pixels ? width : shared.rt_bounce_width,
+            .bounce_height = render_pixels ? height : shared.rt_bounce_height,
+            .bounce_scale = render_pixels ? 1u : std::max(shared.rt_bounce_scale, 1u),
             .flags = flags,
             .bounces = std::clamp(shared.rt_path_bounces, 0u, 8u),
             .samples = std::clamp(shared.rt_path_samples, 1u, 16u),
@@ -1323,8 +1328,8 @@ class RtScene12 {
         // The radiance cache once a frame: filled (from the prepared light, else last frame's colour), resolved.
         if (cache_frame_ != frame) {
           const bool from_light = (flags & PATH_LIGHT) != 0;
-          const uint32_t fill_width = (from_light ? shared.rt_bounce_width : width) / 2 + 1;
-          const uint32_t fill_height = (from_light ? shared.rt_bounce_height : height) / 2 + 1;
+          const uint32_t fill_width = (from_light ? constants.bounce_width : width) / 2 + 1;
+          const uint32_t fill_height = (from_light ? constants.bounce_height : height) / 2 + 1;
           Mark(list, L"radiance cache");
           list->SetPipelineState(cache_fill_pipeline_.Get());
           list->Dispatch((fill_width + 7) / 8, (fill_height + 7) / 8, 1);
@@ -1695,6 +1700,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_REFLECT_OWN = 8388608;
   static constexpr uint32_t PATH_REFLECT_OWN_HISTORY = 16777216;
   static constexpr uint32_t PATH_REFLECT_PARITY = 33554432;
+  static constexpr uint32_t PATH_LIGHT_FINAL = 67108864;
   static constexpr uint32_t PATH_SKY_APART = 134217728;
   static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
   static constexpr uint32_t PATH_AMBIENT_HISTORY = 16384;  // rt_camera.hlsli

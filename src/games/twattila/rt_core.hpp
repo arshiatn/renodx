@@ -2036,8 +2036,10 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
 // surface; the occlusion: 1 open), traced once a frame at the game's reflection pass (after this frame's trace: its
 // G-buffer guides and positions); both null when off or not traced this frame (the pass keeps the game's then).
 // `surface_depth` (with the water's reflections on): the pass's depth, the water's in it: the positions and the guides
-// again first (the water drawn since: its rays left from the riverbed with its normal, ATN's debug28).
-inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext* native, ID3D11ShaderResourceView* surface_depth = nullptr) {
+// again first (the water drawn since: its rays left from the riverbed with its normal, ATN's debug28). `light_buffer`:
+// the pass's, for the rays' hits to read this frame's light as the game's own march does, in every Light Bounce mode.
+inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext* native, ID3D11ShaderResourceView* surface_depth = nullptr,
+                                                            ID3D11ShaderResourceView* light_buffer = nullptr) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   auto& bridge = dlaa_bridge::bridge;
@@ -2083,6 +2085,20 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
         runtime.water_traced = true;
       }
     }
+    bool light_copied = false;
+    if (runtime.settings.reflections && light_buffer != nullptr && bridge.rt_light.texture) {
+      ComPtr<ID3D11Resource> light_resource;
+      light_buffer->GetResource(light_resource.GetAddressOf());
+      ComPtr<ID3D11Texture2D> light_texture;
+      D3D11_TEXTURE2D_DESC light_desc = {};
+      if (SUCCEEDED(light_resource.As(&light_texture))) light_texture->GetDesc(&light_desc);
+      if (light_desc.Format == DXGI_FORMAT_R11G11B10_FLOAT && light_desc.SampleDesc.Count == 1
+          && light_desc.Width >= runtime.traced_size[0] && light_desc.Height >= runtime.traced_size[1]) {
+        const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = runtime.traced_size[0], .bottom = runtime.traced_size[1], .back = 1};
+        native->CopySubresourceRegion(bridge.rt_light.texture.Get(), 0, 0, 0, 0, light_texture.Get(), 0, &region);
+        light_copied = true;
+      }
+    }
     const dlaa_bridge::ReflectRequest request = {
         .frame = static_cast<uint32_t>(runtime.frame),
         .width = runtime.traced_size[0],
@@ -2092,7 +2108,8 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
                  | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_REFLECTIONS_RAW : 0u)
                  | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                  | (runtime.settings.reflection_reuse ? dlaa_bridge::RT_REFLECTIONS_REUSE : 0u)
-                 | (runtime.settings.reflection_own ? dlaa_bridge::RT_REFLECTIONS_OWN : 0u),
+                 | (runtime.settings.reflection_own ? dlaa_bridge::RT_REFLECTIONS_OWN : 0u)
+                 | (light_copied ? dlaa_bridge::RT_REFLECTIONS_LIGHT : 0u),
         .samples = runtime.settings.reflection_samples,
         .bounces = runtime.settings.path_tracing ? runtime.settings.path_bounces : 0u,
         .range = runtime.settings.light_bounce_range,
@@ -2114,10 +2131,11 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
 // reflection pass's draw or dispatch (`compute`), or unbinds them (`bind` false); a draw's b10 says whether the water
 // was traced from its own surfaces (`surface_depth`: Reflections). True: the reflections are bound (the pass leaves out
 // its screen-space march; rt_reflection.hlsli).
-inline bool BindReflections(reshade::api::command_list* cmd_list, bool compute, bool bind, ID3D11ShaderResourceView* surface_depth = nullptr) {
+inline bool BindReflections(reshade::api::command_list* cmd_list, bool compute, bool bind, ID3D11ShaderResourceView* surface_depth = nullptr,
+                            ID3D11ShaderResourceView* light_buffer = nullptr) {
   ID3D11DeviceContext* native = internal::NativeContext(cmd_list);
   if (native == nullptr) return false;
-  const auto views = (bind && internal::active.load(std::memory_order_relaxed)) ? Reflections(native, surface_depth)
+  const auto views = (bind && internal::active.load(std::memory_order_relaxed)) ? Reflections(native, surface_depth, light_buffer)
                                                                                  : std::array<ID3D11ShaderResourceView*, 2>{};
   bool reflected = false;
   bool occluded = false;

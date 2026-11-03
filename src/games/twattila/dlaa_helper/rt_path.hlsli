@@ -24,7 +24,7 @@
 #include "./rt_scene.hlsli"
 #include "./rt_camera.hlsli"
 
-Texture2D<float3> light : register(t9);               // the prepared light (bounce texels)
+Texture2D<float3> light : register(t9);               // the prepared light (bounce texels; PATH_LIGHT_FINAL: the light buffer, render pixels)
 Texture2D<float4> previous_color : register(t10);     // last frame's scene colour (render pixels)
 Texture2D<float4> previous_positions : register(t11); // last frame's world positions
 Texture2D<float4> guide_normals : register(t12);      // world normals (x 0: none)
@@ -81,6 +81,7 @@ static const float REFLECT_REUSE_ROUGHNESS = 0.3f;  // the lobes broad enough fo
 static const uint PATH_REFLECT_OWN = 8388608u;          // Own ReSTIR: the reflections' own reservoirs
 static const uint PATH_REFLECT_OWN_HISTORY = 16777216u; // last frame's are last frame's
 static const uint PATH_REFLECT_PARITY = 33554432u;      // this frame's set: 1 (else 0)
+static const uint PATH_LIGHT_FINAL = 67108864u;         // a reflections request's: `light` is the light buffer the game's pass reads
 static const uint PATH_SKY_APART = 134217728u;          // Own Sky Rays: Path-Traced AO's sky past the reservoirs
 static const uint REFLECT_NEIGHBOURS = 4u;
 static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
@@ -261,6 +262,10 @@ bool HitLight(float3 hit, out float3 light_there) {
   light_there = 0.f;
   uint2 pixel;
   if ((path_flags & PATH_LIGHT) != 0u && SeenNow(hit, pixel)) {
+    if ((path_flags & PATH_LIGHT_FINAL) != 0u) {
+      light_there = max(light[pixel], 0.f);
+      return true;
+    }
     light_there = max(light[min(pixel / max(bounce_scale, 1u), uint2(bounce_width, bounce_height) - 1u)], 0.f);
     // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the learned
     // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
@@ -269,7 +274,7 @@ bool HitLight(float3 hit, out float3 light_there) {
     }
     return true;
   }
-  if (SeenLastFrame(hit, pixel)) {
+  if ((path_flags & PATH_LIGHT_FINAL) == 0u && SeenLastFrame(hit, pixel)) {
     light_there = max(previous_color[pixel].rgb, 0.f);
     return true;
   }

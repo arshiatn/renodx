@@ -6,8 +6,10 @@
 // The helper's radiance cache, filled (rt_path.hlsli; before the paths). With the frame's prepared light (PATH_LIGHT):
 // one bounce texel of every 2 x 2 (another each frame) adds it to its world cell; with the G-buffer guides it also writes
 // its base colour there, and one in eight adds to the learned lighting's sums: y = the light / the base colour, x = the
-// sun's visibility (the ray-traced one when traced) x N.L, and the base colour. Without it (reflections only): one render
-// pixel of every 2 x 2 adds last frame's scene colour where last frame saw it.
+// sun's visibility (the ray-traced one when traced) x N.L, and the base colour. A reflections request's light buffer
+// (PATH_LIGHT_FINAL) with no prepared light this frame comes as bounce texels of one render pixel. Without any (reflections
+// only, a game that passes no light buffer): one render pixel of every 2 x 2 adds last frame's scene colour where last
+// frame saw it.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_cache_fill.h -Vn RT_CACHE_FILL.
 #include "./rt_path.hlsli"
 

@@ -220,14 +220,19 @@ static bool far_tree_shadows_installed = false;
 }  // namespace internal
 
 // The game's reflection pass (environment_specular_light, Attila's shaders: Attila, Thrones), before its draws: the
-// ray-traced reflections (the water's from its own surface: the depth-stencil the draw reads its stencil from at t8),
+// ray-traced reflections (the water's from its own surface: the depth-stencil the draw reads its stencil from at t8;
+// their hits' light: the light buffer it reads at t6),
 // and the screen-space march's pyramid and resolve (ssr_hiz.hpp) for what keeps the march (everything without them;
 // with them water, with Ray-Traced Water Reflections off). True: draw.
 inline bool OnReflectionDraw(reshade::api::command_list* cmd_list) {
   internal::water_pass = true;
   ComPtr<ID3D11ShaderResourceView> depth_stencil;
-  if (auto* native = internal::NativeContext(cmd_list); native != nullptr) native->PSGetShaderResources(8, 1, depth_stencil.GetAddressOf());
-  const bool reflected = BindReflections(cmd_list, false, true, depth_stencil.Get());
+  ComPtr<ID3D11ShaderResourceView> light_buffer;
+  if (auto* native = internal::NativeContext(cmd_list); native != nullptr) {
+    native->PSGetShaderResources(6, 1, light_buffer.GetAddressOf());
+    native->PSGetShaderResources(8, 1, depth_stencil.GetAddressOf());
+  }
+  const bool reflected = BindReflections(cmd_list, false, true, depth_stencil.Get(), light_buffer.Get());
   bool water_traced = false;
   {
     const std::unique_lock lock(internal::runtime.mutex);
