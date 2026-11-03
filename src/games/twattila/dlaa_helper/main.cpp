@@ -295,6 +295,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const bool details = (shared->rt_flags & twattila::dlaa_bridge::RT_DETAILS) != 0;
     scene_live = !scene_off();
     scene_open = scene_live && scene->Initialize(adapter.Get(), folder, details, other_upscaler()) && scene->Open(*shared, version);
+    // From here on: a set's first request is an evaluation, and an open can take longer than the idle time by itself.
+    rt_used = std::chrono::steady_clock::now();
   };
   // The open set's objects in Ray Reconstruction and frame generation (their handles stay open: set_handles), on a new
   // device when a GPU reset removed theirs.
@@ -308,6 +310,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                           && reconstruction->Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
                                                    shared->specular_albedo, shared->normals, shared->roughness},
                                                   shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u);
+    rr_used = std::chrono::steady_clock::now();
   };
   const auto generation_status = [&] {
     return (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->Status().c_str() : proxy_generation->Status().c_str();
