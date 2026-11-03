@@ -100,7 +100,7 @@ void main(
   r1.y = 0;
   r0.w = 20 * wind_offset;
   r1.w = wind_offset * 0.5 + 0.75;
-  r2.xyzw = time_in_sec * r1.wwww + r0.wwww;
+  r2.xyzw = float4(time_in_sec, time_in_sec, time_in_sec, prev_time_in_sec) * r1.wwww + r0.wwww;
   r3.xyz = float3(10,5,10) * r2.xyw;
   r4.xyz = v0.xyz;
   r4.w = 1;

@@ -271,7 +271,7 @@ void main(
     r2.y = cmp(0 < r0.x);
     r0.z = r0.z ? r2.y : 0;
     if (r0.z == 0) {
-      r2.yw = -g_fog_height_top + r0.yy;
+      r2.yw = -float2(g_fog_height_top, g_fog_height_bottom) + r0.yy;
       r2.yw = r2.yw / -r0.xx;
       r0.z = 10000 + r0.y;
       r0.z = r0.z / -r0.x;

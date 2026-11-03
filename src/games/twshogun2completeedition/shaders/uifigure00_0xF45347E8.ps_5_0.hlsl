@@ -624,7 +624,7 @@ void main(
     r9.y = dot(r10.xyz, r10.xyz);
     r9.y = rsqrt(r9.y);
     r9.y = r10.y * r9.y;
-    r10.xy = -g_fog_height_top + camera_position.yy;
+    r10.xy = -float2(g_fog_height_top, g_fog_height_bottom) + camera_position.yy;
     r10.z = 10000 + camera_position.y;
     r10.xyz = r10.xyz / -r9.yyy;
     r10.w = min(r10.x, r10.y);
@@ -782,7 +782,7 @@ void main(
     r11.w = cmp(0 < r9.y);
     r11.z = r11.w ? r11.z : 0;
     if (r11.z == 0) {
-      r11.zw = -g_fog_height_top + r10.ww;
+      r11.zw = -float2(g_fog_height_top, g_fog_height_bottom) + r10.ww;
       r11.zw = r11.zw / -r9.yy;
       r12.x = 10000 + r10.w;
       r12.x = r12.x / -r9.y;

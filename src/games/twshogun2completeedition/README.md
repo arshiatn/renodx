@@ -603,6 +603,17 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v65: wrong constants from the decompiler (built only, not run in game)
+
+Checked against the game's own shaders (data\shaders.pack: bytecode and source):
+
+- **Battle fog** (fog00, fog01): the bottom plane read the top one, so the ramp was off: full density up to a hard ceiling. Now
+  it fades as in the game: thinner, no ceiling, on maps with height fog. Recheck Battle Fog in Recommended, it was set on the
+  thicker fog.
+- **Flags** (flagvelocity00): the previous position's wave used this frame's time, so flag waves had no motion vectors.
+- **UI figures** (uifigure00, uifigure01): the same fog plane; uifigure01's dissolve and untextured flags read the unlit flag.
+- **Campaign water** (campaignwater00, 01): the north edge's black border compared with the map's x limit.
+
 ## v64: batch 5 (untested in game; the helper GPU-tested)
 
 - renodx-tw-dlaa64.exe **helper22** (in the zip; bridge v11, needs this addon): **ReSTIR GI v2** (compared with

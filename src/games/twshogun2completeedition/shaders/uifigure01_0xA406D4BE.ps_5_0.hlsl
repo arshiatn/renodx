@@ -185,7 +185,7 @@ void main(
   r0.w = (int)r0.w;
   r0.w = cmp(r0.w < 0);
   r1.xyzw = s_diffuse_map.Sample(s_diffuse_map_s, v2.xy).wxyz;
-  r2.xyz = cmp(float3(0,0,0) != g_unlit);
+  r2.xyz = cmp(float3(0,0,0) != float3(g_unlit, g_dissolve_enable, g_untextured));
   if (r2.y != 0) {
     r2.yw = v7.xy / v7.zz;
     r2.yw = r2.yw * float2(0.5,-0.5) + float2(0.5,0.5);
@@ -612,7 +612,7 @@ void main(
       r3.x = dot(r3.xyz, r3.xyz);
       r3.x = rsqrt(r3.x);
       r3.x = r3.y * r3.x;
-      r3.yz = -g_fog_height_top + camera_position.yy;
+      r3.yz = -float2(g_fog_height_top, g_fog_height_bottom) + camera_position.yy;
       r3.w = 10000 + camera_position.y;
       r3.yzw = r3.yzw / -r3.xxx;
       r5.xy = min(r3.yz, r3.zw);
@@ -770,7 +770,7 @@ void main(
       r4.z = cmp(0 < r3.w);
       r4.y = r4.z ? r4.y : 0;
       if (r4.y == 0) {
-        r4.yz = -g_fog_height_top + r4.xx;
+        r4.yz = -float2(g_fog_height_top, g_fog_height_bottom) + r4.xx;
         r4.w = 10000 + r4.x;
         r4.yzw = r4.yzw / -r3.www;
         r5.w = min(r4.y, r4.z);

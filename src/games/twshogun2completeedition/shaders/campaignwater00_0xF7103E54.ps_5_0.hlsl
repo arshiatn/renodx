@@ -304,7 +304,7 @@ void main(
   r0.x = r0.x * 1.89999998 + 0.0500000007;
   r1.xyw = r6.xyz * r0.xxx;
   r0.z = cmp(g_black_border_x_min >= v4.x);
-  r6.xy = cmp(v4.xz >= g_black_border_x_max);
+  r6.xy = cmp(v4.xz >= float2(g_black_border_x_max, g_black_border_z_max));
   r0.z = (int)r0.z | (int)r6.x;
   r0.w = cmp(g_black_border_z_min >= v4.z);
   r0.z = (int)r0.w | (int)r0.z;

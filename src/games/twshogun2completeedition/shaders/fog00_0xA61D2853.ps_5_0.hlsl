@@ -138,7 +138,7 @@ void main(
     r0.x = dot(r0.xyz, r0.xyz);
     r0.x = rsqrt(r0.x);
     r0.x = r0.y * r0.x;
-    r0.yz = -g_fog_height_top + camera_position.yy;
+    r0.yz = -float2(g_fog_height_top, g_fog_height_bottom) + camera_position.yy;
     r0.yz = r0.yz / -r0.xx;
     r1.x = 10000 + camera_position.y;
     r1.x = r1.x / -r0.x;
