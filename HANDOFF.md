@@ -98,7 +98,14 @@ ATN's test of v2.01i: FG with Output SDR correct, Gamma Correction correct in SD
 
 ## MONDAY BATCH (ATN 2026-11-01: "let's do it on monday"; push every commit to origin atn-mods; tick here)
 ATN's words, short:
-- [ ] 1 Mega Geometry's limit higher on 24-32 GB GPUs: up to 1,000,000 clusters a frame (really big battles: arrows, grass,
+- [x] 1 DONE 2026-11-03 (helper + bridge constant; RT_DYNAMIC_CLUSTERS 1 << 20; all addons rebuilt, ship together; harness only, not run in game). Tiers: 1,048,576 over 28 GB
+      (~9.6 GB), 786,432 over 20 GB (~7.3 GB), 262,144 over 12 GB, 131,072 below; same start room (262,144 = 2514 MB on top tiers: the bigger limit does not grow it). NVAPI has no
+      cluster-count cap (caps = the CLUSTER_OPERATIONS bit, requirements call): a failed room goes one tier down, status "No memory: N clusters at most" (RENODX_TW_TEST_ROOM). Harness
+      (HARNESS_QUAD_STRESS, RENODX_TW_TEST_GPU_GB, debug layer on: D3D12\d3d12SDKLayers.dll from build/agility_1.619.6 loads now): 980,000 clusters traced, a built CLAS at byte 8.8 G of
+      9.4 G (one buffer over 4 GiB works), clusters 4-5 ms; old helper dropped the whole 600,000 draw. Clusters' ms follow the count, not the room (400 K: 1.48 ms with 524 K or 606 K room).
+      Growth step wanted x 4/3 (5/4 grew twice: 827 K room for 400 K). During a growth the old and new rooms both live: up to ~18-22 GB at the top. Real battles still stop near 310 K (the addon's
+      texel share, not raised; biggest profile 232,785), so this is headroom. Optional addon-side limit (plan's commit C) skipped.
+      ATN's words: Mega Geometry's limit higher on 24-32 GB GPUs: up to 1,000,000 clusters a frame (really big battles: arrows, grass,
       soldiers). Now MAX_CLUSTERS 524,288 (RT_DYNAMIC_CLUSTERS, bridge) on GPUs over 20 GB, ~9.5 KB a cluster (~9.5 GB at
       1 M): a tier for over 28 GB (5090) and one for 24 GB (4090), the start room as now; check NVAPI's caps
       (maxClusterCount / CLAS limits), the records (RECORD_COUNT = ... + SLOTS * MAX_CLUSTERS) and the bridge's arrays.
@@ -180,7 +187,7 @@ ATN's words, short:
       Reconstruction the same (reconstruction_live / _idle, by shared->ray_reconstruction); opened again with their next
       request, not at a set change while idle. Swaying shadows "a bit": ATN's eyes (dropped). Not tested in game.
       VRAM by tier (code): fixed ~1.5 GB (vertex copy 512 MB, normals 416 MB, UVs 416 / 224 / 128 MB, TLAS + descs ~0.3 GB),
-      Mega Geometry room >20 GB 2.5 GB at start up to ~5 GB, 12-20 GB up to ~2.4 GB, <=12 GB up to ~1.2 GB (ATN's stress
+      Mega Geometry room >20 GB 2.5 GB at start up to ~5 GB (since Monday item 1: >28 GB ~9.6 GB, >20 GB ~7.3 GB), 12-20 GB up to ~2.4 GB, <=12 GB up to ~1.2 GB (ATN's stress
       battle needed ~200 K clusters: over the 12 GB tier's 131 K), render-size textures ~1-1.5 GB at 4K native, the addon's
       shared RT textures ~1 GB, Ray Reconstruction ~1 GB.
 - [x] DONE 2026-11-03 (Monday item 1, helper only; harness only, not run in game): placed instances grow by themselves from 524,288 (x2 at 3/4

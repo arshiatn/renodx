@@ -310,13 +310,18 @@ class RtScene12 {
     // (the addon reads it back: rt_dynamic_uvs).
     DXGI_ADAPTER_DESC1 adapter_desc = {};
     adapter->GetDesc1(&adapter_desc);
-    dynamic_uvs_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? DYNAMIC_UVS
-                   : (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? DYNAMIC_UVS / 2
-                                                                              : DYNAMIC_UVS / 4;
+    // RENODX_TW_TEST_GPU_GB=<GB>: the tiers of a GPU of that size (GPU harness).
+    std::array<wchar_t, 16> test_gigabytes = {};
+    const size_t video_memory = (GetEnvironmentVariableW(L"RENODX_TW_TEST_GPU_GB", test_gigabytes.data(), static_cast<DWORD>(test_gigabytes.size())) != 0)
+                                    ? (static_cast<size_t>(_wtoi(test_gigabytes.data())) << 30)
+                                    : adapter_desc.DedicatedVideoMemory;
+    dynamic_uvs_ = (video_memory > (size_t{20} << 30))   ? DYNAMIC_UVS
+                   : (video_memory > (size_t{12} << 30)) ? DYNAMIC_UVS / 2
+                                                         : DYNAMIC_UVS / 4;
     // The TLAS's instances grow up to D3D12's most over 20 GB, 8,388,608 over 12 GB, else 4,194,304 (powers of two: rt_place's table).
-    placed_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? D3D12_RAYTRACING_MAX_INSTANCES_PER_TOP_LEVEL_ACCELERATION_STRUCTURE
-                    : (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? (1u << 23)
-                                                                               : (1u << 22);
+    placed_limit_ = (video_memory > (size_t{20} << 30))   ? D3D12_RAYTRACING_MAX_INSTANCES_PER_TOP_LEVEL_ACCELERATION_STRUCTURE
+                    : (video_memory > (size_t{12} << 30)) ? (1u << 23)
+                                                          : (1u << 22);
     uv_pool_ = STATIC_UVS + (SLOTS * dynamic_uvs_);
     records_ = pool(uint64_t{RECORD_COUNT} * 16);
     uvs_ = pool(uint64_t{uv_pool_} * 4);
@@ -337,13 +342,14 @@ class RtScene12 {
     // clusters (ClusterRoom); the sequential 8-bit indices; a slot's captures' arguments and records written by the CPU
     // (cluster_data), its compact draws' table and new sets (compact_data); the sets' pool. A cluster has at most
     // RT_CLUSTER_TRIANGLES triangles (a compact draw's) over 255 vertices (a capture's sequential ones) and takes ~6 KB of
-    // CLAS memory at most: the room starts at CLUSTER_ROOM (ATN's battles drew 8,000-21,000 a frame) and doubles while a
-    // frame fills 3/4 of it, up to MAX_CLUSTERS, half on GPUs of 20 GB or less, a quarter on 12 GB or less (4x unit size battles
-    // filled 262,144 with city walls left out).
+    // CLAS memory at most: the room starts at CLUSTER_ROOM (ATN's battles drew 8,000-21,000 a frame) and grows while a
+    // frame fills 3/4 of it, up to CLUSTER_TIERS by the GPU's memory: all over 28 GB, 3/4 over 20 GB, a quarter over 12 GB,
+    // else an eighth (4x unit size battles filled 262,144 with city walls left out).
     if (clusters_) {
-      cluster_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? MAX_CLUSTERS
-                       : (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? MAX_CLUSTERS / 2
-                                                                                  : MAX_CLUSTERS / 4;
+      cluster_limit_ = (video_memory > (size_t{28} << 30))   ? CLUSTER_TIERS[0]
+                       : (video_memory > (size_t{20} << 30)) ? CLUSTER_TIERS[1]
+                       : (video_memory > (size_t{12} << 30)) ? CLUSTER_TIERS[2]
+                                                             : CLUSTER_TIERS[3];
       // Of the room a quarter built from triangles (the captures', the compact draws' whose set has no templates yet), the
       // rest instantiated.
       clas_inputs_ = {
@@ -416,9 +422,9 @@ class RtScene12 {
         auto one_template = template_inputs_;
         one_template.maxArgCount = 1;
         ClusterRoom made;
-        // GPUs over 20 GB start at half their limit (~2.5 GB): ATN's battle start grew it four times (32 K to 320 K, 2026-11-01),
+        // GPUs over 20 GB start at 262,144 (~2.5 GB): ATN's battle start grew it four times (32 K to 320 K, 2026-11-01),
         // the swaying grass that did not fit left out meanwhile (its shadows flickered).
-        const uint32_t room = (cluster_limit_ == MAX_CLUSTERS) ? MAX_CLUSTERS / 2 : std::min(cluster_limit_, CLUSTER_ROOM);
+        const uint32_t room = (cluster_limit_ > CLUSTER_TIERS[2]) ? CLUSTER_TIERS[2] : std::min(cluster_limit_, CLUSTER_ROOM);
         if (!ClusterRequirements(one_template, &template_info) || !SizeClusterRoom(room, room / 4, &made) || !MakeClusterRoom(&made)) {
           return false;
         }
@@ -427,6 +433,11 @@ class RtScene12 {
       };
       allow_micromaps(dxr12_ && bake_micromaps_);
       clusters_ = size_clusters();
+      if (!clusters_ && cluster_limit_ > CLUSTER_TIERS[2]) {
+        cluster_limit_ = CLUSTER_TIERS[2];
+        room_note_ = std::format("No memory: {} clusters at most | ", cluster_limit_);
+        clusters_ = size_clusters();
+      }
       if (!clusters_ && cluster_micromaps_) {
         allow_micromaps(false);
         clusters_ = size_clusters();
@@ -869,8 +880,8 @@ class RtScene12 {
   [[nodiscard]] std::string Status() const {
     // The GPU times right after the label: the bridge's line holds 255 characters, a battle's counts run past them.
     const size_t label = status_.find("): ");
-    if (gpu_timings_.empty() || label == std::string::npos) return status_ + cpu_timings_;
-    return std::format("{}{} | {}{}", status_.substr(0, label + 3), gpu_timings_, status_.substr(label + 3), cpu_timings_);
+    if (label == std::string::npos) return status_ + cpu_timings_;
+    return std::format("{}{}{}{}{}{}", status_.substr(0, label + 3), room_note_, gpu_timings_, gpu_timings_.empty() ? "" : " | ", status_.substr(label + 3), cpu_timings_);
   }
   // A GPU fault or hang (Windows' timeout detection) removed the device: nothing runs on it again.
   [[nodiscard]] bool Removed() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
@@ -1525,6 +1536,8 @@ class RtScene12 {
   // of its own (a slot's in turn).
   static constexpr uint32_t CLUSTER_TRIANGLES = dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
   static constexpr uint32_t MAX_CLUSTERS = dlaa_bridge::RT_DYNAMIC_CLUSTERS;
+  // Mega Geometry's most a frame by the GPU's memory (~9.3 GB at all of it), a failed room's next.
+  static constexpr std::array<uint32_t, 4> CLUSTER_TIERS = {MAX_CLUSTERS, MAX_CLUSTERS / 4 * 3, MAX_CLUSTERS / 4, MAX_CLUSTERS / 8};
   static constexpr uint32_t CLUSTER_ROOM = 32768;  // Mega Geometry's room for a frame's clusters at first (~200 MB)
   static constexpr uint32_t CLUSTER_STEP = 8192;   // its runs grow in steps of this
   // Compact draws (v16): their cluster sets' pool (bytes, in 16-byte units; past it a word the compact pass may read),
@@ -2059,6 +2072,15 @@ class RtScene12 {
     return buffer;
   }
 
+  // RENODX_TW_TEST_ROOM=<count> (GPU harness): no memory for a room over that many placed instances or clusters.
+  static uint32_t TestRoomLimit() {
+    static const uint32_t limit = [] {
+      std::array<wchar_t, 16> value = {};
+      return (GetEnvironmentVariableW(L"RENODX_TW_TEST_ROOM", value.data(), static_cast<DWORD>(value.size())) != 0) ? static_cast<uint32_t>(_wtoi(value.data())) : UINT32_MAX;
+    }();
+    return limit;
+  }
+
   // The placed instances' room: their descs (two in turn, the last one's carried instances copied into the next), the
   // counters and dedupe table (twice the descs), the TLAS and its scratch. A bigger one is made on a worker and put in at a
   // request's start.
@@ -2072,6 +2094,7 @@ class RtScene12 {
 
   // Its buffers (any thread). False: no memory for them.
   bool MakePlacedRoom(uint32_t capacity, PlacedRoom* made) const {
+    if (capacity > TestRoomLimit()) return false;
     const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
         .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
         .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD,
@@ -2178,6 +2201,7 @@ class RtScene12 {
 
   // Its buffers (any thread). False: no memory for them.
   bool MakeClusterRoom(ClusterRoom* made) const {
+    if (made->room > TestRoomLimit()) return false;
     constexpr std::array<D3D12_RESOURCE_STATES, 4> STATES = {
         D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,                  D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
@@ -2460,7 +2484,7 @@ class RtScene12 {
     list->SetComputeRootDescriptorTable(ROOT_TABLE, descriptors_->GetGPUDescriptorHandleForHeapStart());
     // The last trace's placed instances past 3/4 of their room: twice it or more, up to the GPU's limit, made on a worker and
     // put in at the first request after, with the kept descs and the counters (the last trace is done; paths requests on
-    // their way hold the old TLAS until the release's fence value). No memory for it: the room stays.
+    // their way hold the old TLAS until the release's fence value). No memory for it: a limit half as high (the room stays).
     if (placed_growing_.valid() && placed_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<PlacedRoom> made = placed_growing_.get(); made) {
         ID3D12Resource* carried = made->instances[placed_last_].Get();
@@ -2486,8 +2510,9 @@ class RtScene12 {
           slow_report_ += std::format("{}[TW ray tracing] Room for {} placed instances now ({} written).", (slow_report_.empty() ? "" : "\n"), placed_capacity_, placed_written_);
         }
       } else {
-        slow_report_ += std::format("{}[TW ray tracing] No memory for more placed instances: the room stays {}.", (slow_report_.empty() ? "" : "\n"), placed_capacity_);
-        placed_limit_ = placed_capacity_;
+        placed_limit_ = std::max(placed_capacity_, placed_limit_ / 2);
+        room_note_ = std::format("No memory: {} placed instances at most | ", placed_limit_);
+        slow_report_ += std::format("{}[TW ray tracing] {}.", (slow_report_.empty() ? "" : "\n"), room_note_.substr(0, room_note_.size() - 3));
       }
     }
     if (!placed_growing_.valid() && uint64_t{placed_written_} * 4 > uint64_t{placed_capacity_} * 3 && placed_capacity_ < placed_limit_) {
@@ -2692,11 +2717,18 @@ class RtScene12 {
       list->ResourceBarrier(1, &copied);
     }
 #if defined(RENODX_NVAPI_CLUSTERS)
-    // The last request's clusters filled 3/4 of a run's room or more: that run's room half again what it was or a quarter
-    // more than it wanted (in steps of CLUSTER_STEP; doubling the whole room made 524 K clusters for 166 K, 4.8 GB, ATN's
+    // The last request's clusters filled 3/4 of a run's room or more: that run's room half again what it was or a third
+    // more than it wanted, so it is under 3/4 after (a quarter more grew it once more: 827 K clusters for 400 K, 7.6 GB in
+    // the harness; in steps of CLUSTER_STEP; doubling the whole room made 524 K clusters for 166 K, 4.8 GB, ATN's
     // first profile; half again what it wanted grew it 12 times as the grass came into view, the second; twice the room
     // again 524 K for 186 K, the third), made on a worker and put in at the first request after (no memory for it: the
-    // room stays).
+    // tier below, the room stays).
+    const auto clusters_tier_below = [&] {
+      const auto below = std::ranges::find_if(CLUSTER_TIERS, [&](uint32_t tier) { return tier < cluster_limit_; });
+      cluster_limit_ = std::max(cluster_room_, (below != CLUSTER_TIERS.end()) ? *below : cluster_room_);
+      room_note_ = std::format("No memory: {} clusters at most | ", cluster_limit_);
+      slow_report_ += std::format("{}[TW ray tracing] {}.", (slow_report_.empty() ? "" : "\n"), room_note_.substr(0, room_note_.size() - 3));
+    };
     if (cluster_growing_.valid() && cluster_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       if (const std::unique_ptr<ClusterRoom> made = cluster_growing_.get(); made) {
         UseClusterRoom(made.get());
@@ -2705,13 +2737,13 @@ class RtScene12 {
                                       cluster_room_, (cluster_bytes_ + TEMPLATE_POOL_BYTES) >> 20);
         }
       } else {
-        cluster_limit_ = cluster_room_;
+        clusters_tier_below();
       }
     }
     if (clusters_ && clusters_crowded_ && !cluster_growing_.valid() && cluster_room_ < cluster_limit_) {
       const auto grown = [](uint32_t room, uint64_t wanted) {
         if (wanted * 4 <= uint64_t{room} * 3) return room;
-        const uint64_t step = std::max<uint64_t>(uint64_t{room} * 3 / 2, wanted * 5 / 4);
+        const uint64_t step = std::max<uint64_t>(uint64_t{room} * 3 / 2, wanted * 4 / 3);
         return static_cast<uint32_t>(std::min<uint64_t>((step + CLUSTER_STEP - 1) / CLUSTER_STEP * CLUSTER_STEP, MAX_CLUSTERS));
       };
       // Within the GPU's limit neither run's room shrinks.
@@ -2725,7 +2757,7 @@ class RtScene12 {
             return std::move(made);
           });
         } else {
-          cluster_limit_ = cluster_room_;
+          clusters_tier_below();
         }
       }
     }
@@ -5228,6 +5260,7 @@ class RtScene12 {
   uint32_t placed_written_ = 0;               // the last trace's, fitting or not (rt_place's counter)
   size_t placed_slot_ = SLOTS;                // whose readback holds the counter of the last trace (SLOTS: read already)
   std::future<std::unique_ptr<PlacedRoom>> placed_growing_;
+  std::string room_note_;  // the status's: a room that found no memory
   ComPtr<ID3D12PipelineState> place_pipeline_;
   // The units' BLAS (refitted in place), the vertex counts of its draws at its last build, refits since.
   ComPtr<ID3D12Resource> units_blas_;
@@ -5236,7 +5269,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> smoke_blas_;
   uint64_t smoke_bytes_ = 0;
   bool clusters_ = false;  // Mega Geometry's cluster operations for the units
-  uint32_t cluster_limit_ = MAX_CLUSTERS;  // the most a frame (half on smaller GPUs)
+  uint32_t cluster_limit_ = MAX_CLUSTERS;  // the most a frame (CLUSTER_TIERS)
   uint32_t cluster_room_ = MAX_CLUSTERS;   // room for them now (ClusterRoom: grown while a frame fills 3/4 of it)
   bool clusters_crowded_ = false;          // the last request's clusters filled 3/4 of a run's room or more
   uint64_t templated_wanted_ = 0;          // and the clusters its runs wanted (fitting or not)

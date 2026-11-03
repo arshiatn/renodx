@@ -85,10 +85,10 @@ constexpr uint32_t RT_NEW_SETS = 512;
 constexpr uint32_t RT_CLUSTER_DATA_BYTES = 16u << 20;
 constexpr uint32_t RT_CLUSTER_TRIANGLES = 128;
 constexpr uint32_t RT_CLUSTER_VERTICES = 128;
-// The frame's dynamic triangles and clusters at most (every-frame captures and compact draws; a helper on a GPU of 20 GB
-// or less takes half the clusters, of 12 GB or less a quarter).
+// The frame's dynamic triangles and clusters at most (every-frame captures and compact draws; a helper on a GPU of 28 GB
+// or less takes 3/4 of the clusters, of 20 GB or less a quarter, of 12 GB or less an eighth).
 constexpr uint32_t RT_DYNAMIC_TRIANGLES = 32u << 20;
-constexpr uint32_t RT_DYNAMIC_CLUSTERS = 1u << 19;
+constexpr uint32_t RT_DYNAMIC_CLUSTERS = 1u << 20;
 // An every-frame capture's clusters: this many triangles each (the last partial).
 constexpr uint32_t RT_CAPTURE_CLUSTER_TRIANGLES = 85;
 // The frame's alpha-tested dynamic triangles' corners at most (their UVs: grass's and swaying leaves'); a helper on a GPU
