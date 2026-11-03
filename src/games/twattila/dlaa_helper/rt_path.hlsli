@@ -77,7 +77,7 @@ static const uint PATH_PERMUTE = 65536u;      // last frame's reservoir from a n
 static const uint PATH_AMBIENT = 262144u;     // Path-Traced Ambient: a camera ray that escapes brings the sky's light
 static const uint PATH_KEEP_LIGHT = 524288u;  // the learned lighting kept (the game's ambient away: Path-Traced Ambient)
 static const uint PATH_REFLECT_REUSE = 4194304u;  // the reflections resample ReSTIR GI's reservoirs (PATH_REUSE_PARITY: its set)
-static const float REFLECT_REUSE_ROUGHNESS = 0.3f;  // the lobes broad enough for the bounce's samples to land in
+static const float REFLECT_REUSE_ALPHA = 0.09f;  // the lobes broad enough for the bounce's samples to land in
 static const uint PATH_REFLECT_OWN = 8388608u;          // Own ReSTIR: the reflections' own reservoirs
 static const uint PATH_REFLECT_OWN_HISTORY = 16777216u; // last frame's are last frame's
 static const uint PATH_REFLECT_PARITY = 33554432u;      // this frame's set: 1 (else 0)
@@ -753,6 +753,13 @@ float LobeDensity(float3 receiver, float3 normal, float3 view, float alpha, floa
   return GgxReflectionDensity(max(dot(normal, view), 1e-3f), saturate(dot(normal, normalize(view + direction))), alpha);
 }
 
+// A reflection's lobe by the G-buffer's roughness (1 - gloss): GGX as wide as the game's own lights' highlight on it (a
+// Gaussian whose share within 0.5 degrees is gloss^2).
+float ReflectAlpha(float roughness) {
+  const float gloss = 1.f - roughness;
+  return 0.0064f / max(gloss * gloss, 0.0625f);
+}
+
 // The render pixel an Own ReSTIR texel stands for this frame: one of its 2 x 2, a different one each frame.
 uint2 ReservoirPixel(uint2 texel) {
   return min(texel * 2u + uint2(frame & 1u, (frame >> 1) & 1u), uint2(width, height) - 1u);
@@ -770,7 +777,7 @@ void ReflectReservoirTexel(uint2 id) {
   const float4 position = positions[pixel];
   const float roughness = saturate(guide_roughness[pixel]);
   Reservoir reservoir = (Reservoir)0;
-  if (position.w <= 0.f || roughness < REFLECT_REUSE_ROUGHNESS || roughness > ROUGH_LIMIT) {
+  if (position.w <= 0.f || ReflectAlpha(roughness) < REFLECT_REUSE_ALPHA || roughness > ROUGH_LIMIT) {
     StoreReservoir(reflect_samples[set], reflect_data[set], id, reservoir, 0.f);
     return;
   }
@@ -778,7 +785,7 @@ void ReflectReservoirTexel(uint2 id) {
   const float3 view = normalize(Camera() - position.xyz);
   const float n_dot_v = max(dot(normal, view), 1e-3f);
   const float3 origin = RayOrigin(position, normal, Planar(int2(pixel), position, normal));
-  const float alpha = roughness * roughness;
+  const float alpha = ReflectAlpha(roughness);
   const float3x3 basis = Basis(normal);
   const float3 direction = GgxDirection(basis, view, float3(dot(view, basis[0]), dot(view, basis[1]), n_dot_v), alpha,
                                         float2(Random(uint3(pixel, frame * 16u + 9216u)), Random(uint3(pixel, frame * 16u + 9217u))));
@@ -828,7 +835,7 @@ void ReflectPixel(uint2 id) {
   const float n_dot_v = max(dot(normal, view), 1e-3f);
   const float3 origin = RayOrigin(position, normal, Planar(int2(id), position, normal));
   const float roughness = saturate(guide_roughness[id]);
-  const float alpha = max(roughness * roughness, 1e-3f);
+  const float alpha = ReflectAlpha(roughness);
   const bool mirror = roughness < 0.05f;
   const bool traced = (path_flags & PATH_REFLECTIONS) != 0u && roughness <= ROUGH_LIMIT;
   const bool occlusion = (path_flags & PATH_SPECULAR_OCCLUSION) != 0u && !traced;
@@ -870,7 +877,7 @@ void ReflectPixel(uint2 id) {
   // texel as a second candidate, resampled with the rays' own light (generalized RIS, its weights 1/2: the rays' light
   // by its target over their density, the reservoir's by the lobe's density at it times its W); one ray to the chosen
   // reservoir sample.
-  if ((path_flags & PATH_REFLECT_REUSE) != 0u && traced && !mirror && roughness >= REFLECT_REUSE_ROUGHNESS) {
+  if ((path_flags & PATH_REFLECT_REUSE) != 0u && traced && !mirror && alpha >= REFLECT_REUSE_ALPHA) {
     const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
     const Reservoir bounce = LoadReservoir(reuse_samples[set], reuse_data[set], min(id / bounce_scale, uint2(bounce_width, bounce_height) - 1u));
     const float3 to_hit = bounce.hit - origin;
@@ -900,7 +907,7 @@ void ReflectPixel(uint2 id) {
   // lobes' ratios it was far noisier, near walls a pixel's shift moves a lobe's density at a sample far), if in view,
   // joins the rays' own by the samples each stands for (the share that met a surface stays the rays': the reservoirs
   // keep only those).
-  if ((path_flags & PATH_REFLECT_OWN) != 0u && traced && !mirror && roughness >= REFLECT_REUSE_ROUGHNESS) {
+  if ((path_flags & PATH_REFLECT_OWN) != 0u && traced && !mirror && alpha >= REFLECT_REUSE_ALPHA) {
     const uint set = ((path_flags & PATH_REFLECT_PARITY) != 0u) ? 1u : 0u;
     Reservoir candidates[REFLECT_NEIGHBOURS + 1u];
     float3 receivers[REFLECT_NEIGHBOURS + 1u];
@@ -936,7 +943,7 @@ void ReflectPixel(uint2 id) {
       receivers[neighbour] = other_position.xyz;
       receiver_normals[neighbour] = other_normal;
       receiver_views[neighbour] = normalize(Camera() - other_position.xyz);
-      receiver_alphas[neighbour] = max(other_roughness * other_roughness, 1e-3f);
+      receiver_alphas[neighbour] = ReflectAlpha(other_roughness);
       total_count += candidates[neighbour].count;
     }
     Reservoir combined = (Reservoir)0;
@@ -984,7 +991,7 @@ void ReflectPixel(uint2 id) {
     previous = specular_history[previous_pixel];
     previous_meta = specular_meta_history[previous_pixel];
   }
-  const float frames = min(previous_meta.y + 1.f, mirror ? 1.f : lerp(2.f, MAX_SPECULAR_FRAMES, saturate(roughness * 3.f)));
+  const float frames = min(previous_meta.y + 1.f, mirror ? 1.f : lerp(2.f, MAX_SPECULAR_FRAMES, saturate(sqrt(alpha) * 3.f)));
   // rgb: the light of what met something (the share-weighted mean over the frames, as fast as the share itself); a: the
   // share that met.
   const float share = lerp(previous.a, current.a, 1.f / frames);

@@ -25,7 +25,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     return;
   }
   const float3 normal = PixelNormal(id.xy, position);
-  const int radius = (int)round(saturate(guide_roughness[id.xy] * 3.f) * 2.f);
+  const int radius = (int)round(saturate(sqrt(ReflectAlpha(guide_roughness[id.xy])) * 3.f) * 2.f);
   const float plane_tolerance = 0.02f + 0.02f * position.w;
   float3 lit = 0.f;
   float share = 0.f;
