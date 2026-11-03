@@ -12,8 +12,11 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   longer apply. Audio Memory is gone too, and with it a thread that retried for a long time at start and kept the sliders from
   applying until it ended. A saved changed audio memory's entry in ReShade.ini's early load list is taken out.
 - `engine_values.txt` is now the real list: every plain value's type, default and direct reads.
+- **Fog Strength** (Extra): how thick the battle's fog and haze are. 0 = none, 1 = the game's (bit for bit), 2 = double. Thick fog
+  at 2 is brighter than the game's fog colour: the fog's light is doubled, and what's behind it is already gone.
 
 Verify: Graphics 2 of 2's status line says 45 of 45 in `ReShade.log`; Battle Shadow Map 1 at 500 m: nearby shadows softer, at once.
+Fog Strength 0 in a battle: no fog, no leftover glow; 2: thicker.
 
 ## v30 (not released, built only, not run in game)
 

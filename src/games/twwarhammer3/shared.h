@@ -125,6 +125,7 @@ struct ShaderInjectData {
   float ssao_frame;     // its noise's frame, 0-63 (0: off)
   float ssao_edge_fix;  // Temporal Smoothing's Edge Fix (ao_filter.hpp)
   float ssao_denoise;   // the Denoiser (ao_filter.hpp)
+  float fog_strength;   // battlefog00 / 01: x the fog's opacity and light (1: the game's)
 };
 
 #define SI shader_injection

@@ -130,6 +130,7 @@ void ApplyResetPreset() {
       {"sharpening", 1.f},
       {"dof", 1.f},
       {"sky_deband", 0.f},
+      {"fog_strength", 1.f},
   });
 }
 
@@ -842,7 +843,7 @@ void OnDestroyDevice(reshade::api::device* device) {
       },                                              \
   }
 
-// Sky (file) / fogs (stock): capture the render scale for the DOF.
+// Sky and fogs: capture the render scale for the DOF.
 #define RenderScaleShader(value)                   \
   {                                                \
       value,                                       \
@@ -851,16 +852,6 @@ void OnDestroyDevice(reshade::api::device* device) {
           .code = __##value,                       \
           .on_draw = &render_scale::OnDrawCapture, \
       },                                           \
-  }
-
-#define RenderScaleStockShader(value)                \
-  {                                                  \
-      value,                                         \
-      {                                              \
-          .crc32 = value,                            \
-          .on_inject = [](auto*) { return false; },  \
-          .on_draw = &render_scale::OnDrawCapture,   \
-      },                                             \
   }
 
 // Fix turned off: the game's shader runs, our file (if any) is ignored.
@@ -961,8 +952,8 @@ void BuildRuntimeData() {
       AAResolveShader(0xE1D67C6A), //TAA High
 #if FIX_DOF || FIX_BLOOM
       RenderScaleShader(0xEFDBC227), //sky00
-      RenderScaleStockShader(0x34719E09), //fog
-      RenderScaleStockShader(0x78E4CBF2), //volumetric fog upsample
+      RenderScaleShader(0x34719E09), //battlefog00
+      RenderScaleShader(0x78E4CBF2), //battlefog01 (the half-resolution fog light's upsample)
 #endif
 #if !FIX_DOF
       StockShader(0x64BC7737), //doffocus00
@@ -1598,6 +1589,17 @@ void BuildRuntimeData() {
         .label = "Distortion",
         .section = "Extra",
         .tooltip = "Multiplier on Distortion. Needs in-game setting on.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "fog_strength",
+        .binding = &shader_injection.fog_strength,
+        .default_value = 1.f,
+        .label = "Fog Strength",
+        .section = "Extra",
+        .tooltip = "How thick the game's fog and haze are. 0 = none, 1 = the game's, 2 = double.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
