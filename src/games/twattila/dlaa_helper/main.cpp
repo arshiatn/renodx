@@ -552,8 +552,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         context->Flush();
       }
       strncpy_s(shared->fg_status, generation_status(), _TRUNCATE);
-      // FSR or XeSS gave up on this GPU or driver: Auto's next, or the addon stops asking.
-      if (generation_open && proxied && proxy_generation->Failed()) {
+      // A backend gave up on this GPU or driver (a GPU reset is not that: a new device, above): Auto's next, or the addon stops asking.
+      if (generation_open && !generation_lost() && (proxied ? proxy_generation->Failed() : generation->Failed())) {
         ReShadeLogMessage(nullptr, 0, generation_status());
         generation_refused[generation_backend] = true;
         open_generation();

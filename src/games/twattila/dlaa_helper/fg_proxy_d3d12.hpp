@@ -448,8 +448,14 @@ class ProxyFrameGeneration12 {
     }
     if (backend_ == dlaa_bridge::FG_BACKEND_XESS) xefg_.present_id(xefg_context_, frame);
 #endif
-    const HRESULT presented = chain_->Present(0, tearing_ != 0 ? DXGI_PRESENT_ALLOW_TEARING : 0);
-    window_.Show();
+    const HRESULT presented = TEST_PRESENT_FAILS ? E_FAIL : chain_->Present(0, tearing_ != 0 ? DXGI_PRESENT_ALLOW_TEARING : 0);
+    if (SUCCEEDED(presented)) {
+      failed_presents_ = 0;
+      window_.Show();
+    } else if (++failed_presents_ >= FAILED_PRESENTS_LIMIT && !Lost()) {
+      // Not a GPU reset (main.cpp replaces the device): the game's own image, not a frozen window over it.
+      Fail(std::format("Frame generation: Present keeps failing (0x{:08X})", static_cast<uint32_t>(presented)));
+    }
 #if defined(RENODX_XESS_FG)
     if (marked) xell_.marker(xell_context_, frame, XELL_PRESENT_END);
     // The next frame's sleep, simulation and submission start (the game waits for this answer).
@@ -501,6 +507,9 @@ class ProxyFrameGeneration12 {
 
   static constexpr DWORD FENCE_TIMEOUT = 10'000;
   static constexpr UINT BUFFER_COUNT = 3;
+  static constexpr uint32_t FAILED_PRESENTS_LIMIT = 60;
+  // Test switch: every Present fails (fg_bridge_test: Auto moves on).
+  inline static const bool TEST_PRESENT_FAILS = GetEnvironmentVariableW(L"RENODX_TW_TEST_FG_PROXY_PRESENT_FAILS", nullptr, 0) != 0;
   // Test switch: only generated frames shown, for looking at their colours.
   inline static const bool ONLY_GENERATED = GetEnvironmentVariableW(L"RENODX_TW_TEST_FG_ONLY_GENERATED", nullptr, 0) != 0;
 
@@ -662,6 +671,7 @@ class ProxyFrameGeneration12 {
   uint32_t backend_ = dlaa_bridge::FG_BACKEND_FSR;
   HMODULE library_ = nullptr;
   bool failed_ = false;
+  uint32_t failed_presents_ = 0;  // in a row
   std::string status_ = "Frame generation not started";
   std::string failure_;
   std::string started_;  // how long its start took, for the status line

@@ -511,9 +511,15 @@ class FrameGeneration12 {
     if (inputs) SetConstants(*shared, *token);
     Marker(sl::PCLMarker::eRenderSubmitEnd, token);
     Marker(sl::PCLMarker::ePresentStart, token);
-    const HRESULT presented = chain_->Present(0, tearing_ != 0 ? DXGI_PRESENT_ALLOW_TEARING : 0);
+    const HRESULT presented = TEST_PRESENT_FAILS ? E_FAIL : chain_->Present(0, tearing_ != 0 ? DXGI_PRESENT_ALLOW_TEARING : 0);
     Marker(sl::PCLMarker::ePresentEnd, token);
-    window_.Show();
+    if (SUCCEEDED(presented)) {
+      failed_presents_ = 0;
+      window_.Show();
+    } else if (++failed_presents_ >= FAILED_PRESENTS_LIMIT && !Lost()) {
+      // Not a GPU reset (main.cpp replaces the device): the game's own image, not a frozen window over it.
+      Fail(std::format("Present keeps failing (0x{:08X})", static_cast<uint32_t>(presented)));
+    }
     // The next frame's Reflex sleep, simulation and submission start (the game waits for this answer).
     uint32_t next_index = frame + 1;
     sl::FrameToken* next = nullptr;
@@ -551,6 +557,8 @@ class FrameGeneration12 {
   }
 
   const std::string& Status() const { return status_; }
+  // It gave up on this device or driver (its chain could not be made, ...).
+  [[nodiscard]] bool Failed() const { return failed_; }
   // A GPU reset removed its device (the helper starts Streamline again on a new one).
   [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
 
@@ -567,6 +575,9 @@ class FrameGeneration12 {
   static constexpr int PRESET_FAILED = 2;
   static constexpr DWORD FENCE_TIMEOUT = 10'000;
   static constexpr UINT BUFFER_COUNT = 3;
+  static constexpr uint32_t FAILED_PRESENTS_LIMIT = 60;
+  // Test switch: every Present fails (fg_bridge_test: Auto moves on).
+  inline static const bool TEST_PRESENT_FAILS = GetEnvironmentVariableW(L"RENODX_TW_TEST_FG_PRESENT_FAILS", nullptr, 0) != 0;
 
   bool Fail(const std::string& status) {
     failed_ = true;
@@ -902,6 +913,7 @@ class FrameGeneration12 {
   PFun_slPCLSetMarker* set_marker_ = nullptr;
   bool initialized_ = false;
   bool failed_ = false;
+  uint32_t failed_presents_ = 0;  // in a row
   std::string status_ = "Frame generation not started";
 
   ComPtr<ID3D12Device> device_;
