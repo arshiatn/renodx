@@ -10,6 +10,7 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -19,6 +20,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <include/reshade.hpp>
 
@@ -27,11 +29,35 @@
 #include "../../utils/state.hpp"
 
 // Debug (ReShade.ini [renodx] FrameTrace=1, read at start): one frame, 600 presents after the DLSS render scale began,
-// every draw, dispatch, clear and copy with its shaders, targets, viewport, inputs and the camera's screen / viewport
-// sizes (camera_VS_PS c27 / c29 at b0) into tw_frame_trace.txt next to the exe, with the anti-aliasing's marks (tone
-// mapper, DLSS). For the render scale audit (tools\tw\scale_audit.py): which passes read the 3D image's part of a
-// display-size texture as if it filled it. Its events are registered only for the traced frame.
+// every draw, dispatch (direct and indirect), clear and copy with its shaders, targets, viewport, inputs and the camera's
+// screen / viewport sizes (the camera at b0, its registers from Install) into tw_frame_trace.txt next to the exe, with
+// the anti-aliasing's marks (tone mapper, DLSS). For the render scale audit (tools\tw\scale_audit.py): which passes read
+// the 3D image's part of a display-size texture as if it filled it. Its events are registered only for the traced frame.
 namespace twattila::frame_trace {
+
+// `count` values of a buffer from `offset` bytes on, read back (it waits for the GPU: for traced frames); empty: past the
+// buffer's end or no read here (a deferred context).
+template <typename T>
+std::vector<T> ReadBuffer(ID3D11DeviceContext* context, ID3D11Buffer* buffer, UINT offset, UINT count) {
+  const UINT bytes = count * static_cast<UINT>(sizeof(T));
+  D3D11_BUFFER_DESC desc = {};
+  buffer->GetDesc(&desc);
+  if (offset + bytes > desc.ByteWidth) return {};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = bytes, .Usage = D3D11_USAGE_STAGING,
+                                          .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  Microsoft::WRL::ComPtr<ID3D11Buffer> staging;
+  if (FAILED(device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf()))) return {};
+  const D3D11_BOX box = {.left = offset, .top = 0, .front = 0, .right = offset + bytes, .bottom = 1, .back = 1};
+  context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, buffer, 0, &box);
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return {};
+  const auto* values = static_cast<const T*>(mapped.pData);
+  std::vector<T> result(values, values + count);
+  context->Unmap(staging.Get(), 0);
+  return result;
+}
 
 namespace internal {
 
@@ -47,6 +73,9 @@ struct State {
   std::atomic_bool tracing = false;
   std::string text;
   uint32_t lines = 0;
+  // Attila's camera_VS_PS: g_screen_size, g_viewport_dimensions.
+  uint32_t camera_screen_register = 27;
+  uint32_t camera_viewport_register = 29;
 };
 static State state;
 
@@ -84,27 +113,17 @@ inline void Append(const std::string& line) {
   state.text += '\n';
 }
 
-// The camera at b0 (Attila's camera_VS_PS: g_screen_size c27, g_viewport_dimensions c29), read back; empty if b0 is not
-// camera-sized.
+// The camera at b0, read back; empty if b0 is not camera-sized.
 inline std::string DescribeCamera(ID3D11DeviceContext* context, ID3D11Buffer* buffer) {
-  constexpr UINT CAMERA_SIZE = 30 * 16;
   if (buffer == nullptr) return "";
   D3D11_BUFFER_DESC desc = {};
   buffer->GetDesc(&desc);
-  if (desc.ByteWidth < CAMERA_SIZE || desc.ByteWidth > 4096) return "";
-  ComPtr<ID3D11Device> device;
-  context->GetDevice(device.GetAddressOf());
-  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_STAGING,
-                                          .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
-  ComPtr<ID3D11Buffer> staging;
-  if (FAILED(device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf()))) return "";
-  context->CopyResource(staging.Get(), buffer);
-  D3D11_MAPPED_SUBRESOURCE mapped = {};
-  if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return "";
-  const auto* c = static_cast<const float*>(mapped.pData);
-  std::string text = std::format(" | camera screen {}x{} viewport {}x{}", c[27 * 4], c[27 * 4 + 1], c[29 * 4], c[29 * 4 + 1]);
-  context->Unmap(staging.Get(), 0);
-  return text;
+  if (desc.ByteWidth > 4096) return "";
+  const UINT screen = state.camera_screen_register * 4;
+  const UINT viewport = state.camera_viewport_register * 4;
+  const auto c = ReadBuffer<float>(context, buffer, 0, std::max(screen, viewport) + 4);
+  if (c.empty()) return "";
+  return std::format(" | camera screen {}x{} viewport {}x{}", c[screen], c[screen + 1], c[viewport], c[viewport + 1]);
 }
 
 template <typename GetViews>
@@ -168,10 +187,10 @@ inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_c
   return false;
 }
 
-inline bool OnDispatch(reshade::api::command_list* cmd_list, uint32_t x, uint32_t y, uint32_t z) {
-  if (!state.tracing.load(std::memory_order_relaxed)) return false;
+inline void TraceDispatch(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t x, uint32_t y, uint32_t z) {
+  if (!state.tracing.load(std::memory_order_relaxed)) return;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
-  if (context == nullptr) return false;
+  if (context == nullptr) return;
   std::array<ID3D11UnorderedAccessView*, 8> uavs = {};
   context->CSGetUnorderedAccessViews(0, static_cast<UINT>(uavs.size()), uavs.data());
   std::string outputs;
@@ -183,9 +202,30 @@ inline bool OnDispatch(reshade::api::command_list* cmd_list, uint32_t x, uint32_
   const std::string inputs = DescribeInputs([&](UINT count, ID3D11ShaderResourceView** views) { context->CSGetShaderResources(0, count, views); });
   ComPtr<ID3D11Buffer> constants;
   context->CSGetConstantBuffers(0, 1, constants.GetAddressOf());
-  Append(std::format("dispatch {}x{}x{} cs {:08X} |{} |{}{}", x, y, z,
+  Append(std::format("{} {}x{}x{} cs {:08X} |{} |{}{}", kind, x, y, z,
                      renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::compute_shader),
                      outputs, inputs, DescribeCamera(context, constants.Get())));
+}
+
+inline bool OnDispatch(reshade::api::command_list* cmd_list, uint32_t x, uint32_t y, uint32_t z) {
+  TraceDispatch(cmd_list, "dispatch", x, y, z);
+  return false;
+}
+
+// D3D11's one command at `offset`, its numbers read from the GPU's buffer (0: no read here).
+inline bool OnDrawOrDispatchIndirect(reshade::api::command_list* cmd_list, reshade::api::indirect_command type, reshade::api::resource buffer,
+                                     uint64_t offset, uint32_t, uint32_t) {
+  if (!state.tracing.load(std::memory_order_relaxed)) return false;
+  ID3D11DeviceContext* context = NativeContext(cmd_list);
+  if (context == nullptr) return false;
+  auto arguments = ReadBuffer<uint32_t>(context, reinterpret_cast<ID3D11Buffer*>(buffer.handle), static_cast<UINT>(offset), 3);
+  arguments.resize(3);
+  if (type == reshade::api::indirect_command::dispatch) {
+    TraceDispatch(cmd_list, "dispatch indirect", arguments[0], arguments[1], arguments[2]);
+  } else {
+    // Both draws' arguments start with the count per instance and the instances.
+    TraceDraw(cmd_list, (type == reshade::api::indirect_command::draw_indexed ? "indexed indirect" : "draw indirect"), arguments[0] * arguments[1]);
+  }
   return false;
 }
 
@@ -227,6 +267,7 @@ inline void UseEvents(bool use) {
     reshade::register_event<reshade::addon_event::draw>(OnDraw);
     reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
     reshade::register_event<reshade::addon_event::dispatch>(OnDispatch);
+    reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(OnDrawOrDispatchIndirect);
     reshade::register_event<reshade::addon_event::clear_render_target_view>(OnClearRenderTargetView);
     reshade::register_event<reshade::addon_event::copy_resource>(OnCopyResource);
     reshade::register_event<reshade::addon_event::copy_texture_region>(OnCopyTextureRegion);
@@ -235,6 +276,7 @@ inline void UseEvents(bool use) {
     reshade::unregister_event<reshade::addon_event::draw>(OnDraw);
     reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
     reshade::unregister_event<reshade::addon_event::dispatch>(OnDispatch);
+    reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(OnDrawOrDispatchIndirect);
     reshade::unregister_event<reshade::addon_event::clear_render_target_view>(OnClearRenderTargetView);
     reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyResource);
     reshade::unregister_event<reshade::addon_event::copy_texture_region>(OnCopyTextureRegion);
@@ -244,12 +286,14 @@ inline void UseEvents(bool use) {
 
 }  // namespace internal
 
-// At the addon's start: whether this run traces a frame.
-inline void Install() {
+// At the addon's start: whether this run traces a frame; the camera's g_screen_size and g_viewport_dimensions registers.
+inline void Install(uint32_t camera_screen_register = 27, uint32_t camera_viewport_register = 29) {
   bool wanted = false;
   reshade::get_config_value(nullptr, "renodx", "FrameTrace", wanted);
   const std::lock_guard lock(internal::state.mutex);
   internal::state.wanted = wanted;
+  internal::state.camera_screen_register = camera_screen_register;
+  internal::state.camera_viewport_register = camera_viewport_register;
 }
 
 // A mark in the traced frame (the anti-aliasing's tone mapper end, DLSS).
