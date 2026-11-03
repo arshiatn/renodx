@@ -2037,6 +2037,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "thin ones.\n"
                   "RTAO: from rays through the scene, on top of the game's. Needs an upscaler.",
     .rays_a_pixel_shadows_tooltip = "The sun's shadows take the extra rays.",
+    .rays_a_pixel_paths_tooltip = "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a pixel). The heaviest.",
 };
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }

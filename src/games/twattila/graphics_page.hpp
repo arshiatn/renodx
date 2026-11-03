@@ -54,6 +54,7 @@ struct Texts {
   const char* shadow_tooltip;
   const char* ao_tooltip;
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
+  const char* rays_a_pixel_paths_tooltip = "";    // Empty: the row's own.
 };
 
 inline constexpr Texts ATTILA_TEXTS = {
@@ -730,7 +731,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracingRaysShadows", .section = section, .shown = more_rt_rows, .tooltip = b.texts->rays_a_pixel_shadows_tooltip});
     page.Take({.match = "RayTracingRaysAmbient", .section = section, .shown = more_rt_rows});
     page.Take({.match = "RayTracingRaysReflections", .section = section, .shown = more(&more_rt, [b, upscaling] { return b.has_reflections && upscaling(); })});
-    page.Take({.match = "RayTracingRaysPaths", .section = section, .shown = more_rt_rows});
+    page.Take({.match = "RayTracingRaysPaths", .section = section, .shown = more_rt_rows, .tooltip = b.texts->rays_a_pixel_paths_tooltip});
     page.Take({.match = "RayTracedLeafMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps (Leaves)"});
     page.Take({.match = "RayTracedGpuMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps: GPU Baking"});
     page.Take({.match = "RayTracedFastLeafShadows", .section = section, .shown = more_rt_rows, .label = "Fast Leaf Shadows"});
