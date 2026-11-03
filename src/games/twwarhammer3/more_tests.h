@@ -17,6 +17,7 @@
 namespace more_tests {
 
 inline std::vector<twattila::engine_tests::EngineTest> MoreTests() {
+  using twattila::engine_tests::EFFECTS;
   using twattila::engine_tests::GRASS;
   using twattila::engine_tests::SHADOWS;
   using twattila::engine_tests::UNITS;
@@ -91,6 +92,17 @@ inline std::vector<twattila::engine_tests::EngineTest> MoreTests() {
        .tooltip = "How many falling bodies move as ragdolls at once. Next battle.",
        .max = 2.f,
        .option = {.tweaks = {{.name = "SIMPLE_RAG_DOLL_MAX_ACTIVE", .integer = true}}}},
+
+      // Off is the game's own path on GPUs without it (its constructor sets 0). When it reads the value is unread: the tooltip says so.
+      {.section = EFFECTS,
+       .key = "GraphicsTest_gi_enabled",
+       .label = "Game's Global Illumination (Experimental)",
+       .tooltip = "The game's own bounce light, from probes around the camera. 1: on. 0: off (changes the look; next battle\n"
+                  "or a restart if nothing changes).",
+       .min = 0.f,
+       .max = 1.f,
+       .format = "%.0f",
+       .option = {.tweaks = {{.name = "gi_enabled", .integer = true}}}},
   };
 }
 

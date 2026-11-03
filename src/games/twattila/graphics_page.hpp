@@ -53,6 +53,9 @@ struct Texts {
   const char* rays_tooltip;
   const char* shadow_tooltip;
   const char* ao_tooltip;
+  const char* ao_paths_label = "Path-Traced (ReSTIR GI)";
+  const char* gi_tooltip_end = "";
+  const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
   const char* rays_a_pixel_paths_tooltip = "";    // Empty: the row's own.
 };
@@ -107,6 +110,7 @@ struct Bindings {
   bool has_scale_rows = true;
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
+  bool rays_preset_path_ambient = true;  // The RT/PT preset takes it; false: ray-traced AO, over the game's.
   bool has_reflections = true;
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
 };
@@ -142,7 +146,7 @@ inline int ReflectionMethodOf(const Bindings& b) {
 inline void ChooseAo(const Bindings& b, int method) {
   Values values = {{"RayTracedPathAmbient", (method == AO_PATHS) ? 1.f : 0.f}};
   // Multiplying, ray-traced AO goes over the game's, not over GT-VBAO too.
-  if (method == AO_GAME || method == AO_GTVBAO || (method == AO_RAYS && !b.rays_replace_ao)) values.emplace_back("ssao_mode", (method == AO_GTVBAO) ? 1.f : 0.f);
+  if (method == AO_GAME || method == AO_GTVBAO || (method >= AO_RAYS && !b.rays_replace_ao)) values.emplace_back("ssao_mode", (method == AO_GTVBAO) ? 1.f : 0.f);
   values.emplace_back("RayTracedAmbientOcclusion", (method == AO_RAYS) ? 1.f : 0.f);
   if (method == AO_PATHS) {
     values.emplace_back("RayTracedLightBounce", 2.f);
@@ -533,7 +537,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"RayTracingOutputResolution", 0.f},
                             {"RayTracedFogShadows", 1.f}};
     // No paths for the sky's light here: ray-traced AO, over the game's.
-    if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
+    if (!b.has_path_ambient || !b.rays_preset_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
@@ -599,7 +603,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     }
     page.Take({.match = "RayTracedShadowSoftness", .section = section, .shown = rays, .label = "Softness"});
     page.Take({.match = "RayTracedLeafLight", .section = section, .shown = rays});
-    page.Take({.match = "RayTracedColouredShadows", .section = section, .shown = rays});
+    page.Take({.match = "RayTracedColouredShadows", .section = section, .shown = rays, .tooltip = b.texts->coloured_shadows_tooltip});
     page.Take({.match = "RayTracedSmokeShadows", .section = section, .shown = rays, .label = "Smoke Shadows"});
     page.Take({.match = "RayTracedSmokeQuality", .section = section, .shown = rays});
     page.Add(MoreOptions(section, &more_shadows, [b] { return ShadowMethodOf(b) != SHADOW_GAME; }));
@@ -628,7 +632,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto gtvbao = ao_is(AO_GTVBAO);
     const auto rays = ao_is(AO_RAYS);
     std::vector<std::string> labels = {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)"};
-    if (b.has_path_ambient) labels.emplace_back("Path-Traced (ReSTIR GI)");
+    if (b.has_path_ambient) labels.emplace_back(b.texts->ao_paths_label);
     page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels), [b] { return AoMethodOf(b); },
                           [b](int method) { ChooseAo(b, method); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
@@ -661,10 +665,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto gtvbgi = gi_is(GI_GTVBGI);
     const auto on = [b] { return GiMethodOf(b) != GI_OFF; };
     page.Add(MethodSlider(section,
-                          "Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n"
-                          "GT-VBGI (visibility bitmask): from what is on screen. One Bounce: DXR rays through the scene,\n"
-                          "nothing guessed behind what the camera sees. ReSTIR GI: path tracing, several bounces, also from off\n"
-                          "screen, its samples reused over frames and between neighbours. Heavy. The last two need an upscaler.",
+                          std::string("Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n"
+                                      "GT-VBGI (visibility bitmask): from what is on screen. One Bounce: DXR rays through the scene,\n"
+                                      "nothing guessed behind what the camera sees. ReSTIR GI: path tracing, several bounces, also from off\n"
+                                      "screen, its samples reused over frames and between neighbours. Heavy. The last two need an upscaler.")
+                              + b.texts->gi_tooltip_end,
                           {"Off", "GT-VBGI", "Ray-Traced (One Bounce)", "Path-Traced (ReSTIR GI)"}, [b] { return GiMethodOf(b); },
                           [b](int method) { ChooseGi(b, method); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,

@@ -2072,7 +2072,14 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, on top of the game's. Needs an upscaler.",
+                  "RTAO: from rays through the scene, on top of the game's. Needs an upscaler.\n"
+                  "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                  "turns it on below. May look brighter or darker than the game's. Needs an upscaler.",
+    .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
+    .gi_tooltip_end = "\nThe game has its own bounce light: this one comes on top of it. To compare without it: Game's Global\n"
+                      "Illumination on Graphics 2 of 2.",
+    .coloured_shadows_tooltip = "Sunlight through capture flags takes their colour.\n"
+                                "Needs Light Through Leaves, and DLSS Ray Reconstruction or path-traced Global Illumination.",
     .rays_a_pixel_shadows_tooltip = "The sun's shadows take the extra rays.",
     .rays_a_pixel_paths_tooltip = "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a pixel). The heaviest.",
 };
@@ -2190,7 +2197,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 11> SCENE_SHADERS = {{
     {.hash = 0xB8C567C3, .dynamic = true},   // fx_weighted (skinned units)
     {.hash = 0x2C45437C, .dynamic = true},   // rigid_character_alpha
     {.hash = 0x3193A71F, .dynamic = true},   // fx_weighted's 4-bone units
-    {.hash = 0x444F1190, .dynamic = true},   // shaders_rigid_ui_capture_flag_xml (waves by the time in b0, out of a capture's key)
+    // shaders_rigid_ui_capture_flag_xml (waves by the time in b0, out of a capture's key). A sheet: Coloured Shadows' filter.
+    {.hash = 0x444F1190, .dynamic = true, .thin = true},
     // fx_rigidleaf_v3: its clip reads the base colour at t1 (t0 is the burn map, the same texture until the tree burns).
     {.hash = 0x783383C6, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},
     {.hash = 0xA4527F25, .dynamic = true, .foliage = true, .grass = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = GRASS_MASKS},
@@ -2217,6 +2225,7 @@ const twattila::rt_scene::Host RT_HOST = {
 };
 
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};
+std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_values_logged = {};
 
 // The G-buffer guides (taa_dlss.hpp) at the sun light draws: the frame's first writes them.
 constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
@@ -2225,7 +2234,6 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
     renodx::utils::log::i(std::format("[Warhammer III] First run: sun light draw, ps {:08X}.", draw.shader_hash));
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_values_logged = {};
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot);
@@ -2643,8 +2651,9 @@ void ConfigureAddon() {
   }
   twattila::feature_settings::SetTints({}, engine_sections);
 
-  // Graphics 1 of 2's layout, then Settings Mode's pages. The game owns its scale; its sun draws have no ambient cube's place
-  // and its ambient occlusion stays under ray-traced AO yet; no reflections of ours yet; smoke and foliage aren't known here.
+  // Graphics 1 of 2's layout, then Settings Mode's pages. The game owns its scale; its ambient occlusion stays under ray-traced AO
+  // yet; no reflections of ours yet; smoke and foliage aren't known here. Path-traced AO is a choice, not the preset's: how
+  // bright it comes out against the game's ambient (spherical harmonics, its Global Illumination) needs ATN's eyes first.
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .texts = &PAGE_TEXTS,
@@ -2653,7 +2662,7 @@ void ConfigureAddon() {
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
                                              .has_scale_rows = false,
                                              .has_foliage_light = false,
-                                             .has_path_ambient = false,
+                                             .rays_preset_path_ambient = false,
                                              .has_reflections = false,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2687,8 +2696,10 @@ bool AttachAddon() {
     renodx::utils::command_action::Register(
         OnSunDrawGuides, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
   }
-  // Ray tracing's next: its trace for the screen-space shadows, the AO filter and the Light Bounce.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's next: its trace for the screen-space shadows, the AO filter and the Light Bounce. The ambient cube at float 8
+  // of lighting_VS_PS in all 7 (the RDEF of each, c2-c7, with the shader's own reads): the paths' sky; Path-Traced Ambient's
+  // callback right after it (the Light Bounce's bypass skips post callbacks: put back in finalize).
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Before the Light Bounce's (its callback draws the sun draw again).
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);

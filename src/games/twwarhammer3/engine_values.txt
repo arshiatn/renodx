@@ -2,7 +2,7 @@ Total War: WARHAMMER III - the game's engine values (tweak objects), from its co
 ==========================================================================================================================
 
 Every direct call to a value constructor in Warhammer3.exe (read offline), its 231 preferences left out (read at start). The addon
-finds a value by its name: 45 of these, all at the right address when its search is replayed over this exe.
+finds a value by its name: 46 of these, all at the right address when its search is replayed over this exe.
 type: its constructor's. exe: the default it stores. 2026-10-22: the value in a running game's memory that day (an older build; either
 the game or that day's addon set it). reads: direct reads in its code (more may go through the object). in the mod: a slider writes it
 (Graphics 2 of 2). Most are read when a battle or the campaign loads. Changing some may break the game or crash it.
@@ -68,7 +68,7 @@ gbuffer_blend_edges_amount_battle                         float         0.25    
 gbuffer_blend_edges_amount_campaign                       float         0.25        0.05      2  yes
 gbuffer_blend_edges_amount_grass_battle                   float         0.25        0.15      2  yes
 gbuffer_blend_edges_amount_grass_campaign                 float         0.25        0.05      2  yes
-gi_enabled                                                int              1           1      1
+gi_enabled                                                int              1           1      1  yes
 grass_density_multiplier                                  float            1           1      1  yes
 grass_scale                                               float            1           1      1  yes
 grass_scale_y                                             float            1           1      1  yes
