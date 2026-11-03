@@ -29,14 +29,15 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
 - [x] P6 RT scene (6a, 6b; 6c below): leaves (mask t1), grass (mask by pixel shader, t2 or t0), 4-bone units, flags, in the table; guides written for paths too, before the trace, `guides_written` real. WARP on the game's bytes: stream output on all 4 VS, triangle list and point list, UV = the register read.
       Not done: nothing of 6a, 6b; not run in game, harness not run (no helper or bridge change, Attila running). Left out until a trace shows them: D29F3ED5, 97C57F3A, grass rock. Other games, no code: Pharaoh's grass mask is a texture array (README line), Troy's real grass 2C7FBC7D isn't in its table.
       ATN's check: RT Debug View + Scene Test at a forest: leaves with holes, not cards (No Leaves takes them out); grassy battle: blades; flag's shadow waves; a burning tree keeps its leaf shadow; Log Details: "left out", "without room", "new static meshes" for 783383C6 (keeps rising = re-keyed every frame), "captured every frame", fps with leaves; on 12 GB or less, leaves turning solid = past the alpha budget; Path-Traced GI with FSR: first-run guides line, normals sharper than before; Pharaoh's and Troy's RT grass shadows: solid, missing or wrong shapes?
-- [ ] P8 Upscaling below 100%: Experimental, off
+- [x] P8 Upscaling below 100%: Experimental, off (row Below 100% Resolution Scale, way B, after the tone mapper). WARP: t00 off 11.06M values 0 differ against the old build, on at 50, 66.7, 67, 100% with the assumed constants 0 differ against the 100% mapping; 91 checks through the real Upload, ChooseScale, OnTonemapDraw.
+      Not done: nothing of the phase; not run in game; `c37`, `c39`, overscan below 100% still never seen. Off, and at 100%: same path as before. ATN's check: 50, 67, 77%: `ReShade.log` "as expected" or "refused" with values; picture whole, UI and markers placed; DOF and bloom steady (both now see the unresolved picture), no dark rim at the rendered part's edge; particle smear against the game's TAA, texture sharpness (no LOD bias); TAA (not High) too: its resolve E1D67C6A is in no trace; Motion Debug View stretched; FG; RT at the render size; Rays a Pixel's Match Output.
 - [ ] P9 Sun shader features (Own Sky Rays, Path-Traced AO, Coloured Shadows, readers)
 - [ ] P10 Reflections, specular occlusion, water
 - [ ] P6c Terrain in the scene (only with a green WARP proof)
 - [ ] P11 Lights and fog in rays (optional)
 - [ ] P13 Close: review, all builds, README v30 / v31, zips, round report, ATN's test list
 
-Open in WH3's code (from the lessons' read, each owned by the phase): no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list).
+Open in WH3's code (from the lessons' read, each owned by the phase): game's shadow maps under RT shadows, double work that stays (P13's list).
 
 ## START HERE (2026-11-03): Attila v134 = players' v2.5 (helper74, bridge v23, tag twattila-v134; v133 never released): RenoDX_Attila_v2.5.zip, RenoDX_Attila_v2.5_HDR_only.zip (Nexus: the add-on alone, tools/tw/hdr_zip.py), twattila_v134.zip. Downloads/attila_github_v2.5_notes.md, attila_nexus_text_v2.5.txt. ENORMOUS BATCH done; ATN's in-game tests under "ENORMOUS BATCH" item 18, then WH3.
 ATN decided (2026-11-03): no in-game tests by us unless asked; one game start before a zip.

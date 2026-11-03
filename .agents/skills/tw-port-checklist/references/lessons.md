@@ -102,7 +102,10 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | Effects at output resolution: what really follows it | Read each | `HANDOFF.md` |
 | Motion cost: SO left bound through game's draws stalled ~10 us per unit draw [3ac1b1ad]; second prelude [840c5433]; buffer copies between draws 1.24 ms; synchronous helper round trip 0.25 ms | Keep targets, SO only, no PS, compute at frame end; async requests. Don't port object motion if the game's velocity is real | Toggle within one run |
 | Motion "for everything" assumed | Look: which draws write velocity, which don't. Flags, sails, ropes, water, heat haze are the usual gaps | Trace by script; Motion Debug View in game |
-| Post-TAA 3D effects draw after DLSS's frame | They stay outside DLSS: their own resolution and depth | Read the trace |
+| Post-TAA 3D effects draw after DLSS's frame | They stay outside DLSS: their own resolution and depth. With the upscaler after the tone mapper they are in its input instead: particles carry the jitter, their smear is a game-side question | Read the trace |
+| Upscaling after the tone mapper: a game's values at the lower scale may never have been seen | First frame at a size checks them, the upscaler from the next; a failed check gives the game's own chain back until the size changes | State machine replay with the real functions; say which values are assumed |
+| A resolve kept over the upscaler's output may read other textures at display pixels: their data is only in the render-size corner | Skip it on those frames and copy the picture, or feed it a scaled copy | Read its bytes; WARP |
+| The TAA slot runs before the tone mapper's check: raw colour left for a tone mapper that then stays stock shows unresolved | Decide per size before the slot writes; at most one raw frame on a late failure | Read the order |
 | Camera in a shared constant buffer: `Upload` reads mapped memory at unmap, mutex per 1-2 KB buffer map | Keep hook costs measured | Debug timing in one run, then remove |
 | In-game TAA must stay on when DLSS hooks its pass; other AA modes never run that CS | Tooltip and a status line when not evaluated | Read |
 | `reset` only on a skipped frame | Attila's checks for cuts | Read |

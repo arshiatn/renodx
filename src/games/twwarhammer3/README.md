@@ -4,6 +4,12 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 ## v31 (not released, built only, not run in game)
 
+- **Below 100% Resolution Scale (Experimental, off):** DLSS, FSR or XeSS also when the in-game Resolution Scale is below 100%. The game's
+  own chain stays at the smaller size; the tone mapper's picture goes through the upscaler up to your resolution; flares, vignette, sharpening
+  and UI at your resolution. Off, and at 100% either way, nothing changes. The first frame at each size only checks the game's constants; if
+  they aren't as expected the status line says so, the values are in `ReShade.log`, and the game's TAA and upscale stay. Bloom now sees
+  the unresolved picture, and particles go through the upscaler: ATN's test decides. No LOD bias here: the game has its own.
+  Rays a Pixel's Match Output is back: up to 8 rays at the game's lower scales (at 100% it is still 1).
 - **Ray tracing's scene: leaves, grass, 4-bone units, capture flags.** Leaves and blades cast shadows with their holes (alpha tested against
   their own map), the flag waves in its shadow. Tree billboards stay out (they face the camera), so do `grass_rock` and two grass families no
   trace has shown yet. Burning trees keep their leaf shadow. With ray tracing off, nothing changes. Five rows show now: Light Through Leaves,
@@ -24,7 +30,8 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   on an SDR monitor picks it by itself, with Output on Auto.
 - Psycho V30's Hue Shift is now called Highlight Hue Shift; its saved value stays.
 
-Verify: Graphics 2 of 2's status line says 45 of 45 in `ReShade.log`; Battle Shadow Map 1 at 500 m: nearby shadows softer, at once.
+Verify: Resolution Scale 50%, DLSS, Below 100% on: `ReShade.log` "Upscaling below 100%: 1920x1080 as expected", status line DLSS's, picture whole,
+UI and markers in place. Graphics 2 of 2's status line says 45 of 45 in `ReShade.log`; Battle Shadow Map 1 at 500 m: nearby shadows softer, at once.
 Fog Strength 0 in a battle: no fog, no leftover glow; 2: thicker.
 
 ## v30 (not released, built only, not run in game)

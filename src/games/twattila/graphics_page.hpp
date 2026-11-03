@@ -349,8 +349,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       if (setting->key == "AntiAliasing") setting->labels = std::vector<std::string>(b.texts->aa_labels.begin(), b.texts->aa_labels.end());
       if (setting->key == "AntiAliasingDlssMode") setting->labels[0] = "Native (100%)";
       if (setting->key == "AntiAliasingDebugView" && !b.has_scale_rows) setting->labels = {"Off", "Motion Vectors"};
-      // Rendered pixels are output pixels here: Match Output is 1 ray. Its place stays, or saved values would move.
-      if (setting->key == "RayTracingOutputResolution" && !b.has_scale_rows) setting->labels[1] = "1";
     }
     page.Add(Note(FULL_DOWNLOAD_NOTE, section, WARNING_TINT, [] { return !dlaa_bridge::HelperInstalled(); }));
     page.Take({.match = "AntiAliasing", .section = section, .shown = [] { return false; }});
@@ -728,7 +726,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = RT_SECTION;
     page.Take({.match = "RayTracingOutputResolution", .section = section, .shown = upscaling,
                .label = (b.has_scale_rows ? "" : "Rays a Pixel"),
-               .tooltip = (b.has_scale_rows ? "" : "More rays for every pixel, each from its own spot of it: less noise, finer shadow edges.\nThe cost grows with the rays.")});
+               .tooltip = (b.has_scale_rows ? "" : "More rays for every pixel, each from its own spot of it: less noise, finer shadow edges.\nThe cost grows with the rays. "
+                                                 "Match Output: as many rays on screen as at 100% in-game Resolution Scale (up to 8 a pixel, 1 at 100%).")});
     page.Add(new Setting{
         .key = "RayTracingDenoiser",
         .binding = &b.rt->denoiser,

@@ -143,6 +143,7 @@ struct State {
   std::array<UINT, 2> learned_size = {};          // g_viewport_dimensions of the buffer the TAA reads
   float learned_share = 1.f;                      // its part of the display's width
   uint64_t scale_frame = UINT64_MAX;              // the first TAA pass chose
+  uint64_t scale_camera = 0;                      // the buffer it read
   uint64_t scale_refused_frame = UINT64_MAX;
   uint64_t scaled_frame = UINT64_MAX;       // its output holds the raw colour
   uint64_t scaled_done_frame = UINT64_MAX;  // the addon's texture holds the whole picture
@@ -286,7 +287,8 @@ inline ScaleChoice ChooseScale(ID3D11DeviceContext* native, const D3D11_TEXTURE2
   state.scale_frame = state.frame;
   ComPtr<ID3D11Buffer> camera;
   native->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
-  const auto found = state.uploaded_sizes.find(reinterpret_cast<uint64_t>(camera.Get()));
+  state.scale_camera = reinterpret_cast<uint64_t>(camera.Get());
+  const auto found = state.uploaded_sizes.find(state.scale_camera);
   if (found == state.uploaded_sizes.end()) {
     // Nothing to learn from. With the main view's camera seen it is 100%, as without the row.
     if (!state.camera_seen) state.scale_refused_frame = state.frame;
@@ -394,7 +396,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
     renodx::utils::log::i(std::format("[Warhammer III] Upscaling: {}x{} -> {}x{} (colour format {}, output {}, depth {}x{}), the "
                                       "camera's screen {}x{} and viewport {}x{}, the game's jitter {:.5f} {:.5f}, its "
                                       "projection's {:.5f} {:.5f}",
-                                      color_desc.Width, color_desc.Height, output_desc.Width, output_desc.Height,
+                                      render_width, render_height, output_desc.Width, output_desc.Height,
                                       static_cast<int>(color_desc.Format), static_cast<int>(output_desc.Format),
                                       depth_desc.Width, depth_desc.Height, c[SCREEN_SIZE], c[SCREEN_SIZE + 1], c[VIEWPORT],
                                       c[VIEWPORT + 1], c[CAMERA_JITTER], c[CAMERA_JITTER + 1], c[PROJECTION + 2], c[PROJECTION + 6]));
@@ -575,7 +577,8 @@ inline bool OnTonemapDraw(ID3D11DeviceContext* native, bool redirected, UINT wid
   const auto screen = twattila::frame_trace::ReadBuffer<float>(native, camera.Get(), internal::SCREEN_SIZE * 4, 2);
   const auto overscan = twattila::frame_trace::ReadBuffer<float>(native, hdr_to_screen.Get(), internal::OVERSCAN_BYTE, 1);
   if (screen.empty() || overscan.empty()) return refuse("the tone mapper's constants can't be read");
-  const std::string values = std::format("target {}x{}, its camera's screen {}x{}, overscan {}", width, height, screen[0], screen[1], overscan[0]);
+  const std::string values = std::format("target {}x{}, its camera's screen {}x{}, overscan {}, the tone mapper's camera {} the TAA's", width, height, screen[0], screen[1], overscan[0],
+                                         (reinterpret_cast<uint64_t>(camera.Get()) == state.scale_camera ? "is" : "isn't"));
   if (screen[0] != static_cast<float>(width) || screen[1] != static_cast<float>(height)) return refuse(values);
   if (std::abs((overscan[0] * static_cast<float>(width)) - static_cast<float>(state.learned_size[0])) > 1.f
       || std::abs((overscan[0] * static_cast<float>(height)) - static_cast<float>(state.learned_size[1])) > 1.f) {
