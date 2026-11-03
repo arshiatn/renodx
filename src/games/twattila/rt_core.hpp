@@ -242,7 +242,8 @@ constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 constexpr uint64_t RELEASE_FRAMES = 3600;
 // Smoke Shadows: the particles streamed out between traces at most (48 bytes each; a draw holds its whole list, nearly all
 // without opacity: 742 of a battle's 47884 had some, and at 65536 a list drawn first took the place of the catapults' smoke
-// for good, ATN's debug36), the quads for those with opacity at most (rt_smoke), their capture's key.
+// for good, ATN's debug36), the quads for those with opacity at most (rt_smoke; Smoke Shadow Quality High twice these), their
+// capture's key.
 constexpr UINT MAX_PARTICLES = 1u << 19;
 constexpr UINT MAX_SMOKE_QUADS = 1u << 15;
 constexpr float SMOKE_LEAST = 0.05f;  // the opacity over area a particle needs for a quad, at the least
@@ -357,7 +358,7 @@ struct Costs {
   uint64_t no_room = 0;   // the frame's captures or vertex texture full
   uint64_t compact_draws = 0;
   uint64_t particles = 0;  // Smoke Shadows' streamed out
-  uint32_t most_smoke_quads = 0;  // the most rt_smoke wanted for a trace (past MAX_SMOKE_QUADS: some left out)
+  uint32_t most_smoke_quads = 0;  // the most rt_smoke wanted for a trace (past its room: some left out)
   // What was left out by vertex shader: its texels by the first of its shares that was full (SHARE_NAMES).
   std::unordered_map<uint32_t, std::array<uint64_t, 5>> left_out_shaders;
 };
@@ -1751,7 +1752,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     }
     // Smoke Shadows: the lit particles streamed out since the last trace, those with opacity as quads facing the sun after
     // the captures (rt_smoke; its second dispatch empties the quads left): a capture whose particles dim the helper's sun rays.
-    const UINT smoke_quads = std::min(runtime.particles, MAX_SMOKE_QUADS);
+    const UINT smoke_room = (runtime.settings.smoke_quality >= 2u ? MAX_SMOKE_QUADS * 2u : MAX_SMOKE_QUADS);
+    const UINT smoke_quads = std::min(runtime.particles, smoke_room);
     if (runtime.settings.smoke_shadows && smoke_quads != 0 && runtime.particles_frame + 1 >= runtime.frame
         && runtime.captures.size() < dlaa_bridge::RT_CAPTURES && runtime.captured_vertices + (smoke_quads * 6) <= MAX_VERTICES) {
       const auto smoke_pass = [&](UINT particles, UINT items) {
@@ -1768,10 +1770,10 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         native->Unmap(objects.smoke_quads_read.Get(), 0);
         objects.smoke_read_waiting = false;
         runtime.costs.most_smoke_quads = std::max(runtime.costs.most_smoke_quads, wanted);
-        constexpr float ROOM = MAX_SMOKE_QUADS * 0.875f;
-        if (static_cast<float>(wanted) > ROOM) {
-          objects.smoke_least *= std::min(std::sqrt(static_cast<float>(wanted) / ROOM), 1.5f);
-        } else if (static_cast<float>(wanted) < ROOM * 0.75f) {
+        const float room = static_cast<float>(smoke_room) * 0.875f;
+        if (static_cast<float>(wanted) > room) {
+          objects.smoke_least *= std::min(std::sqrt(static_cast<float>(wanted) / room), 1.5f);
+        } else if (static_cast<float>(wanted) < room * 0.75f) {
           objects.smoke_least = std::max(objects.smoke_least * 0.98f, SMOKE_LEAST);
         }
       }

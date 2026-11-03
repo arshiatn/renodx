@@ -1367,7 +1367,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 1.f,
           .label = "Smoke Shadow Quality",
           .section = section,
-          .tooltip = "Layers of smoke and dust a sun ray counts. Higher: fewer holes and less flicker in thick smoke, slower there.",
+          .tooltip = "Layers of smoke and dust a sun ray counts. Higher: fewer holes and less flicker in thick smoke, slower there.\n"
+                     "High: room for twice the particles. Past the room the smallest shadows give way.",
           .labels = {"Low", "Medium", "High"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f && sliders->smoke_shadows != 0.f; },
           .is_visible = [] { return internal::smoke_shadows_installed; },
