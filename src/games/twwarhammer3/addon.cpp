@@ -2159,13 +2159,13 @@ constexpr std::array<twattila::frame_history::CameraRun, 7> CAMERA_LAYOUT = {{
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws, one shader for every model (g_skin_enable), the camera at b1,
 // the G-buffer's channels 1-4 from their first slot.
 constexpr std::array<twattila::light_bounce::SunDraw, 7> LIGHT_BOUNCE_DRAWS = {{
-    {.shader_hash = 0x18A84893, .standard = true, .gbuffer_slot = 10, .camera_slot = 1, .lighting_slot = 4, .camera_layout = CAMERA_LAYOUT, .ao_slot = 4},
-    {.shader_hash = 0x24F97B7B, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1},
-    {.shader_hash = 0x76A707E5, .standard = true, .gbuffer_slot = 6, .camera_slot = 1, .camera_layout = CAMERA_LAYOUT},
-    {.shader_hash = 0x9EAD8951, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1},
-    {.shader_hash = 0xCCEF2C1E, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1},
-    {.shader_hash = 0xF0E2D5EC, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1},
-    {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1},
+    {.shader_hash = 0x18A84893, .standard = true, .gbuffer_slot = 10, .camera_slot = 1, .lighting_slot = 4, .camera_layout = CAMERA_LAYOUT, .ao_slot = 4, .ambient_final_sites = 2},
+    {.shader_hash = 0x24F97B7B, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 1},
+    {.shader_hash = 0x76A707E5, .standard = true, .gbuffer_slot = 6, .camera_slot = 1, .camera_layout = CAMERA_LAYOUT, .ambient_final_sites = 1},
+    {.shader_hash = 0x9EAD8951, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 1},
+    {.shader_hash = 0xCCEF2C1E, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 1},
+    {.shader_hash = 0xF0E2D5EC, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 1},
+    {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 2},
 }};
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the G-buffer's opaque meshes as the game's own vertex shaders draw them

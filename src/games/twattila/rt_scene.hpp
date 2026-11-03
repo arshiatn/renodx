@@ -118,7 +118,8 @@ static bool fog_shadows_installed = false;
 inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa, float light_bounce_strength) {
   const bool dlaa = feature_settings::Upscaling(aa);
   const bool bounce = light_bounce_strength > 0.f && dlaa;
-  const bool path_ambient = sliders.path_ambient != 0.f && sliders.light_bounce == 2.f && bounce && internal::ambient_cube != 0;
+  const bool path_ambient = sliders.path_ambient != 0.f && sliders.light_bounce == 2.f && bounce && internal::ambient_cube != 0
+                            && !screen_space_shadows::AmbientNotAsExpected();
   // Rays a Pixel: the picture is at the render size until DLSS, nothing traced can be kept finer than that: each render pixel
   // traces more rays instead, each from its own spot of it. Match Output: those of the output pixels it stands for (at most
   // 8), as many on screen as at DLAA (ATN: RR Performance's 1080p rays looked noisy at 4K).

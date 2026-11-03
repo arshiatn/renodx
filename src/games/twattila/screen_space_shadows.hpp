@@ -19,6 +19,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <include/reshade.hpp>
@@ -350,7 +351,11 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
 // with rA one more temp and t51 declared. Path-Traced Ambient binds a texel of 1 there (the paths bring the ambient), the
 // game's ambient otherwise. `foliage`: the foliage shaders' (their ambient 0.6 or 0.8 of the others', and the sheen).
 // Empty: no such cube read.
-inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* foliage) {
+// `final_sites` above 0 (Warhammer III, its count per shader): the cube is only one way there (spherical harmonics first, its
+// probes' Global Illumination over either), and that second mad is inside one of them. Instead where they all end,
+//   movc rA.xyzw, rB.s, rC.xyzw, rA.wxyz / mul rA.yzw, ...   (rA.yzw the irradiance; rA.x its AO is divided by, left alone)
+// the same three instructions on rA.yzw between those two. Another number of such places: empty.
+inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* foliage, uint32_t final_sites = 0) {
   constexpr uint32_t OP_LD = 45, OP_MAD = 50, OP_MOVC = 55, OP_MUL = 56, OP_CUSTOMDATA = 53;
   constexpr uint32_t OP_DCL_TEMPS = 104;
   constexpr uint32_t TYPE_TEMP = 0, TYPE_IMMEDIATE = 4, TYPE_RESOURCE = 7, TYPE_CONSTANT_BUFFER = 8;
@@ -381,16 +386,34 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
     }
   }
   if (lighting_slot == UINT32_MAX) return {};
+  const auto masked = [](uint32_t index, uint32_t mask) { return std::array<uint32_t, 2>{2u | (mask << 4) | (1u << 20), index}; };
+  const auto swizzled = [](uint32_t type, uint32_t index, uint32_t swizzle) {
+    return std::array<uint32_t, 2>{2u | (1u << 2) | (swizzle << 4) | (type << 12) | (1u << 20), index};
+  };
+  constexpr uint32_t XYZX = 0x24, XYZW = 0xE4, XXXX = 0x00, WXYZ = 0x93;
   size_t temps_at = 0;
   size_t cube_at = 0;    // the movc reading c7 / c6
   size_t mads = 0;       // after it
-  size_t insert_at = 0;  // after the cube's last step
-  uint32_t cube_temp = UINT32_MAX;
-  for (size_t at = 2; at < tokens.size() && insert_at == 0;) {
+  // After the cube's last step, or `final_sites` places.
+  std::vector<std::pair<size_t, uint32_t>> sites;
+  for (size_t at = 2; at < tokens.size() && (final_sites != 0 || sites.empty());) {
     const uint32_t opcode = tokens[at] & 0x7FF;
     const size_t length = dxbc::Length(tokens, at);
     if (length == 0) return {};
     if (opcode == OP_DCL_TEMPS) temps_at = at;
+    if (final_sites != 0) {
+      const size_t next = at + length;
+      if (opcode == OP_MOVC && length == 9 && next + 2 < tokens.size() && (tokens[next] & 0x7FF) == OP_MUL) {
+        const uint32_t irradiance = tokens[at + 2];
+        if (tokens[at + 1] == masked(irradiance, 0b1111)[0] && tokens[at + 5] == swizzled(TYPE_TEMP, 0, XYZW)[0]
+            && tokens[at + 7] == swizzled(TYPE_TEMP, 0, WXYZ)[0] && tokens[at + 8] == irradiance
+            && tokens[next + 1] == masked(irradiance, 0b1110)[0] && tokens[next + 2] == irradiance) {
+          sites.emplace_back(next, irradiance);
+        }
+      }
+      at += length;
+      continue;
+    }
     size_t operand_at = at + 1;
     if ((tokens[at] & EXTENDED) != 0 && opcode != OP_CUSTOMDATA) {
       while (operand_at < at + length && (tokens[operand_at] & EXTENDED) != 0) ++operand_at;
@@ -417,30 +440,28 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
           || (dest.select & 0b0111) != 0b0111) {
         return {};
       }
-      cube_temp = dest.index[0];
-      insert_at = at + length;
+      sites.emplace_back(at + length, dest.index[0]);
     }
     at += length;
   }
-  if (temps_at == 0 || insert_at == 0) return {};
+  if (temps_at == 0 || sites.size() != std::max(final_sites, 1u)) return {};
   const uint32_t temp = tokens[temps_at + 1];
-  const auto masked = [](uint32_t index, uint32_t mask) { return std::array<uint32_t, 2>{2u | (mask << 4) | (1u << 20), index}; };
-  const auto swizzled = [](uint32_t type, uint32_t index, uint32_t swizzle) {
-    return std::array<uint32_t, 2>{2u | (1u << 2) | (swizzle << 4) | (type << 12) | (1u << 20), index};
-  };
-  constexpr uint32_t XYZX = 0x24, XYZW = 0xE4, XXXX = 0x00;
   constexpr uint32_t MINUS_ONE = 0xBF800000, ONE = 0x3F800000;
   const std::array<uint32_t, 2> taken = masked(temp, 0b0001);
   const std::array<uint32_t, 2> resource = swizzled(TYPE_RESOURCE, AMBIENT_SLOT, XYZW);
-  const std::array<uint32_t, 2> cube = masked(cube_temp, 0b0111);
-  const std::array<uint32_t, 2> cube_read = swizzled(TYPE_TEMP, cube_temp, XYZX);
   const std::array<uint32_t, 2> share = swizzled(TYPE_TEMP, temp, XXXX);
-  const std::vector<uint32_t> scale = {
-      OP_LD | (10u << 24), taken[0], taken[1], 2u | (TYPE_IMMEDIATE << 12), 0, 0, 0, 0, resource[0], resource[1],
-      OP_MAD | (9u << 24), taken[0], taken[1], share[0], share[1], 1u | (TYPE_IMMEDIATE << 12), MINUS_ONE, 1u | (TYPE_IMMEDIATE << 12), ONE,
-      OP_MUL | (7u << 24), cube[0], cube[1], cube_read[0], cube_read[1], share[0], share[1],
-  };
-  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(insert_at), scale.begin(), scale.end());
+  // From the last one back (the earlier ones keep their place).
+  for (auto site = sites.rbegin(); site != sites.rend(); ++site) {
+    const auto [insert_at, ambient_temp] = *site;
+    const std::array<uint32_t, 2> ambient = masked(ambient_temp, (final_sites != 0) ? 0b1110 : 0b0111);
+    const std::array<uint32_t, 2> ambient_read = swizzled(TYPE_TEMP, ambient_temp, (final_sites != 0) ? XYZW : XYZX);
+    const std::vector<uint32_t> scale = {
+        OP_LD | (10u << 24), taken[0], taken[1], 2u | (TYPE_IMMEDIATE << 12), 0, 0, 0, 0, resource[0], resource[1],
+        OP_MAD | (9u << 24), taken[0], taken[1], share[0], share[1], 1u | (TYPE_IMMEDIATE << 12), MINUS_ONE, 1u | (TYPE_IMMEDIATE << 12), ONE,
+        OP_MUL | (7u << 24), ambient[0], ambient[1], ambient_read[0], ambient_read[1], share[0], share[1],
+    };
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(insert_at), scale.begin(), scale.end());
+  }
   // dcl_resource_texture2d (float,float,float,float) t51 before dcl_temps (the declarations come first); one more temp.
   tokens[temps_at + 1] += 1;
   constexpr uint32_t OP_DCL_RESOURCE = 88;
@@ -511,6 +532,8 @@ struct Runtime {
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;
   // The sun shaders whose diffuse ambient t51 takes away (PatchAmbient), by hash: whether they are foliage ones.
   std::unordered_map<uint32_t, bool> ambient_patched;
+  std::unordered_map<uint32_t, uint32_t> ambient_final_sites;  // light_bounce::SunDraw::ambient_final_sites by hash, where set
+  bool ambient_not_as_expected = false;
   std::vector<uint32_t> sun_hashes;
   std::vector<uint32_t> forward_hashes;
   DeviceObjects objects;
@@ -809,11 +832,16 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
         << (entry->second.empty() ? " has no shadow to patch." : " patched.");
       // Its diffuse ambient for Path-Traced Ambient (on the shadow's patch, else on the game's code).
       bool foliage = false;
-      std::vector<uint8_t> ambient = forward ? std::vector<uint8_t>() : PatchAmbient(entry->second.empty() ? code : std::span<const uint8_t>(entry->second), &foliage);
+      const auto final_sites = runtime.ambient_final_sites.find(hash);
+      const bool sites_known = final_sites != runtime.ambient_final_sites.end();
+      std::vector<uint8_t> ambient = forward ? std::vector<uint8_t>() : PatchAmbient(entry->second.empty() ? code : std::span<const uint8_t>(entry->second), &foliage, sites_known ? final_sites->second : 0u);
       if (!ambient.empty()) {
         entry->second = std::move(ambient);
         runtime.ambient_patched[hash] = foliage;
         s << " Its diffuse ambient patched" << (foliage ? " (foliage)." : ".");
+      } else if (sites_known) {
+        runtime.ambient_not_as_expected = true;
+        s << " Its diffuse ambient not as expected: Path-Traced Ambient stays off.";
       }
       reshade::log::message(reshade::log::level::info, s.str().c_str());
     }
@@ -996,6 +1024,12 @@ inline bool AmbientPatched(uint32_t hash, bool* foliage) {
   return true;
 }
 
+// A sun shader with a known place for its ambient (SunDraw::ambient_final_sites) didn't have it: none is taken away.
+inline bool AmbientNotAsExpected() {
+  const std::shared_lock lock(internal::runtime.mutex);
+  return internal::runtime.ambient_not_as_expected;
+}
+
 // Another occlusion of the sun's light from now on (null: none).
 inline void SetExtraOcclusion(internal::ExtraOcclusion function) {
   const std::unique_lock lock(internal::runtime.mutex);
@@ -1092,7 +1126,10 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
 inline void Install(std::span<const light_bounce::SunDraw> draws) {
   {
     const std::unique_lock lock(internal::runtime.mutex);
-    for (const auto& draw : draws) internal::runtime.sun_hashes.push_back(draw.shader_hash);
+    for (const auto& draw : draws) {
+      internal::runtime.sun_hashes.push_back(draw.shader_hash);
+      if (draw.ambient_final_sites != 0) internal::runtime.ambient_final_sites[draw.shader_hash] = draw.ambient_final_sites;
+    }
   }
   renodx::utils::pipeline::RegisterOnCreateCallback(internal::OnCreatePipeline);
   for (const auto& draw : draws) {

@@ -69,6 +69,8 @@ struct SunDraw {
   UINT sun_direction = 1;  // c0.y
   std::span<const frame_history::CameraRun> camera_layout = {};
   UINT ao_slot = UINT_MAX;
+  // How many places its final ambient is made in (screen_space_shadows::PatchAmbient; 0: the first cube read, Attila's).
+  uint32_t ambient_final_sites = 0;
 };
 
 // The Light Bounce sliders, as the addon's settings hold them (strength 0: off).
