@@ -27,6 +27,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
+#include "../twattila/anti_aliasing.hpp"
 #include "../twattila/dlaa_bridge.hpp"
 #include "../twattila/frame_trace.hpp"
 
@@ -34,21 +35,12 @@
 // its TAA resolve (cs 0x1ADBFF18 TAA / 0x6A8FC282 TAA High: t0 the G-buffer depth in x, t2 the velocity, t4 this
 // frame's colour, jittered; u1 its result), the colour, depth and motion go through NVIDIA's DLSS in the TW helper
 // (twattila/dlaa_bridge.hpp, renodx-tw-dlaa64.exe) and its result replaces the TAA's. The game's jitter (camera
-// g_camera_jitter) and velocity (everything it draws) are its own. Below 100% the game's Resolution Scale: the TAA's
-// input at the render size, its output the display's. In the addon's own context state (the game's put back after).
+// g_camera_jitter) and velocity (everything it draws) are its own. At the game's Resolution Scale of 100% only: below it
+// the main view's camera never passes Upload's test, so the game's TAA and upscale stay and the helper doesn't start. In
+// the addon's own context state (the game's put back after).
 namespace twwarhammer3::taa_dlss {
 
 using Microsoft::WRL::ComPtr;
-
-struct Settings {
-  bool enabled = false;
-  uint32_t preset = 0;  // NVSDK_NGX_DLSS_Hint_Render_Preset_* (0: DLSS's default)
-  // Ray tracing through the same helper (twattila/rt_scene.hpp): its textures, the reflections'.
-  bool ray_tracing = false;
-  bool reflections = false;
-  // NVIDIA's Ray Reconstruction (its guides from the G-buffer: WriteGuides).
-  bool ray_reconstruction = false;
-};
 
 // This frame's DLSS inputs (frame generation's): the bridge's depth and motion at the render size, the jitter in render
 // pixels (y down), the main view's camera as uploaded.
@@ -87,21 +79,23 @@ struct Objects {
 
 struct State {
   std::mutex mutex;
-  Settings settings;
+  twattila::anti_aliasing::Settings settings;
   Objects objects;
   std::unordered_map<uint64_t, const float*> mapped;  // camera-sized constant buffers mapped for writing
   std::atomic_bool any_mapped = false;
   std::array<float, CAMERA_BYTES / 4> camera = {};  // the main view's, last uploaded
   uint64_t camera_buffer = 0;                       // the buffer it was uploaded to
-  bool camera_found = false;
-  bool camera_seen = false;  // this frame
+  bool camera_seen = false;                         // this frame: `camera` is valid only then
   bool trace_wanted = false;  // FrameTrace still to come (it starts from the 3D view's camera)
   uint64_t frame = 0;          // presents
   uint64_t evaluated_frame = UINT64_MAX;
+  uint64_t taa_frame = UINT64_MAX;        // the game's TAA pass ran
+  uint64_t no_camera_frame = UINT64_MAX;  // ... without the main view's camera
   uint64_t guides_frame = UINT64_MAX;  // Ray Reconstruction's guides written
   Frame last;                  // the last evaluation's (frame generation)
   uint64_t last_frame = UINT64_MAX;
   bool logged = false;
+  bool no_camera_logged = false;
 };
 static State state;
 
@@ -154,10 +148,21 @@ inline void Resolve(ID3D11DeviceContext* native) {
   native->GetDevice(device.GetAddressOf());
   ComPtr<ID3D11DeviceContext1> context1;
   const std::unique_lock lock(state.mutex);
+  state.taa_frame = state.frame;
+  if (!state.camera_seen) {
+    state.no_camera_frame = state.frame;
+    if (!state.no_camera_logged) {
+      state.no_camera_logged = true;
+      renodx::utils::log::i(std::format("[Warhammer III] DLSS: the game's TAA ran without the main view's camera (colour {}x{}, "
+                                        "output {}x{}): its Resolution Scale below 100%? The game's TAA stays.",
+                                        color_desc.Width, color_desc.Height, output_desc.Width, output_desc.Height));
+    }
+    release();
+    return;
+  }
   if (!Create(device.Get()) || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))
       || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height, state.settings.ray_reconstruction,
-                                         state.settings.ray_tracing, DXGI_FORMAT_UNKNOWN, state.settings.reflections)
-      || !state.camera_found) {
+                                         state.settings.ray_tracing, DXGI_FORMAT_UNKNOWN, state.settings.ray_traced_reflections)) {
     release();
     return;
   }
@@ -180,6 +185,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
   }
   auto& bridge = twattila::dlaa_bridge::bridge;
   bool evaluated = false;
+  twattila::dlaa_bridge::BeforeSharedWrites(native);
   {
     talesofarise::dlss::ContextStateScope scope(context1.Get(), state.objects.private_state.Get());
     const std::array<ID3D11ShaderResourceView*, 3> sources = {inputs[0], inputs[2], inputs[4]};
@@ -191,7 +197,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
     context1->ClearState();
     // Ray Reconstruction (its guides written this frame): view = inverse projection x view-projection (the camera's
     // registers act on column vectors), given NVIDIA as row-vector matrices (their transposes).
-    twattila::dlaa_bridge::RayReconstruction reconstruction = {};
+    twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = state.settings.ray_reconstruction_preset};
     const bool reconstruct = state.settings.ray_reconstruction && state.guides_frame == state.frame && bridge.guides;
     if (reconstruct) {
       for (size_t row = 0; row < 4; ++row) {
@@ -204,7 +210,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
       }
     }
     evaluated = twattila::dlaa_bridge::Evaluate(context1.Get(), color_desc.Width, color_desc.Height, jitter[0], jitter[1], reset,
-                                                state.settings.preset, reconstruct ? &reconstruction : nullptr);
+                                                state.settings.dlaa_preset, reconstruct ? &reconstruction : nullptr);
     if (evaluated) {
       ID3D11ShaderResourceView* result = bridge.output.srv.Get();
       ID3D11UnorderedAccessView* destination = target.Get();
@@ -238,7 +244,8 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT cam
   if (FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
   const std::unique_lock lock(state.mutex);
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!state.settings.enabled || !state.settings.ray_reconstruction || state.guides_frame == state.frame || !bridge.guides
+  if (!twattila::anti_aliasing::Upscales(state.settings.method) || !state.settings.ray_reconstruction
+      || state.guides_frame == state.frame || !bridge.guides
       || state.objects.failed || !state.objects.guides) {
     return;
   }
@@ -249,6 +256,7 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT cam
   D3D11_TEXTURE2D_DESC desc = {};
   if (const auto normal = internal::TextureOf(gbuffer[0])) normal->GetDesc(&desc);
   if (camera && gbuffer[1] != nullptr && gbuffer[2] != nullptr && desc.Width == bridge.width && desc.Height == bridge.height) {
+    twattila::dlaa_bridge::BeforeSharedWrites(native);
     talesofarise::dlss::ContextStateScope scope(context1.Get(), state.objects.private_state.Get());
     const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
                                                               bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
@@ -270,7 +278,7 @@ namespace internal {
 constexpr auto OnTaa = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
   {
     const std::unique_lock lock(state.mutex);
-    if (!state.settings.enabled) return {};
+    if (!twattila::anti_aliasing::Upscales(state.settings.method)) return {};
   }
   return {.post_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -288,7 +296,7 @@ inline void OnMapBufferRegion(reshade::api::device* device, reshade::api::resour
     return;
   }
   const std::unique_lock lock(state.mutex);
-  if (!state.settings.enabled && !state.trace_wanted) return;
+  if (!twattila::anti_aliasing::Upscales(state.settings.method) && !state.trace_wanted) return;
   state.mapped[resource.handle] = static_cast<const float*>(*data);
   state.any_mapped.store(true, std::memory_order_relaxed);
 }
@@ -303,7 +311,6 @@ inline void Upload(const float* c, uint64_t buffer) {
   }
   std::copy_n(c, state.camera.size(), state.camera.begin());
   state.camera_buffer = buffer;
-  state.camera_found = true;
   state.camera_seen = true;
 }
 
@@ -324,7 +331,7 @@ inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data,
   const auto desc = device->get_resource_desc(resource);
   if ((desc.usage & reshade::api::resource_usage::constant_buffer) == 0) return false;
   const std::unique_lock lock(state.mutex);
-  if (state.settings.enabled || state.trace_wanted) Upload(static_cast<const float*>(data), resource.handle);
+  if (twattila::anti_aliasing::Upscales(state.settings.method) || state.trace_wanted) Upload(static_cast<const float*>(data), resource.handle);
   return false;
 }
 
@@ -351,9 +358,29 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
 
 }  // namespace internal
 
-inline void Update(const Settings& settings) {
+// `keep_textures`: frame generation in the game's process may hold the bridge's depth and motion.
+inline void Update(const twattila::anti_aliasing::Settings& settings, bool keep_textures) {
   const std::unique_lock lock(internal::state.mutex);
   internal::state.settings = settings;
+  // Off: the shared set and the helper's DLSS back (their VRAM).
+  if (auto& bridge = twattila::dlaa_bridge::bridge; !twattila::anti_aliasing::Upscales(settings.method) && !keep_textures && bridge.width != 0
+      && bridge.shared != nullptr && bridge.shared->ready != 0) {
+    internal::state.last = {};
+    twattila::dlaa_bridge::Release(true);
+  }
+}
+
+// What DLSS really does, for its status line.
+inline std::string Status() {
+  using internal::state;
+  const std::unique_lock lock(state.mutex);
+  const auto in_last_second = [](uint64_t frame) { return frame != UINT64_MAX && state.frame - frame < 60; };
+  const auto& bridge = twattila::dlaa_bridge::bridge;
+  if (bridge.failed) return bridge.status;
+  if (in_last_second(state.evaluated_frame)) return (bridge.shared != nullptr) ? bridge.shared->status : bridge.status;
+  if (in_last_second(state.no_camera_frame)) return "Not running: in-game Resolution Scale is below 100%. The game's own TAA and upscale stay.";
+  if (in_last_second(state.taa_frame)) return bridge.status;
+  return "Not running: keep in-game Anti-aliasing on TAA or TAA High (menus have none).";
 }
 
 // The last evaluation's inputs if it was in frame `frame` (presents so far); false: none.
@@ -364,18 +391,18 @@ inline bool LastFrame(uint64_t frame, Frame* result) {
   return true;
 }
 
-// The main view's camera constants as last uploaded when `buffer` holds them (ray tracing's camera); false: not.
+// The main view's camera constants as uploaded this frame when `buffer` holds them (ray tracing's camera); false: not.
 inline bool MainCamera(ID3D11Buffer* buffer, std::array<float, internal::CAMERA_BYTES / 4>* camera) {
   const std::unique_lock lock(internal::state.mutex);
-  if (!internal::state.camera_found || reinterpret_cast<uint64_t>(buffer) != internal::state.camera_buffer) return false;
+  if (!internal::state.camera_seen || reinterpret_cast<uint64_t>(buffer) != internal::state.camera_buffer) return false;
   *camera = internal::state.camera;
   return true;
 }
 
-// The main view's size (its viewport; below 100% the render size).
+// The main view's size this frame (its viewport); none yet: zero.
 inline std::array<UINT, 2> RenderSize() {
   const std::unique_lock lock(internal::state.mutex);
-  if (!internal::state.camera_found) return {};
+  if (!internal::state.camera_seen) return {};
   return {static_cast<UINT>(internal::state.camera[internal::VIEWPORT]), static_cast<UINT>(internal::state.camera[internal::VIEWPORT + 1])};
 }
 

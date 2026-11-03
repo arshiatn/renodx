@@ -2118,7 +2118,15 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
+  // The DLSS rows' values in the shape of Attila's rows.
+  aa_sliders.method = (dlss_sliders.enabled != 0.f) ? 5.f : 0.f;
+  aa_sliders.dlaa_preset = dlss_sliders.preset;
+  aa_sliders.ray_reconstruction = dlss_sliders.ray_reconstruction;
+  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // Ray-traced shadows replace the screen-space ones too.
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
@@ -2128,15 +2136,11 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
   tw::ao_trace::OnPresent();
-  aa_sliders.method = (dlss_sliders.enabled != 0.f) ? 5.f : 0.f;
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   twattila::rt_scene::Update(rt_settings);
-  twwarhammer3::taa_dlss::Update({
-      .enabled = dlss_sliders.enabled != 0.f,
-      .preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(dlss_sliders.preset), 0, 2)],
-      .ray_tracing = rt_settings.sun_shadows || rt_settings.ambient_occlusion || rt_settings.light_bounce,
-      .ray_reconstruction = dlss_sliders.ray_reconstruction != 0.f,
-  });
+  auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
+  aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  twattila::rt_scene::Configure(rt_settings, &aa_settings);
+  twwarhammer3::taa_dlss::Update(aa_settings, frame_generation);
   talesofarise::frame_generation::frame_limit.store(static_cast<uint32_t>(std::clamp(dlss_sliders.frame_limit, 0.f, 240.f)));
   // The multiplier applies live (turning frame generation on needs a restart): 0 Dynamic in the shared module.
   if (const int choice = static_cast<int>(dlss_sliders.frame_generation); choice != 0) {
@@ -2428,6 +2432,16 @@ void ConfigureAddon() {
                        "renodx-tw-dlaa64.exe and nvngx_dlss.dll next to Warhammer3.exe.",
             .labels = {"Off", "On"},
         },
+        // What really runs, or why nothing does.
+        new renodx::utils::settings::Setting{
+            .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+            .section = twattila::feature_settings::DLSS_SECTION,
+            .on_draw = [] {
+              ImGui::TextWrapped("%s", twwarhammer3::taa_dlss::Status().c_str());
+              return false;
+            },
+            .is_visible = dlss_on,
+        },
         new renodx::utils::settings::Setting{
             .key = "DlssPreset",
             .binding = &dlss_sliders.preset,
@@ -2494,7 +2508,8 @@ void ConfigureAddon() {
   }
 
   // Ray tracing (twattila/rt_scene.hpp) with DLSS.
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, false, twattila::feature_settings::DLSS_SECTION);
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, false, twattila::feature_settings::DLSS_SECTION,
+                                     &shader_injection.light_bounce_strength);
 
   // Appended Settings (HDR10)
   {
