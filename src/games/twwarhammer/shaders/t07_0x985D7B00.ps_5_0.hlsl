@@ -98,7 +98,7 @@ void main(
   r0.zw = float2(-0.498039216,-0.498039216) + r0.zw;
   // RenoDX distortion control: 0 = off, 1 = stock strength.
   // Keep the SDR fallback exact; only HDR uses the user-controlled multiplier.
-  float uv_distortion_multiplier = (HDR >= 1.f) ? SI.uvdistort : 1.f;
+  float uv_distortion_multiplier = SI.uvdistort;
   r0.xy = r0.zw * (float2(0.0199999996,0.0199999996) * uv_distortion_multiplier) + r0.xy;
   r0.zw = overscan * v0.xy;
   r1.xy = (int2)r0.zw;

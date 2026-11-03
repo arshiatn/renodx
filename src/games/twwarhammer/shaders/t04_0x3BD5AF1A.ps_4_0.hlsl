@@ -97,7 +97,7 @@ void main(
   r0.zw = float2(-0.498039216,-0.498039216) + r1.xy;
   // RenoDX distortion control: 0 = off, 1 = stock strength.
   // Keep the SDR fallback exact; only HDR uses the user-controlled multiplier.
-  float uv_distortion_multiplier = (HDR >= 1.f) ? SI.uvdistort : 1.f;
+  float uv_distortion_multiplier = SI.uvdistort;
   r0.xy = r0.zw * (float2(0.0199999996,0.0199999996) * uv_distortion_multiplier) + r0.xy;
   r1.xyzw = gbuffer_channel_4_texture.SampleLevel(gbuffer_channel_4_sampler_s, (r0.xy) * FrameRenderShare(), 0).yzxw;
   r1.xy = r0.xy * float2(2,-2) + float2(-1,1);

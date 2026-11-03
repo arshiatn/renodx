@@ -34,9 +34,7 @@ void main(
   r0.x = exp2(r0.x);
   r0.y = -0.00392156886 + r0.x;
   o0.w = r0.x;
-  if (HDR >= 1.f) {
-    o0.w *= SI.vignette;  //adding vignette for slider
-  }
+  o0.w *= SI.vignette;  //adding vignette for slider
   r0.x = cmp(r0.y < 0);
   if (r0.x != 0) discard;
   o0.xyz = float3(0,0,0);
