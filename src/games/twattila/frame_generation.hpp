@@ -26,7 +26,7 @@
 
 // Frame generation (Experimental) for the 32-bit Total War games: NVIDIA's DLSS Frame Generation runs only in 64-bit
 // processes, so the 64-bit helper presents (dlaa_helper/fg_d3d12.hpp: a child window over the game's, the game's own
-// swap chain still presenting underneath). DLAA (anti_aliasing.hpp) keeps each frame's HUD-less image (the tone mapper's
+// swap chain still presenting underneath; fg_proxy_d3d12.hpp the same with AMD's FSR or Intel's XeSS, Attila's choice). DLAA (anti_aliasing.hpp) keeps each frame's HUD-less image (the tone mapper's
 // output after DLAA, before the UI, drawn there through the addon's swap chain shader into the swap chain's format:
 // KeepFrame) with its depth, motion and camera; after ReShade drew its overlay (reshade_present) the back buffer is
 // copied and the helper presents both (dlaa_bridge.hpp PresentFrame). Needs DLAA or DLSS and a windowed or borderless

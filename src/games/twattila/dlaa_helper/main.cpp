@@ -11,8 +11,8 @@
 // addon asks with its guides, runs through D3D12 (rr_d3d12.hpp; nvngx_dlssd.dll next to nvngx_dlss.dll). Ray tracing
 // requests (bridge v4: the addon's rt_scene.hpp) run on another D3D12 device (rt_d3d12.hpp). Frame generation requests
 // (bridge v5: the addon's frame_generation.hpp, one per game present) present through Streamline's DLSS Frame Generation
-// into a child window over the game's (fg_d3d12.hpp). AMD's FSR and Intel's XeSS (bridge v22) run on D3D12 too, in DLSS's
-// place (upscale_d3d12.hpp). It quits with the game. It answers addons from bridge version OLDEST_VERSION on.
+// into a child window over the game's (fg_d3d12.hpp), or (bridge v23) through FSR's or XeSS's (fg_proxy_d3d12.hpp). AMD's FSR
+// and Intel's XeSS (bridge v22) run on D3D12 too, in DLSS's place (upscale_d3d12.hpp). It quits with the game. It answers addons from bridge version OLDEST_VERSION on.
 // Build (x64): see twattila/README.md.
 #include <windows.h>
 
@@ -40,6 +40,7 @@
 #include "../../talesofarise_dlss/ngx_backend.hpp"
 #include "../dlaa_bridge.h"
 #include "./fg_d3d12.hpp"
+#include "./fg_proxy_d3d12.hpp"
 #include "./rr_d3d12.hpp"
 #include "./rt_d3d12.hpp"
 #include "./upscale_d3d12.hpp"
@@ -169,8 +170,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // next set: a new ray tracing device opens them again.
   std::vector<HANDLE> set_handles;
   // Frame generation (v5 addons with it on): Streamline's D3D12 device, its window and swap chain (made again after a GPU
-  // reset removed the device).
+  // reset removed the device). FSR's or XeSS's (v23 addons) in Streamline's place: one backend serves a set.
   auto generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
+  auto proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
+  uint32_t generation_backend = twattila::dlaa_bridge::FG_BACKEND_DLSS;
+  std::array<bool, 3> generation_refused = {};  // backends Auto no longer tries
+  DXGI_ADAPTER_DESC1 adapter_description = {};
+  adapter->GetDesc1(&adapter_description);
+  // RENODX_TW_FAKE_VENDOR (tests): another's GPU, as in the addon.
+  if (std::array<wchar_t, 16> fake = {}; GetEnvironmentVariableW(L"RENODX_TW_FAKE_VENDOR", fake.data(), static_cast<DWORD>(fake.size())) != 0) {
+    adapter_description.VendorId = std::wcstoul(fake.data(), nullptr, 16);
+  }
   bool generation_open = false;
   uint32_t opened_generation = 0;
   ComPtr<ID3D11Texture2D> color;
@@ -292,15 +302,73 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                                    shared->specular_albedo, shared->normals, shared->roughness},
                                                   shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u);
   };
+  const auto generation_status = [&] {
+    return (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->Status().c_str() : proxy_generation->Status().c_str();
+  };
+  const auto generation_lost = [&] {
+    return (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->Lost() : proxy_generation->Lost();
+  };
+  const auto free_generation = [&] {
+    if (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) {
+      generation->FreeResources();
+    } else {
+      proxy_generation->FreeResources();
+    }
+  };
   const auto open_generation = [&] {
+    using namespace twattila::dlaa_bridge;
     if (generation->Lost()) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: Streamline started again.");
       generation->Shutdown();
       generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
     }
-    generation_open = generation->Initialize(adapter.Get(), folder) && generation->Open(*shared, version);
-    strncpy_s(shared->fg_status, generation->Status().c_str(), _TRUNCATE);
+    // The player's choice alone (DLSS only on NVIDIA's GPUs, else as Auto), or Auto's order.
+    const bool nvidia = adapter_description.VendorId == 0x10DE;
+    const uint32_t wanted = (version >= 23 ? shared->fg_backend : FG_BACKEND_DLSS);
+    std::array<uint32_t, 3> order = {FG_BACKEND_FSR, FG_BACKEND_XESS, FG_BACKEND_FSR};
+    size_t count = 2;
+    if (wanted != FG_BACKEND_AUTO && (wanted != FG_BACKEND_DLSS || nvidia || version < 23)) {
+      order[0] = wanted;
+      count = 1;
+    } else if (nvidia) {
+      order = {FG_BACKEND_DLSS, FG_BACKEND_FSR, FG_BACKEND_XESS};
+      count = 3;
+    } else if (adapter_description.VendorId == 0x8086) {
+      order = {FG_BACKEND_XESS, FG_BACKEND_FSR, FG_BACKEND_FSR};
+    }
+    generation_open = false;
+    for (size_t index = 0; index < count && !generation_open; ++index) {
+      const uint32_t backend = order[index];
+      if (generation_refused[backend]) continue;
+      // Another backend's window and swap chain gone first; its memory with them.
+      if (generation_resources && generation_backend != backend) {
+        free_generation();
+      }
+      generation_backend = backend;
+      if (backend == FG_BACKEND_DLSS) {
+        generation_open = generation->Initialize(adapter.Get(), folder) && generation->Open(*shared, version);
+      } else {
+        if (proxy_generation->Lost() || proxy_generation->Backend() != backend) {
+          if (proxy_generation->Lost()) ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: a new one.");
+          proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
+        }
+        generation_open = proxy_generation->Initialize(adapter.Get(), folder, backend) && proxy_generation->Open(*shared);
+      }
+      if (!generation_open) {
+        // Sticky inside FSR's or XeSS's object, not a new device refused for a while after GPU resets; Streamline's is its own.
+        generation_refused[backend] = backend != FG_BACKEND_DLSS && proxy_generation->Failed();
+        ReShadeLogMessage(nullptr, 0, generation_status());
+      }
+    }
+    // The other's textures of the last set let go.
+    if (generation_backend == FG_BACKEND_DLSS) {
+      proxy_generation->Close();
+    } else {
+      generation->Close();
+    }
+    strncpy_s(shared->fg_status, generation_status(), _TRUNCATE);
     shared->fg_failed = (generation_open ? 0u : 1u);
+    if (version >= 23) shared->fg_running = generation_backend;
   };
   const auto release_idle = [&] {
     const auto now = std::chrono::steady_clock::now();
@@ -332,7 +400,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] FSR / XeSS off for 10 s: their memory released.");
     }
     if (generation_resources && now - fg_used > IDLE_RELEASE) {
-      generation->FreeResources();
+      free_generation();
       generation_resources = false;
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] Frame generation off for 10 s: its memory released.");
     }
@@ -394,6 +462,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         open_generation();
       } else {
         generation->Close();
+        proxy_generation->Close();
       }
       const auto open = [&](uint64_t handle, ComPtr<ID3D11Texture2D>* texture) {
         return SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(handle), IID_PPV_ARGS(texture->GetAddressOf())));
@@ -414,7 +483,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     // A GPU reset removed Ray Reconstruction's or frame generation's device: a new one on this set (until then requests
     // pass without them).
     if (reconstruction_open && reconstruction->Lost()) open_reconstruction();
-    if (generation_open && generation->Lost()) open_generation();
+    if (generation_open && generation_lost()) open_generation();
     if (upscaler_open && upscaler->Lost()) upscaler_tried = false;
     const auto now = std::chrono::steady_clock::now();
     if (shared->rt_request != 0) {
@@ -440,13 +509,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     bool answered = false;
     if (fence && version >= 5 && shared->fg_request != 0) {
       // Frame generation (D3D12): its copy queue waits for the addon's value and signals the next.
-      evaluated = generation_open && generation->Present(shared);
-      if (!generation_open) {
+      const bool proxied = generation_backend != twattila::dlaa_bridge::FG_BACKEND_DLSS;
+      if (generation_open) {
+        evaluated = proxied ? proxy_generation->Present(shared) : generation->Present(shared);
+      } else {
         context4->Wait(fence.Get(), shared->value);
         context4->Signal(fence.Get(), shared->value + 1);
         context->Flush();
       }
-      strncpy_s(shared->fg_status, generation->Status().c_str(), _TRUNCATE);
+      strncpy_s(shared->fg_status, generation_status(), _TRUNCATE);
+      // FSR or XeSS gave up on this GPU or driver: Auto's next, or the addon stops asking.
+      if (generation_open && proxied && proxy_generation->Failed()) {
+        ReShadeLogMessage(nullptr, 0, generation_status());
+        generation_refused[generation_backend] = true;
+        open_generation();
+      }
     } else if (fence && version >= 4 && shared->rt_request != 0) {
       // Ray tracing (D3D12): its queue waits for the addon's value and signals the next (v7: request 2 the Light Bounce,
       // v8: request 3 the reflections).
@@ -585,5 +662,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   }
   rt_work.changed.notify_all();
   rt_worker.join();
+  // The game and its window are gone: nothing to wait for on FSR's or XeSS's swap chain.
+  proxy_generation.release();
   return 0;
 }

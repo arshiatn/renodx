@@ -10,7 +10,11 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
 ## Next build (not released; helper and addon together)
 - **AMD FSR Upscaling and Intel XeSS** in the Anti-Aliasing list, in the helper on the same inputs as DLSS, with the Upscaling Mode rows.
   FSR 4 runs only on AMD (RX 6000 and newer, some Ryzen APUs); other GPUs get FSR 3.1.6 from the same DLL. XeSS-SR runs on any shader model 6.4 GPU
-  (needs the Visual C++ 2015-2022 runtime). Off NVIDIA's GPUs the list has no DLSS and a saved DLSS becomes FSR (XeSS on Intel); Reflex and DLSS Frame Generation rows are hidden there.
+  (needs the Visual C++ 2015-2022 runtime). Off NVIDIA's GPUs the list has no DLSS and a saved DLSS becomes FSR (XeSS on Intel); the Reflex row is hidden there.
+- **AMD FSR and Intel XeSS Frame Generation (Experimental)**: Frame Generation Method (Auto, DLSS, FSR, XeSS) under Frame Generation, in the helper's child window as DLSS's, through each
+  SDK's proxy swap chain, in HDR10, scRGB (as HDR10) and SDR, with any upscaler. Auto: DLSS on an RTX 40 or newer, XeSS on Intel, else FSR; one that cannot start here falls through to the next.
+  FSR: 2x, its HUD not recomposed. XeSS: 2x, 3x and 4x on Intel Arc, with Xe Low Latency (which takes Reflex's place while it runs). Needs amd_fidelityfx_framegeneration_dx12.dll,
+  libxess_fg.dll and libxell.dll next to the helper.
   New files next to the helper: `amd_fidelityfx_loader_dx12.dll`, `amd_fidelityfx_upscaler_dx12.dll`, `libxess.dll`. Bridge v22: addon and helper ship together.
 - **Ray tracing on AMD and Intel (Experimental)**: starts under FSR or XeSS on the DXR 1.1 path with the built-in denoisers. The RT/PT preset turns Ray Reconstruction on only on NVIDIA.
   Other TW games keep refusing it off NVIDIA (their lists stop at DLSS).

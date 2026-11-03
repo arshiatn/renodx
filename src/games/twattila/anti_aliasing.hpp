@@ -99,6 +99,7 @@ struct Settings {
   bool ray_traced_guides = false;
   bool ray_traced_reflections = false;
   uint32_t frame_generation = 0;           // DLAA / DLSS: frames shown per rendered frame (2-6; 1 Dynamic; 0 off: frame_generation.hpp)
+  uint32_t frame_backend = dlaa_bridge::FG_BACKEND_DLSS;  // which makes them
   uint32_t reflex = 0;        // NVIDIA Reflex: 0 off, 1 on, 2 on + boost (with frame generation: on whatever this is)
   uint32_t frame_limit = 0;   // Reflex's limit, rendered frames per second (0: none)
   uint32_t frame_preset = 0;  // frame generation's NVIDIA preset A-C as 1-3 (0: the driver's)
@@ -1010,7 +1011,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
         && !dlaa_bridge::Prepare(device.Get(), objects.width, objects.height,
                                  runtime.settings.ray_reconstruction || runtime.settings.ray_traced_guides, runtime.settings.ray_tracing,
                                  frame_generation::Format(), runtime.settings.ray_traced_reflections,
-                                 static_cast<uint32_t>(method) - static_cast<uint32_t>(Method::DLAA))) {
+                                 static_cast<uint32_t>(method) - static_cast<uint32_t>(Method::DLAA), runtime.settings.frame_backend)) {
       return;
     }
     continued = (objects.history_valid || Upscales(method)) && runtime.applied_frame + 1 == runtime.frame
@@ -1429,8 +1430,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   // helper runs (the menus before a battle draw none of it for nothing).
   object_motion::SetActive(settings.object_motion && (settings.method == Method::TAA || (Upscales(settings.method) && dlaa_bridge::bridge.started)));
   frame_generation::Update({
-      // Streamline's: NVIDIA's GPUs only (it would start at the set change).
-      .multiplier = ((Upscales(settings.method) && dlaa_bridge::OnNvidia()) ? settings.frame_generation : 0u),
+      .multiplier = (Upscales(settings.method) ? settings.frame_generation : 0u),
       .reflex_boost = (settings.reflex == 2),
       .frame_limit = settings.frame_limit,
       .preset = settings.frame_preset,

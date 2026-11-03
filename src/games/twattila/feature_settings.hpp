@@ -60,6 +60,7 @@ struct AaSliders {
   float effects_at_output = 1.f;   // DLSS: the effects keep their 100% detail (their resolutions follow the render scale)
   float ray_reconstruction = 0.f;  // DLAA's: off, NVIDIA's preset, D, E, F
   float frame_generation = 0.f;    // DLAA's: off, 2x-6x, Dynamic
+  float frame_backend = 1.f;       // Attila's (graphics_page.hpp): frame generation's: Auto, DLSS, FSR, XeSS
   float reflex = 0.f;              // NVIDIA Reflex: off, on, on + boost (frame generation: always on)
   float frame_limit = 0.f;         // Reflex's limit, rendered frames per second (0: off)
   float frame_preset = 0.f;        // frame generation's: the driver's, A, B, C
@@ -120,6 +121,8 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .frame_generation = (sliders.frame_generation >= 6.f   ? 1u
                            : sliders.frame_generation >= 1.f ? static_cast<uint32_t>(sliders.frame_generation) + 1u
                                                              : 0u),
+      .frame_backend = std::array<uint32_t, 4>{dlaa_bridge::FG_BACKEND_AUTO, dlaa_bridge::FG_BACKEND_DLSS, dlaa_bridge::FG_BACKEND_FSR,
+                                               dlaa_bridge::FG_BACKEND_XESS}[std::clamp(static_cast<int>(sliders.frame_backend), 0, 3)],
       .reflex = static_cast<uint32_t>(std::clamp(sliders.reflex, 0.f, 2.f)),
       .frame_limit = static_cast<uint32_t>(std::clamp(sliders.frame_limit, 0.f, 240.f)),
       .frame_preset = static_cast<uint32_t>(std::clamp(sliders.frame_preset, 0.f, 3.f)),

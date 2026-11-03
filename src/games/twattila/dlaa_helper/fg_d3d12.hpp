@@ -52,10 +52,126 @@
 // route by Bustanity, MIT). Multiplier 0 hides the window (the game's own image shows) and turns generation off.
 // Bridge v12: the HUD's recomposition (a UI layer from the frame and its HUD-less image, fg_ui.cs_6_0.hlsl, which DLSS-G
 // lays over the frames it makes) and NVIDIA's preset, written into this exe's driver profile before DLSS-G starts.
-// Bridge v13: the debug view (the HUD-less image, or the frame with its UI layer tinted, presented instead).
+// Bridge v13: the debug view (the HUD-less image, or the frame with its UI layer tinted, presented instead). Bridge v23:
+// the other backends, FSR's and XeSS's, in fg_proxy_d3d12.hpp, sharing the window.
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;
+
+// The child window a backend presents into, over the game's client area (disabled: the game's window keeps the mouse and
+// keyboard), resized with the game's window; its swap chain stretches the frame to it.
+struct FgWindow {
+  HWND parent = nullptr;
+  HWND window = nullptr;
+  std::thread thread;
+  int width = 0;
+  int height = 0;
+
+  // No window, or not over `game_window`: the swap chain goes first (Close), then Make.
+  [[nodiscard]] bool Stale(HWND game_window) const { return window == nullptr || !IsWindow(window) || parent != game_window; }
+
+  void Close() {
+    if (window != nullptr) PostMessageW(window, WM_CLOSE, 0, 0);
+    if (thread.joinable()) thread.join();
+    window = nullptr;
+  }
+
+  bool Make(HWND game_window) {
+    parent = game_window;
+    std::atomic<HWND> made = nullptr;
+    std::atomic_bool ready = false;
+    // Its own thread keeps its messages flowing: the game's window thread sends to its child (and their input
+    // queues are attached), so the helper's waits must never hold them up.
+    thread = std::thread([game_window, &made, &ready] {
+      const WNDCLASSW window_class = {.lpfnWndProc = WindowProcedure, .hInstance = GetModuleHandleW(nullptr), .lpszClassName = L"RenoDX_TW_FG"};
+      RegisterClassW(&window_class);
+      RECT client = {};
+      GetClientRect(game_window, &client);
+      HWND created = CreateWindowExW(WS_EX_NOPARENTNOTIFY, L"RenoDX_TW_FG", L"RenoDX frame generation", WS_CHILD | WS_DISABLED, 0, 0,
+                                     std::max(client.right, 1L), std::max(client.bottom, 1L), game_window, nullptr,
+                                     window_class.hInstance, nullptr);
+      made.store(created);
+      ready.store(true);
+      if (created == nullptr) return;
+      MSG message;
+      while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+        DispatchMessageW(&message);
+      }
+    });
+    while (!ready.load()) {
+      Sleep(1);
+    }
+    window = made.load();
+    if (window == nullptr) thread.join();
+    return window != nullptr;
+  }
+
+  // The client area's size: the window follows it.
+  void Fit() {
+    RECT client = {};
+    GetClientRect(parent, &client);
+    const int client_width = std::max(static_cast<int>(client.right), 1);
+    const int client_height = std::max(static_cast<int>(client.bottom), 1);
+    if (client_width == width && client_height == height) return;
+    width = client_width;
+    height = client_height;
+    SetWindowPos(window, HWND_TOP, 0, 0, client_width, client_height, SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+  }
+
+  void Show() const {
+    if (!IsWindowVisible(window)) ShowWindowAsync(window, SW_SHOWNA);
+  }
+
+  void Hide() const {
+    if (window != nullptr) ShowWindowAsync(window, SW_HIDE);
+  }
+
+  static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM w_parameter, LPARAM l_parameter) {
+    switch (message) {
+      // The game's window under it takes the mouse.
+      case WM_NCHITTEST:
+        return HTTRANSPARENT;
+      case WM_MOUSEACTIVATE:
+        return MA_NOACTIVATE;
+      case WM_CLOSE:
+        DestroyWindow(window);
+        return 0;
+      case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+      default:
+        return DefWindowProcW(window, message, w_parameter, l_parameter);
+    }
+  }
+};
+
+// Gauss-Jordan with partial pivoting, in doubles.
+inline std::array<float, 16> InverseMatrix(const float* matrix) {
+  std::array<std::array<double, 8>, 4> rows = {};
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) rows[row][column] = matrix[(row * 4) + column];
+    rows[row][4 + row] = 1.;
+  }
+  for (int column = 0; column < 4; ++column) {
+    int pivot = column;
+    for (int row = column + 1; row < 4; ++row) {
+      if (std::abs(rows[row][column]) > std::abs(rows[pivot][column])) pivot = row;
+    }
+    std::swap(rows[pivot], rows[column]);
+    const double scale = (rows[column][column] != 0. ? 1. / rows[column][column] : 0.);
+    for (double& value : rows[column]) value *= scale;
+    for (int row = 0; row < 4; ++row) {
+      if (row == column) continue;
+      const double factor = rows[row][column];
+      for (int index = 0; index < 8; ++index) rows[row][index] -= factor * rows[column][index];
+    }
+  }
+  std::array<float, 16> result = {};
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) result[(row * 4) + column] = static_cast<float>(rows[row][4 + column]);
+  }
+  return result;
+}
 
 class FrameGeneration12 {
  public:
@@ -188,7 +304,7 @@ class FrameGeneration12 {
         || !open(shared.fence, IID_PPV_ARGS(fence_.GetAddressOf()))) {
       Close();
       // The addon stops asking: the game's own image shows, not the window's last frame.
-      if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
+      window_.Hide();
       return false;
     }
     const D3D12_RESOURCE_DESC frame_desc = frame_->GetDesc();
@@ -250,7 +366,7 @@ class FrameGeneration12 {
       // Off: the window hidden (the game's image shows); its swap chain kept for later, and its mode: no Present would
       // apply an Off here (options take effect at the next one), the next frame only has no connection to the last.
       after_hidden_ = true;
-      if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
+      window_.Hide();
       SignalOnly(value);
       return false;
     }
@@ -397,7 +513,7 @@ class FrameGeneration12 {
     Marker(sl::PCLMarker::ePresentStart, token);
     const HRESULT presented = chain_->Present(0, tearing_ != 0 ? DXGI_PRESENT_ALLOW_TEARING : 0);
     Marker(sl::PCLMarker::ePresentEnd, token);
-    if (!IsWindowVisible(window_)) ShowWindowAsync(window_, SW_SHOWNA);
+    window_.Show();
     // The next frame's Reflex sleep, simulation and submission start (the game waits for this answer).
     uint32_t next_index = frame + 1;
     sl::FrameToken* next = nullptr;
@@ -420,17 +536,14 @@ class FrameGeneration12 {
     presents_after_resize_ = 2;
     if (free_resources_ != nullptr) free_resources_(sl::kFeatureDLSS_G, VIEWPORT);
     chain_.Reset();
-    if (window_ != nullptr) PostMessageW(window_, WM_CLOSE, 0, 0);
-    if (window_thread_.joinable()) window_thread_.join();
-    window_ = nullptr;
+    window_.Close();
   }
 
   // The window and swap chain gone, Streamline stopped (the helper quits, or a GPU reset).
   void Shutdown() {
     WaitIdle();
     chain_.Reset();
-    if (window_ != nullptr) PostMessageW(window_, WM_CLOSE, 0, 0);
-    if (window_thread_.joinable()) window_thread_.join();
+    window_.Close();
     streamline_queue_.Reset();
     streamline_device_.Reset();
     if (initialized_) shutdown_();
@@ -459,7 +572,7 @@ class FrameGeneration12 {
     failed_ = true;
     status_ = "Frame generation: " + status;
     // The game's own image shows, not the window's last frame.
-    if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
+    window_.Hide();
     return false;
   }
 
@@ -605,61 +718,15 @@ class FrameGeneration12 {
   static int SavePreset(uint32_t preset) { return preset == 0 ? PRESET_HELD : PRESET_FAILED; }
 #endif
 
-  // The window over the game's client area (made with its swap chain at the frame's size and format; resized with the
-  // game's window). False: no window or swap chain.
+  // The window over the game's client area, with its swap chain at the frame's size and format. False: no window or swap
+  // chain.
   bool PrepareWindow(HWND game_window, bool sdr) {
-    if (window_ != nullptr && !IsWindow(window_)) {
-      window_ = nullptr;
+    if (window_.Stale(game_window)) {
       chain_.Reset();
-      if (window_thread_.joinable()) window_thread_.join();
+      window_.Close();
+      if (!window_.Make(game_window)) return Fail("its window over the game's could not be made");
     }
-    if (window_ == nullptr || parent_ != game_window) {
-      if (window_ != nullptr) {
-        chain_.Reset();
-        PostMessageW(window_, WM_CLOSE, 0, 0);
-        if (window_thread_.joinable()) window_thread_.join();
-        window_ = nullptr;
-      }
-      parent_ = game_window;
-      std::atomic<HWND> made = nullptr;
-      std::atomic_bool ready = false;
-      // Its own thread keeps its messages flowing: the game's window thread sends to its child (and their input
-      // queues are attached), so the helper's waits must never hold them up.
-      window_thread_ = std::thread([game_window, &made, &ready] {
-        const WNDCLASSW window_class = {.lpfnWndProc = WindowProcedure, .hInstance = GetModuleHandleW(nullptr), .lpszClassName = L"RenoDX_TW_FG"};
-        RegisterClassW(&window_class);
-        RECT client = {};
-        GetClientRect(game_window, &client);
-        HWND window = CreateWindowExW(WS_EX_NOPARENTNOTIFY, L"RenoDX_TW_FG", L"RenoDX frame generation", WS_CHILD | WS_DISABLED, 0, 0,
-                                      std::max(client.right, 1L), std::max(client.bottom, 1L), game_window, nullptr,
-                                      window_class.hInstance, nullptr);
-        made.store(window);
-        ready.store(true);
-        if (window == nullptr) return;
-        MSG message;
-        while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-          DispatchMessageW(&message);
-        }
-      });
-      while (!ready.load()) {
-        Sleep(1);
-      }
-      window_ = made.load();
-      if (window_ == nullptr) {
-        window_thread_.join();
-        return Fail("its window over the game's could not be made");
-      }
-    }
-    // The client area's size: the window follows it (the swap chain stretches the frame to it).
-    RECT client = {};
-    GetClientRect(parent_, &client);
-    const int client_width = std::max(static_cast<int>(client.right), 1);
-    const int client_height = std::max(static_cast<int>(client.bottom), 1);
-    if (client_width != window_width_ || client_height != window_height_) {
-      window_width_ = client_width;
-      window_height_ = client_height;
-      SetWindowPos(window_, HWND_TOP, 0, 0, client_width, client_height, SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
-    }
+    window_.Fit();
     if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) return true;
     // HDR10 frames (R10G10B10A2; an scRGB swap chain's too: frame_generation.hpp) as the game's swap chain shows them. SDR
     // frames (gamma 2.2, in R10G10B10A2 too) keep the chain's default: taken for HDR10 they came out red (ATN 2026-11-01).
@@ -706,7 +773,7 @@ class FrameGeneration12 {
         .Flags = tearing_,
     };
     ComPtr<IDXGISwapChain1> created;
-    if (FAILED(streamline_factory->CreateSwapChainForHwnd(streamline_queue_.Get(), window_, &desc, nullptr, nullptr, created.GetAddressOf()))
+    if (FAILED(streamline_factory->CreateSwapChainForHwnd(streamline_queue_.Get(), window_.window, &desc, nullptr, nullptr, created.GetAddressOf()))
         || FAILED(created.As(&chain_))) {
       return Fail("its swap chain could not be made");
     }
@@ -722,24 +789,6 @@ class FrameGeneration12 {
     if (result != sl::Result::eOk) failure_ = std::format("{} failed ({})", what, sl::getResultAsStr(result));
   }
 
-  static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM w_parameter, LPARAM l_parameter) {
-    switch (message) {
-      // The game's window under it takes the mouse.
-      case WM_NCHITTEST:
-        return HTTRANSPARENT;
-      case WM_MOUSEACTIVATE:
-        return MA_NOACTIVATE;
-      case WM_CLOSE:
-        DestroyWindow(window);
-        return 0;
-      case WM_DESTROY:
-        PostQuitMessage(0);
-        return 0;
-      default:
-        return DefWindowProcW(window, message, w_parameter, l_parameter);
-    }
-  }
-
   // The camera as Streamline takes it (row vectors, without the jitter; standard depth, 0 near).
   void SetConstants(const dlaa_bridge::Shared& shared, sl::FrameToken& token) {
     const auto to_matrix = [](const float* values) {
@@ -749,41 +798,14 @@ class FrameGeneration12 {
       }
       return result;
     };
-    // Gauss-Jordan with partial pivoting, in doubles.
-    const auto inverse = [](const float* matrix) {
-      std::array<std::array<double, 8>, 4> rows = {};
-      for (int row = 0; row < 4; ++row) {
-        for (int column = 0; column < 4; ++column) rows[row][column] = matrix[(row * 4) + column];
-        rows[row][4 + row] = 1.;
-      }
-      for (int column = 0; column < 4; ++column) {
-        int pivot = column;
-        for (int row = column + 1; row < 4; ++row) {
-          if (std::abs(rows[row][column]) > std::abs(rows[pivot][column])) pivot = row;
-        }
-        std::swap(rows[pivot], rows[column]);
-        const double scale = (rows[column][column] != 0. ? 1. / rows[column][column] : 0.);
-        for (double& value : rows[column]) value *= scale;
-        for (int row = 0; row < 4; ++row) {
-          if (row == column) continue;
-          const double factor = rows[row][column];
-          for (int index = 0; index < 8; ++index) rows[row][index] -= factor * rows[column][index];
-        }
-      }
-      std::array<float, 16> result = {};
-      for (int row = 0; row < 4; ++row) {
-        for (int column = 0; column < 4; ++column) result[(row * 4) + column] = static_cast<float>(rows[row][4 + column]);
-      }
-      return result;
-    };
     const float* projection = shared.fg_view_to_clip;
     constexpr std::array<float, 16> IDENTITY = {1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f};
     sl::Constants constants = {};
     constants.cameraViewToClip = to_matrix(projection);
-    constants.clipToCameraView = to_matrix(inverse(projection).data());
+    constants.clipToCameraView = to_matrix(InverseMatrix(projection).data());
     constants.clipToLensClip = to_matrix(IDENTITY.data());
     // Clip to last frame's clip: back to the world with this frame's camera, through last frame's.
-    const auto clip_to_world = inverse(shared.fg_view_projection);
+    const auto clip_to_world = InverseMatrix(shared.fg_view_projection);
     std::array<float, 16> clip_to_previous_clip = {};
     for (int row = 0; row < 4; ++row) {
       for (int column = 0; column < 4; ++column) {
@@ -793,7 +815,7 @@ class FrameGeneration12 {
       }
     }
     constants.clipToPrevClip = to_matrix(clip_to_previous_clip.data());
-    constants.prevClipToClip = to_matrix(inverse(clip_to_previous_clip.data()).data());
+    constants.prevClipToClip = to_matrix(InverseMatrix(clip_to_previous_clip.data()).data());
     constants.jitterOffset = sl::float2(shared.jitter_x, shared.jitter_y);
     constants.mvecScale = sl::float2(1.f / static_cast<float>(shared.width), 1.f / static_cast<float>(shared.height));
     constants.cameraPinholeOffset = sl::float2(0.f, 0.f);
@@ -917,12 +939,8 @@ class FrameGeneration12 {
   uint32_t preset_ = UINT32_MAX;
   inline static std::atomic_int preset_result_ = PRESET_HELD;  // static: its thread can outlive a replaced object
 
-  // The window over the game's, its thread and swap chain.
-  HWND parent_ = nullptr;
-  HWND window_ = nullptr;
-  std::thread window_thread_;
-  int window_width_ = 0;
-  int window_height_ = 0;
+  // The window over the game's and swap chain.
+  FgWindow window_;
   ComPtr<IDXGISwapChain4> chain_;
   UINT chain_width_ = 0;
   UINT chain_height_ = 0;

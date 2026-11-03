@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 22;
+constexpr uint32_t VERSION = 23;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -213,6 +213,11 @@ constexpr uint32_t RT_PATH_SKY_APART = 4096;
 constexpr uint32_t UPSCALER_DLSS = 0;
 constexpr uint32_t UPSCALER_FSR = 1;
 constexpr uint32_t UPSCALER_XESS = 2;
+// Shared::fg_backend, fg_running. Auto is the helper's choice: DLSS on NVIDIA's GPUs that have it, XeSS on Intel's, else FSR.
+constexpr uint32_t FG_BACKEND_DLSS = 0;
+constexpr uint32_t FG_BACKEND_FSR = 1;
+constexpr uint32_t FG_BACKEND_XESS = 2;
+constexpr uint32_t FG_BACKEND_AUTO = 3;
 
 struct Shared {
   uint32_t version = VERSION;
@@ -403,14 +408,19 @@ struct Shared {
   // none), which a trace with it writes every pixel.
   uint64_t rt_tint = 0;
   // The addon's (v22): which upscaler serves this set of textures (UPSCALER_*; a change makes a new set), which frame
-  // generation backend (0: Streamline's DLSS-G, the only one yet). FSR and XeSS read `view_to_clip` of every evaluation.
+  // generation backend (FG_BACKEND_*, v23: a change makes a new set; before it Streamline's). FSR and XeSS read `view_to_clip`
+  // of every evaluation.
   uint32_t upscaler = 0;
   uint32_t fg_backend = 0;
+  // The helper's (v23): the frame generation backend that serves this set (Auto's choice).
+  uint32_t fg_running = 0;
+  uint32_t fg_v23_padding = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 22) return sizeof(Shared);
+  if (version >= 23) return sizeof(Shared);
+  if (version == 22) return offsetof(Shared, fg_running);
   if (version >= 19) return offsetof(Shared, upscaler);
   if (version == 18) return offsetof(Shared, rt_tint);
   if (version == 17) return offsetof(Shared, rt_light_size);

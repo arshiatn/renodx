@@ -156,6 +156,7 @@ struct Bridge {
   // accumulation and filter) leave its noise to it.
   bool reconstructing = false;
   uint32_t upscaler = UPSCALER_DLSS;
+  uint32_t fg_backend = FG_BACKEND_DLSS;
   HANDLE mapping = nullptr;
   HANDLE request = nullptr;
   HANDLE done = nullptr;
@@ -396,9 +397,11 @@ inline bool Answer(DWORD timeout = 5000) {
 
 // The shared objects for `width` x `height` on `device` (with Ray Reconstruction's guides when `guides`, ray tracing's
 // textures when `ray_tracing`, frame generation's in `fg_format` unless unknown, the reflections' with ray tracing when
-// `reflections`, `upscaler` the helper's UPSCALER_*; made again when any changes); false: not available.
+// `reflections`, `upscaler` the helper's UPSCALER_*, `fg_backend` its FG_BACKEND_*; made again when any changes); false: not
+// available.
 inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool guides = false, bool ray_tracing = false,
-                    DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false, uint32_t upscaler = UPSCALER_DLSS) {
+                    DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false, uint32_t upscaler = UPSCALER_DLSS,
+                    uint32_t fg_backend = FG_BACKEND_DLSS) {
   reflections = reflections && ray_tracing;
   if (!internal::Start(native_device)) return false;
   ComPtr<ID3D11Device5> device;
@@ -410,6 +413,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   // are made again with a new fence.
   if (bridge.device == device && bridge.width == width && bridge.height == height && bridge.guides == guides
       && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format && bridge.reflections == reflections && bridge.upscaler == upscaler
+      && bridge.fg_backend == fg_backend
       && (!bridge.fence || bridge.fence->GetCompletedValue() != UINT64_MAX)) {
     return true;
   }
@@ -600,6 +604,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   shared.fg_failed = 0;
   shared.rt_flags = (bridge.details ? RT_DETAILS : 0u);
   shared.upscaler = upscaler;
+  shared.fg_backend = fg_backend;
   ++shared.generation;
   bridge.width = width;
   bridge.height = height;
@@ -608,6 +613,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.fg_format = fg_format;
   bridge.reflections = reflections;
   bridge.upscaler = upscaler;
+  bridge.fg_backend = fg_backend;
   return true;
 }
 
@@ -977,9 +983,14 @@ inline bool PresentFrame(ID3D11DeviceContext* context, const FrameRequest& reque
   });
 }
 
-// Whether the helper found frame generation unavailable here (Streamline missing, no RTX 40, ...).
+// Whether the helper found frame generation unavailable here (its DLLs missing, DLSS's without an RTX 40, ...).
 inline bool FrameGenerationFailed() {
   return bridge.shared != nullptr && bridge.shared->fg_failed != 0;
+}
+
+// The frame generation backend the helper runs (FG_BACKEND_*: Auto's choice too).
+inline uint32_t FrameGenerationBackend() {
+  return (bridge.shared != nullptr) ? bridge.shared->fg_running : FG_BACKEND_DLSS;
 }
 
 // The helper's last frame generation status (one line).

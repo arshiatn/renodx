@@ -21,7 +21,7 @@
 #include "./frame_generation.hpp"
 #include "./nvapi.hpp"
 
-// NVIDIA Reflex for the game's own presents (frame generation off; with it the helper's Streamline paces the game):
+// NVIDIA Reflex for the game's own presents (frame generation off, or FSR's; DLSS's and XeSS's pace the game in the helper):
 // NVAPI's low latency sleep mode on the game's D3D11 device, its Sleep right after each present (the next frame starts
 // only as the GPU will need it) and the frame's latency markers around them. NVIDIA GPUs only: elsewhere nothing runs.
 namespace twattila::reflex {
@@ -108,10 +108,12 @@ inline void OnFinishPresent(reshade::api::command_queue*, reshade::api::swapchai
 }  // namespace internal
 
 // Every present (anti_aliasing.hpp): Reflex `mode` (0 off, 1 on, 2 on + boost) and its `frame_limit` (rendered frames
-// per second, 0 none) on the game's device, while frame generation does not present (its own Reflex paces the game).
+// per second, 0 none) on the game's device, while no frame generation paces the game itself (DLSS's Reflex, XeSS's Xe Low
+// Latency, which takes no other).
 inline void Update(reshade::api::swapchain* swapchain, uint32_t mode, uint32_t frame_limit) {
   auto& state = internal::state;
-  const uint32_t wanted = (frame_generation::Presenting() ? 0u : mode);
+  const bool paced = frame_generation::Presenting() && dlaa_bridge::FrameGenerationBackend() != dlaa_bridge::FG_BACKEND_FSR;
+  const uint32_t wanted = (paced ? 0u : mode);
   const uint32_t wanted_limit = (wanted != 0 ? frame_limit : 0u);
   auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&device);

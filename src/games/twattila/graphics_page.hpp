@@ -261,7 +261,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   const auto no_upscaler = [b] { return !feature_settings::Upscaling(*b.aa); };
   const auto dlss = [b] { return b.aa->method == 5.f; };
   const auto nvidia = [] { return dlaa_bridge::OnNvidia(); };
-  const auto frame_generation = [b] { return feature_settings::Upscaling(*b.aa) && dlaa_bridge::OnNvidia() && b.aa->frame_generation != 0.f; };
+  const auto frame_generation = [b] { return feature_settings::Upscaling(*b.aa) && b.aa->frame_generation != 0.f; };
+  const auto dlss_generation = [frame_generation] { return frame_generation() && dlaa_bridge::FrameGenerationBackend() == dlaa_bridge::FG_BACKEND_DLSS; };
+  const auto composing_generation = [frame_generation] { return frame_generation() && dlaa_bridge::FrameGenerationBackend() != dlaa_bridge::FG_BACKEND_FSR; };
   const auto ao_is = [b](int method) { return [b, method] { return AoMethodOf(b) == method; }; };
   const auto shadows_are = [b](int method) { return [b, method] { return ShadowMethodOf(b) == method; }; };
   const auto gi_is = [b](int method) { return [b, method] { return GiMethodOf(b) == method; }; };
@@ -345,10 +347,22 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "DLSS Ray Reconstruction",
                .tooltip = "NVIDIA's denoiser for ray tracing in place of DLSS's usual model: much less noise in everything\n"
                           "ray-traced. Runs only while something is ray-traced. Needs nvngx_dlssd.dll next to nvngx_dlss.dll."});
-    page.Take({.match = "FrameGeneration", .section = section, .shown = [b] { return feature_settings::Upscaling(*b.aa) && dlaa_bridge::OnNvidia(); }, .label = "DLSS Frame Generation",
-               .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
-                          "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
-                          "Needs a windowed or borderless game and Streamline's files next to renodx-tw-dlaa64.exe."});
+    page.Take({.match = "FrameGeneration", .section = section, .shown = upscaling, .label = "Frame Generation (Experimental)",
+               .tooltip = "Frames shown per rendered frame. Turn the game's VSync off. Needs a windowed or borderless game.\n"
+                          "DLSS: 2x on RTX 40 or newer, 3x to 6x and Dynamic on RTX 50. FSR: 2x. XeSS: 2x, up to 4x on Intel Arc."});
+    page.Add(new Setting{
+        .key = "FrameGenerationMethod",
+        .binding = &b.aa->frame_backend,
+        .value_type = SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Frame Generation Method (Experimental)",
+        .section = section,
+        .tooltip = "Auto: DLSS on an RTX 40 or newer, XeSS on Intel, else FSR.\n"
+                   "FSR and XeSS run on any GPU and with any upscaler, in the game's HDR10, scRGB or SDR.\n"
+                   "DLSS needs NVIDIA. Needs their files next to renodx-tw-dlaa64.exe.",
+        .labels = {"Auto", "DLSS", "FSR", "XeSS"},
+        .is_visible = frame_generation,
+    });
     // What the helper says it really does (refreshed every 30 presents): frames generated, or why none.
     page.Add(new Setting{.value_type = SettingValueType::CUSTOM,
                          .section = section,
@@ -372,13 +386,13 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "AntiAliasingObjectMotion", .section = section, .shown = more(&more_aa, upscaling),
                .tooltip = "Soldiers, props and cloth tell the upscaler how they move: sharper while they move.\n"
                           "Off: faster with many soldiers on screen (they can smear a little when moving)."});
-    page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, frame_generation)});
-    page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, frame_generation)});
+    page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, composing_generation)});
+    page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, dlss_generation)});
     page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, upscaling), .label = "Upscaling Debug View",
                .tooltip = "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).\n"
                           "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
                           "No Camera Motion: the upscaler gets the objects' motion alone."});
-    page.Take({.match = "FrameGenerationDebugView", .section = section, .shown = more(&more_aa, frame_generation)});
+    page.Take({.match = "FrameGenerationDebugView", .section = section, .shown = more(&more_aa, dlss_generation)});
     page.Add(EmptyLine(section));
   }
 
