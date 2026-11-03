@@ -103,7 +103,7 @@ ATN's words, short:
       and RT/PT on AMD / Intel with NVIDIA NRD (v120 item 4). Attila is 32-bit: all of them in the 64-bit helper like DLSS.
 - [ ] 2a With RT/PT on AMD / Intel (item 2): the RT/PT preset turns DLSS Ray Reconstruction on where it was off (graphics_page.hpp,
       since 2026-11-01): harmless today (DLSS and RT do not start there); by then it must follow the GPU (their denoiser instead).
-- [ ] 2b Frame generation on scRGB without a restart (ATN 2026-11-01: do it Monday): turned on in game it did nothing (the swap
+- [x] 2b DONE 2026-11-03 (Attila only; helper unchanged; fg_hdr10 pass; Auto stays HDR10; other TW games: same port pending, item 3; not run in game). Frame generation on scRGB without a restart (ATN 2026-11-01: do it Monday): turned on in game it did nothing (the swap
       chain was made scRGB; Streamline takes no scRGB). v123 stopgap: Output Auto = HDR10 from the start (OnCreateSwapchain), a
       red note to restart with Output scRGB. The change: the helper's FG swap chain always HDR10, the addon converting scRGB to
       PQ for fg_frame / fg_hudless; then Auto can go back to scRGB (ask ATN) and the note goes.

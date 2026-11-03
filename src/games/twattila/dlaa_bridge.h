@@ -265,7 +265,8 @@ struct Shared {
   // The addon's (v5): frame generation (NVIDIA's DLSS Frame Generation through Streamline in the helper, presenting
   // into a child window over the game's: dlaa_helper/fg_d3d12.hpp), a request of its own at each present
   // (`fg_request` 1): the game's window, the frame as it is presented and the same frame before the UI (the HUD-less
-  // image), both in the swap chain's format (`fg_format`) at the textures' size (opened with the others: 0, none); the
+  // image), both in `fg_format` (the swap chain's; HDR10 for an scRGB one: frame_generation.hpp) at the textures' size
+  // (opened with the others: 0, none); the
   // depth and motion are the frame's DLAA inputs (`fg_inputs` 1: written this frame, their top-left `width` x `height`,
   // `jitter_x` / `jitter_y`, `reset`) and its camera (row vectors, without the jitter: view to clip, this frame's and
   // last frame's view-projection; position, right, up, forward; near and far, metres).

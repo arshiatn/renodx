@@ -315,12 +315,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "FrameGeneration", .section = section, .shown = dlss, .label = "DLSS Frame Generation",
                .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
                           "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
-                          "Needs Output Auto, HDR10 or SDR (scRGB: restart after turning this on), a windowed or borderless\n"
-                          "game, and Streamline's files next to renodx-tw-dlaa64.exe."});
-    // Output scRGB, the game started without it: frame generation cannot use its swap chain; HDR10 at the next start.
-    page.Add(Note("Restart the game for Frame Generation: it started in scRGB, Frame Generation needs HDR10.",
-                  section, WARNING_TINT,
-                  [frame_generation] { return frame_generation() && dlaa_bridge::FrameGenerationStatus().find("scRGB") != std::string::npos; }));
+                          "Needs a windowed or borderless game and Streamline's files next to renodx-tw-dlaa64.exe."});
     // What the helper says it really does (refreshed every 30 presents): frames generated, or why none.
     page.Add(new Setting{.value_type = SettingValueType::CUSTOM,
                          .section = section,

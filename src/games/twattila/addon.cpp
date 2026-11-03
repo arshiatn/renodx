@@ -1641,19 +1641,14 @@ void SetOutputEncoding(int encoding) {
   }
 }
 
-// Output Auto: HDR10 with Windows HDR on for the game's display (or unknown), else SDR (frame generation takes no scRGB, and
-// turned on in a game started in it did nothing, ATN 2026-11-01). Set at the first swap chain, before the swapchain mod's
-// create_swapchain (registered after this).
+// Output Auto: HDR10 with Windows HDR on for the game's display (or unknown), else SDR (what frame generation presents, with
+// no pass of its own). Set at the first swap chain, before the swapchain mod's create_swapchain (registered after this).
 bool auto_output_pending = false;
 // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (ATN 2026-11-01).
 bool first_start = false;
 
 bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!auto_output_pending) {
-    // Output scRGB: HDR10 with frame generation.
-    if (aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f && shader_injection.swap_chain_encoding == 1.f) SetOutputEncoding(0);
-    return false;
-  }
+  if (!auto_output_pending) return false;
   auto_output_pending = false;
   const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
   const auto path = renodx::utils::platform::GetPathInfo(monitor);
@@ -2080,7 +2075,7 @@ void ConfigureAddon() {
         .label = "Output",
         .section = "Output (Restart Required)",
         .tooltip = "Auto: HDR10 with Windows HDR on, else SDR. Default.\n"
-                   "HDR10: 10-bit. scRGB: 16-bit, frame generation uses HDR10 instead. SDR: displays without HDR (all fixes\n"
+                   "HDR10: 10-bit. scRGB: 16-bit, 10-bit while Frame Generation is on. SDR: displays without HDR (all fixes\n"
                    "and options stay).",
         .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
@@ -2212,7 +2207,7 @@ bool AttachAddon() {
                                    RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS,
                                    twattila::view_share::WHOLE_TEXTURES);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
-                                      sizeof(shader_injection));
+                                      sizeof(shader_injection), __fg_hdr10);
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
   // Their lighting buffer's ambient cube at c2 (lighting_VS_PS): the paths' sky.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8);

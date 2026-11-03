@@ -36,8 +36,8 @@
 // only then does the game's GPU wait for the helper's fence value, so a missing or late helper never stalls the GPU
 // (no answer in 100 ms, 5 s for the first while NVIDIA sets up: DLAA off). With Ray Reconstruction its guides too
 // (written by the addon's G-buffer pass). With ray tracing (rt_scene.hpp) its textures too, and a request of its own
-// each frame (TraceScene). With frame generation (frame_generation.hpp) the presented frame and the HUD-less frame in the
-// swap chain's format too, and a request at each present (PresentFrame). D3D11.4 (shared fences).
+// each frame (TraceScene). With frame generation (frame_generation.hpp) the presented frame and the HUD-less frame in
+// fg_format too, and a request at each present (PresentFrame). D3D11.4 (shared fences).
 namespace twattila::dlaa_bridge {
 
 using Microsoft::WRL::ComPtr;
@@ -210,8 +210,10 @@ struct Bridge {
   uint32_t rt_atlas_generation = 0;
   bool ray_tracing = false;
   bool details = false;  // Log Details (RT_DETAILS)
-  // Frame generation's (made when it is on): the presented frame and the HUD-less frame, in the swap chain's format.
+  // Frame generation's (made when it is on): the presented frame and the HUD-less frame, in fg_format (the swap chain's;
+  // HDR10 for an scRGB one).
   ComPtr<ID3D11Texture2D> fg_frame;
+  ComPtr<ID3D11RenderTargetView> fg_frame_rtv;
   ComPtr<ID3D11Texture2D> fg_hudless;
   ComPtr<ID3D11RenderTargetView> fg_hudless_rtv;
   DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN;
@@ -429,6 +431,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.hit_distance_written = false;
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();
+  bridge.fg_frame_rtv.Reset();
   bridge.fg_hudless_rtv.Reset();
   bridge.fg_format = DXGI_FORMAT_UNKNOWN;
   bridge.fence.Reset();
@@ -540,6 +543,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                             && make(DXGI_FORMAT_R16_FLOAT, &bridge.rr_hit_distance, &shared.rr_hit_distance)))
                     && (fg_format == DXGI_FORMAT_UNKNOWN
                         || (make_frame(&bridge.fg_frame, &shared.fg_frame) && make_frame(&bridge.fg_hudless, &shared.fg_hudless)
+                            && SUCCEEDED(device->CreateRenderTargetView(bridge.fg_frame.Get(), nullptr, bridge.fg_frame_rtv.GetAddressOf()))
                             && SUCCEEDED(device->CreateRenderTargetView(bridge.fg_hudless.Get(), nullptr,
                                                                         bridge.fg_hudless_rtv.GetAddressOf()))))
                     && SUCCEEDED(device->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(bridge.fence.GetAddressOf())))
@@ -995,6 +999,7 @@ inline void Release() {
   bridge.rt_atlas = {};
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();
+  bridge.fg_frame_rtv.Reset();
   bridge.fg_hudless_rtv.Reset();
   bridge.fg_format = DXGI_FORMAT_UNKNOWN;
   bridge.fence.Reset();
