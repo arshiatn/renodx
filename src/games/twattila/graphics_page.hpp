@@ -9,7 +9,9 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <set>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,9 +20,8 @@
 #include "./feature_settings.hpp"
 #include "./lighting_settings.hpp"
 #include "./rt_scene.hpp"
-#include "./smoke_map.hpp"
 
-// Attila's Graphics 1 of 2 (ATN): one section per job (anti-aliasing, shadows, ambient occlusion, Global Illumination,
+// Graphics 1 of 2 (ATN; Attila's, and with Bindings another game's): one section per job (anti-aliasing, shadows, ambient occlusion, Global Illumination,
 // reflections, ray tracing), each with a method slider and only that method's settings, the less important ones under
 // More Options. Every setting keeps its key (saved settings and presets stay as they are): this file only moves them,
 // hides them and renames them. The method sliders hold nothing themselves: they read and write the keys that decide
@@ -42,15 +43,69 @@ constexpr uint32_t MORE_TINT = 0xFFB86B;
 constexpr uint32_t WARNING_TINT = 0xFF5050;
 constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 
-// What the page reads.
+// What the page says that is true of one game only.
+struct Texts {
+  // The anti-aliasing methods' names by value, all of them: a saved value is clamped to these at each start.
+  std::array<const char*, 8> aa_labels;
+  const char* aa_tooltip;
+  const char* reset_tooltip;
+  const char* no_rays_tooltip;
+  const char* rays_tooltip;
+  const char* shadow_tooltip;
+  const char* ao_tooltip;
+  const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
+};
+
+inline constexpr Texts ATTILA_TEXTS = {
+    .aa_labels = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS", "FSR", "XeSS"},
+    .aa_tooltip = "Smooths jagged edges. Turn the in-game anti-aliasing off.\n"
+                  "SMAA: catches more edges. CMAA2: sharper, keeps more fine detail.\n"
+                  "SMAA T2x: SMAA with two frames blended. TAA: blends frames, best on grass, softer.\n"
+                  "DLSS: NVIDIA's (RTX), the best. FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
+                  "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its SSAO, SSR and water.\n"
+                     "The rest at its default.",
+    .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), FidelityFX SSSR, GT-VBAO and GT-VBGI at their Recommended\n"
+                       "settings. The rest of this page at its default.",
+    .rays_tooltip = "Ray-traced shadows and reflections, path-traced ambient occlusion and Global Illumination at my\n"
+                    "settings. The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+                    "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
+                      "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                      "DXR: DirectX Raytracing, every shadow from rays, the sun's and the torches' and fires', in place of\n"
+                      "both. Needs an upscaler.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
+                  "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
+                  "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
+                  "thin ones.\n"
+                  "RTAO: from rays through the scene, in place of both. Needs an upscaler.\n"
+                  "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                  "turns it on below. Needs an upscaler.",
+};
+
+inline constexpr std::array<int, 8> ALL_AA_METHODS = {0, 1, 2, 3, 4, 5, 6, 7};
+
+// What the page reads. The defaults are Attila's: a game without something says so here.
 struct Bindings {
   feature_settings::AaSliders* aa = nullptr;
   feature_settings::SssSliders* sss = nullptr;
   rt_scene::Sliders* rt = nullptr;
   float* ssao_mode = nullptr;
   float* light_bounce_strength = nullptr;
-  float* ssr_hierarchical = nullptr;
-  smoke_map::Sliders* smoke = nullptr;
+  float* ssr_hierarchical = nullptr;  // read only with has_reflections
+  // The smoke's shadows without rays (smoke_map.hpp); null: no such rows.
+  float* smoke_strength = nullptr;
+  float* smoke_softness = nullptr;
+  const Texts* texts = &ATTILA_TEXTS;
+  std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
+  // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
+  std::string (*upscaler_status)() = nullptr;
+  // The upscaling mode, render scale, LOD bias, effects' resolution, object motion; false: the game owns its scale.
+  bool has_scale_rows = true;
+  bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
+  bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
+  bool has_reflections = true;
+  bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
 };
 
 enum AoMethod : int { AO_GAME, AO_GTVBAO, AO_RAYS, AO_PATHS };
@@ -59,7 +114,7 @@ enum GiMethod : int { GI_OFF, GI_GTVBGI, GI_RAYS, GI_PATHS };
 enum ReflectionMethod : int { REFLECTION_GAME, REFLECTION_HIERARCHICAL, REFLECTION_RAYS };
 
 inline int AoMethodOf(const Bindings& b) {
-  if (b.rt->path_ambient != 0.f && b.rt->light_bounce == 2.f && *b.light_bounce_strength > 0.f) return AO_PATHS;
+  if (b.has_path_ambient && b.rt->path_ambient != 0.f && b.rt->light_bounce == 2.f && *b.light_bounce_strength > 0.f) return AO_PATHS;
   if (b.rt->ambient_occlusion != 0.f) return AO_RAYS;
   return (*b.ssao_mode >= 1.f) ? AO_GTVBAO : AO_GAME;
 }
@@ -83,7 +138,8 @@ inline int ReflectionMethodOf(const Bindings& b) {
 // turns them on, and leaving them falls back to ray-traced AO (the game's ambient would come back with no AO on it).
 inline void ChooseAo(const Bindings& b, int method) {
   Values values = {{"RayTracedPathAmbient", (method == AO_PATHS) ? 1.f : 0.f}};
-  if (method == AO_GAME || method == AO_GTVBAO) values.emplace_back("ssao_mode", (method == AO_GTVBAO) ? 1.f : 0.f);
+  // Multiplying, ray-traced AO goes over the game's, not over GT-VBAO too.
+  if (method == AO_GAME || method == AO_GTVBAO || (method == AO_RAYS && !b.rays_replace_ao)) values.emplace_back("ssao_mode", (method == AO_GTVBAO) ? 1.f : 0.f);
   values.emplace_back("RayTracedAmbientOcclusion", (method == AO_RAYS) ? 1.f : 0.f);
   if (method == AO_PATHS) {
     values.emplace_back("RayTracedLightBounce", 2.f);
@@ -171,6 +227,7 @@ struct Row {
   std::string label = {};
   std::string tooltip = {};
   std::function<bool()> enabled = {};
+  bool only_some_games = false;  // No such setting is no mistake.
 };
 
 // Moves settings out of `settings`, into the page's order. Returns the place they took.
@@ -200,7 +257,7 @@ class Page {
       setting->is_visible = [shown = row.shown, own = setting->is_visible] { return shown() && (own == nullptr || own()); };
       page_.push_back(setting);
     }
-    if (!found) renodx::utils::log::w("[Total War] Graphics page: no setting ", row.match.c_str());
+    if (!found && !row.only_some_games) renodx::utils::log::w("[Total War] Graphics page: no setting ", row.match.c_str());
   }
 
   // A setting the method sliders hold: it stays among the saved ones, not drawn.
@@ -259,6 +316,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
 
   const auto always = [] { return true; };
   const auto upscaling = [b] { return feature_settings::Upscaling(*b.aa); };
+  const auto scale_rows = [b] { return b.has_scale_rows && feature_settings::Upscaling(*b.aa); };
   const auto no_upscaler = [b] { return !feature_settings::Upscaling(*b.aa); };
   const auto dlss = [b] { return b.aa->method == 5.f; };
   const auto nvidia = [] { return dlaa_bridge::OnNvidia(); };
@@ -285,8 +343,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = AA_SECTION;
     for (Setting* setting : *settings) {
       // Hidden (the row below draws it), but the saved value is clamped to these labels at each start.
-      if (setting->key == "AntiAliasing") setting->labels = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS", "FSR", "XeSS"};
+      if (setting->key == "AntiAliasing") setting->labels = std::vector<std::string>(b.texts->aa_labels.begin(), b.texts->aa_labels.end());
       if (setting->key == "AntiAliasingDlssMode") setting->labels[0] = "Native (100%)";
+      if (setting->key == "AntiAliasingDebugView" && !b.has_scale_rows) setting->labels = {"Off", "Motion Vectors"};
     }
     page.Add(Note(FULL_DOWNLOAD_NOTE, section, WARNING_TINT, [] { return !dlaa_bridge::HelperInstalled(); }));
     page.Take({.match = "AntiAliasing", .section = section, .shown = [] { return false; }});
@@ -295,31 +354,31 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .value_type = SettingValueType::CUSTOM,
         .label = "Anti-Aliasing",
         .section = section,
-        .tooltip = "Smooths jagged edges. Turn the in-game anti-aliasing off.\n"
-                   "SMAA: catches more edges. CMAA2: sharper, keeps more fine detail.\n"
-                   "SMAA T2x: SMAA with two frames blended. TAA: blends frames, best on grass, softer.\n"
-                   "DLSS: NVIDIA's (RTX), the best. FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
-                   "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
+        .tooltip = b.texts->aa_tooltip,
         .on_draw = [b] {
-          static constexpr std::array<const char*, 8> LABELS = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS", "FSR", "XeSS"};
-          const int skipped = (dlaa_bridge::OnNvidia() ? 0 : 1);
-          const int last = static_cast<int>(LABELS.size()) - 1 - skipped;
-          const int method = std::clamp(static_cast<int>(b.aa->method), 0, static_cast<int>(LABELS.size()) - 1);
-          int place = (method > 5 ? method - skipped : method);
-          const int shown = (place >= 5 ? place + skipped : place);
-          const bool changed = ImGui::SliderInt("Anti-Aliasing", &place, 0, last, LABELS[shown], ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
-          if (changed) renodx::utils::settings::UpdateSettings({{"AntiAliasing", static_cast<float>(place >= 5 ? place + skipped : place)}});
+          std::vector<int> listed;
+          std::ranges::copy_if(b.aa_methods, std::back_inserter(listed), [](int method) { return method != 5 || dlaa_bridge::OnNvidia(); });
+          const int last = static_cast<int>(listed.size()) - 1;
+          const int method = std::clamp(static_cast<int>(b.aa->method), 0, static_cast<int>(b.texts->aa_labels.size()) - 1);
+          int place = std::min(static_cast<int>(std::ranges::lower_bound(listed, method) - listed.begin()), last);
+          const bool changed = ImGui::SliderInt("Anti-Aliasing", &place, 0, last, b.texts->aa_labels[listed[place]], ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+          if (changed) renodx::utils::settings::UpdateSettings({{"AntiAliasing", static_cast<float>(listed[place])}});
           return changed;
         },
     });
     // What the helper says it really runs.
     page.Add(new Setting{.value_type = SettingValueType::CUSTOM,
                          .section = section,
-                         .on_draw = [] {
-                           ImGui::TextWrapped("%s", (dlaa_bridge::bridge.shared != nullptr ? dlaa_bridge::bridge.shared->status : "Upscaling off"));
+                         .on_draw = [b] {
+                           if (b.upscaler_status != nullptr) {
+                             ImGui::TextWrapped("%s", b.upscaler_status().c_str());
+                           } else {
+                             ImGui::TextWrapped("%s", (dlaa_bridge::bridge.shared != nullptr ? dlaa_bridge::bridge.shared->status : "Upscaling off"));
+                           }
                            return false;
                          },
-                         .is_visible = [b] { return b.aa->method > 5.f; }});
+                         .is_visible = [b] { return (b.upscaler_status != nullptr) ? feature_settings::Upscaling(*b.aa) : b.aa->method > 5.f; }});
+    if (!b.has_scale_rows) page.Add(Note("Upscaling needs the in-game Resolution Scale at 100%.", section, MORE_TINT, upscaling));
     page.Take({.match = "AntiAliasingQuality", .section = section,
                .shown = [b] { return b.aa->method == 1.f || b.aa->method == 2.f || b.aa->method == 3.f; }});
     page.Take({.match = "AntiAliasingTaaStrength", .section = section, .shown = [b] { return b.aa->method == 4.f; }});
@@ -338,9 +397,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     });
     page.Take({.match = "AntiAliasingSharpening", .section = section, .shown = [b] { return b.aa->method == 3.f || b.aa->method == 4.f; },
                .label = "Sharpening"});
-    page.Take({.match = "AntiAliasingDlssMode", .section = section, .shown = upscaling, .label = "Upscaling Mode",
+    page.Take({.match = "AntiAliasingDlssMode", .section = section, .shown = scale_rows, .label = "Upscaling Mode",
                .tooltip = "Native: the game at your resolution. The others draw it smaller and the upscaler brings it up (faster)."});
-    page.Take({.match = "AntiAliasingRenderScale", .section = section, .shown = upscaling,
+    page.Take({.match = "AntiAliasingRenderScale", .section = section, .shown = scale_rows,
                .tooltip = "The size the game is drawn at (100%: Native). Below 33% the upscalers' own modes end."});
     page.Take({.match = "AntiAliasingDlaaPreset", .section = section, .shown = dlss, .label = "DLSS Preset",
                .tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default)."});
@@ -380,22 +439,23 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto cmaa = [b] { return b.aa->method == 2.f; };
     page.Add(MoreOptions(section, &more_aa, [b] { return feature_settings::Upscaling(*b.aa) || b.aa->method == 2.f; }));
     page.Take({.match = "AntiAliasingExtraSharpness", .section = section, .shown = more(&more_aa, cmaa), .label = "Extra Sharpness"});
-    page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, upscaling),
+    page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, scale_rows),
                .tooltip = "How sharp textures are while the upscaler renders below 100%.\n"
                           "Matched: as sharp as at your display's resolution. Sharper / Sharpest: one / two steps more\n"
                           "(more detail, can shimmer)."});
-    page.Take({.match = "AntiAliasingEffectsAtOutput", .section = section, .shown = more(&more_aa, upscaling), .label = "Effects at Output Resolution",
+    page.Take({.match = "AntiAliasingEffectsAtOutput", .section = section, .shown = more(&more_aa, scale_rows), .label = "Effects at Output Resolution",
                .tooltip = "While the upscaler renders below 100%, ambient occlusion, Light Bounce, reflections and shadow softness\n"
                           "keep their 100% detail. Looks better, can cost some performance."});
-    page.Take({.match = "AntiAliasingObjectMotion", .section = section, .shown = more(&more_aa, upscaling),
+    page.Take({.match = "AntiAliasingObjectMotion", .section = section, .shown = more(&more_aa, scale_rows),
                .tooltip = "Soldiers, props and cloth tell the upscaler how they move: sharper while they move.\n"
                           "Off: faster with many soldiers on screen (they can smear a little when moving)."});
     page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, composing_generation)});
     page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, dlss_generation)});
     page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, upscaling), .label = "Upscaling Debug View",
-               .tooltip = "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).\n"
-                          "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
-                          "No Camera Motion: the upscaler gets the objects' motion alone."});
+               .tooltip = (b.has_scale_rows ? "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).\n"
+                                              "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
+                                              "No Camera Motion: the upscaler gets the objects' motion alone."
+                                            : "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).")});
     page.Take({.match = "FrameGenerationDebugView", .section = section, .shown = more(&more_aa, dlss_generation)});
     page.Add(EmptyLine(section));
   }
@@ -420,19 +480,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           },
       };
     };
-    page.Add(preset_button("Reset",
-                           "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its SSAO, SSR and water.\n"
-                           "The rest at its default.",
+    page.Add(preset_button("Reset", b.texts->reset_tooltip,
                            {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}));
-    page.Add(preset_button("No RT/PT (Recommended)",
-                           "Bend Screen-Space Shadows (Length 480), FidelityFX SSSR, GT-VBAO and GT-VBGI at their Recommended\n"
-                           "settings. The rest of this page at its default.",
+    page.Add(preset_button("No RT/PT (Recommended)", b.texts->no_rays_tooltip,
                            {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}}));
-    auto* rays_preset = preset_button("RT/PT",
-                           "Ray-traced shadows and reflections, path-traced ambient occlusion and Global Illumination at my\n"
-                           "settings. The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
-                           "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
-                           {{"RayTracedSunShadows", 1.f},
+    Values rays_values = {{"RayTracedSunShadows", 1.f},
                             {"RayTracedShadowSoftness", 0.75f},
                             {"RayTracedLeafLight", 1.f},
                             {"RayTracedColouredShadows", 1.f},
@@ -463,7 +515,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"WaterClarity", 1.f},
                             {"WaterCaustics", 1.f},
                             {"RayTracingOutputResolution", 0.f},
-                            {"RayTracedFogShadows", 1.f}});
+                            {"RayTracedFogShadows", 1.f}};
+    // No paths for the sky's light here: ray-traced AO, over the game's.
+    if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
+    auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
     // GPU, not the method: RT/PT pressed under TAA with DLSS chosen later keeps it; it does nothing off DLSS (AaSettings).
@@ -472,60 +527,60 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       if (nvidia() && b.aa->ray_reconstruction == 0.f) renodx::utils::settings::UpdateSettings({{"AntiAliasingRayReconstruction", 4.f}});
     };
     page.Add(rays_preset);
-    page.Add(MethodSlider(section,
-                          "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
-                          "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                          "DXR: DirectX Raytracing, every shadow from rays, the sun's and the torches' and fires', in place of\n"
-                          "both. Needs an upscaler.",
+    page.Add(MethodSlider(section, b.texts->shadow_tooltip,
                           {"Game's Shadow Maps", "Bend Screen-Space", "Ray-Traced (DXR)"}, [b] { return ShadowMethodOf(b); },
                           [](int method) { ChooseShadows(method); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ShadowMethodOf(b) == SHADOW_RAYS && !feature_settings::Upscaling(*b.aa); }));
     // The game's shadow maps' size and the UI 4K mod's lock on it (Graphics 2 of 2's before v120), with the game's shadows only.
     const auto game = shadows_are(SHADOW_GAME);
-    page.Take({.match = "GraphicsShadowMapSize", .section = section, .shown = game});
-    page.Take({.match = "UI 4K Mod Compatibility", .section = section, .shown = game});
+    page.Take({.match = "GraphicsShadowMapSize", .section = section, .shown = game, .only_some_games = true});
+    page.Take({.match = "UI 4K Mod Compatibility", .section = section, .shown = game, .only_some_games = true});
     page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
     page.Take({.match = "ScreenSpaceShadowsSoftness", .section = section, .shown = screen});
     page.Take({.match = "ScreenSpaceShadowsThickness", .section = section, .shown = screen});
-    page.Add(new Setting{
-        .key = "ScreenSpaceShadowsFoliage",
-        .binding = &b.sss->foliage_light,
-        .default_value = 0.5f,
-        .label = "Light Through Foliage",
-        .section = section,
-        .tooltip = "How much sun comes through the shadows grass and leaves cast: they are thin. Walls and soldiers\n"
-                   "keep their full shadows, on foliage too. 0: as dark as any other shadow.",
-        .min = 0.f,
-        .max = 1.f,
-        .format = "%.2f",
-        .is_visible = screen,
-    });
-    const auto no_rays = [b] { return ShadowMethodOf(b) != SHADOW_RAYS; };
-    page.Add(new Setting{
-        .key = "SmokeShadowMapStrength",
-        .binding = &b.smoke->strength,
-        .default_value = 1.f,
-        .label = "Smoke Shadows",
-        .section = section,
-        .tooltip = "Smoke and dust dim the sun on what lies below them. No rays, any GPU. Needs in-game shadows on.\n0: off.",
-        .min = 0.f,
-        .max = 2.f,
-        .format = "%.2f",
-        .is_visible = no_rays,
-    });
-    page.Add(new Setting{
-        .key = "SmokeShadowMapSoftness",
-        .binding = &b.smoke->softness,
-        .default_value = 2.f,
-        .label = "Smoke Shadow Softness",
-        .section = section,
-        .tooltip = "How soft their shadows are, in metres.",
-        .min = 0.f,
-        .max = 8.f,
-        .format = "%.1f m",
-        .is_visible = [b, no_rays] { return no_rays() && b.smoke->strength > 0.f; },
-    });
+    if (b.has_foliage_light) {
+      page.Add(new Setting{
+          .key = "ScreenSpaceShadowsFoliage",
+          .binding = &b.sss->foliage_light,
+          .default_value = 0.5f,
+          .label = "Light Through Foliage",
+          .section = section,
+          .tooltip = "How much sun comes through the shadows grass and leaves cast: they are thin. Walls and soldiers\n"
+                     "keep their full shadows, on foliage too. 0: as dark as any other shadow.",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_visible = screen,
+      });
+    }
+    if (b.smoke_strength != nullptr) {
+      const auto no_rays = [b] { return ShadowMethodOf(b) != SHADOW_RAYS; };
+      page.Add(new Setting{
+          .key = "SmokeShadowMapStrength",
+          .binding = b.smoke_strength,
+          .default_value = 1.f,
+          .label = "Smoke Shadows",
+          .section = section,
+          .tooltip = "Smoke and dust dim the sun on what lies below them. No rays, any GPU. Needs in-game shadows on.\n0: off.",
+          .min = 0.f,
+          .max = 2.f,
+          .format = "%.2f",
+          .is_visible = no_rays,
+      });
+      page.Add(new Setting{
+          .key = "SmokeShadowMapSoftness",
+          .binding = b.smoke_softness,
+          .default_value = 2.f,
+          .label = "Smoke Shadow Softness",
+          .section = section,
+          .tooltip = "How soft their shadows are, in metres.",
+          .min = 0.f,
+          .max = 8.f,
+          .format = "%.1f m",
+          .is_visible = [b, no_rays] { return no_rays() && *b.smoke_strength > 0.f; },
+      });
+    }
     page.Take({.match = "RayTracedShadowSoftness", .section = section, .shown = rays, .label = "Softness"});
     page.Take({.match = "RayTracedLeafLight", .section = section, .shown = rays});
     page.Take({.match = "RayTracedColouredShadows", .section = section, .shown = rays});
@@ -556,15 +611,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = AO_SECTION;
     const auto gtvbao = ao_is(AO_GTVBAO);
     const auto rays = ao_is(AO_RAYS);
-    page.Add(MethodSlider(section,
-                          "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
-                          "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
-                          "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
-                          "thin ones.\n"
-                          "RTAO: from rays through the scene, in place of both. Needs an upscaler.\n"
-                          "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
-                          "turns it on below. Needs an upscaler.",
-                          {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)", "Path-Traced (ReSTIR GI)"}, [b] { return AoMethodOf(b); },
+    std::vector<std::string> labels = {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)"};
+    if (b.has_path_ambient) labels.emplace_back("Path-Traced (ReSTIR GI)");
+    page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels), [b] { return AoMethodOf(b); },
                           [b](int method) { ChooseAo(b, method); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return AoMethodOf(b) >= AO_RAYS && !feature_settings::Upscaling(*b.aa); }));
@@ -623,15 +672,16 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "light_bounce_checkerboard", .section = section, .shown = more_search});
     page.Take({.match = "light_bounce_backface", .section = section, .shown = more_search});
     page.Take({.match = "light_bounce_auto_thickness", .section = section, .shown = more_search});
-    page.Take({.match = "light_bounce_msaa_pixel", .section = section, .shown = more_on});
+    page.Take({.match = "light_bounce_msaa_pixel", .section = section, .shown = more_on, .only_some_games = true});
     const auto more_paths = more(&more_gi, gi_is(GI_PATHS));
-    page.Take({.match = "RayTracedPathSer", .section = section, .shown = more_paths, .label = "Shader Execution Reordering"});
+    page.Take({.match = "RayTracedPathSer", .section = section, .shown = more_paths, .label = "Shader Execution Reordering",
+               .tooltip = (b.has_reflections ? "" : "Shader execution reordering for Path Tracing (DXR 1.2, RTX 40 / 50 series): may be faster.")});
     page.Take({.match = "RayTracedSharc", .section = section, .shown = more_paths, .label = "SHaRC Radiance Cache"});
     page.Add(EmptyLine(section));
   }
 
   // Reflections, and the water they fall on.
-  {
+  if (b.has_reflections) {
     const std::string& section = REFLECTIONS_SECTION;
     const auto hierarchical = reflections_are(REFLECTION_HIERARCHICAL);
     const auto rays = reflections_are(REFLECTION_RAYS);
@@ -666,8 +716,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .default_value = 0.f,
         .label = "Ray Tracing Denoiser (Experimental)",
         .section = section,
-        .tooltip = "Cleans the ray-traced shadows, AO, Light Bounce and reflections when DLSS Ray Reconstruction is off.\n"
-                   "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory.",
+        .tooltip = (b.has_reflections ? "Cleans the ray-traced shadows, AO, Light Bounce and reflections when DLSS Ray Reconstruction is off.\n"
+                                        "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory."
+                                      : "Cleans the ray-traced shadows, AO and Light Bounce when DLSS Ray Reconstruction is off.\n"
+                                        "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory."),
         .labels = {"Built-in", "NRD"},
         .is_visible = [upscaling, b] { return upscaling() && !(b.aa->method == 5.f && b.aa->ray_reconstruction != 0.f); },
     });
@@ -675,9 +727,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(Note("Needs an upscaler (Anti-Aliasing above).", section, MORE_TINT, no_upscaler));
     page.Add(MoreOptions(section, &more_rt, upscaling));
     const auto more_rt_rows = more(&more_rt, upscaling);
-    for (const auto* key : {"RayTracingRaysShadows", "RayTracingRaysAmbient", "RayTracingRaysReflections", "RayTracingRaysPaths"}) {
-      page.Take({.match = key, .section = section, .shown = more_rt_rows});
-    }
+    page.Take({.match = "RayTracingRaysShadows", .section = section, .shown = more_rt_rows, .tooltip = b.texts->rays_a_pixel_shadows_tooltip});
+    page.Take({.match = "RayTracingRaysAmbient", .section = section, .shown = more_rt_rows});
+    page.Take({.match = "RayTracingRaysReflections", .section = section, .shown = more(&more_rt, [b, upscaling] { return b.has_reflections && upscaling(); })});
+    page.Take({.match = "RayTracingRaysPaths", .section = section, .shown = more_rt_rows});
     page.Take({.match = "RayTracedLeafMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps (Leaves)"});
     page.Take({.match = "RayTracedGpuMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps: GPU Baking"});
     page.Take({.match = "RayTracedFastLeafShadows", .section = section, .shown = more_rt_rows, .label = "Fast Leaf Shadows"});

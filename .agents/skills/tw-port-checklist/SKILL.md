@@ -67,7 +67,7 @@ A behaviour one game needs goes behind a parameter that defaults to today's valu
 
 ## Testing without the game
 
-The harness and test scripts live outside the repo, in the maintainer's `tools/tw` folder: `all_modes.sh`, `rt_harness`, `fg_child/fg_bridge_test`, `sun_attila/make_sun_patch_test.py`, `warp_tests`.
+The harness and test scripts live outside the repo, in the maintainer's `tools/tw` folder: `all_modes.sh`, `rt_harness`, `fg_child/fg_bridge_test`, `sun_attila/make_sun_patch_test.py`, `warp_tests`, `page_dump` (an addon's settings as data with ImGui and ReShade faked: rows, what shows in every state, what buttons and method sliders write; diff before against after for any page change).
 
 - Compare `all_modes.sh` runs by mode name against the last log, not by count. Run it in the background beside compiling, not beside another GPU job, and don't copy a helper into its folder until it ends.
 - The harness covers the bridge and the helper, and only part of the D3D11 capture. Say so in the report: it says nothing about a game's own passes.

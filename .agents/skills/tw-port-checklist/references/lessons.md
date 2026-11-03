@@ -153,6 +153,8 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | `Page::Take` matches by key or label: a setting without either isn't found; remaining rows go under the last section | Give them a label | Read |
 | `Page::Defaults` puts everything in preset defaults: Shadow Map Size got reset | Keep such keys out | Read |
 | Reset must bring back the game's own effects (SSAO, SSR, water) | List Reset's changes explicitly | Read the preset table |
+| A preset sets a hidden row: where no hook reads the result it still runs (fog shadows traced for nothing) | Gate the setting on the hook being installed | Read `SettingsOf` for each key the preset writes |
+| A preset or method assumes a replacing effect: ray-traced AO over GT-VBAO where it multiplies instead of replacing | A binding says which; texts say what's true here | Press each button in a dump of the settings |
 | Presets vs method rows: presets must show through; RT/PT turns RR on only on NVIDIA | Method sliders hold nothing | Read |
 | RR with nothing ray-traced | Gate | Read |
 | Rows without effect shown (Reflections, Light Through Leaves where the scene has none) [599604a6] | Hide by what's installed | `AppendSettings(..., false, false, ...)` |

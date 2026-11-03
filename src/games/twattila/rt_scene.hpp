@@ -110,6 +110,7 @@ struct Sliders {
 namespace internal {
 // The sun draws' lighting buffer's ambient cube, its first float (InstallSunDraws; 0: none): the paths' sky.
 static UINT ambient_cube = 0;
+static bool fog_shadows_installed = false;
 }  // namespace internal
 
 // `light_bounce_strength`: the game's Light Bounce (its rays and paths replace the Light Bounce's trace; off, nothing to
@@ -165,7 +166,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
       .light_importance = sliders.light_importance != 0.f,
-      .fog_shadows = sliders.fog_shadows != 0.f && dlaa,
+      // A page's preset can set it where no fog is hooked: nothing would read the trace.
+      .fog_shadows = sliders.fog_shadows != 0.f && dlaa && internal::fog_shadows_installed,
       .micromaps = sliders.micromaps != 0.f,
       .gpu_micromaps = sliders.gpu_micromaps != 0.f,
       .smoke_shadows = sliders.smoke_shadows != 0.f && sliders.sun_shadows != 0.f && dlaa,
@@ -612,7 +614,6 @@ struct PointLightReadback {
   size_t current = 0;
 };
 static PointLightReadback point_light_readback;
-static bool fog_shadows_installed = false;
 static bool smoke_shadows_installed = false;
 
 inline void OnInitInputLayout(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
@@ -999,6 +1000,9 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
       renodx::utils::settings::UpdateSettings({{"light_bounce_strength", 1.f}});
     }
   };
+  const auto leaves_in_scene = [] {
+    return internal::host.scene_draw != nullptr || std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.foliage; });
+  };
   settings->insert(settings->end(), {
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
@@ -1312,6 +1316,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_enabled = [sliders, aa] {
             return feature_settings::Upscaling(*aa) && (sliders->sun_shadows != 0.f || sliders->ambient_occlusion != 0.f || sliders->light_bounce != 0.f);
           },
+          .is_visible = leaves_in_scene,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedGpuMicromaps",
@@ -1324,6 +1329,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "frees the CPU, and new grass's and leaves' shadows settle sooner.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->micromaps != 0.f; },
+          .is_visible = leaves_in_scene,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedFastLeafShadows",
@@ -1336,6 +1342,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "faster shadows under trees and in fields, but coarser and darker.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->micromaps != 0.f; },
+          .is_visible = leaves_in_scene,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedFogShadows",
