@@ -164,17 +164,14 @@ float FFX_SSSR_ValidateHit(float3 hit, float2 uv, float3 world_space_ray_directi
     float3 view_space_hit = FFX_SSSR_ScreenSpaceToViewSpace(hit);
     float distance = length(view_space_surface - view_space_hit);
 
-    // Fade out hits near the screen borders
-    float2 fov = 0.05 * float2(screen_size.y / screen_size.x, 1);
-    float2 border = smoothstep(0, fov, hit.xy) * (1 - smoothstep(1 - fov, 1, hit.xy));
-    float vignette = border.x * border.y;
+    // RenoDX: no fade near the screen's borders (FidelityFX's 5%): water's reflections stopped short of its sides.
 
     // We accept all hits that are within a reasonable minimum distance below the surface.
     // Add constant in linear space to avoid growing of the reflections toward the reflected objects.
     float confidence = 1 - smoothstep(0, depth_buffer_thickness, distance);
     confidence *= confidence;
 
-    return vignette * confidence;
+    return confidence;
 }
 
 #endif //FFX_SSSR

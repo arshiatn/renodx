@@ -8,6 +8,7 @@ RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity M
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
 ## Next build (not released)
+- **FidelityFX SSSR reaches the screen's edges**: no more border fade (ours 8%, FidelityFX's 5%), which took the reflections off the water's sides.
 - **Black line down each side of the water** with ray-traced reflections: the first and last render columns had no surface normal, their rays went back toward the camera. All screen edges now take the neighbour inside (sun shadows, AO, Light Bounce too).
 - **Smoke Shadow Quality High** has room for 65,536 particles (Low, Medium 32,768); in all three the smallest shadows give way past the room.
 - **Swaying grass shadows with a Swaying Shadows Range**: the kept clusters keep their order frame after frame (identical input now gives identical pixels), and a grass pixel's ray starts past its own blade.

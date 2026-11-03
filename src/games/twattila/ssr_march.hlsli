@@ -39,8 +39,7 @@ bool SsrHierarchicalReady()
 // `direction_world` the same for FidelityFX's back-face check), at most `max_steps`: its hit (refined: where, between a
 // texel before it and it, the ray first goes behind the full-resolution depth, 4 halvings: contact edges in place to a
 // fraction of a texel) and the confidence (FidelityFX's checks: on screen, not the sky, not a back face, within a
-// thickness of the surface of a quarter metre plus 2% of its distance from `camera` (the includer's space), faded at an
-// 8% screen border: a softer switch to what the miss shows); 0: none.
+// thickness of the surface of a quarter metre plus 2% of its distance from `camera` (the includer's space)); 0: none.
 float SsrTrace(float3 origin, float3 direction, float3 direction_world, uint max_steps, float3 camera, out float3 hit)
 {
 #ifdef SSR_VIEW_SIZE
@@ -69,8 +68,7 @@ float SsrTrace(float3 origin, float3 direction, float3 direction_world, uint max
   }
   hit = origin + direction * after;
   const float thickness = 0.25f + 0.02f * length(FFX_SSSR_ScreenSpaceToViewSpace(hit) - camera);
-  const float2 border = smoothstep(0.f, 0.08f, hit.xy) * (1.f - smoothstep(0.92f, 1.f, hit.xy));
-  return FFX_SSSR_ValidateHit(hit, origin.xy, direction_world, screen_size, thickness) * border.x * border.y;
+  return FFX_SSSR_ValidateHit(hit, origin.xy, direction_world, screen_size, thickness);
 }
 
 #endif  // SRC_GAMES_TWATTILA_SSR_MARCH_HLSLI_
