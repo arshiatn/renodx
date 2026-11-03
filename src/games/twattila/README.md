@@ -12,6 +12,7 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
 - **Smoke Shadow Quality High** has room for 65,536 particles (Low, Medium 32,768); in all three the smallest shadows give way past the room.
 - **Swaying grass shadows with a Swaying Shadows Range**: the kept clusters keep their order frame after frame (identical input now gives identical pixels), and a grass pixel's ray starts past its own blade.
 - **Coloured Shadows on banners**: a sheet of cloth counts once on a sun ray (its sides and emblem left no light and no colour); a solid behind it still blocks.
+- **Screen edges** in Bitmask SSAO's normals and Light Bounce's light at sizes no multiple of its scale, as in the reflections' fix; FidelityFX SSSR had no such bug.
 
 ## v133 = players' v2.5 (2026-11-03; renodx-tw-dlaa64.exe helper73, bridge v23: ship them together; RenoDX_Attila_v2.5_HDR_only.zip: the add-on alone)
 - **Pulsing smoke shadows** under volleys and burning houses: rt_smoke's 32768 quads went to whichever particles came first, and that changes each frame (ATN's log: 70-84 K wanted one).

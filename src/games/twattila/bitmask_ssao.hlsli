@@ -85,13 +85,16 @@ float4 BitmaskAmbientOcclusion(float4 v0)
   float value = 1.f;
   [branch]
   if (position.z > 0.f && radius_pixels >= 1.f) {
-    // The normal from the nearer neighbour on each axis (no normals bound here, as the game's).
+    // The normal from the nearer neighbour on each axis (no normals bound here, as the game's); at the view's edge the one
+    // inside (past it the depth is no neighbour's: at 100% this pixel's again, by the sampler's clamp).
+    const float2 view_before = (uv - texel) * AoViewScale();
+    const float2 view_after = (uv + texel) * AoViewScale();
     const float3 right = AoViewPosition(uv + float2(texel.x, 0.f), tan_half_fov);
     const float3 left = AoViewPosition(uv - float2(texel.x, 0.f), tan_half_fov);
     const float3 down = AoViewPosition(uv + float2(0.f, texel.y), tan_half_fov);
     const float3 up = AoViewPosition(uv - float2(0.f, texel.y), tan_half_fov);
-    const float3 tangent_x = (abs(right.z - position.z) < abs(position.z - left.z)) ? (right - position) : (position - left);
-    const float3 tangent_y = (abs(down.z - position.z) < abs(position.z - up.z)) ? (down - position) : (position - up);
+    const float3 tangent_x = (view_before.x < 0.f || (view_after.x <= 1.f && abs(right.z - position.z) < abs(position.z - left.z))) ? (right - position) : (position - left);
+    const float3 tangent_y = (view_before.y < 0.f || (view_after.y <= 1.f && abs(down.z - position.z) < abs(position.z - up.z))) ? (down - position) : (position - up);
     const float3 view = normalize(-position);
     float3 normal = normalize(cross(tangent_x, tangent_y));
     if (dot(normal, view) < 0.f) normal = -normal;

@@ -23,12 +23,16 @@ Texture2D<float4> t_light : register(t40);  // a copy of the light buffer as the
 void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out uint2 o1 : SV_Target1) {
   const int scale = (int)LB.scale;
   const int2 texel = int2(v0.xy) * scale;
+  // A size no multiple of the scale: the last texels' pixels past the buffer read black (a darker last row or column).
+  uint light_width, light_height;
+  t_light.GetDimensions(light_width, light_height);
+  const int2 light_last = int2(light_width, light_height) - 1;
   float3 light = 0.f;
   [loop]
   for (int y = 0; y < scale; ++y) {
     [loop]
     for (int x = 0; x < scale; ++x) {
-      light += t_light.Load(int3(texel + int2(x, y), 0)).rgb;
+      light += t_light.Load(int3(min(texel + int2(x, y), light_last), 0)).rgb;
     }
   }
   light /= scale * scale;
