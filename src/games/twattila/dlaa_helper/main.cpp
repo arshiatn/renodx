@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <format>
 #include <initializer_list>
 #include <memory>
 #include <mutex>
@@ -127,6 +128,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
   talesofarise::dlss::Backend backend;
   bool super_resolution_ran = false;  // its feature is made (freed while Ray Reconstruction runs)
+  bool super_resolution_opened = false;  // this set's textures tried on D3D11
   // Ray Reconstruction (v3 addons with its guides): its D3D12 device and the addon's objects opened there (a new device
   // after a GPU reset removed it).
   auto reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
@@ -156,6 +158,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   auto fg_used = rt_used;
   auto upscale_used = rt_used;
   bool generation_resources = false;
+  bool streamline_used = false;
   bool scene_idle = false;
   bool reconstruction_idle = false;
   bool scene_live = false;           // its device made (open or closed: a set without ray tracing closes it, its memory stays)
@@ -183,6 +186,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   }
   bool generation_open = false;
   uint32_t opened_generation = 0;
+  // Opened by a set's first DLSS request: a shared texture opened twice in this process (D3D11 and D3D12, or Ray Reconstruction
+  // and frame generation) stays in video memory after both let it go, until the process ends, whichever the order or a new
+  // D3D11 device (2026-11-03, tw_fg_test: 190 MiB with each Ray Reconstruction set, now 2; frame generation's depth and motion
+  // still 64 MiB with each of its sets beside DLSS or Ray Reconstruction).
   ComPtr<ID3D11Texture2D> color;
   ComPtr<ID3D11Texture2D> depth;
   ComPtr<ID3D11Texture2D> motion;
@@ -346,6 +353,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
       generation_backend = backend;
       if (backend == FG_BACKEND_DLSS) {
+        streamline_used = true;
         generation_open = generation->Initialize(adapter.Get(), folder) && generation->Open(*shared, version);
       } else {
         if (proxy_generation->Lost() || proxy_generation->Backend() != backend) {
@@ -370,11 +378,28 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     shared->fg_failed = (generation_open ? 0u : 1u);
     if (version >= 23) shared->fg_running = generation_backend;
   };
+  // A release's line in the log: how long it stalled the requests (an answer later than 5 s turns DLSS off) and this
+  // process's video memory before and after.
+  ComPtr<IDXGIAdapter3> memory_adapter;
+  adapter.As(&memory_adapter);
+  const auto video_memory_mb = [&] {
+    DXGI_QUERY_VIDEO_MEMORY_INFO info = {};
+    if (memory_adapter) memory_adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info);
+    return info.CurrentUsage / (1024 * 1024);
+  };
+  const auto logged_release = [&](const char* what, const auto& release) {
+    const auto started = std::chrono::steady_clock::now();
+    const uint64_t before = video_memory_mb();
+    release();
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+    ReShadeLogMessage(nullptr, 0, std::format("{} ({} ms; this process's video memory {} -> {} MB).", what, took, before, video_memory_mb()).c_str());
+  };
   const auto release_idle = [&] {
     const auto now = std::chrono::steady_clock::now();
     if (scene_live && version >= 15 && now - rt_used > IDLE_RELEASE) {
       rt_drain();
-      scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
+      logged_release("[TW ray tracing] Off for 10 s: its memory released (it starts again when turned on)",
+                     [&] { scene = std::make_unique<twattila::dlaa_helper::RtScene12>(); });
       scene_open = false;
       scene_live = false;
       scene_idle = true;
@@ -383,26 +408,30 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         rt_work.ran = {};
       }
       ++shared->rt_device;
-      ReShadeLogMessage(nullptr, 0, "[TW ray tracing] Off for 10 s: its memory released (it starts again when turned on).");
     }
     if (reconstruction_live && now - rr_used > IDLE_RELEASE) {
-      reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
-      reconstruction_open = false;
       reconstruction_live = false;
-      reconstruction_idle = true;
-      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] Ray Reconstruction off for 10 s: its memory released.");
+      if (streamline_used) {
+        // NGX stays: its shutdown is per device and Streamline shares this one (D3D12CreateDevice's). The feature's memory
+        // goes with it (FreeMemOnReleaseFeature).
+        logged_release("[TW DLAA helper] Ray Reconstruction off for 10 s: its feature released", [&] { reconstruction->ReleaseFeature(); });
+      } else {
+        logged_release("[TW DLAA helper] Ray Reconstruction off for 10 s: its memory released",
+                       [&] { reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>(); });
+        reconstruction_open = false;
+        reconstruction_idle = true;
+      }
     }
     if (upscaler_live && now - upscale_used > IDLE_RELEASE) {
-      upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+      logged_release("[TW DLAA helper] FSR / XeSS off for 10 s: their memory released",
+                     [&] { upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>(); });
       upscaler_tried = false;
       upscaler_open = false;
       upscaler_live = false;
-      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] FSR / XeSS off for 10 s: their memory released.");
     }
     if (generation_resources && now - fg_used > IDLE_RELEASE) {
-      free_generation();
+      logged_release("[TW DLAA helper] Frame generation off for 10 s: its memory released", free_generation);
       generation_resources = false;
-      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] Frame generation off for 10 s: its memory released.");
     }
   };
   const HANDLE waits[] = {request, game};
@@ -434,11 +463,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (version >= 11) keep({shared->rt_fog});
       if (version >= 17) keep({shared->rr_hit_distance});
       if (version >= 18) keep({shared->rt_fog_lights});
+      if (version >= 19) keep({shared->rt_tint});
       color.Reset();
       depth.Reset();
       motion.Reset();
       output.Reset();
       fence.Reset();
+      super_resolution_opened = false;
       upscaler->Close();
       upscaler_tried = false;
       upscaler_open = false;
@@ -464,18 +495,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         generation->Close();
         proxy_generation->Close();
       }
-      const auto open = [&](uint64_t handle, ComPtr<ID3D11Texture2D>* texture) {
-        return SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(handle), IID_PPV_ARGS(texture->GetAddressOf())));
-      };
-      bool opened = open(shared->color, &color);
-      opened = open(shared->depth, &depth) && opened;
-      opened = open(shared->motion, &motion) && opened;
-      opened = open(shared->output, &output) && opened;
-      opened = SUCCEEDED(device5->OpenSharedFence(reinterpret_cast<HANDLE>(shared->fence),
-                                                  IID_PPV_ARGS(fence.GetAddressOf())))
-               && opened;
       opened_generation = shared->generation;
-      if (!opened) {
+      if (shared->color == 0) {
+        // Another anti-aliasing took over (dlaa_bridge::Release): no request follows, so DLSS's feature goes now and the
+        // flush lets D3D11 destroy what the closed textures held.
+        backend.Reset();
+        super_resolution_ran = false;
+        context->ClearState();
+        context->Flush();
+        if (ComPtr<IDXGIDevice3> dxgi_device; SUCCEEDED(device.As(&dxgi_device))) dxgi_device->Trim();
+        set_status("DLSS off");
+      } else if (FAILED(device5->OpenSharedFence(reinterpret_cast<HANDLE>(shared->fence), IID_PPV_ARGS(fence.GetAddressOf())))) {
         set_status("DLAA helper: the shared textures could not be opened");
         fence.Reset();
       }
@@ -495,6 +525,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
     if (shared->ray_reconstruction != 0) {
       rr_used = now;
+      reconstruction_live = true;
       if (reconstruction_idle) {
         reconstruction_idle = false;
         open_reconstruction();
@@ -625,30 +656,41 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     } else if (fence) {
       reconstruction->ReleaseFeature();
       super_resolution_ran = true;
+      const auto open = [&](uint64_t handle, ComPtr<ID3D11Texture2D>* texture) {
+        return SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(handle), IID_PPV_ARGS(texture->GetAddressOf())));
+      };
+      if (!std::exchange(super_resolution_opened, true)
+          && !(open(shared->color, &color) && open(shared->depth, &depth) && open(shared->motion, &motion) && open(shared->output, &output))) {
+        output.Reset();
+      }
       context4->Wait(fence.Get(), shared->value);
-      evaluated = backend.Evaluate(context.Get(), {
-                                                      .color = color.Get(),
-                                                      .depth = depth.Get(),
-                                                      .motion_vectors = motion.Get(),
-                                                      .output = output.Get(),
-                                                      .width = shared->width,
-                                                      .height = shared->height,
-                                                      .jitter_x = shared->jitter_x,
-                                                      .jitter_y = shared->jitter_y,
-                                                      .reset = (shared->reset != 0),
-                                                      .output_width = shared->output_width,
-                                                      .output_height = shared->output_height,
-                                                      .mode = (shared->output_width > shared->width
-                                                                   ? talesofarise::dlss::Mode::DLSS_CUSTOM
-                                                                   : talesofarise::dlss::Mode::DLAA),
-                                                      .preset = shared->preset,
-                                                      .create_flags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR
-                                                                      | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes
-                                                                      | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure,
-                                                  });
+      if (output) {
+        evaluated = backend.Evaluate(context.Get(), {
+                                                        .color = color.Get(),
+                                                        .depth = depth.Get(),
+                                                        .motion_vectors = motion.Get(),
+                                                        .output = output.Get(),
+                                                        .width = shared->width,
+                                                        .height = shared->height,
+                                                        .jitter_x = shared->jitter_x,
+                                                        .jitter_y = shared->jitter_y,
+                                                        .reset = (shared->reset != 0),
+                                                        .output_width = shared->output_width,
+                                                        .output_height = shared->output_height,
+                                                        .mode = (shared->output_width > shared->width
+                                                                     ? talesofarise::dlss::Mode::DLSS_CUSTOM
+                                                                     : talesofarise::dlss::Mode::DLAA),
+                                                        .preset = shared->preset,
+                                                        .create_flags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR
+                                                                        | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes
+                                                                        | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure,
+                                                    });
+        set_status(backend.Status());
+      } else {
+        set_status("DLAA helper: the shared textures could not be opened");
+      }
       context4->Signal(fence.Get(), shared->value + 1);
       context->Flush();
-      set_status(backend.Status());
     }
     if (answered) continue;
     shared->evaluated = (evaluated ? 1 : 0);

@@ -730,12 +730,9 @@ inline bool PrepareDevice(ID3D11Device* device) {
   return made;
 }
 
-// The storage for `method` on a `width` x `height` target of `format` (RGBA16); false: not available.
-inline bool PrepareSize(ID3D11Device* device, UINT width, UINT height, DXGI_FORMAT format, Method method) {
+// PrepareSize's storage let go (the shaders stay).
+inline void ReleaseStorage() {
   auto& objects = runtime.objects;
-  if (objects.width == width && objects.height == height && objects.format == format && objects.method == method) {
-    return true;
-  }
   objects.width = 0;
   objects.color.Reset();
   objects.color_srv.Reset();
@@ -759,6 +756,15 @@ inline bool PrepareSize(ID3D11Device* device, UINT width, UINT height, DXGI_FORM
   objects.depth_srv.Reset();
   objects.depth_format = DXGI_FORMAT_UNKNOWN;
   objects.history_valid = false;
+}
+
+// The storage for `method` on a `width` x `height` target of `format` (RGBA16); false: not available.
+inline bool PrepareSize(ID3D11Device* device, UINT width, UINT height, DXGI_FORMAT format, Method method) {
+  auto& objects = runtime.objects;
+  if (objects.width == width && objects.height == height && objects.format == format && objects.method == method) {
+    return true;
+  }
+  ReleaseStorage();
   // A texture with a float view (`uav` / `srv` null: no such view).
   const auto texture = [&](UINT texture_width, UINT texture_height, DXGI_FORMAT texture_format, DXGI_FORMAT view_format,
                            ComPtr<ID3D11Texture2D>* made, ComPtr<ID3D11UnorderedAccessView>* uav,
@@ -1428,7 +1434,19 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   internal::temporal.store(temporal, std::memory_order_relaxed);
   // Objects' motion: TAA's at once (all in this D3D11 addon; MotionView waits for TAA's first frame), an upscaler's once the
   // helper runs (the menus before a battle draw none of it for nothing).
-  object_motion::SetActive(settings.object_motion && (settings.method == Method::TAA || (Upscales(settings.method) && dlaa_bridge::bridge.started)));
+  const bool object_motion_on = settings.object_motion && (settings.method == Method::TAA || (Upscales(settings.method) && dlaa_bridge::bridge.started));
+  object_motion::SetActive(object_motion_on);
+  // Its anti-aliasing gone, nothing bound in the game's draws: its memory back (made again with its next draw; the views'
+  // zeros as before its first). Not in SetActive: Shogun 2's DLSS calls that each present.
+  if (!object_motion_on && !object_motion::internal::targets_kept.load(std::memory_order_relaxed)
+      && !object_motion::internal::bindings_kept.load(std::memory_order_relaxed)) {
+    const std::unique_lock lock(object_motion::internal::state.mutex);
+    if (object_motion::internal::state.objects.device) {
+      object_motion::internal::state.objects = {};
+      object_motion::internal::drawn_target_views[0].store(0, std::memory_order_relaxed);
+      object_motion::internal::drawn_target_views[1].store(0, std::memory_order_relaxed);
+    }
+  }
   frame_generation::Update({
       .multiplier = (Upscales(settings.method) ? settings.frame_generation : 0u),
       .reflex_boost = (settings.reflex == 2),
@@ -1442,6 +1460,15 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   const std::unique_lock lock(internal::runtime.mutex);
   auto& runtime = internal::runtime;
   runtime.settings = settings;
+  // Off: its storage back.
+  if (settings.method == Method::OFF && runtime.objects.width != 0) {
+    internal::ReleaseStorage();
+  }
+  // Another anti-aliasing took over and frame generation's window is hidden: the shared set and the helper's DLSS back.
+  if (auto& bridge = dlaa_bridge::bridge; !Upscales(settings.method) && bridge.width != 0 && bridge.shared != nullptr && bridge.shared->ready != 0
+      && frame_generation::Format() == DXGI_FORMAT_UNKNOWN) {
+    dlaa_bridge::Release(true);
+  }
   runtime.display_width = display.texture.width;
   runtime.display_height = display.texture.height;
   frame_trace::OnPresent(runtime.render_width != 0 && runtime.render_width < runtime.display_width);

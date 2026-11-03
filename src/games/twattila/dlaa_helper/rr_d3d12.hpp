@@ -186,6 +186,7 @@ class RayReconstruction12 {
   ~RayReconstruction12() {
     if (own_fence_) WaitFor(own_value_);
     if (feature_ != nullptr) NVSDK_NGX_D3D12_ReleaseFeature(feature_);
+    if (parameters_ != nullptr) NVSDK_NGX_D3D12_DestroyParameters(parameters_);
     if (initialized_) NVSDK_NGX_D3D12_Shutdown1(device_.Get());
     if (event_ != nullptr) CloseHandle(event_);
   }
@@ -222,6 +223,7 @@ class RayReconstruction12 {
     if (feature_ == nullptr || width_ != request.width || height_ != request.height || output_width_ != request.output_width
         || output_height_ != request.output_height || preset_ != request.preset || create_flags_ != request.create_flags) {
       if (feature_ != nullptr) {
+        WaitFor(own_value_);
         NVSDK_NGX_D3D12_ReleaseFeature(feature_);
         feature_ = nullptr;
       }
@@ -250,6 +252,8 @@ class RayReconstruction12 {
                                       NVSDK_NGX_Parameter_RayReconstruction_Hint_Render_Preset_UltraQuality}) {
         NVSDK_NGX_Parameter_SetUI(parameters_, preset_name, request.preset);
       }
+      // ReleaseFeature then really frees (else NGX caches its memory until Shutdown).
+      NVSDK_NGX_Parameter_SetI(parameters_, NVSDK_NGX_Parameter_FreeMemOnReleaseFeature, 1);
       NVSDK_NGX_DLSSD_Create_Params create = {
           .InDenoiseMode = NVSDK_NGX_DLSS_Denoise_Mode_DLUnified,
           .InRoughnessMode = NVSDK_NGX_DLSS_Roughness_Mode_Unpacked,

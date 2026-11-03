@@ -397,6 +397,39 @@ inline bool Answer(DWORD timeout = 5000) {
   return true;
 }
 
+// The handles of what a set does not have, zero for the helper.
+inline void ClearHandles(Shared* shared, bool guides, bool ray_tracing, bool reflections, bool frames) {
+  if (!guides) {
+    shared->diffuse_albedo = 0;
+    shared->specular_albedo = 0;
+    shared->normals = 0;
+    shared->roughness = 0;
+  }
+  if (!ray_tracing) {
+    shared->rt_vertices = 0;
+    shared->rt_positions = 0;
+    shared->rt_sun = 0;
+    shared->rt_visibility = 0;
+    shared->rt_ambient = 0;
+    shared->rt_atlas = 0;
+    shared->rt_light = 0;
+    shared->rt_bounce = 0;
+    shared->rt_light_mask = 0;
+    shared->rt_fog = 0;
+    shared->rt_fog_lights = 0;
+    shared->rt_tint = 0;
+  }
+  if (!reflections) {
+    shared->rt_reflection = 0;
+    shared->rt_specular = 0;
+    shared->rr_hit_distance = 0;
+  }
+  if (!frames) {
+    shared->fg_frame = 0;
+    shared->fg_hudless = 0;
+  }
+}
+
 }  // namespace internal
 
 // The shared objects for `width` x `height` on `device` (with Ray Reconstruction's guides when `guides`, ray tracing's
@@ -575,35 +608,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &bridge.rescue_fence);
   }
   bridge.value = 0;
-  if (!guides) {
-    shared.diffuse_albedo = 0;
-    shared.specular_albedo = 0;
-    shared.normals = 0;
-    shared.roughness = 0;
-  }
-  if (!ray_tracing) {
-    shared.rt_vertices = 0;
-    shared.rt_positions = 0;
-    shared.rt_sun = 0;
-    shared.rt_visibility = 0;
-    shared.rt_ambient = 0;
-    shared.rt_atlas = 0;
-    shared.rt_light = 0;
-    shared.rt_bounce = 0;
-    shared.rt_light_mask = 0;
-    shared.rt_fog = 0;
-    shared.rt_fog_lights = 0;
-    shared.rt_tint = 0;
-  }
-  if (!reflections) {
-    shared.rt_reflection = 0;
-    shared.rt_specular = 0;
-    shared.rr_hit_distance = 0;
-  }
-  if (fg_format == DXGI_FORMAT_UNKNOWN) {
-    shared.fg_frame = 0;
-    shared.fg_hudless = 0;
-  }
+  internal::ClearHandles(&shared, guides, ray_tracing, reflections, fg_format != DXGI_FORMAT_UNKNOWN);
   shared.fg_format = static_cast<uint32_t>(fg_format);
   shared.fg_failed = 0;
   shared.rt_flags = (bridge.details ? RT_DETAILS : 0u);
@@ -1002,8 +1007,11 @@ inline std::string FrameGenerationStatus() {
   return (bridge.shared != nullptr) ? std::string(bridge.shared->fg_status) : std::string();
 }
 
-// The game's device is going away: the shared objects with it (the helper reopens the next ones).
-inline void Release() {
+// The game's device is going away: the shared objects with it (the helper reopens the next ones). `tell_helper`: another
+// anti-aliasing took over: an empty set for the helper (its handles and DLSS's feature go at once, the rest with its idle
+// release); the device and the leaves' atlas stay for a quick return, its meshes still point there (rt_scene frees it).
+inline void Release(bool tell_helper = false) {
+  if (tell_helper && bridge.pending) internal::Answer();
   bridge.color = {};
   bridge.depth = {};
   bridge.motion = {};
@@ -1026,15 +1034,41 @@ inline void Release() {
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.rr_hit_distance = {};
-  bridge.rt_atlas = {};
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();
   bridge.fg_frame_rtv.Reset();
   bridge.fg_hudless_rtv.Reset();
   bridge.fg_format = DXGI_FORMAT_UNKNOWN;
   bridge.fence.Reset();
-  bridge.device.Reset();
   bridge.width = 0;
+  bridge.reconstructing = false;
+  bridge.deferred = 0;
+  bridge.steady = {};
+  bridge.guides = false;
+  bridge.ray_tracing = false;
+  bridge.reflections = false;
+  bridge.hit_distance_written = false;
+  if (!tell_helper) {
+    bridge.rt_atlas = {};
+    bridge.device.Reset();
+  }
+  if (!tell_helper || bridge.failed) return;
+  auto& shared = *bridge.shared;
+  internal::ClearHandles(&shared, false, false, false, false);
+  shared.color = 0;
+  shared.depth = 0;
+  shared.motion = 0;
+  shared.output = 0;
+  shared.fence = 0;
+  shared.rt_request = 0;
+  shared.fg_request = 0;
+  shared.ray_reconstruction = 0;
+  shared.value = 0;
+  bridge.value = 0;
+  ++shared.generation;
+  ResetEvent(bridge.done);
+  SetEvent(bridge.request);
+  internal::Answer(20000);
 }
 
 }  // namespace twattila::dlaa_bridge
