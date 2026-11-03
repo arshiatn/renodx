@@ -93,7 +93,7 @@ ATN's test of v2.01i: FG with Output SDR correct, Gamma Correction correct in SD
       ATN: with in-game DOF on, the area near focus is sharper now: recheck the Depth of Field slider; Shogun: recheck Battle Fog in Recommended (the fog is thinner without its ceiling).
 - [ ] 16 MONDAY BATCH below: 1 (Mega Geometry 1M, TLAS growing), 2 + 2a (upscalers), 2b (FG on scRGB), 2c (SSS smoke shadows).
       ATN on upscalers: probably only FSR 4 SR + MFG (or the newest) for AMD (does it run on Intel and NVIDIA too?) and XeSS 2 / 3 SR + MFG (?) for Intel, AMD and old NVIDIA. Answer what we think.
-- [ ] 17 At the end: VRAM / RAM leftovers cleanup and checks (MONDAY BATCH 5).
+- [x] 17 DONE 2026-11-03: VRAM / RAM leftovers (MONDAY BATCH 5 below, numbers there). Not run in game.
 - [ ] 18 Zip (next name v2.01j = v132 or ask), README, Nexus text, HANDOFF, memory, per-game report. WH3 comes after all of this, not in this batch.
 
 ## MONDAY BATCH (ATN 2026-11-01: "let's do it on monday"; push every commit to origin atn-mods; tick here)
@@ -142,7 +142,21 @@ ATN's words, short:
       by the sun draws as a dimming with SSS or the game's shadows (no rays, any GPU; off-screen smoke too). Its own softness slider.
 - [ ] 3 TAA: a choice of motion vectors: the game's own (now) or ours (DLSS's: object motion + camera, anti_aliasing.hpp).
 - [ ] 4 Then WH3 (project_wh3_dlss memory: our DLSS on WH3's TAA inputs via the TW helper).
-- [ ] 5 AT THE END of this batch (ATN 2026-11-01: "a whoooooole check"): every VRAM / RAM leak or leftover. MFG done first (v126,
+- [x] 5 DONE 2026-11-03 (helper + addon, not run in game; numbers from build/tw_fg_test and the harness on a 5090, helper's dedicated VRAM by Windows' counters, 4K for FG / RR, harness scene 640x360):
+      rt_tint's handle closed (+1 handle per RT set, 32 MiB at 4K). The ~60 MiB per FG cycle was NOT that nor Streamline: FSR's FG has it too. A shared texture opened twice in the helper (D3D11 and
+      D3D12, or RR and FG) stays after both let go, whichever the order, flush, Trim or a new D3D11 device (none with one open; a small repro without the helper's flow does not show it, cause not found).
+      So D3D11 opens its textures at a set's first DLSS request: RR on / off +195 MiB a cycle -> +2; FG under FSR / XeSS upscaling none; left: FG beside DLSS or RR +64 MiB per FG on / off at 4K.
+      Effects off free their objects (light_bounce, SSS, SSR, AO + depth levels, AO filter; smoke map already did), rt_core 15 s after RT off (captures, atlas, mask refs; atlas slices also age out), object_motion's tables
+      once its AA is gone, Release(true) on leaving DLSS / FSR / XeSS (helper: empty set, DLSS feature + Trim: 413 -> 198 MiB; reconstructing flag no longer stale), AA Off its storage, FG's held target.
+      Idle release checked in the harness: RT scene incl. NRD, TLAS growth, smoke: 5574 -> 387 MiB in 133 ms; RR with no FG 77 ms; FSR upscaler 143 -> 16, XeSS 139 -> 16 MiB; FG: DLSS FreeResources 49-57 ms.
+      Reset with MFG (RR's Shutdown1 under Streamline): guard in, RR only frees its feature (FreeMemOnReleaseFeature, 3074 -> 1757 MB) once Streamline ran. Run end to end in tw_fg_test: FG + RR -> RR off 14 s -> RR on -> FG off -> FG on -> RR ->
+      Release(true) -> back: PresentMon 3.0 presents a frame throughout, no hang. Release lines in renodx-tw-dlaa64.log give ms and video memory before -> after: all far under the 5 s answer limit. Not done: FG in its own process (ATN's call, numbers below).
+      Tests: tools/tw/fg_child/fg_bridge_test.cpp new phase letters e g r and release,<s>, memory per phase; harness HARNESS_RELEASE + all_modes release* modes. Expeditions' addon does not build since 43dddcf3b (2026-10-31, frame_history in rt_core), not this item.
+      ATN to test in game: (1) RT/PT + RR + MFG, Reset, wait 15 s: FG still generates, then RT/PT again: no hang. (2) DLSS -> TAA -> DLSS within 5 s with RT on: leaf shadows as after a fresh start. (3) RT off in a menu after 10 s idle: helper log's line, VRAM down.
+      (4) Campaign <-> battle x3, resolution change: picture fine, no 'did not answer'. Numbers on request: tools/tw/test_scripts/fg_mem_test.ps1 -Set "60:FrameGeneration=3;100:FrameGeneration=0".
+      FG's own process (ATN decides): what FG off leaves after its idle release, 4K, 3 frames, helper base 859 MiB / 968 MB private: DLSS-G (Streamline) +605 MiB VRAM, +776 MB RAM, each further FG on / off +64 MiB (above); FSR +34, XeSS +68 MiB, nothing to gain there.
+      Harness: 101 of 101 ALL PASSED incl. release, release_rr, release_nrd, release_smoke, release_dlss, release_fsr, release_xess (release_smoke's first form with 2000 particles over the view failed only the scene's own checks; the release checks passed; mode now without that stress, rerun passes). All TW addons, helper, Ryse, Tales, Shogun 2 (both) built.
+      Older notes of this item: MFG done first (v126,
       measured in for_claude1.replay at 4x, tools/tw/test_scripts/fg_mem_test.ps1, logs fgbase / fgfix / fgfull): FG on +1540 MiB; before, all of
       it stayed; slFreeResources + swap chain gone left +590 MiB (Streamline, its device); Shutdown + a new FrameGeneration12 leaves +65, +131,
       +180 MiB after 1, 2, 3 cycles, helper private +43, +52, +74 MB, the game's flat. So ~60 MiB a cycle stays: about fg_frame + fg_hudless's

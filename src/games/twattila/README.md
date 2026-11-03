@@ -8,6 +8,10 @@ RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity M
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
 ## Next build (not released; helper and addon together)
+- **Memory given back**: Reset and turning effects off now free the addon's textures too (Light Bounce, Screen-Space Shadows, SSR, AO, the ray-traced
+  captures 15 s after ray tracing is off). Leaving DLSS, FSR or XeSS for another Anti-Aliasing frees the shared textures and DLSS at once; Anti-Aliasing Off its
+  own storage. Ray Reconstruction frees its memory 10 s after it stops, also with Frame Generation on. Turning Ray Reconstruction on and off no longer adds 190 MB
+  of video memory each time, ray tracing's settings no longer 32 MB. The helper's log gives each release's time and video memory.
 - **AMD FSR Upscaling and Intel XeSS** in the Anti-Aliasing list, in the helper on the same inputs as DLSS, with the Upscaling Mode rows.
   FSR 4 runs only on AMD (RX 6000 and newer, some Ryzen APUs); other GPUs get FSR 3.1.6 from the same DLL. XeSS-SR runs on any shader model 6.4 GPU
   (needs the Visual C++ 2015-2022 runtime). Off NVIDIA's GPUs the list has no DLSS and a saved DLSS becomes FSR (XeSS on Intel); the Reflex row is hidden there.
