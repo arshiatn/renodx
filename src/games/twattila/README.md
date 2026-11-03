@@ -7,7 +7,10 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
-## Next build (not released)
+## v133 = players' v2.5 (2026-11-03; renodx-tw-dlaa64.exe helper73, bridge v23: ship them together; RenoDX_Attila_v2.5_HDR_only.zip: the add-on alone)
+- **Pulsing smoke shadows** under volleys and burning houses: rt_smoke's 32768 quads went to whichever particles came first, and that changes each frame (ATN's log: 70-84 K wanted one).
+  Past the room the smallest shadows now give way, read back each frame (rt_smoke_least, fading in): in a GPU test of 80300 particles a burning house's 300 kept 99-143 at random, now all 300 every frame. Log Details prints "least".
+- **Red notice** for the add-on alone on the HDR page too, GitHub only.
 - **Fog Strength** (Extra): the fog's and haze's opacity x 0 to 2, 1 = the game's. **Reflection Quality** 0.25x to 16x (FidelityFX SSSR's steps stop at 1024 = 16x). **Smoke Shadows** without rays: on by default (1) and in every preset; about 0.1-0.15 ms at 4K, 60 MB.
 - **Ray Reconstruction to Anti-Aliasing Off / FSR / XeSS**: no more GPU reset (its textures let go while it was still queued). Ray Reconstruction, FSR and XeSS have a D3D12 device of their own: after a GPU reset they come back at once, not after a restart; about 180 MB more video memory with Ray Reconstruction and Frame Generation both on.
 

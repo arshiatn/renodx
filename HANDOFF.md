@@ -1,6 +1,6 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
-## START HERE (2026-11-03): ENORMOUS BATCH DONE, Attila v132 = players' v2.01j (helper72, bridge v23, tag twattila-v132). Waiting for ATN's in-game tests; list under "ENORMOUS BATCH", then WH3.
+## START HERE (2026-11-03): Attila v133 = players' v2.5 (helper73, bridge v23, tag twattila-v133): RenoDX_Attila_v2.5.zip, RenoDX_Attila_v2.5_HDR_only.zip (Nexus: the add-on alone, tools/tw/hdr_zip.py), twattila_v133.zip. ENORMOUS BATCH done; ATN's in-game tests under "ENORMOUS BATCH" item 18, then WH3.
 ATN decided (2026-11-03): no in-game tests by us unless asked; one game start before a zip.
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
 - State: Attila v131 = players' v2.01i, the last build. Downloads/RenoDX_Attila_v2.01i.zip (players), twattila_v131.zip (full), helper71 =

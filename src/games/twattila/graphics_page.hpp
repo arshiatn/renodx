@@ -40,6 +40,7 @@ inline const std::string RT_SECTION = "Ray Tracing Extra Options";
 constexpr uint32_t TITLE_TINT = 0x7FBFFF;
 constexpr uint32_t MORE_TINT = 0xFFB86B;
 constexpr uint32_t WARNING_TINT = 0xFF5050;
+constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 
 // What the page reads.
 struct Bindings {
@@ -287,8 +288,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       if (setting->key == "AntiAliasing") setting->labels = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS", "FSR", "XeSS"};
       if (setting->key == "AntiAliasingDlssMode") setting->labels[0] = "Native (100%)";
     }
-    page.Add(Note("Upscaling, Frame Generation and ray tracing need the full download, not only this addon: github.com/arshiatn/renodx/releases or Nexus.",
-                  section, WARNING_TINT, [] { return !dlaa_bridge::HelperInstalled(); }));
+    page.Add(Note(FULL_DOWNLOAD_NOTE, section, WARNING_TINT, [] { return !dlaa_bridge::HelperInstalled(); }));
     page.Take({.match = "AntiAliasing", .section = section, .shown = [] { return false; }});
     // The list without DLSS off NVIDIA's GPUs: the slider's places past it are one lower than the values.
     page.Add(new Setting{

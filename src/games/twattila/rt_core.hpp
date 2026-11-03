@@ -245,6 +245,7 @@ constexpr uint64_t RELEASE_FRAMES = 3600;
 // for good, ATN's debug36), the quads for those with opacity at most (rt_smoke), their capture's key.
 constexpr UINT MAX_PARTICLES = 1u << 19;
 constexpr UINT MAX_SMOKE_QUADS = 1u << 15;
+constexpr float SMOKE_LEAST = 0.05f;  // the opacity over area a particle needs for a quad, at the least
 constexpr uint64_t SMOKE_KEY = 0x534D4F4B45ull;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
 constexpr uint64_t PLACE_TURNS = 4;
@@ -308,7 +309,9 @@ struct DeviceObjects {
   ComPtr<ID3D11ComputeShader> smoke_shader;
   ComPtr<ID3D11Buffer> smoke_quads;
   ComPtr<ID3D11UnorderedAccessView> smoke_quads_uav;
-  ComPtr<ID3D11Buffer> smoke_quads_read;  // that count read back (Log Details)
+  ComPtr<ID3D11Buffer> smoke_quads_read;  // that count read back
+  bool smoke_read_waiting = false;
+  float smoke_least = SMOKE_LEAST;  // raised while more want a quad than there is room for
   // The sun's occlusion for the patched sun shaders (the display's size).
   ComPtr<ID3D11Texture2D> occlusion;
   ComPtr<ID3D11ShaderResourceView> occlusion_srv;
@@ -1752,20 +1755,33 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     if (runtime.settings.smoke_shadows && smoke_quads != 0 && runtime.particles_frame + 1 >= runtime.frame
         && runtime.captures.size() < dlaa_bridge::RT_CAPTURES && runtime.captured_vertices + (smoke_quads * 6) <= MAX_VERTICES) {
       const auto smoke_pass = [&](UINT particles, UINT items) {
-        const std::array<uint32_t, 4> smoke = {runtime.captured_vertices, particles, dlaa_bridge::RT_TRANSFER_WIDTH, smoke_quads};
+        const std::array<uint32_t, 5> smoke = {runtime.captured_vertices, particles, dlaa_bridge::RT_TRANSFER_WIDTH, smoke_quads, std::bit_cast<uint32_t>(objects.smoke_least)};
         Dispatch(native, objects.smoke_shader.Get(), {runtime.particle_stream.srv.Get(), dlaa_bridge::bridge.rt_sun.srv.Get()},
                  {dlaa_bridge::bridge.rt_vertices.uav.Get(), objects.smoke_quads_uav.Get()}, smoke.data(), sizeof(smoke), (items + 63) / 64, 1);
       };
       constexpr std::array<UINT, 4> NO_QUADS = {};
+      // Past the room the smallest shadows give way: the first come took it, and which came first changes each frame (ATN
+      // 2026-11-03: 70-84 K wanted a quad under volleys, burning houses' shadows pulsed).
       D3D11_MAPPED_SUBRESOURCE quads_read = {};
-      if (runtime.settings.debug_log && SUCCEEDED(native->Map(objects.smoke_quads_read.Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &quads_read))) {
-        runtime.costs.most_smoke_quads = std::max(runtime.costs.most_smoke_quads, *static_cast<const uint32_t*>(quads_read.pData));
+      if (objects.smoke_read_waiting && SUCCEEDED(native->Map(objects.smoke_quads_read.Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &quads_read))) {
+        const uint32_t wanted = *static_cast<const uint32_t*>(quads_read.pData);
         native->Unmap(objects.smoke_quads_read.Get(), 0);
+        objects.smoke_read_waiting = false;
+        runtime.costs.most_smoke_quads = std::max(runtime.costs.most_smoke_quads, wanted);
+        constexpr float ROOM = MAX_SMOKE_QUADS * 0.875f;
+        if (static_cast<float>(wanted) > ROOM) {
+          objects.smoke_least *= std::min(std::sqrt(static_cast<float>(wanted) / ROOM), 1.5f);
+        } else if (static_cast<float>(wanted) < ROOM * 0.75f) {
+          objects.smoke_least = std::max(objects.smoke_least * 0.98f, SMOKE_LEAST);
+        }
       }
       native->ClearUnorderedAccessViewUint(objects.smoke_quads_uav.Get(), NO_QUADS.data());
       smoke_pass(runtime.particles, runtime.particles);
       smoke_pass(0, smoke_quads);
-      if (runtime.settings.debug_log) native->CopyResource(objects.smoke_quads_read.Get(), objects.smoke_quads.Get());
+      if (!objects.smoke_read_waiting) {
+        native->CopyResource(objects.smoke_quads_read.Get(), objects.smoke_quads.Get());
+        objects.smoke_read_waiting = true;
+      }
       runtime.captures.push_back({.key = SMOKE_KEY, .first_vertex = runtime.captured_vertices, .vertex_count = smoke_quads * 6,
                                   .flags = dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_SMOKE});
       runtime.slices.push_back(0);
@@ -2538,8 +2554,8 @@ inline void Update(const Settings& settings) {
       }
       if (!shaders.empty()) renodx::utils::log::i("[Total War] Ray tracing: left out a frame by vertex shader: ", shaders, ".");
       if (costs.particles != 0) {
-        renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows, {:.0f} particles a frame, most quads {}.",
-                                          static_cast<double>(costs.particles) / costs.frames, costs.most_smoke_quads));
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows, {:.0f} particles a frame, most quads {}, least {:.2f}.",
+                                          static_cast<double>(costs.particles) / costs.frames, costs.most_smoke_quads, runtime.objects.smoke_least));
       }
     }
     costs = {};
