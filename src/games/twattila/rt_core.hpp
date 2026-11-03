@@ -162,11 +162,18 @@ struct Settings {
 
 // A game vertex shader whose main-view draws are in the scene, and its capture version; the terrain's draws are in it
 // only in the frames that draw them, dynamic ones (units) are captured every frame, foliage (leaves: their capture
-// version also gives the UV) is alpha-tested against its diffuse map's alpha (the pixel shader's t0; dlaa_bridge.h
-// RT_*).
+// version also gives the UV) is alpha-tested against its diffuse map's alpha (the pixel shader's t0, or `mask_slot`;
+// dlaa_bridge.h RT_*).
 // Without a capture version (`capture_shader` empty) the game's own vertex shader is streamed out (its SV_Position, made
 // world positions with the frame's camera before the trace; Warhammer III); its foliage also streams out the output
 // holding the UV (`uv_semantic`, `uv_semantic_index`: its xy).
+// A vertex shader serving materials whose opacity lies in different slots lists them (`pixel_masks`): only its draws with a
+// listed pixel shader are in the scene.
+struct PixelMask {
+  uint32_t pixel_shader = 0;
+  UINT slot = 0;
+};
+
 struct SceneShader {
   uint32_t hash = 0;
   std::span<const uint8_t> capture_shader;
@@ -188,6 +195,8 @@ struct SceneShader {
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
+  UINT mask_slot = 0;
+  std::span<const PixelMask> pixel_masks;
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
@@ -511,6 +520,7 @@ struct Runtime {
   // The placed draws logged per vertex shader (their instancing and vertex buffers, the first two each; ATN 2026-10-28:
   // no tree shadows).
   std::unordered_map<uint32_t, uint32_t> logged_draws;
+  std::unordered_set<uint32_t> left_out_logged;  // shaders whose draws the capture can't take, each said once
   // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
   // objects.light_constants, b12) and whether it did.
   std::vector<LocalLight> lights_drawn;
@@ -983,7 +993,16 @@ void Capture(Context& command, const SceneShader& shader) {
   const UINT row_texels = placed ? instances * 4u : 0u;
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
-  if (topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || vertex_count == 0 || vertex_count > MAX_VERTICES) return;
+  if (topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || vertex_count == 0 || vertex_count > MAX_VERTICES) {
+    if (vertex_count != 0) {
+      const std::unique_lock lock(runtime.mutex);
+      if (runtime.left_out_logged.insert(shader.hash).second) {
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: left out: vs {:08X}, topology {}, {} vertices.", shader.hash,
+                                          static_cast<int>(topology), vertex_count));
+      }
+    }
+    return;
+  }
   // Rigid objects seen moving stay out (a mesh's shadow where it stood); placed ones go where they are drawn, every frame.
   bool moving = false;
   if constexpr (INDEXED) {
@@ -1037,7 +1056,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   // A leaf's opacity mask: its pixel shader's diffuse map; a rigid mesh's, when the game's shadow pass alpha-tests it.
   ComPtr<ID3D11ShaderResourceView> mask;
-  if (shader.foliage || !shader.cut_out_shader.empty()) native->PSGetShaderResources(shader.far_tree ? 1u : 0u, 1, mask.GetAddressOf());
+  if (shader.foliage || !shader.cut_out_shader.empty()) native->PSGetShaderResources(shader.far_tree ? 1u : shader.mask_slot, 1, mask.GetAddressOf());
   bool cut_out = false;
   if (!shader.foliage && mask) {
     if (shader.dynamic) {
@@ -1651,7 +1670,25 @@ void CaptureParticles(Context& command) {
 // A listed scene shader's draw (its SceneShader the callback's data).
 template <typename Context>
 void CaptureDraw(Context& command, const void*) {
-  Capture(command, command.template GetCallbackData<SceneShader>());
+  const auto& listed = command.template GetCallbackData<SceneShader>();
+  if (listed.pixel_masks.empty()) {
+    Capture(command, listed);
+    return;
+  }
+  const uint32_t pixel_shader =
+      renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
+  const auto material = std::ranges::find(listed.pixel_masks, pixel_shader, &PixelMask::pixel_shader);
+  if (material == listed.pixel_masks.end()) {
+    const std::unique_lock lock(runtime.mutex);
+    if (runtime.left_out_logged.insert(pixel_shader).second) {
+      renodx::utils::log::i(std::format("[Total War] Ray tracing: left out: vs {:08X} with ps {:08X}, its opacity not known.", listed.hash, pixel_shader));
+    }
+    return;
+  }
+  // A copy: Capture takes a shader's place in the table only for placed draws and capture versions, which have no such list.
+  SceneShader masked = listed;
+  masked.mask_slot = material->slot;
+  Capture(command, masked);
 }
 
 // Any draw when the host tells scene draws apart (host.scene_draw).

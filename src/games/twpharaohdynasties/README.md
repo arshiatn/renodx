@@ -4,6 +4,8 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twpharaohdynast
 
 ## v38 (2026-11-03, built only, not run in game)
 
+- Known, not fixed: ray-traced grass shadows. The grass's opacity is a texture array and the layer changes inside a draw; the scene reads one
+  plain texture. Solid, missing or wrong shapes are possible: only the game can tell.
 - **Frame generation with Output SDR**: the picture no longer turns red (as Attila).
 - **Frame generation with Output scRGB**: works when turned on in game, no restart (as Attila). Ship with the helper built from
   this commit or later, not helper71.
