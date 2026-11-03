@@ -5,6 +5,7 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twthronesofbrit
 ## v46 (2026-11-03, built only, not run in game)
 
 - **Path Tracing with the game's or Bend's shadows**: the paths now get the sun's direction there too (as Attila's v135).
+- **Ray-Traced Reflections with the game's or Bend's shadows**: what they meet off screen now has the sun on it (as Attila's v135).
 - **Frame generation with Output SDR**: the picture no longer turns red (as Attila).
 - **Frame generation with Output scRGB**: works when turned on in game, no restart (as Attila). Ship with the helper built from
   this commit or later, not helper71.

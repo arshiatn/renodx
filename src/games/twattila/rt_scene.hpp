@@ -480,8 +480,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
       native->PSSetShaderResources(draw.ao_slot, 1, objects.combined_srv.GetAddressOf());
     }
   }
-  // The paths read it too (the sun on what they meet, their sky), also with the game's shadows.
-  if ((!runtime.settings.sun_shadows && !runtime.settings.path_tracing) || runtime.sun_frame == runtime.frame || !dlaa_bridge::bridge.ray_tracing
+  // The paths and the reflections' rays read it too (the sun on what they meet, their sky), also with the game's shadows.
+  if ((!runtime.settings.sun_shadows && !runtime.settings.path_tracing && !runtime.settings.reflections) || runtime.sun_frame == runtime.frame || !dlaa_bridge::bridge.ray_tracing
       || !runtime.objects.constants) {
     return {};
   }

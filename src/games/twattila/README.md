@@ -8,6 +8,7 @@ RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity M
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
 ## v135 (not released, built only, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23)
+- **Ray-Traced Reflections with the game's or Bend's shadows:** what they meet off screen had no sun on it (the sun's direction was only read with RT shadows or paths). Found on WH3, where every hit goes that way.
 
 - **Path Tracing with the game's or Bend's shadows**: the paths never got the sun's direction or the ambient cube without ray-traced shadows, so
   what they met off screen had no sun and the sky no direction. With Fog Shadows left on from a preset, fog now gets its rays there too.
