@@ -874,6 +874,7 @@ class RtScene12 {
     }
     nrd_bounce_hit_distance_.Reset();
 #endif
+    nrd_off_ = 0;
     light_.Reset();
     bounce_.Reset();
     light_mask_.Reset();
@@ -905,6 +906,9 @@ class RtScene12 {
   }
 
   [[nodiscard]] bool Ready() const { return fence_ != nullptr; }
+  // The signals asked for NRD that it did not run on (dlaa_bridge.h rt_nrd_off).
+  [[nodiscard]] uint32_t NrdOff() const { return nrd_off_.load(); }
+
   [[nodiscard]] std::string Status() const {
     // The GPU times right after the label: the bridge's line holds 255 characters, a battle's counts run past them.
     const size_t label = status_.find("): ");
@@ -1195,6 +1199,7 @@ class RtScene12 {
       // The Denoiser setting at NRD: REBLUR on this request's light (the Light Bounce at its texels' size; reflections
       // only with the G-buffer's normals and roughness).
       bool nrd_light = false;
+      bool nrd_light_ran = false;
 #if defined(RENODX_NRD)
       NrdSignal* nrd_signal = nullptr;
       if ((requested & dlaa_bridge::RT_PATH_NRD) != 0) {
@@ -1520,13 +1525,17 @@ class RtScene12 {
         list->ResourceBarrier(1, &uav_barrier);
         Mark(list, L"NRD REBLUR");
         const nrd::ReblurSettings reblur = {};
-        if (nrd_signal->denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, nrd_width, nrd_height, &reblur)) {
+        nrd_light_ran = nrd_signal->denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, nrd_width, nrd_height, &reblur);
+        if (nrd_light_ran) {
           ID3D12Resource* const output = reflections ? reflection_.Get() : bounce_.Get();
           nrd_signal->denoiser->Finish(list, reflections ? nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST : nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST, positions_.Get(),
                                        POSITIONS_VIEW, output, DXGI_FORMAT_R16G16B16A16_FLOAT);
         }
       }
 #endif
+      if ((requested & dlaa_bridge::RT_PATH_NRD) != 0) {
+        NoteNrd(reflections ? dlaa_bridge::RT_NRD_OFF_REFLECTIONS : dlaa_bridge::RT_NRD_OFF_BOUNCE, nrd_light_ran);
+      }
       barriers.clear();
       for (const auto& [resource, used] : textures) barriers.push_back(Transition(resource, used, D3D12_RESOURCE_STATE_COMMON));
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
@@ -2446,6 +2455,8 @@ class RtScene12 {
       slow_report_ += std::format("{}[TW ray tracing] {}: {}", slow_report_.empty() ? "" : "\n", name, why);
       return false;
     };
+    // Test switch: NRD refused (the harness's nrd_refused modes).
+    if (GetEnvironmentVariableW(L"RENODX_TW_TEST_NRD_REFUSED", nullptr, 0) != 0) return fail("refused (test)");
     if (!signal->front) {
       const D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {.pRootSignature = root_signature_.Get(), .CS = front};
       if (FAILED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(signal->front.GetAddressOf())))) return fail("NRD's inputs' pipeline failed");
@@ -4483,16 +4494,21 @@ class RtScene12 {
       list->SetPipelineState(soft_pipeline_.Get());
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     }
+    bool nrd_ambient_ran = false;
 #if defined(RENODX_NRD)
     if (nrd_ambient) {
       Mark(list, L"NRD REBLUR (AO)");
       // Its hit distance is the rays' open share of their range.
       const nrd::ReblurSettings reblur = {.hitDistanceParameters = {.A = std::clamp(shared.rt_ambient_range, 0.1f, 100.f), .B = 0.f, .C = 1.f}};
-      if (nrd_ambient_.denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, shared.rt_width, shared.rt_height, &reblur)) {
+      nrd_ambient_ran = nrd_ambient_.denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, shared.rt_width, shared.rt_height, &reblur);
+      if (nrd_ambient_ran) {
         nrd_ambient_.denoiser->Finish(list, nrd::ResourceType::OUT_DIFF_HITDIST, positions_.Get(), POSITIONS_VIEW, ambient_.Get(), DXGI_FORMAT_R8_UNORM);
       }
     }
 #endif
+    if (!reconstructed && (shared.rt_flags & dlaa_bridge::RT_NRD) != 0 && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0) {
+      NoteNrd(dlaa_bridge::RT_NRD_OFF_AMBIENT, nrd_ambient_ran);
+    }
     barriers.clear();
     for (const auto& [resource, used] : textures) {
       barriers.push_back(Transition(resource, used, D3D12_RESOURCE_STATE_COMMON));
@@ -5721,6 +5737,15 @@ class RtScene12 {
   bool failed_ = false;
   std::atomic_bool request_failed_ = false;  // Lost (the worker sets it, main.cpp reads it)
   bool details_ = false;  // the addon's Log Details or profile (this request's): GPU times, markers, the status, the log's lines
+  void NoteNrd(uint32_t signal, bool ran) {
+    if (ran) {
+      nrd_off_.fetch_and(~signal);
+    } else {
+      nrd_off_.fetch_or(signal);
+    }
+  }
+
+  std::atomic<uint32_t> nrd_off_ = 0;  // published from the helper's worker, read beside it
   std::string status_ = "Ray tracing off";
   // The last trace's times: the GPU's (after the status's label), the CPU's and the submit's (at its end).
   std::string gpu_timings_;

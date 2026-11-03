@@ -241,6 +241,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       shared->rt_compact_ok = (cluster_data != nullptr) ? scene->CompactState() : 0u;
       shared->rt_dynamic_uvs = scene->DynamicUvs();
     }
+    if (version >= 23) shared->rt_nrd_off = scene->NrdOff();
   };
   std::thread rt_worker([&] {
     std::unique_lock lock(rt_work.mutex);

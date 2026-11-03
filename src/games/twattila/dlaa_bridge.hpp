@@ -155,7 +155,10 @@ struct Bridge {
   // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
   // accumulation and filter) leave its noise to it.
   bool reconstructing = false;
-  // The Denoiser setting at NRD: which signals the helper denoises by it, the addon's own denoisers off them.
+  // The Denoiser setting at NRD: which signals are asked for it, and which the helper denoises by it (asked, and it has
+  // not said otherwise: rt_nrd_off), the addon's own denoisers off those.
+  bool nrd_ask_bounce = false;
+  bool nrd_ask_reflections = false;
   bool nrd_ambient = false;
   bool nrd_bounce = false;
   bool nrd_reflections = false;

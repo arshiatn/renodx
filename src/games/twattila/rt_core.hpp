@@ -1953,8 +1953,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | ((runtime.path_ambient_on && runtime.settings.path_sky_apart) ? dlaa_bridge::RT_PATH_SKY_APART : 0u)
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
-                                                     | (dlaa_bridge::bridge.nrd_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))
-                                                  : (dlaa_bridge::bridge.nrd_bounce ? dlaa_bridge::RT_PATH_NRD : 0u),
+                                                     | (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))
+                                                  : (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u),
       .path_bounces = runtime.settings.path_bounces,
       .path_samples = runtime.settings.light_bounce_rays,
       .guides = host.guides_written(),
@@ -2140,7 +2140,7 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
         .flags = (runtime.settings.reflections ? dlaa_bridge::RT_REFLECTIONS : 0u)
                  | (runtime.settings.specular_occlusion ? dlaa_bridge::RT_SPECULAR_OCCLUSION : 0u)
                  | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_REFLECTIONS_RAW : 0u)
-                 | (dlaa_bridge::bridge.nrd_reflections ? dlaa_bridge::RT_PATH_NRD : 0u)
+                 | (dlaa_bridge::bridge.nrd_ask_reflections ? dlaa_bridge::RT_PATH_NRD : 0u)
                  | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                  | (runtime.settings.reflection_reuse ? dlaa_bridge::RT_REFLECTIONS_REUSE : 0u)
                  | (runtime.settings.reflection_own ? dlaa_bridge::RT_REFLECTIONS_OWN : 0u)
@@ -2344,9 +2344,12 @@ inline void Update(const Settings& settings) {
   if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + 3000;
   runtime.settings = settings;
   const bool nrd = settings.nrd && !dlaa_bridge::bridge.reconstructing;
-  dlaa_bridge::bridge.nrd_ambient = nrd && settings.ambient_occlusion;
-  dlaa_bridge::bridge.nrd_bounce = nrd && settings.light_bounce;
-  dlaa_bridge::bridge.nrd_reflections = nrd && settings.reflections;
+  dlaa_bridge::bridge.nrd_ask_bounce = nrd && settings.light_bounce;
+  dlaa_bridge::bridge.nrd_ask_reflections = nrd && settings.reflections;
+  const uint32_t nrd_off = (dlaa_bridge::bridge.shared != nullptr) ? dlaa_bridge::bridge.shared->rt_nrd_off : 0u;
+  dlaa_bridge::bridge.nrd_ambient = nrd && settings.ambient_occlusion && (nrd_off & dlaa_bridge::RT_NRD_OFF_AMBIENT) == 0;
+  dlaa_bridge::bridge.nrd_bounce = dlaa_bridge::bridge.nrd_ask_bounce && (nrd_off & dlaa_bridge::RT_NRD_OFF_BOUNCE) == 0;
+  dlaa_bridge::bridge.nrd_reflections = dlaa_bridge::bridge.nrd_ask_reflections && (nrd_off & dlaa_bridge::RT_NRD_OFF_REFLECTIONS) == 0;
   if (!settings.smoke_shadows && !settings.stream_particles) {
     runtime.particle_stream = {};
     runtime.particles = 0;

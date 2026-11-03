@@ -216,6 +216,9 @@ constexpr uint32_t RT_PATH_SKY_APART = 4096;
 // Denoiser NRD (a Light Bounce's or reflections request's; helpers without NRD or before 73 ignore it): NVIDIA's REBLUR on
 // its light (the addon then leaves its Light Bounce denoiser out, or its reflections' SSR denoiser).
 constexpr uint32_t RT_PATH_NRD = 8192;
+constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
+constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
+constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;
 // The upscaler (v22): NVIDIA's DLSS and Ray Reconstruction, AMD's FSR or Intel's XeSS (dlaa_helper/upscale_d3d12.hpp).
 constexpr uint32_t UPSCALER_DLSS = 0;
 constexpr uint32_t UPSCALER_FSR = 1;
@@ -421,7 +424,9 @@ struct Shared {
   uint32_t fg_backend = 0;
   // The helper's (v23): the frame generation backend that serves this set (Auto's choice).
   uint32_t fg_running = 0;
-  uint32_t fg_v23_padding = 0;
+  // The helper's (in v23's padding, an older helper leaves it 0): the signals asked for NRD that it could not run on
+  // (RT_NRD_OFF_*): their built-in ways instead, the addon's own denoisers stay on them.
+  uint32_t rt_nrd_off = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
