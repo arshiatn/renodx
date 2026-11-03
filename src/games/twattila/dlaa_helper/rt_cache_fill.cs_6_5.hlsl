@@ -35,11 +35,11 @@ void main(uint3 id : SV_DispatchThreadID) {
   CacheSetAlbedo(position.xyz, base);
 
   if (((id.x ^ id.y ^ (frame >> 2u)) & 1u) != 0u) return;
-  if (dot(base, float3(0.2126f, 0.7152f, 0.0722f)) < 0.04f) return;
+  if (dot(base, float3(0.2126f, 0.7152f, 0.0722f)) < 0.040005647f) return;
   const float4 toward_sun = sun[uint2(0, 0)];
   const float visibility = ((path_flags & PATH_SUN_TRACED) != 0u) ? traced_visibility[pixel] : 1.f;
   const float x = (toward_sun.w != 0.f) ? visibility * saturate(dot(PixelNormal(pixel, position), toward_sun.xyz)) : 0.f;
-  const float3 y = min(light_there / max(base, 0.05f), LIGHT_FIT_MAX_Y);
+  const float3 y = min(light_there / max(base, 0.04999349f), LIGHT_FIT_MAX_Y);
   const uint3 fixed_y = (uint3)(y * LIGHT_FIT_Y + 0.5f);
   const uint3 fixed_xy = (uint3)(x * y * LIGHT_FIT_Y + 0.5f);
   const uint3 fixed_base = (uint3)(saturate(base) * LIGHT_FIT_X + 0.5f);

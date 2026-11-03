@@ -25,7 +25,7 @@ float3 FogLightAt(float3 at, float u) {
   float picked_weight = 0.f;
   [loop]
   for (uint light = 0u; light < min(light_count, 32u); ++light) {
-    const float falloff = saturate(1.f - (distance(lights[light].xyz, at) / max(lights[light].w, 1e-3f)));
+    const float falloff = saturate(1.f - (distance(lights[light].xyz, at) / max(lights[light].w, 1.0002842e-3f)));
     const float weight = dot(light_colours[light].rgb, float3(0.2126f, 0.7152f, 0.0722f)) * falloff * falloff;
     if (weight <= 0.f) continue;
     total += weight;
@@ -69,7 +69,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   }
   const float3 camera = sun[uint2(1, 0)].xyz;
   const float surface_distance = distance(position.xyz, camera);
-  const float3 direction = (position.xyz - camera) / max(surface_distance, 1e-3f);
+  const float3 direction = (position.xyz - camera) / max(surface_distance, 1.0003276e-3f);
   const float range = min(surface_distance, FOG_RANGE);
   const float jitter = Random(uint3(id.xy, frame));
   float lit = 0.f;

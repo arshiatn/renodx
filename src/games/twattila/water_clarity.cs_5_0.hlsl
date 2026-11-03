@@ -19,6 +19,6 @@ void main(uint3 id : SV_DispatchThreadID)
 {
   if (id.x >= water_clarity.x) return;
   uint value = lighting.Load(id.x * 4u);
-  if (id.x >= 40u && id.x < 44u) value = asuint(pow(max(asfloat(value), 1e-6f), asfloat(water_clarity.y)));
+  if (id.x >= 40u && id.x < 44u) value = asuint(pow(max(asfloat(value), 9.998323e-7f), asfloat(water_clarity.y)));
   clarified.Store(id.x * 4u, value);
 }

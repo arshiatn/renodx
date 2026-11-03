@@ -62,7 +62,7 @@ float4 SkySample(float3 direction, float2 pixel)
     uint face_size, face_height;
     s_sky.GetDimensions(face_size, face_height);
     const float radius = SKY_DEBAND_RADIUS_TEXELS * 2.f / float(face_size);
-    const float3 up = (abs(view_direction.y) < 0.99f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f);
+    const float3 up = (abs(view_direction.y) < 0.99008405f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f);
     const float3 tangent = normalize(cross(view_direction, up));
     const float3 bitangent = cross(view_direction, tangent);
 

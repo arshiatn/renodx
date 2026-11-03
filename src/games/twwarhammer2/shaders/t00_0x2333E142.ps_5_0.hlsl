@@ -118,7 +118,7 @@ void main(
   // Mid-grey anchor: the scene value SDR shows at 0.18 arrives at PsychoV as 0.18.
   // Solves x(1 + x/W)/(1 + x) = 0.18 with stock's white point W = 1/burn - 0.999; this
   // form of the root stays stable as burn -> 0.
-  float inv_w = 1.f / max(1.f / g_tone_mapping_burn - 0.999f, 0.0001f);
+  float inv_w = 1.f / max(1.f / g_tone_mapping_burn - 0.999f, 0.00010000763f);
   float x_mid = 0.36f / (0.82f + sqrt(0.6724f + 0.72f * inv_w));
   // And SDR's contrast there: the curve's log-log slope at x_mid. The burn differs per map, from compressing (plain
   // Reinhard, 0.82) to expanding (low white points, up to ~1.4); pinning mid grey alone made Psycho much brighter than

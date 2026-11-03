@@ -25,7 +25,7 @@ float3 ApplyPsychoV31(float3 color)
   const float3 exposed = color * SI.v31_exposure;
   const float scene_y = renodx::color::y::from::BT709(exposed);
   [branch]
-  if (all(result == 0.f) && scene_y > 1e-6f) {
+  if (all(result == 0.f) && scene_y > 9.999015e-7f) {
     result = renodx::tonemap::psychov::custom_psychotm_test31(
         color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
         SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,

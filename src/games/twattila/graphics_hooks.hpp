@@ -114,7 +114,7 @@ constexpr std::string_view PACK_ANIMATIONS =
 // lea ecx, [esi + 0xbd0]; push dword ptr [esp + 0x1c]; call PackAnimations. Its return address: the match + 15.
 constexpr std::string_view SHADOW_PACK_CALL = "8D 8E D0 0B 00 00 FF 74 24 1C E8";
 constexpr size_t SHADOW_PACK_CALL_RETURN = 15;
-constexpr float MIN_BATTLE_BUDGET = 0.1f;
+constexpr float MIN_BATTLE_BUDGET = 0.09998233f;
 constexpr float BATTLE_BUDGET_RECOVERY = 1.002f;  // per frame: about 1.13x a second at 60 fps
 constexpr uint32_t BATTLE_BUDGET_HOLD_FRAMES = 180;  // frames without left-over soldiers before it recovers
 
@@ -465,7 +465,7 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
   internal::big_battle_fix.store(scales.big_battle_fix, std::memory_order_relaxed);
   internal::tree_distance_squared_scale.store(scales.campaign_trees * scales.campaign_trees, std::memory_order_relaxed);
   internal::grass_scale.store(scales.grass_distance, std::memory_order_relaxed);
-  internal::grass_density.store(std::max(scales.grass_density, 0.01f), std::memory_order_relaxed);
+  internal::grass_density.store(std::max(scales.grass_density, 0.010001118f), std::memory_order_relaxed);
   if (!*installed) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;

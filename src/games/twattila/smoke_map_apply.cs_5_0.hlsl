@@ -59,7 +59,7 @@ void main(uint3 id : SV_DispatchThreadID)
   if (all(id.xy == middle)) {
     // Looking along the ground: not past what the widest map (1024 m) covers well.
     const float3 offset = position - camera_position;
-    anchor[1] = float4(camera_position + offset * min(340.f / max(length(offset), 0.001f), 1.f), 1.f);
+    anchor[1] = float4(camera_position + offset * min(340.f / max(length(offset), 0.001000075f), 1.f), 1.f);
   }
   if (smoke.coverage == 0.f) {
     dimmed[id.xy] = kept;
@@ -71,7 +71,7 @@ void main(uint3 id : SV_DispatchThreadID)
   // The share of this texel's smoke above the pixel: spread evenly over the height its mean and variance give (one puff:
   // exactly its own height, its radius either side). At least 1 m either side.
   float optical_depth = 0.f;
-  if (depths.x > 0.0001f) {
+  if (depths.x > 0.00009999709f) {
     const float mean_height = depths.y / depths.x;
     const float half_height = sqrt(3.f * max((depths.z / depths.x) - (mean_height * mean_height), 1.f / (3.f * SMOKE_MAP_HEIGHT_SCALE * SMOKE_MAP_HEIGHT_SCALE)));
     optical_depth = depths.x * saturate((mean_height + half_height - ((position.y - smoke.height) / SMOKE_MAP_HEIGHT_SCALE)) / (2.f * half_height));

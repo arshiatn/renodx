@@ -317,7 +317,7 @@ float3 SurfaceNormal(int2 pixel, float4 position) {
 // by this along the normal and again toward the sun: at 2 cm they started past cheek guards and helmet rims, the sun came
 // through them (ATN's debug35).
 float SurfaceOffset(float depth) {
-  return 0.003f + depth * 0.001f;
+  return 0.0029994224f + depth * 0.001f;
 }
 
 // Whether the four neighbours lie on the pixel's surface (`normal`: its plane): not a corner, crack or edge, where the

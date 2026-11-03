@@ -8,7 +8,7 @@
 float3 AutoHdrHighlights(float3 color, float amount) {
   if (HDR < 1.f || amount <= 0.f) return color;
   float y = renodx::color::y::from::BT709(color);
-  if (y <= 0.18f) return color;
+  if (y <= 0.18003958f) return color;
   float t = saturate((y - 0.18f) / (1.f - 0.18f));
   float white = lerp(1.f, HDR_PEAK, amount);
   return color * ((y + (white - 1.f) * t * t) / y);

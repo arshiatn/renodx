@@ -245,7 +245,7 @@ float2 BitmaskAmbientOcclusion(float4 v0, float2 v1)
   const float depth = AoDepth(uv);
   // GT-VBAO's own radius (metres) and strength, not the game's.
   const float visibility = BitmaskVisibility(uv, uint2(v0.xy), g_Resolution.zw, g_Resolution.zw, SI.ssao_radius);
-  return float2(exp2(log2(max(visibility, 1e-4f)) * SI.ssao_strength), depth);
+  return float2(exp2(log2(max(visibility, 1.00005615e-4f)) * SI.ssao_strength), depth);
 }
 
 #ifdef AO_UPSAMPLE

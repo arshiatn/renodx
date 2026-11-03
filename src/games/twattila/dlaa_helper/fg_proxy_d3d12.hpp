@@ -267,7 +267,7 @@ class ProxyFrameGeneration12 {
     const bool hudless_valid = inputs && shared->fg_hudless_valid != 0;
     const bool reset = shared->reset != 0 || std::exchange(after_hidden_, false);
     const auto now = std::chrono::steady_clock::now();
-    const float frame_ms = (last_time_ == std::chrono::steady_clock::time_point{} ? 16.7f : std::chrono::duration<float, std::milli>(now - last_time_).count());
+    const float frame_ms = (last_time_ == std::chrono::steady_clock::time_point{} ? 16.699656f : std::chrono::duration<float, std::milli>(now - last_time_).count());
     last_time_ = now;
 
     // The shared textures decay to COMMON. FSR's prepare pass reads depth and motion in its list, XeSS copies them there.

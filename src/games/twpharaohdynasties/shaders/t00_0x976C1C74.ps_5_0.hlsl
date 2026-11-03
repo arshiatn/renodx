@@ -152,7 +152,7 @@ void main(
       // Where the fit saturates: AcesFit(x) == 1 gives x = (7 + sqrt(56))/2 = 7.2416574,
       // minus the share of the domain the lift has already taken.
       const float kStockCurveCeilingInput = 7.2416574f;
-      float ceiling_input = max(kStockCurveCeilingInput - curve_lift, 0.000001f);
+      float ceiling_input = max(kStockCurveCeilingInput - curve_lift, 0.000000999922f);
 
       // EXTENDED WHITE POINT. The NeuTwo normaliser IS the white point: below it the
       // output is the SDR image, above it the signal expands into HDR headroom.

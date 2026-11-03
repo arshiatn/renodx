@@ -54,7 +54,7 @@ void main(uint thread : SV_GroupIndex)
   }
   const float3 size = highs[0] - lows[0];
   // Centred on the camera across (a dome the game keeps around it, smaller than the view reaches: battles).
-  const bool centred = all(abs((lows[0].xz + highs[0].xz) * 0.5f - camera.xz) <= 0.01f * max(size.x, size.z));
+  const bool centred = all(abs((lows[0].xz + highs[0].xz) * 0.5f - camera.xz) <= 0.009999631f * max(size.x, size.z));
   if (any(camera.xyz < lows[0]) || any(camera.xyz > highs[0]) || (max(size.x, max(size.y, size.z)) <= camera.w && !centred)) return;
   [loop]
   for (uint emptied = thread; emptied < rt_skies.y; emptied += GROUP_SIZE) {

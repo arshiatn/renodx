@@ -134,7 +134,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
   // A surface that was not there last frame (more than 5% nearer or farther than expected): less history.
   const float previous_distance = t_previous_distance.Load(int3(clamp(int2(history_uv * float2(size)), 0, size - 1), 0));
   const float expected = before.w;
-  if (abs(previous_distance - expected) > 0.05f * expected) weight *= 0.5f;
+  if (abs(previous_distance - expected) > 0.049998403f * expected) weight *= 0.5f;
 
   // The history inside this frame's colours (clipped towards their box's centre).
   const float3 history = ToYCoCg(SampleHistory(history_uv, size).rgb);
@@ -142,7 +142,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const float3 high = min(maximum, mean + 1.5f * deviation);
   const float3 centre = 0.5f * (high + low);
   const float3 offset = history - centre;
-  const float3 extent = max(0.5f * (high - low), 1e-6f);
+  const float3 extent = max(0.5f * (high - low), 9.999235e-7f);
   const float3 units = abs(offset / extent);
   const float largest = max(units.x, max(units.y, units.z));
   const float3 clipped = (largest > 1.f) ? centre + offset / largest : history;

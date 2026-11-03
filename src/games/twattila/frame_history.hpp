@@ -85,7 +85,7 @@ inline std::atomic<uint32_t> campaign_frames = 0;
 // The steps of 2 between full and `effect_share` (nearest; 0 at 1): what a divisor of 2^n drops by; `dimensions` 2 for
 // counts per area (the reflections' rays: Half, Quarter).
 inline float EffectSteps(float dimensions = 1.f) {
-  return std::round(dimensions * std::log2(1.f / std::clamp(effect_share.load(std::memory_order_relaxed), 0.01f, 1.f)));
+  return std::round(dimensions * std::log2(1.f / std::clamp(effect_share.load(std::memory_order_relaxed), 0.009998664f, 1.f)));
 }
 
 // The render size for a display of `width` x `height` at `scale`: a whole number of the display's aspect units (width

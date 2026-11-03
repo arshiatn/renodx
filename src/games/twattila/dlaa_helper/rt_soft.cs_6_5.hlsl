@@ -51,14 +51,14 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float4 left = positions[clamp(pixel - int2(1, 0), 0, last)];
   const float pixel_size = max(min(min(distance(right.xyz, position.xyz), distance(left.xyz, position.xyz)),
                                    distance(below.xyz, position.xyz)),
-                               1e-3f * position.w);
+                               1.0001425e-3f * position.w);
   const float radius = min(blocker_distance / blockers * sun_cone / pixel_size, MAX_RADIUS);
   if (radius < 0.5f) {
     visibility[pixel] = center.x;
     return;
   }
   const float3 normal = SurfaceNormal(pixel, position);
-  const float plane_tolerance = 0.02f + 0.02f * position.w;
+  const float plane_tolerance = 0.020002294f + 0.02f * position.w;
   const int reach = (int)ceil(radius);
   const int step = max(reach / 4, 1);
   float sum = 0.f;

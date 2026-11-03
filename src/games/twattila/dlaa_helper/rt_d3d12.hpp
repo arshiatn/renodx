@@ -1195,7 +1195,7 @@ class RtScene12 {
       for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
         list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
       }
-      const float bounce_range = std::clamp(shared.rt_bounce_range, 0.5f, 200.f);
+      const float bounce_range = std::clamp(shared.rt_bounce_range, 0.5f, 200.05565f);
       // The Denoiser setting at NRD: REBLUR on this request's light (the Light Bounce at its texels' size; reflections
       // only with the G-buffer's normals and roughness).
       bool nrd_light = false;
@@ -1400,8 +1400,8 @@ class RtScene12 {
             .bounces = std::clamp(shared.rt_path_bounces, 0u, 8u),
             .samples = std::clamp(shared.rt_path_samples, 1u, 16u),
             .bounce_range = bounce_range,
-            .reflection_range = std::clamp(shared.rt_reflection_range, 0.5f, 200.f),
-            .sky_range = std::clamp(shared.rt_ambient_range, 0.1f, 100.f),
+            .reflection_range = std::clamp(shared.rt_reflection_range, 0.5f, 200.02019f),
+            .sky_range = std::clamp(shared.rt_ambient_range, 0.1f, 100.000854f),
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -2718,7 +2718,7 @@ class RtScene12 {
           const float a = first[0], b = first[1], c = first[2], d = first[4], e = first[5], f = first[6], g = first[8], h = first[9],
                       i = first[10];
           const float determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-          if (!(std::abs(determinant) > 1e-12f)) continue;
+          if (!(std::abs(determinant) > 1.000023e-12f)) continue;
           const std::array<float, 9> inverse = {(e * i - f * h) / determinant, (c * h - b * i) / determinant, (b * f - c * e) / determinant,
                                                 (f * g - d * i) / determinant, (a * i - c * g) / determinant, (c * d - a * f) / determinant,
                                                 (d * h - e * g) / determinant, (b * g - a * h) / determinant, (a * e - b * d) / determinant};
@@ -4333,8 +4333,8 @@ class RtScene12 {
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     list->SetComputeRootShaderResourceView(ROOT_SCENE, (ptlas_ != nullptr ? ptlas_ : tlas_.Get())->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(ROOT_SMOKE, (smoke_scene ? smoke_tlas_.Get() : (ptlas_ != nullptr ? ptlas_ : tlas_.Get()))->GetGPUVirtualAddress());
-    const float softness = (version >= 6) ? std::clamp(shared.rt_sun_softness, 0.f, 5.f) : 0.f;
-    const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.01f;
+    const float softness = (version >= 6) ? std::clamp(shared.rt_sun_softness, 0.f, 5.000012f) : 0.f;
+    const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.009998951f;
     // Under Ray Reconstruction no soft-shadow filter (rt_trace jitters its sun ray) and no ambient history (NVIDIA's guide:
     // RR takes the raw signals; the harness's RR test left 19-23% of the raw 4-ray AO's noise, a third of that with the
     // history, which RR's own accumulation then lagged behind).
@@ -4379,14 +4379,14 @@ class RtScene12 {
         frame,
         (shared.rt_flags & ~(dlaa_bridge::RT_LOCAL_LIGHTS | dlaa_bridge::RT_NRD)) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
             | (smoke_scene ? TRACE_SMOKE : 0u) | (nrd_sun ? dlaa_bridge::RT_NRD : 0u) | (nrd_ambient ? TRACE_NRD_AMBIENT : 0u),
-        std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.f)),
+        std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.02711f)),
         std::clamp(shared.rt_ambient_rays, 1u, 16u),
         shared.rt_width,
         shared.rt_height,
         std::bit_cast<uint32_t>(soft ? std::tan(softness * 3.14159265f / 180.f) : 0.f),
         (version >= 18) ? std::clamp(shared.rt_shadow_rays, 1u, 8u) : 1u,
         std::bit_cast<uint32_t>((version >= 18) ? std::clamp(shared.rt_light_size, 0.f, 2.f) : 0.f),
-        std::bit_cast<uint32_t>((version >= 18) ? std::clamp(shared.rt_grass_shadow_range, 0.f, 1.0e4f) : 0.f),
+        std::bit_cast<uint32_t>((version >= 18) ? std::clamp(shared.rt_grass_shadow_range, 0.f, 1.0001666e4f) : 0.f),
     };
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());

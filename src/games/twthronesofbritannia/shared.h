@@ -122,7 +122,7 @@ struct ShaderInjectData {
 };
 
 #define SI shader_injection
-#define HDR_PEAK max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 0.0001f) //added guard
+#define HDR_PEAK max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 0.00009998806f) //added guard
 #define HDR_INTSCALING SI.diffuse_white_nits / SI.graphics_white_nits
 #define HDR_STOPS log2(HDR_MAXEXPECTED / HDR_PEAK)
 

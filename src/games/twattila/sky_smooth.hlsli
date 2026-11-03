@@ -15,7 +15,7 @@ float3 SkySmooth(TextureCube<float4> sky, SamplerState sky_sampler, float3 direc
   };
   const int taps = 4 * (int)SI.sky_smooth;
   const float3 view_direction = normalize(direction);
-  const float3 up = (abs(view_direction.y) < 0.99f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f);
+  const float3 up = (abs(view_direction.y) < 0.9901842f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f);
   const float3 tangent = normalize(cross(view_direction, up));
   const float3 bitangent = cross(view_direction, tangent);
   float3 sum = sky.SampleLevel(sky_sampler, view_direction, 0.f).rgb;

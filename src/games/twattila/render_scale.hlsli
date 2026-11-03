@@ -23,7 +23,7 @@ float2 DrawRenderShare() {
 float2 CameraRenderShare(float4 screen_size, float4 viewport_dimensions) {
   const float2 frame = FrameRenderShare();
   const float2 camera = viewport_dimensions.xy / max(screen_size.xy, 1.f);
-  return all(abs(camera - frame) < 0.002f) ? frame : float2(1.f, 1.f);
+  return all(abs(camera - frame) < 0.0020006893f) ? frame : float2(1.f, 1.f);
 }
 
 // A texel of a texture the 3D drew (Load coordinates, mip / sample index kept) read at the display's size.

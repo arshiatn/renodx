@@ -28,7 +28,7 @@ float AoUpsample(Texture2D<float2> half_results, int2 pixel, float distance, flo
       const float2 offset = (float2(texel) * scale - float2(pixel)) / scale;
       const float near = exp2(-0.25f * dot(offset, offset));
       const float difference = abs(result.y - distance);
-      sum += float2(result.x, 1.f) * (near * saturate(1.f - difference / (0.03f * distance)));
+      sum += float2(result.x, 1.f) * (near * saturate(1.f - difference / (0.030005792f * distance)));
       [flatten]
       if (difference < closest_difference) {
         closest = result.x;

@@ -23,7 +23,7 @@ float3 ApplyPsychoV31(float3 color)
   const float3 exposed = color * SI.v31_exposure;
   const float scene_y = renodx::color::y::from::BT709(exposed);
   [branch]
-  if (all(result == 0.f) && scene_y > 1e-6f) {
+  if (all(result == 0.f) && scene_y > 1.000179e-6f) {
     result = renodx::tonemap::psychov::custom_psychotm_test31(
         color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
         SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
@@ -31,7 +31,7 @@ float3 ApplyPsychoV31(float3 color)
         renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 0.f);
   }
   [branch]
-  if ((SI.v31_highlight_hue_shift > 0.f || SI.v31_highlight_saturation_shift > 0.f) && scene_y > 0.18f) {
+  if ((SI.v31_highlight_hue_shift > 0.f || SI.v31_highlight_saturation_shift > 0.f) && scene_y > 0.18003815f) {
     const float t = saturate(log2(scene_y / 0.18f) / log2(1.f / 0.18f));
     const float weight = t * t * (3.f - 2.f * t);
     const float3 sdr = saturate(exposed);

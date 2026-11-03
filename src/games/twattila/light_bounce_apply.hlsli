@@ -41,7 +41,7 @@ void main(float4 v0 : SV_Position0,
       // Its pixel (the block's top-left) from this one, in trace texels.
       const float2 offset = float2(neighbour * scale - texel) / scale;
       const float near = exp2(-0.25f * dot(offset, offset));
-      const float similar = saturate(1.f - abs(bounce.a - distance) / (0.03f * distance));
+      const float similar = saturate(1.f - abs(bounce.a - distance) / (0.030001808f * distance));
       const float weight = (bounce.a > 0.f) ? (near * similar) : 0.f;
       sum += float4(bounce.rgb, 1.f) * weight;
     }

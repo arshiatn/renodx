@@ -1721,7 +1721,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       float reach = 0.f;
       for (const float depth : {0.f, 1.f}) {
         const float w = (inverse[14] * depth) + inverse[15];
-        if (std::abs(w) < 1e-12f) {
+        if (std::abs(w) < 9.997584e-13f) {
           reach = std::numeric_limits<float>::max();
           break;
         }

@@ -43,7 +43,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   for (uint light = 0u; light < light_count; ++light) {
     const float3 to_light = lights[light].xyz - light_origin;
     const float light_distance = length(to_light);
-    if (light_distance < lights[light].w && light_distance > 1e-3f && (!planar || dot(to_light, normal) > 0.f)) reached |= 1u << light;
+    if (light_distance < lights[light].w && light_distance > 1.0003098e-3f && (!planar || dot(to_light, normal) > 0.f)) reached |= 1u << light;
   }
   uint traced = reached;
   uint lit = 0xFFFFFFFFu;

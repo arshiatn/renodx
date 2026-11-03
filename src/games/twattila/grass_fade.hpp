@@ -192,7 +192,7 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
 // Every present: Grass Height Distance (1: the game's 100 m).
 inline void Update(float height_distance) {
   const std::unique_lock lock(internal::runtime.mutex);
-  internal::runtime.fade = 0.01f / std::max(height_distance, 0.01f);
+  internal::runtime.fade = 0.01f / std::max(height_distance, 0.009998622f);
 }
 
 // Before the game creates its shaders.

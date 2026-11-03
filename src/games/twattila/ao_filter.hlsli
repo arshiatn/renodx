@@ -72,7 +72,7 @@ float3 FilterWorld(int2 pixel)
 float FilterDistance(float3 world)
 {
   const float distance = length(world - camera_position);
-  return (distance > 1e-3f && distance < 6e4f) ? distance : 0.f;
+  return (distance > 1.0002959e-3f && distance < 6e4f) ? distance : 0.f;
 }
 
 // Temporal Smoothing: the game's AO at the pixel (as its sun draws read it) and the last frames' at this point (moved with
@@ -104,7 +104,7 @@ void FilterResolve(int2 pixel)
         const int2 neighbour = clamp(pixel + int2(x, y), 0, size - 1);
         const float other = FilterDistance(FilterWorld(neighbour));
         const float ao = t_game_ao.SampleLevel(s_linear_clamp, FilterUv(neighbour), 0).x;
-        if (abs(other - distance) < 0.05f * distance) moments += float3(1.f, ao, ao * ao);
+        if (abs(other - distance) < 0.049997132f * distance) moments += float3(1.f, ao, ao * ao);
       }
     }
     const float mean = moments.y / moments.x;
@@ -135,7 +135,7 @@ void FilterResolve(int2 pixel)
     }
     if (edge && nearest_weight > 0.f) sum = nearest;
     [flatten]
-    if (sum.z > 0.01f) {
+    if (sum.z > 0.010000235f) {
       float width = 1.f;
       if (moments.x >= 5.f) {
         width = max(1.5f * spread, 0.05f);

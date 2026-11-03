@@ -22,7 +22,7 @@ void SolveLightFit() {
   const float4 sunlit = light_kept[1];
   // Too little difference in sunlight across the screen (all shade or all sun): the sun's share stays as it was.
   float3 slope = sunlit.rgb;
-  if (spread > 0.01f * count * count) slope = max((count * sum_xy - sum_x * sum_y) / spread, 0.f);
+  if (spread > 0.010000842f * count * count) slope = max((count * sum_xy - sum_x * sum_y) / spread, 0.f);
   const float3 intercept = max((sum_y - slope * sum_x) / count, 0.f);
   const float blend = (shade.w > 0.f) ? LIGHT_FIT_BLEND : 1.f;
   light_kept[1] = float4(lerp(sunlit.rgb, slope, blend), 1.f);
@@ -33,7 +33,7 @@ void SolveLightFit() {
   if ((path_flags & PATH_KEEP_LIGHT) != 0u) return;
   const float3 kept = lerp(shade.rgb, intercept, blend);
   light_kept[0] = float4(kept, 1.f);
-  if (sun[uint2(3, 0)].w != 0.f) light_kept[2] = float4(kept / max(AmbientCubeMean(), 1e-4f), 1.f);
+  if (sun[uint2(3, 0)].w != 0.f) light_kept[2] = float4(kept / max(AmbientCubeMean(), 1.0001452e-4f), 1.f);
 }
 
 [numthreads(64, 1, 1)]

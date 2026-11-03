@@ -39,11 +39,11 @@ float4 ClipOf(float3 world, float4 registers[4]) {
 bool SeenByLastTrace(float3 world, out uint2 seen_pixel) {
   seen_pixel = 0u;
   const float4 clip = ClipOf(world, previous_view_projection);
-  const float2 uv = clip.xy / max(clip.w, 1e-6f) * float2(0.5f, -0.5f) + 0.5f;
+  const float2 uv = clip.xy / max(clip.w, 9.998928e-7f) * float2(0.5f, -0.5f) + 0.5f;
   if (clip.w <= 0.f || any(uv < 0.f) || any(uv >= 1.f)) return false;
   seen_pixel = min(uint2(uv * float2(width, height)), uint2(width, height) - 1u);
   const float4 seen = ambient_positions[seen_pixel];
-  return seen.w > 0.f && distance(seen.xyz, world) < 0.03f + 0.01f * seen.w;
+  return seen.w > 0.f && distance(seen.xyz, world) < 0.030005185f + 0.01f * seen.w;
 }
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_CAMERA_HLSLI_

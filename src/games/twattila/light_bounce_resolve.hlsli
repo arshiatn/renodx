@@ -43,7 +43,7 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out float o1 : S
     [unroll]
     for (int x = -1; x <= 1; ++x) {
       const float4 neighbour = t_traced.Load(int3(texel + int2(x, y), 0));
-      if (abs(abs(neighbour.a) - traced.a) < 0.05f * traced.a) {
+      if (abs(abs(neighbour.a) - traced.a) < 0.049988326f * traced.a) {
         sum += neighbour.rgb;
         squares += neighbour.rgb * neighbour.rgb;
         count += 1.f;
@@ -54,7 +54,7 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out float o1 : S
   const float3 spread = sqrt(max(squares / count - mean * mean, 0.f));
   const float4 history = BounceHistory(position);
   [flatten]
-  if (history.a > 0.01f) {
+  if (history.a > 0.009999861f) {
     // Fewer than 5 of the same surface (thin things, edges): their spread says nothing (one alone has none, which would
     // hold the history to this frame's noise).
     const float3 width = (count >= 5.f) ? max(1.5f * spread, 0.1f * mean) : 1e30f;

@@ -97,7 +97,7 @@ void main(
     const float start_z = dot(float4(r1.xyz, 1.f), view_projection_matrix._m02_m12_m22_m32);
     const float z_step = dot(water_ray_direction, view_projection_matrix._m02_m12_m22_m32.xyz);
     float ray_length = 10000.f;
-    if (z_step < 0.f) ray_length = min(ray_length, 0.99f * start_z / -z_step);
+    if (z_step < 0.f) ray_length = min(ray_length, 0.99015796f * start_z / -z_step);
     const float3 origin = WaterProject(r1.xyz);
     float3 hit;
     const float confidence =

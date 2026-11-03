@@ -200,7 +200,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   // Garbage rows (an instance moved far off or scaled past any mesh's size) leave it out: one spread the scene's bounds
   // until every ray met every instance.
   const float scale = max(max(length(rotation[0]), length(rotation[1])), length(rotation[2]));
-  if (!(abs(determinant) > 1e-12f) || !all(isfinite(rotation[0])) || !all(isfinite(rotation[1])) || !all(isfinite(rotation[2]))
+  if (!(abs(determinant) > 9.997891e-13f) || !all(isfinite(rotation[0])) || !all(isfinite(rotation[1])) || !all(isfinite(rotation[2]))
       || !all(isfinite(translation)) || any(abs(translation) > MAX_TRANSLATION) || !(scale < MAX_SCALE)
       || ((job.w & PLACE_GRASS) != 0u && !GrassInView(float3(now0.w, now1.w, now2.w)))
       || !Insert(PlaceKey(record, translation, (job.w & PLACE_GRASS) != 0u))) {

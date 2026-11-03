@@ -286,7 +286,7 @@ class Upscaler12 {
 #if defined(RENODX_FSR_SDK)
       // The camera from the row-vector matrix (the jitter only moves its column 2): near and far from its z row.
       const auto& projection = request.view_to_clip;
-      const float near_plane = (projection[10] != 0.f ? -projection[14] / projection[10] : 0.1f);
+      const float near_plane = (projection[10] != 0.f ? -projection[14] / projection[10] : 0.09997847f);
       const auto now = std::chrono::steady_clock::now();
       const ffxDispatchDescUpscale dispatch = {
           .header = {.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE},
@@ -300,11 +300,11 @@ class Upscaler12 {
           .renderSize = {.width = request.width, .height = request.height},
           .upscaleSize = {.width = request.output_width, .height = request.output_height},
           .enableSharpening = false,
-          .frameTimeDelta = (first_frame_ ? 16.7f : std::chrono::duration<float, std::milli>(now - last_time_).count()),
+          .frameTimeDelta = (first_frame_ ? 16.698658f : std::chrono::duration<float, std::milli>(now - last_time_).count()),
           .preExposure = 1.f,
           .reset = reset,
           .cameraNear = near_plane,
-          .cameraFar = (projection[10] != 1.f ? projection[10] * near_plane / (projection[10] - 1.f) : 100000.f),
+          .cameraFar = (projection[10] != 1.f ? projection[10] * near_plane / (projection[10] - 1.f) : 100028.21f),
           .cameraFovAngleVertical = 2.f * std::atan(1.f / projection[5]),
           .viewSpaceToMetersFactor = 1.f,
       };

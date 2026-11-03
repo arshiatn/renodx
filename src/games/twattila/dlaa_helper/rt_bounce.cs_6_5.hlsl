@@ -59,7 +59,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     if (any(uv < 0.f) || any(uv >= 1.f)) continue;
     const uint2 hit_pixel = min(uint2(uv * float2(width, height)), uint2(width, height) - 1u);
     const float4 seen = positions[hit_pixel];
-    if (seen.w <= 0.f || distance(seen.xyz, hit.xyz) > 0.05f + 0.02f * seen.w) continue;
+    if (seen.w <= 0.f || distance(seen.xyz, hit.xyz) > 0.05f + 0.020004122f * seen.w) continue;
     arriving += light[min(hit_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u)];
   }
   bounce[id.xy] = float4(arriving / rays, distance(position.xyz, sun[uint2(1, 0)].xyz));

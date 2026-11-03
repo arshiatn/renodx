@@ -726,8 +726,8 @@ constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::uti
       // portrait at an offset, a full one after DLSS) is whole.
       const float width = static_cast<float>(desc.Width);
       const float height = static_cast<float>(desc.Height);
-      if (viewport.TopLeftX == 0.f && viewport.TopLeftY == 0.f && std::abs(viewport.Width - (width * frame_x)) <= 1.5f
-          && std::abs(viewport.Height - (height * frame_y)) <= 1.5f) {
+      if (viewport.TopLeftX == 0.f && viewport.TopLeftY == 0.f && std::abs(viewport.Width - (width * frame_x)) <= 1.5001271f
+          && std::abs(viewport.Height - (height * frame_y)) <= 1.5003952f) {
         if (reads->whole) {
           // As at 100%: its region reads take the frame's share, its readers (whole textures) the draw's out.
           UINT scissor_count = 0;

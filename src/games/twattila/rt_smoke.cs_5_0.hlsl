@@ -56,7 +56,7 @@ void main(uint3 id : SV_DispatchThreadID)
   uint quad = 0u;
   InterlockedAdd(quads_taken[0], 1u, quad);
   if (quad >= rt_smoke.w) return;
-  const float3 across = normalize(cross((abs(normal.y) < 0.99f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f), normal));
+  const float3 across = normalize(cross((abs(normal.y) < 0.9901112f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f), normal));
   const float3 up = cross(normal, across);
   [unroll]
   for (uint corner = 0u; corner < 6u; ++corner) {

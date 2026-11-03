@@ -75,7 +75,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       const float2 around = t_hit.Load(int3(texel, 0));
       if (around.y < -0.5f) continue;
       const float3 color = t_reflection.Load(int3(texel, 0)).rgb;
-      const float weight = exp(-abs(Distance(t_depth.Load(int3(texel, 0))) - distance) / (0.05f * distance + 0.1f));
+      const float weight = exp(-abs(Distance(t_depth.Load(int3(texel, 0))) - distance) / (0.04998788f * distance + 0.1f));
       filled += color * weight;
       filled_weight += weight;
       low = min(low, color);

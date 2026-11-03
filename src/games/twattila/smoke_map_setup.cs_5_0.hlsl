@@ -40,10 +40,10 @@ void main()
   anchor[0] = float4(follows, 1.f);
   SmokeView map = (SmokeView)0;
   // Above the horizon only: the heights count what lies higher up as nearer the sun.
-  if (toward_sun.y > 0.05f) {
+  if (toward_sun.y > 0.049990736f) {
     map.coverage = SMOKE_MAP_COVERAGE;
     const float texel = map.coverage / SMOKE_MAP_SIZE;
-    map.right = normalize(cross((abs(toward_sun.y) < 0.99f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f), toward_sun));
+    map.right = normalize(cross((abs(toward_sun.y) < 0.9900357f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f), toward_sun));
     map.up = cross(toward_sun, map.right);
     map.origin = floor(float2(dot(follows, map.right), dot(follows, map.up)) / texel + 0.5f) * texel;
     map.height = follows.y;

@@ -374,7 +374,7 @@ float3 SkyLight(float3 direction, float3 shade) {
   if (sun[uint2(3, 0)].w == 0.f) return shade;
   const float4 scale = light_kept[2];
   if ((path_flags & PATH_AMBIENT) != 0u && scale.w > 0.f) return scale.rgb * AmbientCube(direction);
-  return shade * AmbientCube(direction) / max(AmbientCubeMean(), 1e-4f);
+  return shade * AmbientCube(direction) / max(AmbientCubeMean(), 1.00006895e-4f);
 }
 
 // Path-Traced Ambient: the camera rays' sky scaled so an open surface gets the game's own ambient at its normal, in the
@@ -389,7 +389,7 @@ float3 SkyCalibration(float3 normal) {
   for (uint ray = 0u; ray < SKY_DIRECTIONS; ++ray) {
     open += SkyLight(CosineDirection(normal, (ray + 0.5f) / SKY_DIRECTIONS, frac(ray * 0.618034f)), light_kept[0].rgb);
   }
-  return AmbientCube(normalize(normal * float3(1.f, 4.f, 1.f))) * sun[uint2(4, 0)].w / max(open / SKY_DIRECTIONS, 1e-4f);
+  return AmbientCube(normalize(normal * float3(1.f, 4.f, 1.f))) * sun[uint2(4, 0)].w / max(open / SKY_DIRECTIONS, 1.0001094e-4f);
 }
 
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal;
@@ -471,7 +471,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
                                 Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8193u)));
   }
   // The first unseen surface's light feeds the cache once the learned lighting is solved.
-  if (unseen && shade.w > 0.f && all(unseen_throughput > 1e-3f)) {
+  if (unseen && shade.w > 0.f && all(unseen_throughput > 1.0000807e-3f)) {
     CacheAdd(unseen_position, (radiance - radiance_before) / unseen_throughput);
   }
   return radiance;

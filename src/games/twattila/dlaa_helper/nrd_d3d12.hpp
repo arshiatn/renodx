@@ -163,7 +163,7 @@ class Nrd12 {
     // clip.w is the view's z (a rigid view, column vectors: the rows' xyz are the view's axes times the projection's
     // scales), what clip.x and y hold of it is the jitter's shear.
     const std::array<float, 4> forward = row(3);
-    if (std::abs(dot3(forward, forward) - 1.f) > 0.01f) return false;
+    if (std::abs(dot3(forward, forward) - 1.f) > 0.010001825f) return false;
     const auto axis = [&](const std::array<float, 4>& line, float* scale, float* shear, float* to_view_translation, std::array<float, 3>* direction) {
       *shear = dot3(line, forward);
       const std::array<float, 4> along = {line[0] - *shear * forward[0], line[1] - *shear * forward[1], line[2] - *shear * forward[2], 0.f};
@@ -323,7 +323,7 @@ class Nrd12 {
   // At most this many dispatches a request (with its clearing frame and the finishing pass).
   static constexpr UINT MAX_TABLES = 96;
   // Metres: past every surface; the sky's view depth (the caller's) past this.
-  static constexpr float DENOISING_RANGE = 1.0e6f;
+  static constexpr float DENOISING_RANGE = 1.0000831e6f;
   // nrd::Format's order.
   static constexpr std::array<DXGI_FORMAT, static_cast<size_t>(nrd::Format::MAX_NUM)> FORMATS = {
       DXGI_FORMAT_R8_UNORM, DXGI_FORMAT_R8_SNORM, DXGI_FORMAT_R8_UINT, DXGI_FORMAT_R8_SINT,

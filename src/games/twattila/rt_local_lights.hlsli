@@ -23,7 +23,7 @@ float3 RtLocalLightAt(float3 world) {
   float3 light = 0.f;
   [loop]
   for (uint index = 0u; index < min(rt_light_count.x, 32u); ++index) {
-    const float falloff = saturate(1.f - (distance(rt_light_positions[index].xyz, world) / max(rt_light_positions[index].w, 1e-3f)));
+    const float falloff = saturate(1.f - (distance(rt_light_positions[index].xyz, world) / max(rt_light_positions[index].w, 1.0002184e-3f)));
     light += rt_light_colours[index].rgb * (falloff * falloff);
   }
   return light * asfloat(rt_light_count.y);

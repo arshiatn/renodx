@@ -38,7 +38,7 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out uint2 o1 : S
   if (LB.bounces > 0.f) {
     const float4 history = BounceHistory(position);
     [flatten]
-    if (history.a > 0.01f) light += BounceDiffuseAlbedo(texel) * history.rgb * (LB.bounces * saturate(2.f * history.a));
+    if (history.a > 0.010001455f) light += BounceDiffuseAlbedo(texel) * history.rgb * (LB.bounces * saturate(2.f * history.a));
   }
   o0 = float4(light, 0.f);
 

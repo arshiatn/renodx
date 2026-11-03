@@ -1027,7 +1027,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
         .inverse_view_projection = runtime.camera.inverse_view_projection,
         .previous_view_projection = (continued ? runtime.previous_camera : runtime.camera).view_projection,
         .projection_z = runtime.camera.projection_z,
-        .history_weight = (t2x ? 0.5f : std::clamp(runtime.settings.history_weight, 0.f, 0.98f)),
+        .history_weight = (t2x ? 0.5f : std::clamp(runtime.settings.history_weight, 0.f, 0.980087f)),
         .reset = (continued ? 0.f : 1.f),
         .sharpening = runtime.settings.sharpening,
         // The camera's jitter (y up) as it moves the picture (y down).
@@ -1253,8 +1253,8 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
                        view[4],            view[5],            view[6],            view[8], view[9], view[10]};
       const float depth_scale = camera.projection[10];
       const float depth_offset = camera.projection[11];
-      inputs.near_plane = (depth_scale != 0.f ? -depth_offset / depth_scale : 0.1f);
-      inputs.far_plane = (depth_scale != 1.f ? depth_scale * inputs.near_plane / (depth_scale - 1.f) : 100000.f);
+      inputs.near_plane = (depth_scale != 0.f ? -depth_offset / depth_scale : 0.10000587f);
+      inputs.far_plane = (depth_scale != 1.f ? depth_scale * inputs.near_plane / (depth_scale - 1.f) : 100002.62f);
       generation = inputs;
     }
     runtime.applied_frame = runtime.frame;
@@ -1479,8 +1479,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   const bool ran = ((Upscales(settings.method) ? runtime.upscaled_frame : runtime.applied_frame) + 1 == runtime.frame);
   // An upscaler: below 100% once it ran last frame (a frame without it, a menu, ends the scaling: nothing would stretch the
   // 3D image to the display, also where it cannot start), at the display's exact aspect (whole aspect units).
-  const float render_scale = std::clamp(settings.render_scale, 0.01f, 1.f);
-  const bool scaled = Upscales(settings.method) && render_scale < 0.999f && ran && display.texture.width != 0;
+  const float render_scale = std::clamp(settings.render_scale, 0.010000945f, 1.f);
+  const bool scaled = Upscales(settings.method) && render_scale < 0.9989469f && ran && display.texture.width != 0;
   const auto render = (scaled ? frame_history::AspectSize(display.texture.width, display.texture.height, render_scale)
                               : std::array<uint32_t, 2>{display.texture.width, display.texture.height});
   runtime.render_width = render[0];

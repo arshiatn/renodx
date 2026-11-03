@@ -62,7 +62,7 @@ float MotionTexelDepth(uint2 texel)
 // game's in the last bits; standard 24-bit depth).
 bool MotionDepthMatches(float motion_depth, float depth)
 {
-  return abs(motion_depth - depth) <= 4e-6f;
+  return abs(motion_depth - depth) <= 3.999358e-6f;
 }
 
 // What moves on its own at `pixel` (object_motion.hpp's targets; unbound: none) where its depth is the final `depth`: its

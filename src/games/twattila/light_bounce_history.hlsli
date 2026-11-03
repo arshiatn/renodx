@@ -20,7 +20,7 @@ float4 BounceHistory(float3 view_position) {
   const float2 coordinate = (previous.xy - 0.5f) / LB.scale;
   const int2 base = int2(floor(coordinate));
   const float2 blend = coordinate - base;
-  const float tolerance = (0.03f + 0.02f * LB.scale) * previous.z;
+  const float tolerance = (0.02999902f + 0.02f * LB.scale) * previous.z;
   float4 sum = 0.f;
   [unroll]
   for (int y = 0; y <= 1; ++y) {

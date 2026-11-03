@@ -125,7 +125,7 @@ struct ShaderInjectData {
 #define SDR_STOCK_GAMMA ((SI.gamma_correction != 0.f) ? g_gamma_output : 2.2f)
 // Output SDR has no Paper White (as Attila).
 #define SDR_PAPER_WHITE ((SI.swap_chain_encoding == 2.f) ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
-#define HDR_PEAK max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 0.0001f) //added guard
+#define HDR_PEAK max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 0.00009999604f) //added guard
 #define HDR_INTSCALING SI.diffuse_white_nits / SI.graphics_white_nits
 #define HDR_STOPS log2(HDR_MAXEXPECTED / HDR_PEAK)
 
