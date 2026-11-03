@@ -7,6 +7,11 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
+## v135 (not released, built only, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23)
+
+- **Path Tracing with the game's or Bend's shadows**: the paths never got the sun's direction or the ambient cube without ray-traced shadows, so
+  what they met off screen had no sun and the sky no direction. With Fog Shadows left on from a preset, fog now gets its rays there too.
+
 ## v134 = players' v2.5 (2026-11-03; renodx-tw-dlaa64.exe helper74, bridge v23: ship them together; RenoDX_Attila_v2.5_HDR_only.zip: the add-on alone; v133's zips were never released)
 - **Smoke Shadow Quality Ultra**: 131,072 particles at most, High's 32 layers a ray. The RT/PT preset takes High.
 - **FidelityFX SSSR reaches the screen's edges**: no more border fade (ours 8%, FidelityFX's 5%), which took the reflections off the water's sides.

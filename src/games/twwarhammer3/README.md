@@ -4,6 +4,19 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 ## v31 (not released, built only, not run in game)
 
+- **Screen-space and ray-traced sun shadows now cut the sun.** In the sun shader the game mostly uses they only darkened the ambient: the
+  patch took the ambient occlusion for the shadow. Bend's and the rays' shadows look stronger now, and with rays the sun follows them on top of
+  the game's own shadow. One sun shader has no shadow at all and is left alone.
+- **Path-Traced AO (Experimental, AO's method, off):** Global Illumination's paths bring the sky's light in place of the game's ambient, all of
+  it (cube, spherical harmonics, the game's probes). Own Sky Rays goes with it. The RT/PT preset stays on RTAO: how bright it comes out against
+  the game's ambient isn't known yet. Leaves keep the game's light from behind, reflections their share. Forward draws, water and fog keep the
+  game's ambient.
+- **Path Tracing's sky** now comes from the game's ambient cube (bluer from above), also with the game's shadows. Needs helper75.
+- **Light Bounce and paths respect metal:** armour got a full bounce before; the game's ambient gives metal none.
+- **Coloured Shadows** on capture flags (with Light Through Leaves; the colour needs Ray Reconstruction or path-traced Global Illumination).
+- **Game's Global Illumination (Experimental, Effects tests, default on):** the game's own bounce light, which Light Bounce comes on top of. Whether it
+  turns off at once, next battle or after a restart isn't known.
+- Log Details writes once per sun shader whether spherical harmonics and the game's Global Illumination are on, the ambient cube and its scale.
 - **Below 100% Resolution Scale (Experimental, off):** DLSS, FSR or XeSS also when the in-game Resolution Scale is below 100%. The game's
   own chain stays at the smaller size; the tone mapper's picture goes through the upscaler up to your resolution; flares, vignette, sharpening
   and UI at your resolution. Off, and at 100% either way, nothing changes. The first frame at each size only checks the game's constants; if
@@ -15,8 +28,8 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   trace has shown yet. Burning trees keep their leaf shadow. With ray tracing off, nothing changes. Five rows show now: Light Through Leaves,
   Grass Shadow Range (works on NVIDIA's Mega Geometry only: elsewhere dynamic grass isn't apart from the rest), the three Opacity Micromaps rows.
 - **Path-Traced Global Illumination takes the G-buffer** (albedo, normals) with any upscaler, as it should have: it had none, and guessed both.
-- **Graphics 2 of 2 on values that exist.** Of its 430 entries the game had 31 (a status line said so): its names changed. Now 45 of
-  45: the same main rows, and 17 values in Grass & Trees, Shadows and Units (Tests), found by reading the game's own list of values
+- **Graphics 2 of 2 on values that exist.** Of its 430 entries the game had 31 (a status line said so): its names changed. Now 46 of
+  46: the same main rows, and 18 values in Grass & Trees, Shadows, Units and Effects (Tests), found by reading the game's own list of values
   in Warhammer3.exe. New: Grass Size, Grass Height, Grass Edge Blend, Edge Blend, the eight shadow maps' reach (in metres, 0: the
   game's), Point Lights With Shadows, Cloth Smoothing, Ragdoll Limit. At their defaults they write nothing.
 - Everything else on that page is gone: those rows did nothing, or three threading switches nobody needs. Their saved values no
@@ -31,8 +44,9 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - Psycho V30's Hue Shift is now called Highlight Hue Shift; its saved value stays.
 
 Verify: Resolution Scale 50%, DLSS, Below 100% on: `ReShade.log` "Upscaling below 100%: 1920x1080 as expected", status line DLSS's, picture whole,
-UI and markers in place. Graphics 2 of 2's status line says 45 of 45 in `ReShade.log`; Battle Shadow Map 1 at 500 m: nearby shadows softer, at once.
+UI and markers in place. Graphics 2 of 2's status line says 46 of 46 in `ReShade.log`; Battle Shadow Map 1 at 500 m: nearby shadows softer, at once.
 Fog Strength 0 in a battle: no fog, no leftover glow; 2: thicker.
+Bend on, sun low: sunlight cut behind soldiers, not only the ambient. Log Details on: a "Sun shader" line per shader; Path-Traced AO on an open field: not much brighter or darker than RTAO (else send that line).
 
 ## v30 (not released, built only, not run in game)
 
@@ -163,7 +177,7 @@ v29 is used twice: the zip twwarhammer3_v29.zip (2026-10-28, its README ends at 
   Screen-Space Shadows; no Anti-Aliasing: the game has TAA) / Graphics 2 of 2 (Graphics (Experimental) and the tests), Attila's colours
   (twattila/feature_settings.hpp).
 - Screen-Space Shadows (Bend Studio's, twattila/screen_space_shadows.hpp): the sun shaders that compare the shadow maps get every comparison scaled; the ones that read the screen-space
-  shadow mask (t_shadow) get its reads scaled. 6 of the 7 sun draws (the 7th has no shadows).
+  shadow mask (t_shadow) get its reads scaled. 5 of the 7 sun draws: 76A707E5 and F9F8CE80 have no sun shadows (v31; before, a look-alike put it on the ambient occlusion of 3 of them).
 - Graphics 2 of 2: the executable is protected (its code cannot be read), so names and types come from Pharaoh's code (Warhammer III's names are packed: all of Pharaoh's):
   Attila's 16 and 1185 More Tests (unsure; a name the game lacks shows as not found). At-start tests as
   Attila. Engine value lookup is one pass for all names (a search per name took minutes with 1000+). engine_values.txt lists them.

@@ -4,6 +4,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer2.ad
 
 ## v35 (2026-11-03, built only, not run in game)
 
+- **Path Tracing with the game's or Bend's shadows**: the paths now get the sun's direction there too (as Attila's v135).
 - **Frame generation with Output SDR**: the picture no longer turns red (as Attila).
 - **Frame generation with Output scRGB**: works when turned on in game, no restart (as Attila). Ship with the helper built from
   this commit or later, not helper71.

@@ -4,6 +4,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twpharaohdynast
 
 ## v38 (2026-11-03, built only, not run in game)
 
+- **Path Tracing with the game's or Bend's shadows**: the paths now get the sun's direction there too (as Attila's v135).
 - Known, not fixed: ray-traced grass shadows. The grass's opacity is a texture array and the layer changes inside a draw; the scene reads one
   plain texture. Solid, missing or wrong shapes are possible: only the game can tell.
 - **Frame generation with Output SDR**: the picture no longer turns red (as Attila).
