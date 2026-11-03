@@ -22,8 +22,6 @@ namespace twattila::feature_settings {
 
 inline const std::string SSS_SECTION = "Screen-Space Shadows (Bend Studio, Experimental, needs in-game shadows)";
 inline const std::string AA_SECTION = "Anti-Aliasing (Experimental, in-game AA off)";
-// Warhammer III: DLSS in place of the game's TAA (its in-game TAA stays on).
-inline const std::string DLSS_SECTION = "DLSS (Experimental, in-game TAA on)";
 inline const std::string GRAPHICS_SECTION = "Graphics (Experimental)";
 constexpr uint32_t SSS_TINT = 0xC08CFF;
 constexpr uint32_t AA_TINT = 0x7FFFD4;
@@ -635,7 +633,7 @@ inline void AssignPages(std::vector<renodx::utils::settings::Setting*>* settings
     if (std::ranges::find(engine_sections, setting->section) != engine_sections.end()) {
       page = 2;
     } else if (setting->section == lighting_settings::AO_SECTION || setting->section == lighting_settings::GI_SECTION
-               || setting->section == SSS_SECTION || setting->section == AA_SECTION || setting->section == DLSS_SECTION
+               || setting->section == SSS_SECTION || setting->section == AA_SECTION
                || std::ranges::find(graphics_sections, setting->section) != graphics_sections.end()) {
       page = 1;
     }

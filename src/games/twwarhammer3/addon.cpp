@@ -40,6 +40,7 @@
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "./taa_dlss.hpp"
 #include "./more_tests.h"
@@ -1069,13 +1070,8 @@ void BuildRuntimeData() {
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-        .label = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases",
-        .section = "General",
-        .tint = 0xFF5050,
-        .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
-    },
+    twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
+                                  [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .value_type = renodx::utils::settings::SettingValueType::BULLET,
@@ -2016,6 +2012,32 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::rt_scene::Sliders rt_sliders;
 // The upscaler in place of the game's TAA (taa_dlss.hpp): 0 the game's TAA, 5 DLSS, 6 FSR, 7 XeSS.
 twattila::feature_settings::AaSliders aa_sliders;
+constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
+constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
+    .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
+    .aa_tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High and Resolution\n"
+                  "Scale at 100% (below it the game's TAA and upscale stay).\n"
+                  "DLSS: NVIDIA's (RTX). FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
+                  "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs next to Warhammer3.exe.",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion\n"
+                     "and shadows. The rest at its default.",
+    .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
+                       "The rest of this page at its default.",
+    .rays_tooltip = "Ray-traced shadows and ambient occlusion, path-traced Global Illumination. The rest of this page at\n"
+                    "its default. Needs an upscaler (Anti-Aliasing above).\n"
+                    "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
+                      "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "Needs an upscaler.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep the in-game ambient occlusion on.\n"
+                  "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
+                  "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
+                  "thin ones.\n"
+                  "RTAO: from rays through the scene, on top of the game's. Needs an upscaler.",
+    .rays_a_pixel_shadows_tooltip = "The sun's shadows take the extra rays.",
+};
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -2160,6 +2182,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS is XeSS on Intel's, else FSR.
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
+  // A saved method the row doesn't list: the game's TAA.
+  if (aa_sliders.method >= 1.f && aa_sliders.method <= 4.f) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", 0.f}});
   }
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // Ray-traced shadows replace the screen-space ones too.
@@ -2442,58 +2468,10 @@ void ConfigureAddon() {
   // Appended Settings (Ambient Occlusion, Global Illumination, Screen-Space Shadows, Anti-Aliasing)
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
-  {
-    const size_t first_row = settings.size();
-    twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-    // Attila's rows with what is true here: the game owns its scale, has its own TAA and keeps it running.
-    constexpr std::array<std::string_view, 9> ATTILA_ONLY = {"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength",
-                                                             "AntiAliasingSharpening", "AntiAliasingDlssMode", "AntiAliasingRenderScale",
-                                                             "AntiAliasingTextureLodBias", "AntiAliasingEffectsAtOutput", "AntiAliasingObjectMotion"};
-    for (auto* setting : std::span(settings).subspan(first_row)) {
-      setting->section = twattila::feature_settings::DLSS_SECTION;
-      if (std::ranges::find(ATTILA_ONLY, setting->key) != ATTILA_ONLY.end()) setting->is_visible = [] { return false; };
-      if (setting->key == "AntiAliasing") {
-        // 8 long: a saved value is clamped to them. SMAA's to TAA's places are none here.
-        setting->labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"};
-        setting->tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High and Resolution\n"
-                           "Scale at 100% (below it the game's TAA and upscale stay).\n"
-                           "DLSS: NVIDIA's (RTX). FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
-                           "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs next to Warhammer3.exe.";
-      } else if (setting->key == "AntiAliasingDebugView") {
-        setting->label = "Upscaling Debug View";
-        setting->tooltip = "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).";
-        setting->labels = {"Off", "Motion Vectors"};
-      } else if (setting->key == "FrameGeneration") {
-        setting->tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
-                           "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
-                           "Needs an upscaler, a windowed or borderless game,\n"
-                           "and Streamline's files next to renodx-tw-dlaa64.exe.";
-      }
-    }
-    // What frame generation really does, or why it doesn't.
-    settings.insert(std::ranges::find(settings, "FrameGeneration", &renodx::utils::settings::Setting::key) + 1, new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
-        .section = twattila::feature_settings::DLSS_SECTION,
-        .on_draw = [] {
-          ImGui::TextWrapped("%s", twattila::dlaa_bridge::FrameGenerationStatus().c_str());
-          return false;
-        },
-        .is_visible = [] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.frame_generation != 0.f; },
-    });
-    // What really runs, or why nothing does.
-    settings.insert(settings.begin() + static_cast<ptrdiff_t>(first_row) + 1, new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
-        .section = twattila::feature_settings::DLSS_SECTION,
-        .on_draw = [] {
-          ImGui::TextWrapped("%s", twwarhammer3::taa_dlss::Status().c_str());
-          return false;
-        },
-        .is_visible = [] { return twattila::feature_settings::Upscaling(aa_sliders); },
-    });
-  }
+  twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
 
   // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, false, twattila::feature_settings::DLSS_SECTION,
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, false, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
 
   // Appended Settings (HDR10)
@@ -2570,7 +2548,20 @@ void ConfigureAddon() {
     if (std::ranges::find(engine_sections, test.section) == engine_sections.end()) engine_sections.push_back(test.section);
   }
   twattila::feature_settings::SetTints({}, engine_sections);
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
+
+  // Graphics 1 of 2's layout, then Settings Mode's pages. The game owns its scale; its sun draws have no ambient cube's place
+  // and its ambient occlusion stays under ray-traced AO yet; no reflections of ours yet; smoke and foliage aren't known here.
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
+                                             .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .texts = &PAGE_TEXTS,
+                                             .aa_methods = AA_METHODS,
+                                             .upscaler_status = twwarhammer3::taa_dlss::Status,
+                                             .has_scale_rows = false,
+                                             .has_foliage_light = false,
+                                             .has_path_ambient = false,
+                                             .has_reflections = false,
+                                             .rays_replace_ao = false});
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }

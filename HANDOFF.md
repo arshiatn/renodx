@@ -18,7 +18,9 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
 - [x] P4 Frame generation in the helper: live on and off, HDR10, scRGB (fg_hdr10), SDR; `SetCamera` shared; camera rebuilt without jitter; HUD-less from the resolve and sharpening. The last commit with Streamline in the game's process: 253e463a (going back: revert P4's commits, that tree builds).
       Found: WH3's constants sit at b10, every other TW game's at b13: `frame_generation::Install` takes the register (b13 gave a black HUD-less image in the WARP test). Not done: FG's method row is P5's (until then saved DLSS, so off NVIDIA its status line says why); not run in game.
       ATN's check: FG on and off without a restart in HDR10, scRGB, SDR; FG Debug View HUD-less with flares and sharpening, no UI, portraits out; FG off: helper's memory falls after 10 s; menus show frames, no freeze.
-- [ ] P5 The page: Attila's layout (milestone 1: review, twwarhammer3_v30.zip)
+- [x] P5 The page: Attila's layout, one copy of the code (`graphics_page::Apply`, game facts in `Bindings` and `Texts`, defaults Attila's). Attila's rows, every state's visible rows, buttons and sliders identical in a dump (tools/tw/page_dump); WH3: no key lost, pages 0 and 2 identical, 101 rows on the page.
+      Not done: milestone 1's review, fixes and twwarhammer3_v30.zip (next step); not run in game. Row left: Debug View's labels name Reflections, Point Lights, Fog (magenta here, its tooltip says so).
+      ATN's check: walk the page: each method slider follows a preset; RT/PT sets rays, RTAO over the game's AO, path-traced GI; Upscaling Mode rows absent; FG Method Auto; off NVIDIA no DLSS place; NRD on: AO and Light Bounce not denoised twice (no softer picture than Built-in with its Denoisers off).
 - [ ] P7 Graphics 2 of 2 on names that exist in today's exe
 - [ ] P12 HDR page parity (SDR preset, Fog Strength)
 - [ ] P6 RT scene: leaves, grass, 4-bone units, flags, guides

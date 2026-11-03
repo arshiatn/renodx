@@ -14,6 +14,12 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   output (it no longer forces HDR10), its memory back when off; HUD Recomposition, Preset, Debug View and a status line work.
   Its HUD-less image has the flares, vignette and sharpening, and no UI or portraits. Needs Streamline's files next to
   renodx-tw-dlaa64.exe. ReShade.ini's `[Warhammer III]` frame generation keys stop applying.
+- **Graphics 1 of 2 in Attila's layout**, the same code: Anti-Aliasing and Upscaling, Shadows, Ambient Occlusion, Global
+  Illumination, Ray Tracing Extra Options, each with a method slider and More Options; every setting keeps its key. Presets Reset,
+  No RT/PT and RT/PT (Attila's values until they're chosen for this game). New rows: Frame Generation Method (default Auto, it was
+  DLSS only), Ray Tracing Denoiser (NRD, Experimental). Not here: Upscaling Mode and the render scale's rows (the game owns its
+  scale), SMAA, CMAA2, own TAA, Reflections and Water, smoke, Path-Traced AO; ray-traced AO multiplies the game's, so its method sets the
+  game's AO rather than GT-VBAO under it.
 
 ## v29 (2026-11-03, built only, not run in game)
 
