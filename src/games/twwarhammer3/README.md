@@ -4,6 +4,15 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 ## v31 (not released, built only, not run in game)
 
+- **Ray-Traced Reflections and Ray-Traced Specular Occlusion (Experimental, Reflections section, off; in the RT/PT preset).** The game's own
+  screen-space reflections are on water only: its code for other surfaces is there but never runs. With the rays on, our copy of its resolve opens
+  that path for armour, metal and what else the game marks so: on water the rays leave from the water, off water they replace the
+  cubes' reflection where they meet something, and occlusion dims the cubes where something blocks them. Both off, the game's own shaders run
+  untouched. Needs in-game Screen Space Reflections on. If the sun shader is one of the 3 of 7 that add the cubes differently, the
+  game's reflections stay and the log says so once. FidelityFX SSSR isn't offered: the game's march already is a hierarchical one.
+- **Ray Reconstruction's and the paths' guides had the wrong material channels** since batch 3: roughness was 1 - the AO channel (0 on much of
+  the scene), specular a flat 0.04, normals from 8 of 10 bits. Now as the sun light and the resolve read them: roughness in the
+  material's y, specular from metal, water its own.
 - **Screen-space and ray-traced sun shadows now cut the sun.** In the sun shader the game mostly uses they only darkened the ambient: the
   patch took the ambient occlusion for the shadow. Bend's and the rays' shadows look stronger now, and with rays the sun follows them on top of
   the game's own shadow. One sun shader has no shadow at all and is left alone.

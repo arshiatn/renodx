@@ -126,6 +126,9 @@ struct State {
   uint64_t taa_frame = UINT64_MAX;        // the game's TAA pass ran
   uint64_t no_camera_frame = UINT64_MAX;  // ... without the main view's camera
   uint64_t guides_frame = UINT64_MAX;  // Ray Reconstruction's guides written
+  // The reflection march's G-buffer and camera (the water drawn by then): RewriteGuides'.
+  std::array<ComPtr<ID3D11ShaderResourceView>, 3> reflection_gbuffer;
+  ComPtr<ID3D11Buffer> reflection_camera;
   std::array<float, 16> previous_view_projection = {};  // the last evaluation's, without the jitter
   twattila::frame_generation::Inputs generation;        // this evaluation's for frame generation
   uint64_t generation_frame = UINT64_MAX;               // its frame, until the tone mapper's draw keeps it
@@ -190,6 +193,21 @@ inline ComPtr<ID3D11Texture2D> TextureOf(ID3D11View* view) {
   if (view != nullptr) view->GetResource(resource.GetAddressOf());
   if (resource) resource.As(&texture);
   return texture;
+}
+
+// The guides from these views (state.mutex held), on the addon's own context state.
+inline void DispatchGuides(ID3D11DeviceContext* native, ID3D11DeviceContext1* context1, const std::array<ID3D11ShaderResourceView*, 3>& gbuffer, ID3D11Buffer* camera) {
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  twattila::dlaa_bridge::BeforeSharedWrites(native);
+  talesofarise::dlss::ContextStateScope scope(context1, state.objects.private_state.Get());
+  const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                            bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
+  context1->CSSetShader(state.objects.guides.Get(), nullptr, 0);
+  context1->CSSetShaderResources(0, static_cast<UINT>(gbuffer.size()), gbuffer.data());
+  context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(guides.size()), guides.data(), nullptr);
+  context1->CSSetConstantBuffers(0, 1, &camera);
+  context1->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+  context1->ClearState();
 }
 
 // `display_copy` at `desc`'s size (state.mutex held); false: not made.
@@ -478,16 +496,7 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT cam
   D3D11_TEXTURE2D_DESC desc = {};
   if (const auto normal = internal::TextureOf(gbuffer[0])) normal->GetDesc(&desc);
   if (camera && gbuffer[1] != nullptr && gbuffer[2] != nullptr && desc.Width == bridge.width && desc.Height == bridge.height) {
-    twattila::dlaa_bridge::BeforeSharedWrites(native);
-    talesofarise::dlss::ContextStateScope scope(context1.Get(), state.objects.private_state.Get());
-    const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
-                                                              bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
-    context1->CSSetShader(state.objects.guides.Get(), nullptr, 0);
-    context1->CSSetShaderResources(0, static_cast<UINT>(gbuffer.size()), gbuffer.data());
-    context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(guides.size()), guides.data(), nullptr);
-    context1->CSSetConstantBuffers(0, 1, camera.GetAddressOf());
-    context1->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
-    context1->ClearState();
+    internal::DispatchGuides(native, context1.Get(), gbuffer, camera.Get());
     state.guides_frame = state.frame;
     if (!state.guides_logged) {
       state.guides_logged = true;
@@ -497,6 +506,32 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT cam
   for (auto* view : gbuffer) {
     if (view != nullptr) view->Release();
   }
+}
+
+// At the reflection march (its CS t0-t2 the G-buffer, b0 the camera): what RewriteGuides reads; the trace's dispatches come
+// between and take those slots.
+inline void KeepReflectionGuideInputs(ID3D11DeviceContext* native) {
+  std::array<ID3D11ShaderResourceView*, 3> gbuffer = {};
+  native->CSGetShaderResources(0, static_cast<UINT>(gbuffer.size()), gbuffer.data());
+  const std::unique_lock lock(internal::state.mutex);
+  for (size_t index = 0; index < gbuffer.size(); ++index) {
+    internal::state.reflection_gbuffer[index] = gbuffer[index];
+    if (gbuffer[index] != nullptr) gbuffer[index]->Release();
+  }
+  native->CSGetConstantBuffers(0, 1, internal::state.reflection_camera.ReleaseAndGetAddressOf());
+}
+
+// The guides again with the water in the G-buffer, for the rays that leave from it (rt_core Reflections).
+inline void RewriteGuides(ID3D11DeviceContext* native) {
+  using internal::state;
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  const std::unique_lock lock(state.mutex);
+  if (state.guides_frame != state.frame || !state.reflection_camera) return;
+  internal::DispatchGuides(native, context1.Get(), {state.reflection_gbuffer[0].Get(), state.reflection_gbuffer[1].Get(), state.reflection_gbuffer[2].Get()},
+                           state.reflection_camera.Get());
+  state.reflection_gbuffer = {};
+  state.reflection_camera.Reset();
 }
 
 // Whether the G-buffer guides were written this frame.

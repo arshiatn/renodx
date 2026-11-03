@@ -809,6 +809,100 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 }  // namespace aa_target
 
+// Ray tracing's sliders (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
+twattila::rt_scene::Sliders rt_sliders;
+
+// The rays' reflections and specular occlusion in the game's reflection pass (fx_environment_specular_light): off, nothing of
+// this runs and the game's bytes do. On, our copy of its resolve runs in its place (shaders/reflection00), with the march and
+// its blurs left out under reflections. Water's rays leave from the water (0ED84C3D reads the depth with it in; the guides again).
+namespace reflections {
+
+enum class Pass : uint8_t { GAME, OCCLUSION, RAYS };
+Pass pass = Pass::GAME;
+Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> main_depth;
+std::span<const uint8_t> resolve_code;
+Microsoft::WRL::ComPtr<ID3D11ComputeShader> resolve;
+Microsoft::WRL::ComPtr<ID3D11ComputeShader> game_resolve;
+bool sun_cubes_known = true;  // This frame's sun light adds the cubes as the resolve takes them back (SunDraw::diffuse_rule 1).
+bool sun_cubes_logged = false;
+
+bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
+  if (rt_sliders.reflections == 0.f && rt_sliders.specular_occlusion == 0.f) return true;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native != nullptr) native->CSGetShaderResources(0, 1, main_depth.ReleaseAndGetAddressOf());
+  return true;
+}
+
+// The first of the pass's dispatches: the rays traced here, once a frame, before the G-buffer's slots change. False: left out.
+bool OnMarch(reshade::api::command_list* cmd_list) {
+  pass = Pass::GAME;
+  if (rt_sliders.reflections == 0.f && rt_sliders.specular_occlusion == 0.f) return true;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr || !main_depth || !twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) return true;
+  if (!sun_cubes_known) {
+    if (!sun_cubes_logged) {
+      sun_cubes_logged = true;
+      renodx::utils::log::i("[Warhammer III] Ray-traced reflections: this sun shader's cubes aren't known here, the game's reflections stay.");
+    }
+    return true;
+  }
+  if (!resolve) {
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    if (FAILED(device->CreateComputeShader(resolve_code.data(), resolve_code.size(), nullptr, resolve.GetAddressOf()))) return true;
+  }
+  twwarhammer3::taa_dlss::KeepReflectionGuideInputs(native);
+  std::array<ID3D11ShaderResourceView*, 2> views = {};
+  {
+    const twattila::rt_scene::internal::ComputeState kept(native);
+    views = twattila::rt_scene::Reflections(native, main_depth.Get());
+  }
+  if (views[0] == nullptr) return true;
+  auto& runtime = twattila::rt_scene::internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  if (!runtime.settings.reflections) {
+    pass = Pass::OCCLUSION;
+    return true;
+  }
+  // Rays from the riverbed would show in the water: the game's whole pass then.
+  if (!runtime.water_traced) return true;
+  pass = Pass::RAYS;
+  return false;
+}
+
+bool OnResolve(reshade::api::command_list* cmd_list) {
+  if (pass == Pass::GAME) return true;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return true;
+  twattila::rt_scene::BindReflections(cmd_list, true, true);
+  native->CSGetShader(game_resolve.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  native->CSSetShader(resolve.Get(), nullptr, 0);
+  return true;
+}
+
+void OnResolved(reshade::api::command_list* cmd_list) {
+  main_depth.Reset();
+  if (pass == Pass::GAME) return;
+  pass = Pass::GAME;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return;
+  native->CSSetShader(game_resolve.Get(), nullptr, 0);
+  game_resolve.Reset();
+  twattila::rt_scene::BindReflections(cmd_list, true, false);
+}
+
+void OnDestroyDevice(reshade::api::device*) {
+  main_depth.Reset();
+  resolve.Reset();
+  game_resolve.Reset();
+}
+
+}  // namespace reflections
+
 #define FrameCopyShader(value)              \
   {                                         \
       value,                                \
@@ -1024,6 +1118,16 @@ void BuildRuntimeData() {
     tw::line_sweep_ao::OnCollectDone(cmd_list);
     return !dispatched;
   };
+  // The reflection pass (fx_hierarchical_depth_buffer's first reduction, fx_environment_specular_light's march, its 2 blurs,
+  // resolve): its replacement isn't the game's unless asked for (the reflections namespace above).
+  const auto not_injected = [](auto*) { return false; };
+  reflections::resolve_code = custom_shaders[0x89AF6FF5].code;
+  custom_shaders[0x89AF6FF5] = {.crc32 = 0x89AF6FF5, .on_inject = not_injected, .on_draw = &reflections::OnResolve, .on_drawn = &reflections::OnResolved};
+  custom_shaders[0x0ED84C3D] = {.crc32 = 0x0ED84C3D, .on_inject = not_injected, .on_draw = &reflections::OnHierarchicalDepth};
+  custom_shaders[0xEF6B7767] = {.crc32 = 0xEF6B7767, .on_inject = not_injected, .on_draw = &reflections::OnMarch};
+  for (const uint32_t blur : {0x2559E5AEu, 0xDB5D3C54u}) {
+    custom_shaders[blur] = {.crc32 = blur, .on_inject = not_injected, .on_draw = [](auto*) { return reflections::pass != reflections::Pass::RAYS; }};
+  }
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -2044,8 +2148,6 @@ std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
-// Ray tracing's (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
-twattila::rt_scene::Sliders rt_sliders;
 // The upscaler in place of the game's TAA (taa_dlss.hpp): 0 the game's TAA, 5 DLSS, 6 FSR, 7 XeSS.
 twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
@@ -2061,8 +2163,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
                        "The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced shadows and ambient occlusion, path-traced Global Illumination. The rest of this page at\n"
-                    "its default. Needs an upscaler (Anti-Aliasing above).\n"
+    .rays_tooltip = "Ray-traced shadows, reflections and ambient occlusion, path-traced Global Illumination. The rest of this\n"
+                    "page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
@@ -2082,6 +2184,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                                 "Needs Light Through Leaves, and DLSS Ray Reconstruction or path-traced Global Illumination.",
     .rays_a_pixel_shadows_tooltip = "The sun's shadows take the extra rays.",
     .rays_a_pixel_paths_tooltip = "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a pixel). The heaviest.",
+    .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
+                           "Game's SSR: the original, on water only. DXR: from rays, also what is off screen or hidden, on water,\n"
+                           "armour and metal. Needs an upscaler.",
 };
 
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -2222,6 +2327,7 @@ const twattila::rt_scene::Host RT_HOST = {
     .render_size = twwarhammer3::taa_dlss::RenderSize,
     .guides_written = twwarhammer3::taa_dlss::GuidesWritten,
     .main_view = twattila::frame_history::MainViewport,
+    .rewrite_guides = twwarhammer3::taa_dlss::RewriteGuides,
 };
 
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};
@@ -2237,6 +2343,7 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot);
+  if (draw.diffuse_rule != 1.f && twattila::frame_history::MainViewport(native)) reflections::sun_cubes_known = false;
   // Log Details, once per shader: what this place's ambient is made of (lighting_VS_PS: its values can't be read offline).
   if (rt_sliders.debug_log != 0.f && twattila::frame_history::MainViewport(native)
       && !sun_values_logged[&draw - LIGHT_BOUNCE_DRAWS.data()].exchange(true, std::memory_order_relaxed)) {
@@ -2272,6 +2379,7 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  reflections::sun_cubes_known = true;
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
   // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS is XeSS on Intel's, else FSR.
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
@@ -2571,7 +2679,7 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
 
   // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, false, twattila::feature_settings::AA_SECTION,
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
 
   // Appended Settings (HDR10)
@@ -2652,18 +2760,17 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout, then Settings Mode's pages. The game owns its scale; its ambient occlusion stays under ray-traced AO
-  // yet; no reflections of ours yet; smoke and foliage aren't known here. Path-traced AO is a choice, not the preset's: how
+  // yet; smoke and foliage aren't known here. Its march is already hierarchical: no FidelityFX SSSR. Path-traced AO is a choice, not the preset's: how
   // bright it comes out against the game's ambient (spherical harmonics, its Global Illumination) needs ATN's eyes first.
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .below_100 = &below_100_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
-                                             .below_100 = &below_100_row,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
                                              .has_scale_rows = false,
                                              .has_foliage_light = false,
                                              .rays_preset_path_ambient = false,
-                                             .has_reflections = false,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
@@ -2679,6 +2786,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
 

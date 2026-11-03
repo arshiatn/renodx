@@ -58,6 +58,10 @@ struct Texts {
   const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
   const char* rays_a_pixel_paths_tooltip = "";    // Empty: the row's own.
+  const char* reflections_tooltip =
+      "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
+      "Game's SSR: the original. FidelityFX SSSR: AMD's hierarchical ray march, exact, no gaps, reaching\n"
+      "across the screen, usually faster. DXR: from rays, also what is off screen or hidden. Needs an upscaler.";
 };
 
 inline constexpr Texts ATTILA_TEXTS = {
@@ -96,7 +100,7 @@ struct Bindings {
   rt_scene::Sliders* rt = nullptr;
   float* ssao_mode = nullptr;
   float* light_bounce_strength = nullptr;
-  float* ssr_hierarchical = nullptr;  // read only with has_reflections
+  float* ssr_hierarchical = nullptr;  // FidelityFX SSSR's; null: the game's march and the rays only
   // The smoke's shadows without rays (smoke_map.hpp); null: no such rows.
   float* smoke_strength = nullptr;
   float* smoke_softness = nullptr;
@@ -138,7 +142,7 @@ inline int GiMethodOf(const Bindings& b) {
 
 inline int ReflectionMethodOf(const Bindings& b) {
   if (b.rt->reflections != 0.f) return REFLECTION_RAYS;
-  return (*b.ssr_hierarchical != 0.f) ? REFLECTION_HIERARCHICAL : REFLECTION_GAME;
+  return (b.ssr_hierarchical != nullptr && *b.ssr_hierarchical != 0.f) ? REFLECTION_HIERARCHICAL : REFLECTION_GAME;
 }
 
 // The choices write what the method needs. Path-traced AO is Global Illumination's paths bringing the sky's light: it
@@ -706,23 +710,24 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = REFLECTIONS_SECTION;
     const auto hierarchical = reflections_are(REFLECTION_HIERARCHICAL);
     const auto rays = reflections_are(REFLECTION_RAYS);
-    page.Add(MethodSlider(section,
-                          "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
-                          "Game's SSR: the original. FidelityFX SSSR: AMD's hierarchical ray march, exact, no gaps, reaching\n"
-                          "across the screen, usually faster. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
-                          {"Game's SSR", "FidelityFX SSSR", "Ray-Traced (DXR)"}, [b] { return ReflectionMethodOf(b); },
-                          [](int method) { ChooseReflections(method); }));
+    if (b.ssr_hierarchical != nullptr) {
+      page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", "FidelityFX SSSR", "Ray-Traced (DXR)"}, [b] { return ReflectionMethodOf(b); },
+                            [](int method) { ChooseReflections(method); }));
+    } else {
+      page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", "Ray-Traced (DXR)"}, [b] { return (ReflectionMethodOf(b) == REFLECTION_RAYS) ? 1 : 0; },
+                            [](int place) { ChooseReflections((place == 1) ? REFLECTION_RAYS : REFLECTION_GAME); }));
+    }
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ReflectionMethodOf(b) == REFLECTION_RAYS && !feature_settings::Upscaling(*b.aa); }));
-    page.Take({.match = "ssr_quality", .section = section, .shown = [b] { return ReflectionMethodOf(b) != REFLECTION_RAYS; }, .label = "Quality"});
-    page.Take({.match = "ssr_rays", .section = section, .shown = hierarchical, .label = "Rays"});
-    page.Take({.match = "SSRDenoiser", .section = section, .shown = hierarchical, .label = "Denoiser"});
+    page.Take({.match = "ssr_quality", .section = section, .shown = [b] { return ReflectionMethodOf(b) != REFLECTION_RAYS; }, .label = "Quality", .only_some_games = true});
+    page.Take({.match = "ssr_rays", .section = section, .shown = hierarchical, .label = "Rays", .only_some_games = true});
+    page.Take({.match = "SSRDenoiser", .section = section, .shown = hierarchical, .label = "Denoiser", .only_some_games = true});
     page.Take({.match = "RayTracedReflectionSamples", .section = section, .shown = rays, .label = "Samples"});
     page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = rays, .label = "Reuse"});
     page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = "Water Reflections"});
     page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = "Ray-Traced Specular Occlusion"});
-    page.Take({.match = "WaterClarity", .section = section, .shown = always});
-    page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = "Water Caustics"});
+    page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
+    page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = "Water Caustics", .only_some_games = true});
     page.Add(EmptyLine(section));
   }
 
