@@ -183,7 +183,10 @@ ATN's words, short:
       Mega Geometry room >20 GB 2.5 GB at start up to ~5 GB, 12-20 GB up to ~2.4 GB, <=12 GB up to ~1.2 GB (ATN's stress
       battle needed ~200 K clusters: over the 12 GB tier's 131 K), render-size textures ~1-1.5 GB at 4K native, the addon's
       shared RT textures ~1 GB, Ray Reconstruction ~1 GB.
-- [ ] NEXT BATCH (ATN 2026-11-01): TLAS instances growing on their own instead of a fixed MAX_INSTANCES (ATN asked for a
+- [x] DONE 2026-11-03 (Monday item 1, helper only; harness only, not run in game): placed instances grow by themselves from 524,288 (x2 at 3/4
+      of the last trace's count, on a worker, up to 16.7 M over 20 GB, 8.4 M over 12 GB, else 4.2 M), TLAS and clear only as far as cpu + drawn +
+      last written. Harness, same scene: default TLAS 0.28 -> 0.05 ms, scene 0.29 -> 0.18 ms. 2.56 M placed: old loses instances (3 checks fail), new passes, 3.7 ms TLAS, +1.4 GB.
+      NEXT BATCH (ATN 2026-11-01): TLAS instances growing on their own instead of a fixed MAX_INSTANCES (ATN asked for a
       slider up to 5,000,000 for future huge battles): read back rt_place's STATE_WRITTEN each request, grow x2 when 3/4
       full (as the cluster room: on a worker, put in between requests) up to D3D12's 16,777,216; the TLAS built for the
       last written count + margin, not the whole cap (now every frame builds all 524,288 descs: ~0.55 ms). A fixed 5 M cap

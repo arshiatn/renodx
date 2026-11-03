@@ -45,6 +45,7 @@ cbuffer Camera : register(b2) {
   float4 view_projection[4];  // the trace's camera registers: clip = (dot(position, [0]), ...); all 0: none
   uint sway_flags;            // rt_sway.hlsli
   float sway_range;
+  uint table_entries;  // a power of two: rt_d3d12.hpp placed_capacity_ x 2
 };
 
 static const uint MODE_CLEAR = 0u;
@@ -75,7 +76,6 @@ static const uint STATE_BEFORE = 4u;
 static const uint STATE_CPU_BEFORE = 8u;
 static const uint STATE_CPU = 12u;
 static const uint STATE_TABLE = 16u;
-static const uint TABLE_ENTRIES = 1u << 20;  // rt_d3d12.hpp PLACE_TABLE
 static const uint FRAME_MASK = 0xFFFFFFu;
 static const float MAX_TRANSLATION = 2.0e5f;  // metres from the BLAS's place (battle maps: a few kilometres)
 static const float MAX_SCALE = 1000.f;
@@ -104,14 +104,14 @@ uint PlaceKey(uint record, float3 position, bool grass) {
 
 // False: a desc with this key is in already (a full run of the table takes it in).
 bool Insert(uint key) {
-  uint slot = key & (TABLE_ENTRIES - 1u);
+  uint slot = key & (table_entries - 1u);
   [loop]
   for (uint probe = 0u; probe < 32u; ++probe) {
     uint previous = 0u;
     state.InterlockedCompareExchange(STATE_TABLE + slot * 4u, 0u, key, previous);
     if (previous == 0u) return true;
     if (previous == key) return false;
-    slot = (slot + 1u) & (TABLE_ENTRIES - 1u);
+    slot = (slot + 1u) & (table_entries - 1u);
   }
   return true;
 }
@@ -128,7 +128,7 @@ void Append(uint4 row0, uint4 row1, uint4 row2, uint4 tail) {
 
 [numthreads(64, 1, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
-  const uint index = id.x;
+  const uint index = id.x + id.y * (65535u * 64u);  // rows of 65535 groups (D3D12's most along x)
   if (mode == MODE_CLEAR) {
     if (index == 0u) {
       state.Store(STATE_BEFORE, min(state.Load(STATE_WRITTEN), max_instances));
@@ -136,7 +136,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       state.Store(STATE_WRITTEN, first_instance);
       state.Store(STATE_CPU, first_instance);
     }
-    if (index < TABLE_ENTRIES / 4u) state.Store4(STATE_TABLE + index * 16u, uint4(0u, 0u, 0u, 0u));
+    if (index < table_entries / 4u) state.Store4(STATE_TABLE + index * 16u, uint4(0u, 0u, 0u, 0u));
     if (index >= first_instance && index < max_instances) {
       [unroll]
       for (uint part = 0u; part < 64u; part += 16u) {

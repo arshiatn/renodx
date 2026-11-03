@@ -265,7 +265,7 @@ class RtScene12 {
       slot.jobs = Buffer(PLACE_TABLE_BYTES + uint64_t{PLACE_JOBS} * 32, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
                          D3D12_RESOURCE_STATE_GENERIC_READ);
       slot.left_out = Buffer(LEFT_OUT_BYTES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
-      slot.left_out_readback = Buffer(LEFT_OUT_BYTES, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+      slot.left_out_readback = Buffer(LEFT_OUT_BYTES + sizeof(uint32_t), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
       if (FAILED(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf())))
           || FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
                                                IID_PPV_ARGS(slot.list.GetAddressOf())))
@@ -280,15 +280,7 @@ class RtScene12 {
       }
       slot.list->SetName(std::format(L"slot {}", &slot - slots_.data()).c_str());
     }
-    // The vertex copy (BLAS inputs), the TLAS for the most instances, the records and pools.
-    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS top_inputs = {
-        .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
-        .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD,
-        .NumDescs = MAX_INSTANCES,
-        .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
-    };
-    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO top_info = {};
-    device_->GetRaytracingAccelerationStructurePrebuildInfo(&top_inputs, &top_info);
+    // The vertex copy (BLAS inputs), the records and pools, the TLAS and its instances' room (PlacedRoom).
     vertex_buffer_ = Buffer(uint64_t{TRANSFER_VERTICES} * 16, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                             D3D12_RESOURCE_STATE_COPY_DEST);
     // The scene data pass's garbage count starts from these (none, no capture).
@@ -298,15 +290,15 @@ class RtScene12 {
       std::memcpy(start, none.data(), sizeof(none));
       left_out_start_->Unmap(0, nullptr);
     }
-    tlas_ = Buffer(top_info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                   D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-    tlas_scratch_ = Buffer(top_info.ScratchDataSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     // The smoke's TLAS: its one instance (none: the smoke stays out of the trace).
-    top_inputs.NumDescs = 1;
-    top_inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS smoke_inputs = {
+        .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
+        .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE,
+        .NumDescs = 1,
+        .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+    };
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO smoke_info = {};
-    device_->GetRaytracingAccelerationStructurePrebuildInfo(&top_inputs, &smoke_info);
+    device_->GetRaytracingAccelerationStructurePrebuildInfo(&smoke_inputs, &smoke_info);
     smoke_tlas_ = Buffer(smoke_info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                          D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
     smoke_tlas_scratch_ = Buffer(smoke_info.ScratchDataSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
@@ -321,20 +313,20 @@ class RtScene12 {
     dynamic_uvs_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? DYNAMIC_UVS
                    : (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? DYNAMIC_UVS / 2
                                                                               : DYNAMIC_UVS / 4;
+    // The TLAS's instances grow up to D3D12's most over 20 GB, 8,388,608 over 12 GB, else 4,194,304 (powers of two: rt_place's table).
+    placed_limit_ = (adapter_desc.DedicatedVideoMemory > (size_t{20} << 30))   ? D3D12_RAYTRACING_MAX_INSTANCES_PER_TOP_LEVEL_ACCELERATION_STRUCTURE
+                    : (adapter_desc.DedicatedVideoMemory > (size_t{12} << 30)) ? (1u << 23)
+                                                                               : (1u << 22);
     uv_pool_ = STATIC_UVS + (SLOTS * dynamic_uvs_);
     records_ = pool(uint64_t{RECORD_COUNT} * 16);
     uvs_ = pool(uint64_t{uv_pool_} * 4);
     normals_ = pool(uint64_t{NORMAL_POOL} * 4);
-    // Placed meshes (v14): their build rows by record; the TLAS's instances when some are placed, two in turn (the last
-    // one's carried instances copied into the next).
+    // Placed meshes (v14): their build rows by record.
     build_rows_ = Buffer(uint64_t{STATIC_RECORDS} * 48, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    for (auto& placed : placed_instances_) {
-      placed = Buffer(uint64_t{MAX_INSTANCES} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), D3D12_HEAP_TYPE_DEFAULT,
-                      D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    if (PlacedRoom room; MakePlacedRoom(MAX_INSTANCES, &room)) {
+      UsePlacedRoom(&room);
     }
-    placed_state_ = Buffer(16 + uint64_t{PLACE_TABLE} * 4, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     if (!vertex_buffer_ || !left_out_start_ || !tlas_ || !tlas_scratch_ || !records_ || !uvs_ || !normals_ || !build_rows_
         || !placed_instances_[0] || !placed_instances_[1] || !placed_state_) {
       return Fail("Ray tracing: D3D12 buffers failed");
@@ -996,6 +988,11 @@ class RtScene12 {
     WaitFor(trace_value_);
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
+    // The last trace's placed instances (it is done: its slot's readback).
+    if (placed_slot_ != SLOTS) {
+      placed_written_ = slots_[placed_slot_].left_out_data[LEFT_OUT_BYTES / 4];
+      placed_slot_ = SLOTS;
+    }
     if (!slot.capture_keys.empty()) {
       const uint32_t* found = slot.left_out_data;
       left_out_.far_off += found[0];
@@ -1466,6 +1463,7 @@ class RtScene12 {
     for (auto& baking : micromap_baking_) {
       if (baking.valid()) baking.wait();
     }
+    if (placed_growing_.valid()) placed_growing_.wait();
 #if defined(RENODX_NVAPI_CLUSTERS)
     if (cluster_growing_.valid()) cluster_growing_.wait();
 #endif
@@ -1511,9 +1509,9 @@ class RtScene12 {
   static constexpr size_t STAMPS = 10;
   static constexpr uint32_t TRACE_PART_SUN = 1u << 30;  // rt_trace.cs_6_5.hlsl PART_*
   static constexpr uint32_t TRACE_PART_AMBIENT = 1u << 31;
-  // The TLAS's instances at most (32 MB of descs; grass past its share is placed, a patch an instance: ATN's second
-  // profile placed up to 126 K; 524,288 since 262,144 ran out in ATN's 2026-11-01 stress battle: 70-184 K placed a frame,
-  // the kept ones past the limit left out, others each frame: shadows flickering).
+  // The CPU's instances at most, and the placed ones' room at first (32 MB of descs; grass past its share is placed, a
+  // patch an instance: ATN's second profile placed up to 126 K; 524,288 since 262,144 ran out in ATN's 2026-11-01 stress
+  // battle: 70-184 K placed a frame, the kept ones past the limit left out, others each frame: shadows flickering).
   static constexpr UINT MAX_INSTANCES = 524288;
   static constexpr UINT TRANSFER_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_TRANSFER_HEIGHT;
   // Meshes drawn within this many frames cast (but the terrain only in frames that draw it); unseen longer: released.
@@ -1581,7 +1579,6 @@ class RtScene12 {
   // records' BLAS addresses in its upload buffer; the dedupe table's keys.
   static constexpr UINT PLACE_JOBS = dlaa_bridge::RT_CAPTURES + dlaa_bridge::RT_PLACEMENTS;
   static constexpr uint64_t PLACE_TABLE_BYTES = uint64_t{STATIC_RECORDS} * 8;
-  static constexpr UINT PLACE_TABLE = 1u << 20;  // rt_place's dedupe table (twice MAX_INSTANCES)
   static constexpr UINT CLUSTER_RECORDS = STATIC_RECORDS + SLOTS * dlaa_bridge::RT_CAPTURES;
   static constexpr UINT RECORD_COUNT = CLUSTER_RECORDS + SLOTS * MAX_CLUSTERS;
   static constexpr UINT STATIC_TRIANGLES = 8u << 20;
@@ -2062,6 +2059,59 @@ class RtScene12 {
     return buffer;
   }
 
+  // The placed instances' room: their descs (two in turn, the last one's carried instances copied into the next), the
+  // counters and dedupe table (twice the descs), the TLAS and its scratch. A bigger one is made on a worker and put in at a
+  // request's start.
+  struct PlacedRoom {
+    uint32_t capacity = 0;
+    std::array<ComPtr<ID3D12Resource>, 2> instances;
+    ComPtr<ID3D12Resource> state;
+    ComPtr<ID3D12Resource> tlas;
+    ComPtr<ID3D12Resource> tlas_scratch;
+  };
+
+  // Its buffers (any thread). False: no memory for them.
+  bool MakePlacedRoom(uint32_t capacity, PlacedRoom* made) const {
+    const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
+        .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
+        .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD,
+        .NumDescs = capacity,
+        .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
+    };
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
+    device_->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+    made->capacity = capacity;
+    for (auto& placed : made->instances) {
+      placed = Buffer(uint64_t{capacity} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), D3D12_HEAP_TYPE_DEFAULT,
+                      D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    }
+    made->state = Buffer(16 + (uint64_t{capacity} * 2 * 4), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                         D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    made->tlas = Buffer(info.ResultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                        D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+    made->tlas_scratch = Buffer(info.ScratchDataSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    return made->instances[0] && made->instances[1] && made->state && made->tlas && made->tlas_scratch;
+  }
+
+  // In place of the room before (released once the GPU is past this request).
+  void UsePlacedRoom(PlacedRoom* made) {
+    const std::array<std::pair<ComPtr<ID3D12Resource>*, ComPtr<ID3D12Resource>*>, 5> room = {{
+        {std::addressof(placed_instances_[0]), std::addressof(made->instances[0])},
+        {std::addressof(placed_instances_[1]), std::addressof(made->instances[1])},
+        {std::addressof(placed_state_), std::addressof(made->state)},
+        {std::addressof(tlas_), std::addressof(made->tlas)},
+        {std::addressof(tlas_scratch_), std::addressof(made->tlas_scratch)},
+    }};
+    for (const auto& [now, next] : room) {
+      if (*now) {
+        releases_.push_back({.value = own_value_ + 1, .resource = std::move(*now)});
+      }
+      *now = std::move(*next);
+    }
+    placed_capacity_ = made->capacity;
+  }
+
 #if defined(RENODX_NVAPI_CLUSTERS)
   // A buffer for Mega Geometry's operations (written by them: unordered access).
   ComPtr<ID3D12Resource> ClusterBuffer(uint64_t bytes, D3D12_RESOURCE_STATES state, std::source_location where = std::source_location::current()) const {
@@ -2408,6 +2458,47 @@ class RtScene12 {
     list->SetDescriptorHeaps(1, heaps);
     list->SetComputeRootSignature(root_signature_.Get());
     list->SetComputeRootDescriptorTable(ROOT_TABLE, descriptors_->GetGPUDescriptorHandleForHeapStart());
+    // The last trace's placed instances past 3/4 of their room: twice it or more, up to the GPU's limit, made on a worker and
+    // put in at the first request after, with the kept descs and the counters (the last trace is done; paths requests on
+    // their way hold the old TLAS until the release's fence value). No memory for it: the room stays.
+    if (placed_growing_.valid() && placed_growing_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+      if (const std::unique_ptr<PlacedRoom> made = placed_growing_.get(); made) {
+        ID3D12Resource* carried = made->instances[placed_last_].Get();
+        ID3D12Resource* kept = placed_instances_[placed_last_].Get();
+        const std::array<D3D12_RESOURCE_BARRIER, 4> to_carry = {
+            Transition(kept, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+            Transition(carried, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
+            Transition(placed_state_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+            Transition(made->state.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+        };
+        list->ResourceBarrier(static_cast<UINT>(to_carry.size()), to_carry.data());
+        if (placed_written_ != 0) {
+          list->CopyBufferRegion(carried, 0, kept, 0, uint64_t{std::min(placed_written_, placed_capacity_)} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+        }
+        list->CopyBufferRegion(made->state.Get(), 0, placed_state_.Get(), 0, 16);
+        const std::array<D3D12_RESOURCE_BARRIER, 2> carried_back = {
+            Transition(carried, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+            Transition(made->state.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        };
+        list->ResourceBarrier(static_cast<UINT>(carried_back.size()), carried_back.data());
+        UsePlacedRoom(made.get());
+        if (details_) {
+          slow_report_ += std::format("{}[TW ray tracing] Room for {} placed instances now ({} written).", (slow_report_.empty() ? "" : "\n"), placed_capacity_, placed_written_);
+        }
+      } else {
+        slow_report_ += std::format("{}[TW ray tracing] No memory for more placed instances: the room stays {}.", (slow_report_.empty() ? "" : "\n"), placed_capacity_);
+        placed_limit_ = placed_capacity_;
+      }
+    }
+    if (!placed_growing_.valid() && uint64_t{placed_written_} * 4 > uint64_t{placed_capacity_} * 3 && placed_capacity_ < placed_limit_) {
+      const auto capacity = static_cast<uint32_t>(std::min<uint64_t>(
+          std::max<uint64_t>(uint64_t{placed_capacity_} * 2, std::bit_ceil(uint64_t{placed_written_} * 2)), placed_limit_));
+      placed_growing_ = std::async(std::launch::async, [this, capacity]() -> std::unique_ptr<PlacedRoom> {
+        auto made = std::make_unique<PlacedRoom>();
+        if (!MakePlacedRoom(capacity, made.get())) return nullptr;
+        return made;
+      });
+    }
     // Unused root descriptors still point at a buffer.
     list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, slot->table->GetGPUVirtualAddress());
     for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
@@ -3764,7 +3855,7 @@ class RtScene12 {
     }
     // Placed meshes (v14; not with the partitioned TLAS): rt_place writes their descs after the CPU's instances, this
     // request's draws' (the new captures', then the placements') and those kept from the last dispatch; the TLAS takes
-    // MAX_INSTANCES descs (past the written ones inactive).
+    // place_end descs (past the written ones inactive).
     D3D12_GPU_VIRTUAL_ADDRESS instance_descs = slot->instances->GetGPUVirtualAddress();
     UINT tlas_instances = instance_count;
     uint32_t placed_drawn = 0;
@@ -3803,6 +3894,9 @@ class RtScene12 {
       };
       for (const auto& built_rows : built_placed) place(built_rows);
       for (uint32_t index = 0; index < placement_count; ++index) place(shared.rt_placements[index]);
+      // All this TLAS can hold: the CPU's, this request's drawn and the last dispatch's descs (the kept ones come from those,
+      // so none is cut); no clear and no build past them.
+      const auto place_end = static_cast<uint32_t>(std::min<uint64_t>(uint64_t{instance_count} + placed_drawn + placed_written_, placed_capacity_));
       ID3D12Resource* written = placed_instances_[1 - placed_last_].Get();
       const auto to_copy = Transition(written, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
       list->ResourceBarrier(1, &to_copy);
@@ -3821,18 +3915,28 @@ class RtScene12 {
       // The camera (b2: grass outside the view stays out) and the sway's flags and range, then clear, drawn, kept (rt_place's
       // modes). Grass keeps its alpha tests (v108 took its micromaps as 2-state: a micro-triangle part blade, part gap went
       // solid, fields black in ATN's debug31; Fast Leaf Shadows still does that for every ray).
-      const std::array<uint32_t, 2> place_sway = {sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range)};
+      const std::array<uint32_t, 3> place_sway = {sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range), placed_capacity_ * 2};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 16, shared.rt_view_projection, 0);
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(place_sway.size()), place_sway.data(), 16);
       for (const uint32_t mode : {0u, 1u, 2u}) {
-        const uint32_t threads = (mode == 1u) ? placed_drawn : MAX_INSTANCES;
+        // Clearing also takes the dedupe table, four entries a thread.
+        const uint32_t threads = (mode == 0u) ? std::max(place_end, placed_capacity_ / 2) : ((mode == 1u) ? placed_drawn : place_end);
         if (threads == 0 || (mode == 2u && (shared.rt_flags & dlaa_bridge::RT_NO_KEPT) != 0)) continue;
-        const std::array<uint32_t, 8> place_dispatch = {mode, job_count, placed_drawn, instance_count, frame, MAX_INSTANCES, RECENT_FRAMES,
+        const std::array<uint32_t, 8> place_dispatch = {mode, job_count, placed_drawn, instance_count, frame, place_end, RECENT_FRAMES,
                                                         STATIC_RECORDS};
         list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(place_dispatch.size()), place_dispatch.data(), 0);
-        list->Dispatch((threads + 63) / 64, 1, 1);
+        // Rows of 65535 groups (D3D12's most along x; rt_place's index).
+        const uint32_t groups = (threads + 63) / 64;
+        list->Dispatch(std::min(groups, 65535u), (groups + 65534) / 65535, 1);
         list->ResourceBarrier(1, &uav_barrier);
       }
+      // The counter for the next trace (its room above, its place_end).
+      const auto to_read = Transition(placed_state_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+      list->ResourceBarrier(1, &to_read);
+      list->CopyBufferRegion(slot->left_out_readback.Get(), LEFT_OUT_BYTES, placed_state_.Get(), 0, sizeof(uint32_t));
+      const auto read_done = Transition(placed_state_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      list->ResourceBarrier(1, &read_done);
+      placed_slot_ = slot_index;
       const auto to_build = Transition(written, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
       list->ResourceBarrier(1, &to_build);
       // Unused root descriptors still point at a buffer.
@@ -3841,7 +3945,7 @@ class RtScene12 {
         list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
       }
       instance_descs = written->GetGPUVirtualAddress();
-      tlas_instances = MAX_INSTANCES;
+      tlas_instances = place_end;
       placed_last_ = 1 - placed_last_;
     }
     if (vertex_end != 0) {
@@ -5119,6 +5223,11 @@ class RtScene12 {
   ComPtr<ID3D12Resource> smoke_tlas_scratch_;
   uint32_t placed_last_ = 0;
   ComPtr<ID3D12Resource> placed_state_;
+  uint32_t placed_capacity_ = MAX_INSTANCES;  // their room now (PlacedRoom)
+  uint32_t placed_limit_ = MAX_INSTANCES;     // the most (by the GPU's memory)
+  uint32_t placed_written_ = 0;               // the last trace's, fitting or not (rt_place's counter)
+  size_t placed_slot_ = SLOTS;                // whose readback holds the counter of the last trace (SLOTS: read already)
+  std::future<std::unique_ptr<PlacedRoom>> placed_growing_;
   ComPtr<ID3D12PipelineState> place_pipeline_;
   // The units' BLAS (refitted in place), the vertex counts of its draws at its last build, refits since.
   ComPtr<ID3D12Resource> units_blas_;
