@@ -19,11 +19,11 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
       Found: WH3's constants sit at b10, every other TW game's at b13: `frame_generation::Install` takes the register (b13 gave a black HUD-less image in the WARP test). Not done: FG's method row is P5's (until then saved DLSS, so off NVIDIA its status line says why); not run in game.
       ATN's check: FG on and off without a restart in HDR10, scRGB, SDR; FG Debug View HUD-less with flares and sharpening, no UI, portraits out; FG off: helper's memory falls after 10 s; menus show frames, no freeze.
 - [x] P5 The page: Attila's layout, one copy of the code (`graphics_page::Apply`, game facts in `Bindings` and `Texts`, defaults Attila's). Attila's rows, every state's visible rows, buttons and sliders identical in a dump (tools/tw/page_dump); WH3: no key lost, pages 0 and 2 identical, 101 rows on the page.
-      Not done: milestone 1's review, fixes and twwarhammer3_v30.zip (next step); not run in game. Row left: Debug View's labels name Reflections, Point Lights, Fog (magenta here, its tooltip says so).
+      Milestone 1 closed: review's 5 low findings fixed (guide textures only with RR, saved RTAO + GT-VBAO, 2 Rays a Pixel texts, Motion Debug View's texture); Attila's page dump identical; twwarhammer3_v30.zip in Downloads. Not run in game. Row left: Debug View's labels name Reflections, Point Lights, Fog (magenta here, its tooltip says so).
       ATN's check: walk the page: each method slider follows a preset; RT/PT sets rays, RTAO over the game's AO, path-traced GI; Upscaling Mode rows absent; FG Method Auto; off NVIDIA no DLSS place; NRD on: AO and Light Bounce not denoised twice (no softer picture than Built-in with its Denoisers off).
 - [ ] P7 Graphics 2 of 2 on names that exist in today's exe
 - [ ] P12 HDR page parity (SDR preset, Fog Strength)
-- [ ] P6 RT scene: leaves, grass, 4-bone units, flags, guides
+- [ ] P6 RT scene: leaves, grass, 4-bone units, flags, guides (6b puts `ray_traced_guides` back: in `taa_dlss.hpp`'s `Prepare` call and `WriteGuides`' gate; both ask for Ray Reconstruction alone today)
 - [ ] P8 Upscaling below 100%: Experimental, off
 - [ ] P9 Sun shader features (Own Sky Rays, Path-Traced AO, Coloured Shadows, readers)
 - [ ] P10 Reflections, specular occlusion, water
