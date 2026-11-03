@@ -1008,7 +1008,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Every shadow from rays: the sun's (terrain, buildings, trees, units, grass, banners) and the torches' and\n"
                      "fires'. Replaces the game's shadow maps and Screen-Space Shadows.\n"
-                     "Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
+                     "Needs DLAA or an upscaler and renodx-tw-dlaa64.exe.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
       },
@@ -1031,7 +1031,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Torch and Fire Shadow Softness",
           .section = section,
           .tooltip = "How big torches and fires are for their soft shadows. 0: sharp.\n"
-                     "Needs Ray Reconstruction (DLSS's Ray Reconstruction setting).",
+                     "Needs DLSS Ray Reconstruction (NVIDIA only).",
           .min = 0.f,
           .max = 1.f,
           .format = "%.2f m",
@@ -1073,8 +1073,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Rays a Pixel (Use higher for lower scalings)",
           .section = section,
           .tooltip = "More rays for every rendered pixel, each from its own spot of it: less noise, finer shadow edges.\n"
-                     "The cost grows with the rays. Match Output: as many rays on screen as at DLAA (up to 8 a pixel,\n"
-                     "1 at DLAA). 2 to 8 rays also work at DLAA. The rendered image stays at DLSS's size.",
+                     "The cost grows with the rays. Match Output: as many rays on screen as at 100% (up to 8 a pixel,\n"
+                     "1 at 100%). 2 to 8 rays also work at 100%. The rendered image stays at the upscaler's size.",
           .labels = {"1", "Match Output", "2", "3", "4", "5", "6", "7", "8"},
           .is_enabled = [aa] { return feature_settings::Upscaling(*aa); },
       },
@@ -1181,7 +1181,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 1.f,
           .label = "Coloured Shadows",
           .section = section,
-          .tooltip = "Sunlight through cloth, sails and banners takes their colour.\nNeeds Light Through Leaves and Ray Reconstruction.",
+          .tooltip = "Sunlight through cloth, sails and banners takes their colour.\nNeeds Light Through Leaves and DLSS Ray Reconstruction (NVIDIA only).",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f && sliders->leaf_light != 0.f; },
           .is_visible = [] { return internal::ambient_cube != 0; },
@@ -1256,9 +1256,9 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Ray-Traced Ambient Occlusion (Experimental)",
           .section = section,
           .tooltip = ambient_alone ? "Darker crevices and contact shade from rays, in place of the game's ambient occlusion and\n"
-                                     "GT-VBAO. Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe."
+                                     "GT-VBAO. Needs DLAA or an upscaler and renodx-tw-dlaa64.exe."
                                    : "Darker crevices and contact shade from rays, on top of the game's ambient occlusion\n"
-                                     "(keep it on). Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
+                                     "(keep it on). Needs DLAA or an upscaler and renodx-tw-dlaa64.exe.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
       },
@@ -1294,7 +1294,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Ray-Traced AO Rate",
           .section = section,
-          .tooltip = "Quarter: one pixel of each 2 x 2 traced a frame, in turn (a quarter of the rays; DLAA / DLSS\n"
+          .tooltip = "Quarter: one pixel of each 2 x 2 traced a frame, in turn (a quarter of the rays; the upscaler\n"
                      "smooth it over frames). Faster, a little softer at edges.",
           .labels = {"Every pixel", "Quarter"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->ambient_occlusion != 0.f; },
@@ -1383,7 +1383,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "What finds the Light Bounce's light in place of its screen-space search:\n"
                      "Rays: one bounce through the scene, nothing guessed behind what the camera sees.\n"
                      "Path Tracing: light bouncing several times, also from what is off screen. Heavy.\n"
-                     "Turns the Light Bounce on. Needs DLAA, an RTX GPU and renodx-tw-dlaa64.exe.",
+                     "Turns the Light Bounce on. Needs DLAA or an upscaler and renodx-tw-dlaa64.exe.",
           .labels = {"Off", "Rays", "Path Tracing"},
           .is_enabled = dlaa_on,
           .on_change = light_bounce_on,
@@ -1508,7 +1508,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Ray-Traced Reflections (Experimental)",
           .section = section,
           .tooltip = "Reflections on armour, metal and water from rays: what is off screen or hidden shows too.\n"
-                     "Needs DLAA, an RTX GPU, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
+                     "Needs DLAA or an upscaler, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
       },
@@ -1558,7 +1558,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Ray-Traced Specular Occlusion (Experimental)",
           .section = section,
           .tooltip = "The sky's reflection dimmed where something blocks it.\n"
-                     "Needs DLAA, an RTX GPU, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
+                     "Needs DLAA or an upscaler, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
       },
