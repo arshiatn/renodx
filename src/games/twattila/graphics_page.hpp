@@ -387,6 +387,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"RayTracedOffScreenSway", 1.f},
                             {"RayTracedGrassShadowRange", 0.f},
                             {"RayTracedPathAmbient", 1.f},
+                            {"RayTracedPathSkyApart", 1.f},
                             {"RayTracedLightBounce", 2.f},
                             {"light_bounce_strength", 1.f},
                             {"RayTracedLightBounceRays", 1.f},
@@ -492,6 +493,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
     page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
+    page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
     page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
     page.Add(MoreOptions(section, &more_ao, gtvbao));
     const auto more_gtvbao = more(&more_ao, gtvbao);

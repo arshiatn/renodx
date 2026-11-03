@@ -81,6 +81,7 @@ static const float REFLECT_REUSE_ROUGHNESS = 0.3f;  // the lobes broad enough fo
 static const uint PATH_REFLECT_OWN = 8388608u;          // Own ReSTIR: the reflections' own reservoirs
 static const uint PATH_REFLECT_OWN_HISTORY = 16777216u; // last frame's are last frame's
 static const uint PATH_REFLECT_PARITY = 33554432u;      // this frame's set: 1 (else 0)
+static const uint PATH_SKY_APART = 134217728u;          // Own Sky Rays: Path-Traced AO's sky past the reservoirs
 static const uint REFLECT_NEIGHBOURS = 4u;
 static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
 static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away
@@ -597,17 +598,25 @@ void PathTraceTexel(uint2 id) {
   const float first_range = ((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range;
   // Path-Traced Ambient: the sky's samples too (ATN's debug29-30: without them its ambient was the ground's bounce alone,
   // darker and warmer over the reservoirs' 1-2 s).
-  const bool sky_samples = (path_flags & PATH_AMBIENT) != 0u;
+  // Own Sky Rays: a reservoir shows one sample, whatever the rays, and a neighbour sees a sky sample (a point at the AO
+  // range) at another angle, noise even where nothing blocks the sky. So the sky stays out: stratified rays as Ray-Traced
+  // AO's, their plain mean (kept in the bounce for ReuseTexel to add).
+  const bool sky_apart = (path_flags & PATH_SKY_APART) != 0u;
+  const bool sky_samples = (path_flags & PATH_AMBIENT) != 0u && !sky_apart;
+  const float turn = InterleavedGradientNoise(float2(id));
+  const float band_jitter = Random(uint3(id, frame * 16u + 1024u));
+  float3 sky = 0.f;
   float3 arriving = 0.f;
   [loop]
   for (uint path = 0u; path < samples; ++path) {
-    const float3 direction = CosineDirection(normal, Random(uint3(id, frame * 16u + path * 2u + 1024u)),
-                                             Random(uint3(id, frame * 16u + path * 2u + 1025u)));
+    const float3 direction = CosineDirection(normal, sky_apart ? ((float)path + band_jitter) / (float)samples : Random(uint3(id, frame * 16u + path * 2u + 1024u)),
+                                             sky_apart ? frac(turn + (float)path * 0.618034f) : Random(uint3(id, frame * 16u + path * 2u + 1025u)));
     float first_distance;
     float3 first_normal;
     const float3 sample_light = PathRadiance(origin, direction, first_range, sky_calibration, id, path, first_distance, first_normal)
                                 * ContactShade(first_distance);
     arriving += sample_light;
+    if (first_distance >= 1e29f) sky += sample_light;
     // Cosine-weighted rays: the target over their density is pi times the light's luminance.
     Reservoir candidate;
     candidate.hit = origin + direction * min(first_distance, first_range);
@@ -641,6 +650,7 @@ void PathTraceTexel(uint2 id) {
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
   reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP);
   StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
+  if (sky_apart) bounce[id] = float4(sky / samples, 0.f);
 }
 
 // ReSTIR GI's spatial reuse: a texel's reservoir merged with neighbours' on the same surface (their samples' density
@@ -680,9 +690,9 @@ void ReuseTexel(uint2 id) {
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
   const float3 to_hit = combined.hit - origin;
   const float hit_distance = length(to_hit);
-  float3 arriving = 0.f;
+  float3 arriving = ((path_flags & PATH_SKY_APART) != 0u) ? bounce[id].rgb : 0.f;
   if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
-    arriving = combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
+    arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
   bounce[id] = float4(arriving, distance(position.xyz, Camera()));
 }

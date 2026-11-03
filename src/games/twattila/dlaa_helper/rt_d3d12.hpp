@@ -1281,6 +1281,7 @@ class RtScene12 {
                            && GetEnvironmentVariableW(L"RENODX_TW_NO_REUSE", nullptr, 0) == 0 && EnsureHistory(HISTORY_REUSE, frame);
         if (path_traced && (requested & dlaa_bridge::RT_PATH_AMBIENT) != 0) {
           flags |= PATH_AMBIENT;
+          if ((requested & dlaa_bridge::RT_PATH_SKY_APART) != 0) flags |= PATH_SKY_APART;
           path_ambient_frame_ = frame;
         }
         // The learned lighting stays while the game's ambient is away (also through the reflections' requests: the radiance
@@ -1694,6 +1695,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_REFLECT_OWN = 8388608;
   static constexpr uint32_t PATH_REFLECT_OWN_HISTORY = 16777216;
   static constexpr uint32_t PATH_REFLECT_PARITY = 33554432;
+  static constexpr uint32_t PATH_SKY_APART = 134217728;
   static constexpr uint32_t PATH_LOCAL_LIGHTS = 8192;
   static constexpr uint32_t PATH_AMBIENT_HISTORY = 16384;  // rt_camera.hlsli
   static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;

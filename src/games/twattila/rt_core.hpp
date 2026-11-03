@@ -92,6 +92,7 @@ struct Settings {
   // Path-Traced Ambient (with path_tracing): the paths bring the sky's light, the sun light draws lose the game's
   // ambient cube (rt_scene.hpp OnPathAmbientDraw), the ray-traced AO is off.
   bool path_ambient = false;
+  bool path_sky_apart = false;  // its sky averaged from each texel's rays, past ReSTIR GI's reservoirs
   // Ray-traced reflections and specular occlusion (bridge v8; the game's reflection pass reads them: Reflections()).
   bool reflections = false;
   bool specular_occlusion = false;
@@ -1916,6 +1917,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
       .path_flags = runtime.settings.path_tracing ? (dlaa_bridge::RT_PATH_TRACING | dlaa_bridge::RT_PATH_REUSE
                                                      | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u)
                                                      | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u)
+                                                     | ((runtime.path_ambient_on && runtime.settings.path_sky_apart) ? dlaa_bridge::RT_PATH_SKY_APART : 0u)
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u))
                                                   : 0u,

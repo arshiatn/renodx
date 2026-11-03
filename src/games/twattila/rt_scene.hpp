@@ -96,6 +96,7 @@ struct Sliders {
   float light_bounce_resolution = 1.f;  // 0 full, 1 half, 2 quarter
   float path_bounces = 2.f;
   float path_ambient = 0.f;  // Path-Traced Ambient (games InstallSunDraws gives the ambient cube's place)
+  float path_sky_apart = 1.f;
   float reflections = 0.f;
   float specular_occlusion = 0.f;
   float water_reflections = 1.f;  // the water's from its own surface (games whose reflection pass OnReflectionDraw hooks)
@@ -143,6 +144,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .path_tracing = sliders.light_bounce == 2.f && bounce,
       .path_bounces = static_cast<uint32_t>(sliders.path_bounces),
       .path_ambient = path_ambient,
+      .path_sky_apart = sliders.path_sky_apart != 0.f,
       .reflections = sliders.reflections != 0.f && dlaa,
       .specular_occlusion = sliders.specular_occlusion != 0.f && dlaa,
       .water_reflections = sliders.water_reflections != 0.f,
@@ -1392,6 +1394,19 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "ray-traced AO (less noise, faster). Small contact shadows follow the Light Bounce's resolution.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f; },
+          .is_visible = [] { return internal::ambient_cube != 0; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedPathSkyApart",
+          .binding = &sliders->path_sky_apart,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Path-Traced AO: Own Sky Rays",
+          .section = section,
+          .tooltip = "The sky's light averaged from each pixel's own rays, as in Ray-Traced AO:\n"
+                     "less noise, and more rays help. Off: through ReSTIR GI.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return aa->method == 5.f && sliders->light_bounce == 2.f && sliders->path_ambient != 0.f; },
           .is_visible = [] { return internal::ambient_cube != 0; },
       },
       new renodx::utils::settings::Setting{

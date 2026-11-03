@@ -204,6 +204,9 @@ constexpr uint32_t RT_REFLECTIONS_REUSE = 512;
 // Own ReSTIR (v19, a reflections request's; helpers before 55 ignore it): the reflections' rougher lobes resample their
 // own reservoirs (half resolution, reused over frames and between neighbours) with their own rays' light.
 constexpr uint32_t RT_REFLECTIONS_OWN = 1024;
+// Own Sky Rays (with RT_PATH_AMBIENT; older helpers ignore it): Path-Traced AO's sky past ReSTIR GI's reservoirs, the
+// plain mean of each texel's rays.
+constexpr uint32_t RT_PATH_SKY_APART = 4096;
 
 struct Shared {
   uint32_t version = VERSION;

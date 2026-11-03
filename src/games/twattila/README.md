@@ -190,6 +190,9 @@ current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader E
   DLAA; More Options switches it per effect. Global Illumination and Path-Traced AO take it now, they never did. A ray-traced
   image above the render size is not possible: shading runs at the render size until DLSS. Extra rays from their own spots of a
   pixel are the same rays a higher resolution would trace.
+- **Own Sky Rays** (Path-Traced AO, on by default): the sky's light averaged from each pixel's own rays, as in Ray-Traced AO, past
+  ReSTIR GI's reservoirs, which showed one ray's sample whatever the ray count. Rays a Pixel now lowers Path-Traced AO's noise, and it
+  matches Ray-Traced AO's brightness and colour. Torch and fire shadows take up to 8 rays too (they stopped at 4).
 - **Double work removed**: no depth pyramid when ray-traced reflections take every pixel; the Light Bounce's depth levels only for
   its screen-space trace. RT reflections, GT-VBAO, RT / PT AO and RT Shadows were already replacing the game's passes.
 - **Log Details** (Ray Tracing > More Options, off): the statistics written every 10 s, their clocks and GPU queries, and a slow
