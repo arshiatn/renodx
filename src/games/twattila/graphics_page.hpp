@@ -372,7 +372,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                          },
                          .is_visible = frame_generation});
     page.Take({.match = "Reflex", .section = section, .shown = nvidia});
-    page.Take({.match = "FrameGenerationFrameLimit", .section = section, .shown = nvidia});
+    page.Take({.match = "FrameGenerationFrameLimit", .section = section,
+               .shown = [nvidia] { return nvidia() || dlaa_bridge::FrameGenerationBackend() == dlaa_bridge::FG_BACKEND_XESS; },
+               .tooltip = "Caps the rendered frame rate with NVIDIA Reflex or Xe Low Latency (frame generation multiplies it). A\n"
+                          "cap the game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.\n"
+                          "Needs Reflex or frame generation on. 0: off."});
     const auto cmaa = [b] { return b.aa->method == 2.f; };
     page.Add(MoreOptions(section, &more_aa, [b] { return feature_settings::Upscaling(*b.aa) || b.aa->method == 2.f; }));
     page.Take({.match = "AntiAliasingExtraSharpness", .section = section, .shown = more(&more_aa, cmaa), .label = "Extra Sharpness"});
@@ -453,7 +457,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"PathTracingBounces", 1.f},
                             {"RayTracedReflections", 1.f},
                             {"RayTracedReflectionSamples", 1.f},
-                            {"RayTracedReflectionReuse", 2.f},
+                            {"RayTracedReflectionReuse", 0.f},
                             {"RayTracedWaterReflections", 1.f},
                             {"RayTracedSpecularOcclusion", 1.f},
                             {"WaterClarity", 1.f},
