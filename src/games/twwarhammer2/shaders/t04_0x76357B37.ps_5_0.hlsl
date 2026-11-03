@@ -115,7 +115,7 @@ void main(
   r0.w = min(10000, focus_distance);
   r0.z = r0.z + -r0.w;
   r0.z = r0.z * r0.z;
-  r0.w = dot(focal_length, focal_length);
+  r0.w = dot(focal_length.xx, focal_length.xx);
   r0.z = r0.z / r0.w;
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);

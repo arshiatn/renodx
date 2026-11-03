@@ -10,6 +10,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer2.ad
 - **Gamma Correction** (Rendering Mode SDR, on by default). On: any in-game Gamma shown as gamma 2.2, today's picture. Off:
   the game's own picture at the in-game Gamma. Rendering Mode SDR on Output SDR ignores Paper White (as Attila).
 - **Extra in Rendering Mode SDR**: Lens Flare, Vignette, Distortion and Sharpening work there (at 1 the picture is unchanged). Film Grain and Indicators stay HDR-only.
+- **Wrong constants from the decompiler** (checked against the game's own shaders):
+  - In-game depth of field: the sharp range around the focus was about 30% too narrow (f x f, the game has 2 x f x f).
+  - Branches and leaves in motion vectors and ray tracing: vertical wind strength (read the horizontal one).
+  - Motion vectors: emissive wind mask Y of units with it.
 
 ## v34 (2026-10-27, batch 5, untested in game; the helper GPU-tested)
 
