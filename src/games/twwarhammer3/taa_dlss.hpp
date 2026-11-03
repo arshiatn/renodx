@@ -543,7 +543,7 @@ inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_alia
   twattila::reflex::Update(swapchain, settings.reflex, settings.frame_limit);
   const std::unique_lock lock(internal::state.mutex);
   internal::state.settings = settings;
-  if (settings.debug_view != 1u) {
+  if (settings.debug_view != 1u || !twattila::anti_aliasing::Upscales(settings.method)) {
     internal::state.objects.motion_view_uav.Reset();
     internal::state.objects.motion_view.Reset();
   }
