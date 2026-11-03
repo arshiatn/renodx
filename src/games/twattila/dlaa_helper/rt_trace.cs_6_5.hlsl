@@ -48,9 +48,13 @@ static const float AMBIENT_BLEND = 0.2f;
 static const uint PART_SUN = 1u << 30;
 static const uint PART_AMBIENT = 1u << 31;
 // The sun's rays meet grass only while they are within GRASS_SHADOW_HEIGHT of their start's height (no blade is taller:
-// nothing past that can shade the start), at most GRASS_SHADOW_REACH along them (a sun near the horizon).
+// nothing past that can shade the start), at most GRASS_SHADOW_REACH along them (a sun near the horizon), and only past the
+// pixel's own blade: GRASS_SELF_SURFACE_OFFSETS of SurfaceOffset, at most GRASS_SELF_REACH. The swaying copy lies exactly
+// under its blades' pixels, whose jittered depth put a ray's start before or behind the blade from frame to frame.
 static const float GRASS_SHADOW_HEIGHT = 2.5f;  // metres
 static const float GRASS_SHADOW_REACH = 40.f;   // metres
+static const float GRASS_SELF_SURFACE_OFFSETS = 4.f;
+static const float GRASS_SELF_REACH = 0.25f;    // metres
 // A surface this edge-on to the sun (the cosine; more with distance: the depth's normal gets worse) asks its triangle which
 // way it faces (ShownNormal).
 static const float EDGE_ON = 0.1f;
@@ -225,7 +229,7 @@ void main(uint3 id : SV_DispatchThreadID) {
         RayDesc grass_ray;
         grass_ray.Origin = start;
         grass_ray.Direction = toward;
-        grass_ray.TMin = 0.f;
+        grass_ray.TMin = min(GRASS_SELF_SURFACE_OFFSETS * offset, GRASS_SELF_REACH);
         grass_ray.TMax = min(GRASS_SHADOW_HEIGHT / max(toward.y, 1.0001413e-3f), GRASS_SHADOW_REACH);
         SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) grass;
         grass.TraceRayInline(scene, scene_ray_flags, GRASS, grass_ray);

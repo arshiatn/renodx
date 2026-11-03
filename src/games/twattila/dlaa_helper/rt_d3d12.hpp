@@ -1664,10 +1664,11 @@ class RtScene12 {
   static constexpr uint64_t CLUSTER_ARGS_OFFSET = 0;
   static constexpr uint64_t CLUSTER_BLAS_ARGS_OFFSET = uint64_t{MAX_CLUSTERS} * 64;
   static constexpr uint64_t CLUSTER_COUNT_OFFSET = CLUSTER_BLAS_ARGS_OFFSET + (CLUSTER_BLASES * 16);
-  // rt_sway.hlsli's flags; sway_counts_'s bytes (the cluster BLASes' arguments and the CLAS counts, as in that upload).
+  // rt_sway.hlsli's flags; sway_counts_'s bytes (the cluster BLASes' arguments and the CLAS counts, as in that upload, then
+  // rt_sway's own: its GROUPS, 16 bytes per 64 clusters).
   static constexpr uint32_t SWAY_CUT = 1;
   static constexpr uint32_t SWAY_IN_VIEW = 2;
-  static constexpr uint64_t SWAY_COUNTS_BYTES = 256;
+  static constexpr uint64_t SWAY_COUNTS_BYTES = 96 + (uint64_t{MAX_CLUSTERS} / 64 * 16) + 16;
   static constexpr uint64_t CLUSTER_DESTINATION_OFFSET = CLUSTER_COUNT_OFFSET + 8;
   static constexpr uint64_t CLUSTER_INDICES_OFFSET = CLUSTER_DESTINATION_OFFSET + 248;
   static constexpr uint64_t CLUSTER_RECORDS_OFFSET = CLUSTER_INDICES_OFFSET + 256;
@@ -3751,7 +3752,7 @@ class RtScene12 {
           list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, written->GetGPUVirtualAddress());
           list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, sway_counts_->GetGPUVirtualAddress());
           list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DESCS, clas_addresses_->GetGPUVirtualAddress());
-          list->Dispatch((cluster_count + 63) / 64, 1, 1);
+          list->Dispatch(mode == 3 ? 1 : (cluster_count + 63) / 64, 1, 1);
         };
         // The sway's kept clusters: their arguments packed into sway_arguments_ and counted (its counts from 0, the cluster
         // BLASes' list addresses: the upload's).
@@ -3764,7 +3765,11 @@ class RtScene12 {
           list->CopyBufferRegion(sway_counts_.Get(), 0, slot->clusters.Get(), CLUSTER_BLAS_ARGS_OFFSET, (CLUSTER_BLASES * 16) + 8);
           const auto counting = Transition(sway_counts_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
           list->ResourceBarrier(1, &counting);
-          sway_pass(0, cluster_args_.Get(), sway_arguments_.Get());
+          // Which are kept, the kept before each group, then their arguments (rt_sway's MODE_MASKS, MODE_FIRSTS, MODE_KEPT).
+          for (const uint32_t mode : {2u, 3u, 0u}) {
+            sway_pass(mode, cluster_args_.Get(), sway_arguments_.Get());
+            list->ResourceBarrier(1, &uav_barrier);
+          }
           to_pack = {Transition(sway_counts_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
                      Transition(sway_arguments_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)};
           list->ResourceBarrier(static_cast<UINT>(to_pack.size()), to_pack.data());
