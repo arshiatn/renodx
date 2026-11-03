@@ -257,7 +257,8 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
       const uint32_t previous = tokens[previous_at];
       const uint32_t previous_length = (previous >> 24) & 0x7F;
       const bool mov_sat = ((previous & 0x7FF) == OP_MOV && (previous & SATURATE) != 0 && previous_length == 5);
-      const bool joined = ((previous & 0x7FF) == OP_MIN && (previous & SATURATE) == 0 && previous_length == 7);
+      const bool joined = ((previous & 0x7FF) == OP_MIN && (previous & SATURATE) == 0 && previous_length == 7
+                           && ((tokens[previous_at + 5] >> 12) & 0xFF) == TYPE_TEMP);
       // mov_sat rN.c, rN.c / min rN.c, rN.c, ...: a temp's single component (mask) from itself (select-1 or swizzle).
       const uint32_t dest = tokens[previous_at + 1];
       const uint32_t source = tokens[previous_at + 3];
@@ -270,7 +271,8 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
     previous_at = at;
     at += length;
   }
-  if (forward) saturate_at = 0;
+  // A shader reading t_shadow has its shadow there: a joined pair in it is its ambient occlusion (Warhammer III).
+  if (forward || mask_slot != UINT32_MAX) saturate_at = 0;
   const std::vector<size_t>& scaled = (comparisons.empty() && !forward) ? mask_reads : comparisons;
   if (temps_at == 0 || position == UINT32_MAX || (saturate_at == 0 && scaled.empty())) return {};
 
