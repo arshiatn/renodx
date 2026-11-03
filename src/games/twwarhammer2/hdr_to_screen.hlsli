@@ -127,7 +127,7 @@ float3 ApplyWarhammer2Psycho(float3 color)
 // SDR: the stock result at Paper White relative to UI (2.2 encoded), as t01.
 float4 SdrToScreenOutput(float4 stock)
 {
-  stock.xyz = renodx::color::gamma::DecodeSafe(stock.xyz, SDR_STOCK_GAMMA) * (SI.diffuse_white_nits / SI.graphics_white_nits);
+  stock.xyz = renodx::color::gamma::DecodeSafe(stock.xyz, SDR_STOCK_GAMMA) * SDR_PAPER_WHITE;
   stock.xyz = renodx::color::gamma::EncodeSafe(stock.xyz);
   return stock;
 }

@@ -418,7 +418,7 @@ void main(
 
     // Undo the game's gamma, scene to Paper White, encode for the 2.2 swapchain.
     o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, SDR_STOCK_GAMMA);
-    o0.xyz *= SI.diffuse_white_nits / SI.graphics_white_nits;
+    o0.xyz *= SDR_PAPER_WHITE;
     o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
     return;
   }
