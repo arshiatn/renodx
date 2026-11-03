@@ -78,7 +78,7 @@ void main(
   r2.yzw = r2.zzz * r1.xyz;
   r1.xyz = r0.www ? r2.yzw : r1.xyz;
   o0.w = r1.w;
-  r0.xyz = r1.xyz + r0.xyz;
+  r0.xyz = r1.xyz + r0.xyz * SI.bloom;
   r0.w = max(r0.x, r0.y);
   r0.w = max(r0.w, r0.z);
   r1.xyz = r0.www + -r0.xyz;

@@ -171,7 +171,7 @@ void main(
   r1.xyzw = r1.xyzw + -r3.xyzw;
   r1.xyzw = blur_kernel_scale * r1.xyzw + r3.xyzw;
   r0.z = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy).x;
-  float god_rays_multiplier = (HDR >= 1.f) ? SI.godrays : 1.f;
+  float god_rays_multiplier = SI.godrays;
   r3.xyz =
       r0.zzz
       * (float3(0.100000001,0.100000001,0.100000001) * god_rays_multiplier)

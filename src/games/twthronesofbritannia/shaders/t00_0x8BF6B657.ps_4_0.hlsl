@@ -69,7 +69,7 @@ void main(
     r3.xyz = r3.xxx * r0.xyz;
     r0.xyz = r1.www ? r3.xyz : r0.xyz;
     o0.w = r0.w;
-    r0.xyz = r0.xyz + r1.xyz;
+    r0.xyz = r0.xyz + r1.xyz * SI.bloom;
     r0.w = dot(r0.xyz, float3(0.212599993,0.715200007,0.0722000003));
     r0.w = r0.w + -r2.x;
     r0.w = r0.w / r2.z;
