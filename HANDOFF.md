@@ -15,7 +15,9 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
       Not done: nothing of the phase; not run in game. ATN's check (P13's list): `renodx_trace_now` in a real battle with fire, on the campaign, at 100% and at 50%, one at a time, renaming tw_frame_trace.txt between them; "First run" lines in the log; RT Debug View with each Scene Test.
 - [x] P3 Rows (`AppendAa`, flat in the old section until P5; rows without effect hidden), FSR and XeSS at 100%, Reflex without FG (mode 0 while the in-process FG runs), saved DLSS off NVIDIA becomes XeSS or FSR, red line without the helper, Motion Debug View (in t00's on_drawn, not at the TAA slot: exposure, bloom and LUTs would act on it).
       Not done: nothing of the phase; not run in game; FG rows still restart-only until P4. ATN's check: FSR, then XeSS in a pan: sharp, no doubled edges; Debug View on banner, ship, smoke, water, units; Reflex on with FG off: latency down, Frame Rate Limit holds.
-- [ ] P4 Frame generation to the helper. The last commit with Streamline in the game's process: 253e463a (going back: revert P4's commits, that tree builds).
+- [x] P4 Frame generation in the helper: live on and off, HDR10, scRGB (fg_hdr10), SDR; `SetCamera` shared; camera rebuilt without jitter; HUD-less from the resolve and sharpening. The last commit with Streamline in the game's process: 253e463a (going back: revert P4's commits, that tree builds).
+      Found: WH3's constants sit at b10, every other TW game's at b13: `frame_generation::Install` takes the register (b13 gave a black HUD-less image in the WARP test). Not done: FG's method row is P5's (until then saved DLSS, so off NVIDIA its status line says why); not run in game.
+      ATN's check: FG on and off without a restart in HDR10, scRGB, SDR; FG Debug View HUD-less with flares and sharpening, no UI, portraits out; FG off: helper's memory falls after 10 s; menus show frames, no freeze.
 - [ ] P5 The page: Attila's layout (milestone 1: review, twwarhammer3_v30.zip)
 - [ ] P7 Graphics 2 of 2 on names that exist in today's exe
 - [ ] P12 HDR page parity (SDR preset, Fog Strength)
@@ -27,7 +29,7 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
 - [ ] P11 Lights and fog in rays (optional)
 - [ ] P13 Close: review, all builds, README v30 / v31, zips, round report, ATN's test list
 
-Open in WH3's code (from the lessons' read, each owned by the phase): HUD-less frame misses flares and vignette (P4); no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list); no first-start SDR check (P12).
+Open in WH3's code (from the lessons' read, each owned by the phase): no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list); no first-start SDR check (P12).
 
 ## START HERE (2026-11-03): Attila v134 = players' v2.5 (helper74, bridge v23, tag twattila-v134; v133 never released): RenoDX_Attila_v2.5.zip, RenoDX_Attila_v2.5_HDR_only.zip (Nexus: the add-on alone, tools/tw/hdr_zip.py), twattila_v134.zip. Downloads/attila_github_v2.5_notes.md, attila_nexus_text_v2.5.txt. ENORMOUS BATCH done; ATN's in-game tests under "ENORMOUS BATCH" item 18, then WH3.
 ATN decided (2026-11-03): no in-game tests by us unless asked; one game start before a zip.

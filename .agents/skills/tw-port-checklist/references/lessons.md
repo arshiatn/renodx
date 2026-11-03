@@ -114,6 +114,7 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | SDR is 10-bit too: "10-bit = HDR10" turned the window red [582065c9] | Send the colour space | `fg_output_runs.sh` needs the game; `sl.log` |
 | ReShade screenshots never show the helper's window: a bug only there looks fine | Display capture or the log | - |
 | HUD-less must hold everything but UI [f3b2cc91]; taking the tone mapper's output before the final pass counted all pixels as UI | Keep output after the last scene pass; passes that don't run every frame fall back | Read; FG Debug View |
+| The swap chain shader's constants aren't at b13 in every game: WH3's `shared.h` has b10, and a HUD-less image drawn with b13 came out black | Read the game's `shared.h`; `frame_generation::Install`'s `injection_slot` | `wh3_fg_keep_test` (WARP, built shaders) |
 | Resize: off and on in one frame races Present: stale frames, a zero buffer count | Two presents off | `tw_fg_test` |
 | Frozen window when textures no longer fit or open fails; window before a working Present; 60 failed in a row | Hide it, say why [f3b2cc91, 6f4a8ea0] | `fg_bridge_test` |
 | Memory: FG off keeps 590-605 MiB under Streamline, +64 MiB per on / off | Free resources | Helper log |
