@@ -1,7 +1,7 @@
 // TROY vignette00 (same shader as Pharaoh) - writes black with the vignette amount as alpha, blended
 // multiplicatively over the frame.
 //
-// HDR: SI.vignette scales the darkening. SDR is stock.
+// SI.vignette scales the darkening. At 1 stock.
 
 cbuffer lense_flare_PS : register(b0)
 {
@@ -51,7 +51,7 @@ void main(
   // r0.x is now the darkening amount (stock writes black with this as alpha), so the
   // slider scales it directly. Vignette has to be on in the in-game settings, or
   // vignette_strength is 0 and there is nothing to scale.
-  if (HDR >= 0.5f) r0.x = saturate(r0.x * SI.vignette);
+  r0.x = saturate(r0.x * SI.vignette);
 
   o0.xyzw = r0.zzzx;
   return;

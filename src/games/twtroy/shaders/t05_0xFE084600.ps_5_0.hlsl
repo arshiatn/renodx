@@ -164,7 +164,7 @@ void main(
   int hdr_mode = (HDR < 0.5f) ? 0 : ((HDR < 1.5f) ? 1 : 2);
   const bool is_hdr = (hdr_mode != 0);
 
-  const float uv_distort_multiplier  = is_hdr ? SI.uvdistort : 1.f;
+  const float uv_distort_multiplier  = SI.uvdistort;
   const float film_grain_multiplier  = is_hdr ? SI.filmgrain : 1.f;
 
   r0.xy = g_vpos_texel_offset + v0.xy;

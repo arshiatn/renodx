@@ -1,7 +1,7 @@
 // TROY chromatic00 - chromatic aberration (CA on, sharpening off). Reads a copy of the frame
 // (t_frame), R/B shifted radially. Black scene was the copy (FP16 frame -> 8-bit texture)
 // being dropped; fixed in addon (frame_copy). No clamp here, so HDR passes through.
-// SI.chromaticaberration is HDR only.
+// SI.chromaticaberration: at 1 stock.
 
 cbuffer camera : register(b0)
 {
@@ -65,9 +65,9 @@ void main(
   r0.xy = (int2)v0.xy;
   r0.zw = float2(0,0);
   r0.xyz = t_frame.Load(r0.xyz).xzy;
-  // Slider scales the game's strength (HDR only). At 0 the branch is skipped.
+  // Slider scales the game's strength. At 0 the branch is skipped.
   float ca_strength =
-      g_chromatic_aberration_strength * ((HDR >= 0.5f) ? SI.chromaticaberration : 1.f);
+      g_chromatic_aberration_strength * SI.chromaticaberration;
 
   r1.x = cmp(0 < ca_strength);
   if (r1.x != 0) {

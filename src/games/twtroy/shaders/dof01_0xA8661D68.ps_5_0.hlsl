@@ -215,8 +215,8 @@ void main(
 
   // God rays and glow are composited HERE when DOF is on, not in t04/t05/t07/t08,
   // so this is where their multipliers have to live.
-  const float god_rays_multiplier = is_hdr ? SI.godrays : 1.f;
-  const float glow_multiplier = is_hdr ? SI.bloom : 1.f;
+  const float god_rays_multiplier = SI.godrays;
+  const float glow_multiplier = SI.bloom;
 
   // --- manual fix: resinfo on u0 -------------------------------------------
   uint2 frame_dims;
