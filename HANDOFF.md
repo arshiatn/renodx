@@ -8,9 +8,11 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
 
 - [x] P0 Ground work: skill `tw-port-checklist` (cb_audit.py, scan_register.py moved there), this list, raw NUL, both baseline builds. ATN's check: nothing.
       NOT DONE: its own harness run. Attila was running (21.9 GB of VRAM), and the harness doesn't run beside another GPU job. tools/tw/all_modes_wh3_base.txt is the 18:05 log of the same helper code, 116 of 116, marked as a copy. Smallest step: P1's all_modes.sh with no game running.
-- [ ] P1 Correctness at 100%, no layout change (`Configure`, `Release(true)`, camera per frame, sqrt test)
+- [x] P1 Correctness at 100%: `anti_aliasing::Settings` from the DLSS rows, `Configure`, SSS off under RT shadows, `Release(true)` (not while in-process FG is installed), `BeforeSharedWrites`, camera per frame + status line, Debug Views in t00, `ReadGpuVendor` in the bridge, square root for L, M, RR (7-decade ramps flat raw, fixed with it, K fine; the frames' real range unread), About.
+      Not done: "saved DLSS off NVIDIA becomes XeSS or FSR" (P3: no such rows yet; P1 only keeps the helper from starting there). ATN's check: DLSS on, off, on: VRAM falls; scale below 100% in a session: DLSS off, status line says so, no half-picture; paused: DLSS stays on (camera per frame is assumed there); K vs M darks and bloom.
+      Harness: all_modes_wh3_p1.txt, helper74, a real run: 115 of 116 by name; `release`'s "no memory kept by sets" missed its 30 MiB by 5 (+35), then 5 of 5 alone (+19 to +23), helper unchanged, +32 seen before in all_modes_switch.txt.
 - [ ] P2 Data kit for ATN (indirect draws in traces, WH3 camera registers, RT debug rows, applied lines)
-- [ ] P3 Rows, FSR, XeSS, Reflex, Motion Debug View at 100%
+- [ ] P3 Rows, FSR, XeSS, Reflex, Motion Debug View at 100% (also `A/addon.cpp` OnPresent's DLSS-off-NVIDIA switch in place of P1's gate and status text)
 - [ ] P4 Frame generation to the helper
 - [ ] P5 The page: Attila's layout (milestone 1: review, twwarhammer3_v30.zip)
 - [ ] P7 Graphics 2 of 2 on names that exist in today's exe
@@ -23,7 +25,7 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
 - [ ] P11 Lights and fog in rays (optional)
 - [ ] P13 Close: review, all builds, README v30 / v31, zips, round report, ATN's test list
 
-Open in WH3's code when the batch started (from the lessons' read, each owned by the phase): no sqrt for L / M / RR (P1); RR with nothing ray-traced (P1); DLSS off keeps the bridge's textures (P1); `camera_found` sticky (P1); HUD-less frame misses flares and vignette (P4); no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list); About lacks licence text (P1); no first-start SDR check (P12); no red notice for the add-on alone (P3).
+Open in WH3's code (from the lessons' read, each owned by the phase): HUD-less frame misses flares and vignette (P4); no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list); no first-start SDR check (P12); no red notice for the add-on alone (P3).
 
 ## START HERE (2026-11-03): Attila v134 = players' v2.5 (helper74, bridge v23, tag twattila-v134; v133 never released): RenoDX_Attila_v2.5.zip, RenoDX_Attila_v2.5_HDR_only.zip (Nexus: the add-on alone, tools/tw/hdr_zip.py), twattila_v134.zip. Downloads/attila_github_v2.5_notes.md, attila_nexus_text_v2.5.txt. ENORMOUS BATCH done; ATN's in-game tests under "ENORMOUS BATCH" item 18, then WH3.
 ATN decided (2026-11-03): no in-game tests by us unless asked; one game start before a zip.
