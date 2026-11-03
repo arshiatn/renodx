@@ -20,6 +20,8 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
   FSR: 2x, its HUD not recomposed. XeSS: 2x, 3x and 4x on Intel Arc, with Xe Low Latency (which takes Reflex's place while it runs). Needs amd_fidelityfx_framegeneration_dx12.dll,
   libxess_fg.dll and libxell.dll next to the helper.
   New files next to the helper: `amd_fidelityfx_loader_dx12.dll`, `amd_fidelityfx_upscaler_dx12.dll`, `libxess.dll`. Bridge v22: addon and helper ship together.
+- RT/PT preset: Reflection Reuse off (Own ReSTIR only reached the roughest surfaces, it cost its pass for nothing). Frame generation: a backend
+  whose Present keeps failing hides its window and Auto moves on, DLSS's too. NRD that can't run leaves the addon's own denoisers on.
 - **Ray tracing on AMD and Intel (Experimental)**: starts under FSR or XeSS on the DXR 1.1 path with the built-in denoisers. The RT/PT preset turns Ray Reconstruction on only on NVIDIA.
   Other TW games keep refusing it off NVIDIA (their lists stop at DLSS).
 - **Ray Tracing Denoiser (Experimental; Built-in by default)**: NVIDIA's NRD on any GPU when Ray Reconstruction is off, in the helper (its static library, NVIDIA RTX SDKs License,

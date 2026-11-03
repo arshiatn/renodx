@@ -94,6 +94,7 @@ ATN's test of v2.01i: FG with Output SDR correct, Gamma Correction correct in SD
 - [ ] 16 MONDAY BATCH below: 1 (Mega Geometry 1M, TLAS growing), 2 + 2a (upscalers), 2b (FG on scRGB), 2c (SSS smoke shadows).
       ATN on upscalers: probably only FSR 4 SR + MFG (or the newest) for AMD (does it run on Intel and NVIDIA too?) and XeSS 2 / 3 SR + MFG (?) for Intel, AMD and old NVIDIA. Answer what we think.
 - [x] 17 DONE 2026-11-03: VRAM / RAM leftovers (MONDAY BATCH 5 below, numbers there). Not run in game.
+- [x] 17a DONE 2026-11-03: independent review's fixes. RT's / RR's first start after 10 s no longer built twice (rt_used / rr_used at open); Present failing: window hidden after 60 in a row, DLSS's failures reach Auto / fg_failed (fg_bridge_test: DLSS failing -> FSR runs; all failing -> failed 1, hidden; normal unchanged); rt_nrd_off (in v23's padding, no bump): NRD refused or Run false keeps the addon's denoisers (harness nrd_refused*, the addon's side only read); RT/PT preset Reflection Reuse 0; Frame Rate Limit row under XeSS FG; tooltips; presets' Gamma Correction, Thrones' / WH1's Smoothing; Expeditions' DLSS addon builds. Harness 103 of 103 modes ALL PASSED, all addons build (Ryse, Shogun 2, Expeditions too). Harness link now needs -lpdh -lpsapi. Not run in game.
 - [ ] 18 Zip (next name v2.01j = v132 or ask), README, Nexus text, HANDOFF, memory, per-game report. WH3 comes after all of this, not in this batch.
 
 ## MONDAY BATCH (ATN 2026-11-01: "let's do it on monday"; push every commit to origin atn-mods; tick here)
