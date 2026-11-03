@@ -17,6 +17,7 @@
 #include "./feature_settings.hpp"
 #include "./lighting_settings.hpp"
 #include "./rt_scene.hpp"
+#include "./smoke_map.hpp"
 
 // Attila's Graphics 1 of 2 (ATN): one section per job (anti-aliasing, shadows, ambient occlusion, Global Illumination,
 // reflections, ray tracing), each with a method slider and only that method's settings, the less important ones under
@@ -47,6 +48,7 @@ struct Bindings {
   float* ssao_mode = nullptr;
   float* light_bounce_strength = nullptr;
   float* ssr_hierarchical = nullptr;
+  smoke_map::Sliders* smoke = nullptr;
 };
 
 enum AoMethod : int { AO_GAME, AO_GTVBAO, AO_RAYS, AO_PATHS };
@@ -438,6 +440,31 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .max = 1.f,
         .format = "%.2f",
         .is_visible = screen,
+    });
+    const auto no_rays = [b] { return ShadowMethodOf(b) != SHADOW_RAYS; };
+    page.Add(new Setting{
+        .key = "SmokeShadowMapStrength",
+        .binding = &b.smoke->strength,
+        .default_value = 0.f,
+        .label = "Smoke Shadows (Experimental)",
+        .section = section,
+        .tooltip = "Smoke and dust dim the sun on what lies below them. No rays, any GPU. Needs in-game shadows on.\n0: off.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_visible = no_rays,
+    });
+    page.Add(new Setting{
+        .key = "SmokeShadowMapSoftness",
+        .binding = &b.smoke->softness,
+        .default_value = 2.f,
+        .label = "Smoke Shadow Softness",
+        .section = section,
+        .tooltip = "How soft their shadows are, in metres.",
+        .min = 0.f,
+        .max = 8.f,
+        .format = "%.1f m",
+        .is_visible = [b, no_rays] { return no_rays() && b.smoke->strength > 0.f; },
     });
     page.Take({.match = "RayTracedShadowSoftness", .section = section, .shown = rays, .label = "Softness"});
     page.Take({.match = "RayTracedLeafLight", .section = section, .shown = rays});

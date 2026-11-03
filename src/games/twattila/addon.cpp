@@ -47,6 +47,7 @@
 #include "./lighting_settings.hpp"
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
+#include "./smoke_map.hpp"
 #include "./ssr_hiz.hpp"
 #include "./shared.h"
 
@@ -972,6 +973,7 @@ float big_battle_fix = 0.f;
 float ssr_denoiser = 1.f;  // ssr_hiz.hpp: the resolve's history
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
 twattila::feature_settings::SssSliders sss_sliders;
+twattila::smoke_map::Sliders smoke_map_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
@@ -1602,11 +1604,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
+  // The rays bring their own smoke.
+  auto smoke_map_settings = smoke_map_sliders;
+  if (rt_settings.sun_shadows) smoke_map_settings.strength = 0.f;
+  twattila::smoke_map::Update(smoke_map_settings);
+  rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   // Ray Reconstruction is the only denoiser: the reflections' denoiser (and its history) off under it.
   twattila::feature_settings::UpdateSsr(&shader_injection, twattila::dlaa_bridge::bridge.reconstructing ? 0.f : ssr_denoiser);
   twattila::grass_fade::Update(shader_injection.grass_height_distance);
@@ -2174,7 +2181,8 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (graphics_page.hpp), then Settings Mode's pages.
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
-                                             .ssr_hierarchical = &shader_injection.ssr_hierarchical});
+                                             .ssr_hierarchical = &shader_injection.ssr_hierarchical,
+                                             .smoke = &smoke_map_sliders});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
@@ -2195,6 +2203,7 @@ bool AttachAddon() {
   }
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
@@ -2243,8 +2252,7 @@ bool AttachAddon() {
   // The battle fog's ray-traced shadows (its shader replaced: shaders/battlefog00).
   twattila::rt_scene::InstallFogShadows(twattila::rt_scene::FOG_SHADERS);
   // Smoke's ray-traced shadows (the lit particles streamed out).
-  twattila::rt_scene::InstallSmokeShadows(twattila::rt_scene::PARTICLE_VERTEX_SHADER, twattila::rt_scene::LIT_PARTICLE_PIXEL_SHADER,
-                                          twattila::rt_scene::OTHER_PARTICLE_PIXEL_SHADER);
+  twattila::rt_scene::InstallSmokeShadows(twattila::rt_scene::PARTICLE_VERTEX_SHADER, twattila::rt_scene::LIT_PARTICLE_PIXEL_SHADERS);
   // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
   // read it (near grass, particles) take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
@@ -2256,6 +2264,7 @@ bool AttachAddon() {
   }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
+  twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
 
   attached = true;
   return true;
@@ -2271,6 +2280,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::reshade_present>(OnReshadePresentShot);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
@@ -2292,6 +2302,8 @@ void DetachAddon() {
   twattila::ao_pass::Uninstall();
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
+  twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
+  twattila::smoke_map::Uninstall();
   talesofarise::pixel_trace::Stop();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);

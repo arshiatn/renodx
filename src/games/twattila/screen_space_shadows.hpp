@@ -79,6 +79,10 @@ constexpr UINT AMBIENT_SLOT = 51;   // their diffuse ambient's share taken away 
 // shadow's mask this frame (null: off), the occlusion to bind instead (the darker of both), or null (the mask alone).
 using ExtraOcclusion = ID3D11ShaderResourceView* (*)(ID3D11DeviceContext*, ID3D11ShaderResourceView*);
 static ExtraOcclusion extra_occlusion = nullptr;
+// The smoke's dimming over all that (Attila: smoke_map::Occlusion): given the occlusion so far (null: none), the draw and
+// its G-buffer depth, the occlusion to bind instead, or null (no smoke).
+using SmokeOcclusion = ID3D11ShaderResourceView* (*)(ID3D11DeviceContext*, ID3D11ShaderResourceView*, const light_bounce::SunDraw&, ID3D11ShaderResourceView*);
+static SmokeOcclusion smoke_occlusion = nullptr;
 constexpr UINT DISPATCH_COUNT = 8;  // Bend's most
 
 // sss.hlsli's sss_settings.
@@ -893,6 +897,9 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
         if (internal::extra_occlusion != nullptr) {
           if (auto* combined = internal::extra_occlusion(native, occlusion); combined != nullptr) occlusion = combined;
         }
+        if (internal::smoke_occlusion != nullptr) {
+          if (auto* smoked = internal::smoke_occlusion(native, occlusion, sun_draw, depth_view.Get()); smoked != nullptr) occlusion = smoked;
+        }
       }
     }
     native->PSSetShaderResources(internal::MASK_SLOT, 1, &occlusion);
@@ -987,6 +994,12 @@ inline bool AmbientPatched(uint32_t hash, bool* foliage) {
 inline void SetExtraOcclusion(internal::ExtraOcclusion function) {
   const std::unique_lock lock(internal::runtime.mutex);
   internal::extra_occlusion = function;
+}
+
+// The smoke's dimming from now on (null: none).
+inline void SetSmokeOcclusion(internal::SmokeOcclusion function) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::smoke_occlusion = function;
 }
 
 // The tone mapper drew (its replaced shaders' on_drawn, before the anti-aliasing): with a Debug View, its target replaced

@@ -753,26 +753,24 @@ constexpr auto OnFogDraw = []<typename Context>(Context& command) -> renodx::uti
 };
 
 // Attila's and Thrones' particles (particle_vfx_main: one vertex a particle, a geometry shader makes its quad) and the
-// main pass's lit pixel shaders (ps_main_high_quality: smoke and dust; ps_main: torch and fire smoke; fire's glow is added,
-// the overlay pass's).
+// main pass's lit pixel shaders: ps_main_high_quality by the game's shadow mode (gather, fetch4, pcf, software, none: smoke
+// and dust), ps_main (one hash in all: torch and fire smoke). Fire's glow is added, the overlay pass's.
 constexpr uint32_t PARTICLE_VERTEX_SHADER = 0xA7F257B5;
-constexpr uint32_t LIT_PARTICLE_PIXEL_SHADER = 0xACE33D5D;
-constexpr uint32_t OTHER_PARTICLE_PIXEL_SHADER = 0xF5379F78;
+constexpr std::array<uint32_t, 6> LIT_PARTICLE_PIXEL_SHADERS = {0xACE33D5D, 0xDF0F041A, 0x905429B6, 0x79A71E7B, 0xF9D9D3FB, 0xF5379F78};
 
-// A particle draw (Smoke Shadows): its lit particles streamed out for the next trace.
+// A particle draw (Smoke Shadows): its lit particles streamed out for the next trace or smoke_map.hpp.
 constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (internal::active.load(std::memory_order_relaxed)) internal::CaptureParticles(command);
+  if (internal::active.load(std::memory_order_relaxed) || internal::runtime.settings.stream_particles) internal::CaptureParticles(command);
   return {};
 };
 
-// The particle draws (`vertex_shader`'s with `pixel_shader` or `other_pixel_shader`), kept while installed (after Install, before the device:
+// The particle draws (`vertex_shader`'s with one of `pixel_shaders`), kept while installed (after Install, before the device:
 // the vertex shader's code is kept as it is made, by the scene's code hook, made here when the scene has none):
 // Ray-Traced Smoke Shadows shown.
-inline void InstallSmokeShadows(uint32_t vertex_shader, uint32_t pixel_shader, uint32_t other_pixel_shader) {
+inline void InstallSmokeShadows(uint32_t vertex_shader, std::span<const uint32_t> pixel_shaders) {
   internal::smoke_shadows_installed = true;
   internal::smoke_vertex_shader = vertex_shader;
-  internal::smoke_pixel_shader = pixel_shader;
-  internal::smoke_other_pixel_shader = other_pixel_shader;
+  internal::smoke_pixel_shaders = pixel_shaders;
   if (!internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   renodx::utils::command_action::Register(
       OnParticleDraw, {.shader_hash = vertex_shader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});

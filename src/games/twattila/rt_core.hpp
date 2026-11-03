@@ -138,6 +138,8 @@ struct Settings {
   // ray-traced sun, a frame late (CaptureParticles, rt_smoke).
   bool smoke_shadows = false;
   uint32_t smoke_quality = 1;  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT)
+  // The lit particles streamed out with no ray tracing (smoke_map.hpp: any GPU, no helper).
+  bool stream_particles = false;
   // The game's sun shadow map gets no casters (InstallShadowsOnly; with the ray-traced sun shadows): the rays alone cast.
   bool shadows_only = false;
   // The Debug View (DrawDebugView): 0 off, 1 sun shadows, 2 ambient occlusion, 3 Light Bounce, 4 reflections, 5 specular
@@ -254,6 +256,17 @@ constexpr uint64_t CORNER_FRAMES = 30;
 // Record Ray Tracing Profile's length.
 constexpr uint64_t PROFILE_MS = 30000;
 
+// The lit particles' stream output, made at the first draw from the particle vertex shader's own code, apart from ray
+// tracing's objects (smoke_map.hpp reads it with RT off). Three float4 a particle: centre and age, colour and opacity, size
+// and scale and emitter; behaviours: their cb_vfx_emitter_constants_common at the frame's first draw.
+struct ParticleStream {
+  ComPtr<ID3D11Device> device;
+  ComPtr<ID3D11Buffer> particles;
+  ComPtr<ID3D11ShaderResourceView> srv;
+  ComPtr<ID3D11GeometryShader> output;
+  ComPtr<ID3D11Buffer> behaviours;
+};
+
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   std::vector<ComPtr<ID3D11VertexShader>> capture_shaders;  // as the scene shaders
@@ -289,11 +302,7 @@ struct DeviceObjects {
   ComPtr<ID3D11SamplerState> linear_clamp;
   ComPtr<ID3D11RasterizerState> rasterizer;
   ComPtr<ID3D11DepthStencilState> no_depth;
-  // Smoke Shadows: the lit particles' stream output (three float4 a particle: centre, colour and opacity, size; made at
-  // the first, from the particle vertex shader's own code), rt_smoke's quads from them and its count of those taken.
-  ComPtr<ID3D11Buffer> particles;
-  ComPtr<ID3D11ShaderResourceView> particles_srv;
-  ComPtr<ID3D11GeometryShader> particle_output;
+  // Smoke Shadows: rt_smoke's quads from the lit particles (ParticleStream) and its count of those taken.
   ComPtr<ID3D11ComputeShader> smoke_shader;
   ComPtr<ID3D11Buffer> smoke_quads;
   ComPtr<ID3D11UnorderedAccessView> smoke_quads_uav;
@@ -466,6 +475,7 @@ struct Runtime {
   // trace: the next one takes them).
   uint32_t particles = 0;
   uint64_t particles_frame = 0;
+  ParticleStream particle_stream;
   struct Known {
     uint64_t frame = 0;  // last drawn
     // A placed mesh's instances over a frame's draws: this frame's so far, those placed, the last frame's; a frame after
@@ -560,11 +570,10 @@ static Host host;
 // The code of the scene shaders without a capture version, as the game made them (every vertex shader with
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
-// Smoke Shadows' particle shaders (InstallSmokeShadows; 0: none): the vertex shader (its code kept) and the two lit pixel
+// Smoke Shadows' particle shaders (InstallSmokeShadows; 0: none): the vertex shader (its code kept) and the lit pixel
 // shaders its smoke is drawn with.
 static uint32_t smoke_vertex_shader = 0;
-static uint32_t smoke_pixel_shader = 0;
-static uint32_t smoke_other_pixel_shader = 0;
+static std::span<const uint32_t> smoke_pixel_shaders;
 static std::unordered_map<uint32_t, bool> skinned_code;
 // A scene draw's pixel shader (host.scene_draw: SceneCoverage): solid (none, or its discards dither only), alpha-tested
 // against its t0 at the input `uv_semantic` (xy: an opacity mask), or left out (t0 read otherwise: a tiled or computed
@@ -607,6 +616,10 @@ inline bool PrepareDevice(ID3D11Device* device) {
   const auto compute = [&](std::span<const uint8_t> code, ComPtr<ID3D11ComputeShader>* shader) {
     return SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader->GetAddressOf()));
   };
+  const D3D11_BUFFER_DESC quads_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS};
+  const D3D11_BUFFER_DESC quads_read_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  D3D11_UNORDERED_ACCESS_VIEW_DESC quads_view = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER};
+  quads_view.Buffer.NumElements = 1;
   const D3D11_BUFFER_DESC captured_desc = {.ByteWidth = MAX_VERTICES * 16, .Usage = D3D11_USAGE_DEFAULT,
                                            .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
   D3D11_SHADER_RESOURCE_VIEW_DESC captured_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
@@ -677,6 +690,9 @@ inline bool PrepareDevice(ID3D11Device* device) {
                                                                objects.captured_uv_srv.GetAddressOf()))))
          && compute(__rt_vertices, &objects.vertices_shader) && compute(__rt_skies, &objects.skies_shader)
          && compute(__rt_smoke, &objects.smoke_shader)
+         && SUCCEEDED(device->CreateBuffer(&quads_desc, nullptr, objects.smoke_quads.GetAddressOf()))
+         && SUCCEEDED(device->CreateUnorderedAccessView(objects.smoke_quads.Get(), &quads_view, objects.smoke_quads_uav.GetAddressOf()))
+         && SUCCEEDED(device->CreateBuffer(&quads_read_desc, nullptr, objects.smoke_quads_read.GetAddressOf()))
          && compute(__rt_debug, &objects.debug_shader) && compute(__rt_positions, &objects.positions_shader)
          && compute(__rt_sun, &objects.sun_shader) && compute(__rt_occlusion, &objects.occlusion_shader)
          && compute(__rt_atlas, &objects.atlas_shader) && compute(__rt_ambient_combine, &objects.combine_shader)
@@ -1536,9 +1552,10 @@ void CaptureParticles(Context& command) {
     first_vertex = command.arguments.first_vertex;
   }
   auto* native = NativeContext(command.cmd_list);
-  if (vertex_count == 0 || !runtime.settings.smoke_shadows || !dlaa_bridge::bridge.ray_tracing || native == nullptr) return;
+  const bool wanted = runtime.settings.stream_particles || (runtime.settings.smoke_shadows && dlaa_bridge::bridge.ray_tracing);
+  if (vertex_count == 0 || !wanted || native == nullptr) return;
   const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
-  if (pixel_shader != smoke_pixel_shader && pixel_shader != smoke_other_pixel_shader) return;
+  if (std::ranges::find(smoke_pixel_shaders, pixel_shader) == smoke_pixel_shaders.end()) return;
   ComPtr<ID3D11BlendState> blend;
   std::array<FLOAT, 4> blend_factor = {};
   UINT sample_mask = 0;
@@ -1546,54 +1563,66 @@ void CaptureParticles(Context& command) {
   D3D11_BLEND_DESC blend_desc = {};
   if (blend) blend->GetDesc(&blend_desc);
   if (blend_desc.RenderTarget[0].BlendEnable == FALSE || blend_desc.RenderTarget[0].DestBlend == D3D11_BLEND_ONE) return;
-  if (runtime.particles_frame != runtime.frame) {
+  const bool first_draw = runtime.particles_frame != runtime.frame;
+  if (first_draw) {
     runtime.particles = 0;
     runtime.particles_frame = runtime.frame;
   }
   const UINT count = std::min(vertex_count, MAX_PARTICLES - runtime.particles);
+  if (count == 0) return;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (count == 0 || !PrepareDevice(device.Get())) return;
-  auto& objects = runtime.objects;
-  if (!objects.particles) {
+  auto& stream = runtime.particle_stream;
+  if (stream.device.Get() != device.Get()) {
+    stream = {.device = device};
     const D3D11_BUFFER_DESC particles_desc = {.ByteWidth = MAX_PARTICLES * 48, .Usage = D3D11_USAGE_DEFAULT,
                                               .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
     D3D11_SHADER_RESOURCE_VIEW_DESC particles_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
     particles_view.Buffer.NumElements = MAX_PARTICLES * 3;
-    const D3D11_BUFFER_DESC quads_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS};
-    const D3D11_BUFFER_DESC quads_read_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
-    D3D11_UNORDERED_ACCESS_VIEW_DESC quads_view = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER};
-    quads_view.Buffer.NumElements = 1;
-    const std::array<D3D11_SO_DECLARATION_ENTRY, 3> entries = {{
+    const D3D11_BUFFER_DESC behaviours_desc = {.ByteWidth = 8192, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const std::array<uint32_t, 2048> no_behaviours = {};
+    const D3D11_SUBRESOURCE_DATA behaviours_data = {.pSysMem = no_behaviours.data()};
+    // TEXCOORD3's w is always 0: the emitter takes its place, the stride and rt_smoke stay.
+    const std::array<D3D11_SO_DECLARATION_ENTRY, 4> entries = {{
         {.SemanticName = "SV_POSITION", .SemanticIndex = 0, .ComponentCount = 4},
         {.SemanticName = "COLOR", .SemanticIndex = 0, .ComponentCount = 4},
-        {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
+        {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 3},
+        {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 1},
     }};
     constexpr UINT STRIDE = 48;
     const auto code = game_code.find(smoke_vertex_shader);
-    if (FAILED(device->CreateBuffer(&particles_desc, nullptr, objects.particles.GetAddressOf()))
-        || FAILED(device->CreateShaderResourceView(objects.particles.Get(), &particles_view, objects.particles_srv.GetAddressOf()))
-        || FAILED(device->CreateBuffer(&quads_desc, nullptr, objects.smoke_quads.GetAddressOf()))
-        || FAILED(device->CreateUnorderedAccessView(objects.smoke_quads.Get(), &quads_view, objects.smoke_quads_uav.GetAddressOf()))
-        || FAILED(device->CreateBuffer(&quads_read_desc, nullptr, objects.smoke_quads_read.GetAddressOf()))
+    if (FAILED(device->CreateBuffer(&particles_desc, nullptr, stream.particles.GetAddressOf()))
+        || FAILED(device->CreateShaderResourceView(stream.particles.Get(), &particles_view, stream.srv.GetAddressOf()))
+        || FAILED(device->CreateBuffer(&behaviours_desc, &behaviours_data, stream.behaviours.GetAddressOf()))
         || code == game_code.end()
         || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), entries.data(),
                                                                 static_cast<UINT>(entries.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM,
-                                                                nullptr, objects.particle_output.GetAddressOf()))) {
+                                                                nullptr, stream.output.GetAddressOf()))) {
       renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for the particles' vertex shader {:08X} (Smoke Shadows).",
                                         smoke_vertex_shader));
     }
   }
-  if (!objects.particle_output) return;
+  if (!stream.output) return;
+  if (first_draw && runtime.settings.stream_particles) {
+    // cb_vfx_emitter_constants_common (the particle vertex shader's cb3): smoke_map_list tells the weather by it.
+    ComPtr<ID3D11Buffer> behaviours;
+    native->VSGetConstantBuffers(3, 1, behaviours.GetAddressOf());
+    D3D11_BUFFER_DESC behaviours_bound = {};
+    if (behaviours) behaviours->GetDesc(&behaviours_bound);
+    if (behaviours_bound.ByteWidth >= 8192) {
+      const D3D11_BOX box = {.left = 0, .top = 0, .front = 0, .right = 8192, .bottom = 1, .back = 1};
+      native->CopySubresourceRegion(stream.behaviours.Get(), 0, 0, 0, 0, behaviours.Get(), 0, &box);
+    }
+  }
   ComPtr<ID3D11GeometryShader> game_geometry_shader;
   ComPtr<ID3D11PixelShader> game_pixel_shader;
   ComPtr<ID3D11Buffer> game_output;
   native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
   native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
   native->SOGetTargets(1, game_output.GetAddressOf());
-  ID3D11Buffer* target = objects.particles.Get();
+  ID3D11Buffer* target = stream.particles.Get();
   const UINT offset = runtime.particles * 48;
-  native->GSSetShader(objects.particle_output.Get(), nullptr, 0);
+  native->GSSetShader(stream.output.Get(), nullptr, 0);
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(1, &target, &offset);
   native->Draw(count, first_vertex);
@@ -1721,7 +1750,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         && runtime.captures.size() < dlaa_bridge::RT_CAPTURES && runtime.captured_vertices + (smoke_quads * 6) <= MAX_VERTICES) {
       const auto smoke_pass = [&](UINT particles, UINT items) {
         const std::array<uint32_t, 4> smoke = {runtime.captured_vertices, particles, dlaa_bridge::RT_TRANSFER_WIDTH, smoke_quads};
-        Dispatch(native, objects.smoke_shader.Get(), {objects.particles_srv.Get(), dlaa_bridge::bridge.rt_sun.srv.Get()},
+        Dispatch(native, objects.smoke_shader.Get(), {runtime.particle_stream.srv.Get(), dlaa_bridge::bridge.rt_sun.srv.Get()},
                  {dlaa_bridge::bridge.rt_vertices.uav.Get(), objects.smoke_quads_uav.Get()}, smoke.data(), sizeof(smoke), (items + 63) / 64, 1);
       };
       constexpr std::array<UINT, 4> NO_QUADS = {};
@@ -2308,6 +2337,10 @@ inline void Update(const Settings& settings) {
   const std::unique_lock lock(runtime.mutex);
   if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + 3000;
   runtime.settings = settings;
+  if (!settings.smoke_shadows && !settings.stream_particles) {
+    runtime.particle_stream = {};
+    runtime.particles = 0;
+  }
   dlaa_bridge::bridge.details = settings.debug_log;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
@@ -2729,6 +2762,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
+  if (internal::runtime.particle_stream.device.Get() == native) internal::runtime.particle_stream = {};
   if (internal::runtime.objects.device.Get() == native) internal::runtime.objects = {};
   internal::runtime.known.clear();
   internal::runtime.short_keys.clear();

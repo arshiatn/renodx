@@ -7,6 +7,10 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with 
 current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 
 ## Next build (not released; helper and addon together)
+- **Smoke Shadows (Experimental, off) without rays**, with Game's Shadow Maps or Bend Screen-Space: catapult smoke, dust and
+  fire smoke dim the sun on what lies below them, any GPU, no helper, with its own softness in metres. About 0.1-0.15 ms at
+  4K. Limits: water and the smoke itself are not dimmed, the shadow fades where the game fades the particles by camera
+  distance, and in-game shadows must be on. In no preset yet.
 - **Very big battles**: the TLAS's placed instances grow by themselves from 524,288 up to 16.7 million (8.4 million on GPUs of 20 GB or less,
   4.2 million on 12 GB or less). Each frame's TLAS builds only what it can hold, which saves about 0.2 ms on small scenes.
 - **Mega Geometry** takes up to 1,048,576 clusters a frame on GPUs over 28 GB (about 9.6 GB when full) and 786,432 over 20 GB (about 7.3 GB). It starts at the
