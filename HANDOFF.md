@@ -15,7 +15,7 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
       Not done: nothing of the phase; not run in game. ATN's check (P13's list): `renodx_trace_now` in a real battle with fire, on the campaign, at 100% and at 50%, one at a time, renaming tw_frame_trace.txt between them; "First run" lines in the log; RT Debug View with each Scene Test.
 - [x] P3 Rows (`AppendAa`, flat in the old section until P5; rows without effect hidden), FSR and XeSS at 100%, Reflex without FG (mode 0 while the in-process FG runs), saved DLSS off NVIDIA becomes XeSS or FSR, red line without the helper, Motion Debug View (in t00's on_drawn, not at the TAA slot: exposure, bloom and LUTs would act on it).
       Not done: nothing of the phase; not run in game; FG rows still restart-only until P4. ATN's check: FSR, then XeSS in a pan: sharp, no doubled edges; Debug View on banner, ship, smoke, water, units; Reflex on with FG off: latency down, Frame Rate Limit holds.
-- [ ] P4 Frame generation to the helper
+- [ ] P4 Frame generation to the helper. The last commit with Streamline in the game's process: 253e463a (going back: revert P4's commits, that tree builds).
 - [ ] P5 The page: Attila's layout (milestone 1: review, twwarhammer3_v30.zip)
 - [ ] P7 Graphics 2 of 2 on names that exist in today's exe
 - [ ] P12 HDR page parity (SDR preset, Fog Strength)
