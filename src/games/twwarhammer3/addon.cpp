@@ -2225,8 +2225,39 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
     renodx::utils::log::i(std::format("[Warhammer III] First run: sun light draw, ps {:08X}.", draw.shader_hash));
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_values_logged = {};
   renodx::utils::directx::NativeFromReShadeProxy(&native);
-  if (native != nullptr) twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot);
+  if (native == nullptr) return {};
+  twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot);
+  // Log Details, once per shader: what this place's ambient is made of (lighting_VS_PS: its values can't be read offline).
+  if (rt_sliders.debug_log != 0.f && twattila::frame_history::MainViewport(native)
+      && !sun_values_logged[&draw - LIGHT_BOUNCE_DRAWS.data()].exchange(true, std::memory_order_relaxed)) {
+    Microsoft::WRL::ComPtr<ID3D11Buffer> lighting;
+    native->PSGetConstantBuffers(draw.lighting_slot, 1, lighting.GetAddressOf());
+    D3D11_BUFFER_DESC desc = {};
+    if (lighting) lighting->GetDesc(&desc);
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    desc.MiscFlags = 0;
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Buffer> copy;
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (desc.ByteWidth >= 304 && SUCCEEDED(device->CreateBuffer(&desc, nullptr, copy.GetAddressOf()))) {
+      native->CopyResource(copy.Get(), lighting.Get());
+      if (SUCCEEDED(native->Map(copy.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        const auto* c = static_cast<const float*>(mapped.pData);
+        const auto* flags = static_cast<const uint32_t*>(mapped.pData);
+        renodx::utils::log::i(std::format(
+            "[Warhammer III] Sun shader {:08X}: spherical harmonics {}, Global Illumination {}, SSR {}; ambient cube's scale {:g}, leaf bias {:g}, "
+            "SH terms {:g}, SH fade {:g}; cube +x {:g} {:g} {:g}, -x {:g} {:g} {:g}, +y {:g} {:g} {:g}, -y {:g} {:g} {:g}, +z {:g} {:g} {:g}, -z {:g} {:g} {:g}.",
+            draw.shader_hash, flags[46], flags[45], flags[44], c[75], c[72], c[73], c[74], c[8], c[9], c[10], c[12], c[13], c[14], c[16], c[17], c[18],
+            c[20], c[21], c[22], c[24], c[25], c[26], c[28], c[29], c[30]));
+        native->Unmap(copy.Get(), 0);
+      }
+    }
+  }
   return {};
 };
 
