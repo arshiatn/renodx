@@ -49,6 +49,7 @@ static const uint FAST_LEAVES = 8192u;
 // Importance-Sampled Torch Shadows (v18, dlaa_bridge.h RT_LIGHT_IMPORTANCE): rt_lights traces a few lights a pixel, picked
 // by what they give it (ReSTIR's candidates), the others keep their bits.
 static const uint LIGHT_IMPORTANCE = 16384u;
+static const uint NRD_SUN = 2097152u;  // RT_NRD: rt_trace's soft shadows for NRD (rt_nrd_front.hlsl)
 static const uint SMOKE_MET = 262144u;  // Smoke Shadows' particles are in the scene (the helper: their instance built)
 // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT, two bits): the particles a sun ray counts.
 static const uint SMOKE_QUALITY_SHIFT = 19u;

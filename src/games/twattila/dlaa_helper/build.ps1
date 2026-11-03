@@ -78,8 +78,24 @@ if (Test-Path "$xess\inc\xess\xess_d3d12.h") {
   $xess_include = @("-imsvc$xess\inc")
   Copy-Item "$xess\bin\libxess.dll", "$xess\bin\libxess_fg.dll", "$xess\bin\libxell.dll" $out -Force
 }
+# NVIDIA's NRD (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/NRD: tag v4.18.0, source only) for the Denoiser setting when it
+# sits built in build\downloads\nrd\NRD: git clone --recursive --branch v4.18.0, then cmake -S . -B _Build -G Ninja
+# -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_FLAGS=-mssse3
+# -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DNRD_STATIC_LIBRARY=ON -DNRD_EMBEDS_SPIRV_SHADERS=OFF -DNRD_EMBEDS_DXBC_SHADERS=OFF
+# -DSHADERMAKE_FXC_PATH=<fxc.exe>, cmake --build _Build --target NRD. Its library goes into the helper (else the helper
+# builds without it).
+$nrd = Join-Path $root "build\downloads\nrd\NRD"
+$nrd_include = @()
+$nrd_library = @()
+Remove-Item "$out\rt_nrd_front.h", "$out\rt_nrd_shadow.h" -ErrorAction SilentlyContinue
+if (Test-Path "$nrd\_Bin\NRD.lib") {
+  $nrd_include = @("-imsvc$nrd\Include")
+  $nrd_library = @("$nrd\_Bin\NRD.lib", "$nrd\_Build\_deps\shadermake-build\ShaderMakeBlob.lib")
+  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -Fh "$out\rt_nrd_front.h" -Vn RT_NRD_FRONT "$PSScriptRoot\rt_nrd_front.hlsl"
+  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_nrd_shadow.h" -Vn RT_NRD_SHADOW "$PSScriptRoot\rt_nrd_shadow.hlsl"
+}
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
-  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include "/I$out" `
+  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include "/I$out" `
   "$PSScriptRoot\main.cpp" /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
-  "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib
+  "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library @nrd_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib

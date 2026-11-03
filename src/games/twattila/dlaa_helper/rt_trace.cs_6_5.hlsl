@@ -161,8 +161,9 @@ void main(uint3 id : SV_DispatchThreadID) {
   if (id.x >= width || id.y >= height) return;
   const float4 position = positions[id.xy];
   // Soft sun shadows: the rays' penumbras filtered (rt_soft), or under Ray Reconstruction one ray toward a point of the
-  // sun's disk (it denoises them).
+  // sun's disk (it denoises them), or with NRD that ray and its blocker's distance too (rt_nrd_front).
   const bool filtered = sun_cone > 0.f && (flags & RECONSTRUCTED) == 0u;
+  const bool on_disk = sun_cone > 0.f && ((flags & NRD_SUN) != 0u || !filtered);
   if (position.w <= 0.f) {
     if ((flags & PART_AMBIENT) == 0u) {
       visibility[id.xy] = 1.f;
@@ -205,10 +206,14 @@ void main(uint3 id : SV_DispatchThreadID) {
     for (uint ray = 0u; ray < rays; ++ray) {
       sun_tint = 1.f;
       float3 toward = toward_sun.xyz;
-      if (sun_cone > 0.f && !filtered) {
-        // Uniform over the sun's disk (sun_cone: the tan of its angular radius).
-        toward = normalize(toward + DiskPoint(toward, sun_cone, float2(Random(uint3(id.xy, frame * 16u + 1000u + ray * 2u)),
-                                                                        Random(uint3(id.xy, frame * 16u + 1001u + ray * 2u)))));
+      if (on_disk) {
+        // Uniform over the sun's disk (sun_cone: the tan of its angular radius). For NRD gradient noise, 8 patterns in
+        // turn (its guide: SIGMA settles such noise far better than white).
+        const float2 disk = ((flags & NRD_SUN) != 0u)
+                                ? float2(InterleavedGradientNoise(float2(id.xy) + 5.588238f * float(frame & 7u) + float(ray) * 17.f),
+                                         InterleavedGradientNoise(float2(id.yx) + 9.f + 7.137f * float(frame & 7u) + float(ray) * 29.f))
+                                : float2(Random(uint3(id.xy, frame * 16u + 1000u + ray * 2u)), Random(uint3(id.xy, frame * 16u + 1001u + ray * 2u)));
+        toward = normalize(toward + DiskPoint(toward, sun_cone, disk));
       }
       const float3 spot = (rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f;
       // Off along the normal and toward the sun; where not planar toward the camera. Grass apart, over the ray's first

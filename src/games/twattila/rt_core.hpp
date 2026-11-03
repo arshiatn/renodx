@@ -138,6 +138,7 @@ struct Settings {
   // ray-traced sun, a frame late (CaptureParticles, rt_smoke).
   bool smoke_shadows = false;
   uint32_t smoke_quality = 1;  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT)
+  bool nrd = false;            // Ray Tracing Denoiser: NRD without Ray Reconstruction (dlaa_bridge.h RT_NRD)
   // The lit particles streamed out with no ray tracing (smoke_map.hpp: any GPU, no helper).
   bool stream_particles = false;
   // The game's sun shadow map gets no casters (InstallShadowsOnly; with the ray-traced sun shadows): the rays alone cast.
@@ -1841,6 +1842,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | ((runtime.settings.micromaps && runtime.settings.fast_leaves) ? dlaa_bridge::RT_FAST_LEAVES : 0u)
                | (runtime.settings.light_importance ? dlaa_bridge::RT_LIGHT_IMPORTANCE : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
+               | ((runtime.settings.nrd && !dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_NRD : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)

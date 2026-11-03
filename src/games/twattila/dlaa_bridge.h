@@ -179,6 +179,9 @@ constexpr uint32_t RT_DRAWN_PLACED = 65536;
 constexpr uint32_t RT_DETAILS = 131072;
 // Smoke Shadow Quality (0-2, two bits): the particles a sun ray counts (rt_scene.hlsli).
 constexpr uint32_t RT_SMOKE_QUALITY_SHIFT = 19;
+// Denoiser NRD (without Ray Reconstruction; helpers without NRD or before 73 keep the built-in ones): soft sun shadows one
+// ray toward a point of the sun's disk, denoised by NVIDIA's NRD (SIGMA) instead of the rays' soft-shadow filter.
+constexpr uint32_t RT_NRD = 1u << 21;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

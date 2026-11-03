@@ -655,6 +655,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   {
     const std::string& section = RT_SECTION;
     page.Take({.match = "RayTracingOutputResolution", .section = section, .shown = upscaling});
+    page.Add(new Setting{
+        .key = "RayTracingDenoiser",
+        .binding = &b.rt->denoiser,
+        .value_type = SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ray Tracing Denoiser (Experimental)",
+        .section = section,
+        .tooltip = "Smooths the soft ray-traced sun shadows when DLSS Ray Reconstruction is off.\n"
+                   "Built-in: the rays' own filter. NRD: NVIDIA's denoiser, steadier in motion, uses more memory.",
+        .labels = {"Built-in", "NRD"},
+        .is_visible = [upscaling, b] { return upscaling() && !(b.aa->method == 5.f && b.aa->ray_reconstruction != 0.f); },
+    });
     page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = "Fog Shadows"});
     page.Add(Note("Needs an upscaler (Anti-Aliasing above).", section, MORE_TINT, no_upscaler));
     page.Add(MoreOptions(section, &more_rt, upscaling));
