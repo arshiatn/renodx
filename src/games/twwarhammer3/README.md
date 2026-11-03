@@ -15,6 +15,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - **Fog Strength** (Extra): how thick the battle's fog and haze are. 0 = none, 1 = the game's (bit for bit), 2 = double. Thick fog
   at 2 is brighter than the game's fog colour: the fog's light is doubled, and what's behind it is already gone.
 
+- **SDR (monitors without HDR)** preset: Rendering Mode SDR, Output SDR, the rest at Reset's. A first start (no settings saved yet)
+  on an SDR monitor picks it by itself, with Output on Auto.
+- Psycho V30's Hue Shift is now called Highlight Hue Shift; its saved value stays.
+
 Verify: Graphics 2 of 2's status line says 45 of 45 in `ReShade.log`; Battle Shadow Map 1 at 500 m: nearby shadows softer, at once.
 Fog Strength 0 in a battle: no fog, no leftover glow; 2: thicker.
 

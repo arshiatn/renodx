@@ -161,6 +161,12 @@ void ApplyPsychoRecommended2500() {
   });
 }
 
+// SDR: the game's own tonemapper and look, every other control at its default; video AutoHDR is already off in Reset.
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
+}
+
 // Frame copy for sharpening / CA ///////////////////////////////////////////////////////
 // The game copies the frame into an 8-bit texture (dropped in HDR -> black scene).
 // Instead: copy the bound RT into our own texture, bind it at t0 for that draw only.
@@ -1202,6 +1208,19 @@ void BuildRuntimeData() {
           ApplyPsychoRecommended2500();
         },
     },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-3",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it\n"
+                   "was HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
+        },
+    },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "uvdistort",
@@ -1350,9 +1369,9 @@ void BuildRuntimeData() {
         .binding = &shader_injection.hue_shift,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.00f,
-        .label = "Hue Shift",
+        .label = "Highlight Hue Shift",
         .section = "Psycho V30",
-        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default (like my old addons), 2 = full.",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default, 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",
@@ -2091,6 +2110,8 @@ void SetOutputEncoding(int encoding) {
 // Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
 // before the swapchain mod's create_swapchain (registered after this).
 bool auto_output_pending = false;
+// No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
+bool first_start = false;
 
 bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
   if (!auto_output_pending) return false;
@@ -2101,6 +2122,7 @@ bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, 
   // Frame generation on from the start: HDR10, the frames need no pass of their own (twattila/frame_generation.hpp).
   const bool frame_generation = twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.frame_generation != 0.f;
   SetOutputEncoding(windows_hdr ? (frame_generation ? 0 : 1) : 2);
+  if (first_start && !windows_hdr) ApplySdrPreset();
   return false;
 }
 
@@ -2486,6 +2508,8 @@ void ConfigureAddon() {
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
     auto_output_pending = (value == 3);
+    float saved_mode = 0.f;
+    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     SetOutputEncoding(auto_output_pending ? 1 : value);
     settings.push_back(setting);
   }

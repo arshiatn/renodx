@@ -144,6 +144,8 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | A game's `*.hlsl` that wrap `../twattila/*`: edits reach both games | Remember both, build both | Build |
 | In-place format upgrades lost clamps (Ryse) | View cloning for new mods; don't retrofit | Read |
 | Extended's fire and bloom caps differ per game | Read the game's own | Read |
+| 3Dmigoto drops a two-component operand: `add r0.yz, cb0[0].yyyy, -cb2[0].wwzw` came out with one constant for both (WH3 fog height) | Read decompile against disassembly where a line writes two components | `warp_tests/fog_wh3`: game's shader against the build on random constants, every bit at the neutral setting; the raw decompile fails it |
+| A strength on one permutation of a family: others may take another route (WH3 fog: half-resolution through an upsample, others with alpha 0 straight to the picture [I]) | Put it where the traced passes meet; list what no trace shows | `names.tsv` family, each permutation's outputs |
 | Decompiled fog or sky: horizon row as vertical lines through fog (8-bit low-res sky cube) | Fog & Sky Smoothing only with the cause proven in that game | Contrast-stretch a shot |
 
 ## 8. UI and presets

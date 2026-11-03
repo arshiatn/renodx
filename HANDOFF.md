@@ -24,7 +24,8 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
 - [x] P7 Graphics 2 of 2 on names that exist: 430 entries > 45 (28 main + 17 tests), replayed offline 45 of 45 `ok`; flags, preferences, Audio out, so no at-start thread. Shadow maps are absolute rows in metres (above 0 the game uses the value, 0 its table: a factor would do nothing). `engine_values.txt` is the 103 real values. Tools: wh3_batch/tweak_scan.py, tweak_lists.py.
       Not done: nothing of the phase; not run in game. ATN's check: `ReShade.log` "Engine values found: 45 of 45"; Battle Shadow Map 1 at 500 m, Grass Size at 2x, Point Lights With Shadows at 2x (crash?); Grass Density above 1x (clamped?).
       ATN decides, other games not touched: WH1 170 of 180, WH2 208 of 220, Pharaoh 445 of 460 (real addresses), Troy 2 of 402: its list is dead. Troy and Pharaoh also retry their 4 missing `SOUND_*` for a long time at start and sliders wait for it (read, not measured).
-- [ ] P12 HDR page parity (SDR preset, Fog Strength)
+- [x] P12 HDR page: SDR preset + first start on an SDR monitor, Fog Strength (34719E09, 78E4CBF2 decompiled, bit-exact at 1 in WARP, 24 runs; 0xA8F5202D stays the game's: its light reaches the picture only through 78E4CBF2, so P11 decompiles it itself), Highlight Hue Shift. Out: Sky Smoothing (WH3's fog cube is BC6H, Attila's cause not shown here); Recommended variants (no VFX sliders).
+      NOT DONE: Fog Strength on 4347C118, 7998DC13, C506E37C (fog light with alpha 0, not through the upsample [I]) and legacy C5B0D1F3: in no trace. Not run in game. ATN's check: Fog Strength 0 and 2 in a battle and on the campaign: at 0 no fog and no leftover glow (a glow left = another permutation: `renodx_trace_now`); SDR monitor, no saved settings: starts in the SDR preset.
 - [ ] P6 RT scene: leaves, grass, 4-bone units, flags, guides (6b puts `ray_traced_guides` back: in `taa_dlss.hpp`'s `Prepare` call and `WriteGuides`' gate; both ask for Ray Reconstruction alone today)
 - [ ] P8 Upscaling below 100%: Experimental, off
 - [ ] P9 Sun shader features (Own Sky Rays, Path-Traced AO, Coloured Shadows, readers)
@@ -33,7 +34,7 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
 - [ ] P11 Lights and fog in rays (optional)
 - [ ] P13 Close: review, all builds, README v30 / v31, zips, round report, ATN's test list
 
-Open in WH3's code (from the lessons' read, each owned by the phase): no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list); no first-start SDR check (P12).
+Open in WH3's code (from the lessons' read, each owned by the phase): no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list).
 
 ## START HERE (2026-11-03): Attila v134 = players' v2.5 (helper74, bridge v23, tag twattila-v134; v133 never released): RenoDX_Attila_v2.5.zip, RenoDX_Attila_v2.5_HDR_only.zip (Nexus: the add-on alone, tools/tw/hdr_zip.py), twattila_v134.zip. Downloads/attila_github_v2.5_notes.md, attila_nexus_text_v2.5.txt. ENORMOUS BATCH done; ATN's in-game tests under "ENORMOUS BATCH" item 18, then WH3.
 ATN decided (2026-11-03): no in-game tests by us unless asked; one game start before a zip.
