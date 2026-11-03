@@ -821,6 +821,9 @@ namespace reflections {
 enum class Pass : uint8_t { GAME, OCCLUSION, RAYS };
 Pass pass = Pass::GAME;
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> main_depth;
+// During OnMarch: its G-buffer (the water drawn by then) and camera for the guides again; the trace's dispatches take those slots.
+std::array<ID3D11ShaderResourceView*, 3> march_gbuffer = {};
+Microsoft::WRL::ComPtr<ID3D11Buffer> march_camera;
 std::span<const uint8_t> resolve_code;
 Microsoft::WRL::ComPtr<ID3D11ComputeShader> resolve;
 Microsoft::WRL::ComPtr<ID3D11ComputeShader> game_resolve;
@@ -854,12 +857,18 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
     native->GetDevice(device.GetAddressOf());
     if (FAILED(device->CreateComputeShader(resolve_code.data(), resolve_code.size(), nullptr, resolve.GetAddressOf()))) return true;
   }
-  twwarhammer3::taa_dlss::KeepReflectionGuideInputs(native);
+  native->CSGetShaderResources(0, static_cast<UINT>(march_gbuffer.size()), march_gbuffer.data());
+  native->CSGetConstantBuffers(0, 1, march_camera.ReleaseAndGetAddressOf());
   std::array<ID3D11ShaderResourceView*, 2> views = {};
   {
     const twattila::rt_scene::internal::ComputeState kept(native);
     views = twattila::rt_scene::Reflections(native, main_depth.Get());
   }
+  for (auto*& view : march_gbuffer) {
+    if (view != nullptr) view->Release();
+    view = nullptr;
+  }
+  march_camera.Reset();
   if (views[0] == nullptr) return true;
   auto& runtime = twattila::rt_scene::internal::runtime;
   const std::unique_lock lock(runtime.mutex);
@@ -2343,7 +2352,7 @@ const twattila::rt_scene::Host RT_HOST = {
     .render_size = twwarhammer3::taa_dlss::RenderSize,
     .guides_written = twwarhammer3::taa_dlss::GuidesWritten,
     .main_view = twattila::frame_history::MainViewport,
-    .rewrite_guides = twwarhammer3::taa_dlss::RewriteGuides,
+    .rewrite_guides = [](ID3D11DeviceContext* native) { twwarhammer3::taa_dlss::RewriteGuides(native, reflections::march_gbuffer, reflections::march_camera.Get()); },
 };
 
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};

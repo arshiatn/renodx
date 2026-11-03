@@ -126,9 +126,6 @@ struct State {
   uint64_t taa_frame = UINT64_MAX;        // the game's TAA pass ran
   uint64_t no_camera_frame = UINT64_MAX;  // ... without the main view's camera
   uint64_t guides_frame = UINT64_MAX;  // Ray Reconstruction's guides written
-  // The reflection march's G-buffer and camera (the water drawn by then): RewriteGuides'.
-  std::array<ComPtr<ID3D11ShaderResourceView>, 3> reflection_gbuffer;
-  ComPtr<ID3D11Buffer> reflection_camera;
   std::array<float, 16> previous_view_projection = {};  // the last evaluation's, without the jitter
   twattila::frame_generation::Inputs generation;        // this evaluation's for frame generation
   uint64_t generation_frame = UINT64_MAX;               // its frame, until the tone mapper's draw keeps it
@@ -508,30 +505,13 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT cam
   }
 }
 
-// At the reflection march (its CS t0-t2 the G-buffer, b0 the camera): what RewriteGuides reads; the trace's dispatches come
-// between and take those slots.
-inline void KeepReflectionGuideInputs(ID3D11DeviceContext* native) {
-  std::array<ID3D11ShaderResourceView*, 3> gbuffer = {};
-  native->CSGetShaderResources(0, static_cast<UINT>(gbuffer.size()), gbuffer.data());
-  const std::unique_lock lock(internal::state.mutex);
-  for (size_t index = 0; index < gbuffer.size(); ++index) {
-    internal::state.reflection_gbuffer[index] = gbuffer[index];
-    if (gbuffer[index] != nullptr) gbuffer[index]->Release();
-  }
-  native->CSGetConstantBuffers(0, 1, internal::state.reflection_camera.ReleaseAndGetAddressOf());
-}
-
 // The guides again with the water in the G-buffer, for the rays that leave from it (rt_core Reflections).
-inline void RewriteGuides(ID3D11DeviceContext* native) {
+inline void RewriteGuides(ID3D11DeviceContext* native, const std::array<ID3D11ShaderResourceView*, 3>& gbuffer, ID3D11Buffer* camera) {
   using internal::state;
   ComPtr<ID3D11DeviceContext1> context1;
   if (FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
   const std::unique_lock lock(state.mutex);
-  if (state.guides_frame != state.frame || !state.reflection_camera) return;
-  internal::DispatchGuides(native, context1.Get(), {state.reflection_gbuffer[0].Get(), state.reflection_gbuffer[1].Get(), state.reflection_gbuffer[2].Get()},
-                           state.reflection_camera.Get());
-  state.reflection_gbuffer = {};
-  state.reflection_camera.Reset();
+  if (state.guides_frame == state.frame) internal::DispatchGuides(native, context1.Get(), gbuffer, camera);
 }
 
 // Whether the G-buffer guides were written this frame.
