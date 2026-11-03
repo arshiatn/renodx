@@ -299,19 +299,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     // From here on: a set's first request is an evaluation, and an open can take longer than the idle time by itself.
     rt_used = std::chrono::steady_clock::now();
   };
-  // The open set's objects in Ray Reconstruction and frame generation (their handles stay open: set_handles), on a new
-  // device when a GPU reset removed theirs.
+  // The open set's objects in Ray Reconstruction and frame generation (their handles stay open: set_handles), the latter on a
+  // new device when a GPU reset removed its own.
+  std::string reconstruction_refusal;
   const auto open_reconstruction = [&] {
-    if (reconstruction->Lost()) {
-      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed Ray Reconstruction's device: a new one.");
-      reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
-    }
     reconstruction_live = true;
     reconstruction_open = reconstruction->Initialize(adapter.Get(), folder)
                           && reconstruction->Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
                                                    shared->specular_albedo, shared->normals, shared->roughness},
                                                   shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u);
     rr_used = std::chrono::steady_clock::now();
+    if (!reconstruction_open && reconstruction->Status() != reconstruction_refusal) {
+      reconstruction_refusal = reconstruction->Status();
+      ReShadeLogMessage(nullptr, 0, ("[TW DLAA helper] " + reconstruction_refusal).c_str());
+    }
   };
   const auto generation_status = [&] {
     return (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->Status().c_str() : proxy_generation->Status().c_str();
@@ -328,10 +329,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   };
   const auto open_generation = [&] {
     using namespace twattila::dlaa_bridge;
-    if (generation->Lost()) {
+    const bool streamline_lost = generation->Lost();
+    if (streamline_lost) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: Streamline started again.");
       generation->Shutdown();
       generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
+      // Streamline's stop ended NGX, not per device: Ray Reconstruction starts it again after Streamline's start (below). Its
+      // object stays unreleased: NGX's shutdown then would crash Streamline's next evaluation.
+      reconstruction->Close();
+      reconstruction.release();
+      reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
     }
     // The player's choice alone (DLSS only on NVIDIA's GPUs, else as Auto), or Auto's order.
     const bool nvidia = adapter_description.VendorId == 0x10DE;
@@ -381,6 +388,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     strncpy_s(shared->fg_status, generation_status(), _TRUNCATE);
     shared->fg_failed = (generation_open ? 0u : 1u);
     if (version >= 23) shared->fg_running = generation_backend;
+    if (streamline_lost && reconstruction_open) open_reconstruction();
   };
   // A release's line in the log: how long it stalled the requests (an answer later than 5 s turns DLSS off) and this
   // process's video memory before and after.
@@ -416,8 +424,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (reconstruction_live && now - rr_used > IDLE_RELEASE) {
       reconstruction_live = false;
       if (streamline_used) {
-        // NGX stays: its shutdown is per device and Streamline shares this one (D3D12CreateDevice's). The feature's memory
-        // goes with it (FreeMemOnReleaseFeature).
+        // NGX stays: its shutdown, also of another device, crashes Streamline's next evaluation (2026-11-03, fg_bridge_test). The
+        // feature's memory goes with it (FreeMemOnReleaseFeature).
         logged_release("[TW DLAA helper] Ray Reconstruction off for 10 s: its feature released", [&] { reconstruction->ReleaseFeature(); });
       } else {
         logged_release("[TW DLAA helper] Ray Reconstruction off for 10 s: its memory released",
@@ -445,7 +453,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     for (; woken == WAIT_TIMEOUT; woken = WaitForMultipleObjects(2, waits, FALSE, 1000)) release_idle();
     return woken;
   };
+  auto refused_tried = std::chrono::steady_clock::now();
   while (next_request() == WAIT_OBJECT_0) {
+    // A GPU reset removed one's device: it goes at once, whatever the set (no new device can be made while it is held:
+    // MakeOwnDevice), a new one on this set (a new set usually follows: the shared fence reads all ones, dlaa_bridge::Prepare).
+    if (reconstruction->Lost()) {
+      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed Ray Reconstruction's device: a new one.");
+      reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
+      if (reconstruction_open && shared->generation == opened_generation) open_reconstruction();
+    }
+    if (upscaler->Lost()) {
+      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed FSR's / XeSS's device: a new one.");
+      upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+      upscaler_tried = false;
+    }
     if (shared->generation != opened_generation) {
       rt_drain();
       // The addon's new textures and fence, opened; the last set's handles closed, this set's kept (set_handles).
@@ -514,12 +535,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         fence.Reset();
       }
     }
-    // A GPU reset removed Ray Reconstruction's or frame generation's device: a new one on this set (until then requests
-    // pass without them).
-    if (reconstruction_open && reconstruction->Lost()) open_reconstruction();
+    // A GPU reset removed frame generation's device: a new one on this set (until then requests pass without it).
     if (generation_open && generation_lost()) open_generation();
-    if (upscaler_open && upscaler->Lost()) upscaler_tried = false;
     const auto now = std::chrono::steady_clock::now();
+    // A device refused while another's removed one is held (frame generation's: MakeOwnDevice): asked again each second,
+    // a next set may not come (until then requests pass without them).
+    if (now - refused_tried > std::chrono::seconds(1)) {
+      refused_tried = now;
+      if (other_upscaler()) {
+        upscaler_tried = upscaler_tried && upscaler_open;
+      } else if (shared->ray_reconstruction != 0 && !reconstruction_open && !reconstruction_idle) {
+        open_reconstruction();
+      }
+    }
     if (shared->rt_request != 0) {
       rt_used = now;
       if (scene_idle) {
@@ -612,8 +640,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       upscale_used = now;
       if (!upscaler_tried) {
         upscaler_tried = true;
-        if (upscaler->Lost()) ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed FSR's / XeSS's device: a new one.");
-        if (upscaler->Lost() || upscaler->Backend() != shared->upscaler) upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+        if (upscaler->Backend() != shared->upscaler) upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
         upscaler_live = true;
         upscaler_open = upscaler->Initialize(adapter.Get(), folder, shared->upscaler)
                         && upscaler->Open({shared->color, shared->depth, shared->motion, shared->output}, shared->fence);

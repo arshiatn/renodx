@@ -54,9 +54,9 @@ class Upscaler12 {
     if (failed_) return false;
     if (device_) return true;
     backend_ = backend;
-    // Not for good: Windows refuses a process new devices for a while after GPU resets (tried again at the next set).
+    // Not for good: tried again while it is asked for (MakeOwnDevice).
     ComPtr<ID3D12Device> device;
-    if (const HRESULT made = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device.GetAddressOf())); FAILED(made)) {
+    if (const HRESULT made = MakeOwnDevice(adapter, &device); FAILED(made)) {
       status_ = std::format("Upscaling: no D3D12 device on the game's GPU (0x{:08X})", static_cast<uint32_t>(made));
       return false;
     }

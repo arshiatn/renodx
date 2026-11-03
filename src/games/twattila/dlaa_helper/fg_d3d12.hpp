@@ -545,11 +545,10 @@ class FrameGeneration12 {
     window_.Close();
   }
 
-  // The window and swap chain gone, Streamline stopped (the helper quits, or a GPU reset).
+  // The window and swap chain gone, Streamline stopped (the helper quits, or a GPU reset; its resources first: not freed, it
+  // keeps a removed device, and no new one can be made: MakeOwnDevice).
   void Shutdown() {
-    WaitIdle();
-    chain_.Reset();
-    window_.Close();
+    FreeResources();
     streamline_queue_.Reset();
     streamline_device_.Reset();
     if (initialized_) shutdown_();

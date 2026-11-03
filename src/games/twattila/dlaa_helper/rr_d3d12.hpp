@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <string>
 #include <vector>
@@ -50,6 +51,25 @@ constexpr size_t UPSCALE_INPUTS = OUTPUT + 1;
 // Requests in flight: each with its own command allocator and list.
 constexpr size_t SLOTS = 3;
 
+// A D3D12 device on the game's GPU of its own, apart from D3D12CreateDevice's one of the process that Streamline holds. While
+// anything holds a device a GPU reset removed no new device can be made in this process (D3D12CreateDevice and the factories
+// answer with the removal), and Streamline does not let go (ATN 2026-11-03: Ray Reconstruction's hang took Streamline's device
+// with it, off by then: no Ray Reconstruction, FSR or XeSS until the game ended). RENODX_TW_D3D12_DEBUG (tests; D3D12's debug
+// layer): its messages in a debugger's output.
+inline HRESULT MakeOwnDevice(IDXGIAdapter1* adapter, ComPtr<ID3D12Device>* device) {
+  constexpr GUID DEVICE_FACTORY = {0x114863bf, 0xc386, 0x4aee, {0xb3, 0x9d, 0x8f, 0x0b, 0xbb, 0x06, 0x29, 0x55}};  // CLSID_D3D12DeviceFactory
+  constexpr GUID DEBUG_LAYER = {0xf2352aeb, 0xdd84, 0x49fe, {0xb9, 0x7b, 0xa9, 0xdc, 0xfd, 0xcc, 0x1b, 0x4f}};      // CLSID_D3D12Debug
+  if (ComPtr<ID3D12DeviceFactory> factory; SUCCEEDED(D3D12GetInterface(DEVICE_FACTORY, IID_PPV_ARGS(factory.GetAddressOf())))) {
+    factory->SetFlags(D3D12_DEVICE_FACTORY_FLAG_DISALLOW_STORING_NEW_DEVICE_AS_SINGLETON);
+    if (ComPtr<ID3D12Debug> debug; GetEnvironmentVariableW(L"RENODX_TW_D3D12_DEBUG", nullptr, 0) != 0
+                                   && SUCCEEDED(factory->GetConfigurationInterface(DEBUG_LAYER, IID_PPV_ARGS(debug.GetAddressOf())))) {
+      debug->EnableDebugLayer();
+    }
+    if (SUCCEEDED(factory->CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device->GetAddressOf())))) return S_OK;
+  }
+  return D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device->GetAddressOf()));
+}
+
 // One request's settings.
 struct Request {
   uint64_t value = 0;  // the addon's fence value its inputs are written at (the next is signalled after)
@@ -77,9 +97,9 @@ class RayReconstruction12 {
   bool Initialize(IDXGIAdapter1* adapter, const std::wstring& folder) {
     if (failed_) return false;
     if (device_) return true;
-    // Not for good: Windows refuses a process new devices for a while after GPU resets (tried again at the next set).
+    // Not for good: tried again while it is asked for (MakeOwnDevice).
     ComPtr<ID3D12Device> device;
-    if (const HRESULT made = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device.GetAddressOf())); FAILED(made)) {
+    if (const HRESULT made = MakeOwnDevice(adapter, &device); FAILED(made)) {
       status_ = std::format("Ray Reconstruction: no D3D12 device on the game's GPU (0x{:08X})", static_cast<uint32_t>(made));
       return false;
     }
@@ -145,7 +165,10 @@ class RayReconstruction12 {
     return true;
   }
 
+  // Its commands done, the textures let go (the game's GPU can be frames behind: releasing them under a request still
+  // waiting for its value removed the device, 2026-11-03).
   void Close() {
+    if (own_fence_) WaitFor(own_value_);
     inputs_ = {};
     hit_distance_.Reset();
     fence_.Reset();
@@ -155,6 +178,16 @@ class RayReconstruction12 {
   // (also when it could not run, so the game never waits for nothing). False: it did not run.
   bool Evaluate(const Request& request) {
     if (!fence_ || !queue_) return false;
+    // The GPU harness's RENODX_TW_TEST_DEVICE_REMOVAL=<evaluations>: the device removed at the process's evaluation of that
+    // number, as a GPU hang removes it (main.cpp makes a new one).
+    static const int test_removal_at = [] {
+      std::array<wchar_t, 16> value = {};
+      return (GetEnvironmentVariableW(L"RENODX_TW_TEST_DEVICE_REMOVAL", value.data(), static_cast<DWORD>(value.size())) != 0) ? _wtoi(value.data()) : 0;
+    }();
+    static int test_evaluations = 0;
+    if (++test_evaluations == test_removal_at) {
+      if (ComPtr<ID3D12Device5> device5; SUCCEEDED(device_.As(&device5))) device5->RemoveDevice();
+    }
     Slot& slot = slots_[next_slot_];
     next_slot_ = (next_slot_ + 1) % SLOTS;
     evaluated_ = false;

@@ -9,6 +9,7 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
 
 ## Next build (not released)
 - **Fog Strength** (Extra): the fog's and haze's opacity x 0 to 2, 1 = the game's. **Reflection Quality** 0.25x to 16x (FidelityFX SSSR's steps stop at 1024 = 16x). **Smoke Shadows** without rays: on by default (1) and in every preset; about 0.1-0.15 ms at 4K, 60 MB.
+- **Ray Reconstruction to Anti-Aliasing Off / FSR / XeSS**: no more GPU reset (its textures let go while it was still queued). Ray Reconstruction, FSR and XeSS have a D3D12 device of their own: after a GPU reset they come back at once, not after a restart; about 180 MB more video memory with Ray Reconstruction and Frame Generation both on.
 
 ## v132 = players' v2.01j (2026-11-03; renodx-tw-dlaa64.exe helper72, bridge v23: ship them together)
 Only builds and the GPU harness (103 modes) after the last changes; parts of it ran in test replays while it was made. ATN tests in game.
