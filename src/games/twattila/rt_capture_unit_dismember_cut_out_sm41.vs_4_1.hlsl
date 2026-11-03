@@ -1,0 +1,3 @@
+// rt_capture_unit_dismember_sm41 with the UV: a unit draw whose pixel shader clips (rt_core.hpp, SceneShader::cut_out_shader).
+#define RT_CAPTURE_UV
+#include "./rt_capture_unit_dismember_sm41.vs_4_1.hlsl"

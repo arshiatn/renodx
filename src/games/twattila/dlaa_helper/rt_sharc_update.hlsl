@@ -55,7 +55,7 @@ void main(uint3 block : SV_DispatchThreadID) {
     const float3 albedo = HitAlbedo(position);
     const float offset = SurfaceOffset(distance(position, Camera()));
     const uint record_flags = records[record_index].z >> 16;
-    const float transmittance = ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
+    const float transmittance = ((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
     const float3 surface = position + hit_normal * offset;
     const float3 direct = UnseenLight(surface, position - hit_normal * offset, hit_normal, albedo, transmittance, id, light_seed);
     if (!SharcUpdateHit(sharc, state, sharc_hit, direct, Random(uint3(id, light_seed + 1u)))) break;

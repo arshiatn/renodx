@@ -836,8 +836,9 @@ constexpr auto OnCutOutShadowDraw = []<typename Context>(Context& command) -> re
   return {};
 };
 
-// The game's shadow pass pixel shader that alpha-tests its meshes.
-inline void InstallCutOuts(uint32_t shadow_shader_hash) {
+// The game's shadow pass pixel shader that alpha-tests its meshes, and the units' G-buffer pixel shaders that clip (sorted).
+inline void InstallCutOuts(uint32_t shadow_shader_hash, std::span<const uint32_t> unit_pixel_shaders) {
+  internal::cut_out_pixel_shaders = unit_pixel_shaders;
   renodx::utils::command_action::Register(
       OnCutOutShadowDraw, {.shader_hash = shadow_shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 }

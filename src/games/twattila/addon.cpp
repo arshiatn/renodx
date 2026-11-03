@@ -1178,14 +1178,14 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x46C616F0, .capture_shader = __rt_capture_leaf_sm3, .rows_shader = __motion_record_tree, .foliage = true},
     {.hash = 0x5B880546, .capture_shader = __rt_capture_leaf_sm41, .rows_shader = __motion_record_tree, .foliage = true},
     {.hash = 0xCABCB9D1, .capture_shader = __rt_capture_leaf_sm5, .rows_shader = __motion_record_tree, .foliage = true},
-    {.hash = 0x5F9CD405, .capture_shader = __rt_capture_unit_sm3, .dynamic = true},
-    {.hash = 0x0ECFE74C, .capture_shader = __rt_capture_unit_4_bones_sm3, .dynamic = true},
-    {.hash = 0xDAC80ECC, .capture_shader = __rt_capture_unit_dismember_sm3, .dynamic = true},
-    {.hash = 0xC2AA8FDA, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .dynamic = true},
-    {.hash = 0xA691CFF4, .capture_shader = __rt_capture_unit_sm41, .dynamic = true},
-    {.hash = 0x372628AB, .capture_shader = __rt_capture_unit_4_bones_sm41, .dynamic = true},
-    {.hash = 0xEA1AEB0E, .capture_shader = __rt_capture_unit_dismember_sm41, .dynamic = true},
-    {.hash = 0x31B66A15, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .dynamic = true},
+    {.hash = 0x5F9CD405, .capture_shader = __rt_capture_unit_sm3, .cut_out_shader = __rt_capture_unit_cut_out_sm3, .dynamic = true},
+    {.hash = 0x0ECFE74C, .capture_shader = __rt_capture_unit_4_bones_sm3, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm3, .dynamic = true},
+    {.hash = 0xDAC80ECC, .capture_shader = __rt_capture_unit_dismember_sm3, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm3, .dynamic = true},
+    {.hash = 0xC2AA8FDA, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm3, .dynamic = true},
+    {.hash = 0xA691CFF4, .capture_shader = __rt_capture_unit_sm41, .cut_out_shader = __rt_capture_unit_cut_out_sm41, .dynamic = true},
+    {.hash = 0x372628AB, .capture_shader = __rt_capture_unit_4_bones_sm41, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm41, .dynamic = true},
+    {.hash = 0xEA1AEB0E, .capture_shader = __rt_capture_unit_dismember_sm41, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm41, .dynamic = true},
+    {.hash = 0x31B66A15, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm41, .dynamic = true},
     // Grass placed (its instance rows), swaying within its share, past it still (rt_rows_grass).
     {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .rows_shader = __rt_rows_grass, .foliage = true, .grass = true},
     {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .rows_shader = __rt_rows_grass, .foliage = true, .grass = true},
@@ -1218,6 +1218,20 @@ constexpr std::array<uint32_t, 4> AFTER_FOLIAGE_VERTEX_SHADERS = {0x347F3DD9, 0x
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
+
+// The units' G-buffer pixel shaders that clip at t0's alpha (weighted ps30_gbuffer without noclip; names.tsv), sorted.
+constexpr std::array<uint32_t, 92> UNIT_CUT_OUT_PIXEL_SHADERS = {
+    0x015AD59B, 0x04451F97, 0x078FE2F8, 0x092FAE7D, 0x0C6FF9DE, 0x0CB448B3, 0x0E00C067, 0x1124A46A, 0x11CD57DD, 0x1259BC90,
+    0x20C7AB1F, 0x220C5180, 0x239963D1, 0x24C09B83, 0x28C3EAD4, 0x29482F73, 0x2B7D2720, 0x2C3EA513, 0x2D4B1E78, 0x2F59B3DA,
+    0x3782B858, 0x3BCC202B, 0x3BD3FC99, 0x3D7ED953, 0x3EA5229E, 0x40593CDB, 0x4918D429, 0x4E9EDE79, 0x58BCF4AE, 0x59F3A5EA,
+    0x5B7A9F80, 0x5C18A800, 0x5FEC953E, 0x61CD6092, 0x6EC2D95F, 0x742B695C, 0x7AC17F0A, 0x7B01A295, 0x7D6AFE41, 0x82FF1DB5,
+    0x8524F338, 0x879A8AFD, 0x8A031046, 0x8A1DBDD5, 0x8C501D38, 0x8D8F67DE, 0x8FCC1EE1, 0x920E9860, 0x93C95E3C, 0x940D83F4,
+    0x95BD2B3D, 0x9A0630CE, 0x9C38C3D8, 0x9D2D0AFB, 0x9D5903B6, 0x9EF52CAC, 0xA01EEF45, 0xA482BA91, 0xA4C87797, 0xB866973E,
+    0xBA2A6179, 0xBB381C44, 0xBE51C839, 0xC1822803, 0xC3057069, 0xC3144AD4, 0xC3728871, 0xC5E213AC, 0xC64A7A31, 0xC85DD331,
+    0xCACD9B8E, 0xD2C68515, 0xD5668711, 0xD5DC3322, 0xDB17E286, 0xDCC30AB7, 0xDD85EE06, 0xDEBD1020, 0xE0D9788D, 0xE39EBF7B,
+    0xE5A5F801, 0xE5A7FEE6, 0xE7AE71FE, 0xE91382B4, 0xEBD63231, 0xED40D015, 0xEDBF9EC6, 0xEDCD6CC3, 0xF73222D6, 0xFBD501F7,
+    0xFF1C02CC, 0xFF9A9D05,
+};
 
 // Water Clarity (ATN: rivers more see-through): the water shaders (WATER_SHADERS) blend toward the deep water colour by
 // g_sea_bed_light_scatter (lighting_VS_PS c10) to the power of the water they look through. At their draws a copy of those
@@ -2219,7 +2233,7 @@ bool AttachAddon() {
   // draws the sun draws itself: no callback after it runs).
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);
-  twattila::rt_scene::InstallCutOuts(0xF79BFB14);  // rigidcommon ps30_shadow_alpha_test
+  twattila::rt_scene::InstallCutOuts(0xF79BFB14, UNIT_CUT_OUT_PIXEL_SHADERS);  // rigidcommon ps30_shadow_alpha_test
   for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
     renodx::utils::command_action::Register(
         OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});

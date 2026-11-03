@@ -441,7 +441,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     // Leaves, cloth and sails pass their share of light through (the sun's from behind; the path goes on through them
     // as often): green light under the trees.
     const uint record_flags = records[record_index].z >> 16;
-    const float transmittance = ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
+    const float transmittance = ((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
     const float3 behind = position - normal * offset;
     const float3 emitted = UnseenLight(surface, behind, normal, albedo, transmittance, seed, frame * 64u + path * 8u + vertex * 2u);
     if (!unseen) {

@@ -241,7 +241,7 @@ class FrameGeneration12 {
   // (the game's own image shows).
   bool Present(dlaa_bridge::Shared* shared) {
     const uint64_t value = shared->value;
-    if (!fence_ || !frame_ || shared->fg_window == 0) {
+    if (!fence_ || !frame_ || failed_ || shared->fg_window == 0) {
       SignalOnly(value);
       return false;
     }
@@ -252,7 +252,6 @@ class FrameGeneration12 {
       after_hidden_ = true;
       if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
       SignalOnly(value);
-      status_ = "Frame generation off";
       return false;
     }
     // NVIDIA's preset into the driver profile (DLSS-G reads it when it starts: a new one applies at the next start), on
@@ -374,7 +373,7 @@ class FrameGeneration12 {
           sl::ResourceTag(&ui_layer, sl::kBufferTypeUIAlpha, sl::ResourceLifecycle::eOnlyValidNow),
       };
       const uint32_t tag_count = ui ? 4u : hudless_valid ? 3u : 2u;
-      set_tags_(*token, VIEWPORT, tags.data(), tag_count, slot.list.Get());
+      Report(set_tags_(*token, VIEWPORT, tags.data(), tag_count, slot.list.Get()), "its inputs");
     }
     slot.list->Close();
     copy_queue_->Wait(fence_.Get(), value);
@@ -418,6 +417,7 @@ class FrameGeneration12 {
   void FreeResources() {
     WaitIdle();
     SetGeneration(0, false, false, false);
+    presents_after_resize_ = 2;
     if (free_resources_ != nullptr) free_resources_(sl::kFeatureDLSS_G, VIEWPORT);
     chain_.Reset();
     if (window_ != nullptr) PostMessageW(window_, WM_CLOSE, 0, 0);
@@ -458,6 +458,8 @@ class FrameGeneration12 {
   bool Fail(const std::string& status) {
     failed_ = true;
     status_ = "Frame generation: " + status;
+    // The game's own image shows, not the window's last frame.
+    if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
     return false;
   }
 
@@ -524,7 +526,7 @@ class FrameGeneration12 {
     options.flags = sl::DLSSGFlags::eRetainResourcesWhenOff;
     options.hudLessBufferFormat = (hudless ? static_cast<uint32_t>(format_) : 0u);
     options.enableUserInterfaceRecomposition = (ui ? sl::Boolean::eTrue : sl::Boolean::eFalse);
-    set_options_(VIEWPORT, options);
+    Report(set_options_(VIEWPORT, options), "its options");
   }
 
 #if __has_include(<nvapi.h>)
@@ -659,6 +661,12 @@ class FrameGeneration12 {
       SetWindowPos(window_, HWND_TOP, 0, 0, client_width, client_height, SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
     }
     if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) return true;
+    // HDR10 (R10G10B10A2) and scRGB (RGBA16F) frames as the game's swap chain shows them. SDR frames (gamma 2.2, in
+    // R10G10B10A2 too) keep the chain's default: taken for HDR10 they came out red (ATN 2026-11-01).
+    const auto set_color_space = [&] {
+      if (format_ == DXGI_FORMAT_R10G10B10A2_UNORM && !sdr) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+      if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
+    };
     if (chain_) {
       // Generation off while the buffers change (NVIDIA: Present can deadlock otherwise), their count given (Streamline
       // must see no zeros: the device was removed in the other games' module).
@@ -670,6 +678,7 @@ class FrameGeneration12 {
         chain_width_ = width_;
         chain_height_ = height_;
         chain_format_ = format_;
+        set_color_space();
         return true;
       }
       chain_.Reset();
@@ -702,14 +711,16 @@ class FrameGeneration12 {
         || FAILED(created.As(&chain_))) {
       return Fail("its swap chain could not be made");
     }
-    // HDR10 (R10G10B10A2) and scRGB (RGBA16F) frames as the game's swap chain shows them. SDR frames (gamma 2.2, in
-    // R10G10B10A2 too) keep the chain's default: taken for HDR10 they came out red (ATN 2026-11-01).
-    if (format_ == DXGI_FORMAT_R10G10B10A2_UNORM && !sdr) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
-    if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
+    set_color_space();
     chain_width_ = width_;
     chain_height_ = height_;
     chain_format_ = format_;
     return true;
+  }
+
+  // A failed call of Streamline's for the next status line (and the log).
+  void Report(sl::Result result, const char* what) {
+    if (result != sl::Result::eOk) failure_ = std::format("{} failed ({})", what, sl::getResultAsStr(result));
   }
 
   static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM w_parameter, LPARAM l_parameter) {
@@ -801,7 +812,7 @@ class FrameGeneration12 {
     constants.motionVectors3D = sl::Boolean::eFalse;
     constants.reset = ((shared.reset != 0 || std::exchange(after_hidden_, false)) ? sl::Boolean::eTrue : sl::Boolean::eFalse);
     constants.motionVectorsJittered = sl::Boolean::eFalse;
-    set_constants_(constants, token, VIEWPORT);
+    Report(set_constants_(constants, token, VIEWPORT), "its camera");
   }
 
   // The status line every 30 presents.
@@ -810,12 +821,27 @@ class FrameGeneration12 {
     if (presents_++ % 30 != 0 || get_state_(VIEWPORT, state, nullptr) != sl::Result::eOk) return;
     if (state.numFramesToGenerateMax != 0) max_frames_ = state.numFramesToGenerateMax + 1;
     dynamic_supported_ = state.bIsDynamicMFGSupported == sl::Boolean::eTrue;
-    if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) {
+    std::string reasons;
+    const auto add = [&](sl::DLSSGStatus flag, const char* reason) {
+      if (!(state.status & flag)) return;
+      reasons += (reasons.empty() ? "" : "; ");
+      reasons += reason;
+    };
+    add(sl::DLSSGStatus::eFailResolutionTooLow, "the resolution is too low");
+    add(sl::DLSSGStatus::eFailReflexNotDetectedAtRuntime, "Reflex is not detected");
+    add(sl::DLSSGStatus::eFailHDRFormatNotSupported, "the HDR format is not supported");
+    add(sl::DLSSGStatus::eFailCommonConstantsInvalid, "the camera constants are invalid");
+    add(sl::DLSSGStatus::eFailGetCurrentBackBufferIndexNotCalled, "the back buffer index is not queried");
+    if (!failure_.empty()) {
+      status_ = "Frame generation: " + std::exchange(failure_, {});
+    } else if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) {
       status_ = "Frame generation: not generating (it takes no scRGB: set Output to HDR10 or SDR)";
     } else if (state.status != sl::DLSSGStatus::eOk) {
-      status_ = std::format("Frame generation: not generating (status {:#x})", static_cast<uint32_t>(state.status));
+      status_ = "Frame generation: not generating (" + (reasons.empty() ? std::format("status {:#x}", static_cast<uint32_t>(state.status)) : reasons) + ")";
     } else if (!inputs) {
       status_ = "Frame generation: paused (DLAA is not running on this frame)";
+    } else if (applied_generated_ != 0 && state.numFramesActuallyPresented < 2) {
+      status_ = "Frame generation: on, no generated frames presented yet";
     } else {
       std::string preset;
       const int preset_result = preset_result_.load();
@@ -909,6 +935,7 @@ class FrameGeneration12 {
   uint32_t frame_limit_ = 0;  // Reflex's frame rate limit as last set (rendered frames per second; 0: none)
   uint32_t presents_after_resize_ = 0;  // frame generation stays off for these presents
   bool after_hidden_ = false;           // the next frame has no connection to the last one presented
+  std::string failure_;
   uint32_t applied_generated_ = UINT32_MAX;
   bool applied_hudless_ = false;
   bool applied_dynamic_ = false;

@@ -169,7 +169,8 @@ struct SceneShader {
   // instance; RT_INSTANCED), each draw's instances placed in the helper every frame (bridge v14 placements).
   std::span<const uint8_t> rows_shader;
   // A mesh the game's shadow pass alpha-tests (its diffuse map in Runtime::cut_out_textures: palm and pine cards, fences) is
-  // captured by this version, with the UV, cut out as leaves are but still.
+  // captured by this version, with the UV, cut out as leaves are but still. A unit (dynamic): its draws whose G-buffer pixel
+  // shader clips (cut_out_pixel_shaders: beards, fur, leaves on a tree unit; solid cards in the scene shaded them black).
   std::span<const uint8_t> cut_out_shader;
   bool terrain = false;
   bool dynamic = false;
@@ -550,6 +551,7 @@ struct Runtime {
 static Runtime runtime;
 // The addon's (Install), kept while installed.
 static std::span<const SceneShader> scene_shaders;
+static std::span<const uint32_t> cut_out_pixel_shaders;  // sorted
 static Host host;
 // The code of the scene shaders without a capture version, as the game made them (every vertex shader with
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
@@ -902,6 +904,14 @@ void Capture(Context& command, const SceneShader& shader) {
   // The Debug View's scene test: a part of the scene alone.
   const uint32_t test = runtime.settings.scene_test;
   if ((test == 1 && !shader.terrain) || (test == 2 && shader.rows_shader.empty()) || (test == 3 && shader.foliage)) return;
+  // Placed grass and leaves are drawn twice a frame by one vertex shader, depth prefill (no target 0) then G-buffer. The
+  // G-buffer draw alone: with both, the share paid twice, and past it an instance hidden by one (its swaying copy traced)
+  // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera).
+  if (shader.foliage && !shader.rows_shader.empty()) {
+    ComPtr<ID3D11RenderTargetView> colour_target;
+    native->OMGetRenderTargets(1, colour_target.GetAddressOf(), nullptr);
+    if (!colour_target) return;
+  }
   if (shader.sun_facing && !(shader.far_tree ? runtime.settings.far_tree_shadows : runtime.settings.sprite_shadows)) return;
   const auto& arguments = command.arguments;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
@@ -996,13 +1006,19 @@ void Capture(Context& command, const SceneShader& shader) {
   if (shader.foliage || !shader.cut_out_shader.empty()) native->PSGetShaderResources(shader.far_tree ? 1u : 0u, 1, mask.GetAddressOf());
   bool cut_out = false;
   if (!shader.foliage && mask) {
-    ComPtr<ID3D11Resource> mask_resource;
-    mask->GetResource(mask_resource.GetAddressOf());
-    const std::unique_lock lock(runtime.mutex);
-    cut_out = runtime.cut_out_textures.contains(mask_resource.Get());
+    if (shader.dynamic) {
+      cut_out = std::ranges::binary_search(
+          cut_out_pixel_shaders,
+          renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache));
+    } else {
+      ComPtr<ID3D11Resource> mask_resource;
+      mask->GetResource(mask_resource.GetAddressOf());
+      const std::unique_lock lock(runtime.mutex);
+      cut_out = runtime.cut_out_textures.contains(mask_resource.Get());
+    }
     if (!cut_out) mask.Reset();
   }
-  const bool foliage = shader.foliage || cut_out;
+  bool foliage = shader.foliage || cut_out;
   // The draw's identity: its buffers, ranges, textures and constant buffers (but the camera's at b0); a placed draw's its
   // geometry alone (its ranges, first vertex buffer and index buffer) and its mask (one grass mesh might be drawn with
   // more than one: its BLAS's alpha test is its first capture's).
@@ -1218,6 +1234,24 @@ void Capture(Context& command, const SceneShader& shader) {
     runtime.costs.left_out_shaders[shader.hash][full_share] += texels;
     return;
   }
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  if (!PrepareDevice(device.Get())) return;
+  uint32_t slice = 0;
+  // A unit stays solid (left out, it would lose its shadow) without room for its mask, or with Leaf Micromaps off (rays that
+  // skip alpha tests would pass through it for good), and leaves a quarter of the atlas to leaves and rigid cut-outs (a slice
+  // in use is never reused; without one they leave the scene).
+  if (cut_out && shader.dynamic) {
+    ComPtr<ID3D11Resource> mask_resource;
+    mask->GetResource(mask_resource.GetAddressOf());
+    if (!runtime.settings.micromaps || runtime.tree_corners + (triangles * 3) > runtime.alpha_corners - (runtime.alpha_corners / 2)
+        || (!runtime.atlas_slices.contains(mask_resource.Get()) && runtime.atlas_slices.size() >= dlaa_bridge::RT_ATLAS_SLICES / 4 * 3)
+        || !AtlasSlice(native, mask.Get(), &slice)) {
+      cut_out = false;
+      foliage = false;
+      mask.Reset();
+    }
+  }
   // A mesh without its cluster set (v16): its indices read back for one, its triangles captured meanwhile.
   if constexpr (INDEXED) {
     if (compactable && !blocks) {
@@ -1258,7 +1292,8 @@ void Capture(Context& command, const SceneShader& shader) {
                          | (shader.thin ? dlaa_bridge::RT_THIN : 0u)
                          // Sprite soldiers and far trees block the sun's rays as grass does (leaves let some through).
                          | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u)
-                         | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u);
+                         | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u)
+                         | ((cut_out && shader.dynamic) ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
   if (!dynamic || joined == nullptr || joined->flags != flags || joined->first_vertex + joined->vertex_count != runtime.captured_vertices
       || joined->vertex_count % 3 != 0) {
@@ -1273,9 +1308,6 @@ void Capture(Context& command, const SceneShader& shader) {
     if (dynamic) runtime.costs.no_room += texels;
     return;
   }
-  ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  if (!PrepareDevice(device.Get())) return;
   auto& objects = runtime.objects;
   // The capture version (by the shader's place in the list: listed shaders have them, and record versions), else the
   // game's own: its stream output (SV_Position; its foliage's UV into the second buffer) made once from its code (null:
@@ -1285,7 +1317,6 @@ void Capture(Context& command, const SceneShader& shader) {
   const size_t index = (placed || !clip_space) ? static_cast<size_t>(&shader - scene_shaders.data()) : 0u;
   if ((placed && index >= objects.rows_shaders.size()) || (!clip_space && index >= objects.capture_shaders.size())) return;
   // Leaves wait for a slice of the atlas (none: not in the scene this frame).
-  uint32_t slice = 0;
   if (!place && foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
   sway = sway && mask && AtlasSlice(native, mask.Get(), &slice);
   if (joined != nullptr && foliage && runtime.slices.back() != slice) {
@@ -1400,7 +1431,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // after), more of its instances; its set sent with this frame's trace when the helper lacks it.
   const auto add_blocks = [&] {
     // A placed draw's swaying copy marked (its rows follow its blocks: never joined to another draw's).
-    const uint32_t compact_flags = (flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS))
+    const uint32_t compact_flags = (flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SOLID_CUT_OUT))
                                    | (place ? dlaa_bridge::RT_INSTANCED : 0u);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
@@ -1461,6 +1492,7 @@ void Capture(Context& command, const SceneShader& shader) {
       runtime.unit_vertices += texels;
       runtime.unit_triangles += triangles;
       runtime.unit_clusters += clusters;
+      if (cut_out) runtime.tree_corners += triangles * 3;
     }
     if (shader.grass) runtime.grass_vertices += triangles * 3;
     runtime.dynamic_triangles += triangles;

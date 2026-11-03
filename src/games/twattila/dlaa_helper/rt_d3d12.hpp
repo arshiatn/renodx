@@ -5020,7 +5020,7 @@ class RtScene12 {
   static uint32_t RecordFlags(const dlaa_bridge::RtCapture& capture, bool masked, uint32_t version) {
     return (masked ? RECORD_MASKED : 0u) | ((version >= 11 && (capture.flags & dlaa_bridge::RT_THIN) != 0) ? RECORD_THIN : 0u)
            | ((masked && (capture.flags & dlaa_bridge::RT_SMOKE) != 0) ? RECORD_SMOKE : 0u)
-           | ((masked && (capture.flags & dlaa_bridge::RT_GRASS) != 0) ? RECORD_GRASS : 0u)
+           | ((masked && (capture.flags & (dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SOLID_CUT_OUT)) != 0) ? RECORD_GRASS : 0u)
            | ((masked && (capture.flags & (dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SMOKE)) == 0) ? RECORD_LEAF : 0u);
   }
 

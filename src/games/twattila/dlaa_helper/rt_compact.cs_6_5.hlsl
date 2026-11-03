@@ -10,7 +10,8 @@
 // has templates) are instantiated from their template with their vertices in the vertex buffer (32 bytes of
 // arguments each); the others are built from their triangles' 8-bit indices in the set's pool (64 bytes each, after
 // `built_arguments` bytes). A swaying placed draw's instance SwayTraced turns down (rt_sway.hlsli): its clusters'
-// arguments marked in their last word (rt_sway.cs_6_5.hlsl leaves them out), its triangles not written.
+// arguments marked in their last word (rt_sway.cs_6_5.hlsl leaves them out), its triangles not written (but its first
+// instance's: the set's micromap bake reads those UVs).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_compact.h -Vn RT_COMPACT.
 #include "./rt_scene_data.hlsli"
 #include "./rt_sway.hlsli"
@@ -107,7 +108,7 @@ void main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID) {
     records_written[first_record + cluster] = uint4(masked ? block.w + first_triangle * 3u : NO_UVS, block.z + first_triangle, kind.x,
                                                     masked ? asuint(LEAF_ALPHA_CUTOFF) : 0u);
   }
-  if (left_out || thread.x >= desc.w) return;
+  if ((left_out && instance != 0u) || thread.x >= desc.w) return;
   // Its three bytes, from the two words around them.
   const uint address = corners + thread.x * 3u;
   const uint2 words = sets.Load2(address & ~3u);
