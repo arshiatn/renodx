@@ -7,7 +7,22 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
-## Next build (not released; helper and addon together)
+## v132 = players' v2.01j (2026-11-03; renodx-tw-dlaa64.exe helper72, bridge v23: ship them together)
+Only builds and the GPU harness (103 modes) after the last changes; parts of it ran in test replays while it was made. ATN tests in game.
+- **Smoke shadows**: soft spheres instead of flat quads: no more blocks and holes under catapult hits and burning houses. Smoke Shadow Quality Low / Medium / High (RT/PT: Medium).
+  About 2-3x the sun's cost inside thick smoke; under 1 ms in the battles measured. Fire smoke's second shader (0xF5379F78) casts too.
+- **Path-Traced AO**: Own Sky Rays (on): Rays a Pixel now lowers its noise (open ground 2.4 / 1.2 / 0.75 / 0.6 % at 1 / 2 / 4 / 8 rays, about 0.15 ms a ray at Ultra Performance, no new memory) and
+  it matches Ray-Traced AO's brightness (3-5 % brighter than before). Torch shadows to 8 rays.
+- **RT reflections**: hits read this frame's light in every Light Bounce mode (Off, Rays, Path-Traced agree within 2 %), rough light no longer loses brightness twice, the lobe as wide as the game's own
+  highlight (was 6-10 times wider), AO no longer darkens them again. One ray per render pixel stays: not full resolution below 100 %.
+- **Motion vectors in big battles**: a stream output left bound stalled the GPU about 10 us per unit draw: fixed. 37 fps became 43 with motion on, against 44 off (2vs3, Unit Detail 8), one less pass per standing rigid draw.
+- **Grass shadow flicker**: placed grass and leaves were captured twice (prefill + G-buffer); now once. Plant Wind Sway above 1 makes the whole field pulse, by design: 1 keeps it steady.
+- **Black spots on units**: units' clipped draws are alpha-tested in the RT scene (beards, leaves of the tree unit; 92 pixel shaders).
+- **Rivers**: Water Clarity and Water Caustics on the placed water meshes, the battle sea, and Clarity on the campaign's sea and lakes (15 water shaders).
+- **TAA Motion Vectors**: Camera (default) or Objects; TAA and T2x had lost their jitter since v120: back.
+- **Frame Generation**: on Output scRGB without a restart (sent to the helper as HDR10), resize and failure paths, readable status lines. Flares and vignette reach the HUD-less picture.
+- **Fog & Sky Smoothing**: Low / Medium / High and a Strength from 0 to 2. **SDR**: everything in Extra but AutoHDR works in Rendering Mode SDR. **RTAO range** 6 m in every preset. **About**: GitHub link; a red notice when only the add-on is installed.
+- **In-game depth of field**: focus range as the game has it (the decompiler's f * f was 2 * f * f): sharper near focus.
 - **Memory given back**: Reset and turning effects off now free the addon's textures too (Light Bounce, Screen-Space Shadows, SSR, AO, the ray-traced
   captures 15 s after ray tracing is off). Leaving DLSS, FSR or XeSS for another Anti-Aliasing frees the shared textures and DLSS at once; Anti-Aliasing Off its
   own storage. Ray Reconstruction frees its memory 10 s after it stops, also with Frame Generation on. Turning Ray Reconstruction on and off no longer adds 190 MB
@@ -19,7 +34,7 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
   SDK's proxy swap chain, in HDR10, scRGB (as HDR10) and SDR, with any upscaler. Auto: DLSS on an RTX 40 or newer, XeSS on Intel, else FSR; one that cannot start here falls through to the next.
   FSR: 2x, its HUD not recomposed. XeSS: 2x, 3x and 4x on Intel Arc, with Xe Low Latency (which takes Reflex's place while it runs). Needs amd_fidelityfx_framegeneration_dx12.dll,
   libxess_fg.dll and libxell.dll next to the helper.
-  New files next to the helper: `amd_fidelityfx_loader_dx12.dll`, `amd_fidelityfx_upscaler_dx12.dll`, `libxess.dll`. Bridge v22: addon and helper ship together.
+  New files next to the helper: `amd_fidelityfx_loader_dx12.dll`, `amd_fidelityfx_upscaler_dx12.dll`, `libxess.dll`. Addon and helper ship together.
 - RT/PT preset: Reflection Reuse off (Own ReSTIR only reached the roughest surfaces, it cost its pass for nothing). Frame generation: a backend
   whose Present keeps failing hides its window and Auto moves on, DLSS's too. NRD that can't run leaves the addon's own denoisers on.
 - **Ray tracing on AMD and Intel (Experimental)**: starts under FSR or XeSS on the DXR 1.1 path with the built-in denoisers. The RT/PT preset turns Ray Reconstruction on only on NVIDIA.

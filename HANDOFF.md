@@ -1,6 +1,7 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
-## START HERE (2026-11-02): ENORMOUS BATCH RUNNING: search "ENORMOUS BATCH", tick it as you go, push often (origin atn-mods)
+## START HERE (2026-11-03): ENORMOUS BATCH DONE, Attila v132 = players' v2.01j (helper72, bridge v23, tag twattila-v132). Waiting for ATN's in-game tests; list under "ENORMOUS BATCH", then WH3.
+ATN decided (2026-11-03): no in-game tests by us unless asked; one game start before a zip.
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila
 - State: Attila v131 = players' v2.01i, the last build. Downloads/RenoDX_Attila_v2.01i.zip (players), twattila_v131.zip (full), helper71 =
   build/tw_dlaa_helper71, bridge v21, tag twattila-v131, installed in Attila's folder. All committed and pushed (origin atn-mods). Tag twattila-v130 stayed before the toggle: use v131.
@@ -91,11 +92,15 @@ ATN's test of v2.01i: FG with Output SDR correct, Gamma Correction correct in SD
 - [x] 15 The wrong decompiled fog shader (fixed in 2.01g, Attila) probably exists in Rome II, Thrones and the other TW games: check (tools/tw/test_scripts/cb_audit.py). DONE 2026-11-03 (every fix re-read from the game's bytecode first): Rome II / Thrones battle fog are fine. Fixed: in-game DOF focus range 30% too narrow (decompiler: dot(f, f) on a scalar = f*f, game dp2 = 2*f*f; 44 shaders, ATTILA too, Rome II, Thrones, Troy, Pharaoh, WH1, WH2), UI red/blue swap (Rome II, Thrones), Rome II t09/t10 SDR range, Shogun battle fog ceiling + flag motion + UI figures + campaign border, Troy sky fog, WH1 SDR whiteout, WH3 DOF near fade, Pharaoh glow, 17 wind / feather lines in generated motion + RT VS (regenerating them brings these back: fix the decompile input).
       Not run in game. Tested: all 9 addons build; cb_audit.py (now takes games, per-instruction + dp2 checks, generated VS): no dp2 lost, no scalar mix-up left; interpreter original vs build, 24 random runs: 57 of 66 changed shaders exact; Rome II t09, WH1 t00 / t09 exact with our smooth bloom swapped for the plain read; Shogun fog00 / 01 differ in 1-2 values (our clamp); Pharaoh dof00 / 01, Shogun campaign water differ through our own edits, not closed numerically (the fixed instruction is there). All 46 Attila shaders: 41 exact, 5 on purpose (bloom00 / 01 own high pass, lensflare04 clamp, sky01 normalised direction, uiMap02 gamma 2.0). Open questions closed: Attila ssr00/01 = 0 differences (raw had sun_direction.y, ours fixed it; the seed 13 was the interpreter dropping resinfo_*_uint lines), Pharaoh t01-04, Remastered t03-10 = 0, Pharaoh vfx 0.000038 is in the source. No original to compare: Rome II bloodsplash00, WH3 dlssdof00_ / dlssdofbg00 (read by eye). Dead, left: motion_ocean o6 (sea uv y/z, never output).
       ATN: with in-game DOF on, the area near focus is sharper now: recheck the Depth of Field slider; Shogun: recheck Battle Fog in Recommended (the fog is thinner without its ceiling).
-- [ ] 16 MONDAY BATCH below: 1 (Mega Geometry 1M, TLAS growing), 2 + 2a (upscalers), 2b (FG on scRGB), 2c (SSS smoke shadows).
+- [x] 16 MONDAY BATCH below: 1 (Mega Geometry 1M, TLAS growing), 2 + 2a (upscalers), 2b (FG on scRGB), 2c (SSS smoke shadows).
       ATN on upscalers: probably only FSR 4 SR + MFG (or the newest) for AMD (does it run on Intel and NVIDIA too?) and XeSS 2 / 3 SR + MFG (?) for Intel, AMD and old NVIDIA. Answer what we think.
 - [x] 17 DONE 2026-11-03: VRAM / RAM leftovers (MONDAY BATCH 5 below, numbers there). Not run in game.
 - [x] 17a DONE 2026-11-03: independent review's fixes. RT's / RR's first start after 10 s no longer built twice (rt_used / rr_used at open); Present failing: window hidden after 60 in a row, DLSS's failures reach Auto / fg_failed (fg_bridge_test: DLSS failing -> FSR runs; all failing -> failed 1, hidden; normal unchanged); rt_nrd_off (in v23's padding, no bump): NRD refused or Run false keeps the addon's denoisers (harness nrd_refused*, the addon's side only read); RT/PT preset Reflection Reuse 0; Frame Rate Limit row under XeSS FG; tooltips; presets' Gamma Correction, Thrones' / WH1's Smoothing; Expeditions' DLSS addon builds. Harness 103 of 103 modes ALL PASSED, all addons build (Ryse, Shogun 2, Expeditions too). Harness link now needs -lpdh -lpsapi. Not run in game.
-- [ ] 18 Zip (next name v2.01j = v132 or ask), README, Nexus text, HANDOFF, memory, per-game report. WH3 comes after all of this, not in this batch.
+- [x] 18 DONE 2026-11-03: Downloads/RenoDX_Attila_v2.01j.zip (players), twattila_v132.zip (full), attila_nexus_text_v132.txt, helper72. WH3 comes next, not in this batch.
+      ATN TO TEST IN GAME: (1) Frame Generation on Output SDR with DLSS FG: status must say 2 frames (one automated run said none; the no-game test said 2.00). (2) FSR / XeSS upscaling with FSR / XeSS FG. (3) FSR FG in battle: HUD, smoke.
+      (4) Smoke: a burning house: pause, zoom in and out; flames casting faint shadows? Smoke Shadows without rays on a catapult hit. (5) Ray Tracing Denoiser NRD vs Built-in, RR off: grass shadows still and panning, trails behind soldiers.
+      (6) RT reflections on armour; PT AO at 1 and 2 rays in dense grass. (7) A real melee at Ctesiphon, motion on / off. (8) Memory: RT/PT + RR + MFG, Reset, wait 15 s, FG still generates, RT/PT again; RT off 10 s frees; campaign and battle 3 times.
+      (9) Mega Geometry and TLAS growth: a really huge battle. (10) Depth of field near focus (sharper now), Shogun 2's Battle Fog, the other TW games' ports: nothing of those ran in game. (11) Lord of the Rings tree unit's beard and leaves.
 
 ## MONDAY BATCH (ATN 2026-11-01: "let's do it on monday"; push every commit to origin atn-mods; tick here)
 ATN's words, short:
@@ -141,7 +146,7 @@ ATN's words, short:
       ATN's request, 2026-11-01 ("like RT Shadows with its own softness"): Bend SSS marches the depth and particles write
       none, so not in its march. Way: the particles (rt_smoke's stream) into a small opacity map from the sun, soft by its own blur, read
       by the sun draws as a dimming with SSS or the game's shadows (no rays, any GPU; off-screen smoke too). Its own softness slider.
-- [ ] 3 TAA: a choice of motion vectors: the game's own (now) or ours (DLSS's: object motion + camera, anti_aliasing.hpp).
+- [x] 3 (ENORMOUS 12) TAA: a choice of motion vectors: the game's own (now) or ours (DLSS's: object motion + camera, anti_aliasing.hpp).
 - [ ] 4 Then WH3 (project_wh3_dlss memory: our DLSS on WH3's TAA inputs via the TW helper).
 - [x] 5 DONE 2026-11-03 (helper + addon, not run in game; numbers from build/tw_fg_test and the harness on a 5090, helper's dedicated VRAM by Windows' counters, 4K for FG / RR, harness scene 640x360):
       rt_tint's handle closed (+1 handle per RT set, 32 MiB at 4K). The ~60 MiB per FG cycle was NOT that nor Streamline: FSR's FG has it too. A shared texture opened twice in the helper (D3D11 and
