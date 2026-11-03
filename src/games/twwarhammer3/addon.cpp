@@ -31,6 +31,8 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../talesofarise_dlss/matrix.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -39,7 +41,6 @@
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/screen_space_shadows.hpp"
-#include "./dlss_frame_generation.hpp"
 #include "./taa_dlss.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -250,7 +251,7 @@ bool OnDraw(reshade::api::command_list* cmd_list) {
   return true;
 }
 
-// Puts the game's t0 back.
+// Puts the game's t0 back. Sharpening's picture is frame generation's HUD-less image (it comes before the UI).
 void OnDrawn(reshade::api::command_list* cmd_list) {
   if (!swapped) return;
   swapped = false;
@@ -260,6 +261,7 @@ void OnDrawn(reshade::api::command_list* cmd_list) {
     game_srv->Release();
     game_srv = nullptr;
   }
+  twwarhammer3::taa_dlss::KeepOutput(cmd_list);
 }
 
 void OnDestroyDevice(reshade::api::device* device) {
@@ -708,8 +710,12 @@ void OnDrawnResolve(reshade::api::command_list* cmd_list) {
   context->PSSetShaderResources(0, 1, &saved_srv);
   if (saved_srv != nullptr) saved_srv->Release();
   saved_srv = nullptr;
-  const std::scoped_lock lock(mutex);
-  valid = false;  // frame consumed
+  {
+    const std::scoped_lock lock(mutex);
+    valid = false;  // frame consumed
+  }
+  // The frame's resolve only (its view swapped): FXAA's shader also composites portraits after the UI, never in the HUD-less image.
+  twwarhammer3::taa_dlss::KeepOutput(cmd_list);
 }
 
 // DLSS mod path: the game copies the 8-bit RT to the back buffer. Copy ours instead.
@@ -806,6 +812,7 @@ void OnDestroyDevice(reshade::api::device* device) {
             twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); \
             twattila::rt_scene::OnTonemapDrawn(cmd_list);          \
             twwarhammer3::taa_dlss::OnTonemapDrawn(cmd_list);      \
+            twwarhammer3::taa_dlss::KeepFrame(cmd_list);           \
             aa_target::OnDrawnRestore(cmd_list); },                \
       },                                                           \
   }
@@ -2007,7 +2014,6 @@ HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
 // Ray tracing's (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
 twattila::rt_scene::Sliders rt_sliders;
-bool frame_generation = false;  // dlss_frame_generation.hpp: started at launch from ReShade.ini [Warhammer III]
 // The upscaler in place of the game's TAA (taa_dlss.hpp): 0 the game's TAA, 5 DLSS, 6 FSR, 7 XeSS.
 twattila::feature_settings::AaSliders aa_sliders;
 
@@ -2070,13 +2076,11 @@ bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, 
   const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
   const auto path = renodx::utils::platform::GetPathInfo(monitor);
   const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  // Frame generation takes no scRGB: HDR10 with it.
+  // Frame generation on from the start: HDR10, the frames need no pass of their own (twattila/frame_generation.hpp).
+  const bool frame_generation = twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.frame_generation != 0.f;
   SetOutputEncoding(windows_hdr ? (frame_generation ? 0 : 1) : 2);
   return false;
 }
-
-// The tone mapper: frame generation's HUD-less frame after it (the display's size, before the UI).
-constexpr std::array<uint32_t, 1> TONEMAPPER_SHADERS = {0xE2EE82F8u};
 
 // Its camera constants at their places in Attila's camera_VS_PS (frame_history::AttilaCamera) for the
 // screen-space shadows and the AO filter (destination, source, bytes).
@@ -2175,12 +2179,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
-  twwarhammer3::taa_dlss::Update(swapchain, aa_settings, frame_generation);
-  talesofarise::frame_generation::frame_limit.store(aa_settings.frame_limit);
-  // The multiplier applies live (turning frame generation on needs a restart): 0 Dynamic in the shared module.
-  if (const int choice = static_cast<int>(aa_sliders.frame_generation); choice != 0) {
-    talesofarise::frame_generation::multiplier.store(choice >= 6 ? 0u : static_cast<uint32_t>(choice + 1));
-  }
+  twwarhammer3::taa_dlss::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
@@ -2444,14 +2443,6 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   {
-    // Frame generation's choices are read at launch: written to ReShade.ini [Warhammer III].
-    const auto write_frame_generation = [] {
-      const int choice = static_cast<int>(aa_sliders.frame_generation);
-      reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "FrameGeneration", choice != 0);
-      reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "FrameGenerationMultiplier",
-                                (choice >= 6 ? 0u : static_cast<uint32_t>(std::max(choice + 1, 2))));
-      reshade::set_config_value(nullptr, twwarhammer3::dlss_frame_generation::SECTION, "ReflexBoost", aa_sliders.reflex == 2.f);
-    };
     const size_t first_row = settings.size();
     twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
     // Attila's rows with what is true here: the game owns its scale, has its own TAA and keeps it running.
@@ -2473,14 +2464,22 @@ void ConfigureAddon() {
         setting->tooltip = "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).";
         setting->labels = {"Off", "Motion Vectors"};
       } else if (setting->key == "FrameGeneration") {
-        setting->label = "Frame Generation (Restart Required)";
-        setting->tooltip = "NVIDIA's DLSS Frame Generation (RTX 40 and newer) on the upscaler. Output becomes HDR10 with it.\n"
-                           "5x, 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.";
-        setting->on_change = write_frame_generation;
-      } else if (setting->key == "Reflex") {
-        setting->on_change = write_frame_generation;
+        setting->tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
+                           "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
+                           "Needs an upscaler, a windowed or borderless game,\n"
+                           "and Streamline's files next to renodx-tw-dlaa64.exe.";
       }
     }
+    // What frame generation really does, or why it doesn't.
+    settings.insert(std::ranges::find(settings, "FrameGeneration", &renodx::utils::settings::Setting::key) + 1, new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+        .section = twattila::feature_settings::DLSS_SECTION,
+        .on_draw = [] {
+          ImGui::TextWrapped("%s", twattila::dlaa_bridge::FrameGenerationStatus().c_str());
+          return false;
+        },
+        .is_visible = [] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.frame_generation != 0.f; },
+    });
     // What really runs, or why nothing does.
     settings.insert(settings.begin() + static_cast<ptrdiff_t>(first_row) + 1, new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
@@ -2513,9 +2512,7 @@ void ConfigureAddon() {
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
     auto_output_pending = (value == 3);
-    // Frame generation takes no scRGB: HDR10 with it.
-    talesofarise::frame_generation::LoadSettings(twwarhammer3::dlss_frame_generation::SECTION, &frame_generation);
-    SetOutputEncoding(auto_output_pending ? 1 : ((frame_generation && value == 1) ? 0 : value));
+    SetOutputEncoding(auto_output_pending ? 1 : value);
     settings.push_back(setting);
   }
 
@@ -2613,9 +2610,10 @@ bool AttachAddon() {
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
 
-  // Frame generation's present before DLSS counts it (taa_dlss's present after).
-  frame_generation = twwarhammer3::dlss_frame_generation::Install(addon_module_handle, TONEMAPPER_SHADERS);
   twwarhammer3::taa_dlss::Install();
+  // This game's swap chain shader reads its constants at b10.
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10, 10);
 
   // After RenoDX, so our copy of the AA frame lands last.
   reshade::register_event<reshade::addon_event::copy_resource>(aa_target::OnCopyResource);
@@ -2669,7 +2667,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);
   twwarhammer3::taa_dlss::Uninstall();
-  if (frame_generation) twwarhammer3::dlss_frame_generation::Uninstall();
+  twattila::frame_generation::Uninstall();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 

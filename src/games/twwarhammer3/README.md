@@ -10,6 +10,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - **NVIDIA Reflex** with any anti-aliasing (it needed frame generation before), and its Frame Rate Limit.
 - **Upscaling Debug View**: the motion the upscaler gets, over the picture (colour: direction, brighter: faster).
 - A red line on the first page when only the add-on is installed, without the helper.
+- **Frame Generation in the helper**, as in the other Total War add-ons: on and off without a restart, on HDR10, scRGB and SDR
+  output (it no longer forces HDR10), its memory back when off; HUD Recomposition, Preset, Debug View and a status line work.
+  Its HUD-less image has the flares, vignette and sharpening, and no UI or portraits. Needs Streamline's files next to
+  renodx-tw-dlaa64.exe. ReShade.ini's `[Warhammer III]` frame generation keys stop applying.
 
 ## v29 (2026-11-03, built only, not run in game)
 

@@ -40,29 +40,19 @@
 // (twattila/dlaa_bridge.hpp, renodx-tw-dlaa64.exe) and its result replaces the TAA's. The game's jitter (camera
 // g_camera_jitter) and velocity (everything it draws) are its own. At the game's Resolution Scale of 100% only: below it
 // the main view's camera never passes Upload's test, so the game's TAA and upscale stay and the helper doesn't start. In
-// the addon's own context state (the game's put back after).
+// the addon's own context state (the game's put back after). Frame generation: the helper's too (twattila/frame_generation.hpp).
 namespace twwarhammer3::taa_dlss {
 
 using Microsoft::WRL::ComPtr;
 
-// This frame's DLSS inputs (frame generation's): the bridge's depth and motion at the render size, the jitter in render
-// pixels (y down), the main view's camera as uploaded.
-struct Frame {
-  ComPtr<ID3D11Texture2D> depth;
-  ComPtr<ID3D11Texture2D> motion;
-  std::array<uint32_t, 2> render = {};
-  std::array<float, 2> jitter = {};
-  bool reset = false;
-  std::array<float, 66 * 4> camera = {};
-};
-
 namespace internal {
 
 constexpr std::array<uint32_t, 2> TAA_SHADERS = {0x1ADBFF18u, 0x6A8FC282u};
-// camera (1056 bytes): the projection's registers c6-c9, g_screen_size c37, g_viewport_dimensions c39,
+// camera (1056 bytes): the view's registers c2-c5, the projection's c6-c9, g_screen_size c37, g_viewport_dimensions c39,
 // g_camera_jitter (clip space) at float 257.
 constexpr uint32_t CAMERA_BYTES = 66 * 16;
 constexpr uint32_t CAMERA_MAX_BYTES = 2048;
+constexpr size_t VIEW = 2 * 4;
 constexpr size_t PROJECTION = 6 * 4;
 constexpr size_t VIEW_PROJECTION = 10 * 4;
 constexpr size_t INVERSE_PROJECTION = 26 * 4;
@@ -99,8 +89,9 @@ struct State {
   uint64_t taa_frame = UINT64_MAX;        // the game's TAA pass ran
   uint64_t no_camera_frame = UINT64_MAX;  // ... without the main view's camera
   uint64_t guides_frame = UINT64_MAX;  // Ray Reconstruction's guides written
-  Frame last;                  // the last evaluation's (frame generation)
-  uint64_t last_frame = UINT64_MAX;
+  std::array<float, 16> previous_view_projection = {};  // the last evaluation's, without the jitter
+  twattila::frame_generation::Inputs generation;        // this evaluation's for frame generation
+  uint64_t generation_frame = UINT64_MAX;               // its frame, until the tone mapper's draw keeps it
   bool logged = false;
   bool no_camera_logged = false;
   // A hook's first run, in the log (one that never ran looks like one that did nothing).
@@ -176,7 +167,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
   }
   if (!Create(device.Get()) || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))
       || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height, state.settings.ray_reconstruction || state.settings.ray_traced_guides,
-                                         state.settings.ray_tracing, DXGI_FORMAT_UNKNOWN, state.settings.ray_traced_reflections,
+                                         state.settings.ray_tracing, twattila::frame_generation::Format(), state.settings.ray_traced_reflections,
                                          static_cast<uint32_t>(method) - static_cast<uint32_t>(twattila::anti_aliasing::Method::DLAA),
                                          state.settings.frame_backend)) {
     release();
@@ -246,15 +237,52 @@ inline void Resolve(ID3D11DeviceContext* native) {
   release();
   if (!evaluated) return;
   state.evaluated_frame = state.frame;
-  state.last = {
-      .depth = bridge.depth.texture,
-      .motion = bridge.motion.texture,
-      .render = {color_desc.Width, color_desc.Height},
-      .jitter = jitter,
-      .reset = reset,
-  };
-  std::copy_n(state.camera.begin(), state.last.camera.size(), state.last.camera.begin());
-  state.last_frame = state.frame;
+  // Frame generation's camera has no jitter, the uploaded view-projection does: made again from the view and the projection
+  // without its jitter terms (c6.z, c7.z). Near and far as uploaded; depth is forward (the helper's assumption).
+  std::array<float, 16> view = {};
+  std::array<float, 16> projection = {};
+  std::copy_n(c + VIEW, 16, view.begin());
+  std::copy_n(c + PROJECTION, 16, projection.begin());
+  projection[2] = 0.f;
+  projection[6] = 0.f;
+  std::array<float, 16> view_projection = {};
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t column = 0; column < 4; ++column) {
+      for (size_t k = 0; k < 4; ++k) view_projection[(row * 4) + column] += projection[(row * 4) + k] * view[(k * 4) + column];
+    }
+  }
+  if (twattila::frame_generation::Wanted()) {
+    state.generation = {
+        .width = color_desc.Width,
+        .height = color_desc.Height,
+        .jitter_x = jitter[0],
+        .jitter_y = jitter[1],
+        .reset = reset,
+        .near_plane = c[NEAR_FAR],
+        .far_plane = c[NEAR_FAR + 1],
+    };
+    twattila::frame_generation::SetCamera(&state.generation, projection, view, view_projection,
+                                           (reset ? view_projection : state.previous_view_projection), {c[0], c[1], c[2]});
+    state.generation_frame = state.frame;
+  }
+  state.previous_view_projection = view_projection;
+}
+
+// The picture's target on `native` for frame generation: bound as the first render target, its size the upscaler's, 16 bits
+// (what the swap chain shader takes); else none.
+inline ComPtr<ID3D11Texture2D> PictureTarget(ID3D11DeviceContext* native) {
+  ComPtr<ID3D11RenderTargetView> target_view;
+  native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  auto target = TextureOf(target_view.Get());
+  if (!target) return target;
+  D3D11_TEXTURE2D_DESC desc = {};
+  target->GetDesc(&desc);
+  const auto& bridge = twattila::dlaa_bridge::bridge;
+  if (desc.Width != bridge.width || desc.Height != bridge.height || desc.SampleDesc.Count != 1
+      || (desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT && desc.Format != DXGI_FORMAT_R16G16B16A16_TYPELESS)) {
+    return {};
+  }
+  return target;
 }
 
 }  // namespace internal
@@ -371,6 +399,29 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   native->CopyResource(target.Get(), objects.motion_view.Get());
 }
 
+// After OnTonemapDrawn (its target still the addon's 16-bit texture, with what the Debug View drew: the HUD-less image shows
+// what the frame shows): the frame's inputs for frame generation, and its HUD-less image until KeepOutput gives a later one.
+inline void KeepFrame(reshade::api::command_list* cmd_list) {
+  using internal::state;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
+  const std::unique_lock lock(state.mutex);
+  if (state.generation_frame != state.frame) return;
+  state.generation_frame = UINT64_MAX;
+  if (const auto target = internal::PictureTarget(native)) twattila::frame_generation::KeepFrame(native, target.Get(), state.generation);
+}
+
+// The frame's main resolve, then sharpening, drew (no UI yet): the HUD-less image from their target, with the flares and
+// the vignette t00's doesn't have.
+inline void KeepOutput(reshade::api::command_list* cmd_list) {
+  if (twattila::frame_generation::Format() == DXGI_FORMAT_UNKNOWN) return;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
+  if (const auto target = internal::PictureTarget(native)) twattila::frame_generation::KeepOutput(native, target.Get());
+}
+
 namespace internal {
 
 constexpr auto OnTaa = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
@@ -424,7 +475,7 @@ inline void Upload(const float* c, uint64_t buffer) {
   state.camera_seen = true;
   if (!state.camera_logged) {
     state.camera_logged = true;
-    // Frame generation's depth test too: above 0.5 reversed.
+    // Depth at near: 0 forward, what frame generation takes; above 0.5 reversed.
     renodx::utils::log::i(std::format("[Warhammer III] First run: the main view's camera, screen {}x{}, near {} far {}, depth at near {}.",
                                       c[SCREEN_SIZE], c[SCREEN_SIZE + 1], c[NEAR_FAR], c[NEAR_FAR + 1],
                                       c[(8 * 4) + 2] + (c[(8 * 4) + 3] / c[NEAR_FAR])));
@@ -478,9 +529,8 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
 
 }  // namespace internal
 
-// Every present. `keep_textures`: frame generation in the game's process may hold the bridge's depth and motion, and paces
-// the game itself (no Reflex of ours beside its own).
-inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_aliasing::Settings& settings, bool keep_textures) {
+// Every present.
+inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_aliasing::Settings& settings) {
   twattila::frame_generation::Update({
       .multiplier = (twattila::anti_aliasing::Upscales(settings.method) ? settings.frame_generation : 0u),
       .reflex_boost = (settings.reflex == 2),
@@ -490,17 +540,16 @@ inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_alia
       .debug_view = settings.frame_debug_view,
       .sdr_output = settings.sdr_output,
   });
-  twattila::reflex::Update(swapchain, (keep_textures ? 0u : settings.reflex), settings.frame_limit);
+  twattila::reflex::Update(swapchain, settings.reflex, settings.frame_limit);
   const std::unique_lock lock(internal::state.mutex);
   internal::state.settings = settings;
   if (settings.debug_view != 1u) {
     internal::state.objects.motion_view_uav.Reset();
     internal::state.objects.motion_view.Reset();
   }
-  // Off: the shared set and the helper's DLSS back (their VRAM).
-  if (auto& bridge = twattila::dlaa_bridge::bridge; !twattila::anti_aliasing::Upscales(settings.method) && !keep_textures && bridge.width != 0
-      && bridge.shared != nullptr && bridge.shared->ready != 0) {
-    internal::state.last = {};
+  // Off, frame generation's window hidden: the shared set and the helper's upscaler back (their VRAM).
+  if (auto& bridge = twattila::dlaa_bridge::bridge; !twattila::anti_aliasing::Upscales(settings.method) && bridge.width != 0
+      && bridge.shared != nullptr && bridge.shared->ready != 0 && twattila::frame_generation::Format() == DXGI_FORMAT_UNKNOWN) {
     twattila::dlaa_bridge::Release(true);
   }
 }
@@ -518,14 +567,6 @@ inline std::string Status() {
   return "Not running: keep in-game Anti-aliasing on TAA or TAA High (menus have none).";
 }
 
-// The last evaluation's inputs if it was in frame `frame` (presents so far); false: none.
-inline bool LastFrame(uint64_t frame, Frame* result) {
-  const std::unique_lock lock(internal::state.mutex);
-  if (internal::state.last_frame != frame) return false;
-  *result = internal::state.last;
-  return true;
-}
-
 // The main view's camera constants as uploaded this frame when `buffer` holds them (ray tracing's camera); false: not.
 inline bool MainCamera(ID3D11Buffer* buffer, std::array<float, internal::CAMERA_BYTES / 4>* camera) {
   const std::unique_lock lock(internal::state.mutex);
@@ -539,12 +580,6 @@ inline std::array<UINT, 2> RenderSize() {
   const std::unique_lock lock(internal::state.mutex);
   if (!internal::state.camera_seen) return {};
   return {static_cast<UINT>(internal::state.camera[internal::VIEWPORT]), static_cast<UINT>(internal::state.camera[internal::VIEWPORT + 1])};
-}
-
-// Presents so far (frame generation's frame number).
-inline uint64_t Presents() {
-  const std::unique_lock lock(internal::state.mutex);
-  return internal::state.frame;
 }
 
 inline void Install() {
@@ -575,11 +610,11 @@ inline void Uninstall() {
 inline void OnDestroyDevice(reshade::api::device* device) {
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
+  twattila::frame_generation::OnDestroyDevice(native);
   twattila::reflex::OnDestroyDevice(native);
   const std::unique_lock lock(internal::state.mutex);
   if (internal::state.objects.device.Get() != native) return;
   internal::state.objects = {};
-  internal::state.last = {};
   twattila::dlaa_bridge::Release();
 }
 
