@@ -113,6 +113,9 @@ void ApplyResetPreset() {
   // Preserve display calibration and global settings.
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", 2.f},  // no Extended mode here: PsychoV31 (ATN)
+      {"gamma_correction", 1.f},
+      {"sky_smooth", 0.f},
+      {"sky_smooth_strength", 1.f},
 
       // PsychoV30
       {"exposure", 1.f},

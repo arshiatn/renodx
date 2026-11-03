@@ -80,6 +80,7 @@ void ApplyResetPreset() {
   // are intentionally preserved.
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", 1.f},
+      {"gamma_correction", 1.f},
       {"video_autohdr", 0.f},
 
       // PsychoV31

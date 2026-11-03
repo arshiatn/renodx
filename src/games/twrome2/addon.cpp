@@ -88,6 +88,7 @@ void ApplyHDRPreset(
     float hue_shift) {
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", rendering_mode},
+      {"gamma_correction", 1.f},
       {"video_autohdr", video_autohdr},
       {"sky_deband", 0.f},
       {"sky_smooth", 0.f},
