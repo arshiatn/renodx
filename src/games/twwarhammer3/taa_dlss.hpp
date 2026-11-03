@@ -166,7 +166,8 @@ inline void Resolve(ID3D11DeviceContext* native) {
     return;
   }
   if (!Create(device.Get()) || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))
-      || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height, state.settings.ray_reconstruction,
+      || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height,
+                                         state.settings.ray_reconstruction || state.settings.ray_traced_guides,
                                          state.settings.ray_tracing, twattila::frame_generation::Format(), state.settings.ray_traced_reflections,
                                          static_cast<uint32_t>(method) - static_cast<uint32_t>(twattila::anti_aliasing::Method::DLAA),
                                          state.settings.frame_backend)) {
@@ -288,14 +289,15 @@ inline ComPtr<ID3D11Texture2D> PictureTarget(ID3D11DeviceContext* native) {
 }  // namespace internal
 
 // At the frame's first sun light draw of the main view (its G-buffer bound: channels 1-3 from `gbuffer_slot`, the camera
-// at `camera_slot`): Ray Reconstruction's guides into the bridge's textures (rr_guides), once a frame.
+// at `camera_slot`): the guides (Ray Reconstruction's, also ray tracing's paths') into the bridge's textures (rr_guides), once a
+// frame.
 inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT camera_slot) {
   using internal::state;
   ComPtr<ID3D11DeviceContext1> context1;
   if (FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
   const std::unique_lock lock(state.mutex);
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!twattila::anti_aliasing::Upscales(state.settings.method) || !state.settings.ray_reconstruction
+  if (!twattila::anti_aliasing::Upscales(state.settings.method) || !(state.settings.ray_reconstruction || state.settings.ray_traced_guides)
       || state.guides_frame == state.frame || !bridge.guides
       || state.objects.failed || !state.objects.guides) {
     return;
@@ -320,12 +322,18 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT cam
     state.guides_frame = state.frame;
     if (!state.guides_logged) {
       state.guides_logged = true;
-      renodx::utils::log::i("[Warhammer III] First run: Ray Reconstruction's guides written.");
+      renodx::utils::log::i("[Warhammer III] First run: the G-buffer guides written.");
     }
   }
   for (auto* view : gbuffer) {
     if (view != nullptr) view->Release();
   }
+}
+
+// Whether the G-buffer guides were written this frame.
+inline bool GuidesWritten() {
+  const std::unique_lock lock(internal::state.mutex);
+  return internal::state.guides_frame == internal::state.frame;
 }
 
 // While a frame is traced: the camera in `buffer` as `pass` has it: near, far, the depth at the near plane (0: forward Z,

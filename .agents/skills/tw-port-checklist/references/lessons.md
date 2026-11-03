@@ -9,7 +9,7 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | Assumption | What the code really does | Check |
 |---|---|---|
 | A scene table line finds leaf UVs itself | `SceneCoverage` runs only for hosts with `scene_draw` (`rt_core.hpp`). A table host must set `.foliage`, `.uv_semantic`, `.uv_semantic_index` by hand, or leaves are solid cards | Read the leaf VS and PS bytes; RT Debug View with Scene Test |
-| The clip mask is PS t0's alpha | `rt_core.hpp` reads t0 (t1 for `far_tree`). A game's grass may test another slot, with t0 a virtual-texture page. Read which texture the `discard` tests | Disassemble the PS, read the bound textures in a trace |
+| The clip mask is PS t0's alpha | `rt_core.hpp` reads `mask_slot`, default t0 (t1 for `far_tree`). A game's grass may test another slot, with t0 a virtual-texture page, and one VS can serve families that differ: `pixel_masks`. Read which texture the `discard` tests, in every PS of the VS's families | Disassemble the PS, read the bound textures in a trace |
 | Billboards go in the scene | Clip-space cards built from `cb0[0].xz - position` face the camera, so their shadow turns with the camera | Read the VS basis before listing it |
 | The final colour target is sqrt-encoded | Attila's target is; another game's tone mapper may end in gamma 2.2. A prepare pass must decode what that game's pass encoded | Read the last lines of the tone mapper; WARP run with a known ramp |
 | Guides registered anywhere are seen | Registration order is run order: guides registered after `InstallSunDraws` run after the trace that reads `guides_written`, so it stays false every frame | Read the install order against the trace's read |

@@ -2179,7 +2179,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 11> SCENE_SHADERS = {{
 }};
 
 // Ray tracing's view of the game: DLSS's camera (taa_dlss.hpp; uploaded jittered, as the scene and its depth were drawn)
-// and render size; no G-buffer guides (no reflections, paths without them).
+// and render size; the G-buffer guides (WriteGuides, at the sun draws before the trace).
 const twattila::rt_scene::Host RT_HOST = {
     .camera = [](ID3D11Buffer* buffer, twattila::rt_scene::Camera* camera) {
       std::array<float, 66 * 4> c = {};
@@ -2194,12 +2194,12 @@ const twattila::rt_scene::Host RT_HOST = {
       return true;
     },
     .render_size = twwarhammer3::taa_dlss::RenderSize,
-    .guides_written = [] { return false; },
+    .guides_written = twwarhammer3::taa_dlss::GuidesWritten,
 };
 
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};
 
-// Ray Reconstruction's guides (taa_dlss.hpp) at the sun light draws: the frame's first writes them.
+// The G-buffer guides (taa_dlss.hpp) at the sun light draws: the frame's first writes them.
 constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
   if (!sun_draw_logged[&draw - LIGHT_BOUNCE_DRAWS.data()].exchange(true, std::memory_order_relaxed)) {
@@ -2620,13 +2620,14 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
-  // Ray tracing's at the sun draws first: its trace for the screen-space shadows, the AO filter and the Light Bounce.
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Registration order is run order at a sun draw. The guides first: the trace asks whether they were written this frame.
   for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
     renodx::utils::command_action::Register(
         OnSunDrawGuides, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
   }
+  // Ray tracing's next: its trace for the screen-space shadows, the AO filter and the Light Bounce.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Before the Light Bounce's (its callback draws the sun draw again).
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
