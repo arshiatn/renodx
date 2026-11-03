@@ -934,8 +934,9 @@ void Capture(Context& command, const SceneShader& shader) {
   if ((test == 1 && !shader.terrain) || (test == 2 && shader.rows_shader.empty()) || (test == 3 && shader.foliage)) return;
   // Placed grass and leaves are drawn twice a frame by one vertex shader, depth prefill (no target 0) then G-buffer. The
   // G-buffer draw alone: with both, the share paid twice, and past it an instance hidden by one (its swaying copy traced)
-  // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera).
-  if (shader.foliage && !shader.rows_shader.empty()) {
+  // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera). Cloth and sails
+  // too, should the game prefill them: their texels paid twice for one sheet.
+  if ((shader.foliage && !shader.rows_shader.empty()) || shader.thin) {
     ComPtr<ID3D11RenderTargetView> colour_target;
     native->OMGetRenderTargets(1, colour_target.GetAddressOf(), nullptr);
     if (!colour_target) return;

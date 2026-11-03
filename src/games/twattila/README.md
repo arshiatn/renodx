@@ -11,6 +11,7 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
 - **Black line down each side of the water** with ray-traced reflections: the first and last render columns had no surface normal, their rays went back toward the camera. All screen edges now take the neighbour inside (sun shadows, AO, Light Bounce too).
 - **Smoke Shadow Quality High** has room for 65,536 particles (Low, Medium 32,768); in all three the smallest shadows give way past the room.
 - **Swaying grass shadows with a Swaying Shadows Range**: the kept clusters keep their order frame after frame (identical input now gives identical pixels), and a grass pixel's ray starts past its own blade.
+- **Coloured Shadows on banners**: a sheet of cloth counts once on a sun ray (its sides and emblem left no light and no colour); a solid behind it still blocks.
 
 ## v133 = players' v2.5 (2026-11-03; renodx-tw-dlaa64.exe helper73, bridge v23: ship them together; RenoDX_Attila_v2.5_HDR_only.zip: the add-on alone)
 - **Pulsing smoke shadows** under volleys and burning houses: rt_smoke's 32768 quads went to whichever particles came first, and that changes each frame (ATN's log: 70-84 K wanted one).

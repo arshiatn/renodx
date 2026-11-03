@@ -29,6 +29,12 @@ Texture2D<float4> guide_albedo : register(t13);          // Ray Reconstruction's
 // Coloured Shadows: the colour the sun's light took through cloth and sails on this ray (SunRay).
 static float3 sun_tint = 1.f;
 
+// Cloth's and sails' hits this close along a ray (metres) are one sheet, its share and colour once: a banner's two sides, its
+// emblem's surface, each 0.35 of the last, left no light at all (ATN's debug39: its shadow as dark as a solid's, no colour).
+static const float THIN_SHEET = 0.1f;
+// Surfaces a ray toward the sun goes through at most; past them it counts as blocked (it did not reach what stands behind).
+static const uint THIN_HITS = 8u;
+
 // The colour of cloth or a sail at `world` where the screen shows it (the diffuse albedo guide), as a filter brightest at
 // 1; none elsewhere.
 float3 ThinColour(float3 world) {
@@ -138,18 +144,24 @@ float2 SunRay(float3 origin, float3 direction, uint instances) {
     if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
       const uint met_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
       if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u || (met_flags & RECORD_GRASS) != 0u) return float2(0.f, query.CommittedRayT());
+      float last_sheet = -1.f;
       [loop]
-      for (uint layer = 0u; layer < 4u; ++layer) {
+      for (uint layer = 0u; layer < THIN_HITS; ++layer) {
         TRACE_NEAREST(layered, ray, NO_LEAVES & instances)
         if (layered.CommittedStatus() != COMMITTED_TRIANGLE_HIT) break;
         if (layer == 0u) first = layered.CommittedRayT();
         const uint record_flags = records[layered.CommittedInstanceID() + layered.CommittedGeometryIndex()].z >> 16;
-        lit *= ((record_flags & RECORD_GRASS) != 0u)    ? 0.f
-               : ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE
-               : ((record_flags & RECORD_THIN) != 0u)   ? THIN_TRANSMITTANCE
-                                                        : 0.f;
-        if (lit < 0.02f) return float2(0.f, first);
-        if ((path_flags & PATH_TINT) != 0u) sun_tint *= ThinColour(ray.Origin + ray.Direction * layered.CommittedRayT());
+        const bool thin = (record_flags & (RECORD_GRASS | RECORD_MASKED | RECORD_THIN)) == RECORD_THIN;
+        if (!thin || last_sheet < 0.f || layered.CommittedRayT() - last_sheet > THIN_SHEET) {
+          lit *= ((record_flags & RECORD_GRASS) != 0u)    ? 0.f
+                 : ((record_flags & RECORD_MASKED) != 0u) ? LEAF_TRANSMITTANCE
+                 : thin                                   ? THIN_TRANSMITTANCE
+                                                          : 0.f;
+          if (lit < 0.02f) return float2(0.f, first);
+          if ((path_flags & PATH_TINT) != 0u) sun_tint *= ThinColour(ray.Origin + ray.Direction * layered.CommittedRayT());
+        }
+        if (thin) last_sheet = layered.CommittedRayT();
+        if (layer + 1u == THIN_HITS) return float2(0.f, first);
         ray.TMin = layered.CommittedRayT() + 0.01f;
       }
     }
