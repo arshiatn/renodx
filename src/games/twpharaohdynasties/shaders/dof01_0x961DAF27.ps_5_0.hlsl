@@ -217,8 +217,8 @@ void main(
   r0.xy = g_screen_size.zw * r0.xy;
   r0.xy = overscan * r0.xy;
   // God rays and glow are composited here when DOF is on (not in t05-t08).
-  const float god_rays_multiplier = (HDR >= 0.5f) ? SI.godrays : 1.f;
-  const float glow_multiplier = (HDR >= 0.5f) ? SI.bloom : 1.f;
+  const float god_rays_multiplier = SI.godrays;
+  const float glow_multiplier = SI.bloom;
   // Manual fix: resinfo on u0; stock's address is uv * dimensions, truncated (r1.xw).
   uint2 frame_dims;
   frame_texture_rw.GetDimensions(frame_dims.x, frame_dims.y);

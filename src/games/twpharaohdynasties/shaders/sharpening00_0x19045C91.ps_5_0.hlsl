@@ -3,7 +3,7 @@
 // Stock saturate() clipped the frame to UI white. Now in Paper White units:
 // SDR: stock. HDR: stock result on SDR-clipped taps; values outside 0..1
 // (highlights, wide gamut) pass through untouched.
-// SI.chromaticaberration / SI.sharpening are HDR only. HDR: RenoDX's own strength (sharpening.hlsli).
+// SI.chromaticaberration: at 1 stock. SI.sharpening is HDR only. HDR: RenoDX's own strength (sharpening.hlsli).
 
 cbuffer camera : register(b0)
 {
@@ -70,8 +70,8 @@ void main(
   uint4 bitmask, uiDest;
   float4 fDest;
 
-  // Slider scales the game's CA strength (HDR only). At 0 the branch is skipped.
-  float ca_strength = g_chromatic_aberration_strength * ((HDR >= 0.5f) ? SI.chromaticaberration : 1.f);
+  // Slider scales the game's CA strength. At 0 the branch is skipped.
+  float ca_strength = g_chromatic_aberration_strength * SI.chromaticaberration;
 
   r0.xy = (int2)v0.xy;
   r0.zw = float2(0,0);

@@ -191,7 +191,7 @@ void main(
   r0.xy = overscan * r0.xy;
   r0.zw = distortion_texture.SampleLevel(distortion_sampler_s, (r0.xy) * FrameRenderShare(), 0).xy;
   r0.zw = float2(-0.501960814,-0.501960814) + r0.zw;
-  r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * ((HDR >= 0.5f) ? SI.uvdistort : 1.f) + r0.xy;
+  r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * SI.uvdistort + r0.xy;
   r1.xyzw = frame_texture.SampleLevel(frame_sampler_s, r0.xy, 0).xyzw;
   r0.z = -focus_distance + r1.w;
   r0.z = r0.z * r0.z;

@@ -245,8 +245,8 @@ void main(
   const bool is_hdr = (hdr_mode != 0);
 
   // Native strength kept; the user multiplier only applies in HDR.
-  const float god_rays_multiplier   = is_hdr ? SI.godrays : 1.f;
-  const float glow_multiplier       = is_hdr ? SI.bloom : 1.f;
+  const float god_rays_multiplier   = SI.godrays;
+  const float glow_multiplier       = SI.bloom;
   const float film_grain_multiplier = is_hdr ? SI.filmgrain : 1.f;
 
   // Stock crossfades the graded result back toward the raw frame. Saturated because it
