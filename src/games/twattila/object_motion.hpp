@@ -520,18 +520,20 @@ inline void RestoreBindings(ID3D11DeviceContext* native) {
   }
 }
 
-// A moving draw of the main view (the host's view). `in_draw` (before the draw: true when it then writes the motion
+// A moving draw of the main view (the host's view). `draw_again` (before the draw: true when it then writes the motion
 // itself, its bindings set and left bound, RestoreBindings putting the game's back before the next other draw; false:
-// nothing done yet, drawn again after it): the draw's in-draw vertex shader and its pixel shader patched, targets 6
-// and 7 for the motion. Else (after the draw) the same draw again with its motion vertex shader into the motion target,
-// against the game's depth (not written), every other binding the game's. Units, rigid objects and deformed meshes with
+// nothing done yet, `*draw_again` set when it has to be called again after the draw): the draw's in-draw vertex shader
+// and its pixel shader patched, targets 6 and 7 for the motion. Null (after the draw): the same draw again with its
+// motion vertex shader into the motion target, against the game's depth (not written), every other binding the game's.
+// Units, rigid objects and deformed meshes with
 // last frame's placement table; units record theirs for the next frame (streamed out, recorded at the frame's end where
 // the addon has Shaders::unit_records_compute_shader; else from every pixel of the redraw). Rigid objects: their
 // instances recorded through stream output while sampled or moving, drawn again only while moving. Deformed meshes:
 // captured first (their vertices' world positions and anchor), then drawn with last frame's. The ocean: its
 // displacement textures copied (last frame's for its motion shader).
 template <typename Context>
-bool DrawObjectMotion(Context& command, bool in_draw) {
+bool DrawObjectMotion(Context& command, bool* draw_again) {
+  const bool in_draw = (draw_again != nullptr);
   const auto& shader = command.template GetCallbackData<MotionShader>();
   auto* native = NativeContext(command.cmd_list);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
@@ -563,7 +565,10 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
   if (!PrepareDevice(device.Get())) return false;
-  if (in_draw && !objects.draw_shaders[index]) return false;
+  if (in_draw && !objects.draw_shaders[index]) {
+    *draw_again = true;
+    return false;
+  }
   const bool tabled = (shader.kind == MotionKind::UNIT || shader.kind == MotionKind::RIGID || shader.kind == MotionKind::DEFORMED);
   // Units, rigid objects and deformed meshes: the mesh.
   const uint32_t mesh_key = (tabled ? MeshKey(native, arguments) : 0u);
@@ -584,7 +589,10 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   // Deformed meshes: one instance (its vertices by vertex).
   if (shader.kind == MotionKind::DEFORMED && (arguments.instance_count != 1 || !objects.capture_pixel_shader)) return false;
   // In-draw: only draws with motion (rigid objects: moving; the rest recorded after the draw).
-  if (in_draw && !redraw) return false;
+  if (in_draw && !redraw) {
+    *draw_again = true;
+    return false;
+  }
 
   // The game's output: its targets, depth and unordered access views (transparency passes write some), all put back
   // together (a target set alone drops the views); a draw with views gets no in-draw motion (targets 6 and 7 would
@@ -638,6 +646,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
       logged = true;
     }
     release_targets();
+    *draw_again = true;
     return false;
   }
   ComPtr<ID3D11DepthStencilState> game_depth_state;
@@ -686,6 +695,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     if (game == state.pixel_shaders.end() || game_targets[dxbc::MOTION_TARGET] != nullptr
         || game_targets[dxbc::MOTION_DEPTH_TARGET] != nullptr) {
       release_targets();
+      *draw_again = true;
       return false;
     }
     const uint32_t motion_register = state.draw_signatures[index].motion_register;
@@ -703,6 +713,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
     drawn_pixel_shader = known->second;
     if (!drawn_pixel_shader) {
       release_targets();
+      *draw_again = true;
       return false;
     }
   }
@@ -763,6 +774,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
   }
   if (in_draw && !objects.drawn_motion_rtv) {
     release_targets();
+    *draw_again = true;
     return false;
   }
   if (objects.motion_frame != frame) {
@@ -1323,7 +1335,7 @@ bool DrawObjectMotion(Context& command, bool in_draw) {
 // After a moving draw that did not write its motion: drawn again with it.
 template <typename Context>
 void RedrawObjectMotion(Context& command, const void*) {
-  DrawObjectMotion(command, false);
+  DrawObjectMotion(command, nullptr);
 }
 
 // A moving draw: its motion written by the draw itself where it can (its bindings set now, left bound for the next
@@ -1335,12 +1347,12 @@ constexpr auto OnMovingDraw = []<typename T, typename Context>(
                 && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
     return {};
   } else {
-    const bool wanted = active.load(std::memory_order_relaxed);
-    if (wanted && DrawObjectMotion(command, true)) return {};
+    bool draw_again = false;
+    if (active.load(std::memory_order_relaxed) && DrawObjectMotion(command, &draw_again)) return {};
     if (targets_kept.load(std::memory_order_relaxed) || bindings_kept.load(std::memory_order_relaxed)) {
       RestoreBindings(NativeContext(command.cmd_list));
     }
-    if (!wanted) return {};
+    if (!draw_again) return {};
     return {.post_callback = RedrawObjectMotion<Context>};
   }
 };
