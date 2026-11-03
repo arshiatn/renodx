@@ -61,7 +61,7 @@ void main(
   r2.x = g_inv_gamma_output * r2.x;
   r2.w = exp2(r2.x);
   r2.xyz = float3(1,1,1);
-  r3.xy = cmp(float2(0.5,0.5) < g_text_rendering_enabled_PS);
+  r3.xy = cmp(float2(0.5,0.5) < float2(g_text_rendering_enabled_PS, g_switch_diffuse_channels));
   r1.xz = r3.yy ? r1.zx : r1.xz;
   r1.xyzw = r3.xxxx ? r2.xyzw : r1.xyzw;
   r1.xyzw = v1.xyzw * r1.xyzw;

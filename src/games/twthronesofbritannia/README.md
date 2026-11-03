@@ -12,6 +12,9 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twthronesofbrit
   Output SDR ignores Paper White.
 - **Fog & Sky Smoothing** (Off / Low / Medium / High + Strength, off by default, as Attila): the sky cube's vertical lines in thick fog. Attila's fog shader, now with Thrones' constants.
 - **Extra in Rendering Mode SDR**: Bloom, Lens Flare, God Rays, Vignette and Distortion work there (at 1 the picture is unchanged). Film Grain and Indicators stay HDR-only.
+- **Wrong constants from the decompiler** (checked against the game's own shaders):
+  - In-game depth of field: the sharp range around the focus was about 30% too narrow (f x f, the game has 2 x f x f).
+  - UI: sprites the game flags to swap red and blue now swap.
 
 ## v45 (2026-10-28, untested in game)
 
