@@ -341,7 +341,7 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
   // FrameTrace: a frame of the 3D view (600 presents with its camera), or the next one when renodx_trace_now sits next
   // to the exe (checked each second; removed).
   if (static uint32_t presents = 0; ++presents % 60 == 0) {
-    std::wstring exe(32768, L' ');
+    std::wstring exe(32768, L'\0');
     exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
     const auto marker = std::filesystem::path(exe).parent_path() / L"renodx_trace_now";
     if (DeleteFileW(marker.c_str()) != 0) twattila::frame_trace::StartSoon();
