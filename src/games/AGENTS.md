@@ -6,6 +6,7 @@ Scope: `src/games/{gamename}` folders.
 
 - Each folder under `src/games/` is a mod.
 - Keep changes local to one game folder unless cross-mod work is explicitly requested.
+- Total War addons share code under `twattila` and `twrome2`: read the `tw-port-checklist` skill before porting or editing there.
 - New mods should start from `src/games/generic`.
 
 ## Shader files

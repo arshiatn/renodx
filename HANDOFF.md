@@ -1,5 +1,29 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## WH3 BATCH (from 2026-11-03): WH3 gets Attila's layout and features; nobody starts a game
+
+The plan lives outside the repo: tools/tw/wh3_batch/plan_final.md (tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw), reports beside it in reports/. Lessons: `.agents/skills/tw-port-checklist`. One implementer at a time, every phase ticked here in its own commit, pushed to origin atn-mods. Everything new is off by default until ATN's in-game test list (P13).
+
+Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 > P9 > P10 > P6c > P11 > P13.
+
+- [ ] P0 Ground work: skill, this list, raw NUL, baseline builds and harness log
+- [ ] P1 Correctness at 100%, no layout change (`Configure`, `Release(true)`, camera per frame, sqrt test)
+- [ ] P2 Data kit for ATN (indirect draws in traces, WH3 camera registers, RT debug rows, applied lines)
+- [ ] P3 Rows, FSR, XeSS, Reflex, Motion Debug View at 100%
+- [ ] P4 Frame generation to the helper
+- [ ] P5 The page: Attila's layout (milestone 1: review, twwarhammer3_v30.zip)
+- [ ] P7 Graphics 2 of 2 on names that exist in today's exe
+- [ ] P12 HDR page parity (SDR preset, Fog Strength)
+- [ ] P6 RT scene: leaves, grass, 4-bone units, flags, guides
+- [ ] P8 Upscaling below 100%: Experimental, off
+- [ ] P9 Sun shader features (Own Sky Rays, Path-Traced AO, Coloured Shadows, readers)
+- [ ] P10 Reflections, specular occlusion, water
+- [ ] P6c Terrain in the scene (only with a green WARP proof)
+- [ ] P11 Lights and fog in rays (optional)
+- [ ] P13 Close: review, all builds, README v30 / v31, zips, round report, ATN's test list
+
+Open in WH3's code when the batch started (from the lessons' read, each owned by the phase): no sqrt for L / M / RR (P1); RR with nothing ray-traced (P1); DLSS off keeps the bridge's textures (P1); `camera_found` sticky (P1); HUD-less frame misses flares and vignette (P4); no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list); About lacks licence text (P1); no first-start SDR check (P12); no red notice for the add-on alone (P3).
+
 ## START HERE (2026-11-03): Attila v134 = players' v2.5 (helper74, bridge v23, tag twattila-v134; v133 never released): RenoDX_Attila_v2.5.zip, RenoDX_Attila_v2.5_HDR_only.zip (Nexus: the add-on alone, tools/tw/hdr_zip.py), twattila_v134.zip. Downloads/attila_github_v2.5_notes.md, attila_nexus_text_v2.5.txt. ENORMOUS BATCH done; ATN's in-game tests under "ENORMOUS BATCH" item 18, then WH3.
 ATN decided (2026-11-03): no in-game tests by us unless asked; one game start before a zip.
 ## START HERE (2026-11-01 night, ATN moves to another account on this PC): Total War Attila

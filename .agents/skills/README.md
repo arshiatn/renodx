@@ -22,6 +22,7 @@ Default RenoDX mod behavior should be neutral: preserve the vanilla/original SDR
 | `analysis-graphing` | Creating dark-theme plots, curve comparisons, hue sweeps, gamut comparisons, LUT statistics, or image diagnostic panels. | Hand off to `hdr-test-pattern-generation` for source pattern generation and to `bt2020-png-generation` for final HDR PNG output. |
 | `hdr-test-pattern-generation` | Generating deterministic SDR/HDR ramps, charts, sweeps, color bars, checkerboards, gamut stress images, or validation sources. | Hand off to `analysis-graphing` for plotting results and to `bt2020-png-generation` for PQ PNG encoding/signaling. |
 | `bt2020-png-generation` | Producing or validating BT.2020/BT.2100 PQ PNGs, cICP chunks, ICC/cicpTag behavior, or HDR PNG artifacts from analysis data. | Hand off to `hdr-test-pattern-generation` for synthetic sources and to `analysis-graphing` for plots. |
+| `tw-port-checklist` | Porting, reviewing or debugging a Total War feature between addons (Attila to WH3 and others): helper and bridge, DLSS, FSR, XeSS, frame generation, RT capture, replaced shaders, graphics page. Includes `cb_audit.py` and `scan_register.py`. | Hand off to `setup-game-mod-dev` for a new game folder and to `handle-sdr-tonemap-lut` for tone mapper math. |
 
 ## Maintenance notes
 
