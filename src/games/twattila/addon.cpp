@@ -1214,18 +1214,41 @@ bool configured = false;
 bool attached = false;
 bool addon_registered = false;
 
-// Water Clarity (ATN: rivers more see-through): the river (2E9F5935) and lake (C9FBACCB) shaders blend toward the deep
-// water colour by g_sea_bed_light_scatter (lighting_VS_PS c10 at b2) to the power of the water they look through. At
-// their draws a copy of those constants with it raised to 1 / clarity is bound (water_clarity.cs), the game's put back
-// after the draw (later draws, and the game's updates of its own buffer, stay its). Up to 16: murky rivers (ATN's
-// debug28: no change seen at 4) keep little light a metre, 4 times as far still dark. Logged once where it applies.
-constexpr std::array<uint32_t, 2> WATER_SHADERS = {0x2E9F5935, 0xC9FBACCB};
-constexpr UINT WATER_LIGHTING_SLOT = 2;
+// Water Clarity (ATN: rivers more see-through): the water shaders (WATER_SHADERS) blend toward the deep water colour by
+// g_sea_bed_light_scatter (lighting_VS_PS c10) to the power of the water they look through. At their draws a copy of those
+// constants with it raised to 1 / clarity is bound (water_clarity.cs), the game's put back after the draw (later draws, and
+// the game's updates of its own buffer, stay its). Up to 16: murky rivers (ATN's debug28: no change seen at 4) keep little
+// light a metre, 4 times as far still dark. Logged once where it applies.
+struct WaterShader {
+  uint32_t hash = 0;
+  UINT lighting_slot = 0;        // b: lighting_VS_PS
+  uint32_t world_input = 0;      // v: the world position
+  uint32_t refraction_slot = 0;  // t: the water refraction's output
+  bool caustics = true;          // the campaign's world is a twentieth of the battles': a 4 m tile means nothing there
+};
+// The campaign's rivers (1B25BD46) are no water in the view: painted into a map overlay, nothing under them to see.
+constexpr std::array<WaterShader, 15> WATER_SHADERS = {{
+    {.hash = 0x2E9F5935, .lighting_slot = 2, .world_input = 1, .refraction_slot = 2},  // battle river
+    {.hash = 0xC9FBACCB, .lighting_slot = 2, .world_input = 3, .refraction_slot = 2},  // battle plane, Water Quality Ultra
+    {.hash = 0x2E69BF8E, .lighting_slot = 1, .world_input = 3, .refraction_slot = 2},  // placed water meshes; the plane below Ultra
+    {.hash = 0x2BD86A89, .lighting_slot = 2, .world_input = 2, .refraction_slot = 5},  // battle sea, high / ultra
+    {.hash = 0x108F6C71, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},  // battle sea, medium
+    {.hash = 0x301DB1B5, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},  // battle sea, low
+    {.hash = 0x05A111E1, .lighting_slot = 2, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea
+    {.hash = 0x450F6992, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea, low
+    {.hash = 0x197D701E, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign lake
+    // Without shadows.
+    {.hash = 0x52228234, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
+    {.hash = 0x5CB9A865, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
+    {.hash = 0x6583F5D8, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},
+    {.hash = 0x33758F15, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},
+    {.hash = 0xE928D4B8, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
+    {.hash = 0xA140EFBA, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
+}};
 float water_clarity = 1.f;
 // Water Caustics (ATN): the shaders' refracted bed colour x (1 + t51 at their world position / WATER_CAUSTICS_TILE), the
 // tile water_caustics.cs makes at the first water draw of a frame; t51 unbound reads 0 (the game's water). Patched as
-// they are created (PatchWaterCaustics); their world positions' inputs (river v1, lake v3) by WATER_SHADERS' order.
-constexpr std::array<uint32_t, 2> WATER_WORLD_INPUTS = {1, 3};
+// they are created (PatchWaterCaustics).
 constexpr UINT WATER_CAUSTICS_SLOT = 51;
 constexpr float WATER_CAUSTICS_TILE = 4.f;  // metres
 constexpr UINT WATER_CAUSTICS_SIZE = 256;
@@ -1254,18 +1277,21 @@ struct WaterObjects {
   ComPtr<ID3D11UnorderedAccessView> clarified_uav;
   ComPtr<ID3D11Buffer> lighting;       // the constant buffer bound for the draw
   ComPtr<ID3D11Buffer> game_lighting;  // the game's, put back after it
+  UINT lighting_slot = 0;              // the draw's
   ID3D11Buffer* source = nullptr;      // the game's buffer `lighting` was made from (compared only)
   uint64_t made_tick = 0;              // its last time (within 4 ms: the same frame's)
   bool logged = false;
 };
 WaterObjects water_objects;
 
-// A water shader with the caustics (empty: not as expected): after the refraction's colour sample (sample_l rD.xyz, ...,
-// t2, ...), with rT one more temp and t51 declared:
+// A water shader with the caustics (empty: not as expected): after the refraction's colour sample (a sample of 3+
+// components into rD from its t: the last, the river's first takes w alone, the sea reads two) or the `if` picking between
+// them, with rT one more temp and t51 declared:
 //   mul rT.xy, vW.xzxx, l(1 / tile) / frc rT.xy, rT.xyxx / sample_l rT.x, rT.xyxx, t51, s(the normal map's), l(0) /
-//   mad rD.xyz, rD.xyzx, rT.xxxx, rD.xyzx
-std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, uint32_t world_input) {
-  constexpr uint32_t OP_FRC = 26, OP_MAD = 50, OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_L = 72, OP_DCL_RESOURCE = 88, OP_DCL_TEMPS = 104;
+//   mad rD.xyz(w's left), rD, rT.xxxx, rD
+std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, const WaterShader& water) {
+  constexpr uint32_t OP_ENDIF = 21, OP_FRC = 26, OP_IF = 31, OP_MAD = 50, OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_L = 72, OP_DCL_RESOURCE = 88,
+                     OP_DCL_TEMPS = 104;
   constexpr uint32_t EXTENDED = 1u << 31;
   twattila::dxbc::Program program = twattila::dxbc::Read(code);
   auto& tokens = program.tokens;
@@ -1273,7 +1299,8 @@ std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, uint32_t 
   size_t temps_at = 0;
   size_t refraction_at = 0;  // the refraction's colour sample, its operands' start
   size_t refraction_operands = 0;
-  std::array<uint32_t, 2> sampler = {};  // the normal map's (t0)
+  size_t normal_at = 0;  // the normal map's (t0) sample, its operands' start
+  size_t normal_operands = 0;
   for (size_t at = 2; at < tokens.size();) {
     const uint32_t opcode = tokens[at] & 0x7FF;
     const size_t length = twattila::dxbc::Length(tokens, at);
@@ -1288,31 +1315,44 @@ std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, uint32_t 
       // dest, address, resource, sampler: two tokens each (one immediate index).
       const bool plain = operands + 8 <= at + length && (tokens[operands + 4] & 0x001FF000) == 0x00107000
                          && (tokens[operands + 6] & 0x001FF000) == 0x00106000;
-      if (plain && opcode == OP_SAMPLE && tokens[operands + 5] == 0 && sampler[0] == 0) sampler = {tokens[operands + 6], tokens[operands + 7]};
-      // sample_l into a temp's xyz from t2.
-      if (plain && opcode == OP_SAMPLE_L && tokens[operands + 5] == 2 && (tokens[operands] & 0x001FF0FF) == 0x00100072) {
-        if (refraction_at != 0) return {};
+      if (plain && opcode == OP_SAMPLE && tokens[operands + 5] == 0 && normal_at == 0) {
+        normal_at = at;
+        normal_operands = operands;
+      }
+      if (plain && tokens[operands + 5] == water.refraction_slot && (tokens[operands] & 0x001FF00F) == 0x00100002
+          && std::popcount((tokens[operands] >> 4) & 0xFu) >= 3) {
         refraction_at = at;
         refraction_operands = operands;
       }
     }
     at += length;
   }
-  if (temps_at == 0 || refraction_at == 0 || sampler[0] == 0) return {};
+  if (temps_at == 0 || refraction_at == 0 || normal_at == 0) return {};
   const uint32_t temp = tokens[temps_at + 1];
   const uint32_t bed = tokens[refraction_operands + 1];
   const uint32_t scale = std::bit_cast<uint32_t>(1.f / WATER_CAUSTICS_TILE);
-  const std::array<uint32_t, 37> added = {
+  // A whole xyzw read: its w stays.
+  const uint32_t destination = ((tokens[refraction_operands] & 0xF0) == 0xF0 ? (tokens[refraction_operands] & ~0x80u) : tokens[refraction_operands]);
+  std::vector<uint32_t> added = {
       // mul rT.xy, vW.xzxx, l(scale, scale, 0, 0) / frc rT.xy, rT.xyxx (the tile repeats whatever the sampler's address mode)
-      OP_MUL | (10u << 24), 0x00100032, temp, 0x00101086, world_input, 0x00004002, scale, scale, 0u, 0u,
+      OP_MUL | (10u << 24), 0x00100032, temp, 0x00101086, water.world_input, 0x00004002, scale, scale, 0u, 0u,
       OP_FRC | (5u << 24), 0x00100032, temp, 0x00100046, temp,
-      // sample_l_indexable(texture2d)(float,float,float,float) rT.x, rT.xyxx, t51.xyzw, sN, l(0)
-      tokens[refraction_at], tokens[refraction_at + 1], tokens[refraction_at + 2], 0x00100012, temp, 0x00100046,
-      temp, 0x00107E46, WATER_CAUSTICS_SLOT, sampler[0], sampler[1], 0x00004001, 0u,
-      // mad rD.xyz, rD.xyzx, rT.xxxx, rD.xyzx
-      OP_MAD | (9u << 24), 0x00100072, bed, 0x00100246, bed, 0x00100006, temp, 0x00100246, bed,
+      // sample_l(_indexable(texture2d)(float,float,float,float): the normal map's extended tokens, none below shader model 5)
+      // rT.x, rT.xyxx, t51.xyzw, sN, l(0)
+      OP_SAMPLE_L | (tokens[normal_at] & EXTENDED) | (static_cast<uint32_t>(10 + normal_operands - normal_at) << 24),
   };
-  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(refraction_at + twattila::dxbc::Length(tokens, refraction_at)), added.begin(), added.end());
+  added.insert(added.end(), tokens.begin() + static_cast<ptrdiff_t>(normal_at + 1), tokens.begin() + static_cast<ptrdiff_t>(normal_operands));
+  added.insert(added.end(), {
+      0x00100012, temp, 0x00100046, temp, 0x00107E46, WATER_CAUSTICS_SLOT, tokens[normal_operands + 6], tokens[normal_operands + 7], 0x00004001, 0u,
+      // mad rD, rD.xyzw, rT.xxxx, rD.xyzw
+      OP_MAD | (9u << 24), destination, bed, 0x00100E46, bed, 0x00100006, temp, 0x00100E46, bed,
+  });
+  size_t added_at = refraction_at + twattila::dxbc::Length(tokens, refraction_at);
+  if ((tokens[added_at] & 0x7FF) == OP_IF) {
+    while ((tokens[added_at] & 0x7FF) != OP_ENDIF) added_at += twattila::dxbc::Length(tokens, added_at);
+    ++added_at;
+  }
+  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(added_at), added.begin(), added.end());
   // dcl_resource_texture2d (float,float,float,float) t51, before dcl_temps (the declarations come first).
   const std::array<uint32_t, 4> declaration = {OP_DCL_RESOURCE | (3u << 11) | (4u << 24), 0x00107000, WATER_CAUSTICS_SLOT, 0x5555};
   ++tokens[temps_at + 1];
@@ -1334,12 +1374,12 @@ bool OnCreateWater(reshade::api::device* device, reshade::api::pipeline_layout, 
     const std::span<const uint8_t> code(static_cast<const uint8_t*>(desc->code), desc->code_size);
     const auto scaled = twattila::view_share::OriginalHash(desc->code);
     const uint32_t hash = scaled.value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
-    const auto water = std::ranges::find(WATER_SHADERS, hash);
-    if (water == WATER_SHADERS.end()) continue;
+    const auto water = std::ranges::find(WATER_SHADERS, hash, &WaterShader::hash);
+    if (water == WATER_SHADERS.end() || !water->caustics) continue;
     const std::unique_lock lock(water_mutex);
     auto [entry, added] = water_patched.try_emplace(hash);
     if (added) {
-      entry->second = PatchWaterCaustics(code, WATER_WORLD_INPUTS[water - WATER_SHADERS.begin()]);
+      entry->second = PatchWaterCaustics(code, *water);
       renodx::utils::log::i(std::format("[Total War] Water Caustics: water shader {:08X} {}", hash,
                                         entry->second.empty() ? "not as expected, left as it is." : "patched."));
     }
@@ -1394,8 +1434,9 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
     native->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, caustics.srv.GetAddressOf());
   }
   // Water Clarity.
+  const UINT lighting_slot = std::ranges::find(WATER_SHADERS, command.matched_shader_hash, &WaterShader::hash)->lighting_slot;
   ComPtr<ID3D11Buffer> game_lighting;
-  if (std::abs(water_clarity - 1.f) >= 0.01f) native->PSGetConstantBuffers(WATER_LIGHTING_SLOT, 1, game_lighting.GetAddressOf());
+  if (std::abs(water_clarity - 1.f) >= 0.01f) native->PSGetConstantBuffers(lighting_slot, 1, game_lighting.GetAddressOf());
   D3D11_BUFFER_DESC game_desc = {};
   if (game_lighting) game_lighting->GetDesc(&game_desc);
   auto& objects = water_objects;
@@ -1445,13 +1486,14 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
     native->CopyResource(objects.lighting.Get(), objects.clarified.Get());
   }
   objects.game_lighting = std::move(game_lighting);
-  native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, objects.lighting.GetAddressOf());
+  objects.lighting_slot = lighting_slot;
+  native->PSSetConstantBuffers(lighting_slot, 1, objects.lighting.GetAddressOf());
   if (!std::exchange(objects.logged, true)) {
     renodx::utils::log::i("[Total War] Water Clarity: applied at a water draw (", objects.bytes, " bytes of lighting constants).");
   }
   return {.finalize_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    post_native->PSSetConstantBuffers(WATER_LIGHTING_SLOT, 1, water_objects.game_lighting.GetAddressOf());
+    post_native->PSSetConstantBuffers(water_objects.lighting_slot, 1, water_objects.game_lighting.GetAddressOf());
     water_objects.game_lighting.Reset();
     ID3D11ShaderResourceView* no_view = nullptr;
     post_native->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, &no_view);
@@ -2008,7 +2050,7 @@ void ConfigureAddon() {
       .default_value = 1.f,
       .label = "Water Clarity",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "How far you see into rivers and lakes. 1: the game's; higher: clearer water.",
+      .tooltip = "How far you see into rivers, lakes and the sea. 1: the game's; higher: clearer water.",
       .min = 0.25f,
       .max = 16.f,
       .format = "%.2f",
@@ -2019,7 +2061,7 @@ void ConfigureAddon() {
       .default_value = 1.f,
       .label = "Water Caustics (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "Rippling light on river and lake beds. 0: off.",
+      .tooltip = "Rippling light on river, lake and shallow sea beds in battles. 0: off.",
       .max = 2.f,
       .format = "%.2f",
   });
@@ -2193,9 +2235,9 @@ bool AttachAddon() {
   twattila::rt_scene::InstallShadowsOnly();
   twattila::screen_space_shadows::PatchForwardShadows(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::SHADOW_READER_SHADERS);
-  for (const uint32_t shader_hash : WATER_SHADERS) {
+  for (const WaterShader& water : WATER_SHADERS) {
     renodx::utils::command_action::Register(
-        OnWaterDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+        OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
