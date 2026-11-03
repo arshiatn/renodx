@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
@@ -61,6 +62,22 @@ struct Inputs {
   float far_plane = 0.f;
 };
 
+// The camera's part of `inputs` from matrices as the registers hold them (column vectors, row by row; without the jitter;
+// `view`'s rows: the camera's axes): the helper takes row vectors, their transposes.
+inline void SetCamera(Inputs* inputs, const std::array<float, 16>& projection, const std::array<float, 16>& view,
+                      const std::array<float, 16>& view_projection, const std::array<float, 16>& previous_view_projection,
+                      const std::array<float, 3>& position) {
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t column = 0; column < 4; ++column) {
+      inputs->view_to_clip[column * 4 + row] = projection[row * 4 + column];
+      inputs->view_projection[column * 4 + row] = view_projection[row * 4 + column];
+      inputs->previous_view_projection[column * 4 + row] = previous_view_projection[row * 4 + column];
+    }
+  }
+  inputs->camera = {position[0], position[1], position[2], view[0], view[1], view[2],
+                    view[4],     view[5],     view[6],     view[8], view[9], view[10]};
+}
+
 namespace internal {
 
 constexpr UINT INJECTION_SLOT = 13;
@@ -102,6 +119,7 @@ struct State {
   std::span<const uint8_t> hdr10_pixel_code;  // scRGB to HDR10
   const void* injection = nullptr;
   UINT injection_bytes = 0;
+  UINT injection_slot = INJECTION_SLOT;  // the register its swap chain shader reads them from
   DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;  // the frames' (the swap chain's; HDR10 for scRGB), seen at a present
   bool scrgb = false;                        // the swap chain is scRGB and its frames go as HDR10
   uint32_t frame_index = 0;
@@ -363,7 +381,7 @@ inline bool DrawHudless(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
   ID3D11SamplerState* sampler = objects.sampler.Get();
   ID3D11Buffer* injection = objects.injection.Get();
   context->PSSetSamplers(0, 1, &sampler);
-  context->PSSetConstantBuffers(INJECTION_SLOT, 1, &injection);
+  context->PSSetConstantBuffers(state.injection_slot, 1, &injection);
   if (state.scrgb) {
     DrawPass(context, objects.pixel_shader.Get(), scene, objects.scrgb.rtv.Get(), desc.Width, desc.Height);
     DrawPass(context, objects.hdr10_pixel_shader.Get(), objects.scrgb.srv.Get(), bridge.fg_hudless_rtv.Get(), desc.Width, desc.Height);
@@ -420,10 +438,10 @@ inline bool Presenting() {
   return internal::state.presenting;
 }
 
-// The addon's swap chain shaders and its shader constants (`injection_bytes` at `injection`: kept while installed), and its
-// scRGB to HDR10 shader.
+// The addon's swap chain shaders and its shader constants (`injection_bytes` at `injection`: kept while installed; its
+// swap chain shader reads them from register `injection_slot`), and its scRGB to HDR10 shader.
 inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_t> pixel_code, const void* injection, UINT injection_bytes,
-                    std::span<const uint8_t> hdr10_pixel_code) {
+                    std::span<const uint8_t> hdr10_pixel_code, UINT injection_slot = internal::INJECTION_SLOT) {
   {
     const std::unique_lock lock(internal::state.mutex);
     internal::state.vertex_code = vertex_code;
@@ -431,6 +449,7 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
     internal::state.hdr10_pixel_code = hdr10_pixel_code;
     internal::state.injection = injection;
     internal::state.injection_bytes = injection_bytes;
+    internal::state.injection_slot = injection_slot;
   }
   reshade::register_event<reshade::addon_event::reshade_present>(internal::OnReshadePresent);
   reshade::register_event<reshade::addon_event::reshade_open_overlay>(internal::OnOpenOverlay);

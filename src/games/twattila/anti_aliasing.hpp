@@ -1228,8 +1228,8 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
            {objects.result_uav.Get()});
       native->Dispatch(groups_x, groups_y, 1);
     }
-    // Frame generation: the frame's DLAA inputs and camera (row vectors: the registers' matrices transposed; view =
-    // inverse projection x view-projection, its rows the camera's axes; near and far from the projection's z row).
+    // Frame generation: the frame's DLAA inputs and camera (view = inverse projection x view-projection; near and far from
+    // the projection's z row).
     if (resolved && frame_generation::Wanted()) {
       const Camera& camera = runtime.camera;
       const Camera& previous = (continued ? runtime.previous_camera : runtime.camera);
@@ -1244,13 +1244,9 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       for (size_t row = 0; row < 4; ++row) {
         for (size_t column = 0; column < 4; ++column) {
           for (size_t k = 0; k < 4; ++k) view[row * 4 + column] += camera.inverse_projection[row * 4 + k] * camera.view_projection[k * 4 + column];
-          inputs.view_to_clip[column * 4 + row] = camera.projection[row * 4 + column];
-          inputs.view_projection[column * 4 + row] = camera.view_projection[row * 4 + column];
-          inputs.previous_view_projection[column * 4 + row] = previous.view_projection[row * 4 + column];
         }
       }
-      inputs.camera = {camera.position[0], camera.position[1], camera.position[2], view[0], view[1], view[2],
-                       view[4],            view[5],            view[6],            view[8], view[9], view[10]};
+      frame_generation::SetCamera(&inputs, camera.projection, view, camera.view_projection, previous.view_projection, camera.position);
       const float depth_scale = camera.projection[10];
       const float depth_offset = camera.projection[11];
       inputs.near_plane = (depth_scale != 0.f ? -depth_offset / depth_scale : 0.10000587f);
