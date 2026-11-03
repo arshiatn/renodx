@@ -20,8 +20,8 @@
 #include <format>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <utility>
-#include <vector>
 
 #include "../dlaa_bridge.h"
 #include "./rr_d3d12.hpp"
@@ -32,6 +32,12 @@
 #include <ffx_api_loader.h>
 #include <ffx_upscale.h>
 #define RENODX_FSR_SDK 1
+#endif
+// Intel's XeSS SDK (Intel Simplified Software License; build.ps1 adds it when build\downloads\xess holds it): loaded at run
+// time, its libxess.dll next to the helper, which needs the Visual C++ 2015-2022 runtime.
+#if __has_include(<xess/xess_d3d12.h>)
+#include <xess/xess_d3d12.h>
+#define RENODX_XESS_SDK 1
 #endif
 
 // The DLAA helper's other upscalers, on the shared textures DLSS reads (linear colour, depth 0 near, motion in render
@@ -79,6 +85,27 @@ class Upscaler12 {
 #else
       return Fail("AMD FSR Upscaling is not in this helper's build");
 #endif
+    } else if (backend == dlaa_bridge::UPSCALER_XESS) {
+#if defined(RENODX_XESS_SDK)
+      const std::wstring path = folder + L"\\libxess.dll";
+      library_ = LoadLibraryExW(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+      if (library_ == nullptr) {
+        // Its file there, what it imports not.
+        return Fail(GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES ? "XeSS-SR: install the Visual C++ 2015-2022 x64 runtime"
+                                                                                : "XeSS-SR: libxess.dll not found next to the helper");
+      }
+      const auto load = [this](auto* function, const char* name) {
+        *function = reinterpret_cast<std::remove_pointer_t<decltype(function)>>(GetProcAddress(library_, name));
+        return *function != nullptr;
+      };
+      if (!load(&xess_.create, "xessD3D12CreateContext") || !load(&xess_.build, "xessD3D12BuildPipelines") || !load(&xess_.init, "xessD3D12Init")
+          || !load(&xess_.execute, "xessD3D12Execute") || !load(&xess_.destroy, "xessDestroyContext")
+          || !load(&xess_.optimal, "xessGetOptimalInputResolution") || !load(&xess_.version, "xessGetVersion")) {
+        return Fail("XeSS-SR: libxess.dll is not the expected one");
+      }
+#else
+      return Fail("XeSS-SR is not in this helper's build");
+#endif
     } else {
       return Fail("Upscaling: an unknown upscaler");
     }
@@ -113,8 +140,8 @@ class Upscaler12 {
   }
 
   // One request: the queue waits for the addon's fence value, the upscaler runs, the next value is signalled (also when it
-  // could not run, so the game never waits for nothing). False: it did not run; the first requests of an output size don't
-  // (its context is made beside them: a cold start of FSR 4 is long, and over 20 s the addon would give up on the helper).
+  // could not run, so the game never waits for nothing). False: it did not run; the first requests don't (its context is made
+  // beside them: a cold start of FSR 4 or of XeSS's kernels is long, and over 20 s the addon would give up on the helper).
   bool Evaluate(const Request& request) {
     if (!fence_ || !queue_) return false;
     Slot& slot = slots_[next_slot_];
@@ -128,21 +155,34 @@ class Upscaler12 {
         maker_.join();
         if (!make_error_.empty()) return Fail(make_error_.c_str());
 #if defined(RENODX_FSR_SDK)
-        ffxQueryGetProviderVersion provider = {.header = {.type = FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION}};
-        fsr_.Query(&fsr_context_, &provider.header);
-        status_ = std::format("AMD FSR Upscaling {} active (started in {:.1f} s)", (provider.versionName != nullptr ? provider.versionName : "?"), make_seconds_);
+        if (backend_ == dlaa_bridge::UPSCALER_FSR) {
+          ffxQueryGetProviderVersion provider = {.header = {.type = FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION}};
+          fsr_.Query(&fsr_context_, &provider.header);
+          status_ = std::format("AMD FSR Upscaling {} active (started in {:.1f} s)", (provider.versionName != nullptr ? provider.versionName : "?"), make_seconds_);
+        }
 #endif
         first_frame_ = true;
       }
-      if (made_width_ != request.output_width || made_height_ != request.output_height) {
+      // FSR: a context for each output size (any render size up to it). XeSS: one context, initialized for each output size
+      // and the setting that takes the render size (below).
+      if (made_width_ == 0 || (backend_ == dlaa_bridge::UPSCALER_FSR && (made_width_ != request.output_width || made_height_ != request.output_height))) {
         WaitFor(own_value_);
         DestroyContext();
         made_width_ = request.output_width;
         made_height_ = request.output_height;
-        status_ = "AMD FSR Upscaling starting";
+        status_ = "Upscaling starting";
         making_.store(true);
         maker_ = std::thread([this] {
           const auto started = std::chrono::steady_clock::now();
+#if defined(RENODX_XESS_SDK)
+          if (backend_ == dlaa_bridge::UPSCALER_XESS) {
+            if (const xess_result_t made = xess_.create(device_.Get(), &xess_context_); made < XESS_RESULT_SUCCESS) {
+              make_error_ = std::format("XeSS-SR could not start on this GPU or driver (code {})", static_cast<int>(made));
+            } else if (const xess_result_t built = xess_.build(xess_context_, nullptr, true, XESS_FLAGS); built < XESS_RESULT_SUCCESS) {
+              make_error_ = std::format("XeSS-SR could not build its pipelines (code {})", static_cast<int>(built));
+            }
+          }
+#endif
 #if defined(RENODX_FSR_SDK)
           ffxCreateBackendDX12Desc backend = {.header = {.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12}, .device = device_.Get()};
           ffxCreateContextDescUpscaleVersion version = {
@@ -156,8 +196,10 @@ class Upscaler12 {
               .maxRenderSize = {.width = made_width_, .height = made_height_},
               .maxUpscaleSize = {.width = made_width_, .height = made_height_},
           };
-          if (const ffxReturnCode_t made = fsr_.CreateContext(&fsr_context_, &create.header, nullptr); made != FFX_API_RETURN_OK) {
-            make_error_ = std::format("AMD FSR Upscaling could not start (code {})", made);
+          if (backend_ == dlaa_bridge::UPSCALER_FSR) {
+            if (const ffxReturnCode_t made = fsr_.CreateContext(&fsr_context_, &create.header, nullptr); made != FFX_API_RETURN_OK) {
+              make_error_ = std::format("AMD FSR Upscaling could not start (code {})", made);
+            }
           }
 #endif
           make_seconds_ = std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count();
@@ -165,6 +207,47 @@ class Upscaler12 {
         });
         return false;
       }
+#if defined(RENODX_XESS_SDK)
+      if (backend_ == dlaa_bridge::UPSCALER_XESS) {
+        const xess_2d_t output = {.x = request.output_width, .y = request.output_height};
+        const auto takes = [&](xess_quality_settings_t quality) {
+          xess_2d_t optimal = {};
+          xess_2d_t least = {};
+          xess_2d_t most = {};
+          return xess_.optimal(xess_context_, &output, quality, &optimal, &least, &most) >= XESS_RESULT_SUCCESS && request.width >= least.x
+                 && request.width <= most.x && request.height >= least.y && request.height <= most.y;
+        };
+        const bool new_output = inited_width_ != request.output_width || inited_height_ != request.output_height;
+        if (new_output || !takes(quality_)) {
+          // The first setting that takes it, the last when none does.
+          xess_quality_settings_t quality = XESS_QUALITY_SETTING_ULTRA_PERFORMANCE;
+          for (const auto candidate : {XESS_QUALITY_SETTING_AA, XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS, XESS_QUALITY_SETTING_ULTRA_QUALITY,
+                                       XESS_QUALITY_SETTING_QUALITY, XESS_QUALITY_SETTING_BALANCED, XESS_QUALITY_SETTING_PERFORMANCE}) {
+            if (takes(candidate)) {
+              quality = candidate;
+              break;
+            }
+          }
+          if (new_output || quality != quality_) {
+            // Here, not beside the requests (no frame without it: the render scale would go back to 100%, where another
+            // setting is needed, for good): the kernels are built, this takes milliseconds.
+            WaitFor(own_value_);
+            const xess_d3d12_init_params_t init = {.outputResolution = output, .qualitySetting = quality, .initFlags = XESS_FLAGS};
+            if (const xess_result_t inited = xess_.init(xess_context_, &init); inited < XESS_RESULT_SUCCESS) {
+              return Fail(std::format("XeSS-SR could not start at this size (code {})", static_cast<int>(inited)).c_str());
+            }
+            quality_ = quality;
+            inited_width_ = request.output_width;
+            inited_height_ = request.output_height;
+            first_frame_ = true;
+            xess_version_t version = {};
+            xess_.version(&version);
+            status_ = std::format("XeSS-SR {}.{}.{} active (quality setting {}, started in {:.1f} s)", version.major, version.minor, version.patch,
+                                  static_cast<int>(quality), make_seconds_);
+          }
+        }
+      }
+#endif
       ID3D12GraphicsCommandList* list = slot.list.Get();
       if (FAILED(slot.allocator->Reset()) || FAILED(list->Reset(slot.allocator.Get(), nullptr))) return Fail("Upscaling: D3D12 stopped");
       std::array<D3D12_RESOURCE_BARRIER, UPSCALE_INPUTS> barriers;
@@ -181,12 +264,31 @@ class Upscaler12 {
       }
       list->ResourceBarrier(UPSCALE_INPUTS, barriers.data());
       const bool reset = request.reset || first_frame_ || last_width_ != request.width || last_height_ != request.height;
+#if defined(RENODX_XESS_SDK)
+      if (backend_ == dlaa_bridge::UPSCALER_XESS) {
+        const xess_d3d12_execute_params_t execute = {
+            .pColorTexture = inputs_[COLOR].Get(),
+            .pVelocityTexture = inputs_[MOTION].Get(),
+            .pDepthTexture = inputs_[DEPTH].Get(),
+            .pOutputTexture = inputs_[OUTPUT].Get(),
+            .jitterOffsetX = request.jitter_x,
+            .jitterOffsetY = request.jitter_y,
+            .exposureScale = 1.f,
+            .resetHistory = (reset ? 1u : 0u),
+            .inputWidth = request.width,
+            .inputHeight = request.height,
+        };
+        const xess_result_t executed = xess_.execute(xess_context_, list, &execute);
+        evaluated = executed >= XESS_RESULT_SUCCESS;
+        if (!evaluated) status_ = std::format("XeSS-SR: its evaluation failed at {} x {} (code {})", request.width, request.height, static_cast<int>(executed));
+      }
+#endif
 #if defined(RENODX_FSR_SDK)
       // The camera from the row-vector matrix (the jitter only moves its column 2): near and far from its z row.
       const auto& projection = request.view_to_clip;
       const float near_plane = (projection[10] != 0.f ? -projection[14] / projection[10] : 0.1f);
       const auto now = std::chrono::steady_clock::now();
-      ffxDispatchDescUpscale dispatch = {
+      const ffxDispatchDescUpscale dispatch = {
           .header = {.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE},
           .commandList = list,
           .color = ffxApiGetResourceDX12(inputs_[COLOR].Get(), FFX_API_RESOURCE_STATE_COMPUTE_READ),
@@ -207,8 +309,10 @@ class Upscaler12 {
           .viewSpaceToMetersFactor = 1.f,
       };
       last_time_ = now;
-      evaluated = fsr_.Dispatch(&fsr_context_, &dispatch.header) == FFX_API_RETURN_OK;
-      if (!evaluated) status_ = "AMD FSR Upscaling: its evaluation failed";
+      if (backend_ == dlaa_bridge::UPSCALER_FSR) {
+        evaluated = fsr_.Dispatch(&fsr_context_, &dispatch.header) == FFX_API_RETURN_OK;
+        if (!evaluated) status_ = "AMD FSR Upscaling: its evaluation failed";
+      }
 #endif
       for (auto& barrier : barriers) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
       list->ResourceBarrier(UPSCALE_INPUTS, barriers.data());
@@ -267,6 +371,10 @@ class Upscaler12 {
     if (fsr_context_ != nullptr) fsr_.DestroyContext(&fsr_context_, nullptr);
     fsr_context_ = nullptr;
 #endif
+#if defined(RENODX_XESS_SDK)
+    if (xess_context_ != nullptr) xess_.destroy(xess_context_);
+    xess_context_ = nullptr;
+#endif
   }
 
   ComPtr<ID3D12Device> device_;
@@ -283,6 +391,23 @@ class Upscaler12 {
 #if defined(RENODX_FSR_SDK)
   ffxFunctions fsr_ = {};
   ffxContext fsr_context_ = nullptr;
+#endif
+#if defined(RENODX_XESS_SDK)
+  // No depth flag (0 near), no high-resolution or jittered motion; HDR colour is its default.
+  static constexpr uint32_t XESS_FLAGS = XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE;
+  struct {
+    decltype(&xessD3D12CreateContext) create = nullptr;
+    decltype(&xessD3D12BuildPipelines) build = nullptr;
+    decltype(&xessD3D12Init) init = nullptr;
+    decltype(&xessD3D12Execute) execute = nullptr;
+    decltype(&xessDestroyContext) destroy = nullptr;
+    decltype(&xessGetOptimalInputResolution) optimal = nullptr;
+    decltype(&xessGetVersion) version = nullptr;
+  } xess_;
+  xess_context_handle_t xess_context_ = nullptr;
+  xess_quality_settings_t quality_ = XESS_QUALITY_SETTING_AA;
+  uint32_t inited_width_ = 0;
+  uint32_t inited_height_ = 0;
 #endif
   // The context's maker: it writes the context, make_error_ and make_seconds_; read after the join.
   std::thread maker_;

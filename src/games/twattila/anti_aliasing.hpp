@@ -72,6 +72,7 @@ enum class Method : uint8_t {
   TAA = 4,
   DLAA = 5,  // NVIDIA's, through the 64-bit helper (dlaa_bridge.hpp)
   FSR = 6,   // AMD's, the same way (dlaa_helper/upscale_d3d12.hpp)
+  XESS = 7,  // Intel's, the same way
 };
 
 // An upscaler in the helper: the same frame path, textures, jitter, render scale and object motion for all.
@@ -1470,7 +1471,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   frame_history::render_width.store(scaled ? runtime.render_width : 0u);
   frame_history::render_height.store(scaled ? runtime.render_height : 0u);
   if ((settings.method == Method::TAA || Upscales(settings.method)) && ran) {
-    // NVIDIA and AMD: 8 phases at native size, 8 / scale^2 below it.
+    // NVIDIA, AMD and Intel: 8 phases at native size, 8 / scale^2 below it.
     const uint32_t least = (settings.method == Method::DLAA && settings.ray_reconstruction) ? internal::RR_PHASES : internal::TAA_PHASES;
     const uint32_t phases = (scaled ? std::max(least, static_cast<uint32_t>(std::ceil(8.f / (render_scale * render_scale)))) : least);
     const auto phase = static_cast<uint32_t>(runtime.frame % phases) + 1;

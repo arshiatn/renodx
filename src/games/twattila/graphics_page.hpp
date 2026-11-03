@@ -282,7 +282,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = AA_SECTION;
     for (Setting* setting : *settings) {
       // Hidden (the row below draws it), but the saved value is clamped to these labels at each start.
-      if (setting->key == "AntiAliasing") setting->labels = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS", "FSR"};
+      if (setting->key == "AntiAliasing") setting->labels = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS", "FSR", "XeSS"};
+      if (setting->key == "AntiAliasingDlssMode") setting->labels[0] = "Native (100%)";
     }
     page.Add(Note("Upscaling, Frame Generation and ray tracing need the full download, not only this addon: github.com/arshiatn/renodx/releases or Nexus.",
                   section, WARNING_TINT, [] { return !dlaa_bridge::HelperInstalled(); }));
@@ -295,10 +296,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .tooltip = "Smooths jagged edges. Turn the in-game anti-aliasing off.\n"
                    "SMAA: catches more edges. CMAA2: sharper, keeps more fine detail.\n"
                    "SMAA T2x: SMAA with two frames blended. TAA: blends frames, best on grass, softer.\n"
-                   "DLSS: NVIDIA's (RTX), the best. FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1.\n"
+                   "DLSS: NVIDIA's (RTX), the best. FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
                    "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
         .on_draw = [b] {
-          static constexpr std::array<const char*, 7> LABELS = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS", "FSR"};
+          static constexpr std::array<const char*, 8> LABELS = {"Off", "SMAA", "CMAA2", "SMAA T2x", "TAA", "DLSS", "FSR", "XeSS"};
           const int skipped = (dlaa_bridge::OnNvidia() ? 0 : 1);
           const int last = static_cast<int>(LABELS.size()) - 1 - skipped;
           const int method = std::clamp(static_cast<int>(b.aa->method), 0, static_cast<int>(LABELS.size()) - 1);

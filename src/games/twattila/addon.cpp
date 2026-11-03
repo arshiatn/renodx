@@ -1606,7 +1606,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   // The GPU's vendor, once. RENODX_TW_FAKE_VENDOR (tests): another's. Before any setting is read this frame: DLSS never
-  // starts on another vendor's GPU, a saved DLSS or a preset's is FSR there.
+  // starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on Intel's, else FSR.
   if (auto& vendor = twattila::dlaa_bridge::gpu_vendor; vendor.load(std::memory_order_relaxed) == 0) {
     auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
     renodx::utils::directx::NativeFromReShadeProxy(&device);
@@ -1623,7 +1623,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     }
   }
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
-    renodx::utils::settings::UpdateSettings({{"AntiAliasing", 6.f}});
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // Ray-traced shadows replace the screen-space ones too.
@@ -2153,7 +2153,8 @@ void ConfigureAddon() {
                    "contains source code provided by NVIDIA Corporation). NVIDIA, GeForce "
                    "RTX, DLSS and Reflex are trademarks and/or registered trademarks of NVIDIA Corporation. DirectX "
                    "Agility SDK: Microsoft. Ray tracing: ideas from Embark Studios' kajiya (MIT) and Bustanity's "
-                   "Phantom FX (MIT). Every license is in the licenses folder.",
+                   "Phantom FX (MIT). AMD FSR: Advanced Micro Devices, Inc. (MIT License). XeSS: Intel Corporation (Intel "
+                   "Simplified Software License). Every license is in the licenses folder.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{

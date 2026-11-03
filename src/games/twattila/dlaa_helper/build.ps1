@@ -2,7 +2,7 @@
 # given as the first argument). It is not a CMake target (the repository's targets are addons); ship it next to the addon
 # with nvngx_dlss.dll (and nvngx_dlssd.dll for Ray Reconstruction; for frame generation Streamline's sl.interposer.dll,
 # sl.common.dll, sl.dlss_g.dll, sl.reflex.dll, sl.pcl.dll and nvngx_dlssg.dll; for DXR 1.2 the Agility SDK's
-# D3D12\D3D12Core.dll; for FSR amd_fidelityfx_loader_dx12.dll and amd_fidelityfx_upscaler_dx12.dll). The ray tracing shaders (rt_*.cs_6_5.hlsl; rt_trace also for shader model 6.9 with opacity
+# D3D12\D3D12Core.dll; for FSR amd_fidelityfx_loader_dx12.dll and amd_fidelityfx_upscaler_dx12.dll; for XeSS libxess.dll). The ray tracing shaders (rt_*.cs_6_5.hlsl; rt_trace also for shader model 6.9 with opacity
 # micromaps) are compiled with bin\dxc.exe into headers in that folder.
 $root = Resolve-Path "$PSScriptRoot\..\..\..\.."
 $out = if ($args.Count -gt 0) { $args[0] } else { Join-Path $root "build\tw_dlaa_helper" }
@@ -70,8 +70,16 @@ if (Test-Path "$fsr\api\include\ffx_api.h") {
   $fsr_include = @("-imsvc$fsr\api\include", "-imsvc$fsr\upscalers\include")
   Copy-Item "$fsr\signedbin\amd_fidelityfx_loader_dx12.dll", "$fsr\signedbin\amd_fidelityfx_upscaler_dx12.dll" $out -Force
 }
+# Intel's XeSS SDK (Intel Simplified Software License, github.com/intel/xess: its 3.0.2 release) when it sits in
+# build\downloads\xess\extracted: loaded at run time, its libxess.dll next to the helper.
+$xess = Join-Path $root "build\downloads\xess\extracted"
+$xess_include = @()
+if (Test-Path "$xess\inc\xess\xess_d3d12.h") {
+  $xess_include = @("-imsvc$xess\inc")
+  Copy-Item "$xess\bin\libxess.dll" $out -Force
+}
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
-  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include "/I$out" `
+  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include "/I$out" `
   "$PSScriptRoot\main.cpp" /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
   "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib

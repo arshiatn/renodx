@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -116,14 +117,21 @@ class RtScene12 {
  public:
   // The device on the game's GPU, with DXR 1.1 (1.2 through the Agility SDK in `folder`\D3D12 when the driver has shader
   // model 6.9); false: unavailable (the status says why).
-  // `details` (the addon's Log Details at the device's start): DRED, below.
-  bool Initialize(IDXGIAdapter1* adapter, const std::filesystem::path& folder, bool details) {
+  // `details` (the addon's Log Details at the device's start): DRED, below. `any_gpu`: another vendor's GPU too (FSR or XeSS
+  // chosen, which only Attila's list has: its own denoisers then; no other driver has run this yet, so Experimental);
+  // not for good: a later set with it starts here. RENODX_TW_FAKE_VENDOR (tests): another vendor's.
+  bool Initialize(IDXGIAdapter1* adapter, const std::filesystem::path& folder, bool details, bool any_gpu = false) {
     if (failed_) return false;
     if (device_) return true;
     folder_ = folder;
-    // NVIDIA's for now: its scene needs Ray Reconstruction, and no other driver has run it.
-    if (DXGI_ADAPTER_DESC1 adapter_identity = {}; FAILED(adapter->GetDesc1(&adapter_identity)) || adapter_identity.VendorId != 0x10DE) {
-      return Fail("Ray tracing needs an NVIDIA RTX GPU");
+    DXGI_ADAPTER_DESC1 adapter_identity = {};
+    adapter->GetDesc1(&adapter_identity);
+    if (std::array<char, 16> fake = {}; GetEnvironmentVariableA("RENODX_TW_FAKE_VENDOR", fake.data(), static_cast<DWORD>(fake.size())) != 0) {
+      adapter_identity.VendorId = std::strtoul(fake.data(), nullptr, 16);
+    }
+    if (adapter_identity.VendorId != 0x10DE && !any_gpu) {
+      status_ = "Ray tracing needs an NVIDIA RTX GPU";
+      return false;
     }
     // The Agility SDK through a device factory of its own (no developer mode; frame generation and Ray Reconstruction
     // keep Windows' runtime).
@@ -215,7 +223,9 @@ class RtScene12 {
       return Fail("Ray tracing needs a GPU and driver with DXR 1.1");
     }
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model = {.HighestShaderModel = D3D_SHADER_MODEL_6_9};
-    dxr12_ = options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_2 && GetEnvironmentVariableW(L"RENODX_TW_NO_DXR12", nullptr, 0) == 0
+    // DXR 1.2's micromaps, reordering and SHaRC on NVIDIA's only for now: the path the harness's no_dxr12 modes run elsewhere.
+    dxr12_ = adapter_identity.VendorId == 0x10DE && options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_2
+             && GetEnvironmentVariableW(L"RENODX_TW_NO_DXR12", nullptr, 0) == 0
              && SUCCEEDED(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model)))
              && shader_model.HighestShaderModel >= D3D_SHADER_MODEL_6_9;
 #if defined(RENODX_NVAPI_CLUSTERS)

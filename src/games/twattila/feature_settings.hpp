@@ -104,7 +104,7 @@ inline float RenderScale(const AaSliders& sliders) {
 
 inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
   return {
-      .method = static_cast<twattila::anti_aliasing::Method>(std::clamp(static_cast<int>(sliders.method), 0, 6)),
+      .method = static_cast<twattila::anti_aliasing::Method>(std::clamp(static_cast<int>(sliders.method), 0, 7)),
       .quality = static_cast<int>(sliders.quality),
       .extra_sharpness = (sliders.extra_sharpness != 0.f),
       .history_weight = sliders.taa_strength,

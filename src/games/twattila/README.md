@@ -3,10 +3,17 @@
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
 Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Steam Workshop takes only the game's .pack
-mods, not ReShade add-ons or the helper). Ray and path tracing: NVIDIA RTX with DLSS; fastest on RTX 40 and 50 with a
-current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
+mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLSS, FSR or XeSS) and NVIDIA RTX; fastest on
+RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
+Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
 ## Next build (not released; helper and addon together)
+- **AMD FSR Upscaling and Intel XeSS** in the Anti-Aliasing list, in the helper on the same inputs as DLSS, with the Upscaling Mode rows.
+  FSR 4 runs only on AMD (RX 6000 and newer, some Ryzen APUs); other GPUs get FSR 3.1.6 from the same DLL. XeSS-SR runs on any shader model 6.4 GPU
+  (needs the Visual C++ 2015-2022 runtime). Off NVIDIA's GPUs the list has no DLSS and a saved DLSS becomes FSR (XeSS on Intel); Reflex and DLSS Frame Generation rows are hidden there.
+  New files next to the helper: `amd_fidelityfx_loader_dx12.dll`, `amd_fidelityfx_upscaler_dx12.dll`, `libxess.dll`. Bridge v22: addon and helper ship together.
+- **Ray tracing on AMD and Intel (Experimental)**: starts under FSR or XeSS on the DXR 1.1 path with the built-in denoisers. The RT/PT preset turns Ray Reconstruction on only on NVIDIA.
+  Other TW games keep refusing it off NVIDIA (their lists stop at DLSS).
 - **Smoke Shadows (Experimental, off) without rays**, with Game's Shadow Maps or Bend Screen-Space: catapult smoke, dust and
   fire smoke dim the sun on what lies below them, any GPU, no helper, with its own softness in metres. About 0.1-0.15 ms at
   4K. Limits: water and the smoke itself are not dimmed, the shadow fades where the game fades the particles by camera
