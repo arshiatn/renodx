@@ -27,7 +27,8 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 normal = PixelNormal(id.xy, position);
   const int radius = (int)round(saturate(guide_roughness[id.xy] * 3.f) * 2.f);
   const float plane_tolerance = 0.02f + 0.02f * position.w;
-  float4 sum = 0.f;
+  float3 lit = 0.f;
+  float share = 0.f;
   float open = 0.f;
   float weights = 0.f;
   [loop]
@@ -40,11 +41,13 @@ void main(uint3 id : SV_DispatchThreadID) {
       const float plane_distance = abs(dot(neighbour_position.xyz - position.xyz, normal));
       const float weight = (radius + 1.f - abs(x)) * (radius + 1.f - abs(y)) * saturate(1.f - plane_distance / plane_tolerance)
                            * pow(saturate(dot(normal, PixelNormal(pixel, neighbour_position))), 8.f);
-      sum += specular_accumulated[pixel] * weight;
+      const float4 neighbour = specular_accumulated[pixel];
+      lit += neighbour.rgb * neighbour.a * weight;
+      share += neighbour.a * weight;
       open += specular_meta[pixel].x * weight;
       weights += weight;
     }
   }
-  reflection[id.xy] = (weights > 0.f) ? sum / weights : center;
+  reflection[id.xy] = (weights > 0.f) ? float4((share > 0.f) ? lit / share : 0.f, share / weights) : center;
   specular_occlusion[id.xy] = (weights > 0.f) ? open / weights : center_meta.x;
 }

@@ -985,7 +985,10 @@ void ReflectPixel(uint2 id) {
     previous_meta = specular_meta_history[previous_pixel];
   }
   const float frames = min(previous_meta.y + 1.f, mirror ? 1.f : lerp(2.f, MAX_SPECULAR_FRAMES, saturate(roughness * 3.f)));
-  specular_accumulated[id] = lerp(previous, current, 1.f / frames);
+  // rgb: the light of what met something (the share-weighted mean over the frames, as fast as the share itself); a: the
+  // share that met.
+  const float share = lerp(previous.a, current.a, 1.f / frames);
+  specular_accumulated[id] = float4(lerp(previous.rgb, current.rgb, saturate(current.a / (frames * max(share, 1e-4f)))), share);
   specular_meta[id] = float2(lerp(previous_meta.x, current_open, 1.f / frames), frames);
 }
 
