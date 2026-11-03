@@ -17,6 +17,7 @@
 #include <sl_pcl.h>
 #include <sl_reflex.h>
 #include <sl_security.h>
+#include <utility>
 
 #include <algorithm>
 #include <array>
@@ -186,6 +187,8 @@ class FrameGeneration12 {
         || !open(shared.depth, IID_PPV_ARGS(depth_.GetAddressOf())) || !open(shared.motion, IID_PPV_ARGS(motion_.GetAddressOf()))
         || !open(shared.fence, IID_PPV_ARGS(fence_.GetAddressOf()))) {
       Close();
+      // The addon stops asking: the game's own image shows, not the window's last frame.
+      if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
       return false;
     }
     const D3D12_RESOURCE_DESC frame_desc = frame_->GetDesc();
@@ -244,8 +247,9 @@ class FrameGeneration12 {
     }
     const auto game_window = reinterpret_cast<HWND>(static_cast<uintptr_t>(shared->fg_window));
     if (shared->fg_multiplier == 0 || !IsWindow(game_window)) {
-      // Off: generation off, the window hidden (the game's image shows); its swap chain kept for later.
-      SetGeneration(0, false, false, false);
+      // Off: the window hidden (the game's image shows); its swap chain kept for later, and its mode: no Present would
+      // apply an Off here (options take effect at the next one), the next frame only has no connection to the last.
+      after_hidden_ = true;
       if (window_ != nullptr) ShowWindowAsync(window_, SW_HIDE);
       SignalOnly(value);
       status_ = "Frame generation off";
@@ -255,7 +259,7 @@ class FrameGeneration12 {
     // a thread of its own (loading the driver's profiles takes long).
     if (version_ >= 12 && shared->fg_preset != preset_) {
       preset_ = shared->fg_preset;
-      std::thread([this, preset = preset_] { preset_result_.store(SavePreset(preset)); }).detach();
+      std::thread([preset = preset_] { preset_result_.store(SavePreset(preset)); }).detach();
     }
     if (!PrepareWindow(game_window, shared->fg_sdr != 0)) {
       SignalOnly(value);
@@ -381,11 +385,14 @@ class FrameGeneration12 {
     copy_queue_->Signal(own_fence_.Get(), slot.done);
     present_queue_->Wait(fence_.Get(), value + 1);
 
-    // What to generate: off on frames without the inputs (menus, loading), keeping its memory meanwhile. Dynamic (1):
-    // up to the most, as many as the display's refresh rate takes (else 2x).
+    UpdateStatus(inputs, shared->fg_hudless_valid != 0);
+    // What to generate: off on frames without the inputs (menus, loading), keeping its memory meanwhile, and for the first
+    // presents after the buffers changed (NVIDIA: no off and on without a Present between). Dynamic (1): up to the most, as
+    // many as the display's refresh rate takes (else 2x).
     const bool dynamic = shared->fg_multiplier == 1 && dynamic_supported_;
     const uint32_t frames = dynamic ? std::max(max_frames_, 2u) : std::clamp(shared->fg_multiplier, 2u, (max_frames_ != 0 ? max_frames_ : 4u));
-    SetGeneration(inputs ? frames - 1 : 0, shared->fg_hudless_valid != 0, dynamic, ui);
+    SetGeneration((inputs && presents_after_resize_ == 0) ? frames - 1 : 0, shared->fg_hudless_valid != 0, dynamic, ui);
+    if (presents_after_resize_ != 0) --presents_after_resize_;
     if (inputs) SetConstants(*shared, *token);
     Marker(sl::PCLMarker::eRenderSubmitEnd, token);
     Marker(sl::PCLMarker::ePresentStart, token);
@@ -401,7 +408,6 @@ class FrameGeneration12 {
       Marker(sl::PCLMarker::eSimulationEnd, next);
       Marker(sl::PCLMarker::eRenderSubmitStart, next);
     }
-    UpdateStatus(inputs, shared->fg_hudless_valid != 0);
     return SUCCEEDED(presented);
   }
 
@@ -447,6 +453,7 @@ class FrameGeneration12 {
   static constexpr int PRESET_SAVED = 1;
   static constexpr int PRESET_FAILED = 2;
   static constexpr DWORD FENCE_TIMEOUT = 10'000;
+  static constexpr UINT BUFFER_COUNT = 3;
 
   bool Fail(const std::string& status) {
     failed_ = true;
@@ -498,7 +505,11 @@ class FrameGeneration12 {
   // Frame generation's mode: `generated` frames per rendered frame (0: off; Dynamic: at most), with the HUD-less image
   // or not, the UI layer recomposed or not (kept while off: no new allocation for each menu).
   void SetGeneration(uint32_t generated, bool hudless, bool dynamic, bool ui) {
-    if (generated == 0) ui = applied_ui_;
+    if (generated == 0) {
+      hudless = false;
+      dynamic = false;
+      ui = applied_ui_;
+    }
     if (!set_options_
         || (generated == applied_generated_ && hudless == applied_hudless_ && dynamic == applied_dynamic_ && ui == applied_ui_)) {
       return;
@@ -598,6 +609,7 @@ class FrameGeneration12 {
     if (window_ != nullptr && !IsWindow(window_)) {
       window_ = nullptr;
       chain_.Reset();
+      if (window_thread_.joinable()) window_thread_.join();
     }
     if (window_ == nullptr || parent_ != game_window) {
       if (window_ != nullptr) {
@@ -648,10 +660,12 @@ class FrameGeneration12 {
     }
     if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) return true;
     if (chain_) {
-      // Generation off while the buffers change (NVIDIA: Present can deadlock otherwise).
+      // Generation off while the buffers change (NVIDIA: Present can deadlock otherwise), their count given (Streamline
+      // must see no zeros: the device was removed in the other games' module).
       SetGeneration(0, false, false, false);
+      presents_after_resize_ = 2;
       WaitIdle();
-      const HRESULT resized = chain_->ResizeBuffers(0, width_, height_, format_, tearing_);
+      const HRESULT resized = chain_->ResizeBuffers(BUFFER_COUNT, width_, height_, format_, tearing_);
       if (SUCCEEDED(resized)) {
         chain_width_ = width_;
         chain_height_ = height_;
@@ -677,7 +691,7 @@ class FrameGeneration12 {
         .Format = format_,
         .SampleDesc = {.Count = 1},
         .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
-        .BufferCount = 3,
+        .BufferCount = BUFFER_COUNT,
         .Scaling = DXGI_SCALING_STRETCH,
         .SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD,
         .AlphaMode = DXGI_ALPHA_MODE_IGNORE,
@@ -785,7 +799,7 @@ class FrameGeneration12 {
     constants.depthInverted = sl::Boolean::eFalse;
     constants.cameraMotionIncluded = sl::Boolean::eTrue;
     constants.motionVectors3D = sl::Boolean::eFalse;
-    constants.reset = (shared.reset != 0 ? sl::Boolean::eTrue : sl::Boolean::eFalse);
+    constants.reset = ((shared.reset != 0 || std::exchange(after_hidden_, false)) ? sl::Boolean::eTrue : sl::Boolean::eFalse);
     constants.motionVectorsJittered = sl::Boolean::eFalse;
     set_constants_(constants, token, VIEWPORT);
   }
@@ -793,8 +807,8 @@ class FrameGeneration12 {
   // The status line every 30 presents.
   void UpdateStatus(bool inputs, bool hudless) {
     sl::DLSSGState state = {};
-    if (++presents_ % 30 != 0 || get_state_(VIEWPORT, state, nullptr) != sl::Result::eOk) return;
-    max_frames_ = state.numFramesToGenerateMax + 1;
+    if (presents_++ % 30 != 0 || get_state_(VIEWPORT, state, nullptr) != sl::Result::eOk) return;
+    if (state.numFramesToGenerateMax != 0) max_frames_ = state.numFramesToGenerateMax + 1;
     dynamic_supported_ = state.bIsDynamicMFGSupported == sl::Boolean::eTrue;
     if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) {
       status_ = "Frame generation: not generating (it takes no scRGB: set Output to HDR10 or SDR)";
@@ -878,7 +892,7 @@ class FrameGeneration12 {
 
   // NVIDIA's preset: last asked (UINT32_MAX: not yet) and its save (SavePreset's, from its thread).
   uint32_t preset_ = UINT32_MAX;
-  std::atomic_int preset_result_ = PRESET_HELD;
+  inline static std::atomic_int preset_result_ = PRESET_HELD;  // static: its thread can outlive a replaced object
 
   // The window over the game's, its thread and swap chain.
   HWND parent_ = nullptr;
@@ -893,6 +907,8 @@ class FrameGeneration12 {
   UINT tearing_ = 0;
   uint32_t reflex_boost_ = 0;
   uint32_t frame_limit_ = 0;  // Reflex's frame rate limit as last set (rendered frames per second; 0: none)
+  uint32_t presents_after_resize_ = 0;  // frame generation stays off for these presents
+  bool after_hidden_ = false;           // the next frame has no connection to the last one presented
   uint32_t applied_generated_ = UINT32_MAX;
   bool applied_hudless_ = false;
   bool applied_dynamic_ = false;

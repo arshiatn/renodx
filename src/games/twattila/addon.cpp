@@ -194,6 +194,11 @@ void BuildRuntimeData() {
     custom_shaders[hash].on_drawn = twattila::rt_scene::OnReflectionDrawn;
   }
 
+  // Lens flares 00-03 and the vignette: part of frame generation's HUD-less image.
+  for (const uint32_t hash : {0x37FA1283u, 0x177AC333u, 0xF0153CB5u, 0x1125AA01u, 0x2C002375u}) {
+    custom_shaders[hash].on_drawn = twattila::anti_aliasing::OnOutputEffectDrawn;
+  }
+
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
   auto v31_slider = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,

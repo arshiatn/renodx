@@ -321,6 +321,14 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(Note("Restart the game for Frame Generation: it started in scRGB, Frame Generation needs HDR10.",
                   section, WARNING_TINT,
                   [frame_generation] { return frame_generation() && dlaa_bridge::FrameGenerationStatus().find("scRGB") != std::string::npos; }));
+    // What the helper says it really does (refreshed every 30 presents): frames generated, or why none.
+    page.Add(new Setting{.value_type = SettingValueType::CUSTOM,
+                         .section = section,
+                         .on_draw = [] {
+                           ImGui::TextWrapped("%s", dlaa_bridge::FrameGenerationStatus().c_str());
+                           return false;
+                         },
+                         .is_visible = frame_generation});
     page.Take({.match = "Reflex", .section = section, .shown = always});
     page.Take({.match = "FrameGenerationFrameLimit", .section = section, .shown = always});
     const auto cmaa = [b] { return b.aa->method == 2.f; };

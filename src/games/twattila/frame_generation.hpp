@@ -124,12 +124,17 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     // A kept frame without its later output pass: the next ones take the tone mapper's image again.
     if (kept && !state.output_drawn) state.output_pass = false;
     const Settings settings = state.settings;
-    // ReShade's menu open: the game's frames only (generated ones warped the menu, ATN 2026-10-28).
-    const uint32_t multiplier = (state.overlay_open ? 0u : settings.multiplier);
-    // Off with the window hidden already, or unavailable here: nothing to ask.
-    if ((multiplier == 0 && !state.presenting) || dlaa_bridge::FrameGenerationFailed()) return;
     auto& bridge = dlaa_bridge::bridge;
-    if (!bridge.fg_frame || bridge.fg_format != back_desc.Format || bridge.width != back_desc.Width || bridge.height != back_desc.Height) return;
+    // ReShade's menu open: the game's frames only (generated ones warped the menu, ATN 2026-10-28). Textures that no longer
+    // fit (the size changed, no DLSS frame yet) too: the window hidden, not frozen on its last frame.
+    const bool fits = bridge.fg_frame && bridge.fg_format == back_desc.Format && bridge.width == back_desc.Width && bridge.height == back_desc.Height;
+    const uint32_t multiplier = ((state.overlay_open || !fits) ? 0u : settings.multiplier);
+    // Unavailable here: nothing to ask (NVAPI Reflex back). Off with the window hidden already: neither.
+    if (dlaa_bridge::FrameGenerationFailed()) {
+      state.presenting = false;
+      return;
+    }
+    if (multiplier == 0 && !state.presenting) return;
     if (multiplier != 0) {
       dlaa_bridge::BeforeSharedWrites(native);
       native->CopyResource(bridge.fg_frame.Get(), back_texture.Get());
@@ -337,11 +342,6 @@ inline bool Wanted() {
 inline bool Presenting() {
   const std::shared_lock lock(internal::state.mutex);
   return internal::state.presenting;
-}
-
-// The helper's frame generation status (one line).
-inline std::string Status() {
-  return dlaa_bridge::FrameGenerationStatus();
 }
 
 // The addon's swap chain shaders and its shader constants (`injection_bytes` at `injection`: kept while installed).

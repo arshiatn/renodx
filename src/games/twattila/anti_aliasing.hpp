@@ -1299,6 +1299,22 @@ inline bool MotionView(ID3D11Buffer* camera, object_motion::View* view) {
 
 }  // namespace internal
 
+// A post-processing draw after the output pass (lens flares, their vignette; their on_drawn): part of frame generation's
+// HUD-less image (else they count as UI and their pixels are not generated). Not OnTonemapDrawn: Apply would run again.
+inline void OnOutputEffectDrawn(reshade::api::command_list* cmd_list) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || frame_generation::Format() == DXGI_FORMAT_UNKNOWN) return;
+  ComPtr<ID3D11RenderTargetView> target_view;
+  native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  if (!target_view) return;
+  ComPtr<ID3D11Resource> resource;
+  target_view->GetResource(resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> target;
+  if (SUCCEEDED(resource.As(&target))) frame_generation::KeepOutput(native, target.Get());
+}
+
 // The tone mapper drew (its replaced shaders' on_drawn): its target anti-aliased when it is the display's size.
 inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;

@@ -74,7 +74,7 @@ ATN's test of v2.01i: FG with Output SDR correct, Gamma Correction correct in SD
 - [x] 5 GitHub link at the bottom (About); a red notice for people who only have the HDR addon: for DLSS / RT / PT download everything from git / Nexus.
 - [ ] 6 Motion vectors on in DLSS are very hard on the CPU when lots of soldiers fight at one spot (off ~40 fps, on 24). Improve. Trace: Attila\debug38\ctesphon full battle (won)
       (~15000 men, grass back to 1x; the RT trace at the end was lost to a ReShade screenshot crash: 32-bit, ReShade takes 2 pictures).
-- [ ] 7 "Are we sure FG / MFG are 100% working correctly?" Check and answer.
+- [x] 7 "Are we sure FG / MFG are 100% working correctly?" Check and answer. DONE (audit against Streamline docs + ATN's sl.log: 0 errors, 2x/4x/6x really generating): normal play correct. Fixed edges: resize (no zero buffer count, off for 2 presents), frozen window when textures no longer fit or open fails, flares + vignette into the HUD-less image, status line in the menu, thread join, first presents know the max frames, menu Off warnings + reset after hidden. Dynamic + FG frame limit not in logs; needs one in-game test. Old fg_bridge_test32 is on an old bridge: no offline test.
 - [ ] 8 LotR mod, lots of vegetation: grass shadows flicker even at default grass. Zoomed out looking down: no flicker, moving or not. Zoomed in (camera near the ground hides a lot of grass:
       the 100 m cap): flicker. ATN: maybe RT shadows switch those on and off, or the moving camera does; same as Constantinople, 99.99% sure. Attila\debug38\lord of the rings mod with a lot of vegitation
       (logs, profile, two back to back screenshots zoomed in).
