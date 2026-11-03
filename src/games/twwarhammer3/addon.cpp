@@ -2187,6 +2187,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (aa_sliders.method >= 1.f && aa_sliders.method <= 4.f) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", 0.f}});
   }
+  // A setup saved with both (the older rows allowed it): ray-traced AO multiplies what runs, the page can't undo GT-VBAO under it.
+  if (rt_sliders.ambient_occlusion != 0.f && shader_injection.ssao_mode >= 1.f) {
+    renodx::utils::settings::UpdateSettings({{"ssao_mode", 0.f}});
+  }
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);

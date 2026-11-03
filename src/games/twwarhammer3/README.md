@@ -19,7 +19,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   No RT/PT and RT/PT (Attila's values until they're chosen for this game). New rows: Frame Generation Method (default Auto, it was
   DLSS only), Ray Tracing Denoiser (NRD, Experimental). Not here: Upscaling Mode and the render scale's rows (the game owns its
   scale), SMAA, CMAA2, own TAA, Reflections and Water, smoke, Path-Traced AO; ray-traced AO multiplies the game's, so its method sets the
-  game's AO rather than GT-VBAO under it.
+  game's AO rather than GT-VBAO under it (a setup saved with both loses GT-VBAO).
 
 ## v29 (2026-11-03, built only, not run in game)
 
