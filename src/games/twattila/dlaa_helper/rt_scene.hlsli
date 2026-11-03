@@ -304,8 +304,10 @@ float3 SurfaceNormal(int2 pixel, float4 position) {
   const float4 right = positions[clamp(pixel + int2(1, 0), 0, last)];
   const float4 above = positions[clamp(pixel - int2(0, 1), 0, last)];
   const float4 below = positions[clamp(pixel + int2(0, 1), 0, last)];
-  const float3 along_x = (abs(right.w - position.w) < abs(left.w - position.w)) ? right.xyz - position.xyz : position.xyz - left.xyz;
-  const float3 along_y = (abs(below.w - position.w) < abs(above.w - position.w)) ? below.xyz - position.xyz : position.xyz - above.xyz;
+  // At the screen's edge the neighbour past it is the pixel itself: the one inside (else no normal, and a reflection's ray turned
+  // back toward the camera: a black line down each side of the water, ATN 2026-11-03).
+  const float3 along_x = (pixel.x == 0 || (pixel.x != last.x && abs(right.w - position.w) < abs(left.w - position.w))) ? right.xyz - position.xyz : position.xyz - left.xyz;
+  const float3 along_y = (pixel.y == 0 || (pixel.y != last.y && abs(below.w - position.w) < abs(above.w - position.w))) ? below.xyz - position.xyz : position.xyz - above.xyz;
   const float3 to_camera = sun[uint2(1, 0)].xyz - position.xyz;
   float3 normal = cross(along_y, along_x);
   const float normal_length = length(normal);
