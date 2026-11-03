@@ -118,7 +118,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     t_focal_depth[0].focal_depth = middle;
     t_focal_depth[0].focal_width = middle;
     t_focal_depth[0].focal_depth_near = g_dof_focal_depth_near;
-    t_focal_depth[0].focal_depth_near_max = g_dof_focal_depth_near;
+    t_focal_depth[0].focal_depth_near_max = g_dof_focal_depth_near_max;
     t_focal_depth[0].focal_depth_far = g_dof_focal_depth_far;
     t_focal_depth[0].focal_depth_far_max = g_dof_focal_depth_far_max;
     return;
@@ -142,13 +142,12 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     t_focal_depth[0].focal_depth = focal_depth;
     const float focal_width = g_focal_depth_moving_average_weight * width + keep * t_focal_depth[0].focal_width;
 
-    const float transition = abs(g_dof_focal_depth_far_max - g_dof_focal_depth_far);
     const float near = focal_depth - 0.5f * focal_width;
     const float far = focal_depth + 0.5f * focal_width;
     t_focal_depth[0].focal_width = focal_width;
     t_focal_depth[0].focal_depth_near = near;
-    t_focal_depth[0].focal_depth_near_max = near - transition;
+    t_focal_depth[0].focal_depth_near_max = near - abs(g_dof_focal_depth_near - g_dof_focal_depth_near_max);
     t_focal_depth[0].focal_depth_far = far;
-    t_focal_depth[0].focal_depth_far_max = far + transition;
+    t_focal_depth[0].focal_depth_far_max = far + abs(g_dof_focal_depth_far_max - g_dof_focal_depth_far);
   }
 }

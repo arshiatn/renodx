@@ -7,6 +7,8 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - **Gamma Correction** (Rendering Mode SDR, on by default). On: any in-game Gamma shown as gamma 2.2, today's picture. Off:
   the game's own picture at the in-game Gamma. Rendering Mode SDR on Output SDR ignores Paper White (as Attila).
 - **Extra in Rendering Mode SDR**: Bloom, Lens Flare, Vignette, Distortion, Sharpening and DOF work there (at 1 the picture is unchanged). Film Grain and Indicators stay HDR-only.
+- **Wrong constants from the decompiler** (checked against the game's own shaders):
+  - Depth of field focus: the near side's fade uses its own width, and the reset path its own limit (near = near limit made a hard foreground edge there).
 
 ## v28 (2026-10-27, batch 5, untested in game; the helper GPU-tested)
 
