@@ -117,6 +117,8 @@ struct ShaderInjectData {
   float sky_deband;               // the sky's debanding and dither (twattila/sky.hlsli): 0 off, 1-3 low / medium / high
   float effects_share;            // Effects at Output Resolution: DLSS's render share (1 off); ssr00 / ssr01's blur x it
   float ssr_traced;               // ssr_rays less the render scale's steps (Effects at Output Resolution), each frame
+  float sky_smooth;               // the fog's and the sky's sky cube smoothed (twattila/sky_smooth.hlsli): 1 Low, 2 Medium, 3 High
+  float sky_smooth_strength;      // how wide, x 0 to 2
 };
 
 #define SI shader_injection

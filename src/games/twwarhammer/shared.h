@@ -112,6 +112,8 @@ struct ShaderInjectData {
   float ssao_frame;     // its noise's frame, 0-63 (0: off)
   float ssao_edge_fix;  // Temporal Smoothing's Edge Fix (ao_filter.hpp)
   float ssao_denoise;   // the Denoiser (ao_filter.hpp)
+  float sky_smooth;               // the fog's and the sky's sky cube smoothed (twattila/sky_smooth.hlsli): 1 Low, 2 Medium, 3 High
+  float sky_smooth_strength;      // how wide, x 0 to 2
 };
 
 #define SI shader_injection

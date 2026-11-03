@@ -115,6 +115,8 @@ struct ShaderInjectData {
   float ssao_edge_fix;            // visibility bitmask: 1 Temporal Smoothing's outlines from one history texel
   float ssr_hierarchical;         // the water's reflections: 1 the hierarchical march (twattila/ssr_march.hlsli)
   float sky_deband;               // the sky's debanding and dither (twattila/sky.hlsli): 0 off, 1-3 low / medium / high
+  float sky_smooth;               // the fog's and the sky's sky cube smoothed (twattila/sky_smooth.hlsli): 1 Low, 2 Medium, 3 High
+  float sky_smooth_strength;      // how wide, x 0 to 2
 };
 
 #define SI shader_injection
