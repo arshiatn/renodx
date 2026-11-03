@@ -116,6 +116,7 @@ void ApplyResetPreset() {
       {"gamma_correction", 1.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
+      {"fog_strength", 1.f},
 
       // PsychoV30
       {"exposure", 1.f},
@@ -797,6 +798,17 @@ void BuildRuntimeData() {
                    "Only with Video AutoHDR above 0.",
         .labels = {"Off", "On"},
         .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "fog_strength",
+        .binding = &shader_injection.fog_strength,
+        .default_value = 1.f,
+        .label = "Fog Strength",
+        .section = "Extra",
+        .tooltip = "How thick the game's fog and haze are. 0 = none, 1 = the game's, 2 = double.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
         .key = "sky_smooth_strength",

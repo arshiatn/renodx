@@ -119,6 +119,7 @@ struct ShaderInjectData {
   float ssr_traced;               // ssr_rays less the render scale's steps (Effects at Output Resolution), each frame
   float sky_smooth;               // the fog's and the sky's sky cube smoothed (twattila/sky_smooth.hlsli): 1 Low, 2 Medium, 3 High
   float sky_smooth_strength;      // how wide, x 0 to 2
+  float fog_strength;             // battlefog00's opacity x this (1: the game's)
 };
 
 #define SI shader_injection
