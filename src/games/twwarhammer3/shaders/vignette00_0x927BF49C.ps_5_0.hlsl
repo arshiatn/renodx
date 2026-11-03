@@ -1,7 +1,7 @@
 // ---- Created with 3Dmigoto v1.3.16 on Sun Sep 27 23:26:11 2026
 
 // WARHAMMER 3 vignette00 - black overlay, alpha = pow(saturate(2r - 0.9), 1.7).
-// Darkens by a ratio, so HDR-safe as is. SI.vignette scales the alpha (HDR only);
+// Darkens by a ratio, so HDR-safe as is. SI.vignette scales the alpha;
 // saturate keeps it 0..1 so values above 1.0 can't push the frame negative.
 
 cbuffer lense_flare_PS : register(b0)
@@ -37,7 +37,7 @@ void main(
   r0.x = log2(r0.x);
   r0.x = 1.70000005 * r0.x;
   r0.x = exp2(r0.x);
-  r0.x = saturate(r0.x * ((HDR >= 0.5f) ? SI.vignette : 1.f));
+  r0.x = saturate(r0.x * SI.vignette);
   r0.y = -0.00392156886 + r0.x;
   o0.w = r0.x;
   r0.x = cmp(r0.y < 0);

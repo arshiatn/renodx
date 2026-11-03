@@ -2,7 +2,7 @@
 
 // WARHAMMER 3 lensflare00 - flare sprite (lense_flare_2).
 // Added onto the frame after t00, so it needs t00's Paper White too.
-// SI.lensflare is HDR only.
+// SI.lensflare: at 1 stock.
 
 cbuffer lense_flare_PS : register(b0)
 {

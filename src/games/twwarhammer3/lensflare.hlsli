@@ -18,10 +18,10 @@ float4 ScaleLensOverlay(float4 stock_color, float strength)
   return flare;
 }
 
-// lensflare00-03: Lens Flare slider (HDR only).
+// lensflare00-03: Lens Flare slider.
 float4 ApplyWH3LensFlare(float4 stock_color)
 {
-  return ScaleLensOverlay(stock_color, (HDR >= 0.5f) ? SI.lensflare : 1.f);
+  return ScaleLensOverlay(stock_color, SI.lensflare);
 }
 
 #endif  // SRC_TWWARHAMMER3_LENSFLARE_HLSLI_

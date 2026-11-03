@@ -57,7 +57,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
   const float2 override_blur = t_override_blur_size.SampleLevel(s_blur_size_s, uv, 0).xy;
   blur = max(blur, override_blur.x);
   blur = override_blur.y * (override_blur.x - blur) + blur;
-  blur = blur * ((HDR >= 0.5f) ? SI.dof : 1.f);  // DOF slider (HDR only): 0 = off, like in-game off
+  blur = blur * SI.dof;  // DOF slider: 0 = off, like in-game off
   blur = blur * g_summed_area_table_blur_kernel_radius;
   blur = blur * 3.07692313;
   blur = blur / output_size.x;

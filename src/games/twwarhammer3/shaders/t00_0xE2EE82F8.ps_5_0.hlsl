@@ -10,7 +10,7 @@
 // HDR 3 (PsychoV31): as HDR 2 with PsychoV31.
 // HDR 2 (Psycho): Reinhard dropped, scene-linear with SDR's mid grey pinned to 0.18
 //        -> HDR-safe native grade -> PsychoV30.
-// Sliders (HDR only): SI.bloom, SI.uvdistort.
+// Sliders: SI.bloom, SI.uvdistort.
 
 struct Auto_exposure_output
 {
@@ -307,8 +307,8 @@ void main(
 
   // Threshold the float setting so a stray value cannot produce a hybrid mode.
   int hdr_mode = (HDR < 0.5f) ? 0 : ((HDR < 1.5f) ? 1 : 2);
-  float distortion_scale = (hdr_mode != 0) ? SI.uvdistort : 1.f;
-  float bloom_scale = (hdr_mode != 0) ? SI.bloom : 1.f;
+  float distortion_scale = SI.uvdistort;
+  float bloom_scale = SI.bloom;
 
   // Distortion composite (stock, offsets scaled by the slider).
   r0.xy = g_screen_size.zw * v0.xy;
@@ -333,7 +333,7 @@ void main(
   r0.xy = require_distortion_composition ? r0.xy : r0.zw;
   float2 uv = r0.xy;
 
-  // Scene + bloom (bloom slider, HDR only).
+  // Scene + bloom (bloom slider).
   float3 scene = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, uv, 0).xyz;
   float3 bloom = SampleBloomSmooth(g_hdr_rgb_bloom_texture, uv).xyz;
   float3 color = bloom * bloom_scale + scene;

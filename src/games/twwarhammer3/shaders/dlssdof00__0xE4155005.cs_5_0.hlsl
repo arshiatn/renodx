@@ -52,7 +52,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
   blur = override_blur.y * (override_blur.x - blur) + blur;
 
   // Injected Depth of Field slider
-  blur = blur * ((HDR >= 0.5f) ? SI.dof : 1.f);
+  blur = blur * SI.dof;
 
   blur = blur * radius;
   blur = blur * 3.07692313f;

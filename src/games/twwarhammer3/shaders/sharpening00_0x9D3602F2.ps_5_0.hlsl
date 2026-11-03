@@ -112,8 +112,8 @@ void main(
 
   float3 sharpened;
   if (HDR < 0.5f) {
-    // Stock.
-    sharpened = saturate(g_sharpening_strength * SharpenLaplacian(c, up, left, right, down) + c);
+    // Stock at slider 1.
+    sharpened = saturate(g_sharpening_strength * SI.sharpening * SharpenLaplacian(c, up, left, right, down) + c);
   } else {
     // What SDR would output for this pixel, from its clipped taps.
     float strength = g_sharpening_strength * SI.sharpening;
