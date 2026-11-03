@@ -7,6 +7,9 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
+## Next build (not released)
+- **Fog Strength** (Extra): the fog's and haze's opacity x 0 to 2, 1 = the game's. **Reflection Quality** 0.25x to 16x (FidelityFX SSSR's steps stop at 1024 = 16x). **Smoke Shadows** without rays: on by default (1) and in every preset; about 0.1-0.15 ms at 4K, 60 MB.
+
 ## v132 = players' v2.01j (2026-11-03; renodx-tw-dlaa64.exe helper72, bridge v23: ship them together)
 Only builds and the GPU harness (103 modes) after the last changes; parts of it ran in test replays while it was made. ATN tests in game.
 - **Smoke shadows**: soft spheres instead of flat quads: no more blocks and holes under catapult hits and burning houses. Smoke Shadow Quality Low / Medium / High (RT/PT: Medium).
@@ -42,7 +45,7 @@ Only builds and the GPU harness (103 modes) after the last changes; parts of it 
 - **Ray Tracing Denoiser (Experimental; Built-in by default)**: NVIDIA's NRD on any GPU when Ray Reconstruction is off, in the helper (its static library, NVIDIA RTX SDKs License,
   `NRD_LICENSE.txt`; nothing new next to it): SIGMA on the soft ray-traced sun shadows, REBLUR on Ray-Traced AO, the Light Bounce (rays or paths, at its texels) and the reflections, each in place of the
   built-in filters for it. Motion from the camera alone: the addon's motion comes later in the frame. Memory at 4K, by the harness's sizes: SIGMA 360 MB, AO 220 MB, Light Bounce 125 MB, reflections 580 MB, each given back 120 frames after its last use.
-- **Smoke Shadows (Experimental, off) without rays**, with Game's Shadow Maps or Bend Screen-Space: catapult smoke, dust and
+- **Smoke Shadows (off at first, on since the next build) without rays**, with Game's Shadow Maps or Bend Screen-Space: catapult smoke, dust and
   fire smoke dim the sun on what lies below them, any GPU, no helper, with its own softness in metres. About 0.1-0.15 ms at
   4K. Limits: water and the smoke itself are not dimmed, the shadow fades where the game fades the particles by camera
   distance, and in-game shadows must be on. In no preset yet.

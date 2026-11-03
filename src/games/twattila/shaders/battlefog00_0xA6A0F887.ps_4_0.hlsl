@@ -139,6 +139,6 @@ void main(
   r0.z = r0.y * -2 + 3;
   r0.y = r0.y * r0.y;
   r0.y = r0.z * r0.y;
-  o0.w = saturate(r0.y * r0.x);
+  o0.w = saturate(r0.y * r0.x * SI.fog_strength);
   return;
 }

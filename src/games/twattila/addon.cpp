@@ -139,6 +139,7 @@ void ApplyHDRPreset(
       {"sky_deband", 0.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
+      {"fog_strength", 1.f},
   });
 }
 
@@ -670,6 +671,17 @@ void BuildRuntimeData() {
         .label = "Distortion",
         .section = "Extra",
         .tooltip = "Multiplier on Distortion. Needs in-game setting on.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "fog_strength",
+        .binding = &shader_injection.fog_strength,
+        .default_value = 1.f,
+        .label = "Fog Strength",
+        .section = "Extra",
+        .tooltip = "How thick the game's fog and haze are. 0 = none, 1 = the game's, 2 = double.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1942,10 +1954,10 @@ void ConfigureAddon() {
           .label = "Reflection Quality",
           .section = "Graphics (Experimental)",
           .tooltip = "Screen-space reflections (water, armour, metal): more steps, so reflections reach farther\n"
-                     "with fewer gaps. Heavier. Needs in-game Screen Space Reflections on.",
-          .min = 1.f,
-          .max = 8.f,
-          .format = "%.0fx",
+                     "with fewer gaps. Heavier. Below 1x: faster, shorter. Needs in-game Screen Space Reflections on.",
+          .min = 0.25f,
+          .max = 16.f,
+          .format = "%.2fx",
       },
       unit_distance(0, "GraphicsUnitDetailSmall", "Unit Detail: Foot Soldiers", "foot soldiers"),
       unit_distance(1, "GraphicsUnitDetailMedium", "Unit Detail: Cavalry", "cavalry"),

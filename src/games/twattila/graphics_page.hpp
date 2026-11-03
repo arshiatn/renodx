@@ -505,8 +505,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(new Setting{
         .key = "SmokeShadowMapStrength",
         .binding = &b.smoke->strength,
-        .default_value = 0.f,
-        .label = "Smoke Shadows (Experimental)",
+        .default_value = 1.f,
+        .label = "Smoke Shadows",
         .section = section,
         .tooltip = "Smoke and dust dim the sun on what lies below them. No rays, any GPU. Needs in-game shadows on.\n0: off.",
         .min = 0.f,
