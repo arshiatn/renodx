@@ -86,19 +86,17 @@ float LeafHit(float3 origin, float3 direction, float near, float far) {
 }
 
 // The ray toward the sun against `instances` (all, or all but grass): lit (1; 0 blocked; with Light Through Leaves the
-// share the leaves met let through; the share the smoke it met let through) and the nearest blocker's distance (soft
-// shadows).
+// share the leaves met let through) and the nearest blocker's distance (soft shadows).
 float2 SunRay(float3 origin, float3 direction, uint instances) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
   ray.TMin = 0.f;
   ray.TMax = 1.0e4f;
-  smoke_transmittance = 1.f;
   if ((flags & LEAF_LIGHT) == 0u) {
-    if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f, instances) ? 0.f : smoke_transmittance, 0.f);
+    if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f, instances) ? 0.f : 1.f, 0.f);
     TRACE_NEAREST(query, ray, instances)
-    return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(smoke_transmittance, 0.f);
+    return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? float2(0.f, query.CommittedRayT()) : float2(1.f, 0.f);
   }
   // Light Through Leaves: one ray first against everything: none met, lit (most rays in the open; every lit pixel was
   // traced twice, the sun 10 of a frame's 34 ms in ATN's third profile); a solid or grass met first, blocked; a leaves'
@@ -115,16 +113,13 @@ float2 SunRay(float3 origin, float3 direction, uint instances) {
     while (query.Proceed()) {
       if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
         query.CommitNonOpaqueTriangleHit();
-      } else if (smoke_transmittance < SMOKE_DARK) {
-        query.Abort();
       }
     }
-    if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(smoke_transmittance, 0.f);
+    if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(1.f, 0.f);
     const uint met_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
     if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u || (met_flags & RECORD_GRASS) != 0u) return float2(0.f, query.CommittedRayT());
     if ((met_flags & RECORD_LEAF) != 0u) first_leaf = query.CommittedRayT();
   }
-  smoke_transmittance = 1.f;
   float lit = 1.f;
   float first = 0.f;
   {
@@ -134,14 +129,11 @@ float2 SunRay(float3 origin, float3 direction, uint instances) {
     while (query.Proceed()) {
       if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
         query.CommitNonOpaqueTriangleHit();
-      } else if (smoke_transmittance < SMOKE_DARK) {
-        query.Abort();
       }
     }
     if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
       const uint met_flags = records[query.CommittedInstanceID() + query.CommittedGeometryIndex()].z >> 16;
       if ((met_flags & (RECORD_MASKED | RECORD_THIN)) == 0u || (met_flags & RECORD_GRASS) != 0u) return float2(0.f, query.CommittedRayT());
-      smoke_transmittance = 1.f;
       [loop]
       for (uint layer = 0u; layer < 4u; ++layer) {
         TRACE_NEAREST(layered, ray, NO_LEAVES & instances)
@@ -158,11 +150,10 @@ float2 SunRay(float3 origin, float3 direction, uint instances) {
       }
     }
   }
-  const float smoke = smoke_transmittance;
   const float leaf = (first_leaf >= 0.f) ? first_leaf : LeafHit(origin, direction, 0.f, 1.0e4f);
-  if (leaf < 0.f) return float2(lit * smoke, first);
+  if (leaf < 0.f) return float2(lit, first);
   const bool more = (leaf > 0.02f && LeafHit(origin, direction, 0.f, leaf - 0.01f) >= 0.f) || LeafHit(origin, direction, leaf + 0.01f, 1.0e4f) >= 0.f;
-  return float2(lit * smoke * (more ? LEAF_TRANSMITTANCE * LEAF_TRANSMITTANCE : LEAF_TRANSMITTANCE), (first > 0.f) ? min(first, leaf) : leaf);
+  return float2(lit * (more ? LEAF_TRANSMITTANCE * LEAF_TRANSMITTANCE : LEAF_TRANSMITTANCE), (first > 0.f) ? min(first, leaf) : leaf);
 }
 
 [numthreads(8, 8, 1)]
@@ -246,8 +237,8 @@ void main(uint3 id : SV_DispatchThreadID) {
         }
         if (grass.CommittedStatus() == COMMITTED_TRIANGLE_HIT) result = float2(0.f, grass.CommittedRayT());
       }
-      // The smoke apart where the sun still comes through: its first 8 particles.
-      if (facing && result.x > 0.f) result.x *= SmokeTransmittance(start, toward, 1.0e4f, 8u);
+      // The smoke apart where the sun still comes through: Smoke Shadow Quality's particles that dim it (8, 16 or 32).
+      if (facing && result.x > 0.f) result.x *= SmokeTransmittance(start, toward, 1.0e4f, 8u << ((flags >> SMOKE_QUALITY_SHIFT) & 3u));
       sum += result;
       tint_sum += result.x * sun_tint;
     }

@@ -376,6 +376,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"RayTracedLeafLight", 1.f},
                             {"RayTracedColouredShadows", 1.f},
                             {"RayTracedSmokeShadows", 1.f},
+                            {"RayTracedSmokeQuality", 1.f},
                             {"RayTracedLightSoftness", 0.25f},
                             {"RayTracedLightImportance", 1.f},
                             {"RayTracedSpriteShadows", 0.f},
@@ -441,6 +442,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedLeafLight", .section = section, .shown = rays});
     page.Take({.match = "RayTracedColouredShadows", .section = section, .shown = rays});
     page.Take({.match = "RayTracedSmokeShadows", .section = section, .shown = rays, .label = "Smoke Shadows"});
+    page.Take({.match = "RayTracedSmokeQuality", .section = section, .shown = rays});
     page.Add(MoreOptions(section, &more_shadows, [b] { return ShadowMethodOf(b) != SHADOW_GAME; }));
     const auto more_screen = more(&more_shadows, screen);
     for (const auto* key : {"ScreenSpaceShadowsContrast", "ScreenSpaceShadowsHardSamples", "ScreenSpaceShadowsFadeSamples", "ScreenSpaceShadowsEdgeThreshold",

@@ -50,6 +50,8 @@ static const uint FAST_LEAVES = 8192u;
 // by what they give it (ReSTIR's candidates), the others keep their bits.
 static const uint LIGHT_IMPORTANCE = 16384u;
 static const uint SMOKE_MET = 262144u;  // Smoke Shadows' particles are in the scene (the helper: their instance built)
+// Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT, two bits): the particles a sun ray counts.
+static const uint SMOKE_QUALITY_SHIFT = 19u;
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)
 static const uint RECORD_THIN = 2u;    // cloth and sails
 static const uint RECORD_SMOKE = 4u;   // smoke (Smoke Shadows): dims the sun's rays, blocks none
@@ -98,9 +100,6 @@ float2 UnpackUv(uint packed) {
   return f16tof32(uint2(packed, packed >> 16));
 }
 
-// The share of the sun's light past the smoke a ray met so far (SunRay starts it; AlphaPasses dims it).
-static float smoke_transmittance = 1.f;
-
 // The runtime ray flags of Occluded and TRACE_NEAREST (the sun's, the ambient's and the lights' rays): with Fast Leaf
 // Shadows 2-state micromaps (their unknown states opaque or transparent as they lean: no candidates from them).
 static uint scene_ray_flags = RAY_FLAG_NONE;
@@ -111,22 +110,11 @@ void SceneRayFlags() {
 #endif
 }
 
-// Where a ray meets a smoke particle: its opacity (its UVs' scale less one) over a soft disk.
-float SmokeDensity(uint first, float2 barycentrics) {
-  const float2 corner = UnpackUv(uv_pool[first]);
-  const float2 uv = corner * (1.f - barycentrics.x - barycentrics.y) + UnpackUv(uv_pool[first + 1u]) * barycentrics.x
-                    + UnpackUv(uv_pool[first + 2u]) * barycentrics.y;
-  const float scale = abs(corner.x);
-  return (scale - 1.f) * (1.f - smoothstep(0.25f, 1.f, length(uv) / scale));
-}
-
-// Whether a candidate (a leaf) is solid where the ray meets it; smoke never is (it dims smoke_transmittance).
+// Whether a candidate (a leaf) is solid where the ray meets it; smoke never is (its UVs are no atlas's: SmokeTransmittance
+// reads them; smoke before other dynamic captures stays in the units' BLAS, rt_d3d12.hpp).
 bool AlphaPasses(uint record_index, uint primitive, float2 barycentrics) {
   const uint4 record = records[record_index];
-  if (((record.z >> 16) & RECORD_SMOKE) != 0u) {
-    smoke_transmittance *= 1.f - SmokeDensity(record.x + primitive * 3u, barycentrics);
-    return false;
-  }
+  if (((record.z >> 16) & RECORD_SMOKE) != 0u) return false;
   if (((record.z >> 16) & RECORD_MASKED) == 0u) return true;
   const uint first = record.x + primitive * 3u;
   const float2 uv = UnpackUv(uv_pool[first]) * (1.f - barycentrics.x - barycentrics.y)
@@ -144,6 +132,8 @@ static const uint MAX_CANDIDATES = 64u;
 // The share of the sun's light left at which smoke counts as dark: its ray goes no further (each particle a candidate;
 // at 4K through 1000 particles the trace took 80 ms a frame, each sun ray dozens).
 static const float SMOKE_DARK = 0.05f;
+// A candidate dimming less counts against no ray's particles (corners outside the disk, rims, chords behind its start).
+static const float SMOKE_FAINT = 0.05f;
 
 // The TLAS's instance masks (rt_d3d12.hpp: solids 1, the smoke's own instance 2, the leaves' meshes 4): the rays toward
 // the sun meet all (ALL_INSTANCES); the others (the ambient, the local lights, the paths, the reflections) leave the
@@ -163,12 +153,13 @@ static const uint GRASS = 0x18u;
 static const uint GRASS_STILL = 0x28u;
 static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient's rays (the AO's and PT AO's)
 
-// The share of the sun's light the smoke along a ray lets through, of the first `particles` it meets at most, in the
-// smoke's own TLAS. The sun's and the fog's rays meet the smoke apart from the rest: each particle is a candidate, and with up to
-// MAX_CANDIDATES of them a ray, 120K-235K particles of arrows' smoke a frame took the sun's rays from 14 to 138 ms and
-// the fog's from 6 to 143 ms (ATN's 2026-11-01 Constantinople profile; its late traces left grass shadows flickering).
+// The share of the sun's light the smoke along a ray lets through, in the smoke's own TLAS: of the first `particles` that
+// dim it at most, twice as many met at most. The sun's and the fog's rays meet the smoke apart from the rest: each particle
+// is a candidate, and with up to MAX_CANDIDATES of them a ray, 120K-235K particles of arrows' smoke a frame took the sun's
+// rays from 14 to 138 ms and the fog's from 6 to 143 ms (ATN's 2026-11-01 Constantinople profile; its late traces left grass
+// shadows flickering). Counting those that barely dim left holes and flicker in thick smoke (which a ray met first changes
+// from frame to frame; ATN 2026-11-02).
 float SmokeTransmittance(float3 origin, float3 direction, float range, uint particles) {
-  smoke_transmittance = 1.f;
   if ((flags & SMOKE_MET) == 0u) return 1.f;
   RayDesc ray;
   ray.Origin = origin;
@@ -177,21 +168,38 @@ float SmokeTransmittance(float3 origin, float3 direction, float range, uint part
   ray.TMax = range;
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
   query.TraceRayInline(smoke_scene, RAY_FLAG_NONE, SMOKE, ray);
+  float transmittance = 1.f;
+  uint dimming = 0u;
   uint met = 0u;
   while (query.Proceed()) {
-    // A sprite soldier or far tree with it (RT_SUN_ONLY) blocks where its alpha test passes.
-    if (CANDIDATE_PASSES(query)) {
+    const uint4 record = records[query.CandidateInstanceID() + query.CandidateGeometryIndex()];
+    if (((record.z >> 16) & RECORD_SMOKE) != 0u) {
+      // rt_smoke: corners +-(1 + opacity, radius), the quad one radius toward the sun of the centre: a soft sphere, only
+      // the share of its chord ahead of the ray's start dims (no straight edge where it meets the ground).
+      const uint first = record.x + query.CandidatePrimitiveIndex() * 3u;
+      const float2 hit = query.CandidateTriangleBarycentrics();
+      const float2 corner = UnpackUv(uv_pool[first]);
+      const float2 scale = abs(corner);
+      const float across = length((corner * (1.f - hit.x - hit.y) + UnpackUv(uv_pool[first + 1u]) * hit.x + UnpackUv(uv_pool[first + 2u]) * hit.y) / scale);
+      if (across < 1.f) {
+        const float half_chord = scale.y * sqrt(1.f - across * across);
+        const float density = (scale.x - 1.f) * (1.f - smoothstep(0.25f, 1.f, across))
+                              * saturate((query.CandidateTriangleRayT() - scale.y + half_chord) / (2.f * half_chord));
+        transmittance *= 1.f - density;
+        if (density > SMOKE_FAINT) ++dimming;
+      }
+    } else if (CANDIDATE_PASSES(query)) {
+      // A sprite soldier or far tree with it (RT_SUN_ONLY) blocks where its alpha test passes.
       query.CommitNonOpaqueTriangleHit();
       query.Abort();
-    } else if (++met >= particles || smoke_transmittance < SMOKE_DARK) {
-      query.Abort();
     }
+    if (dimming >= particles || ++met >= particles * 2u || transmittance < SMOKE_DARK) query.Abort();
   }
-  return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? 0.f : smoke_transmittance;
+  return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? 0.f : transmittance;
 }
 
 // Whether anything among `instances` lies along `direction` from `origin` within `range` (alpha-tested: leaves, grass
-// and cloth by their masks, smoke dimming smoke_transmittance).
+// and cloth by their masks).
 bool Occluded(float3 origin, float3 direction, float range, uint instances) {
   RayDesc ray;
   ray.Origin = origin;
@@ -204,16 +212,13 @@ bool Occluded(float3 origin, float3 direction, float range, uint instances) {
   while (query.Proceed()) {
     if (++candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
       query.CommitNonOpaqueTriangleHit();
-    } else if (smoke_transmittance < SMOKE_DARK) {
-      query.Abort();
     }
   }
   return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }
 
 // The nearest surface among `instances` along a ray toward the sun (alpha-tested as Occluded; its query, committed:
-// CommittedStatus says whether one was). Past MAX_CANDIDATES alpha-tested surfaces the last counts; past dark smoke
-// none further.
+// CommittedStatus says whether one was). Past MAX_CANDIDATES alpha-tested surfaces the last counts.
 #define TRACE_NEAREST(query, ray, instances)                                                       \
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                                            \
   query.TraceRayInline(scene, scene_ray_flags, (instances), (ray));                                  \
@@ -222,8 +227,6 @@ bool Occluded(float3 origin, float3 direction, float range, uint instances) {
     while (query.Proceed()) {                                                                        \
       if (++trace_candidates > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {                         \
         query.CommitNonOpaqueTriangleHit();                                                          \
-      } else if (smoke_transmittance < SMOKE_DARK) {                                                 \
-        query.Abort();                                                                               \
       }                                                                                              \
     }                                                                                                \
   }

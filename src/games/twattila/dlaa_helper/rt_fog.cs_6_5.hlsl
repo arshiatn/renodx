@@ -46,7 +46,8 @@ float3 FogLightAt(float3 at, float u) {
     return 0.f;
   }
   const float falloff = saturate(1.f - (light_distance / max(lights[picked].w, 1e-3f)));
-  // The smoke apart (rt_scene.hlsli SmokeTransmittance): a fog sample's ray meets its first 2 particles.
+  // The smoke apart (rt_scene.hlsli SmokeTransmittance): a fog sample's ray counts 2 that dim it, 4 met at most (its rays
+  // are as many as the sun's; here, not along the quads' normal, the chord's share is only near enough).
   return light_colours[picked].rgb
          * (falloff * falloff * total / picked_weight * SmokeTransmittance(at, to_light / light_distance, reach, 2u));
 }

@@ -136,6 +136,7 @@ struct Settings {
   // Smoke shadows: the lit particles drawn since the last trace (InstallSmokeShadows' shaders: smoke and dust) dim the
   // ray-traced sun, a frame late (CaptureParticles, rt_smoke).
   bool smoke_shadows = false;
+  uint32_t smoke_quality = 1;  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT)
   // The game's sun shadow map gets no casters (InstallShadowsOnly; with the ray-traced sun shadows): the rays alone cast.
   bool shadows_only = false;
   // The Debug View (DrawDebugView): 0 off, 1 sun shadows, 2 ambient occlusion, 3 Light Bounce, 4 reflections, 5 specular
@@ -295,6 +296,7 @@ struct DeviceObjects {
   ComPtr<ID3D11ComputeShader> smoke_shader;
   ComPtr<ID3D11Buffer> smoke_quads;
   ComPtr<ID3D11UnorderedAccessView> smoke_quads_uav;
+  ComPtr<ID3D11Buffer> smoke_quads_read;  // that count read back (Log Details)
   // The sun's occlusion for the patched sun shaders (the display's size).
   ComPtr<ID3D11Texture2D> occlusion;
   ComPtr<ID3D11ShaderResourceView> occlusion_srv;
@@ -340,6 +342,7 @@ struct Costs {
   uint64_t no_room = 0;   // the frame's captures or vertex texture full
   uint64_t compact_draws = 0;
   uint64_t particles = 0;  // Smoke Shadows' streamed out
+  uint32_t most_smoke_quads = 0;  // the most rt_smoke wanted for a trace (past MAX_SMOKE_QUADS: some left out)
   // What was left out by vertex shader: its texels by the first of its shares that was full (SHARE_NAMES).
   std::unordered_map<uint32_t, std::array<uint64_t, 5>> left_out_shaders;
 };
@@ -1558,6 +1561,7 @@ void CaptureParticles(Context& command) {
     D3D11_SHADER_RESOURCE_VIEW_DESC particles_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
     particles_view.Buffer.NumElements = MAX_PARTICLES * 3;
     const D3D11_BUFFER_DESC quads_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS};
+    const D3D11_BUFFER_DESC quads_read_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
     D3D11_UNORDERED_ACCESS_VIEW_DESC quads_view = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER};
     quads_view.Buffer.NumElements = 1;
     const std::array<D3D11_SO_DECLARATION_ENTRY, 3> entries = {{
@@ -1571,6 +1575,7 @@ void CaptureParticles(Context& command) {
         || FAILED(device->CreateShaderResourceView(objects.particles.Get(), &particles_view, objects.particles_srv.GetAddressOf()))
         || FAILED(device->CreateBuffer(&quads_desc, nullptr, objects.smoke_quads.GetAddressOf()))
         || FAILED(device->CreateUnorderedAccessView(objects.smoke_quads.Get(), &quads_view, objects.smoke_quads_uav.GetAddressOf()))
+        || FAILED(device->CreateBuffer(&quads_read_desc, nullptr, objects.smoke_quads_read.GetAddressOf()))
         || code == game_code.end()
         || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), entries.data(),
                                                                 static_cast<UINT>(entries.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM,
@@ -1720,9 +1725,15 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                  {dlaa_bridge::bridge.rt_vertices.uav.Get(), objects.smoke_quads_uav.Get()}, smoke.data(), sizeof(smoke), (items + 63) / 64, 1);
       };
       constexpr std::array<UINT, 4> NO_QUADS = {};
+      D3D11_MAPPED_SUBRESOURCE quads_read = {};
+      if (runtime.settings.debug_log && SUCCEEDED(native->Map(objects.smoke_quads_read.Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &quads_read))) {
+        runtime.costs.most_smoke_quads = std::max(runtime.costs.most_smoke_quads, *static_cast<const uint32_t*>(quads_read.pData));
+        native->Unmap(objects.smoke_quads_read.Get(), 0);
+      }
       native->ClearUnorderedAccessViewUint(objects.smoke_quads_uav.Get(), NO_QUADS.data());
       smoke_pass(runtime.particles, runtime.particles);
       smoke_pass(0, smoke_quads);
+      if (runtime.settings.debug_log) native->CopyResource(objects.smoke_quads_read.Get(), objects.smoke_quads.Get());
       runtime.captures.push_back({.key = SMOKE_KEY, .first_vertex = runtime.captured_vertices, .vertex_count = smoke_quads * 6,
                                   .flags = dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_SMOKE});
       runtime.slices.push_back(0);
@@ -1803,7 +1814,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
-               | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u),
+               | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)
+               | (runtime.settings.smoke_quality << dlaa_bridge::RT_SMOKE_QUALITY_SHIFT),
       .ambient_range = runtime.settings.ambient_range,
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
@@ -2452,8 +2464,8 @@ inline void Update(const Settings& settings) {
       }
       if (!shaders.empty()) renodx::utils::log::i("[Total War] Ray tracing: left out a frame by vertex shader: ", shaders, ".");
       if (costs.particles != 0) {
-        renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows, {:.0f} particles a frame.",
-                                          static_cast<double>(costs.particles) / costs.frames));
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows, {:.0f} particles a frame, most quads {}.",
+                                          static_cast<double>(costs.particles) / costs.frames, costs.most_smoke_quads));
       }
     }
     costs = {};

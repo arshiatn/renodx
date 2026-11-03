@@ -6,8 +6,10 @@
 // Attila ray tracing (rt_core.hpp, Smoke Shadows): the lit particles streamed out since the last trace (the particle
 // vertex shader's outputs: centre, colour and opacity, size) as quads facing the sun after the frame's captures, two
 // triangles (six texels) a quad: a smoke capture (RT_SMOKE) whose particles dim the helper's sun rays
-// (dlaa_helper/rt_scene.hlsli). A corner's w: its UV (+-1 at the quad's corners) times 1 + the particle's opacity, as two
-// halves (the helper finds both). Only particles with a finite centre and opacity over area enough to show take a
+// (dlaa_helper/rt_scene.hlsli). A corner's w: its UV (+-1 at the quad's corners) times (1 + the particle's opacity, its
+// radius), as two halves (the helper finds them). The quad lies one radius toward the sun of the centre: all a soft sphere
+// can shadow is behind it (through the centre the ground on its sun side took no shadow, and where the plane met the ground
+// its shadow ended in a straight line). Only particles with a finite centre and opacity over area enough to show take a
 // quad, its disk as large as the particle (an arrow's thin trail took a disk as wide as it was long: big overlapping
 // shadows under volleys, the sun's and fog's rays up to 46 ms with 6 x 480 archers, ATN 2026-11-01); a second dispatch
 // (y 0) empties those left (a NaN x, which DXR skips).
@@ -56,11 +58,10 @@ void main(uint3 id : SV_DispatchThreadID)
   if (quad >= rt_smoke.w) return;
   const float3 across = normalize(cross((abs(normal.y) < 0.99f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f), normal));
   const float3 up = cross(normal, across);
-  const float scale = 1.f + opacity;
   [unroll]
   for (uint corner = 0u; corner < 6u; ++corner) {
     const float2 at = CORNERS[corner];
-    const uint uv = f32tof16(at.x * scale) | (f32tof16(at.y * scale) << 16);
-    WriteCorner(quad, corner, float4(centre + ((across * at.x) + (up * at.y)) * radius, asfloat(uv)));
+    const uint uv = f32tof16(at.x * (1.f + opacity)) | (f32tof16(at.y * radius) << 16);
+    WriteCorner(quad, corner, float4(centre + normal * radius + ((across * at.x) + (up * at.y)) * radius, asfloat(uv)));
   }
 }

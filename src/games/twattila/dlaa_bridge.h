@@ -116,8 +116,8 @@ struct RtClusterSet {
 };
 // Thin (v11): cloth and sails; with RT_LEAF_LIGHT a share of the sun passes them as it passes leaves.
 constexpr uint32_t RT_THIN = 16;
-// Smoke (with RT_DYNAMIC | RT_FOLIAGE): particles as quads facing the sun, each corner's UV (+-1) times 1 + the
-// particle's opacity; the sun's rays pass them dimmed, nothing else meets them.
+// Smoke (with RT_DYNAMIC | RT_FOLIAGE): particles as quads facing the sun, one radius toward it, each corner's UV (+-1)
+// times (1 + the particle's opacity, its radius); the sun's rays pass them dimmed, nothing else meets them.
 constexpr uint32_t RT_SMOKE = 32;
 // Grass (with RT_FOLIAGE): its own instances (placed) and clusters (swaying) apart from the leaves'; the sun's and the
 // ambient's rays meet it (a blade blocks the sun), the others (point lights, fog, Light Bounce, path tracing,
@@ -177,6 +177,8 @@ constexpr uint32_t RT_DRAWN_PLACED = 65536;
 // Log Details: the helper keeps its GPU times, status and log lines (none without), and its D3D12 device, made with this
 // set (the flag is written then too), DRED's record of where a GPU reset stopped.
 constexpr uint32_t RT_DETAILS = 131072;
+// Smoke Shadow Quality (0-2, two bits): the particles a sun ray counts (rt_scene.hlsli).
+constexpr uint32_t RT_SMOKE_QUALITY_SHIFT = 19;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

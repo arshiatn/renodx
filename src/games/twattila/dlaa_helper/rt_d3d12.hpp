@@ -2875,11 +2875,16 @@ class RtScene12 {
         // The frame's units in this slot's turn of the records and pools (grass alpha-tested: its UVs at its triangles'
         // place in the slot's UVs, ATN 2026-10-28: blocky grass shadows).
         if ((capture.flags & dlaa_bridge::RT_DYNAMIC) != 0) {
+          placement.masked = placement.masked && dynamic_uvs_used + triangles * 3 <= dynamic_uvs_;
+          // Smoke without its UVs would be opaque squares among the units: left out.
+          if (!placement.masked && (capture.flags & dlaa_bridge::RT_SMOKE) != 0) {
+            placement = {};
+            continue;
+          }
           if (dynamic_triangles_used + triangles > DYNAMIC_TRIANGLES || cluster_vertices + (triangles * 3) > TRANSFER_VERTICES) continue;
           cluster_vertices += triangles * 3;
           placement.record = STATIC_RECORDS + static_cast<uint32_t>(slot_index) * dlaa_bridge::RT_CAPTURES + dynamic_records++;
           placement.normal_offset = STATIC_TRIANGLES + static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES + dynamic_triangles_used;
-          placement.masked = placement.masked && dynamic_uvs_used + triangles * 3 <= dynamic_uvs_;
           if (placement.masked) {
             placement.uv_offset = STATIC_UVS + static_cast<uint32_t>(slot_index) * dynamic_uvs_ + dynamic_uvs_used;
             dynamic_uvs_used += triangles * 3;
