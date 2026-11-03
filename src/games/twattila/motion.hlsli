@@ -282,4 +282,12 @@ uint MotionPreviousBoneEntry(uint key)
   return 0u;
 }
 
+// A Debug View's colour for a motion in pixels: the direction as the hue, brighter the faster (32 pixels a frame: full).
+float3 MotionColour(float2 motion)
+{
+  const float hue = atan2(motion.y, motion.x) * (0.5f / 3.14159265f) + 0.5f;
+  const float3 rgb = saturate(abs(frac(hue + float3(0.f, 2.f / 3.f, 1.f / 3.f)) * 6.f - 3.f) - 1.f);
+  return rgb * saturate(log2(1.f + length(motion)) / 5.f);
+}
+
 #endif  // SRC_GAMES_TWATTILA_MOTION_HLSLI_

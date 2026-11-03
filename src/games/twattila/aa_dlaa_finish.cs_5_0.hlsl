@@ -22,13 +22,6 @@ Texture2D<float2> t_drawn_motion : register(t5);
 Texture2D<float> t_drawn_depth : register(t6);
 RWTexture2D<float4> t_rw_result : register(u0);
 
-float3 MotionColour(float2 motion)
-{
-  const float hue = atan2(motion.y, motion.x) * (0.5f / 3.14159265f) + 0.5f;
-  const float3 rgb = saturate(abs(frac(hue + float3(0.f, 2.f / 3.f, 1.f / 3.f)) * 6.f - 3.f) - 1.f);
-  return rgb * saturate(log2(1.f + length(motion)) / 5.f);
-}
-
 [numthreads(8, 8, 1)]
 void main(uint2 pixel : SV_DispatchThreadID)
 {
