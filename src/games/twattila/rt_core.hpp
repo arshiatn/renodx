@@ -931,7 +931,12 @@ void Capture(Context& command, const SceneShader& shader) {
   if (runtime.traced_frame == runtime.frame) return;
   // The Debug View's scene test: a part of the scene alone.
   const uint32_t test = runtime.settings.scene_test;
-  if ((test == 1 && !shader.terrain) || (test == 2 && shader.rows_shader.empty()) || (test == 3 && shader.foliage)) return;
+  if ((test == 1 && !shader.terrain) || (test == 3 && shader.foliage)) return;
+  // Objects and trees: the placed rows; a table without rows (WH3's clip-space captures) has no such mark.
+  if (test == 2) {
+    const bool has_rows = std::ranges::any_of(scene_shaders, [](const SceneShader& entry) { return !entry.rows_shader.empty(); });
+    if (has_rows ? shader.rows_shader.empty() : (shader.terrain || shader.dynamic)) return;
+  }
   // Placed grass and leaves are drawn twice a frame by one vertex shader, depth prefill (no target 0) then G-buffer. The
   // G-buffer draw alone: with both, the share paid twice, and past it an instance hidden by one (its swaying copy traced)
   // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera). Cloth and sails

@@ -981,7 +981,8 @@ inline void Uninstall() {
 // The settings after the anti-aliasing's (`ambient_alone`: the ray-traced ambient occlusion in place of the game's and
 // GT-VBAO, Attila's).
 // `reflection_pass`: the game's reflection pass reads the ray-traced reflections (Attila, Thrones, Warhammer,
-// Warhammer II); the others get no reflection settings.
+// Warhammer II); the others get no reflection settings. The Debug View's rows and the profile's button follow it or, shown
+// once it has run, the game's tone mapper hook calling OnTonemapDrawn.
 // `light_bounce_strength`: the Light Bounce's (Lighting), for a note when the effects that replace its trace are on
 // without it (null: none).
 inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* settings, Sliders* sliders,
@@ -1500,70 +1501,73 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },
   });
-  if (!reflection_pass) return;
+  if (reflection_pass) {
+    settings->insert(settings->end(), {
+        new renodx::utils::settings::Setting{
+            .key = "RayTracedReflections",
+            .binding = &sliders->reflections,
+            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+            .default_value = 0.f,
+            .label = "Ray-Traced Reflections (Experimental)",
+            .section = section,
+            .tooltip = "Reflections on armour, metal and water from rays: what is off screen or hidden shows too.\n"
+                       "Needs DLAA or an upscaler, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
+            .labels = {"Off", "On"},
+            .is_enabled = dlaa_on,
+        },
+        new renodx::utils::settings::Setting{
+            .key = "RayTracedReflectionSamples",
+            .binding = &sliders->reflection_samples,
+            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+            .default_value = 1.f,
+            .label = "Ray-Traced Reflection Samples",
+            .section = section,
+            .tooltip = "Rays per pixel on rough surfaces: less noise. Heavier.",
+            .min = 1.f,
+            .max = 8.f,
+            .format = "%d",
+            .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
+        },
+        new renodx::utils::settings::Setting{
+            .key = "RayTracedReflectionReuse",
+            .binding = &sliders->reflection_reuse,
+            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+            .default_value = 0.f,
+            .label = "Reflection Reuse (Experimental)",
+            .section = section,
+            .tooltip = "Less noise on rough reflections.\n"
+                       "From ReSTIR GI: also the path-traced Light Bounce's samples (needs Path Tracing).\n"
+                       "Own ReSTIR: their own samples, reused over frames and between neighbours.",
+            .labels = {"Off", "From ReSTIR GI", "Own ReSTIR"},
+            .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
+        },
+        new renodx::utils::settings::Setting{
+            .key = "RayTracedWaterReflections",
+            .binding = &sliders->water_reflections,
+            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+            .default_value = 1.f,
+            .label = "Ray-Traced Water Reflections (Experimental)",
+            .section = section,
+            .tooltip = "Rivers and lakes reflect what the rays find, also off screen. Off: screen-space reflections there.",
+            .labels = {"Off", "On"},
+            .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
+            .is_visible = [] { return internal::water_pass; },
+        },
+        new renodx::utils::settings::Setting{
+            .key = "RayTracedSpecularOcclusion",
+            .binding = &sliders->specular_occlusion,
+            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+            .default_value = 0.f,
+            .label = "Ray-Traced Specular Occlusion (Experimental)",
+            .section = section,
+            .tooltip = "The sky's reflection dimmed where something blocks it.\n"
+                       "Needs DLAA or an upscaler, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
+            .labels = {"Off", "On"},
+            .is_enabled = dlaa_on,
+        },
+    });
+  }
   settings->insert(settings->end(), {
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedReflections",
-          .binding = &sliders->reflections,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Ray-Traced Reflections (Experimental)",
-          .section = section,
-          .tooltip = "Reflections on armour, metal and water from rays: what is off screen or hidden shows too.\n"
-                     "Needs DLAA or an upscaler, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
-          .labels = {"Off", "On"},
-          .is_enabled = dlaa_on,
-      },
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedReflectionSamples",
-          .binding = &sliders->reflection_samples,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
-          .label = "Ray-Traced Reflection Samples",
-          .section = section,
-          .tooltip = "Rays per pixel on rough surfaces: less noise. Heavier.",
-          .min = 1.f,
-          .max = 8.f,
-          .format = "%d",
-          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedReflectionReuse",
-          .binding = &sliders->reflection_reuse,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 0.f,
-          .label = "Reflection Reuse (Experimental)",
-          .section = section,
-          .tooltip = "Less noise on rough reflections.\n"
-                     "From ReSTIR GI: also the path-traced Light Bounce's samples (needs Path Tracing).\n"
-                     "Own ReSTIR: their own samples, reused over frames and between neighbours.",
-          .labels = {"Off", "From ReSTIR GI", "Own ReSTIR"},
-          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedWaterReflections",
-          .binding = &sliders->water_reflections,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 1.f,
-          .label = "Ray-Traced Water Reflections (Experimental)",
-          .section = section,
-          .tooltip = "Rivers and lakes reflect what the rays find, also off screen. Off: screen-space reflections there.",
-          .labels = {"Off", "On"},
-          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
-          .is_visible = [] { return internal::water_pass; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "RayTracedSpecularOcclusion",
-          .binding = &sliders->specular_occlusion,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Ray-Traced Specular Occlusion (Experimental)",
-          .section = section,
-          .tooltip = "The sky's reflection dimmed where something blocks it.\n"
-                     "Needs DLAA or an upscaler, renodx-tw-dlaa64.exe and in-game Screen Space Reflections on.",
-          .labels = {"Off", "On"},
-          .is_enabled = dlaa_on,
-      },
       new renodx::utils::settings::Setting{
           .key = "RayTracedDebugView",
           .binding = &sliders->debug_view,
@@ -1598,6 +1602,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "(next to the game's exe). Turn the effects on, press, then move the camera over the map.",
           .is_enabled = dlaa_on,
           .on_change = [] { StartProfile(); },
+          .is_visible = [reflection_pass] { return reflection_pass || internal::debug_view_drawn.load(); },
       },
   });
 }
