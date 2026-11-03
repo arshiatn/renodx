@@ -166,7 +166,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
     return;
   }
   if (!Create(device.Get()) || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))
-      || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height, state.settings.ray_reconstruction || state.settings.ray_traced_guides,
+      || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height, state.settings.ray_reconstruction,
                                          state.settings.ray_tracing, twattila::frame_generation::Format(), state.settings.ray_traced_reflections,
                                          static_cast<uint32_t>(method) - static_cast<uint32_t>(twattila::anti_aliasing::Method::DLAA),
                                          state.settings.frame_backend)) {
