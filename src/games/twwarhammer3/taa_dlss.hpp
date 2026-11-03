@@ -384,6 +384,7 @@ inline std::string Status() {
   const std::unique_lock lock(state.mutex);
   const auto in_last_second = [](uint64_t frame) { return frame != UINT64_MAX && state.frame - frame < 60; };
   const auto& bridge = twattila::dlaa_bridge::bridge;
+  if (!twattila::dlaa_bridge::OnNvidia()) return "Not running: DLSS needs an NVIDIA GPU.";
   if (bridge.failed) return bridge.status;
   if (in_last_second(state.evaluated_frame)) return (bridge.shared != nullptr) ? bridge.shared->status : bridge.status;
   if (in_last_second(state.no_camera_frame)) return "Not running: in-game Resolution Scale is below 100%. The game's own TAA and upscale stay.";
