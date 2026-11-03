@@ -52,6 +52,7 @@ struct AaSliders {
   float quality = 2.f;  // low to ultra
   float extra_sharpness = 0.f;
   float taa_strength = 0.9f;
+  float taa_motion = 0.f;  // Attila's (graphics_page.hpp): TAA's: the camera's motion, or the objects' own too
   float sharpening = 0.25f;
   float dlaa_preset = 2.f;  // K, M, L
   float dlss_mode = 0.f;       // DLAA's scale: DLSS_MODE_SCALES, the last Custom (render_scale)
@@ -122,7 +123,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .hud_recomposition = (sliders.hud_recomposition != 0.f),
       .frame_debug_view = static_cast<uint32_t>(std::clamp(sliders.frame_debug_view, 0.f, 2.f)),
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
-      .object_motion = (sliders.object_motion != 0.f),
+      .object_motion = ((sliders.method == 4.f ? sliders.taa_motion : sliders.object_motion) != 0.f),
       .debug_view = static_cast<uint32_t>(std::clamp(sliders.debug_view, 0.f, 3.f)),
   };
 }

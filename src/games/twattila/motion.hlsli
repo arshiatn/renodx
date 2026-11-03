@@ -65,6 +65,26 @@ bool MotionDepthMatches(float motion_depth, float depth)
   return abs(motion_depth - depth) <= 4e-6f;
 }
 
+// What moves on its own at `pixel` (object_motion.hpp's targets; unbound: none) where its depth is the final `depth`: its
+// motion in render pixels to where it was (x right, y down), from the game's own draw (`drawn_motion`; `drawn_depth` 0: not
+// written) or from drawing it again (`redrawn`: MotionTexel). False: none, the camera's is the pixel's.
+bool ObjectMotionAt(Texture2D<uint2> redrawn, Texture2D<float2> drawn_motion, Texture2D<float> drawn_depth, int2 pixel,
+                    float depth, out float2 motion)
+{
+  motion = 0.f;
+  bool found = false;
+  const float written_depth = drawn_depth.Load(int3(pixel, 0));
+  const uint2 texel = redrawn.Load(int3(pixel, 0));
+  if (written_depth != 0.f && MotionDepthMatches(written_depth, depth)) {
+    motion = drawn_motion.Load(int3(pixel, 0));
+    found = true;
+  } else if (MotionTexelWritten(texel) && MotionDepthMatches(MotionTexelDepth(texel), depth)) {
+    motion = MotionTexelMotion(texel);
+    found = true;
+  }
+  return found;
+}
+
 // The table's cells (a power of two) and placements per cell; a unit moves less than PLACEMENT_REACH in a frame, and
 // soldiers stand further apart.
 static const uint PLACEMENT_CELLS = 65536u;

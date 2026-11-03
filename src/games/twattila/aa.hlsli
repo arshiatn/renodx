@@ -36,7 +36,7 @@ cbuffer aa_taa : register(b1)
   float g_taa_reset;                        // 1: no history (first frame, new size)
   float g_taa_sharpening;                   // 0 none
   float2 g_taa_jitter;                      // this frame's: the scene moved by it, in pixels (x right, y down)
-  float g_taa_padding;
+  float g_taa_object_motion;                // TAA Motion Vectors on Objects: 1 (t4-t6: what moved this frame)
 }
 
 #endif  // SRC_GAMES_TWATTILA_AA_HLSLI_

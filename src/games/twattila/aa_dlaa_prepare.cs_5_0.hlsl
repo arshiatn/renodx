@@ -43,12 +43,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const float4 before = mul(world, g_taa_previous_view_projection);
   float2 motion = (before.xy / before.w - now.xy / now.w) * float2(0.5f, -0.5f) * g_aa_metrics.zw;
   if (g_dlaa_debug.x == 3.f) motion = 0.f;  // the Debug View's No Camera Motion: the objects' own alone
-  const float drawn_depth = t_drawn_depth.Load(int3(pixel, 0));
-  const uint2 object_motion = t_object_motion.Load(int3(pixel, 0));
-  if (drawn_depth != 0.f && MotionDepthMatches(drawn_depth, depth)) {
-    motion = t_drawn_motion.Load(int3(pixel, 0));
-  } else if (MotionTexelWritten(object_motion) && MotionDepthMatches(MotionTexelDepth(object_motion), depth)) {
-    motion = MotionTexelMotion(object_motion);
-  }
+  float2 object_motion;
+  if (ObjectMotionAt(t_object_motion, t_drawn_motion, t_drawn_depth, int2(pixel), depth, object_motion)) motion = object_motion;
   t_rw_motion[pixel] = (g_taa_reset == 0.f && all(isfinite(motion))) ? motion : 0.f;
 }

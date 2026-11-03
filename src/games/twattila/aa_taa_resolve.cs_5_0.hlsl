@@ -6,7 +6,8 @@
 // TAA / SMAA T2x (anti_aliasing.hpp): this frame (t0, its camera jittered; SMAA T2x: already SMAA'd) blended with the
 // history (t1, the last result) where that point was last frame. The game has no motion vectors: the motion is the
 // camera's (the depth, t2, reprojected with both frames' cameras), from the nearest depth around the pixel (edges move
-// with the nearer surface); moving soldiers rely on the clip: the history is kept inside the colours around the pixel
+// with the nearer surface); with TAA Motion Vectors on Objects what moves on its own takes its own there (t4-t6, as
+// DLSS's). The rest relies on the clip: the history is kept inside the colours around the pixel
 // this frame (YCoCg: their range, at most mean +- 1.5 deviations; WARP: the best on thin stripes and a moving box), so
 // it cannot drag a soldier's old colours along. Where the history's
 // surface was not there last frame (its distance, t3, against the expected one) it counts less. The history is read
@@ -15,11 +16,15 @@
 // UE's TAA): where the history is cut away (swaying trees and grass: the camera's motion is not theirs) the picture
 // no longer jitters (ATN). Out: the result (u0) and this frame's distances (u1) for the next.
 #include "./aa.hlsli"
+#include "./motion.hlsli"
 
 Texture2D<float4> t_current : register(t0);
 Texture2D<float4> t_history : register(t1);
 Texture2D<float> t_depth : register(t2);
 Texture2D<float> t_previous_distance : register(t3);
+Texture2D<uint2> t_object_motion : register(t4);  // motion.hlsli MotionTexel (unbound: none)
+Texture2D<float2> t_drawn_motion : register(t5);  // the in-draw motion in pixels
+Texture2D<float> t_drawn_depth : register(t6);    // its depth (0: not written; unbound: none)
 RWTexture2D<float4> t_rw_result : register(u0);
 RWTexture2D<float> t_rw_distance : register(u1);
 
@@ -114,7 +119,14 @@ void main(uint2 pixel : SV_DispatchThreadID)
   world /= world.w;
   const float4 now = mul(world, g_taa_view_projection);
   const float4 before = mul(world, g_taa_previous_view_projection);
-  const float2 motion = (now.xy / now.w - before.xy / before.w) * float2(0.5f, -0.5f);
+  float2 motion = (now.xy / now.w - before.xy / before.w) * float2(0.5f, -0.5f);
+  // TAA Motion Vectors on Objects: what moves on its own takes its own (in pixels, to where it was; its draw can divide by 0).
+  [branch] if (g_taa_object_motion != 0.f)
+  {
+    float2 object_motion;
+    const bool found = ObjectMotionAt(t_object_motion, t_drawn_motion, t_drawn_depth, nearest, nearest_depth, object_motion);
+    if (found && all(isfinite(object_motion))) motion = -object_motion * g_aa_metrics.xy;
+  }
   const float2 history_uv = (float2(pixel) + 0.5f) * g_aa_metrics.xy - motion;
 
   float weight = g_taa_history_weight;

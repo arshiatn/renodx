@@ -289,6 +289,19 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "AntiAliasingQuality", .section = section,
                .shown = [b] { return b.aa->method == 1.f || b.aa->method == 2.f || b.aa->method == 3.f; }});
     page.Take({.match = "AntiAliasingTaaStrength", .section = section, .shown = [b] { return b.aa->method == 4.f; }});
+    page.Add(new Setting{
+        .key = "AntiAliasingTaaMotion",
+        .binding = &b.aa->taa_motion,
+        .value_type = SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "TAA Motion Vectors",
+        .section = section,
+        .tooltip = "Camera: only the camera's motion. What moves on its own stays softer.\n"
+                   "Objects: soldiers, props, cloth and swaying plants too, as DLSS gets them.\n"
+                   "Sharper while they move, heavier on the CPU with many soldiers.",
+        .labels = {"Camera", "Objects"},
+        .is_visible = [b] { return b.aa->method == 4.f; },
+    });
     page.Take({.match = "AntiAliasingSharpening", .section = section, .shown = [b] { return b.aa->method == 3.f || b.aa->method == 4.f; },
                .label = "Sharpening"});
     page.Take({.match = "AntiAliasingDlssMode", .section = section, .shown = dlss, .label = "DLSS Mode",

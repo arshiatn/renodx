@@ -58,7 +58,8 @@
 // buffer they read) and its depth, and after the tone mapper this frame (SMAA T2x: SMAA'd with that frame's sub-sample)
 // is blended with the history reprojected by the camera (aa_taa_resolve), then sharpened (aa_taa_sharpen). Cameras
 // uploaded after the tone mapper (the UI's) are left as they are; a frame without a main view (menus) ends the jitter.
-// DLAA's motion: the camera's from the depth, and for what moves on its own its own (object_motion.hpp).
+// DLAA's motion (TAA's with TAA Motion Vectors on Objects): the camera's from the depth, and for what moves on its own its
+// own (object_motion.hpp).
 namespace twattila::anti_aliasing {
 
 using Microsoft::WRL::ComPtr;
@@ -102,7 +103,8 @@ struct Settings {
   // DLSS: the textures' levels below 100% (texture_lod_bias.hpp): 0 the game's, 1 as sharp as at the display size, 2
   // one step sharper (NVIDIA's advice), 3 two.
   int texture_lod_bias = 2;
-  // DLAA / DLSS: the units', props' and cloth's own motion (object_motion.hpp redraws them); off, the camera's alone.
+  // DLAA / DLSS (Object Motion Vectors), TAA (TAA Motion Vectors): the units', props' and cloth's own motion
+  // (object_motion.hpp redraws them); off, the camera's alone.
   bool object_motion = true;
   // DLAA / DLSS's Debug View: 0 off, 1 the motion NVIDIA gets, 2 the objects' own (aa_dlaa_finish), 3 no camera motion
   // (the objects' alone: aa_dlaa_prepare).
@@ -136,7 +138,7 @@ struct TaaConstants {
   float reset = 1.f;
   float sharpening = 0.f;
   std::array<float, 2> jitter = {};
-  float padding = 0.f;
+  float object_motion = 0.f;  // TAA Motion Vectors on Objects: 1
 };
 
 // camera_VS_PS's registers (16 bytes each): projection c5-c8, view_projection c9-c12, inv_projection c17-c20,
@@ -182,7 +184,7 @@ constexpr std::array<std::array<float, 4>, 4> SMAA_PRESETS = {{
 // CMAA2's presets' edge thresholds, low to ultra.
 constexpr std::array<float, 4> CMAA2_THRESHOLDS = {0.15f, 0.1f, 0.07f, 0.05f};
 constexpr UINT UAV_COUNT = 8;  // CMAA2's u0-u7
-constexpr UINT SRV_COUNT = 7;  // DLAA's Debug View: t0-t6
+constexpr UINT SRV_COUNT = 7;  // TAA's resolve, DLAA's Debug View: t0-t6
 
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
@@ -1017,6 +1019,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
         .sharpening = runtime.settings.sharpening,
         // The camera's jitter (y up) as it moves the picture (y down).
         .jitter = {runtime.jitter[0], -runtime.jitter[1]},
+        .object_motion = ((method == Method::TAA && runtime.settings.object_motion) ? 1.f : 0.f),
     };
     native->UpdateSubresource(objects.taa_constants.Get(), 0, nullptr, &taa, 0, 0);
   }
@@ -1106,6 +1109,10 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   if (!targets_off) {
     native->CopyResource(objects.color.Get(), target);
   }
+  // Rigid objects: which meshes move (object_motion.hpp); the frame's motion targets for DLAA's and TAA's motion (none
+  // written: the camera's alone).
+  object_motion::Resolve(native, runtime.frame);
+  const auto object_motion_views = object_motion::Target(runtime.frame);
 
   if (method == Method::SMAA || t2x) {
     bind(objects.smaa_edges.Get(), {objects.color_srv.Get()}, {objects.smaa_edges_uav.Get()});
@@ -1124,7 +1131,8 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     const size_t last = 1 - current;
     ID3D11ShaderResourceView* frame = (t2x ? objects.work_srv : objects.color_srv).Get();
     bind(objects.taa_resolve.Get(),
-         {frame, objects.history_srvs[last].Get(), depth_view, objects.distance_srvs[last].Get()},
+         {frame, objects.history_srvs[last].Get(), depth_view, objects.distance_srvs[last].Get(), object_motion_views.redrawn.Get(),
+          object_motion_views.drawn_motion.Get(), object_motion_views.drawn_depth.Get()},
          {objects.history_uavs[current].Get(), objects.distance_uavs[current].Get()});
     native->Dispatch(groups_x, groups_y, 1);
     bind(objects.taa_sharpen.Get(), {objects.history_srvs[current].Get()}, {objects.result_uav.Get()});
@@ -1168,9 +1176,6 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &input_settings, 0, 0);
       objects.uploaded = input_settings;
     }
-    // Rigid objects: which meshes move (object_motion.hpp).
-    object_motion::Resolve(native, runtime.frame);
-    const auto object_motion_views = object_motion::Target(runtime.frame);
     dlaa_bridge::BeforeSharedWrites(native);
     bind(objects.dlaa_prepare.Get(),
          {frame_view, depth_view, object_motion_views.redrawn.Get(), object_motion_views.drawn_motion.Get(),
@@ -1271,11 +1276,11 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   }
 }
 
-// Object motion's view of a draw with `camera`: DLAA ran last frame, `camera` holds the main view's camera uploaded
+// Object motion's view of a draw with `camera`: DLAA or TAA ran last frame, `camera` holds the main view's camera uploaded
 // this frame, and last frame's is known (the sun light draws': this frame's once they ran).
 inline bool MotionView(ID3D11Buffer* camera, object_motion::View* view) {
   const std::shared_lock lock(runtime.mutex);
-  if (runtime.settings.method != Method::DLAA || runtime.applied_frame + 1 != runtime.frame) return false;
+  if ((runtime.settings.method != Method::DLAA && runtime.settings.method != Method::TAA) || runtime.applied_frame + 1 != runtime.frame) return false;
   const auto upload = std::ranges::find(runtime.uploads, camera, &Upload::buffer);
   const Camera& previous = (runtime.camera_frame == runtime.frame ? runtime.previous_camera : runtime.camera);
   if (upload == runtime.uploads.end() || !upload->camera.valid || !previous.valid) return false;
@@ -1396,8 +1401,9 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   const bool temporal =
       (settings.method == Method::SMAA_T2X || settings.method == Method::TAA || settings.method == Method::DLAA);
   internal::temporal.store(temporal, std::memory_order_relaxed);
-  // Objects' motion only once NVIDIA's helper runs (the menus before a battle draw none of it for nothing).
-  object_motion::SetActive(settings.method == Method::DLAA && settings.object_motion && dlaa_bridge::bridge.started);
+  // Objects' motion: TAA's at once (all in this D3D11 addon; MotionView waits for TAA's first frame), DLSS's once NVIDIA's
+  // helper runs (the menus before a battle draw none of it for nothing).
+  object_motion::SetActive(settings.object_motion && (settings.method == Method::TAA || (settings.method == Method::DLAA && dlaa_bridge::bridge.started)));
   frame_generation::Update({
       .multiplier = (settings.method == Method::DLAA ? settings.frame_generation : 0u),
       .reflex_boost = (settings.reflex == 2),
@@ -1417,7 +1423,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   ++runtime.frame;
   frame_history::tonemapped.store(false, std::memory_order_relaxed);
   runtime.scene_depth.Reset();
-  const bool ran = (runtime.upscaled_frame + 1 == runtime.frame);
+  // What ran last frame: DLSS once NVIDIA answered (render scale, jitter), TAA and SMAA T2x once they ran (jitter).
+  const bool ran = ((settings.method == Method::DLAA ? runtime.upscaled_frame : runtime.applied_frame) + 1 == runtime.frame);
   // DLSS: below 100% once DLAA ran last frame (a frame without it, a menu, ends the scaling: nothing would stretch the 3D
   // image to the display, also where DLSS cannot start, AMD and Intel GPUs), at the display's exact aspect (whole aspect
   // units).
