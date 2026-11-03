@@ -456,7 +456,7 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .section = AA_SECTION,
                                             .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
                                                        "2x: RTX 40 or newer. 3x to 6x and Dynamic (as many as the display's refresh rate takes): RTX 50.\n"
-                                                       "Needs DLAA, Output HDR10 or SDR, a windowed or borderless game,\n"
+                                                       "Needs DLAA, a windowed or borderless game,\n"
                                                        "and Streamline's files next to renodx-tw-dlaa64.exe.",
                                             .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
                                             .is_enabled = [sliders] { return sliders->method == 5.f; },

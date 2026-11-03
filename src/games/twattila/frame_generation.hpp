@@ -99,7 +99,7 @@ struct State {
   // The addon's swap chain shaders and shader constants (Install, kept while installed).
   std::span<const uint8_t> vertex_code;
   std::span<const uint8_t> pixel_code;
-  std::span<const uint8_t> hdr10_pixel_code;  // scRGB to HDR10 (empty: an scRGB swap chain's frames stay scRGB)
+  std::span<const uint8_t> hdr10_pixel_code;  // scRGB to HDR10
   const void* injection = nullptr;
   UINT injection_bytes = 0;
   DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;  // the frames' (the swap chain's; HDR10 for scRGB), seen at a present
@@ -149,7 +149,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
   {
     const std::unique_lock lock(state.mutex);
     auto& objects = state.objects;
-    state.scrgb = back_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT && !state.hdr10_pixel_code.empty();
+    state.scrgb = back_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
     state.format = (state.scrgb ? DXGI_FORMAT_R10G10B10A2_UNORM : back_desc.Format);
     const bool kept = std::exchange(state.kept, false);
     // A kept frame without its later output pass: the next ones take the tone mapper's image again.
@@ -273,9 +273,8 @@ inline bool DrawHudless(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
                                                  objects.context_state.GetAddressOf()))
         || FAILED(device1->CreateVertexShader(state.vertex_code.data(), state.vertex_code.size(), nullptr, objects.vertex_shader.GetAddressOf()))
         || FAILED(device1->CreatePixelShader(state.pixel_code.data(), state.pixel_code.size(), nullptr, objects.pixel_shader.GetAddressOf()))
-        || (!state.hdr10_pixel_code.empty()
-            && FAILED(device1->CreatePixelShader(state.hdr10_pixel_code.data(), state.hdr10_pixel_code.size(), nullptr,
-                                                 objects.hdr10_pixel_shader.GetAddressOf())))
+        || FAILED(device1->CreatePixelShader(state.hdr10_pixel_code.data(), state.hdr10_pixel_code.size(), nullptr,
+                                             objects.hdr10_pixel_shader.GetAddressOf()))
         || FAILED(device1->CreateSamplerState(&sampler_desc, objects.sampler.GetAddressOf()))
         || FAILED(device1->CreateBuffer(&injection_desc, nullptr, objects.injection.GetAddressOf()))) {
       objects = {.device = device1};
@@ -420,9 +419,9 @@ inline bool Presenting() {
 }
 
 // The addon's swap chain shaders and its shader constants (`injection_bytes` at `injection`: kept while installed), and its
-// scRGB to HDR10 shader (empty: an scRGB swap chain's frames stay scRGB, and frame generation does not generate).
+// scRGB to HDR10 shader.
 inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_t> pixel_code, const void* injection, UINT injection_bytes,
-                    std::span<const uint8_t> hdr10_pixel_code = {}) {
+                    std::span<const uint8_t> hdr10_pixel_code) {
   {
     const std::unique_lock lock(internal::state.mutex);
     internal::state.vertex_code = vertex_code;

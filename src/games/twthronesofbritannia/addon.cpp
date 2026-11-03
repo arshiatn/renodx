@@ -1364,16 +1364,13 @@ void SetOutputEncoding(int encoding) {
 bool auto_output_pending = false;
 
 bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  // Frame generation takes no scRGB: HDR10 with it.
-  const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
-  if (!auto_output_pending) {
-    if (frame_generation && shader_injection.swap_chain_encoding == 1.f) SetOutputEncoding(0);
-    return false;
-  }
+  if (!auto_output_pending) return false;
   auto_output_pending = false;
   const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
   const auto path = renodx::utils::platform::GetPathInfo(monitor);
   const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
+  // Frame generation on from the start: HDR10, the frames need no pass of their own (frame_generation.hpp).
+  const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
   SetOutputEncoding(windows_hdr ? (frame_generation ? 0 : 1) : 2);
   return false;
 }
@@ -1684,8 +1681,9 @@ void ConfigureAddon() {
         .default_value = 3.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "Auto: scRGB with Windows HDR on, else SDR. Default. Frame generation uses HDR10 for scRGB.\n"
-                   "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR (all fixes and options stay).",
+        .tooltip = "Auto: scRGB with Windows HDR on, else SDR. Default.\n"
+                   "HDR10: 10-bit. scRGB: 16-bit, 10-bit while Frame Generation is on. SDR: displays without HDR (all fixes\n"
+                   "and options stay).",
         .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
     };
@@ -1778,7 +1776,7 @@ bool AttachAddon() {
                                                         .rigid_compute_shader = __motion_rigid},
                                    RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
-                                      sizeof(shader_injection));
+                                      sizeof(shader_injection), __fg_hdr10);
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);

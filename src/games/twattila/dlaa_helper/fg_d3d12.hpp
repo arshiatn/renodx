@@ -661,11 +661,10 @@ class FrameGeneration12 {
       SetWindowPos(window_, HWND_TOP, 0, 0, client_width, client_height, SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
     }
     if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) return true;
-    // HDR10 (R10G10B10A2) and scRGB (RGBA16F) frames as the game's swap chain shows them. SDR frames (gamma 2.2, in
-    // R10G10B10A2 too) keep the chain's default: taken for HDR10 they came out red (ATN 2026-11-01).
+    // HDR10 frames (R10G10B10A2; an scRGB swap chain's too: frame_generation.hpp) as the game's swap chain shows them. SDR
+    // frames (gamma 2.2, in R10G10B10A2 too) keep the chain's default: taken for HDR10 they came out red (ATN 2026-11-01).
     const auto set_color_space = [&] {
       if (format_ == DXGI_FORMAT_R10G10B10A2_UNORM && !sdr) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
-      if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
     };
     if (chain_) {
       // Generation off while the buffers change (NVIDIA: Present can deadlock otherwise), their count given (Streamline
@@ -834,8 +833,6 @@ class FrameGeneration12 {
     add(sl::DLSSGStatus::eFailGetCurrentBackBufferIndexNotCalled, "the back buffer index is not queried");
     if (!failure_.empty()) {
       status_ = "Frame generation: " + std::exchange(failure_, {});
-    } else if (format_ == DXGI_FORMAT_R16G16B16A16_FLOAT) {
-      status_ = "Frame generation: not generating (it takes no scRGB: set Output to HDR10 or SDR)";
     } else if (state.status != sl::DLSSGStatus::eOk) {
       status_ = "Frame generation: not generating (" + (reasons.empty() ? std::format("status {:#x}", static_cast<uint32_t>(state.status)) : reasons) + ")";
     } else if (!inputs) {
