@@ -13,7 +13,8 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
       Harness: all_modes_wh3_p1.txt, helper74, a real run: 115 of 116 by name; `release`'s "no memory kept by sets" missed its 30 MiB by 5 (+35), then 5 of 5 alone (+19 to +23), helper unchanged, +32 seen before in all_modes_switch.txt.
 - [x] P2 Data kit: indirect draws in traces, WH3's camera registers (c37, c39), TAA and t00 marks (overscan, near, far, depth at near), RT Debug View + Scene Test + Record Profile shown, a log line at each hook's first run; `renodx_trace_now` traces at any scale, DLSS on or off.
       Not done: nothing of the phase; not run in game. ATN's check (P13's list): `renodx_trace_now` in a real battle with fire, on the campaign, at 100% and at 50%, one at a time, renaming tw_frame_trace.txt between them; "First run" lines in the log; RT Debug View with each Scene Test.
-- [ ] P3 Rows, FSR, XeSS, Reflex, Motion Debug View at 100% (also `A/addon.cpp` OnPresent's DLSS-off-NVIDIA switch in place of P1's gate and status text)
+- [x] P3 Rows (`AppendAa`, flat in the old section until P5; rows without effect hidden), FSR and XeSS at 100%, Reflex without FG (mode 0 while the in-process FG runs), saved DLSS off NVIDIA becomes XeSS or FSR, red line without the helper, Motion Debug View (in t00's on_drawn, not at the TAA slot: exposure, bloom and LUTs would act on it).
+      Not done: nothing of the phase; not run in game; FG rows still restart-only until P4. ATN's check: FSR, then XeSS in a pan: sharp, no doubled edges; Debug View on banner, ship, smoke, water, units; Reflex on with FG off: latency down, Frame Rate Limit holds.
 - [ ] P4 Frame generation to the helper
 - [ ] P5 The page: Attila's layout (milestone 1: review, twwarhammer3_v30.zip)
 - [ ] P7 Graphics 2 of 2 on names that exist in today's exe
@@ -26,7 +27,7 @@ Order: P0 > P1 > P2 > P3 > P4 > P5 (milestone 1, zip v30) > P7 > P12 > P6 > P8 >
 - [ ] P11 Lights and fog in rays (optional)
 - [ ] P13 Close: review, all builds, README v30 / v31, zips, round report, ATN's test list
 
-Open in WH3's code (from the lessons' read, each owned by the phase): HUD-less frame misses flares and vignette (P4); no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list); no first-start SDR check (P12); no red notice for the add-on alone (P3).
+Open in WH3's code (from the lessons' read, each owned by the phase): HUD-less frame misses flares and vignette (P4); no `main_view` in the host (P8); game's shadow maps under RT shadows, double work that stays (P13's list); no first-start SDR check (P12).
 
 ## START HERE (2026-11-03): Attila v134 = players' v2.5 (helper74, bridge v23, tag twattila-v134; v133 never released): RenoDX_Attila_v2.5.zip, RenoDX_Attila_v2.5_HDR_only.zip (Nexus: the add-on alone, tools/tw/hdr_zip.py), twattila_v134.zip. Downloads/attila_github_v2.5_notes.md, attila_nexus_text_v2.5.txt. ENORMOUS BATCH done; ATN's in-game tests under "ENORMOUS BATCH" item 18, then WH3.
 ATN decided (2026-11-03): no in-game tests by us unless asked; one game start before a zip.
