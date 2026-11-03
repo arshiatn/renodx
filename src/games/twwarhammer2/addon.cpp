@@ -873,7 +873,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "vignette",
@@ -885,7 +884,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "distortion",
@@ -897,7 +895,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "sharpening",
@@ -909,7 +906,6 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "video_autohdr",

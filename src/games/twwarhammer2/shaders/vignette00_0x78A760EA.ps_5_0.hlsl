@@ -32,7 +32,7 @@ void main(
   r0.x = log2(r0.x);
   r0.x = 1.70000005 * r0.x;
   r0.x = exp2(r0.x);
-  r0.x = saturate(r0.x * ((HDR >= 0.5f) ? SI.vignette : 1.f));
+  r0.x = saturate(r0.x * SI.vignette);
   r0.y = -0.00392156886 + r0.x;
   o0.w = r0.x;
   r0.x = cmp(r0.y < 0);
