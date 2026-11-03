@@ -1458,7 +1458,7 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
   // Water Clarity.
   const UINT lighting_slot = std::ranges::find(WATER_SHADERS, command.matched_shader_hash, &WaterShader::hash)->lighting_slot;
   ComPtr<ID3D11Buffer> game_lighting;
-  if (std::abs(water_clarity - 1.f) >= 0.009998342f) native->PSGetConstantBuffers(lighting_slot, 1, game_lighting.GetAddressOf());
+  if (std::abs(water_clarity - 1.f) >= 0.01f) native->PSGetConstantBuffers(lighting_slot, 1, game_lighting.GetAddressOf());
   D3D11_BUFFER_DESC game_desc = {};
   if (game_lighting) game_lighting->GetDesc(&game_desc);
   auto& objects = water_objects;

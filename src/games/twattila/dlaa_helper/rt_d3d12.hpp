@@ -4334,7 +4334,7 @@ class RtScene12 {
     list->SetComputeRootShaderResourceView(ROOT_SCENE, (ptlas_ != nullptr ? ptlas_ : tlas_.Get())->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(ROOT_SMOKE, (smoke_scene ? smoke_tlas_.Get() : (ptlas_ != nullptr ? ptlas_ : tlas_.Get()))->GetGPUVirtualAddress());
     const float softness = (version >= 6) ? std::clamp(shared.rt_sun_softness, 0.f, 5.000012f) : 0.f;
-    const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.009998951f;
+    const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.01f;
     // Under Ray Reconstruction no soft-shadow filter (rt_trace jitters its sun ray) and no ambient history (NVIDIA's guide:
     // RR takes the raw signals; the harness's RR test left 19-23% of the raw 4-ray AO's noise, a third of that with the
     // history, which RR's own accumulation then lagged behind).
