@@ -50,7 +50,7 @@ void main(uint3 id : SV_DispatchThreadID)
       for (int z = -spread; z <= spread; ++z) {
         [loop]
         for (int x = -spread; x <= spread; ++x) {
-          const uint first = PlacementCell(center + int2(x, z)) * PLACEMENT_SLOTS;
+          const uint first = PlacementCell(center + int2(x, z), mesh) * PLACEMENT_SLOTS;
           [loop]
           for (uint candidate = first; candidate < first + PLACEMENT_SLOTS; ++candidate) {
             if (motion_previous_keys[candidate] == 0u) break;

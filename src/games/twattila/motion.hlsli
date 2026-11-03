@@ -116,9 +116,11 @@ float4 MotionScatterPoint(uint index)
   return float4(grid * float2(2.f, -2.f) + float2(-1.f, 1.f), 0.5f, 1.f);
 }
 
-uint PlacementCell(int2 cell)
+// A cell's slots by mesh too: a lookup wants its own mesh alone, and soldiers packed in a melee would fill a shared
+// cell's slots with each other's meshes (one left out has no previous placement: camera motion only).
+uint PlacementCell(int2 cell, uint mesh_key)
 {
-  return ((asuint(cell.x) * 73856093u) ^ (asuint(cell.y) * 19349663u)) & (PLACEMENT_CELLS - 1u);
+  return ((asuint(cell.x) * 73856093u) ^ (asuint(cell.y) * 19349663u) ^ (mesh_key * 83492791u)) & (PLACEMENT_CELLS - 1u);
 }
 
 // A placement into this frame's table (`keys`: a key per slot, 0 empty; `placements`: four rows per slot) in every cell
@@ -134,7 +136,7 @@ bool MotionRecord(RWBuffer<uint> keys, RWBuffer<uint4> placements, uint key, flo
   for (float z = low.y; z <= high.y; ++z) {
     [loop]
     for (float x = low.x; x <= high.x; ++x) {
-      const uint first = PlacementCell(int2(x, z)) * PLACEMENT_SLOTS;
+      const uint first = PlacementCell(int2(x, z), extra.x) * PLACEMENT_SLOTS;
       [loop]
       for (uint slot = first; slot < first + PLACEMENT_SLOTS; ++slot) {
         // A plain read first: every pixel of a unit records the same key, and atomics on the same slots from all of them
@@ -186,7 +188,7 @@ bool MotionPreviousPlacement(float4 rows[3], out float4 previous[3], out uint4 p
   if (motion_unit.y == 0u) return false;
   const float2 position = float2(rows[0].w, rows[2].w);
   const float scale = PlacementScale(motion_unit.z);
-  const uint first = PlacementCell(int2(floor(position / (PLACEMENT_CELL * scale)))) * PLACEMENT_SLOTS;
+  const uint first = PlacementCell(int2(floor(position / (PLACEMENT_CELL * scale))), motion_unit.x) * PLACEMENT_SLOTS;
   float nearest = PLACEMENT_REACH * PLACEMENT_REACH * scale * scale;
   bool found = false;
   [loop]
@@ -223,7 +225,7 @@ bool MotionPreviousRigidPlacement(float4 rows[3], out float4 previous[3])
   if (motion_unit.y == 0u) return false;
   const float3 position = float3(rows[0].w, rows[1].w, rows[2].w);
   const float scale = PlacementScale(motion_unit.z);
-  const uint first = PlacementCell(int2(floor(position.xz / (PLACEMENT_CELL * scale)))) * PLACEMENT_SLOTS;
+  const uint first = PlacementCell(int2(floor(position.xz / (PLACEMENT_CELL * scale))), motion_unit.x) * PLACEMENT_SLOTS;
   float nearest = PLACEMENT_REACH * PLACEMENT_REACH * scale * scale;
   bool found = false;
   [loop]
