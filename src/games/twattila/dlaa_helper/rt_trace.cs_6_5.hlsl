@@ -283,7 +283,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
     ambient_visibility = (float)escaped / ambient_rays;
   }
-  const bool kept = (flags & AMBIENT_OCCLUSION) != 0u && ambient_rays != 0u;
+  const bool kept = (flags & AMBIENT_OCCLUSION) != 0u && ambient_rays != 0u && (flags & NRD_AMBIENT) == 0u;
   if (!quarter) {
     ambient[id.xy] = kept ? KeptAmbient(id.xy, position.xyz, ambient_visibility) : ambient_visibility;
     return;

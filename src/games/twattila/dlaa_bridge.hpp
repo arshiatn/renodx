@@ -155,6 +155,10 @@ struct Bridge {
   // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
   // accumulation and filter) leave its noise to it.
   bool reconstructing = false;
+  // The Denoiser setting at NRD: which signals the helper denoises by it, the addon's own denoisers off them.
+  bool nrd_ambient = false;
+  bool nrd_bounce = false;
+  bool nrd_reflections = false;
   uint32_t upscaler = UPSCALER_DLSS;
   uint32_t fg_backend = FG_BACKEND_DLSS;
   HANDLE mapping = nullptr;

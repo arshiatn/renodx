@@ -18,8 +18,9 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
   New files next to the helper: `amd_fidelityfx_loader_dx12.dll`, `amd_fidelityfx_upscaler_dx12.dll`, `libxess.dll`. Bridge v22: addon and helper ship together.
 - **Ray tracing on AMD and Intel (Experimental)**: starts under FSR or XeSS on the DXR 1.1 path with the built-in denoisers. The RT/PT preset turns Ray Reconstruction on only on NVIDIA.
   Other TW games keep refusing it off NVIDIA (their lists stop at DLSS).
-- **Ray Tracing Denoiser (Experimental; Built-in by default)**: NVIDIA's NRD on any GPU when Ray Reconstruction is off. SIGMA on the soft ray-traced sun shadows, in the helper (its
-  static library, NVIDIA RTX SDKs License, `NRD_LICENSE.txt`); motion from the camera alone, the addon's motion comes later in the frame. About 360 MB at 4K. Nothing new next to the helper.
+- **Ray Tracing Denoiser (Experimental; Built-in by default)**: NVIDIA's NRD on any GPU when Ray Reconstruction is off, in the helper (its static library, NVIDIA RTX SDKs License,
+  `NRD_LICENSE.txt`; nothing new next to it): SIGMA on the soft ray-traced sun shadows, REBLUR on Ray-Traced AO, the Light Bounce (rays or paths, at its texels) and the reflections, each in place of the
+  built-in filters for it. Motion from the camera alone: the addon's motion comes later in the frame. Memory at 4K, by the harness's sizes: SIGMA 360 MB, AO 220 MB, Light Bounce 125 MB, reflections 580 MB, each given back 120 frames after its last use.
 - **Smoke Shadows (Experimental, off) without rays**, with Game's Shadow Maps or Bend Screen-Space: catapult smoke, dust and
   fire smoke dim the sun on what lies below them, any GPU, no helper, with its own softness in metres. About 0.1-0.15 ms at
   4K. Limits: water and the smoke itself are not dimmed, the shadow fades where the game fades the particles by camera

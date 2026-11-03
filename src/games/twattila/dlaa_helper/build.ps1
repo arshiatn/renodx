@@ -87,12 +87,15 @@ if (Test-Path "$xess\inc\xess\xess_d3d12.h") {
 $nrd = Join-Path $root "build\downloads\nrd\NRD"
 $nrd_include = @()
 $nrd_library = @()
-Remove-Item "$out\rt_nrd_front.h", "$out\rt_nrd_shadow.h" -ErrorAction SilentlyContinue
+$nrd_signals = @('SUN', 'AMBIENT', 'BOUNCE', 'REFLECT')
+foreach ($signal in $nrd_signals) { Remove-Item "$out\rt_nrd_front_$signal.h", "$out\rt_nrd_finish_$signal.h" -ErrorAction SilentlyContinue }
 if (Test-Path "$nrd\_Bin\NRD.lib") {
   $nrd_include = @("-imsvc$nrd\Include")
   $nrd_library = @("$nrd\_Bin\NRD.lib", "$nrd\_Build\_deps\shadermake-build\ShaderMakeBlob.lib")
-  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -Fh "$out\rt_nrd_front.h" -Vn RT_NRD_FRONT "$PSScriptRoot\rt_nrd_front.hlsl"
-  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_nrd_shadow.h" -Vn RT_NRD_SHADOW "$PSScriptRoot\rt_nrd_shadow.hlsl"
+  foreach ($signal in $nrd_signals) {
+    & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -D "NRD_FRONT_$signal" -Fh "$out\rt_nrd_front_$signal.h" -Vn "RT_NRD_FRONT_$signal" "$PSScriptRoot\rt_nrd_front.hlsl"
+    & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -D "NRD_FINISH_$signal" -Fh "$out\rt_nrd_finish_$signal.h" -Vn "RT_NRD_FINISH_$signal" "$PSScriptRoot\rt_nrd_finish.hlsl"
+  }
 }
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `

@@ -46,6 +46,8 @@ RWTexture2D<float2> specular_meta_history : register(u19);
 RWTexture2D<float4> reflection : register(u20);            // out: reflected light, the share of samples that met a surface
 RWTexture2D<unorm float> specular_occlusion : register(u21);
 RWTexture2D<float> specular_hit_distance : register(u31);  // out (PATH_RAW): Ray Reconstruction's guide, metres
+RWTexture2D<float> nrd_hit_distance : register(u44);       // out (PATH_NRD, the Light Bounce's): metres
+RWTexture2D<float4> nrd_reflection : register(u50);        // out (PATH_NRD, the reflections'): light x the share that met, metres
 // ReSTIR GI (Ouyang et al. 2021, "ReSTIR GI: Path Resampling for Real-Time Path Tracing"): each bounce texel's paths
 // become a reservoir of one surface their first rays met (its position, normal and the light leaving it toward the
 // texel), merged with last frame's at the same surface (PathTraceTexel), then with neighbours' (ReuseTexel, which
@@ -82,6 +84,7 @@ static const uint PATH_REFLECT_OWN = 8388608u;          // Own ReSTIR: the refle
 static const uint PATH_REFLECT_OWN_HISTORY = 16777216u; // last frame's are last frame's
 static const uint PATH_REFLECT_PARITY = 33554432u;      // this frame's set: 1 (else 0)
 static const uint PATH_LIGHT_FINAL = 67108864u;         // a reflections request's: `light` is the light buffer the game's pass reads
+static const uint PATH_NRD = 268435456u;                // NVIDIA's REBLUR denoises this request's light (rt_nrd_front.hlsl)
 static const uint PATH_SKY_APART = 134217728u;          // Own Sky Rays: Path-Traced AO's sky past the reservoirs
 static const uint REFLECT_NEIGHBOURS = 4u;
 static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
@@ -612,6 +615,7 @@ void PathTraceTexel(uint2 id) {
   const float band_jitter = Random(uint3(id, frame * 16u + 1024u));
   float3 sky = 0.f;
   float3 arriving = 0.f;
+  float hit_sum = 0.f;
   [loop]
   for (uint path = 0u; path < samples; ++path) {
     const float3 direction = CosineDirection(normal, sky_apart ? ((float)path + band_jitter) / (float)samples : Random(uint3(id, frame * 16u + path * 2u + 1024u)),
@@ -621,6 +625,7 @@ void PathTraceTexel(uint2 id) {
     const float3 sample_light = PathRadiance(origin, direction, first_range, sky_calibration, id, path, first_distance, first_normal)
                                 * ContactShade(first_distance);
     arriving += sample_light;
+    hit_sum += min(first_distance, first_range);
     if (first_distance >= 1e29f) sky += sample_light;
     // Cosine-weighted rays: the target over their density is pi times the light's luminance.
     Reservoir candidate;
@@ -634,6 +639,7 @@ void PathTraceTexel(uint2 id) {
   }
   if (!reuse) {
     bounce[id] = float4(arriving / samples, distance(position.xyz, Camera()));
+    if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = hit_sum / samples;
     return;
   }
   uint2 previous_pixel;
@@ -700,6 +706,7 @@ void ReuseTexel(uint2 id) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
   bounce[id] = float4(arriving, distance(position.xyz, Camera()));
+  if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = (combined.weight > 0.f) ? hit_distance : bounce_range;
 }
 
 // Tangent, bitangent and `normal`.
@@ -827,6 +834,7 @@ void ReflectPixel(uint2 id) {
     specular_accumulated[id] = 0.f;
     specular_meta[id] = float2(1.f, 0.f);
     if ((path_flags & PATH_RAW) != 0u) specular_hit_distance[id] = SKY_HIT_DISTANCE;
+    if ((path_flags & PATH_NRD) != 0u) nrd_reflection[id] = float4(0.f, 0.f, 0.f, SKY_HIT_DISTANCE);
     return;
   }
   const float3 normal = PixelNormal(id, position);
@@ -983,6 +991,7 @@ void ReflectPixel(uint2 id) {
   // Ray Reconstruction's specular hit distance: the mean distance to what the samples met (the sky's where none did, as
   // where none were traced: the game's reflection is the sky's or a cube map's).
   if ((path_flags & PATH_RAW) != 0u) specular_hit_distance[id] = (met != 0u) ? distances / met : SKY_HIT_DISTANCE;
+  if ((path_flags & PATH_NRD) != 0u) nrd_reflection[id] = float4(current.rgb * current.a, (met != 0u) ? distances / met : SKY_HIT_DISTANCE);
   // Mirrors keep no history; rougher lobes up to MAX_SPECULAR_FRAMES (last frame's where it saw this surface).
   float4 previous = 0.f;
   float2 previous_meta = float2(1.f, 0.f);

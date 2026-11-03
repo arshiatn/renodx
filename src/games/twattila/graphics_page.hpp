@@ -662,8 +662,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .default_value = 0.f,
         .label = "Ray Tracing Denoiser (Experimental)",
         .section = section,
-        .tooltip = "Smooths the soft ray-traced sun shadows when DLSS Ray Reconstruction is off.\n"
-                   "Built-in: the rays' own filter. NRD: NVIDIA's denoiser, steadier in motion, uses more memory.",
+        .tooltip = "Cleans the ray-traced shadows, AO, Light Bounce and reflections when DLSS Ray Reconstruction is off.\n"
+                   "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory.",
         .labels = {"Built-in", "NRD"},
         .is_visible = [upscaling, b] { return upscaling() && !(b.aa->method == 5.f && b.aa->ray_reconstruction != 0.f); },
     });

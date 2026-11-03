@@ -578,8 +578,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Sliders& sliders) {
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
   internal::runtime.apply_per_pixel = (sliders.msaa_pixel != 0.f);
-  // Ray Reconstruction denoises the frame (the bounce's resolve over frames stays: its texels are coarser).
-  internal::runtime.denoise = (sliders.denoise != 0.f) && !dlaa_bridge::bridge.reconstructing;
+  // Ray Reconstruction or NRD denoises it (the bounce's resolve over frames stays: its texels are coarser).
+  internal::runtime.denoise = (sliders.denoise != 0.f) && !dlaa_bridge::bridge.reconstructing && !dlaa_bridge::bridge.nrd_bounce;
   ++internal::runtime.frame;
 }
 

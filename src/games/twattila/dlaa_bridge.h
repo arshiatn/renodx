@@ -180,7 +180,8 @@ constexpr uint32_t RT_DETAILS = 131072;
 // Smoke Shadow Quality (0-2, two bits): the particles a sun ray counts (rt_scene.hlsli).
 constexpr uint32_t RT_SMOKE_QUALITY_SHIFT = 19;
 // Denoiser NRD (without Ray Reconstruction; helpers without NRD or before 73 keep the built-in ones): soft sun shadows one
-// ray toward a point of the sun's disk, denoised by NVIDIA's NRD (SIGMA) instead of the rays' soft-shadow filter.
+// ray toward a point of the sun's disk, denoised by NVIDIA's NRD (SIGMA) instead of the rays' soft-shadow filter; the
+// ambient visibility denoised by its REBLUR instead of the helper's history (the addon then leaves its AO filter out).
 constexpr uint32_t RT_NRD = 1u << 21;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
@@ -212,6 +213,9 @@ constexpr uint32_t RT_REFLECTIONS_LIGHT = 2048;
 // Own Sky Rays (with RT_PATH_AMBIENT; older helpers ignore it): Path-Traced AO's sky past ReSTIR GI's reservoirs, the
 // plain mean of each texel's rays.
 constexpr uint32_t RT_PATH_SKY_APART = 4096;
+// Denoiser NRD (a Light Bounce's or reflections request's; helpers without NRD or before 73 ignore it): NVIDIA's REBLUR on
+// its light (the addon then leaves its Light Bounce denoiser out, or its reflections' SSR denoiser).
+constexpr uint32_t RT_PATH_NRD = 8192;
 // The upscaler (v22): NVIDIA's DLSS and Ray Reconstruction, AMD's FSR or Intel's XeSS (dlaa_helper/upscale_d3d12.hpp).
 constexpr uint32_t UPSCALER_DLSS = 0;
 constexpr uint32_t UPSCALER_FSR = 1;

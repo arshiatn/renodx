@@ -193,7 +193,8 @@ class Nrd12 {
                                                 0.f, 0.f, depth_scale, 1.f,  //
                                                 0.f, 0.f, depth_row[3] - depth_scale * forward[3], 0.f};
     const bool first = frame_index_ == 0;
-    const bool continued = !first && frame == last_frame_ + 1 && width == last_width_ && height == last_height_;
+    // (A second request in a frame continues too.)
+    const bool continued = !first && (frame == last_frame_ + 1 || frame == last_frame_) && width == last_width_ && height == last_height_;
     std::memcpy(common.viewToClipMatrix, view_to_clip.data(), sizeof(common.viewToClipMatrix));
     std::memcpy(common.worldToViewMatrix, world_to_view.data(), sizeof(common.worldToViewMatrix));
     std::memcpy(common.viewToClipMatrixPrev, (first ? view_to_clip : last_view_to_clip_).data(), sizeof(common.viewToClipMatrixPrev));
@@ -289,12 +290,13 @@ class Nrd12 {
     list->ResourceBarrier(1, &uav_barrier);
   }
 
-  // An input back to a UAV for the caller's pass before the next Run.
-  void ToWritten(ID3D12GraphicsCommandList* list, nrd::ResourceType type) {
-    Texture& texture = own_[type];
-    if (texture.state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) return;
-    const D3D12_RESOURCE_BARRIER barrier = Transitioned(&texture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    list->ResourceBarrier(1, &barrier);
+  // The inputs (and output: its contents stay) back to UAVs for the caller's passes before the next Run.
+  void ToWritten(ID3D12GraphicsCommandList* list) {
+    std::vector<D3D12_RESOURCE_BARRIER> barriers;
+    for (auto& [type, texture] : own_) {
+      if (texture.state != D3D12_RESOURCE_STATE_UNORDERED_ACCESS) barriers.push_back(Transitioned(&texture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+    }
+    if (!barriers.empty()) list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
   }
 
   // This denoiser's textures' memory (pools and own), for the status.
@@ -319,7 +321,7 @@ class Nrd12 {
   };
   static constexpr nrd::Identifier IDENTIFIER = 1;
   // At most this many dispatches a request (with its clearing frame and the finishing pass).
-  static constexpr UINT MAX_TABLES = 64;
+  static constexpr UINT MAX_TABLES = 96;
   // Metres: past every surface; the sky's view depth (the caller's) past this.
   static constexpr float DENOISING_RANGE = 1.0e6f;
   // nrd::Format's order.

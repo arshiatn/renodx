@@ -49,8 +49,14 @@
 #endif
 #include "./nrd_d3d12.hpp"
 #if defined(RENODX_NRD)
-#include "rt_nrd_front.h"   // dxc -Fh (build.ps1)
-#include "rt_nrd_shadow.h"  // dxc -Fh (build.ps1)
+#include "rt_nrd_finish_AMBIENT.h"  // dxc -Fh (build.ps1)
+#include "rt_nrd_finish_BOUNCE.h"   // dxc -Fh (build.ps1)
+#include "rt_nrd_finish_REFLECT.h"  // dxc -Fh (build.ps1)
+#include "rt_nrd_finish_SUN.h"      // dxc -Fh (build.ps1)
+#include "rt_nrd_front_AMBIENT.h"   // dxc -Fh (build.ps1)
+#include "rt_nrd_front_BOUNCE.h"    // dxc -Fh (build.ps1)
+#include "rt_nrd_front_REFLECT.h"   // dxc -Fh (build.ps1)
+#include "rt_nrd_front_SUN.h"       // dxc -Fh (build.ps1)
 #endif
 #include "rt_bounce.h"            // dxc -Fh (build.ps1)
 #include "rt_bounce_omm.h"        // dxc -Fh (build.ps1)
@@ -862,8 +868,11 @@ class RtScene12 {
     atlas_.Reset();
     sun_rays_.Reset();
 #if defined(RENODX_NRD)
-    nrd_sun_.reset();
-    nrd_sun_failed_ = false;
+    for (NrdSignal* signal : {&nrd_sun_, &nrd_ambient_, &nrd_bounce_, &nrd_reflections_}) {
+      signal->denoiser.reset();
+      signal->failed = false;
+    }
+    nrd_bounce_hit_distance_.Reset();
 #endif
     light_.Reset();
     bounce_.Reset();
@@ -1183,9 +1192,46 @@ class RtScene12 {
         list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
       }
       const float bounce_range = std::clamp(shared.rt_bounce_range, 0.5f, 200.f);
+      // The Denoiser setting at NRD: REBLUR on this request's light (the Light Bounce at its texels' size; reflections
+      // only with the G-buffer's normals and roughness).
+      bool nrd_light = false;
+#if defined(RENODX_NRD)
+      NrdSignal* nrd_signal = nullptr;
+      if ((requested & dlaa_bridge::RT_PATH_NRD) != 0) {
+        if (reflections) {
+          static constexpr std::array<NrdTexture, 4> TEXTURES = {{
+              {nrd::ResourceType::IN_VIEWZ, DXGI_FORMAT_R32_FLOAT, NRD_REFLECT_VIEW_Z},
+              {nrd::ResourceType::IN_NORMAL_ROUGHNESS, DXGI_FORMAT_R10G10B10A2_UNORM, NRD_REFLECT_NORMAL_ROUGHNESS},
+              {nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST, DXGI_FORMAT_R16G16B16A16_FLOAT, NRD_REFLECT_SIGNAL},
+              {nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST, DXGI_FORMAT_R16G16B16A16_FLOAT, 0},
+          }};
+          if (guide_normals_ && shared.rt_guides != 0 && (requested & dlaa_bridge::RT_REFLECTIONS) != 0
+              && EnsureNrd(&nrd_reflections_, nrd::Denoiser::REBLUR_SPECULAR, "NRD REBLUR (reflections)", {RT_NRD_FRONT_REFLECT, sizeof(RT_NRD_FRONT_REFLECT)},
+                           {RT_NRD_FINISH_REFLECT, sizeof(RT_NRD_FINISH_REFLECT)}, static_cast<uint32_t>(visibility_->GetDesc().Width), visibility_->GetDesc().Height, TEXTURES, frame)) {
+            nrd_signal = &nrd_reflections_;
+          }
+        } else {
+          static constexpr std::array<NrdTexture, 4> TEXTURES = {{
+              {nrd::ResourceType::IN_VIEWZ, DXGI_FORMAT_R32_FLOAT, NRD_BOUNCE_VIEW_Z},
+              {nrd::ResourceType::IN_NORMAL_ROUGHNESS, DXGI_FORMAT_R10G10B10A2_UNORM, NRD_BOUNCE_NORMAL_ROUGHNESS},
+              {nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST, DXGI_FORMAT_R16G16B16A16_FLOAT, NRD_BOUNCE_SIGNAL},
+              {nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST, DXGI_FORMAT_R16G16B16A16_FLOAT, 0},
+          }};
+          if (!nrd_bounce_hit_distance_ && Texture(DXGI_FORMAT_R16_FLOAT, &nrd_bounce_hit_distance_)) {
+            Written(nrd_bounce_hit_distance_.Get(), DXGI_FORMAT_R16_FLOAT, NRD_BOUNCE_HIT_DISTANCE);
+          }
+          if (nrd_bounce_hit_distance_
+              && EnsureNrd(&nrd_bounce_, nrd::Denoiser::REBLUR_DIFFUSE, "NRD REBLUR (Light Bounce)", {RT_NRD_FRONT_BOUNCE, sizeof(RT_NRD_FRONT_BOUNCE)},
+                           {RT_NRD_FINISH_BOUNCE, sizeof(RT_NRD_FINISH_BOUNCE)}, shared.rt_bounce_width, shared.rt_bounce_height, TEXTURES, frame)) {
+            nrd_signal = &nrd_bounce_;
+          }
+        }
+        nrd_light = nrd_signal != nullptr;
+      }
+#endif
       const std::array<uint32_t, 12> settings = {
           frame,
-          0u,
+          (!reflections && nrd_light) ? TRACE_NRD_BOUNCE : 0u,
           std::bit_cast<uint32_t>(bounce_range),
           std::clamp(shared.rt_bounce_rays, 1u, 32u),
           shared.rt_width,
@@ -1226,6 +1272,9 @@ class RtScene12 {
       std::vector<D3D12_RESOURCE_BARRIER> barriers;
       for (const auto& [resource, used] : textures) barriers.push_back(Transition(resource, D3D12_RESOURCE_STATE_COMMON, used));
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+#if defined(RENODX_NRD)
+      if (nrd_signal != nullptr) nrd_signal->denoiser->ToWritten(list);
+#endif
 
       if (!uses_paths) {
         Mark(list, L"bounce");
@@ -1280,6 +1329,7 @@ class RtScene12 {
         // alone left them noisy, ATN's debug33).
         const bool raw = reflections && (requested & dlaa_bridge::RT_REFLECTIONS_RAW) != 0;
         if (raw) flags |= PATH_RAW;
+        if (nrd_light) flags |= PATH_NRD;
         if (reflections && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
         // Reflection Reuse from ReSTIR GI (v19): this frame's reservoirs (the Light Bounce's request before this one used set
         // reuse_parity_ then and turned it).
@@ -1458,6 +1508,25 @@ class RtScene12 {
         const auto from_previous = Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
         list->ResourceBarrier(1, &from_previous);
       }
+#if defined(RENODX_NRD)
+      if (nrd_signal != nullptr) {
+        // Its inputs (on this list's bindings), then REBLUR (on its own: nothing below needs these).
+        const uint32_t nrd_width = reflections ? std::max(shared.rt_width, 1u) : shared.rt_bounce_width;
+        const uint32_t nrd_height = reflections ? std::max(shared.rt_height, 1u) : shared.rt_bounce_height;
+        list->ResourceBarrier(1, &uav_barrier);
+        Mark(list, L"NRD inputs");
+        list->SetPipelineState(nrd_signal->front.Get());
+        list->Dispatch((nrd_width + 7) / 8, (nrd_height + 7) / 8, 1);
+        list->ResourceBarrier(1, &uav_barrier);
+        Mark(list, L"NRD REBLUR");
+        const nrd::ReblurSettings reblur = {};
+        if (nrd_signal->denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, nrd_width, nrd_height, &reblur)) {
+          ID3D12Resource* const output = reflections ? reflection_.Get() : bounce_.Get();
+          nrd_signal->denoiser->Finish(list, reflections ? nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST : nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST, positions_.Get(),
+                                       POSITIONS_VIEW, output, DXGI_FORMAT_R16G16B16A16_FLOAT);
+        }
+      }
+#endif
       barriers.clear();
       for (const auto& [resource, used] : textures) barriers.push_back(Transition(resource, used, D3D12_RESOURCE_STATE_COMMON));
       list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
@@ -1708,10 +1777,22 @@ class RtScene12 {
     TINT,  // u35 (v19): Coloured Shadows' filter
     REFLECT_SAMPLES,  // u36-u37 (v19, helpers 55 on): Own ReSTIR's reservoirs, two sets
     REFLECT_DATA = REFLECT_SAMPLES + 2,  // u38-u39
-    NRD_VIEW_Z = REFLECT_DATA + 2,  // u40-u43 (helpers 73 on): NRD's inputs (rt_nrd_front)
-    NRD_NORMAL_ROUGHNESS,
-    NRD_PENUMBRA,
-    NRD_TRANSLUCENCY,
+    // NRD's inputs (helpers 73 on; rt_nrd_front.hlsl): u40-u43 the sun's, u44-u47 the Light Bounce's, u48-u50 the
+    // reflections', u51-u53 the ambient's.
+    NRD_SUN_VIEW_Z = REFLECT_DATA + 2,
+    NRD_SUN_NORMAL_ROUGHNESS,
+    NRD_SUN_PENUMBRA,
+    NRD_SUN_TRANSLUCENCY,
+    NRD_BOUNCE_HIT_DISTANCE,
+    NRD_BOUNCE_VIEW_Z,
+    NRD_BOUNCE_NORMAL_ROUGHNESS,
+    NRD_BOUNCE_SIGNAL,
+    NRD_REFLECT_VIEW_Z,
+    NRD_REFLECT_NORMAL_ROUGHNESS,
+    NRD_REFLECT_SIGNAL,
+    NRD_AMBIENT_VIEW_Z,
+    NRD_AMBIENT_NORMAL_ROUGHNESS,
+    NRD_AMBIENT_SIGNAL,
     DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
@@ -1719,6 +1800,9 @@ class RtScene12 {
   static constexpr uint32_t PATH_TRACING = 1;
   static constexpr uint32_t PATH_REFLECTIONS = 2;
   static constexpr uint32_t PATH_RAW = 512;
+  static constexpr uint32_t PATH_NRD = 268435456;
+  static constexpr uint32_t TRACE_NRD_BOUNCE = 4194304;   // rt_scene.hlsli
+  static constexpr uint32_t TRACE_NRD_AMBIENT = 8388608;  // rt_scene.hlsli
   static constexpr uint32_t PATH_SPECULAR_OCCLUSION = 4;
   static constexpr uint32_t PATH_HISTORY_VALID = 8;
   static constexpr uint32_t PATH_CACHE_VALID = 16;
@@ -1759,6 +1843,24 @@ class RtScene12 {
     float reflection_range = 10.f;
     float sky_range = 2.f;  // rt_camera.hlsli
   };
+#if defined(RENODX_NRD)
+  // NRD's texture of a signal (nrd_d3d12.hpp), with a place in the trace's descriptors when rt_nrd_front.hlsl writes it (0: none).
+  struct NrdTexture {
+    nrd::ResourceType type;
+    DXGI_FORMAT format;
+    UINT descriptor;
+  };
+  struct NrdSignal {
+    std::unique_ptr<Nrd12> denoiser;
+    ComPtr<ID3D12PipelineState> front;
+    std::array<uint32_t, 2> size = {};
+    uint32_t used_frame = 0;
+    bool failed = false;
+  };
+  static constexpr uint32_t NRD_RELEASE_FRAMES = 120;
+  static constexpr D3D12_SHADER_RESOURCE_VIEW_DESC POSITIONS_VIEW = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                                                                     .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, .Texture2D = {.MipLevels = 1}};
+#endif
   enum Root : UINT {
     ROOT_SCENE,
     ROOT_TABLE,
@@ -2328,39 +2430,39 @@ class RtScene12 {
   }
 
 #if defined(RENODX_NRD)
-  // NRD's SIGMA at this set's size, when first asked for; false (once said in the log): the built-in filter instead.
-  bool EnsureNrdSun() {
-    if (nrd_sun_) return true;
-    if (nrd_sun_failed_) return false;
-    const D3D12_RESOURCE_DESC size = visibility_->GetDesc();
-    auto made = std::make_unique<Nrd12>();
-    std::string error;
+  // A signal NRD denoises: made at `width` x `height` when first asked for (and again at a new size), kept while asked
+  // for (its memory back NRD_RELEASE_FRAMES after: TraceScene); false (once said in the log): the built-in ways instead.
+  bool EnsureNrd(NrdSignal* signal, nrd::Denoiser denoiser, const char* name, D3D12_SHADER_BYTECODE front, D3D12_SHADER_BYTECODE finish, uint32_t width, uint32_t height,
+                 std::span<const NrdTexture> textures, uint32_t frame) {
+    signal->used_frame = frame;
+    if (signal->denoiser && signal->size == std::array<uint32_t, 2>{width, height}) return true;
+    if (signal->failed) return false;
+    if (signal->denoiser) {
+      WaitFor(own_value_);
+      signal->denoiser.reset();
+    }
     const auto fail = [&](const std::string& why) {
-      nrd_sun_failed_ = true;
-      slow_report_ += std::format("{}[TW ray tracing] {}", slow_report_.empty() ? "" : "\n", why);
+      signal->failed = true;
+      slow_report_ += std::format("{}[TW ray tracing] {}: {}", slow_report_.empty() ? "" : "\n", name, why);
       return false;
     };
-    if (!nrd_front_pipeline_) {
-      const D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {.pRootSignature = root_signature_.Get(), .CS = {.pShaderBytecode = RT_NRD_FRONT, .BytecodeLength = sizeof(RT_NRD_FRONT)}};
-      if (FAILED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(nrd_front_pipeline_.GetAddressOf())))) return fail("NRD: its inputs' pipeline failed");
+    if (!signal->front) {
+      const D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {.pRootSignature = root_signature_.Get(), .CS = front};
+      if (FAILED(device_->CreateComputePipelineState(&desc, IID_PPV_ARGS(signal->front.GetAddressOf())))) return fail("NRD's inputs' pipeline failed");
     }
-    if (!made->Create(device_.Get(), nrd::Denoiser::SIGMA_SHADOW_TRANSLUCENCY, SLOTS, static_cast<uint32_t>(size.Width), size.Height, RT_NRD_SHADOW, sizeof(RT_NRD_SHADOW), &error)) return fail(error);
+    auto made = std::make_unique<Nrd12>();
+    std::string error;
+    if (!made->Create(device_.Get(), denoiser, SLOTS, width, height, finish.pShaderBytecode, finish.BytecodeLength, &error)) return fail(error);
     // Motion: none but the camera's (a texel: NRD scales what it reads by 0).
-    ID3D12Resource* const view_z = made->Add(nrd::ResourceType::IN_VIEWZ, DXGI_FORMAT_R32_FLOAT);
-    ID3D12Resource* const normal_roughness = made->Add(nrd::ResourceType::IN_NORMAL_ROUGHNESS, DXGI_FORMAT_R10G10B10A2_UNORM);
-    ID3D12Resource* const penumbra = made->Add(nrd::ResourceType::IN_PENUMBRA, DXGI_FORMAT_R16_FLOAT);
-    ID3D12Resource* const translucency = made->Add(nrd::ResourceType::IN_TRANSLUCENCY, DXGI_FORMAT_R8G8B8A8_UNORM);
-    if (view_z == nullptr || normal_roughness == nullptr || penumbra == nullptr || translucency == nullptr
-        || made->Add(nrd::ResourceType::IN_MV, DXGI_FORMAT_R16G16_FLOAT, 1u << 16) == nullptr
-        || made->Add(nrd::ResourceType::OUT_SHADOW_TRANSLUCENCY, DXGI_FORMAT_R8G8B8A8_UNORM) == nullptr) {
-      return fail("NRD: its textures failed (no memory)");
+    if (made->Add(nrd::ResourceType::IN_MV, DXGI_FORMAT_R16G16_FLOAT, 1u << 16) == nullptr) return fail("no memory");
+    for (const NrdTexture& texture : textures) {
+      ID3D12Resource* const resource = made->Add(texture.type, texture.format);
+      if (resource == nullptr) return fail("no memory");
+      if (texture.descriptor != 0) Written(resource, texture.format, texture.descriptor);
     }
-    Written(view_z, DXGI_FORMAT_R32_FLOAT, NRD_VIEW_Z);
-    Written(normal_roughness, DXGI_FORMAT_R10G10B10A2_UNORM, NRD_NORMAL_ROUGHNESS);
-    Written(penumbra, DXGI_FORMAT_R16_FLOAT, NRD_PENUMBRA);
-    Written(translucency, DXGI_FORMAT_R8G8B8A8_UNORM, NRD_TRANSLUCENCY);
-    slow_report_ += std::format("{}[TW ray tracing] NRD SIGMA: {} MB at {} x {}.", slow_report_.empty() ? "" : "\n", made->Bytes() >> 20, size.Width, size.Height);
-    nrd_sun_ = std::move(made);
+    slow_report_ += std::format("{}[TW ray tracing] {}: {} MB at {} x {}.", slow_report_.empty() ? "" : "\n", name, made->Bytes() >> 20, width, height);
+    signal->denoiser = std::move(made);
+    signal->size = {width, height};
     return true;
   }
 #endif
@@ -4226,21 +4328,46 @@ class RtScene12 {
     // RR takes the raw signals; the harness's RR test left 19-23% of the raw 4-ray AO's noise, a third of that with the
     // history, which RR's own accumulation then lagged behind).
     const bool reconstructed = (shared.rt_flags & dlaa_bridge::RT_RECONSTRUCTED) != 0;
-    // The Denoiser setting at NRD (SIGMA in place of the soft-shadow filter); it made when first asked for at this size,
-    // its memory back at once when off.
+    // The Denoiser setting at NRD: SIGMA in place of the soft-shadow filter, REBLUR in place of the ambient's history. Any
+    // signal unused for a while gives its memory back.
     bool nrd_sun = false;
+    bool nrd_ambient = false;
 #if defined(RENODX_NRD)
-    nrd_sun = soft && !reconstructed && (shared.rt_flags & dlaa_bridge::RT_NRD) != 0 && EnsureNrdSun();
-    if (!nrd_sun && (shared.rt_flags & dlaa_bridge::RT_NRD) == 0 && nrd_sun_) {
-      WaitFor(own_value_);
-      nrd_sun_.reset();
+    for (NrdSignal* signal : {&nrd_sun_, &nrd_ambient_, &nrd_bounce_, &nrd_reflections_}) {
+      if (signal->denoiser && signal->used_frame + NRD_RELEASE_FRAMES < frame) {
+        WaitFor(own_value_);
+        signal->denoiser.reset();
+        slow_report_ += std::format("{}[TW ray tracing] An NRD denoiser released (unused for {} frames).", slow_report_.empty() ? "" : "\n", NRD_RELEASE_FRAMES);
+      }
+    }
+    if (!reconstructed && (shared.rt_flags & dlaa_bridge::RT_NRD) != 0) {
+      const auto nrd_width = static_cast<uint32_t>(visibility_->GetDesc().Width);
+      const uint32_t nrd_height = visibility_->GetDesc().Height;
+      static constexpr std::array<NrdTexture, 5> SUN_TEXTURES = {{
+          {nrd::ResourceType::IN_VIEWZ, DXGI_FORMAT_R32_FLOAT, NRD_SUN_VIEW_Z},
+          {nrd::ResourceType::IN_NORMAL_ROUGHNESS, DXGI_FORMAT_R10G10B10A2_UNORM, NRD_SUN_NORMAL_ROUGHNESS},
+          {nrd::ResourceType::IN_PENUMBRA, DXGI_FORMAT_R16_FLOAT, NRD_SUN_PENUMBRA},
+          {nrd::ResourceType::IN_TRANSLUCENCY, DXGI_FORMAT_R8G8B8A8_UNORM, NRD_SUN_TRANSLUCENCY},
+          {nrd::ResourceType::OUT_SHADOW_TRANSLUCENCY, DXGI_FORMAT_R8G8B8A8_UNORM, 0},
+      }};
+      static constexpr std::array<NrdTexture, 4> AMBIENT_TEXTURES = {{
+          {nrd::ResourceType::IN_VIEWZ, DXGI_FORMAT_R32_FLOAT, NRD_AMBIENT_VIEW_Z},
+          {nrd::ResourceType::IN_NORMAL_ROUGHNESS, DXGI_FORMAT_R10G10B10A2_UNORM, NRD_AMBIENT_NORMAL_ROUGHNESS},
+          {nrd::ResourceType::IN_DIFF_HITDIST, DXGI_FORMAT_R8_UNORM, NRD_AMBIENT_SIGNAL},
+          {nrd::ResourceType::OUT_DIFF_HITDIST, DXGI_FORMAT_R8_UNORM, 0},
+      }};
+      nrd_sun = soft && EnsureNrd(&nrd_sun_, nrd::Denoiser::SIGMA_SHADOW_TRANSLUCENCY, "NRD SIGMA", {RT_NRD_FRONT_SUN, sizeof(RT_NRD_FRONT_SUN)},
+                                  {RT_NRD_FINISH_SUN, sizeof(RT_NRD_FINISH_SUN)}, nrd_width, nrd_height, SUN_TEXTURES, frame);
+      nrd_ambient = (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0
+                    && EnsureNrd(&nrd_ambient_, nrd::Denoiser::REBLUR_DIFFUSE_OCCLUSION, "NRD REBLUR (AO)", {RT_NRD_FRONT_AMBIENT, sizeof(RT_NRD_FRONT_AMBIENT)},
+                                 {RT_NRD_FINISH_AMBIENT, sizeof(RT_NRD_FINISH_AMBIENT)}, nrd_width, nrd_height, AMBIENT_TEXTURES, frame);
     }
 #endif
     // v18: rays a pixel toward the sun and each light, the lights' radius for soft shadows (rt_lights: under RR).
     const std::array<uint32_t, 12> settings = {
         frame,
         (shared.rt_flags & ~(dlaa_bridge::RT_LOCAL_LIGHTS | dlaa_bridge::RT_NRD)) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
-            | (smoke_scene ? TRACE_SMOKE : 0u) | (nrd_sun ? dlaa_bridge::RT_NRD : 0u),
+            | (smoke_scene ? TRACE_SMOKE : 0u) | (nrd_sun ? dlaa_bridge::RT_NRD : 0u) | (nrd_ambient ? TRACE_NRD_AMBIENT : 0u),
         std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.f)),
         std::clamp(shared.rt_ambient_rays, 1u, 16u),
         shared.rt_width,
@@ -4255,7 +4382,7 @@ class RtScene12 {
     // The trace's history: the ambient visibility and the local lights' bits kept over frames, valid when the last trace
     // was the frame before (its positions and camera kept for the projection). Its constants bound every trace.
     const bool lights_kept = local_lights && version >= 11 && EnsureHistory(HISTORY_LIGHTS, frame);
-    const bool ambient_kept = version >= 11 && ((shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 || lights_kept)
+    const bool ambient_kept = version >= 11 && (((shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 && !nrd_ambient) || lights_kept)
                               && EnsureHistory(HISTORY_AMBIENT, frame);
     {
       const bool last_frame = ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
@@ -4327,24 +4454,25 @@ class RtScene12 {
     }
     bool nrd_denoised = false;
 #if defined(RENODX_NRD)
-    if (nrd_sun) {
-      // NRD's inputs (on this list's bindings), then SIGMA and the visibility (on its own: nothing below needs these).
+    // NRD's inputs on this list's bindings; SIGMA and REBLUR take theirs (before the built-in filter only when one failed
+    // before touching the list: a camera it cannot take apart, no such frame known).
+    if (nrd_sun || nrd_ambient) {
       list->ResourceBarrier(1, &uav_barrier);
       Mark(list, L"NRD inputs");
-      for (const nrd::ResourceType input : {nrd::ResourceType::IN_VIEWZ, nrd::ResourceType::IN_NORMAL_ROUGHNESS, nrd::ResourceType::IN_PENUMBRA, nrd::ResourceType::IN_TRANSLUCENCY}) {
-        nrd_sun_->ToWritten(list, input);
+      for (NrdSignal* signal : {nrd_sun ? &nrd_sun_ : nullptr, nrd_ambient ? &nrd_ambient_ : nullptr}) {
+        if (signal == nullptr) continue;
+        signal->denoiser->ToWritten(list);
+        list->SetPipelineState(signal->front.Get());
+        list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
       }
-      list->SetPipelineState(nrd_front_pipeline_.Get());
-      list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
       list->ResourceBarrier(1, &uav_barrier);
+    }
+    if (nrd_sun) {
       Mark(list, L"NRD SIGMA");
       const nrd::SigmaSettings sigma = {};
-      // False before it touched the list (a camera it cannot take apart: no such frame known): that frame the built-in filter.
-      nrd_denoised = nrd_sun_->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, shared.rt_width, shared.rt_height, &sigma);
+      nrd_denoised = nrd_sun_.denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, shared.rt_width, shared.rt_height, &sigma);
       if (nrd_denoised) {
-        const D3D12_SHADER_RESOURCE_VIEW_DESC positions_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
-                                                                .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, .Texture2D = {.MipLevels = 1}};
-        nrd_sun_->Finish(list, nrd::ResourceType::OUT_SHADOW_TRANSLUCENCY, positions_.Get(), positions_view, visibility_.Get(), DXGI_FORMAT_R8_UNORM);
+        nrd_sun_.denoiser->Finish(list, nrd::ResourceType::OUT_SHADOW_TRANSLUCENCY, positions_.Get(), POSITIONS_VIEW, visibility_.Get(), DXGI_FORMAT_R8_UNORM);
       }
     }
 #endif
@@ -4355,6 +4483,16 @@ class RtScene12 {
       list->SetPipelineState(soft_pipeline_.Get());
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     }
+#if defined(RENODX_NRD)
+    if (nrd_ambient) {
+      Mark(list, L"NRD REBLUR (AO)");
+      // Its hit distance is the rays' open share of their range.
+      const nrd::ReblurSettings reblur = {.hitDistanceParameters = {.A = std::clamp(shared.rt_ambient_range, 0.1f, 100.f), .B = 0.f, .C = 1.f}};
+      if (nrd_ambient_.denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, shared.rt_width, shared.rt_height, &reblur)) {
+        nrd_ambient_.denoiser->Finish(list, nrd::ResourceType::OUT_DIFF_HITDIST, positions_.Get(), POSITIONS_VIEW, ambient_.Get(), DXGI_FORMAT_R8_UNORM);
+      }
+    }
+#endif
     barriers.clear();
     for (const auto& [resource, used] : textures) {
       barriers.push_back(Transition(resource, used, D3D12_RESOURCE_STATE_COMMON));
@@ -4417,9 +4555,14 @@ class RtScene12 {
       return true;
     });
     if (!details_) return true;
+    std::string denoisers;
+#if defined(RENODX_NRD)
+    denoisers = std::format("{}{}{}{}", nrd_denoised ? ", NRD SIGMA" : "", nrd_ambient ? ", NRD AO" : "", nrd_bounce_.denoiser ? ", NRD Light Bounce" : "",
+                            nrd_reflections_.denoiser ? ", NRD reflections" : "");
+#endif
     status_ = std::format("Ray tracing ({}{}): every frame {:.2f} M triangles (terrain {:.2f}, grass and leaves {:.2f}; {}) | {} meshes ({} new, {} "
                           "micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles",
-                          dxr12_ ? "DXR 1.2" : "DXR 1.1", nrd_denoised ? ", NRD SIGMA" : "", static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
+                          dxr12_ ? "DXR 1.2" : "DXR 1.1", denoisers, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? terrain_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? grass_triangles : 0u) / 1.0e6,
                           units_clustered ? std::format("{} clusters ({} from templates), {} compact draws of {} sets", clusters_built, templated_built,
@@ -5442,9 +5585,11 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> trace_pipeline_;
   ComPtr<ID3D12PipelineState> soft_pipeline_;
 #if defined(RENODX_NRD)
-  ComPtr<ID3D12PipelineState> nrd_front_pipeline_;
-  std::unique_ptr<Nrd12> nrd_sun_;
-  bool nrd_sun_failed_ = false;
+  NrdSignal nrd_sun_;
+  NrdSignal nrd_ambient_;
+  NrdSignal nrd_bounce_;
+  NrdSignal nrd_reflections_;
+  ComPtr<ID3D12Resource> nrd_bounce_hit_distance_;
 #endif
   ComPtr<ID3D12PipelineState> scene_data_pipeline_;
   ComPtr<ID3D12DescriptorHeap> descriptors_;

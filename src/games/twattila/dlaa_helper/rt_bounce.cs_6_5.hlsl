@@ -15,6 +15,7 @@
 
 Texture2D<float3> light : register(t9);     // the prepared light (the bounce's texels)
 RWTexture2D<float4> bounce : register(u9);
+RWTexture2D<float> nrd_hit_distance : register(u44);  // NRD_BOUNCE: the rays' mean, metres
 
 cbuffer Bounce : register(b2) {
   float4 view_projection[4];  // the camera's registers: clip = (dot(position, [0]), ...)
@@ -37,6 +38,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 origin = RayOrigin(position, normal, Planar(pixel, position, normal));
   const uint rays = max(ambient_rays, 1u);
   float3 arriving = 0.f;
+  float hit_sum = 0.f;
   [loop]
   for (uint index = 0; index < rays; ++index) {
     const float3 direction = CosineDirection(normal, Random(uint3(id.xy, frame * 32u + index * 2u)),
@@ -47,6 +49,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     ray.TMin = 0.f;
     ray.TMax = ambient_range;
     TRACE_SURFACE(query, ray)
+    hit_sum += (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? query.CommittedRayT() : ambient_range;
     if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) continue;
     const float4 hit = float4(origin + direction * query.CommittedRayT(), 1.f);
     const float4 clip = float4(dot(hit, view_projection[0]), dot(hit, view_projection[1]), dot(hit, view_projection[2]),
@@ -60,4 +63,5 @@ void main(uint3 id : SV_DispatchThreadID) {
     arriving += light[min(hit_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u)];
   }
   bounce[id.xy] = float4(arriving / rays, distance(position.xyz, sun[uint2(1, 0)].xyz));
+  if ((flags & NRD_BOUNCE) != 0u) nrd_hit_distance[id.xy] = hit_sum / rays;
 }
