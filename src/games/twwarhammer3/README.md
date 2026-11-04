@@ -2,7 +2,11 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
-## v31 (not released, built only, not run in game)
+## v31 (not released, built only, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23)
+
+- **Still computed twice, known:** the game's TAA runs and is thrown away under any upscaler (its other outputs are read later). The sun's cascades and their mask
+  still render under RT shadows; rays multiply them (fog reads them too). RTAO multiplies the game's SSAO; under Path-Traced AO it feeds only the specular. With
+  rays on, the terrain's geometry runs twice a frame. Point lights: see Torch and Fire Shadows.
 
 - **Torch and Fire Shadows (Experimental, Shadows, More Options under Ray-Traced; off, not in the RT/PT preset).** With Ray-Traced Shadows on, our copies of the
   game's 8 point light shaders multiply each light by its traced visibility; off, or before a trace, the game's own shaders run untouched. With Path-Traced Global
