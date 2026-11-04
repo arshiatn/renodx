@@ -40,7 +40,11 @@ Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Not done: **Rays Replace Shadow Maps stays Experimental, off** (G3: a flying dragon off screen loses its shadow, units enter the scene only in view; the rest of the pan +1%, softness works). No fire on/off A/B (benchmarks don't pause, cameras cut). Smoke cell check: no smoke draw in any trace, t1 kept by WARP.
       Not run: 4K, campaign with rays (commit 109 GB until ATN reboots), FG with these rows, night, Darklands, 4 of 6 fog PS, torch light in fog's look, Attila (page same).
       New for later: **B11: C506E37C, 4347C118, 7998DC13 are traced_lights swaps now: Fog Strength merges there, make_lights.py.** B12: NVIDIA's text shows preset L plain, F when RR runs. Close: ATN's RayTracedLightGlow=1 to 0.
-- [ ] B10 far scene, campaign
+- [x] B10 far scene, campaign. Proven at 4K by runs b10_camp_a, single, rows_a, rows2_a, camp2, c3, empire, check_run ok each, 0 events 153 since ATN's reboot; Attila page same; harness all_modes_b10.txt 116 of 116, helper76 (quad_980k_ramp passes again: B9's fail was the commit) (reports/B10.md).
+      Done: campaign's ground (15FE8427, A40D7DDB), trees and bushes (D025F795, BDAEC4F3) in the scene; terrain keep test by corners; campaign_frames; rays' ranges x0.1 on the map (Host::campaign_metre, Attila 1). Black under 0.25: 22% > 3.2% first view, 0.27% high up, 0 straight blobs. G10, G9b closed: don't draw. Replay at defaults still 0 black.
+      Not done: **Hills Out of View (G9) stays Experimental, off; Far Tree Shadows (G2) off: both capture and run, neither pass met: no cell changed on the views tried.** 3.2% left is under trees and is shape, not error: ATN's eye. Far mountains' black triangles: facets turned from the sun [I], under fog in the picture, not fixed.
+      Not run: Attila, FG or RT/PT preset on campaign, Darklands, night, moving armies.
+      New for later: B12: **CPU 21 ms "tracing" in the status at 4K, read what it measures**; Bend darkens campaign trees 4.6x with rays off (B12 or ATN). Close: **Steam runs elevated after every reboot (ATN's task SteamAdminStart): -shutdown, then -silent, before runs;** Attila campaign_metre left 1, one line when tested.
 - [ ] B11 reflections, march, fog
 - [ ] B12 soak and whole
 - [ ] Close

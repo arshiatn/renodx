@@ -4,6 +4,9 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 ## v32 (in progress, batch 3; renodx-tw-dlaa64.exe helper76, bridge v23; run in game by replay, campaign, benchmarks: see each line)
 
+- **The campaign map in the scene, run in game** (Eataine's save at 4K, three heights, 100% and 50%): its ground tiles, trees and bushes in the rays, a terrain triangle over a hole in the height map left out, the rays' ranges in the map's units (a metre = 0.1 there). Black against rays off 22% > 3.2% on the first view, 0.27% from high up; what's left is under trees and on rock faces turned from the sun. Cost there: scene 0.67, trace 3.6 ms. Trees are half lit, half dark with rays; the game's own without screen-space shadows are lit, and Screen-Space Shadows alone darkens them 4.6 times.
+- **Hills Out of View (Experimental, off), run in game** (replay, paused): the terrain out of the view in the scene too: terrain 0.64 > 0.76 M triangles, trace 4.40 > 5.10 ms. No cell of AO changed past the noise on the one low view tried.
+- **Far Tree Shadows (row, off), run in game** (replay, paused): far trees cast sun rays, the card turned to the sun. +0.06 M triangles; no view tried showed a change. Attila's way, by WH3's bytes.
 - **RTAO in place of the game's SSAO, default On, run in game** (replay paused, 1080p): `Replace the Game's AO`. Against rays off: view +3.3%, largest cell +9.5%; on top of the SSAO, as before: -0.1%. The game's pass still runs: water and fog read it.
 - **Torch and Fire Shadows on in RT/PT, run in game** (siege, skaven benchmarks, replay; 1080p, day or dusk; 150-odd lights read, 32 traced, Debug View not magenta): trace 0.93 to 1.07 ms with sun and AO. **Night and fire's look: not judged by anyone.** With them the paths get the torches' light on what the screen never saw.
 - **Rays Replace Shadow Maps (Experimental, off), run in game** (replay paused, stepped pan): the sun's mask with lit cascades and no contact march; smoke, clouds, the terrain's map stay. Off: the game's bytes. Softness shows: shadow's floor 10.7, 14.2, 15.6 nits at 0.1, 0.5, 2 on one edge. Against the game's maps underneath: view +0.6 to 1.1%. **A flying dragon off screen lost its shadow** (one cell +14.8%, 1 of 1287): rays only have units in view, so it stays off. Campaign: not run (test PC's memory).
@@ -86,7 +89,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - **Light Bounce and paths respect metal:** armour got a full bounce before; the game's ambient gives metal none.
 - **Coloured Shadows** on capture flags (with Light Through Leaves; the colour needs Ray Reconstruction or path-traced Global Illumination).
 - **The hills are in the rays:** the tessellated terrain, as the game drew it this frame (the same triangles, so the rays start on the ground they hit). Only
-  what's in view: a hill behind the camera casts no shadow. With rays on the terrain's geometry runs twice a frame and the trace waits for its triangle count.
+  what's in view (Hills Out of View adds the rest): a hill behind the camera casts no ray-traced shadow; the game's terrain shadow stays. With rays on the terrain's geometry runs twice a frame and the trace waits for its triangle count.
 - **Game's Global Illumination (Experimental, Effects tests, default on):** the game's own bounce light, which Light Bounce comes on top of. Whether it
   turns off at once, next battle or after a restart isn't known.
 - Log Details writes once per sun shader whether spherical harmonics and the game's Global Illumination are on, the ambient cube and its scale.
