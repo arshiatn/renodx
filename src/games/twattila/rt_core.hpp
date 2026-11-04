@@ -192,6 +192,8 @@ struct SceneShader {
   // Without a capture version (the game's own vertex shader streamed out): its draws whose pixel shader is in cut_out_masks are
   // cut out by that mask and `uv_semantic`, the others stay solid (a pixel shader's clip nobody read).
   bool clip_cut_outs = false;
+  // Placed, and the game draws it moving (last rows in its vertex shader: a soldier's weapons and armour): its rows every frame, none kept.
+  bool moving = false;
   bool terrain = false;
   bool dynamic = false;
   bool foliage = false;
@@ -1057,9 +1059,9 @@ void Capture(Context& command, const SceneShader& shader) {
   // Rigid objects seen moving stay out (a mesh's shadow where it stood); placed ones go where they are drawn, every frame.
   bool moving = false;
   if constexpr (INDEXED) {
-    moving = !shader.terrain && !dynamic && host.moving_indexed != nullptr && host.moving_indexed(native, arguments);
+    moving = !shader.terrain && !dynamic && (shader.moving || (host.moving_indexed != nullptr && host.moving_indexed(native, arguments)));
   } else {
-    moving = !shader.terrain && !dynamic && host.moving != nullptr && host.moving(native, arguments);
+    moving = !shader.terrain && !dynamic && (shader.moving || (host.moving != nullptr && host.moving(native, arguments)));
   }
   if (moving && !placed) return;
   // The fast path (CPU): a static mesh drawn before, known by its short key while that stood for it alone, is only
@@ -2342,7 +2344,7 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
     if (subobjects[index].type != reshade::api::pipeline_subobject_type::vertex_shader) continue;
     const uint32_t hash = renodx::utils::hash::ComputeCRC32(code, desc->code_size);
     if (host.scene_draw == nullptr && hash != smoke_vertex_shader
-        && std::ranges::none_of(scene_shaders, [hash](const SceneShader& shader) { return shader.hash == hash && shader.capture_shader.empty(); })) {
+        && std::ranges::none_of(scene_shaders, [hash](const SceneShader& shader) { return shader.hash == hash && (shader.capture_shader.empty() || world_captures); })) {
       continue;
     }
     // Bone inputs: the host's test, else the input signature's semantic names (plain text in the code).
