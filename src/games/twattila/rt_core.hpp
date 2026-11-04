@@ -232,6 +232,8 @@ struct Host {
   bool (*main_view)(ID3D11DeviceContext* native) = nullptr;
   // The G-buffer guides again from the reflection pass's G-buffer (null: none; the water's reflections need it).
   void (*rewrite_guides)(ID3D11DeviceContext* native) = nullptr;
+  // A light draw's colour to light in the rays (the paths): times the game's light shader's own scale of its diffuse.
+  float local_light_scale = 1.f;
 };
 
 namespace internal {

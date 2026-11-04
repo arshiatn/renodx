@@ -54,6 +54,8 @@ struct Texts {
   const char* shadow_tooltip;
   const char* ao_tooltip;
   const char* ao_paths_label = "Path-Traced (ReSTIR GI)";
+  const char* fog_shadows_label = "Fog Shadows";
+  const char* fog_shadows_tooltip = "";  // Empty: the row's own.
   const char* gi_tooltip_end = "";
   const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
@@ -116,6 +118,8 @@ struct Bindings {
   bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   bool rays_preset_path_ambient = true;  // The RT/PT preset takes it; false: ray-traced AO, over the game's.
   bool rays_preset_caustics = true;      // The RT/PT preset turns Water Caustics on.
+  // Point light shadows have their own row, off, and with Fog Shadows stay off in the RT/PT preset; no light in the fog.
+  bool lights_experimental = false;
   bool has_reflections = true;
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
 };
@@ -544,6 +548,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     // No paths for the sky's light here: ray-traced AO, over the game's.
     if (!b.has_path_ambient || !b.rays_preset_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     if (!b.rays_preset_caustics) rays_values.emplace_back("WaterCaustics", 0.f);
+    if (b.lights_experimental) rays_values.insert(rays_values.end(), {{"RayTracedPointLightShadows", 0.f}, {"RayTracedLightImportance", 0.f}, {"RayTracedFogShadows", 0.f}});
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
@@ -620,11 +625,17 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Take({.match = key, .section = section, .shown = more_screen});
     }
     const auto more_rays = more(&more_shadows, rays);
-    page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_rays});
-    page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_rays, .label = "Importance-Sampled Torch Shadows (RIS)"});
+    const auto more_lights = [b, more_rays] { return more_rays() && b.rt->local_lights != 0.f; };
+    page.Take({.match = "RayTracedPointLightShadows", .section = section, .shown = more_rays, .only_some_games = true});
+    page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_lights});
+    page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_lights, .label = "Importance-Sampled Torch Shadows (RIS)"});
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays});
-    page.Take({.match = "RayTracedLightGlow", .section = section, .shown = more_rays});
+    if (b.lights_experimental) {
+      page.Keep("RayTracedLightGlow");
+    } else {
+      page.Take({.match = "RayTracedLightGlow", .section = section, .shown = more_rays});
+    }
     page.Take({.match = "RayTracedGrassSway", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedSwayRange", .section = section, .shown = more_rays, .label = "Swaying Shadows Range"});
     page.Take({.match = "RayTracedOffScreenSway", .section = section, .shown = more_rays, .label = "Off-Screen Sway"});
@@ -754,7 +765,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .labels = {"Built-in", "NRD"},
         .is_visible = [upscaling, b] { return upscaling() && !(b.aa->method == 5.f && b.aa->ray_reconstruction != 0.f); },
     });
-    page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = "Fog Shadows"});
+    page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = b.texts->fog_shadows_label, .tooltip = b.texts->fog_shadows_tooltip});
     page.Add(Note("Needs an upscaler (Anti-Aliasing above).", section, MORE_TINT, no_upscaler));
     page.Add(MoreOptions(section, &more_rt, upscaling));
     const auto more_rt_rows = more(&more_rt, upscaling);

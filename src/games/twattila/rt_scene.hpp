@@ -86,6 +86,7 @@ struct Sliders {
   float ambient_rays = 2.f;
   float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
   float fog_shadows = 0.f;  // the fog's (games whose fog InstallFogShadows hooks)
+  float local_lights = 1.f;  // with Ray-Traced Shadows; a row only where the game's light draws aren't proven yet
   float micromaps = 1.f;
   float gpu_micromaps = 1.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
@@ -156,7 +157,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reflection_own = sliders.reflection_reuse == 2.f,
       // Ray-traced sun shadows are every shadow: the point lights' too (games whose light draws InstallPointLights hooks),
       // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
-      .local_lights = sliders.sun_shadows != 0.f && dlaa,
+      .local_lights = sliders.local_lights != 0.f && sliders.sun_shadows != 0.f && dlaa,
       .leaf_light = sliders.leaf_light != 0.f,
       .coloured_shadows = sliders.coloured_shadows != 0.f && sliders.leaf_light != 0.f && internal::ambient_cube != 0,
       .grass_sway = sliders.grass_sway != 0.f,
@@ -480,8 +481,9 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
       native->PSSetShaderResources(draw.ao_slot, 1, objects.combined_srv.GetAddressOf());
     }
   }
-  // The paths and the reflections' rays read it too (the sun on what they meet, their sky), also with the game's shadows.
-  if ((!runtime.settings.sun_shadows && !runtime.settings.path_tracing && !runtime.settings.reflections) || runtime.sun_frame == runtime.frame || !dlaa_bridge::bridge.ray_tracing
+  // The paths, the reflections' rays and the fog's read it too (the sun on what they meet, their sky), also with the game's shadows.
+  if ((!runtime.settings.sun_shadows && !runtime.settings.path_tracing && !runtime.settings.reflections && !runtime.settings.fog_shadows) || runtime.sun_frame == runtime.frame
+      || !dlaa_bridge::bridge.ray_tracing
       || !runtime.objects.constants) {
     return {};
   }
@@ -597,6 +599,8 @@ struct PointLightLayout {
 static std::mutex point_light_mutex;
 static std::unordered_map<uint64_t, PointLightLayout> point_light_layouts;
 static bool point_lights_installed = false;
+static bool point_lights_read = false;
+static bool point_light_layout_missed = false;
 static bool shadow_readers_installed = false;
 
 // The light draws' instances copied for the CPU into a ring of staging buffers, read when the ring comes round (three
@@ -680,6 +684,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           LocalLight light = {};
           std::memcpy(light.light.data(), instance + copy.layout.position, sizeof(light.light));
           std::memcpy(light.colour.data(), instance + copy.layout.colour, sizeof(light.colour));
+          for (size_t channel = 0; channel < 3; ++channel) light.colour[channel] *= internal::host.local_light_scale;
           lights.push_back(light);
         }
       }
@@ -687,6 +692,9 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
       std::ranges::sort(lights, {}, &LocalLight::light);
       const auto repeated = std::ranges::unique(lights, {}, &LocalLight::light);
       lights.erase(repeated.begin(), repeated.end());
+      if (!lights.empty() && !std::exchange(internal::point_lights_read, true)) {
+        renodx::utils::log::i(std::format("[Total War] Local lights: first {} read from the light draws.", lights.size()));
+      }
       AddLocalLights(lights);
     }
     copies.clear();
@@ -695,15 +703,24 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
   ComPtr<ID3D11InputLayout> input_layout;
   native->IAGetInputLayout(input_layout.GetAddressOf());
   internal::PointLightLayout layout;
+  bool layout_known = false;
   {
     const std::unique_lock lock(internal::point_light_mutex);
     const auto found = internal::point_light_layouts.find(reinterpret_cast<uintptr_t>(input_layout.Get()));
-    if (found != internal::point_light_layouts.end()) layout = found->second;
+    if (found != internal::point_light_layouts.end()) {
+      layout = found->second;
+      layout_known = true;
+    }
   }
   ComPtr<ID3D11Buffer> instances;
   UINT stride = 0;
   UINT offset = 0;
-  if (input_layout) native->IAGetVertexBuffers(layout.slot, 1, instances.GetAddressOf(), &stride, &offset);
+  // Without its layout the instances' place isn't known: the mesh's vertices would be read as lights.
+  if (layout_known) {
+    native->IAGetVertexBuffers(layout.slot, 1, instances.GetAddressOf(), &stride, &offset);
+  } else if (!std::exchange(internal::point_light_layout_missed, true)) {
+    renodx::utils::log::i("[Total War] Local lights: a light draw's input layout has no POSITION1 and POSITION2 in one buffer: not read.");
+  }
   auto& buffer = readback.staging[readback.current];
   UINT& used = readback.used[readback.current];
   UINT instance_count = 0;

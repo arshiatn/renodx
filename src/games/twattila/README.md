@@ -9,6 +9,7 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
 
 ## v135 (not released, built only, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23)
 - **Ray-Traced Reflections with the game's or Bend's shadows:** what they meet off screen had no sun on it (the sun's direction was only read with RT shadows or paths). Found on WH3, where every hit goes that way.
+- **Fog Shadows with nothing else from rays:** the fog got no shafts (the same missing direction: its rays counted every point as lit). A light draw whose input layout isn't known is no longer read (its mesh's vertices would have been taken for lights; not known to happen). Found on WH3.
 
 - **Path Tracing with the game's or Bend's shadows**: the paths never got the sun's direction or the ambient cube without ray-traced shadows, so
   what they met off screen had no sun and the sky no direction. With Fog Shadows left on from a preset, fog now gets its rays there too.

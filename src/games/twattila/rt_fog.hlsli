@@ -14,8 +14,10 @@
 Texture2D<float> t_rt_fog : register(t43);
 Texture2D<float4> t_rt_fog_lights : register(t44);
 
-// What the fog in full shadow keeps of its sun-lit colour (the sky's light it scatters).
-static const float RT_FOG_SHADE = 0.35f;
+// What the fog in full shadow keeps of its sun-lit colour (the sky's light it scatters), where that colour holds both.
+#ifndef RT_FOG_SHADE
+#define RT_FOG_SHADE 0.35f
+#endif
 
 // The factor for the fog's sun-lit colour at a render pixel (bilinear between the fog texels: their centres sit at
 // render pixel 4 x + 2).
