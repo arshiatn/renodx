@@ -8,7 +8,9 @@ Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
 - [x] B1 black patches. Proven by runs b1g_c3, b1g_c4, b1g_paths, b1g_paths50, b1g_c5, b1g_siege (check_run ok each; reports/B1.md, tools/tw/wh3_batch3/b1_numbers.py): replay's first view 12.69%, 28 blobs > 0, 0, at 100% and 50%. Cause: 709BC4D7's second draw of each pair (GS 33D642AB only makes skirts) streamed past its GS, coarse hills over the fine ones; row 5767F87C alone changed nothing in the replay, it was the campaign's rectangles. Terrain's mask in a GS (campaign's sea), terrain's room first, Path-Traced AO gone (N3), N4 scan. Harness: tools/tw/all_modes_b1.txt.
       Not done: campaign still has 22% of the view under 0.25 with Everything on, by eye mostly true shadows and AO's range in campaign units: B10, not called clean. Not run: Attila (no tessellated row, no change). WARP: none.
       New for later: B6 FIRST: unit banners (444F1190, stencil ref 1) black with rays on, also in Scene Test Terrain Only: shots/b1g_c3/31_all_near.png; B7/B10: black triangles on far mountains in Debug View 1; B8: leaves 783383C6 left out grow (0.2-0.4 M, siege 1.62 M); Close: delete *.in-use-* in the game folder. Off check's two-run floor is 0.05, not 0.035.
-- [ ] B2 AO at scale
+- [x] B2 AO at scale, Debug View 8. Proven by runs b2_50, b2_100, b2old_50 (old build, started at 50%), b2b_half, b2b_camp_50, b2b_camp_100, check_run ok; WARP warp_tests/ao_filter/run_ao_ratio.ps1; harness all_modes_b2.txt (reports/B2.md).
+      Not done: collect 01 EE5C29AE drawn in no run; live 100 to 50 in a session not run (B4 can); Debug View 8 still magenta in Troy, Pharaoh, WH1, WH2. Not run: Attila (bytes same).
+      Found beyond the plan: GT-VBAO read its settings at b10 while the addon bound b13 (flat white when started at 50%). New for later: B9 G18: game's SSAO is much darker than GT-VBAO under RTAO on this view (Debug 8 mean 28 against 101).
 - [ ] B3 the rest at 50%
 - [ ] B4 upscaling rows, LOD Bias, Effects at Output
 - [ ] B5 motion vectors

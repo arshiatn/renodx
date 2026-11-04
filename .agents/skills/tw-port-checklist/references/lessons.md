@@ -107,6 +107,8 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | Jitter or motion sign or scale wrong: looks sharp when still | Prove by pairs, right vs wrong (FSR 0.081 vs 0.18-0.24, XeSS 0.097, DLSS K 0.106). A proof at 100% says nothing below 100% | Harness jitter sign pairs |
 | A gate for one feature took another's: TAA and T2x lost jitter for twelve versions [5693b7cb, dfb7bbfd] | After any change around jitter, list every AA method's jitter | Read `anti_aliasing.hpp` per method |
 | Render scale active without DLSS running: picture stuck top-left when the helper or files are missing | Gate scale on DLSS really running. A game's own scale slider has no such gate | Read the gate |
+| A pass the game skips at low scale: WH3's AO downsample 49F538CF stops below about 2/3, and what hooked it kept a frozen depth, or nothing if the game started there | Keep what a pass reads from the pass that always runs; trace at 100% and 50% and diff the pass lists | Traces |
+| A texture with its own overscan: WH3's AO is read at uv x `ssao_overscan / warscape_3d_overscan`, 1.5 at 50%. Replacing it at the display's size needs the read changed too (`ssao_constants_slot`) | Read the sun's lines around `t_ssao`; start the game below 100%: a texture never written shows at once | `warp_tests/ao_filter/run_ao_ratio.ps1` |
 | A game's own scale may be top-left in a display-size texture | `Evaluate` and motion scale need the viewport's size, not the texture's; a viewport == screen filter must go, with a new main-view test | Read a trace at 50% |
 | Below 100%, bugs by name: scissor left scaled (flare, markers), flare occlusion, grass depth in split uv form (`Kind::SPLIT`), AO blur and water refraction read whole, refraction under three names, SSS tolerances by the render share, SSS far fade on the backdrop, SSS debug view through DLSS, bloom share, depth for markers stretched | Run the same list per game | `scale_audit patch_test`; a trace at 50% |
 | A learned render size outlives what proved it (method left the upscalers, in-game AA off, the pass that read it no longer runs): `MainViewport` false, Bend, GI, AO filter stop | Tie the size to its source: no upscaler or no such pass for a second, forget it | State machine test over the real header, with presents and no TAA pass |
@@ -209,6 +211,8 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | DevKit in a TW folder loads into the helper and crashes it | Frame trace or capture marks instead |
 | Reports without a check | Numbers from the run, else "not checked" |
 | A fix proves half | Keep the repro after the first fix |
+| An own compute pass in a replaced pass's `on_draw` runs before the mod's push: `SI` at the game's register holds what the last replaced pass pushed, or nothing. WH3's GT-VBAO bound b13, read b10, and only worked after the downsample ran | Bind the settings at the register `shared.h` names; check that a value of `SI` arrives by writing it out | Debug output in a run: one row of `SI.x` |
+| Debug edits put back with `Copy-Item` keep the old file time: the build skips the shader, and the numbers are the debug's | Set the time after restoring; check the `.cso`'s time, and look at the picture before the numbers | - |
 
 ## 10. Process
 

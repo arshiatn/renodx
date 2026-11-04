@@ -7,6 +7,8 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - **Black patches in ray tracing, fixed, run in game** (replay at 100% and 50%, campaign): the terrain's second pass was in the scene as a surface. It tessellates coarsely and only draws skirts; streamed out past its geometry shader, its coarse hills lay over the real ones, sun and AO rays alike. Replay's first view: 12.69% of the view black, 28 blobs; now 0, 0. Also out: `fx_rigidterrain` (boxes that paint terrain inside themselves: the campaign's rectangles) and what the terrain's mask discards (the campaign's sea).
 - The terrain gets its room in the frame first (it joined last and went short at 100%); what doesn't fit is left out of other meshes, leaves first by draw order (Log Details names them).
 - Path-Traced AO is gone from WH3's page and a saved one turns off: with spherical harmonics on the game's ambient cube isn't its sky. The paths' sky is the learned shade.
+- **Ambient occlusion below 100%, fixed, run in game** (replay and campaign, started at 50%, against 100%, one view each): GT-VBAO's depth now comes from the game's sweep, as the downsample it read stops below about 2/3 scale (a frozen depth); its settings reach it at b10 (it had them by luck at 100%, and read radius 0 at 50%: flat white). The AO filter and Ray-Traced AO read the game's AO where its sun draws read it, and the sun reads their textures one to one: the filter darkened the right and bottom third (cells 0.76, now 1.0 to 1.1), RTAO lay 1.5x off. Game's SSAO was right at 50% already: Debug View 8 correlates 0.986 with 100%.
+- **Debug View's Screen-Space AO** works in WH3: what the sun draws read, the game's under RTAO. Troy, Pharaoh, Warhammer I and II: still magenta, nothing changed there.
 - `rt_terrain_keep_gs.h` is built by hand: the command is in the `.hlsl`.
 - Log only, run in game: the helper's idle release no longer says it "started again"; Reflex's line says when frame generation paces the
   game; FSR Frame Generation's status has a real count (2.0 here); no "smoke shadows" in the status; Below 100%'s line printed once the size
@@ -304,8 +306,8 @@ v29 is used twice: the zip twwarhammer3_v29.zip (2026-10-28, its README ends at 
 ## v7 (2026-10-23)
 
 - Ambient occlusion: ATN's settings run the collect without depth (fx_ssao 0x2A629B2B: a plain 3 x 3 average), now
-  replaced too (ssao02); its Visibility Bitmask gets the depth downsample's output (this frame's, kept as a view:
-  line_sweep_ao.hpp KeepUavDepth) at t2. The bitmask code shared by both collects: line_sweep_bitmask.hlsli.
+  replaced too (ssao02); its Visibility Bitmask gets the depth downsample's output (this frame's; since v32 the sweep's
+  depth) at t2. The bitmask code shared by both collects: line_sweep_bitmask.hlsli.
 - Graphics: the game copies its LOD values into each model when it makes it (+0x1419e7eed), so the sliders apply from
   the next battle or campaign load (tooltips); Attila's names (... Distance, Object -> Model Detail).
 
