@@ -6,7 +6,8 @@
 // Warhammer III's ray tracing scene: the terrain's triangles its pixel shaders would keep. fx_rigidterraintessellation's
 // PS (4A87AE19, BB65FB61) discard by t_tile_mask_map where the map's own meshes take over the ground (fx_rigidterrainblend),
 // and there the height map may lie over those meshes: in the scene it covered them, black patches in every ray. A stream
-// output runs no pixel shader, so this tests each triangle's centre as they test a pixel. Bound with the domain shader's
+// output runs no pixel shader, so this tests each triangle's centre and corners as they test a pixel, and all must pass: a
+// triangle with a part over a hole lay over the meshes there (the campaign: black shards on its meadows). Bound with the domain shader's
 // tessellation_cb and the pixel shader's mask (rt_core.hpp Capture), its one output streamed out in place of the domain shader's.
 // CMake's shader rule takes no gs_ target: after a change run in this folder
 // bin\fxc.exe rt_terrain_keep.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /Vn __rt_terrain_keep /Fh rt_terrain_keep_gs.h
@@ -29,16 +30,31 @@ cbuffer tessellation_cb : register(b1) {
   float4 g_terrain_decal_bounds;
   uint g_height_pass;
   uint g_clip_pass;
+  float4 after_clip_pass[5];
+  float3 before_clip_threshold;
+  float g_clip_threshold;
 };
+
+// As the pixel shaders: its own texel, or one of 8 at the threshold's distance (a pixel near a hole's rim stays).
+bool Kept(float2 world) {
+  static const float2 AROUND[8] = {float2(1.f, 0.f), float2(0.707107f, 0.707107f), float2(0.f, 1.f), float2(-0.707107f, 0.707107f),
+                                   float2(-1.f, 0.f), float2(-0.707107f, -0.707107f), float2(0.f, -1.f), float2(0.707107f, -0.707107f)};
+  uint2 mask_size;
+  t_tile_mask_map.GetDimensions(mask_size.x, mask_size.y);
+  const uint bit = (g_clip_pass != 0u ? 16u : 32u);
+  const float2 size = g_full_world_bounds.zw - g_full_world_bounds.xy;
+  if ((uint(round(t_tile_mask_map.Load(int3(uint2(saturate((world - g_full_world_bounds.xy) / size) * mask_size), 0)).x * 255.f)) & bit) != 0u) return true;
+  for (uint near = 0u; near < 8u; ++near) {
+    const float2 uv = saturate((world + (AROUND[near] * g_clip_threshold) - g_full_world_bounds.xy) / size);
+    if ((uint(round(t_tile_mask_map.Load(int3(uint2(uv * mask_size), 0)).x * 255.f)) & bit) != 0u) return true;
+  }
+  return false;
+}
 
 [maxvertexcount(3)]
 void main(triangle Corner corners[3], inout TriangleStream<Output> stream) {
-  const float2 centre = (corners[0].world.xz + corners[1].world.xz + corners[2].world.xz) / 3.f;
-  uint2 mask_size;
-  t_tile_mask_map.GetDimensions(mask_size.x, mask_size.y);
-  const float2 uv = saturate((centre - g_full_world_bounds.xy) / (g_full_world_bounds.zw - g_full_world_bounds.xy));
-  const uint texel = uint(round(t_tile_mask_map.Load(int3(uint2(uv * mask_size), 0)).x * 255.f));
-  if ((texel & (g_clip_pass != 0u ? 16u : 32u)) == 0u) return;
+  if (!Kept((corners[0].world.xz + corners[1].world.xz + corners[2].world.xz) / 3.f)
+      || !Kept(corners[0].world.xz) || !Kept(corners[1].world.xz) || !Kept(corners[2].world.xz)) return;
   for (uint corner = 0u; corner < 3u; ++corner) {
     Output output;
     output.position = corners[corner].position;

@@ -247,6 +247,8 @@ struct Host {
   const float* placed_row = nullptr;
   // A light draw's colour to light in the rays (the paths): times the game's light shader's own scale of its diffuse.
   float local_light_scale = 1.f;
+  // A metre in the campaign map's world units, for the rays' ranges (frame_history::campaign_frames; 1: as in a battle).
+  float campaign_metre = 1.f;
 };
 
 namespace internal {
@@ -658,6 +660,10 @@ static bool clip_captures = false;  // the scene shaders stream out their SV_Pos
 static bool world_captures = false;  // and some are placed: those in world space (WORLD_BASE)
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
+
+inline float RangeScale() {
+  return (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? host.campaign_metre : 1.f);
+}
 
 inline bool Enabled() {
   return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.light_bounce || runtime.settings.reflections
@@ -2141,7 +2147,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)
                | (std::min(runtime.settings.smoke_quality, 2u) << dlaa_bridge::RT_SMOKE_QUALITY_SHIFT),
-      .ambient_range = runtime.settings.ambient_range,
+      .ambient_range = runtime.settings.ambient_range * RangeScale(),
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
       .frame = static_cast<uint32_t>(runtime.frame),
@@ -2239,7 +2245,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
       .bounce_height = height,
       .scale = scale,
       .rays = runtime.settings.light_bounce_rays,
-      .range = runtime.settings.light_bounce_range,
+      .range = runtime.settings.light_bounce_range * RangeScale(),
       .view_projection = runtime.traced_view_projection,
       .path_flags = runtime.settings.path_tracing ? (dlaa_bridge::RT_PATH_TRACING | dlaa_bridge::RT_PATH_REUSE
                                                      | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u)
@@ -2447,8 +2453,8 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
                  | (light_copied ? dlaa_bridge::RT_REFLECTIONS_LIGHT : 0u),
         .samples = runtime.settings.reflection_samples,
         .bounces = runtime.settings.path_tracing ? runtime.settings.path_bounces : 0u,
-        .range = runtime.settings.light_bounce_range,
-        .reflection_range = 10.f,
+        .range = runtime.settings.light_bounce_range * internal::RangeScale(),
+        .reflection_range = 10.f * internal::RangeScale(),
         .view_projection = runtime.traced_view_projection,
         .guides = internal::host.guides_written(),
     };

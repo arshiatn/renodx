@@ -2453,7 +2453,14 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> TERRAIN_MASKS = {{
     {.pixel_shader = 0xBB65FB61, .slot = 8},  // the campaign's
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
+// The ground's other meshes, A40D7DDB (fx_rigidterrain's blended tiles on the height map: the campaign's most, some battle maps'): their first
+// draw writes the depth; its PS 1E05843F only blends them in again.
+constexpr std::array<twattila::rt_scene::PixelMask, 2> GROUND_MESH_PASSES = {{
+    {.pixel_shader = 0xA1C85113},
+    {.pixel_shader = 0x90FBDD61},
+}};
+
+constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidambientmapfiremesh
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
@@ -2467,6 +2474,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x31584506, .dynamic = true},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
     {.hash = 0xC0ED2883, .dynamic = true},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
+    // The campaign's ground where the tessellated terrain's mask leaves it: tiles on the height map (a pass with no holes), every frame as they're culled by the view.
+    {.hash = 0x15FE8427, .terrain = true, .dynamic = true},
+    {.hash = 0xA40D7DDB, .terrain = true, .dynamic = true, .pixel_masks = GROUND_MESH_PASSES},
+    // The campaign's trees and bushes (rows as the rigid objects', by their bytes; wind and the lean toward the camera left out, as Attila's), the plants solid.
+    {.hash = 0xD025F795, .capture_shader = __rt_capture_rigid_cut_out, .rows_shader = __rt_rows_rigid, .foliage = true, .still = true, .mask_slot = 2},
+    {.hash = 0xBDAEC4F3, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},
     {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true, .pixel_masks = TERRAIN_MASKS, .tessellated_keep = __rt_terrain_keep},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
     {.hash = 0xB8C567C3, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted (skinned units)
     {.hash = 0x2C45437C, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // rigid_character_alpha
@@ -2513,6 +2526,15 @@ const twattila::rt_scene::Host RT_HOST = {
     .placed_row = &placed_objects_row,
     // All 8 light PS scale their diffuse by this (and specular not at all); the paths light what they meet by the diffuse's rule.
     .local_light_scale = 7.615242e-05f,
+    // A tree on the map stands about 1.7 units (camera 4.97 over the sea, its height on screen), one in a battle about 10 m.
+    .campaign_metre = 0.1f,
+};
+
+// What only the campaign map draws: its borders, the shroud's plane (rt_positions: its sea's level).
+constexpr std::array<uint32_t, 2> CAMPAIGN_SHADERS = {0x2F565F7A, 0x959936FE};
+constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  twattila::frame_history::campaign_frames.store(2, std::memory_order_relaxed);
+  return {};
 };
 
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};
@@ -2619,6 +2641,9 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
+    campaign_frames.fetch_sub(1, std::memory_order_relaxed);
+  }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflections::sun_cubes_known = true;
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -3113,6 +3138,10 @@ bool AttachAddon() {
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
+  for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   twattila::rt_scene::InstallCutOutMasks(twwarhammer3::CUT_OUT_MASKS);
   twattila::rt_scene::InstallPointLights(std::span(traced_lights::SHADERS).first(traced_lights::POINT_LIGHT_SHADERS));
   twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS, traced_lights::FOG_SHADERS));
@@ -3204,6 +3233,7 @@ void DetachAddon() {
   twattila::light_bounce::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::rt_scene::Uninstall();
+  renodx::utils::command_action::Unregister(OnCampaignDraw);
   renodx::utils::command_action::Unregister(OnSunDrawGuides);
   renodx::utils::command_action::Unregister(sun_ao::OnSunDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(sun_ao::OnDestroyDevice);
