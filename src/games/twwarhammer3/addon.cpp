@@ -26,6 +26,7 @@
 #include <include/reshade.hpp>
 
 #include <embed/shaders.h>
+#include "./rt_terrain_keep_gs.h"
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
@@ -2371,7 +2372,10 @@ constexpr std::array<twattila::light_bounce::SunDraw, 7> LIGHT_BOUNCE_DRAWS = {{
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the G-buffer's opaque meshes as the game's own vertex shaders draw them
 // (their SV_Position streamed out: WH3 has no capture versions), units (skinned, character alpha), flags and grass every
-// frame. Not in it: billboards (cards facing the camera: their shadow would turn with it), decals and water.
+// frame. Not in it: billboards (cards facing the camera: their shadow would turn with it), decals and water, and what has no
+// surface: fx_rigidterrain's VS 5767F87C draws boxes (a unit cube between an instance's two corners) in which its PS 568F3F05,
+// E6CD215D, 7070E23D, 9A818169 read the depth, discard outside and paint the terrain's materials. In the scene their tops
+// lay over the ground: black patches in every ray. The ground is 709BC4D7.
 // The grass's vertex shader serves three families: by their pixel shaders' clip, the opacity is t_xml_base_colour at t2 or
 // t0; grass rock (no clip) and the depth-only versions stay out.
 constexpr std::array<twattila::rt_scene::PixelMask, 4> GRASS_MASKS = {{
@@ -2381,13 +2385,18 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> GRASS_MASKS = {{
     {.pixel_shader = 0x87AC76BF, .slot = 0},
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 12> SCENE_SHADERS = {{
+// The terrain's pixel shaders and where they read t_tile_mask_map (rt_terrain_keep): what they discard stays out of the scene.
+constexpr std::array<twattila::rt_scene::PixelMask, 2> TERRAIN_MASKS = {{
+    {.pixel_shader = 0x4A87AE19, .slot = 2},  // its pass with the G-buffer's depth
+    {.pixel_shader = 0xBB65FB61, .slot = 8},  // the campaign's
+}};
+
+constexpr std::array<twattila::rt_scene::SceneShader, 11> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4},                    // fx_rigidanisotropic
     {.hash = 0x8EE34EC5},                    // fx_rigidambientmapfiremesh
     {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
     {.hash = 0xC0ED2883},                    // fx_rigidtextureblend
-    {.hash = 0x5767F87C, .terrain = true},   // fx_rigidterrain
-    {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
+    {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true, .pixel_masks = TERRAIN_MASKS, .tessellated_keep = __rt_terrain_keep},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
     {.hash = 0xB8C567C3, .dynamic = true},   // fx_weighted (skinned units)
     {.hash = 0x2C45437C, .dynamic = true},   // rigid_character_alpha
     {.hash = 0x3193A71F, .dynamic = true},   // fx_weighted's 4-bone units
@@ -2485,6 +2494,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (rt_sliders.ambient_occlusion != 0.f && shader_injection.ssao_mode >= 1.f) {
     renodx::utils::settings::UpdateSettings({{"ssao_mode", 0.f}});
   }
+  // A setup saved with Path-Traced AO: no row can undo it here (has_path_ambient).
+  if (rt_sliders.path_ambient != 0.f) renodx::utils::settings::UpdateSettings({{"RayTracedPathAmbient", 0.f}});
   // Rays a Pixel's Match Output by the game's scale, through the hidden rows' values (nothing saved; they are the page's, not the game's).
   const float render_share = twwarhammer3::taa_dlss::RenderShare();
   aa_sliders.dlss_mode = (render_share < 1.f) ? static_cast<float>(twattila::feature_settings::DLSS_MODE_SCALES.size()) : 0.f;
@@ -2888,8 +2899,8 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout, then Settings Mode's pages. The game owns its scale; its ambient occlusion stays under ray-traced AO
-  // yet; smoke and foliage aren't known here. Its march is already hierarchical: no FidelityFX SSSR. Path-traced AO is a choice, not the preset's: how
-  // bright it comes out against the game's ambient (spherical harmonics, its Global Illumination) needs ATN's eyes first.
+  // yet; smoke and foliage aren't known here. Its march is already hierarchical: no FidelityFX SSSR. No Path-Traced AO: with spherical harmonics on the
+  // cube isn't the sky (rt_sun), so the paths have no sky of the game's to bring.
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .below_100 = &below_100_row,
@@ -2898,7 +2909,7 @@ void ConfigureAddon() {
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
                                              .has_scale_rows = false,
                                              .has_foliage_light = false,
-                                             .rays_preset_path_ambient = false,
+                                             .has_path_ambient = false,
                                              .rays_preset_caustics = false,
                                              .lights_experimental = true,
                                              .rays_replace_ao = false});

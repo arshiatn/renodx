@@ -8,7 +8,8 @@
 // texels 3-8, the paths' sky (dlaa_helper/rt_path.hlsli SkyLight). Its sun light shaders take the cube at the normal, squared,
 // x g_ambient_fudge_factor (c18.w), or without that factor with spherical harmonics on (c11.z): texel 4's w, the paths' sky
 // in the game's units. Texel 6's w 0: no stretch of the normal in the sky's calibration. A cube of all zeros isn't this
-// place's ambient: texel 3's w 0, none.
+// place's ambient: texel 3's w 0, none. With spherical harmonics on the cube is only what they fade to outside the playable
+// area (9EAD8951: 0 to 0.07, sides at 0), not the sky: texel 3's w 0 too, the paths' sky is the learned shade.
 cbuffer lighting_VS_PS : register(b0)
 {
   float4 lighting[19];
@@ -47,7 +48,7 @@ void main()
   for (uint side = 0u; side < 6u; ++side)
   {
     const uint first = rt_sun.y + side * 4u;
-    const float w = (side == 1u) ? scale : ((side == 3u) ? 0.f : 1.f);
+    const float w = (side == 0u) ? (spherical_harmonics ? 0.f : 1.f) : ((side == 1u) ? scale : ((side == 3u) ? 0.f : 1.f));
     sun[uint2(3u + side, 0)] = has_cube ? float4(LightingValue(first), LightingValue(first + 1u), LightingValue(first + 2u), w) : 0.f;
   }
 }
