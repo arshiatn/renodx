@@ -913,6 +913,58 @@ void OnDestroyDevice(reshade::api::device*) {
 
 }  // namespace reflections
 
+// Point light shadows and fog shadows from rays: 8 light PS (fx_pointlight*: linear and smooth falloff, with and without the point
+// shadow map and the aux G-buffer) and the fog's light PS (fx_battlefog, half resolution, traced after the sun). Our copies run only
+// where rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture.
+namespace traced_lights {
+
+constexpr std::array<uint32_t, 9> SHADERS = {0x8AD6BFD4, 0xEBF0B0A0, 0xB2453C88, 0x1315B4F2, 0x2240F035, 0xF551453C, 0xBE7249F1, 0xEE766574, 0xA8F5202D};
+constexpr size_t POINT_LIGHT_SHADERS = 8;
+std::array<std::span<const uint8_t>, SHADERS.size()> codes = {};
+std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SHADERS.size()> ours = {};
+std::array<std::atomic_bool, SHADERS.size()> logged = {};
+Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
+
+// Registered after rt_scene's hooks, so run after them: their texture is bound by now, or isn't this frame.
+constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const auto& hash = command.template GetCallbackData<uint32_t>();
+  const size_t index = &hash - SHADERS.data();
+  if (!logged[index].exchange(true, std::memory_order_relaxed)) {
+    renodx::utils::log::i(std::format("[Warhammer III] First run: light or fog draw, ps {:08X}.", hash));
+  }
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> bound;
+  // rt_local_lights.hlsli's mask, rt_fog.hlsli's fog.
+  native->PSGetShaderResources((index < POINT_LIGHT_SHADERS) ? 42 : 43, 1, bound.GetAddressOf());
+  if (!bound) return {};
+  auto& shader = ours[index];
+  if (!shader) {
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    const auto code = codes[index];
+    if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {};
+    renodx::utils::log::i(std::format("[Warhammer III] Rays applied: light or fog draw, ps {:08X}.", hash));
+  }
+  native->PSGetShader(game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  native->PSSetShader(shader.Get(), nullptr, 0);
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+    if (post_native == nullptr) return;
+    post_native->PSSetShader(game_shader.Get(), nullptr, 0);
+    game_shader.Reset();
+  }};
+};
+
+void OnDestroyDevice(reshade::api::device*) {
+  for (auto& shader : ours) shader.Reset();
+  game_shader.Reset();
+}
+
+}  // namespace traced_lights
+
 #define FrameCopyShader(value)              \
   {                                         \
       value,                                \
@@ -1137,6 +1189,12 @@ void BuildRuntimeData() {
   custom_shaders[0xEF6B7767] = {.crc32 = 0xEF6B7767, .on_inject = not_injected, .on_draw = &reflections::OnMarch};
   for (const uint32_t blur : {0x2559E5AEu, 0xDB5D3C54u}) {
     custom_shaders[blur] = {.crc32 = blur, .on_inject = not_injected, .on_draw = [](auto*) { return reflections::pass != reflections::Pass::RAYS; }};
+  }
+  // Point lights and fog: the same, our copies aren't the game's unless the rays are bound (the traced_lights namespace above).
+  for (size_t index = 0; index < traced_lights::SHADERS.size(); ++index) {
+    const uint32_t hash = traced_lights::SHADERS[index];
+    traced_lights::codes[index] = custom_shaders[hash].code;
+    custom_shaders[hash] = {.crc32 = hash, .on_inject = not_injected};
   }
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
@@ -2212,6 +2270,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original, on water only. DXR: from rays, also what is off screen or hidden, on water,\n"
                            "armour and metal. Needs an upscaler.",
+    .fog_shadows_label = "Fog Shadows (Experimental)",
+    .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog: it loses the sun's glow in the shadow of\n"
+                           "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
 };
 
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -2353,6 +2414,8 @@ const twattila::rt_scene::Host RT_HOST = {
     .guides_written = twwarhammer3::taa_dlss::GuidesWritten,
     .main_view = twattila::frame_history::MainViewport,
     .rewrite_guides = [](ID3D11DeviceContext* native) { twwarhammer3::taa_dlss::RewriteGuides(native, reflections::march_gbuffer, reflections::march_camera.Get()); },
+    // All 8 light PS scale their diffuse by this (and specular not at all); the paths light what they meet by the diffuse's rule.
+    .local_light_scale = 7.615242e-05f,
 };
 
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};
@@ -2422,7 +2485,9 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   const float render_share = twwarhammer3::taa_dlss::RenderShare();
   aa_sliders.dlss_mode = (render_share < 1.f) ? static_cast<float>(twattila::feature_settings::DLSS_MODE_SCALES.size()) : 0.f;
   aa_sliders.render_scale = render_share * 100.f;
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // Torch light in fog stays out: nothing shows what a light's colour is worth in the fog's light.
+  rt_settings.light_glow = 0.f;
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -2707,6 +2772,17 @@ void ConfigureAddon() {
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
   settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedPointLightShadows",
+      .binding = &rt_sliders.local_lights,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Torch and Fire Shadows (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Torches and fires cast their shadows from rays too.\n"
+                 "With Path-Traced Global Illumination they also light what the screen never saw.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
       .default_value = 1.f,
@@ -2820,6 +2896,7 @@ void ConfigureAddon() {
                                              .has_foliage_light = false,
                                              .rays_preset_path_ambient = false,
                                              .rays_preset_caustics = false,
+                                             .lights_experimental = true,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
@@ -2836,6 +2913,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
 
@@ -2848,6 +2926,13 @@ bool AttachAddon() {
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
+  twattila::rt_scene::InstallPointLights(std::span(traced_lights::SHADERS).first(traced_lights::POINT_LIGHT_SHADERS));
+  twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS));
+  // After those two: they bind what decides here (none of these is a sun draw).
+  for (const uint32_t& hash : traced_lights::SHADERS) {
+    renodx::utils::command_action::Register(
+        traced_lights::OnDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &hash);
+  }
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   for (const auto& water : WATER_SHADERS) {
@@ -2901,6 +2986,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::copy_resource>(aa_target::OnCopyResource);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(aa_target::OnCopyTextureRegion);
@@ -2919,6 +3006,7 @@ void DetachAddon() {
   twattila::ao_filter::Uninstall();
   twattila::rt_scene::Uninstall();
   renodx::utils::command_action::Unregister(OnSunDrawGuides);
+  renodx::utils::command_action::Unregister(traced_lights::OnDraw);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
