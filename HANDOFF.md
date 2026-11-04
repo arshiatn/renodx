@@ -1,5 +1,22 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## WH3 BATCH 3 (from 2026-11-04): fixes, DLSS rows, motion, full RT scene; game runs allowed on replay copies, campaign copy, benchmark
+Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch3/reports/Bn.md. Facts: wh3_batch3/facts.md. Run: test_scripts/run_game.ps1 -Game wh3, proof: wh3_batch3/check_run.py.
+- [ ] B0 kit, log fixes, captures (in progress)
+- [ ] B1 black patches
+- [ ] B2 AO at scale
+- [ ] B3 the rest at 50%
+- [ ] B4 upscaling rows, LOD Bias, Effects at Output
+- [ ] B5 motion vectors
+- [ ] B6 cut-outs, cloth, units' other VS
+- [ ] B7 buildings, rocks, tents, mountains
+- [ ] B8 placed instances
+- [ ] B9 rays in charge
+- [ ] B10 far scene, campaign
+- [ ] B11 reflections, march, fog
+- [ ] B12 soak and whole
+- [ ] Close
+
 ## WH3 BATCH (from 2026-11-03): WH3 gets Attila's layout and features; nobody starts a game
 
 The plan lives outside the repo: tools/tw/wh3_batch/plan_final.md (tools/tw = C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw), reports beside it in reports/. Lessons: `.agents/skills/tw-port-checklist`. One implementer at a time, every phase ticked here in its own commit, pushed to origin atn-mods. Everything new is off by default until ATN's in-game test list (P13).

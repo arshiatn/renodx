@@ -112,6 +112,7 @@ namespace internal {
 // The sun draws' lighting buffer's ambient cube, its first float (InstallSunDraws; 0: none): the paths' sky.
 static UINT ambient_cube = 0;
 static bool fog_shadows_installed = false;
+static bool smoke_shadows_installed = false;
 }  // namespace internal
 
 // `light_bounce_strength`: the game's Light Bounce (its rays and paths replace the Light Bounce's trace; off, nothing to
@@ -172,7 +173,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa && internal::fog_shadows_installed,
       .micromaps = sliders.micromaps != 0.f,
       .gpu_micromaps = sliders.gpu_micromaps != 0.f,
-      .smoke_shadows = sliders.smoke_shadows != 0.f && sliders.sun_shadows != 0.f && dlaa,
+      .smoke_shadows = sliders.smoke_shadows != 0.f && sliders.sun_shadows != 0.f && dlaa && internal::smoke_shadows_installed,
       .smoke_quality = static_cast<uint32_t>(sliders.smoke_quality),
       .nrd = sliders.denoiser != 0.f,
       .shadows_only = sliders.sun_shadows != 0.f && dlaa,
@@ -621,7 +622,6 @@ struct PointLightReadback {
   size_t current = 0;
 };
 static PointLightReadback point_light_readback;
-static bool smoke_shadows_installed = false;
 
 inline void OnInitInputLayout(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
                               const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {

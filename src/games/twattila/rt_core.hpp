@@ -456,7 +456,7 @@ struct Runtime {
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
   uint32_t tessellated_draws = 0;  // this frame's so far (DeviceObjects::tessellated)
-  bool tessellated_room_logged = false;
+  uint64_t tessellated_room_log_tick = 0;
   uint32_t dynamic_vertices = 0;
   uint32_t unit_vertices = 0;   // of them the units' (skinned soldiers and horses), their triangles and clusters
   uint32_t unit_triangles = 0;
@@ -1799,9 +1799,10 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       runtime.dynamic_triangles += corners / 3;
       runtime.dynamic_clusters += ((corners / 3) + dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES - 1) / dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
     }
-    if (corners / 3 < triangles_needed && !runtime.tessellated_room_logged) {
-      runtime.tessellated_room_logged = true;
-      renodx::utils::log::i(std::format("[Total War] Ray tracing: tessellated triangles without room: {} of {}.", corners / 3, triangles_needed));
+    if (const uint64_t tick = GetTickCount64();
+        corners / 3 < triangles_needed && (runtime.tessellated_room_log_tick == 0 || (runtime.settings.debug_log && tick >= runtime.tessellated_room_log_tick + 10000))) {
+      runtime.tessellated_room_log_tick = tick;
+      renodx::utils::log::i(std::format("[Total War] Ray tracing: tessellated triangles without room: {} of {} ({} written, room for {}).", corners / 3, triangles_needed, triangles, room / 3));
     }
   }
   // The cost report's timestamps (a set still pending: this frame without).
@@ -2491,14 +2492,16 @@ inline void Update(const Settings& settings) {
   dlaa_bridge::bridge.details = settings.debug_log;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   ++runtime.frame;
-  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed): every mesh
-  // captured again.
+  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or, with the rays
+  // off, released its scene after 10 s: every mesh captured again.
   if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {
     runtime.helper_device = device;
     runtime.known.clear();
     runtime.short_keys.clear();
     for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
-    renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
+    if (internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
+      renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
+    }
   }
   // Off for longer than the helper's IDLE_RELEASE: its scene is gone and nothing points at these, the addon's memory and
   // its hold on the game's mask textures back.

@@ -48,6 +48,7 @@
 #include "./lighting_settings.hpp"
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
+#include "./test_hooks.hpp"
 #include "./water_effects.hpp"
 #include "./smoke_map.hpp"
 #include "./ssr_hiz.hpp"
@@ -1299,55 +1300,6 @@ void OnInitDevice(reshade::api::device*) {
   twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size));
 }
 
-// Tests without input, that many seconds after the addon loaded: RENODX_TW_SHOT=<seconds>[,<count>[,<gap>]] ReShade
-// screenshots (its save path, "auto"; by default a second 5 s later), RENODX_TW_PROFILE=<seconds> Record Ray Tracing Profile.
-void OnReshadePresentShot(reshade::api::effect_runtime* runtime) {
-  const auto seconds = [](const char* name) {
-    std::array<char, 32> value = {};
-    return (GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size())) != 0) ? std::strtoull(value.data(), nullptr, 10) * 1000ull
-                                                                                                : 0ull;
-  };
-  static const uint64_t shot_ms = seconds("RENODX_TW_SHOT");
-  static const auto [shot_count, shot_gap_ms] = [] {
-    std::array<char, 32> value = {};
-    GetEnvironmentVariableA("RENODX_TW_SHOT", value.data(), static_cast<DWORD>(value.size()));
-    const char* comma = std::strchr(value.data(), ',');
-    const char* gap = (comma != nullptr) ? std::strchr(comma + 1, ',') : nullptr;
-    return std::pair<int, uint64_t>{(comma != nullptr) ? std::atoi(comma + 1) : 2, (gap != nullptr) ? std::strtoull(gap + 1, nullptr, 10) * 1000ull : 5000ull};
-  }();
-  static const uint64_t profile_ms = seconds("RENODX_TW_PROFILE");
-  // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...]: settings changed then (as their sliders would).
-  static std::string changes = [] {
-    std::array<char, 8192> value = {};
-    const DWORD length = GetEnvironmentVariableA("RENODX_TW_SET", value.data(), static_cast<DWORD>(value.size()));
-    return std::string(value.data(), length < value.size() ? length : 0);
-  }();
-  static const uint64_t loaded = GetTickCount64();
-  static int taken = 0;
-  static bool profiled = false;
-  const uint64_t now = GetTickCount64();
-  if (profile_ms != 0 && !profiled && now >= loaded + profile_ms) {
-    twattila::rt_scene::StartProfile();
-    profiled = true;
-  }
-  for (size_t colon = changes.find(':'), equals = changes.find('=');
-       colon != std::string::npos && equals > colon && equals != std::string::npos
-       && now >= loaded + (std::strtoull(changes.c_str(), nullptr, 10) * 1000ull);
-       colon = changes.find(':'), equals = changes.find('=')) {
-    const std::string key = changes.substr(colon + 1, equals - colon - 1);
-    for (auto* setting : settings) {
-      if (setting->key != key || setting->binding == nullptr) continue;
-      *setting->binding = std::strtof(changes.c_str() + equals + 1, nullptr);
-      renodx::utils::log::i(std::format("[Total War] Test: {} set to {}.", key, *setting->binding));
-    }
-    const size_t next = changes.find(';');
-    changes.erase(0, (next == std::string::npos) ? next : next + 1);
-  }
-  if (shot_ms == 0 || taken >= shot_count || now < loaded + shot_ms + (taken * shot_gap_ms)) return;
-  runtime->save_screenshot("auto");
-  ++taken;
-}
-
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
@@ -1949,10 +1901,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
-  if (GetEnvironmentVariableA("RENODX_TW_SHOT", nullptr, 0) != 0 || GetEnvironmentVariableA("RENODX_TW_PROFILE", nullptr, 0) != 0
-      || GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) != 0) {
-    reshade::register_event<reshade::addon_event::reshade_present>(OnReshadePresentShot);
-  }
+  twattila::test_hooks::Install(&settings, true);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
@@ -2030,7 +1979,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
-  reshade::unregister_event<reshade::addon_event::reshade_present>(OnReshadePresentShot);
+  twattila::test_hooks::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);

@@ -20,6 +20,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <include/reshade.hpp>
@@ -76,6 +77,9 @@ struct State {
   // Attila's camera_VS_PS: g_screen_size, g_viewport_dimensions.
   uint32_t camera_screen_register = 27;
   uint32_t camera_viewport_register = 29;
+  std::vector<uint32_t> value_hashes;  // Install's: a draw of these shaders, once each in a trace, its constants too
+  std::vector<uint32_t> values_written;
+  bool indirect_values_written = false;
 };
 static State state;
 
@@ -139,6 +143,71 @@ std::string DescribeInputs(GetViews get_views) {
   return inputs;
 }
 
+// What a draw reads and how it blends and tests, for the trace's next line: vertex buffers (slot, stride, whether the CPU
+// writes it), other stages' shaders, each target's write mask and blend, stencil.
+inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D11DeviceContext* context) {
+  std::string text = " | state";
+  for (const auto [name, stage] : {std::pair{"gs", reshade::api::pipeline_stage::geometry_shader}, std::pair{"hs", reshade::api::pipeline_stage::hull_shader},
+                                   std::pair{"ds", reshade::api::pipeline_stage::domain_shader}}) {
+    if (const uint32_t hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, stage); hash != 0) text += std::format(" {} {:08X}", name, hash);
+  }
+  std::array<ID3D11Buffer*, 4> buffers = {};
+  std::array<UINT, 4> strides = {};
+  std::array<UINT, 4> offsets = {};
+  context->IAGetVertexBuffers(0, static_cast<UINT>(buffers.size()), buffers.data(), strides.data(), offsets.data());
+  for (uint32_t slot = 0; slot < buffers.size(); ++slot) {
+    if (buffers[slot] == nullptr) continue;
+    D3D11_BUFFER_DESC desc = {};
+    buffers[slot]->GetDesc(&desc);
+    text += std::format(" vb{} stride {}{}", slot, strides[slot], (desc.Usage == D3D11_USAGE_DYNAMIC ? " dynamic" : ""));
+    buffers[slot]->Release();
+  }
+  D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+  context->IAGetPrimitiveTopology(&topology);
+  text += std::format(" topology {}", static_cast<int>(topology));
+  ComPtr<ID3D11BlendState> blend;
+  context->OMGetBlendState(blend.GetAddressOf(), nullptr, nullptr);
+  D3D11_BLEND_DESC blend_desc = {};
+  if (blend) {
+    blend->GetDesc(&blend_desc);
+    for (uint32_t slot = 0; slot < 8; ++slot) {
+      const auto& target = blend_desc.RenderTarget[blend_desc.IndependentBlendEnable != FALSE ? slot : 0];
+      text += std::format(" m{}={:x}{}", slot, target.RenderTargetWriteMask, (target.BlendEnable != FALSE ? "b" : ""));
+    }
+  } else {
+    text += " m=default";
+  }
+  ComPtr<ID3D11DepthStencilState> depth_state;
+  UINT stencil_ref = 0;
+  context->OMGetDepthStencilState(depth_state.GetAddressOf(), &stencil_ref);
+  D3D11_DEPTH_STENCIL_DESC depth_desc = {};
+  if (depth_state) depth_state->GetDesc(&depth_desc);
+  if (depth_desc.StencilEnable != FALSE) text += std::format(" stencil ref {} read {:x} write {:x}", stencil_ref, depth_desc.StencilReadMask, depth_desc.StencilWriteMask);
+  return text;
+}
+
+// The first floats of a draw's constant buffers (VS and PS, b0 to b3).
+inline std::string DescribeConstants(ID3D11DeviceContext* context) {
+  std::string text;
+  const auto read = [&](const char* stage, std::array<ID3D11Buffer*, 4> buffers) {
+    for (uint32_t slot = 0; slot < buffers.size(); ++slot) {
+      if (buffers[slot] == nullptr) continue;
+      D3D11_BUFFER_DESC desc = {};
+      buffers[slot]->GetDesc(&desc);
+      text += std::format("\n  {} b{} {} bytes:", stage, slot, desc.ByteWidth);
+      for (const float value : ReadBuffer<float>(context, buffers[slot], 0, std::min(desc.ByteWidth / 4, 64u))) text += std::format(" {}", value);
+      buffers[slot]->Release();
+    }
+  };
+  std::array<ID3D11Buffer*, 4> buffers = {};
+  context->VSGetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+  read("vs", buffers);
+  buffers = {};
+  context->PSGetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+  read("ps", buffers);
+  return text;
+}
+
 inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t count) {
   if (!state.tracing.load(std::memory_order_relaxed)) return;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
@@ -169,11 +238,26 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
   ComPtr<ID3D11Buffer> constants;
   context->PSGetConstantBuffers(0, 1, constants.GetAddressOf());
   if (!constants) context->VSGetConstantBuffers(0, 1, constants.GetAddressOf());
-  Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{} |{}{}", kind, count,
-                     renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader),
-                     renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader),
+  const uint32_t vertex_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
+  const uint32_t pixel_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
+  // The trace's first indirect draw (the game's particles draw so) and Install's shaders, once each: their constants.
+  bool values = false;
+  {
+    const std::lock_guard lock(state.mutex);
+    if (kind.ends_with("indirect") && !state.indirect_values_written) {
+      state.indirect_values_written = true;
+      values = true;
+    }
+    for (const uint32_t hash : {vertex_hash, pixel_hash}) {
+      if (std::ranges::find(state.value_hashes, hash) != state.value_hashes.end() && std::ranges::find(state.values_written, hash) == state.values_written.end()) {
+        state.values_written.push_back(hash);
+        values = true;
+      }
+    }
+  }
+  Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{} |{}{}{}{}", kind, count, vertex_hash, pixel_hash,
                      outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY, inputs,
-                     DescribeCamera(context, constants.Get())));
+                     DescribeCamera(context, constants.Get()), DescribeDrawState(cmd_list, context), (values ? DescribeConstants(context) : std::string())));
 }
 
 inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t, uint32_t) {
@@ -286,14 +370,16 @@ inline void UseEvents(bool use) {
 
 }  // namespace internal
 
-// At the addon's start: whether this run traces a frame; the camera's g_screen_size and g_viewport_dimensions registers.
-inline void Install(uint32_t camera_screen_register = 27, uint32_t camera_viewport_register = 29) {
+// At the addon's start: whether this run traces a frame; the camera's g_screen_size and g_viewport_dimensions registers;
+// shaders whose first draw in a trace also lists its constants.
+inline void Install(uint32_t camera_screen_register = 27, uint32_t camera_viewport_register = 29, std::vector<uint32_t> value_hashes = {}) {
   bool wanted = false;
   reshade::get_config_value(nullptr, "renodx", "FrameTrace", wanted);
   const std::lock_guard lock(internal::state.mutex);
   internal::state.wanted = wanted;
   internal::state.camera_screen_register = camera_screen_register;
   internal::state.camera_viewport_register = camera_viewport_register;
+  internal::state.value_hashes = std::move(value_hashes);
 }
 
 // A mark in the traced frame (the anti-aliasing's tone mapper end, DLSS).
@@ -343,6 +429,8 @@ inline void OnPresent(bool scaled) {
       state.wanted = false;
       state.text = "One frame at the DLSS render scale: draws, dispatches, copies (vs / ps / cs, targets, viewport, inputs, camera).\n";
       state.lines = 0;
+      state.values_written.clear();
+      state.indirect_values_written = false;
       start = true;
     }
   }

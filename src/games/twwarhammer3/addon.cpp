@@ -42,6 +42,7 @@
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
 #include "./taa_dlss.hpp"
 #include "./more_tests.h"
@@ -2428,6 +2429,7 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
   const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
   if (!sun_draw_logged[&draw - LIGHT_BOUNCE_DRAWS.data()].exchange(true, std::memory_order_relaxed)) {
     renodx::utils::log::i(std::format("[Warhammer III] First run: sun light draw, ps {:08X}.", draw.shader_hash));
+    twattila::test_hooks::StartClock();
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
@@ -2910,6 +2912,7 @@ bool AttachAddon() {
 
   ConfigureAddon();
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
+  twattila::test_hooks::Install(&settings, false);
 
   reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
@@ -2985,6 +2988,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  twattila::test_hooks::Uninstall();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);

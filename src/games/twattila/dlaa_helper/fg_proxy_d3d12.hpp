@@ -216,6 +216,7 @@ class ProxyFrameGeneration12 {
         return Fail(make_error_);
       }
       presents_ = 0;
+      fsr_present_count_ = 0;
       failure_.clear();
       started_ = std::format(" (started in {:.1f} s)", make_seconds_);
     }
@@ -419,8 +420,12 @@ class ProxyFrameGeneration12 {
         if (backend_ == dlaa_bridge::FG_BACKEND_FSR) {
           ffxQueryGetProviderVersion provider = {.header = {.type = FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION}};
           fsr_.Query(&fsr_generation_, &provider.header);
-          status_ = std::format("AMD FSR Frame Generation {}: 2 frames presented per rendered frame{}{}", (provider.versionName != nullptr ? provider.versionName : "?"),
-                                no_hudless, started_);
+          // Its Present counts the frames it shows; nothing to read on the first line, or if it doesn't count.
+          UINT present_count = 0;
+          const bool counted = SUCCEEDED(chain_->GetLastPresentCount(&present_count)) && present_count != 0 && fsr_present_count_ != 0;
+          const std::string frames = (counted ? std::format("{:.1f} frames presented per rendered frame", static_cast<float>(present_count - fsr_present_count_) / 30.f) : std::string("started"));
+          fsr_present_count_ = present_count;
+          status_ = std::format("AMD FSR Frame Generation {}: {}{}{}", (provider.versionName != nullptr ? provider.versionName : "?"), frames, no_hudless, started_);
         }
 #endif
 #if defined(RENODX_XESS_FG)
@@ -676,6 +681,7 @@ class ProxyFrameGeneration12 {
   std::string failure_;
   std::string started_;  // how long its start took, for the status line
   uint64_t presents_ = 0;
+  UINT fsr_present_count_ = 0;  // at the last status line
 
   // The addon's objects, FSR's copy of the HUD-less image.
   ComPtr<ID3D12Resource> frame_;

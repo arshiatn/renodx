@@ -141,7 +141,7 @@ inline void Update(reshade::api::swapchain* swapchain, uint32_t mode, uint32_t f
   };
   const int result = state.set_sleep_mode(device, &params);
   state.running = (result == 0 && wanted != 0);
-  const char* mode_name = (wanted == 0 ? "off" : (wanted == 2 ? "on + boost" : "on"));
+  const char* mode_name = (paced ? "frame generation paces the game" : (wanted == 0 ? "off" : (wanted == 2 ? "on + boost" : "on")));
   const std::string limit_text = (wanted_limit != 0 ? ", frame rate limit " + std::to_string(wanted_limit) : std::string());
   const std::string result_text = (result == 0 ? std::string(".") : " refused by NVAPI (" + std::to_string(result) + ").");
   renodx::utils::log::i("[Total War] Reflex: ", mode_name, limit_text, result_text);

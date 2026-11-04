@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 #include <include/reshade.hpp>
 
@@ -144,6 +145,12 @@ struct State {
   std::array<UINT, 2> learned_size = {};          // g_viewport_dimensions of the buffer the TAA reads
   float learned_share = 1.f;                      // its part of the display's width
   uint64_t scale_frame = UINT64_MAX;              // the first TAA pass chose
+  std::vector<std::array<UINT, 2>> good_sizes;    // proven as expected this run
+  // The proof's line, printed once the size has held for half a second: a drag over the slider makes one, not one per size.
+  std::string scale_line;
+  std::array<UINT, 2> scale_line_size = {};
+  std::array<UINT, 2> scale_printed_size = {};
+  uint64_t scale_line_frame = 0;
   uint64_t scale_camera = 0;                      // the buffer it read
   uint64_t scale_refused_frame = UINT64_MAX;
   uint64_t scaled_frame = UINT64_MAX;       // its output holds the raw colour
@@ -603,7 +610,10 @@ inline bool OnTonemapDraw(ID3D11DeviceContext* native, bool redirected, UINT wid
     return refuse(values);
   }
   state.scale_proof = ScaleProof::GOOD;
-  renodx::utils::log::i(std::format("[Warhammer III] Upscaling below 100%: {}x{} as expected: {}.", state.learned_size[0], state.learned_size[1], values));
+  if (std::ranges::find(state.good_sizes, state.learned_size) == state.good_sizes.end()) state.good_sizes.push_back(state.learned_size);
+  state.scale_line = std::format("[Warhammer III] Upscaling below 100%: {}x{} as expected: {}.", state.learned_size[0], state.learned_size[1], values);
+  state.scale_line_size = state.learned_size;
+  state.scale_line_frame = state.frame;
   return false;
 }
 
@@ -838,6 +848,13 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
       state.learned_size = {};
       state.learned_share = 1.f;
     }
+    if (!state.scale_line.empty() && state.frame >= state.scale_line_frame + 30) {
+      if (state.scale_line_size != state.scale_printed_size) {
+        state.scale_printed_size = state.scale_line_size;
+        renodx::utils::log::i(state.scale_line, std::format(" ({} sizes proven)", state.good_sizes.size()));
+      }
+      state.scale_line.clear();
+    }
     const bool scaled = state.scale_proof == ScaleProof::GOOD;
     twattila::frame_history::tonemapped.store(false, std::memory_order_relaxed);
     twattila::frame_history::render_width.store(scaled ? state.learned_size[0] : 0u, std::memory_order_relaxed);
@@ -929,7 +946,8 @@ inline float RenderShare() {
 }
 
 inline void Install() {
-  twattila::frame_trace::Install(internal::SCREEN_SIZE / 4, internal::VIEWPORT / 4);
+  // The motion fill, the water plane, the particles' shadow draw: their constants in a trace.
+  twattila::frame_trace::Install(internal::SCREEN_SIZE / 4, internal::VIEWPORT / 4, {0xD409F9B5, 0xA5FC3927, 0x379B000C});
   twattila::reflex::Install();
   for (const uint32_t shader_hash : internal::TAA_SHADERS) {
     renodx::utils::command_action::Register(internal::OnTaa, {
