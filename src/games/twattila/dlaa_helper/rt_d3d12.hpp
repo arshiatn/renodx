@@ -917,6 +917,29 @@ class RtScene12 {
   }
   // A GPU fault or hang (Windows' timeout detection) removed the device: nothing runs on it again.
   [[nodiscard]] bool Removed() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
+  // RENODX_TW_WATCHDOG: the GPU's place, read from another thread (a test: no lock).
+  [[nodiscard]] std::string WatchLine() {
+    if (!device_ || !own_fence_) return "no device";
+    if (!crumbs_) {
+      crumbs_ = Buffer(4096, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+      void* mapped = nullptr;
+      if (crumbs_) crumbs_->Map(0, nullptr, &mapped);
+      crumbs_data_ = static_cast<volatile uint32_t*>(mapped);
+    }
+    const auto name = [&](uint32_t value) {
+      const uint32_t index = value & 0xFF;
+      std::string text = std::format("{}:", value >> 8);
+      if (index < crumb_names_.size()) {
+        for (const wchar_t* pass = crumb_names_[index]; *pass != L'\0'; ++pass) text += static_cast<char>(*pass);
+      }
+      return text;
+    };
+    const uint32_t entered = crumbs_data_ ? crumbs_data_[0] : 0u;
+    const uint32_t left = crumbs_data_ ? crumbs_data_[1] : 0u;
+    return std::format("own {} done {} | game fence {} | entered {} left {} | removed 0x{:08X} | {}", own_value_, own_fence_->GetCompletedValue(), fence_ ? fence_->GetCompletedValue() : 0ull,
+                       name(entered), name(left), static_cast<uint32_t>(device_->GetDeviceRemovedReason()), status_.substr(0, 200));
+  }
+  [[nodiscard]] uint64_t WatchDone() const { return own_fence_ ? own_fence_->GetCompletedValue() : 0ull; }
   // Removed, or a request could not be recorded: nothing of it ran but the scene's state says it did (new BLASes, cluster
   // sets' data), and a list that failed its Close never resets (debug36: one effect gone for six minutes, then a GPU
   // reset). main.cpp makes a new scene either way.
@@ -2624,6 +2647,18 @@ class RtScene12 {
 
   // A pass's name among the list's DRED breadcrumbs, kept with its slot (LostReport: DRED leaves markers unnamed).
   void Mark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
+    if (crumbs_data_ != nullptr) {
+      // RENODX_TW_WATCHDOG: where the GPU got to, read while it hangs. Entered: this request's number and pass; left: the same once all before it is done.
+      const auto known = std::ranges::find(crumb_names_, pass);
+      const auto index = static_cast<uint32_t>(known - crumb_names_.begin());
+      if (known == crumb_names_.end()) crumb_names_.push_back(pass);
+      if (ComPtr<ID3D12GraphicsCommandList2> list2; SUCCEEDED(list->QueryInterface(IID_PPV_ARGS(list2.GetAddressOf())))) {
+        const uint32_t value = (static_cast<uint32_t>(own_value_ + 1) << 8) | index;
+        const D3D12_WRITEBUFFERIMMEDIATE_PARAMETER parameters[2] = {{crumbs_->GetGPUVirtualAddress(), value}, {crumbs_->GetGPUVirtualAddress() + 4, value}};
+        const D3D12_WRITEBUFFERIMMEDIATE_MODE modes[2] = {D3D12_WRITEBUFFERIMMEDIATE_MODE_MARKER_IN, D3D12_WRITEBUFFERIMMEDIATE_MODE_MARKER_OUT};
+        list2->WriteBufferImmediate(2, parameters, modes);
+      }
+    }
     if (!details_) return;
     list->SetMarker(0, pass, static_cast<UINT>((std::wcslen(pass) + 1) * sizeof(wchar_t)));
     for (Slot& slot : slots_) {
@@ -5461,6 +5496,9 @@ class RtScene12 {
   }
 
   ComPtr<ID3D12Device5> device_;
+  ComPtr<ID3D12Resource> crumbs_;  // RENODX_TW_WATCHDOG
+  volatile uint32_t* crumbs_data_ = nullptr;
+  std::vector<const wchar_t*> crumb_names_;
   bool dxr12_ = false;
   std::string sdk_;
   ComPtr<ID3D12CommandQueue> queue_;

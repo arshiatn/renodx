@@ -267,6 +267,42 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // A GPU fault or hang (Windows' timeout detection) removed the ray tracing's device, or a request could not be recorded:
   // where the GPU stopped logged (DRED), a new scene (opened by the caller after the first) and the addon told to capture
   // its scene again.
+  // RENODX_TW_WATCHDOG (tests): each stall's place, with the time, into tw_watchdog_helper.txt.
+  if (GetEnvironmentVariableW(L"RENODX_TW_WATCHDOG", nullptr, 0) != 0) {
+    std::thread([&] {
+      std::ofstream file(std::filesystem::path(folder) / L"tw_watchdog_helper.txt");
+      uint64_t last_done = 0;
+      auto last_change = std::chrono::steady_clock::now();
+      auto last_write = last_change;
+      bool removal_written = false;
+      while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        auto* const watched = scene.get();
+        const std::string line = watched->WatchLine();
+        const uint64_t done = watched->WatchDone();
+        const auto now = std::chrono::steady_clock::now();
+        if (done != last_done) {
+          last_done = done;
+          last_change = now;
+        }
+        const bool removed = watched->Removed();
+        const bool stalled = now - last_change > std::chrono::milliseconds(400);
+        if ((removed && !removal_written) || (stalled && now - last_write > std::chrono::milliseconds(400)) || now - last_write > std::chrono::seconds(5)) {
+          SYSTEMTIME time;
+          GetLocalTime(&time);
+          file << std::format("{:02}:{:02}:{:02}.{:03} stalled {} ms | {}\n", time.wHour, time.wMinute, time.wSecond, time.wMilliseconds,
+                              std::chrono::duration_cast<std::chrono::milliseconds>(now - last_change).count(), line)
+               << std::flush;
+          last_write = now;
+        }
+        if (removed && !removal_written) {
+          removal_written = true;
+          file << watched->LostReport() << "\n" << std::flush;
+          return;
+        }
+      }
+    }).detach();
+  }
   const auto replace_lost_scene = [&] {
     rt_drain();
     const bool removed = scene->Removed();

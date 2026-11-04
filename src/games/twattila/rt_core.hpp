@@ -34,6 +34,7 @@
 
 #include <embed/shaders.h>
 
+#include "./gpu_crumbs.hpp"
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/hash.hpp"
@@ -841,6 +842,7 @@ inline void Dispatch(ID3D11DeviceContext* native, ID3D11ComputeShader* shader, s
   native->CSSetUnorderedAccessViews(0, 2, uavs.data(), KEEP_COUNTS.data());
   native->CSSetShaderResources(0, 2, views.data());
   native->CSSetConstantBuffers(0, 1, runtime.objects.constants.GetAddressOf());
+  gpu_crumbs::Mark(native, 20, groups_x, groups_y);
   native->Dispatch(groups_x, groups_y, 1);
 }
 
@@ -1432,6 +1434,8 @@ void Capture(Context& command, const SceneShader& shader) {
     return;
   }
   auto& objects = runtime.objects;
+  static const bool no_terrain = GetEnvironmentVariableW(L"RENODX_TW_NO_TERRAIN_CAPTURE", nullptr, 0) != 0;
+  if (shader.tessellated && no_terrain) return;
   if (shader.tessellated && (!objects.tessellated || runtime.tessellated_draws == objects.tessellated_queries.size())) return;
   // A tessellated draw through the game's own geometry shader isn't the surface: WH3's second pass of the terrain (HS C51FEA61,
   // GS 33D642AB) tessellates coarsely and its GS only emits skirts down from the patches' edges. Streamed out past that GS, its
@@ -1520,6 +1524,8 @@ void Capture(Context& command, const SceneShader& shader) {
       native->GSSetShaderResources(0, 1, keep_view.GetAddressOf());
       native->GSSetConstantBuffers(1, 1, keep_constants.GetAddressOf());
     }
+    static const bool no_flush = GetEnvironmentVariableW(L"RENODX_TW_NO_TERRAIN_FLUSH", nullptr, 0) != 0;
+    if (shader.tessellated && !no_flush) native->Flush();
     if (shader.tessellated) native->Begin(objects.tessellated_queries[runtime.tessellated_draws].Get());
     if constexpr (INDEXED) {
       if (compact || sway) {
@@ -1527,14 +1533,17 @@ void Capture(Context& command, const SceneShader& shader) {
         // back).
         native->IASetIndexBuffer(runtime.cluster_meshes.at(set_key).remap.Get(), DXGI_FORMAT_R32_UINT, 0);
         native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+        gpu_crumbs::Mark(native, 10, shader.hash, block_texels, draw_instances);
         native->DrawIndexedInstanced(block_texels / draw_instances, draw_instances, 0, arguments.vertex_offset, arguments.first_instance);
         native->IASetIndexBuffer(compact_indices.Get(), index_format, index_offset);
         native->IASetPrimitiveTopology(topology);
       } else {
+        gpu_crumbs::Mark(native, shader.tessellated ? 15 : 11, shader.hash, arguments.index_count, arguments.instance_count);
         native->DrawIndexedInstanced(arguments.index_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_index,
                                      arguments.vertex_offset, arguments.first_instance);
       }
     } else {
+      gpu_crumbs::Mark(native, 12, shader.hash, arguments.vertex_count, arguments.instance_count);
       native->DrawInstanced(arguments.vertex_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_vertex,
                             arguments.first_instance);
     }
@@ -1558,6 +1567,7 @@ void Capture(Context& command, const SceneShader& shader) {
     native->GSSetShader(objects.rows_outputs[index].Get(), nullptr, 0);
     native->SOSetTargets(1, &rows_target, &rows_offset);
     native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+    gpu_crumbs::Mark(native, 13, shader.hash, 1, instances);
     if constexpr (INDEXED) {
       native->DrawIndexedInstanced(1, instances, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
     } else {
@@ -1766,6 +1776,7 @@ void CaptureParticles(Context& command) {
   native->GSSetShader(stream.output.Get(), nullptr, 0);
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(1, &target, &offset);
+  gpu_crumbs::Mark(native, 14, pixel_shader, count);
   native->Draw(count, first_vertex);
   ID3D11Buffer* output = game_output.Get();
   constexpr UINT APPEND = UINT_MAX;
@@ -1841,6 +1852,7 @@ void CaptureIndirect(Context& command, const void*) {
         }
       }
       if (probe && !runtime.indirect_probe_pending) {
+        gpu_crumbs::Mark(native, 30, desc.ByteWidth);
         native->CopySubresourceRegion(probe.Get(), 0, 0, 0, 0, buffer, 0, nullptr);
         runtime.indirect_probe_pending = true;
       }
