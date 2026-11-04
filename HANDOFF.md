@@ -18,7 +18,10 @@ Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Done: Upscaling Mode live through the game's float, exact sizes, Custom 1-100 (whole to 1%), kept value, Below 100% row gone, no game's-TAA frame for a proven size, FG stays up, LOD Bias default Sharper (0.99 of 100's edges), Effects at Output, gfx_dlss guard. Quit at a mode: the game writes it to its file before destroy_device; the kept value brings it back with the addon.
       Not done: Custom's applied-on-release not run (no script drags); rows not seen on screen; menu slider against a mode read only; Effects at Output's effect under the noise on one view. Not run: Attila (page same), 1440p and ultrawide in game (offline only).
       New for later: B12: look at the AA section by overlay; DLSS L and M 9% darker at 50% still open. All phases: unit banners fade 4-5% after the pause starts (control: nothing changed): take A/B shots late. gfx_dlss 3 makes the game save 0.58 as its resolution scale. Close: ATN's stale LOD, Render Scale, Effects keys are now the defaults; no UpscalingGameScale left.
-- [ ] B5 motion vectors
+- [x] B5 motion vectors. Proven by runs b5_flag, b5_near, b5_siege, b5_mom, b5_skaven, b5_camp, b5_cost_*, b5_amp*, b5_water*, b5_final, check_run ok; WARP wh3_batch3/b5_motion_test: 51 VS all outputs bit-same but o1, o1 = game's o2 at last time; 83 PS created, others same, flag right, o3 = 761079CC; Attila page same; harness not run, helper76 stays (reports/B5.md).
+      Done: row Object Motion Vectors, On: the draw writes rt3 itself by token patches, no decompile, no redraw (M1, M2, M3, M5; M7, M8, M12 closed from traces). Paused against off 0.004 steps. Cost 0.4%. Water Motion (M6) Experimental, off.
+      Not done: M4 (bones or rows with sway: drawn in no trace, needs a hand edit per VS). Water's crop not reached in 3 pans. Most listed shaders in no scene. Flag's real sway too small for the view (a temporary build proved the path). Not run: Attila (bytes same).
+      New for later: marching unit banners (444F1190) have no last position: camera motion only, ATN decides. B11: water is 4F35D09F + DFA2AEA2, 2076D289, 034010C4, not A5FC3927. B12: Water Motion on a river, shots 1-2 s into a key press.
 - [ ] B6 cut-outs, cloth, units' other VS
 - [ ] B7 buildings, rocks, tents, mountains
 - [ ] B8 placed instances

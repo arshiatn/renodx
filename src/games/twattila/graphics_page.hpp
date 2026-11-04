@@ -119,6 +119,7 @@ struct Bindings {
   float* upscaling_mode = nullptr;
   bool (*upscaling_mode_found)() = nullptr;
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
+  float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
   // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
@@ -525,6 +526,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "AntiAliasingObjectMotion", .section = section,
                .shown = more(&more_aa, [b] { return (b.has_scale_rows || b.has_object_motion) && feature_settings::Upscaling(*b.aa); }),
                .tooltip = b.texts->object_motion_tooltip});
+    if (b.water_motion != nullptr) {
+      page.Add(new Setting{
+          .key = "AntiAliasingWaterMotion",
+          .binding = b.water_motion,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Water Motion (Experimental)",
+          .section = section,
+          .tooltip = "Water tells the upscaler how the camera moves it, at its own depth instead of the riverbed's.",
+          .is_visible = more(&more_aa, upscaling),
+      });
+    }
     page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, composing_generation)});
     page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, dlss_generation)});
     page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, upscaling), .label = "Upscaling Debug View",

@@ -2278,6 +2278,7 @@ twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 feature_settings::DLSS_MODE_SCALES, 7 Custom
 float below_100_detail_row = 1.f;
+float water_motion_row = 0.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
@@ -3025,6 +3026,7 @@ void ConfigureAddon() {
                                              .upscaling_mode = &upscaling_mode_row,
                                              .upscaling_mode_found = twwarhammer3::resolution_scale::Found,
                                              .below_100_detail = &below_100_detail_row,
+                                             .water_motion = &water_motion_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
@@ -3067,7 +3069,8 @@ bool AttachAddon() {
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
   twattila::rt_scene::InstallPointLights(std::span(traced_lights::SHADERS).first(traced_lights::POINT_LIGHT_SHADERS));
   twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS));
-  twwarhammer3::object_motion::Install([] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.object_motion != 0.f; });
+  twwarhammer3::object_motion::Install([] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.object_motion != 0.f; },
+                                       [] { return twattila::feature_settings::Upscaling(aa_sliders) && water_motion_row != 0.f; });
   // After those two: they bind what decides here (none of these is a sun draw).
   for (const uint32_t& hash : traced_lights::SHADERS) {
     renodx::utils::command_action::Register(

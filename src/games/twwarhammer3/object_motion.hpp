@@ -84,7 +84,7 @@ inline std::shared_mutex mutex;
 inline std::unordered_map<uint64_t, Patched> vertex_shaders;
 inline std::unordered_map<uint64_t, Patched> pixel_shaders;
 inline bool (*active)() = nullptr;
-inline std::atomic_bool logged = false;
+inline bool (*water_active)() = nullptr;
 inline std::atomic_bool fill_logged = false;
 inline std::atomic_bool fill_refused = false;
 
@@ -188,6 +188,7 @@ constexpr auto OnPixelDraw = []<typename Context>(Context& command) -> renodx::u
         renodx::utils::log::w("[Warhammer III] Object motion: a pixel shader wasn't patched (it stays the game's).");
       } else {
         pixel->second.shader = created;
+        renodx::utils::log::i(std::format("[Warhammer III] Object motion: ps {:08X} writes its motion.", command.matched_shader_hash));
       }
     }
     if (needs_vertex && !vertex->second.shader && !vertex->second.refused) {
@@ -198,6 +199,7 @@ constexpr auto OnPixelDraw = []<typename Context>(Context& command) -> renodx::u
         renodx::utils::log::w("[Warhammer III] Object motion: a vertex shader wasn't patched (its draws stay the game's).");
       } else {
         vertex->second.shader = created;
+        renodx::utils::log::i(std::format("[Warhammer III] Object motion: a vertex shader's previous position, with ps {:08X}.", command.matched_shader_hash));
       }
     }
     if (vertex->second.refused || pixel->second.refused) return {};
@@ -217,9 +219,6 @@ constexpr auto OnPixelDraw = []<typename Context>(Context& command) -> renodx::u
       native->VSSetShader(our_vertex.Get(), nullptr, 0);
     }
   }
-  if (!logged.exchange(true, std::memory_order_relaxed)) {
-    renodx::utils::log::i(std::format("[Warhammer III] First run: object motion, ps {:08X}{}.", command.matched_shader_hash, needs_vertex ? " with its vertex shader" : ""));
-  }
   return {.post_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
     renodx::utils::directx::NativeFromReShadeProxy(&post_native);
@@ -237,7 +236,7 @@ constexpr auto OnPixelDraw = []<typename Context>(Context& command) -> renodx::u
 // water's pixels moved as the riverbed under them. The fill tests no depth or stencil, so the depth can leave the target for its draw.
 // The copy itself stays as it is: reflections read it.
 constexpr auto OnMotionFill = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (!active() || fill_refused.load(std::memory_order_relaxed)) return {};
+  if (!water_active() || fill_refused.load(std::memory_order_relaxed)) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
@@ -285,8 +284,9 @@ constexpr auto OnMotionFill = []<typename Context>(Context& command) -> renodx::
   }};
 };
 
-inline void Install(bool (*is_active)()) {
+inline void Install(bool (*is_active)(), bool (*is_water_active)()) {
   active = is_active;
+  water_active = is_water_active;
   renodx::utils::pipeline::RegisterOnInitCallback(OnInitPipeline);
   renodx::utils::pipeline::RegisterOnDestroyCallback(OnDestroyPipeline);
   for (const uint32_t& hash : GAP_PS) {
