@@ -15,15 +15,12 @@
 #include <d3d11.h>
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cmath>
 #include <format>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <cmath>
 #include <string>
-#include <thread>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -2607,89 +2604,8 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
   return {};
 };
 
-template <uint32_t KIND>
-bool WatchDraw(reshade::api::command_list* cmd_list, uint32_t count, uint32_t instances, uint32_t, uint32_t) {
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  auto* state = renodx::utils::shader::GetCurrentState(cmd_list);
-  twattila::gpu_crumbs::Mark(native, KIND, state != nullptr ? renodx::utils::shader::GetCurrentVertexShaderHash(state) : 0u, state != nullptr ? renodx::utils::shader::GetCurrentPixelShaderHash(state) : 0u, count * instances);
-  return false;
-}
-bool WatchDrawIndexed(reshade::api::command_list* cmd_list, uint32_t count, uint32_t instances, uint32_t, int32_t, uint32_t) {
-  return WatchDraw<2>(cmd_list, count, instances, 0, 0);
-}
-bool WatchDispatch(reshade::api::command_list* cmd_list, uint32_t x, uint32_t y, uint32_t z) {
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  auto* state = renodx::utils::shader::GetCurrentState(cmd_list);
-  twattila::gpu_crumbs::Mark(native, 3, state != nullptr ? renodx::utils::shader::GetCurrentComputeShaderHash(state) : 0u, x, y * z);
-  return false;
-}
-bool WatchIndirect(reshade::api::command_list* cmd_list, reshade::api::indirect_command type, reshade::api::resource, uint64_t offset, uint32_t, uint32_t) {
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  auto* state = renodx::utils::shader::GetCurrentState(cmd_list);
-  twattila::gpu_crumbs::Mark(native, 4 + (type == reshade::api::indirect_command::dispatch ? 1 : 0),
-                             state != nullptr ? (type == reshade::api::indirect_command::dispatch ? renodx::utils::shader::GetCurrentComputeShaderHash(state) : renodx::utils::shader::GetCurrentVertexShaderHash(state)) : 0u,
-                             state != nullptr ? renodx::utils::shader::GetCurrentPixelShaderHash(state) : 0u, static_cast<uint32_t>(offset));
-  return false;
-}
-
-// RENODX_TW_WATCHDOG (tests): each stall of the game's frames, with its device's state, into tw_watchdog_game.txt.
-std::atomic<uint64_t> watchdog_presents = 0;
-void StartWatchdog(ID3D11Device* device) {
-  if (GetEnvironmentVariableW(L"RENODX_TW_WATCHDOG", nullptr, 0) == 0) return;
-  device->AddRef();
-  reshade::register_event<reshade::addon_event::draw>(WatchDraw<1>);
-  reshade::register_event<reshade::addon_event::draw_indexed>(WatchDrawIndexed);
-  reshade::register_event<reshade::addon_event::dispatch>(WatchDispatch);
-  reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(WatchIndirect);
-  std::thread([device] {
-    std::ofstream file("tw_watchdog_game.txt");
-    uint64_t last = 0;
-    auto last_change = std::chrono::steady_clock::now();
-    auto last_write = last_change;
-    HRESULT last_reason = S_OK;
-    while (true) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      const uint64_t presents = watchdog_presents.load();
-      const auto now = std::chrono::steady_clock::now();
-      if (presents != last) {
-        last = presents;
-        last_change = now;
-      }
-      const HRESULT reason = device->GetDeviceRemovedReason();
-      auto& bridge = twattila::dlaa_bridge::bridge;
-      const uint64_t done = bridge.fence ? bridge.fence->GetCompletedValue() : 0;
-      std::string crumbs;
-      if (twattila::gpu_crumbs::fence && now - last_change > std::chrono::milliseconds(400)) {
-        const uint64_t crumb = twattila::gpu_crumbs::fence->GetCompletedValue();
-        const uint64_t next = twattila::gpu_crumbs::next.load();
-        crumbs = std::format(" | crumbs done {} next {}:", crumb, next);
-        for (uint64_t index = next - 2; index <= next && next > 2; ++index) {
-          const auto& entry = twattila::gpu_crumbs::ring[index % twattila::gpu_crumbs::RING];
-          crumbs += std::format(" cpu[{} kind {} {:08X} {:08X} {}]", index, entry.kind, entry.first, entry.second, entry.count);
-        }
-        if (crumb < next) {
-          for (uint64_t index = crumb; index < std::min(crumb + 6, next + 1); ++index) {
-            const auto& entry = twattila::gpu_crumbs::ring[index % twattila::gpu_crumbs::RING];
-            crumbs += std::format(" [{} kind {} {:08X} {:08X} {}]", index, entry.kind, entry.first, entry.second, entry.count);
-          }
-        }
-      }
-      if (reason != last_reason || (now - last_change > std::chrono::milliseconds(400) && now - last_write > std::chrono::milliseconds(400)) || now - last_write > std::chrono::seconds(5)) {
-        SYSTEMTIME time;
-        GetLocalTime(&time);
-        file << std::format("{:02}:{:02}:{:02}.{:03} presents {} stalled {} ms | removed 0x{:08X} | fence done {} value {} pending {} waiting {}{}\n", time.wHour, time.wMinute, time.wSecond, time.wMilliseconds,
-                            presents, std::chrono::duration_cast<std::chrono::milliseconds>(now - last_change).count(), static_cast<uint32_t>(reason), done, bridge.value, bridge.pending, bridge.waiting.load(), crumbs)
-             << std::flush;
-        last_write = now;
-        last_reason = reason;
-      }
-    }
-  }).detach();
-}
-
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  if (watchdog_presents.fetch_add(1) == 0) StartWatchdog(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflections::sun_cubes_known = true;
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
