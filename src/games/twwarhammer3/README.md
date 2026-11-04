@@ -195,8 +195,8 @@ v29 is used twice: the zip twwarhammer3_v29.zip (2026-10-28, its README ends at 
 
 - **DLSS** (Graphics 1 of 2, DLSS section; keep in-game Anti-aliasing on TAA or TAA High): NVIDIA's DLSS replaces the
   game's TAA resolve (cs 0x1ADBFF18 TAA / 0x6A8FC282 TAA High; taa_dlss.hpp). Its inputs are the game's own: this
-  frame's jittered colour (t4), depth (t0's x), the velocity buffer its TAA uses (t2: motion vectors for everything the
-  game draws, units, wind and cloth included) and its jitter (camera g_camera_jitter, the projection's own); they go
+  frame's jittered colour (t4), depth (t0's x), the velocity buffer its TAA uses (t2: units, grass and leaves move in it; flags and glowing weapons
+  by Object Motion Vectors, v32) and its jitter (camera g_camera_jitter, the projection's own); they go
   through the Total War helper (renodx-tw-dlaa64.exe, as the other TW games' DLAA) and the result replaces the TAA's.
   Presets K / M (default) / L. At 100% only (DLAA): below it (Resolution Scale) the game draws the 3D and its post
   chain into the targets' top-left and upscales at the end, so DLSS stays off there (the camera's viewport is not the

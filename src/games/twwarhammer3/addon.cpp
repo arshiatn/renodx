@@ -45,6 +45,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
+#include "./object_motion.hpp"
 #include "./resolution_scale.hpp"
 #include "./taa_dlss.hpp"
 #include "./more_tests.h"
@@ -2314,6 +2315,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                                 "Needs Light Through Leaves, and DLSS Ray Reconstruction or path-traced Global Illumination.",
     .rays_a_pixel_shadows_tooltip = "The sun's shadows take the extra rays.",
     .rays_a_pixel_paths_tooltip = "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a pixel). The heaviest.",
+    .object_motion_tooltip = "Flags, glowing weapons and swaying props tell the upscaler how they move.\nOff: the game's own.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, Light Bounce, ray-traced AO's rate and Bend's shadow softness\n"
                                  "keep their 100% detail. Looks better, can cost some performance.",
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
@@ -3027,6 +3029,7 @@ void ConfigureAddon() {
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
                                              .has_scale_rows = false,
+                                             .has_object_motion = true,
                                              .has_foliage_light = false,
                                              .has_path_ambient = false,
                                              .rays_preset_caustics = false,
@@ -3049,6 +3052,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::object_motion::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
 
@@ -3063,6 +3067,7 @@ bool AttachAddon() {
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
   twattila::rt_scene::InstallPointLights(std::span(traced_lights::SHADERS).first(traced_lights::POINT_LIGHT_SHADERS));
   twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS));
+  twwarhammer3::object_motion::Install([] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.object_motion != 0.f; });
   // After those two: they bind what decides here (none of these is a sun draw).
   for (const uint32_t& hash : traced_lights::SHADERS) {
     renodx::utils::command_action::Register(
@@ -3131,6 +3136,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::object_motion::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::copy_resource>(aa_target::OnCopyResource);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(aa_target::OnCopyTextureRegion);

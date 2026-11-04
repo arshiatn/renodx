@@ -62,6 +62,9 @@ struct Texts {
   const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
   const char* rays_a_pixel_paths_tooltip = "";    // Empty: the row's own.
+  const char* object_motion_tooltip =
+      "Soldiers, props and cloth tell the upscaler how they move: sharper while they move.\n"
+      "Off: faster with many soldiers on screen (they can smear a little when moving).";
   const char* effects_at_output_tooltip =
       "While the upscaler renders below 100%, ambient occlusion, Light Bounce, reflections and shadow softness\n"
       "keep their 100% detail. Looks better, can cost some performance.";
@@ -122,6 +125,7 @@ struct Bindings {
   std::string (*upscaler_status)() = nullptr;
   // The upscaling mode, render scale, LOD bias, effects' resolution, object motion; false: the game owns its scale.
   bool has_scale_rows = true;
+  bool has_object_motion = false;  // Without the scale rows: Object Motion Vectors still has an effect.
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   bool rays_preset_path_ambient = true;  // The RT/PT preset takes it; false: ray-traced AO, over the game's.
@@ -518,9 +522,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           "(more detail, can shimmer)."});
     page.Take({.match = "AntiAliasingEffectsAtOutput", .section = section, .shown = more(&more_aa, below_100_rows), .label = "Effects at Output Resolution",
                .tooltip = b.texts->effects_at_output_tooltip});
-    page.Take({.match = "AntiAliasingObjectMotion", .section = section, .shown = more(&more_aa, scale_rows),
-               .tooltip = "Soldiers, props and cloth tell the upscaler how they move: sharper while they move.\n"
-                          "Off: faster with many soldiers on screen (they can smear a little when moving)."});
+    page.Take({.match = "AntiAliasingObjectMotion", .section = section,
+               .shown = more(&more_aa, [b] { return (b.has_scale_rows || b.has_object_motion) && feature_settings::Upscaling(*b.aa); }),
+               .tooltip = b.texts->object_motion_tooltip});
     page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, composing_generation)});
     page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, dlss_generation)});
     page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, upscaling), .label = "Upscaling Debug View",

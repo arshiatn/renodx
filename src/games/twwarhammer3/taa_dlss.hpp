@@ -44,7 +44,7 @@
 // after its TAA resolve (cs 0x1ADBFF18 TAA / 0x6A8FC282 TAA High: t0 the G-buffer depth in x, t2 the velocity, t4 this
 // frame's colour, jittered; u1 its result), the colour, depth and motion go through the upscaler in the TW helper
 // (twattila/dlaa_bridge.hpp, renodx-tw-dlaa64.exe) and its result replaces the TAA's. The game's jitter (camera
-// g_camera_jitter) and velocity (everything it draws) are its own. In the addon's own context state (the game's put back after).
+// g_camera_jitter) and velocity (most of what it draws; object_motion.hpp adds what it leaves out) are its own. In the addon's own context state (the game's put back after).
 // Frame generation: the helper's too (twattila/frame_generation.hpp).
 //
 // Below 100%, after the tone mapper instead: the game's chain stays at the render size, top-left
