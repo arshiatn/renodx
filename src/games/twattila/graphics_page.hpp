@@ -119,6 +119,7 @@ struct Bindings {
   float* upscaling_mode = nullptr;
   bool (*upscaling_mode_found)() = nullptr;
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
+  float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
@@ -836,6 +837,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedLeafMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps (Leaves)"});
     page.Take({.match = "RayTracedGpuMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps: GPU Baking"});
     page.Take({.match = "RayTracedFastLeafShadows", .section = section, .shown = more_rt_rows, .label = "Fast Leaf Shadows"});
+    if (b.placed_objects != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedPlacedObjects",
+          .binding = b.placed_objects,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Placed Objects (Experimental)",
+          .section = section,
+          .tooltip = "Buildings, rocks and weapons enter the ray tracing once: faster, and they cast from off screen.\nCan reset the graphics driver in big sieges.",
+          .is_visible = more_rt_rows,
+      });
+    }
     page.Take({.match = "RayTracedDebugView", .section = section, .shown = more_rt_rows});
     page.Take({.match = "RayTracedSceneTest", .section = section, .shown = more_rt_rows});
     page.Take({.match = "Record Ray Tracing Profile (30 s)", .section = section, .shown = more_rt_rows});

@@ -14,6 +14,9 @@ cbuffer rt_vertices : register(b0)
 {
   uint4 rt_vertices;  // x the vertices, y the texture's width, z 1: clip-space positions (the game's own shaders)
   float4 inverse_view_projection[4];  // their camera's (rows acting on column vectors)
+#if defined(RT_VERTICES_WORLD_AFTER)
+  uint4 rt_vertices_world;  // x where the world-space part lies in the captured buffer
+#endif
 }
 
 [numthreads(256, 1, 1)]
@@ -23,7 +26,11 @@ void main(uint3 dispatch_id : SV_DispatchThreadID)
   const uint id = dispatch_id.y * 65535u * 256u + dispatch_id.x;
   if (id >= rt_vertices.x) return;
   // Instances a shader collapses (scale 0, fades) give empty triangles; DXR skips those with a NaN x.
+#if defined(RT_VERTICES_WORLD_AFTER)
+  float4 position = captured[id < rt_vertices.w ? id : (id - rt_vertices.w + rt_vertices_world.x)];
+#else
   float4 position = captured[id];
+#endif
 #if defined(RT_VERTICES_WORLD_AFTER)
   // From w on: a world-space part (placed meshes and their rows).
   if (rt_vertices.z != 0u && id < rt_vertices.w) {

@@ -242,6 +242,8 @@ struct Host {
   bool (*main_view)(ID3D11DeviceContext* native) = nullptr;
   // The G-buffer guides again from the reflection pass's G-buffer (null: none; the water's reflections need it).
   void (*rewrite_guides)(ID3D11DeviceContext* native) = nullptr;
+  // A row (0: off) for placed draws in a clip-space game; off, they are captured every frame. Null: always placed.
+  const float* placed_row = nullptr;
   // A light draw's colour to light in the rays (the paths): times the game's light shader's own scale of its diffuse.
   float local_light_scale = 1.f;
 };
@@ -1019,7 +1021,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // with a record version by its first one (by its geometry it was a new mesh again and again; its instances' stream is
   // placed), any other by any (the terrain draws its pieces from a dynamic instance stream refilled in the same places:
   // keyed by it, pieces of earlier views stayed in the scene, black bands, pulsing shadows, ATN 2026-10-28).
-  bool dynamic = shader.dynamic;
+  bool dynamic = shader.dynamic || (host.placed_row != nullptr && *host.placed_row == 0.f && !shader.rows_shader.empty());
   if (!dynamic) {
     std::array<ID3D11Buffer*, 4> buffers = {};
     std::array<UINT, 4> buffer_strides = {};
@@ -1948,11 +1950,9 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       renodx::utils::log::i(std::format("[Total War] Ray tracing: tessellated triangles without room: {} of {} ({} written, room for {}).", corners / 3, triangles_needed, triangles, room / 3));
     }
   }
-  // The world-space part after the clip-space vertices; what points at it follows.
+  // The world-space part goes after the clip-space vertices in the vertex texture (rt_vertices); what points at it follows.
   const UINT world_first = runtime.captured_vertices;
   if (runtime.world_vertices != WORLD_BASE) {
-    const D3D11_BOX world_range = {.left = WORLD_BASE * 16, .top = 0, .front = 0, .right = runtime.world_vertices * 16, .bottom = 1, .back = 1};
-    native->CopySubresourceRegion(objects.captured.Get(), 0, world_first * 16, 0, 0, objects.captured.Get(), 0, &world_range);
     const auto moved = [world_first](uint32_t* first_vertex) {
       if (*first_vertex >= WORLD_BASE) *first_vertex = *first_vertex - WORLD_BASE + world_first;
     };
@@ -1976,10 +1976,12 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       struct VertexConstants {
         std::array<uint32_t, 4> counts;
         std::array<float, 16> inverse_view_projection;
+        std::array<uint32_t, 4> world_part;  // its place in the captured buffer
       };
       const VertexConstants constants = {
           .counts = {runtime.captured_vertices, dlaa_bridge::RT_TRANSFER_WIDTH, clip_captures ? 1u : 0u, world_first},
           .inverse_view_projection = camera.inverse_view_projection,
+          .world_part = {WORLD_BASE, 0, 0, 0},
       };
       const UINT vertex_groups = (runtime.captured_vertices + 255) / 256;
       Dispatch(native, objects.vertices_shader.Get(), {objects.captured_srv.Get(), objects.captured_uv_srv.Get()},
@@ -2007,9 +2009,10 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         std::array<float, 4> camera;
       };
       for (const auto& capture : runtime.captures) {
-        if ((capture.flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE)) != 0) continue;
+        // Not a world-space part in a clip-space game: rt_skies reads the captured buffer at the capture's place.
+        if ((capture.flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE)) != 0 || (world_captures && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0)) continue;
         const SkyConstants sky = {
-            .capture = {capture.first_vertex, capture.vertex_count, (clip_captures && (capture.flags & dlaa_bridge::RT_INSTANCED) == 0) ? 1u : 0u, dlaa_bridge::RT_TRANSFER_WIDTH},
+            .capture = {capture.first_vertex, capture.vertex_count, clip_captures ? 1u : 0u, dlaa_bridge::RT_TRANSFER_WIDTH},
             .inverse_view_projection = camera.inverse_view_projection,
             .camera = {camera.position[0], camera.position[1], camera.position[2], reach},
         };

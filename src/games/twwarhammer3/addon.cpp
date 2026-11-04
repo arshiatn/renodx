@@ -2281,6 +2281,7 @@ constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 feature_settings::DLSS_MODE_SCALES, 7 Custom
 float below_100_detail_row = 1.f;
 float water_motion_row = 0.f;
+float placed_objects_row = 0.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
@@ -2447,7 +2448,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x41AC9CB1, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},  // rigid_battle_rock_terrain_blend
     {.hash = 0x33AF7AE5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},  // rigid_battle_rock
     {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
-    // Trees stay captured every frame: placed by their rows v8-v10 the siege benchmark reset the GPU (5 of 10 runs, branches or leaves alone too; rigid alone 0 of 5).
+    // Trees stay captured every frame, as all of these with the row Placed Objects off: placed, the siege benchmark resets the GPU, about half of the runs (nothing placed 0 of 5).
     {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
     {.hash = 0x31584506, .dynamic = true},  // fx_rigidbranch_v3
@@ -2496,6 +2497,7 @@ const twattila::rt_scene::Host RT_HOST = {
     .guides_written = twwarhammer3::taa_dlss::GuidesWritten,
     .main_view = twattila::frame_history::MainViewport,
     .rewrite_guides = [](ID3D11DeviceContext* native) { twwarhammer3::taa_dlss::RewriteGuides(native, reflections::march_gbuffer, reflections::march_camera.Get()); },
+    .placed_row = &placed_objects_row,
     // All 8 light PS scale their diffuse by this (and specular not at all); the paths light what they meet by the diffuse's rule.
     .local_light_scale = 7.615242e-05f,
 };
@@ -3052,6 +3054,7 @@ void ConfigureAddon() {
                                              .upscaling_mode_found = twwarhammer3::resolution_scale::Found,
                                              .below_100_detail = &below_100_detail_row,
                                              .water_motion = &water_motion_row,
+                                             .placed_objects = &placed_objects_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
