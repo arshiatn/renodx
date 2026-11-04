@@ -2275,6 +2275,7 @@ constexpr std::array<twattila::water_effects::WaterShader, 10> WATER_SHADERS = {
 twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 float below_100_row = 0.f;  // the upscaler also when the game's Resolution Scale is below 100% (Experimental)
+float below_100_detail_row = 1.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
@@ -2621,8 +2622,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
 #endif
   twwarhammer3::taa_dlss::Update(swapchain, aa_settings, below_100_row != 0.f && !third_party_upscale, rt_sliders.debug_log != 0.f);
   // The game's LOD and culling count the render's pixels (one battle's index counts: 50% with the sliders at x8 equal 100% at x2). Through
-  // the upscaler the display is what they are for: its detail at any scale, from the next load.
-  const float scene_share = (below_100_row != 0.f && !third_party_upscale && twattila::anti_aliasing::Upscales(aa_settings.method)) ? twwarhammer3::taa_dlss::SceneShare() : 1.f;
+  // the upscaler the display is what they are for: its detail at any scale, from the next load. At 50% with the sliders at x8: 25.85 to 31.95 ms in RT/PT, 11.84 to 13.55 without rays.
+  const float scene_share = (below_100_row != 0.f && below_100_detail_row != 0.f && !third_party_upscale && twattila::anti_aliasing::Upscales(aa_settings.method)) ? twwarhammer3::taa_dlss::SceneShare() : 1.f;
   for (auto* option : {&unit_detail, &building_detail, &tree_detail, &grass_detail, &object_detail, &terrain_detail, &effects_detail,
                        &unit_draw, &building_draw, &tree_draw, &grass_draw, &object_draw, &terrain_draw}) {
     option->pixels = scene_share * scene_share;
@@ -3006,6 +3007,7 @@ void ConfigureAddon() {
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .below_100 = &below_100_row,
+                                             .below_100_detail = &below_100_detail_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,

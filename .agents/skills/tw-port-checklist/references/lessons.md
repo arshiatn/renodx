@@ -124,6 +124,8 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | `reset` only on a skipped frame | Attila's checks for cuts | Read |
 | RR and reflection guides come from the game's own G-buffer rules, not Attila's | Read that game's dielectric rule (`rr_guides`); `guides_written` true when guides ran | Harness for shape only |
 | RR left alone: ~20% of AO noise stays | Raw AO under RR, histories kept [8fff25ae] | `HARNESS_RR` |
+| A lower render scale only changes pixels | WH3's LOD and culling count render pixels: 28 M indices at 50%, 50 M at 100%. The upscaler then shows coarser models | Index counts by VS from two traces (`wh3_batch3/b3_cull.py`); a slider's factor against share squared proves the law |
+| A square root before an upscaler is free | Averaged in that space, mid-tones come out darker the more it reconstructs: WH3 at 50%, L and M -9%, K -3% | Whole-view mean, same paused moment, across presets and scales |
 
 ## 6. Frame generation
 

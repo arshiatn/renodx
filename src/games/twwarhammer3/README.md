@@ -9,6 +9,14 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - Path-Traced AO is gone from WH3's page and a saved one turns off: with spherical harmonics on the game's ambient cube isn't its sky. The paths' sky is the learned shade.
 - **Ambient occlusion below 100%, fixed, run in game** (replay and campaign, started at 50%, against 100%, one view each): GT-VBAO's depth now comes from the game's sweep, as the downsample it read stops below about 2/3 scale (a frozen depth); its settings reach it at b10 (it had them by luck at 100%, and read radius 0 at 50%: flat white). The AO filter and Ray-Traced AO read the game's AO where its sun draws read it, and the sun reads their textures one to one: the filter darkened the right and bottom third (cells 0.76, now 1.0 to 1.1), RTAO lay 1.5x off. Game's SSAO was right at 50% already: Debug View 8 correlates 0.986 with 100%.
 - **Debug View's Screen-Space AO** works in WH3: what the sun draws read, the game's under RTAO. Troy, Pharaoh, Warhammer I and II: still magenta, nothing changed there.
+- **Below 100%, run in game** (replay and campaign, started at 50%, against 100%, one view each):
+  - **Models as at 100%:** the game picks LODs and culls by the render's pixels: 50.2 M indices in the G-buffer at 100%, 28.0 M at 50%. `Full Detail Below 100%` (on) puts them back from the next load: 50.19 M at 50%, campaign 17.72 M both. Cost at 50%, ATN's x8 sliders, one view: rays off 11.84 to 13.55 ms, RT/PT 25.85 to 31.95 ms. Off: as before. A scale changed inside a battle counts from the next load. No in-session change run yet.
+  - **Sharpening:** the game adds up to 1 to its strength below 100% for its own upscale (0.225 + 0.75 at 50%: read in game). That part is off behind the upscaler. Edge energy 50 against 100: 2.04 to 2.14 before, 0.80 to 0.84 now. Game's TAA keeps it.
+  - **Heat haze** the same size on screen as at 100%, **secondary LUT's distance** right: WARP on the shader's lines (`warp_tests/t00_scale`). Haze's look at scale: not run by eye.
+  - Screen-Space Shadows' Debug View goes through the upscaler like the rest (it showed the corner): correlates 0.976 with 100%.
+  - G-buffer guides and Depth Levels only over the render's corner.
+  - Jitter: read in game: 16 phases, reach 0.43 render pixels at both scales. Amplitude right. DLSS would like 32 at 50%: not changed.
+- Screen-Space Shadows keep their textures for about 10 s after they turn off (Ray-Traced Shadows on and off made a 4K copy each time). Attila too; not run in game there.
 - `rt_terrain_keep_gs.h` is built by hand: the command is in the `.hlsl`.
 - Log only, run in game: the helper's idle release no longer says it "started again"; Reflex's line says when frame generation paces the
   game; FSR Frame Generation's status has a real count (2.0 here); no "smoke shadows" in the status; Below 100%'s line printed once the size
@@ -67,7 +75,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   own chain stays at the smaller size; the tone mapper's picture goes through the upscaler up to your resolution; flares, vignette, sharpening
   and UI at your resolution. Off, and at 100% either way, nothing changes. The first frame at each size only checks the game's constants; if
   they aren't as expected the status line says so, the values are in `ReShade.log`, and the game's TAA and upscale stay. Bloom now sees
-  the unresolved picture, and particles go through the upscaler: ATN's test decides. No LOD bias here: the game has its own.
+  the unresolved picture, and particles go through the upscaler: ATN's test decides. No LOD bias here: the game has its own (corrected in B4).
   Rays a Pixel's Match Output is back: up to 8 rays at the game's lower scales (at 100% it is still 1).
 - **Ray tracing's scene: leaves, grass, 4-bone units, capture flags.** Leaves and blades cast shadows with their holes (alpha tested against
   their own map), the flag waves in its shadow. Tree billboards stay out (they face the camera), so do `grass_rock` and two grass families no

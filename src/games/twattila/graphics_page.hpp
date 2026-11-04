@@ -110,6 +110,7 @@ struct Bindings {
   float* smoke_softness = nullptr;
   // The game owns its scale (has_scale_rows false): the upscalers also below its 100%; null: no such row.
   float* below_100 = nullptr;
+  float* below_100_detail = nullptr;  // ... and models as detailed as at 100%; null: no such row
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
   // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
@@ -408,6 +409,19 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                      "Upscaler: the game's picture goes through the upscaler above, in place of both.",
           .labels = {"Game's TAA", "Upscaler"},
           .is_visible = upscaling,
+      });
+    }
+    if (b.below_100_detail != nullptr) {
+      page.Add(new Setting{
+          .key = "AntiAliasingBelow100Detail",
+          .binding = b.below_100_detail,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Full Detail Below 100%",
+          .section = section,
+          .tooltip = "Models and draw distances as at 100% in-game Resolution Scale, from the next load. Off: as the\n"
+                     "smaller picture asks for, fewer triangles, faster.",
+          .is_visible = [b, upscaling] { return upscaling() && *b.below_100 != 0.f; },
       });
     }
     page.Take({.match = "AntiAliasingQuality", .section = section,

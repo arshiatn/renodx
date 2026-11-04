@@ -12,6 +12,7 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
 - From WH3's logs, same code here: the helper's idle release no longer says it "started again"; Reflex's line says when frame generation paces
   the game; FSR Frame Generation's status has a real count; no "smoke shadows" in the status without its hook (Attila has it: no change); presets
   leave Log Details alone. Trace lines end with each draw's state. `RENODX_TW_SET` fires a row's callbacks, presses a button by its label.
+- Screen-Space Shadows give their memory back about 10 s after they turn off, not at once: a switch of what replaces them made a 4K copy each time. Not run in game here.
 
 ## v135 = players' v2.5.1 (2026-11-04; built, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23: ship them together; RenoDX_Attila_v2.5.1_HDR_only.zip: the add-on alone)
 - **Ray-Traced Reflections with the game's or Bend's shadows:** what they meet off screen had no sun on it (the sun's direction was only read with RT shadows or paths). Found on WH3, where every hit goes that way.
