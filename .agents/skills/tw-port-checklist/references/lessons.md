@@ -44,6 +44,8 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 |---|---|---|
 | One mesh captured twice: depth prefill plus G-buffer by one VS paid the share twice; hidden and shown instances raced in the dedupe (grass flicker) [78c0f619] | Capture only with a colour target bound (foliage with rows and thin only), checked against the game's multi-target passes | Group draws by vs, ps, targets in a frame trace |
 | Same effect computed twice: screen-space under its RT replacement, two traces, copied passes | Ask at each round's end | Read the settings' gates; trace |
+| A game's pass already has what you add: WH3's fog marches its shadow maps, Attila's has none, Attila's factor would darken twice | Replace: the game's gate false, rays in its place, only the share the rays stand for | WARP: ours at visibility 1 against the game with its own strength at 0 |
+| Light colours differ in scale per game, and the paths take them as absolute light | `Host::local_light_scale` from the game's light shader's own diffuse literal; shares between lights don't care | Read the light PS; a look at unseen walls in game |
 | Rows drawn under the game's triangle list streamed nothing; meshes placed by stale texels: giant shapes, long lines [28832b16] | Point list for one-vertex-per-instance draws | Harness D3D11 side, read back |
 | Scenery re-keyed every frame (instance streams repacked): rebuilt all the time | Key by geometry; BLAS once, rows each draw | "new captures" log, harness |
 | First-come shares: units or walls starved by draw order [da53d23a]; capture count ran out at 256 [eae66fca, 64c6938c] | Per-kind shares; log "left out", "without room" | Log Details; harness stress modes |
@@ -145,6 +147,7 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | Edits among decompiled lines: `r0.w` written before a line reads `r0.yzw` lost one colour of the result | Keep each register's order; test with the same inputs by another route | WARP: half the rays against half the result |
 | A pass whose result is added has no `max(0, ...)` to hide what another pass's clamp hid (0 / 0 in the cubes' share) | Guard the new output for NaN and infinity | Read the adding pass's last line |
 | A replacement needed only with a feature on | Keep the game's bytes when off: no `code` on the entry, CSSetShader ours in `on_draw`, the game's back in `on_drawn` | Default state needs no proof then |
+| A pass at half the render's size: `v0.xy` isn't the render pixel, a quarter of the screen is read with no error (WH3's fog light) | Take the pixel as the shader loads its depth: `v0 * target's inverse size * screen size` | WARP: a ramp at a half-size target; `v0.xy` as control must fail |
 | WH1's trees silently wrong in 3Dmigoto | `RT_ASM=labels`, fxc's own disassembly | Compare test |
 | Hooks that never ran: `Register` without data plus `<typename T, typename Context>` dropped silently, for days [daec47ba] | Without data use `[]<typename Context>`; check an "applied" line | [scan_register.py](../scripts/scan_register.py) |
 | `.bypass` skips later callbacks' post callbacks: t51 stayed bound, ambient gone [e5bf7dd3] | State back in `finalize_callback`, or swap + `.replay` | Read each new `post_callback` under Light Bounce's bypass |

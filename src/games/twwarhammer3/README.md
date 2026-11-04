@@ -4,6 +4,13 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 ## v31 (not released, built only, not run in game)
 
+- **Torch and Fire Shadows (Experimental, Shadows, More Options under Ray-Traced; off, not in the RT/PT preset).** With Ray-Traced Shadows on, our copies of the
+  game's 8 point light shaders multiply each light by its traced visibility; off, or before a trace, the game's own shaders run untouched. With Path-Traced Global
+  Illumination the lights also light what the screen never saw, at the light shaders' own scale of their diffuse. Torch light in fog is left out: nothing shows what a
+  light's colour is worth in the fog's light. Which shaders a battle really uses, and whether its lights are drawn directly: never seen, no trace has one.
+- **Fog Shadows (Experimental, Ray Tracing Extra Options; off, not in the RT/PT preset).** The game's fog already has shafts from its shadow maps. On, rays take their
+  place (they aren't stacked): the march skips the maps, only the sun's share of the fog goes dark, measured over the first 400 m. One of the fog's light shaders, the one
+  in the trace; the other 5 stay as the game draws them.
 - **Ray-Traced Reflections and Ray-Traced Specular Occlusion (Experimental, Reflections section, off; in the RT/PT preset).** The game's own
   screen-space reflections are on water only: its code for other surfaces is there but never runs. With the rays on, our copy of its resolve opens
   that path for armour, metal and what else the game marks so: on water the rays leave from the water, off water they replace the
