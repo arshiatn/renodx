@@ -913,6 +913,11 @@ inline void InstallCutOuts(uint32_t shadow_shader_hash, std::span<const uint32_t
       OnCutOutShadowDraw, {.shader_hash = shadow_shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 }
 
+// The G-buffer pixel shaders whose opacity is known (SceneShader::clip_cut_outs; sorted by pixel shader).
+inline void InstallCutOutMasks(std::span<const PixelMask> masks) {
+  internal::cut_out_masks = masks;
+}
+
 // Ray-Traced Shadows Only: draws are skipped while the sun's shadow map is bound alone (depth only) for drawing.
 inline void OnBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view*,
                           reshade::api::resource_view dsv) {

@@ -175,6 +175,7 @@ struct Settings {
 struct PixelMask {
   uint32_t pixel_shader = 0;
   UINT slot = 0;
+  UINT uv_semantic_index = 0;  // cut_out_masks: the row's uv_semantic_index it needs
 };
 
 struct SceneShader {
@@ -188,6 +189,9 @@ struct SceneShader {
   // captured by this version, with the UV, cut out as leaves are but still. A unit (dynamic): its draws whose G-buffer pixel
   // shader clips (cut_out_pixel_shaders: beards, fur, leaves on a tree unit; solid cards in the scene shaded them black).
   std::span<const uint8_t> cut_out_shader;
+  // Without a capture version (the game's own vertex shader streamed out): its draws whose pixel shader is in cut_out_masks are
+  // cut out by that mask and `uv_semantic`, the others stay solid (a pixel shader's clip nobody read).
+  bool clip_cut_outs = false;
   bool terrain = false;
   bool dynamic = false;
   bool foliage = false;
@@ -604,6 +608,7 @@ static Runtime runtime;
 // The addon's (Install), kept while installed.
 static std::span<const SceneShader> scene_shaders;
 static std::span<const uint32_t> cut_out_pixel_shaders;  // sorted
+static std::span<const PixelMask> cut_out_masks;  // sorted by pixel shader (SceneShader::clip_cut_outs)
 static Host host;
 // The code of the scene shaders without a capture version, as the game made them (every vertex shader with
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
@@ -1086,7 +1091,20 @@ void Capture(Context& command, const SceneShader& shader) {
   ComPtr<ID3D11ShaderResourceView> mask;
   if (shader.foliage || !shader.cut_out_shader.empty()) native->PSGetShaderResources(shader.far_tree ? 1u : shader.mask_slot, 1, mask.GetAddressOf());
   bool cut_out = false;
-  if (!shader.foliage && mask) {
+  if (shader.clip_cut_outs) {
+    const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
+    const auto found = std::ranges::lower_bound(cut_out_masks, pixel_shader, {}, &PixelMask::pixel_shader);
+    if (found != cut_out_masks.end() && found->pixel_shader == pixel_shader && found->uv_semantic_index == shader.uv_semantic_index) {
+      native->PSGetShaderResources(found->slot, 1, mask.GetAddressOf());
+      cut_out = static_cast<bool>(mask);
+      if (runtime.settings.debug_log) {
+        const std::unique_lock lock(runtime.mutex);
+        if (runtime.left_out_logged.insert(pixel_shader).second) {
+          renodx::utils::log::i(std::format("[Total War] Ray tracing: cut out: vs {:08X} with ps {:08X} by its t{}.", shader.hash, pixel_shader, found->slot));
+        }
+      }
+    }
+  } else if (!shader.foliage && mask) {
     if (shader.dynamic) {
       cut_out = std::ranges::binary_search(
           cut_out_pixel_shaders,
@@ -1322,7 +1340,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // A unit stays solid (left out, it would lose its shadow) without room for its mask, or with Leaf Micromaps off (rays that
   // skip alpha tests would pass through it for good), and leaves a quarter of the atlas to leaves and rigid cut-outs (a slice
   // in use is never reused; without one they leave the scene).
-  if (cut_out && shader.dynamic) {
+  if (cut_out && (shader.dynamic || shader.clip_cut_outs)) {
     ComPtr<ID3D11Resource> mask_resource;
     mask->GetResource(mask_resource.GetAddressOf());
     if (!runtime.settings.micromaps || runtime.tree_corners + (triangles * 3) > runtime.alpha_corners - (runtime.alpha_corners / 2)
@@ -1374,7 +1392,7 @@ void Capture(Context& command, const SceneShader& shader) {
                          // Sprite soldiers and far trees block the sun's rays as grass does (leaves let some through).
                          | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u)
                          | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u)
-                         | ((cut_out && shader.dynamic) ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u);
+                         | ((cut_out && (shader.dynamic || shader.clip_cut_outs)) ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
   if (!dynamic || joined == nullptr || joined->flags != flags || joined->first_vertex + joined->vertex_count != runtime.captured_vertices
       || joined->vertex_count % 3 != 0) {
@@ -1399,7 +1417,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // game's own: its stream output (SV_Position; its foliage's UV into the second buffer) made once from its code (null:
   // it could not be).
   const bool clip_space = shader.capture_shader.empty();
-  const bool clip_uv = clip_space && shader.foliage && shader.uv_semantic != nullptr;
+  const bool clip_uv = clip_space && foliage && shader.uv_semantic != nullptr;
   const size_t index = (placed || !clip_space) ? static_cast<size_t>(&shader - scene_shaders.data()) : 0u;
   if ((placed && index >= objects.rows_shaders.size()) || (!clip_space && index >= objects.capture_shaders.size())) return;
   // Leaves wait for a slice of the atlas (none: not in the scene this frame).

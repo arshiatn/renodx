@@ -45,6 +45,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
+#include "./cut_out_masks.hpp"
 #include "./object_motion.hpp"
 #include "./resolution_scale.hpp"
 #include "./taa_dlss.hpp"
@@ -2436,15 +2437,28 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> TERRAIN_MASKS = {{
     {.pixel_shader = 0xBB65FB61, .slot = 8},  // the campaign's
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 11> SCENE_SHADERS = {{
-    {.hash = 0xF0395CC4},                    // fx_rigidanisotropic
-    {.hash = 0x8EE34EC5},                    // fx_rigidambientmapfiremesh
+constexpr std::array<twattila::rt_scene::SceneShader, 22> SCENE_SHADERS = {{
+    {.hash = 0xF0395CC4, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidanisotropic
+    {.hash = 0x8EE34EC5, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidambientmapfiremesh
     {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
     {.hash = 0xC0ED2883, .dynamic = true},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
     {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true, .pixel_masks = TERRAIN_MASKS, .tessellated_keep = __rt_terrain_keep},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
-    {.hash = 0xB8C567C3, .dynamic = true},   // fx_weighted (skinned units)
-    {.hash = 0x2C45437C, .dynamic = true},   // rigid_character_alpha
-    {.hash = 0x3193A71F, .dynamic = true},   // fx_weighted's 4-bone units
+    {.hash = 0xB8C567C3, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted (skinned units)
+    {.hash = 0x2C45437C, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // rigid_character_alpha
+    {.hash = 0x3193A71F, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted's 4-bone units
+    // The units' other vertex shaders (position through cb0[10-13], the UV at TEXCOORD1, by their bytes): in no trace so far.
+    {.hash = 0x2A64D0C8, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted, burn
+    {.hash = 0xF8CB9DB6, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
+    {.hash = 0x7B298C37, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weightedcommon
+    {.hash = 0x22B5CCC7, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // weighted, wind alpha
+    {.hash = 0x033108E7, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
+    {.hash = 0x3689A926, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
+    {.hash = 0x63D8D532, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // weighted, nurgle
+    {.hash = 0xDB3589E3, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
+    // Cloth: rigid wind planes, sheets waving by the time: in no trace so far.
+    {.hash = 0x233A0281, .clip_cut_outs = true, .dynamic = true, .thin = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},
+    {.hash = 0x219075F3, .clip_cut_outs = true, .dynamic = true, .thin = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},
+    {.hash = 0x72CDA7A1, .clip_cut_outs = true, .dynamic = true, .thin = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},
     // shaders_rigid_ui_capture_flag_xml (waves by the time in b0, out of a capture's key). A sheet: Coloured Shadows' filter.
     {.hash = 0x444F1190, .dynamic = true, .thin = true},
     // fx_rigidleaf_v3: its clip reads the base colour at t1 (t0 is the burn map, the same texture until the tree burns).
@@ -3067,6 +3081,7 @@ bool AttachAddon() {
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
+  twattila::rt_scene::InstallCutOutMasks(twwarhammer3::CUT_OUT_MASKS);
   twattila::rt_scene::InstallPointLights(std::span(traced_lights::SHADERS).first(traced_lights::POINT_LIGHT_SHADERS));
   twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS));
   twwarhammer3::object_motion::Install([] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.object_motion != 0.f; },

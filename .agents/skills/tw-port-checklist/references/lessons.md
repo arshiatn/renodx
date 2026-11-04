@@ -44,6 +44,9 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 
 | Mistake or trap | How to avoid | Verify without the game |
 |---|---|---|
+| A mesh placed by `SV_InstanceID` from a buffer isn't in a capture's key: static VBs read as static, kept as first captured, stale after a camera move; WH3's C0ED2883 black banners [ec69928e] | `.dynamic` unless the position comes only from the VB and constants in the key: read the VS's position chain | The rays' hit point read back through a Debug View: 0-2 m from the pixel means a copy; a test that rays were on before the move, not after |
+| Scene Tests don't clear kept static meshes: helper keeps them off screen, so "Terrain Only" still held them and pointed at the wrong row (B1) | After a Scene Test change wait for the keep, or restart rays; Scene Test 4 for what's kept | Rays off and on clears them |
+| A Debug View's colour isn't linear in the shot: v goes through gamma 2.2 (white 124 nits in scRGB), and sharpening smears per-pixel codes | Encode values in 8-pixel bands; calibrate against numbers logged from C++ | `b6/cal.py`'s exponents all 2.2 |
 | One mesh captured twice: depth prefill plus G-buffer by one VS paid the share twice; hidden and shown instances raced in the dedupe (grass flicker) [78c0f619] | Capture only with a colour target bound (foliage with rows and thin only), checked against the game's multi-target passes | Group draws by vs, ps, targets in a frame trace |
 | Same effect computed twice: screen-space under its RT replacement, two traces, copied passes | Ask at each round's end | Read the settings' gates; trace |
 | A game's pass already has what you add: WH3's fog marches its shadow maps, Attila's has none, Attila's factor would darken twice | Replace: the game's gate false, rays in its place, only the share the rays stand for | WARP: ours at visibility 1 against the game with its own strength at 0 |
