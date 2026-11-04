@@ -2440,7 +2440,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 11> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4},                    // fx_rigidanisotropic
     {.hash = 0x8EE34EC5},                    // fx_rigidambientmapfiremesh
     {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
-    {.hash = 0xC0ED2883},                    // fx_rigidtextureblend
+    {.hash = 0xC0ED2883, .dynamic = true},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
     {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true, .pixel_masks = TERRAIN_MASKS, .tessellated_keep = __rt_terrain_keep},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
     {.hash = 0xB8C567C3, .dynamic = true},   // fx_weighted (skinned units)
     {.hash = 0x2C45437C, .dynamic = true},   // rigid_character_alpha
