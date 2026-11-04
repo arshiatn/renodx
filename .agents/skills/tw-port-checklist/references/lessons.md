@@ -241,5 +241,8 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | Round report per game: done, not done, what gets tested; double-work check before it | Without it nobody knows what shipped |
 | PowerShell `-Filter "*.addon32.*"` matches plain files too: never delete by it. Heredocs eat backslashes | Both lost work |
 | A dead game process pins the addon: rename aside, not delete by wildcard | Only in a game folder |
+| A GPU reset: first ask whose device was removed. A watchdog thread in each process reading `GetDeviceRemovedReason` and the fences says it in one run; the debug layer and DRED only see D3D12 | WH3 B8 walked 60 runs on the helper; it was idle, the game's D3D11 device hung |
+| D3D11 has no breadcrumbs: a fence signalled before each draw with hashes in a ring. Fine signals can cure the hang: bisect with signals at chosen hashes, and take a cure as the proof | WH3: signals between dispatches 0 of 27; a Flush between the tree simulation and the terrain's stream output 0 of 38, 14 of 47 before |
+| Each driver reset leaves a dead process with its commit until a reboot: 100 test runs fill the page file, then "No memory" changes the scene, then runs prove nothing. check_run fails on it. Count resets | WH3 B8b: 109 of 127 GB, 4K stopped fitting |
 | WH3's replay start wants the replay's full path; a bare name crashes it. Try start forms before building a plan on one | Cost six crash reports, pushed out the maintainer's old ones |
 | A plan's list of what test material lacks is a guess until the game's packs are read: its benchmark XMLs hold a burning siege | Plan said nobody could test fire |
