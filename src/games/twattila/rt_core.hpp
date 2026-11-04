@@ -169,6 +169,7 @@ struct Settings {
 // holding the UV (`uv_semantic`, `uv_semantic_index`: its xy).
 // A vertex shader serving materials whose opacity lies in different slots lists them (`pixel_masks`): only its draws with a
 // listed pixel shader are in the scene.
+// A vertex shader that only gives control points (`tessellated`, 4 a patch): its draw's bound domain shader is streamed out.
 struct PixelMask {
   uint32_t pixel_shader = 0;
   UINT slot = 0;
@@ -193,6 +194,7 @@ struct SceneShader {
   bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at t0
   bool far_tree = false;    // a far tree's billboard (with sun_facing): its opacity mask at t1
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
+  bool tessellated = false;
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
   UINT mask_slot = 0;
@@ -257,6 +259,11 @@ constexpr UINT MAX_PARTICLES = 1u << 19;
 constexpr UINT MAX_SMOKE_QUADS = 1u << 15;
 constexpr float SMOKE_LEAST = 0.05f;  // the opacity over area a particle needs for a quad, at the least
 constexpr uint64_t SMOKE_KEY = 0x534D4F4B45ull;
+// Tessellated draws: their triangles a frame at most (the hull shader decides how many, so past the draw), the draws (a
+// count each), their capture's key.
+constexpr UINT MAX_TESSELLATED_VERTICES = 6u << 20;
+constexpr size_t MAX_TESSELLATED_DRAWS = 16;
+constexpr uint64_t TESSELLATED_KEY = 0x54455353ull;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
 constexpr uint64_t PLACE_TURNS = 4;
 // The local lights a frame keeps for the next trace to pick from.
@@ -293,6 +300,9 @@ struct DeviceObjects {
   ComPtr<ID3D11Buffer> captured;  // stream output: world positions, three per triangle
   ComPtr<ID3D11ShaderResourceView> captured_srv;
   ComPtr<ID3D11Buffer> captured_uv;  // the game's own shaders' foliage UVs, at their vertices' places
+  // Tessellated draws' triangles, one after the other, and each draw's count: copied to `captured` at the trace.
+  ComPtr<ID3D11Buffer> tessellated;
+  std::array<ComPtr<ID3D11Query>, MAX_TESSELLATED_DRAWS> tessellated_queries;
   ComPtr<ID3D11ShaderResourceView> captured_uv_srv;
   ComPtr<ID3D11ComputeShader> vertices_shader;
   ComPtr<ID3D11ComputeShader> skies_shader;
@@ -443,6 +453,8 @@ struct Runtime {
   std::unordered_set<uint64_t> captured_keys;
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
+  uint32_t tessellated_draws = 0;  // this frame's so far (DeviceObjects::tessellated)
+  bool tessellated_room_logged = false;
   uint32_t dynamic_vertices = 0;
   uint32_t unit_vertices = 0;   // of them the units' (skinned soldiers and horses), their triangles and clusters
   uint32_t unit_triangles = 0;
@@ -726,6 +738,12 @@ inline bool PrepareDevice(ID3D11Device* device) {
          && SUCCEEDED(device->CreateDepthStencilState(&depth_desc, objects.no_depth.GetAddressOf()))
          && SUCCEEDED(device->CreateBuffer(&constants_desc, nullptr, objects.constants.GetAddressOf()))
          && SUCCEEDED(device->CreateBuffer(&sun_desc, nullptr, objects.sun_constants.GetAddressOf()));
+  if (std::ranges::any_of(scene_shaders, &SceneShader::tessellated)) {
+    const D3D11_BUFFER_DESC tessellated_desc = {.ByteWidth = MAX_TESSELLATED_VERTICES * 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+    const D3D11_QUERY_DESC statistics_desc = {.Query = D3D11_QUERY_SO_STATISTICS};
+    made = made && SUCCEEDED(device->CreateBuffer(&tessellated_desc, nullptr, objects.tessellated.GetAddressOf()))
+           && std::ranges::all_of(objects.tessellated_queries, [&](ComPtr<ID3D11Query>& query) { return SUCCEEDED(device->CreateQuery(&statistics_desc, query.GetAddressOf())); });
+  }
   const D3D11_QUERY_DESC disjoint_desc = {.Query = D3D11_QUERY_TIMESTAMP_DISJOINT};
   const D3D11_QUERY_DESC stamp_desc = {.Query = D3D11_QUERY_TIMESTAMP};
   for (auto& timing : objects.timings) {
@@ -993,7 +1011,8 @@ void Capture(Context& command, const SceneShader& shader) {
   const UINT row_texels = placed ? instances * 4u : 0u;
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
-  if (topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || vertex_count == 0 || vertex_count > MAX_VERTICES) {
+  if (topology != (shader.tessellated ? D3D11_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST)
+      || vertex_count == 0 || vertex_count > MAX_VERTICES) {
     if (vertex_count != 0) {
       const std::unique_lock lock(runtime.mutex);
       if (runtime.left_out_logged.insert(shader.hash).second) {
@@ -1129,7 +1148,7 @@ void Capture(Context& command, const SceneShader& shader) {
   const bool compactable = INDEXED
                            && (placed ? (shader.foliage && !shader.capture_shader.empty() && !shader.still && !(shader.grass && !runtime.settings.grass_sway))
                                       : dynamic)
-                           && !shader.sun_facing && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
+                           && !shader.sun_facing && !shader.tessellated && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
   uint64_t set_key = 14695981039346656037ull;
   ComPtr<ID3D11Buffer> compact_indices;
   if constexpr (INDEXED) {
@@ -1155,7 +1174,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // turn dropped the old level up to 3 frames before the new one's turn (ATN: shadows gone and back at each change).
   bool place = false;
   size_t full_share = SHARE_NAMES.size();  // the first of its shares that is full (none: their count)
-  const bool unit = shader.dynamic && !shader.grass && !shader.thin;  // skinned soldiers and horses
+  const bool unit = shader.dynamic && !shader.grass && !shader.thin && !shader.tessellated;  // skinned soldiers and horses
   // Compact (v16): its mesh's blocks in place of its triangles, once its set is made and can go with this frame's trace;
   // what it takes of the vertex texture and the helper's frame. A placed draw of leaves sways (`sway`): its blocks besides
   // its rows, within the trees' share.
@@ -1252,7 +1271,7 @@ void Capture(Context& command, const SceneShader& shader) {
         return;
       }
       place = !corners_wanted;
-    } else if (runtime.captured_keys.contains(key)) {
+    } else if (!shader.tessellated && runtime.captured_keys.contains(key)) {
       if (!placed) return;
       place = true;
     }
@@ -1362,6 +1381,7 @@ void Capture(Context& command, const SceneShader& shader) {
     return;
   }
   auto& objects = runtime.objects;
+  if (shader.tessellated && (!objects.tessellated || runtime.tessellated_draws == objects.tessellated_queries.size())) return;
   // The capture version (by the shader's place in the list: listed shaders have them, and record versions), else the
   // game's own: its stream output (SV_Position; its foliage's UV into the second buffer) made once from its code (null:
   // it could not be).
@@ -1378,9 +1398,12 @@ void Capture(Context& command, const SceneShader& shader) {
   ID3D11VertexShader* capture_vertex_shader = nullptr;
   ID3D11GeometryShader* stream_output = nullptr;
   if (!place && clip_space) {
-    const auto [made, first] = (clip_uv ? objects.game_uv_outputs : objects.game_outputs).try_emplace(shader.hash);
+    const uint32_t streamed_shader =
+        shader.tessellated ? renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::domain_shader, &command.bound_state_cache)
+                           : shader.hash;
+    const auto [made, first] = (clip_uv ? objects.game_uv_outputs : objects.game_outputs).try_emplace(streamed_shader);
     if (first) {
-      const auto code = game_code.find(shader.hash);
+      const auto code = game_code.find(streamed_shader);
       const std::array<D3D11_SO_DECLARATION_ENTRY, 2> entries = {{
           {.SemanticName = "SV_POSITION", .SemanticIndex = 0, .ComponentCount = 4},
           {.SemanticName = shader.uv_semantic, .SemanticIndex = shader.uv_semantic_index, .ComponentCount = 2, .OutputSlot = 1},
@@ -1391,8 +1414,10 @@ void Capture(Context& command, const SceneShader& shader) {
           || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), entries.data(), outputs,
                                                                   STRIDES.data(), outputs, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
                                                                   made->second.GetAddressOf()))) {
-        renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for vertex shader {:08X}{}.", shader.hash,
+        renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for {} shader {:08X}{}.", shader.tessellated ? "domain" : "vertex", streamed_shader,
                                           clip_uv ? " with its UV" : ""));
+      } else if (shader.tessellated) {
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: vs {:08X} streamed out through domain shader {:08X}.", shader.hash, streamed_shader));
       }
     }
     if (!made->second) return;
@@ -1415,12 +1440,15 @@ void Capture(Context& command, const SceneShader& shader) {
   native->SOGetTargets(1, game_output.GetAddressOf());
   native->PSSetShader(nullptr, nullptr, 0);
   if (!place || sway) {
-    const std::array<ID3D11Buffer*, 2> targets = {objects.captured.Get(), objects.captured_uv.Get()};
-    const std::array<UINT, 2> stream_offsets = {runtime.captured_vertices * 16, runtime.captured_vertices * 8};
+    // A tessellated draw's triangles: how many is known only after it, so into their own buffer, after the frame's others.
+    const std::array<ID3D11Buffer*, 2> targets = {shader.tessellated ? objects.tessellated.Get() : objects.captured.Get(), objects.captured_uv.Get()};
+    const std::array<UINT, 2> stream_offsets = {shader.tessellated ? (runtime.tessellated_draws == 0 ? 0u : UINT_MAX) : (runtime.captured_vertices * 16),
+                                                runtime.captured_vertices * 8};
     if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
     if (shader.sun_facing) native->VSSetShaderResources(0, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
+    if (shader.tessellated) native->Begin(objects.tessellated_queries[runtime.tessellated_draws].Get());
     if constexpr (INDEXED) {
       if (compact || sway) {
         // Each block's vertices once: points through the mesh's remap indices (the game's index buffer and topology put
@@ -1438,6 +1466,7 @@ void Capture(Context& command, const SceneShader& shader) {
       native->DrawInstanced(arguments.vertex_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_vertex,
                             arguments.first_instance);
     }
+    if (shader.tessellated) native->End(objects.tessellated_queries[runtime.tessellated_draws].Get());
     if (shader.sun_facing) {
       ID3D11ShaderResourceView* no_view = nullptr;
       native->VSSetShaderResources(0, 1, &no_view);
@@ -1466,6 +1495,10 @@ void Capture(Context& command, const SceneShader& shader) {
   native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
   native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
+  if (shader.tessellated) {
+    ++runtime.tessellated_draws;
+    return;
+  }
   // A mesh whose cluster set is on its way (its indices copied): its first instance's corners just captured copied too
   // (PrepareClusterSet orders the set's triangles by place), at the first full capture since.
   if constexpr (INDEXED) {
@@ -1738,6 +1771,37 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                           dlaa_bridge::bridge.height));
     return false;
   }
+  // The tessellated draws' triangles: their counts wait for the GPU to pass those draws, which it mostly has by now (they
+  // come early in the frame), then they join the captures. Past the frame's room the last ones stay out.
+  if (runtime.tessellated_draws != 0) {
+    uint64_t triangles = 0;
+    uint64_t triangles_needed = 0;
+    for (uint32_t draw = 0; draw < runtime.tessellated_draws; ++draw) {
+      D3D11_QUERY_DATA_SO_STATISTICS statistics = {};
+      while (native->GetData(objects.tessellated_queries[draw].Get(), &statistics, sizeof(statistics), 0) == S_FALSE) {}
+      triangles += statistics.NumPrimitivesWritten;
+      triangles_needed += statistics.PrimitivesStorageNeeded;
+    }
+    const UINT room = std::min({MAX_VERTICES - runtime.captured_vertices, MAX_DYNAMIC_VERTICES - std::min(runtime.dynamic_vertices, MAX_DYNAMIC_VERTICES),
+                                (dlaa_bridge::RT_DYNAMIC_TRIANGLES - std::min(runtime.dynamic_triangles, dlaa_bridge::RT_DYNAMIC_TRIANGLES)) * 3,
+                                (dlaa_bridge::RT_DYNAMIC_CLUSTERS - std::min(runtime.dynamic_clusters, dlaa_bridge::RT_DYNAMIC_CLUSTERS)) * dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES * 3});
+    const UINT corners = static_cast<UINT>(std::min<uint64_t>(triangles * 3, room / 3 * 3));
+    if (corners != 0 && runtime.captures.size() < dlaa_bridge::RT_CAPTURES) {
+      const D3D11_BOX written = {.left = 0, .top = 0, .front = 0, .right = corners * 16, .bottom = 1, .back = 1};
+      native->CopySubresourceRegion(objects.captured.Get(), 0, runtime.captured_vertices * 16, 0, 0, objects.tessellated.Get(), 0, &written);
+      runtime.captures.push_back({.key = TESSELLATED_KEY, .first_vertex = runtime.captured_vertices, .vertex_count = corners,
+                                  .flags = dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC});
+      runtime.slices.push_back(0);
+      runtime.captured_vertices += corners;
+      runtime.dynamic_vertices += corners;
+      runtime.dynamic_triangles += corners / 3;
+      runtime.dynamic_clusters += ((corners / 3) + dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES - 1) / dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
+    }
+    if (corners / 3 < triangles_needed && !runtime.tessellated_room_logged) {
+      runtime.tessellated_room_logged = true;
+      renodx::utils::log::i(std::format("[Total War] Ray tracing: tessellated triangles without room: {} of {}.", corners / 3, triangles_needed));
+    }
+  }
   // The cost report's timestamps (a set still pending: this frame without).
   auto& timing = objects.timings[objects.timing_next % objects.timings.size()];
   const bool stamped = runtime.timed && timing.disjoint && timing.stamps[2] && !timing.pending;
@@ -1964,6 +2028,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   runtime.captured_keys.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
+  runtime.tessellated_draws = 0;
   runtime.drawn.clear();
   runtime.placements.clear();
   runtime.compact.clear();
@@ -2107,6 +2172,12 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
       PixelCoverage coverage = ClassifyCoverage({code, desc->code_size});
       const std::unique_lock lock(runtime.mutex);
       pixel_coverage[pipeline.handle] = std::move(coverage);
+      continue;
+    }
+    if (subobjects[index].type == reshade::api::pipeline_subobject_type::domain_shader && std::ranges::any_of(scene_shaders, &SceneShader::tessellated)) {
+      const uint32_t domain_hash = renodx::utils::hash::ComputeCRC32(code, desc->code_size);
+      const std::unique_lock lock(runtime.mutex);
+      game_code[domain_hash].assign(code, code + desc->code_size);
       continue;
     }
     if (subobjects[index].type != reshade::api::pipeline_subobject_type::vertex_shader) continue;
@@ -2623,6 +2694,7 @@ inline void Update(const Settings& settings) {
   runtime.captured_keys.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
+  runtime.tessellated_draws = 0;
   runtime.dynamic_vertices = 0;
   runtime.unit_vertices = 0;
   runtime.unit_triangles = 0;

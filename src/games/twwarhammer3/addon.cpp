@@ -2307,8 +2307,7 @@ constexpr std::array<twattila::light_bounce::SunDraw, 7> LIGHT_BOUNCE_DRAWS = {{
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the G-buffer's opaque meshes as the game's own vertex shaders draw them
 // (their SV_Position streamed out: WH3 has no capture versions), units (skinned, character alpha), flags and grass every
-// frame. Not in it: billboards (cards facing the camera: their shadow would turn with it), decals, water and the
-// tessellated terrain (its vertex shader gives control points).
+// frame. Not in it: billboards (cards facing the camera: their shadow would turn with it), decals and water.
 // The grass's vertex shader serves three families: by their pixel shaders' clip, the opacity is t_xml_base_colour at t2 or
 // t0; grass rock (no clip) and the depth-only versions stay out.
 constexpr std::array<twattila::rt_scene::PixelMask, 4> GRASS_MASKS = {{
@@ -2318,12 +2317,13 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> GRASS_MASKS = {{
     {.pixel_shader = 0x87AC76BF, .slot = 0},
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 11> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 12> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4},                    // fx_rigidanisotropic
     {.hash = 0x8EE34EC5},                    // fx_rigidambientmapfiremesh
     {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
     {.hash = 0xC0ED2883},                    // fx_rigidtextureblend
     {.hash = 0x5767F87C, .terrain = true},   // fx_rigidterrain
+    {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
     {.hash = 0xB8C567C3, .dynamic = true},   // fx_weighted (skinned units)
     {.hash = 0x2C45437C, .dynamic = true},   // rigid_character_alpha
     {.hash = 0x3193A71F, .dynamic = true},   // fx_weighted's 4-bone units

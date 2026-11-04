@@ -26,6 +26,8 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - **Path Tracing's sky** now comes from the game's ambient cube (bluer from above), also with the game's shadows. Needs helper75.
 - **Light Bounce and paths respect metal:** armour got a full bounce before; the game's ambient gives metal none.
 - **Coloured Shadows** on capture flags (with Light Through Leaves; the colour needs Ray Reconstruction or path-traced Global Illumination).
+- **The hills are in the rays:** the tessellated terrain, as the game drew it this frame (the same triangles, so the rays start on the ground they hit). Only
+  what's in view: a hill behind the camera casts no shadow. With rays on the terrain's geometry runs twice a frame and the trace waits for its triangle count.
 - **Game's Global Illumination (Experimental, Effects tests, default on):** the game's own bounce light, which Light Bounce comes on top of. Whether it
   turns off at once, next battle or after a restart isn't known.
 - Log Details writes once per sun shader whether spherical harmonics and the game's Global Illumination are on, the ambient cube and its scale.
