@@ -22,7 +22,10 @@ Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Done: row Object Motion Vectors, On: the draw writes rt3 itself by token patches, no decompile, no redraw (M1, M2, M3, M5; M7, M8, M12 closed from traces). Paused against off 0.004 steps. Cost 0.4%. Water Motion (M6) Experimental, off.
       Not done: M4 (bones or rows with sway: drawn in no trace, needs a hand edit per VS). Water's crop not reached in 3 pans. Most listed shaders in no scene. Flag's real sway too small for the view (a temporary build proved the path). Not run: Attila (bytes same).
       New for later: marching unit banners (444F1190) have no last position: camera motion only, ATN decides. B11: water is 4F35D09F + DFA2AEA2, 2076D289, 034010C4, not A5FC3927. B12: Water Motion on a river, shots 1-2 s into a key press.
-- [ ] B6 cut-outs, cloth, units' other VS
+- [x] B6 cut-outs, cloth, units' other VS. Proven by runs b6_banner, moved, moved2, skip, hit, fix1, g5, ab, ab2, ab3, gates, final, check_run ok; Attila page same; harness all_modes_b6.txt 116 of 116, helper76 stays (reports/B6.md).
+      Done: black banners = stale copies of C0ED2883 (placed from a buffer out of a capture's key), now every frame: black_patch 0% near view after a camera move, was 9 blobs. Cut-outs by clip_cut_outs: 541 PS from their asm, 6 seen; pines' shadow cell 1.22 in the Sun view, picture within 1%, trace 5.10 > 5.20 ms. 11 rows for G6, G7.
+      Not done: cut-outs at the atlas's limit not reached; Scene 2 by plan not run (one-run Scene 0 A/B instead); close unit view has no before; G6, G7 rows drawn in no trace, level B. WARP none. Not run: Attila (page same).
+      New for later: B8: Fallen Gates leaves 8-24 M out (dynamic texels full), VB test not enough (C0ED2883's VBs are static, it moves), keep UV and masks in placed versions. B7-B12: Scene Tests hold kept meshes for a while. B1's Terrain Only reading of the banners was that.
 - [ ] B7 buildings, rocks, tents, mountains
 - [ ] B8 placed instances
 - [ ] B9 rays in charge
