@@ -995,27 +995,7 @@ inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_alia
   const std::unique_lock lock(internal::state.mutex);
   internal::state.settings = settings;
   internal::state.log_details = log_details;
-  // Its own file: the scale, until a TAA pass shows it (a battle or a save started directly loads its models before any), and whether
-  // the game's own DLSS is on (read at its start).
-  if (!internal::state.preferences_read) {
-    internal::state.preferences_read = true;
-    std::wstring folder(32768, L'\0');
-    folder.resize(GetEnvironmentVariableW(L"APPDATA", folder.data(), static_cast<DWORD>(folder.size())));
-    std::ifstream file(std::filesystem::path(folder) / L"The Creative Assembly" / L"Warhammer3" / L"scripts" / L"preferences.script.txt");
-    constexpr std::string_view NAME = "gfx_resolution_scale ";
-    constexpr std::string_view DLSS_NAME = "gfx_dlss ";
-    for (std::string line; std::getline(file, line);) {
-      float value = 0.f;
-      if (line.starts_with(NAME) && std::from_chars(line.data() + NAME.size(), line.data() + line.size(), value).ec == std::errc{} && value > 0.f && value <= 1.f) {
-        internal::state.scene_share = value;
-      }
-      if (int dlss = 0; line.starts_with(DLSS_NAME) && std::from_chars(line.data() + DLSS_NAME.size(), line.data() + line.size(), dlss).ec == std::errc{} && dlss > 0) {
-        internal::state.in_game_dlss = true;
-        renodx::utils::log::w("[Warhammer III] preferences.script.txt has gfx_dlss above 0: the game's TAA is gone, so the addon can't upscale. Set it to 0.");
-      }
-    }
-  }
-  // Without an upscaler the game's own TAA runs, whatever the row says, and no pass follows the size.
+  // Without an upscaler the game's own TAA runs, and no pass follows the size.
   if (const bool scales = below_100 && twattila::anti_aliasing::Upscales(settings.method); internal::state.below_100 != scales) {
     internal::state.below_100 = scales;
     internal::state.scale_proof = internal::ScaleProof::NONE;
@@ -1068,9 +1048,28 @@ inline std::array<UINT, 2> RenderSize() {
   return {static_cast<UINT>(internal::state.camera[internal::VIEWPORT]), static_cast<UINT>(internal::state.camera[internal::VIEWPORT + 1])};
 }
 
-// The game's own DLSS is on: nothing here can run.
+// The game's own DLSS is on: nothing here can run. Every present, before anything reads the size. Its file, once, also gives the scale until
+// a TAA pass shows it (a battle or a save started directly loads its models before any).
 inline bool InGameDlss() {
   const std::unique_lock lock(internal::state.mutex);
+  if (!internal::state.preferences_read) {
+    internal::state.preferences_read = true;
+    std::wstring folder(32768, L'\0');
+    folder.resize(GetEnvironmentVariableW(L"APPDATA", folder.data(), static_cast<DWORD>(folder.size())));
+    std::ifstream file(std::filesystem::path(folder) / L"The Creative Assembly" / L"Warhammer3" / L"scripts" / L"preferences.script.txt");
+    constexpr std::string_view NAME = "gfx_resolution_scale ";
+    constexpr std::string_view DLSS_NAME = "gfx_dlss ";
+    for (std::string line; std::getline(file, line);) {
+      float value = 0.f;
+      if (line.starts_with(NAME) && std::from_chars(line.data() + NAME.size(), line.data() + line.size(), value).ec == std::errc{} && value > 0.f && value <= 1.f) {
+        internal::state.scene_share = value;
+      }
+      if (int dlss = 0; line.starts_with(DLSS_NAME) && std::from_chars(line.data() + DLSS_NAME.size(), line.data() + line.size(), dlss).ec == std::errc{} && dlss > 0) {
+        internal::state.in_game_dlss = true;
+        renodx::utils::log::w("[Warhammer III] preferences.script.txt has gfx_dlss above 0: the game's TAA is gone, so the addon can't upscale. Set it to 0.");
+      }
+    }
+  }
   return internal::state.in_game_dlss;
 }
 

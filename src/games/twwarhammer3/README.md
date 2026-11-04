@@ -9,8 +9,14 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 - Path-Traced AO is gone from WH3's page and a saved one turns off: with spherical harmonics on the game's ambient cube isn't its sky. The paths' sky is the learned shade.
 - **Ambient occlusion below 100%, fixed, run in game** (replay and campaign, started at 50%, against 100%, one view each): GT-VBAO's depth now comes from the game's sweep, as the downsample it read stops below about 2/3 scale (a frozen depth); its settings reach it at b10 (it had them by luck at 100%, and read radius 0 at 50%: flat white). The AO filter and Ray-Traced AO read the game's AO where its sun draws read it, and the sun reads their textures one to one: the filter darkened the right and bottom third (cells 0.76, now 1.0 to 1.1), RTAO lay 1.5x off. Game's SSAO was right at 50% already: Debug View 8 correlates 0.986 with 100%.
 - **Debug View's Screen-Space AO** works in WH3: what the sun draws read, the game's under RTAO. Troy, Pharaoh, Warhammer I and II: still magenta, nothing changed there.
+- **Upscaling Mode, live, run in game** (replay, by the test hook; FSR, XeSS too): Game's (default), DLAA, Ultra Quality, Quality, Balanced, Performance, Ultra Performance, Custom. The row writes the one float the menu's slider sets, found by the code that uses it, no exe patch; found nothing, the row hides. Sizes are whole in both of the game's roundings (2960x1665, 2560x1440, 2224x1251, 1920x1080, 1280x720 at 4K; Custom in steps of the display's aspect). One new size: one frame of the game's TAA, its first in a session; a size used before: none, and frame generation stays up either way. Custom 1 to 100%: whole picture down to 1% (32x18), no refusal. The game's slider loses while a mode is on.
+  - **Quit at a mode: the game writes it to its file** (`gfx_resolution_scale 0.5`; it saves before the device goes). With the addon the old value comes back through `UpscalingGameScale` in ReShade.ini once the row is on Game's (run: file 0.5, the key 1, the row Game's, quit: file 1). Addon removed: the file stays; set the in-game slider.
+  - **The Below 100% row is gone:** an upscaler on means it also runs below 100%. A size the constants don't agree with is still refused.
+  - **Texture LOD Bias** (default Sharper): samplers cloned in the main view (viewport at the render size, before the tone mapper; a trace shows shadow maps out). The game's own samplers have fixed biases (0, -0.5, -2) that don't follow the scale. Edge energy at 50 against 100: Off 0.78 to 0.96, Matched 0.90 to 0.97, Sharper 0.99 both views, Sharpest 1.00 to 1.07.
+  - **Effects at Output Resolution** shown and honoured: Light Bounce, Bend's softness, RTAO's rate follow it. On against off, rays off, one paused view: under the noise.
+  - Status line says the sizes. `gfx_dlss` above 0 in the game's file: status and log say so, the row writes nothing (run).
 - **Below 100%, run in game** (replay and campaign, started at 50%, against 100%, one view each):
-  - **Models as at 100%:** the game picks LODs and culls by the render's pixels: 50.2 M indices in the G-buffer at 100%, 28.0 M at 50%. `Full Detail Below 100%` (on) puts them back from the next load: 50.19 M at 50%, campaign 17.72 M both. Cost at 50%, ATN's x8 sliders, one view: rays off 11.84 to 13.55 ms, RT/PT 25.85 to 31.95 ms. Off: as before. A scale changed inside a battle counts from the next load. No in-session change run yet.
+  - **Models as at 100%:** the game picks LODs and culls by the render's pixels: 50.2 M indices in the G-buffer at 100%, 28.0 M at 50%. `Full Detail Below 100%` (on) puts them back from the next load: 50.19 M at 50%, campaign 17.72 M both. Cost at 50%, ATN's x8 sliders, one view: rays off 11.84 to 13.55 ms, RT/PT 25.85 to 31.95 ms. Off: as before. A scale changed inside a battle counts from the next load.
   - **Sharpening:** the game adds up to 1 to its strength below 100% for its own upscale (0.225 + 0.75 at 50%: read in game). That part is off behind the upscaler. Edge energy 50 against 100: 2.04 to 2.14 before, 0.80 to 0.84 now. Game's TAA keeps it.
   - **Heat haze** the same size on screen as at 100%, **secondary LUT's distance** right: WARP on the shader's lines (`warp_tests/t00_scale`). Haze's look at scale: not run by eye.
   - Screen-Space Shadows' Debug View goes through the upscaler like the rest (it showed the corner): correlates 0.976 with 100%.
@@ -22,7 +28,6 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   game; FSR Frame Generation's status has a real count (2.0 here); no "smoke shadows" in the status; Below 100%'s line printed once the size
   holds (one line per drag: not proven, no script can drag); "without room" every 10 s under Log Details, with the numbers.
 - The page's presets leave Log Details alone.
-- With the game's own DLSS (`gfx_dlss` above 0) its TAA is gone and the addon's upscaling doesn't run: keep it at 0.
 - Verify runs: `tools/tw/wh3_batch3/facts.md`. Start form: `game_startup_mode replay "<full path>.replay"`; a bare name crashes the game.
 
 ## v31 (not released, built only, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23)
@@ -75,7 +80,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   own chain stays at the smaller size; the tone mapper's picture goes through the upscaler up to your resolution; flares, vignette, sharpening
   and UI at your resolution. Off, and at 100% either way, nothing changes. The first frame at each size only checks the game's constants; if
   they aren't as expected the status line says so, the values are in `ReShade.log`, and the game's TAA and upscale stay. Bloom now sees
-  the unresolved picture, and particles go through the upscaler: ATN's test decides. No LOD bias here: the game has its own (corrected in B4).
+  the unresolved picture, and particles go through the upscaler: ATN's test decides. No LOD bias here then; v32 has it.
   Rays a Pixel's Match Output is back: up to 8 rays at the game's lower scales (at 100% it is still 1).
 - **Ray tracing's scene: leaves, grass, 4-bone units, capture flags.** Leaves and blades cast shadows with their holes (alpha tested against
   their own map), the flag waves in its shadow. Tree billboards stay out (they face the camera), so do `grass_rock` and two grass families no

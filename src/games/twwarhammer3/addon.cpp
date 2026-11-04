@@ -2601,8 +2601,9 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
 #endif
   // Upscaling Mode: exact sizes, as the game truncates some of its sizes and rounds up others. Before anything reads this frame's size.
   float wanted_scale = 0.f;
+  const bool in_game_dlss = twwarhammer3::taa_dlss::InGameDlss();
   const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
-  if (upscaling_mode_row != 0.f && twattila::feature_settings::Upscaling(aa_sliders) && !third_party_upscale && !twwarhammer3::taa_dlss::InGameDlss()) {
+  if (upscaling_mode_row != 0.f && twattila::feature_settings::Upscaling(aa_sliders) && !third_party_upscale && !in_game_dlss) {
     const auto mode = static_cast<size_t>(upscaling_mode_row) - 1;
     wanted_scale = twattila::frame_history::AspectScale(back_buffer.texture.width, back_buffer.texture.height,
                                                         (mode < twattila::feature_settings::DLSS_MODE_SCALES.size())
