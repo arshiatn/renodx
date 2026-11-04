@@ -29,7 +29,7 @@
 // RENODX_TW_SHOT=<seconds>[,<count>[,<gap>]] ReShade screenshots (its save path, "auto"; by default a second 5 s later),
 // RENODX_TW_PROFILE=<seconds> Record Ray Tracing Profile,
 // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...] settings changed then, as their sliders would; a
-// button's label as the key presses it.
+// button's label as the key presses it; the key "shot" takes a screenshot.
 namespace twattila::test_hooks {
 
 namespace internal {
@@ -98,7 +98,12 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
        colon != std::string::npos && equals > colon && equals != std::string::npos
        && now >= started + (std::strtoull(changes.c_str(), nullptr, 10) * 1000ull);
        colon = changes.find(':'), equals = changes.find('=')) {
-    Change(changes.substr(colon + 1, equals - colon - 1), std::strtof(changes.c_str() + equals + 1, nullptr));
+    if (const std::string key = changes.substr(colon + 1, equals - colon - 1); key == "shot") {
+      runtime->save_screenshot("auto");
+      renodx::utils::log::i("[Total War] Test: shot pressed.");
+    } else {
+      Change(key, std::strtof(changes.c_str() + equals + 1, nullptr));
+    }
     const size_t next = changes.find(';');
     changes.erase(0, (next == std::string::npos) ? next : next + 1);
   }

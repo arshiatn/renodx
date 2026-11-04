@@ -222,3 +222,5 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | Round report per game: done, not done, what gets tested; double-work check before it | Without it nobody knows what shipped |
 | PowerShell `-Filter "*.addon32.*"` matches plain files too: never delete by it. Heredocs eat backslashes | Both lost work |
 | A dead game process pins the addon: rename aside, not delete by wildcard | Only in a game folder |
+| WH3's replay start wants the replay's full path; a bare name crashes it. Try start forms before building a plan on one | Cost six crash reports, pushed out the maintainer's old ones |
+| A plan's list of what test material lacks is a guess until the game's packs are read: its benchmark XMLs hold a burning siege | Plan said nobody could test fire |

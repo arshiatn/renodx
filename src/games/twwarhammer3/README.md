@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+## v32 (in progress, batch 3; renodx-tw-dlaa64.exe helper76, bridge v23; run in game by replay, campaign, benchmarks: see each line)
+
+- Log only, run in game: the helper's idle release no longer says it "started again"; Reflex's line says when frame generation paces the
+  game; FSR Frame Generation's status has a real count (2.0 here); no "smoke shadows" in the status; Below 100%'s line printed once the size
+  holds (one line per drag: not proven, no script can drag); "without room" every 10 s under Log Details, with the numbers.
+- The page's presets leave Log Details alone.
+- With the game's own DLSS (`gfx_dlss` above 0) its TAA is gone and the addon's upscaling doesn't run: keep it at 0.
+- Verify runs: `tools/tw/wh3_batch3/facts.md`. Start form: `game_startup_mode replay "<full path>.replay"`; a bare name crashes the game.
+
 ## v31 (not released, built only, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23)
 
 - **Still computed twice, known:** the game's TAA runs and is thrown away under any upscaler (its other outputs are read later). The sun's cascades and their mask

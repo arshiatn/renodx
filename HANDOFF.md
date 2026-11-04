@@ -2,7 +2,9 @@
 
 ## WH3 BATCH 3 (from 2026-11-04): fixes, DLSS rows, motion, full RT scene; game runs allowed on replay copies, campaign copy, benchmark
 Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch3/reports/Bn.md. Facts: wh3_batch3/facts.md. Run: test_scripts/run_game.ps1 -Game wh3, proof: wh3_batch3/check_run.py.
-- [ ] B0 kit, log fixes, captures (in progress)
+- [x] B0 kit, log fixes, captures. Proven by runs c1-c9, survey (reports/B0.md, facts.md); check_run ok on each but c9_dlss3 (no "Finished exiting" with in-game DLSS) and bm_old (the game's own crash). Harness: tools/tw/all_modes_b0.txt. Helper: build/tw_dlaa_helper76.
+      Not done: soldier's height not measured; one line per drag not proven (no drag by script); water state at D409F9B5 not seen (no A5FC3927 on any map tried). ATN's ini restored byte for byte; the plan's end-state changes (Output Auto, stale keys) wait for Close. Test copies wh3test1, wh3test2, wh3test.save stay in AppData until Close (Wh3-Close).
+      New for later: B1 black patches are terrain-flagged geometry, sun and AO both, 100% and 50% alike (not the 1.5x offset); B1 or B8: tessellated terrain joins last and goes short at 100% (196335 of 760548); B2: Debug View 8 always magenta in WH3; B11: gfx_fog 0 draws 438D86B8, 2D1039C0, not the 4 fog hashes; all phases: benchmarks are test material (siege fire, dark map).
 - [ ] B1 black patches
 - [ ] B2 AO at scale
 - [ ] B3 the rest at 50%
