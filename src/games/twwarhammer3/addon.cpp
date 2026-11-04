@@ -2448,7 +2448,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x41AC9CB1, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},  // rigid_battle_rock_terrain_blend
     {.hash = 0x33AF7AE5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},  // rigid_battle_rock
     {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
-    // Trees stay captured every frame, as all of these with the row Placed Objects off: placed, the siege benchmark resets the GPU, about half of the runs (nothing placed 0 of 5).
+    // Trees stay captured every frame, as all of these with the row Placed Objects off.
     {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
     {.hash = 0x31584506, .dynamic = true},  // fx_rigidbranch_v3

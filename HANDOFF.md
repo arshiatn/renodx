@@ -26,8 +26,12 @@ Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Done: black banners = stale copies of C0ED2883 (placed from a buffer out of a capture's key), now every frame: black_patch 0% near view after a camera move, was 9 blobs. Cut-outs by clip_cut_outs: 541 PS from their asm, 6 seen; pines' shadow cell 1.22 in the Sun view, picture within 1%, trace 5.10 > 5.20 ms. 11 rows for G6, G7.
       Not done: cut-outs at the atlas's limit not reached; Scene 2 by plan not run (one-run Scene 0 A/B instead); close unit view has no before; G6, G7 rows drawn in no trace, level B. WARP none. Not run: Attila (page same).
       New for later: B8: Fallen Gates leaves 8-24 M out (dynamic texels full), VB test not enough (C0ED2883's VBs are static, it moves), keep UV and masks in placed versions. B7-B12: Scene Tests hold kept meshes for a while. B1's Terrain Only reading of the banners was that.
-- [ ] B7 buildings, rocks, tents, mountains
-- [ ] B8 placed instances
+- [x] B7 buildings, rocks, tents, mountains. Report written by B8 from the commits: B7's agent stopped before its report (reports/B7.md). Runs b7_wall, town, first, siege, camp, grass_battle, stall_*, probe*, check_run ok; harness all_modes_b7.txt: `release` flake only.
+      Not done: b7 `final` never run (see B8). Off and cost on B8's build.
+- [x] B8 placed instances: built, works, **row Placed Objects, Experimental, Off** (stop rule; off = B7's capture). Proven by runs b8_*, b8f_*, b8z_*, b8end_* (reports/B8.md), WARP rt_capture_test OK, Attila page same, helper76 stays, harness all_modes_b8.txt 116 of 116.
+      On: RT/PT 100% 52.0 to 43.0 ms, 50% 32.7 to 25.3, vertices 25 to 10 M, 823 static meshes, kept off screen, moving weapons by rows.
+      Not done: trees (per frame), off-screen trees, sway rows hidden; named caster leaving view not isolated; 5 min soak only on a build with trees. Not run: Attila, row on with FG.
+      **NEW, TOP OF THE LIST, "siege reset": siege benchmark + any ray effect resets the driver (nvlddmkm 153, about 10 s in), even Sun + AO alone, nothing placed, about B6's scene (1 of 6); rays off 0 of 6; placed on about 50%, off about 26%. Cause not found. Count the 153s, check_run only sees "set shot, clean exit".** Table in reports/B8.md. B9: G3 stays multiply unless the row is on.
 - [ ] B9 rays in charge
 - [ ] B10 far scene, campaign
 - [ ] B11 reflections, march, fog
