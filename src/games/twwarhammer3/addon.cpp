@@ -45,6 +45,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
+#include "./building_masks.hpp"
 #include "./cut_out_masks.hpp"
 #include "./object_motion.hpp"
 #include "./resolution_scale.hpp"
@@ -2437,10 +2438,19 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> TERRAIN_MASKS = {{
     {.pixel_shader = 0xBB65FB61, .slot = 8},  // the campaign's
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 22> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidambientmapfiremesh
+    // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
+    {.hash = 0x4F35D09F, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = twwarhammer3::BUILDING_MASKS},
+    // Rocks. A rock's second draw into the terrain's targets (087C74E6, A5A266C3) only paints its blend: the same mesh again, not listed.
+    {.hash = 0x41AC9CB1},  // rigid_battle_rock_terrain_blend
+    {.hash = 0x33AF7AE5},  // rigid_battle_rock
+    {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
     {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
+    // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
+    {.hash = 0x31584506, .dynamic = true},  // fx_rigidbranch_v3
+    {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
     {.hash = 0xC0ED2883, .dynamic = true},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
     {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true, .pixel_masks = TERRAIN_MASKS, .tessellated_keep = __rt_terrain_keep},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
     {.hash = 0xB8C567C3, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted (skinned units)

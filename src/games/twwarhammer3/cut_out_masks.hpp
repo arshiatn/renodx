@@ -4,7 +4,7 @@
  */
 
 // Made by a script from the game's shaders (their asm): the pixel shaders whose discard reads, but for the dither map's
-// screen-space fade, one base colour map's alpha at 0.5: its slot and the UV's semantic index. Sorted by pixel shader.
+// screen-space fade, one base colour map's alpha at 0.5 (or a material's threshold: shrubs): its slot and the UV's semantic index. Sorted by pixel shader.
 #pragma once
 
 #include <array>
@@ -13,7 +13,7 @@
 
 namespace twwarhammer3 {
 
-inline constexpr std::array<twattila::rt_scene::PixelMask, 541> CUT_OUT_MASKS = {{
+inline constexpr std::array<twattila::rt_scene::PixelMask, 543> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x007C7E41, .slot = 7, .uv_semantic_index = 1},
     {.pixel_shader = 0x030A74E4, .slot = 9, .uv_semantic_index = 1},
     {.pixel_shader = 0x0362ADF0, .slot = 6, .uv_semantic_index = 1},
@@ -96,6 +96,7 @@ inline constexpr std::array<twattila::rt_scene::PixelMask, 541> CUT_OUT_MASKS = 
     {.pixel_shader = 0x234D762D, .slot = 10, .uv_semantic_index = 2},
     {.pixel_shader = 0x23846C8B, .slot = 6, .uv_semantic_index = 1},
     {.pixel_shader = 0x238F7C53, .slot = 7, .uv_semantic_index = 2},
+    {.pixel_shader = 0x2470FF3E, .slot = 1, .uv_semantic_index = 2},
     {.pixel_shader = 0x24897954, .slot = 7, .uv_semantic_index = 1},
     {.pixel_shader = 0x251C46A0, .slot = 10, .uv_semantic_index = 1},
     {.pixel_shader = 0x25611CD2, .slot = 9, .uv_semantic_index = 1},
@@ -506,6 +507,7 @@ inline constexpr std::array<twattila::rt_scene::PixelMask, 541> CUT_OUT_MASKS = 
     {.pixel_shader = 0xE41AFC25, .slot = 0, .uv_semantic_index = 1},
     {.pixel_shader = 0xE453EF19, .slot = 0, .uv_semantic_index = 2},
     {.pixel_shader = 0xE45E2675, .slot = 10, .uv_semantic_index = 2},
+    {.pixel_shader = 0xE496192F, .slot = 1, .uv_semantic_index = 2},
     {.pixel_shader = 0xE619D51B, .slot = 10, .uv_semantic_index = 1},
     {.pixel_shader = 0xE63D0F2B, .slot = 10, .uv_semantic_index = 2},
     {.pixel_shader = 0xE6437082, .slot = 0, .uv_semantic_index = 1},
