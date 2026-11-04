@@ -136,8 +136,8 @@ struct Bindings {
   bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   bool rays_preset_path_ambient = true;  // The RT/PT preset takes it; false: ray-traced AO, over the game's.
   bool rays_preset_caustics = true;      // The RT/PT preset turns Water Caustics on.
-  // Point light shadows have their own row, off, and with Fog Shadows stay off in the RT/PT preset, as does light in the fog.
-  bool lights_experimental = false;
+  // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
+  bool lights_own_row = false;
   bool has_reflections = true;
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
 };
@@ -613,7 +613,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     // No paths for the sky's light here: ray-traced AO, over the game's.
     if (!b.has_path_ambient || !b.rays_preset_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     if (!b.rays_preset_caustics) rays_values.emplace_back("WaterCaustics", 0.f);
-    if (b.lights_experimental) rays_values.insert(rays_values.end(), {{"RayTracedPointLightShadows", 0.f}, {"RayTracedLightImportance", 0.f}, {"RayTracedFogShadows", 0.f}, {"RayTracedLightGlow", 0.f}});
+    if (b.lights_own_row) rays_values.insert(rays_values.end(), {{"RayTracedPointLightShadows", 1.f}, {"RayTracedLightImportance", 0.f}, {"RayTracedFogShadows", 0.f}, {"RayTracedLightGlow", 0.f}});
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
@@ -702,14 +702,15 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .binding = b.rays_replace_maps,
           .value_type = SettingValueType::BOOLEAN,
           .default_value = 0.f,
-          .label = "Rays Replace Shadow Maps",
+          .label = "Rays Replace Shadow Maps (Experimental)",
           .section = section,
-          .tooltip = "The sun's shadows from rays alone: Softness shows in full. Smoke, clouds and hills keep the game's.\n"
+          .tooltip = "The sun's shadows from rays alone, so Softness shows in full. Smoke, clouds and hills keep the game's.\n"
+                     "A unit off screen, such as a flying dragon, loses its shadow.\n"
                      "Off: the rays' shadows on top of the game's shadow maps and contact shadows.",
           .is_visible = more_rays,
       });
     }
-    page.Take({.match = "RayTracedLightGlow", .section = section, .shown = b.lights_experimental ? std::function<bool()>(more_lights) : std::function<bool()>(more_rays),
+    page.Take({.match = "RayTracedLightGlow", .section = section, .shown = b.lights_own_row ? std::function<bool()>(more_lights) : std::function<bool()>(more_rays),
                .label = b.texts->light_glow_label, .tooltip = b.texts->light_glow_tooltip});
     page.Take({.match = "RayTracedGrassSway", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedSwayRange", .section = section, .shown = more_rays, .label = "Swaying Shadows Range"});
@@ -746,10 +747,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .key = "RayTracedAOAlone",
           .binding = b.rays_alone_ao,
           .value_type = SettingValueType::BOOLEAN,
-          .default_value = 0.f,
+          .default_value = 1.f,
           .label = "Replace the Game's AO",
           .section = section,
-          .tooltip = "On: AO from rays alone. Off: on top of the game's SSAO, darker in corners and on open ground.",
+          .tooltip = "On: AO from rays alone. Off: on top of the game's SSAO, darker where both are.",
           .is_visible = rays,
       });
     }

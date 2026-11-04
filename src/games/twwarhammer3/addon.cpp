@@ -2293,7 +2293,7 @@ float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 featur
 float below_100_detail_row = 1.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
-float rays_alone_ao_row = 0.f;
+float rays_alone_ao_row = 1.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
@@ -2316,7 +2316,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, on top of the game's. Needs an upscaler.\n"
+                  "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.\n"
                   "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
                   "turns it on below. May look brighter or darker than the game's. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
@@ -2954,7 +2954,7 @@ void ConfigureAddon() {
       .binding = &rt_sliders.local_lights,
       .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
       .default_value = 0.f,
-      .label = "Torch and Fire Shadows (Experimental)",
+      .label = "Torch and Fire Shadows",
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Torches and fires cast their shadows from rays too.\n"
                  "With Path-Traced Global Illumination they also light what the screen never saw.",
@@ -3081,7 +3081,7 @@ void ConfigureAddon() {
                                              .has_foliage_light = false,
                                              .has_path_ambient = false,
                                              .rays_preset_caustics = false,
-                                             .lights_experimental = true,
+                                             .lights_own_row = true,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
