@@ -58,6 +58,8 @@ struct Texts {
   const char* water_caustics_label = "Water Caustics";
   const char* fog_shadows_label = "Fog Shadows";
   const char* fog_shadows_tooltip = "";  // Empty: the row's own.
+  const char* light_glow_label = "";     // Empty: the row's own.
+  const char* light_glow_tooltip = "";   // Empty: the row's own.
   const char* gi_tooltip_end = "";
   const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
@@ -120,6 +122,8 @@ struct Bindings {
   bool (*upscaling_mode_found)() = nullptr;
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
+  float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
+  float* rays_alone_ao = nullptr;      // RTAO in place of the game's where it would multiply it (rays_replace_ao false); null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
@@ -132,7 +136,7 @@ struct Bindings {
   bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   bool rays_preset_path_ambient = true;  // The RT/PT preset takes it; false: ray-traced AO, over the game's.
   bool rays_preset_caustics = true;      // The RT/PT preset turns Water Caustics on.
-  // Point light shadows have their own row, off, and with Fog Shadows stay off in the RT/PT preset; no light in the fog.
+  // Point light shadows have their own row, off, and with Fog Shadows stay off in the RT/PT preset, as does light in the fog.
   bool lights_experimental = false;
   bool has_reflections = true;
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
@@ -609,7 +613,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     // No paths for the sky's light here: ray-traced AO, over the game's.
     if (!b.has_path_ambient || !b.rays_preset_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     if (!b.rays_preset_caustics) rays_values.emplace_back("WaterCaustics", 0.f);
-    if (b.lights_experimental) rays_values.insert(rays_values.end(), {{"RayTracedPointLightShadows", 0.f}, {"RayTracedLightImportance", 0.f}, {"RayTracedFogShadows", 0.f}});
+    if (b.lights_experimental) rays_values.insert(rays_values.end(), {{"RayTracedPointLightShadows", 0.f}, {"RayTracedLightImportance", 0.f}, {"RayTracedFogShadows", 0.f}, {"RayTracedLightGlow", 0.f}});
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
@@ -692,11 +696,21 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_lights, .label = "Importance-Sampled Torch Shadows (RIS)"});
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays});
-    if (b.lights_experimental) {
-      page.Keep("RayTracedLightGlow");
-    } else {
-      page.Take({.match = "RayTracedLightGlow", .section = section, .shown = more_rays});
+    if (b.rays_replace_maps != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedReplaceShadowMaps",
+          .binding = b.rays_replace_maps,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Rays Replace Shadow Maps",
+          .section = section,
+          .tooltip = "The sun's shadows from rays alone: Softness shows in full. Smoke, clouds and hills keep the game's.\n"
+                     "Off: the rays' shadows on top of the game's shadow maps and contact shadows.",
+          .is_visible = more_rays,
+      });
     }
+    page.Take({.match = "RayTracedLightGlow", .section = section, .shown = b.lights_experimental ? std::function<bool()>(more_lights) : std::function<bool()>(more_rays),
+               .label = b.texts->light_glow_label, .tooltip = b.texts->light_glow_tooltip});
     page.Take({.match = "RayTracedGrassSway", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedSwayRange", .section = section, .shown = more_rays, .label = "Swaying Shadows Range"});
     page.Take({.match = "RayTracedOffScreenSway", .section = section, .shown = more_rays, .label = "Off-Screen Sway"});
@@ -727,6 +741,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
     page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
+    if (b.rays_alone_ao != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedAOAlone",
+          .binding = b.rays_alone_ao,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Replace the Game's AO",
+          .section = section,
+          .tooltip = "On: AO from rays alone. Off: on top of the game's SSAO, darker in corners and on open ground.",
+          .is_visible = rays,
+      });
+    }
     page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
     page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
     page.Add(MoreOptions(section, &more_ao, gtvbao));

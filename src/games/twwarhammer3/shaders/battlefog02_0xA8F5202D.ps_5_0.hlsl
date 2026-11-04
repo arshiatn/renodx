@@ -1,4 +1,4 @@
-// fx_battlefog, the fog's light (half resolution, cascades): the game's, with rays in place of its cascade march
+// fx_battlefog, the fog's light (inscattering_halfrez, ENABLE_SHADOWS): the game's, with rays in place of its cascade march
 // (twwarhammer3/addon.cpp traced_lights; twattila/rt_fog.hlsli). Runs only with t43 bound; otherwise the game's own bytes do.
 // The sky's light stays apart here, so the sun alone goes dark in shadow.
 #define RT_FOG_SHADE 0.f
@@ -924,6 +924,7 @@ void main(
   r1.xyz = r1.www * r1.xyz + r0.xyz;
   r0.xyz = r0.www ? r1.xyz : r0.xyz;
   r0.xyz = sun_colour.xyz * float3(7.61524207e-005,7.61524207e-005,7.61524207e-005) * RtFogSun(v0.xy * g_render_target_dimensions.zw * g_screen_size.xy) + r0.xyz;
+  r0.xyz += RtFogLights(v0.xy * g_render_target_dimensions.zw * g_screen_size.xy);
   r1.xyz = r4.xyz * r0.xyz;
   if (g_skydome_texture_array_enabled != 0) {
     r5.xyz = float3(0,0,0);

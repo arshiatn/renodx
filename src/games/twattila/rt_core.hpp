@@ -74,6 +74,7 @@ struct Settings {
   float ambient_range = 2.f;  // metres
   uint32_t ambient_rays = 2;
   bool ambient_quarter = false;  // a quarter of the rays (one pixel of each 2 x 2 traced a frame, in turn)
+  bool ambient_alone = false;    // A game's combine (RT_COMBINE_SUN_MAPPING): the rays in place of its AO, not on top
   float sun_softness = 0.5f;  // degrees of the sun's disk (0: hard shadows)
   float light_size = 0.f;     // the local lights' radius (metres) for soft shadows under Ray Reconstruction (bridge v18)
   // Rays a pixel toward the sun and each light (bridge v18): below 100% render scale with Ray Tracing at Output
@@ -2514,6 +2515,13 @@ constexpr auto OnSceneDraw = []<typename T, typename Context>(Context&) -> renod
     return {.post_callback = internal::CaptureDraw<Context>};
   }
 };
+
+// Rays cast the sun's shadow and did last frame: a pass before this frame's trace may count on them (a frame with no trace: at most one).
+inline bool SunShadowsTraced() {
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  return runtime.settings.sun_shadows && runtime.traced_frame + 1 >= runtime.frame;
+}
 
 // The sun light's occlusion for the patched sun shaders this frame (the screen-space shadows' `screen_space` mask, or
 // null without it, and the traced sun's, the darker); null: no traced sun this frame (the screen-space mask alone).

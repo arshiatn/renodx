@@ -922,12 +922,19 @@ void OnDestroyDevice(reshade::api::device*) {
 }  // namespace reflections
 
 // Point light shadows and fog shadows from rays: 8 light PS (fx_pointlight*: linear and smooth falloff, with and without the point
-// shadow map and the aux G-buffer) and the fog's light PS (fx_battlefog, half resolution, traced after the sun). Our copies run only
-// where rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture.
+// shadow map and the aux G-buffer) and the fog's 6 light PS (fx_battlefog, all traced after the sun). Our copies run only where
+// rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture.
+// The sun's mask (E6BCBA8A, before the sun draw and this frame's trace) the same, while rays cast the sun's shadow: lit cascades, no
+// contact march; smoke, clouds and the terrain's map stay. Fog, portraits and forward passes read the maps, so the casters still draw.
 namespace traced_lights {
 
-constexpr std::array<uint32_t, 9> SHADERS = {0x8AD6BFD4, 0xEBF0B0A0, 0xB2453C88, 0x1315B4F2, 0x2240F035, 0xF551453C, 0xBE7249F1, 0xEE766574, 0xA8F5202D};
+constexpr std::array<uint32_t, 15> SHADERS = {0x8AD6BFD4, 0xEBF0B0A0, 0xB2453C88, 0x1315B4F2, 0x2240F035, 0xF551453C, 0xBE7249F1, 0xEE766574,
+                                              0xA8F5202D, 0xC506E37C, 0xD13AF2EA, 0x4347C118, 0x438D86B8, 0x7998DC13,
+                                              0xE6BCBA8A};
 constexpr size_t POINT_LIGHT_SHADERS = 8;
+constexpr size_t FOG_SHADERS = 6;
+constexpr size_t SUN_MASK = POINT_LIGHT_SHADERS + FOG_SHADERS;
+float rays_replace_maps_row = 0.f;
 std::array<std::span<const uint8_t>, SHADERS.size()> codes = {};
 std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SHADERS.size()> ours = {};
 std::array<std::atomic_bool, SHADERS.size()> logged = {};
@@ -938,22 +945,26 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
   const auto& hash = command.template GetCallbackData<uint32_t>();
   const size_t index = &hash - SHADERS.data();
   if (!logged[index].exchange(true, std::memory_order_relaxed)) {
-    renodx::utils::log::i(std::format("[Warhammer III] First run: light or fog draw, ps {:08X}.", hash));
+    renodx::utils::log::i(std::format("[Warhammer III] First run: {} draw, ps {:08X}.", (index == SUN_MASK) ? "sun mask" : "light or fog", hash));
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> bound;
-  // rt_local_lights.hlsli's mask, rt_fog.hlsli's fog.
-  native->PSGetShaderResources((index < POINT_LIGHT_SHADERS) ? 42 : 43, 1, bound.GetAddressOf());
-  if (!bound) return {};
+  if (index == SUN_MASK) {
+    if (rays_replace_maps_row == 0.f || !twattila::frame_history::MainViewport(native) || !twattila::rt_scene::SunShadowsTraced()) return {};
+  } else {
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> bound;
+    // rt_local_lights.hlsli's mask, rt_fog.hlsli's fog.
+    native->PSGetShaderResources((index < POINT_LIGHT_SHADERS) ? 42 : 43, 1, bound.GetAddressOf());
+    if (!bound) return {};
+  }
   auto& shader = ours[index];
   if (!shader) {
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     native->GetDevice(device.GetAddressOf());
     const auto code = codes[index];
     if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {};
-    renodx::utils::log::i(std::format("[Warhammer III] Rays applied: light or fog draw, ps {:08X}.", hash));
+    renodx::utils::log::i(std::format("[Warhammer III] Rays applied: {} draw, ps {:08X}.", (index == SUN_MASK) ? "sun mask" : "light or fog", hash));
   }
   native->PSGetShader(game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
   native->PSSetShader(shader.Get(), nullptr, 0);
@@ -2282,6 +2293,7 @@ float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 featur
 float below_100_detail_row = 1.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
+float rays_alone_ao_row = 0.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
@@ -2313,6 +2325,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .fog_shadows_label = "Fog Shadows (Experimental)",
     .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog: it loses the sun's glow in the shadow of\n"
                            "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
+    .light_glow_label = "Torch and Fire Light in Fog (Experimental)",
+    .light_glow_tooltip = "Torches and fires light the fog around them, with their shafts and shadows in it. Needs Fog Shadows. 0: off.",
     .gi_tooltip_end = "\nThe game has its own bounce light: this one comes on top of it. To compare without it: Game's Global\n"
                       "Illumination on Graphics 2 of 2.",
     .coloured_shadows_tooltip = "Sunlight through capture flags takes their colour.\n"
@@ -2644,8 +2658,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                        {back_buffer.texture.width, back_buffer.texture.height});
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength, twwarhammer3::taa_dlss::RenderShare());
-  // Torch light in fog stays out: nothing shows what a light's colour is worth in the fog's light.
-  rt_settings.light_glow = 0.f;
+  rt_settings.ambient_alone = rays_alone_ao_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -2932,6 +2945,10 @@ void ConfigureAddon() {
   // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
+  // Off here: night and fire in the fog have had no one's eye yet.
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedLightGlow") setting->default_value = 0.f;
+  }
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedPointLightShadows",
       .binding = &rt_sliders.local_lights,
@@ -3054,6 +3071,8 @@ void ConfigureAddon() {
                                              .below_100_detail = &below_100_detail_row,
                                              .water_motion = &water_motion_row,
                                              .placed_objects = &placed_objects_row,
+                                             .rays_replace_maps = &traced_lights::rays_replace_maps_row,
+                                             .rays_alone_ao = &rays_alone_ao_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
@@ -3096,7 +3115,7 @@ bool AttachAddon() {
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
   twattila::rt_scene::InstallCutOutMasks(twwarhammer3::CUT_OUT_MASKS);
   twattila::rt_scene::InstallPointLights(std::span(traced_lights::SHADERS).first(traced_lights::POINT_LIGHT_SHADERS));
-  twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS));
+  twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS, traced_lights::FOG_SHADERS));
   twwarhammer3::object_motion::Install([] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.object_motion != 0.f; },
                                        [] { return twattila::feature_settings::Upscaling(aa_sliders) && water_motion_row != 0.f; });
   // After those two: they bind what decides here (none of these is a sun draw).
