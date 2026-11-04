@@ -842,10 +842,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .key = "RayTracedPlacedObjects",
           .binding = b.placed_objects,
           .value_type = SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Placed Objects (Experimental)",
+          .default_value = 1.f,
+          .label = "Placed Objects",
           .section = section,
-          .tooltip = "Buildings, rocks and weapons enter the ray tracing once: faster, and they cast from off screen.\nCan reset the graphics driver in big sieges.",
+          .tooltip = "Buildings, rocks, trees and weapons enter the ray tracing once: faster, and they cast from off screen.",
           .is_visible = more_rt_rows,
       });
     }

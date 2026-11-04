@@ -2281,7 +2281,7 @@ constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 feature_settings::DLSS_MODE_SCALES, 7 Custom
 float below_100_detail_row = 1.f;
 float water_motion_row = 0.f;
-float placed_objects_row = 0.f;
+float placed_objects_row = 1.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
@@ -2448,8 +2448,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x41AC9CB1, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},  // rigid_battle_rock_terrain_blend
     {.hash = 0x33AF7AE5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},  // rigid_battle_rock
     {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
-    // Trees stay captured every frame, as all of these with the row Placed Objects off.
-    {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
+    {.hash = 0x474F97FB, .capture_shader = __rt_capture_branch, .rows_shader = __rt_rows_tree},                    // fx_rigidbranch_v3
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
     {.hash = 0x31584506, .dynamic = true},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
@@ -2474,7 +2473,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     // shaders_rigid_ui_capture_flag_xml (waves by the time in b0, out of a capture's key). A sheet: Coloured Shadows' filter.
     {.hash = 0x444F1190, .dynamic = true, .thin = true},
     // fx_rigidleaf_v3: its clip reads the base colour at t1 (t0 is the burn map, the same texture until the tree burns).
-    {.hash = 0x783383C6, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},
+    {.hash = 0x783383C6, .capture_shader = __rt_capture_leaf, .rows_shader = __rt_rows_tree, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},
     {.hash = 0xA4527F25, .dynamic = true, .foliage = true, .grass = true, .indirect = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = GRASS_MASKS},
 }};
 
