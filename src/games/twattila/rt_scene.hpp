@@ -117,7 +117,8 @@ static bool smoke_shadows_installed = false;
 
 // `light_bounce_strength`: the game's Light Bounce (its rays and paths replace the Light Bounce's trace; off, nothing to
 // trace for them, so they keep ray tracing off).
-inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa, float light_bounce_strength) {
+// `game_render_scale` above 0: the render's scale where the game owns it (else the rows').
+inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSliders& aa, float light_bounce_strength, float game_render_scale = 0.f) {
   const bool dlaa = feature_settings::Upscaling(aa);
   const bool bounce = light_bounce_strength > 0.f && dlaa;
   const bool path_ambient = sliders.path_ambient != 0.f && sliders.light_bounce == 2.f && bounce && internal::ambient_cube != 0
@@ -125,7 +126,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
   // Rays a Pixel: the picture is at the render size until DLSS, nothing traced can be kept finer than that: each render pixel
   // traces more rays instead, each from its own spot of it. Match Output: those of the output pixels it stands for (at most
   // 8), as many on screen as at DLAA (ATN: RR Performance's 1080p rays looked noisy at 4K).
-  const float render_scale = feature_settings::RenderScale(aa);
+  const float render_scale = (game_render_scale > 0.f) ? game_render_scale : feature_settings::RenderScale(aa);
   const auto density = static_cast<uint32_t>(
       (sliders.output_rays == 1.f) ? std::clamp(std::lround(1.f / (render_scale * render_scale)), 1l, 8l)
                                    : std::clamp(std::lround(sliders.output_rays), 1l, 8l));

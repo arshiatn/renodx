@@ -62,6 +62,9 @@ struct Texts {
   const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
   const char* rays_a_pixel_paths_tooltip = "";    // Empty: the row's own.
+  const char* effects_at_output_tooltip =
+      "While the upscaler renders below 100%, ambient occlusion, Light Bounce, reflections and shadow softness\n"
+      "keep their 100% detail. Looks better, can cost some performance.";
   const char* reflections_tooltip =
       "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
       "Game's SSR: the original. FidelityFX SSSR: AMD's hierarchical ray march, exact, no gaps, reaching\n"
@@ -108,9 +111,11 @@ struct Bindings {
   // The smoke's shadows without rays (smoke_map.hpp); null: no such rows.
   float* smoke_strength = nullptr;
   float* smoke_softness = nullptr;
-  // The game owns its scale (has_scale_rows false): the upscalers also below its 100%; null: no such row.
-  float* below_100 = nullptr;
-  float* below_100_detail = nullptr;  // ... and models as detailed as at 100%; null: no such row
+  // The game owns its scale (has_scale_rows false) and the addon can write it (`upscaling_mode_found`): Game's, DLAA, the upscalers'
+  // modes, Custom; null: no such rows.
+  float* upscaling_mode = nullptr;
+  bool (*upscaling_mode_found)() = nullptr;
+  float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
   // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
@@ -336,6 +341,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   const auto always = [] { return true; };
   const auto upscaling = [b] { return feature_settings::Upscaling(*b.aa); };
   const auto scale_rows = [b] { return b.has_scale_rows && feature_settings::Upscaling(*b.aa); };
+  const auto below_100_rows = [b] { return (b.has_scale_rows || b.upscaling_mode != nullptr) && feature_settings::Upscaling(*b.aa); };
   const auto no_upscaler = [b] { return !feature_settings::Upscaling(*b.aa); };
   const auto dlss = [b] { return b.aa->method == 5.f; };
   const auto nvidia = [] { return dlaa_bridge::OnNvidia(); };
@@ -397,18 +403,38 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            return false;
                          },
                          .is_visible = [b] { return (b.upscaler_status != nullptr) ? feature_settings::Upscaling(*b.aa) : b.aa->method > 5.f; }});
-    if (b.below_100 != nullptr) {
+    if (b.upscaling_mode != nullptr) {
+      const auto mode_shown = [b, upscaling] { return upscaling() && b.upscaling_mode_found(); };
       page.Add(new Setting{
-          .key = "AntiAliasingBelow100",
-          .binding = b.below_100,
-          .value_type = SettingValueType::BOOLEAN,
+          .key = "UpscalingMode",
+          .binding = b.upscaling_mode,
+          .value_type = SettingValueType::INTEGER,
           .default_value = 0.f,
-          .label = "Below 100% Resolution Scale (Experimental)",
+          .label = "Upscaling Mode",
           .section = section,
-          .tooltip = "Below 100% in-game Resolution Scale. Game's TAA: its own TAA and upscale, no upscaler here.\n"
-                     "Upscaler: the game's picture goes through the upscaler above, in place of both.",
-          .labels = {"Game's TAA", "Upscaler"},
-          .is_visible = upscaling,
+          .tooltip = "The size the game draws at; the upscaler brings it up (faster). Works at once.\n"
+                     "Game's: the in-game Resolution Scale. The others take over from that slider.",
+          .labels = {"Game's", "DLAA (100%)", "Ultra Quality (77%)", "Quality (66.7%)", "Balanced (58%)", "Performance (50%)",
+                     "Ultra Performance (33.3%)", "Custom"},
+          .is_visible = mode_shown,
+      });
+      // Its key's value changes only when the slider is let go: every new size makes the upscaler start again.
+      page.Take({.match = "AntiAliasingRenderScale", .section = section, .shown = [] { return false; }});
+      page.Add(new Setting{
+          .value_type = SettingValueType::CUSTOM,
+          .label = "Custom Render Scale",
+          .section = section,
+          .tooltip = "The size the game is drawn at, applied when you let go.",
+          .on_draw = [b] {
+            static int percent = 100;
+            static bool dragging = false;
+            if (!dragging) percent = static_cast<int>(b.aa->render_scale);
+            ImGui::SliderInt("Custom Render Scale", &percent, feature_settings::MIN_CUSTOM_SCALE, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+            dragging = ImGui::IsItemActive();
+            if (ImGui::IsItemDeactivatedAfterEdit()) renodx::utils::settings::UpdateSettings({{"AntiAliasingRenderScale", static_cast<float>(percent)}});
+            return false;
+          },
+          .is_visible = [b, mode_shown] { return mode_shown() && *b.upscaling_mode == 7.f; },
       });
     }
     if (b.below_100_detail != nullptr) {
@@ -421,7 +447,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .section = section,
           .tooltip = "Models and draw distances as at 100% in-game Resolution Scale, from the next load. Off: as the\n"
                      "smaller picture asks for, fewer triangles, faster.",
-          .is_visible = [b, upscaling] { return upscaling() && *b.below_100 != 0.f; },
+          .is_visible = upscaling,
       });
     }
     page.Take({.match = "AntiAliasingQuality", .section = section,
@@ -444,8 +470,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                .label = "Sharpening"});
     page.Take({.match = "AntiAliasingDlssMode", .section = section, .shown = scale_rows, .label = "Upscaling Mode",
                .tooltip = "Native: the game at your resolution. The others draw it smaller and the upscaler brings it up (faster)."});
-    page.Take({.match = "AntiAliasingRenderScale", .section = section, .shown = scale_rows,
-               .tooltip = "The size the game is drawn at (100%: Native). Below 33% the upscalers' own modes end."});
+    if (b.upscaling_mode == nullptr) {
+      page.Take({.match = "AntiAliasingRenderScale", .section = section, .shown = scale_rows,
+                 .tooltip = "The size the game is drawn at (100%: Native). Below 33% the upscalers' own modes end."});
+    }
     page.Take({.match = "AntiAliasingDlaaPreset", .section = section, .shown = dlss, .label = "DLSS Preset",
                .tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default)."});
     page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "DLSS Ray Reconstruction",
@@ -484,13 +512,12 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto cmaa = [b] { return b.aa->method == 2.f; };
     page.Add(MoreOptions(section, &more_aa, [b] { return feature_settings::Upscaling(*b.aa) || b.aa->method == 2.f; }));
     page.Take({.match = "AntiAliasingExtraSharpness", .section = section, .shown = more(&more_aa, cmaa), .label = "Extra Sharpness"});
-    page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, scale_rows),
+    page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, below_100_rows),
                .tooltip = "How sharp textures are while the upscaler renders below 100%.\n"
                           "Matched: as sharp as at your display's resolution. Sharper / Sharpest: one / two steps more\n"
                           "(more detail, can shimmer)."});
-    page.Take({.match = "AntiAliasingEffectsAtOutput", .section = section, .shown = more(&more_aa, scale_rows), .label = "Effects at Output Resolution",
-               .tooltip = "While the upscaler renders below 100%, ambient occlusion, Light Bounce, reflections and shadow softness\n"
-                          "keep their 100% detail. Looks better, can cost some performance."});
+    page.Take({.match = "AntiAliasingEffectsAtOutput", .section = section, .shown = more(&more_aa, below_100_rows), .label = "Effects at Output Resolution",
+               .tooltip = b.texts->effects_at_output_tooltip});
     page.Take({.match = "AntiAliasingObjectMotion", .section = section, .shown = more(&more_aa, scale_rows),
                .tooltip = "Soldiers, props and cloth tell the upscaler how they move: sharper while they move.\n"
                           "Off: faster with many soldiers on screen (they can smear a little when moving)."});

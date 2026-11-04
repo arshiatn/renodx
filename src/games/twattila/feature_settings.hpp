@@ -92,6 +92,7 @@ inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
 // DLSS's modes, as Tales of Arise's and Shogun 2's: DLAA (100%), Ultra Quality, Quality, Balanced, Performance, Ultra
 // Performance; then Custom.
 constexpr std::array<float, 6> DLSS_MODE_SCALES = {1.f, 0.77f, 2.f / 3.f, 0.58f, 0.5f, 1.f / 3.f};
+constexpr int MIN_CUSTOM_SCALE = 1;  // The lowest Custom where the game owns its scale (Warhammer III's row).
 
 // About's line for what ships with the helper.
 constexpr const char* HELPER_CREDITS =

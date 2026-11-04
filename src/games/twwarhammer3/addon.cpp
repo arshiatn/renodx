@@ -45,6 +45,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
+#include "./resolution_scale.hpp"
 #include "./taa_dlss.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -2274,13 +2275,13 @@ constexpr std::array<twattila::water_effects::WaterShader, 10> WATER_SHADERS = {
 // The upscaler in place of the game's TAA (taa_dlss.hpp): 0 the game's TAA, 5 DLSS, 6 FSR, 7 XeSS.
 twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
-float below_100_row = 0.f;  // the upscaler also when the game's Resolution Scale is below 100% (Experimental)
+float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 feature_settings::DLSS_MODE_SCALES, 7 Custom
 float below_100_detail_row = 1.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
     .aa_tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High.\n"
-                  "Below 100% in-game Resolution Scale: the row below.\n"
+                  "Upscaling Mode: the rows below.\n"
                   "DLSS: NVIDIA's (RTX). FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
                   "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs next to Warhammer3.exe.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion\n"
@@ -2313,6 +2314,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                                 "Needs Light Through Leaves, and DLSS Ray Reconstruction or path-traced Global Illumination.",
     .rays_a_pixel_shadows_tooltip = "The sun's shadows take the extra rays.",
     .rays_a_pixel_paths_tooltip = "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a pixel). The heaviest.",
+    .effects_at_output_tooltip = "While the upscaler renders below 100%, Light Bounce, ray-traced AO's rate and Bend's shadow softness\n"
+                                 "keep their 100% detail. Looks better, can cost some performance.",
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original, on water only. DXR: from rays, also what is off screen or hidden, on water,\n"
                            "armour and metal. Needs an upscaler.",
@@ -2590,11 +2593,27 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   // A setup saved with Path-Traced AO: no row can undo it here (has_path_ambient).
   if (rt_sliders.path_ambient != 0.f) renodx::utils::settings::UpdateSettings({{"RayTracedPathAmbient", 0.f}});
-  // Rays a Pixel's Match Output by the game's scale, through the hidden rows' values (nothing saved; they are the page's, not the game's).
-  const float render_share = twwarhammer3::taa_dlss::RenderShare();
-  aa_sliders.dlss_mode = (render_share < 1.f) ? static_cast<float>(twattila::feature_settings::DLSS_MODE_SCALES.size()) : 0.f;
-  aa_sliders.render_scale = render_share * 100.f;
-  auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+#if FIX_BLOOM
+  // A third-party DLSS mod runs its own upscale: Upscaling Mode leaves it alone.
+  const bool third_party_upscale = bloom_fix::upscaled.load(std::memory_order_relaxed);
+#else
+  const bool third_party_upscale = false;
+#endif
+  // Upscaling Mode: exact sizes, as the game truncates some of its sizes and rounds up others. Before anything reads this frame's size.
+  float wanted_scale = 0.f;
+  const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
+  if (upscaling_mode_row != 0.f && twattila::feature_settings::Upscaling(aa_sliders) && !third_party_upscale && !twwarhammer3::taa_dlss::InGameDlss()) {
+    const auto mode = static_cast<size_t>(upscaling_mode_row) - 1;
+    wanted_scale = twattila::frame_history::AspectScale(back_buffer.texture.width, back_buffer.texture.height,
+                                                        (mode < twattila::feature_settings::DLSS_MODE_SCALES.size())
+                                                            ? twattila::feature_settings::DLSS_MODE_SCALES[mode]
+                                                            : std::clamp(aa_sliders.render_scale, static_cast<float>(twattila::feature_settings::MIN_CUSTOM_SCALE), 100.f) / 100.f);
+  }
+  if (twwarhammer3::resolution_scale::Drive(wanted_scale) && wanted_scale > 0.f) {
+    twwarhammer3::taa_dlss::ExpectSize({static_cast<UINT>(static_cast<float>(back_buffer.texture.width) * wanted_scale), static_cast<UINT>(static_cast<float>(back_buffer.texture.height) * wanted_scale)},
+                                       {back_buffer.texture.width, back_buffer.texture.height});
+  }
+  auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength, twwarhammer3::taa_dlss::RenderShare());
   // Torch light in fog stays out: nothing shows what a light's colour is worth in the fog's light.
   rt_settings.light_glow = 0.f;
   // Ray-traced shadows replace the screen-space ones too.
@@ -2614,16 +2633,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
-#if FIX_BLOOM
-  // A third-party DLSS mod runs its own upscale: the row leaves it alone.
-  const bool third_party_upscale = bloom_fix::upscaled.load(std::memory_order_relaxed);
-#else
-  const bool third_party_upscale = false;
-#endif
-  twwarhammer3::taa_dlss::Update(swapchain, aa_settings, below_100_row != 0.f && !third_party_upscale, rt_sliders.debug_log != 0.f);
+  twwarhammer3::taa_dlss::Update(swapchain, aa_settings, !third_party_upscale, rt_sliders.debug_log != 0.f);
   // The game's LOD and culling count the render's pixels (one battle's index counts: 50% with the sliders at x8 equal 100% at x2). Through
   // the upscaler the display is what they are for: its detail at any scale, from the next load. At 50% with the sliders at x8: 25.85 to 31.95 ms in RT/PT, 11.84 to 13.55 without rays.
-  const float scene_share = (below_100_row != 0.f && below_100_detail_row != 0.f && !third_party_upscale && twattila::anti_aliasing::Upscales(aa_settings.method)) ? twwarhammer3::taa_dlss::SceneShare() : 1.f;
+  const float scene_share = (below_100_detail_row != 0.f && !third_party_upscale && twattila::anti_aliasing::Upscales(aa_settings.method)) ? twwarhammer3::taa_dlss::SceneShare(twwarhammer3::resolution_scale::Current()) : 1.f;
   for (auto* option : {&unit_detail, &building_detail, &tree_detail, &grass_detail, &object_detail, &terrain_detail, &effects_detail,
                        &unit_draw, &building_draw, &tree_draw, &grass_draw, &object_draw, &terrain_draw}) {
     option->pixels = scene_share * scene_share;
@@ -3006,7 +3019,8 @@ void ConfigureAddon() {
   // cube isn't the sky (rt_sun), so the paths have no sky of the game's to bring.
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
-                                             .below_100 = &below_100_row,
+                                             .upscaling_mode = &upscaling_mode_row,
+                                             .upscaling_mode_found = twwarhammer3::resolution_scale::Found,
                                              .below_100_detail = &below_100_detail_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
@@ -3100,6 +3114,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::resolution_scale::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
 
   attached = true;
@@ -3141,6 +3156,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::resolution_scale::OnDestroyDevice);
   twwarhammer3::taa_dlss::Uninstall();
   twattila::frame_generation::Uninstall();
 

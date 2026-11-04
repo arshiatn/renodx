@@ -103,6 +103,20 @@ inline std::array<uint32_t, 2> AspectSize(uint32_t width, uint32_t height, float
   return {width / units * count, height / units * count};
 }
 
+// A scale nearest `scale` for a game that truncates or rounds up its own sizes: a whole number of aspect units (AspectSize's) over
+// the units, where width x scale and height x scale are whole in float32, so both ways give one size. Not all counts have such a
+// float (4 of 240 at 4K): the next that has. Displays without fine units: `scale` itself.
+inline float AspectScale(uint32_t width, uint32_t height, float scale) {
+  const uint32_t units = std::gcd(width, height);
+  if (units < 40) return scale;
+  const auto whole = [](float value) { return value == std::floor(value); };
+  for (uint32_t count = std::clamp(static_cast<uint32_t>(std::lround(static_cast<float>(units) * scale)), 1u, units); count <= units; ++count) {
+    const float exact = static_cast<float>(count) / static_cast<float>(units);
+    if (whole(static_cast<float>(width) * exact) && whole(static_cast<float>(height) * exact)) return exact;
+  }
+  return 1.f;
+}
+
 // The main view's tone mapper drew this frame (anti_aliasing.hpp; false at each present): later draws are other views'
 // (the battle portrait's 3D, the campaign's small views).
 inline std::atomic_bool tonemapped = false;
