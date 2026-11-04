@@ -24,7 +24,12 @@ void main(uint3 dispatch_id : SV_DispatchThreadID)
   if (id >= rt_vertices.x) return;
   // Instances a shader collapses (scale 0, fades) give empty triangles; DXR skips those with a NaN x.
   float4 position = captured[id];
+#if defined(RT_VERTICES_WORLD_AFTER)
+  // From w on: a world-space part (placed meshes and their rows).
+  if (rt_vertices.z != 0u && id < rt_vertices.w) {
+#else
   if (rt_vertices.z != 0u) {
+#endif
     const float4 world = float4(dot(inverse_view_projection[0], position), dot(inverse_view_projection[1], position),
                                 dot(inverse_view_projection[2], position), dot(inverse_view_projection[3], position));
     const float2 uv = captured_uv[id];

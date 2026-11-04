@@ -258,6 +258,11 @@ constexpr UINT MAX_VERTICES = dlaa_bridge::RT_TRANSFER_WIDTH * dlaa_bridge::RT_T
 // the terrain, banners) keeps a quarter. Grass takes half the helper's alpha-tested corners (16M on GPUs over 20 GB, 4x
 // the 4M that left ~70M grass vertices a frame out), swaying leaves the rest.
 constexpr UINT MAX_DYNAMIC_VERTICES = 29u << 20;
+// A game streaming out clip-space positions with placed meshes (Warhammer III): their world-space triangles and rows take the
+// captured buffer's top, a frame's new meshes at most these, and go right after the clip-space vertices at the trace
+// (rt_vertices must not unproject them; a mesh not yet in stays out until a later frame).
+constexpr UINT WORLD_TEXELS = 8u << 20;
+constexpr UINT WORLD_BASE = MAX_VERTICES - WORLD_TEXELS;
 constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
@@ -464,6 +469,7 @@ struct Runtime {
   std::unordered_set<uint64_t> captured_keys;
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
+  uint32_t world_vertices = WORLD_BASE;  // their end in the captured buffer
   uint32_t tessellated_draws = 0;  // this frame's so far (DeviceObjects::tessellated)
   // The buffer the frame's indirect draws read their numbers from (CaptureIndirect): read when a draw needs it, once a frame; a copy
   // read without waiting a frame or more later says which draws were empty.
@@ -644,6 +650,7 @@ struct PixelCoverage {
 };
 static std::unordered_map<uint64_t, PixelCoverage> pixel_coverage;
 static bool clip_captures = false;  // the scene shaders stream out their SV_Position
+static bool world_captures = false;  // and some are placed: those in world space (WORLD_BASE)
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
 
@@ -1100,7 +1107,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   // A leaf's opacity mask: its pixel shader's diffuse map; a rigid mesh's, when the game's shadow pass alpha-tests it.
   ComPtr<ID3D11ShaderResourceView> mask;
-  if (shader.foliage || !shader.cut_out_shader.empty()) native->PSGetShaderResources(shader.far_tree ? 1u : shader.mask_slot, 1, mask.GetAddressOf());
+  if ((shader.foliage || !shader.cut_out_shader.empty()) && !shader.clip_cut_outs) native->PSGetShaderResources(shader.far_tree ? 1u : shader.mask_slot, 1, mask.GetAddressOf());
   bool cut_out = false;
   if (shader.clip_cut_outs) {
     const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
@@ -1404,17 +1411,19 @@ void Capture(Context& command, const SceneShader& shader) {
                          | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u)
                          | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u)
                          | ((cut_out && (shader.dynamic || shader.clip_cut_outs)) ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u);
+  uint32_t& next_vertex = ((clip_captures && placed) ? runtime.world_vertices : runtime.captured_vertices);
+  const UINT end_vertex = ((world_captures && !placed) ? WORLD_BASE : MAX_VERTICES);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
-  if (!dynamic || joined == nullptr || joined->flags != flags || joined->first_vertex + joined->vertex_count != runtime.captured_vertices
+  if (!dynamic || joined == nullptr || joined->flags != flags || joined->first_vertex + joined->vertex_count != next_vertex
       || joined->vertex_count % 3 != 0) {
     joined = nullptr;
   }
   // No room for the swaying copy: its placed copies alone.
-  sway = sway && runtime.compact.size() < dlaa_bridge::RT_COMPACT_DRAWS && runtime.captured_vertices + block_texels + row_texels <= MAX_VERTICES;
-  if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || runtime.captured_vertices + row_texels > MAX_VERTICES)
+  sway = sway && runtime.compact.size() < dlaa_bridge::RT_COMPACT_DRAWS && next_vertex + block_texels + row_texels <= end_vertex;
+  if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || next_vertex + row_texels > end_vertex)
             : (((compact ? runtime.compact.size() >= dlaa_bridge::RT_COMPACT_DRAWS
                          : ((joined == nullptr || foliage) && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)))
-               || runtime.captured_vertices + texels + row_texels + runtime.tessellated_reserved > MAX_VERTICES)) {
+               || next_vertex + texels + row_texels + ((clip_captures && placed) ? 0u : runtime.tessellated_reserved) > end_vertex)) {
     if (dynamic) runtime.costs.no_room += texels;
     return;
   }
@@ -1427,9 +1436,12 @@ void Capture(Context& command, const SceneShader& shader) {
   // The capture version (by the shader's place in the list: listed shaders have them, and record versions), else the
   // game's own: its stream output (SV_Position; its foliage's UV into the second buffer) made once from its code (null:
   // it could not be).
-  const bool clip_space = shader.capture_shader.empty();
+  const bool clip_space = shader.capture_shader.empty() || (clip_captures && !placed);
   const bool clip_uv = clip_space && foliage && shader.uv_semantic != nullptr;
-  const size_t index = (placed || !clip_space) ? static_cast<size_t>(&shader - scene_shaders.data()) : 0u;
+  // By its hash where CaptureDraw made a copy (a list of pixel shaders).
+  const size_t listed_index = (shader.pixel_masks.empty() ? static_cast<size_t>(&shader - scene_shaders.data())
+                                                         : static_cast<size_t>(std::ranges::find(scene_shaders, shader.hash, &SceneShader::hash) - scene_shaders.begin()));
+  const size_t index = ((placed || !clip_space) ? listed_index : 0u);
   if ((placed && index >= objects.rows_shaders.size()) || (!clip_space && index >= objects.capture_shaders.size())) return;
   // Leaves wait for a slice of the atlas (none: not in the scene this frame).
   if (!place && foliage && (!mask || !AtlasSlice(native, mask.Get(), &slice))) return;
@@ -1486,8 +1498,8 @@ void Capture(Context& command, const SceneShader& shader) {
   if (!place || sway) {
     // A tessellated draw's triangles: how many is known only after it, so into their own buffer, after the frame's others.
     const std::array<ID3D11Buffer*, 2> targets = {shader.tessellated ? objects.tessellated.Get() : objects.captured.Get(), objects.captured_uv.Get()};
-    const std::array<UINT, 2> stream_offsets = {shader.tessellated ? (runtime.tessellated_draws == 0 ? 0u : UINT_MAX) : (runtime.captured_vertices * 16),
-                                                runtime.captured_vertices * 8};
+    const std::array<UINT, 2> stream_offsets = {shader.tessellated ? (runtime.tessellated_draws == 0 ? 0u : UINT_MAX) : (next_vertex * 16),
+                                                next_vertex * 8};
     if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
@@ -1532,7 +1544,7 @@ void Capture(Context& command, const SceneShader& shader) {
       native->VSSetShaderResources(0, 1, &no_view);
     }
   }
-  const UINT rows_vertex = runtime.captured_vertices + (sway ? block_texels : (place ? 0u : vertex_count));
+  const UINT rows_vertex = next_vertex + (sway ? block_texels : (place ? 0u : vertex_count));
   if (placed) {
     // As points (under the game's triangle list one vertex an instance made no primitive: nothing was streamed, the
     // helper placed every placed mesh by stale texels: giant shapes, long lines, no shadows, ATN 2026-10-28).
@@ -1567,8 +1579,8 @@ void Capture(Context& command, const SceneShader& shader) {
       const D3D11_BUFFER_DESC corners_desc = {.ByteWidth = arguments.index_count * 16, .Usage = D3D11_USAGE_STAGING,
                                               .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
       if (SUCCEEDED(device->CreateBuffer(&corners_desc, nullptr, mesh->second.corners.GetAddressOf()))) {
-        const D3D11_BOX range = {.left = runtime.captured_vertices * 16, .top = 0, .front = 0,
-                                 .right = (runtime.captured_vertices + arguments.index_count) * 16, .bottom = 1, .back = 1};
+        const D3D11_BOX range = {.left = next_vertex * 16, .top = 0, .front = 0,
+                                 .right = (next_vertex + arguments.index_count) * 16, .bottom = 1, .back = 1};
         native->CopySubresourceRegion(mesh->second.corners.Get(), 0, 0, 0, 0, objects.captured.Get(), 0, &range);
       }
     }
@@ -1581,10 +1593,10 @@ void Capture(Context& command, const SceneShader& shader) {
                                    | (place ? dlaa_bridge::RT_INSTANCED : 0u);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
-        && last->first_vertex + (last->instances * (block_texels / draw_instances)) == runtime.captured_vertices) {
+        && last->first_vertex + (last->instances * (block_texels / draw_instances)) == next_vertex) {
       last->instances += draw_instances;
     } else {
-      runtime.compact.push_back({.set = set_key, .first_vertex = runtime.captured_vertices, .instances = draw_instances, .flags = compact_flags,
+      runtime.compact.push_back({.set = set_key, .first_vertex = next_vertex, .instances = draw_instances, .flags = compact_flags,
                                  .slice = slice});
     }
     if (!runtime.cluster_meshes.at(set_key).sent && std::ranges::find(runtime.new_sets, set_key) == runtime.new_sets.end()) {
@@ -1598,7 +1610,7 @@ void Capture(Context& command, const SceneShader& shader) {
   if (place) {
     if (sway) {
       add_blocks();
-      runtime.captured_vertices += block_texels;
+      next_vertex += block_texels;
       if (shader.grass) {
         runtime.grass_vertices += block_triangles * 3;
       } else {
@@ -1611,7 +1623,7 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     runtime.placements.push_back({.key = key, .first_vertex = rows_vertex, .instances = instances,
                                   .flags = (moving ? dlaa_bridge::RT_PLACE_MOVING : 0u) | (sway ? dlaa_bridge::RT_PLACE_HIDDEN : 0u)});
-    runtime.captured_vertices += row_texels;
+    next_vertex += row_texels;
     if (const auto known = runtime.known.find(key); known != runtime.known.end()) {
       known->second.frame = runtime.frame;
       known->second.placed += instances;
@@ -1623,7 +1635,7 @@ void Capture(Context& command, const SceneShader& shader) {
   } else if (joined != nullptr) {
     joined->vertex_count += vertex_count;
   } else {
-    runtime.captures.push_back({.key = key, .first_vertex = runtime.captured_vertices, .vertex_count = vertex_count, .flags = flags,
+    runtime.captures.push_back({.key = key, .first_vertex = next_vertex, .vertex_count = vertex_count, .flags = flags,
                                 .instances = (placed ? instances : 0u)});
     runtime.slices.push_back(slice);
     if (runtime.settings.debug_log) {
@@ -1631,7 +1643,7 @@ void Capture(Context& command, const SceneShader& shader) {
     }
   }
   runtime.captured_keys.insert(key);
-  runtime.captured_vertices += texels + row_texels;
+  next_vertex += texels + row_texels;
   if (dynamic) {
     runtime.dynamic_vertices += texels;
     if (unit) {
@@ -1778,7 +1790,7 @@ void CaptureDraw(Context& command, const void*) {
     }
     return;
   }
-  // A copy: Capture takes a shader's place in the table only for placed draws and capture versions, which have no such list.
+  // A copy with this material's slot (Capture finds its place in the table by its hash).
   SceneShader masked = listed;
   masked.mask_slot = material->slot;
   Capture(command, masked);
@@ -1912,7 +1924,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       triangles += statistics.NumPrimitivesWritten;
       triangles_needed += statistics.PrimitivesStorageNeeded;
     }
-    const UINT room = std::min({MAX_VERTICES - runtime.captured_vertices, MAX_DYNAMIC_VERTICES - std::min(runtime.dynamic_vertices, MAX_DYNAMIC_VERTICES),
+    const UINT room = std::min({(world_captures ? WORLD_BASE : MAX_VERTICES) - runtime.captured_vertices, MAX_DYNAMIC_VERTICES - std::min(runtime.dynamic_vertices, MAX_DYNAMIC_VERTICES),
                                 (dlaa_bridge::RT_DYNAMIC_TRIANGLES - std::min(runtime.dynamic_triangles, dlaa_bridge::RT_DYNAMIC_TRIANGLES)) * 3,
                                 (dlaa_bridge::RT_DYNAMIC_CLUSTERS - std::min(runtime.dynamic_clusters, dlaa_bridge::RT_DYNAMIC_CLUSTERS)) * dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES * 3});
     const UINT corners = static_cast<UINT>(std::min<uint64_t>(triangles * 3, room / 3 * 3));
@@ -1934,6 +1946,20 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       renodx::utils::log::i(std::format("[Total War] Ray tracing: tessellated triangles without room: {} of {} ({} written, room for {}).", corners / 3, triangles_needed, triangles, room / 3));
     }
   }
+  // The world-space part after the clip-space vertices; what points at it follows.
+  const UINT world_first = runtime.captured_vertices;
+  if (runtime.world_vertices != WORLD_BASE) {
+    const D3D11_BOX world_range = {.left = WORLD_BASE * 16, .top = 0, .front = 0, .right = runtime.world_vertices * 16, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(objects.captured.Get(), 0, world_first * 16, 0, 0, objects.captured.Get(), 0, &world_range);
+    const auto moved = [world_first](uint32_t* first_vertex) {
+      if (*first_vertex >= WORLD_BASE) *first_vertex = *first_vertex - WORLD_BASE + world_first;
+    };
+    for (auto& capture : runtime.captures) moved(&capture.first_vertex);
+    for (auto& draw : runtime.compact) moved(&draw.first_vertex);
+    for (auto& placement : runtime.placements) moved(&placement.first_vertex);
+    runtime.captured_vertices += runtime.world_vertices - WORLD_BASE;
+    runtime.world_vertices = WORLD_BASE;
+  }
   // The cost report's timestamps (a set still pending: this frame without).
   auto& timing = objects.timings[objects.timing_next % objects.timings.size()];
   const bool stamped = runtime.timed && timing.disjoint && timing.stamps[2] && !timing.pending;
@@ -1950,7 +1976,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         std::array<float, 16> inverse_view_projection;
       };
       const VertexConstants constants = {
-          .counts = {runtime.captured_vertices, dlaa_bridge::RT_TRANSFER_WIDTH, clip_captures ? 1u : 0u, 0},
+          .counts = {runtime.captured_vertices, dlaa_bridge::RT_TRANSFER_WIDTH, clip_captures ? 1u : 0u, world_first},
           .inverse_view_projection = camera.inverse_view_projection,
       };
       const UINT vertex_groups = (runtime.captured_vertices + 255) / 256;
@@ -1981,7 +2007,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       for (const auto& capture : runtime.captures) {
         if ((capture.flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_FOLIAGE)) != 0) continue;
         const SkyConstants sky = {
-            .capture = {capture.first_vertex, capture.vertex_count, clip_captures ? 1u : 0u, dlaa_bridge::RT_TRANSFER_WIDTH},
+            .capture = {capture.first_vertex, capture.vertex_count, (clip_captures && (capture.flags & dlaa_bridge::RT_INSTANCED) == 0) ? 1u : 0u, dlaa_bridge::RT_TRANSFER_WIDTH},
             .inverse_view_projection = camera.inverse_view_projection,
             .camera = {camera.position[0], camera.position[1], camera.position[2], reach},
         };
@@ -2160,6 +2186,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   runtime.captured_keys.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
+  runtime.world_vertices = WORLD_BASE;
   runtime.tessellated_draws = 0;
   runtime.drawn.clear();
   runtime.placements.clear();
@@ -2833,6 +2860,7 @@ inline void Update(const Settings& settings) {
   runtime.captured_keys.clear();
   runtime.slices.clear();
   runtime.captured_vertices = 0;
+  runtime.world_vertices = internal::WORLD_BASE;
   runtime.tessellated_draws = 0;
   runtime.dynamic_vertices = 0;
   runtime.unit_vertices = 0;
@@ -3037,6 +3065,7 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   internal::host = host;
   internal::clip_captures = host.scene_draw != nullptr
                             || std::ranges::any_of(shaders, [](const SceneShader& shader) { return shader.capture_shader.empty(); });
+  internal::world_captures = internal::clip_captures && std::ranges::any_of(shaders, [](const SceneShader& shader) { return !shader.rows_shader.empty(); });
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   for (const SceneShader& shader : shaders) {

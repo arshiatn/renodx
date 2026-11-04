@@ -2439,15 +2439,15 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> TERRAIN_MASKS = {{
 }};
 
 constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
-    {.hash = 0xF0395CC4, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidanisotropic
+    {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidambientmapfiremesh
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
-    {.hash = 0x4F35D09F, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = twwarhammer3::BUILDING_MASKS},
+    {.hash = 0x4F35D09F, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = twwarhammer3::BUILDING_MASKS},
     // Rocks. A rock's second draw into the terrain's targets (087C74E6, A5A266C3) only paints its blend: the same mesh again, not listed.
-    {.hash = 0x41AC9CB1},  // rigid_battle_rock_terrain_blend
-    {.hash = 0x33AF7AE5},  // rigid_battle_rock
+    {.hash = 0x41AC9CB1, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},  // rigid_battle_rock_terrain_blend
+    {.hash = 0x33AF7AE5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},  // rigid_battle_rock
     {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
-    {.hash = 0x474F97FB},                    // fx_rigidbranch_v3
+    {.hash = 0x474F97FB, .capture_shader = __rt_capture_branch, .rows_shader = __rt_rows_tree},                    // fx_rigidbranch_v3
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
     {.hash = 0x31584506, .dynamic = true},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
@@ -2472,7 +2472,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     // shaders_rigid_ui_capture_flag_xml (waves by the time in b0, out of a capture's key). A sheet: Coloured Shadows' filter.
     {.hash = 0x444F1190, .dynamic = true, .thin = true},
     // fx_rigidleaf_v3: its clip reads the base colour at t1 (t0 is the burn map, the same texture until the tree burns).
-    {.hash = 0x783383C6, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},
+    {.hash = 0x783383C6, .capture_shader = __rt_capture_leaf, .rows_shader = __rt_rows_tree, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},
     {.hash = 0xA4527F25, .dynamic = true, .foliage = true, .grass = true, .indirect = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = GRASS_MASKS},
 }};
 
