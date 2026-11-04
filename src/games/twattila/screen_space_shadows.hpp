@@ -537,6 +537,7 @@ struct Runtime {
   std::vector<uint32_t> sun_hashes;
   std::vector<uint32_t> forward_hashes;
   DeviceObjects objects;
+  uint32_t off_presents = 0;
 };
 
 static Runtime runtime;
@@ -1008,8 +1009,10 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   internal::runtime.settings = settings;
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
-  // Off: its memory back (Prepare makes it again; the other occlusions use nothing of it).
-  if (!settings.enabled && internal::runtime.objects.device) {
+  // Off for about 10 s: its memory back (Prepare makes it again; the other occlusions use nothing of it). Not at once: a 4K copy
+  // made again at each switch of what replaces it.
+  internal::runtime.off_presents = settings.enabled ? 0 : internal::runtime.off_presents + 1;
+  if (internal::runtime.off_presents > 600 && internal::runtime.objects.device) {
     internal::runtime.objects = {};
   }
   ++internal::runtime.frame;

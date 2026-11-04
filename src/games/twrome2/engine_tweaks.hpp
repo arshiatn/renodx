@@ -62,6 +62,7 @@ struct Tweak {
 struct Option {
   float scale = 1.f;
   std::vector<Tweak> tweaks;
+  float pixels = 1.f;  // .inverse tweaks are counts of pixels: the render's pixels per pixel of the display, for a game drawing fewer
 };
 
 struct Sections {
@@ -284,7 +285,7 @@ inline void Apply(std::span<Option*> options) {
       if (tweak.absolute) {
         scaled = (option->scale == tweak.keep) ? tweak.game : option->scale;
       } else if (tweak.inverse) {
-        scaled = tweak.game / option->scale;
+        scaled = tweak.game / option->scale * option->pixels;
       }
       tweak.written = tweak.integer ? std::bit_cast<uint32_t>(static_cast<int32_t>(std::lround(scaled))) : std::bit_cast<uint32_t>(scaled);
       if (tweak.written == bits) continue;

@@ -11,10 +11,12 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <mutex>
 #include <span>
 #include <string>
@@ -162,6 +164,13 @@ struct State {
   std::array<float, CAMERA_BYTES / 4> taa_camera = {};
   std::array<float, 2> taa_jitter = {};
   bool taa_reset = false;
+  // The game's Resolution Scale as last seen: kept through loads, when its models read the LOD values and no TAA pass runs.
+  float scene_share = 1.f;
+  bool scene_share_read = false;
+  // Log Details: 64 frames of the game's jitter per new size.
+  bool log_details = false;
+  std::array<UINT, 2> jitter_size = {};
+  std::vector<std::array<float, 2>> jitter_samples;
 };
 static State state;
 
@@ -214,7 +223,9 @@ inline void DispatchGuides(ID3D11DeviceContext* native, ID3D11DeviceContext1* co
   context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(guides.size()), guides.data(), nullptr);
   const std::array<ID3D11Buffer*, 2> buffers = {camera, state.objects.shader_settings.Get()};
   context1->CSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
-  context1->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+  // Below 100% only the render size's corner has a picture, and nothing reads the rest.
+  const bool scaled = state.scale_proof == ScaleProof::GOOD;
+  context1->Dispatch(((scaled ? state.learned_size[0] : bridge.width) + 7) / 8, ((scaled ? state.learned_size[1] : bridge.height) + 7) / 8, 1);
   context1->ClearState();
 }
 
@@ -343,7 +354,11 @@ inline void Resolve(ID3D11DeviceContext* native) {
     const auto found = state.uploaded_sizes.find(state.scale_camera);
     if (found == state.uploaded_sizes.end()) {
       // Nothing to learn from. With the main view's camera seen it is 100%, as without the row.
-      if (!state.camera_seen) state.scale_refused_frame = state.frame;
+      if (!state.camera_seen) {
+        state.scale_refused_frame = state.frame;
+      } else {
+        state.scene_share = 1.f;
+      }
       state.scale_choice = (state.camera_seen ? ScaleChoice::WHOLE : ScaleChoice::STOCK);
       return state.scale_choice;
     }
@@ -352,12 +367,14 @@ inline void Resolve(ID3D11DeviceContext* native) {
       state.scale_proof = ScaleProof::NONE;
       state.learned_size = {};
       state.learned_share = 1.f;
+      state.scene_share = 1.f;
       state.scale_choice = ScaleChoice::WHOLE;
       return state.scale_choice;
     }
     if (const std::array<UINT, 2> size = {static_cast<UINT>(viewport[0]), static_cast<UINT>(viewport[1])}; size != state.learned_size) {
       state.learned_size = size;
       state.learned_share = viewport[0] / screen[0];
+      state.scene_share = state.learned_share;
       const bool expected = screen[0] == static_cast<float>(output_desc.Width) && screen[1] == static_cast<float>(output_desc.Height)
                             && origin[0] == 0.f && origin[1] == 0.f
                             && viewport[0] > 0.f && viewport[1] > 0.f && viewport[0] <= screen[0] && viewport[1] <= screen[1]
@@ -413,6 +430,35 @@ inline void Resolve(ID3D11DeviceContext* native) {
   const std::array<float, 2> jitter = {c[CAMERA_JITTER] * 0.5f * static_cast<float>(render_width),
                                        -c[CAMERA_JITTER + 1] * 0.5f * static_cast<float>(render_height)};
   const bool reset = state.evaluated_frame + 1 != state.frame;
+  if (state.log_details) {
+    if (const std::array<UINT, 2> size = {render_width, render_height}; state.jitter_size != size) {
+      state.jitter_size = size;
+      state.jitter_samples.clear();
+    }
+    if (state.jitter_samples.size() < 64) {
+      state.jitter_samples.push_back(jitter);
+      if (state.jitter_samples.size() == 64) {
+        auto phases = state.jitter_samples;
+        std::ranges::sort(phases);
+        std::array<float, 2> low = phases.front();
+        std::array<float, 2> high = phases.front();
+        std::array<float, 2> mean = {};
+        for (const auto& phase : state.jitter_samples) {
+          for (const int axis : {0, 1}) {
+            low[axis] = std::min(low[axis], phase[axis]);
+            high[axis] = std::max(high[axis], phase[axis]);
+            mean[axis] += std::abs(phase[axis]) / 64.f;
+          }
+        }
+        const auto distinct = std::ranges::distance(phases.begin(), std::ranges::unique(phases).begin());
+        const auto& sample = state.jitter_samples;
+        renodx::utils::log::i(std::format("[Warhammer III] Jitter at {}x{}, render pixels, 64 frames: {} phases, x {:.3f} to {:.3f} (mean size {:.3f}), y {:.3f} to {:.3f} (mean size {:.3f}), "
+                                          "the first {:.3f} {:.3f}, {:.3f} {:.3f}, {:.3f} {:.3f}, {:.3f} {:.3f}.",
+                                          render_width, render_height, distinct, low[0], high[0], mean[0], low[1], high[1], mean[1],
+                                          sample[0][0], sample[0][1], sample[1][0], sample[1][1], sample[2][0], sample[2][1], sample[3][0], sample[3][1]));
+      }
+    }
+  }
   if (!state.logged && (c[CAMERA_JITTER] != 0.f || c[CAMERA_JITTER + 1] != 0.f)) {
     state.logged = true;
     D3D11_TEXTURE2D_DESC depth_desc = {};
@@ -877,8 +923,8 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
 
 }  // namespace internal
 
-// Every present. `below_100`: the upscaler also when the game's Resolution Scale is below 100%.
-inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_aliasing::Settings& settings, bool below_100) {
+// Every present. `below_100`: the upscaler also when the game's Resolution Scale is below 100%. `log_details`: Log Details' row.
+inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_aliasing::Settings& settings, bool below_100, bool log_details) {
   twattila::frame_generation::Update({
       .multiplier = (twattila::anti_aliasing::Upscales(settings.method) ? settings.frame_generation : 0u),
       .reflex_boost = (settings.reflex == 2),
@@ -891,6 +937,21 @@ inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_alia
   twattila::reflex::Update(swapchain, settings.reflex, settings.frame_limit);
   const std::unique_lock lock(internal::state.mutex);
   internal::state.settings = settings;
+  internal::state.log_details = log_details;
+  // Its own file, until a TAA pass shows the scale: a battle or a save started directly loads its models before any.
+  if (!internal::state.scene_share_read) {
+    internal::state.scene_share_read = true;
+    std::wstring folder(32768, L'\0');
+    folder.resize(GetEnvironmentVariableW(L"APPDATA", folder.data(), static_cast<DWORD>(folder.size())));
+    std::ifstream file(std::filesystem::path(folder) / L"The Creative Assembly" / L"Warhammer3" / L"scripts" / L"preferences.script.txt");
+    constexpr std::string_view NAME = "gfx_resolution_scale ";
+    for (std::string line; std::getline(file, line);) {
+      float value = 0.f;
+      if (line.starts_with(NAME) && std::from_chars(line.data() + NAME.size(), line.data() + line.size(), value).ec == std::errc{} && value > 0.f && value <= 1.f) {
+        internal::state.scene_share = value;
+      }
+    }
+  }
   // Without an upscaler the game's own TAA runs, whatever the row says, and no pass follows the size.
   if (const bool scales = below_100 && twattila::anti_aliasing::Upscales(settings.method); internal::state.below_100 != scales) {
     internal::state.below_100 = scales;
@@ -943,6 +1004,18 @@ inline std::array<UINT, 2> RenderSize() {
 inline float RenderShare() {
   const std::unique_lock lock(internal::state.mutex);
   return (internal::state.scale_proof == internal::ScaleProof::GOOD) ? internal::state.learned_share : 1.f;
+}
+
+// The game's Resolution Scale as last seen, or its file's; its own TAA and upscale after a refusal: 1.
+inline float SceneShare() {
+  const std::unique_lock lock(internal::state.mutex);
+  return (internal::state.scale_proof == internal::ScaleProof::REFUSED) ? 1.f : internal::state.scene_share;
+}
+
+// The render size below 100% with the row on; else zero.
+inline std::array<UINT, 2> RenderSizeBelow100() {
+  const std::unique_lock lock(internal::state.mutex);
+  return (internal::state.scale_proof == internal::ScaleProof::GOOD) ? internal::state.learned_size : std::array<UINT, 2>{};
 }
 
 inline void Install() {

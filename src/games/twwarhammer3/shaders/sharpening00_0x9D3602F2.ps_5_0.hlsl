@@ -110,13 +110,15 @@ void main(
   float3 right = tap_right / pw_encoded;
   float3 down = tap_down / pw_encoded;
 
+  // Behind the addon's upscaler below 100% the part the game adds for its own upscale comes off (addon.cpp).
+  float strength = max(g_sharpening_strength - SI.sharpening_term, 0.f) * SI.sharpening;
+
   float3 sharpened;
   if (HDR < 0.5f) {
     // Stock at slider 1.
-    sharpened = saturate(g_sharpening_strength * SI.sharpening * SharpenLaplacian(c, up, left, right, down) + c);
+    sharpened = saturate(strength * SharpenLaplacian(c, up, left, right, down) + c);
   } else {
     // What SDR would output for this pixel, from its clipped taps.
-    float strength = g_sharpening_strength * SI.sharpening;
     float3 sdr_c = saturate(c);
     float3 sdr_sharpened = saturate(
         strength * SharpenLaplacian(sdr_c, saturate(up), saturate(left), saturate(right), saturate(down)) + sdr_c);

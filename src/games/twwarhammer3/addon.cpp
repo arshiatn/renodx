@@ -990,8 +990,8 @@ void OnDestroyDevice(reshade::api::device*) {
           .code = __##value,                                       \
           .on_draw = &aa_target::OnDrawTonemap,                    \
           .on_drawn = [](auto* cmd_list) {                         \
-            twwarhammer3::taa_dlss::OnTonemapDrawnAtRenderSize(cmd_list, aa_target::data.srv); \
             twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); \
+            twwarhammer3::taa_dlss::OnTonemapDrawnAtRenderSize(cmd_list, aa_target::data.srv); \
             twattila::rt_scene::OnTonemapDrawn(cmd_list);          \
             twwarhammer3::taa_dlss::OnTonemapDrawn(cmd_list);      \
             twwarhammer3::taa_dlss::KeepFrame(cmd_list);           \
@@ -1221,11 +1221,42 @@ if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, 
           twattila::frame_trace::Mark(std::format("tone mapper: overscan {}", c[(6 * 4) + 1]));
         }
       }
+      Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> exposure_view;
+      native->PSGetShaderResources(4, 1, exposure_view.GetAddressOf());
+      if (exposure_view) {
+        Microsoft::WRL::ComPtr<ID3D11Resource> exposure;
+        exposure_view->GetResource(exposure.GetAddressOf());
+        Microsoft::WRL::ComPtr<ID3D11Buffer> exposure_buffer;
+        if (SUCCEEDED(exposure.As(&exposure_buffer))) {
+          if (const auto brightness = twattila::frame_trace::ReadBuffer<float>(native, exposure_buffer.Get(), 0, 1); !brightness.empty()) {
+            twattila::frame_trace::Mark(std::format("tone mapper: auto exposure's brightness {}", brightness[0]));
+          }
+        }
+      }
     }
     const bool draw = aa_target::OnDrawTonemap(cmd_list);
     // Before the mod pushes the constants to this draw.
     shader_injection.tonemap_at_render_size = twwarhammer3::taa_dlss::OnTonemapDraw(native, aa_target::rt_swapped, aa_target::data.width, aa_target::data.height) ? 1.f : 0.f;
     return draw;
+  };
+  // The game's strength is clamp(clamp((1 - scale) x 1.5, 0, 1) + its own, 0, 1) (TAA's modes): the first part makes up for its own
+  // upscale, and would land on the upscaler's result.
+  custom_shaders[0x9D3602F2].on_draw = [](auto* cmd_list) {
+    shader_injection.sharpening_term =
+        twwarhammer3::taa_dlss::ScaledThisFrame() ? std::clamp((1.f - twwarhammer3::taa_dlss::RenderShare()) * 1.5f, 0.f, 1.f) : 0.f;
+    static float logged_term = -1.f;
+    if (rt_sliders.debug_log != 0.f && logged_term != shader_injection.sharpening_term) {
+      logged_term = shader_injection.sharpening_term;
+      auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+      renodx::utils::directx::NativeFromReShadeProxy(&native);
+      Microsoft::WRL::ComPtr<ID3D11Buffer> constants;
+      native->PSGetConstantBuffers(1, 1, constants.GetAddressOf());
+      if (const auto strength = twattila::frame_trace::ReadBuffer<float>(native, constants.Get(), 0, 1); !strength.empty()) {
+        renodx::utils::log::i(std::format("[Warhammer III] Sharpening: the game's strength {:g}, its part for its own upscale {:g}, left {:g}.",
+                                          strength[0], logged_term, std::max(strength[0] - logged_term, 0.f)));
+      }
+    }
+    return frame_copy::OnDraw(cmd_list);
   };
   // Each hook's first run in the log: one that never ran looks like one that did nothing.
   for (auto& [hash, shader] : custom_shaders) {
@@ -2588,7 +2619,16 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
 #else
   const bool third_party_upscale = false;
 #endif
-  twwarhammer3::taa_dlss::Update(swapchain, aa_settings, below_100_row != 0.f && !third_party_upscale);
+  twwarhammer3::taa_dlss::Update(swapchain, aa_settings, below_100_row != 0.f && !third_party_upscale, rt_sliders.debug_log != 0.f);
+  // The game's LOD and culling count the render's pixels (one battle's index counts: 50% with the sliders at x8 equal 100% at x2). Through
+  // the upscaler the display is what they are for: its detail at any scale, from the next load.
+  const float scene_share = (below_100_row != 0.f && !third_party_upscale && twattila::anti_aliasing::Upscales(aa_settings.method)) ? twwarhammer3::taa_dlss::SceneShare() : 1.f;
+  for (auto* option : {&unit_detail, &building_detail, &tree_detail, &grass_detail, &object_detail, &terrain_detail, &effects_detail,
+                       &unit_draw, &building_draw, &tree_draw, &grass_draw, &object_draw, &terrain_draw}) {
+    option->pixels = scene_share * scene_share;
+  }
+  // Below about 2/3 the AO reads the display's depth, with data in the render size's corner only.
+  twattila::depth_levels::SetUsedSize(twwarhammer3::taa_dlss::RenderSizeBelow100());
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 

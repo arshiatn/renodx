@@ -307,7 +307,8 @@ void main(
 
   // Threshold the float setting so a stray value cannot produce a hybrid mode.
   int hdr_mode = (HDR < 0.5f) ? 0 : ((HDR < 1.5f) ? 1 : 2);
-  float distortion_scale = SI.uvdistort;
+  // Its offsets are in texture uv: below 100% (stock too) 1 / overscan larger on the view. The same on screen as at 100%.
+  float distortion_scale = SI.uvdistort * overscan;
   float bloom_scale = SI.bloom;
 
   // Upscaling below 100% draws this at the render size (taa_dlss.hpp): its pixels are the scene's, nothing to scale.
@@ -389,7 +390,8 @@ void main(
   float secondary_strength = 0.f;
   if (use_secondary) {
     r2.z = gbuffer_channel_4_texture.Load(r2.xyz).x;
-    r2.xy = uv * float2(2,-2) + float2(-1,1);
+    // uv runs to the overscan on both paths (stock: as if the view were its corner).
+    r2.xy = (uv / overscan) * float2(2,-2) + float2(-1,1);
     r2.w = 1;
     r0.x = dot(r2.xyzw, inv_view_projection._m00_m10_m20_m30);
     r0.y = dot(r2.xyzw, inv_view_projection._m01_m11_m21_m31);

@@ -50,11 +50,18 @@ struct DeviceObjects {
 struct Runtime {
   std::shared_mutex mutex;
   DeviceObjects objects;
+  std::array<UINT, 2> used_size = {};  // SetUsedSize's
 };
 
 static Runtime runtime;
 
 }  // namespace internal
+
+// Only the top-left `size` of the depth holds anything (zero: all of it): a game that reads a bigger texture below 100% (Warhammer III).
+inline void SetUsedSize(std::array<UINT, 2> size) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::runtime.used_size = size;
+}
 
 // The levels of `depth` (the view the pass reads its depth from), built now on `context` (its compute shader, t0-t1 and
 // u0 put back after): the view of every level, or null (none: the pass reads the depth only).
@@ -136,13 +143,15 @@ inline ComPtr<ID3D11ShaderResourceView> Build(ID3D11DeviceContext* context, ID3D
   context->CSSetShader(objects.shader.Get(), nullptr, 0);
   D3D11_TEXTURE2D_DESC levels_desc = {};
   objects.texture->GetDesc(&levels_desc);
+  const std::array<UINT, 2> used_levels = {runtime.used_size[0] == 0 ? levels_desc.Width : std::min((runtime.used_size[0] + 1) / 2, levels_desc.Width),
+                                           runtime.used_size[1] == 0 ? levels_desc.Height : std::min((runtime.used_size[1] + 1) / 2, levels_desc.Height)};
   for (UINT level = 0; level < internal::LEVELS; ++level) {
     ID3D11UnorderedAccessView* write[] = {objects.level_writes[level].Get()};
     context->CSSetUnorderedAccessViews(0, 1, write, nullptr);
     ID3D11ShaderResourceView* inputs[] = {depth, (level == 0) ? nullptr : objects.level_views[level - 1].Get()};
     context->CSSetShaderResources(0, 2, inputs);
-    const UINT width = std::max(1u, levels_desc.Width >> level);
-    const UINT height = std::max(1u, levels_desc.Height >> level);
+    const UINT width = std::max(1u, used_levels[0] >> level);
+    const UINT height = std::max(1u, used_levels[1] >> level);
     context->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
   }
 
