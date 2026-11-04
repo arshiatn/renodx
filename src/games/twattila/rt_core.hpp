@@ -157,6 +157,7 @@ struct Settings {
   // Sprite Soldier Shadows: the flat far soldiers in the scene (SceneShader::sun_facing).
   bool sprite_shadows = false;
   bool far_tree_shadows = false;
+  bool terrain_outside_view = false;
 
   bool operator==(const Settings&) const = default;
 };
@@ -201,7 +202,7 @@ struct SceneShader {
   bool grass = false;  // within the grass's share (half the helper's alpha-tested corners)
   bool thin = false;   // cloth and sails (RT_THIN)
   bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at t0
-  bool far_tree = false;    // a far tree's billboard (with sun_facing): its opacity mask at t1
+  bool far_tree = false;    // a far tree's billboard (with sun_facing)
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
   bool tessellated = false;
   bool indirect = false;  // its indirect draws too (the game's GPU-culled grass): CaptureIndirect
@@ -210,6 +211,8 @@ struct SceneShader {
   UINT mask_slot = 0;
   std::span<const PixelMask> pixel_masks;
   std::span<const uint8_t> tessellated_keep;
+  // A hull shader taking the draw's control points that keeps only the patches out of the view (Settings::terrain_outside_view).
+  std::span<const uint8_t> tessellated_outside;
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
@@ -324,6 +327,7 @@ struct DeviceObjects {
   ComPtr<ID3D11Buffer> captured_uv;  // the game's own shaders' foliage UVs, at their vertices' places
   // Tessellated draws' triangles, one after the other, and each draw's count: copied to `captured` at the trace.
   ComPtr<ID3D11Buffer> tessellated;
+  ComPtr<ID3D11HullShader> tessellated_outside;
   std::array<ComPtr<ID3D11Query>, MAX_TESSELLATED_DRAWS> tessellated_queries;
   ComPtr<ID3D11Buffer> indirect_probe;  // the indirect draws' numbers of an earlier frame (CaptureIndirect)
   ComPtr<ID3D11ShaderResourceView> captured_uv_srv;
@@ -786,6 +790,11 @@ inline bool PrepareDevice(ID3D11Device* device) {
     const D3D11_QUERY_DESC statistics_desc = {.Query = D3D11_QUERY_SO_STATISTICS};
     made = made && SUCCEEDED(device->CreateBuffer(&tessellated_desc, nullptr, objects.tessellated.GetAddressOf()))
            && std::ranges::all_of(objects.tessellated_queries, [&](ComPtr<ID3D11Query>& query) { return SUCCEEDED(device->CreateQuery(&statistics_desc, query.GetAddressOf())); });
+    for (const SceneShader& shader : scene_shaders) {
+      if (!shader.tessellated_outside.empty()) {
+        made = made && SUCCEEDED(device->CreateHullShader(shader.tessellated_outside.data(), shader.tessellated_outside.size(), nullptr, objects.tessellated_outside.GetAddressOf()));
+      }
+    }
   }
   const D3D11_QUERY_DESC disjoint_desc = {.Query = D3D11_QUERY_TIMESTAMP_DISJOINT};
   const D3D11_QUERY_DESC stamp_desc = {.Query = D3D11_QUERY_TIMESTAMP};
@@ -1118,7 +1127,7 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   // A leaf's opacity mask: its pixel shader's diffuse map; a rigid mesh's, when the game's shadow pass alpha-tests it.
   ComPtr<ID3D11ShaderResourceView> mask;
-  if ((shader.foliage || !shader.cut_out_shader.empty()) && !shader.clip_cut_outs) native->PSGetShaderResources(shader.far_tree ? 1u : shader.mask_slot, 1, mask.GetAddressOf());
+  if ((shader.foliage || !shader.cut_out_shader.empty()) && !shader.clip_cut_outs) native->PSGetShaderResources(shader.mask_slot, 1, mask.GetAddressOf());
   bool cut_out = false;
   if (shader.clip_cut_outs) {
     const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
@@ -1549,6 +1558,18 @@ void Capture(Context& command, const SceneShader& shader) {
                             arguments.first_instance);
     }
     if (shader.tessellated) native->End(objects.tessellated_queries[runtime.tessellated_draws].Get());
+    if constexpr (INDEXED) {
+      if (shader.tessellated && runtime.settings.terrain_outside_view && objects.tessellated_outside && runtime.tessellated_draws + 1 < objects.tessellated_queries.size()) {
+        ComPtr<ID3D11HullShader> game_hull_shader;
+        native->HSGetShader(game_hull_shader.GetAddressOf(), nullptr, nullptr);
+        native->HSSetShader(objects.tessellated_outside.Get(), nullptr, 0);
+        ++runtime.tessellated_draws;
+        native->Begin(objects.tessellated_queries[runtime.tessellated_draws].Get());
+        native->DrawIndexedInstanced(arguments.index_count, std::max(arguments.instance_count, 1u), arguments.first_index, arguments.vertex_offset, arguments.first_instance);
+        native->End(objects.tessellated_queries[runtime.tessellated_draws].Get());
+        native->HSSetShader(game_hull_shader.Get(), nullptr, 0);
+      }
+    }
     if (!shader.tessellated_keep.empty()) {
       native->GSSetShaderResources(0, 1, game_keep_view.GetAddressOf());
       native->GSSetConstantBuffers(1, 1, game_keep_constants.GetAddressOf());

@@ -123,6 +123,7 @@ struct Bindings {
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
   float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
+  float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* rays_alone_ao = nullptr;      // RTAO in place of the game's where it would multiply it (rays_replace_ao false); null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   const Texts* texts = &ATTILA_TEXTS;
@@ -707,6 +708,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .tooltip = "The sun's shadows from rays alone, so Softness shows in full. Smoke, clouds and hills keep the game's.\n"
                      "A unit off screen, such as a flying dragon, loses its shadow.\n"
                      "Off: the rays' shadows on top of the game's shadow maps and contact shadows.",
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_hills_out_of_view != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedHillsOutOfView",
+          .binding = b.rays_hills_out_of_view,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Hills Out of View (Experimental)",
+          .section = section,
+          .tooltip = "Hills outside the view give ray-traced AO, Light Bounce and reflections.",
           .is_visible = more_rays,
       });
     }

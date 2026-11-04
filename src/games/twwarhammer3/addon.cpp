@@ -27,6 +27,7 @@
 
 #include <embed/shaders.h>
 #include "./rt_terrain_keep_gs.h"
+#include "./rt_terrain_outside_hs.h"
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
@@ -2294,6 +2295,7 @@ float below_100_detail_row = 1.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
 float rays_alone_ao_row = 1.f;
+float rays_hills_out_of_view_row = 0.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
@@ -2460,7 +2462,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> GROUND_MESH_PASSES = {{
     {.pixel_shader = 0x90FBDD61},
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidambientmapfiremesh
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
@@ -2480,7 +2482,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     // The campaign's trees and bushes (rows as the rigid objects', by their bytes; wind and the lean toward the camera left out, as Attila's), the plants solid.
     {.hash = 0xD025F795, .capture_shader = __rt_capture_rigid_cut_out, .rows_shader = __rt_rows_rigid, .foliage = true, .still = true, .mask_slot = 2},
     {.hash = 0xBDAEC4F3, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid},
-    {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true, .pixel_masks = TERRAIN_MASKS, .tessellated_keep = __rt_terrain_keep},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
+    // fx_rigidtreebillboard, far trees: their alpha at t3 (t0 the burn map, t1 a dissolve map).
+    {.hash = 0xCC8297ED, .capture_shader = __rt_capture_far_tree_positions, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    {.hash = 0x01830D95, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true, .pixel_masks = TERRAIN_MASKS, .tessellated_keep = __rt_terrain_keep, .tessellated_outside = __rt_terrain_outside},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
     {.hash = 0xB8C567C3, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted (skinned units)
     {.hash = 0x2C45437C, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // rigid_character_alpha
     {.hash = 0x3193A71F, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted's 4-bone units
@@ -2684,6 +2689,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength, twwarhammer3::taa_dlss::RenderShare());
   rt_settings.ambient_alone = rays_alone_ao_row != 0.f;
+  rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -3097,6 +3103,7 @@ void ConfigureAddon() {
                                              .water_motion = &water_motion_row,
                                              .placed_objects = &placed_objects_row,
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
+                                             .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .rays_alone_ao = &rays_alone_ao_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
