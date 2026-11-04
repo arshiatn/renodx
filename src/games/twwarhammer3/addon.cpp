@@ -2473,7 +2473,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x444F1190, .dynamic = true, .thin = true},
     // fx_rigidleaf_v3: its clip reads the base colour at t1 (t0 is the burn map, the same texture until the tree burns).
     {.hash = 0x783383C6, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},
-    {.hash = 0xA4527F25, .dynamic = true, .foliage = true, .grass = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = GRASS_MASKS},
+    {.hash = 0xA4527F25, .dynamic = true, .foliage = true, .grass = true, .indirect = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = GRASS_MASKS},
 }};
 
 // Ray tracing's view of the game: DLSS's camera (taa_dlss.hpp; uploaded jittered, as the scene and its depth were drawn)

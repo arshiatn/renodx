@@ -201,6 +201,7 @@ struct SceneShader {
   bool far_tree = false;    // a far tree's billboard (with sun_facing): its opacity mask at t1
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
   bool tessellated = false;
+  bool indirect = false;  // its indirect draws too (the game's GPU-culled grass): CaptureIndirect
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
   UINT mask_slot = 0;
@@ -312,6 +313,7 @@ struct DeviceObjects {
   // Tessellated draws' triangles, one after the other, and each draw's count: copied to `captured` at the trace.
   ComPtr<ID3D11Buffer> tessellated;
   std::array<ComPtr<ID3D11Query>, MAX_TESSELLATED_DRAWS> tessellated_queries;
+  ComPtr<ID3D11Buffer> indirect_probe;  // the indirect draws' numbers of an earlier frame (CaptureIndirect)
   ComPtr<ID3D11ShaderResourceView> captured_uv_srv;
   ComPtr<ID3D11ComputeShader> vertices_shader;
   ComPtr<ID3D11ComputeShader> skies_shader;
@@ -463,6 +465,15 @@ struct Runtime {
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
   uint32_t tessellated_draws = 0;  // this frame's so far (DeviceObjects::tessellated)
+  // The buffer the frame's indirect draws read their numbers from (CaptureIndirect): read when a draw needs it, once a frame; a copy
+  // read without waiting a frame or more later says which draws were empty.
+  std::vector<uint32_t> indirect_arguments;
+  ID3D11Buffer* indirect_arguments_buffer = nullptr;
+  uint64_t indirect_arguments_frame = 0;
+  std::vector<uint32_t> indirect_probe_values;
+  ID3D11Buffer* indirect_probe_buffer = nullptr;
+  uint64_t indirect_probe_frame = 0;
+  bool indirect_probe_pending = false;
   // The room the frame's other captures leave them: they join last, but the ground counts for more than what a full frame
   // drops instead. Last frame's corners, an eighth over for a moving camera; 0 in a game without such draws.
   uint32_t tessellated_reserved = 0;
@@ -1773,6 +1784,75 @@ void CaptureDraw(Context& command, const void*) {
   Capture(command, masked);
 }
 
+// An indirect draw of a listed shader (SceneShader::indirect): the GPU has made its numbers, the whole buffer read once a frame (a
+// wait for the GPU, 1.2 ms on the replay at 4K, so not for a draw that was empty lately: it joins a frame or so late), then it is
+// captured as a direct draw with them: compact, by its mesh, in the shares. Streamed without a mesh's cluster sets, a field of grass
+// made clusters over the whole field: a trace of 225 ms against 5.
+template <typename Context>
+void CaptureIndirect(Context& command, const void*) {
+  const auto& arguments = command.arguments;
+  if (arguments.command != reshade::api::indirect_command::draw_indexed) return;
+  auto* native = NativeContext(command.cmd_list);
+  if (native == nullptr || runtime.traced_frame == runtime.frame || runtime.settings.scene_test == 9) return;
+  auto* buffer = reinterpret_cast<ID3D11Buffer*>(arguments.buffer.handle);
+  std::array<uint32_t, 5> numbers = {};
+  {
+    const std::unique_lock lock(runtime.mutex);
+    D3D11_BUFFER_DESC desc = {};
+    buffer->GetDesc(&desc);
+    auto& probe = runtime.objects.indirect_probe;
+    if (runtime.indirect_probe_frame != runtime.frame) {
+      runtime.indirect_probe_frame = runtime.frame;
+      D3D11_BUFFER_DESC probe_desc = {};
+      if (probe) probe->GetDesc(&probe_desc);
+      if (probe_desc.ByteWidth != desc.ByteWidth || runtime.indirect_probe_buffer != buffer) {
+        const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+        ComPtr<ID3D11Device> device;
+        native->GetDevice(device.GetAddressOf());
+        probe.Reset();
+        device->CreateBuffer(&staging_desc, nullptr, probe.GetAddressOf());
+        runtime.indirect_probe_buffer = buffer;
+        runtime.indirect_probe_values.clear();
+        runtime.indirect_probe_pending = false;
+      }
+      if (probe && runtime.indirect_probe_pending) {
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        if (SUCCEEDED(native->Map(probe.Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped))) {
+          const auto* values = static_cast<const uint32_t*>(mapped.pData);
+          runtime.indirect_probe_values.assign(values, values + (desc.ByteWidth / 4));
+          native->Unmap(probe.Get(), 0);
+          runtime.indirect_probe_pending = false;
+        }
+      }
+      if (probe && !runtime.indirect_probe_pending) {
+        native->CopySubresourceRegion(probe.Get(), 0, 0, 0, 0, buffer, 0, nullptr);
+        runtime.indirect_probe_pending = true;
+      }
+    }
+    if (const auto first = static_cast<size_t>(arguments.offset / 4);
+        runtime.indirect_probe_buffer == buffer && first + numbers.size() <= runtime.indirect_probe_values.size()
+        && (runtime.indirect_probe_values[first] == 0 || runtime.indirect_probe_values[first + 1] == 0)) {
+      return;
+    }
+    if (runtime.indirect_arguments_frame != runtime.frame || runtime.indirect_arguments_buffer != buffer) {
+      runtime.indirect_arguments = frame_trace::ReadBuffer<uint32_t>(native, buffer, 0, desc.ByteWidth / 4);
+      runtime.indirect_arguments_buffer = buffer;
+      runtime.indirect_arguments_frame = runtime.frame;
+    }
+    const auto first = static_cast<size_t>(arguments.offset / 4);
+    if (first + numbers.size() > runtime.indirect_arguments.size()) return;
+    std::copy_n(runtime.indirect_arguments.begin() + first, numbers.size(), numbers.begin());
+  }
+  if (numbers[0] == 0 || numbers[1] == 0) return;
+  renodx::utils::command_action::CommandContext<renodx::utils::command_action::DrawIndexedArguments> direct = {
+      .cmd_list = command.cmd_list,
+      .arguments = {.index_count = numbers[0], .instance_count = numbers[1], .first_index = numbers[2], .vertex_offset = static_cast<int32_t>(numbers[3]), .first_instance = numbers[4]},
+      .callback_data = command.callback_data,
+      .bound_state_cache = command.bound_state_cache,
+  };
+  CaptureDraw(direct, nullptr);
+}
+
 // Any draw when the host tells scene draws apart (host.scene_draw).
 template <typename Context>
 void CaptureAnyDraw(Context& command, const void*) {
@@ -2387,8 +2467,11 @@ inline bool OnReflectionMarch(reshade::api::command_list* cmd_list) {
 
 constexpr auto OnSceneDraw = []<typename T, typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
-  if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
-                && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+  if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::IndirectArguments>) {
+    if (!internal::active.load(std::memory_order_relaxed) || !dlaa_bridge::bridge.ray_tracing) return {};
+    return {.post_callback = internal::CaptureIndirect<Context>};
+  } else if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                       && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
     return {};
   } else {
     // Nothing without the bridge's ray tracing textures (menus: the helper not started; ATN's debug28 menu at 140 fps).
@@ -2958,7 +3041,7 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   for (const SceneShader& shader : shaders) {
     renodx::utils::command_action::Register(
-        OnSceneDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader);
+        OnSceneDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW | (shader.indirect ? renodx::utils::command_action::COMMAND_TYPE_INDIRECT : 0u)}, &shader);
   }
   if (host.scene_draw != nullptr) {
     renodx::utils::command_action::Register(OnAnyDraw, {.shader_hash = 0u, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
