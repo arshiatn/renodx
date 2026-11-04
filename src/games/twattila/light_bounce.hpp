@@ -69,6 +69,8 @@ struct SunDraw {
   UINT sun_direction = 1;  // c0.y
   std::span<const frame_history::CameraRun> camera_layout = {};
   UINT ao_slot = UINT_MAX;
+  // Warhammer III: its cb_ssao, whose two overscans say where the AO texture holds a pixel (UINT_MAX: where it is on screen).
+  UINT ssao_constants_slot = UINT_MAX;
   // How many places its final ambient is made in (screen_space_shadows::PatchAmbient; 0: the first cube read, Attila's).
   uint32_t ambient_final_sites = 0;
   // For its light_bounce.hlsli's BounceDiffuseAlbedo, where a game's sun shaders differ.

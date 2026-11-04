@@ -14,6 +14,7 @@ Texture2D<uint4> t_line_offset_lut : register(t2);
 Texture2D<uint4> t_line_coords_lut : register(t3);
 RWTexture2D<unorm float> t_rw_ssao : register(u0);
 
+#define LINE_SWEEP_DEPTH_AT_OUTPUT_SIZE
 #include "../line_sweep_bitmask.hlsli"
 
 void GameCollect(uint2 coords, uint2 size) {

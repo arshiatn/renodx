@@ -568,6 +568,7 @@ struct Runtime {
   uint64_t combined_frame = UINT64_MAX;   // the frame `combined` was made in
   uint64_t ambient_frame = UINT64_MAX;    // the frame an ambient occlusion pass took the traced ambient visibility
   uint64_t debug_ambient_frame = UINT64_MAX;  // the frame the game's AO pass drew into objects.debug_ambient
+  float debug_ambient_mapping = 1.f;          // where its sun draws read it (KeepDebugAmbient), against a pixel's share of the picture
   uint64_t bounced_frame = UINT64_MAX;    // the frame the Light Bounce was traced (a texel each `bounce_scale` pixels)
   UINT bounce_scale = 1;
   uint64_t reflected_frame = UINT64_MAX;  // the frame the reflections were asked for
@@ -2477,11 +2478,13 @@ inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) 
   struct DebugConstants {
     std::array<uint32_t, 4> view;
     std::array<float, 4> size;
+    std::array<float, 4> ao_mapping;
   };
   const DebugConstants constants = {
       .view = {view, made_bits, static_cast<uint32_t>(runtime.lights.size()), runtime.bounce_scale},
       .size = {static_cast<float>(runtime.traced_size[0]), static_cast<float>(runtime.traced_size[1]), static_cast<float>(desc.Width),
                static_cast<float>(desc.Height)},
+      .ao_mapping = {runtime.debug_ambient_mapping, 0.f, 0.f, 0.f},
   };
   {
     const internal::ComputeState kept(native);

@@ -58,6 +58,8 @@ constexpr char BUILD_TIME[] = __TIME__;
 namespace {
 
 ShaderInjectData shader_injection;
+// shared.h's register for it (the other Total War games: b13).
+constexpr UINT SHADER_INJECTION_SLOT = 10;
 float current_settings_mode = 0.f;
 
 
@@ -1155,11 +1157,10 @@ void BuildRuntimeData() {
   // The AO trace (Advanced): the ambient occlusion's depth downsample (ssao00) and collect (ssao01), replaced so their
   // hooks run.
   // Ambient Occlusion: Visibility Bitmask in the collects (line_sweep_bitmask.hlsli), with the camera of the last
-  // tonemap (t00's b1, bound at b1) and, for the collect without depth (ssao02), the downsample's output (bound at t2;
+  // tonemap (t00's b1, bound at b1) and, for the collect without depth (ssao02), the sweep's depth (bound at t2;
   // line_sweep_ao.hpp).
   custom_shaders[0x49F538CF].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x49F538CF, true);
-    if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepUavDepth(cmd_list);
     return true;
   };
   // The collects' replacements are the game's code only (Game's costs what it did); the Visibility Bitmask is the
@@ -1169,22 +1170,28 @@ void BuildRuntimeData() {
     if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, true, false, 1, 0)) return true;
     const bool dispatched = tw::line_sweep_ao::DispatchInstead(
         cmd_list, __ao_bitmask_collect01, &shader_injection, sizeof(shader_injection), false, __ao_upsample_collect01,
-        shader_injection.ssao_resolution != 0.f);
+        shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
     tw::line_sweep_ao::OnCollectDone(cmd_list);
     return !dispatched;
   };
   custom_shaders[0x2A629B2B].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x2A629B2B, true);
-    if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, true, true, 1, 2)) return true;
+if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, true, true, 1, 2)) return true;
     const bool dispatched = tw::line_sweep_ao::DispatchInstead(
         cmd_list, __ao_bitmask_collect02, &shader_injection, sizeof(shader_injection), false, __ao_upsample_collect02,
-        shader_injection.ssao_resolution != 0.f);
+        shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
     tw::line_sweep_ao::OnCollectDone(cmd_list);
     return !dispatched;
   };
   // The reflection pass (fx_hierarchical_depth_buffer's first reduction, fx_environment_specular_light's march, its 2 blurs,
   // resolve): its replacement isn't the game's unless asked for (the reflections namespace above).
   const auto not_injected = [](auto*) { return false; };
+  // fx_ssao's sweep, the one pass of the AO's that reads a depth at every scale: the downsample stops below about 2/3 (traces
+  // c1a, c2a), and a depth kept from it would stay the last full-size frame's.
+  custom_shaders[0x004BB1D4] = {.crc32 = 0x004BB1D4, .on_inject = not_injected, .on_draw = [](auto* cmd_list) {
+    if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
+    return true;
+  }};
   reflections::resolve_code = custom_shaders[0x89AF6FF5].code;
   custom_shaders[0x89AF6FF5] = {.crc32 = 0x89AF6FF5, .on_inject = not_injected, .on_draw = &reflections::OnResolve, .on_drawn = &reflections::OnResolved};
   custom_shaders[0x0ED84C3D] = {.crc32 = 0x0ED84C3D, .on_inject = not_injected, .on_draw = &reflections::OnHierarchicalDepth};
@@ -2361,13 +2368,13 @@ constexpr std::array<twattila::frame_history::CameraRun, 7> CAMERA_LAYOUT = {{
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws, one shader for every model (g_skin_enable), the camera at b1,
 // the G-buffer's channels 1-4 from their first slot.
 constexpr std::array<twattila::light_bounce::SunDraw, 7> LIGHT_BOUNCE_DRAWS = {{
-    {.shader_hash = 0x18A84893, .standard = true, .gbuffer_slot = 10, .camera_slot = 1, .lighting_slot = 4, .camera_layout = CAMERA_LAYOUT, .ao_slot = 4, .ambient_final_sites = 2},
-    {.shader_hash = 0x24F97B7B, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 1, .diffuse_rule = 1.f},
+    {.shader_hash = 0x18A84893, .standard = true, .gbuffer_slot = 10, .camera_slot = 1, .lighting_slot = 4, .camera_layout = CAMERA_LAYOUT, .ao_slot = 4, .ssao_constants_slot = 3, .ambient_final_sites = 2},
+    {.shader_hash = 0x24F97B7B, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f},
     {.shader_hash = 0x76A707E5, .standard = true, .gbuffer_slot = 6, .camera_slot = 1, .camera_layout = CAMERA_LAYOUT, .ambient_final_sites = 1, .diffuse_rule = 2.f},
-    {.shader_hash = 0x9EAD8951, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 1, .diffuse_rule = 1.f},
-    {.shader_hash = 0xCCEF2C1E, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 1, .diffuse_rule = 1.f},
-    {.shader_hash = 0xF0E2D5EC, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 1, .diffuse_rule = 1.f},
-    {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ambient_final_sites = 2},
+    {.shader_hash = 0x9EAD8951, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f},
+    {.shader_hash = 0xCCEF2C1E, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f},
+    {.shader_hash = 0xF0E2D5EC, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f},
+    {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 2},
 }};
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the G-buffer's opaque meshes as the game's own vertex shaders draw them
@@ -2433,6 +2440,60 @@ const twattila::rt_scene::Host RT_HOST = {
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_draw_logged = {};
 std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_values_logged = {};
 
+// Where a sun draw finds its AO: the game's has its own overscan (below about 2/3 scale it fills a part of its texture, at the
+// render's pixels), so the draw reads uv x ssao_overscan / warscape_3d_overscan. The AO filter's and rt_ambient_combine's
+// textures hold each pixel where the picture has it: read in the game's place, both overscans are 1 for that draw.
+namespace sun_ao {
+Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_view;  // the sun draw's, before anything of ours replaced it
+Microsoft::WRL::ComPtr<ID3D11Buffer> game_constants;
+Microsoft::WRL::ComPtr<ID3D11Buffer> one_to_one;
+
+void OnDestroyDevice(reshade::api::device*) {
+  game_view.Reset();
+  game_constants.Reset();
+  one_to_one.Reset();
+}
+
+// After ray tracing's and the AO filter's callbacks, before the Light Bounce's (which draws the sun draw itself: finalize).
+constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> bound;
+  native->PSGetShaderResources(draw.ao_slot, 1, bound.GetAddressOf());
+  if (!bound) return {};
+  const bool replaced = bound != game_view;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> constants;
+  native->PSGetConstantBuffers(draw.ssao_constants_slot, 1, constants.GetAddressOf());
+  // The Debug View's Screen-Space AO: what the draw reads, but for the traced visibility in the combine's.
+  if (rt_sliders.debug_view >= 8.f && constants && twattila::frame_history::MainViewport(native)) {
+    if (replaced && rt_sliders.ambient_occlusion == 0.f) {
+      twattila::rt_scene::KeepDebugAmbient(native, bound.Get(), 1.f);
+    } else if (const auto overscans = twattila::frame_trace::ReadBuffer<float>(native, constants.Get(), 0, 2); overscans.size() == 2) {
+      twattila::rt_scene::KeepDebugAmbient(native, game_view.Get(), overscans[1] / overscans[0]);
+    }
+  }
+  if (!replaced) return {};
+  if (!one_to_one) {
+    constexpr std::array<float, 4> OVERSCANS = {1.f, 1.f, 0.f, 0.f};
+    const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(OVERSCANS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = OVERSCANS.data()};
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    if (FAILED(device->CreateBuffer(&desc, &data, one_to_one.GetAddressOf()))) return {};
+  }
+  game_constants = constants;
+  native->PSSetConstantBuffers(draw.ssao_constants_slot, 1, one_to_one.GetAddressOf());
+  return {.finalize_callback = [](Context& post, const void*) {
+    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+    if (post_native == nullptr) return;
+    post_native->PSSetConstantBuffers(post.template GetCallbackData<twattila::light_bounce::SunDraw>().ssao_constants_slot, 1, game_constants.GetAddressOf());
+  }};
+};
+}  // namespace sun_ao
+
 // The G-buffer guides (taa_dlss.hpp) at the sun light draws: the frame's first writes them.
 constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
@@ -2443,6 +2504,7 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
+  if (draw.ao_slot != UINT_MAX) native->PSGetShaderResources(draw.ao_slot, 1, sun_ao::game_view.ReleaseAndGetAddressOf());
   twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot, draw.diffuse_rule);
   if (draw.diffuse_rule != 1.f && twattila::frame_history::MainViewport(native)) reflections::sun_cubes_known = false;
   // Log Details, once per shader: what this place's ambient is made of (lighting_VS_PS: its values can't be read offline).
@@ -2548,7 +2610,7 @@ void ConfigureAddon() {
 
   // Shaders cb
   renodx::mods::shader::expected_constant_buffer_space = 50;
-  renodx::mods::shader::expected_constant_buffer_index = 10;
+  renodx::mods::shader::expected_constant_buffer_index = SHADER_INJECTION_SLOT;
 
   // Swapchain cb
   renodx::mods::swapchain::expected_constant_buffer_index = 10;
@@ -2969,6 +3031,12 @@ bool AttachAddon() {
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
+  for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
+    if (draw.ao_slot == UINT_MAX) continue;
+    renodx::utils::command_action::Register(
+        sun_ao::OnSunDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
+  }
+  reshade::register_event<reshade::addon_event::destroy_device>(sun_ao::OnDestroyDevice);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
 
   twwarhammer3::taa_dlss::Install();
@@ -3023,6 +3091,8 @@ void DetachAddon() {
   twattila::ao_filter::Uninstall();
   twattila::rt_scene::Uninstall();
   renodx::utils::command_action::Unregister(OnSunDrawGuides);
+  renodx::utils::command_action::Unregister(sun_ao::OnSunDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(sun_ao::OnDestroyDevice);
   renodx::utils::command_action::Unregister(traced_lights::OnDraw);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);

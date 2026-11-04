@@ -1,8 +1,8 @@
 // fx_ssao collect without depth (written from the disassembly; the one ATN's settings run): the ambient occlusion of
 // the line sweeps, each pixel's 4 directions in a 3 x 3 neighbourhood, averaged. The replacement is that code only (Game's
 // costs what it did); with AO_BITMASK the addon's own pass (ao_bitmask_collect02, Visibility Bitmask:
-// line_sweep_bitmask.hlsli) from the AO's depth, which the addon binds at t2 (the depth downsample's output, this
-// frame's); with AO_UPSAMPLE its Half resolution upsample.
+// line_sweep_bitmask.hlsli) from the AO's depth, which the addon binds at t2 (the sweep's, this frame's); with AO_UPSAMPLE
+// its Half resolution upsample.
 #include "../shared.h"
 
 cbuffer cb_ssao : register(b0) {
@@ -14,6 +14,7 @@ Texture2D<uint4> t_line_offset_lut : register(t1);
 Texture2D<float> ao_depth : register(t2);
 RWTexture2D<unorm float> t_rw_ssao : register(u0);
 
+#define LINE_SWEEP_DEPTH_AT_OUTPUT_SIZE
 #include "../line_sweep_bitmask.hlsli"
 
 void GameCollect(uint2 coords, uint2 size) {

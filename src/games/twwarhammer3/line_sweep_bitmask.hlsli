@@ -26,6 +26,16 @@ static const uint GROUP_SIZE = LINE_SWEEP_GROUP_SIZE;
 static const uint TILE_SIZE = GROUP_SIZE + 2;
 static float2 ao_depth_size;
 
+// `size`: the output's. Warhammer III: the sweep's depth holds its pixels one to one, in a corner of the display's depth
+// below about 2/3 scale; elsewhere the depth is whole.
+void SetAoDepthSize(uint2 size) {
+#ifdef LINE_SWEEP_DEPTH_AT_OUTPUT_SIZE
+  ao_depth_size = float2(size);
+#else
+  ao_depth.GetDimensions(ao_depth_size.x, ao_depth_size.y);
+#endif
+}
+
 float AoDepth(float2 uv) {
   return ao_depth.Load(int3(min(uint2(saturate(uv) * ao_depth_size), uint2(ao_depth_size) - 1u), 0));
 }
@@ -47,7 +57,7 @@ float WeightDepth(float center_depth, float depth) {
 
 // `size`: the collect's output (Warhammer III: its line LUT's size x the overscan, the depth's size).
 void BitmaskCollect(uint2 coords, uint2 group, uint2 thread, uint thread_index, uint2 size) {
-  ao_depth.GetDimensions(ao_depth_size.x, ao_depth_size.y);
+  SetAoDepthSize(size);
   const float2 texel = 1.f / float2(size);
   const float2 depth_texel = 1.f / ao_depth_size;
   // Half resolution: this dispatch covers half the size, each of its pixels the top-left one of a 2 x 2.
@@ -94,7 +104,7 @@ void BitmaskCollect(uint2 coords, uint2 group, uint2 thread, uint thread_index, 
 // Half resolution: the output from the half-size results (twattila/ao_upsample.hlsli); the sky open.
 void BitmaskUpsample(uint2 coords, uint2 size) {
   if (any(coords >= size)) return;
-  ao_depth.GetDimensions(ao_depth_size.x, ao_depth_size.y);
+  SetAoDepthSize(size);
   const float2 uv = (coords + 0.5f) / float2(size);
   const float distance = AoDistance(uv, AoDepth(uv));
   t_rw_ssao[coords] = (distance > 0.f) ? AoUpsample(t_ao_half, int2(coords), distance, 2.f) : 1.f;

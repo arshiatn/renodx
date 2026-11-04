@@ -23,6 +23,9 @@ cbuffer rt_debug : register(b0)
 {
   uint4 rt_debug;  // x the view, y bit v - 1: view v made this frame, z the traced lights, w the Light Bounce's texel (render pixels a side)
   float4 size;     // xy the render size, zw the picture's
+#ifdef RT_DEBUG_AO_MAPPING
+  float4 ao_mapping;  // x how much further the sun draws read the AO texture than a pixel's share of the picture
+#endif
 }
 
 static const uint VIEWS = 8u;
@@ -54,7 +57,11 @@ float3 ViewColour(uint view, uint2 render)
       // Its texture is a share of the picture's size (the game's AO at a fraction of it), the view at its top-left.
       uint2 dimensions;
       screen_space_ambient.GetDimensions(dimensions.x, dimensions.y);
+#ifdef RT_DEBUG_AO_MAPPING
+      const uint2 texel = min(uint2((float2(render) + 0.5f) * ao_mapping.x * float2(dimensions) / size.zw), dimensions - 1u);
+#else
       const uint2 texel = min(uint2((float2(render) + 0.5f) * float2(dimensions) / size.zw), dimensions - 1u);
+#endif
       return 0.8f * screen_space_ambient.Load(int3(texel, 0)).r;
     }
   }

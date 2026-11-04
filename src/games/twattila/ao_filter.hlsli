@@ -54,10 +54,24 @@ float FilterDepth(int2 texel)
 #endif
 }
 
+#ifdef AO_FILTER_SUN_MAPPING
+// The sun draw's own (Warhammer III): below full size the AO has its own overscan.
+cbuffer cb_ssao : register(b3)
+{
+  float warscape_3d_overscan;
+  float ssao_overscan;
+}
+#endif
+
 // Where the game's AO texture holds the pixel.
 float2 FilterUv(int2 pixel)
 {
-  return (float2(pixel) + 0.5f) * g_filter_texture_inverse_size;
+  const float2 uv = (float2(pixel) + 0.5f) * g_filter_texture_inverse_size;
+#ifdef AO_FILTER_SUN_MAPPING
+  return uv * (ssao_overscan / warscape_3d_overscan);
+#else
+  return uv;
+#endif
 }
 
 // The world position at a pixel of the 3D image.

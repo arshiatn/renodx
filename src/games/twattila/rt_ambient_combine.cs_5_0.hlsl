@@ -17,13 +17,26 @@ cbuffer rt_combine : register(b0)
   uint4 size;  // xy the render size
 }
 
+#ifdef RT_COMBINE_SUN_MAPPING
+// The sun draw's own (Warhammer III): below full size the AO has its own overscan.
+cbuffer cb_ssao : register(b1)
+{
+  float warscape_3d_overscan;
+  float ssao_overscan;
+}
+#endif
+
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID)
 {
   uint2 target;
   combined.GetDimensions(target.x, target.y);
   if (any(id.xy >= target)) return;
-  const float4 game = game_ao.SampleLevel(linear_clamp, (float2(id.xy) + 0.5f) / float2(target), 0);
+  float2 uv = (float2(id.xy) + 0.5f) / float2(target);
+#ifdef RT_COMBINE_SUN_MAPPING
+  uv *= ssao_overscan / warscape_3d_overscan;
+#endif
+  const float4 game = game_ao.SampleLevel(linear_clamp, uv, 0);
   const float traced = all(id.xy < size.xy) ? ambient[id.xy] : 1.f;
   combined[id.xy] = float4(game.x * traced, game.yzw);
 }

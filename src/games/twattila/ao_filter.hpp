@@ -155,9 +155,10 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
 }
 
 // This frame's filtered AO from the game's (`game_ao`), the G-buffer depth (`depth`; `msaa`: multisampled) and the
-// camera in Attila's layout; the compute stage's bindings put back after. Under the lock.
+// camera in Attila's layout, `sun_mapping` (null: none) the sun draw's cb_ssao at b3; the compute stage's bindings put
+// back after. Under the lock.
 inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_ao, ID3D11ShaderResourceView* depth,
-                   bool msaa, ID3D11Buffer* camera) {
+                   bool msaa, ID3D11Buffer* camera, ID3D11Buffer* sun_mapping) {
   auto& objects = runtime.objects;
   // Last frame's history only if it was made last frame at this 3D size (DLSS: the textures' top-left corner).
   const auto size = frame_history::RenderSize(objects.width, objects.height);
@@ -189,6 +190,11 @@ inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_a
   native->CSGetConstantBuffers(0, 3, game_constants.data());
   ID3D11SamplerState* game_sampler = nullptr;
   native->CSGetSamplers(0, 1, &game_sampler);
+  ComPtr<ID3D11Buffer> game_mapping;
+  if (sun_mapping != nullptr) {
+    native->CSGetConstantBuffers(3, 1, game_mapping.GetAddressOf());
+    native->CSSetConstantBuffers(3, 1, &sun_mapping);
+  }
 
   const UINT previous_index = objects.history_index;
   objects.history_index = 1 - objects.history_index;
@@ -216,6 +222,7 @@ inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_a
   native->CSSetShaderResources(0, 3, game_views.data());
   native->CSSetConstantBuffers(0, 3, game_constants.data());
   native->CSSetSamplers(0, 1, &game_sampler);
+  if (sun_mapping != nullptr) native->CSSetConstantBuffers(3, 1, game_mapping.GetAddressOf());
   for (auto* view : game_views) {
     if (view != nullptr) view->Release();
   }
@@ -269,7 +276,9 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       if (!internal::Prepare(device.Get(), depth_desc.Width, depth_desc.Height)) return {};
       auto* camera = frame_history::AttilaCamera(device.Get(), native, game_camera.Get(), sun_draw.camera_layout,
                                                  &runtime.objects.camera);
-      internal::Filter(native, game_ao.Get(), depth.Get(), depth_desc.SampleDesc.Count > 1, camera);
+      ComPtr<ID3D11Buffer> sun_mapping;
+      if (sun_draw.ssao_constants_slot != UINT_MAX) native->PSGetConstantBuffers(sun_draw.ssao_constants_slot, 1, sun_mapping.GetAddressOf());
+      internal::Filter(native, game_ao.Get(), depth.Get(), depth_desc.SampleDesc.Count > 1, camera, sun_mapping.Get());
       runtime.filtered_frame = runtime.frame;
       runtime.game_ao = game_ao.Get();
     }

@@ -21,7 +21,7 @@
 // shader computes the AO from the depth and camera this binds into it, putting the collect's own bindings back after it
 // (hooks need the passes' replacement code: hooks on passes without one never run). Shogun 2: the camera of its sweep
 // (OnBlur). Warhammer II: the depth downsample's input and the sweep's camera (its blur does not run at every
-// setting), into the addon's own collect shader (DispatchInstead: the game's stays its own code). Warhammer III: the depth from its downsample (this frame's), the camera from its tonemap (a pixel shader).
+// setting), into the addon's own collect shader (DispatchInstead: the game's stays its own code). Warhammer III: the depth from its sweep (this frame's), the camera from its tonemap (a pixel shader).
 // Warhammer, Troy and Pharaoh compute it in place of their blur (ao_bitmask_blur.hlsli through DispatchInstead).
 // Half resolution (DispatchInstead with `half`): the addon's shader over half the output's size into the addon's
 // half-size target at u1 (each pixel the top-left one of a 2 x 2: its result and distance), then the pass's upsample
@@ -122,36 +122,8 @@ inline bool OnBlur(reshade::api::command_list* cmd_list) {
   return true;
 }
 
-// Warhammer III: its AO depth, the downsample's output (u0), kept as a shader resource view for the collect.
-inline void KeepUavDepth(reshade::api::command_list* cmd_list) {
-  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
-  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  ID3D11UnorderedAccessView* output = nullptr;
-  context->CSGetUnorderedAccessViews(0, 1, &output);
-  if (output == nullptr) return;
-  ID3D11Resource* texture = nullptr;
-  output->GetResource(&texture);
-  output->Release();
-  // The same texture as last frame: its view kept.
-  if (internal::depth != nullptr) {
-    ID3D11Resource* kept = nullptr;
-    internal::depth->GetResource(&kept);
-    kept->Release();
-    if (kept == texture) {
-      texture->Release();
-      return;
-    }
-  }
-  ID3D11Device* device = nullptr;
-  context->GetDevice(&device);
-  ID3D11ShaderResourceView* view = nullptr;
-  device->CreateShaderResourceView(texture, nullptr, &view);
-  device->Release();
-  texture->Release();
-  internal::Keep(&internal::depth, view);
-}
-
-// Warhammer II: the frame's depth, a compute pass's view at `slot` (its depth downsample's input), kept for the collect.
+// The frame's depth, a compute pass's view at `slot` (Warhammer II: its depth downsample's input; Warhammer III: the sweep's,
+// which runs at every scale, its downsample only above about 2/3), kept for the collect.
 inline void KeepComputeDepth(reshade::api::command_list* cmd_list, UINT slot) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   ID3D11ShaderResourceView* depth = nullptr;
@@ -170,12 +142,12 @@ inline void KeepComputeCamera(reshade::api::command_list* cmd_list, UINT slot) {
 // The Visibility Bitmask in place of a pass of the game's, whose replacement stays the game's code (Game's ambient
 // occlusion costs what it did; its hook returns this negated: skip the game's): `bytecode` (8 x 8 groups) over the
 // pass's output (u0, bound) with the pass's bindings, `settings` (the addon's shader settings, `settings_size` bytes)
-// at b13 and, with `kept` (Warhammer II's collect), the kept depth at t2 and camera at b0, and the Depth Levels of its
+// at `settings_slot` and, with `kept` (Warhammer II's collect), the kept depth at t2 and camera at b0, and the Depth Levels of its
 // depth (t2 with `kept`, else the pass's t0), unless OnCollect bound them; with `half` (the shaders read it from the
 // settings too) at half size, then `upsample`. Everything it binds put back after. False without them (the first
 // frame: the game's pass runs) or its objects.
 inline bool DispatchInstead(reshade::api::command_list* cmd_list, std::span<const uint8_t> bytecode, const void* settings,
-                            UINT settings_size, bool kept, std::span<const uint8_t> upsample = {}, bool half = false) {
+                            UINT settings_size, bool kept, std::span<const uint8_t> upsample = {}, bool half = false, UINT settings_slot = 13) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return false;
   if (kept && (internal::depth == nullptr || internal::camera == nullptr)) return false;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -252,7 +224,7 @@ inline bool DispatchInstead(reshade::api::command_list* cmd_list, std::span<cons
   ID3D11Buffer* game_camera = nullptr;
   context->CSGetConstantBuffers(0, 1, &game_camera);
   ID3D11Buffer* game_settings = nullptr;
-  context->CSGetConstantBuffers(13, 1, &game_settings);
+  context->CSGetConstantBuffers(settings_slot, 1, &game_settings);
 
   ID3D11UnorderedAccessView* game_half_uav = nullptr;
   ID3D11ShaderResourceView* game_half_srv = nullptr;
@@ -268,7 +240,7 @@ inline bool DispatchInstead(reshade::api::command_list* cmd_list, std::span<cons
     context->CSSetShaderResources(2, 1, &internal::depth);
     context->CSSetConstantBuffers(0, 1, &internal::camera);
   }
-  context->CSSetConstantBuffers(13, 1, &internal::own_settings);
+  context->CSSetConstantBuffers(settings_slot, 1, &internal::own_settings);
   const bool own_levels = !internal::levels_bound;
   if (own_levels) {
     internal::BindLevels(context, kept ? 2 : 0);
@@ -292,7 +264,7 @@ inline bool DispatchInstead(reshade::api::command_list* cmd_list, std::span<cons
   context->CSSetShader(game_shader, nullptr, 0);
   context->CSSetShaderResources(2, 1, &game_depth);
   context->CSSetConstantBuffers(0, 1, &game_camera);
-  context->CSSetConstantBuffers(13, 1, &game_settings);
+  context->CSSetConstantBuffers(settings_slot, 1, &game_settings);
   if (game_shader != nullptr) game_shader->Release();
   if (game_depth != nullptr) game_depth->Release();
   if (game_camera != nullptr) game_camera->Release();

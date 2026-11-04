@@ -254,6 +254,52 @@ inline void OnReflectionDrawn(reshade::api::command_list* cmd_list) {
   BindReflections(cmd_list, false, false);
 }
 
+namespace internal {
+
+// The Debug View's copy of `resource` (read as `format`), made again when that changes. Under the lock.
+inline void PrepareDebugAmbient(ID3D11DeviceContext* native, const ComPtr<ID3D11Resource>& resource, DXGI_FORMAT format, bool whole_2d_view) {
+  auto& objects = runtime.objects;
+  if (!resource || resource.Get() == objects.debug_ambient_resource.Get()) return;
+  const D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = format,
+                                                     .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+                                                     .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
+  objects.debug_ambient.Reset();
+  objects.debug_ambient_copy.Reset();
+  objects.debug_ambient_resource = resource;
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  ComPtr<ID3D11Texture2D> texture;
+  D3D11_TEXTURE2D_DESC copy_desc = {};
+  if (whole_2d_view && SUCCEEDED(resource.As(&texture))) {
+    texture->GetDesc(&copy_desc);
+    copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    copy_desc.MiscFlags = 0;
+    if (copy_desc.SampleDesc.Count == 1 && SUCCEEDED(device->CreateTexture2D(&copy_desc, nullptr, objects.debug_ambient_copy.GetAddressOf()))) {
+      device->CreateShaderResourceView(objects.debug_ambient_copy.Get(), &view_desc, objects.debug_ambient.GetAddressOf());
+    }
+  }
+}
+
+}  // namespace internal
+
+// A game whose AO no pass here draws (OnAmbientOcclusionDraw): what its sun draws read, for the Debug View's Screen-Space AO;
+// `mapping`: how much further they read that texture than a pixel's share of the picture.
+inline void KeepDebugAmbient(ID3D11DeviceContext* native, ID3D11ShaderResourceView* view, float mapping) {
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  if (runtime.settings.debug_view < 8) return;
+  ComPtr<ID3D11Resource> resource;
+  view->GetResource(resource.GetAddressOf());
+  D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {};
+  view->GetDesc(&view_desc);
+  internal::PrepareDebugAmbient(native, resource, view_desc.Format, view_desc.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D);
+  auto& objects = runtime.objects;
+  if (!objects.debug_ambient_copy) return;
+  native->CopyResource(objects.debug_ambient_copy.Get(), resource.Get());
+  runtime.debug_ambient_mapping = mapping;
+  runtime.debug_ambient_frame = runtime.frame;
+}
+
 // The game's ambient occlusion pass (pre callback): this frame's trace; after it (post), its result times the traced
 // ambient visibility.
 constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
@@ -276,28 +322,10 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
       native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
       ComPtr<ID3D11Resource> resource;
       if (target) target->GetResource(resource.GetAddressOf());
-      auto& objects = runtime.objects;
-      if (resource && resource.Get() != objects.debug_ambient_resource.Get()) {
+      if (target) {
         D3D11_RENDER_TARGET_VIEW_DESC target_desc = {};
         target->GetDesc(&target_desc);
-        const D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = target_desc.Format,
-                                                           .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
-                                                           .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
-        objects.debug_ambient.Reset();
-        objects.debug_ambient_copy.Reset();
-        objects.debug_ambient_resource = resource;
-        ComPtr<ID3D11Device> device;
-        native->GetDevice(device.GetAddressOf());
-        ComPtr<ID3D11Texture2D> texture;
-        D3D11_TEXTURE2D_DESC copy_desc = {};
-        if (target_desc.ViewDimension == D3D11_RTV_DIMENSION_TEXTURE2D && SUCCEEDED(resource.As(&texture))) {
-          texture->GetDesc(&copy_desc);
-          copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-          copy_desc.MiscFlags = 0;
-          if (copy_desc.SampleDesc.Count == 1 && SUCCEEDED(device->CreateTexture2D(&copy_desc, nullptr, objects.debug_ambient_copy.GetAddressOf()))) {
-            device->CreateShaderResourceView(objects.debug_ambient_copy.Get(), &view_desc, objects.debug_ambient.GetAddressOf());
-          }
-        }
+        internal::PrepareDebugAmbient(native, resource, target_desc.Format, target_desc.ViewDimension == D3D11_RTV_DIMENSION_TEXTURE2D);
       }
     }
     ComPtr<ID3D11ShaderResourceView> depth;
@@ -469,10 +497,18 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
         ComPtr<ID3D11SamplerState> game_sampler;
         native->CSGetSamplers(0, 1, game_sampler.GetAddressOf());
         native->CSSetSamplers(0, 1, objects.linear_clamp.GetAddressOf());
+        ComPtr<ID3D11Buffer> game_second;
+        if (draw.ssao_constants_slot != UINT_MAX) {
+          ComPtr<ID3D11Buffer> sun_mapping;
+          native->PSGetConstantBuffers(draw.ssao_constants_slot, 1, sun_mapping.GetAddressOf());
+          native->CSGetConstantBuffers(1, 1, game_second.GetAddressOf());
+          native->CSSetConstantBuffers(1, 1, sun_mapping.GetAddressOf());
+        }
         const std::array<uint32_t, 4> size = {runtime.traced_size[0], runtime.traced_size[1], 0, 0};
         internal::Dispatch(native, objects.combine_shader.Get(), {game_ao.Get(), dlaa_bridge::bridge.rt_ambient.srv.Get()},
                            {objects.combined_uav.Get(), nullptr}, size.data(), sizeof(size), (dlaa_bridge::bridge.width + 7) / 8,
                            (dlaa_bridge::bridge.height + 7) / 8);
+        if (draw.ssao_constants_slot != UINT_MAX) native->CSSetConstantBuffers(1, 1, game_second.GetAddressOf());
         native->CSSetSamplers(0, 1, game_sampler.GetAddressOf());
         runtime.combined_frame = runtime.frame;
         runtime.game_ao = game_ao.Get();
