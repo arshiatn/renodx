@@ -986,8 +986,8 @@ void OnDestroyDevice(reshade::api::device*) {
           .code = __##value,                                       \
           .on_draw = &aa_target::OnDrawTonemap,                    \
           .on_drawn = [](auto* cmd_list) {                         \
-            twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); \
             twwarhammer3::taa_dlss::OnTonemapDrawnAtRenderSize(cmd_list, aa_target::data.srv); \
+            twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); \
             twattila::rt_scene::OnTonemapDrawn(cmd_list);          \
             twwarhammer3::taa_dlss::OnTonemapDrawn(cmd_list);      \
             twwarhammer3::taa_dlss::KeepFrame(cmd_list);           \
@@ -2261,6 +2261,11 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
                   "turns it on below. May look brighter or darker than the game's. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
+    .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .water_caustics_label = "Water Caustics (Experimental)",
+    .fog_shadows_label = "Fog Shadows (Experimental)",
+    .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog: it loses the sun's glow in the shadow of\n"
+                           "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
     .gi_tooltip_end = "\nThe game has its own bounce light: this one comes on top of it. To compare without it: Game's Global\n"
                       "Illumination on Graphics 2 of 2.",
     .coloured_shadows_tooltip = "Sunlight through capture flags takes their colour.\n"
@@ -2270,9 +2275,6 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original, on water only. DXR: from rays, also what is off screen or hidden, on water,\n"
                            "armour and metal. Needs an upscaler.",
-    .fog_shadows_label = "Fog Shadows (Experimental)",
-    .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog: it loses the sun's glow in the shadow of\n"
-                           "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
 };
 
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -2430,7 +2432,7 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
-  twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot);
+  twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot, draw.diffuse_rule);
   if (draw.diffuse_rule != 1.f && twattila::frame_history::MainViewport(native)) reflections::sun_cubes_known = false;
   // Log Details, once per shader: what this place's ambient is made of (lighting_VS_PS: its values can't be read offline).
   if (rt_sliders.debug_log != 0.f && twattila::frame_history::MainViewport(native)

@@ -8,6 +8,12 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   game's 8 point light shaders multiply each light by its traced visibility; off, or before a trace, the game's own shaders run untouched. With Path-Traced Global
   Illumination the lights also light what the screen never saw, at the light shaders' own scale of their diffuse. Torch light in fog is left out: nothing shows what a
   light's colour is worth in the fog's light. Which shaders a battle really uses, and whether its lights are drawn directly: never seen, no trace has one.
+  Four of the 8 read the game's point light shadow map too, and it still renders: with this on, Point Lights With Shadows on Graphics 2 of 2 can go down to 0.5x.
+- **Below 100% Resolution Scale, leaving it:** with the row on, picking Game's TAA or turning the in-game anti-aliasing off kept the last size, and Bend's shadows, Light
+  Bounce and the AO filter stopped after an in-game scale change. Now the size is forgotten without an upscaler, or after a second without a TAA pass; the first
+  frame back only checks the constants again. The screen-space shadow Debug View now shows the whole mask below 100%.
+- **Ray Reconstruction's and the paths' guides by sun shader:** the two sun shaders that keep the normal in 8 bits and have no metal (F9F8CE80, 18A84893) and the one with a
+  flat 0.04 (76A707E5) now get guides as they read the G-buffer themselves. Which setting picks these three isn't known; no trace has one.
 - **Fog Shadows (Experimental, Ray Tracing Extra Options; off, not in the RT/PT preset).** The game's fog already has shafts from its shadow maps. On, rays take their
   place (they aren't stacked): the march skips the maps, only the sun's share of the fog goes dark, measured over the first 400 m. One of the fog's light shaders, the one
   in the trace; the other 5 stay as the game draws them.

@@ -126,6 +126,7 @@ struct State {
   uint64_t taa_frame = UINT64_MAX;        // the game's TAA pass ran
   uint64_t no_camera_frame = UINT64_MAX;  // ... without the main view's camera
   uint64_t guides_frame = UINT64_MAX;  // Ray Reconstruction's guides written
+  float guides_rule = 1.f;             // light_bounce::SunDraw::diffuse_rule of the sun shader they were read for
   std::array<float, 16> previous_view_projection = {};  // the last evaluation's, without the jitter
   twattila::frame_generation::Inputs generation;        // this evaluation's for frame generation
   uint64_t generation_frame = UINT64_MAX;               // its frame, until the tone mapper's draw keeps it
@@ -197,12 +198,15 @@ inline void DispatchGuides(ID3D11DeviceContext* native, ID3D11DeviceContext1* co
   auto& bridge = twattila::dlaa_bridge::bridge;
   twattila::dlaa_bridge::BeforeSharedWrites(native);
   talesofarise::dlss::ContextStateScope scope(context1, state.objects.private_state.Get());
+  const std::array<float, 4> shader_settings = {state.guides_rule, 0.f, 0.f, 0.f};
+  context1->UpdateSubresource(state.objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
   const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
                                                             bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
   context1->CSSetShader(state.objects.guides.Get(), nullptr, 0);
   context1->CSSetShaderResources(0, static_cast<UINT>(gbuffer.size()), gbuffer.data());
   context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(guides.size()), guides.data(), nullptr);
-  context1->CSSetConstantBuffers(0, 1, &camera);
+  const std::array<ID3D11Buffer*, 2> buffers = {camera, state.objects.shader_settings.Get()};
+  context1->CSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
   context1->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
   context1->ClearState();
 }
@@ -293,49 +297,6 @@ inline void OnEvaluated(UINT width, UINT height, const std::array<float, 2>& jit
   state.previous_view_projection = view_projection;
 }
 
-// At the frame's first TAA pass with the row on (state.mutex held): the size it worked at, from the buffer it reads (`output` its
-// output texture). A new size is only learned here: the tone mapper's draw checks it this frame, the upscaler from the next.
-inline ScaleChoice ChooseScale(ID3D11DeviceContext* native, const D3D11_TEXTURE2D_DESC& output) {
-  if (!state.below_100) return ScaleChoice::WHOLE;
-  // Later passes are other views': what the first chose at 100%, else the game's.
-  if (state.scale_frame == state.frame) return (state.scale_choice == ScaleChoice::WHOLE) ? ScaleChoice::WHOLE : ScaleChoice::STOCK;
-  state.scale_frame = state.frame;
-  ComPtr<ID3D11Buffer> camera;
-  native->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
-  state.scale_camera = reinterpret_cast<uint64_t>(camera.Get());
-  const auto found = state.uploaded_sizes.find(state.scale_camera);
-  if (found == state.uploaded_sizes.end()) {
-    // Nothing to learn from. With the main view's camera seen it is 100%, as without the row.
-    if (!state.camera_seen) state.scale_refused_frame = state.frame;
-    state.scale_choice = (state.camera_seen ? ScaleChoice::WHOLE : ScaleChoice::STOCK);
-    return state.scale_choice;
-  }
-  const auto& [screen, viewport, origin] = found->second;
-  if (viewport == screen) {
-    state.scale_proof = ScaleProof::NONE;
-    state.learned_size = {};
-    state.learned_share = 1.f;
-    state.scale_choice = ScaleChoice::WHOLE;
-    return state.scale_choice;
-  }
-  if (const std::array<UINT, 2> size = {static_cast<UINT>(viewport[0]), static_cast<UINT>(viewport[1])}; size != state.learned_size) {
-    state.learned_size = size;
-    state.learned_share = viewport[0] / screen[0];
-    const bool expected = screen[0] == static_cast<float>(output.Width) && screen[1] == static_cast<float>(output.Height)
-                          && origin[0] == 0.f && origin[1] == 0.f
-                          && viewport[0] > 0.f && viewport[1] > 0.f && viewport[0] <= screen[0] && viewport[1] <= screen[1]
-                          && viewport[0] == std::floor(viewport[0]) && viewport[1] == std::floor(viewport[1]);
-    state.scale_proof = (expected ? ScaleProof::WAITING : ScaleProof::REFUSED);
-    if (!expected) {
-      renodx::utils::log::i(std::format("[Warhammer III] Upscaling below 100%: refused: the TAA's camera has screen {}x{}, viewport {}x{}, origin {} {}, its output is {}x{}.",
-                                        screen[0], screen[1], viewport[0], viewport[1], origin[0], origin[1], output.Width, output.Height));
-    }
-  }
-  if (state.scale_proof == ScaleProof::REFUSED) state.scale_refused_frame = state.frame;
-  state.scale_choice = ((state.scale_proof == ScaleProof::GOOD) ? ScaleChoice::SCALED : ScaleChoice::STOCK);
-  return state.scale_choice;
-}
-
 // After the game's TAA resolve: its inputs through DLSS, the result into its output. Below 100%: see the namespace's comment.
 inline void Resolve(ID3D11DeviceContext* native) {
   std::array<ID3D11ShaderResourceView*, 5> inputs = {};
@@ -362,7 +323,48 @@ inline void Resolve(ID3D11DeviceContext* native) {
   ComPtr<ID3D11DeviceContext1> context1;
   const std::unique_lock lock(state.mutex);
   const auto method = state.settings.method;
-  const ScaleChoice scale = ChooseScale(native, output_desc);
+  // The row on, at the frame's first TAA pass: the size it worked at, from the buffer it reads. A new size is only learned here:
+  // the tone mapper's draw checks it this frame, the upscaler from the next.
+  const ScaleChoice scale = [&]() -> ScaleChoice {
+    if (!state.below_100) return ScaleChoice::WHOLE;
+    // Later passes are other views': what the first chose at 100%, else the game's.
+    if (state.scale_frame == state.frame) return (state.scale_choice == ScaleChoice::WHOLE) ? ScaleChoice::WHOLE : ScaleChoice::STOCK;
+    state.scale_frame = state.frame;
+    ComPtr<ID3D11Buffer> camera;
+    native->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
+    state.scale_camera = reinterpret_cast<uint64_t>(camera.Get());
+    const auto found = state.uploaded_sizes.find(state.scale_camera);
+    if (found == state.uploaded_sizes.end()) {
+      // Nothing to learn from. With the main view's camera seen it is 100%, as without the row.
+      if (!state.camera_seen) state.scale_refused_frame = state.frame;
+      state.scale_choice = (state.camera_seen ? ScaleChoice::WHOLE : ScaleChoice::STOCK);
+      return state.scale_choice;
+    }
+    const auto& [screen, viewport, origin] = found->second;
+    if (viewport == screen) {
+      state.scale_proof = ScaleProof::NONE;
+      state.learned_size = {};
+      state.learned_share = 1.f;
+      state.scale_choice = ScaleChoice::WHOLE;
+      return state.scale_choice;
+    }
+    if (const std::array<UINT, 2> size = {static_cast<UINT>(viewport[0]), static_cast<UINT>(viewport[1])}; size != state.learned_size) {
+      state.learned_size = size;
+      state.learned_share = viewport[0] / screen[0];
+      const bool expected = screen[0] == static_cast<float>(output_desc.Width) && screen[1] == static_cast<float>(output_desc.Height)
+                            && origin[0] == 0.f && origin[1] == 0.f
+                            && viewport[0] > 0.f && viewport[1] > 0.f && viewport[0] <= screen[0] && viewport[1] <= screen[1]
+                            && viewport[0] == std::floor(viewport[0]) && viewport[1] == std::floor(viewport[1]);
+      state.scale_proof = (expected ? ScaleProof::WAITING : ScaleProof::REFUSED);
+      if (!expected) {
+        renodx::utils::log::i(std::format("[Warhammer III] Upscaling below 100%: refused: the TAA's camera has screen {}x{}, viewport {}x{}, origin {} {}, its output is {}x{}.",
+                                          screen[0], screen[1], viewport[0], viewport[1], origin[0], origin[1], output_desc.Width, output_desc.Height));
+      }
+    }
+    if (state.scale_proof == ScaleProof::REFUSED) state.scale_refused_frame = state.frame;
+    state.scale_choice = ((state.scale_proof == ScaleProof::GOOD) ? ScaleChoice::SCALED : ScaleChoice::STOCK);
+    return state.scale_choice;
+  }();
   // The row on and no camera: a scale that just changed, the next frame's.
   if (scale == ScaleChoice::STOCK || (state.below_100 && !state.camera_seen)) {
     release();
@@ -473,9 +475,9 @@ inline ComPtr<ID3D11Texture2D> PictureTarget(ID3D11DeviceContext* native) {
 }  // namespace internal
 
 // At the frame's first sun light draw of the main view (its G-buffer bound: channels 1-3 from `gbuffer_slot`, the camera
-// at `camera_slot`): the guides (Ray Reconstruction's, also ray tracing's paths') into the bridge's textures (rr_guides), once a
-// frame.
-inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT camera_slot) {
+// at `camera_slot`, `diffuse_rule` how this sun shader reads it): the guides (Ray Reconstruction's, also ray tracing's paths') into
+// the bridge's textures (rr_guides), once a frame.
+inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT camera_slot, float diffuse_rule) {
   using internal::state;
   ComPtr<ID3D11DeviceContext1> context1;
   if (FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
@@ -493,6 +495,7 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot, UINT cam
   D3D11_TEXTURE2D_DESC desc = {};
   if (const auto normal = internal::TextureOf(gbuffer[0])) normal->GetDesc(&desc);
   if (camera && gbuffer[1] != nullptr && gbuffer[2] != nullptr && desc.Width == bridge.width && desc.Height == bridge.height) {
+    state.guides_rule = diffuse_rule;
     internal::DispatchGuides(native, context1.Get(), gbuffer, camera.Get());
     state.guides_frame = state.frame;
     if (!state.guides_logged) {
@@ -829,6 +832,12 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
     state.camera_seen = false;
     state.trace_wanted = twattila::frame_trace::Wanted();
     // The addon's passes follow the game's size (without the row: 0, 1, never set).
+    // A second without a TAA pass (a menu, in-game anti-aliasing off): nothing shows the game's size any more, and it may have changed.
+    if (state.scale_proof == ScaleProof::GOOD && state.frame - state.scale_frame >= 60) {
+      state.scale_proof = ScaleProof::NONE;
+      state.learned_size = {};
+      state.learned_share = 1.f;
+    }
     const bool scaled = state.scale_proof == ScaleProof::GOOD;
     twattila::frame_history::tonemapped.store(false, std::memory_order_relaxed);
     twattila::frame_history::render_width.store(scaled ? state.learned_size[0] : 0u, std::memory_order_relaxed);
@@ -865,8 +874,9 @@ inline void Update(reshade::api::swapchain* swapchain, const twattila::anti_alia
   twattila::reflex::Update(swapchain, settings.reflex, settings.frame_limit);
   const std::unique_lock lock(internal::state.mutex);
   internal::state.settings = settings;
-  if (internal::state.below_100 != below_100) {
-    internal::state.below_100 = below_100;
+  // Without an upscaler the game's own TAA runs, whatever the row says, and no pass follows the size.
+  if (const bool scales = below_100 && twattila::anti_aliasing::Upscales(settings.method); internal::state.below_100 != scales) {
+    internal::state.below_100 = scales;
     internal::state.scale_proof = internal::ScaleProof::NONE;
     internal::state.learned_size = {};
     internal::state.learned_share = 1.f;

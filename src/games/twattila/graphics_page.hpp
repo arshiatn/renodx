@@ -54,6 +54,8 @@ struct Texts {
   const char* shadow_tooltip;
   const char* ao_tooltip;
   const char* ao_paths_label = "Path-Traced (ReSTIR GI)";
+  const char* specular_occlusion_label = "Ray-Traced Specular Occlusion";
+  const char* water_caustics_label = "Water Caustics";
   const char* fog_shadows_label = "Fog Shadows";
   const char* fog_shadows_tooltip = "";  // Empty: the row's own.
   const char* gi_tooltip_end = "";
@@ -727,7 +729,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", "FidelityFX SSSR", "Ray-Traced (DXR)"}, [b] { return ReflectionMethodOf(b); },
                             [](int method) { ChooseReflections(method); }));
     } else {
-      page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", "Ray-Traced (DXR)"}, [b] { return (ReflectionMethodOf(b) == REFLECTION_RAYS) ? 1 : 0; },
+      page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", "Ray-Traced (DXR, Experimental)"}, [b] { return (ReflectionMethodOf(b) == REFLECTION_RAYS) ? 1 : 0; },
                             [](int place) { ChooseReflections((place == 1) ? REFLECTION_RAYS : REFLECTION_GAME); }));
     }
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
@@ -738,9 +740,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedReflectionSamples", .section = section, .shown = rays, .label = "Samples"});
     page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = rays, .label = "Reuse"});
     page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = "Water Reflections"});
-    page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = "Ray-Traced Specular Occlusion"});
+    page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
     page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
-    page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = "Water Caustics", .only_some_games = true});
+    page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = b.texts->water_caustics_label, .only_some_games = true});
     page.Add(EmptyLine(section));
   }
 

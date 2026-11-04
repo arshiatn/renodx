@@ -4,10 +4,12 @@
  */
 
 // Warhammer III's G-buffer guides (taa_dlss.hpp: Ray Reconstruction's and the rays') for the DLSS bridge, as its deferred sun
-// light and its reflection resolve read them: the colour's share by metal, specular from the dielectric's 0.08 x colour alpha
-// to the colour by metal, roughness in the material's y, world normals (the view-space normal from all 10 bits of each
-// channel around the view axis, turned by inv_view). Water (the flags' class 64, drawn after the first guides: its rays
-// rewrite them): the resolve's own 0.02 and gloss, no diffuse.
+// light and its reflection resolve read them: the colour's share by metal, specular from the dielectric's F0 to the colour by
+// metal, roughness in the material's y, world normals (the view-space normal from all 10 bits of each channel around the view
+// axis, turned by inv_view). Water (the flags' class 64, drawn after the first guides: its rays rewrite them): the resolve's
+// own 0.02 and gloss, no diffuse. The sun shaders differ (as in light_bounce.hlsli): diffuse_rule 1: F0 0.08 x colour alpha;
+// 2: F0 0.04; 0: F0 0.04, no metal and no flags in this G-buffer, roughness in the material's z, the normal in the upper 8 of
+// each 10 bits.
 Texture2D<float4> gbuffer_normal : register(t0);    // channel 1
 Texture2D<float4> gbuffer_colour : register(t1);    // channel 2
 Texture2D<float4> gbuffer_material : register(t2);  // channel 3: x metal, y roughness, alpha the flags (x 255)
@@ -20,21 +22,29 @@ cbuffer camera : register(b0) {
   float4 camera[21];  // c18-c20: inv_view's rows (acting on column vectors)
 };
 
+cbuffer guides_settings : register(b1) {
+  float diffuse_rule;
+};
+
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   uint2 size;
   roughness.GetDimensions(size.x, size.y);
   if (any(id.xy >= size)) return;
-  const float2 e = gbuffer_normal[id.xy].xy * 2.f - 1.f;
+  const float2 stored = gbuffer_normal[id.xy].xy;
+  const float2 e = (diffuse_rule > 0.f) ? (stored * 2.f - 1.f) : (float2(uint2(round(stored * 1023.f)) >> 2) * (2.f / 255.f) - 1.f);
   const float rest = 1.f - dot(e, e);
   const float3 view = float3(2.f * e * sqrt(max(rest, 0.f)), 1.f - 2.f * rest);
   const float3 world = float3(dot(view, camera[18].xyz), dot(view, camera[19].xyz), dot(view, camera[20].xyz));
   const float4 colour = gbuffer_colour[id.xy];
   const float4 material = gbuffer_material[id.xy];
-  const bool water = (uint(round(material.a * 255.f)) & 96u) == 64u;
-  const float3 specular = water ? (float3)0.02f : lerp((float3)(colour.a * 0.08f), colour.rgb, material.x);
-  diffuse_albedo[id.xy] = float4(water ? (float3)0.f : colour.rgb * (1.f - material.x) * (1.f - specular), 1.f);
+  const bool has_material = diffuse_rule > 0.f;
+  const bool water = has_material && (uint(round(material.a * 255.f)) & 96u) == 64u;
+  const float metal = has_material ? material.x : 0.f;
+  const float dielectric = (diffuse_rule == 1.f) ? colour.a * 0.08f : 0.04f;
+  const float3 specular = water ? (float3)0.02f : lerp((float3)dielectric, colour.rgb, metal);
+  diffuse_albedo[id.xy] = float4(water ? (float3)0.f : colour.rgb * (1.f - metal) * (1.f - specular), 1.f);
   specular_albedo[id.xy] = float4(specular, 1.f);
   normals[id.xy] = float4(dot(world, world) > 0.f ? normalize(world) : float3(0.f, 0.f, 1.f), 0.f);
-  roughness[id.xy] = water ? 0.01f : saturate(material.y);
+  roughness[id.xy] = water ? 0.01f : saturate(has_material ? material.y : material.z);
 }
