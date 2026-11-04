@@ -8,6 +8,8 @@
 // and there the height map may lie over those meshes: in the scene it covered them, black patches in every ray. A stream
 // output runs no pixel shader, so this tests each triangle's centre as they test a pixel. Bound with the domain shader's
 // tessellation_cb and the pixel shader's mask (rt_core.hpp Capture), its one output streamed out in place of the domain shader's.
+// CMake's shader rule takes no gs_ target: after a change run in this folder
+// bin\fxc.exe rt_terrain_keep.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /Vn __rt_terrain_keep /Fh rt_terrain_keep_gs.h
 struct Corner {
   float4 position : SV_Position;
   float4 world : TEXCOORD0;

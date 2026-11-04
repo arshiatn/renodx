@@ -4,6 +4,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 ## v32 (in progress, batch 3; renodx-tw-dlaa64.exe helper76, bridge v23; run in game by replay, campaign, benchmarks: see each line)
 
+- **Black patches in ray tracing, fixed, run in game** (replay at 100% and 50%, campaign): the terrain's second pass was in the scene as a surface. It tessellates coarsely and only draws skirts; streamed out past its geometry shader, its coarse hills lay over the real ones, sun and AO rays alike. Replay's first view: 12.69% of the view black, 28 blobs; now 0, 0. Also out: `fx_rigidterrain` (boxes that paint terrain inside themselves: the campaign's rectangles) and what the terrain's mask discards (the campaign's sea).
+- The terrain gets its room in the frame first (it joined last and went short at 100%); what doesn't fit is left out of other meshes, leaves first by draw order (Log Details names them).
+- Path-Traced AO is gone from WH3's page and a saved one turns off: with spherical harmonics on the game's ambient cube isn't its sky. The paths' sky is the learned shade.
+- `rt_terrain_keep_gs.h` is built by hand: the command is in the `.hlsl`.
 - Log only, run in game: the helper's idle release no longer says it "started again"; Reflex's line says when frame generation paces the
   game; FSR Frame Generation's status has a real count (2.0 here); no "smoke shadows" in the status; Below 100%'s line printed once the size
   holds (one line per drag: not proven, no script can drag); "without room" every 10 s under Log Details, with the numbers.
