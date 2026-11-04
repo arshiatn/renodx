@@ -7,7 +7,7 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
-## v135 (not released, built only, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23)
+## v135 = players' v2.5.1 (2026-11-04; built, not run in game; renodx-tw-dlaa64.exe helper75, bridge v23: ship them together; RenoDX_Attila_v2.5.1_HDR_only.zip: the add-on alone)
 - **Ray-Traced Reflections with the game's or Bend's shadows:** what they meet off screen had no sun on it (the sun's direction was only read with RT shadows or paths). Found on WH3, where every hit goes that way.
 - **Fog Shadows with nothing else from rays:** the fog got no shafts (the same missing direction: its rays counted every point as lit). A light draw whose input layout isn't known is no longer read (its mesh's vertices would have been taken for lights; not known to happen). Found on WH3.
 
