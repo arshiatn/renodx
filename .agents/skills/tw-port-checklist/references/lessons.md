@@ -226,6 +226,10 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | A fix proves half | Keep the repro after the first fix |
 | An own compute pass in a replaced pass's `on_draw` runs before the mod's push: `SI` at the game's register holds what the last replaced pass pushed, or nothing. WH3's GT-VBAO bound b13, read b10, and only worked after the downsample ran | Bind the settings at the register `shared.h` names; check that a value of `SI` arrives by writing it out | Debug output in a run: one row of `SI.x` |
 | Debug edits put back with `Copy-Item` keep the old file time: the build skips the shader, and the numbers are the debug's | Set the time after restoring; check the `.cso`'s time, and look at the picture before the numbers | - |
+| A CPU number that looks like the biggest cost may be a wait: A/B before fixing. Not waiting can make pacing worse | WH3 B12: spin on the terrain's counts 31 ms of 38; no-wait path same fps, p99 +0.8 ms, reverted |
+| Rays' hits carry no fog. Where the game's reflection comes from the fogged picture, far hits come out dark against it | WH3 B12: dark patches on rivers, at any scale; water left to the game's march |
+| A page's Reset reads defaults when the page is built: set a game's own default before `graphics_page::Apply` | WH3 B12: Reset wrote the old 1; page_dump's buttons list showed it |
+| Replays end at their own length, then a still results scene: long soaks hold only that much live battle | WH3 B12: 6 of 20 min live |
 
 ## 10. Process
 

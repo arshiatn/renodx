@@ -50,7 +50,11 @@ Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Not done: **fog light limit, measured 1.8x at 2, not added: needs a side draw (reports/B11.md), ATN decides;** particle resolution (traced, medium to large). Flicker in motion on armour: stills can't tell, row stays off.
       Not run: 76A707E5, skin, the 4 fog PS (draw in no run: level B), Darklands, below 50% one to one, 1440p, All Surfaces with FG, Attila (no code).
       New for later: B12: RT reflections on water blotchy at Mode P (b11/p/water_scale.jpg), look at 100% too.
-- [ ] B12 soak and whole
+- [x] B12 soak and whole. Proven at 4K by runs b12_siege0-2 + siegefg0-1 (**gate passed: siege RT/PT 3 full runs, 2 more with RR + FG, 0 events 153**), soak_p (20 min), soak_100, camp (memory flat), m_*, o_*, c_*, overlay, rr, black_100, black_50, c3 (off SAME within 0.05, black 0%, 0 blobs in 6 views), check_run ok; b12_m_game fails `clean exit` only, as B3's stock runs; Attila page same; harness not run (helper, bridge, rt_core same), helper76 stays (reports/B12.md).
+      Done: water keeps the game's reflections under rays (hits have no fog, far hills as dark patches, also at 100%), row Water Reflections shown, Experimental, off, not in RT/PT; NVIDIA's overlay: follows what runs, L plain, F with any ray effect + RR, nothing wrong; CPU 21 ms = waiting on the terrain's counts: no-wait path built, A/B no fps, p99 worse, reverted; GT-VBGI holds at scale (0.98); M no longer darker at 50%; AA section seen; Bend on campaign trees right.
+      Not done: **DLSS L still 10% darker at 50%** (tooltip says so, M 2.4%, K 0.7%); **Water Motion not proven, stays Experimental, off** (stop rule); replay ends at 6 min: the rest of soaks is the results panel's still scene.
+      Not run: night, real fire A/B, Darklands, SDR preset by click, 1440p, Attila (page same).
+      New for later: **Close: ATN's RayTracedWaterReflections=1 to 0** (else the patches are back), *.in-use-* 42.
 - [ ] Close
 
 ## WH3 BATCH (from 2026-11-03): WH3 gets Attila's layout and features; nobody starts a game
