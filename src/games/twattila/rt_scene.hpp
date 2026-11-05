@@ -531,7 +531,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
   const internal::ComputeState kept(native);
   ComPtr<ID3D11Buffer> game_second;
   native->CSGetConstantBuffers(1, 1, game_second.GetAddressOf());
-  const std::array<uint32_t, 4> offset = {draw.sun_direction, internal::ambient_cube, 0, 0};
+  const std::array<uint32_t, 4> offset = {draw.sun_direction, internal::ambient_cube, runtime.settings.path_ambient ? 1u : 0u, 0};
   native->UpdateSubresource(runtime.objects.sun_constants.Get(), 0, nullptr, offset.data(), 0, 0);
   native->CSSetShader(runtime.objects.sun_shader.Get(), nullptr, 0);
   ID3D11UnorderedAccessView* sun = dlaa_bridge::bridge.rt_sun.uav.Get();

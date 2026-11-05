@@ -1532,6 +1532,17 @@ void Capture(Context& command, const SceneShader& shader) {
     stream_output = (cut_out ? objects.cut_out_outputs : objects.capture_outputs)[index].Get();
   }
 
+  // Before anything of the game's is unbound: these returns leave its state alone.
+  ComPtr<ID3D11DeviceContext1> native1;
+  if (cascade_draw) {
+    if (FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+    if (!objects.cascade_camera) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = 14 * 4 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      if (FAILED(device->CreateBuffer(&desc, nullptr, objects.cascade_camera.GetAddressOf()))) return;
+      runtime.cascade_camera_frame = 0;
+    }
+  }
+
   // The same draw into the stream output only (not rasterized): a new mesh's triangles (a placed one's first instance's;
   // a compact or swaying draw's blocks), then a placed draw's instances' rows (one point per instance: its first vertex);
   // the game's shaders and outputs put back.
@@ -1556,15 +1567,8 @@ void Capture(Context& command, const SceneShader& shader) {
     ComPtr<ID3D11Buffer> game_camera;
     UINT game_camera_first = 0;
     UINT game_camera_count = 0;
-    ComPtr<ID3D11DeviceContext1> native1;
     if (cascade_draw) {
-      if (FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
       std::array<float, 14 * 4> cascade_constants = {};
-      if (!objects.cascade_camera) {
-        const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(cascade_constants), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-        if (FAILED(device->CreateBuffer(&desc, nullptr, objects.cascade_camera.GetAddressOf()))) return;
-        runtime.cascade_camera_frame = 0;
-      }
       if (runtime.cascade_camera_frame != runtime.frame) {
         std::ranges::copy(runtime.main_view_projection, cascade_constants.begin() + (10 * 4));
         native->UpdateSubresource(objects.cascade_camera.Get(), 0, nullptr, cascade_constants.data(), 0, 0);

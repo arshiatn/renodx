@@ -99,12 +99,13 @@ inline void OnInitPipeline(renodx::utils::pipeline::PipelineInfo* info, uint32_t
   }
 }
 
-constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+// One callback per stage: command_action calls a callback once a draw, at the first stage that matches.
+template <bool IS_VERTEX>
+constexpr auto ON_GRASS_DRAW = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (row <= 1.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  const bool is_vertex = command.matched_shader_hash == GRASS_VS;
   ComPtr<ID3D11VertexShader> vertex;
   ComPtr<ID3D11PixelShader> pixel;
   {
@@ -121,7 +122,7 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
     if (!grass.vertex && !grass.pixel && !grass.refused) {
       const std::vector<uint8_t> code = PatchDistance(grass.code);
       grass.refused = code.empty()
-                      || FAILED(is_vertex ? device->CreateVertexShader(code.data(), code.size(), nullptr, grass.vertex.GetAddressOf())
+                      || FAILED(IS_VERTEX ? device->CreateVertexShader(code.data(), code.size(), nullptr, grass.vertex.GetAddressOf())
                                           : device->CreatePixelShader(code.data(), code.size(), nullptr, grass.pixel.GetAddressOf()));
       renodx::utils::log::i(std::format("[Warhammer III] Grass Fade Distance: shader {:08X} {}", command.matched_shader_hash,
                                         grass.refused ? "not as expected, stays the game's." : "patched."));
@@ -135,7 +136,7 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
     const std::array<float, 4> constants = {1.f / row, 0.f, 0.f, 0.f};
     native->UpdateSubresource(objects.constants.Get(), 0, nullptr, constants.data(), 0, 0);
   }
-  if (is_vertex) {
+  if constexpr (IS_VERTEX) {
     native->VSGetShader(objects.game_vertex.GetAddressOf(), nullptr, nullptr);
     native->VSSetShader(vertex.Get(), nullptr, 0);
     native->VSSetConstantBuffers(DISTANCE_SLOT, 1, objects.constants.GetAddressOf());
@@ -146,30 +147,32 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
       post_native->VSSetConstantBuffers(DISTANCE_SLOT, 1, &no_constants);
       objects.game_vertex.Reset();
     }};
+  } else {
+    native->PSGetShader(objects.game_pixel.GetAddressOf(), nullptr, nullptr);
+    native->PSSetShader(pixel.Get(), nullptr, 0);
+    native->PSSetConstantBuffers(DISTANCE_SLOT, 1, objects.constants.GetAddressOf());
+    return {.finalize_callback = [](Context& post, const void*) {
+      auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+      ID3D11Buffer* no_constants = nullptr;
+      post_native->PSSetShader(objects.game_pixel.Get(), nullptr, 0);
+      post_native->PSSetConstantBuffers(DISTANCE_SLOT, 1, &no_constants);
+      objects.game_pixel.Reset();
+    }};
   }
-  native->PSGetShader(objects.game_pixel.GetAddressOf(), nullptr, nullptr);
-  native->PSSetShader(pixel.Get(), nullptr, 0);
-  native->PSSetConstantBuffers(DISTANCE_SLOT, 1, objects.constants.GetAddressOf());
-  return {.finalize_callback = [](Context& post, const void*) {
-    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    ID3D11Buffer* no_constants = nullptr;
-    post_native->PSSetShader(objects.game_pixel.Get(), nullptr, 0);
-    post_native->PSSetConstantBuffers(DISTANCE_SLOT, 1, &no_constants);
-    objects.game_pixel.Reset();
-  }};
 };
 
 inline void Install() {
   renodx::utils::pipeline::RegisterOnInitCallback(OnInitPipeline);
-  for (const uint32_t& hash : GRASS_SHADERS) {
-    renodx::utils::command_action::Register(
-        OnGrassDraw, {.shader_hash = hash,
-                      .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW | renodx::utils::command_action::COMMAND_TYPE_INDIRECT});
+  const auto types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW | renodx::utils::command_action::COMMAND_TYPE_INDIRECT;
+  renodx::utils::command_action::Register(ON_GRASS_DRAW<true>, {.shader_hash = GRASS_VS, .command_types = types});
+  for (const uint32_t& hash : std::span(GRASS_SHADERS).subspan(1)) {
+    renodx::utils::command_action::Register(ON_GRASS_DRAW<false>, {.shader_hash = hash, .command_types = types});
   }
 }
 
 inline void Uninstall() {
-  renodx::utils::command_action::Unregister(OnGrassDraw);
+  renodx::utils::command_action::Unregister(ON_GRASS_DRAW<true>);
+  renodx::utils::command_action::Unregister(ON_GRASS_DRAW<false>);
   renodx::utils::pipeline::UnregisterOnInitCallback(OnInitPipeline);
 }
 

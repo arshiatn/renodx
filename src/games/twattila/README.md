@@ -7,6 +7,10 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
+## v137 (2026-11-05, WH3's batch 4; built, not run in game; renodx-tw-dlaa64.exe helper78, bridge v23: ship them together; no players' zip)
+
+- Shared code only: WH3's new rows stay out of this page (same but the date). A failed buffer in the shadow pass capture no longer leaves the game's draw with our shaders. WH3's reflection lobe flag: not set here.
+
 ## v136 (2026-11-05, WH3's batch 3; built, not run in game; renodx-tw-dlaa64.exe helper77, bridge v23: ship them together; no players' zip)
 
 - From WH3's logs, same code here: the helper's idle release no longer says it "started again"; Reflex's line says when frame generation paces

@@ -827,8 +827,11 @@ void OnDestroyDevice(reshade::api::device* device) {
 twattila::rt_scene::Sliders rt_sliders;
 float skip_game_ssao_row = 0.f;
 // RTAO stands alone: fx_ssao's two dispatches only feed the sun's t_ssao (trace b11_scale: its one reader), which the rays replace.
+// Only while the rays run (this frame's or the last, the trace may come after these passes): else the sun has no AO at all.
 bool SkipGameSsao() {
-  return skip_game_ssao_row != 0.f && shader_injection.ssao_mode < 1.f && twattila::rt_scene::internal::runtime.settings.ambient_occlusion;
+  const auto& runtime = twattila::rt_scene::internal::runtime;
+  return skip_game_ssao_row != 0.f && shader_injection.ssao_mode < 1.f && runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
+         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
 }
 
 // The game's reflection pass (fx_environment_specular_light): off, nothing of this runs and the game's bytes do. Our copy of its resolve

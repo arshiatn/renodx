@@ -9,7 +9,8 @@
 // normal in the sky's calibration. Texel 3's w 0: no sky, the paths take the learned shade.
 // Spherical harmonics off (c11.z): the sun light shaders take the ambient cube (lighting_VS_PS c2-c7) at the normal, squared,
 // x g_ambient_fudge_factor (c18.w). On: the cube is only what they fade to outside the playable area (9EAD8951: 0 to 0.07, sides
-// at 0); the sky is t_world_spherical_harmonics, 9EAD8951's loop at the camera's place, evaluated along the six sides.
+// at 0); the sky is t_world_spherical_harmonics, 9EAD8951's loop at the camera's place, evaluated along the six sides. Only
+// Path-Traced AO's sky takes it: texel 3's w stays 0 without, so Light Bounce's escaping paths keep the learned shade.
 cbuffer lighting_VS_PS : register(b0)
 {
   float4 lighting[19];
@@ -17,7 +18,7 @@ cbuffer lighting_VS_PS : register(b0)
 
 cbuffer rt_sun : register(b1)
 {
-  uint4 rt_sun;  // x the first float of sun_direction, y of the ambient cube
+  uint4 rt_sun;  // x the first float of sun_direction, y of the ambient cube, z 1 with Path-Traced AO on
 }
 
 cbuffer camera : register(b2)
@@ -92,7 +93,8 @@ void main()
   [unroll]
   for (uint side = 0u; side < 6u; ++side)
   {
-    const float w = (side == 1u) ? scale : ((side == 3u) ? 0.f : 1.f);
+    const float no_sky = (spherical_harmonics && rt_sun.z == 0u) ? 0.f : 1.f;
+    const float w = (side == 0u) ? no_sky : ((side == 1u) ? scale : ((side == 3u) ? 0.f : 1.f));
     sun[uint2(3u + side, 0)] = has_sky ? float4(sides[side], w) : 0.f;
   }
 }

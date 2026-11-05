@@ -209,7 +209,8 @@ inline bool HoldOrReplay(const renodx::utils::command_action::IndirectArguments&
   D3D11_TEXTURE2D_DESC target_desc = {};
   target_texture->GetDesc(&target_desc);
 
-  if (held->arguments && target_desc.Width * 2 == held->target_width) {
+  // An odd sharp width's half is rounded either way.
+  if (held->arguments && std::abs(static_cast<int>(target_desc.Width * 2) - static_cast<int>(held->target_width)) <= 1) {
     ComPtr<ID3D11Buffer> half_params;
     ComPtr<ID3D11Buffer> half_vertices;
     ComPtr<ID3D11Buffer> half_indices;
@@ -292,27 +293,28 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
       }
     }
   }
-  if (half_on && HoldOrReplay(command.arguments, native, &objects.held[hash == SPRITE_COLOUR_PS ? 1 : 0])) {
-    return {.bypass = true};
+  // Before the hold: the sharp sprites replayed there take the sliders too.
+  typename renodx::utils::command_action::CallbackResult<Context>::PostCallback put_game_shader_back = nullptr;
+  if (patched && objects.brightness) {
+    const std::array<float, 4> rows = {fire_and_glow, smoke_and_dust, effect_meshes, particle_fog};
+    if (objects.written != rows) {
+      objects.written = rows;
+      native->UpdateSubresource(objects.brightness.Get(), 0, nullptr, rows.data(), 0, 0);
+    }
+    native->PSGetShader(objects.game_shader.GetAddressOf(), nullptr, nullptr);
+    native->PSGetConstantBuffers(BRIGHTNESS_SLOT, 1, objects.game_brightness.GetAddressOf());
+    native->PSSetShader(patched.Get(), nullptr, 0);
+    native->PSSetConstantBuffers(BRIGHTNESS_SLOT, 1, objects.brightness.GetAddressOf());
+    put_game_shader_back = [](Context& post, const void*) {
+      auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+      post_native->PSSetShader(objects.game_shader.Get(), nullptr, 0);
+      post_native->PSSetConstantBuffers(BRIGHTNESS_SLOT, 1, objects.game_brightness.GetAddressOf());
+      objects.game_shader.Reset();
+      objects.game_brightness.Reset();
+    };
   }
-  if (!patched || !objects.brightness) return {};
-
-  const std::array<float, 4> rows = {fire_and_glow, smoke_and_dust, effect_meshes, particle_fog};
-  if (objects.written != rows) {
-    objects.written = rows;
-    native->UpdateSubresource(objects.brightness.Get(), 0, nullptr, rows.data(), 0, 0);
-  }
-  native->PSGetShader(objects.game_shader.GetAddressOf(), nullptr, nullptr);
-  native->PSGetConstantBuffers(BRIGHTNESS_SLOT, 1, objects.game_brightness.GetAddressOf());
-  native->PSSetShader(patched.Get(), nullptr, 0);
-  native->PSSetConstantBuffers(BRIGHTNESS_SLOT, 1, objects.brightness.GetAddressOf());
-  return {.finalize_callback = [](Context& post, const void*) {
-    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    post_native->PSSetShader(objects.game_shader.Get(), nullptr, 0);
-    post_native->PSSetConstantBuffers(BRIGHTNESS_SLOT, 1, objects.game_brightness.GetAddressOf());
-    objects.game_shader.Reset();
-    objects.game_brightness.Reset();
-  }};
+  const bool held = half_on && HoldOrReplay(command.arguments, native, &objects.held[hash == SPRITE_COLOUR_PS ? 1 : 0]);
+  return {.bypass = held, .finalize_callback = put_game_shader_back};
   }
 };
 
