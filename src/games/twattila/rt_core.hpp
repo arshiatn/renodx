@@ -2328,7 +2328,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
       .range = runtime.settings.light_bounce_range * RangeScale(),
       .view_projection = runtime.traced_view_projection,
       .path_flags = runtime.settings.path_tracing ? (dlaa_bridge::RT_PATH_TRACING | dlaa_bridge::RT_PATH_REUSE
-                                                     | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u)
+                                                     | ((dlaa_bridge::bridge.reconstructing && !dlaa_bridge::bridge.nrd_ask_bounce) ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u)
                                                      | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u)
                                                      | ((runtime.path_ambient_on && runtime.settings.path_sky_apart) ? dlaa_bridge::RT_PATH_SKY_APART : 0u)
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
@@ -2743,7 +2743,9 @@ inline void Update(const Settings& settings) {
   if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + 3000;
   runtime.settings = settings;
   const bool nrd = settings.nrd && !dlaa_bridge::bridge.reconstructing;
-  dlaa_bridge::bridge.nrd_ask_bounce = nrd && settings.light_bounce;
+  // Path-Traced AO is the Light Bounce's light: under Ray Reconstruction REBLUR cleans it too, as the helper does RTAO.
+  const bool nrd_path_ambient = dlaa_bridge::bridge.reconstructing && settings.path_tracing && settings.path_ambient;
+  dlaa_bridge::bridge.nrd_ask_bounce = (nrd || nrd_path_ambient) && settings.light_bounce;
   dlaa_bridge::bridge.nrd_ask_reflections = nrd && settings.reflections;
   const uint32_t nrd_off = (dlaa_bridge::bridge.shared != nullptr) ? dlaa_bridge::bridge.shared->rt_nrd_off : 0u;
   dlaa_bridge::bridge.nrd_ambient = nrd && settings.ambient_occlusion && (nrd_off & dlaa_bridge::RT_NRD_OFF_AMBIENT) == 0;

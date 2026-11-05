@@ -4342,12 +4342,12 @@ class RtScene12 {
     list->SetComputeRootShaderResourceView(ROOT_SMOKE, (smoke_scene ? smoke_tlas_.Get() : (ptlas_ != nullptr ? ptlas_ : tlas_.Get()))->GetGPUVirtualAddress());
     const float softness = (version >= 6) ? std::clamp(shared.rt_sun_softness, 0.f, 5.000012f) : 0.f;
     const bool soft = (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0 && softness > 0.01f;
-    // Under Ray Reconstruction no soft-shadow filter (rt_trace jitters its sun ray) and no ambient history (NVIDIA's guide:
-    // RR takes the raw signals; the harness's RR test left 19-23% of the raw 4-ray AO's noise, a third of that with the
-    // history, which RR's own accumulation then lagged behind).
+    // Under Ray Reconstruction no soft-shadow filter (rt_trace jitters its sun ray). AO only reaches RR multiplied into the
+    // game's colour, and RR is no AO denoiser (the harness's RR test: 61% of the noise at a wall's foot left through the
+    // ambient history): REBLUR cleans it first, the history only if NRD can't be made.
     const bool reconstructed = (shared.rt_flags & dlaa_bridge::RT_RECONSTRUCTED) != 0;
-    // The Denoiser setting at NRD: SIGMA in place of the soft-shadow filter, REBLUR in place of the ambient's history. Any
-    // signal unused for a while gives its memory back.
+    // The Denoiser setting at NRD: SIGMA in place of the soft-shadow filter, REBLUR in place of the ambient's history (under
+    // Ray Reconstruction REBLUR whatever the setting). Any signal unused for a while gives its memory back.
     bool nrd_sun = false;
     bool nrd_ambient = false;
 #if defined(RENODX_NRD)
@@ -4358,7 +4358,7 @@ class RtScene12 {
         slow_report_ += std::format("{}[TW ray tracing] An NRD denoiser released (unused for {} frames).", slow_report_.empty() ? "" : "\n", NRD_RELEASE_FRAMES);
       }
     }
-    if (!reconstructed && (shared.rt_flags & dlaa_bridge::RT_NRD) != 0) {
+    if (reconstructed || (shared.rt_flags & dlaa_bridge::RT_NRD) != 0) {
       const auto nrd_width = static_cast<uint32_t>(visibility_->GetDesc().Width);
       const uint32_t nrd_height = visibility_->GetDesc().Height;
       static constexpr std::array<NrdTexture, 5> SUN_TEXTURES = {{
@@ -4374,7 +4374,7 @@ class RtScene12 {
           {nrd::ResourceType::IN_DIFF_HITDIST, DXGI_FORMAT_R8_UNORM, NRD_AMBIENT_SIGNAL},
           {nrd::ResourceType::OUT_DIFF_HITDIST, DXGI_FORMAT_R8_UNORM, 0},
       }};
-      nrd_sun = soft && EnsureNrd(&nrd_sun_, nrd::Denoiser::SIGMA_SHADOW_TRANSLUCENCY, "NRD SIGMA", {RT_NRD_FRONT_SUN, sizeof(RT_NRD_FRONT_SUN)},
+      nrd_sun = !reconstructed && soft && EnsureNrd(&nrd_sun_, nrd::Denoiser::SIGMA_SHADOW_TRANSLUCENCY, "NRD SIGMA", {RT_NRD_FRONT_SUN, sizeof(RT_NRD_FRONT_SUN)},
                                   {RT_NRD_FINISH_SUN, sizeof(RT_NRD_FINISH_SUN)}, nrd_width, nrd_height, SUN_TEXTURES, frame);
       nrd_ambient = (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0
                     && EnsureNrd(&nrd_ambient_, nrd::Denoiser::REBLUR_DIFFUSE_OCCLUSION, "NRD REBLUR (AO)", {RT_NRD_FRONT_AMBIENT, sizeof(RT_NRD_FRONT_AMBIENT)},
@@ -4513,7 +4513,7 @@ class RtScene12 {
       }
     }
 #endif
-    if (!reconstructed && (shared.rt_flags & dlaa_bridge::RT_NRD) != 0 && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0) {
+    if ((reconstructed || (shared.rt_flags & dlaa_bridge::RT_NRD) != 0) && (shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0) {
       NoteNrd(dlaa_bridge::RT_NRD_OFF_AMBIENT, nrd_ambient_ran);
     }
     barriers.clear();

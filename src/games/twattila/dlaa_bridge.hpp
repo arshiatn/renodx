@@ -158,7 +158,8 @@ struct Bridge {
   // accumulation and filter) leave its noise to it.
   bool reconstructing = false;
   // The Denoiser setting at NRD: which signals are asked for it, and which the helper denoises by it (asked, and it has
-  // not said otherwise: rt_nrd_off), the addon's own denoisers off those.
+  // not said otherwise: rt_nrd_off), the addon's own denoisers off those. Under Ray Reconstruction only the AO: the helper
+  // denoises RTAO by it unasked, and Path-Traced AO's Light Bounce is asked for it (rt_core.hpp).
   bool nrd_ask_bounce = false;
   bool nrd_ask_reflections = false;
   bool nrd_ambient = false;

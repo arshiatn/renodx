@@ -2,8 +2,9 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
-## v34 (batch 4, ATN's test of v33; nothing here run in game)
+## v34 (batch 4, ATN's test of v33; renodx-tw-dlaa64.exe helper79, bridge v23: ship them together; nothing here run in game)
 
+- Ray Reconstruction: RTAO and Path-Traced AO go through NVIDIA's REBLUR first, the AO the NRD setting gives. RR only saw AO multiplied into the colour and is no AO denoiser. Helper79 (ship with this addon); about 0.85 ms and 215 MB more at 4K. Harness numbers: Attila's v138. Not run in game.
 - **Pixel trace (Ray Tracing Extra Options, More Options), not run in game:** the row from Attila. wh3_pixel_trace.txt next to the exe: every pass that changes the pixels under the red line, then the rays' AO at the cross, which no pass shows: AO around the pixel, what the sun draws read, view depth, world position, camera, the normal the rays start from. Below 100% the position follows each draw's viewport. Not logged: where the rays hit (AO 0 = all of them hit within the range); that needs the helper. Put the cross on a black spot and send the file.
 - **Spot Filter removed:** ATN: looks broken.
 - **Grass Fade Distance removed:** near the old fade distance blades grew and flickered. Flicker: the copy flattened this frame's blade by the row, last frame's by the game's distance, so motion said the blade rose. Growth: generated grass ends 16 cells around the camera and shrinks to 0 in the last cell, which the game hides by flattening first, and no grass exists past that whatever the fade. Longer grass needs another dispatch of the grass generator, not a fade.
