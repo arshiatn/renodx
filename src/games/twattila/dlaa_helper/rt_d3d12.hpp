@@ -916,7 +916,8 @@ class RtScene12 {
     return std::format("{}{}{}{}{}{}", status_.substr(0, label + 3), room_note_, gpu_timings_, gpu_timings_.empty() ? "" : " | ", status_.substr(label + 3), cpu_timings_);
   }
   // A GPU fault or hang (Windows' timeout detection) removed the device: nothing runs on it again.
-  [[nodiscard]] bool Removed() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
+  [[nodiscard]] HRESULT RemovedReason() const { return device_ ? device_->GetDeviceRemovedReason() : S_OK; }
+  [[nodiscard]] bool Removed() const { return FAILED(RemovedReason()); }
   // Removed, or a request could not be recorded: nothing of it ran but the scene's state says it did (new BLASes, cluster
   // sets' data), and a list that failed its Close never resets (debug36: one effect gone for six minutes, then a GPU
   // reset). main.cpp makes a new scene either way.

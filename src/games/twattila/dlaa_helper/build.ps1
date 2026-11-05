@@ -101,4 +101,4 @@ if (Test-Path "$nrd\_Bin\NRD.lib") {
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
   "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include "/I$out" `
   "$PSScriptRoot\main.cpp" /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
-  "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library @nrd_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib
+  "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library @nrd_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib dbghelp.lib

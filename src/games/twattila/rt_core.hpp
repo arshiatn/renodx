@@ -12,6 +12,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -314,6 +315,9 @@ constexpr uint64_t SMOKE_KEY = 0x534D4F4B45ull;
 // Tessellated draws: their triangles a frame at most (the hull shader decides how many, so past the draw), the draws (a
 // count each), their capture's key.
 constexpr UINT MAX_TESSELLATED_VERTICES = 6u << 20;
+// A GPU that stopped must not hold the game's thread at the terrain's count. Long: traces of 100 ms were seen over a siege's
+// forest, and a frame past this one goes without the terrain in its rays.
+constexpr auto TERRAIN_COUNT_LIMIT = std::chrono::milliseconds(250);
 constexpr size_t MAX_TESSELLATED_DRAWS = 16;
 constexpr uint64_t TESSELLATED_KEY = 0x54455353ull;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
@@ -424,6 +428,7 @@ struct DeviceObjects {
 struct Costs {
   int64_t capture_ticks = 0;
   int64_t trace_ticks = 0;
+  int64_t terrain_wait_ticks = 0;  // of trace_ticks: waiting for the GPU to count the terrain's triangles
   uint32_t frames = 0;
   double passes_ms = 0.0;
   double waiting_ms = 0.0;
@@ -528,6 +533,7 @@ struct Runtime {
   // drops instead. Last frame's corners, an eighth over for a moving camera; 0 in a game without such draws.
   uint32_t tessellated_reserved = 0;
   uint64_t tessellated_room_log_tick = 0;
+  uint64_t terrain_count_log_tick = 0;
   uint32_t dynamic_vertices = 0;
   uint32_t unit_vertices = 0;   // of them the units' (skinned soldiers and horses), their triangles and clusters
   uint32_t unit_triangles = 0;
@@ -2041,36 +2047,61 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   }
   // The tessellated draws' triangles: their counts wait for the GPU to pass those draws, which it mostly has by now (they
   // come early in the frame), then they join the captures. Past the frame's room the last ones stay out.
-  runtime.tessellated_reserved = 0;
-  if (runtime.tessellated_draws != 0) {
+  if (runtime.tessellated_draws == 0) {
+    runtime.tessellated_reserved = 0;
+  } else {
     uint64_t triangles = 0;
     uint64_t triangles_needed = 0;
-    for (uint32_t draw = 0; draw < runtime.tessellated_draws; ++draw) {
-      D3D11_QUERY_DATA_SO_STATISTICS statistics = {};
-      while (native->GetData(objects.tessellated_queries[draw].Get(), &statistics, sizeof(statistics), 0) == S_FALSE) {}
-      triangles += statistics.NumPrimitivesWritten;
-      triangles_needed += statistics.PrimitivesStorageNeeded;
+    HRESULT counted = S_OK;
+    {
+      const CpuTime waited(runtime.timed ? &runtime.costs.terrain_wait_ticks : nullptr);
+      // Submits the last End: the reads below don't, and without it they'd never finish.
+      native->Flush();
+      const auto deadline = std::chrono::steady_clock::now() + TERRAIN_COUNT_LIMIT;
+      for (uint32_t draw = 0; draw < runtime.tessellated_draws && counted == S_OK; ++draw) {
+        D3D11_QUERY_DATA_SO_STATISTICS statistics = {};
+        do {
+          counted = native->GetData(objects.tessellated_queries[draw].Get(), &statistics, sizeof(statistics), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        } while (counted == S_FALSE && std::chrono::steady_clock::now() < deadline);
+        triangles += statistics.NumPrimitivesWritten;
+        triangles_needed += statistics.PrimitivesStorageNeeded;
+      }
     }
-    const UINT room = std::min({(world_captures ? WORLD_BASE : MAX_VERTICES) - runtime.captured_vertices, MAX_DYNAMIC_VERTICES - std::min(runtime.dynamic_vertices, MAX_DYNAMIC_VERTICES),
-                                (dlaa_bridge::RT_DYNAMIC_TRIANGLES - std::min(runtime.dynamic_triangles, dlaa_bridge::RT_DYNAMIC_TRIANGLES)) * 3,
-                                (dlaa_bridge::RT_DYNAMIC_CLUSTERS - std::min(runtime.dynamic_clusters, dlaa_bridge::RT_DYNAMIC_CLUSTERS)) * dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES * 3});
-    const UINT corners = static_cast<UINT>(std::min<uint64_t>(triangles * 3, room / 3 * 3));
-    if (corners != 0 && runtime.captures.size() < dlaa_bridge::RT_CAPTURES) {
-      const D3D11_BOX written = {.left = 0, .top = 0, .front = 0, .right = corners * 16, .bottom = 1, .back = 1};
-      native->CopySubresourceRegion(objects.captured.Get(), 0, runtime.captured_vertices * 16, 0, 0, objects.tessellated.Get(), 0, &written);
-      runtime.captures.push_back({.key = TESSELLATED_KEY, .first_vertex = runtime.captured_vertices, .vertex_count = corners,
-                                  .flags = dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC});
-      runtime.slices.push_back(0);
-      runtime.captured_vertices += corners;
-      runtime.dynamic_vertices += corners;
-      runtime.dynamic_triangles += corners / 3;
-      runtime.dynamic_clusters += ((corners / 3) + dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES - 1) / dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
-    }
-    runtime.tessellated_reserved = static_cast<uint32_t>(std::min<uint64_t>(triangles_needed * 3 / 8 * 9, MAX_TESSELLATED_VERTICES));
-    if (const uint64_t tick = GetTickCount64();
-        corners / 3 < triangles_needed && (runtime.tessellated_room_log_tick == 0 || (runtime.settings.debug_log && tick >= runtime.tessellated_room_log_tick + 10000))) {
-      runtime.tessellated_room_log_tick = tick;
-      renodx::utils::log::i(std::format("[Total War] Ray tracing: tessellated triangles without room: {} of {} ({} written, room for {}).", corners / 3, triangles_needed, triangles, room / 3));
+    if (counted != S_OK) {
+      if (const uint64_t tick = GetTickCount64(); runtime.terrain_count_log_tick == 0 || tick >= runtime.terrain_count_log_tick + 10000) {
+        runtime.terrain_count_log_tick = tick;
+        renodx::utils::log::w(std::format("[Total War] Ray tracing: the GPU gave no terrain count in {} ms (0x{:08X}): a frame's rays without the terrain.",
+                                          TERRAIN_COUNT_LIMIT.count(), static_cast<uint32_t>(counted)));
+      }
+      // Begun again, a query with its answer still open reads that old answer next frame (WARP warp_tests/terrain_wait).
+      ComPtr<ID3D11Device> query_device;
+      native->GetDevice(query_device.GetAddressOf());
+      const D3D11_QUERY_DESC statistics_desc = {.Query = D3D11_QUERY_SO_STATISTICS};
+      for (auto& query : objects.tessellated_queries) {
+        if (ComPtr<ID3D11Query> fresh; SUCCEEDED(query_device->CreateQuery(&statistics_desc, fresh.GetAddressOf()))) query = fresh;
+      }
+    } else {
+      const UINT room = std::min({(world_captures ? WORLD_BASE : MAX_VERTICES) - runtime.captured_vertices, MAX_DYNAMIC_VERTICES - std::min(runtime.dynamic_vertices, MAX_DYNAMIC_VERTICES),
+                                  (dlaa_bridge::RT_DYNAMIC_TRIANGLES - std::min(runtime.dynamic_triangles, dlaa_bridge::RT_DYNAMIC_TRIANGLES)) * 3,
+                                  (dlaa_bridge::RT_DYNAMIC_CLUSTERS - std::min(runtime.dynamic_clusters, dlaa_bridge::RT_DYNAMIC_CLUSTERS)) * dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES * 3});
+      const UINT corners = static_cast<UINT>(std::min<uint64_t>(triangles * 3, room / 3 * 3));
+      if (corners != 0 && runtime.captures.size() < dlaa_bridge::RT_CAPTURES) {
+        const D3D11_BOX written = {.left = 0, .top = 0, .front = 0, .right = corners * 16, .bottom = 1, .back = 1};
+        native->CopySubresourceRegion(objects.captured.Get(), 0, runtime.captured_vertices * 16, 0, 0, objects.tessellated.Get(), 0, &written);
+        runtime.captures.push_back({.key = TESSELLATED_KEY, .first_vertex = runtime.captured_vertices, .vertex_count = corners,
+                                    .flags = dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_DYNAMIC});
+        runtime.slices.push_back(0);
+        runtime.captured_vertices += corners;
+        runtime.dynamic_vertices += corners;
+        runtime.dynamic_triangles += corners / 3;
+        runtime.dynamic_clusters += ((corners / 3) + dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES - 1) / dlaa_bridge::RT_CAPTURE_CLUSTER_TRIANGLES;
+      }
+      runtime.tessellated_reserved = static_cast<uint32_t>(std::min<uint64_t>(triangles_needed * 3 / 8 * 9, MAX_TESSELLATED_VERTICES));
+      if (const uint64_t tick = GetTickCount64();
+          corners / 3 < triangles_needed && (runtime.tessellated_room_log_tick == 0 || (runtime.settings.debug_log && tick >= runtime.tessellated_room_log_tick + 10000))) {
+        runtime.tessellated_room_log_tick = tick;
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: tessellated triangles without room: {} of {} ({} written, room for {}).", corners / 3, triangles_needed, triangles, room / 3));
+      }
     }
   }
   // The world-space part goes after the clip-space vertices in the vertex texture (rt_vertices); what points at it follows.
@@ -2954,11 +2985,11 @@ inline void Update(const Settings& settings) {
       LARGE_INTEGER frequency;
       QueryPerformanceFrequency(&frequency);
       const double frame_ms = 1000.0 / static_cast<double>(frequency.QuadPart) / costs.frames;
-      renodx::utils::log::i(std::format("[Total War] Ray tracing's own cost a frame: CPU {:.2f} ms capturing, {:.2f} ms tracing; GPU "
+      renodx::utils::log::i(std::format("[Total War] Ray tracing's own cost a frame: CPU {:.2f} ms capturing, {:.2f} ms tracing ({:.2f} of it the terrain's count); GPU "
                                         "{:.2f} ms its passes, {:.2f} ms waiting for the helper; every frame {:.2f} M vertices captured "
                                         "({:.0f} compact draws; {} cluster sets, {} unsorted), {:.2f} M left out (their share full), {:.2f} M "
                                         "without room (captures or vertex texture full).",
-                                        costs.capture_ticks * frame_ms, costs.trace_ticks * frame_ms,
+                                        costs.capture_ticks * frame_ms, costs.trace_ticks * frame_ms, costs.terrain_wait_ticks * frame_ms,
                                         (costs.timed != 0 ? costs.passes_ms / costs.timed : 0.0),
                                         (costs.timed != 0 ? costs.waiting_ms / costs.timed : 0.0),
                                         static_cast<double>(costs.dynamic_vertices) / 1.0e6 / costs.frames,

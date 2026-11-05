@@ -17,6 +17,7 @@
 #include <windows.h>
 
 #include <d3d11_4.h>
+#include <dbghelp.h>
 #include <dxgi1_6.h>
 #include <shellapi.h>
 #include <wrl/client.h>
@@ -58,6 +59,38 @@ extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* 
   std::fflush(log_file);
 }
 
+// With the time: this log's other lines have none, and the game's log and Windows' events are read beside these.
+static void LogWithTime(const char* message) {
+  if (log_file == nullptr) return;
+  SYSTEMTIME now = {};
+  GetLocalTime(&now);
+  std::fprintf(log_file, "%02d:%02d:%02d %s\n", now.wHour, now.wMinute, now.wSecond, message);
+  std::fflush(log_file);
+}
+
+// A fault nothing handled: a line in the log and a small dump beside it, the last one only.
+static std::array<wchar_t, MAX_PATH> dump_path = {};
+static LONG WINAPI OnUnhandledFault(EXCEPTION_POINTERS* fault) {
+  const HANDLE file = CreateFileW(dump_path.data(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  bool dumped = false;
+  if (file != INVALID_HANDLE_VALUE) {
+    MINIDUMP_EXCEPTION_INFORMATION where = {.ThreadId = GetCurrentThreadId(), .ExceptionPointers = fault, .ClientPointers = FALSE};
+    dumped = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, MiniDumpWithThreadInfo, &where, nullptr, nullptr) != FALSE;
+    CloseHandle(file);
+  }
+  HMODULE module = nullptr;
+  GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                     static_cast<LPCWSTR>(fault->ExceptionRecord->ExceptionAddress), &module);
+  std::array<char, MAX_PATH> module_path = {};
+  if (module != nullptr) GetModuleFileNameA(module, module_path.data(), MAX_PATH);
+  std::array<char, 512> line = {};
+  std::snprintf(line.data(), line.size(), "[TW DLAA helper] Fault %08lX at %s+0x%llX, %s.", fault->ExceptionRecord->ExceptionCode, module_path.data(),
+                reinterpret_cast<uint64_t>(fault->ExceptionRecord->ExceptionAddress) - reinterpret_cast<uint64_t>(module),
+                dumped ? "renodx-tw-dlaa64.dmp written" : "no dump");
+  LogWithTime(line.data());
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   int argument_count = 0;
   wchar_t** arguments = CommandLineToArgvW(GetCommandLineW(), &argument_count);
@@ -70,6 +103,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   folder = folder.substr(0, folder.find_last_of(L"\\/"));
   const std::wstring log_path = folder + L"\\renodx-tw-dlaa64.log";
   _wfopen_s(&log_file, log_path.c_str(), L"w");
+  wcsncpy_s(dump_path.data(), dump_path.size(), (folder + L"\\renodx-tw-dlaa64.dmp").c_str(), _TRUNCATE);
+  SetUnhandledExceptionFilter(OnUnhandledFault);
+  // RENODX_TW_HELPER_FAULT (tests): the dump's path, on demand.
+  if (GetEnvironmentVariableW(L"RENODX_TW_HELPER_FAULT", nullptr, 0) != 0) *static_cast<volatile int*>(nullptr) = 1;
 
   const std::wstring name = L"Local\\RenoDX_TW_DLAA_" + std::to_wstring(game_id);
   HANDLE game = OpenProcess(SYNCHRONIZE, FALSE, game_id);
@@ -448,15 +485,41 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       generation_resources = false;
     }
   };
+  // Whose device a GPU reset removed, once each, also with no request coming (the game stuck: ATN's freeze left no line here).
+  // 0x887A0006: hung, its own work. 0x887A0007: reset, another's work.
+  std::array<HRESULT, 5> removed_logged = {};
+  auto last_request = std::chrono::steady_clock::now();
+  const auto log_removed_devices = [&] {
+    const std::array<std::pair<const char*, HRESULT>, 5> reasons = {{
+        {"its D3D11", device->GetDeviceRemovedReason()},
+        {"ray tracing's", scene->RemovedReason()},
+        {"Ray Reconstruction's", reconstruction->RemovedReason()},
+        {"FSR's / XeSS's", upscaler->RemovedReason()},
+        {"frame generation's", (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->RemovedReason() : proxy_generation->RemovedReason()},
+    }};
+    for (size_t index = 0; index < reasons.size(); ++index) {
+      const auto& [whose, reason] = reasons[index];
+      if (reason == removed_logged[index]) continue;
+      removed_logged[index] = reason;
+      if (SUCCEEDED(reason)) continue;
+      const auto age = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - last_request).count();
+      LogWithTime(std::format("[TW DLAA helper] A GPU reset removed {} device (0x{:08X}), last request {} ms ago.", whose, static_cast<uint32_t>(reason), age).c_str());
+    }
+  };
   const HANDLE waits[] = {request, game};
   // With no requests coming (DLSS turned off) the wait still wakes for release_idle.
   const auto next_request = [&] {
     DWORD woken = WaitForMultipleObjects(2, waits, FALSE, 1000);
-    for (; woken == WAIT_TIMEOUT; woken = WaitForMultipleObjects(2, waits, FALSE, 1000)) release_idle();
+    for (; woken == WAIT_TIMEOUT; woken = WaitForMultipleObjects(2, waits, FALSE, 1000)) {
+      log_removed_devices();
+      release_idle();
+    }
     return woken;
   };
   auto refused_tried = std::chrono::steady_clock::now();
   while (next_request() == WAIT_OBJECT_0) {
+    log_removed_devices();
+    last_request = std::chrono::steady_clock::now();
     // A GPU reset removed one's device: it goes at once, whatever the set (no new device can be made while it is held:
     // MakeOwnDevice), a new one on this set (a new set usually follows: the shared fence reads all ones, dlaa_bridge::Prepare).
     if (reconstruction->Lost()) {

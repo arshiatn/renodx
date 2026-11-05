@@ -559,7 +559,8 @@ class FrameGeneration12 {
   // It gave up on this device or driver (its chain could not be made, ...).
   [[nodiscard]] bool Failed() const { return failed_; }
   // A GPU reset removed its device (the helper starts Streamline again on a new one).
-  [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
+  [[nodiscard]] HRESULT RemovedReason() const { return device_ ? device_->GetDeviceRemovedReason() : S_OK; }
+  [[nodiscard]] bool Lost() const { return FAILED(RemovedReason()); }
 
  private:
   struct Slot {

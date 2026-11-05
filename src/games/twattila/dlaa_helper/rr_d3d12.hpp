@@ -221,7 +221,8 @@ class RayReconstruction12 {
 
   [[nodiscard]] bool Ready() const { return fence_ != nullptr; }
   // A GPU reset removed its device (the helper makes a new one).
-  [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
+  [[nodiscard]] HRESULT RemovedReason() const { return device_ ? device_->GetDeviceRemovedReason() : S_OK; }
+  [[nodiscard]] bool Lost() const { return FAILED(RemovedReason()); }
   [[nodiscard]] const std::string& Status() const { return status_; }
 
   ~RayReconstruction12() {

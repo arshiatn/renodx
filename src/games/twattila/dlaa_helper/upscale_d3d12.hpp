@@ -334,7 +334,8 @@ class Upscaler12 {
   }
 
   // A GPU reset removed its device (the helper makes a new one).
-  [[nodiscard]] bool Lost() const { return device_ && FAILED(device_->GetDeviceRemovedReason()); }
+  [[nodiscard]] HRESULT RemovedReason() const { return device_ ? device_->GetDeviceRemovedReason() : S_OK; }
+  [[nodiscard]] bool Lost() const { return FAILED(RemovedReason()); }
   [[nodiscard]] uint32_t Backend() const { return backend_; }
   [[nodiscard]] const std::string& Status() const { return status_; }
 

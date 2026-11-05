@@ -3745,6 +3745,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(twwarhammer3::device_loss::OnInitDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::device_loss::OnDestroyDevice);
+  twwarhammer3::device_loss::StopWatch();
   reshade::unregister_event<reshade::addon_event::present>(twwarhammer3::device_loss::OnPresent);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
@@ -3818,8 +3819,9 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       addon_module_handle = h_module;
-      if (!reshade::register_addon(h_module)) return FALSE;
-      addon_registered = true;
+      // Not FALSE when it fails: ReShade next to renodx-tw-dlaa64.exe loads this addon there too, and after a FALSE the CRT's
+      // thread_local cleanup faults in the loader (ntdll c0000005, a Windows crash report each start). AddonInit fails instead.
+      addon_registered = reshade::register_addon(h_module);
       break;
 
     case DLL_PROCESS_DETACH:
