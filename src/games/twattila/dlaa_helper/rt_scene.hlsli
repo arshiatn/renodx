@@ -53,6 +53,8 @@ static const uint NRD_SUN = 2097152u;      // RT_NRD: rt_trace's soft shadows fo
 static const uint NRD_BOUNCE = 4194304u;   // rt_bounce: its hit distance for NRD
 static const uint NRD_AMBIENT = 8388608u;  // rt_trace: the ambient as traced for NRD, no history
 static const uint SMOKE_MET = 262144u;  // Smoke Shadows' particles are in the scene (the helper: their instance built)
+// Banners Without Self-Shadows (v29, dlaa_bridge.h RT_SHEETS_UNSELFED): cloth and sails don't shade themselves (rt_trace.cs_6_5.hlsl).
+static const uint SHEETS_UNSELFED = 67108864u;
 // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT, two bits): the particles a sun ray counts.
 static const uint SMOKE_QUALITY_SHIFT = 19u;
 static const uint RECORD_MASKED = 1u;  // flags: alpha-tested (leaves)

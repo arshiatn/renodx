@@ -95,14 +95,48 @@ float LeafHit(float3 origin, float3 direction, float near, float far) {
   return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? query.CommittedRayT() : -1.f;
 }
 
+// A pixel on no cloth or sail (SunRay's `sheet`).
+static const uint NO_SHEET = 0xFFFFFFFFu;
+// How far along a sun ray a sheet's own triangles are passed (metres): a banner's height and its folds.
+static const float SHEET_SELF_REACH = 3.f;
+
 // The ray toward the sun against `instances` (all, or all but grass): lit (1; 0 blocked; with Light Through Leaves the
-// share the leaves met let through) and the nearest blocker's distance (soft shadows).
-float2 SunRay(float3 origin, float3 direction, uint instances) {
+// share the leaves met let through) and the nearest blocker's distance (soft shadows). From cloth or a sail (`sheet`: the
+// record it shows) with Banners Without Self-Shadows: its own triangles within SHEET_SELF_REACH are passed, the rest as below,
+// the nearest surface each time. The game lights a banner from both sides by its smooth normal; its coarse triangles, each
+// turned to the sun or away, shaded it triangle by triangle (ATN's debug8: blocky, rectangly shadows on a unit banner).
+float2 SunRay(float3 origin, float3 direction, uint instances, uint sheet) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
   ray.TMin = 0.f;
   ray.TMax = 1.0e4f;
+  if (sheet != NO_SHEET) {
+    float lit = 1.f;
+    float first = 0.f;
+    float last_sheet = -1.f;
+    [loop]
+    for (uint layer = 0u; layer < THIN_HITS; ++layer) {
+      TRACE_NEAREST(layered, ray, instances)
+      if (layered.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return float2(lit, first);
+      const float met = layered.CommittedRayT();
+      const uint record = layered.CommittedInstanceID() + layered.CommittedGeometryIndex();
+      if (record != sheet || met >= SHEET_SELF_REACH) {
+        const uint record_flags = records[record].z >> 16;
+        if (first == 0.f) first = met;
+        if ((flags & LEAF_LIGHT) == 0u || (record_flags & (RECORD_MASKED | RECORD_THIN)) == 0u || (record_flags & RECORD_GRASS) != 0u) return float2(0.f, first);
+        const bool thin = (record_flags & (RECORD_MASKED | RECORD_THIN)) == RECORD_THIN;
+        if (!thin || last_sheet < 0.f || met - last_sheet > THIN_SHEET) {
+          lit *= thin ? THIN_TRANSMITTANCE : LEAF_TRANSMITTANCE;
+          if (lit < 0.02f) return float2(0.f, first);
+          if ((path_flags & PATH_TINT) != 0u) sun_tint *= ThinColour(ray.Origin + ray.Direction * met);
+        }
+        if (thin) last_sheet = met;
+      }
+      ray.TMin = met + 0.01f;
+    }
+    return float2(0.f, first);
+  }
   if ((flags & LEAF_LIGHT) == 0u) {
     if (sun_cone == 0.f || (flags & RECONSTRUCTED) != 0u) return float2(Occluded(origin, direction, 1.0e4f, instances) ? 0.f : 1.f, 0.f);
     TRACE_NEAREST(query, ray, instances)
@@ -201,7 +235,23 @@ void main(uint3 id : SV_DispatchThreadID) {
   const bool planar = Planar(int2(id.xy), position, normal);
   const float3 origin = StartPast(RayOrigin(position, normal, planar), position);
   const float offset = SurfaceOffset(position.w);
-  const bool facing = dot(normal, toward_sun.xyz) > 0.f;
+  // Banners Without Self-Shadows: the cloth or sail the pixel shows (the surface the camera's way meets at it, as ShownNormal), lit
+  // from either side as the game lights it: its rays toward the sun from the camera's side, through itself.
+  uint sheet = NO_SHEET;
+  if ((flags & SHEETS_UNSELFED) != 0u && (flags & SUN_SHADOWS) != 0u && (flags & PART_AMBIENT) == 0u && toward_sun.w != 0.f) {
+    const float3 to_camera = normalize(sun[uint2(1, 0)].xyz - position.xyz);
+    RayDesc shown;
+    shown.Origin = position.xyz + to_camera * (2.f * offset);
+    shown.Direction = -to_camera;
+    shown.TMin = 0.f;
+    shown.TMax = 4.f * offset;
+    TRACE_SURFACE(query, shown)
+    if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+      const uint record = query.CommittedInstanceID() + query.CommittedGeometryIndex();
+      if (((records[record].z >> 16) & (RECORD_GRASS | RECORD_MASKED | RECORD_THIN)) == RECORD_THIN) sheet = record;
+    }
+  }
+  const bool facing = sheet != NO_SHEET || dot(normal, toward_sun.xyz) > 0.f;
   float sun_visibility = 1.f;
   float blocker_distance = 0.f;
   float3 tint_out = 0.f;  // Coloured Shadows: 1 - the colour of the light that came through (0: none)
@@ -235,7 +285,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       // Off along the normal and toward the sun; where not planar toward the camera. Grass apart, over the ray's first
       // stretch only (rays skimming whole fields toward a low sun cost the sun 22-27 ms zoomed into grass, ATN's debug29).
       const float3 start = (planar ? origin + toward * offset : origin) + spot;
-      float2 result = facing ? SunRay(start, toward, NO_GRASS_SMOKE)
+      float2 result = facing ? SunRay(start, toward, NO_GRASS_SMOKE, sheet)
                              : float2(OccludedSolid(position.xyz + spot + (toward - (exact ? normal : 0.f)) * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
       if (facing && near_grass && result.x > 0.f) {
         RayDesc grass_ray;

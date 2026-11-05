@@ -133,6 +133,7 @@ struct Bindings {
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   float* rays_branch_cut_outs = nullptr;  // Trunks and branches cut out in the rays as drawn; null: no such row
   float* rays_start_past = nullptr;  // Rays start past what hides a pixel from the camera; null: no such row
+  float* rays_sheets_unselfed = nullptr;  // Cloth and sails don't shade themselves in the sun's rays; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
   std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
@@ -775,6 +776,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "Light Through All Banners (Experimental)",
           .section = section,
           .tooltip = "Every unit banner lets some sunlight through, as thin cloth.",
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_sheets_unselfed != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedSheetsUnselfed",
+          .binding = b.rays_sheets_unselfed,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Smooth Banner Shadows (Experimental)",
+          .section = section,
+          .tooltip = "Banners and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.",
           .is_visible = more_rays,
       });
     }

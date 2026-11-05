@@ -147,6 +147,7 @@ struct Settings {
   bool nrd = false;            // Ray Tracing Denoiser: NRD without Ray Reconstruction (dlaa_bridge.h RT_NRD)
   bool ao_reblur = false;      // AO under Ray Reconstruction: REBLUR, not the history (dlaa_bridge.h RT_AO_REBLUR)
   bool start_past = false;     // dlaa_bridge.h RT_START_PAST
+  bool sheets_unselfed = false;  // dlaa_bridge.h RT_SHEETS_UNSELFED
   // The lit particles streamed out with no ray tracing (smoke_map.hpp: any GPU, no helper).
   bool stream_particles = false;
   // The game's sun shadow map gets no casters (InstallShadowsOnly; with the ray-traced sun shadows): the rays alone cast.
@@ -2291,6 +2292,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | ((runtime.settings.nrd && !dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_NRD : 0u)
                | ((runtime.settings.ao_reblur && dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_AO_REBLUR : 0u)
                | (runtime.settings.start_past ? dlaa_bridge::RT_START_PAST : 0u)
+               | (runtime.settings.sheets_unselfed ? dlaa_bridge::RT_SHEETS_UNSELFED : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)

@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 28;
+constexpr uint32_t VERSION = 29;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -191,6 +191,8 @@ constexpr uint32_t RT_NRD = 1u << 21;
 constexpr uint32_t RT_AO_REBLUR = 1u << 24;
 // Rays Start Past Hidden Shapes (v27): a pixel's rays start past what the scene holds between it and the camera (rt_camera.hlsli StartPast).
 constexpr uint32_t RT_START_PAST = 1u << 25;
+// Banners Without Self-Shadows (v29): cloth and sails don't shade themselves in the sun's rays (rt_trace.cs_6_5.hlsl SunRay). Helpers before 88 ignore it.
+constexpr uint32_t RT_SHEETS_UNSELFED = 1u << 26;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
