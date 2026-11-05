@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Made by a script from the game's shaders (their asm), and the shadow pass's five at t0 (traces, shadow pass's PS by their asm), and by hand fx_rigidbranch_v3's B0A4E5B8 (t1's alpha at 0.5, the burn map's mixed in only while burning, so a script's one-map test passed it by): the pixel shaders whose discard reads, but for the dither map's
+// Made by a script from the game's shaders (their asm), and the shadow pass's five at t0 (traces, shadow pass's PS by their asm), by hand fx_weighted's AF697DAE and F2BC0D72 (t0's alpha at 0.5 at TEXCOORD1 beside the dither fade, two discards: the script took one; batch 5 P8), and by hand fx_rigidbranch_v3's B0A4E5B8 (t1's alpha at 0.5, the burn map's mixed in only while burning, so a script's one-map test passed it by): the pixel shaders whose discard reads, but for the dither map's
 // screen-space fade, one base colour map's alpha at 0.5 (or a material's threshold: shrubs): its slot and the UV's semantic index. Sorted by pixel shader.
 #pragma once
 
@@ -13,7 +13,7 @@
 
 namespace twwarhammer3 {
 
-inline constexpr std::array<twattila::rt_scene::PixelMask, 549> CUT_OUT_MASKS = {{
+inline constexpr std::array<twattila::rt_scene::PixelMask, 551> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x007C7E41, .slot = 7, .uv_semantic_index = 1},
     {.pixel_shader = 0x030A74E4, .slot = 9, .uv_semantic_index = 1},
     {.pixel_shader = 0x0362ADF0, .slot = 6, .uv_semantic_index = 1},
@@ -396,6 +396,7 @@ inline constexpr std::array<twattila::rt_scene::PixelMask, 549> CUT_OUT_MASKS = 
     {.pixel_shader = 0xAE5A18B0, .slot = 10, .uv_semantic_index = 2},
     {.pixel_shader = 0xAE96A5A4, .slot = 0, .uv_semantic_index = 2},
     {.pixel_shader = 0xAEA2FA3D, .slot = 7, .uv_semantic_index = 1},
+    {.pixel_shader = 0xAF697DAE, .slot = 0, .uv_semantic_index = 1},
     {.pixel_shader = 0xB0553821, .slot = 0, .uv_semantic_index = 2},
     {.pixel_shader = 0xB069AA42, .slot = 10, .uv_semantic_index = 1},
     {.pixel_shader = 0xB084D738, .slot = 12, .uv_semantic_index = 2},
@@ -539,6 +540,7 @@ inline constexpr std::array<twattila::rt_scene::PixelMask, 549> CUT_OUT_MASKS = 
     {.pixel_shader = 0xF139664A, .slot = 12, .uv_semantic_index = 2},
     {.pixel_shader = 0xF16351EE, .slot = 10, .uv_semantic_index = 2},
     {.pixel_shader = 0xF21A507A, .slot = 7, .uv_semantic_index = 2},
+    {.pixel_shader = 0xF2BC0D72, .slot = 0, .uv_semantic_index = 1},
     {.pixel_shader = 0xF36D7D06, .slot = 12, .uv_semantic_index = 2},
     {.pixel_shader = 0xF3722555, .slot = 13, .uv_semantic_index = 1},
     {.pixel_shader = 0xF409D280, .slot = 12, .uv_semantic_index = 1},

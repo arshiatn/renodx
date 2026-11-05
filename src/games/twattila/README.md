@@ -7,8 +7,9 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
-## v140 (2026-11-05, WH3's batch 5; built, not run in game; renodx-tw-dlaa64.exe helper87, bridge v28: ship them together; no players' zip)
+## v140 (2026-11-05, WH3's batch 5; built, not run in game; renodx-tw-dlaa64.exe helper88, bridge v29: ship them together; no players' zip)
 
+- **Shared helper (WH3's batch 5):** RT_SHEETS_UNSELFED, cloth and sails that don't shade themselves in the sun's rays (WH3's Smooth Banner Shadows). Attila has no row for it: its cloth and sails trace as before. Not run in game.
 - **Ray-traced reflections without path tracing (WH3's batch 5):** last frame's colour read by the rays is squared back where the upscaler got its square root (L, M, Ray Reconstruction), and the Light Bounce without paths learns its light and fills the radiance cache for them, as path tracing does. Harness only. Not run in game.
 - **Helper's log (not run in game):** a real fault leaves one line and renodx-tw-dlaa64.dmp; whose device a GPU reset removed, with its reason and the time, also when no request comes. Attila's 32-bit addon never loaded into it, so WH3's crash report at each start was not Attila's.
 - **Path-Traced AO:** learns from 150 frames before it starts, not 30 (WH3's run: its first frames gave 30 % less light); new row Steady Bounce Light (Experimental, off), that light from the game's cube. The helper logs what it learned at each start. Not run in game.
