@@ -39,6 +39,8 @@
       NDC list, wider window (wh3_batch5/p9_ndc_trace.py): 15 VFX PS build NDC from the texture's uv but use it for depth only (harmless); the rest from the viewport; TAA runs at display size. Campaign sea 034010C4 fine by bytes but its refraction offset is 2x apart (depth load vs NDC) below 100%, vanilla too. 3AC630DF a 1:1 copy, nothing to fix.
       Not done: Shadow Map Size not shipped, level C (3 size constants only seen in game: shadowmap_PS c0 in every forward reader's PCF, fog's ld; C883E3FA's cb0[2].zw for the kept casters' copy; 800F7F7F / D5DCC85F ld x 2; packed exe, no table). Smallest step in P9.md. Water's line 2076D289:844 / DFA2AEA2:838 (P6's), trace below 50% (no run).
       WH3 built (no shared file touched), page dump b5p9 the date only. Harness not run (helper, bridge, rt_core untouched).
+- [ ] P10 the rest (WIP). Report wh3_batch5/reports/P10.md. Not run in game.
+      Water's line below 100% (P6/P9's): twattila/water_effects.hpp PatchWaterScaleLine, the 6 battle water / river PS swap to the patched copy when the draw's viewport is smaller than its target (WH3 only: material_water). WARP warp_tests/water_line_wh3: 100% bits equal; 50% vs 100% over 0.01: game 6868-21822, ours 0-244. 14 targets built, page dumps b5p10 the date only.
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.

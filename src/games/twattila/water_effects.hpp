@@ -77,7 +77,7 @@ static CausticsObjects caustics_objects;
 static std::unordered_map<uint32_t, std::vector<uint8_t>> water_patched;
 static std::mutex water_mutex;
 // material_water: WH3's battle_water and battle_river take their colour from a material buffer, so Clarity scales their exponents
-// instead (b11, x: 1 / clarity). While a row is on their draws run a patched copy; both rows off, the game's own shader runs.
+// instead (b11, x: 1 / clarity). While a row is on, or the view is below 100%, their draws run a patched copy; else the game's own shader.
 constexpr UINT WATER_CLARITY_SLOT = 11;
 struct MaterialWater {
   std::vector<uint8_t> code;
@@ -232,6 +232,119 @@ inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code) 
   return dxbc::Write(code, program);
 }
 
+// battle_water and battle_river (WH3): the refraction's depth test rebuilds a position from the projected pixel rP as
+// NDC = rP x g_screen_size.zw x (2, -2) + (-1, 1), the texture's share, not the view's. Below 100% (the view in the target's
+// top-left) the position lands off and the test picks the wrong refraction along the shore. Each such mad (its source last made,
+// without a branch between, by `mul rY, rP, cb0[37].zw` from a temporary) takes (rP - g_viewport_origin) x g_viewport_dimensions.zw
+// instead: two instructions before it, the same values at 100%. camera_VS_PS at b0 by the shaders' RDEF: g_screen_size c37,
+// g_viewport_dimensions c39, g_viewport_origin c40. `sites`: how many were patched (empty code: none).
+inline std::vector<uint8_t> PatchWaterScaleLine(std::span<const uint8_t> code, int* sites) {
+  constexpr uint32_t OP_MAD = 50, OP_MUL = 56, OP_DCL_CONSTANT_BUFFER = 89;
+  constexpr uint32_t SCREEN_SIZE = 37, VIEWPORT_DIMENSIONS = 39, VIEWPORT_ORIGIN = 40;
+  constexpr uint32_t TWO = 0x40000000, MINUS_TWO = 0xC0000000, ONE = 0x3F800000, MINUS_ONE = 0xBF800000;
+  // Branches, loops, calls: a writer before one of them isn't provably the last.
+  constexpr std::array<uint32_t, 18> FLOW = {2, 3, 4, 5, 6, 7, 8, 10, 18, 21, 22, 23, 31, 44, 48, 62, 63, 76};
+  *sites = 0;
+  dxbc::Program program = dxbc::Read(code);
+  auto& tokens = program.tokens;
+  if (tokens.empty()) return {};
+  std::vector<size_t> starts;
+  bool camera_declared = false;
+  for (size_t at = 2; at < tokens.size();) {
+    const size_t length = dxbc::Length(tokens, at);
+    if (length == 0) return {};
+    if ((tokens[at] & 0x7FF) == OP_DCL_CONSTANT_BUFFER && length == 4 && tokens[at + 2] == 0 && tokens[at + 3] > VIEWPORT_ORIGIN) camera_declared = true;
+    starts.push_back(at);
+    at += length;
+  }
+  if (!camera_declared) return {};
+  const auto parse = [&](size_t instruction, std::array<dxbc::Operand, 4>* operands) {
+    const size_t at = starts[instruction];
+    const size_t end = at + dxbc::Length(tokens, at);
+    size_t next = dxbc::internal::FirstOperand(tokens, at);
+    size_t count = 0;
+    while (next < end && count < operands->size()) {
+      const size_t length = dxbc::ParseOperand(tokens, next, end, &(*operands)[count]);
+      if (length == 0) return size_t{0};
+      next += length;
+      ++count;
+    }
+    return count;
+  };
+  // A temporary's components (mask) written by instruction `instruction`: every 4-component temp operand in mask mode.
+  const auto writes = [&](size_t instruction, uint32_t reg, uint32_t mask) {
+    std::array<dxbc::Operand, 4> operands = {};
+    const size_t count = parse(instruction, &operands);
+    for (size_t index = 0; index < count; ++index) {
+      const auto& operand = operands[index];
+      if (operand.type == 0 && operand.mode == 0 && (tokens[operand.at] & 3) == 2 && operand.index[0] == reg && (operand.select & mask) != 0) return true;
+    }
+    return false;
+  };
+  // (mad's index, mul's source temporary, its components for the mad's x and y)
+  std::vector<std::array<size_t, 4>> found;
+  for (size_t mad = 0; mad < starts.size(); ++mad) {
+    const size_t at = starts[mad];
+    if ((tokens[at] & 0x7FF) != OP_MAD || (tokens[at] & (1u << 13)) != 0) continue;
+    std::array<dxbc::Operand, 4> operands = {};
+    if (parse(mad, &operands) != 4) continue;
+    const auto& [destination, source, scale, offset] = operands;
+    if (destination.type != 0 || destination.mode != 0 || destination.select != 0x3 || destination.length != 2 || source.type != 0 || source.mode != 1
+        || source.modified || source.length != 2 || scale.type != dxbc::OPERAND_IMMEDIATE || offset.type != dxbc::OPERAND_IMMEDIATE
+        || scale.values[0] != TWO || scale.values[1] != MINUS_TWO || offset.values[0] != MINUS_ONE || offset.values[1] != ONE) {
+      continue;
+    }
+    const uint32_t first = source.select & 3;
+    const uint32_t second = (source.select >> 2) & 3;
+    const uint32_t read_mask = (1u << first) | (1u << second);
+    for (size_t before = mad; before-- > 0;) {
+      const uint32_t opcode = tokens[starts[before]] & 0x7FF;
+      if (std::ranges::find(FLOW, opcode) != FLOW.end()) break;
+      if (!writes(before, source.index[0], read_mask)) continue;
+      std::array<dxbc::Operand, 4> mul = {};
+      if (opcode != OP_MUL || (tokens[starts[before]] & (1u << 13)) != 0 || parse(before, &mul) != 3) break;
+      const auto& made = mul[0];
+      const auto& position = mul[1];
+      const auto& screen = mul[2];
+      const auto component = [](const dxbc::Operand& operand, uint32_t index) { return (operand.select >> (2 * index)) & 3; };
+      if (made.index[0] != source.index[0] || (made.select & read_mask) != read_mask || position.type != 0 || position.mode != 1
+          || position.modified || screen.type != 8 || screen.mode != 1 || screen.modified || screen.relative || screen.index[0] != 0
+          || screen.index[1] != SCREEN_SIZE || component(screen, first) != 2 || component(screen, second) != 3) {
+        break;
+      }
+      const uint32_t x = component(position, first);
+      const uint32_t y = component(position, second);
+      // rP's x and y unchanged between the mul and the mad.
+      bool kept = true;
+      for (size_t between = before + 1; between < mad && kept; ++between) kept = !writes(between, position.index[0], (1u << x) | (1u << y));
+      if (kept) found.push_back({mad, position.index[0], x, y});
+      break;
+    }
+  }
+  if (found.empty()) return {};
+  // Back to front: earlier positions stay valid.
+  for (auto site = found.rbegin(); site != found.rend(); ++site) {
+    const auto [mad, position, x, y] = *site;
+    const size_t at = starts[mad];
+    const size_t source_at = dxbc::internal::FirstOperand(tokens, at) + 2;
+    const uint32_t result = tokens[source_at - 1];
+    // The mad reads rX.xyxx.
+    tokens[source_at] = 0x00100046;
+    tokens[source_at + 1] = result;
+    const std::array<uint32_t, 17> added = {
+        // add rX.xy, rP.(x)(y)xx, -cb0[40].xyxx
+        dxbc::OP_ADD | (9u << 24), 0x00100032, result, 0x00100006 | (static_cast<uint32_t>(x) << 4) | (static_cast<uint32_t>(y) << 6), static_cast<uint32_t>(position),
+        0x80208046, 0x00000041, 0u, VIEWPORT_ORIGIN,
+        // mul rX.xy, rX.xyxx, cb0[39].zwzz
+        OP_MUL | (8u << 24), 0x00100032, result, 0x00100046, result, 0x00208AE6, 0u, VIEWPORT_DIMENSIONS,
+    };
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(at), added.begin(), added.end());
+  }
+  tokens[1] = static_cast<uint32_t>(tokens.size());
+  *sites = static_cast<int>(found.size());
+  return dxbc::Write(code, program);
+}
+
 // The game's bytes as created, last of all patches (an init callback, the addon registers it where it has material_water shaders).
 inline void OnInitMaterialWater(renodx::utils::pipeline::PipelineInfo* info, uint32_t subobject_count, const reshade::api::pipeline_subobject* subobjects) {
   for (const auto& identity : info->shader_details) {
@@ -323,9 +436,22 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
   const auto& water = *std::ranges::find(water_shaders, command.matched_shader_hash, &WaterShader::hash);
   if (water.material_water) {
     const bool clarity_on = std::abs(water_clarity - 1.f) >= 0.01f;
+    // Below 100% (the view in its target's top-left) the patched copy runs for its refraction's line (PatchWaterScaleLine).
+    D3D11_VIEWPORT viewport = {};
+    UINT viewport_count = 1;
+    native->RSGetViewports(&viewport_count, &viewport);
+    ComPtr<ID3D11RenderTargetView> target_view;
+    native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+    ComPtr<ID3D11Resource> target_resource;
+    if (target_view) target_view->GetResource(target_resource.GetAddressOf());
+    ComPtr<ID3D11Texture2D> target_texture;
+    D3D11_TEXTURE2D_DESC target_desc = {};
+    if (target_resource && SUCCEEDED(target_resource.As(&target_texture))) target_texture->GetDesc(&target_desc);
+    const bool scaled = viewport_count == 1 && target_desc.Width != 0
+                        && (viewport.Width + 0.5f < static_cast<float>(target_desc.Width) || viewport.Height + 0.5f < static_cast<float>(target_desc.Height));
     ComPtr<ID3D11PixelShader> patched;
     auto& material = material_objects;
-    if (clarity_on || caustics_on) {
+    if (clarity_on || caustics_on || scaled) {
       const std::unique_lock lock(water_mutex);
       if (material.device != device) {
         const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
@@ -337,8 +463,13 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
         if (!entry->second.patched && !entry->second.refused) {
           std::vector<uint8_t> code = PatchWaterCaustics(entry->second.code, water);
           if (!code.empty()) code = PatchWaterAbsorption(code);
+          int line_sites = 0;
+          if (!code.empty()) {
+            if (auto lined = PatchWaterScaleLine(code, &line_sites); !lined.empty()) code = std::move(lined);
+          }
           entry->second.refused = code.empty() || FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, entry->second.patched.GetAddressOf()));
-          renodx::utils::log::i(std::format("[Total War] Water: shader {:08X} {}", water.hash, entry->second.refused ? "not as expected, stays the game's." : "patched."));
+          renodx::utils::log::i(std::format("[Total War] Water: shader {:08X} {} (refraction's line below 100%: {} site(s)).", water.hash,
+                                            entry->second.refused ? "not as expected, stays the game's" : "patched", line_sites));
         }
         patched = entry->second.patched;
       }
