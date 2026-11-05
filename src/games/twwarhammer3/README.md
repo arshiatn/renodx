@@ -2,11 +2,13 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
-## v34 (batch 4, ATN's test of v33; renodx-tw-dlaa64.exe helper80, bridge v24: ship them together; nothing here run in game)
+## v34 (batch 4, ATN's test of v33; renodx-tw-dlaa64.exe helper81, bridge v24: ship them together; nothing here run in game)
 
 - **Shadow Casters Out of View (was Units Out of View), not run in game:** on with rays' sun shadows, Rays Replace or not. Everything the game's shadow pass draws casts: trees, buildings, rocks, shrubs, props, flags, units. Far billboard trees stay under their own row, off. Placed Objects keep what they've seen until the battle ends, within 6 M triangles and 12288 meshes, not 300 frames; things seen moving 300 frames. Limit: what the camera never saw and the cascades don't reach (log: Cascades' split distances).
-- Ray Reconstruction: RTAO and Path-Traced AO go through NVIDIA's REBLUR first, the AO the NRD setting gives. RR only saw AO multiplied into the colour and is no AO denoiser. Helper79 (ship with this addon); about 0.85 ms and 215 MB more at 4K. Harness numbers: Attila's v138. Not run in game.
+- Ray Reconstruction: RTAO and Path-Traced AO go through NVIDIA's REBLUR first, the AO the NRD setting gives. RR only saw AO multiplied into the colour and is no AO denoiser. about 0.85 ms and 215 MB more at 4K. Harness numbers: Attila's v138. Not run in game.
 - **Pixel trace (Ray Tracing Extra Options, More Options), not run in game:** the row from Attila. wh3_pixel_trace.txt next to the exe: every pass that changes the pixels under the red line, then the rays' AO at the cross, which no pass shows: AO around the pixel, what the sun draws read, view depth, world position, camera, the normal the rays start from. Below 100% the position follows each draw's viewport. Not logged: where the rays hit (AO 0 = all of them hit within the range); that needs the helper. Put the cross on a black spot and send the file.
+- **Kept casters, review's fixes, not run in game:** row off (or AO alone) is v33's rule again. A solid instance placed lately with one of its mesh now placed within 1-2 m is taken as moved: no trail from a mover the game doesn't mark (harness: gone up to 1.5 m a frame, 3 m a frame still leaves one; a leaves' mesh is never tested). An instance both passes drew is the main pass's, every frame: no flicker at the view's edge. Over budget, kept at least two placing turns.
+- Known: an out-of-view mesh's two levels of detail (main pass's, shadow pass's) can both stay until the scene ends: more instances, a slightly wider shadow.
 - **Spot Filter removed:** ATN: looks broken.
 - **Grass Fade Distance removed:** near the old fade distance blades grew and flickered. Flicker: the copy flattened this frame's blade by the row, last frame's by the game's distance, so motion said the blade rose. Growth: generated grass ends 16 cells around the camera and shrinks to 0 in the last cell, which the game hides by flattening first, and no grass exists past that whatever the fade. Longer grass needs another dispatch of the grass generator, not a fade.
 

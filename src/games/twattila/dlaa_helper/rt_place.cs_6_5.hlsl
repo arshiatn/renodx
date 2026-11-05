@@ -34,7 +34,7 @@ cbuffer Dispatch : register(b1) {
   uint mode;
   uint job_count;
   uint instance_count;  // drawn: this request's drawn instances
-  uint first_instance;  // the CPU's instances
+  uint first_instance;  // the CPU's instances; drawn: the first drawn instance of this dispatch
   uint frame;
   uint max_instances;
   uint recent_frames;
@@ -92,16 +92,42 @@ bool GrassInView(float3 position) {
          || NearView(float4(position, 1.f), view_projection[0], view_projection[1], view_projection[3], GRASS_VIEW_MARGIN);
 }
 
+// `recent_frames` past the old rules' longest: kept until the scene ends (Host::keep_placed). A solid mesh's instance placed
+// lately, not placed again, with one of its mesh placed now within a cell or two: moved (a rigid draw says nothing of it;
+// off-screen, one more copy at each placement would stay for good). Leaves stay: a tree beside one the cascades dropped.
+static const uint KEPT_LONG_FRAMES = 3600u;
+static const float MOVED_CELL_METRES = 1.f;
+
 // A desc's key: its record and its place in centimetres; grass's across only, in 10 cm cells (its blades' shrink with the
 // camera's distance lifts it: a moving camera made a new key at each placement, its kept copy stayed beside the new one,
 // twice the grass in the shadows and in every ray's TLAS until it stopped, ATN's debug33).
-uint PlaceKey(uint record, float3 position, bool grass) {
-  const int3 cell = grass ? int3(floor(float3(position.x, 0.f, position.z) * 10.f)) : int3(floor(position * 100.f));
+uint CellKey(uint record, int3 cell) {
   uint key = record * 0x9E3779B1u;
   key = (key ^ asuint(cell.x)) * 0x85EBCA77u;
   key = (key ^ asuint(cell.y)) * 0xC2B2AE3Du;
   key = (key ^ asuint(cell.z)) * 0x27D4EB2Fu;
   return (key ^ (key >> 15)) | 1u;
+}
+
+uint PlaceKey(uint record, float3 position, bool grass) {
+  return CellKey(record, grass ? int3(floor(float3(position.x, 0.f, position.z) * 10.f)) : int3(floor(position * 100.f)));
+}
+
+// Past the records' 24 bits: never a PlaceKey's record.
+uint MovedKey(uint record, int2 cell) {
+  return CellKey(record | 0x80000000u, int3(cell.x, 0, cell.y));
+}
+
+bool InTable(uint key) {
+  uint slot = key & (table_entries - 1u);
+  [loop]
+  for (uint probe = 0u; probe < 32u; ++probe) {
+    const uint found = state.Load(STATE_TABLE + slot * 4u);
+    if (found == key) return true;
+    if (found == 0u) return false;
+    slot = (slot + 1u) & (table_entries - 1u);
+  }
+  return false;
 }
 
 // False: a desc with this key is in already (a full run of the table takes it in).
@@ -165,17 +191,28 @@ void main(uint3 id : SV_DispatchThreadID) {
     const bool gone = ((blas.x & 4u) == 0u || (blas.x & 8u) != 0u || ((frame - tail.y) & FRAME_MASK) > KEPT_IN_VIEW_FRAMES) && any(view_projection[3] != 0.f)
                       && NearView(place, view_projection[0], view_projection[1], view_projection[3], 0.f);
     if ((grass && !GrassInView(place.xyz)) || gone || !Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w)), grass))) return;
+    if (recent_frames > KEPT_LONG_FRAMES && !grass && ((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u && ((frame - tail.y) & FRAME_MASK) <= KEPT_IN_VIEW_FRAMES) {
+      const int2 cell = int2(floor(place.xz / MOVED_CELL_METRES));
+      [loop]
+      for (int x = -1; x <= 1; ++x) {
+        [loop]
+        for (int z = -1; z <= 1; ++z) {
+          if (InTable(MovedKey(record, cell + int2(x, z)))) return;
+        }
+      }
+    }
     const uint kept_mask = grass ? GRASS_INSTANCE : ((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE);
     Append(row0, row1, row2, uint4(record | (kept_mask << 24), tail.y, blas.x & ~0xFFu, blas.y));
     return;
   }
-  if (index >= instance_count) return;
+  const uint drawn_index = index + first_instance;
+  if (drawn_index >= instance_count) return;
   const uint jobs = record_count * 8u;
   uint low = 0u;
   uint high = job_count - 1u;
   while (low < high) {
     const uint middle = (low + high + 1u) / 2u;
-    if (table.Load(jobs + middle * 32u) <= index) {
+    if (table.Load(jobs + middle * 32u) <= drawn_index) {
       low = middle;
     } else {
       high = middle - 1u;
@@ -183,7 +220,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   }
   const uint4 job = table.Load4(jobs + low * 32u);
   const uint record = table.Load(jobs + low * 32u + 16u);
-  const uint instance = index - job.x;
+  const uint instance = drawn_index - job.x;
   const uint2 blas = table.Load2(record * 8u);
   if (instance >= job.y || (blas.x | blas.y) == 0u) return;
   const float4 build0 = build_rows[record * 3u];
@@ -208,6 +245,9 @@ void main(uint3 id : SV_DispatchThreadID) {
       || ((job.w & PLACE_GRASS) != 0u && !GrassInView(float3(now0.w, now1.w, now2.w)))
       || !Insert(PlaceKey(record, translation, (job.w & PLACE_GRASS) != 0u))) {
     return;
+  }
+  if (recent_frames > KEPT_LONG_FRAMES && (job.w & (PLACE_GRASS | PLACE_FOLIAGE)) == 0u) {
+    Insert(MovedKey(record, int2(floor(float2(now0.w, now2.w) / MOVED_CELL_METRES))));
   }
   // InstanceID (the record) and mask (its group; 0 hidden); the frame drawn and the flags; the BLAS (its moving bit
   // cleared).

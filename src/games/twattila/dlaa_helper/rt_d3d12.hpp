@@ -4110,7 +4110,13 @@ class RtScene12 {
         triangles += uint64_t{mesh.triangles} * draw.instances;
       };
       for (const auto& built_rows : built_placed) place(built_rows);
-      for (uint32_t index = 0; index < placement_count; ++index) place(shared.rt_placements[index]);
+      uint32_t placed_main = 0;
+      for (const bool cascade : {false, true}) {
+        if (cascade) placed_main = placed_drawn;
+        for (uint32_t index = 0; index < placement_count; ++index) {
+          if (((shared.rt_placements[index].flags & dlaa_bridge::RT_PLACE_CASCADE) != 0) == cascade) place(shared.rt_placements[index]);
+        }
+      }
       // All this TLAS can hold: the CPU's, this request's drawn and the last dispatch's descs (the kept ones come from those,
       // so none is cut); no clear and no build past them.
       const auto place_end = static_cast<uint32_t>(std::min<uint64_t>(uint64_t{instance_count} + placed_drawn + placed_written_, placed_capacity_));
@@ -4135,11 +4141,12 @@ class RtScene12 {
       const std::array<uint32_t, 3> place_sway = {sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range), placed_capacity_ * 2};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 16, shared.rt_view_projection, 0);
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(place_sway.size()), place_sway.data(), 16);
-      for (const uint32_t mode : {0u, 1u, 2u}) {
+      // Drawn twice: the shadow pass's rows after a barrier, so their dedupe finds the main pass's.
+      for (const auto& [mode, threads, first] : {std::tuple{0u, std::max(place_end, placed_capacity_ / 2), instance_count}, std::tuple{1u, placed_main, 0u},
+                                                 std::tuple{1u, placed_drawn - placed_main, placed_main}, std::tuple{2u, place_end, instance_count}}) {
         // Clearing also takes the dedupe table, four entries a thread.
-        const uint32_t threads = (mode == 0u) ? std::max(place_end, placed_capacity_ / 2) : ((mode == 1u) ? placed_drawn : place_end);
         if (threads == 0 || (mode == 2u && (shared.rt_flags & dlaa_bridge::RT_NO_KEPT) != 0)) continue;
-        const std::array<uint32_t, 8> place_dispatch = {mode, job_count, placed_drawn, instance_count, frame, place_end,
+        const std::array<uint32_t, 8> place_dispatch = {mode, job_count, placed_drawn, first, frame, place_end,
                                                         (version >= 24 && shared.rt_kept_frames != 0) ? shared.rt_kept_frames : RECENT_FRAMES,
                                                         STATIC_RECORDS};
         list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(place_dispatch.size()), place_dispatch.data(), 0);

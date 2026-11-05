@@ -1743,7 +1743,8 @@ void Capture(Context& command, const SceneShader& shader) {
       runtime.dynamic_clusters += block_clusters;
     }
     runtime.placements.push_back({.key = key, .first_vertex = rows_vertex, .instances = instances,
-                                  .flags = (moving ? dlaa_bridge::RT_PLACE_MOVING : 0u) | (sway ? dlaa_bridge::RT_PLACE_HIDDEN : 0u)});
+                                  .flags = (moving ? dlaa_bridge::RT_PLACE_MOVING : 0u) | (sway ? dlaa_bridge::RT_PLACE_HIDDEN : 0u)
+                                           | (cascade_draw ? dlaa_bridge::RT_PLACE_CASCADE : 0u)});
     next_vertex += row_texels;
     if (const auto known = runtime.known.find(key); known != runtime.known.end()) {
       known->second.frame = runtime.frame;
@@ -3018,7 +3019,7 @@ inline void Update(const Settings& settings) {
   std::swap(runtime.lights_last, runtime.lights_drawn);
   runtime.lights_drawn.clear();
   // Host::keep_placed: as long as there's room. Then the oldest meshes go, here and in the helper by the one number it's sent.
-  if (internal::host.keep_placed && internal::host.placed_row != nullptr && *internal::host.placed_row != 0.f) {
+  if (internal::host.keep_placed && runtime.settings.casters_out_of_view && internal::host.placed_row != nullptr && *internal::host.placed_row != 0.f) {
     if (internal::Enabled() && runtime.frame - runtime.main_view_frame == internal::SCENE_GONE_FRAMES) {
       runtime.known.clear();
       runtime.short_keys.clear();
@@ -3034,7 +3035,7 @@ inline void Update(const Settings& settings) {
       for (size_t mesh = 0; mesh < kept.size(); ++mesh) {
         kept_triangles += kept[mesh].second;
         if (kept_triangles > internal::KEPT_TRIANGLES || mesh >= internal::KEPT_MESHES) {
-          runtime.kept_frames = static_cast<uint32_t>(std::max<uint64_t>(runtime.frame - kept[mesh].first, 2));
+          runtime.kept_frames = static_cast<uint32_t>(std::max<uint64_t>(runtime.frame - kept[mesh].first, internal::PLACE_TURNS * 2));
           break;
         }
       }

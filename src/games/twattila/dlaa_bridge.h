@@ -74,6 +74,9 @@ constexpr uint32_t RT_PLACE_HIDDEN = 2;
 // All of the mesh's instances this frame are in this frame's placements (helpers 59 on): a kept instance in view that was
 // not placed again is gone (the game drew another level of detail there).
 constexpr uint32_t RT_PLACE_WHOLE = 4;
+// Rows from the shadow pass: rt_place takes them after every other draw's, so an instance both passes drew is the main
+// pass's (its swaying copy's hidden one), the same every frame.
+constexpr uint32_t RT_PLACE_CASCADE = 8;
 // Compact draws (v16, to a helper that says rt_compact_ok: RTX Mega Geometry's clusters): a dynamic indexed draw's
 // vertices streamed once each, in its mesh's cluster order: `instances` blocks of its set's `vertices` texels from
 // `first_vertex`. Its cluster set (the mesh's index list split into clusters of at most RT_CLUSTER_TRIANGLES triangles
