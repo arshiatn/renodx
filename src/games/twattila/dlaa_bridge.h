@@ -216,6 +216,8 @@ constexpr uint32_t RT_PATH_SKY_APART = 4096;
 // Denoiser NRD (a Light Bounce's or reflections request's; helpers without NRD or before 73 ignore it): NVIDIA's REBLUR on
 // its light (the addon then leaves its Light Bounce denoiser out, or its reflections' SSR denoiser).
 constexpr uint32_t RT_PATH_NRD = 8192;
+// Reflections: GGX with alpha = roughness^2 (WH3's own BRDF: Schlick's k = roughness^2 / 2), not Attila's narrow lobe.
+constexpr uint32_t RT_REFLECTIONS_SQUARED_LOBE = 16384;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

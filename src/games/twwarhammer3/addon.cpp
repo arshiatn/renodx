@@ -46,6 +46,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
+#include "./grass_distance.hpp"
 #include "./building_masks.hpp"
 #include "./cut_out_masks.hpp"
 #include "./device_loss.hpp"
@@ -822,6 +823,11 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 // Ray tracing's sliders (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
 twattila::rt_scene::Sliders rt_sliders;
+float skip_game_ssao_row = 0.f;
+// RTAO stands alone: fx_ssao's two dispatches only feed the sun's t_ssao (trace b11_scale: its one reader), which the rays replace.
+bool SkipGameSsao() {
+  return skip_game_ssao_row != 0.f && shader_injection.ssao_mode < 1.f && twattila::rt_scene::internal::runtime.settings.ambient_occlusion;
+}
 
 // The game's reflection pass (fx_environment_specular_light): off, nothing of this runs and the game's bytes do. Our copy of its resolve
 // (shaders/reflection00) runs in its place with the rays' reflections or specular occlusion, with the march on all surfaces, or with the
@@ -1405,6 +1411,14 @@ void BuildRuntimeData() {
   };
   custom_shaders[0x2A629B2B].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x2A629B2B, true);
+    if (SkipGameSsao()) {
+      auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+      Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
+      native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
+      const std::array<float, 4> open = {1.f, 1.f, 1.f, 1.f};
+      if (output) native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
+      return false;
+    }
     if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, true, true, 1, 2)) return true;
     const bool dispatched = tw::line_sweep_ao::DispatchInstead(
         cmd_list, __ao_bitmask_collect02, &shader_injection, sizeof(shader_injection), false, __ao_upsample_collect02,
@@ -1418,6 +1432,7 @@ void BuildRuntimeData() {
   // fx_ssao's sweep, the one pass of the AO's that reads a depth at every scale: the downsample stops below about 2/3 (traces
   // c1a, c2a), and a depth kept from it would stay the last full-size frame's.
   custom_shaders[0x004BB1D4] = {.crc32 = 0x004BB1D4, .on_inject = not_injected, .on_draw = [](auto* cmd_list) {
+    if (SkipGameSsao()) return false;
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
     return true;
   }};
@@ -2534,6 +2549,7 @@ constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 feature_settings::DLSS_MODE_SCALES, 7 Custom
 float below_100_detail_row = 1.f;
 float rays_ao_spot_filter_row = 0.f;
+float reflection_lobe_row = 0.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
@@ -2942,6 +2958,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength, twwarhammer3::taa_dlss::RenderShare());
   rt_settings.ambient_alone = true;  // RTAO never multiplies the game's SSAO.
   rt_settings.ambient_spot_filter = rays_ao_spot_filter_row != 0.f;
+  rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
@@ -3250,6 +3267,39 @@ void ConfigureAddon() {
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GrassFadeDistance",
+      .binding = &twwarhammer3::grass_distance::row,
+      .default_value = 1.f,
+      .label = "Grass Fade Distance (Experimental)",
+      .section = twattila::engine_tests::GRASS,
+      .tooltip = "Grass flattens and thins out this many times farther. 1: the game's.\n"
+                 "Only where grass is drawn: Grass Draw Distance sets that.",
+      .min = 1.f,
+      .max = 8.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipGameAO",
+      .binding = &skip_game_ssao_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Skip the Game's SSAO under RTAO (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "With Ray-Traced AO on, the game's own AO isn't computed at all. Faster, same picture.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedReflectionLobe",
+      .binding = &reflection_lobe_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Reflections as Rough as the Game's (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Ray-traced reflections blur by the material as the game's own light does: less mirror-like on armour.\n"
+                 "Can be noisier.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
       .default_value = 1.f,
@@ -3442,6 +3492,7 @@ bool AttachAddon() {
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
+  twwarhammer3::grass_distance::Install();
   for (const auto& water : WATER_SHADERS) {
     renodx::utils::command_action::Register(
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -3534,6 +3585,7 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
+  twwarhammer3::grass_distance::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);

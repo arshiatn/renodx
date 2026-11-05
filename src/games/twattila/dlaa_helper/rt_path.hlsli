@@ -84,6 +84,7 @@ static const uint PATH_REFLECT_OWN = 8388608u;          // Own ReSTIR: the refle
 static const uint PATH_REFLECT_OWN_HISTORY = 16777216u; // last frame's are last frame's
 static const uint PATH_REFLECT_PARITY = 33554432u;      // this frame's set: 1 (else 0)
 static const uint PATH_LIGHT_FINAL = 67108864u;         // a reflections request's: `light` is the light buffer the game's pass reads
+static const uint PATH_SQUARED_LOBE = 536870912u;       // reflections: alpha = roughness^2 (ReflectAlpha)
 static const uint PATH_NRD = 268435456u;                // NVIDIA's REBLUR denoises this request's light (rt_nrd_front.hlsl)
 static const uint PATH_SKY_APART = 134217728u;          // Own Sky Rays: Path-Traced AO's sky past the reservoirs
 static const uint REFLECT_NEIGHBOURS = 4u;
@@ -764,6 +765,7 @@ float LobeDensity(float3 receiver, float3 normal, float3 view, float alpha, floa
 // A reflection's lobe by the G-buffer's roughness (1 - gloss): GGX as wide as the game's own lights' highlight on it (a
 // Gaussian whose share within 0.5 degrees is gloss^2).
 float ReflectAlpha(float roughness) {
+  if ((path_flags & PATH_SQUARED_LOBE) != 0u) return max(roughness * roughness, 0.0064f);
   const float gloss = 1.f - roughness;
   return 0.0064f / max(gloss * gloss, 0.0625f);
 }

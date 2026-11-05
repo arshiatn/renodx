@@ -106,6 +106,8 @@ struct Settings {
   bool reflection_reuse = false;
   // Own ReSTIR (bridge v19, helpers 55 on): their own reservoirs instead.
   bool reflection_own = false;
+  // RT_REFLECTIONS_SQUARED_LOBE.
+  bool reflection_squared_lobe = false;
   // The local lights' shadows (bridge v9): of the lights the game's light draws had (AddLocalLight) the last frame's
   // nearest and brightest go with the trace; their lit bits and positions for the light draws: BindLocalLights.
   bool local_lights = false;
@@ -2472,6 +2474,7 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
                  | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                  | (runtime.settings.reflection_reuse ? dlaa_bridge::RT_REFLECTIONS_REUSE : 0u)
                  | (runtime.settings.reflection_own ? dlaa_bridge::RT_REFLECTIONS_OWN : 0u)
+                 | (runtime.settings.reflection_squared_lobe ? dlaa_bridge::RT_REFLECTIONS_SQUARED_LOBE : 0u)
                  | (light_copied ? dlaa_bridge::RT_REFLECTIONS_LIGHT : 0u),
         .samples = runtime.settings.reflection_samples,
         .bounces = runtime.settings.path_tracing ? runtime.settings.path_bounces : 0u,

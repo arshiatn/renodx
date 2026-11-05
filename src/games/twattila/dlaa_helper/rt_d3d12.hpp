@@ -1334,6 +1334,7 @@ class RtScene12 {
         // alone left them noisy, ATN's debug33).
         const bool raw = reflections && (requested & dlaa_bridge::RT_REFLECTIONS_RAW) != 0;
         if (raw) flags |= PATH_RAW;
+        if (reflections && (requested & dlaa_bridge::RT_REFLECTIONS_SQUARED_LOBE) != 0) flags |= PATH_SQUARED_LOBE;
         if (nrd_light) flags |= PATH_NRD;
         if (reflections && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
         // Reflection Reuse from ReSTIR GI (v19): this frame's reservoirs (the Light Bounce's request before this one used set
@@ -1811,6 +1812,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_REFLECTIONS = 2;
   static constexpr uint32_t PATH_RAW = 512;
   static constexpr uint32_t PATH_NRD = 268435456;
+  static constexpr uint32_t PATH_SQUARED_LOBE = 536870912;
   static constexpr uint32_t TRACE_NRD_BOUNCE = 4194304;   // rt_scene.hlsli
   static constexpr uint32_t TRACE_NRD_AMBIENT = 8388608;  // rt_scene.hlsli
   static constexpr uint32_t PATH_SPECULAR_OCCLUSION = 4;
