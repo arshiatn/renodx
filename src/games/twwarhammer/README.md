@@ -2,6 +2,11 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer.addon64`.
 
+## v36 (2026-11-05, built only, not run in game; renodx-tw-dlaa64.exe helper86, bridge v27: ship them together)
+
+- **A Windows crash report at each helper start, gone:** ReShade next to renodx-tw-dlaa64.exe loads this addon into it too; the addon said no in DllMain and the runtime's cleanup then faulted inside the loader (ntdll c0000005 at 0x272c5). The helper lived on. Now it says no in AddonInit and ReShade unloads it (WH3's batch 5; same lines here).
+- **The helper's log:** a real fault leaves one line and renodx-tw-dlaa64.dmp; whose device a GPU reset removed, with its reason and the time.
+
 ## v35 (2026-11-03, built only, not run in game)
 
 - **Path Tracing with the game's or Bend's shadows**: the paths now get the sun's direction there too (as Attila's v135).

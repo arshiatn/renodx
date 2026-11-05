@@ -222,6 +222,7 @@ Found when reading WH3 against Attila. Each one looks portable and isn't.
 | A lambda with `CHECK` must return int: exit 3, no output | - |
 | Script corruption; a German decimal comma in `-f` | InvariantCulture; read before running |
 | DevKit in a TW folder loads into the helper and crashes it | Frame trace or capture marks instead |
+| Any 64-bit addon loads into the helper too (ReShade's dxgi.dll): DllMain FALSE faults in the CRT's cleanup, a crash report each start | DllMain TRUE, AddonInit fails: a stub host that loads and frees it shows no fault |
 | Reports without a check | Numbers from the run, else "not checked" |
 | A fix proves half | Keep the repro after the first fix |
 | An own compute pass in a replaced pass's `on_draw` runs before the mod's push: `SI` at the game's register holds what the last replaced pass pushed, or nothing. WH3's GT-VBAO bound b13, read b10, and only worked after the downsample ran | Bind the settings at the register `shared.h` names; check that a value of `SI` arrives by writing it out | Debug output in a run: one row of `SI.x` |

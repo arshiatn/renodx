@@ -12,6 +12,13 @@
       PT AO: first freeze 30 % darker than toggled (log line), so 150 frames, NOT run in game. Row Steady Bounce Light (RayTracedPathKeptCube), off; on the open view under a code. R1 also: P1 no blue pixels with the row on, paused; P2 row switched, REBLUR made; P4 no error, look not judged.
       Not done: why shapes differ by instance (read: VS blends v8-10 with v11-13 by v6.x, rt_place takes v8-10): smallest step, log both rows' difference in one run. ATN's forest not reached. PT AO's darkness not reproduced on the open view (PT 101.5 RTAO 99.8). Rays' Light Bounce (not paths) and reflections' starts not moved. 31584506's row off.
       14 targets built, page dumps, all_modes on helper85 123 of 126 (release, release_rr, release_smoke: the memory flake, each passes alone).
+- [x] P5 Freeze and helper crash; R3 ran 3 times (r3_p5_1, _2, _3: alt-tab away up to 7 min and back, 18 short tabs, FG on in one): 0 resets, the freeze did not come back. Report wh3_batch5/reports/P5.md. Helper86.
+      Helper "crash" = ReShade loads the addon into the helper, DllMain FALSE, CRT's cleanup faults in the loader (ntdll 0x272c5). DllMain TRUE, AddonInit fails: stub host 0 faults, 3 game runs no event. WH3, WH1, WH2, Troy, Pharaoh. Dump for real faults: forced only.
+      Terrain's count: Flush + DONOTFLUSH, 250 ms bound (not 50: 100 ms traces exist), new queries past it. WARP warp_tests/terrain_wait. Measured: 14-17 ms a frame, nearly all of "tracing", is this wait: P7's number.
+      Log: whose device (game's thread polling 1 s, helper's wait), frame's age, window in front and its changes, no frame for 20 s: frame thread's addresses (forced by a suspend: works). Helper's line in harness removal.
+      Not done: freeze's cause; alt-tab not proven as trigger. Flush at the shadow pass not added: compute then plain stream out was always there (trace lines 95-96, B8b's clean runs); add it if the new log says the game's device. Not run in game: reset lines, bound firing, dump, WH1, WH2, Troy, Pharaoh, Attila.
+      Damage: R1 put the 04:30 backup over ATN's ini, preferences, preset, Auto-save.replay. Ini back from atn_run4; the other three can't come back. wh3_common.ps1 fixed. New: ReShade runs inside the helper, harness doesn't: ATN's call.
+      ALL_MODES_LINE
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
