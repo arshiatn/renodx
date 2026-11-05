@@ -39,7 +39,6 @@
 #include "../twattila/frame_trace.hpp"
 #include "../twattila/reflex.hpp"
 #include "../twattila/texture_lod_bias.hpp"
-#include "./resolution_scale.hpp"
 
 // DLSS, FSR or XeSS in place of the game's TAA (it has no working DLSS of its own: preferences gfx_dlss never creates one):
 // after its TAA resolve (cs 0x1ADBFF18 TAA / 0x6A8FC282 TAA High: t0 the G-buffer depth in x, t2 the velocity, t4 this
@@ -1050,7 +1049,9 @@ inline bool InGameNoTaa() {
   const std::unique_lock lock(internal::state.mutex);
   if (!internal::state.preferences_read) {
     internal::state.preferences_read = true;
-    std::ifstream file(resolution_scale::PreferencesPath());
+    std::wstring folder(32768, L'\0');
+    folder.resize(GetEnvironmentVariableW(L"APPDATA", folder.data(), static_cast<DWORD>(folder.size())));
+    std::ifstream file(std::filesystem::path(folder) / L"The Creative Assembly" / L"Warhammer3" / L"scripts" / L"preferences.script.txt");
     constexpr std::string_view NAME = "gfx_resolution_scale ";
     constexpr std::string_view DLSS_NAME = "gfx_dlss ";
     constexpr std::string_view AA_NAME = "gfx_aa ";

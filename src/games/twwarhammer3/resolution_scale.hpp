@@ -11,13 +11,9 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <format>
-#include <fstream>
-#include <iterator>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <vector>
 
 #include <include/reshade.hpp>
@@ -40,6 +36,12 @@ static size_t getter_offset = 0;
 static size_t setter_offset = 0;
 static uint8_t* checked_vtable = nullptr;
 static uint32_t value_offset = 0;
+// The preference: what the game's quit writes to its file. It copies the float there before its device goes, and writes the file about a
+// second after. Its load path reads it: [global] + offset, its method at 78h(id), a float.
+static uint8_t** preferences_global = nullptr;
+static uint32_t preferences_offset = 0;
+static uint32_t preference_id = 0;
+static bool preference_checked = false;
 static std::atomic_bool found = false;
 static bool searched = false;
 // What the game had before the first write: in ReShade.ini, so it survives a crash or a mode kept over a restart.
@@ -71,10 +73,6 @@ inline uint32_t PreferenceId(std::string_view code, const uint8_t* name) {
 
 inline void Find() {
   searched = true;
-  // Before anything can miss: a mode kept over a game's patch still gets the file back at the quit.
-  float saved = 0.f;
-  has_kept = reshade::get_config_value(nullptr, CONFIG_SECTION, CONFIG_KEY, saved);
-  if (has_kept) kept = saved;
   std::array<char, 8> no_scale = {};
   if (GetEnvironmentVariableA("RENODX_TW_NO_SCALE", no_scale.data(), static_cast<DWORD>(no_scale.size())) != 0) {
     renodx::utils::log::i("[Warhammer III] Resolution Scale: not looked for (RENODX_TW_NO_SCALE).");
@@ -101,7 +99,7 @@ inline void Find() {
   // The save path: call [rax+getter]; movaps xmm6, xmm0; mov rax, [rsi]; mov edx, id; mov rcx, rsi; call [rax+78h]; movss [rax], xmm6.
   const auto* save = tw::engine_tweaks::FindPattern(code, "FF 90 ?? ?? ?? ?? 0F 28 F0 48 8B 06 BA " + id_bytes + " 48 8B CE FF 50 78 F3 0F 11 30");
   // The load path: mov rbx, [rax+setter]; mov rcx, [rip+?]; add rcx, ?; mov rax, [rcx]; mov edx, id; call [rax+78h]; movss xmm1, [rax].
-  const auto* load = tw::engine_tweaks::FindPattern(code, "48 8B 98 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 81 C1 ?? ?? ?? ?? 48 8B 01 BA " + id_bytes + " FF 50 78 F3 0F 10 08");
+  auto* load = tw::engine_tweaks::FindPattern(code, "48 8B 98 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 81 C1 ?? ?? ?? ?? 48 8B 01 BA " + id_bytes + " FF 50 78 F3 0F 10 08");
   if (save == nullptr || load == nullptr) {
     renodx::utils::log::i(fail, "its save or load");
     return;
@@ -119,7 +117,29 @@ inline void Find() {
   renderer_global = reinterpret_cast<uint8_t**>(consumer + 7 + displacement);
   getter_offset = getter;
   setter_offset = setter;
+  std::memcpy(&displacement, load + 10, sizeof(displacement));
+  preferences_global = reinterpret_cast<uint8_t**>(load + 14 + displacement);
+  preferences_offset = read_u32(load + 17);
+  preference_id = id;
   found.store(true, std::memory_order_relaxed);
+}
+
+inline bool InGameCode(const uint8_t* at) {
+  auto* module = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(module + reinterpret_cast<const IMAGE_DOS_HEADER*>(module)->e_lfanew);
+  return at >= module && at < module + nt->OptionalHeader.SizeOfImage;
+}
+
+// The preference's float; null: not there yet, or not the plain object.
+inline float* Preference() {
+  auto* preferences = *preferences_global;
+  if (preferences == nullptr) return nullptr;
+  auto* holder = preferences + preferences_offset;
+  auto* vtable = *reinterpret_cast<uint8_t**>(holder);
+  if (!InGameCode(vtable)) return nullptr;
+  auto* method = *reinterpret_cast<uint8_t**>(vtable + 0x78);
+  if (!InGameCode(method)) return nullptr;
+  return reinterpret_cast<float* (*)(void*, uint32_t)>(method)(holder, preference_id);
 }
 
 // The live float; null: no renderer yet, or its methods aren't the plain ones (the row hides).
@@ -129,14 +149,11 @@ inline float* Value() {
   if (renderer == nullptr) return nullptr;
   auto* vtable = *reinterpret_cast<uint8_t**>(renderer);
   if (vtable != checked_vtable) {
-    auto* module = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
-    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(module + reinterpret_cast<const IMAGE_DOS_HEADER*>(module)->e_lfanew);
-    const auto in_module = [&](const uint8_t* at) { return at >= module && at < module + nt->OptionalHeader.SizeOfImage; };
-    const uint8_t* get = in_module(vtable) ? *reinterpret_cast<uint8_t**>(vtable + getter_offset) : nullptr;
-    const uint8_t* set = in_module(vtable) ? *reinterpret_cast<uint8_t**>(vtable + setter_offset) : nullptr;
+    const uint8_t* get = InGameCode(vtable) ? *reinterpret_cast<uint8_t**>(vtable + getter_offset) : nullptr;
+    const uint8_t* set = InGameCode(vtable) ? *reinterpret_cast<uint8_t**>(vtable + setter_offset) : nullptr;
     constexpr std::array<uint8_t, 4> GET_BYTES = {0xF3, 0x0F, 0x10, 0x81};  // movss xmm0, [rcx+offset]; ret
     constexpr std::array<uint8_t, 4> SET_BYTES = {0xF3, 0x0F, 0x11, 0x89};  // movss [rcx+offset], xmm1; ret
-    const bool plain = in_module(get) && in_module(set) && std::memcmp(get, GET_BYTES.data(), 4) == 0 && std::memcmp(set, SET_BYTES.data(), 4) == 0
+    const bool plain = InGameCode(get) && InGameCode(set) && std::memcmp(get, GET_BYTES.data(), 4) == 0 && std::memcmp(set, SET_BYTES.data(), 4) == 0
                        && get[8] == 0xC3 && set[8] == 0xC3 && std::memcmp(get + 4, set + 4, 4) == 0;
     if (!plain) {
       found.store(false, std::memory_order_relaxed);
@@ -145,7 +162,11 @@ inline float* Value() {
     }
     std::memcpy(&value_offset, get + 4, sizeof(value_offset));
     checked_vtable = vtable;
-    renodx::utils::log::i(std::format("[Warhammer III] Resolution Scale: found, renderer + {:X}: {}.", value_offset, *reinterpret_cast<float*>(renderer + value_offset)));
+    const float live = *reinterpret_cast<float*>(renderer + value_offset);
+    const float* preference = Preference();
+    // Before any write of ours the two agree; else it's not the preference, and the quit leaves it alone.
+    preference_checked = preference != nullptr && *preference == live;
+    renodx::utils::log::i(std::format("[Warhammer III] Resolution Scale: found, renderer + {:X}: {}, its preference {}.", value_offset, live, (preference != nullptr) ? *preference : -1.f));
   }
   return reinterpret_cast<float*>(renderer + value_offset);
 }
@@ -190,42 +211,15 @@ inline float Current() {
   return (value != nullptr) ? *value : 0.f;
 }
 
-// The game's file (it reads it at its start).
-inline std::filesystem::path PreferencesPath() {
-  std::wstring folder(32768, L'\0');
-  folder.resize(GetEnvironmentVariableW(L"APPDATA", folder.data(), static_cast<DWORD>(folder.size())));
-  return std::filesystem::path(folder) / L"The Creative Assembly" / L"Warhammer3" / L"scripts" / L"preferences.script.txt";
-}
-
-// The game is closing and has saved its file already, with the mode's scale (a quit at Performance: 0.5): what it had goes back there, so
-// the game without the addon starts as it was. Without the row (a patch moved the code) once, as nothing can drive the scale any more.
+// The game is closing: the preference has the mode's scale by now and goes to its file after this. What it had takes its place, so the
+// game without the addon starts as it was.
 inline void OnDestroyDevice(reshade::api::device*) {
   using namespace internal;
-  if (!has_kept) return;
-  if (!found.load(std::memory_order_relaxed)) {
-    has_kept = false;
-    reshade::set_config_value(nullptr, CONFIG_SECTION, CONFIG_KEY, static_cast<const char*>(nullptr));
+  if (!has_kept || !preference_checked) return;
+  if (float* preference = Preference(); preference != nullptr) {
+    *preference = kept;
+    renodx::utils::log::i(std::format("[Warhammer III] Resolution Scale: the game's {} back in its preference.", kept));
   }
-  const auto path = PreferencesPath();
-  std::ifstream input(path, std::ios::binary);
-  std::string text{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-  input.close();
-  constexpr std::string_view NAME = "gfx_resolution_scale ";
-  size_t start = text.starts_with(NAME) ? 0 : text.find(std::format("\n{}", NAME));
-  if (start == std::string::npos) return;
-  start = text.find(NAME, start) + NAME.size();
-  const size_t end = text.find(';', start);
-  if (end == std::string::npos) return;
-  text.replace(start, end - start, std::format("{}", kept));
-  auto temporary = path;
-  temporary += L".renodx";
-  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-  output.write(text.data(), static_cast<std::streamsize>(text.size()));
-  output.close();
-  std::error_code error;
-  if (output.good()) std::filesystem::rename(temporary, path, error);
-  if (!output.good() || error) std::filesystem::remove(temporary, error);
-  renodx::utils::log::i(std::format("[Warhammer III] Resolution Scale: the game's {} back in its file.", kept));
 }
 
 }  // namespace twwarhammer3::resolution_scale
