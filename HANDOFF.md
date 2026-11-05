@@ -11,6 +11,7 @@
       Dark patch = placed trunks: first instance's shape at every place; a drawn trunk inside it, every ray hits. Seen on the replay's pines; none with Placed Objects off (b8b_first). Row No Black Patches on Trunks (RayTracedStartPast), off: harness AO 0 to 67 of 255, NOT run in game: R1 was used up finding it. Row Tree Trunk Cut-outs (RayTracedBranchCutOuts), off: ran, real defect, black trunks stay.
       PT AO: first freeze 30 % darker than toggled (log line), so 150 frames, NOT run in game. Row Steady Bounce Light (RayTracedPathKeptCube), off; on the open view under a code. R1 also: P1 no blue pixels with the row on, paused; P2 row switched, REBLUR made; P4 no error, look not judged.
       Not done: why shapes differ by instance (read: VS blends v8-10 with v11-13 by v6.x, rt_place takes v8-10): smallest step, log both rows' difference in one run. ATN's forest not reached. PT AO's darkness not reproduced on the open view (PT 101.5 RTAO 99.8). Rays' Light Bounce (not paths) and reflections' starts not moved. 31584506's row off.
+      14 targets built, page dumps, all_modes on helper85 123 of 126 (release, release_rr, release_smoke: the memory flake, each passes alone).
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
