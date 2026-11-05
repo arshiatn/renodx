@@ -1,5 +1,9 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## WH3 BATCH 5 (from 2026-11-05): ATN said go; plan tools/tw/wh3_batch5/plan.md, his answers at the end of atn_notes.md, reports wh3_batch5/reports
+- [x] P1 Particle Trails: flags only where the moment left the range of the texels around last frame's place (a moment texel = 2 render px, point copied); row still Experimental, off. WARP warp_tests/smear_wh3. Not run in game.
+      Not done: a one-texel blade that comes into coverage still flags (120 of 120 in the test), going out doesn't; puffs under 2 px a frame keep trails, at 4 px a frame only the inner texel flags (72 of 320 pixels).
+
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
 - [x] A AO and presets (items 18, 19 + 2, 1, 12). Report reports/A.md. Not run in game. WARP warp_tests/sky_wh3 (sky, spot), page dumps A1, A2 (Attila the date only), all targets built.

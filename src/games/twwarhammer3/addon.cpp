@@ -3425,7 +3425,7 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Particle Trails Under Upscaling (Experimental)",
       .section = "VFX",
-      .tooltip = "Moving smoke and fire leave no trail behind them in DLSS, FSR and XeSS. Can look rougher inside the smoke.\n"
+      .tooltip = "Fast smoke and fire leave no trail behind them in DLSS, FSR and XeSS. Can look rougher inside the smoke.\n"
                  "Frame Generation may show more artifacts there.",
       .labels = {"Off", "On"},
   });
