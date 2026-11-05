@@ -166,6 +166,8 @@ struct Settings {
   bool terrain_outside_view = false;
   // Casters out of the view from the shadow maps' draws (SceneShader::cascade_keep).
   bool casters_out_of_view = false;
+  // A tessellated draw's triangles streamed out by the game's own draw (TerrainInDraw), not by a second one.
+  bool terrain_in_draw = false;
 
   bool operator==(const Settings&) const = default;
 };
@@ -353,6 +355,8 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
+  // The domain shaders' streams that also go on to the rasterizer (Settings::terrain_in_draw), by their hash.
+  std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_drawn_outputs;
   ComPtr<ID3D11Buffer> cascade_camera;  // SceneShader::cascade_keep's cb0: the main view's matrix at [10-13]
   ComPtr<ID3D11Buffer> cascade_no_view;  // All 0: a new mesh's first rows, none left out
   ComPtr<ID3D11Buffer> captured;  // stream output: world positions, three per triangle
@@ -520,6 +524,10 @@ struct Runtime {
   uint32_t captured_vertices = 0;
   uint32_t world_vertices = WORLD_BASE;  // their end in the captured buffer
   uint32_t tessellated_draws = 0;  // this frame's so far (DeviceObjects::tessellated)
+  // A game's draw streaming out as it draws (Settings::terrain_in_draw): what its post callback puts back (no stream: null).
+  ComPtr<ID3D11GeometryShader> in_draw_game_geometry_shader;
+  ComPtr<ID3D11Buffer> in_draw_game_output;
+  bool in_draw_open = false;
   // The buffer the frame's indirect draws read their numbers from (CaptureIndirect): read when a draw needs it, once a frame; a copy
   // read without waiting a frame or more later says which draws were empty.
   std::vector<uint32_t> indirect_arguments;
@@ -1038,7 +1046,15 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
   });
 }
 
+// A tessellated draw captured by the game's own draw, the stream output going on to the rasterizer (before it, OnSceneDraw;
+// after it, CloseInDraw). Not with a mask or the outside view's hull shader: those streams aren't the drawn surface.
+inline bool TerrainInDraw(const SceneShader& shader) {
+  return shader.tessellated && runtime.settings.terrain_in_draw && shader.tessellated_keep.empty() && !runtime.settings.terrain_outside_view;
+}
+
 // After a scene draw of the main view: a draw not yet in the scene is drawn once more into the stream-output buffer.
+// Before it: a cascade's draw (it needs nothing the draw does; a skip of that draw would drop a post callback) and
+// TerrainInDraw's.
 template <typename Context>
 void Capture(Context& command, const SceneShader& shader) {
   if (frame_trace::Tracing()) {
@@ -1518,6 +1534,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // it could not be).
   const bool clip_space = shader.capture_shader.empty() || (clip_captures && !placed);
   const bool clip_uv = clip_space && foliage && shader.uv_semantic != nullptr;
+  const bool in_draw = clip_space && TerrainInDraw(shader);
   // By its hash where CaptureDraw made a copy (a list of pixel shaders).
   const size_t listed_index = (shader.pixel_masks.empty() ? static_cast<size_t>(&shader - scene_shaders.data())
                                                          : static_cast<size_t>(std::ranges::find(scene_shaders, shader.hash, &SceneShader::hash) - scene_shaders.begin()));
@@ -1535,7 +1552,8 @@ void Capture(Context& command, const SceneShader& shader) {
     const uint32_t streamed_shader =
         shader.tessellated ? renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::domain_shader, &command.bound_state_cache)
                            : shader.hash;
-    const auto [made, first] = (clip_uv ? objects.game_uv_outputs : objects.game_outputs).try_emplace(streamed_shader);
+    auto& game_streams = (in_draw ? objects.game_drawn_outputs : (clip_uv ? objects.game_uv_outputs : objects.game_outputs));
+    const auto [made, first] = game_streams.try_emplace(streamed_shader);
     if (first) {
       const auto code = game_code.find(streamed_shader);
       const std::array<D3D11_SO_DECLARATION_ENTRY, 2> entries = {{
@@ -1548,12 +1566,13 @@ void Capture(Context& command, const SceneShader& shader) {
       if (streamed_code.empty() && code != game_code.end()) streamed_code = code->second;
       if (streamed_code.empty()
           || FAILED(device->CreateGeometryShaderWithStreamOutput(streamed_code.data(), streamed_code.size(), entries.data(), outputs,
-                                                                  STRIDES.data(), outputs, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                  STRIDES.data(), outputs, (in_draw ? 0u : D3D11_SO_NO_RASTERIZED_STREAM), nullptr,
                                                                   made->second.GetAddressOf()))) {
         renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for {} shader {:08X}{}.", shader.tessellated ? "domain" : "vertex", streamed_shader,
                                           clip_uv ? " with its UV" : ""));
       } else if (shader.tessellated) {
-        renodx::utils::log::i(std::format("[Total War] Ray tracing: vs {:08X} streamed out through domain shader {:08X}.", shader.hash, streamed_shader));
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: vs {:08X} streamed out through domain shader {:08X}{}.", shader.hash, streamed_shader,
+                                          (in_draw ? " by the game's own draw" : "")));
       }
     }
     if (!made->second) return;
@@ -1589,7 +1608,7 @@ void Capture(Context& command, const SceneShader& shader) {
   native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
   native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
   native->SOGetTargets(1, game_output.GetAddressOf());
-  native->PSSetShader(nullptr, nullptr, 0);
+  if (!in_draw) native->PSSetShader(nullptr, nullptr, 0);
   ComPtr<ID3D11Buffer> game_camera;
   UINT game_camera_first = 0;
   UINT game_camera_count = 0;
@@ -1611,6 +1630,15 @@ void Capture(Context& command, const SceneShader& shader) {
     if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
+    if (in_draw) {
+      // The game's draw, next, streams them out as it draws (the hang's Flush as below); CloseInDraw ends it.
+      native->Flush();
+      native->Begin(objects.tessellated_queries[runtime.tessellated_draws].Get());
+      runtime.in_draw_game_geometry_shader = game_geometry_shader;
+      runtime.in_draw_game_output = game_output;
+      runtime.in_draw_open = true;
+      return;
+    }
     if (shader.sun_facing) native->VSSetShaderResources(0, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
     ComPtr<ID3D11ShaderResourceView> game_keep_view;
     ComPtr<ID3D11Buffer> game_keep_constants;
@@ -1927,6 +1955,24 @@ void CaptureDraw(Context& command, const void*) {
   SceneShader masked = listed;
   masked.mask_slot = material->slot;
   Capture(command, masked);
+}
+
+// After a TerrainInDraw draw (or its skip by a later callback: finalize runs then too): its count's query ended, the game's
+// geometry shader and stream output back.
+template <typename Context>
+void CloseInDraw(Context& command, const void*) {
+  if (!runtime.in_draw_open) return;
+  auto* native = NativeContext(command.cmd_list);
+  if (native == nullptr) return;
+  runtime.in_draw_open = false;
+  native->End(runtime.objects.tessellated_queries[runtime.tessellated_draws].Get());
+  ID3D11Buffer* output = runtime.in_draw_game_output.Get();
+  constexpr UINT APPEND = UINT_MAX;
+  native->SOSetTargets(1, &output, &APPEND);
+  native->GSSetShader(runtime.in_draw_game_geometry_shader.Get(), nullptr, 0);
+  runtime.in_draw_game_output.Reset();
+  runtime.in_draw_game_geometry_shader.Reset();
+  ++runtime.tessellated_draws;
 }
 
 // An indirect draw of a listed shader (SceneShader::indirect): the GPU has made its numbers, the whole buffer read once a frame (a
@@ -2661,7 +2707,7 @@ inline bool OnReflectionMarch(reshade::api::command_list* cmd_list) {
   return views[0] == nullptr || !internal::runtime.settings.reflections;
 }
 
-constexpr auto OnSceneDraw = []<typename T, typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+constexpr auto OnSceneDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::IndirectArguments>) {
     if (!internal::active.load(std::memory_order_relaxed) || !dlaa_bridge::bridge.ray_tracing) return {};
@@ -2672,6 +2718,15 @@ constexpr auto OnSceneDraw = []<typename T, typename Context>(Context&) -> renod
   } else {
     // Nothing without the bridge's ray tracing textures (menus: the helper not started; ATN's debug28 menu at 140 fps).
     if (!internal::active.load(std::memory_order_relaxed) || !dlaa_bridge::bridge.ray_tracing) return {};
+    const auto& listed = command.template GetCallbackData<SceneShader>();
+    if (!listed.cascade_keep.empty()) {
+      internal::CaptureDraw<Context>(command, nullptr);
+      return {};
+    }
+    if (internal::TerrainInDraw(listed)) {
+      internal::CaptureDraw<Context>(command, nullptr);
+      return {.finalize_callback = internal::CloseInDraw<Context>};
+    }
     return {.post_callback = internal::CaptureDraw<Context>};
   }
 };

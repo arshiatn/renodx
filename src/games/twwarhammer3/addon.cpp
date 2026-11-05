@@ -44,6 +44,7 @@
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../talesofarise_dlss/pixel_trace.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -2583,6 +2584,7 @@ float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
 float rays_units_out_of_view_row = 1.f;
 float rays_skip_cascade_trees_row = 0.f;
+float rays_terrain_in_draw_row = 0.f;
 float rays_banner_light_row = 0.f;
 float rays_branch_cut_outs_row = 0.f;
 // The trees' draws into the cascades: 52 M of the shadow pass's indices on the replay's first view, 36 M in the siege (traces c1a, bm_siege).
@@ -2993,6 +2995,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   talesofarise::pixel_trace::OnPresent(queue);
+  twattila::pass_timing::OnPresent(queue, "wh3");
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflections::sun_standard = false;
   reflections::sun_low_quality = false;
@@ -3036,6 +3039,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  rt_settings.terrain_in_draw = rays_terrain_in_draw_row != 0.f;
   // Under rays and maps together the game's cascades already darken what these would.
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
@@ -3534,6 +3538,12 @@ void ConfigureAddon() {
   // yet; smoke and foliage aren't known here. Its march is already hierarchical: no FidelityFX SSSR. Path-Traced AO stays a choice, not the preset's: unproven in game.
   // Water keeps the game's march by default (reflections::OnMarch).
   twattila::rt_scene::internal::water_pass = true;
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .tooltip = "The GPU's time of every pass of the next frame into wh3_pass_timing.txt next to the game's exe.",
+      .on_change = [] { twattila::pass_timing::Request(); },
+  });
   for (auto* setting : settings) {
     if (setting->key == "RayTracedWaterReflections") setting->default_value = 0.f;
   }
@@ -3549,6 +3559,7 @@ void ConfigureAddon() {
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
+                                             .rays_terrain_in_draw = &rays_terrain_in_draw_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_branch_cut_outs = &rays_branch_cut_outs_row,
                                              .rays_start_past = &rt_sliders.start_past,
@@ -3639,6 +3650,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::vfx_particles::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::pass_timing::OnDestroyDevice);
 
   // Saved before v32 with both rows hidden, at their old defaults: fog's light nobody has seen at night, and dark patches on rivers under rays.
   constexpr int SETTINGS_REVISION = 32;
@@ -3740,6 +3752,8 @@ void DetachAddon() {
 
   twattila::test_hooks::Uninstall();
   talesofarise::pixel_trace::Stop();
+  twattila::pass_timing::Stop();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::pass_timing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::AfterSwapchainMod);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::BeforeSwapchainMod);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
