@@ -47,7 +47,6 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
-#include "./grass_distance.hpp"
 #include "./building_masks.hpp"
 #include "./cut_out_masks.hpp"
 #include "./device_loss.hpp"
@@ -2553,7 +2552,6 @@ twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 feature_settings::DLSS_MODE_SCALES, 7 Custom
 float below_100_detail_row = 1.f;
-float rays_ao_spot_filter_row = 0.f;
 float reflection_lobe_row = 0.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
@@ -2991,7 +2989,6 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength, twwarhammer3::taa_dlss::RenderShare());
   rt_settings.ambient_alone = true;  // RTAO never multiplies the game's SSAO.
-  rt_settings.ambient_spot_filter = rays_ao_spot_filter_row != 0.f;
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
@@ -3303,18 +3300,6 @@ void ConfigureAddon() {
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
-      .key = "GrassFadeDistance",
-      .binding = &twwarhammer3::grass_distance::row,
-      .default_value = 1.f,
-      .label = "Grass Fade Distance (Experimental)",
-      .section = twattila::engine_tests::GRASS,
-      .tooltip = "Grass flattens and thins out this many times farther. 1: the game's.\n"
-                 "Only where grass is drawn: Grass Draw Distance sets that.",
-      .min = 1.f,
-      .max = 8.f,
-      .format = "%.2f",
-  });
-  settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedSkipGameAO",
       .binding = &skip_game_ssao_row,
       .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -3522,7 +3507,6 @@ void ConfigureAddon() {
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
-                                             .rays_ao_spot_filter = &rays_ao_spot_filter_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
@@ -3598,7 +3582,6 @@ bool AttachAddon() {
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
-  twwarhammer3::grass_distance::Install();
   twwarhammer3::vfx_particles::Install();
   for (const auto& water : WATER_SHADERS) {
     renodx::utils::command_action::Register(
@@ -3698,7 +3681,6 @@ void DetachAddon() {
   twwarhammer3::vfx_particles::Uninstall();
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
-  twwarhammer3::grass_distance::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);

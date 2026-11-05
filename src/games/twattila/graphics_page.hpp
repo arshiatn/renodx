@@ -131,7 +131,6 @@ struct Bindings {
   float* rays_units_out_of_view = nullptr;  // Under rays_replace_maps: units from the shadow maps' draws; null: no such row
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
-  float* rays_ao_spot_filter = nullptr;  // RTAO's lone dark pixels raised to their neighbours; null: no such row
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   float* scale_fix_gi_shadow = nullptr;  // Warhammer III: its GI grid and shadow blur below 100%
@@ -815,18 +814,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
     page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
-    if (b.rays_ao_spot_filter != nullptr) {
-      page.Add(new Setting{
-          .key = "RayTracedAOSpotFilter",
-          .binding = b.rays_ao_spot_filter,
-          .value_type = SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Spot Filter (Experimental)",
-          .section = section,
-          .tooltip = "Lifts single black pixels of ray-traced AO to the shade around them. For black spots, more at low render scales.",
-          .is_visible = rays,
-      });
-    }
     page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
     page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
     page.Add(MoreOptions(section, &more_ao, gtvbao));
