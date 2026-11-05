@@ -6,6 +6,10 @@ List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Done: RTAO alone permanent, row gone; Path-Traced AO back in the method slider, Experimental, off, sky from the SH at the camera's place; RT/PT against Attila's listed with reasons, no value changed; Spot Filter row, Experimental, off.
       Not done: item 12's cause (lone black pixels 2.4x more at 50% in Debug View 2, filter hides them). Why every agent run of batch 3 has SH 0 and GI 0 while ATN's log has SH 1 and GI on: batch 3's ambient numbers are on the other path.
 
+- [x] B Stability and scaling (items 14, 9, 8, 13). Report reports/B.md. Not run in game. WARP warp_tests/swap_loss, warp_tests/ssr_mips; page dumps B9, B13 (Attila the date only), all targets built.
+      Done: 14 reset no longer hangs at CreateSwapChain (old flip chain kept the window, the swapchain mod rewrote the game's blt fallback; ClearState + Flush, fallback kept, 90 s no frame closes the game); 9 LOD Bias and Effects at Output enabled (rule read dlss_mode); 8 SSR mip chains clamp at the picture, resolve's levels follow render at 1:1 (L7: 39% of the picture lost at 0.333, now 0); 13 audit, GI grid and shadow blur copies under an Experimental row, off.
+      Not done: why the GPU reset (rows on weren't in B8b's soak); water's NDC at scale (DFA2AEA2, 2076D289, line 838); about 30 PS not read one by one; nothing below 50% in a trace; Hi-Z's edges.
+
 ## WH3 BATCH 3 (from 2026-11-04): fixes, DLSS rows, motion, full RT scene; game runs allowed on replay copies, campaign copy, benchmark
 Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch3/reports/Bn.md. Facts: wh3_batch3/facts.md. Run: test_scripts/run_game.ps1 -Game wh3, proof: wh3_batch3/check_run.py.
 - [x] B0 kit, log fixes, captures. Proven by runs c1-c9, survey (reports/B0.md, facts.md); check_run ok on each but c9_dlss3 (no "Finished exiting" with in-game DLSS) and bm_old (the game's own crash). Harness: tools/tw/all_modes_b0.txt. Helper: build/tw_dlaa_helper76.

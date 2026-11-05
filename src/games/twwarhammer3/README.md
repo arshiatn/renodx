@@ -6,6 +6,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 - **Quit at a mode: the game's file keeps its own scale, run in game** (quit at Performance: file 1; see Upscaling Mode). A patch that moves the code: the row hides, no mode runs, and the file was never touched.
 - **No upscaler, no scale written:** with the helper failed, `gfx_aa` below TAA or `gfx_dlss` above 0 in the game's file (read at the start), the row writes nothing, and what it wrote goes back. `gfx_dlss` run; the other two read.
+- **After a GPU reset, not run in game:** the game no longer hangs making its new swap chain (ClearState + Flush of the lost device; its blt fallback left as it asked; no frame for 90 s closes it). Test WARP swap_loss.
+- **Texture LOD Bias, Effects at Output no longer greyed, not run in game.**
+- **Reflections below 100%, not run in game:** the game's mip chains stop at the picture, under Effects at Output; reflections reach the right and bottom. Test WARP ssr_mips.
+- **GI and Shadow Blur at Scale (Experimental, off), not run in game:** both read the depth as if the picture filled its texture. Water has the same line: not fixed.
 - Saved values from before v32 of two rows that were hidden, Torch and Fire Light in Fog and Water Reflections, go back to off once (`SettingsRevision` in ReShade.ini).
 - **Water Reflections (Experimental, off), run in game** (replay paused, 4K, 100% and Mode P, with and without Ray Reconstruction): with Ray-Traced Reflections water keeps the game's reflections; armour, metal and wet ground take the rays. Rays on water showed far hills as dark patches: their hits have no fog. Row on: the old look. The rays still leave from the water, for Ray Reconstruction's guides.
 - **DLSS Preset's tooltip:** L comes out darker below 100% (replay, mode P against DLAA, same paused moment: L 0.904, worst cell 0.81; M 0.976; K 0.993). Not cured; K or M at half.

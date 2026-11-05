@@ -850,6 +850,10 @@ Copy blur_y_full;
 Copy mip_down;
 Copy mip_blur_x;
 Copy mip_blur_y;
+// The GI voxels' relevance and the shadow blur map a screen uv as if the picture filled its texture (Experimental row).
+float scale_fix_row = 0.f;
+Copy gi_relevance;
+Copy shadow_blur;
 enum class MipChain : uint8_t { NONE, RADIANCE, HIT };
 MipChain mip_chain = MipChain::NONE;
 std::array<float, 2> radiance_share = {};
@@ -1037,6 +1041,15 @@ bool OnMipStep(reshade::api::command_list* cmd_list, Copy* copy) {
   return true;
 }
 
+bool OnScaleFix(reshade::api::command_list* cmd_list, Copy* copy) {
+  if (scale_fix_row == 0.f || twattila::frame_history::render_width.load(std::memory_order_relaxed) == 0) return true;
+  if (twattila::frame_history::effect_share.load(std::memory_order_relaxed) >= 1.f) return true;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native != nullptr) Swap(native, copy);
+  return true;
+}
+
 void OnMipStepDone(reshade::api::command_list* cmd_list) {
   if (!game_shader) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -1086,6 +1099,8 @@ void OnDestroyDevice(reshade::api::device*) {
   mip_down.shader.Reset();
   mip_blur_x.shader.Reset();
   mip_blur_y.shader.Reset();
+  gi_relevance.shader.Reset();
+  shadow_blur.shader.Reset();
   game_b10.Reset();
 }
 
@@ -1414,6 +1429,10 @@ void BuildRuntimeData() {
   reflections::mip_down.code = __ssr_mip_down;
   reflections::mip_blur_x.code = __ssr_mip_blur_x;
   reflections::mip_blur_y.code = __ssr_mip_blur_y;
+  reflections::gi_relevance.code = __gi_relevance_scaled;
+  reflections::shadow_blur.code = __shadow_blur_scaled;
+  custom_shaders[0x1810C89D] = {.crc32 = 0x1810C89D, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnScaleFix(cmd_list, &reflections::gi_relevance); }, .on_drawn = &reflections::SwapBack};
+  custom_shaders[0xDDB14D2C] = {.crc32 = 0xDDB14D2C, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnScaleFix(cmd_list, &reflections::shadow_blur); }, .on_drawn = &reflections::SwapBack};
   custom_shaders[0x79F74068] = {.crc32 = 0x79F74068, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_down); }, .on_drawn = &reflections::OnMipStepDone};
   custom_shaders[0x66C301FF] = {.crc32 = 0x66C301FF, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_blur_x); }, .on_drawn = &reflections::OnMipStepDone};
   custom_shaders[0xFB547085] = {.crc32 = 0xFB547085, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_blur_y); }, .on_drawn = &reflections::OnMipStepDone};
@@ -3338,6 +3357,7 @@ void ConfigureAddon() {
                                              .upscaling_mode_found = twwarhammer3::resolution_scale::Found,
                                              .below_100_detail = &below_100_detail_row,
                                              .water_motion = &water_motion_row,
+                                             .scale_fix_gi_shadow = &reflections::scale_fix_row,
                                              .placed_objects = &placed_objects_row,
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,

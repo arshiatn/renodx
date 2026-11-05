@@ -131,6 +131,7 @@ struct Bindings {
   float* rays_ao_spot_filter = nullptr;  // RTAO's lone dark pixels raised to their neighbours; null: no such row
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
+  float* scale_fix_gi_shadow = nullptr;  // Warhammer III: its GI grid and shadow blur below 100%
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
   // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
@@ -547,6 +548,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "Water Motion (Experimental)",
           .section = section,
           .tooltip = "Water tells the upscaler how the camera moves it, at its own depth instead of the riverbed's.",
+          .is_visible = more(&more_aa, upscaling),
+      });
+    }
+    if (b.scale_fix_gi_shadow != nullptr) {
+      page.Add(new Setting{
+          .key = "ScaleFixGiShadowBlur",
+          .binding = b.scale_fix_gi_shadow,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "GI and Shadow Blur at Scale (Experimental)",
+          .section = section,
+          .tooltip = "Below 100%, with Effects at Output on: the game's GI grid and shadow blur read the right depth.",
           .is_visible = more(&more_aa, upscaling),
       });
     }
