@@ -505,7 +505,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
           native->CSGetConstantBuffers(1, 1, game_second.GetAddressOf());
           native->CSSetConstantBuffers(1, 1, sun_mapping.GetAddressOf());
         }
-        const std::array<uint32_t, 4> size = {runtime.traced_size[0], runtime.traced_size[1], runtime.settings.ambient_alone ? 1u : 0u, 0};
+        const std::array<uint32_t, 4> size = {runtime.traced_size[0], runtime.traced_size[1], runtime.settings.ambient_alone ? 1u : 0u, runtime.settings.ambient_spot_filter ? 1u : 0u};
         internal::Dispatch(native, objects.combine_shader.Get(), {game_ao.Get(), dlaa_bridge::bridge.rt_ambient.srv.Get()},
                            {objects.combined_uav.Get(), nullptr}, size.data(), sizeof(size), (dlaa_bridge::bridge.width + 7) / 8,
                            (dlaa_bridge::bridge.height + 7) / 8);

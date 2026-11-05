@@ -75,6 +75,7 @@ struct Settings {
   uint32_t ambient_rays = 2;
   bool ambient_quarter = false;  // a quarter of the rays (one pixel of each 2 x 2 traced a frame, in turn)
   bool ambient_alone = false;    // A game's combine (RT_COMBINE_SUN_MAPPING): the rays in place of its AO, not on top
+  bool ambient_spot_filter = false;  // The same: lone dark pixels raised to their neighbours
   float sun_softness = 0.5f;  // degrees of the sun's disk (0: hard shadows)
   float light_size = 0.f;     // the local lights' radius (metres) for soft shadows under Ray Reconstruction (bridge v18)
   // Rays a pixel toward the sun and each light (bridge v18): below 100% render scale with Ray Tracing at Output

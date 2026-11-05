@@ -2441,6 +2441,7 @@ twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 feature_settings::DLSS_MODE_SCALES, 7 Custom
 float below_100_detail_row = 1.f;
+float rays_ao_spot_filter_row = 0.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
@@ -2848,6 +2849,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength, twwarhammer3::taa_dlss::RenderShare());
   rt_settings.ambient_alone = true;  // RTAO never multiplies the game's SSAO.
+  rt_settings.ambient_spot_filter = rays_ao_spot_filter_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
@@ -3269,6 +3271,7 @@ void ConfigureAddon() {
                                              .placed_objects = &placed_objects_row,
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .rays_ao_spot_filter = &rays_ao_spot_filter_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,

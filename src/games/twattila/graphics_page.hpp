@@ -128,6 +128,7 @@ struct Bindings {
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
   float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
+  float* rays_ao_spot_filter = nullptr;  // RTAO's lone dark pixels raised to their neighbours; null: no such row
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   const Texts* texts = &ATTILA_TEXTS;
@@ -761,6 +762,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
     page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
+    if (b.rays_ao_spot_filter != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedAOSpotFilter",
+          .binding = b.rays_ao_spot_filter,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Spot Filter (Experimental)",
+          .section = section,
+          .tooltip = "Lifts single black pixels of ray-traced AO to the shade around them. For black spots, more at low render scales.",
+          .is_visible = rays,
+      });
+    }
     page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
     page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
     page.Add(MoreOptions(section, &more_ao, gtvbao));

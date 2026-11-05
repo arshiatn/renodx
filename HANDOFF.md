@@ -1,5 +1,11 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
+List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
+- [x] A AO and presets (items 18, 19 + 2, 1, 12). Report reports/A.md. Not run in game. WARP warp_tests/sky_wh3 (sky, spot), page dumps A1, A2 (Attila the date only), all targets built.
+      Done: RTAO alone permanent, row gone; Path-Traced AO back in the method slider, Experimental, off, sky from the SH at the camera's place; RT/PT against Attila's listed with reasons, no value changed; Spot Filter row, Experimental, off.
+      Not done: item 12's cause (lone black pixels 2.4x more at 50% in Debug View 2, filter hides them). Why every agent run of batch 3 has SH 0 and GI 0 while ATN's log has SH 1 and GI on: batch 3's ambient numbers are on the other path.
+
 ## WH3 BATCH 3 (from 2026-11-04): fixes, DLSS rows, motion, full RT scene; game runs allowed on replay copies, campaign copy, benchmark
 Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch3/reports/Bn.md. Facts: wh3_batch3/facts.md. Run: test_scripts/run_game.ps1 -Game wh3, proof: wh3_batch3/check_run.py.
 - [x] B0 kit, log fixes, captures. Proven by runs c1-c9, survey (reports/B0.md, facts.md); check_run ok on each but c9_dlss3 (no "Finished exiting" with in-game DLSS) and bm_old (the game's own crash). Harness: tools/tw/all_modes_b0.txt. Helper: build/tw_dlaa_helper76.
