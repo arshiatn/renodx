@@ -2,6 +2,14 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+## v35 (2026-11-05, ATN asked for Ray Reconstruction's unused inputs; renodx-tw-dlaa64.exe helper82, bridge v25: ship them together; nothing here run in game)
+
+Graphics 1 of 2, Upscaling's More Options, with Ray Reconstruction on. All off, at 100% render scale only (below it RR's picture comes after the tone mapper, in another space). None of them helps AO: RR has no AO or shadow input.
+- **Particles Skip the Denoiser (Experimental):** the particles' composite (43606BB8) goes to a layer of its own, the colour stays without them, RR only upscales the layer. For smoke and fire that smear. They lose depth of field's blur. Harness: output = layer + (1 - alpha) x colour, 0.4016 for 0.4 over 0.0022.
+- **Picture Before Particles (Experimental):** RR's guide against ghosting and vanishing particles: the colour copied before the composite, in the colour input's format and square root. Does nothing with the row above. With depth of field on, RR also sees the blur as a difference: use the guide below. Harness: read; the rest of the picture 2.5% brighter.
+- **Depth of Field Guide (Experimental):** the game's depth of field runs before RR's point (fx_depthoffield, then its TAA). Needs RR preset E: other presets ignored it in the harness.
+- Left out: Particle mask (no preset read it, output identical to 5 digits). Diffuse hit distance (RTAO keeps no distance, the Light Bounce's exists only under REBLUR and at its smaller size). Disocclusion mask (no format known, no previous depth kept). Subsurface guide (the game has no such blur).
+
 ## v34 (batch 4, ATN's test of v33; renodx-tw-dlaa64.exe helper81, bridge v24: ship them together; nothing here run in game)
 
 - **Shadow Casters Out of View (was Units Out of View), not run in game:** on with rays' sun shadows, Rays Replace or not. Everything the game's shadow pass draws casts: trees, buildings, rocks, shrubs, props, flags, units. Far billboard trees stay under their own row, off. Placed Objects keep what they've seen until the battle ends, within 6 M triangles and 12288 meshes, not 300 frames; things seen moving 300 frames. Limit: what the camera never saw and the cascades don't reach (log: Cascades' split distances).

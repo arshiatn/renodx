@@ -7,6 +7,10 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
+## v139 (2026-11-05, WH3's v35; built, not run in game; renodx-tw-dlaa64.exe helper82, bridge v25: ship them together; no players' zip)
+
+- Shared helper: Ray Reconstruction takes optional inputs now, sent by WH3 only. Attila sends none, nothing changes here.
+
 ## v138 (2026-11-05, WH3's batch 4; built, not run in game; renodx-tw-dlaa64.exe helper81, bridge v24: ship them together; no players' zip)
 
 - Ray Reconstruction: Ray-Traced AO and Path-Traced AO go through NVIDIA's REBLUR first. RR only ever saw AO multiplied into the colour and is no AO denoiser. Harness, RR without history, 2 rays: RTAO's spread over time 0.0055 to 0.0023 at a wall's foot; Path-Traced AO 0.27 to 0.011. Settled, RTAO gains little. About 0.85 ms and 215 MB more at 4K. Path-Traced AO is darker at a wall's foot (0.74 to 0.57 on the harness's scene), as under the NRD setting. Not run in game.
