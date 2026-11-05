@@ -55,7 +55,9 @@ Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Not done: **DLSS L still 10% darker at 50%** (tooltip says so, M 2.4%, K 0.7%); **Water Motion not proven, stays Experimental, off** (stop rule); replay ends at 6 min: the rest of soaks is the results panel's still scene.
       Not run: night, real fire A/B, Darklands, SDR preset by click, 1440p, Attila (page same).
       New for later: **Close: ATN's RayTracedWaterReflections=1 to 0** (else the patches are back), *.in-use-* 42.
-- [ ] Close
+- [x] Close. 14 addons, helper77 (FSR status after a pause only; rt_core: a test value out), harness tools/tw/all_modes_close.txt 115 of 116 by name, `release_rr` memory flake +32 over 30, 3 of 3 alone; Attila page date only, WH3 page tooltip and date. Runs: close_quit (first fix lost), close_quit2 (file 1, check_run ok), close_last (ATN's ini, stamped v32, check_run ok, 0 events 153). Round report: wh3_batch3/reports/round_report.md. Downloads/twwarhammer3_v32.zip, twattila_v136.zip; no players' zip, tag, Nexus text. v32 installed by hash, ATN's ini end state, copies removed.
+      Review: quit at a mode fixed (the kept value goes in the game's preference at destroy_device: it writes the file a second after, so B4's "saves before" was half true), no scale written with the helper failed or gfx_aa below TAA (read, not run), old Glow and Water values reset once on SettingsRevision (run), sampler log out, viewport hook early return, stale text. Refuted: refusal sticking at a proven size (a resize moves the render size too). Left: RENODX_TW_* env, inert, the kit needs them.
+      Not done: 8 *.in-use-* files pinned by dead helpers until a reboot; SteamAdminStart left alone (ATN's: starts Steam elevated after each logon, breaks game tests until -shutdown, -silent).
 
 ## WH3 BATCH (from 2026-11-03): WH3 gets Attila's layout and features; nobody starts a game
 
