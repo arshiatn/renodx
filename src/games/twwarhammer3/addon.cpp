@@ -48,6 +48,7 @@
 #include "../twattila/water_effects.hpp"
 #include "./building_masks.hpp"
 #include "./cut_out_masks.hpp"
+#include "./device_loss.hpp"
 #include "./object_motion.hpp"
 #include "./resolution_scale.hpp"
 #include "./taa_dlss.hpp"
@@ -3295,7 +3296,11 @@ bool AttachAddon() {
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
   twattila::test_hooks::Install(&settings, false);
 
+  reshade::register_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::BeforeSwapchainMod);
   reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  reshade::register_event<reshade::addon_event::init_device>(twwarhammer3::device_loss::OnInitDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::device_loss::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::present>(twwarhammer3::device_loss::OnPresent);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
@@ -3321,6 +3326,7 @@ bool AttachAddon() {
   twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
+  reshade::register_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::AfterSwapchainMod);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
@@ -3396,7 +3402,12 @@ void DetachAddon() {
   if (!attached) return;
 
   twattila::test_hooks::Uninstall();
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::AfterSwapchainMod);
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::BeforeSwapchainMod);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  reshade::unregister_event<reshade::addon_event::init_device>(twwarhammer3::device_loss::OnInitDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::device_loss::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::present>(twwarhammer3::device_loss::OnPresent);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
