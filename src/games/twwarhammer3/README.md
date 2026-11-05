@@ -6,6 +6,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 - **Quit at a mode: the game's file keeps its own scale, run in game** (quit at Performance: file 1; see Upscaling Mode). A patch that moves the code: the row hides, no mode runs, and the file was never touched.
 - **No upscaler, no scale written:** with the helper failed, `gfx_aa` below TAA or `gfx_dlss` above 0 in the game's file (read at the start), the row writes nothing, and what it wrote goes back. `gfx_dlss` run; the other two read.
+- **Water Clarity and Water Caustics reach battle water and rivers, not run in game:** the shaders in every trace (battle_water, battle_river, polluted too). Clarity scales their absorption; Caustics multiply their bed. Both rows off, the game's own shader runs. The campaign's sea has no depth in its colour: it stays. Test: a river, Clarity 4, Caustics 1, at once on the row.
 - **After a GPU reset, not run in game:** the game no longer hangs making its new swap chain (ClearState + Flush of the lost device; its blt fallback left as it asked; no frame for 90 s closes it). Test WARP swap_loss.
 - **Texture LOD Bias, Effects at Output no longer greyed, not run in game.**
 - **Reflections below 100%, not run in game:** the game's mip chains stop at the picture, under Effects at Output; reflections reach the right and bottom. Test WARP ssr_mips.

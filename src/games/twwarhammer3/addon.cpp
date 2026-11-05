@@ -2507,9 +2507,16 @@ std::vector<twattila::engine_tests::EngineTest> engine_tests;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
 // Water Clarity and Caustics (twattila/water_effects.hpp): the shaders that read g_sea_bed_light_scatter (each one's RDEF: lighting_VS_PS
-// at that slot, offset 160). battle_water, battle_river and the rest don't: their colour is per material. Caustics where one
-// colour sample of the refraction and the normal map's slot were read; the others have their samples under branches.
-constexpr std::array<twattila::water_effects::WaterShader, 10> WATER_SHADERS = {{
+// at that slot, offset 160), and battle_water, battle_river and battle_water_polluted, with their colour per material (material_water).
+// Caustics where one colour sample of the refraction and the normal map's slot were read; the others have their samples under branches.
+// Left out: rigid_campaign_sea (traced: painted colour and a fresnel mix, no depth term), battle_river_noheight, alpha_multiply (no bed).
+constexpr std::array<twattila::water_effects::WaterShader, 16> WATER_SHADERS = {{
+    {.hash = 0x2076D289, .world_input = 2, .refraction_slot = 18, .normal_slot = 15, .material_water = true},  // battle_water (traced)
+    {.hash = 0x281B184D, .world_input = 2, .refraction_slot = 15, .normal_slot = 12, .material_water = true},  // battle_water
+    {.hash = 0x7F46A5A9, .world_input = 2, .refraction_slot = 20, .normal_slot = 15, .material_water = true},  // battle_water_polluted
+    {.hash = 0x429AFE64, .world_input = 2, .refraction_slot = 17, .normal_slot = 12, .material_water = true},  // battle_water_polluted
+    {.hash = 0xDFA2AEA2, .world_input = 2, .refraction_slot = 18, .normal_slot = 15, .material_water = true},  // battle_river (traced)
+    {.hash = 0x9A4DFB07, .world_input = 2, .refraction_slot = 15, .normal_slot = 12, .material_water = true},  // battle_river
     {.hash = 0xE3CA2AAE, .lighting_slot = 3, .world_input = 3, .refraction_slot = 6, .normal_slot = 5},  // fx_waterplane (traced)
     {.hash = 0x598DB0CE, .lighting_slot = 2, .world_input = 3, .refraction_slot = 3, .normal_slot = 2},  // fx_waterplane
     {.hash = 0x928CB5E0, .lighting_slot = 3, .world_input = 3, .refraction_slot = 5, .caustics = false},  // fx_waterplane
@@ -3249,7 +3256,7 @@ void ConfigureAddon() {
       .label = "Water Clarity (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "How far you see into water. 1: the game's; higher: clearer water.\n"
-                 "Not all water takes it: rivers and lakes with a colour of their own stay as they are.",
+                 "The campaign's sea stays as it is.",
       .min = 0.25f,
       .max = 16.f,
       .format = "%.2f",
@@ -3260,8 +3267,7 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Water Caustics (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "Rippling light on the bed under the battle's large water plane. 0: off.\n"
-                 "Not all water takes it: rivers and lakes with a colour of their own stay as they are.",
+      .tooltip = "Rippling light on the bed under battle water and rivers. 0: off.",
       .max = 2.f,
       .format = "%.2f",
   });
@@ -3435,6 +3441,7 @@ bool AttachAddon() {
   }
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   for (const auto& water : WATER_SHADERS) {
     renodx::utils::command_action::Register(
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -3526,6 +3533,7 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(traced_lights::OnDraw);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(aa_target::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::taa_dlss::OnDestroyDevice);

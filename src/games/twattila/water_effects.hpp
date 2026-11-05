@@ -31,6 +31,7 @@
 #include "../../utils/command_action.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/log.hpp"
+#include "../../utils/pipeline.hpp"
 #include "./dxbc.hpp"
 #include "./rt_scene.hpp"
 #include "./view_share.hpp"
@@ -51,6 +52,7 @@ struct WaterShader {
   uint32_t refraction_slot = 0;  // t: the water refraction's output
   bool caustics = true;          // the campaign's world is a twentieth of the battles': a 4 m tile means nothing there
   uint32_t normal_slot = 0;      // t: the normal map, a plain sample of it gives the caustics' sampler
+  bool material_water = false;   // Colour per material, no scatter to raise: swapped at the draw for a patched copy (PatchWaterAbsorption)
 };
 // The game's water shaders, read per game; the addon's table.
 static std::span<const WaterShader> water_shaders;
@@ -74,6 +76,23 @@ static CausticsObjects caustics_objects;
 // The patched water shaders by the game's hash (kept: the game may create them again).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> water_patched;
 static std::mutex water_mutex;
+// material_water: WH3's battle_water and battle_river take their colour from a material buffer, so Clarity scales their exponents
+// instead (b11, x: 1 / clarity). While a row is on their draws run a patched copy; both rows off, the game's own shader runs.
+constexpr UINT WATER_CLARITY_SLOT = 11;
+struct MaterialWater {
+  std::vector<uint8_t> code;
+  ComPtr<ID3D11PixelShader> patched;
+  bool refused = false;
+};
+static std::unordered_map<uint32_t, MaterialWater> material_waters;  // By the game's hash, under water_mutex.
+struct MaterialObjects {
+  ComPtr<ID3D11Device> device;
+  ComPtr<ID3D11Buffer> constants;
+  float written = 0.f;  // The clarity row `constants` has.
+  ComPtr<ID3D11PixelShader> game_shader;
+  ComPtr<ID3D11Buffer> game_constants;
+};
+static MaterialObjects material_objects;
 struct WaterObjects {
   ComPtr<ID3D11Device> device;
   UINT bytes = 0;  // the game's lighting constants' (0: none made)
@@ -159,6 +178,9 @@ inline std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, co
   if ((tokens[added_at] & 0x7FF) == OP_IF) {
     while ((tokens[added_at] & 0x7FF) != OP_ENDIF) added_at += dxbc::Length(tokens, added_at);
     ++added_at;
+  } else if (water.material_water && (tokens[added_at] & 0x7FF) == OP_ENDIF) {
+    // The near water's five samples or the far water's one: the same register either way.
+    ++added_at;
   }
   tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(added_at), added.begin(), added.end());
   // dcl_resource_texture2d (float,float,float,float) t51, before dcl_temps (the declarations come first).
@@ -167,6 +189,63 @@ inline std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, co
   tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(temps_at), declaration.begin(), declaration.end());
   tokens[1] = static_cast<uint32_t>(tokens.size());
   return dxbc::Write(code, program);
+}
+
+// Beer-Lambert in battle_water and battle_river: every exp(x * log2(e)) of absorption x depth, per channel and for the material's
+// opacity. After each `mul rX, rY, l(+-1.442695)`: mul rX, rX, cb11[0].xxxx, which is what looking through 1 / clarity of the depth does.
+inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code) {
+  constexpr uint32_t OP_MUL = 56, OP_DCL_CONSTANT_BUFFER = 89, OP_DCL_TEMPS = 104;
+  constexpr uint32_t LOG2_E = 0x3FB8AA3B;
+  constexpr uint32_t SIGN = 0x80000000;
+  constexpr uint32_t CLARITY_OPERAND = 0x00208006;  // cb[][].xxxx
+  dxbc::Program program = dxbc::Read(code);
+  auto& tokens = program.tokens;
+  if (tokens.empty()) return {};
+  std::vector<uint32_t> patched(tokens.begin(), tokens.begin() + 2);
+  size_t temps_at = 0;
+  int found = 0;
+  for (size_t at = 2; at < tokens.size();) {
+    const size_t length = dxbc::Length(tokens, at);
+    if (length == 0) return {};
+    const uint32_t opcode = tokens[at] & 0x7FF;
+    if (opcode == OP_DCL_TEMPS) temps_at = patched.size();
+    if (opcode == OP_DCL_CONSTANT_BUFFER && tokens[at + 2] == WATER_CLARITY_SLOT) return {};
+    patched.insert(patched.end(), tokens.begin() + static_cast<ptrdiff_t>(at), tokens.begin() + static_cast<ptrdiff_t>(at + length));
+    if (opcode == OP_MUL) {
+      const bool absorption = std::any_of(tokens.begin() + static_cast<ptrdiff_t>(at + 1), tokens.begin() + static_cast<ptrdiff_t>(at + length),
+                                          [](uint32_t token) { return (token & ~SIGN) == LOG2_E; });
+      const size_t destination = dxbc::internal::FirstOperand(tokens, at);
+      if (absorption) {
+        if ((tokens[at] & (1u << 13)) != 0 || (tokens[destination] & 0x001FF003) != 0x00100002) return {};
+        patched.insert(patched.end(), {OP_MUL | (8u << 24), tokens[destination], tokens[destination + 1], 0x00100E46, tokens[destination + 1],
+                                       CLARITY_OPERAND, WATER_CLARITY_SLOT, 0u});
+        ++found;
+      }
+    }
+    at += length;
+  }
+  if (temps_at == 0 || found == 0) return {};
+  const std::array<uint32_t, 4> declaration = {OP_DCL_CONSTANT_BUFFER | (4u << 24), 0x00208E46, WATER_CLARITY_SLOT, 1u};
+  patched.insert(patched.begin() + static_cast<ptrdiff_t>(temps_at), declaration.begin(), declaration.end());
+  patched[1] = static_cast<uint32_t>(patched.size());
+  tokens = std::move(patched);
+  return dxbc::Write(code, program);
+}
+
+// The game's bytes as created, last of all patches (an init callback, the addon registers it where it has material_water shaders).
+inline void OnInitMaterialWater(renodx::utils::pipeline::PipelineInfo* info, uint32_t subobject_count, const reshade::api::pipeline_subobject* subobjects) {
+  for (const auto& identity : info->shader_details) {
+    const auto water = std::ranges::find(water_shaders, identity.shader_hash, &WaterShader::hash);
+    if (water == water_shaders.end() || !water->material_water) continue;
+    for (uint32_t index = 0; index < subobject_count; ++index) {
+      if (subobjects[index].type != reshade::api::pipeline_subobject_type::pixel_shader) continue;
+      const auto* desc = static_cast<const reshade::api::shader_desc*>(subobjects[index].data);
+      if (desc == nullptr || desc->code == nullptr) continue;
+      const auto* bytes = static_cast<const uint8_t*>(desc->code);
+      const std::unique_lock lock(water_mutex);
+      material_waters[water->hash] = {.code = std::vector<uint8_t>(bytes, bytes + desc->code_size)};
+    }
+  }
 }
 
 // The game creates a pipeline: the water shaders with the caustics (renodx keeps their original hash; one the render
@@ -183,7 +262,7 @@ inline bool OnCreateWater(reshade::api::device* device, reshade::api::pipeline_l
     const auto scaled = view_share::OriginalHash(desc->code);
     const uint32_t hash = scaled.value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
     const auto water = std::ranges::find(water_shaders, hash, &WaterShader::hash);
-    if (water == water_shaders.end() || !water->caustics) continue;
+    if (water == water_shaders.end() || !water->caustics || water->material_water) continue;
     const std::unique_lock lock(water_mutex);
     auto [entry, added] = water_patched.try_emplace(hash);
     if (added) {
@@ -241,8 +320,57 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
     }
     native->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, caustics.srv.GetAddressOf());
   }
+  const auto& water = *std::ranges::find(water_shaders, command.matched_shader_hash, &WaterShader::hash);
+  if (water.material_water) {
+    const bool clarity_on = std::abs(water_clarity - 1.f) >= 0.01f;
+    ComPtr<ID3D11PixelShader> patched;
+    auto& material = material_objects;
+    if (clarity_on || caustics_on) {
+      const std::unique_lock lock(water_mutex);
+      if (material.device != device) {
+        const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        material = {.device = device};
+        device->CreateBuffer(&constants_desc, nullptr, material.constants.GetAddressOf());
+        for (auto& [hash, entry] : material_waters) entry = {.code = std::move(entry.code)};
+      }
+      if (const auto entry = material_waters.find(water.hash); entry != material_waters.end()) {
+        if (!entry->second.patched && !entry->second.refused) {
+          std::vector<uint8_t> code = PatchWaterCaustics(entry->second.code, water);
+          if (!code.empty()) code = PatchWaterAbsorption(code);
+          entry->second.refused = code.empty() || FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, entry->second.patched.GetAddressOf()));
+          renodx::utils::log::i(std::format("[Total War] Water: shader {:08X} {}", water.hash, entry->second.refused ? "not as expected, stays the game's." : "patched."));
+        }
+        patched = entry->second.patched;
+      }
+    }
+    if (!patched || !material.constants) {
+      if (caustics_on) {
+        ID3D11ShaderResourceView* no_view = nullptr;
+        native->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, &no_view);
+      }
+      return {};
+    }
+    if (material.written != water_clarity) {
+      material.written = water_clarity;
+      const std::array<float, 4> constants = {1.f / water_clarity, 0.f, 0.f, 0.f};
+      native->UpdateSubresource(material.constants.Get(), 0, nullptr, constants.data(), 0, 0);
+    }
+    native->PSGetShader(material.game_shader.GetAddressOf(), nullptr, nullptr);
+    native->PSGetConstantBuffers(WATER_CLARITY_SLOT, 1, material.game_constants.GetAddressOf());
+    native->PSSetShader(patched.Get(), nullptr, 0);
+    native->PSSetConstantBuffers(WATER_CLARITY_SLOT, 1, material.constants.GetAddressOf());
+    return {.finalize_callback = [](Context& post, const void*) {
+      auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+      post_native->PSSetShader(material_objects.game_shader.Get(), nullptr, 0);
+      post_native->PSSetConstantBuffers(WATER_CLARITY_SLOT, 1, material_objects.game_constants.GetAddressOf());
+      material_objects.game_shader.Reset();
+      material_objects.game_constants.Reset();
+      ID3D11ShaderResourceView* no_view = nullptr;
+      post_native->PSSetShaderResources(WATER_CAUSTICS_SLOT, 1, &no_view);
+    }};
+  }
   // Water Clarity.
-  const UINT lighting_slot = std::ranges::find(water_shaders, command.matched_shader_hash, &WaterShader::hash)->lighting_slot;
+  const UINT lighting_slot = water.lighting_slot;
   ComPtr<ID3D11Buffer> game_lighting;
   if (std::abs(water_clarity - 1.f) >= 0.01f) native->PSGetConstantBuffers(lighting_slot, 1, game_lighting.GetAddressOf());
   D3D11_BUFFER_DESC game_desc = {};
