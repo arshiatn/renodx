@@ -75,6 +75,8 @@ struct SunDraw {
   uint32_t ambient_final_sites = 0;
   // For its light_bounce.hlsli's BounceDiffuseAlbedo, where a game's sun shaders differ.
   float diffuse_rule = 0.f;
+  // Warhammer III: its t_world_spherical_harmonics, for the sky rt_sun builds (UINT_MAX: rt_sun reads no texture).
+  UINT sky_harmonics_slot = UINT_MAX;
 };
 
 // The Light Bounce sliders, as the addon's settings hold them (strength 0: off).

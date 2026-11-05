@@ -539,8 +539,19 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
   native->CSSetUnorderedAccessViews(0, 1, &sun, &KEEP_COUNT);
   ID3D11Buffer* constants[] = {lighting.Get(), runtime.objects.sun_constants.Get()};
   native->CSSetConstantBuffers(0, 2, constants);
+  ComPtr<ID3D11Buffer> game_third;
+  if (draw.sky_harmonics_slot != UINT_MAX) {
+    ComPtr<ID3D11ShaderResourceView> harmonics;
+    native->PSGetShaderResources(draw.sky_harmonics_slot, 1, harmonics.GetAddressOf());
+    native->CSSetShaderResources(0, 1, harmonics.GetAddressOf());
+    ComPtr<ID3D11Buffer> camera;
+    native->PSGetConstantBuffers(draw.camera_slot, 1, camera.GetAddressOf());
+    native->CSGetConstantBuffers(2, 1, game_third.GetAddressOf());
+    native->CSSetConstantBuffers(2, 1, camera.GetAddressOf());
+  }
   native->Dispatch(1, 1, 1);
   native->CSSetConstantBuffers(1, 1, game_second.GetAddressOf());
+  if (draw.sky_harmonics_slot != UINT_MAX) native->CSSetConstantBuffers(2, 1, game_third.GetAddressOf());
   runtime.sun_frame = runtime.frame;
   return {};
 };

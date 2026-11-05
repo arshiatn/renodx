@@ -2443,7 +2443,6 @@ float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 featur
 float below_100_detail_row = 1.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
-float rays_alone_ao_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -2468,6 +2467,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
                   "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.",
+    .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
     .water_reflections_label = "Water Reflections (Experimental)",
@@ -2578,13 +2578,13 @@ constexpr std::array<twattila::frame_history::CameraRun, 7> CAMERA_LAYOUT = {{
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws, one shader for every model (g_skin_enable), the camera at b1,
 // the G-buffer's channels 1-4 from their first slot.
 constexpr std::array<twattila::light_bounce::SunDraw, 7> LIGHT_BOUNCE_DRAWS = {{
-    {.shader_hash = 0x18A84893, .standard = true, .gbuffer_slot = 10, .camera_slot = 1, .lighting_slot = 4, .camera_layout = CAMERA_LAYOUT, .ao_slot = 4, .ssao_constants_slot = 3, .ambient_final_sites = 2},
-    {.shader_hash = 0x24F97B7B, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f},
-    {.shader_hash = 0x76A707E5, .standard = true, .gbuffer_slot = 6, .camera_slot = 1, .camera_layout = CAMERA_LAYOUT, .ambient_final_sites = 1, .diffuse_rule = 2.f},
-    {.shader_hash = 0x9EAD8951, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f},
-    {.shader_hash = 0xCCEF2C1E, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f},
-    {.shader_hash = 0xF0E2D5EC, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f},
-    {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 2},
+    {.shader_hash = 0x18A84893, .standard = true, .gbuffer_slot = 10, .camera_slot = 1, .lighting_slot = 4, .camera_layout = CAMERA_LAYOUT, .ao_slot = 4, .ssao_constants_slot = 3, .ambient_final_sites = 2, .sky_harmonics_slot = 5},
+    {.shader_hash = 0x24F97B7B, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2},
+    {.shader_hash = 0x76A707E5, .standard = true, .gbuffer_slot = 6, .camera_slot = 1, .camera_layout = CAMERA_LAYOUT, .ambient_final_sites = 1, .diffuse_rule = 2.f, .sky_harmonics_slot = 1},
+    {.shader_hash = 0x9EAD8951, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2},
+    {.shader_hash = 0xCCEF2C1E, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2},
+    {.shader_hash = 0xF0E2D5EC, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2},
+    {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 2, .sky_harmonics_slot = 2},
 }};
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the G-buffer's opaque meshes as the game's own vertex shaders draw them
@@ -2824,8 +2824,6 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (rt_sliders.ambient_occlusion != 0.f && shader_injection.ssao_mode >= 1.f) {
     renodx::utils::settings::UpdateSettings({{"ssao_mode", 0.f}});
   }
-  // A setup saved with Path-Traced AO: no row can undo it here (has_path_ambient).
-  if (rt_sliders.path_ambient != 0.f) renodx::utils::settings::UpdateSettings({{"RayTracedPathAmbient", 0.f}});
 #if FIX_BLOOM
   // A third-party DLSS mod runs its own upscale: Upscaling Mode leaves it alone.
   const bool third_party_upscale = bloom_fix::upscaled.load(std::memory_order_relaxed);
@@ -2849,7 +2847,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                        {back_buffer.texture.width, back_buffer.texture.height});
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength, twwarhammer3::taa_dlss::RenderShare());
-  rt_settings.ambient_alone = rays_alone_ao_row != 0.f;
+  rt_settings.ambient_alone = true;  // RTAO never multiplies the game's SSAO.
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
@@ -3255,8 +3253,7 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout, then Settings Mode's pages. The game owns its scale; its ambient occlusion stays under ray-traced AO
-  // yet; smoke and foliage aren't known here. Its march is already hierarchical: no FidelityFX SSSR. No Path-Traced AO: with spherical harmonics on the
-  // cube isn't the sky (rt_sun), so the paths have no sky of the game's to bring.
+  // yet; smoke and foliage aren't known here. Its march is already hierarchical: no FidelityFX SSSR. Path-Traced AO stays a choice, not the preset's: unproven in game.
   // Water keeps the game's march by default (reflections::OnMarch).
   twattila::rt_scene::internal::water_pass = true;
   for (auto* setting : settings) {
@@ -3272,14 +3269,13 @@ void ConfigureAddon() {
                                              .placed_objects = &placed_objects_row,
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
-                                             .rays_alone_ao = &rays_alone_ao_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
                                              .has_scale_rows = false,
                                              .has_object_motion = true,
                                              .has_foliage_light = false,
-                                             .has_path_ambient = false,
+                                             .rays_preset_path_ambient = false,
                                              .rays_preset_caustics = false,
                                              .rays_preset_water_reflections = false,
                                              .lights_own_row = true,
