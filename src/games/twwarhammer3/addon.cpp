@@ -845,6 +845,17 @@ Copy march;
 Copy depth_full;
 Copy blur_x_full;
 Copy blur_y_full;
+// The mip chains of the radiance and of t_hit know no viewport: below 100% their levels mix in the target's unused part,
+// and the resolve's coarse levels lose the reflections along the picture's right and bottom (OnMipStep).
+Copy mip_down;
+Copy mip_blur_x;
+Copy mip_blur_y;
+enum class MipChain : uint8_t { NONE, RADIANCE, HIT };
+MipChain mip_chain = MipChain::NONE;
+std::array<float, 2> radiance_share = {};
+std::array<float, 2> hit_share = {};
+Microsoft::WRL::ComPtr<ID3D11Buffer> share_buffer;  // b12 of the mip copies
+std::array<float, 4> share_written = {};
 Microsoft::WRL::ComPtr<ID3D11ComputeShader> game_shader;
 Microsoft::WRL::ComPtr<ID3D11Buffer> flags_buffer;  // b10 of the resolve and b1 of the march: {0, this frame's sun, all surfaces, one to one}
 std::array<uint32_t, 4> flags_written = {};
@@ -886,6 +897,7 @@ bool RaysOn() {
 
 bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
   one_to_one = false;
+  mip_chain = MipChain::NONE;
   const uint32_t render_width = twattila::frame_history::render_width.load(std::memory_order_relaxed);
   const bool effects = render_width != 0 && twattila::frame_history::effect_share.load(std::memory_order_relaxed) < 1.f;
   if (!RaysOn() && !effects) return true;
@@ -907,6 +919,14 @@ bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
       one_to_one_logged = true;
       renodx::utils::log::i(std::format("[Warhammer III] Reflections: the march at one to one, render width {} in a target of {}.", render_width, desc.Width));
     }
+    if (desc.Width != 0) {
+      const float render_height = static_cast<float>(twattila::frame_history::render_height.load(std::memory_order_relaxed));
+      // The radiance's target has the display's size, twice this half-display one; t_hit has this size, filled 1:1 or at half.
+      radiance_share = {static_cast<float>(render_width) / static_cast<float>(desc.Width * 2), render_height / static_cast<float>(desc.Height * 2)};
+      hit_share = radiance_share;
+      if (one_to_one) hit_share = {radiance_share[0] * 2.f, radiance_share[1] * 2.f};
+      mip_chain = MipChain::RADIANCE;
+    }
   }
   return true;
 }
@@ -914,6 +934,7 @@ bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
 // The first of the pass's dispatches: the rays traced here, once a frame, before the G-buffer's slots change. False: left out.
 bool OnMarch(reshade::api::command_list* cmd_list) {
   pass = Pass::GAME;
+  if (mip_chain == MipChain::RADIANCE) mip_chain = MipChain::HIT;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return true;
@@ -994,6 +1015,39 @@ bool OnBlur(reshade::api::command_list* cmd_list, Copy* copy) {
   return true;
 }
 
+bool OnMipStep(reshade::api::command_list* cmd_list, Copy* copy) {
+  if (mip_chain == MipChain::NONE) return true;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return true;
+  const auto& share = (mip_chain == MipChain::HIT) ? hit_share : radiance_share;
+  const std::array<float, 4> values = {share[0], share[1], 0.f, 0.f};
+  if (!share_buffer) {
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(values), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    if (FAILED(device->CreateBuffer(&desc, nullptr, share_buffer.GetAddressOf()))) return true;
+    share_written = {};
+  }
+  if (values != share_written) {
+    share_written = values;
+    native->UpdateSubresource(share_buffer.Get(), 0, nullptr, values.data(), 0, 0);
+  }
+  if (Swap(native, copy)) native->CSSetConstantBuffers(12, 1, share_buffer.GetAddressOf());
+  return true;
+}
+
+void OnMipStepDone(reshade::api::command_list* cmd_list) {
+  if (!game_shader) return;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native != nullptr) {
+    ID3D11Buffer* none = nullptr;
+    native->CSSetConstantBuffers(12, 1, &none);
+  }
+  SwapBack(cmd_list);
+}
+
 bool OnResolve(reshade::api::command_list* cmd_list) {
   if (pass == Pass::GAME) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -1010,6 +1064,7 @@ bool OnResolve(reshade::api::command_list* cmd_list) {
 
 void OnResolved(reshade::api::command_list* cmd_list) {
   main_depth.Reset();
+  mip_chain = MipChain::NONE;
   one_to_one = false;
   if (pass == Pass::GAME) return;
   pass = Pass::GAME;
@@ -1027,6 +1082,10 @@ void OnDestroyDevice(reshade::api::device*) {
   for (Copy* copy : {&resolve, &march, &depth_full, &blur_x_full, &blur_y_full}) copy->shader.Reset();
   game_shader.Reset();
   flags_buffer.Reset();
+  share_buffer.Reset();
+  mip_down.shader.Reset();
+  mip_blur_x.shader.Reset();
+  mip_blur_y.shader.Reset();
   game_b10.Reset();
 }
 
@@ -1352,6 +1411,12 @@ void BuildRuntimeData() {
   reflections::depth_full.code = __ssr_game_depth_full;
   reflections::blur_x_full.code = __ssr_game_blur_x_full;
   reflections::blur_y_full.code = __ssr_game_blur_y_full;
+  reflections::mip_down.code = __ssr_mip_down;
+  reflections::mip_blur_x.code = __ssr_mip_blur_x;
+  reflections::mip_blur_y.code = __ssr_mip_blur_y;
+  custom_shaders[0x79F74068] = {.crc32 = 0x79F74068, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_down); }, .on_drawn = &reflections::OnMipStepDone};
+  custom_shaders[0x66C301FF] = {.crc32 = 0x66C301FF, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_blur_x); }, .on_drawn = &reflections::OnMipStepDone};
+  custom_shaders[0xFB547085] = {.crc32 = 0xFB547085, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_blur_y); }, .on_drawn = &reflections::OnMipStepDone};
   custom_shaders[0x89AF6FF5] = {.crc32 = 0x89AF6FF5, .on_inject = not_injected, .on_draw = &reflections::OnResolve, .on_drawn = &reflections::OnResolved};
   custom_shaders[0x0ED84C3D] = {.crc32 = 0x0ED84C3D, .on_inject = not_injected, .on_draw = &reflections::OnHierarchicalDepth, .on_drawn = &reflections::SwapBack};
   custom_shaders[0xEF6B7767] = {.crc32 = 0xEF6B7767, .on_inject = not_injected, .on_draw = &reflections::OnMarch, .on_drawn = &reflections::OnMarched};

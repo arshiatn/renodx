@@ -255,7 +255,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     sincos(r8.y, r12.x, r13.x);
     r8.y = r12.x / r13.x;
     r8.y = r8.y * -r7.w;
-    r8.y = g_screen_size.x * r8.y;
+    r8.y = ((rt_reflection_flags.w != 0u) ? 2.f * g_viewport_dimensions.x : g_screen_size.x) * r8.y;  // 1:1: the same width on screen at any scale
     r8.y = max(1, r8.y);
     r8.y = log2(r8.y);
     r8.y = min(7, r8.y);
@@ -266,7 +266,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     sincos(r8.z, r12.x, r13.x);
     r8.z = r12.x / r13.x;
     r8.z = r8.z * -r8.w;
-    r8.z = g_screen_size.x * r8.z;
+    r8.z = ((rt_reflection_flags.w != 0u) ? g_viewport_dimensions.x : g_screen_size.x) * r8.z;
     r8.z = max(1, r8.z);
     r8.z = log2(r8.z);
     r8.z = min(5, r8.z);
