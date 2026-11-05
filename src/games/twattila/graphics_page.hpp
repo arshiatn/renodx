@@ -919,6 +919,21 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .labels = {"Built-in", "NRD"},
         .is_visible = [upscaling, b] { return upscaling() && !(b.aa->method == 5.f && b.aa->ray_reconstruction != 0.f); },
     });
+    page.Add(new Setting{
+        .key = "RayTracedAoReblur",
+        .binding = &b.rt->ao_reblur,
+        .value_type = SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "AO under Ray Reconstruction",
+        .section = section,
+        .tooltip = "Light History: the AO keeps a little of its last frames, Ray Reconstruction cleans the rest.\n"
+                   "REBLUR: NVIDIA's denoiser cleans it first: steadier when moving, uses more memory, can darken corners.",
+        .labels = {"Light History", "REBLUR"},
+        .is_visible = [upscaling, b] {
+          return upscaling() && b.aa->method == 5.f && b.aa->ray_reconstruction != 0.f
+                 && (b.rt->ambient_occlusion != 0.f || (b.rt->path_ambient != 0.f && b.rt->light_bounce == 2.f));
+        },
+    });
     page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = b.texts->fog_shadows_label, .tooltip = b.texts->fog_shadows_tooltip});
     page.Add(Note("Needs an upscaler (Anti-Aliasing above).", section, MORE_TINT, no_upscaler));
     page.Add(MoreOptions(section, &more_rt, upscaling));

@@ -104,6 +104,7 @@ struct Sliders {
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
   float smoke_quality = 1.f;
   float denoiser = 0.f;  // Ray Tracing Denoiser (Attila's page): Built-in, NRD
+  float ao_reblur = 0.f;  // AO under Ray Reconstruction: Light History, REBLUR
   float light_bounce = 0.f;  // the Light Bounce's tracer: 0 its own (screen space), 1 rays, 2 paths
   float light_bounce_rays = 4.f;
   float light_bounce_range = 10.f;
@@ -189,6 +190,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .smoke_shadows = sliders.smoke_shadows != 0.f && sliders.sun_shadows != 0.f && dlaa && internal::smoke_shadows_installed,
       .smoke_quality = static_cast<uint32_t>(sliders.smoke_quality),
       .nrd = sliders.denoiser != 0.f,
+      .ao_reblur = sliders.ao_reblur != 0.f,
       .shadows_only = sliders.sun_shadows != 0.f && dlaa,
       .debug_view = static_cast<uint32_t>(sliders.debug_view),
       .scene_test = ((sliders.debug_view != 0.f) ? static_cast<uint32_t>(sliders.scene_test) : 0u),

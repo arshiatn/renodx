@@ -3,6 +3,7 @@
 ## WH3 BATCH 5 (from 2026-11-05): ATN said go; plan tools/tw/wh3_batch5/plan.md, his answers at the end of atn_notes.md, reports wh3_batch5/reports
 - [x] P1 Particle Trails: flags only where the moment left the range of the texels around last frame's place (a moment texel = 2 render px, point copied); row still Experimental, off. WARP warp_tests/smear_wh3. Not run in game.
       Not done: a one-texel blade that comes into coverage still flags (120 of 120 in the test), going out doesn't; puffs under 2 px a frame keep trails, at 4 px a frame only the inner texel flags (72 of 320 pixels).
+- [x] P2 AO row: AO under Ray Reconstruction, Light History (default, v135's way) / REBLUR, both games, helper83, bridge v26 (RT_AO_REBLUR). Harness wh3_batch5/p2_ao_runs.sh, reports/p2_ao_runs.txt: same numbers as helper78 and 79. Not run in game.
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.

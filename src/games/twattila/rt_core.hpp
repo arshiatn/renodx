@@ -143,6 +143,7 @@ struct Settings {
   bool smoke_shadows = false;
   uint32_t smoke_quality = 1;  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT; 3, Ultra: High's rays, more room)
   bool nrd = false;            // Ray Tracing Denoiser: NRD without Ray Reconstruction (dlaa_bridge.h RT_NRD)
+  bool ao_reblur = false;      // AO under Ray Reconstruction: REBLUR, not the history (dlaa_bridge.h RT_AO_REBLUR)
   // The lit particles streamed out with no ray tracing (smoke_map.hpp: any GPU, no helper).
   bool stream_particles = false;
   // The game's sun shadow map gets no casters (InstallShadowsOnly; with the ray-traced sun shadows): the rays alone cast.
@@ -2251,6 +2252,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.light_importance ? dlaa_bridge::RT_LIGHT_IMPORTANCE : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | ((runtime.settings.nrd && !dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_NRD : 0u)
+               | ((runtime.settings.ao_reblur && dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_AO_REBLUR : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)
@@ -2776,8 +2778,8 @@ inline void Update(const Settings& settings) {
   if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + 3000;
   runtime.settings = settings;
   const bool nrd = settings.nrd && !dlaa_bridge::bridge.reconstructing;
-  // Path-Traced AO is the Light Bounce's light: under Ray Reconstruction REBLUR cleans it too, as the helper does RTAO.
-  const bool nrd_path_ambient = dlaa_bridge::bridge.reconstructing && settings.path_tracing && settings.path_ambient;
+  // Path-Traced AO is the Light Bounce's light: with AO under Ray Reconstruction at REBLUR it cleans that too, as RTAO.
+  const bool nrd_path_ambient = settings.ao_reblur && dlaa_bridge::bridge.reconstructing && settings.path_tracing && settings.path_ambient;
   dlaa_bridge::bridge.nrd_ask_bounce = (nrd || nrd_path_ambient) && settings.light_bounce;
   dlaa_bridge::bridge.nrd_ask_reflections = nrd && settings.reflections;
   const uint32_t nrd_off = (dlaa_bridge::bridge.shared != nullptr) ? dlaa_bridge::bridge.shared->rt_nrd_off : 0u;

@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 25;
+constexpr uint32_t VERSION = 26;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -186,6 +186,9 @@ constexpr uint32_t RT_SMOKE_QUALITY_SHIFT = 19;
 // ray toward a point of the sun's disk, denoised by NVIDIA's NRD (SIGMA) instead of the rays' soft-shadow filter; the
 // ambient visibility denoised by its REBLUR instead of the helper's history (the addon then leaves its AO filter out).
 constexpr uint32_t RT_NRD = 1u << 21;
+// AO under Ray Reconstruction at REBLUR (v26, with RT_RECONSTRUCTED): the ambient visibility denoised by REBLUR instead of the
+// history; the sun stays RR's. Helpers before 83 ignore it. (Bits 22, 23: the helper's to its shaders.)
+constexpr uint32_t RT_AO_REBLUR = 1u << 24;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
