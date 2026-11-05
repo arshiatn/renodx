@@ -862,10 +862,12 @@ Copy depth_full;
 Copy blur_x_full;
 Copy blur_y_full;
 // The mip chains of the radiance and of t_hit know no viewport: below 100% their levels mix in the target's unused part,
-// and the resolve's coarse levels lose the reflections along the picture's right and bottom (OnMipStep).
+// and the resolve's coarse levels lose the reflections along the picture's right and bottom (OnMipStep). The march's hierarchical
+// depth the same: its cells on the picture's edge took depths from the unused part.
 Copy mip_down;
 Copy mip_blur_x;
 Copy mip_blur_y;
+Copy depth_step;
 // The GI voxels' relevance and the shadow blur map a screen uv as if the picture filled its texture (Experimental row).
 float scale_fix_row = 0.f;
 Copy gi_relevance;
@@ -1035,12 +1037,13 @@ bool OnBlur(reshade::api::command_list* cmd_list, Copy* copy) {
   return true;
 }
 
-bool OnMipStep(reshade::api::command_list* cmd_list, Copy* copy) {
+// `depth_levels`: the hierarchical depth's steps (CB0A1AF6, after 0ED84C3D, before the march), t_hit's target and share.
+bool OnMipStep(reshade::api::command_list* cmd_list, Copy* copy, bool depth_levels = false) {
   if (mip_chain == MipChain::NONE) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return true;
-  const auto& share = (mip_chain == MipChain::HIT) ? hit_share : radiance_share;
+  const auto& share = (depth_levels || mip_chain == MipChain::HIT) ? hit_share : radiance_share;
   const std::array<float, 4> values = {share[0], share[1], 0.f, 0.f};
   if (!share_buffer) {
     Microsoft::WRL::ComPtr<ID3D11Device> device;
@@ -1115,6 +1118,7 @@ void OnDestroyDevice(reshade::api::device*) {
   mip_down.shader.Reset();
   mip_blur_x.shader.Reset();
   mip_blur_y.shader.Reset();
+  depth_step.shader.Reset();
   gi_relevance.shader.Reset();
   shadow_blur.shader.Reset();
   game_b10.Reset();
@@ -1478,6 +1482,7 @@ void BuildRuntimeData() {
   reflections::mip_down.code = __ssr_mip_down;
   reflections::mip_blur_x.code = __ssr_mip_blur_x;
   reflections::mip_blur_y.code = __ssr_mip_blur_y;
+  reflections::depth_step.code = __ssr_depth_step;
   reflections::gi_relevance.code = __gi_relevance_scaled;
   reflections::shadow_blur.code = __shadow_blur_scaled;
   custom_shaders[0x1810C89D] = {.crc32 = 0x1810C89D, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnScaleFix(cmd_list, &reflections::gi_relevance); }, .on_drawn = &reflections::SwapBack};
@@ -1485,6 +1490,7 @@ void BuildRuntimeData() {
   custom_shaders[0x79F74068] = {.crc32 = 0x79F74068, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_down); }, .on_drawn = &reflections::OnMipStepDone};
   custom_shaders[0x66C301FF] = {.crc32 = 0x66C301FF, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_blur_x); }, .on_drawn = &reflections::OnMipStepDone};
   custom_shaders[0xFB547085] = {.crc32 = 0xFB547085, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_blur_y); }, .on_drawn = &reflections::OnMipStepDone};
+  custom_shaders[0xCB0A1AF6] = {.crc32 = 0xCB0A1AF6, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::depth_step, true); }, .on_drawn = &reflections::OnMipStepDone};
   custom_shaders[0x89AF6FF5] = {.crc32 = 0x89AF6FF5, .on_inject = not_injected, .on_draw = &reflections::OnResolve, .on_drawn = &reflections::OnResolved};
   custom_shaders[0x0ED84C3D] = {.crc32 = 0x0ED84C3D, .on_inject = not_injected, .on_draw = &reflections::OnHierarchicalDepth, .on_drawn = &reflections::SwapBack};
   custom_shaders[0xEF6B7767] = {.crc32 = 0xEF6B7767, .on_inject = not_injected, .on_draw = &reflections::OnMarch, .on_drawn = &reflections::OnMarched};

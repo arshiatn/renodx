@@ -34,6 +34,7 @@
       Row Smooth Banner Shadows (RayTracedSheetsUnselfed, Experimental, off, WH3): cloth and sails trace from the camera's side, own triangles within 3 m passed (RT_SHEETS_UNSELFED). Harness HARNESS_SAIL_FOLDS: folded sheet 67.7 % dark off, 0.0 % on, a solid card's shadow on it 96.6 %. Two unit cut-outs added (AF697DAE, F2BC0D72: base alpha beside the dither, the script skipped them). Gap list reports/p8_gaps.txt.
       Not done: 1405BFB4 (fx_rigidtextureblend unit parts: 8 layer masks by per-draw weights, level C); 74 dump-only base-alpha cut-outs (level B, reports/p8_base_alpha_scan.txt); dissolve shaders; Attila has no row (same trace code); probe's cost unmeasured; 2-4 rays a pixel not proven (test folds finer than its pixels).
       14 targets built, page dumps b5p8 (WH3 the row, Attila the date only), all_modes on helper88 133 of 134 (release_rr: the memory flake, 1 of 2 alone passes; 6 new cloth_folds modes pass).
+- [ ] P9 Scaling audit's rest, Shadow Map Size (WIP). Hi-Z step copy ssr_depth_step (CB0A1AF6) in the SSR scale chain; WARP warp_tests/scale_copies. Not run in game.
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
