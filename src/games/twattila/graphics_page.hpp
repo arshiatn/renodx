@@ -128,6 +128,9 @@ struct Bindings {
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
   float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
+  float* rays_units_out_of_view = nullptr;  // Under rays_replace_maps: units from the shadow maps' draws; null: no such row
+  float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
+  float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   float* rays_ao_spot_filter = nullptr;  // RTAO's lone dark pixels raised to their neighbours; null: no such row
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
@@ -722,12 +725,49 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .key = "RayTracedReplaceShadowMaps",
           .binding = b.rays_replace_maps,
           .value_type = SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Rays Replace Shadow Maps (Experimental)",
+          .default_value = 1.f,
+          .label = "Rays Replace Shadow Maps",
           .section = section,
           .tooltip = "The sun's shadows from rays alone, so Softness shows in full. Smoke, clouds and hills keep the game's.\n"
-                     "A unit off screen, such as a flying dragon, loses its shadow.\n"
                      "Off: the rays' shadows on top of the game's shadow maps and contact shadows.",
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_units_out_of_view != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedUnitsOutOfView",
+          .binding = b.rays_units_out_of_view,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Units Out of View (Experimental)",
+          .section = section,
+          .tooltip = "With Rays Replace Shadow Maps: units behind the camera keep their shadows.",
+          .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_skip_cascade_trees != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedSkipCascadeTrees",
+          .binding = b.rays_skip_cascade_trees,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Skip Trees in Shadow Maps (Experimental)",
+          .section = section,
+          .tooltip = "With Rays Replace Shadow Maps: faster in forests. Fog loses the trees' shadows.",
+          .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_banner_light != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedBannerLight",
+          .binding = b.rays_banner_light,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Light Through All Banners (Experimental)",
+          .section = section,
+          .tooltip = "Every unit banner lets some sunlight through, as thin cloth.",
           .is_visible = more_rays,
       });
     }

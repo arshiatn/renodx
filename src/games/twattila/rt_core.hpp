@@ -161,6 +161,8 @@ struct Settings {
   bool sprite_shadows = false;
   bool far_tree_shadows = false;
   bool terrain_outside_view = false;
+  // Units out of the view from the shadow maps' draws (SceneShader::cascade_keep).
+  bool casters_out_of_view = false;
 
   bool operator==(const Settings&) const = default;
 };
@@ -204,6 +206,7 @@ struct SceneShader {
   bool foliage = false;
   bool grass = false;  // within the grass's share (half the helper's alpha-tested corners)
   bool thin = false;   // cloth and sails (RT_THIN)
+  const float* thin_row = nullptr;  // thin only with this row on (Warhammer III's banners among other unit parts)
   bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at t0
   bool far_tree = false;    // a far tree's billboard (with sun_facing)
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
@@ -216,6 +219,10 @@ struct SceneShader {
   std::span<const uint8_t> tessellated_keep;
   // A hull shader taking the draw's control points that keeps only the patches out of the view (Settings::terrain_outside_view).
   std::span<const uint8_t> tessellated_outside;
+  // A vertex shader of the game's shadow pass: units the main pass culled still cast from behind the camera. Its draws into the
+  // cascades (Settings::casters_out_of_view) are streamed out through this geometry shader, with the main view's matrix at its
+  // cb0[10-13]; it collapses what the main pass has. Their count stays, so never compact.
+  std::span<const uint8_t> cascade_keep;
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
@@ -325,6 +332,7 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
+  ComPtr<ID3D11Buffer> cascade_camera;  // SceneShader::cascade_keep's cb0: the main view's matrix at [10-13]
   ComPtr<ID3D11Buffer> captured;  // stream output: world positions, three per triangle
   ComPtr<ID3D11ShaderResourceView> captured_srv;
   ComPtr<ID3D11Buffer> captured_uv;  // the game's own shaders' foliage UVs, at their vertices' places
@@ -481,6 +489,9 @@ struct Runtime {
   // keys in the scene (the frame they were last drawn).
   std::vector<dlaa_bridge::RtCapture> captures;
   std::unordered_set<uint64_t> captured_keys;
+  std::array<float, 16> main_view_projection = {};  // from this frame's main-view captures, for the cascades' (they come later)
+  uint64_t main_view_frame = 0;
+  uint64_t cascade_camera_frame = 0;
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
   uint32_t world_vertices = WORLD_BASE;  // their end in the captured buffer
@@ -1024,12 +1035,15 @@ void Capture(Context& command, const SceneShader& shader) {
   // G-buffer draw alone: with both, the share paid twice, and past it an instance hidden by one (its swaying copy traced)
   // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera). Cloth and sails
   // too, should the game prefill them: their texels paid twice for one sheet.
-  if ((shader.foliage && !shader.rows_shader.empty()) || shader.thin) {
+  const bool thin = shader.thin || (shader.thin_row != nullptr && *shader.thin_row != 0.f);
+  if ((shader.foliage && !shader.rows_shader.empty()) || thin) {
     ComPtr<ID3D11RenderTargetView> colour_target;
     native->OMGetRenderTargets(1, colour_target.GetAddressOf(), nullptr);
     if (!colour_target) return;
   }
   if (shader.sun_facing && !(shader.far_tree ? runtime.settings.far_tree_shadows : runtime.settings.sprite_shadows)) return;
+  const bool cascade_draw = !shader.cascade_keep.empty();
+  if (cascade_draw && !runtime.settings.casters_out_of_view) return;
   const auto& arguments = command.arguments;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   // A placed draw (a shader with a record version, v14: rigid objects, tree branches and leaves): its BLAS keyed by its
@@ -1216,7 +1230,7 @@ void Capture(Context& command, const SceneShader& shader) {
   const bool compactable = INDEXED
                            && (placed ? (shader.foliage && !shader.capture_shader.empty() && !shader.still && !(shader.grass && !runtime.settings.grass_sway))
                                       : dynamic)
-                           && !shader.sun_facing && !shader.tessellated && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
+                           && !shader.sun_facing && !shader.tessellated && !cascade_draw && index_buffer != nullptr && dlaa_bridge::CompactState() != 0;
   uint64_t set_key = 14695981039346656037ull;
   ComPtr<ID3D11Buffer> compact_indices;
   if constexpr (INDEXED) {
@@ -1242,7 +1256,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // turn dropped the old level up to 3 frames before the new one's turn (ATN: shadows gone and back at each change).
   bool place = false;
   size_t full_share = SHARE_NAMES.size();  // the first of its shares that is full (none: their count)
-  const bool unit = shader.dynamic && !shader.grass && !shader.thin && !shader.tessellated;  // skinned soldiers and horses
+  const bool unit = shader.dynamic && !shader.grass && !thin && !shader.tessellated;  // skinned soldiers and horses
   // Compact (v16): its mesh's blocks in place of its triangles, once its set is made and can go with this frame's trace;
   // what it takes of the vertex texture and the helper's frame. A placed draw of leaves sways (`sway`): its blocks besides
   // its rows, within the trees' share.
@@ -1346,17 +1360,20 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   // The main view (not the UI's small 3D views, whose models stand elsewhere in the world): its camera and its depth at
   // the display's size, single-sampled.
-  if (host.main_view != nullptr && !host.main_view(native)) return;
+  if (!cascade_draw && host.main_view != nullptr && !host.main_view(native)) return;
   ComPtr<ID3D11DepthStencilView> depth_view;
   native->OMGetRenderTargets(0, nullptr, depth_view.GetAddressOf());
   Camera camera;
   if (!depth_view) return;
-  if (host.capture_camera != nullptr) {
-    if (!host.capture_camera(native, &camera)) return;
-  } else {
-    ComPtr<ID3D11Buffer> camera_buffer;
-    native->VSGetConstantBuffers(host.camera_slot, 1, camera_buffer.GetAddressOf());
-    if (!camera_buffer || !host.camera(camera_buffer.Get(), &camera)) return;
+  // A cascade's draw takes the main view's matrix from this frame's main-view captures, below.
+  if (!cascade_draw) {
+    if (host.capture_camera != nullptr) {
+      if (!host.capture_camera(native, &camera)) return;
+    } else {
+      ComPtr<ID3D11Buffer> camera_buffer;
+      native->VSGetConstantBuffers(host.camera_slot, 1, camera_buffer.GetAddressOf());
+      if (!camera_buffer || !host.camera(camera_buffer.Get(), &camera)) return;
+    }
   }
   ComPtr<ID3D11Resource> depth_resource;
   depth_view->GetResource(depth_resource.GetAddressOf());
@@ -1364,11 +1381,20 @@ void Capture(Context& command, const SceneShader& shader) {
   D3D11_TEXTURE2D_DESC depth_desc = {};
   if (FAILED(depth_resource.As(&depth_texture))) return;
   depth_texture->GetDesc(&depth_desc);
-  if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != dlaa_bridge::bridge.width || depth_desc.Height != dlaa_bridge::bridge.height) {
+  if (cascade_draw) {
+    // The cascades' array only; the same shaders may draw a UI's small view.
+    if (depth_desc.ArraySize != 4 || depth_desc.Width != depth_desc.Height) return;
+  } else if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != dlaa_bridge::bridge.width || depth_desc.Height != dlaa_bridge::bridge.height) {
     return;
   }
 
   const std::unique_lock lock(runtime.mutex);
+  if (cascade_draw) {
+    if (runtime.main_view_frame != runtime.frame) return;
+  } else {
+    runtime.main_view_projection = camera.view_projection;
+    runtime.main_view_frame = runtime.frame;
+  }
   if (full_share < SHARE_NAMES.size()) {
     runtime.costs.left_out += texels;
     runtime.costs.left_out_shaders[shader.hash][full_share] += texels;
@@ -1429,7 +1455,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // frame's RT_CAPTURES ran out with the terrain, units and grass all captured every frame).
   const uint32_t flags = (shader.terrain ? dlaa_bridge::RT_TERRAIN : 0u) | (dynamic ? dlaa_bridge::RT_DYNAMIC : 0u)
                          | (foliage ? dlaa_bridge::RT_FOLIAGE : 0u) | (placed ? dlaa_bridge::RT_INSTANCED : 0u)
-                         | (shader.thin ? dlaa_bridge::RT_THIN : 0u)
+                         | (thin ? dlaa_bridge::RT_THIN : 0u)
                          // Sprite soldiers and far trees block the sun's rays as grass does (leaves let some through).
                          | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u)
                          | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u)
@@ -1487,7 +1513,7 @@ void Capture(Context& command, const SceneShader& shader) {
       }};
       constexpr std::array<UINT, 2> STRIDES = {16, 8};
       const UINT outputs = clip_uv ? 2 : 1;
-      std::span<const uint8_t> streamed_code = shader.tessellated_keep;
+      std::span<const uint8_t> streamed_code = (cascade_draw ? shader.cascade_keep : shader.tessellated_keep);
       if (streamed_code.empty() && code != game_code.end()) streamed_code = code->second;
       if (streamed_code.empty()
           || FAILED(device->CreateGeometryShaderWithStreamOutput(streamed_code.data(), streamed_code.size(), entries.data(), outputs,
@@ -1527,6 +1553,26 @@ void Capture(Context& command, const SceneShader& shader) {
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
     if (shader.sun_facing) native->VSSetShaderResources(0, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
+    ComPtr<ID3D11Buffer> game_camera;
+    UINT game_camera_first = 0;
+    UINT game_camera_count = 0;
+    ComPtr<ID3D11DeviceContext1> native1;
+    if (cascade_draw) {
+      if (FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+      std::array<float, 14 * 4> cascade_constants = {};
+      if (!objects.cascade_camera) {
+        const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(cascade_constants), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        if (FAILED(device->CreateBuffer(&desc, nullptr, objects.cascade_camera.GetAddressOf()))) return;
+        runtime.cascade_camera_frame = 0;
+      }
+      if (runtime.cascade_camera_frame != runtime.frame) {
+        std::ranges::copy(runtime.main_view_projection, cascade_constants.begin() + (10 * 4));
+        native->UpdateSubresource(objects.cascade_camera.Get(), 0, nullptr, cascade_constants.data(), 0, 0);
+        runtime.cascade_camera_frame = runtime.frame;
+      }
+      native1->VSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+      native->VSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
+    }
     ComPtr<ID3D11ShaderResourceView> game_keep_view;
     ComPtr<ID3D11Buffer> game_keep_constants;
     if (!shader.tessellated_keep.empty()) {
@@ -1561,6 +1607,13 @@ void Capture(Context& command, const SceneShader& shader) {
                             arguments.first_instance);
     }
     if (shader.tessellated) native->End(objects.tessellated_queries[runtime.tessellated_draws].Get());
+    if (cascade_draw) {
+      if (game_camera_first == 0) {
+        native->VSSetConstantBuffers(0, 1, game_camera.GetAddressOf());
+      } else {
+        native1->VSSetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+      }
+    }
     if constexpr (INDEXED) {
       if (shader.tessellated && runtime.settings.terrain_outside_view && objects.tessellated_outside && runtime.tessellated_draws + 1 < objects.tessellated_queries.size()) {
         ComPtr<ID3D11HullShader> game_hull_shader;

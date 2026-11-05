@@ -26,6 +26,7 @@
 #include <include/reshade.hpp>
 
 #include <embed/shaders.h>
+#include "./rt_outside_view_gs.h"
 #include "./rt_terrain_keep_gs.h"
 #include "./rt_terrain_outside_hs.h"
 
@@ -1128,7 +1129,7 @@ constexpr size_t POINT_LIGHT_SHADERS = 8;
 constexpr size_t FOG_SHADERS = 6;
 constexpr size_t SUN_MASK = POINT_LIGHT_SHADERS + FOG_SHADERS;
 constexpr size_t LEGACY_FOG = SUN_MASK + 1;
-float rays_replace_maps_row = 0.f;
+float rays_replace_maps_row = 1.f;
 std::array<std::span<const uint8_t>, SHADERS.size()> codes = {};
 std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SHADERS.size()> ours = {};
 std::array<std::atomic_bool, SHADERS.size()> logged = {};
@@ -2553,6 +2554,31 @@ float reflection_lobe_row = 0.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
+float rays_units_out_of_view_row = 1.f;
+float rays_skip_cascade_trees_row = 0.f;
+float rays_banner_light_row = 0.f;
+// The trees' draws into the cascades: 52 M of the shadow pass's indices on the replay's first view, 36 M in the siege (traces c1a, bm_siege).
+// Only fog, forward passes and the UI read the maps under Rays Replace Shadow Maps, the sun's shadow comes from rays. fx_rigidbranch_v3,
+// fx_rigidleaf_v3; drawn in no other target in any trace (b5_census: no render target).
+constexpr std::array<uint32_t, 4> CASCADE_TREE_SHADERS = {0xD75E6E2B, 0xAF3F74B2, 0x8F975E16, 0x2327ED2B};
+constexpr auto OnCascadeTree = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (rays_skip_cascade_trees_row == 0.f || traced_lights::rays_replace_maps_row == 0.f || !twattila::rt_scene::SunShadowsTraced()) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth_view;
+  native->OMGetRenderTargets(0, nullptr, depth_view.GetAddressOf());
+  if (!depth_view) return {};
+  Microsoft::WRL::ComPtr<ID3D11Resource> depth_resource;
+  depth_view->GetResource(depth_resource.GetAddressOf());
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_texture;
+  if (FAILED(depth_resource.As(&depth_texture))) return {};
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  depth_texture->GetDesc(&depth_desc);
+  if (depth_desc.ArraySize != 4) return {};
+  return {.bypass = true};
+};
+
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
@@ -2724,7 +2750,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> GROUND_MESH_PASSES = {{
     {.pixel_shader = 0x90FBDD61},
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 36> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidambientmapfiremesh
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
@@ -2737,7 +2763,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
     {.hash = 0x31584506, .dynamic = true},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
-    {.hash = 0xC0ED2883, .dynamic = true},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
+    {.hash = 0xC0ED2883, .dynamic = true, .thin_row = &rays_banner_light_row},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
     // The campaign's ground where the tessellated terrain's mask leaves it: tiles on the height map (a pass with no holes), every frame as they're culled by the view.
     {.hash = 0x15FE8427, .terrain = true, .dynamic = true},
     {.hash = 0xA40D7DDB, .terrain = true, .dynamic = true, .pixel_masks = GROUND_MESH_PASSES},
@@ -2768,6 +2794,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x444F1190, .dynamic = true, .thin = true},
     // fx_rigidleaf_v3: its clip reads the base colour at t1 (t0 is the burn map, the same texture until the tree burns).
     {.hash = 0x783383C6, .capture_shader = __rt_capture_leaf, .rows_shader = __rt_rows_tree, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},
+    // fx_weighted in the shadow pass (o0 = cb0[10-13] x the world position, o2 that position, by their bytes): drawn for casters whose
+    // shadow falls in view, behind the camera too (trace c1a, bm_siege: depth 4096x4096 [4], PS none, 642CCC99, B2358145). Solid, as a unit without its mask.
+    {.hash = 0xBADA4FE3, .dynamic = true, .cascade_keep = __rt_outside_view},
+    {.hash = 0x46E626D5, .dynamic = true, .cascade_keep = __rt_outside_view},
     {.hash = 0xA4527F25, .dynamic = true, .foliage = true, .grass = true, .indirect = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = GRASS_MASKS},
 }};
 
@@ -2961,6 +2991,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  // Under rays and maps together the game's cascades already darken what these would.
+  rt_settings.casters_out_of_view = rt_settings.sun_shadows && traced_lights::rays_replace_maps_row != 0.f && rays_units_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -3416,6 +3448,9 @@ void ConfigureAddon() {
                                              .scale_fix_gi_shadow = &reflections::scale_fix_row,
                                              .placed_objects = &placed_objects_row,
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
+                                             .rays_units_out_of_view = &rays_units_out_of_view_row,
+                                             .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
+                                             .rays_banner_light = &rays_banner_light_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .rays_ao_spot_filter = &rays_ao_spot_filter_row,
                                              .texts = &PAGE_TEXTS,
@@ -3518,6 +3553,10 @@ bool AttachAddon() {
   }
   reshade::register_event<reshade::addon_event::destroy_device>(sun_ao::OnDestroyDevice);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
+  for (const uint32_t shader_hash : CASCADE_TREE_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnCascadeTree, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 
   twwarhammer3::taa_dlss::Install();
   // This game's swap chain shader reads its constants at b10.
