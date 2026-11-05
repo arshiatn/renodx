@@ -594,7 +594,7 @@ float4 TexelSurface(uint2 id, out float3 normal, out float3 origin) {
   origin = position.xyz;
   if (position.w <= 0.f) return position;
   normal = PixelNormal(pixel, position);
-  origin = RayOrigin(position, normal, Planar(int2(pixel), position, normal));
+  origin = StartPast(RayOrigin(position, normal, Planar(int2(pixel), position, normal)), position);
   return position;
 }
 

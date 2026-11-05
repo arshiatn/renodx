@@ -145,6 +145,7 @@ struct Settings {
   uint32_t smoke_quality = 1;  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT; 3, Ultra: High's rays, more room)
   bool nrd = false;            // Ray Tracing Denoiser: NRD without Ray Reconstruction (dlaa_bridge.h RT_NRD)
   bool ao_reblur = false;      // AO under Ray Reconstruction: REBLUR, not the history (dlaa_bridge.h RT_AO_REBLUR)
+  bool start_past = false;     // dlaa_bridge.h RT_START_PAST
   // The lit particles streamed out with no ray tracing (smoke_map.hpp: any GPU, no helper).
   bool stream_particles = false;
   // The game's sun shadow map gets no casters (InstallShadowsOnly; with the ray-traced sun shadows): the rays alone cast.
@@ -485,8 +486,9 @@ class CpuTime {
   LARGE_INTEGER start_ = {};
 };
 
-// Path-Traced Ambient: the paths' frames with the game's ambient before it goes (the helper learns its sky's scale).
-constexpr uint32_t PATH_AMBIENT_FRAMES = 30;
+// Path-Traced Ambient: the paths' frames with the game's ambient before it goes (the helper learns its sky's scale). 30 kept a battle's very first
+// frames: 30 % darker than the same paused view 60 s later (R1's log); what's wrong in them isn't known.
+constexpr uint32_t PATH_AMBIENT_FRAMES = 150;
 
 // rt_positions.cs's constants: world positions from a depth.
 struct PositionConstants {
@@ -2255,6 +2257,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | ((runtime.settings.nrd && !dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_NRD : 0u)
                | ((runtime.settings.ao_reblur && dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_AO_REBLUR : 0u)
+               | (runtime.settings.start_past ? dlaa_bridge::RT_START_PAST : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)

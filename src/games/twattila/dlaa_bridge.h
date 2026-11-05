@@ -189,6 +189,8 @@ constexpr uint32_t RT_NRD = 1u << 21;
 // AO under Ray Reconstruction at REBLUR (v26, with RT_RECONSTRUCTED): the ambient visibility denoised by REBLUR instead of the
 // history; the sun stays RR's. Helpers before 83 ignore it. (Bits 22, 23: the helper's to its shaders.)
 constexpr uint32_t RT_AO_REBLUR = 1u << 24;
+// Rays Start Past Hidden Shapes (v27): a pixel's rays start past what the scene holds between it and the camera (rt_camera.hlsli StartPast).
+constexpr uint32_t RT_START_PAST = 1u << 25;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

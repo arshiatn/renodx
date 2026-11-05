@@ -37,7 +37,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   // corners, cracks and edges the normal from the depth can be wrong: traced).
   const float3 normal = SurfaceNormal(int2(id.xy), position);
   const bool planar = Planar(int2(id.xy), position, normal);
-  const float3 light_origin = RayOrigin(position, normal, planar);
+  const float3 light_origin = StartPast(RayOrigin(position, normal, planar), position);
   uint reached = 0u;
   [loop]
   for (uint light = 0u; light < light_count; ++light) {

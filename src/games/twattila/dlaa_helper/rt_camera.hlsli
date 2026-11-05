@@ -22,6 +22,7 @@ cbuffer Paths : register(b3) {
   float reflection_range;  // metres (specular occlusion's reach)
   float sky_range;         // metres: what blocks Path-Traced Ambient's sky (the AO's reach, as Ray-Traced AO)
 };
+static const uint PATH_START_PAST = 2147483648u;  // RT_START_PAST: StartPast
 static const uint PATH_AMBIENT_HISTORY = 16384u;  // path_flags in the trace: last trace's ambient and positions are valid
 static const uint PATH_AMBIENT_PARITY = 32768u;   // its history read from set 1 (else 0)
 static const uint PATH_LIGHT_HISTORY = 131072u;   // the last trace's positions and local lights' bits are valid
@@ -47,3 +48,25 @@ bool SeenByLastTrace(float3 world, out uint2 seen_pixel) {
 }
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_CAMERA_HLSLI_
+
+// How far along the way to the camera StartPast looks (metres): more than a trunk's difference, less than a wall's thickness matters.
+static const float START_PAST_REACH = 1.5f;
+
+// A pixel the camera sees has nothing before it on that way, but a placed mesh is one instance's shape at every place: another instance's trunk
+// can stand thinner inside it (ATN's debug8: AO 0 on a trunk with a good normal, every ray hit; the same trunks without Placed Objects: none). A
+// start inside sees only that shape's inside. With Rays Start Past Hidden Shapes it starts past it, the way the camera came.
+float3 StartPast(float3 origin, float4 position) {
+  if ((path_flags & PATH_START_PAST) == 0u) return origin;
+  const float3 to_camera = normalize(sun[uint2(1, 0)].xyz - position.xyz);
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = to_camera;
+  ray.TMin = 0.f;
+  ray.TMax = min(START_PAST_REACH, 0.5f * position.w);
+  // Solid shapes alone: no alpha test, and a leaf or blade that swayed before the pixel is nothing to start past.
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE & ~LEAVES, ray);
+  query.Proceed();
+  if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return origin;
+  return origin + to_camera * (query.CommittedRayT() + SurfaceOffset(position.w));
+}

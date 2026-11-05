@@ -1357,6 +1357,7 @@ class RtScene12 {
         }
         if (guides) flags |= PATH_GUIDES;
         if (sun_traced_frame_ == frame) flags |= PATH_SUN_TRACED;
+        if ((shared.rt_flags & dlaa_bridge::RT_START_PAST) != 0) flags |= PATH_START_PAST;
         // A reflections request's light buffer (RT_REFLECTIONS_LIGHT): what their hits read; without the paths' prepared
         // light this frame the radiance cache's too, at the render pixels.
         const bool final_light = reflections && light_ && (requested & dlaa_bridge::RT_REFLECTIONS_LIGHT) != 0;
@@ -1872,6 +1873,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_AMBIENT = 262144;  // rt_path.hlsli
   static constexpr uint32_t PATH_KEEP_LIGHT = 524288;
   static constexpr uint32_t PATH_KEEP_CUBE = 1073741824;
+  static constexpr uint32_t PATH_START_PAST = 2147483648;  // rt_camera.hlsli
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
@@ -4431,7 +4433,7 @@ class RtScene12 {
     // v18: rays a pixel toward the sun and each light, the lights' radius for soft shadows (rt_lights: under RR).
     const std::array<uint32_t, 12> settings = {
         frame,
-        (shared.rt_flags & ~(dlaa_bridge::RT_LOCAL_LIGHTS | dlaa_bridge::RT_NRD | dlaa_bridge::RT_AO_REBLUR)) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
+        (shared.rt_flags & ~(dlaa_bridge::RT_LOCAL_LIGHTS | dlaa_bridge::RT_NRD | dlaa_bridge::RT_AO_REBLUR | dlaa_bridge::RT_START_PAST)) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
             | (smoke_scene ? TRACE_SMOKE : 0u) | (nrd_sun ? dlaa_bridge::RT_NRD : 0u) | (nrd_ambient ? TRACE_NRD_AMBIENT : 0u),
         std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.02711f)),
         std::clamp(shared.rt_ambient_rays, 1u, 16u),
@@ -4451,7 +4453,7 @@ class RtScene12 {
                               && EnsureHistory(HISTORY_AMBIENT, frame);
     {
       const bool last_frame = ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
-      PathConstants constants = {.flags = (last_frame ? PATH_AMBIENT_HISTORY : 0u)
+      PathConstants constants = {.flags = (last_frame ? PATH_AMBIENT_HISTORY : 0u) | (((shared.rt_flags & dlaa_bridge::RT_START_PAST) != 0) ? PATH_START_PAST : 0u)
                                           | (lights_kept && last_frame && lights_frame_ + 1 == frame ? PATH_LIGHT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u) | (tint ? PATH_TINT : 0u)
                                           | (tint_guides ? PATH_TINT_GUIDES : 0u)};

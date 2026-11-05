@@ -199,7 +199,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const bool exact = (flags & SUN_SHADOWS) != 0u && toward_sun.w != 0.f
                      && abs(dot(normal, toward_sun.xyz)) < EDGE_ON + (EDGE_ON_PER_METRE * position.w) && ShownNormal(position, normal);
   const bool planar = Planar(int2(id.xy), position, normal);
-  const float3 origin = RayOrigin(position, normal, planar);
+  const float3 origin = StartPast(RayOrigin(position, normal, planar), position);
   const float offset = SurfaceOffset(position.w);
   const bool facing = dot(normal, toward_sun.xyz) > 0.f;
   float sun_visibility = 1.f;

@@ -3551,6 +3551,7 @@ void ConfigureAddon() {
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_branch_cut_outs = &rays_branch_cut_outs_row,
+                                             .rays_start_past = &rt_sliders.start_past,
                                              .pixel_trace = new renodx::utils::settings::Setting{
                                                  .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
                                                  .label = "Pixel trace",
