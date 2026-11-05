@@ -31,6 +31,8 @@ List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Done: 26 Spot Filter gone; 27 pixel trace row in Ray Tracing Extra Options > More Options, wh3_pixel_trace.txt with the rays' AO section; 23 Grass Fade Distance removed (false motion provable, growth is the generator's shrink at 16 cells).
       Not done: ray hit distance in the trace (helper change: one pixel's Occluded hits read back); longer grass (second dispatch of 537AF064 or an outer ring); stale keys in ATN's ini, ignored, strip at install.
 - [x] WH3 v34 close (helper81, Attila v138 zip): review's fixes, all_modes 115 of 116 (release's memory, one of two reruns passes). Installed, not run in game. Report tools/tw/wh3_batch4/reports/round_report_v34.md.
+- [x] WH3 v35 RR inputs (helper82, bridge v25, Attila v139 zip). Report reports/round_report_v35.md. Not run in game. Rows off: Particles Skip the Denoiser, Picture Before Particles, Depth of Field Guide (preset E); 100% scale only. all_modes 119 of 120 (release's memory).
+      NOT DONE: below 100% (colour after the tone mapper); particle mask (no preset reads it); diffuse hit distance (needs a UAV in the trace shaders); disocclusion mask (no format). Composite blend factors unread: ATN's test shows them.
 
 ## WH3 BATCH 3 (from 2026-11-04): fixes, DLSS rows, motion, full RT scene; game runs allowed on replay copies, campaign copy, benchmark
 Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch3/reports/Bn.md. Facts: wh3_batch3/facts.md. Run: test_scripts/run_game.ps1 -Game wh3, proof: wh3_batch3/check_run.py.
