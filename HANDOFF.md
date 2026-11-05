@@ -7,6 +7,10 @@
 - [x] P4 RR specular: Fresnel in the guide, twattila/rr_specular.hlsli (NVIDIA 4.2.1), WH3 rr_guides by its camera, Attila aa_rr_guides by a new b0 (anti_aliasing.hpp GuidesCamera); the other games' guides stay bare F0. WARP warp_tests/rr_specular. Not run in game.
       P1, P2, P4 closed: 14 targets built, page dumps (Attila the row and the date), all_modes on helper83 123 of 125 (two release memory flakes, each passes twice alone). Report wh3_batch5/reports/P1.md. Not run in game; not stamped, no zips (batch close).
       Not done: the other games' guides keep bare F0 (Rome II, Thrones, Troy, Pharaoh, WH1, WH2; own copies). For P3: the AO row's default takes back v34's PT AO darkening at a wall's foot, so compare again.
+- [x] P3 PT AO, RTAO dark patch; R1 ran (r1_p3: replay, paused, 14 shots, check_run ok, 0 resets; v35 files back after). Report wh3_batch5/reports/P3.md. Helper85, bridge v27.
+      Dark patch = placed trunks: first instance's shape at every place; a drawn trunk inside it, every ray hits. Seen on the replay's pines; none with Placed Objects off (b8b_first). Row No Black Patches on Trunks (RayTracedStartPast), off: harness AO 0 to 67 of 255, NOT run in game: R1 was used up finding it. Row Tree Trunk Cut-outs (RayTracedBranchCutOuts), off: ran, real defect, black trunks stay.
+      PT AO: first freeze 30 % darker than toggled (log line), so 150 frames, NOT run in game. Row Steady Bounce Light (RayTracedPathKeptCube), off; on the open view under a code. R1 also: P1 no blue pixels with the row on, paused; P2 row switched, REBLUR made; P4 no error, look not judged.
+      Not done: why shapes differ by instance (read: VS blends v8-10 with v11-13 by v6.x, rt_place takes v8-10): smallest step, log both rows' difference in one run. ATN's forest not reached. PT AO's darkness not reproduced on the open view (PT 101.5 RTAO 99.8). Rays' Light Bounce (not paths) and reflections' starts not moved. 31584506's row off.
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
