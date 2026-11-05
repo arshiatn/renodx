@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 24;
+constexpr uint32_t VERSION = 25;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -234,6 +234,11 @@ constexpr uint32_t FG_BACKEND_FSR = 1;
 constexpr uint32_t FG_BACKEND_XESS = 2;
 constexpr uint32_t FG_BACKEND_AUTO = 3;
 
+// Ray Reconstruction's optional inputs, as bits of Prepare's `rr_extra` and `rr_extra_written`, as places in `rr_extra`.
+// RGBA16F: the particle layer (rgb premultiplied, alpha the blend) and the colour before particles (as the colour input).
+// R16F: the depth of field guide.
+enum RrExtraInput : uint32_t { RR_EXTRA_PARTICLE_LAYER, RR_EXTRA_COLOR_BEFORE, RR_EXTRA_DOF_GUIDE, RR_EXTRA_INPUTS };
+
 struct Shared {
   uint32_t version = VERSION;
   // The addon's.
@@ -435,11 +440,17 @@ struct Shared {
   // v24: how many frames a placed mesh's undrawn instances stay and its BLAS is held, for one trace (0: RECENT_FRAMES and
   // RELEASE_FRAMES, the games without Host::keep_placed; 1 with a new scene: the old one's go at once).
   uint32_t rt_kept_frames = 0;
+  // v25: Ray Reconstruction's optional inputs, by RR_EXTRA_* (shared at the textures' size, made only when the addon asks; 0:
+  // none), and those written for this evaluation (the rest go to it as null).
+  uint64_t rr_extra[RR_EXTRA_INPUTS] = {};
+  uint32_t rr_extra_written = 0;
+  uint32_t rr_v25_padding = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 24) return sizeof(Shared);
+  if (version >= 25) return sizeof(Shared);
+  if (version == 24) return offsetof(Shared, rr_extra);
   if (version == 23) return offsetof(Shared, rt_kept_frames);
   if (version == 22) return offsetof(Shared, fg_running);
   if (version >= 19) return offsetof(Shared, upscaler);

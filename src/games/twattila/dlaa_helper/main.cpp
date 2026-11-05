@@ -307,7 +307,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     reconstruction_open = reconstruction->Initialize(adapter.Get(), folder)
                           && reconstruction->Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
                                                    shared->specular_albedo, shared->normals, shared->roughness},
-                                                  shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u);
+                                                  shared->fence, (version >= 17) ? shared->rr_hit_distance : 0u,
+                                                  (version >= 25) ? std::array{shared->rr_extra[0], shared->rr_extra[1], shared->rr_extra[2]}
+                                                                  : std::array<uint64_t, twattila::dlaa_helper::EXTRA_INPUTS>{});
     rr_used = std::chrono::steady_clock::now();
     if (!reconstruction_open && reconstruction->Status() != reconstruction_refusal) {
       reconstruction_refusal = reconstruction->Status();
@@ -487,6 +489,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (version >= 9) keep({shared->rt_light_mask});
       if (version >= 11) keep({shared->rt_fog});
       if (version >= 17) keep({shared->rr_hit_distance});
+      if (version >= 25) keep({shared->rr_extra[0], shared->rr_extra[1], shared->rr_extra[2]});
       if (version >= 18) keep({shared->rt_fog_lights});
       if (version >= 19) keep({shared->rt_tint});
       color.Reset();
@@ -678,6 +681,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
           .reset = (shared->reset != 0),
           .preset = shared->ray_reconstruction_preset,
           .hit_distance = version >= 17 && shared->rr_hit_distance_written != 0,
+          .extra_inputs = (version >= 25) ? shared->rr_extra_written : 0u,
       };
       std::copy_n(shared->world_to_view, 16, reconstruct.world_to_view.begin());
       std::copy_n(shared->view_to_clip, 16, reconstruct.view_to_clip.begin());

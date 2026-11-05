@@ -147,6 +147,7 @@ struct FrameRequest {
 // Ray Reconstruction's settings for a request (its guides are the bridge's textures).
 struct RayReconstruction {
   uint32_t preset = 0;  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset
+  uint32_t extra_written = 0;  // bits of RR_EXTRA_*: written for this evaluation
   std::array<float, 16> world_to_view = {};
   std::array<float, 16> view_to_clip = {};
 };
@@ -216,6 +217,9 @@ struct Bridge {
   Texture rt_specular;
   Texture rr_hit_distance;
   bool hit_distance_written = false;
+  // Ray Reconstruction's optional inputs (v25), the bits of `rr_extra` that asked for them.
+  std::array<Texture, RR_EXTRA_INPUTS> rr_extra_textures;
+  uint32_t rr_extra = 0;
   bool reflections = false;
   // The leaves' opacity masks (an RT_ATLAS_SLICES texture array, made with the first ray tracing textures and kept
   // across sizes: shared with the helper again with every set; `rt_atlas_generation` counts the arrays made).
@@ -428,6 +432,7 @@ inline void ClearHandles(Shared* shared, bool guides, bool ray_tracing, bool ref
     shared->specular_albedo = 0;
     shared->normals = 0;
     shared->roughness = 0;
+    std::ranges::fill(shared->rr_extra, 0u);
   }
   if (!ray_tracing) {
     shared->rt_vertices = 0;
@@ -462,8 +467,9 @@ inline void ClearHandles(Shared* shared, bool guides, bool ray_tracing, bool ref
 // available.
 inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool guides = false, bool ray_tracing = false,
                     DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false, uint32_t upscaler = UPSCALER_DLSS,
-                    uint32_t fg_backend = FG_BACKEND_DLSS) {
+                    uint32_t fg_backend = FG_BACKEND_DLSS, uint32_t rr_extra = 0u) {
   reflections = reflections && ray_tracing;
+  rr_extra = guides ? rr_extra : 0u;
   if (!internal::Start(native_device)) return false;
   ComPtr<ID3D11Device5> device;
   if (FAILED(native_device->QueryInterface(IID_PPV_ARGS(device.GetAddressOf())))) {
@@ -474,7 +480,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   // are made again with a new fence.
   if (bridge.device == device && bridge.width == width && bridge.height == height && bridge.guides == guides
       && bridge.ray_tracing == ray_tracing && bridge.fg_format == fg_format && bridge.reflections == reflections && bridge.upscaler == upscaler
-      && bridge.fg_backend == fg_backend
+      && bridge.fg_backend == fg_backend && bridge.rr_extra == rr_extra
       && (!bridge.fence || bridge.fence->GetCompletedValue() != UINT64_MAX)) {
     return true;
   }
@@ -503,6 +509,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.rr_hit_distance = {};
+  bridge.rr_extra_textures = {};
   bridge.hit_distance_written = false;
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();
@@ -589,6 +596,15 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     return true;
   };
   auto& shared = *bridge.shared;
+  const auto make_extra = [&] {
+    static constexpr std::array<DXGI_FORMAT, RR_EXTRA_INPUTS> FORMATS = {DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                                                         DXGI_FORMAT_R16_FLOAT};
+    std::ranges::fill(shared.rr_extra, 0u);
+    for (size_t index = 0; index < RR_EXTRA_INPUTS; ++index) {
+      if ((rr_extra & (1u << index)) != 0u && !make(FORMATS[index], &bridge.rr_extra_textures[index], &shared.rr_extra[index])) return false;
+    }
+    return true;
+  };
   HANDLE fence_handle = nullptr;
   const bool made = make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.color, &shared.color)
                     && make(DXGI_FORMAT_R32_FLOAT, &bridge.depth, &shared.depth)
@@ -616,6 +632,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                         || (make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_reflection, &shared.rt_reflection)
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_specular, &shared.rt_specular)
                             && make(DXGI_FORMAT_R16_FLOAT, &bridge.rr_hit_distance, &shared.rr_hit_distance)))
+                    && make_extra()
                     && (fg_format == DXGI_FORMAT_UNKNOWN
                         || (make_frame(&bridge.fg_frame, &shared.fg_frame) && make_frame(&bridge.fg_hudless, &shared.fg_hudless)
                             && SUCCEEDED(device->CreateRenderTargetView(bridge.fg_frame.Get(), nullptr, bridge.fg_frame_rtv.GetAddressOf()))
@@ -646,6 +663,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.fg_format = fg_format;
   bridge.reflections = reflections;
   bridge.upscaler = upscaler;
+  bridge.rr_extra = rr_extra;
   bridge.fg_backend = fg_backend;
   return true;
 }
@@ -964,6 +982,7 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     }
     if (view_to_clip != nullptr) std::copy_n(view_to_clip->begin(), 16, shared->view_to_clip);
     shared->rr_hit_distance_written = (shared->ray_reconstruction != 0 && bridge.hit_distance_written) ? 1u : 0u;
+    shared->rr_extra_written = (shared->ray_reconstruction != 0) ? (ray_reconstruction->extra_written & bridge.rr_extra) : 0u;
   });
   bridge.hit_distance_written = false;
   bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides;
@@ -1059,6 +1078,7 @@ inline void Release(bool tell_helper = false) {
   bridge.rt_reflection = {};
   bridge.rt_specular = {};
   bridge.rr_hit_distance = {};
+  bridge.rr_extra_textures = {};
   bridge.fg_frame.Reset();
   bridge.fg_hudless.Reset();
   bridge.fg_frame_rtv.Reset();

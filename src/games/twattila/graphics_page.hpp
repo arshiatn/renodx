@@ -132,6 +132,7 @@ struct Bindings {
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
+  std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   float* scale_fix_gi_shadow = nullptr;  // Warhammer III: its GI grid and shadow blur below 100%
@@ -568,6 +569,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     }
     page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, composing_generation)});
     page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, dlss_generation)});
+    for (Setting* setting : b.rr_inputs) {
+      setting->section = section;
+      setting->is_visible = more(&more_aa, [b, dlss] { return dlss() && b.aa->ray_reconstruction != 0.f; });
+      page.Add(setting);
+    }
     page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, upscaling), .label = "Upscaling Debug View",
                .tooltip = (b.has_scale_rows ? "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).\n"
                                               "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"

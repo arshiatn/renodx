@@ -3554,6 +3554,38 @@ void ConfigureAddon() {
                                                  .label = "Pixel trace",
                                                  .on_draw = [] { return talesofarise::pixel_trace::DrawRow(&traced_pixel, "Put the cross\non the black spot."); },
                                              },
+                                             .rr_inputs = {
+                                                 new renodx::utils::settings::Setting{
+                                                     .key = "RayReconstructionParticleLayer",
+                                                     .binding = &twwarhammer3::taa_dlss::rr_particle_layer_row,
+                                                     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                                                     .default_value = 0.f,
+                                                     .label = "Particles Skip the Denoiser (Experimental)",
+                                                     .tooltip = "Smoke and fire are only upscaled, not denoised. They lose depth of field's blur.\n"
+                                                                "At 100% render scale.",
+                                                     .labels = {"Off", "On"},
+                                                 },
+                                                 new renodx::utils::settings::Setting{
+                                                     .key = "RayReconstructionColorBefore",
+                                                     .binding = &twwarhammer3::taa_dlss::rr_color_before_row,
+                                                     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                                                     .default_value = 0.f,
+                                                     .label = "Picture Before Particles (Experimental)",
+                                                     .tooltip = "Shows the denoiser the picture without smoke and fire, against ghosting and vanishing particles.\n"
+                                                                "At 100% render scale. Does nothing with Particles Skip the Denoiser.",
+                                                     .labels = {"Off", "On"},
+                                                 },
+                                                 new renodx::utils::settings::Setting{
+                                                     .key = "RayReconstructionDofGuide",
+                                                     .binding = &twwarhammer3::taa_dlss::rr_dof_guide_row,
+                                                     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                                                     .default_value = 0.f,
+                                                     .label = "Depth of Field Guide (Experimental)",
+                                                     .tooltip = "Tells the denoiser where depth of field blurred the picture. Needs Ray Reconstruction E.\n"
+                                                                "At 100% render scale.",
+                                                     .labels = {"Off", "On"},
+                                                 },
+                                             },
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,

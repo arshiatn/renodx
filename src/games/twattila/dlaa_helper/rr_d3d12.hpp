@@ -47,6 +47,8 @@ enum Input : size_t {
 };
 // What FSR and XeSS read of them (upscale_d3d12.hpp).
 constexpr size_t UPSCALE_INPUTS = OUTPUT + 1;
+// Ray Reconstruction's optional inputs, in the bridge's order (RR_EXTRA_*).
+enum ExtraInput : size_t { PARTICLE_LAYER, COLOR_BEFORE, DOF_GUIDE, EXTRA_INPUTS };
 
 // Requests in flight: each with its own command allocator and list.
 constexpr size_t SLOTS = 3;
@@ -85,6 +87,7 @@ struct Request {
   std::array<float, 16> view_to_clip = {};
   // The addon's specular hit distance written this frame (Attila's v17: by its ray-traced reflections).
   bool hit_distance = false;
+  uint32_t extra_inputs = 0;  // bits of ExtraInput: written for this evaluation
   // NVSDK_NGX_DLSS_Feature_Flags (Tales: reversed depth too) and the colour's exposure.
   int create_flags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes
                      | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
@@ -148,7 +151,8 @@ class RayReconstruction12 {
 
   // The addon's textures (bridge order; handles still open), fence and specular hit distance (0: none); false: not all
   // could be opened (the hit distance may stay closed).
-  bool Open(const std::array<uint64_t, INPUT_COUNT>& textures, uint64_t fence, uint64_t hit_distance = 0) {
+  bool Open(const std::array<uint64_t, INPUT_COUNT>& textures, uint64_t fence, uint64_t hit_distance = 0,
+            const std::array<uint64_t, EXTRA_INPUTS>& extra = {}) {
     Close();
     if (!device_) return false;
     for (size_t index = 0; index < INPUT_COUNT; ++index) {
@@ -162,6 +166,9 @@ class RayReconstruction12 {
       return false;
     }
     if (hit_distance != 0) device_->OpenSharedHandle(reinterpret_cast<HANDLE>(hit_distance), IID_PPV_ARGS(hit_distance_.GetAddressOf()));
+    for (size_t index = 0; index < EXTRA_INPUTS; ++index) {
+      if (extra[index] != 0) device_->OpenSharedHandle(reinterpret_cast<HANDLE>(extra[index]), IID_PPV_ARGS(extra_[index].GetAddressOf()));
+    }
     return true;
   }
 
@@ -171,6 +178,7 @@ class RayReconstruction12 {
     if (own_fence_) WaitFor(own_value_);
     inputs_ = {};
     hit_distance_.Reset();
+    extra_ = {};
     fence_.Reset();
   }
 
@@ -313,11 +321,20 @@ class RayReconstruction12 {
       create_flags_ = request.create_flags;
       first_frame_ = true;
     }
-    // The inputs, then the specular hit distance when written this frame.
+    // The inputs, then the specular hit distance and the optional inputs when written this frame.
     ID3D12Resource* hit_distance = request.hit_distance ? hit_distance_.Get() : nullptr;
+    std::array<ID3D12Resource*, EXTRA_INPUTS> extra = {};
+    for (size_t index = 0; index < EXTRA_INPUTS; ++index) {
+      if ((request.extra_inputs & (1u << index)) != 0u) extra[index] = extra_[index].Get();
+    }
     std::vector<D3D12_RESOURCE_BARRIER> barriers;
-    for (size_t index = 0; index <= INPUT_COUNT; ++index) {
-      ID3D12Resource* resource = (index < INPUT_COUNT) ? inputs_[index].Get() : hit_distance;
+    for (size_t index = 0; index <= size_t{INPUT_COUNT} + EXTRA_INPUTS; ++index) {
+      ID3D12Resource* resource = hit_distance;
+      if (index < INPUT_COUNT) {
+        resource = inputs_[index].Get();
+      } else if (index > INPUT_COUNT) {
+        resource = extra[index - INPUT_COUNT - 1];
+      }
       if (resource == nullptr) continue;
       barriers.push_back({
           .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
@@ -348,11 +365,14 @@ class RayReconstruction12 {
         .InReset = (request.reset || first_frame_) ? 1 : 0,
         .InMVScaleX = 1.f,
         .InMVScaleY = 1.f,
+        .pInColorBeforeTransparency = extra[COLOR_BEFORE],
+        .pInDepthOfFieldGuide = extra[DOF_GUIDE],
         .pInSpecularHitDistance = hit_distance,
         .pInWorldToViewMatrix = world_to_view.data(),
         .pInViewToClipMatrix = view_to_clip.data(),
         .InPreExposure = request.pre_exposure,
         .InExposureScale = 1.f,
+        .pInTransparencyLayer = extra[PARTICLE_LAYER],
     };
     evaluated_ = NVSDK_NGX_SUCCEED(NGX_D3D12_EVALUATE_DLSSD_EXT(list, feature_, parameters_, &parameters));
     for (auto& barrier : barriers) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
@@ -373,6 +393,7 @@ class RayReconstruction12 {
   HANDLE event_ = nullptr;
   std::array<ComPtr<ID3D12Resource>, INPUT_COUNT> inputs_;
   ComPtr<ID3D12Resource> hit_distance_;  // the specular hit distance (none: not shared)
+  std::array<ComPtr<ID3D12Resource>, EXTRA_INPUTS> extra_;  // the optional inputs (none: not shared)
   ComPtr<ID3D12Fence> fence_;  // the addon's
   NVSDK_NGX_Parameter* parameters_ = nullptr;
   NVSDK_NGX_Handle* feature_ = nullptr;
