@@ -4590,14 +4590,14 @@ class RtScene12 {
                             nrd_reflections_.denoiser ? ", NRD reflections" : "");
 #endif
     status_ = std::format("Ray tracing ({}{}): every frame {:.2f} M triangles (terrain {:.2f}, grass and leaves {:.2f}; {}) | {} meshes ({} new, {} "
-                          "micromaps, {} MB), {} + {} placed instances{}, {:.1f} M triangles",
+                          "micromaps, {} MB), {} + {} placed instances ({} with those kept){}, {:.1f} M triangles",
                           dxr12_ ? "DXR 1.2" : "DXR 1.1", denoisers, static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? terrain_triangles : 0u) / 1.0e6,
                           static_cast<double>((units_built || units_clustered) ? grass_triangles : 0u) / 1.0e6,
                           units_clustered ? std::format("{} clusters ({} from templates), {} compact draws of {} sets", clusters_built, templated_built,
                                                         compact_drawn, sets_.size())
                                           : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"),
-                          meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn,
+                          meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn, placed_written_,
                           ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} changed)", ptlas_changes) : std::string(),
                           static_cast<double>(triangles) / 1.0e6);
     profile_counts_ = std::format(",{:.3f},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",

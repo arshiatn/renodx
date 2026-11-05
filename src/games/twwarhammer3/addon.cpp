@@ -1146,11 +1146,35 @@ Microsoft::WRL::ComPtr<ID3D11Buffer> game_b8;
 constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& hash = command.template GetCallbackData<uint32_t>();
   const size_t index = &hash - SHADERS.data();
-  if (!logged[index].exchange(true, std::memory_order_relaxed)) {
+  const bool first_run = !logged[index].exchange(true, std::memory_order_relaxed);
+  if (first_run) {
     renodx::utils::log::i(std::format("[Warhammer III] First run: {} draw, ps {:08X}.", (index == SUN_MASK) ? "sun mask" : "light or fog", hash));
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
+  // How far the cascades reach, so how far Shadow Casters Out of View sees what the camera never looked at (shadowmap_PS's g_split_distances, 560 bytes in, 16 apart: its values can't be read offline).
+  if (first_run && index == SUN_MASK && native != nullptr) {
+    Microsoft::WRL::ComPtr<ID3D11Buffer> shadow_constants;
+    native->PSGetConstantBuffers(1, 1, shadow_constants.GetAddressOf());
+    D3D11_BUFFER_DESC desc = {};
+    if (shadow_constants) shadow_constants->GetDesc(&desc);
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    desc.MiscFlags = 0;
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Buffer> copy;
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (desc.ByteWidth >= 640 && SUCCEEDED(device->CreateBuffer(&desc, nullptr, copy.GetAddressOf()))) {
+      native->CopyResource(copy.Get(), shadow_constants.Get());
+      if (SUCCEEDED(native->Map(copy.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        const auto* splits = reinterpret_cast<const float*>(static_cast<const uint8_t*>(mapped.pData) + 560);
+        renodx::utils::log::i(std::format("[Warhammer III] Cascades' split distances: {:g} {:g} {:g} {:g} {:g}.", splits[0], splits[4], splits[8], splits[12], splits[16]));
+        native->Unmap(copy.Get(), 0);
+      }
+    }
+  }
   if (native == nullptr) return {};
   if (index == SUN_MASK) {
     if (rays_replace_maps_row == 0.f || !twattila::frame_history::MainViewport(native) || !twattila::rt_scene::SunShadowsTraced()) return {};

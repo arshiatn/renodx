@@ -3019,7 +3019,7 @@ inline void Update(const Settings& settings) {
   runtime.lights_drawn.clear();
   // Host::keep_placed: as long as there's room. Then the oldest meshes go, here and in the helper by the one number it's sent.
   if (internal::host.keep_placed && internal::host.placed_row != nullptr && *internal::host.placed_row != 0.f) {
-    if (runtime.frame - runtime.main_view_frame == internal::SCENE_GONE_FRAMES) {
+    if (internal::Enabled() && runtime.frame - runtime.main_view_frame == internal::SCENE_GONE_FRAMES) {
       runtime.known.clear();
       runtime.short_keys.clear();
       runtime.scene_gone = true;
