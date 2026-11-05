@@ -1170,7 +1170,11 @@ class RtScene12 {
     const bool path_traced = !reflections && (requested & dlaa_bridge::RT_PATH_TRACING) != 0;
     const bool wanted = reflections ? (reflection_ && (requested & (dlaa_bridge::RT_REFLECTIONS | dlaa_bridge::RT_SPECULAR_OCCLUSION)) != 0)
                                     : (light_ && bounce_);
-    const bool uses_paths = path_traced || reflections;
+    // A Light Bounce without paths that the reflections follow (RT_PATH_CACHE_FILL): the frame's history, radiance cache and
+    // learned lighting here, from its prepared light, as path tracing's request does (at the reflections' request the water's
+    // positions and guides have replaced the scene's, and last frame's colour is the upscaler's input: ATN's broken water).
+    const bool fills_cache = !reflections && !path_traced && version >= 28 && (requested & dlaa_bridge::RT_PATH_CACHE_FILL) != 0;
+    const bool uses_paths = path_traced || reflections || fills_cache;
     bool recorded = wanted && traced_ && !Lost()
                     && (!uses_paths
                         || (EnsureCache() && EnsureHistory(HISTORY_PATHS, frame) && (!reflections || EnsureHistory(HISTORY_SPECULAR, frame))))
@@ -1427,6 +1431,7 @@ class RtScene12 {
             .bounce_range = bounce_range,
             .reflection_range = std::clamp(shared.rt_reflection_range, 0.5f, 200.02019f),
             .sky_range = std::clamp(shared.rt_ambient_range, 0.1f, 100.000854f),
+            .previous_square_root = (version >= 28 && (requested & dlaa_bridge::RT_PATH_COLOR_SQUARE_ROOT) != 0) ? 1u : 0u,
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -1502,6 +1507,10 @@ class RtScene12 {
           dispatch_rays(0, shared.rt_bounce_width, shared.rt_bounce_height);
         } else if (path_traced) {
           list->SetPipelineState(path_pipeline_.Get());
+          list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+        } else if (fills_cache) {
+          Mark(list, L"bounce");
+          list->SetPipelineState(bounce_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         }
         ProfileStamp(list, slot_index, 1);
@@ -1890,6 +1899,7 @@ class RtScene12 {
     float bounce_range = 10.f;
     float reflection_range = 10.f;
     float sky_range = 2.f;  // rt_camera.hlsli
+    uint32_t previous_square_root = 0;  // RT_PATH_COLOR_SQUARE_ROOT
   };
 #if defined(RENODX_NRD)
   // NRD's texture of a signal (nrd_d3d12.hpp), with a place in the trace's descriptors when rt_nrd_front.hlsl writes it (0: none).

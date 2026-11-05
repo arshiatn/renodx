@@ -583,6 +583,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
     const bool reconstruct = Reconstructs();
     const std::array<float, 4> shader_settings = {(!scaled && SquareRootInput(reconstruct)) ? 1.f : 0.f, 0.f, static_cast<float>(render_width), static_cast<float>(render_height)};
     context1->UpdateSubresource(state.objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
+    if (!scaled) twattila::dlaa_bridge::bridge.color_square_root = shader_settings[0] != 0.f;
     // t1 and t6: the particles' zeroth moment, this frame's and last (the game's TAA reads them too).
     const std::array<ID3D11ShaderResourceView*, 5> sources = {inputs[0], inputs[2], inputs[4], (particle_smear_row != 0.f ? inputs[1] : nullptr),
                                                               (particle_smear_row != 0.f ? inputs[6] : nullptr)};
@@ -824,6 +825,7 @@ inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3
     const bool reconstruct = internal::Reconstructs();
     std::array<float, 4> shader_settings = {internal::SquareRootInput(reconstruct) ? 1.f : 0.f, 0.f, static_cast<float>(width), static_cast<float>(height)};
     context1->UpdateSubresource(objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
+    twattila::dlaa_bridge::bridge.color_square_root = shader_settings[0] != 0.f;
     context1->CSSetShader(objects.scaled_prepare.Get(), nullptr, 0);
     context1->CSSetShaderResources(0, 1, &picture);
     context1->CSSetUnorderedAccessViews(0, 1, bridge.color.uav.GetAddressOf(), nullptr);

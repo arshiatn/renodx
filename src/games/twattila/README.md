@@ -7,8 +7,9 @@ mods, not ReShade add-ons or the helper). Ray and path tracing: an upscaler (DLS
 RTX 40 and 50 with a current driver (DXR 1.2: their hardware speeds up Opacity Micromaps and Shader Execution Reordering).
 Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoisers, slower; never run on their drivers yet).
 
-## v140 (2026-11-05, WH3's batch 5; built, not run in game; renodx-tw-dlaa64.exe helper86, bridge v27: ship them together; no players' zip)
+## v140 (2026-11-05, WH3's batch 5; built, not run in game; renodx-tw-dlaa64.exe helper87, bridge v28: ship them together; no players' zip)
 
+- **Ray-traced reflections without path tracing (WH3's batch 5):** last frame's colour read by the rays is squared back where the upscaler got its square root (L, M, Ray Reconstruction), and the Light Bounce without paths learns its light and fills the radiance cache for them, as path tracing does. Harness only. Not run in game.
 - **Helper's log (not run in game):** a real fault leaves one line and renodx-tw-dlaa64.dmp; whose device a GPU reset removed, with its reason and the time, also when no request comes. Attila's 32-bit addon never loaded into it, so WH3's crash report at each start was not Attila's.
 - **Path-Traced AO:** learns from 150 frames before it starts, not 30 (WH3's run: its first frames gave 30 % less light); new row Steady Bounce Light (Experimental, off), that light from the game's cube. The helper logs what it learned at each start. Not run in game.
 - **AO under Ray Reconstruction (Ray Tracing Extra Options, with RR on and RTAO or Path-Traced AO):** Light History (default) or REBLUR. Light History is what Attila had up to v135: raw rays plus 20% of the last frames, Ray Reconstruction cleans the rest, and it undoes the REBLUR that v34 / v138 forced. REBLUR: steadier when moving, about 0.85 ms and 215 MB more at 4K, Path-Traced AO darker at a wall's foot (0.74 to 0.57 on the harness's scene). Harness, same numbers as helper78 and helper79: RTAO 2 rays, RR without history, wall foot 0.00554 Light History, 0.00226 REBLUR. Not run in game.

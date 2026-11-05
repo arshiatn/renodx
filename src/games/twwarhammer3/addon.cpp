@@ -2635,7 +2635,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .water_caustics_label = "Water Caustics (Experimental)",
     .water_reflections_label = "Water Reflections (Experimental)",
     .water_reflections_tooltip = "Rays on rivers and lakes too, also what is off screen; far hills can show as dark patches.\n"
-                                 "Off: the game's reflections there.",
+                                 "Best with ray-traced Global Illumination on. Off: the game's reflections there.",
     .fog_shadows_label = "Fog Shadows (Experimental)",
     .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog: it loses the sun's glow in the shadow of\n"
                            "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",

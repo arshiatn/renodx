@@ -159,6 +159,9 @@ struct Bridge {
   // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
   // accumulation and filter) leave its noise to it.
   bool reconstructing = false;
+  // The colour last written into `color` is the light's square root (the upscaler's input for L, M, Ray Reconstruction): the
+  // helper's paths square it back (RT_PATH_COLOR_SQUARE_ROOT).
+  bool color_square_root = false;
   // The Denoiser setting at NRD: which signals are asked for it, and which the helper denoises by it (asked, and it has
   // not said otherwise: rt_nrd_off), the addon's own denoisers off those. Under Ray Reconstruction only the AO, with its row
   // at REBLUR: RT_AO_REBLUR for RTAO, and Path-Traced AO's Light Bounce is asked for it (rt_core.hpp).
@@ -905,7 +908,7 @@ inline bool TraceBounce(ID3D11DeviceContext* context, const BounceRequest& reque
     shared->rt_bounce_rays = request.rays;
     shared->rt_bounce_range = request.range;
     std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
-    shared->rt_path_flags = request.path_flags;
+    shared->rt_path_flags = request.path_flags | (bridge.color_square_root ? RT_PATH_COLOR_SQUARE_ROOT : 0u);
     shared->rt_path_bounces = request.path_bounces;
     shared->rt_path_samples = request.path_samples;
     shared->rt_guides = (request.guides && bridge.guides) ? 1u : 0u;
@@ -922,7 +925,7 @@ inline bool TraceReflections(ID3D11DeviceContext* context, const ReflectRequest&
     shared->rt_frame = request.frame;
     shared->rt_width = request.width;
     shared->rt_height = request.height;
-    shared->rt_path_flags = request.flags;
+    shared->rt_path_flags = request.flags | (bridge.color_square_root ? RT_PATH_COLOR_SQUARE_ROOT : 0u);
     shared->rt_path_bounces = request.bounces;
     shared->rt_path_samples = request.samples;
     shared->rt_bounce_range = request.range;
@@ -1087,6 +1090,7 @@ inline void Release(bool tell_helper = false) {
   bridge.fence.Reset();
   bridge.width = 0;
   bridge.reconstructing = false;
+  bridge.color_square_root = false;
   bridge.deferred = 0;
   bridge.steady = {};
   bridge.guides = false;

@@ -19,7 +19,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   if ((path_flags & PATH_LIGHT) == 0u) {
     if (cell.x >= width || cell.y >= height || (path_flags & PATH_HISTORY_VALID) == 0u) return;
     const float4 seen = previous_positions[cell];
-    if (seen.w > 0.f) CacheAdd(seen.xyz, max(previous_color[cell].rgb, 0.f));
+    if (seen.w > 0.f) CacheAdd(seen.xyz, PreviousLight(cell));
     return;
   }
   if (cell.x >= bounce_width || cell.y >= bounce_height) return;

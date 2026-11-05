@@ -1068,6 +1068,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   const bool square_root = method == Method::DLAA
                            && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u
                                || (runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame));
+  dlaa_bridge::bridge.color_square_root = square_root;
   const ShaderSettings settings = {
       .metrics = {1.f / static_cast<float>(objects.width), 1.f / static_cast<float>(objects.height),
                   static_cast<float>(objects.width), static_cast<float>(objects.height)},

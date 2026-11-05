@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 27;
+constexpr uint32_t VERSION = 28;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -228,6 +228,11 @@ constexpr uint32_t RT_PATH_NRD = 8192;
 constexpr uint32_t RT_REFLECTIONS_SQUARED_LOBE = 16384;
 // With RT_PATH_AMBIENT (v27): the light standing in for the game's ambient from the game's cube, not the one learned before it.
 constexpr uint32_t RT_PATH_KEPT_CUBE = 32768;
+// A Light Bounce request's without path tracing (v28; reflections after it): the paths' history, radiance cache and learned
+// lighting from its prepared light, before the water's positions and guides replace the scene's, as path tracing does.
+constexpr uint32_t RT_PATH_CACHE_FILL = 65536;
+// The colour (`color`, last frame's when the paths read it) holds the light's square root (DLSS L, M, Ray Reconstruction).
+constexpr uint32_t RT_PATH_COLOR_SQUARE_ROOT = 131072;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

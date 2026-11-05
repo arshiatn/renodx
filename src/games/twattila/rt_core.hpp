@@ -2406,7 +2406,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
                                                      | (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))
-                                                  : (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u),
+                                                  : ((dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u)
+                                                     | (runtime.settings.reflections ? dlaa_bridge::RT_PATH_CACHE_FILL : 0u)),
       .path_bounces = runtime.settings.path_bounces,
       .path_samples = runtime.settings.light_bounce_rays,
       .guides = host.guides_written(),
@@ -2414,7 +2415,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   const bool bounced = dlaa_bridge::TraceBounce(native, request);
   if (bounced != runtime.logged_bounce) {
     runtime.logged_bounce = bounced;
-    renodx::utils::log::i("[Total War] Ray-traced Light Bounce: ", (bounced ? (request.path_flags != 0 ? "path tracing" : "tracing")
+    renodx::utils::log::i("[Total War] Ray-traced Light Bounce: ", (bounced ? ((request.path_flags & dlaa_bridge::RT_PATH_TRACING) != 0 ? "path tracing" : "tracing")
                                                                             : "not traced (the screen-space one)"),
                           " (", width, " x ", height, ", ", request.rays, " rays).");
   }

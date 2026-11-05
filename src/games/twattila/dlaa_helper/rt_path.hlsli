@@ -279,6 +279,12 @@ float3 KeptShade() {
   return light_kept[0].rgb;
 }
 
+// Last frame's scene colour at a render pixel as light: squared back where the upscaler was given its square root.
+float3 PreviousLight(uint2 pixel) {
+  const float3 color = max(previous_color[pixel].rgb, 0.f);
+  return (previous_square_root != 0u) ? color * color : color;
+}
+
 // The light leaving a surface a ray met (false: nobody knows it): the screen's now, else last frame's, else the
 // radiance cache's (SHaRC's instead in PathRadiance with SHaRC Radiance Cache).
 bool HitLight(float3 hit, out float3 light_there) {
@@ -298,7 +304,7 @@ bool HitLight(float3 hit, out float3 light_there) {
     return true;
   }
   if ((path_flags & PATH_LIGHT_FINAL) == 0u && SeenLastFrame(hit, pixel)) {
-    light_there = max(previous_color[pixel].rgb, 0.f);
+    light_there = PreviousLight(pixel);
     return true;
   }
 #if defined(SHARC)
