@@ -160,7 +160,7 @@ struct Settings {
   bool sprite_shadows = false;
   bool far_tree_shadows = false;
   bool terrain_outside_view = false;
-  // Units out of the view from the shadow maps' draws (SceneShader::cascade_keep).
+  // Casters out of the view from the shadow maps' draws (SceneShader::cascade_keep).
   bool casters_out_of_view = false;
 
   bool operator==(const Settings&) const = default;
@@ -220,8 +220,13 @@ struct SceneShader {
   std::span<const uint8_t> tessellated_outside;
   // A vertex shader of the game's shadow pass: units the main pass culled still cast from behind the camera. Its draws into the
   // cascades (Settings::casters_out_of_view) are streamed out through this geometry shader, with the main view's matrix at its
-  // cb0[10-13]; it collapses what the main pass has. Their count stays, so never compact.
+  // cb0[10-13]; it collapses what the main pass has. Their count stays, so never compact. With a rows_shader: a placed draw
+  // instead, by its rows (cb0[10-13] is the main view, all 0 for a new mesh's first rows); the capture and rows shaders read no
+  // state but the draw's vertex buffers (the game's shadow pass binds other resources than its main pass).
   std::span<const uint8_t> cascade_keep;
+  // A mesh's identity in place of `hash`: shaders that draw one mesh (the main pass's and the shadow pass's) share its BLAS and its
+  // instances (0: its hash).
+  uint32_t key_family = 0;
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
@@ -257,6 +262,8 @@ struct Host {
   void (*rewrite_guides)(ID3D11DeviceContext* native) = nullptr;
   // A row (0: off) for placed draws in a clip-space game; off, they are captured every frame. Null: always placed.
   const float* placed_row = nullptr;
+  // With placed_row on: what was placed stays until the scene ends, bounded by KEPT_TRIANGLES and KEPT_MESHES, not RECENT_FRAMES.
+  bool keep_placed = false;
   // A light draw's colour to light in the rays (the paths): times the game's light shader's own scale of its diffuse.
   float local_light_scale = 1.f;
   // A metre in the campaign map's world units, for the rays' ranges (frame_history::campaign_frames; 1: as in a battle).
@@ -285,6 +292,13 @@ constexpr UINT WORLD_BASE = MAX_VERTICES - WORLD_TEXELS;
 constexpr UINT MAX_TREE_VERTICES = 3u << 20;
 // As the helper's: meshes unseen this long are released there, and forgotten here.
 constexpr uint64_t RELEASE_FRAMES = 3600;
+// Host::keep_placed. The kept meshes' room, oldest out first: the helper's STATIC_TRIANGLES and STATIC_RECORDS less a quarter for
+// what the frame draws new.
+constexpr uint64_t KEPT_TRIANGLES = 6u << 20;
+constexpr size_t KEPT_MESHES = 12288;
+constexpr uint32_t KEPT_FOREVER = 0xFFFFFF;  // rt_place's frames wrap there
+// Frames without the main view: a loading screen. The scene it left is forgotten (its buffers' addresses come back as other meshes).
+constexpr uint64_t SCENE_GONE_FRAMES = 30;
 // Smoke Shadows: the particles streamed out between traces at most (48 bytes each; a draw holds its whole list, nearly all
 // without opacity: 742 of a battle's 47884 had some, and at 65536 a list drawn first took the place of the catapults' smoke
 // for good, ATN's debug36), the quads for those with opacity at most (rt_smoke; Smoke Shadow Quality High twice these, Ultra
@@ -332,6 +346,7 @@ struct DeviceObjects {
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
   ComPtr<ID3D11Buffer> cascade_camera;  // SceneShader::cascade_keep's cb0: the main view's matrix at [10-13]
+  ComPtr<ID3D11Buffer> cascade_no_view;  // All 0: a new mesh's first rows, none left out
   ComPtr<ID3D11Buffer> captured;  // stream output: world positions, three per triangle
   ComPtr<ID3D11ShaderResourceView> captured_srv;
   ComPtr<ID3D11Buffer> captured_uv;  // the game's own shaders' foliage UVs, at their vertices' places
@@ -565,8 +580,12 @@ struct Runtime {
     uint32_t placed = 0;
     uint32_t last_instances = 0;
     bool all_draws = false;
+    uint32_t triangles = 0;
+    bool placed_mesh = false;
   };
   std::unordered_map<uint64_t, Known> known;
+  uint32_t kept_frames = 0;  // TraceRequest::kept_frames
+  bool scene_gone = false;   // the next trace's kept_frames is 1
   // A static draw's short key (its shader, arguments, first vertex buffer and index buffer) and the full key it stood
   // for; ambiguous once it stood for two (instances told apart by their constants): Capture's fast path.
   struct ShortKey {
@@ -1035,14 +1054,14 @@ void Capture(Context& command, const SceneShader& shader) {
   // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera). Cloth and sails
   // too, should the game prefill them: their texels paid twice for one sheet.
   const bool thin = shader.thin || (shader.thin_row != nullptr && *shader.thin_row != 0.f);
-  if ((shader.foliage && !shader.rows_shader.empty()) || thin) {
+  const bool cascade_draw = !shader.cascade_keep.empty();
+  if (cascade_draw && !runtime.settings.casters_out_of_view) return;
+  if (!cascade_draw && ((shader.foliage && !shader.rows_shader.empty()) || thin)) {
     ComPtr<ID3D11RenderTargetView> colour_target;
     native->OMGetRenderTargets(1, colour_target.GetAddressOf(), nullptr);
     if (!colour_target) return;
   }
   if (shader.sun_facing && !(shader.far_tree ? runtime.settings.far_tree_shadows : runtime.settings.sprite_shadows)) return;
-  const bool cascade_draw = !shader.cascade_keep.empty();
-  if (cascade_draw && !runtime.settings.casters_out_of_view) return;
   const auto& arguments = command.arguments;
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   // A placed draw (a shader with a record version, v14: rigid objects, tree branches and leaves): its BLAS keyed by its
@@ -1069,6 +1088,8 @@ void Capture(Context& command, const SceneShader& shader) {
     }
   }
   const bool placed = !shader.rows_shader.empty() && !dynamic;
+  // Placed by its rows or not at all: its capture shader isn't the game's, and streamed out every frame is far too much (61 M indices on the replay).
+  if (cascade_draw && !shader.rows_shader.empty() && !placed) return;
   const UINT instances = placed ? std::max(arguments.instance_count, 1u) : 1u;
   UINT vertex_count = 0;
   if constexpr (INDEXED) {
@@ -1199,7 +1220,7 @@ void Capture(Context& command, const SceneShader& shader) {
   native->IAGetIndexBuffer(&index_buffer, &index_format, &index_offset);
   uint64_t key = 14695981039346656037ull;
   const auto mix = [&key](uint64_t value) { key = (key ^ value) * 1099511628211ull; };
-  mix(shader.hash);
+  mix(shader.key_family != 0u ? shader.key_family : shader.hash);
   if constexpr (INDEXED) {
     for (const uint64_t value : {uint64_t{arguments.index_count}, uint64_t{(placed ? 0u : arguments.instance_count)}, uint64_t{arguments.first_index},
                                  uint64_t{static_cast<uint32_t>(arguments.vertex_offset)}, uint64_t{(placed ? 0u : arguments.first_instance)}}) {
@@ -1536,8 +1557,12 @@ void Capture(Context& command, const SceneShader& shader) {
   if (cascade_draw) {
     if (FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
     if (!objects.cascade_camera) {
-      const D3D11_BUFFER_DESC desc = {.ByteWidth = 14 * 4 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-      if (FAILED(device->CreateBuffer(&desc, nullptr, objects.cascade_camera.GetAddressOf()))) return;
+      // To c35: the flags' time, 0 here (a still sheet casts).
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = 36 * 4 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      if (FAILED(device->CreateBuffer(&desc, nullptr, objects.cascade_no_view.GetAddressOf()))
+          || FAILED(device->CreateBuffer(&desc, nullptr, objects.cascade_camera.GetAddressOf()))) {
+        return;
+      }
       runtime.cascade_camera_frame = 0;
     }
   }
@@ -1554,6 +1579,19 @@ void Capture(Context& command, const SceneShader& shader) {
   native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
   native->SOGetTargets(1, game_output.GetAddressOf());
   native->PSSetShader(nullptr, nullptr, 0);
+  ComPtr<ID3D11Buffer> game_camera;
+  UINT game_camera_first = 0;
+  UINT game_camera_count = 0;
+  if (cascade_draw) {
+    if (runtime.cascade_camera_frame != runtime.frame) {
+      std::array<float, 36 * 4> cascade_constants = {};
+      std::ranges::copy(runtime.main_view_projection, cascade_constants.begin() + (10 * 4));
+      native->UpdateSubresource(objects.cascade_camera.Get(), 0, nullptr, cascade_constants.data(), 0, 0);
+      runtime.cascade_camera_frame = runtime.frame;
+    }
+    native1->VSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+    native->VSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
+  }
   if (!place || sway) {
     // A tessellated draw's triangles: how many is known only after it, so into their own buffer, after the frame's others.
     const std::array<ID3D11Buffer*, 2> targets = {shader.tessellated ? objects.tessellated.Get() : objects.captured.Get(), objects.captured_uv.Get()};
@@ -1563,19 +1601,6 @@ void Capture(Context& command, const SceneShader& shader) {
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
     if (shader.sun_facing) native->VSSetShaderResources(0, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
-    ComPtr<ID3D11Buffer> game_camera;
-    UINT game_camera_first = 0;
-    UINT game_camera_count = 0;
-    if (cascade_draw) {
-      std::array<float, 14 * 4> cascade_constants = {};
-      if (runtime.cascade_camera_frame != runtime.frame) {
-        std::ranges::copy(runtime.main_view_projection, cascade_constants.begin() + (10 * 4));
-        native->UpdateSubresource(objects.cascade_camera.Get(), 0, nullptr, cascade_constants.data(), 0, 0);
-        runtime.cascade_camera_frame = runtime.frame;
-      }
-      native1->VSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
-      native->VSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
-    }
     ComPtr<ID3D11ShaderResourceView> game_keep_view;
     ComPtr<ID3D11Buffer> game_keep_constants;
     if (!shader.tessellated_keep.empty()) {
@@ -1610,13 +1635,6 @@ void Capture(Context& command, const SceneShader& shader) {
                             arguments.first_instance);
     }
     if (shader.tessellated) native->End(objects.tessellated_queries[runtime.tessellated_draws].Get());
-    if (cascade_draw) {
-      if (game_camera_first == 0) {
-        native->VSSetConstantBuffers(0, 1, game_camera.GetAddressOf());
-      } else {
-        native1->VSSetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
-      }
-    }
     if constexpr (INDEXED) {
       if (shader.tessellated && runtime.settings.terrain_outside_view && objects.tessellated_outside && runtime.tessellated_draws + 1 < objects.tessellated_queries.size()) {
         ComPtr<ID3D11HullShader> game_hull_shader;
@@ -1644,6 +1662,8 @@ void Capture(Context& command, const SceneShader& shader) {
     // helper placed every placed mesh by stale texels: giant shapes, long lines, no shadows, ATN 2026-10-28).
     ID3D11Buffer* rows_target = objects.captured.Get();
     const UINT rows_offset = rows_vertex * 16;
+    // A new mesh's first rows go whole: its BLAS's build rows are its first instance's, in the view or not.
+    if (cascade_draw && !place) native->VSSetConstantBuffers(0, 1, objects.cascade_no_view.GetAddressOf());
     native->VSSetShader(objects.rows_shaders[index].Get(), nullptr, 0);
     native->GSSetShader(objects.rows_outputs[index].Get(), nullptr, 0);
     native->SOSetTargets(1, &rows_target, &rows_offset);
@@ -1654,6 +1674,13 @@ void Capture(Context& command, const SceneShader& shader) {
       native->DrawInstanced(1, instances, arguments.first_vertex, arguments.first_instance);
     }
     native->IASetPrimitiveTopology(topology);
+  }
+  if (cascade_draw) {
+    if (game_camera_first == 0) {
+      native->VSSetConstantBuffers(0, 1, game_camera.GetAddressOf());
+    } else {
+      native1->VSSetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+    }
   }
   ID3D11Buffer* output = game_output.Get();
   constexpr UINT APPEND = UINT_MAX;
@@ -2227,6 +2254,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)
                | (std::min(runtime.settings.smoke_quality, 2u) << dlaa_bridge::RT_SMOKE_QUALITY_SHIFT),
+      .kept_frames = (runtime.scene_gone ? 1u : runtime.kept_frames),
       .ambient_range = runtime.settings.ambient_range * RangeScale(),
       .ambient_rays = runtime.settings.ambient_rays,
       .sun_softness = runtime.settings.sun_softness,
@@ -2260,9 +2288,13 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   if (!traced) NotTraced("the helper did not trace: " + dlaa_bridge::TraceStatus());
   runtime.lights_traced = traced && lights;
   if (traced) {
+    runtime.scene_gone = false;
     for (const auto& capture : runtime.captures) {
       if ((capture.flags & dlaa_bridge::RT_DYNAMIC) == 0) {
-        runtime.known[capture.key].frame = runtime.frame;
+        Runtime::Known& seen = runtime.known[capture.key];
+        seen.frame = runtime.frame;
+        seen.triangles = capture.vertex_count / 3;
+        seen.placed_mesh = (capture.flags & dlaa_bridge::RT_INSTANCED) != 0;
       }
     }
     for (const uint64_t set_key : runtime.new_sets) runtime.cluster_meshes.at(set_key).sent = true;
@@ -2985,7 +3017,33 @@ inline void Update(const Settings& settings) {
   runtime.new_set_bytes = 0;
   std::swap(runtime.lights_last, runtime.lights_drawn);
   runtime.lights_drawn.clear();
-  if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second.frame + internal::RELEASE_FRAMES < runtime.frame; }) != 0) {
+  // Host::keep_placed: as long as there's room. Then the oldest meshes go, here and in the helper by the one number it's sent.
+  if (internal::host.keep_placed && internal::host.placed_row != nullptr && *internal::host.placed_row != 0.f) {
+    if (runtime.frame - runtime.main_view_frame == internal::SCENE_GONE_FRAMES) {
+      runtime.known.clear();
+      runtime.short_keys.clear();
+      runtime.scene_gone = true;
+    } else if (runtime.kept_frames == 0 || (runtime.frame % 64) == 0) {
+      std::vector<std::pair<uint64_t, uint32_t>> kept;
+      for (const auto& [key, seen] : runtime.known) {
+        if (seen.placed_mesh) kept.emplace_back(seen.frame, seen.triangles);
+      }
+      std::ranges::sort(kept, std::ranges::greater{});
+      uint64_t kept_triangles = 0;
+      runtime.kept_frames = internal::KEPT_FOREVER;
+      for (size_t mesh = 0; mesh < kept.size(); ++mesh) {
+        kept_triangles += kept[mesh].second;
+        if (kept_triangles > internal::KEPT_TRIANGLES || mesh >= internal::KEPT_MESHES) {
+          runtime.kept_frames = static_cast<uint32_t>(std::max<uint64_t>(runtime.frame - kept[mesh].first, 2));
+          break;
+        }
+      }
+    }
+  } else {
+    runtime.kept_frames = 0;
+  }
+  const uint64_t kept_release = (runtime.kept_frames != 0 ? runtime.kept_frames : internal::RELEASE_FRAMES);
+  if (std::erase_if(runtime.known, [&](const auto& entry) { return entry.second.frame + (entry.second.placed_mesh ? kept_release : internal::RELEASE_FRAMES) < runtime.frame; }) != 0) {
     std::erase_if(runtime.short_keys, [&](const auto& entry) { return !runtime.known.contains(entry.second.key); });
   }
 }

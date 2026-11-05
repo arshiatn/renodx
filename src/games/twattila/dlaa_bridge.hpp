@@ -54,6 +54,7 @@ struct Texture {
 // each) and the meshes it drew.
 struct TraceRequest {
   uint32_t flags = 0;  // RT_SUN_SHADOWS, RT_AMBIENT_OCCLUSION
+  uint32_t kept_frames = 0;  // Shared::rt_kept_frames
   float ambient_range = 2.f;
   uint32_t ambient_rays = 2;
   float sun_softness = 0.f;  // degrees of the sun's disk (0: hard shadows)
@@ -727,6 +728,7 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
     shared->fg_request = 0;
     shared->rt_request = 1;
     shared->rt_flags = request.flags;
+    shared->rt_kept_frames = request.kept_frames;
     shared->rt_ambient_range = request.ambient_range;
     shared->rt_ambient_rays = request.ambient_rays;
     shared->rt_sun_softness = request.sun_softness;

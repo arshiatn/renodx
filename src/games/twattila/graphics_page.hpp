@@ -128,7 +128,7 @@ struct Bindings {
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
   float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
-  float* rays_units_out_of_view = nullptr;  // Under rays_replace_maps: units from the shadow maps' draws; null: no such row
+  float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
@@ -739,10 +739,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .binding = b.rays_units_out_of_view,
           .value_type = SettingValueType::BOOLEAN,
           .default_value = 1.f,
-          .label = "Units Out of View (Experimental)",
+          .label = "Shadow Casters Out of View",
           .section = section,
-          .tooltip = "With Rays Replace Shadow Maps: units behind the camera keep their shadows.",
-          .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
+          .tooltip = "Rays' sun shadows: trees, buildings, rocks and units behind the camera keep their shadows, as far as the game's shadow distance reaches.",
           .is_visible = more_rays,
       });
     }

@@ -22,7 +22,7 @@
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (the kept ones' source)
 Buffer<float4> vertex_positions : register(t7);     // the request's vertices: an instance's rows 0-2 in four texels
 // The records' BLAS addresses (two uints each: 0 not a placed mesh now, bit 0 drawn moving now, bit 1 grass, bit 2 drawn
-// this frame, bit 3 all its instances placed this frame), then the jobs (two uint4 each: first drawn instance, instances, rows texel, flags; record, 0, 0, 0).
+// this frame, bit 3 all its instances placed this frame, bit 4 ever drawn moving), then the jobs (two uint4 each: first drawn instance, instances, rows texel, flags; record, 0, 0, 0).
 ByteAddressBuffer table : register(t8);
 RWByteAddressBuffer instances_written : register(u6);  // D3D12_RAYTRACING_INSTANCE_DESC, 64 bytes each
 RWStructuredBuffer<float4> build_rows : register(u7);  // three per record
@@ -71,6 +71,8 @@ static const uint GRASS_KEPT_FRAMES = 8u;
 // it (the addon places a still mesh every 4th frame, and the frame after its instances changed; until then not placed
 // again need not mean gone). Off-screen casters stay.
 static const uint KEPT_IN_VIEW_FRAMES = 8u;
+// A mesh ever drawn moving, however long `recent_frames` keeps the rest: kept long, one walking off leaves a trail.
+static const uint MOVED_KEPT_FRAMES = 300u;
 static const uint STATE_WRITTEN = 0u;
 static const uint STATE_BEFORE = 4u;
 static const uint STATE_CPU_BEFORE = 8u;
@@ -152,7 +154,8 @@ void main(uint3 id : SV_DispatchThreadID) {
     if ((tail.z | tail.w) == 0u || record >= record_count || ((frame - tail.y) & FRAME_MASK) > recent_frames) return;
     const uint2 blas = table.Load2(record * 8u);
     const bool grass = (blas.x & 2u) != 0u;
-    if ((blas.x | blas.y) == 0u || (blas.x & 1u) != 0u || (grass && ((frame - tail.y) & FRAME_MASK) > GRASS_KEPT_FRAMES)) return;
+    if ((blas.x | blas.y) == 0u || (blas.x & 1u) != 0u || (grass && ((frame - tail.y) & FRAME_MASK) > GRASS_KEPT_FRAMES)
+        || ((blas.x & 16u) != 0u && ((frame - tail.y) & FRAME_MASK) > MOVED_KEPT_FRAMES)) return;
     const uint4 row0 = instances_before.Load4(index * 64u);
     const uint4 row1 = instances_before.Load4(index * 64u + 16u);
     const uint4 row2 = instances_before.Load4(index * 64u + 32u);

@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 23;
+constexpr uint32_t VERSION = 24;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -429,11 +429,15 @@ struct Shared {
   // The helper's (in v23's padding, an older helper leaves it 0): the signals asked for NRD that it could not run on
   // (RT_NRD_OFF_*): their built-in ways instead, the addon's own denoisers stay on them.
   uint32_t rt_nrd_off = 0;
+  // v24: how many frames a placed mesh's undrawn instances stay and its BLAS is held, for one trace (0: RECENT_FRAMES and
+  // RELEASE_FRAMES, the games without Host::keep_placed; 1 with a new scene: the old one's go at once).
+  uint32_t rt_kept_frames = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 23) return sizeof(Shared);
+  if (version >= 24) return sizeof(Shared);
+  if (version == 23) return offsetof(Shared, rt_kept_frames);
   if (version == 22) return offsetof(Shared, fg_running);
   if (version >= 19) return offsetof(Shared, upscaler);
   if (version == 18) return offsetof(Shared, rt_tint);

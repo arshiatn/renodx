@@ -1972,6 +1972,7 @@ class RtScene12 {
     // Placed (v14, RT_INSTANCED): in the scene only where its draws put its instances (rt_place), its build rows kept by
     // record.
     bool placed = false;
+    bool moved = false;  // ever drawn moving (rt_place's MOVED_KEPT_FRAMES)
   };
   // A buffer, or a BLAS's place in a pool (`units` past 0), let go once the GPU is past request `value`.
   struct Release {
@@ -4081,7 +4082,7 @@ class RtScene12 {
       const bool drawn_known = (shared.rt_flags & dlaa_bridge::RT_DRAWN_PLACED) != 0 && drawn_count < dlaa_bridge::RT_DRAWN;
       for (const auto& [key, mesh] : meshes_) {
         if (mesh.placed) {
-          record_blas[mesh.record] = mesh.blas.address | (mesh.grass ? 2u : 0u) | ((!drawn_known || mesh.drawn_frame == frame) ? 4u : 0u);
+          record_blas[mesh.record] = mesh.blas.address | (mesh.grass ? 2u : 0u) | ((!drawn_known || mesh.drawn_frame == frame) ? 4u : 0u) | (mesh.moved ? 16u : 0u);
         }
       }
       uint32_t job_count = 0;
@@ -4094,7 +4095,10 @@ class RtScene12 {
         Mesh& mesh = found->second;
         mesh.drawn_frame = frame;
         record_blas[mesh.record] |= 4u;
-        if ((draw.flags & dlaa_bridge::RT_PLACE_MOVING) != 0) record_blas[mesh.record] |= 1u;
+        if ((draw.flags & dlaa_bridge::RT_PLACE_MOVING) != 0) {
+          mesh.moved = true;
+          record_blas[mesh.record] |= 17u;
+        }
         if ((draw.flags & dlaa_bridge::RT_PLACE_WHOLE) != 0) record_blas[mesh.record] |= 8u;
         const std::array<uint32_t, 8> job = {placed_drawn, draw.instances, draw.first_vertex,
                                              (mesh.foliage ? PLACE_FOLIAGE : 0u) | ((draw.flags & dlaa_bridge::RT_PLACE_HIDDEN) != 0 ? PLACE_HIDDEN : 0u)
@@ -4135,7 +4139,8 @@ class RtScene12 {
         // Clearing also takes the dedupe table, four entries a thread.
         const uint32_t threads = (mode == 0u) ? std::max(place_end, placed_capacity_ / 2) : ((mode == 1u) ? placed_drawn : place_end);
         if (threads == 0 || (mode == 2u && (shared.rt_flags & dlaa_bridge::RT_NO_KEPT) != 0)) continue;
-        const std::array<uint32_t, 8> place_dispatch = {mode, job_count, placed_drawn, instance_count, frame, place_end, RECENT_FRAMES,
+        const std::array<uint32_t, 8> place_dispatch = {mode, job_count, placed_drawn, instance_count, frame, place_end,
+                                                        (version >= 24 && shared.rt_kept_frames != 0) ? shared.rt_kept_frames : RECENT_FRAMES,
                                                         STATIC_RECORDS};
         list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(place_dispatch.size()), place_dispatch.data(), 0);
         // Rows of 65535 groups (D3D12's most along x; rt_place's index).
@@ -4573,7 +4578,8 @@ class RtScene12 {
     }
     // Meshes unseen for long give their BLAS (and micromaps, record, pool ranges) back once the GPU is past this request.
     std::erase_if(meshes_, [&](auto& entry) {
-      if (entry.second.drawn_frame + RELEASE_FRAMES >= frame) return false;
+      const uint64_t release_frames = (entry.second.placed && version >= 24 && shared.rt_kept_frames != 0) ? shared.rt_kept_frames : RELEASE_FRAMES;
+      if (entry.second.drawn_frame + release_frames >= frame) return false;
       ReleaseMesh(&entry.second);
       return true;
     });
