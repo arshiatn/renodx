@@ -29,6 +29,11 @@
       Skip the Game's SSAO under Rays: default ON now, also under Path-Traced AO; AO pass 0.51 to 0.09 ms GPU. Skip Trees in Shadow Maps: 1.01 to 0.60 ms, stays off (fog look); its bypass no longer drops the trees' cascade capture (captured before the draw).
       Not done: terrain in one draw (WH3's mask GS drops triangles, one stream can't; WARP terrain_in_draw proves the pass-through way; row taken out), game's GI flag 0/1 (readers unread), cascades' rest, terrain count's wait (8-16 ms a frame in a battle's first 30 s). Not run in game: PT AO's look with the SSAO skip, trees' out-of-view shadows with Skip Trees.
       14 targets built, page dumps b5p7 (Attila the date only; WH3 the button and the SSAO row).
+- [x] P8 Banners and gaps. Report wh3_batch5/reports/P8.md. Helper88, bridge v29. Not run in game.
+      Cause (ATN's debug8 shots + code): the dark patches are whole triangles. The game lights 444F1190's banner from both sides by its smooth normal (989BED69 reads SV_IsFrontFace); rt_trace took the triangle's facing from the depth and traced turned-away ones against the banner itself. Mesh = the drawn one (same draw, paused), cascade copy collapses in view.
+      Row Smooth Banner Shadows (RayTracedSheetsUnselfed, Experimental, off, WH3): cloth and sails trace from the camera's side, own triangles within 3 m passed (RT_SHEETS_UNSELFED). Harness HARNESS_SAIL_FOLDS: folded sheet 67.7 % dark off, 0.0 % on, a solid card's shadow on it 96.6 %. Two unit cut-outs added (AF697DAE, F2BC0D72: base alpha beside the dither, the script skipped them). Gap list reports/p8_gaps.txt.
+      Not done: 1405BFB4 (fx_rigidtextureblend unit parts: 8 layer masks by per-draw weights, level C); 74 dump-only base-alpha cut-outs (level B, reports/p8_base_alpha_scan.txt); dissolve shaders; Attila has no row (same trace code); probe's cost unmeasured; 2-4 rays a pixel not proven (test folds finer than its pixels).
+      14 targets built, page dumps b5p8 (WH3 the row, Attila the date only), all_modes on helper88 133 of 134 (release_rr: the memory flake, 1 of 2 alone passes; 6 new cloth_folds modes pass).
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
