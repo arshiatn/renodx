@@ -192,6 +192,8 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
   t_rt_specular_occlusion.GetDimensions(rt_occlusion_width, rt_occlusion_height);
   const bool rt_bound = rt_reflected || rt_occlusion_width != 0u;
   const float4 rt_traced = rt_reflected ? t_rt_reflection.Load(int3(rt_texel, 0)) : 0.f;
+  // Water takes the rays only with its row on (x); else its march, as the game: hits have no fog, far hills came out as dark patches.
+  const bool rt_here = rt_reflected && (r3.x == 0 || RtWaterReflections());
   if (r3.x != 0 || ((rt_bound || rt_march_everywhere) && ((int)r2.w & 1) != 0)) {
     r3.yz = g_viewport_dimensions.zw * r0.xy;
     r4.xy = gbuffer_channel_1_texture.Load(r1.xyw).xy;
@@ -270,7 +272,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r8.z = min(5, r8.z);
     r0.xy = r0.xy * -r7.ww + r0.zw;
     r12.xyz = t_in_radiance.SampleLevel(s_trilinear_sampler_s, r0.xy, r8.z).xyz;
-    if (rt_reflected) {
+    if (rt_here) {
       r12.xyz = rt_traced.rgb;
     } else if (r3.x == 0 && !rt_march_everywhere) {
       r12.xyz = float3(0,0,0);
@@ -1824,7 +1826,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     // RenoDX: off water no march ran; its result over the sun light's cubes, those dimmed by what blocks them.
     const float3 rt_occluded = RtOccludedEnvironment(rt_texel, r13.xyz);
     r0.xyz = r0.yzw * r0.xxx + -rt_occluded;
-    r0.w = rt_reflected ? rt_traced.a : ((r2.x != 0 || rt_march_everywhere) ? min(1, r1.w) : 0);
+    r0.w = rt_here ? rt_traced.a : ((r2.x != 0 || rt_march_everywhere) ? min(1, r1.w) : 0);
     r0.xyz = r0.xyz * r0.www + (rt_occluded - r13.xyz);
     r1.xyz = r1.xyz * float3(0.5,0.5,0.5) + -r13.xyz;
     r1.xyz = r0.www * r1.xyz + r13.xyz;

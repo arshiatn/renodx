@@ -56,6 +56,8 @@ struct Texts {
   const char* ao_paths_label = "Path-Traced (ReSTIR GI)";
   const char* specular_occlusion_label = "Ray-Traced Specular Occlusion";
   const char* water_caustics_label = "Water Caustics";
+  const char* water_reflections_label = "Water Reflections";
+  const char* water_reflections_tooltip = "";  // Empty: the row's own.
   const char* fog_shadows_label = "Fog Shadows";
   const char* fog_shadows_tooltip = "";  // Empty: the row's own.
   const char* light_glow_label = "";     // Empty: the row's own.
@@ -70,6 +72,7 @@ struct Texts {
   const char* effects_at_output_tooltip =
       "While the upscaler renders below 100%, ambient occlusion, Light Bounce, reflections and shadow softness\n"
       "keep their 100% detail. Looks better, can cost some performance.";
+  const char* dlss_preset_tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default).";
   const char* reflections_tooltip =
       "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
       "Game's SSR: the original. FidelityFX SSSR: AMD's hierarchical ray march, exact, no gaps, reaching\n"
@@ -139,6 +142,7 @@ struct Bindings {
   bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   bool rays_preset_path_ambient = true;  // The RT/PT preset takes it; false: ray-traced AO, over the game's.
   bool rays_preset_caustics = true;      // The RT/PT preset turns Water Caustics on.
+  bool rays_preset_water_reflections = true;  // The RT/PT preset turns Water Reflections on.
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
   bool has_reflections = true;
@@ -488,7 +492,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                  .tooltip = "The size the game is drawn at (100%: Native). Below 33% the upscalers' own modes end."});
     }
     page.Take({.match = "AntiAliasingDlaaPreset", .section = section, .shown = dlss, .label = "DLSS Preset",
-               .tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default)."});
+               .tooltip = b.texts->dlss_preset_tooltip});
     page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "DLSS Ray Reconstruction",
                .tooltip = "NVIDIA's denoiser for ray tracing in place of DLSS's usual model: much less noise in everything\n"
                           "ray-traced. Runs only while something is ray-traced. Needs nvngx_dlssd.dll next to nvngx_dlss.dll."});
@@ -616,6 +620,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     // No paths for the sky's light here: ray-traced AO, over the game's.
     if (!b.has_path_ambient || !b.rays_preset_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     if (!b.rays_preset_caustics) rays_values.emplace_back("WaterCaustics", 0.f);
+    if (!b.rays_preset_water_reflections) rays_values.emplace_back("RayTracedWaterReflections", 0.f);
     if (b.lights_own_row) rays_values.insert(rays_values.end(), {{"RayTracedPointLightShadows", 1.f}, {"RayTracedLightImportance", 0.f}, {"RayTracedFogShadows", 0.f}, {"RayTracedLightGlow", 0.f}});
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
@@ -840,7 +845,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "SSRDenoiser", .section = section, .shown = hierarchical, .label = "Denoiser", .only_some_games = true});
     page.Take({.match = "RayTracedReflectionSamples", .section = section, .shown = rays, .label = "Samples"});
     page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = rays, .label = "Reuse"});
-    page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = "Water Reflections"});
+    page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = b.texts->water_reflections_label, .tooltip = b.texts->water_reflections_tooltip});
     page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
     page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
     page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = b.texts->water_caustics_label, .only_some_games = true});

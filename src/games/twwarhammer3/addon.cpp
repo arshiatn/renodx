@@ -918,6 +918,7 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
   if (native == nullptr) return true;
   const bool all_surfaces = all_surfaces_row != 0.f && rt_sliders.reflections == 0.f;
   if (all_surfaces || one_to_one) pass = Pass::OURS;
+  bool water_rays = false;
   if (RaysOn() && main_depth && twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) {
     native->CSGetShaderResources(0, static_cast<UINT>(march_gbuffer.size()), march_gbuffer.data());
     native->CSGetConstantBuffers(0, 1, march_camera.ReleaseAndGetAddressOf());
@@ -934,12 +935,10 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
     if (views[0] != nullptr) {
       auto& runtime = twattila::rt_scene::internal::runtime;
       const std::unique_lock lock(runtime.mutex);
-      if (!runtime.settings.reflections) {
-        pass = Pass::OURS;
-      } else if (runtime.water_traced) {
-        // Rays from the riverbed would show in the water: else the game's march stays.
-        pass = Pass::RAYS;
-      }
+      // Rays from the riverbed would show in the water: else the game's march stays there. So too with water's rays off (the rows keep
+      // them leaving from the water, for Ray Reconstruction's guides).
+      water_rays = runtime.settings.reflections && runtime.water_traced && rt_sliders.water_reflections != 0.f;
+      pass = water_rays ? Pass::RAYS : Pass::OURS;
     }
   }
   if (pass == Pass::GAME) return true;
@@ -948,7 +947,7 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
     sun_low_quality_logged = true;
     renodx::utils::log::i("[Warhammer III] Reflections: the frame's sun is ps 76A707E5, its cubes taken back by its rule.");
   }
-  const std::array<uint32_t, 4> flags = {0u, sun_rule ? 1u : 0u, all_surfaces ? 1u : 0u, one_to_one ? 1u : 0u};
+  const std::array<uint32_t, 4> flags = {water_rays ? 1u : 0u, sun_rule ? 1u : 0u, all_surfaces ? 1u : 0u, one_to_one ? 1u : 0u};
   if (!flags_buffer) {
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     native->GetDevice(device.GetAddressOf());
@@ -2474,6 +2473,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
+    .water_reflections_label = "Water Reflections (Experimental)",
+    .water_reflections_tooltip = "Rays on rivers and lakes too, also what is off screen; far hills can show as dark patches.\n"
+                                 "Off: the game's reflections there.",
     .fog_shadows_label = "Fog Shadows (Experimental)",
     .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog: it loses the sun's glow in the shadow of\n"
                            "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
@@ -2488,6 +2490,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .object_motion_tooltip = "Flags, glowing weapons and swaying props tell the upscaler how they move.\nOff: the game's own.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, Light Bounce, ray-traced AO's rate and Bend's shadow softness\n"
                                  "keep their 100% detail, and at half or below the water's reflections too. Looks better, can cost some performance.",
+    .dlss_preset_tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default).\n"
+                           "Below 100%: L comes out darker, up to 10% at half; K and M hold.",
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original, on water only. All Surfaces: the game's own march on armour, metal and the rest too,\n"
                            "no rays needed; costs more, may shimmer. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
@@ -2848,6 +2852,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength, twwarhammer3::taa_dlss::RenderShare());
   rt_settings.ambient_alone = rays_alone_ao_row != 0.f;
+  rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -3254,6 +3259,11 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout, then Settings Mode's pages. The game owns its scale; its ambient occlusion stays under ray-traced AO
   // yet; smoke and foliage aren't known here. Its march is already hierarchical: no FidelityFX SSSR. No Path-Traced AO: with spherical harmonics on the
   // cube isn't the sky (rt_sun), so the paths have no sky of the game's to bring.
+  // Water keeps the game's march by default (reflections::OnMarch).
+  twattila::rt_scene::internal::water_pass = true;
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedWaterReflections") setting->default_value = 0.f;
+  }
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &reflections::all_surfaces_row,
@@ -3273,6 +3283,7 @@ void ConfigureAddon() {
                                              .has_foliage_light = false,
                                              .has_path_ambient = false,
                                              .rays_preset_caustics = false,
+                                             .rays_preset_water_reflections = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
