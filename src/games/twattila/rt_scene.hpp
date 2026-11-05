@@ -18,6 +18,7 @@
 #include <format>
 #include <mutex>
 #include <ranges>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <type_traits>
@@ -31,6 +32,7 @@
 
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
+#include "../../utils/float16.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/state.hpp"
 #include "./anti_aliasing.hpp"
@@ -54,6 +56,16 @@
 // scene's captures: rt_capture_*.vs (tools\tw\attila_motion\make_wind_motion_vs.py: the game's code giving the world
 // position), Warhammer III's the game's own shaders. Needs DLAA / DLSS (the bridge). D3D11.
 namespace twattila::rt_scene {
+
+// The pixel trace's look at the rays' AO (a game with rt_ambient_combine): the rays and the combine run past ReShade's
+// events, so the trace's commands never show them. While wanted, each combine writes `text`.
+struct AmbientProbe {
+  std::shared_mutex mutex;
+  bool wanted = false;
+  std::array<float, 2> position = {};  // 0-1 of the picture
+  std::string text;
+};
+inline AmbientProbe ambient_probe;
 
 using Microsoft::WRL::ComPtr;
 
@@ -513,6 +525,110 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
         native->CSSetSamplers(0, 1, game_sampler.GetAddressOf());
         runtime.combined_frame = runtime.frame;
         runtime.game_ao = game_ao.Get();
+        if (const std::unique_lock probe_lock(ambient_probe.mutex); ambient_probe.wanted) {
+          constexpr int RADIUS = 2;
+          const int traced_width = static_cast<int>(runtime.traced_size[0]);
+          const int traced_height = static_cast<int>(runtime.traced_size[1]);
+          const int pixel_x = std::min(static_cast<int>(ambient_probe.position[0] * static_cast<float>(traced_width)), traced_width - 1);
+          const int pixel_y = std::min(static_cast<int>(ambient_probe.position[1] * static_cast<float>(traced_height)), traced_height - 1);
+          const int left = std::max(pixel_x - RADIUS, 0);
+          const int top = std::max(pixel_y - RADIUS, 0);
+          const int right = std::min(pixel_x + RADIUS + 1, traced_width);
+          const int bottom = std::min(pixel_y + RADIUS + 1, traced_height);
+          // The texels' values as floats, row after row; empty if the copy failed.
+          const auto read = [&](ID3D11Texture2D* texture, const D3D11_BOX& box) {
+            std::vector<std::array<float, 4>> texels;
+            if (texture == nullptr) return texels;
+            D3D11_TEXTURE2D_DESC desc = {};
+            texture->GetDesc(&desc);
+            const D3D11_TEXTURE2D_DESC staging_desc = {
+                .Width = box.right - box.left,
+                .Height = box.bottom - box.top,
+                .MipLevels = 1,
+                .ArraySize = 1,
+                .Format = desc.Format,
+                .SampleDesc = {.Count = 1},
+                .Usage = D3D11_USAGE_STAGING,
+                .CPUAccessFlags = D3D11_CPU_ACCESS_READ,
+            };
+            ComPtr<ID3D11Texture2D> staging;
+            if (FAILED(objects.device->CreateTexture2D(&staging_desc, nullptr, staging.GetAddressOf()))) return texels;
+            native->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, texture, 0, &box);
+            D3D11_MAPPED_SUBRESOURCE mapped = {};
+            if (FAILED(native->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return texels;
+            for (UINT row = 0; row < staging_desc.Height; ++row) {
+              const auto* bytes = static_cast<const uint8_t*>(mapped.pData) + (static_cast<size_t>(row) * mapped.RowPitch);
+              for (UINT column = 0; column < staging_desc.Width; ++column) {
+                std::array<float, 4> texel = {};
+                if (desc.Format == DXGI_FORMAT_R8_UNORM) {
+                  texel[0] = static_cast<float>(bytes[column]) / 255.f;
+                } else if (desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
+                  std::array<uint16_t, 4> halves = {};
+                  std::memcpy(halves.data(), bytes + (static_cast<size_t>(column) * sizeof(halves)), sizeof(halves));
+                  for (size_t channel = 0; channel < texel.size(); ++channel) texel[channel] = renodx::utils::float16::Decode(halves[channel]);
+                } else {
+                  std::memcpy(texel.data(), bytes + (static_cast<size_t>(column) * sizeof(texel)), sizeof(texel));
+                }
+                texels.push_back(texel);
+              }
+            }
+            native->Unmap(staging.Get(), 0);
+            return texels;
+          };
+          const D3D11_BOX box = {.left = static_cast<UINT>(left), .top = static_cast<UINT>(top), .front = 0, .right = static_cast<UINT>(right), .bottom = static_cast<UINT>(bottom), .back = 1};
+          const auto ambient_texels = read(dlaa_bridge::bridge.rt_ambient.texture.Get(), box);
+          const auto combined_texels = read(objects.combined.Get(), box);
+          const auto position_texels = read(dlaa_bridge::bridge.rt_positions.texture.Get(), box);
+          const auto camera_texels = read(dlaa_bridge::bridge.rt_sun.texture.Get(), {.left = 1, .top = 0, .front = 0, .right = 2, .bottom = 1, .back = 1});
+          const int columns = right - left;
+          std::string& text = ambient_probe.text;
+          text = std::format("Rays' AO at the cross: render pixel {},{} of {}x{}, range {:.2f} m (x the game's scale in the request), {} rays a frame, quarter rate {}, in place of the game's AO {}, flags 0x{:X}.\n",
+                             pixel_x, pixel_y, traced_width, traced_height, runtime.settings.ambient_range, runtime.settings.ambient_rays,
+                             runtime.settings.ambient_quarter, runtime.settings.ambient_alone, dlaa_bridge::bridge.shared != nullptr ? dlaa_bridge::bridge.shared->rt_flags : 0u);
+          text += "Each block: the texels around it, the pixel in the middle (fewer at a screen edge). AO 1 is open, 0 black: every ray hit within the range.\n";
+          const auto block = [&](const char* title, const std::vector<std::array<float, 4>>& texels, size_t channel) {
+            text += std::format("{}:\n", title);
+            for (size_t index = 0; index < texels.size(); ++index) {
+              text += std::format("{:10.4f}{}", texels[index][channel], (index + 1) % static_cast<size_t>(columns) == 0 ? "\n" : " ");
+            }
+          };
+          block("AO the rays left", ambient_texels, 0);
+          block("AO the sun draws read", combined_texels, 0);
+          block("View depth, metres (0: sky)", position_texels, 3);
+          if (position_texels.size() == static_cast<size_t>(columns * (bottom - top)) && camera_texels.size() == 1) {
+            const auto position_at = [&](int x, int y) {
+              return position_texels[static_cast<size_t>(((std::clamp(y, 0, traced_height - 1) - top) * columns) + std::clamp(x, 0, traced_width - 1) - left)];
+            };
+            const auto& position = position_at(pixel_x, pixel_y);
+            // As the helper's SurfaceNormal (rt_scene.hlsli), from the same positions.
+            const auto& to_left = position_at(pixel_x - 1, pixel_y);
+            const auto& to_right = position_at(pixel_x + 1, pixel_y);
+            const auto& above = position_at(pixel_x, pixel_y - 1);
+            const auto& below = position_at(pixel_x, pixel_y + 1);
+            const auto difference = [](const std::array<float, 4>& a, const std::array<float, 4>& b) {
+              return std::array<float, 3>{a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+            };
+            const bool use_right = pixel_x == 0 || (pixel_x != traced_width - 1 && std::abs(to_right[3] - position[3]) < std::abs(to_left[3] - position[3]));
+            const bool use_below = pixel_y == 0 || (pixel_y != traced_height - 1 && std::abs(below[3] - position[3]) < std::abs(above[3] - position[3]));
+            const auto along_x = use_right ? difference(to_right, position) : difference(position, to_left);
+            const auto along_y = use_below ? difference(below, position) : difference(position, above);
+            std::array<float, 3> normal = {(along_y[1] * along_x[2]) - (along_y[2] * along_x[1]),
+                                           (along_y[2] * along_x[0]) - (along_y[0] * along_x[2]),
+                                           (along_y[0] * along_x[1]) - (along_y[1] * along_x[0])};
+            const float normal_length = std::sqrt((normal[0] * normal[0]) + (normal[1] * normal[1]) + (normal[2] * normal[2]));
+            const auto to_camera = difference(camera_texels[0], position);
+            const float facing = (normal[0] * to_camera[0]) + (normal[1] * to_camera[1]) + (normal[2] * to_camera[2]);
+            const float sign_to_camera = (facing < 0.f ? -1.f : 1.f);
+            const float length = (normal_length > 0.f ? normal_length : 1.f);
+            text += std::format("World position {:.3f}, {:.3f}, {:.3f}, camera {:.3f}, {:.3f}, {:.3f}.\n", position[0], position[1], position[2],
+                                camera_texels[0][0], camera_texels[0][1], camera_texels[0][2]);
+            text += std::format("Normal the rays start from {:.3f}, {:.3f}, {:.3f} (y up{}), steps to its neighbours {:.4f} and {:.4f} m.\n",
+                                normal[0] * sign_to_camera / length, normal[1] * sign_to_camera / length, normal[2] * sign_to_camera / length,
+                                normal_length > 0.f ? "" : "; none: the rays use the way to the camera",
+                                std::sqrt((along_x[0] * along_x[0]) + (along_x[1] * along_x[1]) + (along_x[2] * along_x[2])),
+                                std::sqrt((along_y[0] * along_y[0]) + (along_y[1] * along_y[1]) + (along_y[2] * along_y[2])));
+          }
+        }
       }
     }
     if (game_ao && game_ao.Get() == runtime.game_ao && runtime.combined_frame == runtime.frame) {

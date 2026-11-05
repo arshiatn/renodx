@@ -1696,26 +1696,7 @@ void ConfigureAddon() {
           .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
           .section = "Graphics (Experimental)",
           .on_draw = [] {
-            if (!ImGui::TreeNode("Pixel trace")) return false;
-            ImGui::SliderFloat2("Traced pixel (% of width, height)", traced_pixel.data(), 0.f, 100.f, "%.1f%%");
-            // A red cross marks the pixel, the red line the traced line through it.
-            const ImVec2 screen = ImGui::GetIO().DisplaySize;
-            const ImVec2 cross = {screen.x * traced_pixel[0] / 100.f, screen.y * traced_pixel[1] / 100.f};
-            const float half_line = screen.x * talesofarise::pixel_trace::LINE_WIDTH * 0.5f;
-            ImDrawList* foreground = ImGui::GetForegroundDrawList(nullptr);
-            foreground->AddLine({cross.x - half_line, cross.y}, {cross.x + half_line, cross.y}, IM_COL32(255, 0, 0, 255), 1.f);
-            foreground->AddLine({cross.x, cross.y - 12.f}, {cross.x, cross.y + 12.f}, IM_COL32(255, 0, 0, 255), 2.f);
-            if (ImGui::Button("Trace these pixels for one frame")) {
-              talesofarise::pixel_trace::Request(traced_pixel[0] / 100.f, traced_pixel[1] / 100.f);
-            }
-            if (ImGui::IsItemHovered()) {
-              ImGui::SetTooltip("Saves every pass that changes the pixels under the red line during the next frame\n"
-                                "to attila_pixel_trace.txt next to the game's exe (one short hitch). Put the cross\n"
-                                "on a sea or river reflection.");
-            }
-            ImGui::TextWrapped("%s", talesofarise::pixel_trace::Status().c_str());
-            ImGui::TreePop();
-            return false;
+            return talesofarise::pixel_trace::DrawRow(&traced_pixel, "Put the cross\non a sea or river reflection.");
           },
       },
       graphics_status,

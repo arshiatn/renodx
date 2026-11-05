@@ -2,6 +2,12 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+## v34 (batch 4, ATN's test of v33; nothing here run in game)
+
+- **Pixel trace (Ray Tracing Extra Options, More Options), not run in game:** the row from Attila. wh3_pixel_trace.txt next to the exe: every pass that changes the pixels under the red line, then the rays' AO at the cross, which no pass shows: AO around the pixel, what the sun draws read, view depth, world position, camera, the normal the rays start from. Below 100% the position follows each draw's viewport. Not logged: where the rays hit (AO 0 = all of them hit within the range); that needs the helper. Put the cross on a black spot and send the file.
+- **Spot Filter removed:** ATN: looks broken.
+- **Grass Fade Distance removed:** near the old fade distance blades grew and flickered. Flicker: the copy flattened this frame's blade by the row, last frame's by the game's distance, so motion said the blade rose. Growth: generated grass ends 16 cells around the camera and shrinks to 0 in the last cell, which the game hides by flattening first, and no grass exists past that whatever the fade. Longer grass needs another dispatch of the grass generator, not a fade.
+
 ## v33 (2026-11-05, batch 4; renodx-tw-dlaa64.exe helper78, bridge v23: ship them together; nothing here run in game; no players' zip)
 
 - **Light Bounce under spherical harmonics, not run in game:** its paths keep the learned shade; the harmonics' sky only with Path-Traced AO on.

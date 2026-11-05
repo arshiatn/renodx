@@ -10,6 +10,7 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
 
 #include <algorithm>
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -60,6 +62,13 @@ constexpr UINT TRACED_SLOTS = 8;
 constexpr UINT TRACED_INPUTS = 16;
 // <prefix>_pixel_trace.txt and <prefix>_trace_patches next to the exe.
 static std::string file_prefix = "tales";
+// A game whose picture fills a part of its targets below 100%: the position is of the picture, by each draw's viewport
+// (a dispatch or copy: by the last draw's into a target of that size).
+static bool position_in_viewport = false;
+// Appended to the file: what the game's addon knows of the frame that the commands don't show.
+static std::function<std::string()> extra_section;
+// Told of each request, for the game's addon to get its section ready.
+static std::function<void(float, float)> on_request;
 
 struct Target {
   ComPtr<ID3D11Texture2D> texture;
@@ -103,6 +112,8 @@ struct State {
   bool tracing = false;
   std::array<float, 2> requested_position = {};
   std::array<float, 2> position = {};  // 0-1 of each target's width and height
+  D3D11_VIEWPORT viewport = {};        // this command's: Width 0 for a dispatch or copy
+  std::map<std::pair<UINT, UINT>, std::array<float, 2>> picture_parts;  // by target size: what the last viewport filled
   std::vector<Command> commands;
   std::vector<Sample> samples;
   std::vector<Patch> patches;
@@ -215,8 +226,13 @@ inline bool MakeTarget(ID3D11Resource* resource, UINT mip, UINT slice, DXGI_FORM
   if (desc.SampleDesc.Count > 1 || mip >= desc.MipLevels || slice >= desc.ArraySize) return false;
   const UINT width = std::max(desc.Width >> mip, 1u);
   const UINT height = std::max(desc.Height >> mip, 1u);
-  const UINT x = std::min(static_cast<UINT>(state.position[0] * static_cast<float>(width)), width - 1);
-  const UINT y = std::min(static_cast<UINT>(state.position[1] * static_cast<float>(height)), height - 1);
+  auto& picture_part = state.picture_parts.try_emplace({width, height}, std::array<float, 2>{1.f, 1.f}).first->second;
+  if (state.viewport.Width > 0.f && state.viewport.TopLeftX == 0.f && state.viewport.TopLeftY == 0.f) {
+    picture_part = {std::min(state.viewport.Width / static_cast<float>(width), 1.f),
+                    std::min(state.viewport.Height / static_cast<float>(height), 1.f)};
+  }
+  const UINT x = std::min(static_cast<UINT>(state.position[0] * picture_part[0] * static_cast<float>(width)), width - 1);
+  const UINT y = std::min(static_cast<UINT>(state.position[1] * picture_part[1] * static_cast<float>(height)), height - 1);
   const UINT half_line = static_cast<UINT>(LINE_WIDTH * 0.5f * static_cast<float>(width));
   const UINT left = x - std::min(x, half_line);
   const UINT right = std::min(x + half_line + 1, width);
@@ -359,6 +375,11 @@ inline void OnGraphics(reshade::api::command_list* cmd_list, const char* kind, b
   ++state.command_count;  // every command, also those without a traced target
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return;
+  if (position_in_viewport) {
+    UINT viewports = 1;
+    context->RSGetViewports(&viewports, &state.viewport);
+    if (viewports == 0) state.viewport = {};
+  }
   std::array<ID3D11RenderTargetView*, TRACED_SLOTS> views = {};
   context->OMGetRenderTargets(TRACED_SLOTS, views.data(), nullptr);
   std::vector<Target> targets;
@@ -398,6 +419,7 @@ inline void OnCompute(reshade::api::command_list* cmd_list, const char* kind) {
   ++state.command_count;  // every command, also those without a traced target
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return;
+  state.viewport = {};
   std::array<ID3D11UnorderedAccessView*, TRACED_SLOTS> views = {};
   context->CSGetUnorderedAccessViews(0, TRACED_SLOTS, views.data());
   std::vector<Target> targets;
@@ -441,6 +463,7 @@ inline void OnWrite(reshade::api::command_list* cmd_list, ID3D11Resource* resour
   if (context == nullptr || resource == nullptr || FAILED(resource->QueryInterface(IID_PPV_ARGS(texture.GetAddressOf())))) return;
   D3D11_TEXTURE2D_DESC desc = {};
   texture->GetDesc(&desc);
+  state.viewport = {};
   std::vector<Target> targets(1);
   if (!MakeTarget(resource, subresource % desc.MipLevels, subresource / desc.MipLevels, view_format, "dest", targets.data())) return;
   Record(context, description, {}, std::move(targets), false);
@@ -567,6 +590,7 @@ inline void Request(float x, float y) {
   state.requested = true;
   state.active.store(true);
   state.requested_position = {x, y};
+  if (on_request) on_request(x, y);
   state.status = "Waiting for the next frame...";
 }
 
@@ -589,6 +613,31 @@ inline void Stop() {
 }
 
 // At each Present (before it): starts a requested trace for the next frame, or ends the running one and saves it.
+// The row of a settings page (CUSTOM): position, button and status; its marker only while it is open. `position` in % of
+// the screen's width and height.
+inline bool DrawRow(std::array<float, 2>* position, const std::string& hint) {
+  if (!ImGui::TreeNode("Pixel trace")) return false;
+  ImGui::SliderFloat2("Traced pixel (% of width, height)", position->data(), 0.f, 100.f, "%.1f%%");
+  // A red cross marks the pixel, the red line the traced line through it.
+  const ImVec2 screen = ImGui::GetIO().DisplaySize;
+  const ImVec2 cross = {screen.x * (*position)[0] / 100.f, screen.y * (*position)[1] / 100.f};
+  const float half_line = screen.x * LINE_WIDTH * 0.5f;
+  ImDrawList* foreground = ImGui::GetForegroundDrawList(nullptr);
+  foreground->AddLine({cross.x - half_line, cross.y}, {cross.x + half_line, cross.y}, IM_COL32(255, 0, 0, 255), 1.f);
+  foreground->AddLine({cross.x, cross.y - 12.f}, {cross.x, cross.y + 12.f}, IM_COL32(255, 0, 0, 255), 2.f);
+  if (ImGui::Button("Trace these pixels for one frame")) {
+    Request((*position)[0] / 100.f, (*position)[1] / 100.f);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Saves every pass that changes the pixels under the red line during the next frame\n"
+                      "to %s_pixel_trace.txt next to the game's exe (one short hitch). %s",
+                      file_prefix.c_str(), hint.c_str());
+  }
+  ImGui::TextWrapped("%s", Status().c_str());
+  ImGui::TreePop();
+  return false;
+}
+
 inline void OnPresent(reshade::api::command_queue* queue) {
   if (!state.active.load()) return;
   const std::unique_lock lock(state.mutex);
@@ -601,6 +650,8 @@ inline void OnPresent(reshade::api::command_queue* queue) {
     state.samples.clear();
     state.patches.clear();
     state.latest.clear();
+    state.picture_parts.clear();
+    state.viewport = {};
     state.command_count = 0;
     Events(true);
     return;
@@ -656,6 +707,7 @@ inline void OnPresent(reshade::api::command_queue* queue) {
     }
   }
   // Patches: header (width, height, DXGI format as the pass saw it, bytes per texel; uint32 each), then the rows.
+  if (extra_section) file << "\n" << extra_section();
   const auto folder = path.parent_path() / (file_prefix + "_trace_patches");
   std::error_code error;
   std::filesystem::remove_all(folder, error);

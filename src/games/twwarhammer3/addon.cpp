@@ -43,6 +43,7 @@
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../talesofarise_dlss/pixel_trace.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -2634,6 +2635,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
 };
 
 renodx::utils::settings::Setting* graphics_status = nullptr;
+// The pixel trace's position, % of the screen's width and height.
+std::array<float, 2> traced_pixel = {50.f, 50.f};
 bool graphics_found = false;
 // The graphics watch's values (4 hardware breakpoints).
 constexpr std::array<std::string_view, 4> WATCHED_VALUES = {"battle_cull_aabb_at_num_pixels_unit", "campaign_cull_aabb_at_num_pixels_tree", "grass_density_multiplier", "terrain_tessellation_quality_battle"};
@@ -2944,11 +2947,12 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
   return {};
 };
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
+  talesofarise::pixel_trace::OnPresent(queue);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflections::sun_standard = false;
   reflections::sun_low_quality = false;
@@ -3506,6 +3510,11 @@ void ConfigureAddon() {
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
                                              .rays_banner_light = &rays_banner_light_row,
+                                             .pixel_trace = new renodx::utils::settings::Setting{
+                                                 .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+                                                 .label = "Pixel trace",
+                                                 .on_draw = [] { return talesofarise::pixel_trace::DrawRow(&traced_pixel, "Put the cross\non the black spot."); },
+                                             },
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
@@ -3530,6 +3539,19 @@ bool AttachAddon() {
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
   twattila::test_hooks::Install(&settings, false);
 
+  talesofarise::pixel_trace::file_prefix = "wh3";
+  talesofarise::pixel_trace::position_in_viewport = true;
+  talesofarise::pixel_trace::on_request = [](float x, float y) {
+    const std::unique_lock probe_lock(twattila::rt_scene::ambient_probe.mutex);
+    twattila::rt_scene::ambient_probe.wanted = true;
+    twattila::rt_scene::ambient_probe.position = {x, y};
+    twattila::rt_scene::ambient_probe.text.clear();
+  };
+  talesofarise::pixel_trace::extra_section = [] {
+    const std::unique_lock probe_lock(twattila::rt_scene::ambient_probe.mutex);
+    twattila::rt_scene::ambient_probe.wanted = false;
+    return twattila::rt_scene::ambient_probe.text.empty() ? std::string("The rays' AO did not run this frame.\n") : twattila::rt_scene::ambient_probe.text;
+  };
   reshade::register_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::BeforeSwapchainMod);
   reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(twwarhammer3::device_loss::OnInitDevice);
@@ -3643,6 +3665,7 @@ void DetachAddon() {
   if (!attached) return;
 
   twattila::test_hooks::Uninstall();
+  talesofarise::pixel_trace::Stop();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::AfterSwapchainMod);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::BeforeSwapchainMod);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
