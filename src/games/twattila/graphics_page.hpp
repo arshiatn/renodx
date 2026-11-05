@@ -131,6 +131,7 @@ struct Bindings {
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
+  float* rays_branch_cut_outs = nullptr;  // Trunks and branches cut out in the rays as drawn; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
   std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
@@ -776,6 +777,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .is_visible = more_rays,
       });
     }
+    if (b.rays_branch_cut_outs != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedBranchCutOuts",
+          .binding = b.rays_branch_cut_outs,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Tree Trunk Cut-outs (Experimental)",
+          .section = section,
+          .tooltip = "Rays see trunks and roots with the holes the game draws: no black patches on trunks.",
+          .is_visible = more_rays,
+      });
+    }
     if (b.rays_hills_out_of_view != nullptr) {
       page.Add(new Setting{
           .key = "RayTracedHillsOutOfView",
@@ -821,6 +834,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
     page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
     page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
+    page.Take({.match = "RayTracedPathKeptCube", .section = section, .shown = ao_is(AO_PATHS), .label = "Steady Bounce Light (Experimental)"});
     page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
     page.Add(MoreOptions(section, &more_ao, gtvbao));
     const auto more_gtvbao = more(&more_ao, gtvbao);

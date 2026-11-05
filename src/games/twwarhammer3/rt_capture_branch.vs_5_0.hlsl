@@ -5,6 +5,10 @@
 
 // Warhammer III ray tracing (twattila/rt_scene.hpp): fx_rigidbranch_v3's branches (474F97FB) in world space for the stream output, a placed mesh's first instance
 // or its swaying copy. The game's code; made by tools\tw\wh3_batch3\b8_trees.py.
+#if defined(RT_CAPTURE_BRANCH_UV)
+#include "../twattila/rt_capture.hlsli"
+#endif
+
 struct TREE_BRANCH_SIM_INSTANCE_DATA
 {
     float wind_intensity;          // Offset:    0
@@ -370,6 +374,10 @@ void main(
   o2.xyz = r1.xyz;
   o4.xy = v5.xy;
   p4.x = v14.z;
+#if defined(RT_CAPTURE_BRANCH_UV)
+  capture_world = RtWorldUv(o2.xyz, o4.xy);
+#else
   capture_world = float4(o2.xyz, 1.f);
+#endif
   capture_position = 0.f;
 }

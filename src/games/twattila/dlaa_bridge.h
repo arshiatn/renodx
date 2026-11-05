@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 26;
+constexpr uint32_t VERSION = 27;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -224,6 +224,8 @@ constexpr uint32_t RT_PATH_SKY_APART = 4096;
 constexpr uint32_t RT_PATH_NRD = 8192;
 // Reflections: GGX with alpha = roughness^2 (WH3's own BRDF: Schlick's k = roughness^2 / 2), not Attila's narrow lobe.
 constexpr uint32_t RT_REFLECTIONS_SQUARED_LOBE = 16384;
+// With RT_PATH_AMBIENT (v27): the light standing in for the game's ambient from the game's cube, not the one learned before it.
+constexpr uint32_t RT_PATH_KEPT_CUBE = 32768;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

@@ -40,6 +40,7 @@ void SolveLightFit() {
 void main(uint3 id : SV_DispatchThreadID) {
   const uint entry = id.x;
   if (entry == 0u) {
+    light_kept[4] = float4(AmbientCubeMean() * sun[uint2(4, 0)].w, 1.f);  // for the helper's log at a freeze
     SolveLightFit();
     [unroll]
     for (uint sum = 0u; sum < 12u; ++sum) {

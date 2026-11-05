@@ -30,7 +30,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 base = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
   // Path-Traced Ambient took the game's ambient away from the screen's light: the base colour x the learned shade in its
   // place (rt_path.hlsli HitLight).
-  CacheAdd(position.xyz, light_there + (((path_flags & PATH_KEEP_LIGHT) != 0u) ? base * light_kept[0].rgb : 0.f));
+  CacheAdd(position.xyz, light_there + (((path_flags & PATH_KEEP_LIGHT) != 0u) ? base * KeptShade() : 0.f));
   if ((path_flags & PATH_GUIDES) == 0u) return;
   CacheSetAlbedo(position.xyz, base);
 

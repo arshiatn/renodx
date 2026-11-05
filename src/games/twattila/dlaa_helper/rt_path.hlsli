@@ -37,7 +37,7 @@ RWBuffer<float4> cache_radiance : register(u11);      // rgb, the frame it was l
 RWBuffer<uint> cache_sums : register(u12);            // this frame's r, g, b (CACHE_SCALE fixed point), count
 RWBuffer<uint2> cache_albedo : register(u13);         // rgba8 base colour (a 255; 0: none), that frame + 1
 RWBuffer<uint> light_fit : register(u14);             // count, x, x^2, y rgb, x y rgb, base colour rgb
-RWBuffer<float4> light_kept : register(u15);          // [0] rgb in shade, [1] rgb the sun adds, [2] the ambient, [3] base colour
+RWBuffer<float4> light_kept : register(u15);          // [0] rgb in shade, [1] rgb the sun adds, [2] the ambient, [3] base colour, [4] the game's ambient
                                                       // cube's scale to them (w 1: solved)
 RWTexture2D<float4> specular_accumulated : register(u16);
 RWTexture2D<float4> specular_history : register(u17);
@@ -78,6 +78,7 @@ static const uint PATH_LOCAL_LIGHTS = 8192u;  // the local lights light the surf
 static const uint PATH_PERMUTE = 65536u;      // last frame's reservoir from a neighbour texel (Ray Reconstruction)
 static const uint PATH_AMBIENT = 262144u;     // Path-Traced Ambient: a camera ray that escapes brings the sky's light
 static const uint PATH_KEEP_LIGHT = 524288u;  // the learned lighting kept (the game's ambient away: Path-Traced Ambient)
+static const uint PATH_KEEP_CUBE = 1073741824u;  // with it: its shade from the game's cube (KeptShade)
 static const uint PATH_REFLECT_REUSE = 4194304u;  // the reflections resample ReSTIR GI's reservoirs (PATH_REUSE_PARITY: its set)
 static const float REFLECT_REUSE_ALPHA = 0.09f;  // the lobes broad enough for the bounce's samples to land in
 static const uint PATH_REFLECT_OWN = 8388608u;          // Own ReSTIR: the reflections' own reservoirs
@@ -260,6 +261,24 @@ float3 HitAlbedo(float3 hit) {
   return (mean.w > 0.f) ? mean.rgb : UNSEEN_ALBEDO;
 }
 
+// The game's ambient cube's mean over its six directions (the sun texture's texels 3-8; rt_sun.cs_5_0.hlsl).
+float3 AmbientCubeMean() {
+  float3 mean = 0.f;
+  [unroll]
+  for (uint side = 3u; side < 9u; ++side) mean += sun[uint2(side, 0)].rgb;
+  return mean / 6.f;
+}
+
+// Share of the game's ambient at its scale (texel 4's w) that Steady Bounce Light takes as the shade.
+static const float KEPT_CUBE_SHARE = 1.f;
+
+// The light in shade on a surface, with the game's ambient away: learned from the frames before it, so of whatever the view was
+// then (ATN: too dark until toggled), or Steady Bounce Light's: the game's cube at its scale, of no view.
+float3 KeptShade() {
+  if ((path_flags & PATH_KEEP_CUBE) != 0u && sun[uint2(3, 0)].w != 0.f) return AmbientCubeMean() * sun[uint2(4, 0)].w * KEPT_CUBE_SHARE;
+  return light_kept[0].rgb;
+}
+
 // The light leaving a surface a ray met (false: nobody knows it): the screen's now, else last frame's, else the
 // radiance cache's (SHaRC's instead in PathRadiance with SHaRC Radiance Cache).
 bool HitLight(float3 hit, out float3 light_there) {
@@ -274,7 +293,7 @@ bool HitLight(float3 hit, out float3 light_there) {
     // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the learned
     // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
     if ((path_flags & PATH_KEEP_LIGHT) != 0u) {
-      light_there += (((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit)) * light_kept[0].rgb;
+      light_there += (((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit)) * KeptShade();
     }
     return true;
   }
@@ -352,14 +371,6 @@ float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, 
   return emitted;
 }
 
-// The game's ambient cube's mean over its six directions (the sun texture's texels 3-8; rt_sun.cs_5_0.hlsl).
-float3 AmbientCubeMean() {
-  float3 mean = 0.f;
-  [unroll]
-  for (uint side = 3u; side < 9u; ++side) mean += sun[uint2(side, 0)].rgb;
-  return mean / 6.f;
-}
-
 // The game's ambient cube by a direction (the sun texture's texels 3-8: +x, -x, +y, -y, +z, -z; rt_sun.cs_5_0.hlsl).
 float3 AmbientCube(float3 direction) {
   const float3 squared = direction * direction;
@@ -373,6 +384,7 @@ float3 AmbientCube(float3 direction) {
 // sky then) the cube by the scale learned before it (light_kept[2]).
 float3 SkyLight(float3 direction, float3 shade) {
   if (sun[uint2(3, 0)].w == 0.f) return shade;
+  if ((path_flags & PATH_KEEP_CUBE) != 0u) return AmbientCube(direction) * sun[uint2(4, 0)].w * KEPT_CUBE_SHARE;
   const float4 scale = light_kept[2];
   if ((path_flags & PATH_AMBIENT) != 0u && scale.w > 0.f) return scale.rgb * AmbientCube(direction);
   return shade * AmbientCube(direction) / max(AmbientCubeMean(), 1.00006895e-4f);
@@ -402,7 +414,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
   first_normal = 0.f;
   float3 radiance = 0.f;
   float3 throughput = 1.f;
-  const float4 shade = light_kept[0];
+  const float4 shade = float4(KeptShade(), light_kept[0].w);
   bool unseen = false;
   float3 unseen_position = 0.f;
   float3 unseen_throughput = 1.f;

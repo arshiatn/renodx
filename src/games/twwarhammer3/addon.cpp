@@ -2584,6 +2584,7 @@ float rays_hills_out_of_view_row = 0.f;
 float rays_units_out_of_view_row = 1.f;
 float rays_skip_cascade_trees_row = 0.f;
 float rays_banner_light_row = 0.f;
+float rays_branch_cut_outs_row = 0.f;
 // The trees' draws into the cascades: 52 M of the shadow pass's indices on the replay's first view, 36 M in the siege (traces c1a, bm_siege).
 // Only fog, forward passes and the UI read the maps under Rays Replace Shadow Maps, the sun's shadow comes from rays. fx_rigidbranch_v3,
 // fx_rigidleaf_v3; drawn in no other target in any trace (b5_census: no render target).
@@ -2788,9 +2789,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x41AC9CB1, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .key_family = 0xF0395CC4},  // rigid_battle_rock_terrain_blend
     {.hash = 0x33AF7AE5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .key_family = 0xF0395CC4},  // rigid_battle_rock
     {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
-    {.hash = 0x474F97FB, .capture_shader = __rt_capture_branch, .rows_shader = __rt_rows_tree, .key_family = 0x474F97FB},                    // fx_rigidbranch_v3
+    {.hash = 0x474F97FB, .capture_shader = __rt_capture_branch, .rows_shader = __rt_rows_tree, .cut_out_shader = __rt_capture_branch_cut_out, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x474F97FB},                    // fx_rigidbranch_v3
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
-    {.hash = 0x31584506, .dynamic = true},  // fx_rigidbranch_v3
+    {.hash = 0x31584506, .dynamic = true, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
     {.hash = 0xC0ED2883, .dynamic = true, .thin_row = &rays_banner_light_row},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
     // The campaign's ground where the tessellated terrain's mask leaves it: tiles on the height map (a pass with no holes), every frame as they're culled by the view.
@@ -2834,9 +2835,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x7852254A, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_cascade_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .cascade_keep = __rt_outside_view, .key_family = 0xF0395CC4},  // vertexpush, at rest
     // Rigid with last rows (stride 168): 8EE34EC5's and 2C45437C's. Weapons, gates: placed every frame, kept 300 frames (rt_place's MOVED_KEPT_FRAMES).
     {.hash = 0x53C5A7EC, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_cascade_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .cascade_keep = __rt_outside_view, .key_family = 0x8EE34EC5},
-    // Trees, at rest. Branches solid as the main pass's; leaves by t0's alpha (CE714A19), the texture 783383C6 reads at t1.
-    {.hash = 0xD75E6E2B, .capture_shader = __rt_capture_cascade_branch, .rows_shader = __rt_rows_cascade_tree, .cascade_keep = __rt_outside_view, .key_family = 0x474F97FB},
-    {.hash = 0x8F975E16, .capture_shader = __rt_capture_cascade_branch, .rows_shader = __rt_rows_cascade_tree, .cascade_keep = __rt_outside_view, .key_family = 0x474F97FB},
+    // Trees, at rest. Branches as the main pass's (solid, or cut out by the row: 637E69EE reads the texture B0A4E5B8 reads at t1); leaves by t0's alpha (CE714A19), the texture 783383C6 reads at t1.
+    {.hash = 0xD75E6E2B, .capture_shader = __rt_capture_cascade_branch, .rows_shader = __rt_rows_cascade_tree, .cut_out_shader = __rt_capture_cascade_leaf, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .cascade_keep = __rt_outside_view, .key_family = 0x474F97FB},
+    {.hash = 0x8F975E16, .capture_shader = __rt_capture_cascade_branch, .rows_shader = __rt_rows_cascade_tree, .cut_out_shader = __rt_capture_cascade_leaf, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .cascade_keep = __rt_outside_view, .key_family = 0x474F97FB},
     {.hash = 0xAF3F74B2, .capture_shader = __rt_capture_cascade_leaf, .rows_shader = __rt_rows_cascade_tree, .foliage = true, .cascade_keep = __rt_outside_view, .key_family = 0x783383C6},
     {.hash = 0x2327ED2B, .capture_shader = __rt_capture_cascade_leaf, .rows_shader = __rt_rows_cascade_tree, .foliage = true, .cascade_keep = __rt_outside_view, .key_family = 0x783383C6},
     // Flags, waving by a time this cb0 leaves 0: still. Streamed as the units', small enough (0.5 M).
@@ -3549,6 +3550,7 @@ void ConfigureAddon() {
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
                                              .rays_banner_light = &rays_banner_light_row,
+                                             .rays_branch_cut_outs = &rays_branch_cut_outs_row,
                                              .pixel_trace = new renodx::utils::settings::Setting{
                                                  .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
                                                  .label = "Pixel trace",

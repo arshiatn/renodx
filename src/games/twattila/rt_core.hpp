@@ -95,6 +95,7 @@ struct Settings {
   // ambient cube (rt_scene.hpp OnPathAmbientDraw), the ray-traced AO is off.
   bool path_ambient = false;
   bool path_sky_apart = false;  // its sky averaged from each texel's rays, past ReSTIR GI's reservoirs
+  bool path_kept_cube = false;  // dlaa_bridge.h RT_PATH_KEPT_CUBE
   // Ray-traced reflections and specular occlusion (bridge v8; the game's reflection pass reads them: Reflections()).
   bool reflections = false;
   bool specular_occlusion = false;
@@ -199,6 +200,7 @@ struct SceneShader {
   // Without a capture version (the game's own vertex shader streamed out): its draws whose pixel shader is in cut_out_masks are
   // cut out by that mask and `uv_semantic`, the others stay solid (a pixel shader's clip nobody read).
   bool clip_cut_outs = false;
+  const float* cut_out_row = nullptr;  // clip_cut_outs only with this row on (null: always)
   // Placed, and the game draws it moving (last rows in its vertex shader: a soldier's weapons and armour): its rows every frame, none kept.
   bool moving = false;
   bool terrain = false;
@@ -1167,7 +1169,7 @@ void Capture(Context& command, const SceneShader& shader) {
   ComPtr<ID3D11ShaderResourceView> mask;
   if ((shader.foliage || !shader.cut_out_shader.empty()) && !shader.clip_cut_outs) native->PSGetShaderResources(shader.mask_slot, 1, mask.GetAddressOf());
   bool cut_out = false;
-  if (shader.clip_cut_outs) {
+  if (shader.clip_cut_outs && (shader.cut_out_row == nullptr || *shader.cut_out_row != 0.f)) {
     const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
     const auto found = std::ranges::lower_bound(cut_out_masks, pixel_shader, {}, &PixelMask::pixel_shader);
     if (found != cut_out_masks.end() && found->pixel_shader == pixel_shader && found->uv_semantic_index == shader.uv_semantic_index) {
@@ -2366,6 +2368,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | ((dlaa_bridge::bridge.reconstructing && !dlaa_bridge::bridge.nrd_ask_bounce) ? dlaa_bridge::RT_PATH_RECONSTRUCTED : 0u)
                                                      | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u)
                                                      | ((runtime.path_ambient_on && runtime.settings.path_sky_apart) ? dlaa_bridge::RT_PATH_SKY_APART : 0u)
+                                                     | ((runtime.path_ambient_on && runtime.settings.path_kept_cube) ? dlaa_bridge::RT_PATH_KEPT_CUBE : 0u)
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
                                                      | (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))

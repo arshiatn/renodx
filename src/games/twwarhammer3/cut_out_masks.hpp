@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Made by a script from the game's shaders (their asm), and the shadow pass's four at t0 (traces, shadow pass's PS by their asm): the pixel shaders whose discard reads, but for the dither map's
+// Made by a script from the game's shaders (their asm), and the shadow pass's five at t0 (traces, shadow pass's PS by their asm), and by hand fx_rigidbranch_v3's B0A4E5B8 (t1's alpha at 0.5, the burn map's mixed in only while burning, so a script's one-map test passed it by): the pixel shaders whose discard reads, but for the dither map's
 // screen-space fade, one base colour map's alpha at 0.5 (or a material's threshold: shrubs): its slot and the UV's semantic index. Sorted by pixel shader.
 #pragma once
 
@@ -13,7 +13,7 @@
 
 namespace twwarhammer3 {
 
-inline constexpr std::array<twattila::rt_scene::PixelMask, 547> CUT_OUT_MASKS = {{
+inline constexpr std::array<twattila::rt_scene::PixelMask, 549> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x007C7E41, .slot = 7, .uv_semantic_index = 1},
     {.pixel_shader = 0x030A74E4, .slot = 9, .uv_semantic_index = 1},
     {.pixel_shader = 0x0362ADF0, .slot = 6, .uv_semantic_index = 1},
@@ -230,6 +230,7 @@ inline constexpr std::array<twattila::rt_scene::PixelMask, 547> CUT_OUT_MASKS = 
     {.pixel_shader = 0x62EAAE90, .slot = 12, .uv_semantic_index = 1},
     {.pixel_shader = 0x631BE124, .slot = 10, .uv_semantic_index = 1},
     {.pixel_shader = 0x631D47A1, .slot = 10, .uv_semantic_index = 1},
+    {.pixel_shader = 0x637E69EE, .slot = 0, .uv_semantic_index = 2},
     {.pixel_shader = 0x643669D7, .slot = 0, .uv_semantic_index = 1},
     {.pixel_shader = 0x6480FE77, .slot = 12, .uv_semantic_index = 2},
     {.pixel_shader = 0x64DCE6E5, .slot = 10, .uv_semantic_index = 1},
@@ -399,6 +400,7 @@ inline constexpr std::array<twattila::rt_scene::PixelMask, 547> CUT_OUT_MASKS = 
     {.pixel_shader = 0xB069AA42, .slot = 10, .uv_semantic_index = 1},
     {.pixel_shader = 0xB084D738, .slot = 12, .uv_semantic_index = 2},
     {.pixel_shader = 0xB08CC336, .slot = 7, .uv_semantic_index = 2},
+    {.pixel_shader = 0xB0A4E5B8, .slot = 1, .uv_semantic_index = 2},
     {.pixel_shader = 0xB134DDFE, .slot = 0, .uv_semantic_index = 1},
     {.pixel_shader = 0xB26805F1, .slot = 10, .uv_semantic_index = 1},
     {.pixel_shader = 0xB2BB7119, .slot = 12, .uv_semantic_index = 2},

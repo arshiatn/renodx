@@ -1367,14 +1367,36 @@ class RtScene12 {
         const std::array<uint32_t, 3> reuse_size = {shared.rt_bounce_width, shared.rt_bounce_height, std::max(shared.rt_bounce_scale, 1u)};
         const bool reuse = path_traced && (requested & dlaa_bridge::RT_PATH_REUSE) != 0
                            && GetEnvironmentVariableW(L"RENODX_TW_NO_REUSE", nullptr, 0) == 0 && EnsureHistory(HISTORY_REUSE, frame);
+        const bool light_was_kept = path_ambient_frame_ != UINT32_MAX && path_ambient_frame_ + 2 >= frame;
         if (path_traced && (requested & dlaa_bridge::RT_PATH_AMBIENT) != 0) {
           flags |= PATH_AMBIENT;
           if ((requested & dlaa_bridge::RT_PATH_SKY_APART) != 0) flags |= PATH_SKY_APART;
           path_ambient_frame_ = frame;
+          path_kept_cube_ = (requested & dlaa_bridge::RT_PATH_KEPT_CUBE) != 0;
+          if (!light_was_kept) kept_copy_wanted_ = true;
         }
         // The learned lighting stays while the game's ambient is away (also through the reflections' requests: the radiance
         // cache's resolve, once a frame, can be theirs).
-        if (path_ambient_frame_ != UINT32_MAX && path_ambient_frame_ + 2 >= frame) flags |= PATH_KEEP_LIGHT;
+        if (path_ambient_frame_ != UINT32_MAX && path_ambient_frame_ + 2 >= frame) {
+          flags |= PATH_KEEP_LIGHT | (path_kept_cube_ ? PATH_KEEP_CUBE : 0u);
+        }
+        // What the light kept at a freeze was (Path-Traced AO's frames after it read this): its copy done once a slot's list has come round.
+        if (kept_copy_frame_ != UINT32_MAX && frame > kept_copy_frame_ + SLOTS) {
+          const D3D12_RANGE read = {.Begin = 0, .End = sizeof(std::array<float, 4>) * LIGHT_KEPT_TEXELS};
+          void* mapped = nullptr;
+          if (SUCCEEDED(kept_readback_->Map(0, &read, &mapped))) {
+            std::array<std::array<float, 4>, LIGHT_KEPT_TEXELS> kept = {};
+            std::memcpy(kept.data(), mapped, sizeof(kept));
+            const D3D12_RANGE written = {};
+            kept_readback_->Unmap(0, &written);
+            const auto& [shade, sunlit, scale, base, ambient] = kept;
+            slow_report_ += std::format("{}[TW ray tracing] Path-Traced AO keeps its learned light: shade {:.4f} {:.4f} {:.4f}, the game's ambient {:.4f} {:.4f} {:.4f}, share {:.3f} {:.3f} {:.3f}, sun {:.3f} {:.3f} {:.3f}, base colour {:.3f}.",
+                                        slow_report_.empty() ? "" : "\n", shade[0], shade[1], shade[2], ambient[0], ambient[1], ambient[2],
+                                        shade[0] / std::max(ambient[0], 1e-4f), shade[1] / std::max(ambient[1], 1e-4f), shade[2] / std::max(ambient[2], 1e-4f),
+                                        sunlit[0], sunlit[1], sunlit[2], (base[0] + base[1] + base[2]) / 3.f);
+          }
+          kept_copy_frame_ = UINT32_MAX;
+        }
         if (reuse) {
           flags |= PATH_REUSE | (reuse_parity_ != 0 ? PATH_REUSE_PARITY : 0u);
           if ((requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) flags |= PATH_PERMUTE;
@@ -1420,6 +1442,15 @@ class RtScene12 {
           list->SetPipelineState(cache_resolve_pipeline_.Get());
           list->Dispatch(CACHE_ENTRIES / 64, 1, 1);
           list->ResourceBarrier(1, &uav_barrier);
+          if (kept_copy_wanted_ && kept_readback_) {
+            const auto to_copy = Transition(light_kept_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            list->ResourceBarrier(1, &to_copy);
+            list->CopyBufferRegion(kept_readback_.Get(), 0, light_kept_.Get(), 0, sizeof(std::array<float, 4>) * LIGHT_KEPT_TEXELS);
+            const auto copied = Transition(light_kept_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            list->ResourceBarrier(1, &copied);
+            kept_copy_wanted_ = false;
+            kept_copy_frame_ = frame;
+          }
           cache_frame_ = frame;
           cache_filled_ = true;
         }
@@ -1840,6 +1871,8 @@ class RtScene12 {
   static constexpr uint32_t PATH_PERMUTE = 65536;
   static constexpr uint32_t PATH_AMBIENT = 262144;  // rt_path.hlsli
   static constexpr uint32_t PATH_KEEP_LIGHT = 524288;
+  static constexpr uint32_t PATH_KEEP_CUBE = 1073741824;
+  static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
   struct PathConstants {
@@ -2417,7 +2450,8 @@ class RtScene12 {
         && pool(DXGI_FORMAT_R32_UINT, CACHE_ENTRIES * 4, 4, &cache_sums_, CACHE_SUMS)
         && pool(DXGI_FORMAT_R32G32_UINT, CACHE_ENTRIES, 8, &cache_albedo_, CACHE_ALBEDO)
         && pool(DXGI_FORMAT_R32_UINT, 16, 4, &light_fit_, LIGHT_FIT)
-        && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, 4, 16, &light_kept_, LIGHT_KEPT)) {
+        && pool(DXGI_FORMAT_R32G32B32A32_FLOAT, LIGHT_KEPT_TEXELS, 16, &light_kept_, LIGHT_KEPT)) {
+      kept_readback_ = Buffer(uint64_t{LIGHT_KEPT_TEXELS} * 16, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
       return true;
     }
     cache_keys_.Reset();
@@ -5685,6 +5719,10 @@ class RtScene12 {
   ComPtr<ID3D12Resource> light_fit_;
   ComPtr<ID3D12Resource> light_kept_;
   uint32_t path_ambient_frame_ = UINT32_MAX;  // the last frame the paths took the sky for the game's ambient
+  bool path_kept_cube_ = false;               // RT_PATH_KEPT_CUBE of that frame's request (the reflections' requests don't carry it)
+  ComPtr<ID3D12Resource> kept_readback_;      // light_kept_ at the last freeze, for the log
+  bool kept_copy_wanted_ = false;
+  uint32_t kept_copy_frame_ = UINT32_MAX;
   ComPtr<ID3D12PipelineState> path_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_pipeline_;
   // Path Tracing SER (DXR 1.2; null: unavailable): the paths' and reflections' ray generation shaders, their records (the
