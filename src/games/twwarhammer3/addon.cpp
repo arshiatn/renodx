@@ -826,13 +826,17 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 // Ray tracing's sliders (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
 twattila::rt_scene::Sliders rt_sliders;
-float skip_game_ssao_row = 0.f;
+float skip_game_ssao_row = 1.f;
 // RTAO stands alone: fx_ssao's two dispatches only feed the sun's t_ssao (trace b11_scale: its one reader), which the rays replace.
 // Only while the rays run (this frame's or the last, the trace may come after these passes): else the sun has no AO at all.
+// Path-Traced AO too: at the sun draws it puts 1 in the AO's slot or takes the game's ambient out (rt_scene.hpp OnPathAmbientDraw),
+// under the same test as there (the path's state is last frame's here, it changes at the trace).
 bool SkipGameSsao() {
   const auto& runtime = twattila::rt_scene::internal::runtime;
-  return skip_game_ssao_row != 0.f && shader_injection.ssao_mode < 1.f && runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
-         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
+  const bool rays_ao = runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
+                       && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
+  const bool paths_ao = runtime.path_ambient_on && runtime.bounced_frame + 1 >= runtime.frame;
+  return skip_game_ssao_row != 0.f && shader_injection.ssao_mode < 1.f && (rays_ao || paths_ao);
 }
 
 // The game's reflection pass (fx_environment_specular_light): off, nothing of this runs and the game's bytes do. Our copy of its resolve
@@ -2584,7 +2588,6 @@ float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
 float rays_units_out_of_view_row = 1.f;
 float rays_skip_cascade_trees_row = 0.f;
-float rays_terrain_in_draw_row = 0.f;
 float rays_banner_light_row = 0.f;
 float rays_branch_cut_outs_row = 0.f;
 // The trees' draws into the cascades: 52 M of the shadow pass's indices on the replay's first view, 36 M in the siege (traces c1a, bm_siege).
@@ -3039,7 +3042,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
-  rt_settings.terrain_in_draw = rays_terrain_in_draw_row != 0.f;
   // Under rays and maps together the game's cascades already darken what these would.
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
@@ -3351,10 +3353,10 @@ void ConfigureAddon() {
       .key = "RayTracedSkipGameAO",
       .binding = &skip_game_ssao_row,
       .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-      .default_value = 0.f,
-      .label = "Skip the Game's SSAO under RTAO (Experimental)",
+      .default_value = 1.f,
+      .label = "Skip the Game's SSAO under Rays",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "With Ray-Traced AO on, the game's own AO isn't computed at all. Faster, same picture.",
+      .tooltip = "With RTAO or Path-Traced AO on, the game's own AO isn't computed at all. Faster, same picture.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
@@ -3559,7 +3561,6 @@ void ConfigureAddon() {
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
-                                             .rays_terrain_in_draw = &rays_terrain_in_draw_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_branch_cut_outs = &rays_branch_cut_outs_row,
                                              .rays_start_past = &rt_sliders.start_past,
@@ -3619,6 +3620,7 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  twattila::pass_timing::Install();
 
   ConfigureAddon();
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
@@ -3650,7 +3652,6 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::vfx_particles::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
-  reshade::register_event<reshade::addon_event::destroy_device>(twattila::pass_timing::OnDestroyDevice);
 
   // Saved before v32 with both rows hidden, at their old defaults: fog's light nobody has seen at night, and dark patches on rivers under rays.
   constexpr int SETTINGS_REVISION = 32;
@@ -3752,8 +3753,7 @@ void DetachAddon() {
 
   twattila::test_hooks::Uninstall();
   talesofarise::pixel_trace::Stop();
-  twattila::pass_timing::Stop();
-  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::pass_timing::OnDestroyDevice);
+  twattila::pass_timing::Uninstall();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::AfterSwapchainMod);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::BeforeSwapchainMod);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);

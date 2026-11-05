@@ -24,6 +24,11 @@
       Fix: RT_PATH_COLOR_SQUARE_ROOT (colour squared back), RT_PATH_CACHE_FILL (One Bounce's request does the paths' frame work, then reflections read its prepared light as with paths). Harness: 2.00/0.10 again, box 0.65-0.68; One Bounce's own bytes identical. Water Reflections tooltip: best with ray-traced GI. README lines WH3, Attila, Troy, Pharaoh, WH1, WH2.
       Not done: GI off still last frame's picture (after the tone mapper below 100%), no learned light: pass the march's light like Attila. Water's scale line (bytecode-patched shaders, 2700 lines). Water Reflections' fog (no water trace). Rome II, Thrones README.
       14 targets built, page dumps b5p6 (WH3 the tooltip + date, Attila the date), all_modes on helper87 128 of 128 (two new: reflect_one_bounce_fill, reflect_color_square_root), reports/all_modes_P6.txt.
+- [x] P7 Double work; R2 ran 4 times (r2_p7_1..4: siege benchmark, 4K, ATN's rays, FG off; check_run ok, 0 resets). Report wh3_batch5/reports/P7.md. Helper unchanged.
+      Probe: Time Each Pass (One Frame) button (twattila/pass_timing.hpp, first-registered events), wh3_pass_timing.txt; ran in all 4. Siege is CPU-limited (GPU busy 13.4-14.6 of 28-31 ms).
+      Skip the Game's SSAO under Rays: default ON now, also under Path-Traced AO; AO pass 0.51 to 0.09 ms GPU. Skip Trees in Shadow Maps: 1.01 to 0.60 ms, stays off (fog look); its bypass no longer drops the trees' cascade capture (captured before the draw).
+      Not done: terrain in one draw (WH3's mask GS drops triangles, one stream can't; WARP terrain_in_draw proves the pass-through way; row taken out), game's GI flag 0/1 (readers unread), cascades' rest, terrain count's wait (8-16 ms a frame in a battle's first 30 s). Not run in game: PT AO's look with the SSAO skip, trees' out-of-view shadows with Skip Trees.
+      14 targets built, page dumps b5p7 (Attila the date only; WH3 the button and the SSAO row).
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.

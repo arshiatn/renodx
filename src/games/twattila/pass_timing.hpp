@@ -11,6 +11,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <format>
@@ -28,8 +29,9 @@
 #include "../../utils/state.hpp"
 
 // Time Each Pass (a button): one frame's GPU time of every draw and dispatch, from a timestamp at each, into
-// <prefix>_pass_timing.txt next to the exe, summed by pass (the same targets in a row) and by shader. Its events are
-// registered for that frame only: nothing runs otherwise.
+// <prefix>_pass_timing.txt next to the exe, summed by pass (the same targets in a row) and by shader. Its events are the
+// addon's first (Install before any other draw hook): a draw another hook replays and skips (command_action's post callbacks)
+// still gets its stamp, and the addon's work at a command counts to it. Otherwise each event only tests a flag.
 namespace twattila::pass_timing {
 
 namespace internal {
@@ -52,6 +54,7 @@ enum class Phase : uint8_t { IDLE, REQUESTED, TIMING, READING };
 
 struct State {
   std::mutex mutex;
+  std::atomic_bool timing = false;  // phase TIMING, read without the lock by every event
   Phase phase = Phase::IDLE;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11Query> disjoint;
@@ -91,6 +94,7 @@ const void* Target(View* view) {
 }
 
 inline void Stamp(reshade::api::command_list* cmd_list, const char* kind, uint32_t count, bool dispatch) {
+  if (!state.timing.load(std::memory_order_relaxed)) return;
   ID3D11DeviceContext* context = ImmediateContext(cmd_list);
   if (context == nullptr) return;
   const std::lock_guard lock(state.mutex);
@@ -139,20 +143,6 @@ inline bool OnIndirect(reshade::api::command_list* cmd_list, reshade::api::indir
   return false;
 }
 
-inline void Events(bool use) {
-  if (use) {
-    reshade::register_event<reshade::addon_event::draw>(OnDraw);
-    reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
-    reshade::register_event<reshade::addon_event::dispatch>(OnDispatch);
-    reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(OnIndirect);
-  } else {
-    reshade::unregister_event<reshade::addon_event::draw>(OnDraw);
-    reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
-    reshade::unregister_event<reshade::addon_event::dispatch>(OnDispatch);
-    reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(OnIndirect);
-  }
-}
-
 inline std::string Shaders(const Command& command) {
   if (command.compute_shader != 0 || command.vertex_shader == 0) return std::format("cs {:08X}", command.compute_shader);
   return std::format("vs {:08X} ps {:08X}", command.vertex_shader, command.pixel_shader);
@@ -172,7 +162,7 @@ inline void Write(ID3D11DeviceContext* context, const D3D11_QUERY_DATA_TIMESTAMP
   const double total = ms(ticks.front(), ticks.back());
   std::string text = std::format(
       "One frame's GPU time: {:.3f} ms from the first draw or dispatch to the present, {} commands.\n"
-      "A command's time runs from its timestamp to the next one: copies, clears and the addon's own work at a command count to the line before it.\n"
+      "A command's time runs from its timestamp to the next one: the addon's work at it, the command, then copies and clears before the next.\n"
       "With a CPU-limited frame the GPU waits between commands, and that wait counts too.\n",
       total, count);
   text += "\n== Passes: commands in a row with the same target (render target 0, else depth, else a dispatch's UAV 0) ==\nms\tcommands\ttarget\tfirst shaders\n";
@@ -233,8 +223,6 @@ inline void OnPresent(reshade::api::command_queue* queue, const std::string& pre
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&context);
   if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
-  bool events_on = false;
-  bool events_off = false;
   {
     const std::lock_guard lock(state.mutex);
     switch (state.phase) {
@@ -264,7 +252,7 @@ inline void OnPresent(reshade::api::command_queue* queue, const std::string& pre
         state.targets.clear();
         context->Begin(state.disjoint.Get());
         state.phase = Phase::TIMING;
-        events_on = true;
+        state.timing.store(true);
         break;
       }
       case Phase::TIMING:
@@ -272,7 +260,7 @@ inline void OnPresent(reshade::api::command_queue* queue, const std::string& pre
         context->End(state.disjoint.Get());
         state.presents_waited = 0;
         state.phase = Phase::READING;
-        events_off = true;
+        state.timing.store(false);
         break;
       case Phase::READING: {
         D3D11_QUERY_DATA_TIMESTAMP_DISJOINT clock = {};
@@ -294,30 +282,37 @@ inline void OnPresent(reshade::api::command_queue* queue, const std::string& pre
         break;
     }
   }
-  // Outside the lock: the events take it.
-  if (events_on) internal::Events(true);
-  if (events_off) internal::Events(false);
 }
 
-// Unload or device loss: no events left, queries released.
-inline void Stop() {
-  auto& state = internal::state;
-  bool timing = false;
-  {
-    const std::lock_guard lock(state.mutex);
-    timing = state.phase == internal::Phase::TIMING;
-    state.phase = internal::Phase::IDLE;
-    state.stamps.clear();
-    state.disjoint.Reset();
-    state.device.Reset();
-    state.commands.clear();
-    state.targets.clear();
-  }
-  if (timing) internal::Events(false);
-}
-
+// Device loss: nothing timing, queries released.
 inline void OnDestroyDevice(reshade::api::device*) {
-  Stop();
+  auto& state = internal::state;
+  const std::lock_guard lock(state.mutex);
+  state.timing.store(false);
+  state.phase = internal::Phase::IDLE;
+  state.stamps.clear();
+  state.disjoint.Reset();
+  state.device.Reset();
+  state.commands.clear();
+  state.targets.clear();
+}
+
+// Before any other draw or dispatch hook of the addon (their run order is registration order).
+inline void Install() {
+  reshade::register_event<reshade::addon_event::draw>(internal::OnDraw);
+  reshade::register_event<reshade::addon_event::draw_indexed>(internal::OnDrawIndexed);
+  reshade::register_event<reshade::addon_event::dispatch>(internal::OnDispatch);
+  reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnIndirect);
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
+}
+
+inline void Uninstall() {
+  reshade::unregister_event<reshade::addon_event::draw>(internal::OnDraw);
+  reshade::unregister_event<reshade::addon_event::draw_indexed>(internal::OnDrawIndexed);
+  reshade::unregister_event<reshade::addon_event::dispatch>(internal::OnDispatch);
+  reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnIndirect);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
+  OnDestroyDevice(nullptr);
 }
 
 }  // namespace twattila::pass_timing

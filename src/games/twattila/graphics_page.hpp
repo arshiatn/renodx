@@ -130,7 +130,6 @@ struct Bindings {
   float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
-  float* rays_terrain_in_draw = nullptr;  // The tessellated terrain captured by the game's own draw (rt_core.hpp TerrainInDraw); null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   float* rays_branch_cut_outs = nullptr;  // Trunks and branches cut out in the rays as drawn; null: no such row
   float* rays_start_past = nullptr;  // Rays start past what hides a pixel from the camera; null: no such row
@@ -764,19 +763,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .section = section,
           .tooltip = "With Rays Replace Shadow Maps: faster in forests. Fog loses the trees' shadows.",
           .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
-          .is_visible = more_rays,
-      });
-    }
-    if (b.rays_terrain_in_draw != nullptr) {
-      page.Add(new Setting{
-          .key = "RayTracedTerrainInDraw",
-          .binding = b.rays_terrain_in_draw,
-          .value_type = SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Terrain in One Draw (Experimental)",
-          .section = section,
-          .tooltip = "The rays take the hills from the game's own drawing of them instead of drawing them a second time.\n"
-                     "Not with Hills Out of View.",
           .is_visible = more_rays,
       });
     }
