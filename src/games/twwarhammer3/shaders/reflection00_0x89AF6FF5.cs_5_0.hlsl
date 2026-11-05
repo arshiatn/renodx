@@ -161,6 +161,13 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
   r0.xy = (int2)vThreadID.xy;
   r0.xy = float2(0.5,0.5) + r0.xy;
   r0.zw = g_screen_size.zw * r0.xy;
+  // RenoDX: addon.cpp reflections' b10. y: the frame's sun is 76A707E5 (F0 0.04, no SSAO, as its cubes); z: the march ran on these surfaces too;
+  // w: t_hit is one to one with the render (the game's uv reads half of it at scale).
+  const bool rt_sun_low_quality = rt_reflection_flags.y != 0u;
+  const bool rt_march_everywhere = rt_reflection_flags.z != 0u;
+  uint rt_hit_width, rt_hit_height, rt_hit_levels;
+  t_hit.GetDimensions(0, rt_hit_width, rt_hit_height, rt_hit_levels);
+  const float2 rt_hit_uv = (rt_reflection_flags.w != 0u) ? r0.xy / float2(rt_hit_width, rt_hit_height) : r0.zw;
   gbuffer_channel_4_texture.GetDimensions(0, uiDest.x, uiDest.y, uiDest.z);
   r1.xy = uiDest.xy;
   r1.zw = (uint2)r1.xy;
@@ -185,7 +192,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
   t_rt_specular_occlusion.GetDimensions(rt_occlusion_width, rt_occlusion_height);
   const bool rt_bound = rt_reflected || rt_occlusion_width != 0u;
   const float4 rt_traced = rt_reflected ? t_rt_reflection.Load(int3(rt_texel, 0)) : 0.f;
-  if (r3.x != 0 || (rt_bound && ((int)r2.w & 1) != 0)) {
+  if (r3.x != 0 || ((rt_bound || rt_march_everywhere) && ((int)r2.w & 1) != 0)) {
     r3.yz = g_viewport_dimensions.zw * r0.xy;
     r4.xy = gbuffer_channel_1_texture.Load(r1.xyw).xy;
     r5.z = gbuffer_channel_4_texture.Load(r1.xyw).x;
@@ -239,7 +246,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r7.w = dot(r0.xy, r0.xy);
     r7.w = rsqrt(r7.w);
     r0.xy = r7.ww * r0.xy;
-    r8.xy = t_hit.SampleLevel(s_trilinear_sampler_s, r0.zw, 0).xy;
+    r8.xy = t_hit.SampleLevel(s_trilinear_sampler_s, rt_hit_uv, 0).xy;
     r8.xy = float2(0.125,1.52662433e-005) * r8.xy;
     r7.w = log2(r8.y);
     r8.yz = float2(0.25,0.100000001) * r2.yy;
@@ -250,7 +257,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r8.y = max(1, r8.y);
     r8.y = log2(r8.y);
     r8.y = min(7, r8.y);
-    r8.yw = t_hit.SampleLevel(s_trilinear_sampler_s, r0.zw, r8.y).xy;
+    r8.yw = t_hit.SampleLevel(s_trilinear_sampler_s, rt_hit_uv, r8.y).xy;
     r8.y = saturate(-0.400000006 + r8.y);
     r8.w = 1.52662433e-005 * r8.w;
     r8.w = log2(r8.w);
@@ -265,12 +272,13 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r12.xyz = t_in_radiance.SampleLevel(s_trilinear_sampler_s, r0.xy, r8.z).xyz;
     if (rt_reflected) {
       r12.xyz = rt_traced.rgb;
-    } else if (r3.x == 0) {
+    } else if (r3.x == 0 && !rt_march_everywhere) {
       r12.xyz = float3(0,0,0);
     }
     r0.x = ssao_overscan / warscape_3d_overscan;
     r0.xy = r0.zw * r0.xx;
     r0.x = t_ssao.SampleLevel(s_ssao_s, r0.xy, 0).x;
+    if (rt_sun_low_quality && r3.x == 0) r0.x = 1.f;
     r0.y = t_in_radiance.SampleLevel(s_point_sampler_s, r0.zw, 0).w;
     r0.zw = r5.xz / g_cloud_shadow_scale;
     r7.w = g_cloud_shadow_speed / g_cloud_shadow_scale;
@@ -291,7 +299,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r0.y = min(r0.y, r0.z);
     if (r3.x == 0) {
       const float4 rt_colour = gbuffer_channel_2_texture.Load(r1.xyz);
-      r1.xyz = lerp((float3)(0.0799999982 * rt_colour.w), rt_colour.xyz, r2.x);
+      r1.xyz = lerp((float3)(rt_sun_low_quality ? 0.04f : 0.0799999982 * rt_colour.w), rt_colour.xyz, r2.x);
       if (g_use_spherical_harmonics != 0) {
         r13.xyzw = g_playable_area_bounds.xyxy + g_playable_area_bounds.zwzw;
         r14.xyzw = float4(0.5,0.5,0.5,0.5) * r13.xyzw;
@@ -1816,7 +1824,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     // RenoDX: off water no march ran; its result over the sun light's cubes, those dimmed by what blocks them.
     const float3 rt_occluded = RtOccludedEnvironment(rt_texel, r13.xyz);
     r0.xyz = r0.yzw * r0.xxx + -rt_occluded;
-    r0.w = rt_reflected ? rt_traced.a : (r2.x != 0 ? min(1, r1.w) : 0);
+    r0.w = rt_reflected ? rt_traced.a : ((r2.x != 0 || rt_march_everywhere) ? min(1, r1.w) : 0);
     r0.xyz = r0.xyz * r0.www + (rt_occluded - r13.xyz);
     r1.xyz = r1.xyz * float3(0.5,0.5,0.5) + -r13.xyz;
     r1.xyz = r0.www * r1.xyz + r13.xyz;

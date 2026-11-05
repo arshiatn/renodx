@@ -74,6 +74,8 @@ struct Texts {
       "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
       "Game's SSR: the original. FidelityFX SSSR: AMD's hierarchical ray march, exact, no gaps, reaching\n"
       "across the screen, usually faster. DXR: from rays, also what is off screen or hidden. Needs an upscaler.";
+  const char* reflections_middle_label = "FidelityFX SSSR";
+  const char* reflections_rays_label = "Ray-Traced (DXR)";
 };
 
 inline constexpr Texts ATTILA_TEXTS = {
@@ -825,7 +827,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto hierarchical = reflections_are(REFLECTION_HIERARCHICAL);
     const auto rays = reflections_are(REFLECTION_RAYS);
     if (b.ssr_hierarchical != nullptr) {
-      page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", "FidelityFX SSSR", "Ray-Traced (DXR)"}, [b] { return ReflectionMethodOf(b); },
+      page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", b.texts->reflections_middle_label, b.texts->reflections_rays_label}, [b] { return ReflectionMethodOf(b); },
                             [](int method) { ChooseReflections(method); }));
     } else {
       page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", "Ray-Traced (DXR, Experimental)"}, [b] { return (ReflectionMethodOf(b) == REFLECTION_RAYS) ? 1 : 0; },

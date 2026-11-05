@@ -822,102 +822,212 @@ void OnDestroyDevice(reshade::api::device* device) {
 // Ray tracing's sliders (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
 twattila::rt_scene::Sliders rt_sliders;
 
-// The rays' reflections and specular occlusion in the game's reflection pass (fx_environment_specular_light): off, nothing of
-// this runs and the game's bytes do. On, our copy of its resolve runs in its place (shaders/reflection00), with the march and
-// its blurs left out under reflections. Water's rays leave from the water (0ED84C3D reads the depth with it in; the guides again).
+// The game's reflection pass (fx_environment_specular_light): off, nothing of this runs and the game's bytes do. Our copy of its resolve
+// (shaders/reflection00) runs in its place with the rays' reflections or specular occlusion, with the march on all surfaces, or with the
+// march at one to one; under the rays' reflections the march and its blurs are left out. Water's rays leave from the water (0ED84C3D
+// reads the depth with it in; the guides again).
 namespace reflections {
 
-enum class Pass : uint8_t { GAME, OCCLUSION, RAYS };
+enum class Pass : uint8_t { GAME, OURS, RAYS };
 Pass pass = Pass::GAME;
+float all_surfaces_row = 0.f;  // The method slider's second place: the game's march, closed to water since WH2, on the flags' bit 0 too.
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> main_depth;
 // During OnMarch: its G-buffer (the water drawn by then) and camera for the guides again; the trace's dispatches take those slots.
 std::array<ID3D11ShaderResourceView*, 3> march_gbuffer = {};
 Microsoft::WRL::ComPtr<ID3D11Buffer> march_camera;
-std::span<const uint8_t> resolve_code;
-Microsoft::WRL::ComPtr<ID3D11ComputeShader> resolve;
-Microsoft::WRL::ComPtr<ID3D11ComputeShader> game_resolve;
-bool sun_cubes_known = true;  // This frame's sun light adds the cubes as the resolve takes them back (SunDraw::diffuse_rule 1).
-bool sun_cubes_logged = false;
+struct Copy {
+  std::span<const uint8_t> code;
+  Microsoft::WRL::ComPtr<ID3D11ComputeShader> shader;
+};
+Copy resolve;
+Copy march;
+Copy depth_full;
+Copy blur_x_full;
+Copy blur_y_full;
+Microsoft::WRL::ComPtr<ID3D11ComputeShader> game_shader;
+Microsoft::WRL::ComPtr<ID3D11Buffer> flags_buffer;  // b10 of the resolve and b1 of the march: {0, this frame's sun, all surfaces, one to one}
+std::array<uint32_t, 4> flags_written = {};
+Microsoft::WRL::ComPtr<ID3D11Buffer> game_b10;
+// This frame's sun light in the main view: the resolve takes the cubes back as it added them (SunDraw::diffuse_rule). Skin (0) writes flags
+// 0, the resolve leaves those pixels alone.
+bool sun_standard = false;
+bool sun_low_quality = false;
+bool sun_low_quality_logged = false;
+bool all_surfaces_logged = false;
+bool one_to_one_logged = false;
+// Render at most the targets' size (half the display) with Effects at Output: a march pixel to each render pixel, not to 2.
+bool one_to_one = false;
 
-bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
-  if (rt_sliders.reflections == 0.f && rt_sliders.specular_occlusion == 0.f) return true;
+// The copy in the game's place until SwapBack.
+bool Swap(ID3D11DeviceContext* native, Copy* copy) {
+  if (!copy->shader) {
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    if (FAILED(device->CreateComputeShader(copy->code.data(), copy->code.size(), nullptr, copy->shader.GetAddressOf()))) return false;
+  }
+  native->CSGetShader(game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  native->CSSetShader(copy->shader.Get(), nullptr, 0);
+  return true;
+}
+
+void SwapBack(reshade::api::command_list* cmd_list) {
+  if (!game_shader) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
-  if (native != nullptr) native->CSGetShaderResources(0, 1, main_depth.ReleaseAndGetAddressOf());
+  if (native == nullptr) return;
+  native->CSSetShader(game_shader.Get(), nullptr, 0);
+  game_shader.Reset();
+}
+
+bool RaysOn() {
+  return rt_sliders.reflections != 0.f || rt_sliders.specular_occlusion != 0.f;
+}
+
+bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
+  one_to_one = false;
+  const uint32_t render_width = twattila::frame_history::render_width.load(std::memory_order_relaxed);
+  const bool effects = render_width != 0 && twattila::frame_history::effect_share.load(std::memory_order_relaxed) < 1.f;
+  if (!RaysOn() && !effects) return true;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return true;
+  if (RaysOn()) native->CSGetShaderResources(0, 1, main_depth.ReleaseAndGetAddressOf());
+  if (effects) {
+    Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> target_view;
+    native->CSGetUnorderedAccessViews(0, 1, target_view.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Resource> target;
+    if (target_view) target_view->GetResource(target.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (target) target.As(&texture);
+    D3D11_TEXTURE2D_DESC desc = {};
+    if (texture) texture->GetDesc(&desc);
+    one_to_one = render_width <= desc.Width && twattila::frame_history::render_height.load(std::memory_order_relaxed) <= desc.Height && Swap(native, &depth_full);
+    if (one_to_one && !one_to_one_logged) {
+      one_to_one_logged = true;
+      renodx::utils::log::i(std::format("[Warhammer III] Reflections: the march at one to one, render width {} in a target of {}.", render_width, desc.Width));
+    }
+  }
   return true;
 }
 
 // The first of the pass's dispatches: the rays traced here, once a frame, before the G-buffer's slots change. False: left out.
 bool OnMarch(reshade::api::command_list* cmd_list) {
   pass = Pass::GAME;
-  if (rt_sliders.reflections == 0.f && rt_sliders.specular_occlusion == 0.f) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
-  if (native == nullptr || !main_depth || !twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) return true;
-  if (!sun_cubes_known) {
-    if (!sun_cubes_logged) {
-      sun_cubes_logged = true;
-      renodx::utils::log::i("[Warhammer III] Ray-traced reflections: this sun shader's cubes aren't known here, the game's reflections stay.");
+  if (native == nullptr) return true;
+  const bool all_surfaces = all_surfaces_row != 0.f && rt_sliders.reflections == 0.f;
+  if (all_surfaces || one_to_one) pass = Pass::OURS;
+  if (RaysOn() && main_depth && twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) {
+    native->CSGetShaderResources(0, static_cast<UINT>(march_gbuffer.size()), march_gbuffer.data());
+    native->CSGetConstantBuffers(0, 1, march_camera.ReleaseAndGetAddressOf());
+    std::array<ID3D11ShaderResourceView*, 2> views = {};
+    {
+      const twattila::rt_scene::internal::ComputeState kept(native);
+      views = twattila::rt_scene::Reflections(native, main_depth.Get());
     }
-    return true;
+    for (auto*& view : march_gbuffer) {
+      if (view != nullptr) view->Release();
+      view = nullptr;
+    }
+    march_camera.Reset();
+    if (views[0] != nullptr) {
+      auto& runtime = twattila::rt_scene::internal::runtime;
+      const std::unique_lock lock(runtime.mutex);
+      if (!runtime.settings.reflections) {
+        pass = Pass::OURS;
+      } else if (runtime.water_traced) {
+        // Rays from the riverbed would show in the water: else the game's march stays.
+        pass = Pass::RAYS;
+      }
+    }
   }
-  if (!resolve) {
+  if (pass == Pass::GAME) return true;
+  const bool sun_rule = sun_low_quality && !sun_standard;
+  if (sun_rule && !sun_low_quality_logged) {
+    sun_low_quality_logged = true;
+    renodx::utils::log::i("[Warhammer III] Reflections: the frame's sun is ps 76A707E5, its cubes taken back by its rule.");
+  }
+  const std::array<uint32_t, 4> flags = {0u, sun_rule ? 1u : 0u, all_surfaces ? 1u : 0u, one_to_one ? 1u : 0u};
+  if (!flags_buffer) {
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     native->GetDevice(device.GetAddressOf());
-    if (FAILED(device->CreateComputeShader(resolve_code.data(), resolve_code.size(), nullptr, resolve.GetAddressOf()))) return true;
+    const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(flags), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = flags.data()};
+    if (FAILED(device->CreateBuffer(&desc, &data, flags_buffer.GetAddressOf()))) {
+      pass = Pass::GAME;
+      return true;
+    }
+    flags_written = flags;
+  } else if (flags != flags_written) {
+    native->UpdateSubresource(flags_buffer.Get(), 0, nullptr, flags.data(), 0, 0);
+    flags_written = flags;
   }
-  native->CSGetShaderResources(0, static_cast<UINT>(march_gbuffer.size()), march_gbuffer.data());
-  native->CSGetConstantBuffers(0, 1, march_camera.ReleaseAndGetAddressOf());
-  std::array<ID3D11ShaderResourceView*, 2> views = {};
-  {
-    const twattila::rt_scene::internal::ComputeState kept(native);
-    views = twattila::rt_scene::Reflections(native, main_depth.Get());
+  if (pass == Pass::RAYS) return false;
+  if (all_surfaces && !all_surfaces_logged) {
+    all_surfaces_logged = true;
+    renodx::utils::log::i("[Warhammer III] Reflections: the game's march on all surfaces.");
   }
-  for (auto*& view : march_gbuffer) {
-    if (view != nullptr) view->Release();
-    view = nullptr;
+  if (all_surfaces || one_to_one) {
+    if (Swap(native, &march)) native->CSSetConstantBuffers(1, 1, flags_buffer.GetAddressOf());
   }
-  march_camera.Reset();
-  if (views[0] == nullptr) return true;
-  auto& runtime = twattila::rt_scene::internal::runtime;
-  const std::unique_lock lock(runtime.mutex);
-  if (!runtime.settings.reflections) {
-    pass = Pass::OCCLUSION;
-    return true;
+  return true;
+}
+
+void OnMarched(reshade::api::command_list* cmd_list) {
+  if (!game_shader) return;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native != nullptr) {
+    ID3D11Buffer* none = nullptr;
+    native->CSSetConstantBuffers(1, 1, &none);
   }
-  // Rays from the riverbed would show in the water: the game's whole pass then.
-  if (!runtime.water_traced) return true;
-  pass = Pass::RAYS;
-  return false;
+  SwapBack(cmd_list);
+}
+
+bool OnBlur(reshade::api::command_list* cmd_list, Copy* copy) {
+  if (pass == Pass::RAYS) return false;
+  if (!one_to_one) return true;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native != nullptr) Swap(native, copy);
+  return true;
 }
 
 bool OnResolve(reshade::api::command_list* cmd_list) {
   if (pass == Pass::GAME) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
-  if (native == nullptr) return true;
-  twattila::rt_scene::BindReflections(cmd_list, true, true);
-  native->CSGetShader(game_resolve.ReleaseAndGetAddressOf(), nullptr, nullptr);
-  native->CSSetShader(resolve.Get(), nullptr, 0);
+  if (native == nullptr || !Swap(native, &resolve)) {
+    pass = Pass::GAME;
+    return true;
+  }
+  if (RaysOn()) twattila::rt_scene::BindReflections(cmd_list, true, true);
+  native->CSGetConstantBuffers(10, 1, game_b10.ReleaseAndGetAddressOf());
+  native->CSSetConstantBuffers(10, 1, flags_buffer.GetAddressOf());
   return true;
 }
 
 void OnResolved(reshade::api::command_list* cmd_list) {
   main_depth.Reset();
+  one_to_one = false;
   if (pass == Pass::GAME) return;
   pass = Pass::GAME;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return;
-  native->CSSetShader(game_resolve.Get(), nullptr, 0);
-  game_resolve.Reset();
-  twattila::rt_scene::BindReflections(cmd_list, true, false);
+  native->CSSetConstantBuffers(10, 1, game_b10.GetAddressOf());
+  game_b10.Reset();
+  SwapBack(cmd_list);
+  if (RaysOn()) twattila::rt_scene::BindReflections(cmd_list, true, false);
 }
 
 void OnDestroyDevice(reshade::api::device*) {
   main_depth.Reset();
-  resolve.Reset();
-  game_resolve.Reset();
+  for (Copy* copy : {&resolve, &march, &depth_full, &blur_x_full, &blur_y_full}) copy->shader.Reset();
+  game_shader.Reset();
+  flags_buffer.Reset();
+  game_b10.Reset();
 }
 
 }  // namespace reflections
@@ -927,19 +1037,25 @@ void OnDestroyDevice(reshade::api::device*) {
 // rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture.
 // The sun's mask (E6BCBA8A, before the sun draw and this frame's trace) the same, while rays cast the sun's shadow: lit cascades, no
 // contact march; smoke, clouds and the terrain's map stay. Fog, portraits and forward passes read the maps, so the casters still draw.
+// Fog Strength off 1 too on what no upsample scales: the 3 full-resolution fog lights and the legacy fog (the half-resolution lights go
+// through 78E4CBF2; the extinction 34719E09 is every map's). None of the 4 drew in any run: level B.
 namespace traced_lights {
 
-constexpr std::array<uint32_t, 15> SHADERS = {0x8AD6BFD4, 0xEBF0B0A0, 0xB2453C88, 0x1315B4F2, 0x2240F035, 0xF551453C, 0xBE7249F1, 0xEE766574,
+constexpr std::array<uint32_t, 16> SHADERS = {0x8AD6BFD4, 0xEBF0B0A0, 0xB2453C88, 0x1315B4F2, 0x2240F035, 0xF551453C, 0xBE7249F1, 0xEE766574,
                                               0xA8F5202D, 0xC506E37C, 0xD13AF2EA, 0x4347C118, 0x438D86B8, 0x7998DC13,
-                                              0xE6BCBA8A};
+                                              0xE6BCBA8A, 0xC5B0D1F3};
 constexpr size_t POINT_LIGHT_SHADERS = 8;
 constexpr size_t FOG_SHADERS = 6;
 constexpr size_t SUN_MASK = POINT_LIGHT_SHADERS + FOG_SHADERS;
+constexpr size_t LEGACY_FOG = SUN_MASK + 1;
 float rays_replace_maps_row = 0.f;
 std::array<std::span<const uint8_t>, SHADERS.size()> codes = {};
 std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SHADERS.size()> ours = {};
 std::array<std::atomic_bool, SHADERS.size()> logged = {};
 Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
+Microsoft::WRL::ComPtr<ID3D11Buffer> fog_strength_buffer;  // b8: the slider minus 1
+float fog_strength_written = 1.f;
+Microsoft::WRL::ComPtr<ID3D11Buffer> game_b8;
 
 // Registered after rt_scene's hooks, so run after them: their texture is bound by now, or isn't this frame.
 constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
@@ -956,8 +1072,25 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
   } else {
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> bound;
     // rt_local_lights.hlsli's mask, rt_fog.hlsli's fog.
-    native->PSGetShaderResources((index < POINT_LIGHT_SHADERS) ? 42 : 43, 1, bound.GetAddressOf());
-    if (!bound) return {};
+    if (index != LEGACY_FOG) native->PSGetShaderResources((index < POINT_LIGHT_SHADERS) ? 42 : 43, 1, bound.GetAddressOf());
+    const bool scales_fog = shader_injection.fog_strength != 1.f && (hash == 0xC506E37C || hash == 0x4347C118 || hash == 0x7998DC13 || index == LEGACY_FOG);
+    if (!bound && !scales_fog) return {};
+    if (scales_fog) {
+      const std::array<float, 4> above_one = {shader_injection.fog_strength - 1.f, 0.f, 0.f, 0.f};
+      if (!fog_strength_buffer) {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        native->GetDevice(device.GetAddressOf());
+        const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(above_one), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        const D3D11_SUBRESOURCE_DATA data = {.pSysMem = above_one.data()};
+        if (FAILED(device->CreateBuffer(&desc, &data, fog_strength_buffer.GetAddressOf()))) return {};
+        fog_strength_written = shader_injection.fog_strength;
+      } else if (fog_strength_written != shader_injection.fog_strength) {
+        native->UpdateSubresource(fog_strength_buffer.Get(), 0, nullptr, above_one.data(), 0, 0);
+        fog_strength_written = shader_injection.fog_strength;
+      }
+      native->PSGetConstantBuffers(8, 1, game_b8.ReleaseAndGetAddressOf());
+      native->PSSetConstantBuffers(8, 1, fog_strength_buffer.GetAddressOf());
+    }
   }
   auto& shader = ours[index];
   if (!shader) {
@@ -975,12 +1108,18 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
     if (post_native == nullptr) return;
     post_native->PSSetShader(game_shader.Get(), nullptr, 0);
     game_shader.Reset();
+    if (game_b8) {
+      post_native->PSSetConstantBuffers(8, 1, game_b8.GetAddressOf());
+      game_b8.Reset();
+    }
   }};
 };
 
 void OnDestroyDevice(reshade::api::device*) {
   for (auto& shader : ours) shader.Reset();
   game_shader.Reset();
+  fog_strength_buffer.Reset();
+  game_b8.Reset();
 }
 
 }  // namespace traced_lights
@@ -1208,13 +1347,16 @@ if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, 
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
     return true;
   }};
-  reflections::resolve_code = custom_shaders[0x89AF6FF5].code;
+  reflections::resolve.code = custom_shaders[0x89AF6FF5].code;
+  reflections::march.code = __ssr_game_march;
+  reflections::depth_full.code = __ssr_game_depth_full;
+  reflections::blur_x_full.code = __ssr_game_blur_x_full;
+  reflections::blur_y_full.code = __ssr_game_blur_y_full;
   custom_shaders[0x89AF6FF5] = {.crc32 = 0x89AF6FF5, .on_inject = not_injected, .on_draw = &reflections::OnResolve, .on_drawn = &reflections::OnResolved};
-  custom_shaders[0x0ED84C3D] = {.crc32 = 0x0ED84C3D, .on_inject = not_injected, .on_draw = &reflections::OnHierarchicalDepth};
-  custom_shaders[0xEF6B7767] = {.crc32 = 0xEF6B7767, .on_inject = not_injected, .on_draw = &reflections::OnMarch};
-  for (const uint32_t blur : {0x2559E5AEu, 0xDB5D3C54u}) {
-    custom_shaders[blur] = {.crc32 = blur, .on_inject = not_injected, .on_draw = [](auto*) { return reflections::pass != reflections::Pass::RAYS; }};
-  }
+  custom_shaders[0x0ED84C3D] = {.crc32 = 0x0ED84C3D, .on_inject = not_injected, .on_draw = &reflections::OnHierarchicalDepth, .on_drawn = &reflections::SwapBack};
+  custom_shaders[0xEF6B7767] = {.crc32 = 0xEF6B7767, .on_inject = not_injected, .on_draw = &reflections::OnMarch, .on_drawn = &reflections::OnMarched};
+  custom_shaders[0x2559E5AE] = {.crc32 = 0x2559E5AE, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnBlur(cmd_list, &reflections::blur_x_full); }, .on_drawn = &reflections::SwapBack};
+  custom_shaders[0xDB5D3C54] = {.crc32 = 0xDB5D3C54, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnBlur(cmd_list, &reflections::blur_y_full); }, .on_drawn = &reflections::SwapBack};
   // Point lights and fog: the same, our copies aren't the game's unless the rays are bound (the traced_lights namespace above).
   for (size_t index = 0; index < traced_lights::SHADERS.size(); ++index) {
     const uint32_t hash = traced_lights::SHADERS[index];
@@ -1858,6 +2000,14 @@ if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, 
         .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
+        .key = "ssr_hierarchical",
+        .binding = &reflections::all_surfaces_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Reflections on All Surfaces",
+        .section = "Extra",
+    },
+    new renodx::utils::settings::Setting{
         .key = "fog_strength",
         .binding = &shader_injection.fog_strength,
         .default_value = 1.f,
@@ -2339,8 +2489,10 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .effects_at_output_tooltip = "While the upscaler renders below 100%, Light Bounce, ray-traced AO's rate and Bend's shadow softness\n"
                                  "keep their 100% detail. Looks better, can cost some performance.",
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
-                           "Game's SSR: the original, on water only. DXR: from rays, also what is off screen or hidden, on water,\n"
-                           "armour and metal. Needs an upscaler.",
+                           "Game's SSR: the original, on water only. All Surfaces: the game's own march on armour, metal and the rest too,\n"
+                           "no rays needed; costs more, may shimmer. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
+    .reflections_middle_label = "All Surfaces (Experimental)",
+    .reflections_rays_label = "Ray-Traced (DXR, Experimental)",
 };
 
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -2611,7 +2763,13 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
   if (native == nullptr) return {};
   if (draw.ao_slot != UINT_MAX) native->PSGetShaderResources(draw.ao_slot, 1, sun_ao::game_view.ReleaseAndGetAddressOf());
   twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot, draw.diffuse_rule);
-  if (draw.diffuse_rule != 1.f && twattila::frame_history::MainViewport(native)) reflections::sun_cubes_known = false;
+  if (draw.diffuse_rule != 0.f && twattila::frame_history::MainViewport(native)) {
+    if (draw.diffuse_rule == 1.f) {
+      reflections::sun_standard = true;
+    } else {
+      reflections::sun_low_quality = true;
+    }
+  }
   // Log Details, once per shader: what this place's ambient is made of (lighting_VS_PS: its values can't be read offline).
   if (rt_sliders.debug_log != 0.f && twattila::frame_history::MainViewport(native)
       && !sun_values_logged[&draw - LIGHT_BOUNCE_DRAWS.data()].exchange(true, std::memory_order_relaxed)) {
@@ -2650,7 +2808,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  reflections::sun_cubes_known = true;
+  reflections::sun_standard = false;
+  reflections::sun_low_quality = false;
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
   // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS is XeSS on Intel's, else FSR.
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
@@ -3097,6 +3256,7 @@ void ConfigureAddon() {
   // cube isn't the sky (rt_sun), so the paths have no sky of the game's to bring.
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .ssr_hierarchical = &reflections::all_surfaces_row,
                                              .upscaling_mode = &upscaling_mode_row,
                                              .upscaling_mode_found = twwarhammer3::resolution_scale::Found,
                                              .below_100_detail = &below_100_detail_row,

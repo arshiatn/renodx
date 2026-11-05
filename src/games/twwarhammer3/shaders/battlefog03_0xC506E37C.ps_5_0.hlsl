@@ -1,6 +1,9 @@
 // fx_battlefog, the fog's light (inscattering, ENABLE_SHADOWS): the game's, with rays in place of its cascade march
 // (twwarhammer3/addon.cpp traced_lights; twattila/rt_fog.hlsli). Runs only with t43 bound; otherwise the game's own bytes do.
 // The sky's light stays apart here, so the sun alone goes dark in shadow.
+cbuffer rt_fog_strength : register(b8) {
+  float rt_fog_strength_above_one;
+};
 #define RT_FOG_SHADE 0.f
 #include "../../twattila/rt_fog.hlsli"
 
@@ -954,6 +957,7 @@ void main(
   r0.xyz = -r4.xyz * r0.xyz + r5.xyz;
   r0.xyz = r2.xyz * r0.xyz + r1.xyz;
   o0.xyz = g_fog_lerp * r0.xyz;
+  o0.xyz *= 1.f + rt_fog_strength_above_one;
   o0.w = 0;
   return;
 }
