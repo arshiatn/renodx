@@ -39,6 +39,7 @@
 #include "../twattila/frame_trace.hpp"
 #include "../twattila/reflex.hpp"
 #include "../twattila/texture_lod_bias.hpp"
+#include "./resolution_scale.hpp"
 
 // DLSS, FSR or XeSS in place of the game's TAA (it has no working DLSS of its own: preferences gfx_dlss never creates one):
 // after its TAA resolve (cs 0x1ADBFF18 TAA / 0x6A8FC282 TAA High: t0 the G-buffer depth in x, t2 the velocity, t4 this
@@ -97,7 +98,7 @@ enum class ScaleProof : uint8_t {
   NONE,     // no upscaler, or the game at 100%
   WAITING,  // a new size: the TAA left alone until the tone mapper's draw has checked it
   GOOD,
-  REFUSED,  // not as expected: the game's own TAA and upscale until the size or the row changes
+  REFUSED,  // not as expected: the game's own TAA and upscale until the size or the mode changes
 };
 
 // What the game's TAA pass does this time.
@@ -169,11 +170,11 @@ struct State {
   float scene_share = 1.f;
   bool preferences_read = false;
   bool in_game_dlss = false;  // gfx_dlss above 0: the game's TAA is gone, so no upscaler here
+  bool in_game_aa_off = false;  // gfx_aa below TAA: the same
   // Log Details: 64 frames of the game's jitter per new size.
   bool log_details = false;
   std::array<UINT, 2> jitter_size = {};
   std::vector<std::array<float, 2>> jitter_samples;
-  std::vector<std::array<float, 3>> sampler_kinds;  // the log's
 };
 static State state;
 
@@ -364,7 +365,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
   ComPtr<ID3D11DeviceContext1> context1;
   const std::unique_lock lock(state.mutex);
   const auto method = state.settings.method;
-  // The row on, at the frame's first TAA pass: the size it worked at, from the buffer it reads. A new size is only learned here:
+  // An upscaler on, at the frame's first TAA pass: the size it worked at, from the buffer it reads. A new size is only learned here:
   // the tone mapper's draw checks it this frame, the upscaler from the next.
   const ScaleChoice scale = [&]() -> ScaleChoice {
     if (!state.below_100) return ScaleChoice::WHOLE;
@@ -376,7 +377,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
     state.scale_camera = reinterpret_cast<uint64_t>(camera.Get());
     const auto found = state.uploaded_sizes.find(state.scale_camera);
     if (found == state.uploaded_sizes.end()) {
-      // Nothing to learn from. With the main view's camera seen it is 100%, as without the row.
+      // Nothing to learn from. With the main view's camera seen it is 100%.
       if (!state.camera_seen) {
         state.scale_refused_frame = state.frame;
       } else {
@@ -914,22 +915,16 @@ static std::atomic_bool main_view = false;
 
 // Before texture_lod_bias's.
 inline void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, const reshade::api::viewport* viewports) {
+  // At 100% and without an upscaler no view is the render size's.
+  const UINT render_width = twattila::frame_history::render_width.load(std::memory_order_relaxed);
+  if (render_width == 0 && !main_view.load(std::memory_order_relaxed)) return;
   if (first != 0 || count == 0 || !twattila::texture_lod_bias::internal::Immediate(cmd_list)) return;
   const bool main = !twattila::frame_history::tonemapped.load(std::memory_order_relaxed)
-                    && viewports[0].width == static_cast<float>(twattila::frame_history::render_width.load(std::memory_order_relaxed))
+                    && viewports[0].width == static_cast<float>(render_width)
                     && viewports[0].height == static_cast<float>(twattila::frame_history::render_height.load(std::memory_order_relaxed));
   if (main_view.exchange(main, std::memory_order_relaxed) != main && twattila::frame_trace::Tracing()) {
     twattila::frame_trace::Mark(std::format("LOD bias {} from here, the viewport {}x{}", (main ? "on" : "off"), viewports[0].width, viewports[0].height));
   }
-}
-
-// The game's samplers, for the LOD bias's default: a line per kind.
-inline void OnInitSampler(reshade::api::device*, const reshade::api::sampler_desc& desc, reshade::api::sampler) {
-  const std::array<float, 3> kind = {static_cast<float>(desc.filter), desc.max_anisotropy, desc.mip_lod_bias};
-  const std::unique_lock lock(state.mutex);
-  if (std::ranges::find(state.sampler_kinds, kind) != state.sampler_kinds.end()) return;
-  state.sampler_kinds.push_back(kind);
-  renodx::utils::log::i(std::format("[Warhammer III] The game's sampler: filter {}, anisotropy {}, LOD bias {}.", kind[0], kind[1], kind[2]));
 }
 
 inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
@@ -942,7 +937,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     ++state.frame;
     state.camera_seen = false;
     state.trace_wanted = twattila::frame_trace::Wanted();
-    // The addon's passes follow the game's size (without the row: 0, 1, never set).
+    // The addon's passes follow the game's size (without an upscaler: 0, 1, never set).
     // A second without a TAA pass (a menu, in-game anti-aliasing off): nothing shows the game's size any more, and it may have changed.
     if (state.scale_proof == ScaleProof::GOOD && state.frame - state.scale_frame >= 60) {
       state.scale_proof = ScaleProof::NONE;
@@ -1048,17 +1043,17 @@ inline std::array<UINT, 2> RenderSize() {
   return {static_cast<UINT>(internal::state.camera[internal::VIEWPORT]), static_cast<UINT>(internal::state.camera[internal::VIEWPORT + 1])};
 }
 
-// The game's own DLSS is on: nothing here can run. Every present, before anything reads the size. Its file, once, also gives the scale until
-// a TAA pass shows it (a battle or a save started directly loads its models before any).
-inline bool InGameDlss() {
+// The game's own DLSS is on, or its anti-aliasing isn't TAA: no pass for an upscaler to take over, so no scale to write. Every present, before
+// anything reads the size. Its file, once (a change in the game's menu counts from its next start), also gives the scale until a TAA pass
+// shows it (a battle or a save started directly loads its models before any).
+inline bool InGameNoTaa() {
   const std::unique_lock lock(internal::state.mutex);
   if (!internal::state.preferences_read) {
     internal::state.preferences_read = true;
-    std::wstring folder(32768, L'\0');
-    folder.resize(GetEnvironmentVariableW(L"APPDATA", folder.data(), static_cast<DWORD>(folder.size())));
-    std::ifstream file(std::filesystem::path(folder) / L"The Creative Assembly" / L"Warhammer3" / L"scripts" / L"preferences.script.txt");
+    std::ifstream file(resolution_scale::PreferencesPath());
     constexpr std::string_view NAME = "gfx_resolution_scale ";
     constexpr std::string_view DLSS_NAME = "gfx_dlss ";
+    constexpr std::string_view AA_NAME = "gfx_aa ";
     for (std::string line; std::getline(file, line);) {
       float value = 0.f;
       if (line.starts_with(NAME) && std::from_chars(line.data() + NAME.size(), line.data() + line.size(), value).ec == std::errc{} && value > 0.f && value <= 1.f) {
@@ -1068,9 +1063,12 @@ inline bool InGameDlss() {
         internal::state.in_game_dlss = true;
         renodx::utils::log::w("[Warhammer III] preferences.script.txt has gfx_dlss above 0: the game's TAA is gone, so the addon can't upscale. Set it to 0.");
       }
+      if (int aa = 0; line.starts_with(AA_NAME) && std::from_chars(line.data() + AA_NAME.size(), line.data() + line.size(), aa).ec == std::errc{} && aa < 2) {
+        internal::state.in_game_aa_off = true;
+      }
     }
   }
-  return internal::state.in_game_dlss;
+  return internal::state.in_game_dlss || internal::state.in_game_aa_off;
 }
 
 // The addon just wrote the game's scale for `size` of the display's `screen`: a size proven earlier holds from the very next frame, so
@@ -1127,7 +1125,6 @@ inline void Install() {
   twattila::texture_lod_bias::SetMainView([] { return internal::main_view.load(std::memory_order_relaxed); });
   reshade::register_event<reshade::addon_event::bind_viewports>(internal::OnBindViewports);
   reshade::register_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
-  reshade::register_event<reshade::addon_event::init_sampler>(internal::OnInitSampler);
   reshade::register_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
   reshade::register_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
   reshade::register_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
@@ -1142,7 +1139,6 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::present>(internal::OnPresent);
   reshade::unregister_event<reshade::addon_event::bind_viewports>(internal::OnBindViewports);
   reshade::unregister_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
-  reshade::unregister_event<reshade::addon_event::init_sampler>(internal::OnInitSampler);
   reshade::unregister_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
   reshade::unregister_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
   reshade::unregister_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);

@@ -2,8 +2,11 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
-## v32 (in progress, batch 3; renodx-tw-dlaa64.exe helper76, bridge v23; run in game by replay, campaign, benchmarks: see each line)
+## v32 (2026-11-05, batch 3; renodx-tw-dlaa64.exe helper77, bridge v23; run in game by replay, campaign, benchmarks: see each line; no players' zip yet)
 
+- **Quit at a mode: the game's file keeps its own scale** (see Upscaling Mode). If a patch of the game moves the scale's code, the row hides and a kept value still goes back to the file at the quit (read, not run).
+- **No upscaler, no scale written:** with the helper failed, `gfx_aa` below TAA or `gfx_dlss` above 0 in the game's file (read at the start), the row writes nothing, and what it wrote goes back. `gfx_dlss` run; the other two read.
+- Saved values from before v32 of two rows that were hidden, Torch and Fire Light in Fog and Water Reflections, go back to off once (`SettingsRevision` in ReShade.ini).
 - **Water Reflections (Experimental, off), run in game** (replay paused, 4K, 100% and Mode P, with and without Ray Reconstruction): with Ray-Traced Reflections water keeps the game's reflections; armour, metal and wet ground take the rays. Rays on water showed far hills as dark patches: their hits have no fog. Row on: the old look. The rays still leave from the water, for Ray Reconstruction's guides.
 - **DLSS Preset's tooltip:** L comes out darker below 100% (replay, mode P against DLAA, same paused moment: L 0.904, worst cell 0.81; M 0.976; K 0.993). Not cured; K or M at half.
 - **Reflections, All Surfaces (Experimental, off), run in game** (replay paused and live, 4K, DLSS at 100%): the Method slider's middle place: the game's own march, closed to water here since WH2, on armour, metal, stone and wood too, no rays needed. GPU busy 17.2 > 17.9 ms on the hill view, a close view -12% in its darkest cell (rough wood); paused shots steady (0.006 between two). Its copy, water and all else bit for bit off (WARP). Armour's look and shimmer in motion: your eye.
@@ -33,7 +36,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   - Unit banners here don't sway (a test with time pushed far gave them no motion, a small flag beside them did), and they keep no last position: a marching unit's banner still has only the camera's motion. Not done: bones or rows with sway (banners by wind, liquid): drawn in no trace.
   - **Water Motion (Experimental, off):** the fill's camera motion at the water's depth, not the riverbed's: traces show the water writing the depth after the fill's copy of it. No pan reached water on screen in 3 tries: not seen, only that nothing breaks with it on in 7 runs.
 - **Upscaling Mode, live, run in game** (replay, by the test hook; FSR, XeSS too): Game's (default), DLAA, Ultra Quality, Quality, Balanced, Performance, Ultra Performance, Custom. The row writes the one float the menu's slider sets, found by the code that uses it, no exe patch; found nothing, the row hides. Sizes are whole in both of the game's roundings (2960x1665, 2560x1440, 2224x1251, 1920x1080, 1280x720 at 4K; Custom in steps of the display's aspect). One new size: one frame of the game's TAA, its first in a session; a size used before: none, and frame generation stays up either way. Custom 1 to 100%: whole picture down to 1% (32x18), no refusal. The game's slider loses while a mode is on.
-  - **Quit at a mode: the game writes it to its file** (`gfx_resolution_scale 0.5`; it saves before the device goes). With the addon the old value comes back through `UpscalingGameScale` in ReShade.ini once the row is on Game's (run: file 0.5, the key 1, the row Game's, quit: file 1). Addon removed: the file stays; set the in-game slider.
+  - **Quit at a mode:** the game saves the mode's scale to its file before its device goes, then the addon writes the old value over it (`gfx_resolution_scale`), kept in `UpscalingGameScale` in ReShade.ini. Run: quit at Performance, file 1. A crash in the quit can leave the mode's value: the row on Game's brings it back; without the addon, the in-game slider.
   - **The Below 100% row is gone:** an upscaler on means it also runs below 100%. A size the constants don't agree with is still refused.
   - **Texture LOD Bias** (default Sharper): samplers cloned in the main view (viewport at the render size, before the tone mapper; a trace shows shadow maps out). The game's own samplers have fixed biases (0, -0.5, -2) that don't follow the scale. Edge energy at 50 against 100: Off 0.78 to 0.96, Matched 0.90 to 0.97, Sharper 0.99 both views, Sharpest 1.00 to 1.07.
   - **Effects at Output Resolution** shown and honoured: Light Bounce, Bend's softness, RTAO's rate follow it. On against off, rays off, one paused view: under the noise.
@@ -45,7 +48,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   - Screen-Space Shadows' Debug View goes through the upscaler like the rest (it showed the corner): correlates 0.976 with 100%.
   - G-buffer guides and Depth Levels only over the render's corner.
   - Jitter: read in game: 16 phases, reach 0.43 render pixels at both scales. Amplitude right. DLSS would like 32 at 50%: not changed.
-- Screen-Space Shadows keep their textures for about 10 s after they turn off (Ray-Traced Shadows on and off made a 4K copy each time). Attila too; not run in game there.
+- Screen-Space Shadows keep their textures for 600 frames after they turn off (Ray-Traced Shadows on and off made a 4K copy each time). Attila too; not run in game there.
 - `rt_terrain_keep_gs.h` is built by hand: the command is in the `.hlsl`.
 - Log only, run in game: the helper's idle release no longer says it "started again"; Reflex's line says when frame generation paces the
   game; FSR Frame Generation's status has a real count (2.0 here); no "smoke shadows" in the status; Below 100%'s line printed once the size

@@ -1840,7 +1840,7 @@ void CaptureIndirect(Context& command, const void*) {
   const auto& arguments = command.arguments;
   if (arguments.command != reshade::api::indirect_command::draw_indexed) return;
   auto* native = NativeContext(command.cmd_list);
-  if (native == nullptr || runtime.traced_frame == runtime.frame || runtime.settings.scene_test == 9) return;
+  if (native == nullptr || runtime.traced_frame == runtime.frame) return;
   auto* buffer = reinterpret_cast<ID3D11Buffer*>(arguments.buffer.handle);
   std::array<uint32_t, 5> numbers = {};
   {

@@ -1330,7 +1330,7 @@ void BuildRuntimeData() {
   };
   custom_shaders[0x2A629B2B].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x2A629B2B, true);
-if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, true, true, 1, 2)) return true;
+    if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, true, true, 1, 2)) return true;
     const bool dispatched = tw::line_sweep_ao::DispatchInstead(
         cmd_list, __ao_bitmask_collect02, &shader_injection, sizeof(shader_injection), false, __ao_upsample_collect02,
         shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
@@ -1408,7 +1408,7 @@ if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, 
       renodx::utils::directx::NativeFromReShadeProxy(&native);
       Microsoft::WRL::ComPtr<ID3D11Buffer> constants;
       native->PSGetConstantBuffers(1, 1, constants.GetAddressOf());
-      if (const auto strength = twattila::frame_trace::ReadBuffer<float>(native, constants.Get(), 0, 1); !strength.empty()) {
+      if (const auto strength = (constants ? twattila::frame_trace::ReadBuffer<float>(native, constants.Get(), 0, 1) : std::vector<float>{}); !strength.empty()) {
         renodx::utils::log::i(std::format("[Warhammer III] Sharpening: the game's strength {:g}, its part for its own upscale {:g}, left {:g}.",
                                           strength[0], logged_term, std::max(strength[0] - logged_term, 0.f)));
       }
@@ -2467,10 +2467,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.\n"
-                  "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
-                  "turns it on below. May look brighter or darker than the game's. Needs an upscaler.",
-    .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
+                  "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
     .water_reflections_label = "Water Reflections (Experimental)",
@@ -2837,9 +2834,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
 #endif
   // Upscaling Mode: exact sizes, as the game truncates some of its sizes and rounds up others. Before anything reads this frame's size.
   float wanted_scale = 0.f;
-  const bool in_game_dlss = twwarhammer3::taa_dlss::InGameDlss();
+  // Nothing would take the game's picture to the display: without the helper, or without a TAA pass to replace, the scale stays the game's.
+  const bool no_upscaler = twwarhammer3::taa_dlss::InGameNoTaa() || twattila::dlaa_bridge::bridge.failed;
   const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
-  if (upscaling_mode_row != 0.f && twattila::feature_settings::Upscaling(aa_sliders) && !third_party_upscale && !in_game_dlss) {
+  if (upscaling_mode_row != 0.f && twattila::feature_settings::Upscaling(aa_sliders) && !third_party_upscale && !no_upscaler) {
     const auto mode = static_cast<size_t>(upscaling_mode_row) - 1;
     wanted_scale = twattila::frame_history::AspectScale(back_buffer.texture.width, back_buffer.texture.height,
                                                         (mode < twattila::feature_settings::DLSS_MODE_SCALES.size())
@@ -3306,6 +3304,17 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::object_motion::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
+
+  // Saved before v32 with both rows hidden, at their old defaults: fog's light nobody has seen at night, and dark patches on rivers under rays.
+  constexpr int SETTINGS_REVISION = 32;
+  if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
+    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
+      for (const char* key : {"RayTracedLightGlow", "RayTracedWaterReflections"}) {
+        reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+      }
+    }
+    reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 

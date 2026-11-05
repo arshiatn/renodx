@@ -11,9 +11,14 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <vector>
 
 #include <include/reshade.hpp>
 
@@ -66,6 +71,10 @@ inline uint32_t PreferenceId(std::string_view code, const uint8_t* name) {
 
 inline void Find() {
   searched = true;
+  // Before anything can miss: a mode kept over a game's patch still gets the file back at the quit.
+  float saved = 0.f;
+  has_kept = reshade::get_config_value(nullptr, CONFIG_SECTION, CONFIG_KEY, saved);
+  if (has_kept) kept = saved;
   std::array<char, 8> no_scale = {};
   if (GetEnvironmentVariableA("RENODX_TW_NO_SCALE", no_scale.data(), static_cast<DWORD>(no_scale.size())) != 0) {
     renodx::utils::log::i("[Warhammer III] Resolution Scale: not looked for (RENODX_TW_NO_SCALE).");
@@ -111,9 +120,6 @@ inline void Find() {
   getter_offset = getter;
   setter_offset = setter;
   found.store(true, std::memory_order_relaxed);
-  float saved = 0.f;
-  has_kept = reshade::get_config_value(nullptr, CONFIG_SECTION, CONFIG_KEY, saved);
-  if (has_kept) kept = saved;
 }
 
 // The live float; null: no renderer yet, or its methods aren't the plain ones (the row hides).
@@ -184,10 +190,42 @@ inline float Current() {
   return (value != nullptr) ? *value : 0.f;
 }
 
-// The game is closing: what it had, in case it saves the value after this.
+// The game's file (it reads it at its start).
+inline std::filesystem::path PreferencesPath() {
+  std::wstring folder(32768, L'\0');
+  folder.resize(GetEnvironmentVariableW(L"APPDATA", folder.data(), static_cast<DWORD>(folder.size())));
+  return std::filesystem::path(folder) / L"The Creative Assembly" / L"Warhammer3" / L"scripts" / L"preferences.script.txt";
+}
+
+// The game is closing and has saved its file already, with the mode's scale (a quit at Performance: 0.5): what it had goes back there, so
+// the game without the addon starts as it was. Without the row (a patch moved the code) once, as nothing can drive the scale any more.
 inline void OnDestroyDevice(reshade::api::device*) {
-  if (!internal::has_kept) return;
-  if (float* value = internal::Value(); value != nullptr) *value = internal::kept;
+  using namespace internal;
+  if (!has_kept) return;
+  if (!found.load(std::memory_order_relaxed)) {
+    has_kept = false;
+    reshade::set_config_value(nullptr, CONFIG_SECTION, CONFIG_KEY, static_cast<const char*>(nullptr));
+  }
+  const auto path = PreferencesPath();
+  std::ifstream input(path, std::ios::binary);
+  std::string text{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+  input.close();
+  constexpr std::string_view NAME = "gfx_resolution_scale ";
+  size_t start = text.starts_with(NAME) ? 0 : text.find(std::format("\n{}", NAME));
+  if (start == std::string::npos) return;
+  start = text.find(NAME, start) + NAME.size();
+  const size_t end = text.find(';', start);
+  if (end == std::string::npos) return;
+  text.replace(start, end - start, std::format("{}", kept));
+  auto temporary = path;
+  temporary += L".renodx";
+  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+  output.write(text.data(), static_cast<std::streamsize>(text.size()));
+  output.close();
+  std::error_code error;
+  if (output.good()) std::filesystem::rename(temporary, path, error);
+  if (!output.good() || error) std::filesystem::remove(temporary, error);
+  renodx::utils::log::i(std::format("[Warhammer III] Resolution Scale: the game's {} back in its file.", kept));
 }
 
 }  // namespace twwarhammer3::resolution_scale

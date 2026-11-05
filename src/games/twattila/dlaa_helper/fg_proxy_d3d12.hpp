@@ -411,6 +411,10 @@ class ProxyFrameGeneration12 {
     // The status line every 30 presents.
     if (presents_++ % 30 == 0) {
       const char* no_hudless = (hudless_valid ? "" : " (no HUD-less image: the UI can warp)");
+#if defined(RENODX_FSR_FG)
+      // The lines between don't read its count: the next one starts over.
+      if (!failure_.empty() || !inputs) fsr_present_count_ = 0;
+#endif
       if (!failure_.empty()) {
         status_ = "Frame generation: " + std::exchange(failure_, {});
       } else if (!inputs) {

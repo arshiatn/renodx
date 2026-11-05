@@ -1009,7 +1009,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   internal::runtime.settings = settings;
   internal::runtime.display_width = display.texture.width;
   internal::runtime.display_height = display.texture.height;
-  // Off for about 10 s: its memory back (Prepare makes it again; the other occlusions use nothing of it). Not at once: a 4K copy
+  // Off for 600 presents: its memory back (Prepare makes it again; the other occlusions use nothing of it). Not at once: a 4K copy
   // made again at each switch of what replaces it.
   internal::runtime.off_presents = settings.enabled ? 0 : internal::runtime.off_presents + 1;
   if (internal::runtime.off_presents > 600 && internal::runtime.objects.device) {
