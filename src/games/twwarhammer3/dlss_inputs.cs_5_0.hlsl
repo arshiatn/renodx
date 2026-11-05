@@ -18,6 +18,8 @@ cbuffer dlss_settings : register(b0) {
   float g_square_root;
 }
 
+#include "./particle_smear.hlsli"
+
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   uint width;
@@ -27,5 +29,5 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 color = max(t_color[id.xy].rgb, 0.f);
   u_color[id.xy] = float4((g_square_root != 0.f) ? sqrt(color) : color, 1.f);
   u_depth[id.xy] = t_depth[id.xy].x;
-  u_motion[id.xy] = t_velocity[id.xy].xy * float2(-0.5f, 0.5f) * float2(width, height);
+  u_motion[id.xy] = ParticleSmearMotion(id.xy, t_velocity[id.xy].xy * float2(-0.5f, 0.5f) * float2(width, height), float2(width, height));
 }

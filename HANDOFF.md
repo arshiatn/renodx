@@ -17,6 +17,10 @@ List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Done: 22 units from the shadow pass (BADA4FE3, 46E626D5) in the ray scene under Replace, row Units Out of View on; 6 Replace on by default, row Skip Trees in Shadow Maps, off; 15 row Light Through All Banners, off.
       Not done: 6 cascades can't go (fog, forward, the capture read them), memory is the game's; 7 Far Tree flicker's cause not found; trees and buildings never seen stay out (kept 300 frames after seen); weapons of off-screen units.
 
+- [x] E Motion, particles, VFX (items 20, 21 + 17, 16). Report reports/E.md. Not run in game. WARP warp_tests/vfx_wh3; page dump E1; only WH3 built, no shared file; helper unchanged, harness not run.
+      Done: 20 four VFX brightness rows (patched copies at the draw, 1 = the game's); 21 Particles at Half Resolution, Experimental, off (sharp sprites held and drawn in the half layer's state), Particle Trails Under Upscaling, Experimental, off (history dropped where the zeroth moment changed); why VFX costs so much, in the report; 16 list reports/E_motion_list.tsv.
+      Not done: particles at output resolution (costs more, B11's rework); reactive mask (no input in the helper, L and M ignore it); marching banners (no last position, instance key not provable offline); Water Motion stays off; sails, ropes in no trace. Half row's gain and all looks unproven.
+
 ## WH3 BATCH 3 (from 2026-11-04): fixes, DLSS rows, motion, full RT scene; game runs allowed on replay copies, campaign copy, benchmark
 Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch3/reports/Bn.md. Facts: wh3_batch3/facts.md. Run: test_scripts/run_game.ps1 -Game wh3, proof: wh3_batch3/check_run.py.
 - [x] B0 kit, log fixes, captures. Proven by runs c1-c9, survey (reports/B0.md, facts.md); check_run ok on each but c9_dlss3 (no "Finished exiting" with in-game DLSS) and bm_old (the game's own crash). Harness: tools/tw/all_modes_b0.txt. Helper: build/tw_dlaa_helper76.

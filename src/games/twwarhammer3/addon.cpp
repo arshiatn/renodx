@@ -52,6 +52,7 @@
 #include "./cut_out_masks.hpp"
 #include "./device_loss.hpp"
 #include "./object_motion.hpp"
+#include "./vfx_particles.hpp"
 #include "./resolution_scale.hpp"
 #include "./taa_dlss.hpp"
 #include "./more_tests.h"
@@ -3332,6 +3333,72 @@ void ConfigureAddon() {
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxFireAndGlow",
+      .binding = &twwarhammer3::vfx_particles::fire_and_glow,
+      .default_value = 1.f,
+      .label = "VFX Brightness: Fire & Glow",
+      .section = "VFX",
+      .tooltip = "Fire, sparks, magic and anything else that makes its own light. 1: the game's.",
+      .min = 0.f,
+      .max = 10.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxSmokeAndDust",
+      .binding = &twwarhammer3::vfx_particles::smoke_and_dust,
+      .default_value = 1.f,
+      .label = "VFX Brightness: Smoke & Dust",
+      .section = "VFX",
+      .tooltip = "Smoke, dust and clouds lit by the sun. 1: the game's.",
+      .min = 0.f,
+      .max = 10.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxEffectMeshes",
+      .binding = &twwarhammer3::vfx_particles::effect_meshes,
+      .default_value = 1.f,
+      .label = "VFX Brightness: Spell Meshes",
+      .section = "VFX",
+      .tooltip = "Effects drawn as meshes: spells, vortices, shockwaves. 1: the game's.",
+      .min = 0.f,
+      .max = 10.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxParticleFog",
+      .binding = &twwarhammer3::vfx_particles::particle_fog,
+      .default_value = 1.f,
+      .label = "VFX Brightness: Fog Particles",
+      .section = "VFX",
+      .tooltip = "Fog drawn as particles. 1: the game's.",
+      .min = 0.f,
+      .max = 10.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxHalfResolution",
+      .binding = &twwarhammer3::vfx_particles::half_resolution_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Particles at Half Resolution (Experimental)",
+      .section = "VFX",
+      .tooltip = "All smoke, fire and dust sprites drawn at half the render's size, as the game already does for some.\n"
+                 "Much faster in big fires and storms, softer particle edges.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxParticleSmear",
+      .binding = &twwarhammer3::taa_dlss::particle_smear_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Particle Trails Under Upscaling (Experimental)",
+      .section = "VFX",
+      .tooltip = "Moving smoke and fire leave no trail behind them in DLSS, FSR and XeSS. Can look rougher inside the smoke.\n"
+                 "Frame Generation may show more artifacts there.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
       .default_value = 1.f,
@@ -3486,6 +3553,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::object_motion::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::vfx_particles::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
 
@@ -3528,6 +3596,7 @@ bool AttachAddon() {
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twwarhammer3::grass_distance::Install();
+  twwarhammer3::vfx_particles::Install();
   for (const auto& water : WATER_SHADERS) {
     renodx::utils::command_action::Register(
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -3599,6 +3668,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::object_motion::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::vfx_particles::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::copy_resource>(aa_target::OnCopyResource);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(aa_target::OnCopyTextureRegion);
@@ -3622,6 +3692,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(sun_ao::OnDestroyDevice);
   renodx::utils::command_action::Unregister(traced_lights::OnDraw);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  twwarhammer3::vfx_particles::Uninstall();
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twwarhammer3::grass_distance::Uninstall();

@@ -18,10 +18,12 @@ cbuffer dlss_settings : register(b0) {
   float2 g_render_size;
 }
 
+#include "./particle_smear.hlsli"
+
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   if (any(float2(id.xy) >= g_render_size)) return;
   u_target[id.xy] = float4(min(max(t_color[id.xy].rgb, 0.f), 65504.f), u_target[id.xy].a);
   u_depth[id.xy] = t_depth[id.xy].x;
-  u_motion[id.xy] = t_velocity[id.xy].xy * float2(-0.5f, 0.5f) * g_render_size;
+  u_motion[id.xy] = ParticleSmearMotion(id.xy, t_velocity[id.xy].xy * float2(-0.5f, 0.5f) * g_render_size, g_render_size);
 }

@@ -56,6 +56,8 @@ namespace twwarhammer3::taa_dlss {
 
 using Microsoft::WRL::ComPtr;
 
+static float particle_smear_row = 0.f;
+
 namespace internal {
 
 constexpr std::array<uint32_t, 2> TAA_SHADERS = {0x1ADBFF18u, 0x6A8FC282u};
@@ -340,7 +342,7 @@ inline void OnEvaluated(UINT width, UINT height, const std::array<float, 2>& jit
 
 // After the game's TAA resolve: its inputs through DLSS, the result into its output. Below 100%: see the namespace's comment.
 inline void Resolve(ID3D11DeviceContext* native) {
-  std::array<ID3D11ShaderResourceView*, 5> inputs = {};
+  std::array<ID3D11ShaderResourceView*, 7> inputs = {};
   native->CSGetShaderResources(0, static_cast<UINT>(inputs.size()), inputs.data());
   ComPtr<ID3D11UnorderedAccessView> target;
   native->CSGetUnorderedAccessViews(1, 1, target.GetAddressOf());
@@ -507,7 +509,9 @@ inline void Resolve(ID3D11DeviceContext* native) {
     const bool reconstruct = Reconstructs();
     const std::array<float, 4> shader_settings = {(!scaled && SquareRootInput(reconstruct)) ? 1.f : 0.f, 0.f, static_cast<float>(render_width), static_cast<float>(render_height)};
     context1->UpdateSubresource(state.objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
-    const std::array<ID3D11ShaderResourceView*, 3> sources = {inputs[0], inputs[2], inputs[4]};
+    // t1 and t6: the particles' zeroth moment, this frame's and last (the game's TAA reads them too).
+    const std::array<ID3D11ShaderResourceView*, 5> sources = {inputs[0], inputs[2], inputs[4], (particle_smear_row != 0.f ? inputs[1] : nullptr),
+                                                              (particle_smear_row != 0.f ? inputs[6] : nullptr)};
     const std::array<ID3D11UnorderedAccessView*, 3> destinations = {(scaled ? target.Get() : bridge.color.uav.Get()), bridge.depth.uav.Get(), bridge.motion.uav.Get()};
     context1->CSSetShader((scaled ? state.objects.scaled_inputs.Get() : state.objects.inputs.Get()), nullptr, 0);
     context1->CSSetShaderResources(0, static_cast<UINT>(sources.size()), sources.data());
