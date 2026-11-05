@@ -23,7 +23,7 @@
       Cause (code + harness): without the paths' prepared light (One Bounce, GI off) every seen hit read last frame's colour, the upscaler's input: its square root under RR, L, M (harness: red wall 2.00/0.10 came back 1.41/0.32, whitish). And the frame's history, cache and learned light were made at the reflections' request, after the water's surface replaced the scene's (unseen box 0.06 against 0.44 with paths). Nothing "backwards" found: mirror geometry right in every mode.
       Fix: RT_PATH_COLOR_SQUARE_ROOT (colour squared back), RT_PATH_CACHE_FILL (One Bounce's request does the paths' frame work, then reflections read its prepared light as with paths). Harness: 2.00/0.10 again, box 0.65-0.68; One Bounce's own bytes identical. Water Reflections tooltip: best with ray-traced GI. README lines WH3, Attila, Troy, Pharaoh, WH1, WH2.
       Not done: GI off still last frame's picture (after the tone mapper below 100%), no learned light: pass the march's light like Attila. Water's scale line (bytecode-patched shaders, 2700 lines). Water Reflections' fog (no water trace). Rome II, Thrones README.
-      14 targets built, page dumps b5p6 (WH3 the tooltip + date, Attila the date), all_modes on helper87: reports/all_modes_P6.txt.
+      14 targets built, page dumps b5p6 (WH3 the tooltip + date, Attila the date), all_modes on helper87 128 of 128 (two new: reflect_one_bounce_fill, reflect_color_square_root), reports/all_modes_P6.txt.
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
