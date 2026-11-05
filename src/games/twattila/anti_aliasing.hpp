@@ -135,6 +135,15 @@ struct ShaderSettings {
 };
 
 // aa.hlsli's aa_taa: the cameras in the game's register layout.
+// aa_rr_guides' b0: which way each pixel looks. The other games' guides ignore it.
+struct GuidesCamera {
+  std::array<float, 16> inverse_view_projection = {};
+  std::array<float, 3> position = {};
+  float padding = 0.f;
+  std::array<float, 2> inverse_render_size = {};
+  std::array<float, 2> padding_end = {};
+};
+
 struct TaaConstants {
   std::array<float, 16> view_projection = {};
   std::array<float, 16> inverse_view_projection = {};
@@ -214,6 +223,7 @@ struct DeviceObjects {
   ComPtr<ID3D11ComputeShader> dlaa_prepare;
   ComPtr<ID3D11ComputeShader> dlaa_finish;
   ComPtr<ID3D11ComputeShader> rr_guides;  // Ray Reconstruction's guides, written in `guides_frame`
+  ComPtr<ID3D11Buffer> guides_camera;
   uint64_t guides_frame = UINT64_MAX;
   ComPtr<ID3D11Buffer> taa_constants;
   // The target's size and format and the method: its copy, the result and the method's working storage.
@@ -584,14 +594,24 @@ inline bool WriteGuides(ID3D11DeviceContext* native, const std::array<ID3D11Shad
   native->CSGetShaderResources(0, 3, game_views.data());
   std::array<ID3D11UnorderedAccessView*, 4> game_uavs = {};
   native->CSGetUnorderedAccessViews(0, 4, game_uavs.data());
+  ComPtr<ID3D11Buffer> game_constants;
+  native->CSGetConstantBuffers(0, 1, game_constants.GetAddressOf());
+  const GuidesCamera guides_camera = {
+      .inverse_view_projection = runtime.camera.inverse_view_projection,
+      .position = runtime.camera.position,
+      .inverse_render_size = {1.f / static_cast<float>(runtime.render_width), 1.f / static_cast<float>(runtime.render_height)},
+  };
+  native->UpdateSubresource(runtime.objects.guides_camera.Get(), 0, nullptr, &guides_camera, 0, 0);
   const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
                                                             bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
   constexpr std::array<UINT, 4> KEEP_COUNTS = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
   native->CSSetShader(runtime.objects.rr_guides.Get(), nullptr, 0);
   native->CSSetShaderResources(0, 3, gbuffer.data());
   native->CSSetUnorderedAccessViews(0, 4, guides.data(), KEEP_COUNTS.data());
+  native->CSSetConstantBuffers(0, 1, runtime.objects.guides_camera.GetAddressOf());
   native->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
   native->CSSetShader(game_shader.Get(), nullptr, 0);
+  native->CSSetConstantBuffers(0, 1, game_constants.GetAddressOf());
   native->CSSetShaderResources(0, 3, game_views.data());
   native->CSSetUnorderedAccessViews(0, 4, game_uavs.data(), KEEP_COUNTS.data());
   for (auto* view : game_views) {
@@ -705,6 +725,8 @@ inline bool PrepareDevice(ID3D11Device* device) {
                                            .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC taa_desc = {.ByteWidth = sizeof(TaaConstants), .Usage = D3D11_USAGE_DEFAULT,
                                       .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_BUFFER_DESC guides_camera_desc = {.ByteWidth = sizeof(GuidesCamera), .Usage = D3D11_USAGE_DEFAULT,
+                                                .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const bool made = compute(__aa_smaa_edges, &objects.smaa_edges) && compute(__aa_smaa_weights, &objects.smaa_weights)
                     && compute(__aa_smaa_blend, &objects.smaa_blend) && compute(__aa_cmaa2_prepare, &objects.cmaa2_prepare)
                     && compute(__aa_cmaa2_edges, &objects.cmaa2_edges) && compute(__aa_cmaa2_args, &objects.cmaa2_args)
@@ -721,7 +743,8 @@ inline bool PrepareDevice(ID3D11Device* device) {
                     && lookup(SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, DXGI_FORMAT_R8_UNORM, searchTexBytes, SEARCHTEX_PITCH,
                               &objects.search_srv)
                     && SUCCEEDED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
-                    && SUCCEEDED(device->CreateBuffer(&taa_desc, nullptr, objects.taa_constants.GetAddressOf()));
+                    && SUCCEEDED(device->CreateBuffer(&taa_desc, nullptr, objects.taa_constants.GetAddressOf()))
+                    && SUCCEEDED(device->CreateBuffer(&guides_camera_desc, nullptr, objects.guides_camera.GetAddressOf()));
   if (!made) {
     renodx::utils::log::w("[Total War] Anti-aliasing: could not create its shaders or textures.");
     objects = {};

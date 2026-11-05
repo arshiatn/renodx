@@ -10,6 +10,7 @@ Experimental on AMD RX 6000 and newer and Intel Arc (DXR 1.1, the built-in denoi
 ## v140 (2026-11-05, WH3's batch 5; built, not run in game; renodx-tw-dlaa64.exe helper83, bridge v26: ship them together; no players' zip)
 
 - **AO under Ray Reconstruction (Ray Tracing Extra Options, with RR on and RTAO or Path-Traced AO):** Light History (default) or REBLUR. Light History is what Attila had up to v135: raw rays plus 20% of the last frames, Ray Reconstruction cleans the rest, and it undoes the REBLUR that v34 / v138 forced. REBLUR: steadier when moving, about 0.85 ms and 215 MB more at 4K, Path-Traced AO darker at a wall's foot (0.74 to 0.57 on the harness's scene). Harness, same numbers as helper78 and helper79: RTAO 2 rays, RR without history, wall foot 0.00554 Light History, 0.00226 REBLUR. Not run in game.
+- **Ray Reconstruction's specular albedo has its Fresnel now (no row):** it was the bare F0; NVIDIA's guide (4.2.1) wants it pre-integrated at this view and roughness. Metal and shiny surfaces at a glancing angle tell RR a stronger reflection than before, rough ones a weaker one (0.39 to 17 times the bare value on a made G-buffer). Water and sky unchanged, the diffuse albedo keeps the bare F0. WARP against the guide's function and a worked-out NdotV. Not run in game: look at armour under RR.
 
 ## v139 (2026-11-05, WH3's v35; built, not run in game; renodx-tw-dlaa64.exe helper82, bridge v25: ship them together; no players' zip)
 
