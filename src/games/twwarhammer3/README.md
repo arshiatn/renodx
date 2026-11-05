@@ -4,6 +4,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
 
 ## v32 (in progress, batch 3; renodx-tw-dlaa64.exe helper76, bridge v23; run in game by replay, campaign, benchmarks: see each line)
 
+- **Reflections, All Surfaces (Experimental, off), run in game** (replay paused and live, 4K, DLSS at 100%): the Method slider's middle place: the game's own march, closed to water here since WH2, on armour, metal, stone and wood too, no rays needed. GPU busy 17.2 > 17.9 ms on the hill view, a close view -12% in its darkest cell (rough wood); paused shots steady (0.006 between two). Its copy, water and all else bit for bit off (WARP). Armour's look and shimmer in motion: your eye.
+- **Water's reflection at half scale or below, run in game** (replay paused, Mode P, row Effects at Output): the march, its depth and blurs one pixel to a render pixel: at 50% the game marches a quarter of the display, the tree's reflection blurred away. Now as sharp as at 100%, edge energy of the river +5.6%. Above half the targets don't hold it: the game's. With the row off, the game's.
+- **Ray-Traced Reflections on every sun shader:** the rule that closed the pass for 3 of 7 is gone: skin writes flags 0, so the resolve leaves those pixels alone; 76A707E5 has its own rule (F0 0.04, no SSAO, off water only): WARP 0 misses, water too, and the control misses. Those 3 drew in no run.
+- **Fog Strength on all the fog's shaders:** C506E37C, 4347C118, 7998DC13 (full-resolution light) and legacy C5B0D1F3 (Darklands) swapped in only off 1. WARP: 0 bits at 1 (legacy 15 of 393216 by 4.8e-07, and off 1 only), right at 0 and 2. They drew in no run. `gfx_fog 0` needed nothing (438D86B8 goes through 78E4CBF2, run in game: 0 and 2 act as on High).
 - **The campaign map in the scene, run in game** (Eataine's save at 4K, three heights, 100% and 50%): its ground tiles, trees and bushes in the rays, a terrain triangle over a hole in the height map left out, the rays' ranges in the map's units (a metre = 0.1 there). Black against rays off 22% > 3.2% on the first view, 0.27% from high up; what's left is under trees and on rock faces turned from the sun. Cost there: scene 0.67, trace 3.6 ms. Trees are half lit, half dark with rays; the game's own without screen-space shadows are lit, and Screen-Space Shadows alone darkens them 4.6 times.
 - **Hills Out of View (Experimental, off), run in game** (replay, paused): the terrain out of the view in the scene too: terrain 0.64 > 0.76 M triangles, trace 4.40 > 5.10 ms. No cell of AO changed past the noise on the one low view tried.
 - **Far Tree Shadows (row, off), run in game** (replay, paused): far trees cast sun rays, the card turned to the sun. +0.06 M triangles; no view tried showed a change. Attila's way, by WH3's bytes.
@@ -70,8 +74,7 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.ad
   screen-space reflections are on water only: its code for other surfaces is there but never runs. With the rays on, our copy of its resolve opens
   that path for armour, metal and what else the game marks so: on water the rays leave from the water, off water they replace the
   cubes' reflection where they meet something, and occlusion dims the cubes where something blocks them. Both off, the game's own shaders run
-  untouched. Needs in-game Screen Space Reflections on. If the sun shader is one of the 3 of 7 that add the cubes differently, the
-  game's reflections stay and the log says so once. FidelityFX SSSR isn't offered: the game's march already is a hierarchical one.
+  untouched. Needs in-game Screen Space Reflections on. FidelityFX SSSR isn't offered: the game's march already is a hierarchical one.
 - **Water Clarity and Water Caustics (Experimental, off, Reflections section):** Clarity on the water plane and the sea (the shaders that read the
   game's scatter), Caustics on the two water plane shaders where it was read. battle_water, battle_river and the rest take a colour per material:
   neither row changes them. `ReShade.log`'s "Water: first draw of shader" says which one a map draws.

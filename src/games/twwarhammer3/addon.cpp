@@ -2487,7 +2487,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .rays_a_pixel_paths_tooltip = "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a pixel). The heaviest.",
     .object_motion_tooltip = "Flags, glowing weapons and swaying props tell the upscaler how they move.\nOff: the game's own.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, Light Bounce, ray-traced AO's rate and Bend's shadow softness\n"
-                                 "keep their 100% detail. Looks better, can cost some performance.",
+                                 "keep their 100% detail, and at half or below the water's reflections too. Looks better, can cost some performance.",
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original, on water only. All Surfaces: the game's own march on armour, metal and the rest too,\n"
                            "no rays needed; costs more, may shimmer. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",

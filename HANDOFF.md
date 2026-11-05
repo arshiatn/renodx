@@ -45,7 +45,11 @@ Plan: tools/tw/wh3_batch3/plan.md (`.claude/projects/D--Dev-renodx/tools/tw`). R
       Not done: **Hills Out of View (G9) stays Experimental, off; Far Tree Shadows (G2) off: both capture and run, neither pass met: no cell changed on the views tried.** 3.2% left is under trees and is shape, not error: ATN's eye. Far mountains' black triangles: facets turned from the sun [I], under fog in the picture, not fixed.
       Not run: Attila, FG or RT/PT preset on campaign, Darklands, night, moving armies.
       New for later: B12: **CPU 21 ms "tracing" in the status at 4K, read what it measures**; Bend darkens campaign trees 4.6x with rays off (B12 or ATN). Close: **Steam runs elevated after every reboot (ATN's task SteamAdminStart): -shutdown, then -silent, before runs;** Attila campaign_metre left 1, one line when tested.
-- [ ] B11 reflections, march, fog
+- [x] B11 reflections, march, fog. Proven by runs b11_march, live, scale, fog, fog0, cost, camp, c3, check_run ok at 4K, 0 events 153; WARP b11/warp_march, warp_resolve, warp_fog; Attila page same; harness not run (helper, bridge, rt_core same), helper76 stays (reports/B11.md).
+      Done: Method slider All Surfaces (Experimental, off): the game's march on flags' bit 0, +0.7 ms, water 0 bits. Water's march one to one at or below half the display with Effects at Output (Mode P: the tree's reflection kept, row +0.17 ms). Rule 0 no longer closes the pass, 76A707E5's rule (WARP 0 misses, water too). Fog Strength on 4 more PS, swapped only off 1; gfx_fog 0 needed nothing (2D1039C0 is fog of war).
+      Not done: **fog light limit, measured 1.8x at 2, not added: needs a side draw (reports/B11.md), ATN decides;** particle resolution (traced, medium to large). Flicker in motion on armour: stills can't tell, row stays off.
+      Not run: 76A707E5, skin, the 4 fog PS (draw in no run: level B), Darklands, below 50% one to one, 1440p, All Surfaces with FG, Attila (no code).
+      New for later: B12: RT reflections on water blotchy at Mode P (b11/p/water_scale.jpg), look at 100% too.
 - [ ] B12 soak and whole
 - [ ] Close
 
