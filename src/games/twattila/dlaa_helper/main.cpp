@@ -105,8 +105,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   _wfopen_s(&log_file, log_path.c_str(), L"w");
   wcsncpy_s(dump_path.data(), dump_path.size(), (folder + L"\\renodx-tw-dlaa64.dmp").c_str(), _TRUNCATE);
   SetUnhandledExceptionFilter(OnUnhandledFault);
-  // RENODX_TW_HELPER_FAULT (tests): the dump's path, on demand.
+#ifdef RENODX_TW_HELPER_FAULT_TEST
+  // A test build only (build.ps1 with -DRENODX_TW_HELPER_FAULT_TEST added): RENODX_TW_HELPER_FAULT set, the dump's path on demand.
   if (GetEnvironmentVariableW(L"RENODX_TW_HELPER_FAULT", nullptr, 0) != 0) *static_cast<volatile int*>(nullptr) = 1;
+#endif
 
   const std::wstring name = L"Local\\RenoDX_TW_DLAA_" + std::to_wstring(game_id);
   HANDLE game = OpenProcess(SYNCHRONIZE, FALSE, game_id);

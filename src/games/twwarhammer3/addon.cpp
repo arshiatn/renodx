@@ -826,17 +826,15 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 // Ray tracing's sliders (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
 twattila::rt_scene::Sliders rt_sliders;
-float skip_game_ssao_row = 1.f;
-// RTAO stands alone: fx_ssao's two dispatches only feed the sun's t_ssao (trace b11_scale: its one reader), which the rays replace.
+float skip_game_ssao_row = 0.f;
+// RTAO stands alone at the sun draws: fx_ssao's two dispatches feed their t_ssao, which the rays replace. Not the only reader: the
+// reflections' resolve (reflection00 t1) multiplies by it too and keeps reading the cleared 1s, hence Experimental, off. Not under
+// Path-Traced AO: nothing puts its AO in the sun's slot, which also darkens the cube's specular, SH and GI there.
 // Only while the rays run (this frame's or the last, the trace may come after these passes): else the sun has no AO at all.
-// Path-Traced AO too: at the sun draws it puts 1 in the AO's slot or takes the game's ambient out (rt_scene.hpp OnPathAmbientDraw),
-// under the same test as there (the path's state is last frame's here, it changes at the trace).
 bool SkipGameSsao() {
   const auto& runtime = twattila::rt_scene::internal::runtime;
-  const bool rays_ao = runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
-                       && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
-  const bool paths_ao = runtime.path_ambient_on && runtime.bounced_frame + 1 >= runtime.frame;
-  return skip_game_ssao_row != 0.f && shader_injection.ssao_mode < 1.f && (rays_ao || paths_ao);
+  return skip_game_ssao_row != 0.f && shader_injection.ssao_mode < 1.f && runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
+         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
 }
 
 // The game's reflection pass (fx_environment_specular_light): off, nothing of this runs and the game's bytes do. Our copy of its resolve
@@ -3359,10 +3357,10 @@ void ConfigureAddon() {
       .key = "RayTracedSkipGameAO",
       .binding = &skip_game_ssao_row,
       .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-      .default_value = 1.f,
-      .label = "Skip the Game's SSAO under Rays",
+      .default_value = 0.f,
+      .label = "Skip the Game's SSAO under RTAO (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "With RTAO or Path-Traced AO on, the game's own AO isn't computed at all. Faster, same picture.",
+      .tooltip = "With Ray-Traced AO on, the game's own AO isn't computed at all. Faster; reflections lose the game's AO.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{

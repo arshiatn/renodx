@@ -2,6 +2,11 @@
 
 Build: `cmake --build --preset clang-x86-release --target renodx-twrome2.addon32` (32-bit game).
 
+## v47 (2026-11-05, WH3's batch 5; built only, not run in game; renodx-tw-dlaa64.exe helper89, bridge v29: ship them together)
+
+- **Shared helper:** ray-traced reflections without path tracing read last frame's colour squared back under Ray Reconstruction, and the Light Bounce without paths fills their radiance cache (WH3's batch 5). Its log: a real fault leaves one line and renodx-tw-dlaa64.dmp; whose device a GPU reset removed, with its reason and the time.
+- **Path-Traced AO learns 150 frames before it starts, not 30** (WH3's batch 5: a battle's first frames gave 30 % less light). AO under Ray Reconstruction stays REBLUR, as before (Attila and WH3 have a row for it). Not run in game.
+
 ## v46 (2026-11-03, built only, not run in game)
 
 - **Path Tracing with the game's or Bend's shadows**: the paths now get the sun's direction there too (as Attila's v135).

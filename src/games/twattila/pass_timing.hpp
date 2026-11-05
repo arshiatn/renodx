@@ -219,68 +219,71 @@ inline std::string Status() {
 inline void OnPresent(reshade::api::command_queue* queue, const std::string& prefix) {
   using internal::Phase;
   auto& state = internal::state;
+  const std::lock_guard lock(state.mutex);
   if (state.phase == Phase::IDLE) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&context);
   if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
-  {
-    const std::lock_guard lock(state.mutex);
-    switch (state.phase) {
-      case Phase::REQUESTED: {
-        Microsoft::WRL::ComPtr<ID3D11Device> device;
-        context->GetDevice(device.GetAddressOf());
-        if (state.device != device) {
-          state.stamps.clear();
-          state.disjoint.Reset();
-          state.device = device;
-        }
-        const D3D11_QUERY_DESC stamp_desc = {.Query = D3D11_QUERY_TIMESTAMP};
-        const D3D11_QUERY_DESC disjoint_desc = {.Query = D3D11_QUERY_TIMESTAMP_DISJOINT};
-        if (!state.disjoint && FAILED(device->CreateQuery(&disjoint_desc, state.disjoint.GetAddressOf()))) {
-          state.phase = Phase::IDLE;
-          state.status = "No timestamps on this GPU.";
-          return;
-        }
-        while (state.stamps.size() < internal::MAX_COMMANDS + 1) {
-          if (Microsoft::WRL::ComPtr<ID3D11Query> stamp; SUCCEEDED(device->CreateQuery(&stamp_desc, stamp.GetAddressOf()))) {
-            state.stamps.push_back(stamp);
-          } else {
-            break;
-          }
-        }
-        state.commands.clear();
-        state.targets.clear();
-        context->Begin(state.disjoint.Get());
-        state.phase = Phase::TIMING;
-        state.timing.store(true);
-        break;
+  switch (state.phase) {
+    case Phase::REQUESTED: {
+      Microsoft::WRL::ComPtr<ID3D11Device> device;
+      context->GetDevice(device.GetAddressOf());
+      if (state.device != device) {
+        state.stamps.clear();
+        state.disjoint.Reset();
+        state.device = device;
       }
-      case Phase::TIMING:
-        context->End(state.stamps[state.commands.size()].Get());
-        context->End(state.disjoint.Get());
-        state.presents_waited = 0;
-        state.phase = Phase::READING;
-        state.timing.store(false);
-        break;
-      case Phase::READING: {
-        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT clock = {};
-        if (context->GetData(state.disjoint.Get(), &clock, sizeof(clock), D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK) {
-          if (clock.Disjoint != FALSE) {
-            state.status = "The GPU's clock changed during the frame: run it again.";
-          } else {
-            internal::Write(context, clock, prefix);
-          }
-          state.phase = Phase::IDLE;
-        } else if (++state.presents_waited > internal::WAIT_PRESENTS) {
-          state.status = "The GPU gave no times: run it again.";
-          state.phase = Phase::IDLE;
-        }
-        if (state.phase == Phase::IDLE) state.targets.clear();
-        break;
+      const D3D11_QUERY_DESC stamp_desc = {.Query = D3D11_QUERY_TIMESTAMP};
+      const D3D11_QUERY_DESC disjoint_desc = {.Query = D3D11_QUERY_TIMESTAMP_DISJOINT};
+      if (!state.disjoint && FAILED(device->CreateQuery(&disjoint_desc, state.disjoint.GetAddressOf()))) {
+        state.phase = Phase::IDLE;
+        state.status = "No timestamps on this GPU.";
+        return;
       }
-      case Phase::IDLE:
-        break;
+      while (state.stamps.size() < internal::MAX_COMMANDS + 1) {
+        if (Microsoft::WRL::ComPtr<ID3D11Query> stamp; SUCCEEDED(device->CreateQuery(&stamp_desc, stamp.GetAddressOf()))) {
+          state.stamps.push_back(stamp);
+        } else {
+          break;
+        }
+      }
+      if (state.stamps.empty()) {
+        state.phase = Phase::IDLE;
+        state.status = "No timestamps on this GPU.";
+        return;
+      }
+      state.commands.clear();
+      state.targets.clear();
+      context->Begin(state.disjoint.Get());
+      state.phase = Phase::TIMING;
+      state.timing.store(true);
+      break;
     }
+    case Phase::TIMING:
+      context->End(state.stamps[state.commands.size()].Get());
+      context->End(state.disjoint.Get());
+      state.presents_waited = 0;
+      state.phase = Phase::READING;
+      state.timing.store(false);
+      break;
+    case Phase::READING: {
+      D3D11_QUERY_DATA_TIMESTAMP_DISJOINT clock = {};
+      if (context->GetData(state.disjoint.Get(), &clock, sizeof(clock), D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK) {
+        if (clock.Disjoint != FALSE) {
+          state.status = "The GPU's clock changed during the frame: run it again.";
+        } else {
+          internal::Write(context, clock, prefix);
+        }
+        state.phase = Phase::IDLE;
+      } else if (++state.presents_waited > internal::WAIT_PRESENTS) {
+        state.status = "The GPU gave no times: run it again.";
+        state.phase = Phase::IDLE;
+      }
+      if (state.phase == Phase::IDLE) state.targets.clear();
+      break;
+    }
+    case Phase::IDLE:
+      break;
   }
 }
 
