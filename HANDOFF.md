@@ -18,7 +18,7 @@
       Log: whose device (game's thread polling 1 s, helper's wait), frame's age, window in front and its changes, no frame for 20 s: frame thread's addresses (forced by a suspend: works). Helper's line in harness removal.
       Not done: freeze's cause; alt-tab not proven as trigger. Flush at the shadow pass not added: compute then plain stream out was always there (trace lines 95-96, B8b's clean runs); add it if the new log says the game's device. Not run in game: reset lines, bound firing, dump, WH1, WH2, Troy, Pharaoh, Attila.
       Damage: R1 put the 04:30 backup over ATN's ini, preferences, preset, Auto-save.replay. Ini back from atn_run4; the other three can't come back. wh3_common.ps1 fixed. New: ReShade runs inside the helper, harness doesn't: ATN's call.
-      ALL_MODES_LINE
+      14 targets built, page dumps b5p5 (Attila, WH3: the date only), all_modes on helper86 123 of 126: release_nrd, release_smoke the memory flake (pass alone); switching_removal counted helper86's new reason line as a second loss: harness now skips it, passes (reports/all_modes_P5_reruns.txt).
 
 ## WH3 BATCH 4 (from 2026-11-05): offline only, no game runs
 List: tools/tw/wh3_batch4/list.md (`.claude/projects/D--Dev-renodx/tools/tw`). Reports: wh3_batch4/reports.
