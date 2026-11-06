@@ -4,6 +4,7 @@
 - [x] Our AO feeds the game's SSAO readers (sun t_ssao only, 94 traces), its passes skipped under RTAO and PT AO (PT AO runs RTAO for the slot); GT-VBAO skips the sweep. WARP v37_wh3 ao.
 - [x] Game's GI off under ours: gi_enabled 0, g_gi_enabled 0 at every 480-byte lighting upload. WARP v37_wh3 gi (26 traced readers). Row removed.
 - [ ] In game: log line "Global Illumination flag off" appears (else the buffer size or upload path differs: NOT DONE until seen); gi_enabled written live without trouble.
+- [x] Close: WH3 addon rebuilt at dd8de01d (only it changed: no other targets, build32 or harness; helper89 unchanged). Stamped wh3 v37 addon, helper89 copy wh3 v37 helper89 (build/stamped/wh3_v37). twwarhammer3_v37.zip from v36 with --helper, tested (same 308 entries, only the addon, helper, 3 sources differ). Installed next to the exe with the game closed, hashes checked; fresh backup wh3_batch5/install_backup_v37_*; ATN's ReShade.ini: RayTracedSkipGameAO and GraphicsTest_gi_enabled lines removed (3 presets). No Attila zip (unchanged), no players' zip, tag, Nexus text. Not run in game.
 
 ## WH3 BATCH 5 (from 2026-11-05): ATN said go; plan tools/tw/wh3_batch5/plan.md, his answers at the end of atn_notes.md, reports wh3_batch5/reports
 - [x] P1 Particle Trails: flags only where the moment left the range of the texels around last frame's place (a moment texel = 2 render px, point copied); row still Experimental, off. WARP warp_tests/smear_wh3. Not run in game.
