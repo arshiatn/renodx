@@ -1,5 +1,10 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## WH3 v37 (2026-11-06): ATN: only our AO and GI. Report tools/tw/wh3_batch5/reports/v37.md. Not run in game.
+- [x] Our AO feeds the game's SSAO readers (sun t_ssao only, 94 traces), its passes skipped under RTAO and PT AO (PT AO runs RTAO for the slot); GT-VBAO skips the sweep. WARP v37_wh3 ao.
+- [x] Game's GI off under ours: gi_enabled 0, g_gi_enabled 0 at every 480-byte lighting upload. WARP v37_wh3 gi (26 traced readers). Row removed.
+- [ ] In game: log line "Global Illumination flag off" appears (else the buffer size or upload path differs: NOT DONE until seen); gi_enabled written live without trouble.
+
 ## WH3 BATCH 5 (from 2026-11-05): ATN said go; plan tools/tw/wh3_batch5/plan.md, his answers at the end of atn_notes.md, reports wh3_batch5/reports
 - [x] P1 Particle Trails: flags only where the moment left the range of the texels around last frame's place (a moment texel = 2 render px, point copied); row still Experimental, off. WARP warp_tests/smear_wh3. Not run in game.
       Not done: a one-texel blade that comes into coverage still flags (120 of 120 in the test), going out doesn't; puffs under 2 px a frame keep trails, at 4 px a frame only the inner texel flags (72 of 320 pixels).

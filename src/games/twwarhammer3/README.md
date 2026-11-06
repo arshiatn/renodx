@@ -2,6 +2,15 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+## v37 (2026-11-06, ATN: only our AO and GI; helper89 unchanged; nothing here run in game)
+
+- **The game's SSAO isn't computed while our AO feeds it (no row, default):** under RTAO and Path-Traced AO its three passes (depth downsample, sweep, collect) go, the result cleared to open; the sun reads the rays' AO alone. In 94 traces the sun draws are its only reader: the reflections' resolve binds a 1x1 white texture there, water and fog never bind it (v36's "reflections lose the game's AO" was wrong). Skip the Game's SSAO under RTAO removed. WARP on the game's bytes: the 6 sun shaders with it read exactly the rays' AO, 0 values off.
+- **Path-Traced AO now has the rays' AO in the sun's AO slot** (RTAO from the same trace): the cube's reflections and what the paths leave are occluded by ours, not by an open slot. Costs RTAO's rays.
+- **GT-VBAO: the game's sweep is skipped** (its line buffer isn't read by GT-VBAO); the first frame, before a camera is kept, reads open.
+- **Game's AO method: the game's bytes, unchanged.**
+- **The game's Global Illumination is off while ours is on (Light Bounce, any method; default):** its engine value gi_enabled 0, and its flag g_gi_enabled 0 in every upload of its lighting constants (all 1019 shaders that read it), so nothing reads probes that stopped. Ours off: the game's. WARP on the game's bytes, 26 traced readers: flag 0, probes changed, 0 values differ. Game's Global Illumination row (Graphics 2 of 2) removed.
+- Test: RTAO and Path-Traced AO, paused: armour and water as before, no halos from the game's AO; GT-VBAO unchanged; Light Bounce on and off: indoor and under trees change, no frozen light when the camera moves far. Log: "the game's Global Illumination flag off" once.
+
 ## v36 (batch 5, ATN's test of v35; renodx-tw-dlaa64.exe helper89, bridge v29: ship them together; one replay run paused, R1, nothing here tested by play)
 
 - **Blocky RT shadows on banners (ATN's debug8):** the dark patches on a unit banner are whole triangles of its mesh. The game lights a banner from both sides by its smooth normal (989BED69 reads SV_IsFrontFace); the rays decided by each triangle whether it faces the sun, and traced a turned-away one against the banner itself, so a waving banner at a low sun went dark triangle by triangle. Row Smooth Banner Shadows (Experimental, off, More Options of the rays): cloth and sails trace from the camera's side through themselves, their own triangles within 3 m passed; other things' shadows on them and their shadows on the ground stay (harness: a folded sheet 67 % dark off, 0 % on, a solid card's shadow on it 97 %). Also two unit pixel shaders cut out by their base colour's alpha in the rays as drawn (AF697DAE, F2BC0D72: the table's script skipped them for their second, dither discard). Not run in game.
