@@ -826,15 +826,27 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 // Ray tracing's sliders (twattila/rt_scene.hpp, through the upscaler's helper): enabled with an upscaler.
 twattila::rt_scene::Sliders rt_sliders;
-float skip_game_ssao_row = 0.f;
-// RTAO stands alone at the sun draws: fx_ssao's two dispatches feed their t_ssao, which the rays replace. Not the only reader: the
-// reflections' resolve (reflection00 t1) multiplies by it too and keeps reading the cleared 1s, hence Experimental, off. Not under
-// Path-Traced AO: nothing puts its AO in the sun's slot, which also darkens the cube's specular, SH and GI there.
-// Only while the rays run (this frame's or the last, the trace may come after these passes): else the sun has no AO at all.
+// The game's SSAO (fx_ssao: depth downsample 49F538CF, sweep 004BB1D4, collect 2A629B2B or EE5C29AE) has one reader in 94 traces,
+// the sun draws' t_ssao (9EAD8951, 24F97B7B by handle); the reflections' resolve binds a 1x1 texture at its t_ssao in all 94, and
+// no water, fog or forward shader binds it in the dump. The rays' AO (RTAO, also under Path-Traced AO) stands alone in the sun's
+// slot (rt_ambient_combine), so none of the game's passes runs while the rays feed it: its result cleared to open. Only while the
+// rays run (this frame's or the last, the trace comes after these passes): else the sun has no AO at all.
 bool SkipGameSsao() {
   const auto& runtime = twattila::rt_scene::internal::runtime;
-  return skip_game_ssao_row != 0.f && shader_injection.ssao_mode < 1.f && runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
+  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
          && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
+}
+// GT-VBAO writes the game's result itself from the kept depth, never from the sweep's line buffer (the bitmask collects bind no t0
+// or t1 line buffer): the sweep is skipped once a camera is kept. Its collect then clears to open if the bitmask can't run.
+bool sweep_skipped = false;
+
+// The game's collect output (u0) cleared to open: no AO.
+void ClearGameSsao(reshade::api::command_list* cmd_list) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
+  native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
+  const std::array<float, 4> open = {1.f, 1.f, 1.f, 1.f};
+  if (output) native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
 }
 
 // The game's reflection pass (fx_environment_specular_light): off, nothing of this runs and the game's bytes do. Our copy of its resolve
@@ -1432,35 +1444,44 @@ void BuildRuntimeData() {
   // line_sweep_ao.hpp).
   custom_shaders[0x49F538CF].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x49F538CF, true);
-    return true;
+    return !SkipGameSsao();
   };
   // The collects' replacements are the game's code only (Game's costs what it did); the Visibility Bitmask is the
-  // addon's own pass (DispatchInstead) with OnCollect's depth and camera (without them, the first frame: the game's).
+  // addon's own pass (DispatchInstead) with OnCollect's depth and camera (without them, the first frame: the game's, or open
+  // with the sweep skipped).
   custom_shaders[0xEE5C29AE].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0xEE5C29AE, true);
-    if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, true, false, 1, 0)) return true;
-    const bool dispatched = tw::line_sweep_ao::DispatchInstead(
-        cmd_list, __ao_bitmask_collect01, &shader_injection, sizeof(shader_injection), false, __ao_upsample_collect01,
-        shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
-    tw::line_sweep_ao::OnCollectDone(cmd_list);
-    return !dispatched;
+    if (SkipGameSsao()) {
+      ClearGameSsao(cmd_list);
+      return false;
+    }
+    if (shader_injection.ssao_mode < 1.f) return true;
+    bool dispatched = false;
+    if (tw::line_sweep_ao::OnCollect(cmd_list, true, false, 1, 0)) {
+      dispatched = tw::line_sweep_ao::DispatchInstead(
+          cmd_list, __ao_bitmask_collect01, &shader_injection, sizeof(shader_injection), false, __ao_upsample_collect01,
+          shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
+      tw::line_sweep_ao::OnCollectDone(cmd_list);
+    }
+    if (!dispatched && sweep_skipped) ClearGameSsao(cmd_list);
+    return !dispatched && !sweep_skipped;
   };
   custom_shaders[0x2A629B2B].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x2A629B2B, true);
     if (SkipGameSsao()) {
-      auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-      Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
-      native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
-      const std::array<float, 4> open = {1.f, 1.f, 1.f, 1.f};
-      if (output) native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
+      ClearGameSsao(cmd_list);
       return false;
     }
-    if (shader_injection.ssao_mode < 1.f || !tw::line_sweep_ao::OnCollect(cmd_list, true, true, 1, 2)) return true;
-    const bool dispatched = tw::line_sweep_ao::DispatchInstead(
-        cmd_list, __ao_bitmask_collect02, &shader_injection, sizeof(shader_injection), false, __ao_upsample_collect02,
-        shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
-    tw::line_sweep_ao::OnCollectDone(cmd_list);
-    return !dispatched;
+    if (shader_injection.ssao_mode < 1.f) return true;
+    bool dispatched = false;
+    if (tw::line_sweep_ao::OnCollect(cmd_list, true, true, 1, 2)) {
+      dispatched = tw::line_sweep_ao::DispatchInstead(
+          cmd_list, __ao_bitmask_collect02, &shader_injection, sizeof(shader_injection), false, __ao_upsample_collect02,
+          shader_injection.ssao_resolution != 0.f, SHADER_INJECTION_SLOT);
+      tw::line_sweep_ao::OnCollectDone(cmd_list);
+    }
+    if (!dispatched && sweep_skipped) ClearGameSsao(cmd_list);
+    return !dispatched && !sweep_skipped;
   };
   // The reflection pass (fx_hierarchical_depth_buffer's first reduction, fx_environment_specular_light's march, its 2 blurs,
   // resolve): its replacement isn't the game's unless asked for (the reflections namespace above).
@@ -1468,9 +1489,12 @@ void BuildRuntimeData() {
   // fx_ssao's sweep, the one pass of the AO's that reads a depth at every scale: the downsample stops below about 2/3 (traces
   // c1a, c2a), and a depth kept from it would stay the last full-size frame's.
   custom_shaders[0x004BB1D4] = {.crc32 = 0x004BB1D4, .on_inject = not_injected, .on_draw = [](auto* cmd_list) {
+    sweep_skipped = false;
     if (SkipGameSsao()) return false;
-    if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
-    return true;
+    if (shader_injection.ssao_mode < 1.f) return true;
+    tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
+    sweep_skipped = tw::line_sweep_ao::internal::camera != nullptr;
+    return !sweep_skipped;
   }};
   reflections::resolve.code = custom_shaders[0x89AF6FF5].code;
   reflections::march.code = __ssr_game_march;
@@ -2638,7 +2662,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.",
+                  "RTAO: from rays through the scene; the game's isn't computed then. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
@@ -3112,6 +3136,9 @@ void ConfigureAddon() {
       {
           reshade::api::device_api::d3d11,
           {
+  // Path-Traced AO takes the sun's diffuse ambient (t51); what the sun still lights from the sky (the cube's reflection) takes RTAO
+  // from the same trace, in the AO slot the game's SSAO left.
+  rt_settings.ambient_occlusion = rt_settings.ambient_occlusion || rt_settings.path_ambient;
               .vertex_shader = __swap_chain_proxy_vertex_shader_dx11,
               .pixel_shader = __swap_chain_proxy_pixel_shader_dx11,
           },
@@ -3351,16 +3378,6 @@ void ConfigureAddon() {
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Torches and fires cast their shadows from rays too.\n"
                  "With Path-Traced Global Illumination they also light what the screen never saw.",
-      .labels = {"Off", "On"},
-  });
-  settings.push_back(new renodx::utils::settings::Setting{
-      .key = "RayTracedSkipGameAO",
-      .binding = &skip_game_ssao_row,
-      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-      .default_value = 0.f,
-      .label = "Skip the Game's SSAO under RTAO (Experimental)",
-      .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "With Ray-Traced AO on, the game's own AO isn't computed at all. Faster; reflections lose the game's AO.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
