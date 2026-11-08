@@ -1,5 +1,17 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## Attila stability repairs (2026-11-08, GPT-6 Astra)
+- Authorized: repair audit F1-F8, validate, commit each logical fix and push to arshiatn/renodx atn-mods. No game launches or installed-binary changes.
+- Isolated checkout: D:\Dev\renodx-astra-stability, branch codex/astra-attila-stability. Original D:\Dev\renodx and unsaved editor work stay untouched. Push HEAD:refs/heads/atn-mods, never force; reconcile any concurrent remote changes first.
+- Baseline: 0a6cd493. Audit: docs/Attila-crash-audit-2026-11-08.md. Root cause of original battle freeze remains unproven.
+- [x] F2: campaign/water callbacks unregistered before infrastructure teardown. Fresh Clang x86 Release Attila build passed (47 existing deprecation/header warnings), diff check passed. WH3 already unregisters this pair. No game or relocated-DLL runtime test. Build log: C:\Users\arshi\Documents\ChatGPT\Total War Rome2\astra-f2-build.log.
+- Build setup: isolated build32 configured with clang-x86 and original shader compiler paths. Unchanged external submodules are directory junctions to the original checkout; use --ignore-submodules=all for Git diff/status here (their relative .git files do not resolve through the junction). Never edit dependency files through these links.
+- [ ] F1/F7: explicit helper/watchdog/startup-worker shutdown and GPU wait ownership through completion.
+- [ ] F5/F6: failed acknowledgement propagation and transactional resource/remote handle construction.
+- [ ] F3: bounded motion placement for malformed/extreme coordinates.
+- [ ] F4/F8: sampler clone and original ownership, deduplication and per-device teardown.
+- [ ] Required consumer builds and offline regression checks; game validation stays pending user-run reproduction.
+
 ## WH3 v37 (2026-11-06): ATN: only our AO and GI. Report tools/tw/wh3_batch5/reports/v37.md. Not run in game.
 - [x] Our AO feeds the game's SSAO readers (sun t_ssao only, 94 traces), its passes skipped under RTAO and PT AO (PT AO runs RTAO for the slot); GT-VBAO skips the sweep. WARP v37_wh3 ao.
 - [x] Game's GI off under ours: gi_enabled 0, g_gi_enabled 0 at every 480-byte lighting upload. WARP v37_wh3 gi (26 traced readers). Row removed.

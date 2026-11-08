@@ -1976,6 +1976,8 @@ void DetachAddon() {
   tw::engine_tweaks::Uninstall();
   twattila::graphics_hooks::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
+  renodx::utils::command_action::Unregister(OnCampaignDraw);
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();

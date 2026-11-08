@@ -1,5 +1,9 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Stability repairs (2026-11-08, GPT-6 Astra; not run in game)
+
+- F2: campaign and water draw callbacks are unregistered before add-on teardown, including their process-shared pipeline copies. Prevents callbacks targeting an unloaded DLL after reload. Validation is recorded in HANDOFF.md. Manual check: reload the add-on with another consumer alive, including a different DLL load address; no stale callback may remain.
+
 Build: `cmake --build --preset clang-x86-release --target renodx-twattila.addon32` (32-bit game).
 
 Download: https://github.com/arshiatn/renodx/releases (Nexus blocks the zip; Steam Workshop takes only the game's .pack
