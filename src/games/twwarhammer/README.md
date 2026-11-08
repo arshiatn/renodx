@@ -1,5 +1,9 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Startup worker lifetime (2026-11-08, GPT-6 Astra; not run in game)
+
+The startup audio-setting worker is now cancelled and waited for through its actual thread exit before unloading the add-on. Its progress flag alone did not cover capture and CRT cleanup. Manual check: unload/reload during the first minute with an audio-memory test enabled, then after it completes; no worker may execute unloaded code. Shared build and offline checks are recorded in HANDOFF.md.
+
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer.addon64`.
 
 ## v36 (2026-11-05, built only, not run in game; renodx-tw-dlaa64.exe helper89, bridge v29: ship them together)

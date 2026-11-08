@@ -1,5 +1,9 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### Startup worker lifetime (2026-11-08, GPT-6 Astra; not run in game)
+
+The startup audio-setting worker is now cancelled and waited for through its actual thread exit before unloading the add-on. Its progress flag alone did not cover capture and CRT cleanup. Manual check: unload/reload during the first minute with an audio-memory test enabled, then after it completes; no worker may execute unloaded code. Shared build and offline checks are recorded in HANDOFF.md.
+
 ## Stability repairs (2026-11-08, GPT-6 Astra; not run in game)
 
 - F2: campaign and water draw callbacks are unregistered before add-on teardown, including their process-shared pipeline copies. Prevents callbacks targeting an unloaded DLL after reload. Validation is recorded in HANDOFF.md. Manual check: reload the add-on with another consumer alive, including a different DLL load address; no stale callback may remain.

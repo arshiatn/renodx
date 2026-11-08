@@ -434,10 +434,24 @@ inline void SyncEarlyLoad(HMODULE module, const std::vector<EngineTest>& tests) 
                         (needed ? "lists this addon (loaded as the game starts)." : "no longer lists this addon."));
 }
 
+// A native thread handle stays valid through the thread's CRT/capture cleanup, after `done` is published.
+// Kept separately from std::thread so process termination does not join under the loader lock.
+static HANDLE at_start_thread = nullptr;
+
+// Call from AddonUninit, outside DllMain, before the options or the addon's code can go away.
+inline void StopAtStart(std::atomic<bool>* stop) {
+  *stop = true;
+  if (at_start_thread == nullptr) return;
+  WaitForSingleObject(at_start_thread, INFINITE);
+  CloseHandle(at_start_thread);
+  at_start_thread = nullptr;
+}
+
 // The at-start tests (read once as the game starts): written as soon as the game (`dll`) has set its own values, on a
 // thread of their own, up to a minute; `done` once written (or given up), `stop` ends it (the addon's detach).
 inline void StartAtStart(const wchar_t* dll, std::vector<EngineTest>* tests, std::atomic<bool>* done,
                          std::atomic<bool>* stop) {
+  StopAtStart(stop);
   std::vector<tw::engine_tweaks::Option*> options;
   for (EngineTest& test : *tests) {
     if (test.at_start) options.push_back(&test.option);
@@ -445,7 +459,7 @@ inline void StartAtStart(const wchar_t* dll, std::vector<EngineTest>* tests, std
   *stop = false;
   *done = options.empty();
   if (options.empty()) return;
-  std::thread([dll, options = std::move(options), done, stop]() mutable {
+  std::thread worker([dll, options = std::move(options), done, stop]() mutable {
     for (int tries = 0; tries < 6000 && !stop->load(); ++tries) {
       if (tw::engine_tweaks::ApplyWhenSet(dll, options)) {
         tw::engine_tweaks::Trace(options);
@@ -454,7 +468,15 @@ inline void StartAtStart(const wchar_t* dll, std::vector<EngineTest>* tests, std
       Sleep(10);
     }
     *done = true;
-  }).detach();
+  });
+  if (!DuplicateHandle(GetCurrentProcess(), worker.native_handle(), GetCurrentProcess(), &at_start_thread,
+                       SYNCHRONIZE, FALSE, 0)) {
+    *stop = true;
+    worker.join();
+    renodx::utils::log::w("[Total War] Audio memory: could not retain the startup worker (stopped).");
+    return;
+  }
+  worker.detach();
 }
 
 }  // namespace twattila::engine_tests
