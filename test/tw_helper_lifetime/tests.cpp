@@ -10,6 +10,8 @@
 #include <string>
 
 namespace {
+unsigned fail_transfer_at = 0;
+unsigned transfer_calls = 0;
 bool fail_assign = false;
 bool fail_resume = false;
 bool fail_duplicate = false;
@@ -57,6 +59,13 @@ DWORD WINAPI TestResumeThread(HANDLE thread) {
 
 BOOL WINAPI TestDuplicateHandle(HANDLE source_process, HANDLE source, HANDLE target_process, HANDLE* target,
                                DWORD access, BOOL inherit, DWORD options) {
+  if (fail_transfer_at != 0 && source_process == GetCurrentProcess() && target_process != GetCurrentProcess()
+      && (options & DUPLICATE_CLOSE_SOURCE) != 0 && ++transfer_calls == fail_transfer_at) {
+    CloseHandle(source); // Match DUPLICATE_CLOSE_SOURCE even on failure.
+    *target = nullptr;
+    SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+    return FALSE;
+  }
   return fail_duplicate ? FALSE : DuplicateHandle(source_process, source, target_process, target, access, inherit, options);
 }
 
@@ -174,6 +183,36 @@ int main(int argc, char** argv) {
   bridge_api::Shutdown();
   CheckClosed();
   std::puts("PASS: failed acknowledgement stops Prepare before resource mutation");
+  for (unsigned failure : {1u, 2u, 5u}) {
+    Check(bridge_api::internal::Start(device.Get()), "start transfer rollback test");
+    Check(WaitForSingleObject(bridge_api::bridge.done, 5000) == WAIT_OBJECT_0, "rollback helper ready");
+    auto& state = bridge_api::bridge;
+    state.shared->generation = 321;
+    state.shared->color = 654;
+    DWORD helper_before = 0, helper_after = 0;
+    Check(GetProcessHandleCount(state.process, &helper_before), "helper handles before failed transfer");
+    fail_transfer_at = failure;
+    transfer_calls = 0;
+    Check(!bridge_api::Prepare(device.Get(), 16, 16), "injected transfer fails Prepare");
+    fail_transfer_at = 0;
+    Check(transfer_calls == failure, "reached requested transfer failure");
+    Check(GetProcessHandleCount(state.process, &helper_after), "helper handles after rollback");
+    Check(helper_before == helper_after, "remote handles rolled back without leak");
+    Check(state.shared->generation == 321 && state.shared->color == 654 && state.width == 0
+          && !state.color.texture && !state.fence, "partial resources discarded without publication");
+    bridge_api::Shutdown();
+    CheckClosed();
+  }
+  std::puts("PASS: first/second/fence transfer failures roll back remote ownership and publication");
+  Check(bridge_api::internal::Start(device.Get()), "start successful publication test");
+  Check(WaitForSingleObject(bridge_api::bridge.done, 5000) == WAIT_OBJECT_0, "publication helper ready");
+  Check(bridge_api::Prepare(device.Get(), 16, 16), "complete resource setup publishes successfully");
+  Check(bridge_api::bridge.width == 16 && bridge_api::bridge.shared->generation == 1
+        && bridge_api::bridge.shared->color != 0 && bridge_api::bridge.shared->fence != 0
+        && bridge_api::bridge.rescue_fence != nullptr, "complete generation has texture and both fence handles");
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: successful Prepare publishes complete generation");
   DWORD before = 0;
   DWORD after = 0;
   Check(GetProcessHandleCount(GetCurrentProcess(), &before), "initial handle count");

@@ -335,3 +335,7 @@ MotionRecord now rejects nonfinite, invalid-scale and out-of-range cells before 
 
 ### F5 failed acknowledgement (2026-11-09, GPT-6 Astra)
 Prepare now returns immediately when the preceding helper acknowledgement fails, before retiring fences, replacing textures or changing the published generation. The x86/x64 production-header test injects a stale completion and checks preserved width, generation and shared color handle. All 14 consumer builds pass. No game run.
+
+
+### F6 staged shared-resource publication (2026-11-09, GPT-6 Astra)
+Prepare checks every remote-handle transfer, stages shared fields locally, and publishes only after textures and both fence handles exist. Failure rolls back transferred handles in the helper process and releases partial local resources. Tests inject first/second/fence transfer failures, check unchanged published fields and stable helper handle counts, and exercise successful publication. x86/x64 failure regressions and all 14 consumer builds pass; the success case also passes x86. No game run.

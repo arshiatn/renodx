@@ -555,8 +555,8 @@ inline bool Start(ID3D11Device* device) {
 // `object`'s shared handle, duplicated into the helper (closed here).
 inline uint64_t ShareWithHelper(HANDLE handle) {
   HANDLE duplicate = nullptr;
-  DuplicateHandle(GetCurrentProcess(), handle, bridge.process, &duplicate, 0, FALSE,
-                  DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE);
+  if (!DuplicateHandle(GetCurrentProcess(), handle, bridge.process, &duplicate, 0, FALSE,
+                       DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) return 0;
   return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(duplicate));
 }
 
@@ -645,41 +645,74 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   // The helper done with the last request before `shared` changes; the new objects' first requests wait for answers.
   if (bridge.pending && !internal::Answer()) return false;
   internal::RetireFence();
-  bridge.steady = {};
-  bridge.color = {};
-  bridge.depth = {};
-  bridge.motion = {};
-  bridge.output = {};
-  bridge.diffuse_albedo = {};
-  bridge.specular_albedo = {};
-  bridge.normals = {};
-  bridge.roughness = {};
-  bridge.rt_vertices = {};
-  bridge.rt_positions = {};
-  bridge.rt_sun = {};
-  bridge.rt_visibility = {};
-  bridge.rt_ambient = {};
-  bridge.rt_light = {};
-  bridge.rt_bounce = {};
-  bridge.rt_light_mask = {};
-  bridge.rt_fog = {};
-  bridge.rt_fog_lights = {};
-  bridge.rt_tint = {};
-  bridge.rt_reflection = {};
-  bridge.rt_specular = {};
-  bridge.rr_hit_distance = {};
-  bridge.rr_extra_textures = {};
-  bridge.hit_distance_written = false;
-  bridge.fg_frame.Reset();
-  bridge.fg_hudless.Reset();
-  bridge.fg_frame_rtv.Reset();
-  bridge.fg_hudless_rtv.Reset();
-  bridge.fg_format = DXGI_FORMAT_UNKNOWN;
-  bridge.fence.Reset();
-  bridge.deferred = 0;
+  const auto release_prepared = [&] {
+    bridge.steady = {};
+    bridge.color = {};
+    bridge.depth = {};
+    bridge.motion = {};
+    bridge.output = {};
+    bridge.diffuse_albedo = {};
+    bridge.specular_albedo = {};
+    bridge.normals = {};
+    bridge.roughness = {};
+    bridge.rt_vertices = {};
+    bridge.rt_positions = {};
+    bridge.rt_sun = {};
+    bridge.rt_visibility = {};
+    bridge.rt_ambient = {};
+    bridge.rt_light = {};
+    bridge.rt_bounce = {};
+    bridge.rt_light_mask = {};
+    bridge.rt_fog = {};
+    bridge.rt_fog_lights = {};
+    bridge.rt_tint = {};
+    bridge.rt_reflection = {};
+    bridge.rt_specular = {};
+    bridge.rr_hit_distance = {};
+    bridge.rr_extra_textures = {};
+    bridge.hit_distance_written = false;
+    bridge.fg_frame.Reset();
+    bridge.fg_hudless.Reset();
+    bridge.fg_frame_rtv.Reset();
+    bridge.fg_hudless_rtv.Reset();
+    bridge.fg_format = DXGI_FORMAT_UNKNOWN;
+    bridge.fence.Reset();
+    bridge.deferred = 0;
+  };
+  release_prepared();
   if (bridge.device != device) bridge.rt_atlas = {};
   bridge.device = device;
   bridge.width = 0;
+  Shared shared = *bridge.shared;
+  std::array<uint64_t, 64> transferred = {};
+  size_t transferred_count = 0;
+  bool published = false;
+  const auto rollback = [&](void*) {
+    if (published) return;
+    for (size_t index = 0; index < transferred_count; ++index) {
+      HANDLE local = nullptr;
+      // The numeric handle belongs to the helper, never to this process.
+      if (DuplicateHandle(bridge.process, reinterpret_cast<HANDLE>(static_cast<uintptr_t>(transferred[index])),
+                          GetCurrentProcess(), &local, 0, FALSE, DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) {
+        CloseHandle(local);
+      } else {
+        renodx::utils::log::w("[Total War] DLAA: resource rollback could not close a helper handle.");
+      }
+    }
+    release_prepared();
+  };
+  const std::unique_ptr<void, decltype(rollback)> rollback_guard(&bridge, rollback);
+  const auto transfer = [&](HANDLE handle) {
+    if (transferred_count == transferred.size()) {
+      CloseHandle(handle);
+      return uint64_t{0};
+    }
+    const uint64_t remote = internal::ShareWithHelper(handle);
+    if (remote != 0) {
+      transferred[transferred_count++] = remote;
+    }
+    return remote;
+  };
   const auto make = [&](DXGI_FORMAT format, Texture* texture, uint64_t* shared_handle, UINT texture_width = 0, UINT texture_height = 0) {
     const D3D11_TEXTURE2D_DESC desc = {
         .Width = (texture_width != 0 ? texture_width : width),
@@ -700,8 +733,9 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                       && SUCCEEDED(texture->texture.As(&resource))
                       && SUCCEEDED(resource->CreateSharedHandle(nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
                                                                 nullptr, &handle));
-    if (made) *shared_handle = internal::ShareWithHelper(handle);
-    return made;
+    if (!made) return false;
+    *shared_handle = transfer(handle);
+    return *shared_handle != 0;
   };
   // Frame generation's: copied into and drawn into (render targets), read by the helper.
   const auto make_frame = [&](ComPtr<ID3D11Texture2D>* texture, uint64_t* shared_handle) {
@@ -721,8 +755,9 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     const bool made = SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture->GetAddressOf())) && SUCCEEDED(texture->As(&resource))
                       && SUCCEEDED(resource->CreateSharedHandle(nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
                                                                 nullptr, &handle));
-    if (made) *shared_handle = internal::ShareWithHelper(handle);
-    return made;
+    if (!made) return false;
+    *shared_handle = transfer(handle);
+    return *shared_handle != 0;
   };
   // The leaves' opacity masks: made once, shared again with every set.
   const auto share_atlas = [&]() {
@@ -751,10 +786,9 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
         || FAILED(resource->CreateSharedHandle(nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, nullptr, &handle))) {
       return false;
     }
-    bridge.shared->rt_atlas = internal::ShareWithHelper(handle);
-    return true;
+    shared.rt_atlas = transfer(handle);
+    return shared.rt_atlas != 0;
   };
-  auto& shared = *bridge.shared;
   const auto make_extra = [&] {
     static constexpr std::array<DXGI_FORMAT, RR_EXTRA_INPUTS> FORMATS = {DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT,
                                                                          DXGI_FORMAT_R16_FLOAT};
@@ -800,12 +834,16 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                     && SUCCEEDED(device->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(bridge.fence.GetAddressOf())))
                     && SUCCEEDED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &fence_handle));
   if (!made) return internal::Fail("DLAA: the shared textures could not be made.");
-  shared.fence = internal::ShareWithHelper(fence_handle);
+  shared.fence = transfer(fence_handle);
+  if (shared.fence == 0) return internal::Fail("DLAA: could not transfer the shared fence.");
+  HANDLE rescue_handle = nullptr;
+  if (FAILED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &rescue_handle))) {
+    return internal::Fail("DLAA: could not create the recovery fence handle.");
+  }
   {
     const std::unique_lock lock(bridge.rescue_mutex);
     if (bridge.rescue_fence != nullptr) CloseHandle(bridge.rescue_fence);
-    bridge.rescue_fence = nullptr;
-    bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &bridge.rescue_fence);
+    bridge.rescue_fence = rescue_handle;
   }
   bridge.value = 0;
   internal::ClearHandles(&shared, guides, ray_tracing, reflections, fg_format != DXGI_FORMAT_UNKNOWN);
@@ -815,6 +853,8 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   shared.upscaler = upscaler;
   shared.fg_backend = fg_backend;
   ++shared.generation;
+  *bridge.shared = shared;
+  published = true;
   bridge.width = width;
   bridge.height = height;
   bridge.guides = guides;
