@@ -16,8 +16,12 @@ struct FenceControl {
   uint64_t GetCompletedValue() { return completed; }
   HRESULT SetEventOnCompletion(uint64_t, HANDLE) { return registration; }
 };
-int main(int argc, char**) {
+int main(int argc, char** argv) {
   if (argc > 1) {
+    if (argv[1][0] == 'r') {
+      RequireGpuResult(E_FAIL, "injected recording failure");
+      return 42;
+    }
     FenceControl fence;
     HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     RequireGpuCompletion(&fence, event, 1, 10);
@@ -58,7 +62,8 @@ int main(int argc, char**) {
   CHECK(!WaitForGpu(fence.Get(), INVALID_HANDLE_VALUE, 3, 10));
   wchar_t path[MAX_PATH];
   CHECK(GetModuleFileNameW(nullptr, path, MAX_PATH));
-  std::wstring command = L"\"" + std::wstring(path) + L"\" child";
+  for (const auto* mode : {L"child", L"recording"}) {
+  std::wstring command = L"\"" + std::wstring(path) + L"\" " + mode;
   STARTUPINFOW startup = {.cb = sizeof(startup)};
   PROCESS_INFORMATION process = {};
   CHECK(CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process));
@@ -68,6 +73,7 @@ int main(int argc, char**) {
   CHECK(exit_code == ERROR_DEVICE_HARDWARE_ERROR);
   CloseHandle(process.hThread);
   CloseHandle(process.hProcess);
+  }
   // Retire registrations before closing the test event.
   CHECK(SUCCEEDED(fence->Signal(3)));
   CloseHandle(event);

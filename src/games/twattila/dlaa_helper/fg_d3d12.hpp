@@ -400,11 +400,11 @@ class FrameGeneration12 {
     Slot& slot = slots_[next_slot_];
     next_slot_ = (next_slot_ + 1) % slots_.size();
     WaitFor(slot.done);
-    slot.allocator->Reset();
-    slot.list->Reset(slot.allocator.Get(), nullptr);
+    RequireGpuResult(slot.allocator->Reset(), "Frame generation: command recording failed\n");
+    RequireGpuResult(slot.list->Reset(slot.allocator.Get(), nullptr), "Frame generation: command recording failed\n");
     ComPtr<ID3D12Resource> target;
     if (FAILED(chain_->GetBuffer(chain_->GetCurrentBackBufferIndex(), IID_PPV_ARGS(target.GetAddressOf())))) {
-      slot.list->Close();
+      RequireGpuResult(slot.list->Close(), "Frame generation: command recording failed\n");
       SignalOnly(value);
       return Fail("the swap chain has no back buffer");
     }
@@ -494,7 +494,7 @@ class FrameGeneration12 {
       const uint32_t tag_count = ui ? 4u : hudless_valid ? 3u : 2u;
       Report(set_tags_(*token, VIEWPORT, tags.data(), tag_count, slot.list.Get()), "its inputs");
     }
-    slot.list->Close();
+    RequireGpuResult(slot.list->Close(), "Frame generation: command recording failed\n");
     RequireGpuResult(copy_queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
     ID3D12CommandList* lists[] = {slot.list.Get()};
     copy_queue_->ExecuteCommandLists(1, lists);
