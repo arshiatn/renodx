@@ -4880,3 +4880,5 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
 - [x] 2026-11-09 F11 (GPT-6 Astra): DLSS-G SDR/HDR state updated at fixed size/format; both color spaces explicitly checked/applied. Helper92 builds; display comparison remains manual.
 
 - [x] 2026-11-09 F12 (GPT-6 Astra): owned, ordered/coalescing preset worker; current-generation status and shutdown drain. Deterministic fake persistence test and helper93 build pass; no driver profile modified by validation.
+
+- [x] 2026-11-09 F13 (GPT-6 Astra): complete FG object readiness, same-device retry, scRGB guard. Actual production WARP regression passes x86/x64 (four real failures and output readback); all 14 consumer builds pass. Paused by user; F14/F15 remain open and untouched. See docs/Attila-crash-audit-2026-11-08.md.

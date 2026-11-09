@@ -108,6 +108,11 @@ struct DeviceObjects {
   ComPtr<ID3D11ShaderResourceView> scene_srv;
   ComPtr<ID3D11PixelShader> hdr10_pixel_shader;
   ScrgbPicture scrgb;
+
+  [[nodiscard]] bool Ready() const {
+    return device && context_state && vertex_shader && pixel_shader
+           && hdr10_pixel_shader && sampler && injection;
+  }
 };
 
 struct State {
@@ -195,7 +200,8 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     // An scRGB swap chain's texture comes with the first HUD-less image (DrawHudless): the game's own image until then.
     ComPtr<ID3D11DeviceContext1> context1;
     if (multiplier != 0 && state.scrgb
-        && (objects.scrgb.width != back_desc.Width || objects.scrgb.height != back_desc.Height
+        && (!objects.Ready() || !objects.scrgb.texture || !objects.scrgb.srv || !bridge.fg_frame_rtv
+            || objects.scrgb.width != back_desc.Width || objects.scrgb.height != back_desc.Height
             || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf()))))) {
       return;
     }
@@ -273,8 +279,8 @@ inline bool DrawHudless(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
   target->GetDesc(&desc);
   ComPtr<ID3D11Device1> device1;
   if (FAILED(device.As(&device1))) return false;
-  if (objects.device != device1) {
-    objects = {.device = device1};
+  if (objects.device != device1 || !objects.Ready()) {
+    objects = {};
     const D3D_FEATURE_LEVEL level = device1->GetFeatureLevel();
     const D3D11_SAMPLER_DESC sampler_desc = {
         .Filter = D3D11_FILTER_MIN_MAG_MIP_POINT,
@@ -297,9 +303,10 @@ inline bool DrawHudless(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
                                              objects.hdr10_pixel_shader.GetAddressOf()))
         || FAILED(device1->CreateSamplerState(&sampler_desc, objects.sampler.GetAddressOf()))
         || FAILED(device1->CreateBuffer(&injection_desc, nullptr, objects.injection.GetAddressOf()))) {
-      objects = {.device = device1};
+      objects = {};
       return false;
     }
+    objects.device = device1;
   }
   // The image to draw from: the target itself when it can be read, else a copy. An unreadable one is not kept: an scRGB
   // swap chain's target is its back buffer, and a reference to that fails the game's ResizeBuffers.
