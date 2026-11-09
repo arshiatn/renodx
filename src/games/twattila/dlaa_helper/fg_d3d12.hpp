@@ -6,6 +6,7 @@
 #pragma once
 
 #include "gpu_completion.hpp"
+#include "preset_writer.hpp"
 
 #include <windows.h>
 
@@ -377,7 +378,7 @@ class FrameGeneration12 {
     // a thread of its own (loading the driver's profiles takes long).
     if (version_ >= 12 && shared->fg_preset != preset_) {
       preset_ = shared->fg_preset;
-      std::thread([preset = preset_] { preset_result_.store(SavePreset(preset)); }).detach();
+      preset_writer_.Request(preset_, &SavePreset);
     }
     if (!PrepareWindow(game_window, shared->fg_sdr != 0)) {
       SignalOnly(value);
@@ -660,8 +661,6 @@ class FrameGeneration12 {
   // A plain, B the HUD recomposed, C "FG Lite" candidate blending. PRESET_HELD (the profile had it), PRESET_SAVED or
   // PRESET_FAILED (NVAPI or the driver refused).
   static int SavePreset(uint32_t preset) {
-    static std::mutex saving;
-    const std::unique_lock lock(saving);
     constexpr NvU32 RENDER_PRESET = 0x10E41DF1;
     const auto unicode = [](const std::wstring& text, NvAPI_UnicodeString* out) {
       const size_t length = std::min(text.size(), static_cast<size_t>(NVAPI_UNICODE_STRING_MAX - 1));
@@ -887,8 +886,10 @@ class FrameGeneration12 {
       status_ = "Frame generation: on, no generated frames presented yet";
     } else {
       std::string preset;
-      const int preset_result = preset_result_.load();
-      if (preset_result == PRESET_FAILED) {
+      const int preset_result = preset_writer_.Result();
+      if (preset_result == PresetWriter::PENDING) {
+        preset = " (saving preset)";
+      } else if (preset_result == PRESET_FAILED) {
         preset = " (preset not saved: the NVIDIA driver profile could not be written)";
       } else if (preset_result == PRESET_SAVED) {
         preset = " (the preset applies after restarting the game)";
@@ -962,7 +963,7 @@ class FrameGeneration12 {
 
   // NVIDIA's preset: last asked (UINT32_MAX: not yet) and its save (SavePreset's, from its thread).
   uint32_t preset_ = UINT32_MAX;
-  inline static std::atomic_int preset_result_ = PRESET_HELD;  // static: its thread can outlive a replaced object
+  PresetWriter preset_writer_;
 
   // The window over the game's and swap chain.
   FgWindow window_;

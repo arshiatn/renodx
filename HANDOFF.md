@@ -4878,3 +4878,5 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
 - [x] 2026-11-09 F10 (GPT-6 Astra): both FG recording paths check Reset/Close before submission. Terminal HRESULT child test and full helper91 build pass. Vendor-specific fault injection/game checks remain manual.
 
 - [x] 2026-11-09 F11 (GPT-6 Astra): DLSS-G SDR/HDR state updated at fixed size/format; both color spaces explicitly checked/applied. Helper92 builds; display comparison remains manual.
+
+- [x] 2026-11-09 F12 (GPT-6 Astra): owned, ordered/coalescing preset worker; current-generation status and shutdown drain. Deterministic fake persistence test and helper93 build pass; no driver profile modified by validation.
