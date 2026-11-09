@@ -10,9 +10,9 @@
 - [x] F1 helper ownership: watcher joined before unload; child/IPC ownership checked and released; all outstanding fence generations drained or recovered after confirmed child exit. x86/x64 production-header tests pass, including failure injection, 20 reload cycles, stable handle counts, and D3D11/D3D12 WARP queued work on three generations. F1 code repair complete; actual game unload/reload remains untested.
 - [ ] F7: unexpected mid-run helper death/stall and GPU wait ownership remain separate; shutdown recovery does not close F7.
 - [ ] F5/F6: failed acknowledgement propagation and transactional resource/remote handle construction.
-- [ ] F3: bounded motion placement for malformed/extreme coordinates.
+- [x] F3: bounded motion placement; 52 actual-shader WARP cases and all 14 consumer builds pass.
 - [ ] F4/F8: sampler clone and original ownership, deduplication and per-device teardown.
-- [x] F1 final validation: all 14 Release consumers built successfully; x86/x64 helper tests passed. Manual game validation remains pending. Stop after F1 per user; F3-F8 must not start automatically.
+- [x] F1 final validation: all 14 Release consumers built successfully; x86/x64 helper tests passed. Manual game validation remains pending. User subsequently authorized continuing F3-F8 without usage-based pauses.
 
 ## WH3 v37 (2026-11-06): ATN: only our AO and GI. Report tools/tw/wh3_batch5/reports/v37.md. Not run in game.
 - [x] Our AO feeds the game's SSAO readers (sun t_ssao only, 94 traces), its passes skipped under RTAO and PT AO (PT AO runs RTAO for the slot); GT-VBAO skips the sweep. WARP v37_wh3 ao.

@@ -1729,3 +1729,7 @@ Verify: SDR / V30 / V31 in a battle and on the campaign map; Lens Flare and Vign
 AddonUninit now shuts down the shared helper bridge after unregistering its users. The watcher exits before module unload; child process and IPC ownership are released. Shutdown drains outstanding GPU fence generations, with ordered CPU fence recovery only after confirmed helper exit. Failed launches clean up partial ownership and existing IPC sessions are not overwritten.
 
 Offline checks: x86/x64 production-header tests cover process/thread cleanup, failure injection, 20 reloads with stable handle counts, and three interleaved D3D11/D3D12 WARP fence generations under normal completion and forced shutdown. No game was launched. Manually check helper-enabled unload/reload and device recreation, then repeat the reported battle. The original battle freeze is not proven fixed; unexpected mid-run helper failures remain audit F7.
+
+
+### F3 bounded motion placement (2026-11-09, GPT-6 Astra)
+MotionRecord now rejects nonfinite, invalid-scale and out-of-range cells before integer conversion, then visits at most nine cells with integer offsets. This prevents float increment stalls at extreme coordinates. The WARP regression runs the actual shader for 52 normal/boundary/negative/campaign/invalid/extreme cases and compares recorded cells with the old calculation for supported inputs. All 14 consumer builds passed. No game was launched; the original freeze is still unproven. Test: test/tw_motion_record/run.ps1.

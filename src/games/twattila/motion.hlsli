@@ -129,14 +129,22 @@ uint PlacementCell(int2 cell, uint mesh_key)
 bool MotionRecord(RWBuffer<uint> keys, RWBuffer<uint4> placements, uint key, float2 position, float4 rows[3], uint4 extra,
                   float scale)
 {
-  bool took = false;
+  if (!all(isfinite(position)) || !isfinite(scale) || scale <= 0.f) return false;
   const float2 low = floor((position - PLACEMENT_REACH * scale) / (PLACEMENT_CELL * scale));
   const float2 high = floor((position + PLACEMENT_REACH * scale) / (PLACEMENT_CELL * scale));
+  // Beyond consecutive float integers, ++float can stop progressing. Reject unusable cells before conversion.
+  if (!all(isfinite(low)) || !all(isfinite(high))
+      || any(abs(low) > 16777214.f) || any(abs(high) > 16777214.f)) return false;
+  const int2 first_cell = int2(low);
+  const int2 span = int2(high) - first_cell;
+  // The one-cell-wide reach can cover at most three cells after floating-point rounding.
+  if (any(span < 0) || any(span > 2)) return false;
+  bool took = false;
   [loop]
-  for (float z = low.y; z <= high.y; ++z) {
+  for (int z = 0; z <= span.y; ++z) {
     [loop]
-    for (float x = low.x; x <= high.x; ++x) {
-      const uint first = PlacementCell(int2(x, z), extra.x) * PLACEMENT_SLOTS;
+    for (int x = 0; x <= span.x; ++x) {
+      const uint first = PlacementCell(first_cell + int2(x, z), extra.x) * PLACEMENT_SLOTS;
       [loop]
       for (uint slot = first; slot < first + PLACEMENT_SLOTS; ++slot) {
         // A plain read first: every pixel of a unit records the same key, and atomics on the same slots from all of them
