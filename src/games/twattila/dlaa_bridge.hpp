@@ -21,6 +21,7 @@
 #include <exception>
 #include <format>
 #include <memory>
+#include <new>
 #include <mutex>
 #include <thread>
 #include <string_view>
@@ -683,7 +684,9 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   if (bridge.device != device) bridge.rt_atlas = {};
   bridge.device = device;
   bridge.width = 0;
-  Shared shared = *bridge.shared;
+  const std::unique_ptr<Shared> staged(new (std::nothrow) Shared(*bridge.shared));
+  if (!staged) return internal::Fail("DLAA: staging the resource generation ran out of memory.");
+  auto& shared = *staged;
   std::array<uint64_t, 64> transferred = {};
   size_t transferred_count = 0;
   bool published = false;
