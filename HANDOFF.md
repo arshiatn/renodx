@@ -4876,3 +4876,5 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
 - [x] 2026-11-09 F9 (GPT-6 Astra): checked helper GPU completion and queue synchronization; terminal failure without GPU-owner unwinding. WARP/child regression passed; helper90 built. F10-F15 pending; no game run.
 
 - [x] 2026-11-09 F10 (GPT-6 Astra): both FG recording paths check Reset/Close before submission. Terminal HRESULT child test and full helper91 build pass. Vendor-specific fault injection/game checks remain manual.
+
+- [x] 2026-11-09 F11 (GPT-6 Astra): DLSS-G SDR/HDR state updated at fixed size/format; both color spaces explicitly checked/applied. Helper92 builds; display comparison remains manual.

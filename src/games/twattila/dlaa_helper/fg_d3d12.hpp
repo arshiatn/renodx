@@ -739,12 +739,25 @@ class FrameGeneration12 {
       if (!window_.Make(game_window)) return Fail("its window over the game's could not be made");
     }
     window_.Fit();
-    if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) return true;
-    // HDR10 frames (R10G10B10A2; an scRGB swap chain's too: frame_generation.hpp) as the game's swap chain shows them. SDR
-    // frames (gamma 2.2, in R10G10B10A2 too) keep the chain's default: taken for HDR10 they came out red (ATN 2026-11-01).
+    // SDR and HDR can use the same R10 format. Apply both directions even when
+    // dimensions are unchanged or Close/Open retained the existing swap chain.
     const auto set_color_space = [&] {
-      if (format_ == DXGI_FORMAT_R10G10B10A2_UNORM && !sdr) chain_->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+      const auto color_space = (format_ == DXGI_FORMAT_R10G10B10A2_UNORM && !sdr
+                                    ? DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020
+                                    : DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
+      UINT support = 0;
+      if (FAILED(chain_->CheckColorSpaceSupport(color_space, &support))
+          || (support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT) == 0
+          || FAILED(chain_->SetColorSpace1(color_space))) {
+        return Fail("its output color space could not be applied");
+      }
+      chain_sdr_ = sdr;
+      return true;
     };
+    if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) {
+      if (chain_sdr_ == sdr) return true;
+      return set_color_space();
+    }
     if (chain_) {
       // Generation off while the buffers change (NVIDIA: Present can deadlock otherwise), their count given (Streamline
       // must see no zeros: the device was removed in the other games' module).
@@ -756,8 +769,7 @@ class FrameGeneration12 {
         chain_width_ = width_;
         chain_height_ = height_;
         chain_format_ = format_;
-        set_color_space();
-        return true;
+        return set_color_space();
       }
       chain_.Reset();
     }
@@ -789,7 +801,7 @@ class FrameGeneration12 {
         || FAILED(created.As(&chain_))) {
       return Fail("its swap chain could not be made");
     }
-    set_color_space();
+    if (!set_color_space()) return false;
     chain_width_ = width_;
     chain_height_ = height_;
     chain_format_ = format_;
@@ -958,6 +970,7 @@ class FrameGeneration12 {
   UINT chain_width_ = 0;
   UINT chain_height_ = 0;
   DXGI_FORMAT chain_format_ = DXGI_FORMAT_UNKNOWN;
+  bool chain_sdr_ = false;
   UINT tearing_ = 0;
   uint32_t reflex_boost_ = 0;
   uint32_t frame_limit_ = 0;  // Reflex's frame rate limit as last set (rendered frames per second; 0: none)
