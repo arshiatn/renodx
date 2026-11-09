@@ -1970,6 +1970,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
   DetachAddon();
+  twattila::dlaa_bridge::Shutdown();
   if (addon_registered) {
     reshade::unregister_addon(addon_module);
     addon_registered = false;

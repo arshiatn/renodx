@@ -462,3 +462,10 @@ detailed models farther away, grass reaches farther.
 
 Verify: SDR / V30 / V31 in a battle and on the campaign map; low post-processing quality (t11-t14); DOF with
 distortion off (dof03); VFX sliders with low shadows.
+
+
+### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
+
+AddonUninit now shuts down the shared helper bridge after unregistering its users. The watcher exits before module unload; child process and IPC ownership are released. Shutdown drains outstanding GPU fence generations, with ordered CPU fence recovery only after confirmed helper exit. Failed launches clean up partial ownership and existing IPC sessions are not overwritten.
+
+Offline checks: x86/x64 production-header tests cover process/thread cleanup, failure injection, 20 reloads with stable handle counts, and three interleaved D3D11/D3D12 WARP fence generations under normal completion and forced shutdown. No game was launched. Manually check helper-enabled unload/reload and device recreation, then repeat the reported battle. The original battle freeze is not proven fixed; unexpected mid-run helper failures remain audit F7.

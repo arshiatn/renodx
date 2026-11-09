@@ -2146,6 +2146,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     Reset();
     attached = false;
   }
+  twattila::dlaa_bridge::Shutdown();
   if (registered) {
     reshade::unregister_addon(module);
     registered = false;

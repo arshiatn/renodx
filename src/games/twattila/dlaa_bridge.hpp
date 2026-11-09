@@ -8,6 +8,7 @@
 #include <windows.h>
 
 #include <d3d11_4.h>
+#include <d3d12.h>
 #include <dxgi1_4.h>
 #include <wrl/client.h>
 
@@ -17,7 +18,9 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdlib>
+#include <exception>
 #include <format>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <string_view>
@@ -25,6 +28,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../../utils/directx.hpp"
@@ -155,6 +159,11 @@ struct RayReconstruction {
 // The requests' kinds (each steady or not on its own).
 enum RequestKind : size_t { EVALUATE, TRACE_SCENE, TRACE_BOUNCE, TRACE_REFLECTIONS, PRESENT_FRAME, REQUEST_KINDS };
 
+struct PendingFence {
+  ComPtr<ID3D11Fence> fence;
+  uint64_t value = 0;
+};
+
 struct Bridge {
   // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
   // accumulation and filter) leave its noise to it.
@@ -177,6 +186,8 @@ struct Bridge {
   HANDLE done = nullptr;
   HANDLE job = nullptr;
   HANDLE process = nullptr;
+  HANDLE watcher = nullptr;       // Native completion handle, including the thread's CRT cleanup.
+  HANDLE watcher_stop = nullptr;  // Allows unload even if process termination is waiting on driver I/O.
   Shared* shared = nullptr;
   // The cluster sets' data (v16): the second mapping, RT_CLUSTER_DATA_BYTES.
   HANDLE cluster_mapping = nullptr;
@@ -239,6 +250,8 @@ struct Bridge {
   DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN;
   ComPtr<ID3D11Fence> fence;
   uint64_t value = 0;
+  uint64_t completion_value = 0;  // Last requested helper GPU completion, independent of CPU acknowledgement.
+  std::vector<PendingFence> retired_fences;  // Quiesced or recovered before unloading the helper.
   bool answered = false;  // the helper's first answer came (NVIDIA's set-up: up to seconds)
   // Steady requests (their kind ran last time with this fence; not frame generation's presents) go without waiting for
   // the helper's work (~0.25 ms of the game's frame): the game's GPU waits for the helper's next value at once and the
@@ -309,7 +322,7 @@ inline bool Fail(const std::string& status) {
 
 // The game's GPU waits for `value`, which the helper will not signal (it stopped or did not answer): signalled from a
 // device of the addon's own on the same GPU (the game goes on, without DLAA).
-inline void Rescue(uint64_t value) {
+inline void Rescue(uint64_t value, ID3D11Fence* retained_fence = nullptr) {
   const std::unique_lock lock(bridge.rescue_mutex);
   ComPtr<IDXGIFactory4> factory;
   ComPtr<IDXGIAdapter1> adapter;
@@ -318,15 +331,60 @@ inline void Rescue(uint64_t value) {
   ComPtr<ID3D11Device5> device5;
   ComPtr<ID3D11DeviceContext4> context4;
   ComPtr<ID3D11Fence> fence;
-  const LUID luid = {.LowPart = bridge.shared->adapter_luid_low, .HighPart = bridge.shared->adapter_luid_high};
-  if (bridge.rescue_fence == nullptr || !renodx::utils::directx::Initialize()
+  LUID luid = {.LowPart = bridge.shared->adapter_luid_low, .HighPart = bridge.shared->adapter_luid_high};
+  HANDLE shared_fence = bridge.rescue_fence;
+  std::unique_ptr<void, decltype(&CloseHandle)> retained_handle(nullptr, &CloseHandle);
+  if (retained_fence != nullptr) {
+    if (retained_fence->GetCompletedValue() >= value) return;
+    ComPtr<ID3D11Device> owner;
+    ComPtr<IDXGIDevice> dxgi_device;
+    ComPtr<IDXGIAdapter> owner_adapter;
+    DXGI_ADAPTER_DESC description = {};
+    retained_fence->GetDevice(owner.GetAddressOf());
+    if (FAILED(owner.As(&dxgi_device)) || FAILED(dxgi_device->GetAdapter(owner_adapter.GetAddressOf()))
+        || FAILED(owner_adapter->GetDesc(&description))
+        || FAILED(retained_fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &shared_fence))) {
+      renodx::utils::log::w("[Total War] DLAA: could not reopen a pending fence during shutdown.");
+      return;
+    }
+    retained_handle.reset(shared_fence);
+    luid = description.AdapterLuid;
+  }
+  if (shared_fence == nullptr || !renodx::utils::directx::Initialize()
       || FAILED(renodx::utils::directx::pCreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())))
-      || FAILED(factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf())))
-      || FAILED(renodx::utils::directx::pD3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, nullptr, 0,
-                                                           D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
-                                                           context.GetAddressOf()))
+      || FAILED(factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf())))) {
+    renodx::utils::log::w("[Total War] DLAA: could not open recovery adapter.");
+    return;
+  }
+  if (retained_fence != nullptr) {
+    ComPtr<ID3D12Device> recovery_device;
+    ComPtr<ID3D12Fence> recovery_fence;
+    if (FAILED(renodx::utils::directx::pD3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
+                                                       IID_PPV_ARGS(recovery_device.GetAddressOf())))
+        || FAILED(recovery_device->OpenSharedHandle(shared_fence, IID_PPV_ARGS(recovery_fence.GetAddressOf())))) {
+      renodx::utils::log::w("[Total War] DLAA: could not open CPU recovery fence.");
+      return;
+    }
+    // The helper is terminated before this path. Recover only the next even completion after observing
+    // its odd game-input signal. CPU signaling cannot be queued behind the GPU wait being rescued.
+    const ULONGLONG deadline = GetTickCount64() + 2000;
+    while (recovery_fence->GetCompletedValue() < value && GetTickCount64() < deadline) {
+      const uint64_t completed = recovery_fence->GetCompletedValue();
+      if (completed >= value) break;
+      if ((completed & 1u) != 0) {
+        if (FAILED(recovery_fence->Signal(completed + 1))) break;
+      }
+      Sleep(1);
+    }
+    renodx::utils::log::w("[Total War] DLAA: pending shutdown fence ",
+                          (recovery_fence->GetCompletedValue() >= value ? "completed." : "could not be recovered."));
+    return;
+  }
+  if (FAILED(renodx::utils::directx::pD3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, nullptr, 0,
+                                                      D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
+                                                      context.GetAddressOf()))
       || FAILED(device.As(&device5)) || FAILED(context.As(&context4))
-      || FAILED(device5->OpenSharedFence(bridge.rescue_fence, IID_PPV_ARGS(fence.GetAddressOf())))) {
+      || FAILED(device5->OpenSharedFence(shared_fence, IID_PPV_ARGS(fence.GetAddressOf())))) {
     renodx::utils::log::w("[Total War] DLAA: the helper stopped while the game's GPU waited for it (not freed).");
     return;
   }
@@ -340,22 +398,100 @@ inline void Rescue(uint64_t value) {
   renodx::utils::log::w("[Total War] DLAA: the helper stopped while the game's GPU waited for it (freed).");
 }
 
+// Keep each generation until its GPU completion, even after a CPU acknowledgement or a resource resize.
+// Render-thread only; Shutdown calls this after unregistering the bridge's users.
+inline void RetireFence() {
+  std::erase_if(bridge.retired_fences, [](const PendingFence& pending) {
+    return pending.fence->GetCompletedValue() >= pending.value;
+  });
+  if (bridge.fence && bridge.completion_value != 0 && bridge.fence->GetCompletedValue() < bridge.completion_value) {
+    bridge.retired_fences.push_back({.fence = bridge.fence, .value = bridge.completion_value});
+  }
+  bridge.completion_value = 0;
+}
+
+// Rendering callbacks must be quiescent. Called outside DllMain on unload and on partial startup failure.
+// The watcher keeps the process, shared mapping and rescue fence until its native thread has exited.
+inline void StopSession() {
+  // Shutdown retained all generations first. Let its ordered recovery handle them, not the one-value watcher.
+  bridge.waiting.store(0);
+  if (bridge.job != nullptr) {
+    CloseHandle(std::exchange(bridge.job, nullptr));
+  }
+  if (bridge.process != nullptr && WaitForSingleObject(bridge.process, 0) == WAIT_TIMEOUT) {
+    if (!TerminateProcess(bridge.process, 0)) {
+      renodx::utils::log::w("[Total War] DLAA: helper termination request failed.");
+    }
+  }
+  if (bridge.watcher_stop != nullptr) {
+    SetEvent(bridge.watcher_stop);
+  }
+  if (bridge.watcher != nullptr) {
+    WaitForSingleObject(bridge.watcher, INFINITE);
+    CloseHandle(std::exchange(bridge.watcher, nullptr));
+  }
+  const bool helper_exited = bridge.process == nullptr || WaitForSingleObject(bridge.process, 5000) == WAIT_OBJECT_0;
+  if (helper_exited) {
+    // Never CPU-signal while the helper could still submit writes to these resources.
+    for (const PendingFence& pending : bridge.retired_fences) {
+      if (pending.fence->GetCompletedValue() < pending.value) {
+        Rescue(pending.value, pending.fence.Get());
+      }
+    }
+  } else {
+    renodx::utils::log::w("[Total War] DLAA: helper termination is still pending; recovery skipped and session cannot be reused.");
+  }
+  bridge.retired_fences.clear();
+  if (bridge.rescue_fence != nullptr) {
+    CloseHandle(std::exchange(bridge.rescue_fence, nullptr));
+  }
+  if (bridge.cluster_data != nullptr) {
+    UnmapViewOfFile(std::exchange(bridge.cluster_data, nullptr));
+  }
+  if (bridge.shared != nullptr) {
+    UnmapViewOfFile(std::exchange(bridge.shared, nullptr));
+  }
+  for (HANDLE* handle : {&bridge.watcher_stop, &bridge.process, &bridge.cluster_mapping,
+                         &bridge.done, &bridge.request, &bridge.mapping}) {
+    if (*handle != nullptr) {
+      CloseHandle(std::exchange(*handle, nullptr));
+    }
+  }
+}
+
 // The helper started (once; false: it cannot be), told the game's GPU (`device`'s) before it runs.
 inline bool Start(ID3D11Device* device) {
   if (bridge.started) return !bridge.failed;
   bridge.started = true;
+  PROCESS_INFORMATION information = {};
+  const auto fail_start = [&](const std::string& status) {
+    if (information.hThread != nullptr) {
+      CloseHandle(std::exchange(information.hThread, nullptr));
+    }
+    StopSession();
+    return Fail(status);
+  };
   const std::wstring name = L"Local\\RenoDX_TW_DLAA_" + std::to_wstring(GetCurrentProcessId());
   bridge.mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Shared), name.c_str());
+  if (bridge.mapping == nullptr || GetLastError() == ERROR_ALREADY_EXISTS) {
+    return fail_start("DLAA: shared memory unavailable or another helper session still owns it.");
+  }
   bridge.request = CreateEventW(nullptr, FALSE, FALSE, (name + L"_request").c_str());
+  if (bridge.request == nullptr || GetLastError() == ERROR_ALREADY_EXISTS) {
+    return fail_start("DLAA: request event unavailable or already in use.");
+  }
   bridge.done = CreateEventW(nullptr, FALSE, FALSE, (name + L"_done").c_str());
-  if (bridge.mapping == nullptr || bridge.request == nullptr || bridge.done == nullptr) {
-    return Fail("DLAA: shared memory unavailable.");
+  if (bridge.done == nullptr || GetLastError() == ERROR_ALREADY_EXISTS) {
+    return fail_start("DLAA: completion event unavailable or already in use.");
   }
   bridge.shared = static_cast<Shared*>(MapViewOfFile(bridge.mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Shared)));
-  if (bridge.shared == nullptr) return Fail("DLAA: shared memory unavailable.");
+  if (bridge.shared == nullptr) return fail_start("DLAA: shared memory unavailable.");
   *bridge.shared = Shared{};
   // The cluster sets' (compact draws without it: none).
   bridge.cluster_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, RT_CLUSTER_DATA_BYTES, (name + L"_clusters").c_str());
+  if (bridge.cluster_mapping != nullptr && GetLastError() == ERROR_ALREADY_EXISTS) {
+    return fail_start("DLAA: cluster mapping is already in use.");
+  }
   if (bridge.cluster_mapping != nullptr) {
     bridge.cluster_data = static_cast<uint8_t*>(MapViewOfFile(bridge.cluster_mapping, FILE_MAP_ALL_ACCESS, 0, 0, RT_CLUSTER_DATA_BYTES));
   }
@@ -371,27 +507,46 @@ inline bool Start(ID3D11Device* device) {
   const std::wstring path = internal::HelperPath();
   std::wstring command = L"\"" + path + L"\" " + std::to_wstring(GetCurrentProcessId());
   STARTUPINFOW startup = {.cb = sizeof(STARTUPINFOW)};
-  PROCESS_INFORMATION information = {};
   if (!CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr,
                       nullptr, &startup, &information)) {
-    return Fail("DLAA: renodx-tw-dlaa64.exe not found next to the addon.");
+    return fail_start("DLAA: renodx-tw-dlaa64.exe not found next to the addon.");
   }
-  // Ended with the game (the job's last handle closes with it).
+  bridge.process = information.hProcess;
+  // Do not resume a child unless its lifetime is owned by both the job and the watcher.
   bridge.job = CreateJobObjectW(nullptr, nullptr);
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
   limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-  if (bridge.job != nullptr) {
-    SetInformationJobObject(bridge.job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
-    AssignProcessToJobObject(bridge.job, information.hProcess);
+  if (bridge.job == nullptr
+      || !SetInformationJobObject(bridge.job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))
+      || !AssignProcessToJobObject(bridge.job, bridge.process)) {
+    return fail_start("DLAA: could not own the helper process (stopped).");
   }
-  ResumeThread(information.hThread);
-  CloseHandle(information.hThread);
-  bridge.process = information.hProcess;
-  // Its stop while the game's GPU waits for it (a steady request): Rescue.
-  std::thread([process = information.hProcess] {
-    WaitForSingleObject(process, INFINITE);
-    if (const uint64_t value = bridge.waiting.exchange(0); value != 0) Rescue(value);
-  }).detach();
+  bridge.watcher_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+  if (bridge.watcher_stop == nullptr) return fail_start("DLAA: could not create the helper watcher stop event.");
+  try {
+    std::thread watcher([] {
+      const std::array<HANDLE, 2> handles = {bridge.process, bridge.watcher_stop};
+      WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), FALSE, INFINITE);
+      if (const uint64_t value = bridge.waiting.exchange(0); value != 0) {
+        Rescue(value);
+      }
+    });
+    HANDLE completion = nullptr;
+    if (!DuplicateHandle(GetCurrentProcess(), watcher.native_handle(), GetCurrentProcess(), &completion,
+                         SYNCHRONIZE, FALSE, 0)) {
+      SetEvent(bridge.watcher_stop);
+      watcher.join();
+      return fail_start("DLAA: could not retain the helper watcher (stopped).");
+    }
+    bridge.watcher = completion;
+    watcher.detach();
+  } catch (const std::exception&) {
+    return fail_start("DLAA: could not start the helper watcher (stopped).");
+  }
+  if (ResumeThread(information.hThread) == static_cast<DWORD>(-1)) {
+    return fail_start("DLAA: could not resume the helper (stopped).");
+  }
+  CloseHandle(std::exchange(information.hThread, nullptr));
   bridge.status = "DLAA: starting the helper";
   renodx::utils::log::i("[Total War] DLAA: renodx-tw-dlaa64.exe started.");
   return true;
@@ -489,6 +644,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   }
   // The helper done with the last request before `shared` changes; the new objects' first requests wait for answers.
   if (bridge.pending) internal::Answer();
+  internal::RetireFence();
   bridge.steady = {};
   bridge.color = {};
   bridge.depth = {};
@@ -680,6 +836,9 @@ namespace internal {
 template <typename Fill>
 bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   if (bridge.failed || bridge.width == 0) return false;
+  std::erase_if(bridge.retired_fences, [](const PendingFence& pending) {
+    return pending.fence->GetCompletedValue() >= pending.value;
+  });
   auto& shared = *bridge.shared;
   if (shared.ready == 0) {
     if (WaitForSingleObject(bridge.process, 0) == WAIT_OBJECT_0) {
@@ -704,6 +863,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   fill(&shared);
   ResetEvent(bridge.done);
   const bool steady = bridge.steady[kind] && kind != PRESENT_FRAME;
+  bridge.completion_value = bridge.value + 1;
   if (steady) bridge.waiting.store(bridge.value + 1);
   SetEvent(bridge.request);
   if (steady) {
@@ -1059,6 +1219,7 @@ inline std::string FrameGenerationStatus() {
 // release); the device and the leaves' atlas stay for a quick return, its meshes still point there (rt_scene frees it).
 inline void Release(bool tell_helper = false) {
   if (tell_helper && bridge.pending) internal::Answer();
+  internal::RetireFence();
   bridge.color = {};
   bridge.depth = {};
   bridge.motion = {};
@@ -1118,6 +1279,45 @@ inline void Release(bool tell_helper = false) {
   ResetEvent(bridge.done);
   SetEvent(bridge.request);
   internal::Answer(20000);
+}
+
+// AddonUninit only, after unregistering users of this bridge. Never wait for threads in DllMain.
+inline void Shutdown() {
+  bridge.failed = true;
+  internal::RetireFence();
+  // CPU acknowledgements can precede worker submission. Leave the helper alive until all generations finish.
+  // Flush any last input signals before waiting; no per-frame CPU wait is introduced.
+  for (const PendingFence& pending : bridge.retired_fences) {
+    ComPtr<ID3D11Device> owner;
+    ComPtr<ID3D11DeviceContext> context;
+    pending.fence->GetDevice(owner.GetAddressOf());
+    owner->GetImmediateContext(context.GetAddressOf());
+    context->Flush();
+  }
+  const ULONGLONG deadline = GetTickCount64() + 5000;
+  while (std::ranges::any_of(bridge.retired_fences, [](const PendingFence& pending) {
+    return pending.fence->GetCompletedValue() < pending.value;
+  })) {
+    if (GetTickCount64() >= deadline) break;
+    Sleep(1);
+  }
+  internal::StopSession();
+  Release();
+  bridge.pending = false;
+  bridge.waiting.store(0);
+  bridge.value = 0;
+  bridge.answered = false;
+  bridge.answer_ticks = 0;
+  bridge.logged = {};
+  bridge.logged_time = 0;
+  bridge.nrd_ask_bounce = false;
+  bridge.nrd_ask_reflections = false;
+  bridge.nrd_ambient = false;
+  bridge.nrd_bounce = false;
+  bridge.nrd_reflections = false;
+  bridge.status = "DLAA: not started";
+  bridge.started = false;
+  bridge.failed = false;
 }
 
 }  // namespace twattila::dlaa_bridge

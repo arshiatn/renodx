@@ -656,3 +656,10 @@ Checked against the game's own shaders (data\shaders.pack: bytecode and source):
 - At the frame's first sun light draw: the sun and the trace. Ray-traced sun shadows and ambient occlusion reach
   sunlight00-03 at t40 / t41 (shaders/rt_sun.hlsli): the darker of each and the game's shadow mask / AO.
 - Ray-traced Global Illumination: the Light Bounce's (GT-VBGI's) trace through rays, path traced when on.
+
+
+### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
+
+AddonUninit now shuts down the shared helper bridge after unregistering its users. The watcher exits before module unload; child process and IPC ownership are released. Shutdown drains outstanding GPU fence generations, with ordered CPU fence recovery only after confirmed helper exit. Failed launches clean up partial ownership and existing IPC sessions are not overwritten.
+
+Offline checks: x86/x64 production-header tests cover process/thread cleanup, failure injection, 20 reloads with stable handle counts, and three interleaved D3D11/D3D12 WARP fence generations under normal completion and forced shutdown. No game was launched. Manually check helper-enabled unload/reload and device recreation, then repeat the reported battle. The original battle freeze is not proven fixed; unexpected mid-run helper failures remain audit F7.

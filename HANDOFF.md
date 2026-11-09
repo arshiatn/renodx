@@ -7,11 +7,12 @@
 - [x] F2: campaign/water callbacks unregistered before infrastructure teardown. Fresh Clang x86 Release Attila build passed (47 existing deprecation/header warnings), diff check passed. WH3 already unregisters this pair. No game or relocated-DLL runtime test. Build log: C:\Users\arshi\Documents\ChatGPT\Total War Rome2\astra-f2-build.log.
 - Build setup: isolated build32 configured with clang-x86 and original shader compiler paths. Unchanged external submodules are directory junctions to the original checkout; use --ignore-submodules=all for Git diff/status here (their relative .git files do not resolve through the junction). Never edit dependency files through these links.
 - [x] F1 startup-worker portion: all seven callers cancel and wait for native thread exit in AddonUninit, including CRT/capture cleanup after done. Final production-header regression passed x86/x64: gated thread-local destructor with pre-started coordinator, empty tests, cancellation, restart, repeated stop; 100 cycles with stable handle counts (88/88 x86, 71/71 x64). All 14 required Release consumer builds passed. Tests: test/tw_startup_worker/run.ps1. Logs: astra-f1-worker-build32/64.log and astra-f1-worker-test32/64.log in the audit workspace. No game unload/reload. Helper/watchdog ownership remains open below.
-- [ ] F1/F7: explicit helper/watchdog/startup-worker shutdown and GPU wait ownership through completion.
+- [x] F1 helper ownership: watcher joined before unload; child/IPC ownership checked and released; all outstanding fence generations drained or recovered after confirmed child exit. x86/x64 production-header tests pass, including failure injection, 20 reload cycles, stable handle counts, and D3D11/D3D12 WARP queued work on three generations. F1 code repair complete; actual game unload/reload remains untested.
+- [ ] F7: unexpected mid-run helper death/stall and GPU wait ownership remain separate; shutdown recovery does not close F7.
 - [ ] F5/F6: failed acknowledgement propagation and transactional resource/remote handle construction.
 - [ ] F3: bounded motion placement for malformed/extreme coordinates.
 - [ ] F4/F8: sampler clone and original ownership, deduplication and per-device teardown.
-- [ ] Required consumer builds and offline regression checks; game validation stays pending user-run reproduction.
+- [x] F1 final validation: all 14 Release consumers built successfully; x86/x64 helper tests passed. Manual game validation remains pending. Stop after F1 per user; F3-F8 must not start automatically.
 
 ## WH3 v37 (2026-11-06): ATN: only our AO and GI. Report tools/tw/wh3_batch5/reports/v37.md. Not run in game.
 - [x] Our AO feeds the game's SSAO readers (sun t_ssao only, 94 traces), its passes skipped under RTAO and PT AO (PT AO runs RTAO for the slot); GT-VBAO skips the sweep. WARP v37_wh3 ao.

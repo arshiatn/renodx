@@ -945,3 +945,10 @@ for Path Tracing (about a quarter of the noise).
 v28 (ATN's batch 5, untested in game; the helper GPU-tested): helper22 (in the zip; bridge v11): ReSTIR GI v2
 (compared with Embark Studios' kajiya, MIT / Apache 2.0, not copied: a light switched on or off shows within 3
 frames), the partitioned TLAS fixed and on again.
+
+
+### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
+
+AddonUninit now shuts down the shared helper bridge after unregistering its users. The watcher exits before module unload; child process and IPC ownership are released. Shutdown drains outstanding GPU fence generations, with ordered CPU fence recovery only after confirmed helper exit. Failed launches clean up partial ownership and existing IPC sessions are not overwritten.
+
+Offline checks: x86/x64 production-header tests cover process/thread cleanup, failure injection, 20 reloads with stable handle counts, and three interleaved D3D11/D3D12 WARP fence generations under normal completion and forced shutdown. No game was launched. Manually check helper-enabled unload/reload and device recreation, then repeat the reported battle. The original battle freeze is not proven fixed; unexpected mid-run helper failures remain audit F7.
