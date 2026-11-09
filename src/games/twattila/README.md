@@ -1733,3 +1733,7 @@ Offline checks: x86/x64 production-header tests cover process/thread cleanup, fa
 
 ### F3 bounded motion placement (2026-11-09, GPT-6 Astra)
 MotionRecord now rejects nonfinite, invalid-scale and out-of-range cells before integer conversion, then visits at most nine cells with integer offsets. This prevents float increment stalls at extreme coordinates. The WARP regression runs the actual shader for 52 normal/boundary/negative/campaign/invalid/extreme cases and compares recorded cells with the old calculation for supported inputs. All 14 consumer builds passed. No game was launched; the original freeze is still unproven. Test: test/tw_motion_record/run.ps1.
+
+
+### F5 failed acknowledgement (2026-11-09, GPT-6 Astra)
+Prepare now returns immediately when the preceding helper acknowledgement fails, before retiring fences, replacing textures or changing the published generation. The x86/x64 production-header test injects a stale completion and checks preserved width, generation and shared color handle. All 14 consumer builds pass. No game run.

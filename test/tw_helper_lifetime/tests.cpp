@@ -158,6 +158,22 @@ int main(int argc, char** argv) {
     bridge_api::Shutdown();
     *failure = false;
   }
+  Check(bridge_api::internal::Start(device.Get()), "start for failed acknowledgement");
+  Check(WaitForSingleObject(bridge_api::bridge.done, 5000) == WAIT_OBJECT_0, "failed-ack helper ready");
+  bridge_api::bridge.pending = true;
+  bridge_api::bridge.value = 1;
+  bridge_api::bridge.width = 123;
+  bridge_api::bridge.shared->generation = 456;
+  bridge_api::bridge.shared->color = 789;
+  bridge_api::bridge.shared->done_value = 0;
+  SetEvent(bridge_api::bridge.done);
+  Check(!bridge_api::Prepare(device.Get(), 32, 32), "reject stale acknowledgement");
+  Check(bridge_api::bridge.failed && bridge_api::bridge.width == 123
+        && bridge_api::bridge.shared->generation == 456 && bridge_api::bridge.shared->color == 789,
+        "failed acknowledgement preserves resource generation before allocation");
+  bridge_api::Shutdown();
+  CheckClosed();
+  std::puts("PASS: failed acknowledgement stops Prepare before resource mutation");
   DWORD before = 0;
   DWORD after = 0;
   Check(GetProcessHandleCount(GetCurrentProcess(), &before), "initial handle count");

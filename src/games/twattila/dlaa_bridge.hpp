@@ -643,7 +643,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     return true;
   }
   // The helper done with the last request before `shared` changes; the new objects' first requests wait for answers.
-  if (bridge.pending) internal::Answer();
+  if (bridge.pending && !internal::Answer()) return false;
   internal::RetireFence();
   bridge.steady = {};
   bridge.color = {};
