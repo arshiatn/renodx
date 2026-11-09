@@ -45,7 +45,7 @@ The review also checked for a replacement explanation in the helper's ray-tracin
 - On-disk HEAD: `0a6cd493b5683b1ff9278252f1421fa3d1fe74f2`.
 - Tracked unstaged and staged filename diffs were empty when inspected. Unsaved editor buffers are outside this snapshot.
 - Log: `C:\Users\arshi\Downloads\ReShade.log`, 155,518 bytes.
-- Log SHA-256: `E89B04A9BC0AC5BBC17420E13010948A06B8ECD4A6DEAF9AD0A8B6B5C53444FB`.
+- Log SHA-256: `E89B04A9BC0AC5BBC17420E130109<48A06B8ECD4A6DEAF9AD0A8B6B5C53444FB`.
 - Both supplied conversation screenshots, including the new statement that the battle passed without the mod.
 - Attila's add-on, motion shaders, anti-aliasing, helper bridge, helper request processing, sampler bias and directly relevant shared callback infrastructure.
 - Historical source snapshot `18cbf26eaad0a504aa07dfba7259b4f50e5e51d4`, dated 3 November 2026 at 09:38, to check that findings were not introduced only by later source changes.
@@ -352,3 +352,168 @@ Each submitted request now retains its fence generation and target completion in
 The actual production-header WARP tests pass x86/x64 for a healthy delayed submission, acknowledged-but-unsubmitted work, helper exit and stall in all three wait paths, and late publication after exit. The existing three-generation shutdown and transfer-rollback tests pass too. All 14 consumer builds pass. Recovery remains best effort if the driver/device or process termination fails; the timeout is not a guarantee against a driver TDR. No game was launched and the original battle freeze is not proven resolved.
 
 Final review also moved F6's staged Shared block to checked heap allocation rather than the game render thread's stack.
+
+
+## Independent 64-bit helper review (2026-11-09)
+
+### Scope and evidence
+
+This is a source review, not a repair or a reproduced crash diagnosis. Four additional findings are recorded below: two high-priority GPU error-handling defects and two medium-priority frame-generation correctness defects. No P0/emergency defect is established, and none is proven to explain the original battle crash.
+
+Reviewed the saved helper sources in D:/Dev/renodx/src/games/twattila/dlaa_helper, with the Attila caller and shared protocol. Original checkout HEAD: 0a6cd493; its working-tree status was clean. All seven helper .cpp/.hpp files have identical text in the repair worktree at c314b0a6 after normalizing line endings. References below are relative to src/games/twattila/dlaa_helper unless stated otherwise. The report is appended in the repair worktree so that the completed F1-F8 record stays in the same file. No source changes, builds, test execution, game launches, commits, pushes, or installed-file changes were made during this review.
+
+The earlier bridge tests use a disposable simulated helper. Their success does not validate these production helper backends. F1-F8 remain completed code repairs; the new findings are open. This review concentrates on CPU/GPU synchronization, submission failure paths, and frame-generation state transitions; it is not an exhaustive audit of every RT shader, vendor library, or geometry algorithm.
+
+### F9 — P1: GPU wait failures are treated as completed work
+
+**Confidence:** high, directly visible in control flow. Runtime failure has not been reproduced here.
+
+**Locations:** rt_d3d12.hpp:2214-2217; rr_d3d12.hpp:250-253; upscale_d3d12.hpp:364-367; fg_d3d12.hpp:615-618; fg_proxy_d3d12.hpp:541-544. Callers include RT Trace at 1029-1032 and 1093, RR Record at 259-268, and both FG Present implementations at 399-401 / 258-260.
+
+Every listed WaitFor returns void. If the fence is incomplete, it registers an event and waits five seconds (RT/RR/upscaling) or ten seconds (FG), ignoring both the registration result and the wait result. It never verifies the requested fence value afterward. Event creation is also unchecked in these classes. Consequently timeout, failed event registration, or a failed wait all allow the caller to proceed as though the GPU completed.
+
+Concrete failure sequence: hold a queue behind an unsatisfied dependency, wrap to a previously submitted slot, let WaitFor time out, then reach allocator Reset and overwrite/reuse slot data while the previous submission remains outstanding. Close/ReleaseFeature and history cleanup similarly release resources after the same ineffective completion gate. RT's newer WaitFor(trace_value_) is useful in the success case but inherits this defect.
+
+An additional consequence is a stale event notification: a registration whose wait timed out can later wake another wait using the same event, even though the newer target has not completed. A successful wait alone is insufficient; the target fence must be rechecked. Device-removal sentinel values also need explicit failure handling rather than ordinary numeric completion.
+
+Microsoft documents allocator Reset during outstanding GPU execution as undefined behavior: [ID3D12CommandAllocator::Reset](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandallocator-reset).
+
+**Impact:** resource lifetime violations, corrupted GPU work, or device removal after an existing stall/API failure. This may amplify an initial problem; it does not prove what caused the first freeze. F7's external watchdog is not a substitute for this gate: helper waits and watchdog expiry are independent, and the helper has no guarantee it is terminated before its timed-out wait returns.
+
+**Proposed repair:** make completion waits return a checked outcome; validate event creation, registration, wait result, actual fence progress, and device removal. Stop recording, allocator reuse, feature destruction and resource recycling on failure. Establish a terminal helper/backend failure path with ownership retained until completion or safe teardown. Preserve game-fence recovery ordering; never fake GPU completion while the old producer can still access the resources.
+
+**Required regression:** delay completion past the deadline on a healthy software device; inject event creation/registration/wait failures; deliver an older registration's event during a newer wait. Assert that no allocator reset, mapped-data overwrite, or resource/feature release happens before the exact target completes. Include both successful delayed completion and device-removal controls.
+
+### F10 — P1: Frame generation submits command lists despite recording failures
+
+**Confidence:** high. Distinct from F9: it also occurs when the wait completed successfully.
+
+**Locations:** fg_d3d12.hpp:399-401 and 494-500; fg_proxy_d3d12.hpp:258-260 and 403-409.
+
+Both FG implementations ignore the HRESULT from allocator Reset, command-list Reset, and command-list Close, then unconditionally call ExecuteCommandLists and advance shared/local completion bookkeeping. A failed Reset can leave an unusable recording state; a failed Close means a valid executable list has not been established. The RT/RR implementations already have more explicit recording checks, making the FG omission especially clear.
+
+**Trigger:** an allocator/list reset failure or a recording validation/resource failure surfaced by Close. This is an error-path defect; it does not imply every normal FG frame is invalid.
+
+**Impact:** invalid submission, dropped work or device removal, with the helper subsequently reporting request completion through the normal main.cpp answer path. Advancing bookkeeping does not prove that the intended copy/evaluation ran. Microsoft describes command-list submission validation and device-removal cases in [ExecuteCommandLists](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandqueue-executecommandlists).
+
+**Proposed repair:** check each recording stage and submit only a successfully closed list. Mark the backend/request failed, retire the failed slot safely, and choose a deliberate failure acknowledgement/recovery path. Check queue Wait/Signal HRESULTs as part of that path so failure is not reported as a successfully scheduled dependency. Only use an ordered signal-only fallback when the queue/device is healthy and ownership permits it.
+
+**Required regression:** inject Reset and Close failures independently after a successful wait for both DLSS-G and proxy FG. Assert no invalid list submission, no successful evaluation report, and a defined outcome for the game's outstanding fence. Include recovery/reinitialization or explicit feature disablement.
+
+### F11 — P2: DLSS-G keeps the wrong color space after an HDR/SDR switch
+
+**Confidence:** high for the state-machine defect; visual output was not tested.
+
+**Locations:** fg_d3d12.hpp:734-745 (PrepareWindow), 345-353 (Close); ../dlaa_bridge.hpp PresentFrame writes fg_sdr per request; ../addon.cpp:1334 sets sdr_output from swap_chain_encoding. For comparison, fg_proxy_d3d12.hpp:223-237 explicitly includes chain_sdr_ in its recreation condition.
+
+PrepareWindow returns immediately when width, height and pixel format match, without comparing the requested SDR/HDR interpretation. The code itself supports SDR and HDR in the same R10G10B10A2 format. Close deliberately retains the swap chain, so merely reopening shared textures does not correct this.
+
+Concrete sequence: start DLSS-G in HDR, then switch the addon's output to SDR at the same resolution and format. The helper receives fg_sdr = 1 but returns before changing color space; the HDR/PQ setting remains. SDR-to-HDR has the inverse stale-state problem. Furthermore, the color-space lambda only sets HDR; it does not explicitly restore SDR on an existing chain.
+
+**Impact:** incorrect colors/brightness in the FG window after an output-mode change. This is not evidence of the battle CTD.
+
+**Proposed repair:** track the applied SDR/HDR color-space state independently of size/format; update it on same-size mode changes and explicitly apply both directions. Check color-space support and SetColorSpace1 results. Preserve required vendor resize/presentation sequencing.
+
+**Required regression:** exercise HDR -> SDR -> HDR with fixed R10G10B10A2 size/format and with resource-set reopen. Verify the requested color-space calls/state, then compare the FG window against the game's output in a separately authorized visual test.
+
+### F12 — P2: Preset-saving threads can persist an older selection last
+
+**Confidence:** high for the ordering defect; scheduling-dependent behavior was not reproduced.
+
+**Locations:** fg_d3d12.hpp:374-377 and 661-663; static result storage at 952.
+
+Each preset change starts a detached thread carrying that selection. SavePreset serializes driver-profile writes with a mutex, but mutex acquisition order does not preserve thread creation or user selection order. If the worker for selection A is delayed and the later worker for selection B acquires the mutex first, B is saved first and then overwritten by A. The UI's preset_ remains B, so subsequent frames do not enqueue a correction. The shared completion status is also not tied to a selection/generation.
+
+**Impact:** the persisted driver preset can disagree with the user's final choice, particularly after quick changes. This is not a demonstrated GPU crash or object-use-after-free: SavePreset and its result storage are static, and that part of the lifetime design was considered.
+
+**Proposed repair:** use an ordered/coalescing worker or a synchronized latest-request generation. A stale worker must not overwrite a newer selection; expose completion only for the current request. Keep the worker's shutdown ownership explicit.
+
+**Required regression:** gate the older worker before it acquires the save lock, let the newer selection complete, then release the older worker. Verify the persisted preset remains the latest user selection and its result is the one reported. Use a fake persistence layer, not the user's real NVIDIA profile.
+
+### Suggested next repair order and handoff
+
+1. F9 first: define a reliable completion/failure contract and update all helper callers. Do not merely lengthen the timeout.
+2. F10: checked FG recording/submission and a failure path consistent with F9 and the bridge watchdog.
+3. F11: color-space state transitions, as an independent patch.
+4. F12: ordered preset persistence, as an independent patch.
+
+Before implementing, recheck the current source against these locations and preserve concurrent work. Make each repair independently reviewable. A helper change requires a fresh numbered helper build and a matched addon/helper test pair; do not overwrite an installed helper. Run targeted backend regressions, then applicable shared-consumer builds if shared headers change. Vendor-specific FG and the original Attila battle still require separately authorized hardware/game testing.
+
+No fixes are authorized by this report. The user requested review and a report-file update only.
+
+
+## Additional non-shader C++ review (2026-11-09)
+
+### Scope, baseline and limitations
+
+Reviewed surrounding Total War C++ implementation paths, excluding Attila's shader source: frame generation, frame history, depth levels, AO filtering/pass setup, SSR setup, object-motion resource setup, RT capture/cluster-worker ownership, frame tracing, pass timing, Reflex, engine/graphics hooks and the Detours transaction wrapper. This is a focused source review of those paths, not a complete audit of the repository or every function in those files.
+
+Used the repaired c314b0a6 tree to avoid reporting the already-fixed F1-F8 defects from the older original checkout. The five files supporting the new findings below (frame_generation.hpp, depth_levels.hpp, graphics_hooks.hpp, twrome2/engine_tweaks.hpp and utils/detour.hpp) also match the original checkout's saved text after line-ending normalization. The report alone was updated. No code edits, test/build execution, games, installed binaries, commits or pushes were involved.
+
+### F13 — P1: Failed frame-generation setup is reused as if initialization succeeded
+
+**Confidence:** high; directly traced through two consecutive calls. No runtime fault injection performed.
+
+**Locations:** src/games/twattila/frame_generation.hpp:276-301 (DrawHudless initialization and failure cleanup), 377-380 (subsequent resource use).
+
+DrawHudless initializes its context state, shaders, sampler and injection buffer only when objects.device differs from the current device. If any creation fails, the error branch resets the objects but retains objects.device = device1, then returns false.
+
+On the next call on the same device, the device comparison passes and initialization is skipped. Once a readable source and matching bridge target are available, the code calls UpdateSubresource with objects.injection == nullptr, swaps using a missing context state and draws with missing shaders. No later readiness check protects these uses.
+
+**Trigger:** a one-off failure of any of the initial creation calls, followed by another eligible HUD-less capture on the same device. A transient allocation failure can therefore turn into persistent invalid API use instead of a clean fallback.
+
+**Impact:** invalid D3D11 calls and broken frame-generation capture; a crash is possible depending on runtime/driver handling. This is not a proven explanation of the original battle CTD.
+
+**Proposed repair:** publish the device/readiness state only after the entire object set succeeds, or maintain an explicit failed/not-ready state checked by every consumer. On failure, use a clean fallback; if retrying, retry the complete setup rather than using partial resources. Also protect the scRGB present path, which consumes the same context state and shaders.
+
+**Required regression:** inject failure independently into each initial creation API; call DrawHudless twice on the same device. Verify the second call either successfully reconstructs the whole set or returns without resource updates/draws using missing objects. Then validate successful HUD-less capture and scRGB presentation. Do not test by deliberately submitting null-resource calls to the user's game.
+
+### F14 — P1: Failed engine-hook removal is swallowed before live addon unload
+
+**Confidence:** high for the failure path and ownership loss; a live-unload crash was not reproduced.
+
+**Locations:** src/games/twattila/graphics_hooks.hpp:532-539; src/games/twrome2/engine_tweaks.hpp:646-654. Call chain: Attila addon.cpp DetachAddon at 1973-1974, then AddonUninit at 2012 onward. Transaction implementation: src/utils/detour.hpp, internal::Transaction and ApplyTransaction.
+
+Both Uninstall functions catch any detour-removal exception, ignore it on the assumption that the game is closing, and unconditionally clear their hook records. These functions are also called from AddonUninit during explicit addon unload while the game can remain alive.
+
+A failed removal transaction does not establish that the patches were removed. For example, a failure beginning the transaction leaves the existing hooks untouched; a failure queuing a detach invokes the wrapper's transaction rollback. Nevertheless, these callers discard the records and return normally. AddonUninit proceeds to unregister the addon and permits its module to unload. A later game call can then follow a surviving detour into unloaded addon code.
+
+This is separate from F2's ReShade/pipeline callback unregistration: native executable detours are a different ownership mechanism.
+
+Microsoft documents that detour operations take effect at transaction commit, and abort reverses pending detach operations: [DetourTransactionBegin](https://github.com/microsoft/Detours/wiki/DetourTransactionBegin), [DetourTransactionAbort](https://github.com/microsoft/Detours/wiki/DetourTransactionAbort).
+
+**Impact:** possible crash after explicit unload/reload if hook removal fails; hook tracking is also lost, preventing an ordinary retry. This finding is conditional on removal failure, not a claim that normal detachment always fails.
+
+**Proposed repair:** retain hook ownership until removal is confirmed and log/propagate the failure. Define a safe live-unload strategy that prevents unloading executable code still reachable through hooks (for example, explicit module retention when the host cannot cancel unload), together with a retry/quiescence policy. AddonUninit returns void, so merely returning early is not proof that the host will keep the DLL loaded. Distinguish live unload from process termination.
+
+**Required regression:** in a disposable hooked test process, inject transaction-begin, detach and commit failures. Verify hook records survive, the module remains loaded while any detour can target it, and the original function remains callable. Verify successful removal and repeated unload/reload separately.
+
+### F15 — P2: One failed depth-level allocation disables rebuilding at that resolution
+
+**Confidence:** high; directly visible cache-state transition.
+
+**Locations:** src/games/twattila/depth_levels.hpp:91-97 and 127-134 (Build).
+
+Build decides whether to allocate the depth-level texture and views solely from the cached width/height. It writes the new dimensions before allocation. On failure, it resets texture and the aggregate view but leaves those dimensions recorded. Every later call with the same device and dimensions skips allocation and returns nullptr, even after memory becomes available.
+
+If allocation fails after some per-level views were created, level_writes/level_views are also retained by the failure branch. Their COM references can keep the partially constructed texture alive despite objects.texture.Reset(), until a size/device change clears the arrays.
+
+**Trigger:** a transient failure creating the texture, aggregate SRV, or a per-level view during initial setup or a resolution change.
+
+**Impact:** the AO depth-level optimization remains unavailable for the current resolution, and partial allocations can remain retained. This review did not inspect shader fallback behavior, so it does not claim AO itself disappears or that this alone causes a crash.
+
+**Proposed repair:** stage the entire texture/view set and commit dimensions only on success, or explicitly invalidate dimensions/readiness on failure. Release all partial views. Retry in a bounded/backoff manner, or report a deliberate disabled state with an explicit recovery mechanism.
+
+**Required regression:** fail each allocation/view-creation step once, then allow a successful call at the exact same dimensions. Verify successful recovery, complete view ownership, and no retained partial texture after a failed construction.
+
+### Follow-up order and review boundaries
+
+For repairs, prioritize F13 and F14 alongside the helper's F9/F10 safety work. F15 is a separate recovery/ownership fix. Keep the existing F11/F12 frame-generation correctness findings in the same backlog.
+
+Potential issues involving cluster-worker teardown, frame-trace event cleanup, binding restoration and partial frame-history targets were examined but are not promoted to verified findings in this pass: some depend on host/runtime cleanup or are protected by caller-side reset logic. Do not treat their mention as confirmed additional defects.
+
+This appendix adds three source-level findings, bringing the new open review backlog to F9-F15. It does not reopen the completed F1-F8 repairs, prove the original freeze's cause, or authorize implementation.
+
+### F9 repair completed (2026-11-09, GPT-6 Astra)
+All five D3D12 helper backends now verify the exact fence target, registration, event handle, deadline and removal sentinel. Failure ends the helper process without unwinding GPU owners; the existing bridge watchdog can recover only after process exit. Queue Wait/Signal failures use the same terminal contract, preventing an unsignalled local fence from being mistaken for completion. Event creation is checked. This deliberately replaces in-process recovery on these fatal synchronization paths with helper exit; recovery is still best effort, not a guarantee against TDR.
+Validation: test/tw_gpu_completion/run.ps1 -Architecture amd64 passes real WARP delayed completion, timeout, an old registration waking a newer wait, plus controlled registration failure, removal sentinel, invalid/missing event and a disposable child proving no return after failure. Production helper built into build/tw_dlaa_helper90 with available vendor SDKs. No game or installed binary changed. Actual vendor evaluation and the original battle remain untested. User authorized implementation after the review; the earlier review-only restrictions describe that review phase.

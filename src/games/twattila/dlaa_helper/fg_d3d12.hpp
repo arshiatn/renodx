@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "gpu_completion.hpp"
+
 #include <windows.h>
 
 #include <d3d12.h>
@@ -260,6 +262,7 @@ class FrameGeneration12 {
       }
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (event_ == nullptr) StopGpuProcess("Total War helper: completion event creation failed\n");
     // The UI layer's pass (fg_ui.cs_6_0.hlsl): the frame and the HUD-less image in, the layer (and the debug view) out;
     // its size, threshold and whether the debug view is written. Without it the HUD is not recomposed.
     const std::array<D3D12_DESCRIPTOR_RANGE, 2> ranges = {{
@@ -492,13 +495,13 @@ class FrameGeneration12 {
       Report(set_tags_(*token, VIEWPORT, tags.data(), tag_count, slot.list.Get()), "its inputs");
     }
     slot.list->Close();
-    copy_queue_->Wait(fence_.Get(), value);
+    RequireGpuResult(copy_queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
     ID3D12CommandList* lists[] = {slot.list.Get()};
     copy_queue_->ExecuteCommandLists(1, lists);
-    copy_queue_->Signal(fence_.Get(), value + 1);
+    RequireGpuResult(copy_queue_->Signal(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
     slot.done = ++own_value_;
-    copy_queue_->Signal(own_fence_.Get(), slot.done);
-    present_queue_->Wait(fence_.Get(), value + 1);
+    RequireGpuResult(copy_queue_->Signal(own_fence_.Get(), slot.done), "Total War helper: queue synchronization failed\n");
+    RequireGpuResult(present_queue_->Wait(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
 
     UpdateStatus(inputs, shared->fg_hudless_valid != 0);
     // What to generate: off on frames without the inputs (menus, loading), keeping its memory meanwhile, and for the first
@@ -608,23 +611,21 @@ class FrameGeneration12 {
   // The copy queue's fence `value` signalled (the game never waits for nothing).
   void SignalOnly(uint64_t value) {
     if (!fence_ || !copy_queue_) return;
-    copy_queue_->Wait(fence_.Get(), value);
-    copy_queue_->Signal(fence_.Get(), value + 1);
+    RequireGpuResult(copy_queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
+    RequireGpuResult(copy_queue_->Signal(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
   }
 
   void WaitFor(uint64_t value) {
-    if (!own_fence_ || own_fence_->GetCompletedValue() >= value) return;
-    own_fence_->SetEventOnCompletion(value, event_);
-    WaitForSingleObject(event_, FENCE_TIMEOUT);
+    RequireGpuCompletion(own_fence_.Get(), event_, value, FENCE_TIMEOUT);
   }
 
   void WaitIdle() {
     if (!present_queue_ || !own_fence_) return;
     const uint64_t copied = ++own_value_;
-    copy_queue_->Signal(own_fence_.Get(), copied);
-    present_queue_->Wait(own_fence_.Get(), copied);
+    RequireGpuResult(copy_queue_->Signal(own_fence_.Get(), copied), "Total War helper: queue synchronization failed\n");
+    RequireGpuResult(present_queue_->Wait(own_fence_.Get(), copied), "Total War helper: queue synchronization failed\n");
     const uint64_t presented = ++own_value_;
-    present_queue_->Signal(own_fence_.Get(), presented);
+    RequireGpuResult(present_queue_->Signal(own_fence_.Get(), presented), "Total War helper: queue synchronization failed\n");
     WaitFor(presented);
   }
 

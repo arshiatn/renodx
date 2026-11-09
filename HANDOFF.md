@@ -4872,3 +4872,5 @@ D--Dev-renodx\memory\`, same Windows user), RE tools (`...\D--Dev-renodx\tools\{
   unique, hook starts verified; Arise-SDK's alternates dropped), own formulas (detail distance: all LOD distances
   multiplied; NPC distance: every NPC distance scaled by distance / 3100), keys Tales.*, no credit in code / README
   (ATN: Nexus only, his wording: idea from Arise-SDK's ini, AI found the patterns, no Arise-SDK code). Zip v36.
+
+- [x] 2026-11-09 F9 (GPT-6 Astra): checked helper GPU completion and queue synchronization; terminal failure without GPU-owner unwinding. WARP/child regression passed; helper90 built. F10-F15 pending; no game run.

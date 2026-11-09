@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "gpu_completion.hpp"
+
 #include <windows.h>
 
 #include <d3d12.h>
@@ -80,6 +82,7 @@ class ProxyFrameGeneration12 {
       }
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (event_ == nullptr) StopGpuProcess("Total War helper: completion event creation failed\n");
     if (backend == dlaa_bridge::FG_BACKEND_FSR) {
 #if defined(RENODX_FSR_FG)
       library_ = LoadLibraryExW((folder + L"\\amd_fidelityfx_loader_dx12.dll").c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
@@ -401,12 +404,12 @@ class ProxyFrameGeneration12 {
     for (UINT index = 0; index < barrier_count; ++index) std::swap(barriers[index].Transition.StateBefore, barriers[index].Transition.StateAfter);
     slot.list->ResourceBarrier(barrier_count, barriers.data());
     slot.list->Close();
-    queue_->Wait(fence_.Get(), value);
+    RequireGpuResult(queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
     ID3D12CommandList* lists[] = {slot.list.Get()};
     queue_->ExecuteCommandLists(1, lists);
-    queue_->Signal(fence_.Get(), value + 1);
+    RequireGpuResult(queue_->Signal(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
     slot.done = ++own_value_;
-    queue_->Signal(own_fence_.Get(), slot.done);
+    RequireGpuResult(queue_->Signal(own_fence_.Get(), slot.done), "Total War helper: queue synchronization failed\n");
 
     // The status line every 30 presents.
     if (presents_++ % 30 == 0) {
@@ -534,19 +537,17 @@ class ProxyFrameGeneration12 {
   // The copy queue's fence `value` signalled (the game never waits for nothing).
   void SignalOnly(uint64_t value) {
     if (!fence_ || !queue_) return;
-    queue_->Wait(fence_.Get(), value);
-    queue_->Signal(fence_.Get(), value + 1);
+    RequireGpuResult(queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
+    RequireGpuResult(queue_->Signal(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
   }
 
   void WaitFor(uint64_t value) {
-    if (!own_fence_ || own_fence_->GetCompletedValue() >= value) return;
-    own_fence_->SetEventOnCompletion(value, event_);
-    WaitForSingleObject(event_, FENCE_TIMEOUT);
+    RequireGpuCompletion(own_fence_.Get(), event_, value, FENCE_TIMEOUT);
   }
 
   void WaitIdle() {
     if (!queue_ || !own_fence_) return;
-    queue_->Signal(own_fence_.Get(), ++own_value_);
+    RequireGpuResult(queue_->Signal(own_fence_.Get(), ++own_value_), "Total War helper: queue synchronization failed\n");
     WaitFor(own_value_);
   }
 

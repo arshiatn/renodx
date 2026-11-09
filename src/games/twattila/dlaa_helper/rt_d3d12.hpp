@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "gpu_completion.hpp"
+
 #include <windows.h>
 
 #include <d3d12.h>
@@ -273,6 +275,7 @@ class RtScene12 {
       return Fail("Ray tracing: no D3D12 queue");
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (event_ == nullptr) StopGpuProcess("Total War helper: completion event creation failed\n");
     for (Slot& slot : slots_) {
       slot.instances = Buffer(uint64_t{MAX_INSTANCES} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), D3D12_HEAP_TYPE_UPLOAD,
                               D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -1126,13 +1129,13 @@ class RtScene12 {
     if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
     LARGE_INTEGER submit_start;
     QueryPerformanceCounter(&submit_start);
-    queue_->Wait(fence_.Get(), shared.value);
+    RequireGpuResult(queue_->Wait(fence_.Get(), shared.value), "Total War helper: queue synchronization failed\n");
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
-    queue_->Signal(fence_.Get(), shared.value + 1);
-    queue_->Signal(own_fence_.Get(), ++own_value_);
+    RequireGpuResult(queue_->Signal(fence_.Get(), shared.value + 1), "Total War helper: queue synchronization failed\n");
+    RequireGpuResult(queue_->Signal(own_fence_.Get(), ++own_value_), "Total War helper: queue synchronization failed\n");
     slot.value = own_value_;
     trace_value_ = own_value_;
     LARGE_INTEGER submit_end;
@@ -1591,13 +1594,13 @@ class RtScene12 {
     }
     LARGE_INTEGER submit_start;
     QueryPerformanceCounter(&submit_start);
-    queue_->Wait(fence_.Get(), shared.value);
+    RequireGpuResult(queue_->Wait(fence_.Get(), shared.value), "Total War helper: queue synchronization failed\n");
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
-    queue_->Signal(fence_.Get(), shared.value + 1);
-    queue_->Signal(own_fence_.Get(), ++own_value_);
+    RequireGpuResult(queue_->Signal(fence_.Get(), shared.value + 1), "Total War helper: queue synchronization failed\n");
+    RequireGpuResult(queue_->Signal(own_fence_.Get(), ++own_value_), "Total War helper: queue synchronization failed\n");
     slot.value = own_value_;
     LARGE_INTEGER submit_end;
     QueryPerformanceCounter(&submit_end);
@@ -2212,9 +2215,7 @@ class RtScene12 {
   }
 
   void WaitFor(uint64_t value) {
-    if (own_fence_->GetCompletedValue() >= value) return;
-    own_fence_->SetEventOnCompletion(value, event_);
-    WaitForSingleObject(event_, 5000);
+    RequireGpuCompletion(own_fence_.Get(), event_, value, 5000);
   }
 
   D3D12_CPU_DESCRIPTOR_HANDLE Descriptor(UINT index) const {

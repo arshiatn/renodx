@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "gpu_completion.hpp"
+
 #include <windows.h>
 
 #include <d3d12.h>
@@ -74,6 +76,7 @@ class Upscaler12 {
       }
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (event_ == nullptr) StopGpuProcess("Total War helper: completion event creation failed\n");
     if (backend == dlaa_bridge::UPSCALER_FSR) {
 #if defined(RENODX_FSR_SDK)
       library_ = LoadLibraryExW((folder + L"\\amd_fidelityfx_loader_dx12.dll").c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
@@ -322,13 +325,13 @@ class Upscaler12 {
       last_height_ = request.height;
       return true;
     }();
-    queue_->Wait(fence_.Get(), request.value);
+    RequireGpuResult(queue_->Wait(fence_.Get(), request.value), "Total War helper: queue synchronization failed\n");
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
-    queue_->Signal(fence_.Get(), request.value + 1);
-    queue_->Signal(own_fence_.Get(), ++own_value_);
+    RequireGpuResult(queue_->Signal(fence_.Get(), request.value + 1), "Total War helper: queue synchronization failed\n");
+    RequireGpuResult(queue_->Signal(own_fence_.Get(), ++own_value_), "Total War helper: queue synchronization failed\n");
     slot.value = own_value_;
     return evaluated;
   }
@@ -362,9 +365,7 @@ class Upscaler12 {
 
   // The CPU waits until this queue passed `value` (a slot's last use: SLOTS requests back, normally long done).
   void WaitFor(uint64_t value) {
-    if (own_fence_->GetCompletedValue() >= value) return;
-    own_fence_->SetEventOnCompletion(value, event_);
-    WaitForSingleObject(event_, 5000);
+    RequireGpuCompletion(own_fence_.Get(), event_, value, 5000);
   }
 
   void DestroyContext() {
