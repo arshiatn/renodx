@@ -1753,6 +1753,10 @@ void ConfigureAddon() {
 bool AttachAddon() {
   if (attached) return true;
 
+  // Failed native-hook removal can retain this DLL across host unload/reload.
+  graphics_found = false;
+  graphics_hooks_installed = false;
+
   ConfigureAddon();
 
   reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);

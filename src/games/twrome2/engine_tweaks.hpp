@@ -30,6 +30,7 @@
 #include "../../utils/detour.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/settings.hpp"
+#include "native_hook_lifetime.hpp"
 
 // Graphics (Experimental) for the Warscape games (Rome II, Attila, Pharaoh, Warhammer II): engine values scaled by sliders.
 // - Engine tweaks: named values the game keeps in static objects, found by their names. Each object is built by a
@@ -343,20 +344,27 @@ using PickLod = void*(__fastcall*)(void* model, void* unused_edx, float distance
 
 static PickLod original_pick_lod = nullptr;
 static std::vector<renodx::utils::detour::Function> hooks;
+static tw::native_hooks::Lifetime hook_lifetime;
+static std::atomic<bool> hooks_active = false;
 static std::atomic<float> distance_squared_scale = 1.f;
 
 static void* __fastcall OnPickLod(void* model, void* unused_edx, float distance_squared, void** next) {
+  if (!hooks_active.load(std::memory_order_relaxed)) return original_pick_lod(model, unused_edx, distance_squared, next);
   return original_pick_lod(model, unused_edx, distance_squared * distance_squared_scale.load(std::memory_order_relaxed), next);
 }
 
 inline std::string Install(const tw::engine_tweaks::Sections& sections) {
-  if (!hooks.empty()) return "object detail hooked";
+  if (!hooks.empty()) {
+    hooks_active.store(true, std::memory_order_relaxed);
+    return "object detail hooked";
+  }
   uint8_t* pick_lod = tw::engine_tweaks::FindPattern(sections.code, PATTERN);
   if (pick_lod == nullptr) return "object detail: the game's LOD code was not found";
   original_pick_lod = reinterpret_cast<PickLod>(pick_lod);
   hooks = {renodx::utils::detour::Function(&original_pick_lod, &OnPickLod)};
   try {
-    renodx::utils::detour::Install(hooks);
+    hook_lifetime.Install(hooks);
+    hooks_active.store(true, std::memory_order_relaxed);
   } catch (const std::exception& error) {
     hooks.clear();
     return std::format("object detail hook failed: {}", error.what());
@@ -645,13 +653,13 @@ inline void StartIfRequested(std::span<Option*> options, std::span<const std::st
 // Addon detach: the LOD pick hook removed (the scaled values stay until the game sets them again).
 inline void Uninstall() {
 #if !defined(_WIN64)
+  lod_pick::internal::hooks_active.store(false, std::memory_order_relaxed);
   if (lod_pick::internal::hooks.empty()) return;
   try {
-    renodx::utils::detour::Uninstall(lod_pick::internal::hooks);
-  } catch (const std::exception&) {
-    // No-op: the game is closing; Detours left its code as it was.
+    lod_pick::internal::hook_lifetime.Uninstall(&lod_pick::internal::hooks);
+  } catch (const std::exception& error) {
+    renodx::utils::log::e("[Total War] LOD hook could not be removed; addon retained until process exit: ", error.what());
   }
-  lod_pick::internal::hooks.clear();
 #endif
 }
 

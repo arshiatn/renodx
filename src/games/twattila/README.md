@@ -1,5 +1,9 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### Native hook removal (F14, 2026-11-09, GPT-6 Astra; not run in game)
+
+Failed native hook removal now keeps the addon loaded until process exit, retains its hook records for retry, and makes surviving callbacks pass through. Normal successful removal releases its extra module reference. Test build: the existing 32-bit target below. Manual check: unload/reload after Graphics hooks activate; normal removal should unload, while a logged removal failure deliberately keeps the DLL resident until restarting the game. Offline failure/retry tests and shared builds are recorded in `docs/Attila-crash-audit-2026-11-08.md` at the repository root.
+
 ### Startup worker lifetime (2026-11-08, GPT-6 Astra; not run in game)
 
 The startup audio-setting worker is now cancelled and waited for through its actual thread exit before unloading the add-on. Its progress flag alone did not cover capture and CRT cleanup. Manual check: unload/reload during the first minute with an audio-memory test enabled, then after it completes; no worker may execute unloaded code. Shared build and offline checks are recorded in HANDOFF.md.

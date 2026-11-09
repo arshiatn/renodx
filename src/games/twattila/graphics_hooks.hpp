@@ -28,6 +28,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/settings.hpp"
 #include "../twrome2/engine_tweaks.hpp"
+#include "../twrome2/native_hook_lifetime.hpp"
 
 // Attila's Graphics (Experimental) in empire.retail.dll, found by byte patterns: the unit, tree, grass and animation
 // packing hooks, each scaled live by its slider. Rome II: the unit and dead unit hooks (its own patterns and offsets; trees and
@@ -181,6 +182,8 @@ static size_t caller_soldier = CALLER_SOLDIER;  // the game's (set at install)
 static size_t soldier_flags = SOLDIER_FLAGS;
 static std::atomic<float> dead_scale = 1.f;
 static std::vector<renodx::utils::detour::Function> hooks;
+static tw::native_hooks::Lifetime hook_lifetime;
+static std::atomic<bool> hooks_active = false;
 static std::array<std::atomic<float>, 4> imposter_scales;
 static std::atomic<float> animation_scale = 1.f;
 static std::atomic<float> facial_scale = 1.f;
@@ -220,6 +223,7 @@ static uint32_t frames_without_overflow = 0;  // the shadow pass's thread
 
 static bool __fastcall OnPackAnimations(void* pages, void* unused_edx, uint32_t first, uint32_t second, void* soldiers,
                                         uint32_t* next, uint32_t end) {
+  if (!hooks_active.load(std::memory_order_relaxed)) return original_pack_animations(pages, unused_edx, first, second, soldiers, next, end);
   const uint32_t start = (next != nullptr ? *next : end);
   const bool packed = original_pack_animations(pages, unused_edx, first, second, soldiers, next, end);
   const auto* return_slot = static_cast<const uint8_t*>(_AddressOfReturnAddress());
@@ -244,6 +248,7 @@ static bool __fastcall OnPackAnimations(void* pages, void* unused_edx, uint32_t 
 
 static float* __fastcall OnUnitDistances(void* display, void* unused_edx, float* out, uint32_t quality, uint32_t second,
                                          uint32_t third, uint32_t fourth) {
+  if (!hooks_active.load(std::memory_order_relaxed)) return original_unit_distances(display, unused_edx, out, quality, second, third, fourth);
   float* distances = original_unit_distances(display, unused_edx, out, quality, second, third, fourth);
   const auto scale = [&](size_t first, size_t last, const std::atomic<float>& factor) {
     for (size_t index = first; index <= last; ++index) {
@@ -268,6 +273,7 @@ static float* __fastcall OnUnitDistances(void* display, void* unused_edx, float*
 }
 
 static float __fastcall OnImposterDistance(void* display, void* unused_edx, uint32_t size, float random) {
+  if (!hooks_active.load(std::memory_order_relaxed)) return original_imposter_distance(display, unused_edx, size, random);
   const float distance = original_imposter_distance(display, unused_edx, size, random);
   const float dead = dead_scale.load(std::memory_order_relaxed);
   if (dead == 1.f) return distance;
@@ -334,6 +340,7 @@ static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
 
 static void* __fastcall OnDrawTree(uint8_t* manager, void* unused_edx, uint32_t model, const float* position,
                                    uint32_t third, uint32_t fourth, uint32_t fifth, uint32_t sixth, uint32_t seventh) {
+  if (!hooks_active.load(std::memory_order_relaxed)) return original_draw_tree(manager, unused_edx, model, position, third, fourth, fifth, sixth, seventh);
   ScaleModelLods(manager, model, tree_distance_squared_scale.load(std::memory_order_relaxed));
   return original_draw_tree(manager, unused_edx, model, position, third, fourth, fifth, sixth, seventh);
 }
@@ -399,6 +406,7 @@ static void TraceScrub(uint8_t* manager, uint32_t index, const float* transform,
 
 static void __fastcall OnDrawScrub(uint8_t* manager, void* unused_edx, uint32_t model, const float* transform,
                                    uint32_t third, uint32_t fourth, uint32_t fifth) {
+  if (!hooks_active.load(std::memory_order_relaxed)) return original_draw_scrub(manager, unused_edx, model, transform, third, fourth, fifth);
   const float scale = grass_scale.load(std::memory_order_relaxed);
   ScaleModelLods(manager, model, scale * scale);
   if (grass_trace.state.load(std::memory_order_relaxed) == 2) TraceScrub(manager, model, transform, fourth);
@@ -407,6 +415,7 @@ static void __fastcall OnDrawScrub(uint8_t* manager, void* unused_edx, uint32_t 
 
 // The bias x the scale (squared by the game, as the LOD distances), so the grass thins out as the game's, farther away.
 static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
+  if (!hooks_active.load(std::memory_order_relaxed)) return original_scrub_update(scrub, unused_edx);
   const float scale = grass_scale.load(std::memory_order_relaxed);
   int32_t cells;
   float bias;
@@ -466,6 +475,11 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
   internal::tree_distance_squared_scale.store(scales.campaign_trees * scales.campaign_trees, std::memory_order_relaxed);
   internal::grass_scale.store(scales.grass_distance, std::memory_order_relaxed);
   internal::grass_density.store(std::max(scales.grass_density, 0.010001118f), std::memory_order_relaxed);
+  if (!*installed && !internal::hooks.empty()) {
+    *installed = true;
+    internal::hooks_active.store(true, std::memory_order_relaxed);
+    return;
+  }
   if (!*installed) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
@@ -517,7 +531,8 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
                                            : std::format("not found: {}", missing));
     if (!internal::hooks.empty()) {
       try {
-        renodx::utils::detour::Install(internal::hooks);
+        internal::hook_lifetime.Install(internal::hooks);
+        internal::hooks_active.store(true, std::memory_order_relaxed);
       } catch (const std::exception& error) {
         internal::hooks.clear();
         result = std::format("hooks failed: {}", error.what());
@@ -530,13 +545,13 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
 
 // Addon detach: the hooks removed.
 inline void Uninstall() {
+  internal::hooks_active.store(false, std::memory_order_relaxed);
   if (internal::hooks.empty()) return;
   try {
-    renodx::utils::detour::Uninstall(internal::hooks);
-  } catch (const std::exception&) {
-    // No-op: the game is closing; Detours left its code as it was.
+    internal::hook_lifetime.Uninstall(&internal::hooks);
+  } catch (const std::exception& error) {
+    renodx::utils::log::e("[Total War] Graphics hooks could not be removed; addon retained until process exit: ", error.what());
   }
-  internal::hooks.clear();
 }
 
 // Shadow Map Size: the shadow setup (+0x17665e0; Thrones of Britannia has the same code) picks the sun's shadow map
