@@ -1555,6 +1555,7 @@ inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMo
   texture_lod_bias::SetMainView([] { return internal::main_view.load(std::memory_order_relaxed); });
   reshade::register_event<reshade::addon_event::bind_viewports>(texture_lod_bias::OnBindViewports);
   reshade::register_event<reshade::addon_event::init_sampler>(texture_lod_bias::OnInitSampler);
+  reshade::register_event<reshade::addon_event::destroy_device>(texture_lod_bias::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_sampler>(texture_lod_bias::OnDestroySampler);
   reshade::register_event<reshade::addon_event::push_descriptors>(texture_lod_bias::OnPushDescriptors);
   reshade::register_event<reshade::addon_event::present>(internal::OnPresent);
@@ -1577,8 +1578,10 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::bind_scissor_rects>(internal::OnBindScissorRects);
   reshade::unregister_event<reshade::addon_event::bind_viewports>(texture_lod_bias::OnBindViewports);
   reshade::unregister_event<reshade::addon_event::init_sampler>(texture_lod_bias::OnInitSampler);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(texture_lod_bias::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_sampler>(texture_lod_bias::OnDestroySampler);
   reshade::unregister_event<reshade::addon_event::push_descriptors>(texture_lod_bias::OnPushDescriptors);
+  texture_lod_bias::Shutdown();
   reshade::unregister_event<reshade::addon_event::present>(internal::OnPresent);
   reflex::Uninstall();
   renodx::utils::command_action::Unregister(internal::OnSunDraw);

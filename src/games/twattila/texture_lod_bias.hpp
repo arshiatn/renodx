@@ -6,11 +6,15 @@
 #pragma once
 
 #include <d3d11.h>
+#include <wrl/client.h>
 
 #include <array>
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <memory>
+#include <vector>
+#include <utility>
 #include <shared_mutex>
 
 #include <include/reshade.hpp>
@@ -38,13 +42,13 @@ namespace internal {
 constexpr uint32_t SLOTS = D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT;
 
 struct BiasedSampler {
+  reshade::api::device* owner = nullptr;
   reshade::api::sampler_desc desc;  // the game's
   reshade::api::sampler clone = {0};
   float clone_bias = 0.f;
 };
 static renodx::utils::data::ParallelFlatHashMap<uint64_t, BiasedSampler, std::shared_mutex> samplers;
 static std::atomic<float> bias = 0.f;  // 0: none
-static std::atomic<bool> tracking = false;  // the game's samplers recorded per slot
 // Whether the main view is bound now (SetMainView; none: never).
 static std::atomic<bool (*)()> main_view = nullptr;
 // The addon creating or destroying a clone, or binding samplers (its own events skipped; BindSlots holds
@@ -54,11 +58,25 @@ static thread_local bool addon_sampler = false;
 // The immediate context's pixel shader sampler slots: what the game bound, what is bound now (its or a clone).
 struct Slots {
   std::shared_mutex mutex;
-  std::array<uint64_t, SLOTS> game = {};
+  std::array<Microsoft::WRL::ComPtr<ID3D11SamplerState>, SLOTS> game = {};
+  bool tracking = false;
   std::array<uint64_t, SLOTS> bound = {};
   std::atomic<bool> biased = false;  // the last binding's state: bias and main view (read without the lock first)
 };
-static Slots slots;
+static renodx::utils::data::ParallelFlatHashMap<reshade::api::device*, std::shared_ptr<Slots>, std::shared_mutex> device_slots;
+
+inline std::shared_ptr<Slots> SlotsFor(reshade::api::device* device, bool create = true) {
+  std::shared_ptr<Slots> result;
+  if (!create) {
+    device_slots.if_contains(device, [&](const auto& entry) { result = entry.second; });
+    return result;
+  }
+  device_slots.lazy_emplace_l(device, [&](auto& entry) { result = entry.second; }, [&](const auto& construct) {
+    result = std::make_shared<Slots>();
+    construct(device, result);
+  });
+  return result;
+}
 
 inline bool Immediate(reshade::api::command_list* cmd_list) {
   return cmd_list->get_device()->get_api() == reshade::api::device_api::d3d11
@@ -78,7 +96,7 @@ inline uint64_t BiasedClone(reshade::api::device* device, uint64_t game_sampler,
   if (!anisotropic) return 0;
   if (clone.handle != 0u) return clone.handle;
   desc.mip_lod_bias += bias;
-  addon_sampler = true;
+  const bool was_addon_sampler = std::exchange(addon_sampler, true);
   bool created = device->create_sampler(desc, &clone);
   if (created) {
     reshade::api::sampler previous = {0};
@@ -94,18 +112,19 @@ inline uint64_t BiasedClone(reshade::api::device* device, uint64_t game_sampler,
       device->destroy_sampler(clone);
     }
   }
-  addon_sampler = false;
+  addon_sampler = was_addon_sampler;
   return (created ? clone.handle : 0u);
 }
 
 // Binds slots [first, first + count) as the game's samplers or, biased, their clones (only those that changed).
 // slots.mutex held.
-inline void BindSlots(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, bool biased) {
+inline void BindSlots(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, bool biased, Slots* state) {
+  auto& slots = *state;
   const float current_bias = bias.load(std::memory_order_relaxed);
   std::array<ID3D11SamplerState*, SLOTS> binding = {};
   bool changed = false;
   for (uint32_t slot = first; slot < first + count; ++slot) {
-    uint64_t sampler = slots.game[slot];
+    uint64_t sampler = reinterpret_cast<uint64_t>(slots.game[slot].Get());
     if (biased && sampler != 0u) {
       if (const uint64_t clone = BiasedClone(cmd_list->get_device(), sampler, current_bias); clone != 0u) {
         sampler = clone;
@@ -117,9 +136,9 @@ inline void BindSlots(reshade::api::command_list* cmd_list, uint32_t first, uint
   }
   slots.biased.store(biased, std::memory_order_relaxed);
   if (changed) {
-    addon_sampler = true;
+    const bool was_addon_sampler = std::exchange(addon_sampler, true);
     reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->PSSetSamplers(first, count, binding.data());
-    addon_sampler = false;
+    addon_sampler = was_addon_sampler;
   }
 }
 
@@ -150,24 +169,28 @@ inline size_t SamplerCount() {
 // Present: whether the next frames can be biased. Starting, the game's samplers are the immediate context's current
 // ones (it skips binding what a slot already holds); stopping, the game's are bound again if clones are.
 inline void SetTracking(reshade::api::command_queue* queue, bool tracking) {
-  if (tracking == internal::tracking.load(std::memory_order_relaxed)) return;
   if (queue->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   reshade::api::command_list* cmd_list = queue->get_immediate_command_list();
-  const std::unique_lock lock(internal::slots.mutex);
+  auto state = internal::SlotsFor(queue->get_device());
+  std::array<Microsoft::WRL::ComPtr<ID3D11SamplerState>, internal::SLOTS> retired;
+  const std::unique_lock lock(state->mutex);
+  if (tracking == state->tracking) return;
   if (tracking) {
     std::array<ID3D11SamplerState*, internal::SLOTS> current = {};
     reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->PSGetSamplers(0, internal::SLOTS, current.data());
     for (uint32_t slot = 0; slot < internal::SLOTS; ++slot) {
-      internal::slots.game[slot] = reinterpret_cast<uint64_t>(current[slot]);
-      internal::slots.bound[slot] = internal::slots.game[slot];
-      if (current[slot] != nullptr) {
-        current[slot]->Release();
-      }
+      retired[slot] = std::move(state->game[slot]);
+      state->game[slot].Attach(current[slot]);
+      state->bound[slot] = reinterpret_cast<uint64_t>(current[slot]);
     }
-  } else if (internal::slots.biased.load(std::memory_order_relaxed)) {
-    internal::BindSlots(cmd_list, 0, internal::SLOTS, false);
+  } else {
+    if (state->biased.load(std::memory_order_relaxed)) {
+      internal::BindSlots(cmd_list, 0, internal::SLOTS, false, state.get());
+    }
+    retired = std::move(state->game);
+    state->bound = {};
   }
-  internal::tracking.store(tracking, std::memory_order_relaxed);
+  state->tracking = tracking;
 }
 
 inline void OnInitSampler(reshade::api::device* device, const reshade::api::sampler_desc& desc, reshade::api::sampler sampler) {
@@ -176,56 +199,112 @@ inline void OnInitSampler(reshade::api::device* device, const reshade::api::samp
       && desc.filter != reshade::api::filter_mode::min_mag_anisotropic_mip_point) {
     return;
   }
-  internal::samplers.insert_or_assign(sampler.handle, internal::BiasedSampler{.desc = desc});
+  // D3D11 can return an existing identity for an identical descriptor. Keep its owned clone.
+  internal::samplers.lazy_emplace_l(sampler.handle, [](auto&) {}, [&](const auto& construct) {
+    construct(sampler.handle, internal::BiasedSampler{.owner = device, .desc = desc});
+  });
 }
 
 inline void OnDestroySampler(reshade::api::device* device, reshade::api::sampler sampler) {
-  if (internal::addon_sampler) return;
   reshade::api::sampler clone = {0};
   internal::samplers.erase_if(sampler.handle, [&](const auto& entry) {
+    if (entry.second.owner != device) return false;
     clone = entry.second.clone;
     return true;
   });
   if (clone.handle != 0u) {
-    internal::addon_sampler = true;
+    const bool was_addon_sampler = std::exchange(internal::addon_sampler, true);
     device->destroy_sampler(clone);
-    internal::addon_sampler = false;
+    internal::addon_sampler = was_addon_sampler;
   }
-  // Never bound again from the slots (a slot the game left on it holds a clone instead).
-  const std::unique_lock lock(internal::slots.mutex);
-  for (auto& game_sampler : internal::slots.game) {
-    if (game_sampler == sampler.handle) {
-      game_sampler = 0u;
-    }
-  }
+  // Slot originals own references, so a final release cannot leave a live slot pointing here.
+  // Do not acquire a slot lock: clone release can reenter this callback while binding slots.
 }
 
 // After the game's PSSetSamplers: its samplers recorded, and bound again as clones in the main view.
 inline void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api::shader_stage stages,
                               reshade::api::pipeline_layout, uint32_t, const reshade::api::descriptor_table_update& update) {
-  if (!internal::tracking.load(std::memory_order_relaxed) || internal::addon_sampler
+  if (internal::addon_sampler
       || stages != reshade::api::shader_stage::pixel
       || update.type != reshade::api::descriptor_type::sampler || update.count == 0
-      || update.binding + update.count > internal::SLOTS || !internal::Immediate(cmd_list)) {
+      || update.binding >= internal::SLOTS || update.count > internal::SLOTS - update.binding || !internal::Immediate(cmd_list)) {
     return;
   }
   const auto* game_samplers = static_cast<const reshade::api::sampler*>(update.descriptors);
-  const std::unique_lock lock(internal::slots.mutex);
+  auto state = internal::SlotsFor(cmd_list->get_device(), false);
+  if (!state) return;
+  std::array<Microsoft::WRL::ComPtr<ID3D11SamplerState>, internal::SLOTS> retired;
+  const std::unique_lock lock(state->mutex);
+  if (!state->tracking) return;
   for (uint32_t index = 0; index < update.count; ++index) {
-    internal::slots.game[update.binding + index] = game_samplers[index].handle;
-    internal::slots.bound[update.binding + index] = game_samplers[index].handle;
+    retired[index] = std::move(state->game[update.binding + index]);
+    state->game[update.binding + index] = reinterpret_cast<ID3D11SamplerState*>(game_samplers[index].handle);
+    state->bound[update.binding + index] = game_samplers[index].handle;
   }
   if (const bool biased = internal::Biased(); biased) {
-    internal::BindSlots(cmd_list, update.binding, update.count, biased);
+    internal::BindSlots(cmd_list, update.binding, update.count, biased, state.get());
   }
 }
 
 // After the viewport scaling's: the main view started or ended, every slot bound again (clones or the game's).
 inline void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t, uint32_t, const reshade::api::viewport*) {
+  if (!internal::Immediate(cmd_list)) return;
+  auto state = internal::SlotsFor(cmd_list->get_device(), false);
+  if (!state) return;
   const bool biased = internal::Biased();
-  if (biased == internal::slots.biased.load(std::memory_order_relaxed) || !internal::Immediate(cmd_list)) return;
-  const std::unique_lock lock(internal::slots.mutex);
-  internal::BindSlots(cmd_list, 0, internal::SLOTS, biased);
+  const std::unique_lock lock(state->mutex);
+  if (!state->tracking || biased == state->biased.load(std::memory_order_relaxed)) return;
+  internal::BindSlots(cmd_list, 0, internal::SLOTS, biased, state.get());
+}
+
+
+// Called with render callbacks quiescent. Release owned COM references outside map/slot locks.
+inline void CleanupDevice(reshade::api::device* device, bool restore) {
+  std::shared_ptr<internal::Slots> state;
+  internal::device_slots.erase_if(device, [&](const auto& entry) {
+    state = entry.second;
+    return true;
+  });
+  if (restore && state && state->tracking) {
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+    reinterpret_cast<ID3D11Device*>(device->get_native())->GetImmediateContext(context.GetAddressOf());
+    std::array<ID3D11SamplerState*, internal::SLOTS> original = {};
+    for (size_t index = 0; index < original.size(); ++index) {
+      original[index] = state->game[index].Get();
+    }
+    context->PSSetSamplers(0, internal::SLOTS, original.data());
+  }
+  std::vector<uint64_t> keys;
+  internal::samplers.for_each([&](const auto& entry) {
+    if (entry.second.owner == device) {
+      keys.push_back(entry.first);
+    }
+  });
+  std::vector<Microsoft::WRL::ComPtr<ID3D11SamplerState>> clones;
+  for (uint64_t key : keys) {
+    internal::samplers.erase_if(key, [&](const auto& entry) {
+      if (entry.second.owner != device) return false;
+      Microsoft::WRL::ComPtr<ID3D11SamplerState> clone;
+      clone.Attach(reinterpret_cast<ID3D11SamplerState*>(entry.second.clone.handle));
+      clones.push_back(std::move(clone));
+      return true;
+    });
+  }
+}
+
+inline void OnDestroyDevice(reshade::api::device* device) {
+  CleanupDevice(device, false);
+}
+
+inline void Shutdown() {
+  std::vector<reshade::api::device*> devices;
+  internal::device_slots.for_each([&](const auto& entry) { devices.push_back(entry.first); });
+  internal::samplers.for_each([&](const auto& entry) { devices.push_back(entry.second.owner); });
+  for (auto* device : devices) {
+    CleanupDevice(device, true);
+  }
+  internal::bias.store(0.f);
+  internal::main_view.store(nullptr);
 }
 
 }  // namespace twattila::texture_lod_bias

@@ -1,0 +1,5 @@
+# Sampler lifetime regression
+
+Run `./test/tw_sampler_lifetime/run.ps1 -Architecture x86` or `amd64` from PowerShell with Visual Studio Build Tools and Clang installed.
+
+The actual production header runs against typed ReShade API mocks and real D3D11 WARP samplers on two devices. Checks original ownership after the game releases its reference while a clone is bound, repeated initialization preserving the clone, device isolation, tracking restoration, device cleanup, and shutdown cleanup. Native sampler creation/destruction in the mock forwards corresponding addon callbacks. This does not emulate every ReShade hook or run a game.

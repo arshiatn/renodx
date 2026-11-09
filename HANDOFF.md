@@ -12,7 +12,7 @@
 - [x] F5: failed acknowledgement stops Prepare before resource mutation; x86/x64 regression and all 14 builds pass.
 - [x] F6: checked remote transfers, rollback and staged publication; x86/x64 failure tests, x86 success test and 14 builds passed.
 - [x] F3: bounded motion placement; 52 actual-shader WARP cases and all 14 consumer builds pass.
-- [ ] F4/F8: sampler clone and original ownership, deduplication and per-device teardown.
+- [x] F4/F8: sampler clone/original ownership, duplicate identity preservation and per-device teardown; x86/x64 WARP tests and all 14 builds pass.
 - [x] F1 final validation: all 14 Release consumers built successfully; x86/x64 helper tests passed. Manual game validation remains pending. User subsequently authorized continuing F3-F8 without usage-based pauses.
 
 ## WH3 v37 (2026-11-06): ATN: only our AO and GI. Report tools/tw/wh3_batch5/reports/v37.md. Not run in game.

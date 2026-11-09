@@ -1032,6 +1032,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   reshade::register_event<reshade::addon_event::map_buffer_region>(twshogun2::render_scale::OnMapBufferRegion);
   reshade::register_event<reshade::addon_event::unmap_buffer_region>(twshogun2::render_scale::OnUnmapBufferRegion);
   reshade::register_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
   reshade::register_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
   reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::object_velocity::OnDestroyDevice);
@@ -1058,8 +1059,10 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     reshade::unregister_event<reshade::addon_event::map_buffer_region>(twshogun2::render_scale::OnMapBufferRegion);
     reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(twshogun2::render_scale::OnUnmapBufferRegion);
     reshade::unregister_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+    reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
     reshade::unregister_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
     reshade::unregister_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
+  twattila::texture_lod_bias::Shutdown();
     twshogun2::game_dlss::SetEvaluateCallback(nullptr);
     twshogun2::object_velocity::Uninstall();
     reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::object_velocity::OnDestroyDevice);

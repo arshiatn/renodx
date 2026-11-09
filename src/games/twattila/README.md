@@ -1741,3 +1741,7 @@ Prepare now returns immediately when the preceding helper acknowledgement fails,
 
 ### F6 staged shared-resource publication (2026-11-09, GPT-6 Astra)
 Prepare checks every remote-handle transfer, stages shared fields locally, and publishes only after textures and both fence handles exist. Failure rolls back transferred handles in the helper process and releases partial local resources. Tests inject first/second/fence transfer failures, check unchanged published fields and stable helper handle counts, and exercise successful publication. x86/x64 failure regressions and all 14 consumer builds pass; the success case also passes x86. No game run.
+
+
+### F4/F8 sampler ownership (2026-11-09, GPT-6 Astra)
+Sampler slots now own original COM references and are scoped to each device. References replaced in slot callbacks are released after unlocking. Duplicate sampler-init notifications preserve existing owned clones; teardown restores originals and clears each device cache. Final-release callbacks no longer acquire slot locks, and nested addon-callback suppression is preserved. WARP tests pass x86/x64 for originals surviving game release, clone identity preservation, two-device isolation, tracking restoration, per-device cleanup and shutdown. All 14 shared consumers built. No game run.
