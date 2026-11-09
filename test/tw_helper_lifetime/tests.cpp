@@ -100,7 +100,15 @@ int main(int argc, char** argv) {
     shared->ready = 1;
     SetEvent(done);
     Check(WaitForSingleObject(request, 15000) == WAIT_OBJECT_0, "natural-exit request before timeout");
-    if (shared->rt_request == 999) {
+    if (shared->rt_request == 997 || shared->rt_request == 998) {
+      const bool stalled = shared->rt_request == 998;
+      shared->done_value = shared->value + 1;
+      shared->evaluated = 1;
+      SetEvent(done); // Deliberately acknowledge without any GPU submission.
+      Sleep(stalled ? 15000 : 100);
+      return 0;
+    }
+    if (shared->rt_request == 999 || shared->rt_request == 996) {
       Microsoft::WRL::ComPtr<IDXGIFactory4> factory;
       Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
       Microsoft::WRL::ComPtr<ID3D12Device> device;
@@ -111,12 +119,23 @@ int main(int argc, char** argv) {
       D3D12_COMMAND_QUEUE_DESC desc = {};
       desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
       Check(SUCCEEDED(device->CreateCommandQueue(&desc, IID_PPV_ARGS(&queue))), "helper independent queue");
+      const bool single_request = shared->rt_request == 996;
+      if (single_request) {
+        shared->done_value = shared->value + 1;
+        shared->evaluated = 1;
+        SetEvent(done);
+      }
       Sleep(100);  // CPU acknowledgement can precede worker GPU submission.
-      for (uint64_t handle : {shared->color, shared->depth, shared->motion}) {
+      const std::array<uint64_t, 3> inputs = single_request
+          ? std::array<uint64_t, 3>{shared->fence, 0, 0}
+          : std::array<uint64_t, 3>{shared->color, shared->depth, shared->motion};
+      for (uint64_t handle : inputs) {
+        if (handle == 0) continue;
         Microsoft::WRL::ComPtr<ID3D12Fence> fence;
         Check(SUCCEEDED(device->OpenSharedHandle(reinterpret_cast<HANDLE>(static_cast<uintptr_t>(handle)),
                                                IID_PPV_ARGS(fence.GetAddressOf()))), "helper opens retired generation");
         for (uint64_t value : {2u, 4u}) {
+          if (single_request && value == 4) break;
           Check(SUCCEEDED(queue->Wait(fence.Get(), value - 1)), "helper waits for game input");
           Check(SUCCEEDED(queue->Signal(fence.Get(), value)), "helper signals completion");
         }
@@ -227,7 +246,7 @@ int main(int argc, char** argv) {
     if (iteration % 2 == 0) {
       SetEvent(bridge.request);
       Check(WaitForSingleObject(child_witness, 5000) == WAIT_OBJECT_0, "natural helper exit");
-      Check(WaitForSingleObject(watcher_witness, 5000) == WAIT_OBJECT_0, "watcher notices helper exit");
+      // Watcher remains alive until shutdown to cover late in-flight fence publication.
     }
     bridge_api::Shutdown();
     Check(WaitForSingleObject(watcher_witness, 0) == WAIT_OBJECT_0, "shutdown joined actual watcher exit");
@@ -244,6 +263,70 @@ int main(int argc, char** argv) {
   Microsoft::WRL::ComPtr<ID3D11DeviceContext4> context4;
   device->GetImmediateContext(context.GetAddressOf());
   Check(SUCCEEDED(device.As(&device5)) && SUCCEEDED(context.As(&context4)), "game shared fence support");
+  Check(bridge_api::internal::Start(device.Get()), "start healthy watchdog control");
+  Check(WaitForSingleObject(bridge_api::bridge.done, 5000) == WAIT_OBJECT_0, "healthy helper ready");
+  Check(bridge_api::Prepare(device.Get(), 16, 16), "healthy resources");
+  Check(bridge_api::internal::Request(context.Get(), bridge_api::EVALUATE, [](bridge_api::Shared* shared) {
+    shared->rt_request = 996;
+  }), "healthy acknowledged request");
+  context->Flush();
+  const ULONGLONG healthy_until = GetTickCount64() + 3000;
+  bool retired = false;
+  while (GetTickCount64() < healthy_until) {
+    {
+      const std::shared_lock lock(bridge_api::bridge.watchdog.mutex);
+      retired = bridge_api::bridge.watchdog.fences.empty();
+    }
+    if (retired) break;
+    Sleep(1);
+  }
+  Check(retired && bridge_api::bridge.fence->GetCompletedValue() == 2
+        && !bridge_api::bridge.watchdog.failed.load()
+        && WaitForSingleObject(bridge_api::bridge.process, 0) == WAIT_TIMEOUT,
+        "healthy GPU completion retires ownership without killing helper");
+  bridge_api::Shutdown(); CheckClosed();
+  std::puts("PASS: healthy acknowledged work completes and retires without false watchdog failure");
+  for (bool stall : {false, true}) {
+    for (unsigned mode : {0u, 1u, 2u}) {
+      Check(bridge_api::internal::Start(device.Get()), "start watchdog test");
+      Check(WaitForSingleObject(bridge_api::bridge.done, 5000) == WAIT_OBJECT_0, "watchdog helper ready");
+      Check(bridge_api::Prepare(device.Get(), 16, 16), "watchdog resource generation");
+      bridge_api::bridge.steady[bridge_api::EVALUATE] = mode == 1;
+      const auto kind = mode == 2 ? bridge_api::PRESENT_FRAME : bridge_api::EVALUATE;
+      Check(bridge_api::internal::Request(context.Get(), kind, [&](bridge_api::Shared* shared) {
+        shared->rt_request = stall ? 998 : 997;
+      }), "initial/steady/deferred request acknowledged");
+      if (bridge_api::bridge.pending) Check(bridge_api::internal::Answer(), "consume steady CPU acknowledgement");
+      if (mode == 2) bridge_api::BeforeSharedWrites(context.Get());
+      Check(bridge_api::bridge.waiting.load() == 0, "CPU pending marker cleared before GPU recovery");
+      Microsoft::WRL::ComPtr<ID3D11Fence> tail;
+      Check(SUCCEEDED(device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&tail))), "watchdog tail");
+      Check(SUCCEEDED(context4->Signal(tail.Get(), 1)), "watchdog tail signal");
+      context->Flush();
+      const ULONGLONG until = GetTickCount64() + 8000;
+      while (tail->GetCompletedValue() == 0 && GetTickCount64() < until) Sleep(1);
+      Check(tail->GetCompletedValue() == 1 && bridge_api::bridge.fence->GetCompletedValue() == 2,
+            "watchdog releases actual GPU wait without device removal");
+      Check(bridge_api::bridge.watchdog.failed.load(), "watchdog reports helper failure");
+      Check(WaitForSingleObject(bridge_api::bridge.process, 0) == WAIT_OBJECT_0, "helper exited before recovery");
+      if (!stall && mode == 0) {
+        Microsoft::WRL::ComPtr<ID3D11Fence> late;
+        Check(SUCCEEDED(device5->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(&late))), "late generation");
+        Check(SUCCEEDED(context4->Signal(late.Get(), 1)), "late input"); context->Flush();
+        Check(SUCCEEDED(context4->Wait(late.Get(), 2)), "late wait");
+        Check(SUCCEEDED(context4->Signal(tail.Get(), 2)), "late tail"); context->Flush();
+        {
+          const std::unique_lock lock(bridge_api::bridge.watchdog.mutex);
+          bridge_api::bridge.watchdog.fences.push_back({.fence = late, .value = 2, .last_progress = GetTickCount64()});
+        }
+        const ULONGLONG late_until = GetTickCount64() + 3000;
+        while (tail->GetCompletedValue() < 2 && GetTickCount64() < late_until) Sleep(1);
+        Check(tail->GetCompletedValue() == 2 && late->GetCompletedValue() == 2, "late publication after helper exit recovered");
+      }
+      bridge_api::Shutdown(); CheckClosed();
+      std::printf("PASS: watchdog mode=%u stalled=%d, CPU ack before GPU work\n", mode, stall);
+    }
+  }
   for (bool stall : {false, true}) {
     Check(bridge_api::internal::Start(device.Get()), "start helper for queued GPU work");
     auto& bridge = bridge_api::bridge;

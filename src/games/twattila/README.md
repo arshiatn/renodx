@@ -1745,3 +1745,12 @@ Prepare checks every remote-handle transfer, stages shared fields locally, and p
 
 ### F4/F8 sampler ownership (2026-11-09, GPT-6 Astra)
 Sampler slots now own original COM references and are scoped to each device. References replaced in slot callbacks are released after unlocking. Duplicate sampler-init notifications preserve existing owned clones; teardown restores originals and clears each device cache. Final-release callbacks no longer acquire slot locks, and nested addon-callback suppression is preserved. WARP tests pass x86/x64 for originals surviving game release, clone identity preservation, two-device isolation, tracking restoration, per-device cleanup and shutdown. All 14 shared consumers built. No game run.
+
+
+### F7 GPU-completion watchdog (2026-11-09, GPT-6 Astra)
+
+Each submitted request now retains its fence generation and target completion independently of CPU acknowledgement. The watcher stays alive after helper exit to catch late in-flight publication, detects lack of fence progress (20 seconds during initial setup, 5 seconds after acknowledgement/for steady work), and recovers outstanding dependencies only after confirmed helper termination. Initial, steady and deferred GPU waits use the same ownership. Deferred shared writes keep their dependency even after a CPU-side failure. No per-frame CPU GPU-completion wait is added.
+
+The actual production-header WARP tests pass x86/x64 for a healthy delayed submission, acknowledged-but-unsubmitted work, helper exit and stall in all three wait paths, and late publication after exit. The existing three-generation shutdown and transfer-rollback tests pass too. All 14 consumer builds pass. Recovery remains best effort if the driver/device or process termination fails; the timeout is not a guarantee against a driver TDR. No game was launched and the original battle freeze is not proven resolved.
+
+Final review also moved F6's staged Shared block to checked heap allocation rather than the game render thread's stack.

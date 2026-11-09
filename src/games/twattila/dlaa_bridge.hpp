@@ -23,6 +23,7 @@
 #include <memory>
 #include <new>
 #include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <string_view>
 #include <span>
@@ -165,7 +166,22 @@ struct PendingFence {
   uint64_t value = 0;
 };
 
+struct WatchedFence {
+  ComPtr<ID3D11Fence> fence;
+  uint64_t value = 0;
+  uint64_t completed = 0;
+  ULONGLONG last_progress = 0;
+  DWORD timeout = 20000;
+};
+
+struct Watchdog {
+  std::shared_mutex mutex;
+  std::vector<WatchedFence> fences;
+  std::atomic<bool> failed = false;
+};
+
 struct Bridge {
+  Watchdog watchdog;
   // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
   // accumulation and filter) leave its noise to it.
   bool reconstructing = false;
@@ -332,8 +348,12 @@ inline void Rescue(uint64_t value, ID3D11Fence* retained_fence = nullptr) {
   ComPtr<ID3D11Device5> device5;
   ComPtr<ID3D11DeviceContext4> context4;
   ComPtr<ID3D11Fence> fence;
-  LUID luid = {.LowPart = bridge.shared->adapter_luid_low, .HighPart = bridge.shared->adapter_luid_high};
-  HANDLE shared_fence = bridge.rescue_fence;
+  LUID luid = {};
+  HANDLE shared_fence = nullptr;
+  if (retained_fence == nullptr) {
+    luid = {.LowPart = bridge.shared->adapter_luid_low, .HighPart = bridge.shared->adapter_luid_high};
+    shared_fence = bridge.rescue_fence;
+  }
   std::unique_ptr<void, decltype(&CloseHandle)> retained_handle(nullptr, &CloseHandle);
   if (retained_fence != nullptr) {
     if (retained_fence->GetCompletedValue() >= value) return;
@@ -431,6 +451,10 @@ inline void StopSession() {
     WaitForSingleObject(bridge.watcher, INFINITE);
     CloseHandle(std::exchange(bridge.watcher, nullptr));
   }
+  {
+    const std::unique_lock lock(bridge.watchdog.mutex);
+    bridge.watchdog.fences.clear();
+  }
   const bool helper_exited = bridge.process == nullptr || WaitForSingleObject(bridge.process, 5000) == WAIT_OBJECT_0;
   if (helper_exited) {
     // Never CPU-signal while the helper could still submit writes to these resources.
@@ -526,10 +550,45 @@ inline bool Start(ID3D11Device* device) {
   if (bridge.watcher_stop == nullptr) return fail_start("DLAA: could not create the helper watcher stop event.");
   try {
     std::thread watcher([] {
-      const std::array<HANDLE, 2> handles = {bridge.process, bridge.watcher_stop};
-      WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), FALSE, INFINITE);
-      if (const uint64_t value = bridge.waiting.exchange(0); value != 0) {
-        Rescue(value);
+      // Stay alive after helper exit: an in-flight render callback may publish its fence just after that exit.
+      while (WaitForSingleObject(bridge.watcher_stop, 50) == WAIT_TIMEOUT) {
+        bool exited = WaitForSingleObject(bridge.process, 0) == WAIT_OBJECT_0;
+        if (exited) {
+          bridge.watchdog.failed.store(true);
+        }
+        std::vector<PendingFence> recover;
+        {
+          const std::unique_lock lock(bridge.watchdog.mutex);
+          std::erase_if(bridge.watchdog.fences, [](const WatchedFence& pending) {
+            return pending.fence->GetCompletedValue() >= pending.value;
+          });
+          const ULONGLONG now = GetTickCount64();
+          for (auto& pending : bridge.watchdog.fences) {
+            const uint64_t completed = pending.fence->GetCompletedValue();
+            if (completed != pending.completed) {
+              pending.completed = completed;
+              pending.last_progress = now;
+            }
+            if (now - pending.last_progress >= pending.timeout) {
+              bridge.watchdog.failed.store(true);
+            }
+          }
+        }
+        if (!bridge.watchdog.failed.load()) continue;
+        if (!exited) {
+          TerminateProcess(bridge.process, 0);
+          exited = WaitForSingleObject(bridge.process, 50) == WAIT_OBJECT_0;
+        }
+        if (!exited) continue; // Never release GPU dependencies while the helper may still write.
+        {
+          const std::shared_lock lock(bridge.watchdog.mutex);
+          for (const auto& pending : bridge.watchdog.fences) {
+            recover.push_back({.fence = pending.fence, .value = pending.value});
+          }
+        }
+        for (const auto& pending : recover) {
+          Rescue(pending.value, pending.fence.Get());
+        }
       }
     });
     HANDLE completion = nullptr;
@@ -575,8 +634,20 @@ inline bool Answer(DWORD timeout = 5000) {
                         && shared.done_value >= bridge.value;
   QueryPerformanceCounter(&ended);
   bridge.answer_ticks += ended.QuadPart - started.QuadPart;
-  if (const uint64_t waited = bridge.waiting.exchange(0); waited > (answered ? shared.done_value : 0)) Rescue(waited);
-  if (!answered) return Fail("DLAA: the helper did not answer (off).");
+  bridge.waiting.store(0);
+  if (!answered) {
+    bridge.watchdog.failed.store(true);
+    return Fail("DLAA: the helper did not answer (off).");
+  }
+  {
+    const std::unique_lock lock(bridge.watchdog.mutex);
+    for (auto& pending : bridge.watchdog.fences) {
+      if (pending.fence == bridge.fence) {
+        pending.timeout = 5000;
+        pending.last_progress = GetTickCount64();
+      }
+    }
+  }
   bridge.answered = true;
   // The value it signalled after its work (one higher; also after a failure, so the next request starts above it).
   bridge.value = shared.done_value;
@@ -627,6 +698,7 @@ inline void ClearHandles(Shared* shared, bool guides, bool ray_tracing, bool ref
 inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool guides = false, bool ray_tracing = false,
                     DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false, uint32_t upscaler = UPSCALER_DLSS,
                     uint32_t fg_backend = FG_BACKEND_DLSS, uint32_t rr_extra = 0u) {
+  if (bridge.watchdog.failed.load()) return internal::Fail("DLAA: helper GPU work stopped progressing (off).");
   reflections = reflections && ray_tracing;
   rr_extra = guides ? rr_extra : 0u;
   if (!internal::Start(native_device)) return false;
@@ -878,6 +950,7 @@ namespace internal {
 // preset or Ray Reconstruction change).
 template <typename Fill>
 bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
+  if (bridge.watchdog.failed.load()) return Fail("DLAA: helper GPU work stopped progressing (off).");
   if (bridge.failed || bridge.width == 0) return false;
   std::erase_if(bridge.retired_fences, [](const PendingFence& pending) {
     return pending.fence->GetCompletedValue() >= pending.value;
@@ -907,6 +980,23 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   ResetEvent(bridge.done);
   const bool steady = bridge.steady[kind] && kind != PRESENT_FRAME;
   bridge.completion_value = bridge.value + 1;
+  {
+    const std::unique_lock lock(bridge.watchdog.mutex);
+    auto existing = std::ranges::find_if(bridge.watchdog.fences, [](const WatchedFence& pending) {
+      return pending.fence == bridge.fence;
+    });
+    if (existing == bridge.watchdog.fences.end()) {
+      bridge.watchdog.fences.push_back({.fence = bridge.fence, .value = bridge.completion_value,
+                                        .completed = bridge.fence->GetCompletedValue(),
+                                        .last_progress = GetTickCount64(), .timeout = (steady ? 5000u : 20000u)});
+    } else {
+      existing->value = bridge.completion_value;
+      if (!steady) {
+        existing->timeout = 20000;
+      }
+    }
+  }
+  if (bridge.watchdog.failed.load()) return Fail("DLAA: helper stopped before request submission (off).");
   if (steady) bridge.waiting.store(bridge.value + 1);
   SetEvent(bridge.request);
   if (steady) {
@@ -933,11 +1023,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
 // helper's reads of the last ones done.
 inline void BeforeSharedWrites(ID3D11DeviceContext* context) {
   if (bridge.deferred == 0) return;
-  // A helper that stopped may never signal it.
-  if (bridge.failed) {
-    bridge.deferred = 0;
-    return;
-  }
+  // The watchdog owns this completion even after a CPU failure; do not overwrite shared resources early.
   ComPtr<ID3D11DeviceContext4> context4;
   if (FAILED(context->QueryInterface(IID_PPV_ARGS(context4.GetAddressOf())))) return;
   context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0));
@@ -1361,6 +1447,7 @@ inline void Shutdown() {
   bridge.status = "DLAA: not started";
   bridge.started = false;
   bridge.failed = false;
+  bridge.watchdog.failed.store(false);
 }
 
 }  // namespace twattila::dlaa_bridge

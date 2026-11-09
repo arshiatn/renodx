@@ -1,6 +1,7 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
-## Attila stability repairs (2026-11-08, GPT-6 Astra)
+## Attila stability repairs (completed 2026-11-09, GPT-6 Astra)
+- F1-F8 code repairs and offline validation complete. Game reproduction, actual vendor GPU recovery and unload/reload remain manual validation, not claimed fixed.
 - Authorized: repair audit F1-F8, validate, commit each logical fix and push to arshiatn/renodx atn-mods. No game launches or installed-binary changes.
 - Isolated checkout: D:\Dev\renodx-astra-stability, branch codex/astra-attila-stability. Original D:\Dev\renodx and unsaved editor work stay untouched. Push HEAD:refs/heads/atn-mods, never force; reconcile any concurrent remote changes first.
 - Baseline: 0a6cd493. Audit: docs/Attila-crash-audit-2026-11-08.md. Root cause of original battle freeze remains unproven.
@@ -8,7 +9,7 @@
 - Build setup: isolated build32 configured with clang-x86 and original shader compiler paths. Unchanged external submodules are directory junctions to the original checkout; use --ignore-submodules=all for Git diff/status here (their relative .git files do not resolve through the junction). Never edit dependency files through these links.
 - [x] F1 startup-worker portion: all seven callers cancel and wait for native thread exit in AddonUninit, including CRT/capture cleanup after done. Final production-header regression passed x86/x64: gated thread-local destructor with pre-started coordinator, empty tests, cancellation, restart, repeated stop; 100 cycles with stable handle counts (88/88 x86, 71/71 x64). All 14 required Release consumer builds passed. Tests: test/tw_startup_worker/run.ps1. Logs: astra-f1-worker-build32/64.log and astra-f1-worker-test32/64.log in the audit workspace. No game unload/reload. Helper/watchdog ownership remains open below.
 - [x] F1 helper ownership: watcher joined before unload; child/IPC ownership checked and released; all outstanding fence generations drained or recovered after confirmed child exit. x86/x64 production-header tests pass, including failure injection, 20 reload cycles, stable handle counts, and D3D11/D3D12 WARP queued work on three generations. F1 code repair complete; actual game unload/reload remains untested.
-- [ ] F7: unexpected mid-run helper death/stall and GPU wait ownership remain separate; shutdown recovery does not close F7.
+- [x] F7: generation-owned GPU-completion watchdog; healthy control, helper death/stall in initial/steady/deferred paths, late publication and shutdown regressions pass x86/x64. All 14 consumer builds pass.
 - [x] F5: failed acknowledgement stops Prepare before resource mutation; x86/x64 regression and all 14 builds pass.
 - [x] F6: checked remote transfers, rollback and staged publication; x86/x64 failure tests, x86 success test and 14 builds passed.
 - [x] F3: bounded motion placement; 52 actual-shader WARP cases and all 14 consumer builds pass.
