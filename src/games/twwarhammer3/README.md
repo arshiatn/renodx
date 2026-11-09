@@ -1,5 +1,9 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### AO depth-level recovery (F15, 2026-11-09, GPT-6 Astra; not run in game)
+
+Failed depth-level texture/view creation now releases all partial views and retries at the same resolution after a one-second cooldown. Build: `cmake --build build --config Release --target renodx-twwarhammer3.addon64`. Manual check: use an AO mode that reads depth levels, change resolution/render scale, and verify stable AO; after a transient allocation failure, depth levels should recover without another resolution change. Failure injection and real D3D11 WARP readback results are in `docs/Attila-crash-audit-2026-11-08.md` at the repository root. No shader behavior was changed.
+
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
 ## v37 (2026-11-06, ATN: only our AO and GI; helper89 unchanged; nothing here run in game)

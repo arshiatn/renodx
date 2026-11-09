@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <mutex>
 #include <shared_mutex>
 
@@ -39,6 +40,7 @@ struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   bool failed = false;
   ComPtr<ID3D11ComputeShader> shader;
+  std::chrono::steady_clock::time_point retry_after = {};
   UINT depth_width = 0;
   UINT depth_height = 0;
   ComPtr<ID3D11Texture2D> texture;
@@ -88,13 +90,15 @@ inline ComPtr<ID3D11ShaderResourceView> Build(ID3D11DeviceContext* context, ID3D
     }
   }
   if (objects.failed) return nullptr;
-  if (objects.depth_width != depth_desc.Width || objects.depth_height != depth_desc.Height) {
+  if (!objects.view || objects.depth_width != depth_desc.Width || objects.depth_height != depth_desc.Height) {
+    // A failed attempt must not allocate/log on every AO pass, even if sizes alternate.
+    if (std::chrono::steady_clock::now() < objects.retry_after) return nullptr;
     objects.texture.Reset();
     objects.view.Reset();
     objects.level_writes = {};
     objects.level_views = {};
-    objects.depth_width = depth_desc.Width;
-    objects.depth_height = depth_desc.Height;
+    objects.depth_width = 0;
+    objects.depth_height = 0;
     const D3D11_TEXTURE2D_DESC levels_desc = {
         .Width = std::max(1u, (depth_desc.Width + 1) / 2),
         .Height = std::max(1u, (depth_desc.Height + 1) / 2),
@@ -129,7 +133,15 @@ inline ComPtr<ID3D11ShaderResourceView> Build(ID3D11DeviceContext* context, ID3D
                             " x ", depth_desc.Height, ").");
       objects.texture.Reset();
       objects.view.Reset();
+      objects.level_writes = {};
+      objects.level_views = {};
+      objects.retry_after = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+      return nullptr;
     }
+    // Publish the cache key only after every mip view exists.
+    objects.depth_width = depth_desc.Width;
+    objects.depth_height = depth_desc.Height;
+    objects.retry_after = {};
   }
   if (!objects.view) return nullptr;
 

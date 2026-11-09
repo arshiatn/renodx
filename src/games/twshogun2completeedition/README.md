@@ -1,5 +1,9 @@
 # RenoDX — Total War: SHOGUN 2 Complete Edition (DX11)
 
+### AO depth-level recovery (F15, 2026-11-09, GPT-6 Astra; not run in game)
+
+Failed depth-level texture/view creation now releases all partial views and retries at the same resolution after a one-second cooldown. Build: `cmake --build build --config Release --target renodx-twshogun2completeedition.addon64`. Manual check: use an AO mode that reads depth levels, change resolution/render scale, and verify stable AO; after a transient allocation failure, depth levels should recover without another resolution change. Failure injection and real D3D11 WARP readback results are in `docs/Attila-crash-audit-2026-11-08.md` at the repository root. No shader behavior was changed.
+
 The 2026 Complete Edition ships its shaders' HLSL source and every compiled permutation in `data\shaders.pack`
 (extracted without playing: `bin\cmd_Decompiler-1.3.16\dump_shader_shogun2_pack`, README there). The replacements are
 written from that source: the 3Dmigoto decompile of the tonemap collapses swizzles (it loses the white clip and

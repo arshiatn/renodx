@@ -1,5 +1,9 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### AO depth-level recovery (F15, 2026-11-09, GPT-6 Astra; not run in game)
+
+Failed depth-level texture/view creation now releases all partial views and retries at the same resolution after a one-second cooldown. Build: `cmake --build build32 --config Release --target renodx-twattila.addon32`. Manual check: use an AO mode that reads depth levels, change resolution/render scale, and verify stable AO; after a transient allocation failure, depth levels should recover without another resolution change. Failure injection and real D3D11 WARP readback results are in `docs/Attila-crash-audit-2026-11-08.md` at the repository root. No shader behavior was changed.
+
 ### Native hook removal (F14, 2026-11-09, GPT-6 Astra; not run in game)
 
 Failed native hook removal now keeps the addon loaded until process exit, retains its hook records for retry, and makes surviving callbacks pass through. Normal successful removal releases its extra module reference. Test build: the existing 32-bit target below. Manual check: unload/reload after Graphics hooks activate; normal removal should unload, while a logged removal failure deliberately keeps the DLL resident until restarting the game. Offline failure/retry tests and shared builds are recorded in `docs/Attila-crash-audit-2026-11-08.md` at the repository root.
