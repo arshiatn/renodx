@@ -1,5 +1,12 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v39 (2026-11-11; renodx-tw-dlaa64.exe helper99, bridge v30, both unchanged; not run in game; no players' zip)
+
+- **Global Illumination no longer brightens the shade ("cooked").** Since v37 our Global Illumination switched the game's light probes off, and with them the sky's shade under trees, roofs and walls: shade was 2 to 2.8 times as bright as in the game's own picture (sunlit ground the same). New row **Sky Shade From the Game's Probes**, on: the game's probes bring the sky's light as they do in the game's own picture, only their bounce is replaced by ours. Fog, water and effects get the game's probes back too. Off: v38's picture.
+- **Trees Out of View up to 150 m (Experimental, off)**, for Skip the Shadow Maps: the game draws trees every frame only within the first shadow map (40 m); farther ones behind the camera reached the rays seldom and were lost when ray tracing restarted. The row has the game draw every tree within 150 m each frame, so their ray-traced shadows stay. Needs Rays Replace Shadow Maps and Shadow Casters Out of View. Smoke's shadows near the camera get softer. Farther than 150 m: as before.
+- **DLSS Preset:** L is the default again (Auto stays a choice).
+- Details, numbers and the test list: `tools/tw/wh3_batch6/reports/v39.md`; performance ideas: `perf_ideas.md` beside it.
+
 ## v38 (2026-11-10, batch 6; renodx-tw-dlaa64.exe helper99, bridge v30: ship them together; one replay run before the close's fixes, see each section; no players' zip)
 
 - **Turning Global Illumination off in a battle no longer crashes the game** (v37). Run in game: off and on twice, 82 s more, no crash.
