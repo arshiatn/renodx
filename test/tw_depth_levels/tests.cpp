@@ -36,7 +36,8 @@ static HRESULT TestCreateUnorderedAccessView(ID3D11Device* device, ID3D11Resourc
   return device->CreateUnorderedAccessView(resource, desc, out);
 }
 #include "depth_levels_under_test.hpp"
-extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) {}
+static int log_lines = 0;
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) { ++log_lines; }
 
 #define CHECK(x)                                  \
   do {                                            \
@@ -120,11 +121,29 @@ int main(int argc, char** argv) {
   CHECK(!levels::Build(context.Get(), depth_view.Get()));
   CHECK(!objects.view && !objects.texture && objects.depth_width == 0);
   for (UINT i = 0; i < levels::internal::LEVELS; ++i) CHECK(!objects.level_views[i] && !objects.level_writes[i]);
+  // A failure that lasts is tried again each second and logged once; the next streak is logged again.
+  const int logged = log_lines;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    objects.retry_after = {};
+    calls = 0;
+    fail_at = 1;
+    CHECK(!levels::Build(context.Get(), depth_view.Get()) && calls == 1);
+  }
+  CHECK(log_lines == logged);
   objects.retry_after = {};
   fail_at = 0;
   CHECK(levels::Build(context.Get(), depth_view.Get()) && objects.depth_width == 128);
+  desc.Width = 256;
+  depth_view.Reset();
+  depth.Reset();
+  CHECK(SUCCEEDED(device->CreateTexture2D(&desc, nullptr, &depth)));
+  CHECK(SUCCEEDED(device->CreateShaderResourceView(depth.Get(), nullptr, &depth_view)));
+  calls = 0;
+  fail_at = 1;
+  CHECK(!levels::Build(context.Get(), depth_view.Get()) && log_lines == logged + 1);
+  fail_at = 0;
   context->ClearState();
   context->Flush();
   objects = {};
-  std::puts("PASS resize recovery");
+  std::puts("PASS resize recovery, one log line a failure streak");
 }

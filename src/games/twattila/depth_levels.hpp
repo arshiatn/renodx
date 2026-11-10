@@ -13,6 +13,7 @@
 #include <chrono>
 #include <mutex>
 #include <shared_mutex>
+#include <utility>
 
 #include <include/reshade.hpp>
 
@@ -41,6 +42,7 @@ struct DeviceObjects {
   bool failed = false;
   ComPtr<ID3D11ComputeShader> shader;
   std::chrono::steady_clock::time_point retry_after = {};
+  bool failure_logged = false;  // the levels could not be made: one line a streak
   UINT depth_width = 0;
   UINT depth_height = 0;
   ComPtr<ID3D11Texture2D> texture;
@@ -129,8 +131,10 @@ inline ComPtr<ID3D11ShaderResourceView> Build(ID3D11DeviceContext* context, ID3D
                                                            objects.level_views[level].GetAddressOf()));
     }
     if (!made) {
-      renodx::utils::log::w("[Total War] Ambient occlusion: could not create its depth levels (", depth_desc.Width,
-                            " x ", depth_desc.Height, ").");
+      if (!std::exchange(objects.failure_logged, true)) {
+        renodx::utils::log::w("[Total War] Ambient occlusion: could not create its depth levels (", depth_desc.Width,
+                              " x ", depth_desc.Height, "); tried again every second.");
+      }
       objects.texture.Reset();
       objects.view.Reset();
       objects.level_writes = {};
@@ -142,6 +146,7 @@ inline ComPtr<ID3D11ShaderResourceView> Build(ID3D11DeviceContext* context, ID3D
     objects.depth_width = depth_desc.Width;
     objects.depth_height = depth_desc.Height;
     objects.retry_after = {};
+    objects.failure_logged = false;
   }
   if (!objects.view) return nullptr;
 
