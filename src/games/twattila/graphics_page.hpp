@@ -789,6 +789,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .is_visible = more_rays,
       });
     }
+    page.Take({.match = "RayTracedTreeReach", .section = section, .shown = more_rays, .only_some_games = true});
     if (b.rays_one_at_a_place != nullptr) {
       page.Add(new Setting{
           .key = "RayTracedOneAtAPlace",

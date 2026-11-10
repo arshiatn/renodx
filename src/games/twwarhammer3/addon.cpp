@@ -2848,6 +2848,15 @@ float rays_terrain_count_later_row = 0.f;
 float rays_units_out_of_view_row = 1.f;
 float rays_skip_cascade_trees_row = 0.f;
 float rays_skip_cascades_row = 0.f;
+// Trees Out of View up to 150 m: the game draws its trees every frame only into its first shadow map (40 m at the two highest
+// Shadows settings; 71 of 75 traces, never into maps 2 to 4, which take them from a cache it fills as the maps scroll). Those
+// draws are the rays' only source for a tree the camera does not see, and a cached tree is lost with the helper's scene (ray
+// tracing off for 10 s, another upscaler). With the maps skipped their reach costs the GPU nothing: the first map's reach goes
+// to just under the second's at every Shadows setting (150 / 250 / 500 m), unless the player's own reach row is set.
+float rays_tree_reach_row = 0.f;
+constexpr float TREE_REACH_METRES = 149.f;
+tw::engine_tweaks::Option* first_map_reach = nullptr;  // engine_tests' battle_shadow_split_0
+std::atomic_bool tree_reach_logged = false;
 float rays_one_at_a_place_row = 0.f;
 float rays_banner_light_row = 0.f;
 float rays_branch_cut_outs_row = 0.f;
@@ -3382,7 +3391,19 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   const bool own_global_illumination = shader_injection.light_bounce_strength > 0.f;
   twwarhammer3::game_gi::sky_only.store(own_global_illumination && twwarhammer3::game_gi::sky_row != 0.f, std::memory_order_relaxed);
   twwarhammer3::game_gi::off.store(own_global_illumination && twwarhammer3::game_gi::sky_row == 0.f, std::memory_order_relaxed);
+  // The row's reach only for this write: the slider keeps the player's 0.
+  const bool farther_trees = rays_tree_reach_row != 0.f && rays_skip_cascades_row != 0.f && traced_lights::rays_replace_maps_row != 0.f
+                             && rt_settings.casters_out_of_view && first_map_reach != nullptr && first_map_reach->scale == 0.f;
+  if (farther_trees) {
+    first_map_reach->scale = TREE_REACH_METRES;
+    if (first_map_reach->tweaks.front().value != nullptr && !tree_reach_logged.exchange(true, std::memory_order_relaxed)) {
+      renodx::utils::log::i(std::format("[Warhammer III] First run: Trees Out of View up to 150 m, the first shadow map's reach {:g} m.", TREE_REACH_METRES));
+    }
+  }
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
+  if (farther_trees) {
+    first_map_reach->scale = 0.f;
+  }
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -3502,7 +3523,10 @@ void ConfigureAddon() {
   };
   engine_tests = more_tests::MoreTests();
   graphics_options = {&unit_detail, &building_detail, &tree_detail, &grass_detail, &object_detail, &terrain_detail, &effects_detail, &unit_draw, &building_draw, &tree_draw, &grass_draw, &object_draw, &terrain_draw, &grass_density, &terrain_tessellation};
-  for (auto& test : engine_tests) graphics_options.push_back(&test.option);
+  for (auto& test : engine_tests) {
+    graphics_options.push_back(&test.option);
+    if (test.key == "GraphicsTest_battle_shadow_split_0") first_map_reach = &test.option;
+  }
   graphics_status = new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = "Engine values: not searched yet",
@@ -3672,6 +3696,18 @@ void ConfigureAddon() {
       .tooltip = "Under trees, roofs and walls the sky's light stays as dark as in the game's own picture.\n"
                  "Off: the sky's light at full strength everywhere, so shade is brighter.",
       .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedTreeReach",
+      .binding = &rays_tree_reach_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Trees Out of View up to 150 m (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "With Skip the Shadow Maps: trees behind the camera keep their ray-traced shadows up to 150 m away,\n"
+                 "also after ray tracing was off for a while. Smoke's shadows near the camera get softer.",
+      .labels = {"Off", "On"},
+      .is_enabled = [] { return rays_skip_cascades_row != 0.f && traced_lights::rays_replace_maps_row != 0.f; },
   });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedPointLightShadows",
