@@ -28,7 +28,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/settings.hpp"
 #include "../twrome2/engine_tweaks.hpp"
-#include "../twrome2/native_hook_lifetime.hpp"
+#include "./native_hook_lifetime.hpp"
 
 // Attila's Graphics (Experimental) in empire.retail.dll, found by byte patterns: the unit, tree, grass and animation
 // packing hooks, each scaled live by its slider. Rome II: the unit and dead unit hooks (its own patterns and offsets; trees and

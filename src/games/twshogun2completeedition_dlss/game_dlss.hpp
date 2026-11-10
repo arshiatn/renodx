@@ -29,6 +29,7 @@
 #include "../../utils/detour.hpp"
 #include "../../utils/log.hpp"
 #include "../twattila/frame_history.hpp"
+#include "../twattila/native_hook_lifetime.hpp"
 #include "./engine.hpp"
 
 // The game's own DLSS: empire.retail.x64.dll links NVIDIA's NGX SDK (3.10.4). It runs DLSS as DLAA: the feature is
@@ -93,6 +94,7 @@ struct State {
   std::shared_mutex mutex;
   bool searched = false;
   std::vector<renodx::utils::detour::Function> hooks;
+  tw::native_hooks::Lifetime hook_lifetime;
   std::string status;
   uint32_t input[2] = {};  // the last created feature's
   uint32_t output[2] = {};
@@ -284,7 +286,7 @@ inline void Install() {
       state.hooks.push_back(renodx::utils::detour::Function(&internal::original_set_ui, &internal::OnSetUI));
     }
     try {
-      renodx::utils::detour::Install(state.hooks);
+      state.hook_lifetime.Install(state.hooks);
       const auto offset = [module](const void* address) {
         return (address != nullptr ? std::format("+{:#x}", static_cast<const uint8_t*>(address) - reinterpret_cast<uint8_t*>(module))
                                    : std::string("not found"));
@@ -369,11 +371,10 @@ inline void Uninstall() {
   const std::unique_lock lock(state.mutex);
   if (state.hooks.empty()) return;
   try {
-    renodx::utils::detour::Uninstall(state.hooks);
-  } catch (const std::exception&) {
-    // No-op: the game is closing; Detours left its code as it was.
+    state.hook_lifetime.Uninstall(&state.hooks);
+  } catch (const std::exception& error) {
+    renodx::utils::log::e("[Shogun 2 DLSS] The game's DLSS hooks could not be removed; addon retained until process exit: ", error.what());
   }
-  state.hooks.clear();
 }
 
 inline void SetEvaluateCallback(std::function<void(ID3D11DeviceContext*, NVSDK_NGX_D3D11_DLSS_Eval_Params*)> callback) {

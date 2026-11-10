@@ -15,6 +15,7 @@
 
 #include "../../utils/detour.hpp"
 #include "../../utils/log.hpp"
+#include "../twattila/native_hook_lifetime.hpp"
 #include "./engine.hpp"
 
 // Model detail distance (graphics option): rigid models (.rigid_model_v2: grass clumps, plants, rocks, props,
@@ -40,6 +41,7 @@ using LodFade = float (*)(void* model, float distance_squared);
 static SelectLod original_select_lod = nullptr;
 static LodFade original_lod_fade = nullptr;
 static std::vector<renodx::utils::detour::Function> hooks;
+static tw::native_hooks::Lifetime hook_lifetime;
 static std::string status = "not searched";
 static std::atomic<float> inverse_scale_squared = 1.f;
 
@@ -70,7 +72,7 @@ inline void Install() {
         renodx::utils::detour::Function(&internal::original_lod_fade, &internal::OnLodFade),
     };
     try {
-      renodx::utils::detour::Install(internal::hooks);
+      internal::hook_lifetime.Install(internal::hooks);
       const auto* base = reinterpret_cast<uint8_t*>(engine::Module());
       internal::status = std::format("hooked (select +{:#x}, fade +{:#x})", select_lod - base, lod_fade - base);
     } catch (const std::exception& error) {
@@ -84,11 +86,10 @@ inline void Install() {
 inline void Uninstall() {
   if (internal::hooks.empty()) return;
   try {
-    renodx::utils::detour::Uninstall(internal::hooks);
-  } catch (const std::exception&) {
-    // No-op: the game is closing; Detours left its code as it was.
+    internal::hook_lifetime.Uninstall(&internal::hooks);
+  } catch (const std::exception& error) {
+    renodx::utils::log::e("[Shogun 2 DLSS] Model detail hooks could not be removed; addon retained until process exit: ", error.what());
   }
-  internal::hooks.clear();
 }
 
 // Overlay: every level of detail reaches scale times farther (1: the game's).

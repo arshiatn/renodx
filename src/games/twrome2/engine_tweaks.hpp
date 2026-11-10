@@ -30,7 +30,7 @@
 #include "../../utils/detour.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/settings.hpp"
-#include "native_hook_lifetime.hpp"
+#include "../twattila/native_hook_lifetime.hpp"
 
 // Graphics (Experimental) for the Warscape games (Rome II, Attila, Pharaoh, Warhammer II): engine values scaled by sliders.
 // - Engine tweaks: named values the game keeps in static objects, found by their names. Each object is built by a

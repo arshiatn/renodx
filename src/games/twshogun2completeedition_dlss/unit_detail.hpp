@@ -16,6 +16,7 @@
 
 #include "../../utils/detour.hpp"
 #include "../../utils/log.hpp"
+#include "../twattila/native_hook_lifetime.hpp"
 #include "./engine.hpp"
 
 // Unit detail (graphics options, as Attila's): float* UnitDistances(display, float* out, int quality, bool, bool)
@@ -35,6 +36,7 @@ using UnitDistances = float* (*)(void* display, float* out, int32_t quality, boo
 
 static UnitDistances original_unit_distances = nullptr;
 static std::vector<renodx::utils::detour::Function> hooks;
+static tw::native_hooks::Lifetime hook_lifetime;
 static std::string status = "not searched";
 static std::atomic<float> imposter_squared = 1.f;
 static std::atomic<float> animation_squared = 1.f;
@@ -65,7 +67,7 @@ inline void Install() {
     internal::original_unit_distances = reinterpret_cast<internal::UnitDistances>(unit_distances);
     internal::hooks = {renodx::utils::detour::Function(&internal::original_unit_distances, &internal::OnUnitDistances)};
     try {
-      renodx::utils::detour::Install(internal::hooks);
+      internal::hook_lifetime.Install(internal::hooks);
       internal::status = std::format("hooked (+{:#x})", unit_distances - reinterpret_cast<uint8_t*>(engine::Module()));
     } catch (const std::exception& error) {
       internal::hooks.clear();
@@ -78,11 +80,10 @@ inline void Install() {
 inline void Uninstall() {
   if (internal::hooks.empty()) return;
   try {
-    renodx::utils::detour::Uninstall(internal::hooks);
-  } catch (const std::exception&) {
-    // No-op: the game is closing; Detours left its code as it was.
+    internal::hook_lifetime.Uninstall(&internal::hooks);
+  } catch (const std::exception& error) {
+    renodx::utils::log::e("[Shogun 2 DLSS] Unit detail hooks could not be removed; addon retained until process exit: ", error.what());
   }
-  internal::hooks.clear();
 }
 
 // Overlay: the distances x these (1: the game's).

@@ -20,6 +20,7 @@
 #include "../../utils/data.hpp"
 #include "../../utils/detour.hpp"
 #include "../../utils/log.hpp"
+#include "../twattila/native_hook_lifetime.hpp"
 #include "./engine.hpp"
 
 // Grass distance (graphics option): the game's grass ("Scrub Node", set up at +0x1b06e00) reaches its
@@ -48,6 +49,7 @@ struct NodeDistance {
 
 static Update original_update = nullptr;
 static std::vector<renodx::utils::detour::Function> hooks;
+static tw::native_hooks::Lifetime hook_lifetime;
 static std::string status = "not searched";  // Install / overlay (render thread)
 static std::atomic<float> scale = 1.f;
 static renodx::utils::data::ParallelFlatHashMap<uintptr_t, NodeDistance, std::shared_mutex> nodes;
@@ -81,7 +83,7 @@ inline void Install() {
     internal::original_update = reinterpret_cast<internal::Update>(update);
     internal::hooks = {renodx::utils::detour::Function(&internal::original_update, &internal::OnUpdate)};
     try {
-      renodx::utils::detour::Install(internal::hooks);
+      internal::hook_lifetime.Install(internal::hooks);
       internal::status = std::format("hooked (update +{:#x})", update - reinterpret_cast<uint8_t*>(engine::Module()));
     } catch (const std::exception& error) {
       internal::hooks.clear();
@@ -94,11 +96,10 @@ inline void Install() {
 inline void Uninstall() {
   if (internal::hooks.empty()) return;
   try {
-    renodx::utils::detour::Uninstall(internal::hooks);
-  } catch (const std::exception&) {
-    // No-op: the game is closing; Detours left its code as it was.
+    internal::hook_lifetime.Uninstall(&internal::hooks);
+  } catch (const std::exception& error) {
+    renodx::utils::log::e("[Shogun 2 DLSS] Grass distance hooks could not be removed; addon retained until process exit: ", error.what());
   }
-  internal::hooks.clear();
 }
 
 // Overlay: the game's grass distance x scale (1: the game's).
