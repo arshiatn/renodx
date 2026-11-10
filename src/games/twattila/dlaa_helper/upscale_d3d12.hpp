@@ -152,8 +152,14 @@ class Upscaler12 {
     bool evaluated = false;
     const bool recorded = [&] {
       if (failed_) return false;
-      // Its last use not proven done on a live device: its allocator still feeds the GPU, nothing is recorded.
-      if (!WaitForGpu(own_fence_.Get(), event_, slot.value, FENCE_TIMEOUT)) return Fail("Upscaling: its GPU work did not finish");
+      // Its last use not proven done on a live device: its allocator still feeds the GPU, nothing is recorded. This request
+      // only (the next asks again, its history new: the game's GPU can be seconds behind); the status stays, nothing here
+      // writes the running one again.
+      const auto unfinished = [&] {
+        first_frame_ = true;
+        return false;
+      };
+      if (!WaitForGpu(own_fence_.Get(), event_, slot.value, FENCE_TIMEOUT)) return unfinished();
       if (maker_.joinable()) {
         if (making_.load()) return false;
         maker_.join();
@@ -170,7 +176,7 @@ class Upscaler12 {
       // FSR: a context for each output size (any render size up to it). XeSS: one context, initialized for each output size
       // and the setting that takes the render size (below).
       if (made_width_ == 0 || (backend_ == dlaa_bridge::UPSCALER_FSR && (made_width_ != request.output_width || made_height_ != request.output_height))) {
-        if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) return Fail("Upscaling: its GPU work did not finish");
+        if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) return unfinished();
         DestroyContext();
         made_width_ = request.output_width;
         made_height_ = request.output_height;
@@ -235,7 +241,7 @@ class Upscaler12 {
           if (new_output || quality != quality_) {
             // Here, not beside the requests (no frame without it: the render scale would go back to 100%, where another
             // setting is needed, for good): the kernels are built, this takes milliseconds.
-            if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) return Fail("Upscaling: its GPU work did not finish");
+            if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) return unfinished();
             const xess_d3d12_init_params_t init = {.outputResolution = output, .qualitySetting = quality, .initFlags = XESS_FLAGS};
             if (const xess_result_t inited = xess_.init(xess_context_, &init); inited < XESS_RESULT_SUCCESS) {
               return Fail(std::format("XeSS-SR could not start at this size (code {})", static_cast<int>(inited)).c_str());

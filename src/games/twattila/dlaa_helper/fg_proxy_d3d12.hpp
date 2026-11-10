@@ -246,11 +246,22 @@ class ProxyFrameGeneration12 {
     }
     window_.Fit();
     const uint32_t frame = shared->fg_frame_index;
+    // Its own GPU work not proven done on a live device: nothing is executed for this present, the game's own image shows
+    // and the next present asks again (the game's GPU can be seconds behind; giving up here left frame generation off
+    // until the game restarted).
+    const auto unfinished = [&] {
+      status_ = "Frame generation: its GPU work did not finish";
+      after_hidden_ = true;
+      window_.Hide();
+      SignalOnly(value);
+      return false;
+    };
 
 #if defined(RENODX_XESS_FG)
     if (backend_ == dlaa_bridge::FG_BACKEND_XESS && shared->fg_frame_limit != frame_limit_) {
-      // Its guide: the GPU idle first.
-      WaitIdle();
+      // Its guide: the GPU idle first. Nothing is freed here: not WaitIdle's wait before a release, which ends the helper.
+      queue_->Signal(own_fence_.Get(), ++own_value_);
+      if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) return unfinished();
       frame_limit_ = shared->fg_frame_limit;
       const xell_sleep_params_t sleep_mode = {.minimumIntervalUs = (frame_limit_ != 0 ? 1000000u / std::min(frame_limit_, 1000u) : 0u), .bLowLatencyMode = 1};
       xell_.mode(xell_context_, &sleep_mode);
@@ -259,12 +270,9 @@ class ProxyFrameGeneration12 {
 
     Slot& slot = slots_[next_slot_];
     next_slot_ = (next_slot_ + 1) % slots_.size();
-    // The slot's last use not proven done on a live device (its allocator still feeds the GPU), or no recording:
-    // nothing is executed, the backend gives up (main.cpp: Auto's next; after a GPU reset a new device).
-    if (!WaitForGpu(own_fence_.Get(), event_, slot.done, FENCE_TIMEOUT)) {
-      SignalOnly(value);
-      return Fail("Frame generation: its GPU work did not finish");
-    }
+    // The slot's last use: its allocator still feeds the GPU. No recording: the backend gives up (main.cpp: Auto's next;
+    // after a GPU reset a new device).
+    if (!WaitForGpu(own_fence_.Get(), event_, slot.done, FENCE_TIMEOUT)) return unfinished();
     if (FAILED(slot.allocator->Reset()) || FAILED(slot.list->Reset(slot.allocator.Get(), nullptr))) {
       SignalOnly(value);
       return Fail("Frame generation: D3D12 stopped");

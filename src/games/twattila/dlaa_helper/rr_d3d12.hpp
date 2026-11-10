@@ -256,9 +256,13 @@ class RayReconstruction12 {
   // nothing recorded.
   bool Record(const Request& request, Slot* slot) {
     // Its last use not proven done on a live device: its allocator still feeds the GPU, nothing is recorded.
-    if (!WaitForGpu(own_fence_.Get(), event_, slot->value, FENCE_TIMEOUT)) {
-      return Fail("Ray Reconstruction: its GPU work did not finish");
-    }
+    // This request only (the next asks again, its history new: the game's GPU can be seconds behind, the device is live).
+    const auto unfinished = [&] {
+      status_ = "Ray Reconstruction: its GPU work did not finish";
+      first_frame_ = true;
+      return false;
+    };
+    if (!WaitForGpu(own_fence_.Get(), event_, slot->value, FENCE_TIMEOUT)) return unfinished();
     ID3D12GraphicsCommandList* list = slot->list.Get();
     if (FAILED(slot->allocator->Reset()) || FAILED(list->Reset(slot->allocator.Get(), nullptr))) {
       return Fail("Ray Reconstruction: D3D12 stopped");
@@ -269,7 +273,7 @@ class RayReconstruction12 {
       if (feature_ != nullptr) {
         if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) {
           list->Close();
-          return Fail("Ray Reconstruction: its GPU work did not finish");
+          return unfinished();
         }
         NVSDK_NGX_D3D12_ReleaseFeature(feature_);
         feature_ = nullptr;

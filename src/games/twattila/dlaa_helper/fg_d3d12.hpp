@@ -401,11 +401,16 @@ class FrameGeneration12 {
     // The copy into the swap chain's back buffer and Streamline's copies of the inputs, after the addon's value.
     Slot& slot = slots_[next_slot_];
     next_slot_ = (next_slot_ + 1) % slots_.size();
-    // The slot's last use not proven done on a live device (its allocator still feeds the GPU), or no recording:
-    // nothing is executed, the backend gives up (main.cpp: Auto's next; after a GPU reset a new device).
+    // The slot's last use not proven done on a live device (its allocator still feeds the GPU): nothing is executed for
+    // this present, the game's own image shows and the next present asks again (the game's GPU can be seconds behind;
+    // giving up here left frame generation off until the game restarted). No recording: the backend gives up (main.cpp:
+    // Auto's next; after a GPU reset a new device).
     if (!WaitForGpu(own_fence_.Get(), event_, slot.done, FENCE_TIMEOUT)) {
+      status_ = "Frame generation: its GPU work did not finish";
+      after_hidden_ = true;
+      window_.Hide();
       SignalOnly(value);
-      return Fail("its GPU work did not finish");
+      return false;
     }
     if (FAILED(slot.allocator->Reset()) || FAILED(slot.list->Reset(slot.allocator.Get(), nullptr))) {
       SignalOnly(value);
