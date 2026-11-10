@@ -712,15 +712,14 @@ inline void StartIfRequested(std::span<Option*> options, std::span<const std::st
 // Addon detach: the addon's values stay in the game's module (nothing is switched in a running battle), the game's own
 // under them kept for the image that comes with the next device (internal::Restore): left without them, it took the
 // scaled values for the game's and scaled them once more with every device (a flag once set read back as the game's
-// own). An image that stays loaded keeps what it saw. And the LOD pick hook removed.
+// own). The section is added to, never emptied: an image that saw no frame (a device made only to ask something, a
+// second loss before the first present) knows none of the values and must leave what the image before kept. An image
+// that stays loaded keeps what it saw. And the LOD pick hook removed.
 inline void Uninstall(std::span<Option*> options) {
   const HANDLE section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(internal::KeptValues),
                                             internal::KeptValuesName().c_str());
   const bool section_held = section != nullptr && GetLastError() == ERROR_ALREADY_EXISTS;
   auto* kept = (section != nullptr ? static_cast<internal::KeptValues*>(MapViewOfFile(section, FILE_MAP_WRITE, 0, 0, 0)) : nullptr);
-  if (kept != nullptr) {
-    kept->count = 0;
-  }
   for (Option* option : options) {
     for (Tweak& tweak : option->tweaks) {
       if (tweak.value == nullptr || !tweak.seen) continue;
@@ -728,10 +727,31 @@ inline void Uninstall(std::span<Option*> options) {
       if (VirtualQuery(tweak.value, &memory, sizeof(memory)) == 0 || memory.State != MEM_COMMIT || memory.Type != MEM_IMAGE) continue;
       uint32_t now = 0;
       std::memcpy(&now, tweak.value, tweak.flag ? sizeof(uint8_t) : sizeof(now));
-      if (now != tweak.written) continue;
-      if (kept != nullptr && kept->count < kept->values.size() && tweak.code_pattern.empty()) {
-        kept->values[kept->count] = {.address = reinterpret_cast<uintptr_t>(tweak.value), .game = tweak.game, .written = tweak.written};
-        ++kept->count;
+      // The value's entry from an earlier image, or the first free one (null: no section, or full).
+      const auto address = reinterpret_cast<uintptr_t>(tweak.value);
+      internal::KeptValue* entry = nullptr;
+      bool listed = false;
+      if (kept != nullptr) {
+        const std::span<internal::KeptValue> entries(kept->values.data(), std::min<size_t>(kept->count, kept->values.size()));
+        const auto found = std::ranges::find(entries, address, &internal::KeptValue::address);
+        listed = found != entries.end();
+        if (listed || entries.size() < kept->values.size()) {
+          entry = kept->values.data() + (found - entries.begin());
+        }
+      }
+      if (now != tweak.written) {
+        // The game set it since: the game's own, and an earlier image's entry for it says nothing now.
+        if (listed) {
+          --kept->count;
+          *entry = kept->values[kept->count];
+        }
+        continue;
+      }
+      if (entry != nullptr && tweak.code_pattern.empty()) {
+        *entry = {.address = address, .game = tweak.game, .written = tweak.written};
+        if (!listed) {
+          ++kept->count;
+        }
         continue;
       }
       // A code constant, found by a pattern with the game's value in it (the next image would not find the addon's; the

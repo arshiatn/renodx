@@ -63,6 +63,7 @@ int main(int argc, char** argv) {
   reactivate = reinterpret_cast<int (*)()>(GetProcAddress(module, "ReactivateTest"));
   engine_values = reinterpret_cast<int (*)(float*, float*, uint8_t*, float*, int)>(GetProcAddress(module, "EngineValues"));
   CHECK(engine_values && scaled_value == 20.f && flag_value == 1 && constant_value == 10.f);
+  CHECK(engine_values(&scaled_value, &reset_value, &flag_value, &constant_value, 2) == 0);
   CHECK(engine_values(&scaled_value, &reset_value, &flag_value, &constant_value, 1) == 0);
   if (stage != 0)
     CHECK(reactivate());
@@ -87,5 +88,5 @@ int main(int argc, char** argv) {
     CHECK(FreeLibrary(module));
   }
 #endif
-  std::printf("PASS stage %d: actual callbacks/Detours, host unload, retained records, retry and reload, engine values kept\n", stage);
+  std::printf("PASS stage %d: actual callbacks/Detours, host unload, retained records, retry and reload, engine values kept across an image that saw no frame\n", stage);
 }
