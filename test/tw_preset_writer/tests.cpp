@@ -26,20 +26,20 @@ static int Save(uint32_t preset) {
 int main() {
   std::thread releaser;
   {
-    PresetWriter writer;
-    writer.Request(1, Save);
+    PresetWriter writer(Save);
+    writer.Request(1);
     if (entered.get_future().wait_for(std::chrono::seconds(3)) != std::future_status::ready) std::abort();
-    writer.Request(2, Save);
-    writer.Request(3, Save);
+    writer.Request(2);
+    writer.Request(3);
     if (writer.Result() != PresetWriter::PENDING) std::abort();
     release.set_value();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (writer.Result() == PresetWriter::PENDING && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
     if (writer.Result() != PresetWriter::SAVED) std::abort();
     // Destruction joins the save in flight (4) and starts no other (5): the join blocks the helper's request thread.
-    writer.Request(4, Save);
+    writer.Request(4);
     if (entered_last.get_future().wait_for(std::chrono::seconds(3)) != std::future_status::ready) std::abort();
-    writer.Request(5, Save);
+    writer.Request(5);
     releaser = std::thread([] {
       std::this_thread::sleep_for(std::chrono::milliseconds(200));
       release_last.set_value();

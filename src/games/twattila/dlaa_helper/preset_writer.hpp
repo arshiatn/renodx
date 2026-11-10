@@ -12,9 +12,10 @@
 
 namespace twattila::dlaa_helper {
 
-// One ordered writer, with intermediate selections coalesced. Destruction joins the save in flight, so a replaced
-// backend cannot save an old preset later, and starts no other: the join runs on the helper's request thread (a
-// backend replaced after a GPU reset), and the next backend asks for its preset again at its first present.
+// One ordered writer of `save`'s presets (HELD, SAVED or FAILED_SAVE each), with intermediate selections coalesced.
+// Destruction joins the save in flight, so a replaced backend cannot save an old preset later, and starts no other: the
+// join runs on the helper's request thread (a backend replaced after a GPU reset), and the next backend asks for its
+// preset again at its first present.
 class PresetWriter {
  public:
   static constexpr int PENDING = -1;
@@ -22,14 +23,16 @@ class PresetWriter {
   static constexpr int SAVED = 1;
   static constexpr int FAILED_SAVE = 2;
 
-  void Request(uint32_t preset, int (*save)(uint32_t)) {
+  explicit PresetWriter(int (*save)(uint32_t)) : save_(save) {}
+
+  void Request(uint32_t preset) {
     const std::unique_lock lock(mutex_);
     preset_ = preset;
     ++requested_;
     result_ = PENDING;
     if (!worker_.joinable()) {
       try {
-        worker_ = std::thread([this, save] {
+        worker_ = std::thread([this] {
           std::unique_lock lock(mutex_);
           for (;;) {
             changed_.wait(lock, [&] { return stopping_ || completed_ != requested_; });
@@ -39,7 +42,7 @@ class PresetWriter {
             lock.unlock();
             int result = FAILED_SAVE;
             try {
-              result = save(preset);
+              result = save_(preset);
             } catch (...) {
               // Persistence failure is reported for this selection, not a process crash.
             }
@@ -74,6 +77,7 @@ class PresetWriter {
   mutable std::shared_mutex mutex_;
   std::condition_variable_any changed_;
   std::thread worker_;
+  int (*save_)(uint32_t);
   uint64_t requested_ = 0;
   uint64_t completed_ = 0;
   uint32_t preset_ = 0;

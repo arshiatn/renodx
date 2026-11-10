@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include "gpu_completion.hpp"
-
 #include <windows.h>
 
 #include <d3d12.h>
@@ -27,6 +25,7 @@
 
 #include "../dlaa_bridge.h"
 #include "./fg_d3d12.hpp"
+#include "./gpu_completion.hpp"
 // AMD's FSR SDK (its signed DLLs and these headers: MIT; build.ps1 adds them when build\downloads\fsr holds it): loaded at
 // run time, amd_fidelityfx_loader_dx12.dll and amd_fidelityfx_framegeneration_dx12.dll next to the helper.
 #if __has_include(<ffx_framegeneration.h>)

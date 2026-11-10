@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include "gpu_completion.hpp"
-
 #include <windows.h>
 
 #include <d3d12.h>
@@ -25,6 +23,7 @@
 #include <nvsdk_ngx_helpers_dlssd.h>
 
 #include "../../talesofarise_dlss/ngx_backend.hpp"
+#include "./gpu_completion.hpp"
 
 // The DLAA helper's Ray Reconstruction (NVIDIA's denoising DLAA / DLSS) through D3D12: D3D11's crashes in NVIDIA's D3D11
 // driver when the GPU is waited for right after it (as the bridge's fence makes the game wait), so this runs on a D3D12

@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include "gpu_completion.hpp"
-
 #include <windows.h>
 
 #include <d3d12.h>
@@ -37,6 +35,7 @@
 #include <vector>
 
 #include "../dlaa_bridge.h"
+#include "./gpu_completion.hpp"
 // NVIDIA's NVAPI (MIT; build.ps1 adds it when build\downloads\nvapi holds it): RTX Mega Geometry's cluster operations.
 #if __has_include(<nvapi.h>)
 #include <nvapi.h>
