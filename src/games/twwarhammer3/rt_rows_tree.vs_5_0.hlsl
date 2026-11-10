@@ -31,5 +31,8 @@ void main(
   row0 = v8;
   row1 = v9;
   row2 = v10;
-  record = 0.f;
+  // The second rows (v11-v13, which the game blends in by each vertex's v6.x) against these, for the log (rt_core's second rows line).
+  const float3x3 turned = float3x3(v11.xyz - v8.xyz, v12.xyz - v9.xyz, v13.xyz - v10.xyz);
+  record = float4(sqrt(dot(turned[0], turned[0]) + dot(turned[1], turned[1]) + dot(turned[2], turned[2])) / max(length(float3(v8.x, v9.x, v10.x)), 1e-6f),
+                  length(float3(v11.w - v8.w, v12.w - v9.w, v13.w - v10.w)), 0.f, 0.f);
 }

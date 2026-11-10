@@ -187,6 +187,7 @@ struct PixelMask {
   uint32_t pixel_shader = 0;
   UINT slot = 0;
   UINT uv_semantic_index = 0;  // cut_out_masks: the row's uv_semantic_index it needs
+  const float* row = nullptr;  // cut_out_masks: only with this row on (null: always)
 };
 
 struct SceneShader {
@@ -200,6 +201,12 @@ struct SceneShader {
   // that shader fades out (rt_place: a translation past MAX_TRANSLATION) and gives the fade in the record's w. A new mesh's first rows go
   // through `rows_shader` (its BLAS's build rows are its first instance's, faded or not).
   std::span<const uint8_t> faded_rows_shader;
+  // Its vertices blend two sets of instance rows (Warhammer III's trees), and its rows version gives in the record how far the second set
+  // lies from the first (x: turned and scaled, the difference's size over the first's scale; y: moved, metres). Log Details reads them:
+  // a placed mesh is one instance's shape, right at another's place only where both sets differ alike.
+  bool second_rows = false;
+  // Captured every frame as drawn (as `dynamic`) while this row is on, placed otherwise.
+  const float* dynamic_row = nullptr;
   // A mesh the game's shadow pass alpha-tests (its diffuse map in Runtime::cut_out_textures: palm and pine cards, fences) is
   // captured by this version, with the UV, cut out as leaves are but still. A unit (dynamic): its draws whose G-buffer pixel
   // shader clips (cut_out_pixel_shaders: beards, fur, leaves on a tree unit; solid cards in the scene shaded them black).
@@ -626,9 +633,8 @@ struct Runtime {
   // The placed draws logged per vertex shader (their instancing and vertex buffers, the first two each; ATN 2026-10-28:
   // no tree shadows).
   std::unordered_map<uint32_t, uint32_t> logged_draws;
-  // Log Details: the faded rows' draws read back (FADED_READS at most a session) and those among them with an instance left out.
-  uint32_t faded_reads = 0;
-  uint32_t faded_draws = 0;
+  // Log Details: the rows read back (Capture's ROWS_READS) and the draws among them worth a line, for faded draws and second-rows draws.
+  std::array<std::array<uint32_t, 2>, 2> rows_reads = {};
   std::unordered_set<uint32_t> left_out_logged;  // shaders whose draws the capture can't take, each said once
   // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
   // objects.light_constants, b12) and whether it did.
@@ -1106,7 +1112,8 @@ void Capture(Context& command, const SceneShader& shader) {
   // with a record version by its first one (by its geometry it was a new mesh again and again; its instances' stream is
   // placed), any other by any (the terrain draws its pieces from a dynamic instance stream refilled in the same places:
   // keyed by it, pieces of earlier views stayed in the scene, black bands, pulsing shadows, ATN 2026-10-28).
-  bool dynamic = shader.dynamic || (host.placed_row != nullptr && *host.placed_row == 0.f && !shader.rows_shader.empty());
+  bool dynamic = shader.dynamic || (shader.dynamic_row != nullptr && *shader.dynamic_row != 0.f)
+                 || (host.placed_row != nullptr && *host.placed_row == 0.f && !shader.rows_shader.empty());
   if (!dynamic) {
     std::array<ID3D11Buffer*, 4> buffers = {};
     std::array<UINT, 4> buffer_strides = {};
@@ -1203,7 +1210,8 @@ void Capture(Context& command, const SceneShader& shader) {
   if (shader.clip_cut_outs && (shader.cut_out_row == nullptr || *shader.cut_out_row != 0.f)) {
     const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
     const auto found = std::ranges::lower_bound(cut_out_masks, pixel_shader, {}, &PixelMask::pixel_shader);
-    if (found != cut_out_masks.end() && found->pixel_shader == pixel_shader && found->uv_semantic_index == shader.uv_semantic_index) {
+    if (found != cut_out_masks.end() && found->pixel_shader == pixel_shader && found->uv_semantic_index == shader.uv_semantic_index
+        && (found->row == nullptr || *found->row != 0.f)) {
       native->PSGetShaderResources(found->slot, 1, mask.GetAddressOf());
       cut_out = static_cast<bool>(mask);
       if (runtime.settings.debug_log) {
@@ -1716,12 +1724,14 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     native->IASetPrimitiveTopology(topology);
   }
-  // Log Details: which draws hold instances the game fades out, and how far (the first FADED_READS such draws of a session are read
-  // back, a wait each; those with one left out are said, FADED_LINES at most).
-  constexpr uint32_t FADED_READS = 512;
-  constexpr uint32_t FADED_LINES = 24;
-  if (faded && runtime.settings.debug_log && runtime.faded_reads < FADED_READS) {
-    ++runtime.faded_reads;
+  // Log Details: what the rows' records say, read back (a wait each; ROWS_READS draws of a kind a session, ROWS_LINES lines). A faded
+  // draw's (w: the fade of 1000): those with an instance left out. A second-rows draw's (SceneShader::second_rows): those whose instances'
+  // second rows lie apart from their first, and how far from one instance to the next (alike: one shape fits all its places).
+  constexpr uint32_t ROWS_READS = 512;
+  constexpr uint32_t ROWS_LINES = 24;
+  if (auto& reads = runtime.rows_reads[faded ? 0 : 1];
+      (faded || (shader.second_rows && !cascade_draw)) && placed && runtime.settings.debug_log && reads[0] < ROWS_READS) {
+    ++reads[0];
     const D3D11_BUFFER_DESC read_desc = {.ByteWidth = instances * 64, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
     const D3D11_BOX range = {.left = rows_vertex * 16, .top = 0, .front = 0, .right = (rows_vertex * 16) + (instances * 64), .bottom = 1, .back = 1};
     ComPtr<ID3D11Buffer> read;
@@ -1732,16 +1742,27 @@ void Capture(Context& command, const SceneShader& shader) {
       if (SUCCEEDED(native->Map(read.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
         const std::span<const std::array<float, 16>> rows(static_cast<const std::array<float, 16>*>(mapped.pData), instances);
         const auto left_out = std::ranges::count_if(rows, [](const std::array<float, 16>& row) { return row[3] > 1e29f; });
-        const auto [least, most] = std::ranges::minmax(rows, {}, [](const std::array<float, 16>& row) { return row[15]; });
-        if (left_out != 0 && runtime.faded_draws++ < FADED_LINES) {
-          renodx::utils::log::i(std::format("[Total War] Ray tracing: faded rows: vs {:08X} with ps {:08X}, {} indices: {} of {} instances left out (fade {:.0f} to {:.0f} of 1000).",
-                                            shader.hash, faded_pixel_shader, vertex_count, left_out, instances, least[15], most[15]));
+        const auto range_of = [&rows](size_t component) {
+          const auto [least, most] = std::ranges::minmax(rows, {}, [component](const std::array<float, 16>& row) { return row[component]; });
+          return std::pair{least[component], most[component]};
+        };
+        if (faded) {
+          if (const auto [least, most] = range_of(15); left_out != 0 && reads[1]++ < ROWS_LINES) {
+            renodx::utils::log::i(std::format("[Total War] Ray tracing: faded rows: vs {:08X} with ps {:08X}, {} indices: {} of {} instances left out (fade {:.0f} to {:.0f} of 1000).",
+                                              shader.hash, faded_pixel_shader, vertex_count, left_out, instances, least, most));
+          }
+        } else if (const auto [turn_least, turn_most] = range_of(12); turn_most > 1e-4f || range_of(13).second > 1e-4f) {
+          if (reads[1]++ < ROWS_LINES) {
+            renodx::utils::log::i(std::format("[Total War] Ray tracing: second rows: vs {:08X}, {} indices, {} instances: turned and scaled apart {:.4f} to {:.4f}, moved apart {:.4f} to {:.4f} m.",
+                                              shader.hash, vertex_count, instances, turn_least, turn_most, range_of(13).first, range_of(13).second));
+          }
         }
         native->Unmap(read.Get(), 0);
       }
     }
-    if (runtime.faded_reads == FADED_READS) {
-      renodx::utils::log::i(std::format("[Total War] Ray tracing: faded rows: {} draws read, {} with an instance left out.", FADED_READS, runtime.faded_draws));
+    if (reads[0] == ROWS_READS) {
+      renodx::utils::log::i(std::format("[Total War] Ray tracing: {} rows: {} draws read, {} {}.", (faded ? "faded" : "second"), ROWS_READS, reads[1],
+                                        (faded ? "with an instance left out" : "with second rows apart from the first")));
     }
   }
   if (cascade_draw) {
@@ -2231,6 +2252,26 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         Dispatch(native, objects.skies_shader.Get(), {objects.captured_srv.Get(), nullptr}, {dlaa_bridge::bridge.rt_vertices.uav.Get(), nullptr},
                  &sky, sizeof(sky), 1, 1);
       }
+    }
+    // Sprite soldiers' and far trees' captures (RT_SUN_ONLY) last, only the smoke's after them: the helper takes the dynamic captures' tail
+    // for the instance that the sun's rays alone meet. One followed by a unit's draw or the terrain's capture (Warhammer III: both, every
+    // frame) stayed among the units': its card stood in the ambient's, the lights' and the paths' rays too (a dark wedge at each tree's
+    // foot), and which cards did changed with the frame's draw order (ATN's debug9: far tree shadows flicker).
+    if (const auto sun_only = [](const dlaa_bridge::RtCapture& capture) { return (capture.flags & dlaa_bridge::RT_SUN_ONLY) != 0u; };
+        !std::ranges::is_partitioned(runtime.captures, std::not_fn(sun_only))) {
+      std::vector<dlaa_bridge::RtCapture> ordered;
+      std::vector<uint32_t> ordered_slices;
+      ordered.reserve(runtime.captures.size());
+      ordered_slices.reserve(runtime.slices.size());
+      for (const bool last : {false, true}) {
+        for (size_t index = 0; index < runtime.captures.size(); ++index) {
+          if (sun_only(runtime.captures[index]) != last) continue;
+          ordered.push_back(runtime.captures[index]);
+          ordered_slices.push_back(runtime.slices[index]);
+        }
+      }
+      runtime.captures = std::move(ordered);
+      runtime.slices = std::move(ordered_slices);
     }
     // Smoke Shadows: the lit particles streamed out since the last trace, those with opacity as quads facing the sun after
     // the captures (rt_smoke; its second dispatch empties the quads left): a capture whose particles dim the helper's sun rays.

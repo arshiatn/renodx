@@ -1298,8 +1298,9 @@ inline std::array<UINT, 2> RenderSizeBelow100() {
 }
 
 inline void Install() {
-  // The motion fill, the water plane, the particles' shadow draw: their constants in a trace.
-  twattila::frame_trace::Install(internal::SCREEN_SIZE / 4, internal::VIEWPORT / 4, {0xD409F9B5, 0xA5FC3927, 0x379B000C});
+  // The motion fill, the water plane, the particles' shadow draw, fx_rigidtextureblend's 8 layers (its discard's weights are its
+  // b3's floats 44 to 55, its UVs' scale and offset its b2's first four): their constants in a trace.
+  twattila::frame_trace::Install(internal::SCREEN_SIZE / 4, internal::VIEWPORT / 4, {0xD409F9B5, 0xA5FC3927, 0x379B000C, 0x1405BFB4});
   twattila::reflex::Install();
   for (const uint32_t shader_hash : internal::TAA_SHADERS) {
     renodx::utils::command_action::Register(internal::OnTaa, {

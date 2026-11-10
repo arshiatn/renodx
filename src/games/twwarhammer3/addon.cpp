@@ -2621,6 +2621,7 @@ float rays_skip_cascade_trees_row = 0.f;
 float rays_banner_light_row = 0.f;
 float rays_branch_cut_outs_row = 0.f;
 float rays_faded_parts_row = 0.f;
+float rays_trunks_as_drawn_row = 0.f;
 // The trees' draws into the cascades: 52 M of the shadow pass's indices on the replay's first view, 36 M in the siege (traces c1a, bm_siege).
 // Only fog, forward passes and the UI read the maps under Rays Replace Shadow Maps, the sun's shadow comes from rays. fx_rigidbranch_v3,
 // fx_rigidleaf_v3; drawn in no other target in any trace (b5_census: no render target).
@@ -2794,7 +2795,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x41AC9CB1, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .key_family = 0xF0395CC4},  // rigid_battle_rock_terrain_blend
     {.hash = 0x33AF7AE5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .key_family = 0xF0395CC4},  // rigid_battle_rock
     {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
-    {.hash = 0x474F97FB, .capture_shader = __rt_capture_branch, .rows_shader = __rt_rows_tree, .cut_out_shader = __rt_capture_branch_cut_out, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x474F97FB},                    // fx_rigidbranch_v3
+    {.hash = 0x474F97FB, .capture_shader = __rt_capture_branch, .rows_shader = __rt_rows_tree, .second_rows = true, .dynamic_row = &rays_trunks_as_drawn_row, .cut_out_shader = __rt_capture_branch_cut_out, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x474F97FB},                    // fx_rigidbranch_v3
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
     {.hash = 0x31584506, .dynamic = true, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
@@ -2828,7 +2829,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     // shaders_rigid_ui_capture_flag_xml (waves by the time in b0, out of a capture's key). A sheet: Coloured Shadows' filter.
     {.hash = 0x444F1190, .dynamic = true, .thin = true},
     // fx_rigidleaf_v3: its clip reads the base colour at t1 (t0 is the burn map, the same texture until the tree burns).
-    {.hash = 0x783383C6, .capture_shader = __rt_capture_leaf, .rows_shader = __rt_rows_tree, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1, .key_family = 0x783383C6},
+    {.hash = 0x783383C6, .capture_shader = __rt_capture_leaf, .rows_shader = __rt_rows_tree, .second_rows = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1, .key_family = 0x783383C6},
     // fx_weighted in the shadow pass (o0 = cb0[10-13] x the world position, o2 that position, by their bytes): drawn for casters whose
     // shadow falls in view, behind the camera too (trace c1a, bm_siege: depth 4096x4096 [4], PS none, 642CCC99, B2358145). Solid, as a unit without its mask.
     {.hash = 0xBADA4FE3, .dynamic = true, .cascade_keep = __rt_outside_view},
@@ -3569,8 +3570,10 @@ void ConfigureAddon() {
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_branch_cut_outs = &rays_branch_cut_outs_row,
+                                             .rays_unseen_cut_outs = &twwarhammer3::unseen_cut_outs_row,
                                              .rays_start_past = &rt_sliders.start_past,
                                              .rays_faded_parts = &rays_faded_parts_row,
+                                             .rays_trunks_as_drawn = &rays_trunks_as_drawn_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .pixel_trace = new renodx::utils::settings::Setting{
                                                  .value_type = renodx::utils::settings::SettingValueType::CUSTOM,

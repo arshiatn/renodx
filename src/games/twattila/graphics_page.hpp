@@ -132,8 +132,10 @@ struct Bindings {
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   float* rays_branch_cut_outs = nullptr;  // Trunks and branches cut out in the rays as drawn; null: no such row
+  float* rays_unseen_cut_outs = nullptr;  // Cut-out masks no trace has shown drawn (rt_core.hpp PixelMask::row); null: no such row
   float* rays_start_past = nullptr;  // Rays start past what hides a pixel from the camera; null: no such row
   float* rays_faded_parts = nullptr;  // Instances the game fades out stay out of the rays (rt_core.hpp Host::faded_row); null: no such row
+  float* rays_trunks_as_drawn = nullptr;  // Tree trunks captured every frame as drawn (rt_core.hpp SceneShader::dynamic_row); null: no such row
   float* rays_sheets_unselfed = nullptr;  // Cloth and sails don't shade themselves in the sun's rays; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
   std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
@@ -804,6 +806,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .is_visible = more_rays,
       });
     }
+    if (b.rays_unseen_cut_outs != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedUnseenCutOuts",
+          .binding = b.rays_unseen_cut_outs,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Cut-outs on More Models (Experimental)",
+          .section = section,
+          .tooltip = "Rays see more unit parts and props with the holes the game cuts in them.",
+          .is_visible = more_rays,
+      });
+    }
     if (b.rays_start_past != nullptr) {
       page.Add(new Setting{
           .key = "RayTracedStartPast",
@@ -813,6 +827,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "No Black Patches on Trunks (Experimental)",
           .section = section,
           .tooltip = "Tree trunks and other placed objects with black patches in AO, shadows and Path-Traced AO: rays start clear of them. Costs a little.",
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_trunks_as_drawn != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedTrunksAsDrawn",
+          .binding = b.rays_trunks_as_drawn,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Tree Trunks as Drawn (Experimental)",
+          .section = section,
+          .tooltip = "Rays take every tree trunk in its own shape, each frame: no black patches on trunks. Costs fps in forests.",
           .is_visible = more_rays,
       });
     }

@@ -1,5 +1,9 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### Sprite soldiers' captures last (WH3 batch 6 P2, 2026-11-10; not run in game)
+
+Sprite Soldier Shadows' cards go to the instance only the sun's rays meet when they are the last of a frame's captures (the helper's rule). A capture drawn after them kept them among the units, where the ambient's, lights' and paths' rays met them too. `rt_core.hpp` orders a frame's captures so they are always last. No helper change.
+
 ### GPU reset recovery and swap chain audit (WH3 batch 6 P0, 2026-11-10; not run in game)
 
 Shared by Attila, Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3 and Shogun 2 (`device_loss.hpp`, `output_encoding.hpp`):
