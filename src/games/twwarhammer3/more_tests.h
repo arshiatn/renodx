@@ -91,7 +91,8 @@ inline std::vector<twattila::engine_tests::EngineTest> MoreTests() {
        .tooltip = "How many falling bodies move as ragdolls at once. Next battle.",
        .max = 2.f,
        .option = {.tweaks = {{.name = "SIMPLE_RAG_DOLL_MAX_ACTIVE", .integer = true}}}},
-      // gi_enabled has no row: it follows Global Illumination (addon.cpp game_gi).
+      // gi_enabled has no row and is never written: back from 0 in a battle, the game's GI stage runs without its textures
+      // and the game crashes (game_gi.hpp).
   };
 }
 

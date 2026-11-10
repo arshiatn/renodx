@@ -6,6 +6,13 @@ Failed depth-level texture/view creation now releases all partial views and retr
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+### Global Illumination Off in a battle: the crash (WH3 batch 6 P1, 2026-11-10; not run in game)
+
+- **v37 crashed the game when Global Illumination went from on to Off in a battle** (it looked like a hang: the game's own crash handler was compressing its report). Cause, from the game's crash dump and its code: v37 set the engine value gi_enabled to 0 while ours was on and back to the game's 1 when ours went off. The game's GI stage makes its textures only while that value is not 0 and runs whenever it is not 0, so it ran without textures (a read of null + 0x18 at Warhammer3.exe+0x1A45803).
+- **gi_enabled is never written now.** The game's GI stays out of the picture through its flag in the lighting constants alone (g_gi_enabled 0 in every upload, as in v37). Its six GI compute passes run again while ours is on (about 0.22 ms GPU in batch 5's siege measurement).
+- The lighting buffers are known from their creation (480-byte constant buffers), not looked up at every map, and a map's pointer is written through only by the thread that mapped it, before that unmap: an unmap from another thread, a destroyed buffer or a map never unmapped drops the pointer. Test: `test/tw_game_gi/run.ps1` (WARP, x86 and amd64).
+- Test in game: a battle with Light Bounce on (Path Tracing), then Off, then on again, twice; the game goes on. Log: "the game's Global Illumination flag off" once.
+
 ## v37 (2026-11-06, ATN: only our AO and GI; helper89 unchanged; nothing here run in game)
 
 - **The game's SSAO isn't computed while our AO feeds it (no row, default):** under RTAO and Path-Traced AO its three passes (depth downsample, sweep, collect) go, the result cleared to open; the sun reads the rays' AO alone. In 94 traces the sun draws are its only reader: the reflections' resolve binds a 1x1 white texture there, water and fog never bind it (v36's "reflections lose the game's AO" was wrong). Skip the Game's SSAO under RTAO removed. WARP on the game's bytes: the 6 sun shaders with it read exactly the rays' AO, 0 values off.

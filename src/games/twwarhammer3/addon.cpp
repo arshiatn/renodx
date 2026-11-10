@@ -52,6 +52,7 @@
 #include "../twattila/water_effects.hpp"
 #include "./building_masks.hpp"
 #include "./cut_out_masks.hpp"
+#include "./game_gi.hpp"
 #include "./object_motion.hpp"
 #include "./vfx_particles.hpp"
 #include "./resolution_scale.hpp"
@@ -2887,86 +2888,6 @@ std::array<std::atomic_bool, LIGHT_BOUNCE_DRAWS.size()> sun_values_logged = {};
 // Where a sun draw finds its AO: the game's has its own overscan (below about 2/3 scale it fills a part of its texture, at the
 // render's pixels), so the draw reads uv x ssao_overscan / warscape_3d_overscan. The AO filter's and rt_ambient_combine's
 // textures hold each pixel where the picture has it: read in the game's place, both overscans are 1 for that draw.
-// The game's Global Illumination off while ours is on (Light Bounce, any method). Its engine value gi_enabled (0x3f5d040: its
-// constructor's off path for GPUs without it) goes to 0, and the flag every reader takes, g_gi_enabled, goes to 0 where the game
-// uploads it, so none reads probes that no longer update: lighting_VS_PS is 480 bytes in all 1228 shaders that have it, g_gi_enabled
-// at 180 in all, and no other constant buffer in the dump is 480 bytes (v37_cbuffer_sizes.py). 1019 shaders read the flag; with
-// it 0 they take the game's own path without GI.
-namespace game_gi {
-tw::engine_tweaks::Option engine_value = {.tweaks = {{.name = "gi_enabled", .integer = true}}};
-std::atomic_bool off = false;
-std::atomic_bool logged = false;
-constexpr uint64_t LIGHTING_BYTES = 480;
-constexpr uint64_t FLAG_OFFSET = 180;
-// A write map's pointer until its unmap (deferred contexts map on their own threads).
-thread_local std::vector<std::pair<uint64_t, uint8_t*>> mapped;
-
-bool IsLighting(reshade::api::device* device, reshade::api::resource resource) {
-  const auto desc = device->get_resource_desc(resource);
-  return desc.type == reshade::api::resource_type::buffer && desc.buffer.size == LIGHTING_BYTES
-         && (desc.usage & reshade::api::resource_usage::constant_buffer) != 0;
-}
-
-void LogOnce(const char* how) {
-  if (!logged.exchange(true, std::memory_order_relaxed)) {
-    renodx::utils::log::i(std::format("[Warhammer III] First run: the game's Global Illumination flag off in its lighting constants ({}).", how));
-  }
-}
-
-void OnMapBufferRegion(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t, reshade::api::map_access access, void** data) {
-  if (!off.load(std::memory_order_relaxed) || offset != 0 || data == nullptr || *data == nullptr || access == reshade::api::map_access::read_only) return;
-  if (!IsLighting(device, resource)) return;
-  // One pointer for a buffer: a map whose unmap never came on this thread (another thread's, a lost device) must not leave
-  // its old pointer for the next unmap to write through.
-  if (const auto found = std::ranges::find(mapped, resource.handle, &std::pair<uint64_t, uint8_t*>::first); found != mapped.end()) {
-    found->second = static_cast<uint8_t*>(*data);
-  } else {
-    mapped.emplace_back(resource.handle, static_cast<uint8_t*>(*data));
-  }
-}
-
-void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource resource) {
-  const auto found = std::ranges::find(mapped, resource.handle, &std::pair<uint64_t, uint8_t*>::first);
-  if (found == mapped.end()) return;
-  // Turned off since the map: the game's flag stays, and with it a pointer no map renewed is never written through.
-  if (off.load(std::memory_order_relaxed)) {
-    constexpr uint32_t GI_OFF = 0u;
-    std::memcpy(found->second + FLAG_OFFSET, &GI_OFF, sizeof(GI_OFF));
-    LogOnce("map");
-  }
-  mapped.erase(found);
-}
-
-// The game's update, whole or past the flag, replaced by the same with the flag 0 on its own context (no event).
-bool UpdateWithFlagOff(ID3D11DeviceContext* native, reshade::api::device* device, const void* data, reshade::api::resource resource, uint64_t offset,
-                       uint64_t size) {
-  if (!off.load(std::memory_order_relaxed) || native == nullptr || data == nullptr || offset != 0 || !IsLighting(device, resource)) return false;
-  if (size != UINT64_MAX && size < FLAG_OFFSET + 4) return false;
-  // Through ReShade's context the update would come back here.
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
-  std::array<uint8_t, LIGHTING_BYTES> patched = {};
-  std::memcpy(patched.data(), data, (size == UINT64_MAX) ? LIGHTING_BYTES : std::min(size, LIGHTING_BYTES));
-  constexpr uint32_t GI_OFF = 0u;
-  std::memcpy(patched.data() + FLAG_OFFSET, &GI_OFF, sizeof(GI_OFF));
-  const D3D11_BOX box = {.left = 0, .top = 0, .front = 0, .right = static_cast<UINT>(std::min(size, LIGHTING_BYTES)), .bottom = 1, .back = 1};
-  native->UpdateSubresource(reinterpret_cast<ID3D11Resource*>(resource.handle), 0, (size == UINT64_MAX) ? nullptr : &box, patched.data(), 0, 0);
-  LogOnce("update");
-  return true;
-}
-
-bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource, uint64_t offset, uint64_t size) {
-  if (!off.load(std::memory_order_relaxed)) return false;
-  Microsoft::WRL::ComPtr<ID3D11DeviceContext> immediate;
-  reinterpret_cast<ID3D11Device*>(device->get_native())->GetImmediateContext(immediate.GetAddressOf());
-  return UpdateWithFlagOff(immediate.Get(), device, data, resource, offset, size);
-}
-
-bool OnUpdateBufferRegionCommand(reshade::api::command_list* cmd_list, const void* data, reshade::api::resource resource, uint64_t offset, uint64_t size) {
-  if (!off.load(std::memory_order_relaxed)) return false;
-  return UpdateWithFlagOff(reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native()), cmd_list->get_device(), data, resource, offset, size);
-}
-}  // namespace game_gi
-
 namespace sun_ao {
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_view;  // the sun draw's, before anything of ours replaced it
 Microsoft::WRL::ComPtr<ID3D11Buffer> game_constants;
@@ -3151,9 +3072,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   // Below about 2/3 the AO reads the display's depth, with data in the render size's corner only.
   twattila::depth_levels::SetUsedSize(twwarhammer3::taa_dlss::RenderSizeBelow100());
-  const bool our_gi = shader_injection.light_bounce_strength > 0.f;
-  game_gi::engine_value.scale = our_gi ? 0.f : 1.f;
-  game_gi::off.store(our_gi, std::memory_order_relaxed);
+  twwarhammer3::game_gi::off.store(shader_injection.light_bounce_strength > 0.f, std::memory_order_relaxed);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
@@ -3275,7 +3194,6 @@ void ConfigureAddon() {
   engine_tests = more_tests::MoreTests();
   graphics_options = {&unit_detail, &building_detail, &tree_detail, &grass_detail, &object_detail, &terrain_detail, &effects_detail, &unit_draw, &building_draw, &tree_draw, &grass_draw, &object_draw, &terrain_draw, &grass_density, &terrain_tessellation};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
-  graphics_options.push_back(&game_gi::engine_value);
   graphics_status = new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = "Engine values: not searched yet",
@@ -3816,10 +3734,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::present>(bloom_fix::OnPresent);
 #endif
   reshade::register_event<reshade::addon_event::present>(OnPresent);
-  reshade::register_event<reshade::addon_event::map_buffer_region>(game_gi::OnMapBufferRegion);
-  reshade::register_event<reshade::addon_event::unmap_buffer_region>(game_gi::OnUnmapBufferRegion);
-  reshade::register_event<reshade::addon_event::update_buffer_region>(game_gi::OnUpdateBufferRegion);
-  reshade::register_event<reshade::addon_event::update_buffer_region_command>(game_gi::OnUpdateBufferRegionCommand);
+  twwarhammer3::game_gi::Install();
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
@@ -3861,10 +3776,7 @@ void DetachAddon() {
 #endif
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   tw::engine_tweaks::Uninstall(graphics_options);
-  reshade::unregister_event<reshade::addon_event::map_buffer_region>(game_gi::OnMapBufferRegion);
-  reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(game_gi::OnUnmapBufferRegion);
-  reshade::unregister_event<reshade::addon_event::update_buffer_region>(game_gi::OnUpdateBufferRegion);
-  reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(game_gi::OnUpdateBufferRegionCommand);
+  twwarhammer3::game_gi::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
