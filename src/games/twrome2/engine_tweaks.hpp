@@ -729,12 +729,13 @@ inline void Uninstall(std::span<Option*> options) {
       uint32_t now = 0;
       std::memcpy(&now, tweak.value, tweak.flag ? sizeof(uint8_t) : sizeof(now));
       if (now != tweak.written) continue;
-      if (kept != nullptr && kept->count < kept->values.size()) {
+      if (kept != nullptr && kept->count < kept->values.size() && tweak.code_pattern.empty()) {
         kept->values[kept->count] = {.address = reinterpret_cast<uintptr_t>(tweak.value), .game = tweak.game, .written = tweak.written};
         ++kept->count;
         continue;
       }
-      // Nowhere to keep it: the game's value back, so that the next image does not scale the addon's.
+      // A code constant, found by a pattern with the game's value in it (the next image would not find the addon's; the
+      // game reads these when it builds what they size, not every frame), or nowhere to keep it: the game's value back.
       tweak.seen = false;
       if (tweak.flag) {
         *static_cast<uint8_t*>(tweak.value) = static_cast<uint8_t>(tweak.game);

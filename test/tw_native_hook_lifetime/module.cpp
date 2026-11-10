@@ -94,32 +94,34 @@ extern "C" __declspec(dllexport) int RemoveLod(int stage) {
 }
 #endif
 // The game's engine values are the host's (its image stays, this one unloads). Phase 0, the first image: two values
-// scaled and a flag set, one value set again by the game, then the detach. Phase 1, the image after it: the same
-// sliders, then back at the game's. 0: as it must be.
-extern "C" __declspec(dllexport) int EngineValues(float* scaled, float* reset, uint8_t* flag, int phase) {
+// scaled and a flag set, one value set again by the game, a constant in the game's code, then the detach. Phase 1, the
+// image after it: the same sliders, then back at the game's. 0: as it must be.
+extern "C" __declspec(dllexport) int EngineValues(float* scaled, float* reset, uint8_t* flag, float* constant, int phase) {
   tw::engine_tweaks::Option numbers = {
       .scale = 2.f,
-      .tweaks = {{.name = "scaled", .value = scaled}, {.name = "reset", .value = reset}},
+      .tweaks = {{.name = "scaled", .value = scaled},
+                 {.name = "reset", .value = reset},
+                 {.code_pattern = "00 00 20 41", .value = constant}},
   };
   tw::engine_tweaks::Option flags = {.scale = 1.f, .tweaks = {{.name = "flag", .flag = true, .value = flag}}};
   std::array<tw::engine_tweaks::Option*, 2> options = {&numbers, &flags};
   if (phase == 0) {
     tw::engine_tweaks::internal::Apply(options);
-    if (*scaled != 20.f || *reset != 20.f || *flag != 1) return 1;
+    if (*scaled != 20.f || *reset != 20.f || *flag != 1 || *constant != 20.f) return 1;
     *reset = 15.f;
     tw::engine_tweaks::Uninstall(options);
-    // Nothing is switched at the detach.
-    return (*scaled == 20.f && *reset == 15.f && *flag == 1) ? 0 : 2;
+    // Nothing is switched at the detach but the code constant, which the next image finds by the game's bytes.
+    return (*scaled == 20.f && *reset == 15.f && *flag == 1 && *constant == 10.f) ? 0 : 2;
   }
   tw::engine_tweaks::internal::Restore(options);
   tw::engine_tweaks::internal::Apply(options);
   // Not scaled once more; the value the game set is its new base.
-  if (*scaled != 20.f || *reset != 30.f || *flag != 1) return 3;
+  if (*scaled != 20.f || *reset != 30.f || *flag != 1 || *constant != 20.f) return 3;
   numbers.scale = 1.f;
   flags.scale = 0.f;
   tw::engine_tweaks::internal::Apply(options);
   // The game's own, known across the unload.
-  if (*scaled != 10.f || *reset != 15.f || *flag != 0) return 4;
+  if (*scaled != 10.f || *reset != 15.f || *flag != 0 || *constant != 10.f) return 4;
   tw::engine_tweaks::Uninstall(options);
   return 0;
 }
