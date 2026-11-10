@@ -266,9 +266,17 @@ static reshade::api::swapchain_desc GameDesc(DXGI_SWAP_EFFECT effect) {
   return desc;
 }
 
-// The header's state as a fresh image has it.
+// The header's state as a fresh image in a fresh process has it, and no device of an earlier step still answering
+// "removed": a new device can get an old one's address.
 static void Reset() {
   loss::StopWatch();
+  {
+    const std::unique_lock lock(removed_mutex);
+    removed_devices.clear();
+    asked.clear();
+  }
+  SetEnvironmentVariableW(loss::DEVICE_LOST_MARK, nullptr);
+  loss::stall_dump_always = false;
   const std::unique_lock lock(loss::devices_mutex);
   loss::devices.clear();
   loss::removed_logged.clear();
@@ -381,6 +389,18 @@ static int Parent(const wchar_t* self) {
   CHECK(output::Encoding(output::HDR10, {.known = false, .on = false}) == output::HDR10);
   CHECK(output::Encoding(output::SCRGB, {.known = false, .on = false}) == output::SCRGB);
   CHECK(output::Encoding(output::SDR, {.known = true, .on = true}) == output::SDR);
+  // A chosen HDR output stays while any active display has Windows HDR on (the window can still be on another one); Auto
+  // follows the window's display.
+  CHECK(output::Encoding(output::HDR10, {.known = true, .on = false, .on_elsewhere = true}) == output::HDR10);
+  CHECK(output::Encoding(output::SCRGB, {.known = true, .on = false, .on_elsewhere = true}) == output::SCRGB);
+  CHECK(output::Encoding(output::AUTO, {.known = true, .on = false, .on_elsewhere = true}) == output::SDR);
+  // Auto without an answer keeps the chain before's output; with an answer it follows it; a chosen output is not kept.
+  CHECK(output::Encoding(output::AUTO, {.known = false, .on = false}, output::SCRGB) == output::SCRGB);
+  CHECK(output::Encoding(output::AUTO, {.known = false, .on = true}, output::SDR) == output::SDR);
+  CHECK(output::Encoding(output::AUTO, {.known = true, .on = false}, output::SCRGB) == output::SDR);
+  CHECK(output::Encoding(output::AUTO, {.known = true, .on = true}, output::SDR) == output::SCRGB);
+  CHECK(output::Encoding(output::HDR10, {.known = true, .on = false}, output::HDR10) == output::SDR);
+  CHECK(output::Encoding(output::SDR, {.known = false, .on = false}, output::SCRGB) == output::SDR);
   output::Configure({.shader_encoding = &encoding,
                      .setting = output::AUTO,
                      .hdr_encoding = [](int setting) { return (setting == output::SCRGB) ? output::SCRGB : output::HDR10; }});
@@ -529,6 +549,27 @@ static int Parent(const wchar_t* self) {
     loss::OnInitDevice(&single_threaded);
     loss::OnInitDevice(&multi_threaded);
     CHECK(loss::devices[0].single_threaded && !loss::devices[1].single_threaded);
+    wchar_t dump_path[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, dump_path, MAX_PATH);
+    *(wcsrchr(dump_path, L'\\') + 1) = 0;
+    wcscat_s(dump_path, L"renodx-stall.dmp");
+    DeleteFileW(dump_path);
+    mock::Swapchain multi_chain;
+    multi_chain.owner = &multi_threaded;
+    // Frames stop with no device lost in this process and no switch in the ini (a long load): the line, no file.
+    loss::stall_log_ms = 2000;
+    loss::OnPresent(nullptr, &multi_chain, nullptr, nullptr, 0, nullptr);
+    Sleep(3500);
+    CHECK(Logged("No frame for 2 s") == 1 && Logged("Every thread's place when the frames stopped (") == 0);
+    CHECK(GetFileAttributesW(dump_path) == INVALID_FILE_ATTRIBUTES);
+    // The ini's switch: the file too.
+    loss::stall_dump_always = true;
+    loss::OnPresent(nullptr, &multi_chain, nullptr, nullptr, 0, nullptr);
+    Sleep(3500);
+    CHECK(Logged("No frame for 2 s") == 2 && Logged("Every thread's place when the frames stopped (") == 1);
+    CHECK(GetFileAttributesW(dump_path) != INVALID_FILE_ATTRIBUTES);
+    loss::stall_dump_always = false;
+    loss::stall_log_ms = 20000;
     Sleep(2500);
     CHECK(AskedOffThread(single_threaded.native.Get(), this_thread) == 0);
     CHECK(AskedOffThread(multi_threaded.native.Get(), this_thread) >= 1);
@@ -551,20 +592,15 @@ static int Parent(const wchar_t* self) {
     loss::OnPresent(nullptr, &chain, nullptr, nullptr, 0, nullptr);
     CHECK(Logged("GPU reset: the game's device removed") == removals + 2);
     // The frame thread faults and its handler takes its time (a game's crash reporter): after 20 s one line with that
-    // thread's place, a module and an offset; on x64 a second one naming the fault; and every thread's place in a file.
-    wchar_t dump_path[MAX_PATH] = {};
-    GetModuleFileNameW(nullptr, dump_path, MAX_PATH);
-    *(wcsrchr(dump_path, L'\\') + 1) = 0;
-    wcscat_s(dump_path, L"renodx-stall.dmp");
+    // thread's place, a module and an offset; on x64 a second one naming the fault; and, a device having been lost in
+    // this process, every thread's place in a file.
     DeleteFileW(dump_path);
-    mock::Swapchain multi_chain;
-    multi_chain.owner = &multi_threaded;
     const HANDLE frame_thread = CreateThread(nullptr, 0, FaultingFrameThread, &multi_chain, 0, &faulting_thread_id);
     Sleep(21500);
-    CHECK(Logged("No frame for 2") == 1);
+    CHECK(Logged("No frame for 20 s") == 1);
     {
       const std::unique_lock lock(log_mutex);
-      const auto line = std::ranges::find_if(log_lines, [](const std::string& text) { return text.find("No frame for 2") != std::string::npos; });
+      const auto line = std::ranges::find_if(log_lines, [](const std::string& text) { return text.find("No frame for 20 s") != std::string::npos; });
       CHECK(line->find("the frame thread at: ") != std::string::npos && line->find("+0x") != std::string::npos);
       std::printf("%s\n", line->c_str());
 #if defined(_WIN64)
@@ -574,7 +610,7 @@ static int Parent(const wchar_t* self) {
       std::printf("%s\n", fault->c_str());
 #endif
     }
-    CHECK(Logged("Every thread's place when the frames stopped (") == 1 && Logged("could not be written") == 0);
+    CHECK(Logged("Every thread's place when the frames stopped (") == 2 && Logged("could not be written") == 0);
     {
       // The file as a debugger reads it: the faulting thread first, this thread too, each with registers in this exe or
       // a system module and a stack that starts at its stack pointer; this exe among the modules.
@@ -706,6 +742,9 @@ static int Parent(const wchar_t* self) {
       depth->AddRef();
       CHECK(depth->Release() == 2);
       if (list == &old_list) {
+        // Another device's end leaves what is kept.
+        sweep::OnDestroyDevice(&new_device);
+        CHECK(sweep::internal::depth == depth.Get() && sweep::internal::camera == camera.Get());
         // The game's next collect is on its new device: skipped, nothing of the old device bound or held.
         CHECK(!sweep::OnCollect(&new_list, true, true, 0, 1));
         CHECK(sweep::internal::own_device == new_device.native.Get());

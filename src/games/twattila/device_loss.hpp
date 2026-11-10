@@ -20,6 +20,7 @@
 #include <cstring>
 #include <ctime>
 #include <format>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -46,14 +47,26 @@ namespace twattila::device_loss {
 static uint64_t no_frame_limit_ms = 90000;
 // A frame that does not come is sampled at 20, 40 and 60 s: one sample cannot tell a hang from a long job, nor whether
 // the frame thread ever left the code it was first seen in.
-constexpr uint64_t STALL_LOG_MS = 20000;
+static uint64_t stall_log_ms = 20000;  // a test shortens it
 constexpr uint32_t STALL_SAMPLES = 3;
-// A stall's first sample also writes every thread's place to a file in the game's folder, the last stall's over the one
-// before: a long load can be the first.
+// A stall's first sample can also write every thread's place to a file in the game's folder, the last stall's over the
+// one before. Only once a device was lost in this process, or where ReShade.ini asks ([Total War] StallDump=1): a long
+// load is a stall too, and a game that only loads gets the one line.
 constexpr uint32_t STALL_DUMPS = 3;
+#if defined(_WIN64)
 constexpr size_t STALL_DUMP_STACK_BYTES = 256 * 1024;
 constexpr size_t STALL_DUMP_BYTES = 32 * 1024 * 1024;
+#else
+// A 32-bit game can be near the end of its address space.
+constexpr size_t STALL_DUMP_STACK_BYTES = 64 * 1024;
+constexpr size_t STALL_DUMP_BYTES = 8 * 1024 * 1024;
+#endif
+static bool stall_dump_always = false;
+// Set in the process's environment at a lost device: the image that comes with the game's next device (Attila's order)
+// is another one.
+constexpr const wchar_t* DEVICE_LOST_MARK = L"RENODX_TW_DEVICE_LOST";
 constexpr DWORD WATCH_POLL_MS = 1000;
+constexpr DWORD WATCH_STOP_MS = 2000;
 
 // Not owned: from init_device to destroy_device. A single-threaded device (Attila, Rome II, Thrones, Shogun 2) is only
 // asked on the thread that presents.
@@ -77,7 +90,7 @@ static std::atomic<HWND> game_window = nullptr;
 static std::atomic_uint64_t last_present_tick = 0;
 static std::atomic_uint32_t present_thread = 0;
 static HANDLE watch_thread = nullptr;
-static HANDLE watch_stop = nullptr;
+static HANDLE watch_stop = nullptr;  // that thread's own: a watch that could not be waited for keeps its event
 
 static bool GameInFront() {
   DWORD process = 0;
@@ -89,6 +102,7 @@ static bool GameInFront() {
 static void LogRemoved(ID3D11Device* device, HRESULT reason) {
   if (std::ranges::find(removed_logged, device) != removed_logged.end()) return;
   removed_logged.push_back(device);
+  SetEnvironmentVariableW(DEVICE_LOST_MARK, L"1");
   renodx::utils::log::w(std::format("[Total War] GPU reset: the game's device removed (0x{:08X}), last frame {} ms ago, the game's window {}.",
                                     static_cast<uint32_t>(reason), GetTickCount64() - last_present_tick.load(std::memory_order_relaxed),
                                     GameInFront() ? "in front" : "not in front"));
@@ -181,7 +195,8 @@ static void LogStall(uint64_t age_ms, bool dump) {
 
   // The dump is written by hand. MiniDumpWriteDump stops every other thread of its own process and then allocates and
   // loads: with one of them stopped inside the heap or the loader it never returns, and a long load would become a
-  // hang. Here one thread at a time is stopped, for its registers and a copy of its stack into memory made before.
+  // hang. Here one thread at a time is stopped, for its registers and a copy of its stack into memory made before, and
+  // each stack goes to the file once its thread runs again: the dump never holds more than one of them in memory.
   std::vector<DWORD> thread_ids = {frame_thread};
   if (const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0); snapshot != INVALID_HANDLE_VALUE) {
     THREADENTRY32 entry = {.dwSize = sizeof(THREADENTRY32)};
@@ -197,66 +212,11 @@ static void LogStall(uint64_t age_ms, bool dump) {
     uintptr_t environment = 0;  // its TEB
     CONTEXT context = {};
     uintptr_t stack_start = 0;
-    size_t stack_offset = 0;  // in `stacks`
+    RVA stack_offset = 0;  // in the file
     size_t stack_size = 0;
   };
   std::vector<StoppedThread> threads;
   threads.reserve(thread_ids.size());
-  std::vector<uint8_t> stacks;
-  std::vector<uint8_t> one_stack(STALL_DUMP_STACK_BYTES);
-  // ntdll's THREAD_BASIC_INFORMATION (class 0): a debugger wants each thread's environment block.
-  struct ThreadBasics {
-    LONG exit_status;
-    void* environment;
-    void* process_id;
-    void* thread_id;
-    uintptr_t affinity;
-    LONG priority;
-    LONG base_priority;
-  };
-  using QueryThread = LONG(NTAPI*)(HANDLE, int, void*, ULONG, ULONG*);
-  const auto query_thread = reinterpret_cast<QueryThread>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationThread"));
-  for (const DWORD id : thread_ids) {
-    const HANDLE other = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, id);
-    if (other == nullptr) continue;
-    StoppedThread stopped_thread = {.id = id};
-    if (ThreadBasics basics = {}; query_thread != nullptr && query_thread(other, 0, &basics, sizeof(basics), nullptr) >= 0) {
-      stopped_thread.environment = reinterpret_cast<uintptr_t>(basics.environment);
-    }
-    stopped_thread.context.ContextFlags = CONTEXT_FULL;
-    SIZE_T copied = 0;
-    bool known = false;
-    if (SuspendThread(other) != static_cast<DWORD>(-1)) {
-      // Until the resume: system calls only (the stopped thread may hold the heap's or the loader's lock).
-      known = GetThreadContext(other, &stopped_thread.context) != FALSE;
-      if (known && stacks.size() < STALL_DUMP_BYTES) {
-#if defined(_WIN64)
-        stopped_thread.stack_start = stopped_thread.context.Rsp;
-#else
-        stopped_thread.stack_start = stopped_thread.context.Esp;
-#endif
-        // The stack's committed pages from the stack pointer up.
-        uintptr_t end = stopped_thread.stack_start;
-        MEMORY_BASIC_INFORMATION pages = {};
-        void* allocation = nullptr;
-        while (end - stopped_thread.stack_start < one_stack.size() && VirtualQuery(reinterpret_cast<const void*>(end), &pages, sizeof(pages)) != 0
-               && pages.State == MEM_COMMIT && (pages.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0
-               && (allocation == nullptr || pages.AllocationBase == allocation)) {
-          allocation = pages.AllocationBase;
-          end = reinterpret_cast<uintptr_t>(pages.BaseAddress) + pages.RegionSize;
-        }
-        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(stopped_thread.stack_start), one_stack.data(),
-                          std::min<size_t>(end - stopped_thread.stack_start, one_stack.size()), &copied);
-      }
-      ResumeThread(other);
-    }
-    CloseHandle(other);
-    if (!known) continue;
-    stopped_thread.stack_offset = stacks.size();
-    stopped_thread.stack_size = copied;
-    stacks.insert(stacks.end(), one_stack.begin(), one_stack.begin() + static_cast<ptrdiff_t>(copied));
-    threads.push_back(stopped_thread);
-  }
 
   // The modules' places, read as another process would read them (no loader lock).
   struct LoadedModule {
@@ -301,11 +261,95 @@ static void LogStall(uint64_t age_ms, bool dump) {
     }
   }
 
-  // The file: header, directory, then each stream's data where its entry points.
-  std::vector<uint8_t> file;
-  const auto append = [&file](const void* data, size_t size) {
-    const auto offset = static_cast<RVA>(file.size());
-    file.insert(file.end(), static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
+  // The file: header, directory (filled in last), the stacks as they are read, then each stream's data where its entry
+  // points.
+  std::array<wchar_t, MAX_PATH> exe = {};
+  GetModuleFileNameW(nullptr, exe.data(), MAX_PATH);
+  std::wstring path = exe.data();
+  path = path.substr(0, path.find_last_of(L'\\') + 1) + L"renodx-stall.dmp";
+  const HANDLE output = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (output == INVALID_HANDLE_VALUE) {
+    renodx::utils::log::w("[Total War] The stalled threads' places could not be written to renodx-stall.dmp beside the game's exe.");
+    return;
+  }
+  // Closed on every way out, a thrown one (no memory) too.
+  const std::unique_ptr<void, BOOL(WINAPI*)(HANDLE)> output_owner(output, CloseHandle);
+  constexpr ULONG32 STREAMS = 5;
+  const MINIDUMP_HEADER header = {.Signature = MINIDUMP_SIGNATURE,
+                                  .Version = MINIDUMP_VERSION,
+                                  .NumberOfStreams = STREAMS,
+                                  .StreamDirectoryRva = sizeof(MINIDUMP_HEADER),
+                                  .TimeDateStamp = static_cast<ULONG32>(std::time(nullptr))};
+  std::array<MINIDUMP_DIRECTORY, STREAMS> directory = {};
+  DWORD written = 0;
+  bool saved = WriteFile(output, &header, sizeof(header), &written, nullptr) != FALSE
+               && WriteFile(output, directory.data(), sizeof(directory), &written, nullptr) != FALSE;
+  constexpr RVA STACKS_START = sizeof(header) + sizeof(directory);
+  RVA file_end = STACKS_START;
+
+  static std::array<uint8_t, STALL_DUMP_STACK_BYTES> one_stack;
+  // ntdll's THREAD_BASIC_INFORMATION (class 0): a debugger wants each thread's environment block.
+  struct ThreadBasics {
+    LONG exit_status;
+    void* environment;
+    void* process_id;
+    void* thread_id;
+    uintptr_t affinity;
+    LONG priority;
+    LONG base_priority;
+  };
+  using QueryThread = LONG(NTAPI*)(HANDLE, int, void*, ULONG, ULONG*);
+  const auto query_thread = reinterpret_cast<QueryThread>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationThread"));
+  for (const DWORD id : thread_ids) {
+    const HANDLE other = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, id);
+    if (other == nullptr) continue;
+    StoppedThread stopped_thread = {.id = id};
+    if (ThreadBasics basics = {}; query_thread != nullptr && query_thread(other, 0, &basics, sizeof(basics), nullptr) >= 0) {
+      stopped_thread.environment = reinterpret_cast<uintptr_t>(basics.environment);
+    }
+    stopped_thread.context.ContextFlags = CONTEXT_FULL;
+    SIZE_T copied = 0;
+    bool known = false;
+    if (SuspendThread(other) != static_cast<DWORD>(-1)) {
+      // Until the resume: system calls only (the stopped thread may hold the heap's or the loader's lock).
+      known = GetThreadContext(other, &stopped_thread.context) != FALSE;
+      if (known && file_end - STACKS_START < STALL_DUMP_BYTES) {
+#if defined(_WIN64)
+        stopped_thread.stack_start = stopped_thread.context.Rsp;
+#else
+        stopped_thread.stack_start = stopped_thread.context.Esp;
+#endif
+        // The stack's committed pages from the stack pointer up.
+        uintptr_t end = stopped_thread.stack_start;
+        MEMORY_BASIC_INFORMATION pages = {};
+        void* allocation = nullptr;
+        while (end - stopped_thread.stack_start < one_stack.size() && VirtualQuery(reinterpret_cast<const void*>(end), &pages, sizeof(pages)) != 0
+               && pages.State == MEM_COMMIT && (pages.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0
+               && (allocation == nullptr || pages.AllocationBase == allocation)) {
+          allocation = pages.AllocationBase;
+          end = reinterpret_cast<uintptr_t>(pages.BaseAddress) + pages.RegionSize;
+        }
+        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(stopped_thread.stack_start), one_stack.data(),
+                          std::min<size_t>(end - stopped_thread.stack_start, one_stack.size()), &copied);
+      }
+      ResumeThread(other);
+    }
+    CloseHandle(other);
+    if (!known) continue;
+    stopped_thread.stack_offset = file_end;
+    stopped_thread.stack_size = copied;
+    if (copied != 0) {
+      saved = saved && WriteFile(output, one_stack.data(), static_cast<DWORD>(copied), &written, nullptr) != FALSE && written == copied;
+      file_end += static_cast<RVA>(copied);
+    }
+    threads.push_back(stopped_thread);
+  }
+
+  // What follows the stacks, small: made in memory, its places counted from the stacks' end.
+  std::vector<uint8_t> streams;
+  const auto append = [&streams, file_end](const void* data, size_t size) {
+    const auto offset = file_end + static_cast<RVA>(streams.size());
+    streams.insert(streams.end(), static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
     return offset;
   };
   // A length in bytes, the text, a terminator.
@@ -315,15 +359,6 @@ static void LogStall(uint64_t age_ms, bool dump) {
     append(text.c_str(), length + sizeof(wchar_t));
     return offset;
   };
-  constexpr ULONG32 STREAMS = 5;
-  const MINIDUMP_HEADER header = {.Signature = MINIDUMP_SIGNATURE,
-                                  .Version = MINIDUMP_VERSION,
-                                  .NumberOfStreams = STREAMS,
-                                  .StreamDirectoryRva = sizeof(MINIDUMP_HEADER),
-                                  .TimeDateStamp = static_cast<ULONG32>(std::time(nullptr))};
-  append(&header, sizeof(header));
-  std::array<MINIDUMP_DIRECTORY, STREAMS> directory = {};
-  append(directory.data(), sizeof(directory));
 
   SYSTEM_INFO processor = {};
   GetNativeSystemInfo(&processor);
@@ -363,14 +398,13 @@ static void LogStall(uint64_t age_ms, bool dump) {
     append(&loaded.module, sizeof(loaded.module));
   }
 
-  // The stacks' bytes and each thread's registers, then the two lists that point at them.
-  const RVA stacks_offset = append(stacks.data(), stacks.size());
+  // Each thread's registers, then the two lists that point at them and at the stacks.
   std::vector<MINIDUMP_THREAD> thread_list;
   std::vector<MINIDUMP_MEMORY_DESCRIPTOR> memory_list;
   for (const StoppedThread& stopped_thread : threads) {
     const MINIDUMP_MEMORY_DESCRIPTOR stack_memory = {
         .StartOfMemoryRange = stopped_thread.stack_start,
-        .Memory = {.DataSize = static_cast<ULONG32>(stopped_thread.stack_size), .Rva = stacks_offset + static_cast<RVA>(stopped_thread.stack_offset)}};
+        .Memory = {.DataSize = static_cast<ULONG32>(stopped_thread.stack_size), .Rva = stopped_thread.stack_offset}};
     thread_list.push_back({.ThreadId = stopped_thread.id,
                            .Teb = stopped_thread.environment,
                            .Stack = stack_memory,
@@ -389,98 +423,100 @@ static void LogStall(uint64_t age_ms, bool dump) {
                   .Location = {.DataSize = static_cast<ULONG32>(sizeof(memory_count) + memory_list.size() * sizeof(MINIDUMP_MEMORY_DESCRIPTOR)),
                                .Rva = append(&memory_count, sizeof(memory_count))}};
   append(memory_list.data(), memory_list.size() * sizeof(MINIDUMP_MEMORY_DESCRIPTOR));
-  std::memcpy(file.data() + sizeof(MINIDUMP_HEADER), directory.data(), sizeof(directory));
 
-  std::array<wchar_t, MAX_PATH> exe = {};
-  GetModuleFileNameW(nullptr, exe.data(), MAX_PATH);
-  std::wstring path = exe.data();
-  path = path.substr(0, path.find_last_of(L'\\') + 1) + L"renodx-stall.dmp";
-  const HANDLE output = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-  DWORD written = 0;
-  const bool saved = output != INVALID_HANDLE_VALUE && WriteFile(output, file.data(), static_cast<DWORD>(file.size()), &written, nullptr) != FALSE
-                     && written == file.size();
-  if (output != INVALID_HANDLE_VALUE) {
-    CloseHandle(output);
-  }
+  saved = saved && WriteFile(output, streams.data(), static_cast<DWORD>(streams.size()), &written, nullptr) != FALSE && written == streams.size()
+          && SetFilePointer(output, sizeof(MINIDUMP_HEADER), nullptr, FILE_BEGIN) != INVALID_SET_FILE_POINTER
+          && WriteFile(output, directory.data(), sizeof(directory), &written, nullptr) != FALSE && written == sizeof(directory);
   if (saved) {
     renodx::utils::log::w(std::format("[Total War] Every thread's place when the frames stopped ({} threads, {} KB) is in renodx-stall.dmp beside the game's exe.",
-                                      threads.size(), file.size() / 1024));
+                                      threads.size(), (file_end + streams.size()) / 1024));
   } else {
     renodx::utils::log::w("[Total War] The stalled threads' places could not be written to renodx-stall.dmp beside the game's exe.");
   }
 }
 
-static DWORD WINAPI WatchLoop(void*) {
+// Nothing thrown may leave this thread: it is a raw one, and an exception out of it ends the game. A 32-bit game near
+// the end of its address space can fail any allocation here (a line's text, the dump's lists).
+static DWORD WINAPI WatchLoop(void* stop) {
   bool front_known = false;
   bool last_front = false;
   uint64_t stalled_frame = 0;
   uint32_t stall_samples = 0;
   uint32_t stall_dumps = 0;
   uint64_t awaited_ms = 0;
-  while (WaitForSingleObject(watch_stop, WATCH_POLL_MS) == WAIT_TIMEOUT) {
-    {
-      const std::unique_lock lock(devices_mutex);
-      for (const TrackedDevice& tracked : devices) {
-        if (tracked.single_threaded) {
-          removal_check_wanted.store(true, std::memory_order_relaxed);
-          continue;
-        }
-        if (const HRESULT reason = tracked.device->GetDeviceRemovedReason(); FAILED(reason)) {
-          LogRemoved(tracked.device, reason);
+  while (WaitForSingleObject(stop, WATCH_POLL_MS) == WAIT_TIMEOUT) {
+    try {
+      {
+        const std::unique_lock lock(devices_mutex);
+        for (const TrackedDevice& tracked : devices) {
+          if (tracked.single_threaded) {
+            removal_check_wanted.store(true, std::memory_order_relaxed);
+            continue;
+          }
+          if (const HRESULT reason = tracked.device->GetDeviceRemovedReason(); FAILED(reason)) {
+            LogRemoved(tracked.device, reason);
+          }
         }
       }
-    }
-    if (const uint64_t frame = last_present_tick.load(std::memory_order_relaxed); frame != 0) {
-      if (const bool front = GameInFront(); !front_known || front != last_front) {
-        if (front_known) {
-          renodx::utils::log::i("[Total War] The game's window: ", front ? "in front" : "not in front", ".");
+      if (const uint64_t frame = last_present_tick.load(std::memory_order_relaxed); frame != 0) {
+        if (const bool front = GameInFront(); !front_known || front != last_front) {
+          if (front_known) {
+            renodx::utils::log::i("[Total War] The game's window: ", front ? "in front" : "not in front", ".");
+          }
+          front_known = true;
+          last_front = front;
         }
-        front_known = true;
-        last_front = front;
-      }
-      if (frame != stalled_frame) {
-        stalled_frame = frame;
-        stall_samples = 0;
-      }
-      if (const uint64_t age = GetTickCount64() - frame; stall_samples < STALL_SAMPLES && age >= STALL_LOG_MS * (stall_samples + 1)) {
-        ++stall_samples;
-        // A minimised game may just not be drawing.
-        const bool dump = stall_samples == 1 && stall_dumps < STALL_DUMPS && IsIconic(game_window.load(std::memory_order_relaxed)) == FALSE;
-        if (dump) {
-          ++stall_dumps;
+        if (frame != stalled_frame) {
+          stalled_frame = frame;
+          stall_samples = 0;
         }
-        LogStall(age, dump);
+        if (const uint64_t age = GetTickCount64() - frame; stall_samples < STALL_SAMPLES && age >= stall_log_ms * (stall_samples + 1)) {
+          ++stall_samples;
+          // A minimised game may just not be drawing.
+          const bool dump = stall_samples == 1 && stall_dumps < STALL_DUMPS
+                            && (stall_dump_always || GetEnvironmentVariableW(DEVICE_LOST_MARK, nullptr, 0) != 0)
+                            && IsIconic(game_window.load(std::memory_order_relaxed)) == FALSE;
+          if (dump) {
+            ++stall_dumps;
+          }
+          LogStall(age, dump);
+        }
       }
-    }
-    if (!awaiting_frame.load(std::memory_order_relaxed)) continue;
-    if (presented.load(std::memory_order_relaxed)) {
-      awaiting_frame.store(false, std::memory_order_relaxed);
-      awaited_ms = 0;
-      renodx::utils::log::i("[Total War] GPU reset: the game draws again.");
-      continue;
-    }
-    // A game minimised or behind another program draws nothing and is not hung: only the time its window is in front, or
-    // does not answer Windows (its ghost is in front then, not the game), counts.
-    const HWND window = game_window.load(std::memory_order_relaxed);
-    if (IsHungAppWindow(window) != FALSE || (GameInFront() && IsIconic(window) == FALSE)) {
-      awaited_ms += WATCH_POLL_MS;
-    }
-    if (awaited_ms >= no_frame_limit_ms) {
-      renodx::utils::log::e(std::format("[Total War] GPU reset: no frame for {} s after the game's new device, the game is closed.",
-                                        no_frame_limit_ms / 1000));
-      TerminateProcess(GetCurrentProcess(), 1);
+      if (!awaiting_frame.load(std::memory_order_relaxed)) continue;
+      if (presented.load(std::memory_order_relaxed)) {
+        awaiting_frame.store(false, std::memory_order_relaxed);
+        awaited_ms = 0;
+        renodx::utils::log::i("[Total War] GPU reset: the game draws again.");
+        continue;
+      }
+      // A game minimised or behind another program draws nothing and is not hung: only the time its window is in front, or
+      // does not answer Windows (its ghost is in front then, not the game), counts.
+      const HWND window = game_window.load(std::memory_order_relaxed);
+      if (IsHungAppWindow(window) != FALSE || (GameInFront() && IsIconic(window) == FALSE)) {
+        awaited_ms += WATCH_POLL_MS;
+      }
+      if (awaited_ms >= no_frame_limit_ms) {
+        renodx::utils::log::e(std::format("[Total War] GPU reset: no frame for {} s after the game's new device, the game is closed.",
+                                          no_frame_limit_ms / 1000));
+        TerminateProcess(GetCurrentProcess(), 1);
+      }
+    } catch (...) {
+      // No-op: the next poll goes on from here.
     }
   }
   return 0;
 }
 
-// Before the addon can go; a device's last destroy or the addon's detach, whichever comes first.
+// Before the addon can go; a device's last destroy or the addon's detach, whichever comes first. The wait is bounded:
+// under the loader's lock (the addon's detach) a thread told to stop is out of this code at once but cannot finish
+// ending until the detach returns, and waiting for that would hang the game's quit. Such a thread keeps its handles.
 static void StopWatch() {
   if (watch_thread == nullptr) return;
   SetEvent(watch_stop);
-  WaitForSingleObject(watch_thread, INFINITE);
-  CloseHandle(watch_thread);
-  CloseHandle(watch_stop);
+  if (WaitForSingleObject(watch_thread, WATCH_STOP_MS) == WAIT_OBJECT_0) {
+    CloseHandle(watch_thread);
+    CloseHandle(watch_stop);
+  }
   watch_thread = nullptr;
 }
 
@@ -491,7 +527,7 @@ static void OnInitDevice(reshade::api::device* device) {
   devices.push_back({.device = native, .single_threaded = (native->GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0});
   if (watch_thread == nullptr) {
     watch_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    watch_thread = CreateThread(nullptr, 0, WatchLoop, nullptr, 0, nullptr);
+    watch_thread = CreateThread(nullptr, 0, WatchLoop, watch_stop, 0, nullptr);
   }
 }
 
@@ -603,6 +639,7 @@ static void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swa
 
 // Before renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH): create_swapchain callbacks run in registration order.
 static void Install() {
+  reshade::get_config_value(nullptr, "Total War", "StallDump", stall_dump_always);
   reshade::register_event<reshade::addon_event::create_swapchain>(BeforeSwapchainMod);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
@@ -628,10 +665,12 @@ static void Uninstall() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(BeforeDestroyDevice);
   StopWatch();
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
-  // An image kept loaded after the detach tracks nothing.
-  const std::unique_lock lock(devices_mutex);
-  devices.clear();
-  removed_logged.clear();
+  // An image kept loaded after the detach tracks nothing. Not waited for: a watch that Windows ended inside the lock (the
+  // process's end) never gives it back, and nothing reads the lists then.
+  if (const std::unique_lock lock(devices_mutex, std::try_to_lock); lock.owns_lock()) {
+    devices.clear();
+    removed_logged.clear();
+  }
 }
 
 }  // namespace twattila::device_loss
