@@ -81,7 +81,8 @@ inline void ReleaseObjects() {
 }
 
 // The context's device. A game that made its device again beside the old one (a GPU reset) draws with another: nothing
-// kept or made on the old one may be bound on it (the first collect after it is the game's own).
+// kept or made on the old one may be bound on it (the first collect after it is the game's own). Every keep asks too, so
+// all that is held is always own_device's.
 inline ID3D11Device* SameDevice(ID3D11DeviceContext* context) {
   ID3D11Device* device = nullptr;
   context->GetDevice(&device);
@@ -141,6 +142,7 @@ inline void UnbindLevels(ID3D11DeviceContext* context) {
 inline bool OnBlur(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return true;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  internal::SameDevice(context);
   ID3D11ShaderResourceView* depth = nullptr;
   context->CSGetShaderResources(0, 1, &depth);
   internal::Keep(&internal::depth, depth);
@@ -154,16 +156,20 @@ inline bool OnBlur(reshade::api::command_list* cmd_list) {
 // which runs at every scale, its downsample only above about 2/3), kept for the collect.
 inline void KeepComputeDepth(reshade::api::command_list* cmd_list, UINT slot) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  internal::SameDevice(context);
   ID3D11ShaderResourceView* depth = nullptr;
-  reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->CSGetShaderResources(slot, 1, &depth);
+  context->CSGetShaderResources(slot, 1, &depth);
   internal::Keep(&internal::depth, depth);
 }
 
 // Warhammer II: the camera of a compute pass's `slot` (the sweep's b0, still bound at the collect) kept for it.
 inline void KeepComputeCamera(reshade::api::command_list* cmd_list, UINT slot) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  internal::SameDevice(context);
   ID3D11Buffer* camera = nullptr;
-  reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->CSGetConstantBuffers(slot, 1, &camera);
+  context->CSGetConstantBuffers(slot, 1, &camera);
   internal::Keep(&internal::camera, camera);
 }
 
@@ -292,8 +298,10 @@ inline bool DispatchInstead(reshade::api::command_list* cmd_list, std::span<cons
 // Warhammer III: the camera of a pixel shader's `slot` (its tonemap's b1) kept for the next collect.
 inline void KeepPixelCamera(reshade::api::command_list* cmd_list, UINT slot) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  internal::SameDevice(context);
   ID3D11Buffer* camera = nullptr;
-  reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->PSGetConstantBuffers(slot, 1, &camera);
+  context->PSGetConstantBuffers(slot, 1, &camera);
   internal::Keep(&internal::camera, camera);
 }
 
@@ -334,10 +342,12 @@ inline void OnCollectDone(reshade::api::command_list* cmd_list) {
   internal::previous_camera = nullptr;
 }
 
-// A device of the game's is going away: everything kept and made released while D3D is there (kept and made again from
-// the next frame's passes).
+// The device everything kept and made is of is going away: released while D3D is there (kept and made again from the
+// next frame's passes). Another device's end (the removed one beside the game's new one, a device made only to ask
+// something) leaves them.
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
+  if (reinterpret_cast<ID3D11Device*>(device->get_native()) != internal::own_device) return;
   internal::ReleaseObjects();
 }
 
