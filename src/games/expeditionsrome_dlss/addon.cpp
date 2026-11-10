@@ -2121,6 +2121,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
   if (attached) {
     renodx::utils::command_action::Unregister(OnCommand);
+    renodx::utils::command_action::Unregister(OnTonemapper);
     renodx::utils::command_action::Unregister(expeditionsrome::dlss::temporal_capture::OnCommand);
     renodx::utils::command_action::Unregister(expeditionsrome::dlss::contact_shadows::OnLightRectangle);
     if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Uninstall();
