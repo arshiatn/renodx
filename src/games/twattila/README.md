@@ -1,5 +1,18 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### GPU reset recovery and swap chain audit (WH3 batch 6 P0, 2026-11-10; not run in game)
+
+Shared by Attila, Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3 and Shogun 2 (`device_loss.hpp`, `output_encoding.hpp`):
+
+- **After a GPU reset** a removed device's bindings are cleared and flushed so the game's new swap chain gets the window (0x80070005 otherwise): before the new chain where the game keeps the old device (WH3), at the device's destroy where it does not (Attila). One log line with the removed reason, the last frame's age and whether the window was in front; three samples of the frame thread if frames stop (32-bit too).
+- **No frame for 90 s after a reset closes the game**, counting only time its window is in front or does not answer Windows: a game minimised or behind another program is left alone.
+- **Output is decided for every new swap chain**: Auto follows Windows HDR each time; a chosen HDR10 or scRGB becomes SDR for a chain made while Windows HDR is known off (white picture before). One log line per chain.
+- **The game's own blt swap chain after a failed flip one** (WH3, Pharaoh, Troy) is left as asked, shown in SDR, and not treated as upgraded.
+- **Objects released with the game's device**: water (caustics, clarity), the ray tracing's mask textures and point light readback, in-draw motion's last bindings, the bitmask AO's kept depth and camera (never bound on another device now). ReShade's "reference count is inconsistent" line should show a smaller number: read it in a run.
+- **Frame generation** drops the image it reads in place when the swap chain's buffers go (a readable back buffer kept there failed ResizeBuffers on WARP).
+
+Tests: `test/tw_device_loss/run.ps1`, `test/tw_fg_initialization/run.ps1` (`-Architecture x86` and `amd64`). Build: the skill's two commands. In game: `tools/tw/wh3_batch6/run_requests.md`.
+
 ### AO depth-level recovery (F15, 2026-11-09, GPT-6 Astra; not run in game)
 
 Failed depth-level texture/view creation now releases all partial views and retries at the same resolution after a one-second cooldown. Build: `cmake --build build32 --config Release --target renodx-twattila.addon32`. Manual check: use an AO mode that reads depth levels, change resolution/render scale, and verify stable AO; after a transient allocation failure, depth levels should recover without another resolution change. Failure injection and real D3D11 WARP readback results are in `docs/Attila-crash-audit-2026-11-08.md` at the repository root. No shader behavior was changed.

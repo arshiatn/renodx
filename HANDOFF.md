@@ -2,8 +2,8 @@
 
 ## WH3 BATCH 6 (Monday batch, ATN's go 2026-11-10; ATN away, keep going)
 Plan and rules: C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/wh3_batch6/plan.md; items: list.md there; reports: wh3_batch6/reports. One bundled game run only (phase R).
-- [ ] P0 device-loss handling in shared code (Attila first) + swap chain audit
-  - [x] P0.1 twattila/device_loss.hpp (moved from WH3) + output_encoding.hpp in the 9 TW HDR addons; test/tw_device_loss passes x86 and amd64; not run in game
+- [x] P0 device-loss handling in shared code (Attila first) + swap chain audit: twattila/device_loss.hpp + output_encoding.hpp in the 9 TW HDR addons (cure in both rebuild orders, limit spares a background game, output decided per new chain, objects released at destroy_device, line-sweep AO never binds across devices, FG drops its kept back buffer). test/tw_device_loss + tw_fg_initialization pass x86 and amd64; 14 addons build. NOT run in game; no helper change.
+  Report: wh3_batch6/reports/P0.md; the run's checks: wh3_batch6/run_requests.md (P0-1..9). Not done: Auto still sticks to SDR until the next new chain; twromeremastered and Shogun 2 DLSS untouched; a real removed device never tested.
 - [ ] P1 GI-off hang (item 1)
 - [ ] P2 RT shadow capture (items 2, 3, 5, 6)
 - [ ] P3 reflections and water (items 4, 14)
