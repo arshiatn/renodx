@@ -41,6 +41,7 @@
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../talesofarise_dlss/pixel_trace.hpp"
@@ -51,7 +52,6 @@
 #include "../twattila/water_effects.hpp"
 #include "./building_masks.hpp"
 #include "./cut_out_masks.hpp"
-#include "./device_loss.hpp"
 #include "./object_motion.hpp"
 #include "./vfx_particles.hpp"
 #include "./resolution_scale.hpp"
@@ -2730,36 +2730,6 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
-// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
-void SetOutputEncoding(int encoding) {
-  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
-  if (encoding == 2) {
-    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
-    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
-  } else {
-    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
-  }
-}
-
-// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
-// before the swapchain mod's create_swapchain (registered after this).
-bool auto_output_pending = false;
-// No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
-bool first_start = false;
-
-bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!auto_output_pending) return false;
-  auto_output_pending = false;
-  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
-  const auto path = renodx::utils::platform::GetPathInfo(monitor);
-  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  // Frame generation on from the start: HDR10, the frames need no pass of their own (twattila/frame_generation.hpp).
-  const bool frame_generation = twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.frame_generation != 0.f;
-  SetOutputEncoding(windows_hdr ? (frame_generation ? 0 : 1) : 2);
-  if (first_start && !windows_hdr) ApplySdrPreset();
-  return false;
-}
-
 // Its camera constants at their places in Attila's camera_VS_PS (frame_history::AttilaCamera) for the
 // screen-space shadows and the AO filter (destination, source, bytes).
 constexpr std::array<twattila::frame_history::CameraRun, 7> CAMERA_LAYOUT = {{
@@ -3578,10 +3548,20 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
-    auto_output_pending = (value == 3);
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
     float saved_mode = 0.f;
-    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
-    SetOutputEncoding(auto_output_pending ? 1 : value);
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = value,
+        .hdr_encoding = [](int output) {
+          if (output != twattila::output_encoding::AUTO) return output;
+          // Frame generation on from the start: HDR10, the frames need no pass of their own (twattila/frame_generation.hpp).
+          const bool frame_generation = twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.frame_generation != 0.f;
+          return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
+        },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+    });
     settings.push_back(setting);
   }
 
@@ -3744,11 +3724,7 @@ bool AttachAddon() {
     twattila::rt_scene::ambient_probe.wanted = false;
     return twattila::rt_scene::ambient_probe.text.empty() ? std::string("The rays' AO did not run this frame.\n") : twattila::rt_scene::ambient_probe.text;
   };
-  reshade::register_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::BeforeSwapchainMod);
-  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
-  reshade::register_event<reshade::addon_event::init_device>(twwarhammer3::device_loss::OnInitDevice);
-  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::device_loss::OnDestroyDevice);
-  reshade::register_event<reshade::addon_event::present>(twwarhammer3::device_loss::OnPresent);
+  twattila::device_loss::Install();
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);
@@ -3775,7 +3751,6 @@ bool AttachAddon() {
   twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
-  reshade::register_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::AfterSwapchainMod);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
@@ -3853,6 +3828,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::resolution_scale::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
 
+  twattila::device_loss::InstallLast();
+
   attached = true;
   return true;
 }
@@ -3863,13 +3840,7 @@ void DetachAddon() {
   twattila::test_hooks::Uninstall();
   talesofarise::pixel_trace::Stop();
   twattila::pass_timing::Uninstall();
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::AfterSwapchainMod);
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(twwarhammer3::device_loss::BeforeSwapchainMod);
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
-  reshade::unregister_event<reshade::addon_event::init_device>(twwarhammer3::device_loss::OnInitDevice);
-  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer3::device_loss::OnDestroyDevice);
-  twwarhammer3::device_loss::StopWatch();
-  reshade::unregister_event<reshade::addon_event::present>(twwarhammer3::device_loss::OnPresent);
+  twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);

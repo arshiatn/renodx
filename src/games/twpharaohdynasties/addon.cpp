@@ -25,6 +25,7 @@
 #include "../../utils/settings.hpp"
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
@@ -1586,33 +1587,6 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twpharaohdynasties::dead_units::Update(dead_units.scale, &dead_units_installed, graphics_status);
 }
 
-// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
-void SetOutputEncoding(int encoding) {
-  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
-  if (encoding == 2) {
-    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
-    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
-  } else {
-    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
-  }
-}
-
-// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
-// before the swapchain mod's create_swapchain (registered after this).
-bool auto_output_pending = false;
-
-bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!auto_output_pending) return false;
-  auto_output_pending = false;
-  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
-  const auto path = renodx::utils::platform::GetPathInfo(monitor);
-  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  // Frame generation on from the start: HDR10, the frames need no pass of their own (frame_generation.hpp).
-  const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
-  SetOutputEncoding(windows_hdr ? (frame_generation ? 0 : 1) : 2);
-  return false;
-}
-
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War: PHARAOH DYNASTIES by ATN";  // TODO: change me!
 
@@ -2009,8 +1983,16 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
-    auto_output_pending = (value == 3);
-    SetOutputEncoding(auto_output_pending ? 1 : value);
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = value,
+        .hdr_encoding = [](int output) {
+          if (output != twattila::output_encoding::AUTO) return output;
+          // Frame generation on from the start: HDR10, the frames need no pass of their own (frame_generation.hpp).
+          const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
+          return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
+        },
+    });
     settings.push_back(setting);
   }
 
@@ -2065,7 +2047,7 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
-  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  twattila::device_loss::Install();
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
@@ -2106,6 +2088,8 @@ bool AttachAddon() {
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
+  twattila::device_loss::InstallLast();
+
   attached = true;
   return true;
 }
@@ -2113,7 +2097,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);

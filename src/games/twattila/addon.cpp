@@ -40,6 +40,7 @@
 #include "./graphics_hooks.hpp"
 #include "./anti_aliasing.hpp"
 #include "./ao_pass.hpp"
+#include "./device_loss.hpp"
 #include "./engine_tests.hpp"
 #include "./feature_settings.hpp"
 #include "./grass_fade.hpp"
@@ -1360,34 +1361,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       &graphics_hooks_installed, graphics_status);
 }
 
-// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
-void SetOutputEncoding(int encoding) {
-  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
-  if (encoding == 2) {
-    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
-    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
-  } else {
-    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
-  }
-}
-
-// Output Auto: HDR10 with Windows HDR on for the game's display (or unknown), else SDR (what frame generation presents, with
-// no pass of its own). Set at the first swap chain, before the swapchain mod's create_swapchain (registered after this).
-bool auto_output_pending = false;
-// No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (ATN 2026-11-01).
-bool first_start = false;
-
-bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!auto_output_pending) return false;
-  auto_output_pending = false;
-  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
-  const auto path = renodx::utils::platform::GetPathInfo(monitor);
-  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  SetOutputEncoding(windows_hdr ? 0 : 2);
-  if (first_start && !windows_hdr) ApplySdrPreset();
-  return false;
-}
-
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War: Attila by ATN";  // TODO: change me!
 
@@ -1793,10 +1766,15 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
-    auto_output_pending = (value == 3);
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
     float saved_mode = 0.f;
-    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
-    SetOutputEncoding(auto_output_pending ? 0 : value);
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = value,
+        .hdr_encoding = [](int output) { return (output == twattila::output_encoding::SCRGB) ? twattila::output_encoding::SCRGB : twattila::output_encoding::HDR10; },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+    });
     settings.push_back(setting);
   }
 
@@ -1882,7 +1860,7 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
-  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  twattila::device_loss::Install();
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
@@ -1953,6 +1931,8 @@ bool AttachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
 
+  twattila::device_loss::InstallLast();
+
   attached = true;
   return true;
 }
@@ -1960,7 +1940,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);

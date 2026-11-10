@@ -3,6 +3,7 @@
 ## WH3 BATCH 6 (Monday batch, ATN's go 2026-11-10; ATN away, keep going)
 Plan and rules: C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/wh3_batch6/plan.md; items: list.md there; reports: wh3_batch6/reports. One bundled game run only (phase R).
 - [ ] P0 device-loss handling in shared code (Attila first) + swap chain audit
+  - [x] P0.1 twattila/device_loss.hpp (moved from WH3) + output_encoding.hpp in the 9 TW HDR addons; test/tw_device_loss passes x86 and amd64; not run in game
 - [ ] P1 GI-off hang (item 1)
 - [ ] P2 RT shadow capture (items 2, 3, 5, 6)
 - [ ] P3 reflections and water (items 4, 14)

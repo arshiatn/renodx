@@ -30,6 +30,7 @@
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twshogun2completeedition_dlss/dlss_jitter.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
@@ -1016,36 +1017,6 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   }
 }
 
-// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
-void SetOutputEncoding(int encoding) {
-  // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
-  if (bool frame_generation = false; encoding == 1 && reshade::get_config_value(nullptr, "Shogun 2 DLSS", "FrameGeneration", frame_generation)
-                                     && frame_generation) {
-    encoding = 0;
-  }
-  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
-  if (encoding == 2) {
-    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
-    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
-  } else {
-    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
-  }
-}
-
-// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
-// before the swapchain mod's create_swapchain (registered after this).
-bool auto_output_pending = false;
-
-bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!auto_output_pending) return false;
-  auto_output_pending = false;
-  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
-  const auto path = renodx::utils::platform::GetPathInfo(monitor);
-  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  SetOutputEncoding(windows_hdr ? 1 : 2);
-  return false;
-}
-
 void ConfigureAddon() {
   if (configured) return;
 
@@ -1110,8 +1081,16 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
-    auto_output_pending = (value == 3);
-    SetOutputEncoding(auto_output_pending ? 1 : value);
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = value,
+        .hdr_encoding = [](int output) {
+          // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
+          bool frame_generation = false;
+          reshade::get_config_value(nullptr, "Shogun 2 DLSS", "FrameGeneration", frame_generation);
+          return (output == twattila::output_encoding::HDR10 || frame_generation) ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
+        },
+    });
     settings.push_back(setting);
   }
 
@@ -1169,7 +1148,7 @@ bool AttachAddon() {
   ConfigureAddon();
 
   ReadDlssAddonOptions();
-  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  twattila::device_loss::Install();
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::reshade_open_overlay>(OnOpenOverlay);
   reshade::register_event<reshade::addon_event::map_buffer_region>(twshogun2::vfx_effects::OnMapBufferRegion);
@@ -1195,6 +1174,8 @@ bool AttachAddon() {
   }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
 
+  twattila::device_loss::InstallLast();
+
   attached = true;
   return true;
 }
@@ -1202,7 +1183,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::reshade_open_overlay>(OnOpenOverlay);
   reshade::unregister_event<reshade::addon_event::map_buffer_region>(twshogun2::vfx_effects::OnMapBufferRegion);
