@@ -132,7 +132,8 @@ constexpr uint32_t RT_SUN_ONLY = 128;
 // Its quads scattered over the map (far trees): a cluster each (85 triangles' boxes reached across whole tiles, trace 2.4 ->
 // 6.2 ms).
 constexpr uint32_t RT_SCATTERED = 256;
-// A unit's alpha-tested draw (with RT_FOLIAGE): where its test passes it blocks as a solid does (RECORD_GRASS), no light through it.
+// A unit's or a rigid mesh's alpha-tested draw (with RT_FOLIAGE): where its test passes it blocks as a solid does (RECORD_GRASS), no
+// light through it; a static one's instances stand among the solids (helper100: among the leaves before, counted as leaves).
 constexpr uint32_t RT_SOLID_CUT_OUT = 512;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;

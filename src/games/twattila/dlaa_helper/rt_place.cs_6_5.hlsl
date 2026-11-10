@@ -22,7 +22,7 @@
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (the kept ones' source)
 Buffer<float4> vertex_positions : register(t7);     // the request's vertices: an instance's rows 0-2 in four texels
 // The records' BLAS addresses (two uints each: 0 not a placed mesh now, bit 0 drawn moving now, bit 1 grass, bit 2 drawn
-// this frame, bit 3 all its instances placed this frame, bit 4 ever drawn moving), then the jobs (two uint4 each: first drawn instance, instances, rows texel, flags; record, 0, 0, 0).
+// this frame, bit 3 all its instances placed this frame, bit 4 ever drawn moving, bit 5 a solid cut-out), then the jobs (two uint4 each: first drawn instance, instances, rows texel, flags; record, 0, 0, 0).
 ByteAddressBuffer table : register(t8);
 RWByteAddressBuffer instances_written : register(u6);  // D3D12_RAYTRACING_INSTANCE_DESC, 64 bytes each
 RWStructuredBuffer<float4> build_rows : register(u7);  // three per record
@@ -54,6 +54,7 @@ static const uint MODE_KEPT = 2u;
 static const uint PLACE_FOLIAGE = 1u;  // alpha-tested: not forced opaque
 static const uint PLACE_HIDDEN = 2u;   // mask 0 while drawn
 static const uint PLACE_GRASS = 4u;    // GRASS_INSTANCE (most rays pass it), kept GRASS_KEPT_FRAMES off-screen
+static const uint PLACE_CUT_OUT = 8u;  // with PLACE_FOLIAGE: among the solids (a fence, a thatched wall: no light through it)
 // In `sway_flags` beside rt_sway.hlsli's (dlaa_bridge.h RT_ONE_AT_A_PLACE): a kept instance goes where the frame placed another mesh.
 static const uint PLACE_ONE_AT_A_PLACE = 4u;
 static const uint INSTANCE_CULL_DISABLE = 1u;  // D3D12_RAYTRACING_INSTANCE_FLAG_*
@@ -220,7 +221,7 @@ void main(uint3 id : SV_DispatchThreadID) {
         }
       }
     }
-    const uint kept_mask = grass ? GRASS_INSTANCE : ((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE);
+    const uint kept_mask = grass ? GRASS_INSTANCE : (((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u || (blas.x & 32u) != 0u)) ? SOLID_INSTANCE : LEAF_INSTANCE);
     Append(row0, row1, row2, uint4(record | (kept_mask << 24), tail.y, blas.x & ~0xFFu, blas.y));
     return;
   }
@@ -279,7 +280,7 @@ void main(uint3 id : SV_DispatchThreadID) {
                           || SwayTraced(float3(now0.w, now1.w, now2.w), view_projection[0], view_projection[1], view_projection[3], sway_range, sway_flags));
   const uint mask = hidden                          ? (((job.w & PLACE_GRASS) != 0u) ? GRASS_STILL_INSTANCE : 0u)
                     : ((job.w & PLACE_GRASS) != 0u)  ? GRASS_INSTANCE
-                    : ((job.w & PLACE_FOLIAGE) != 0u) ? LEAF_INSTANCE
+                    : ((job.w & (PLACE_FOLIAGE | PLACE_CUT_OUT)) == PLACE_FOLIAGE) ? LEAF_INSTANCE
                                                       : SOLID_INSTANCE;
   Append(asuint(float4(rotation[0], translation.x)), asuint(float4(rotation[1], translation.y)), asuint(float4(rotation[2], translation.z)),
          uint4(record | (mask << 24), (frame & FRAME_MASK) | (flags << 24), blas.x & ~0xFFu, blas.y));

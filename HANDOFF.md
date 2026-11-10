@@ -1,5 +1,13 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## ATTILA v142 (ATN's test of v2.5.2 = v141, 2026-11-11; no game start, ATN away; dev build, not a players' release)
+ATN's evidence (3 preset shots, 8 shots, ReShade.ini / .log, helper log, 30 s RT profile): tools/tw/attila_v142/atn_run1. Report: attila_v142/reports/v142.md, perf_ideas.md. Rules: wh3_batch6/plan.md "Rules (every phase)".
+- [x] 1 + 2 grass too bright in a house's shadow, shadows darker or lighter by sun and camera angle (helper100, not run in game): a blade's pixel turned away from the sun by the depth's normal took OccludedSolid (no shadow from grass, leaves, smoke; solid cut-outs culled where their micromap state is unknown), one turned to it the full sun ray. Now a pixel on grass (ShowsGrass: a card of the grass's instances at the pixel) always takes the full ray; OccludedSolid and the paths' TRACE_SURFACE alpha-test solid cut-outs; a rigid mesh the shadow pass alpha-tests is a solid cut-out (RT_SOLID_CUT_OUT: among the solids, no Light Through Leaves share). Since v119 / v104, not a regression since v2.5.
+- [x] 3 grass shadows dark ~0.5 s after a zoom (rt_core, shared, not run in game): RT_PLACE_WHOLE was never sent while a mesh's instance count shrank, so a level of detail losing places kept its copies up to 8 frames beside the next one's. Now also sent for a mesh the last traced frame drew wholly before its trace.
+- [ ] 4 performance: table from the profile, safe wins, perf_ideas.md
+- [ ] validation: all_modes on helper100, costs against helper99, 14 addons, tests, page dump
+- [ ] close: README v142, zip, install, v142.md, memory
+
 ## WH3 v39 (follow-up on ATN's test of v38, 2026-11-11; no game start, ATN away)
 ATN's evidence (shots, logs, 30 s profile, pass timing, ini, replay 2): tools/tw/wh3_batch6/atn_run2. Report: wh3_batch6/reports/v39.md. Rules: wh3_batch6/plan.md.
 - [x] A "with Global Illumination on things look cooked": since v37 the game's g_gi_enabled was 0 under ours, so all 1019 readers took the ambient cube unshaded in place of the probes' light (9EAD8951: the probes REPLACE the cube; DC860C60: a probe ray's miss is the sky, a hit the voxel's lit colour x g_irradiance_power). ATN's pair (Path-Traced, RTAO): shade 2.0 to 2.8x the game's (dark tones x2.2 to x3.4, bluest most), sunlit x1.04. Fix: row Sky Shade From the Game's Probes (`GlobalIlluminationGameSky`, on): the flag stays the game's, the probes' hits are unlit (g_irradiance_power 0 in a copy of DC860C60's constants, once a frame), so the sky's shade is the game's and only the bounce is ours; fog, water and effects get the game's probes back. Off: v38. test/tw_game_gi stage 11 (WARP). NOT run in game.

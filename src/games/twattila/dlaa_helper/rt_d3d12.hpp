@@ -1775,6 +1775,7 @@ class RtScene12 {
   static constexpr uint32_t PLACE_FOLIAGE = 1;  // rt_place.cs_6_5.hlsl
   static constexpr uint32_t PLACE_HIDDEN = 2;
   static constexpr uint32_t PLACE_GRASS = 4;
+  static constexpr uint32_t PLACE_CUT_OUT = 8;
   // Opacity micromaps (NVIDIA's OMM SDK): a leaf mesh's data at most (the SDK makes micromaps coarser to fit), its
   // triangles at most, the bakes on their way at most.
   static constexpr uint32_t MICROMAP_MESH_BYTES = 8u << 20;
@@ -2030,6 +2031,7 @@ class RtScene12 {
     bool terrain = false;
     bool foliage = false;
     bool grass = false;  // RT_GRASS: its instances GRASS_INSTANCE
+    bool solid_cut_out = false;  // RT_SOLID_CUT_OUT: alpha-tested among the solids (SOLID_INSTANCE), no light through it
     // Instanced (RT_INSTANCED): each instance's transform from the first one's space (its BLAS's), read back from its
     // capture; their places (instance indices, the partitioned TLAS's) from first_instance on.
     std::vector<std::array<float, 12>> transforms;
@@ -3574,7 +3576,8 @@ class RtScene12 {
         mesh = {.blas = std::move(blas), .build = ++builds_, .bytes = bytes, .drawn_frame = frame,
                 .triangles = capture.vertex_count / 3, .record = placement.record, .normal_offset = placement.normal_offset,
                 .uv_offset = placement.uv_offset, .terrain = (capture.flags & dlaa_bridge::RT_TERRAIN) != 0, .foliage = placement.masked,
-                .grass = placement.masked && (capture.flags & dlaa_bridge::RT_GRASS) != 0};
+                .grass = placement.masked && (capture.flags & dlaa_bridge::RT_GRASS) != 0,
+                .solid_cut_out = placement.masked && (capture.flags & (dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SOLID_CUT_OUT)) == dlaa_bridge::RT_SOLID_CUT_OUT};
         if (version >= 14 && (capture.flags & dlaa_bridge::RT_INSTANCED) != 0) {
           mesh.placed = true;
           built_placed.push_back({.key = capture.key, .first_vertex = capture.first_vertex + capture.vertex_count, .instances = capture.instances});
@@ -4153,7 +4156,8 @@ class RtScene12 {
       const bool drawn_known = (shared.rt_flags & dlaa_bridge::RT_DRAWN_PLACED) != 0 && drawn_count < dlaa_bridge::RT_DRAWN;
       for (const auto& [key, mesh] : meshes_) {
         if (mesh.placed) {
-          record_blas[mesh.record] = mesh.blas.address | (mesh.grass ? 2u : 0u) | ((!drawn_known || mesh.drawn_frame == frame) ? 4u : 0u) | (mesh.moved ? 16u : 0u);
+          record_blas[mesh.record] = mesh.blas.address | (mesh.grass ? 2u : 0u) | ((!drawn_known || mesh.drawn_frame == frame) ? 4u : 0u) | (mesh.moved ? 16u : 0u)
+                                     | (mesh.solid_cut_out ? 32u : 0u);
         }
       }
       uint32_t job_count = 0;
@@ -4173,7 +4177,7 @@ class RtScene12 {
         if ((draw.flags & dlaa_bridge::RT_PLACE_WHOLE) != 0) record_blas[mesh.record] |= 8u;
         const std::array<uint32_t, 8> job = {placed_drawn, draw.instances, draw.first_vertex,
                                              (mesh.foliage ? PLACE_FOLIAGE : 0u) | ((draw.flags & dlaa_bridge::RT_PLACE_HIDDEN) != 0 ? PLACE_HIDDEN : 0u)
-                                                 | (mesh.grass ? PLACE_GRASS : 0u),
+                                                 | (mesh.grass ? PLACE_GRASS : 0u) | (mesh.solid_cut_out ? PLACE_CUT_OUT : 0u),
                                              mesh.record, 0u, 0u, 0u};
         std::memcpy(slot->jobs_data + PLACE_TABLE_BYTES + uint64_t{job_count} * 32, job.data(), sizeof(job));
         ++job_count;
@@ -5517,11 +5521,14 @@ class RtScene12 {
     return (masked ? RECORD_MASKED : 0u) | ((version >= 11 && (capture.flags & dlaa_bridge::RT_THIN) != 0) ? RECORD_THIN : 0u)
            | ((masked && (capture.flags & dlaa_bridge::RT_SMOKE) != 0) ? RECORD_SMOKE : 0u)
            | ((masked && (capture.flags & (dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SOLID_CUT_OUT)) != 0) ? RECORD_GRASS : 0u)
-           | ((masked && (capture.flags & (dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SMOKE)) == 0) ? RECORD_LEAF : 0u);
+           | ((masked && (capture.flags & (dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SMOKE | dlaa_bridge::RT_SOLID_CUT_OUT)) == 0) ? RECORD_LEAF : 0u);
   }
 
-  // A static mesh's instances' group: grass, leaves (alpha-tested), or solid.
-  static UINT InstanceMask(const Mesh& mesh) { return mesh.grass ? GRASS_INSTANCE : (mesh.foliage ? LEAF_INSTANCE : SOLID_INSTANCE); }
+  // A static mesh's instances' group: grass, leaves (alpha-tested), or solid (a solid cut-out too: a fence, a thatched wall).
+  static UINT InstanceMask(const Mesh& mesh) {
+    if (mesh.grass) return GRASS_INSTANCE;
+    return (mesh.foliage && !mesh.solid_cut_out) ? LEAF_INSTANCE : SOLID_INSTANCE;
+  }
 
   // A world-space BLAS into the slot's TLAS instances (leaves not opaque: their alpha is tested), its InstanceID its
   // first geometry's record; placed by `transform` (null: where it was captured); `place` its partitioned TLAS index

@@ -236,31 +236,52 @@ bool Occluded(float3 origin, float3 direction, float range, uint instances) {
     }                                                                                                \
   }
 
-// Whether a solid surface lies along a ray: alpha-tested ones are culled in the hardware (the solid parts of leaves with
-// opacity micromaps stay), the smoke's and the grass's instances left out (a culled blade blocks nothing, and the ray
-// walked every field it crossed). A ray goes on through every culled one (through a canopy 5x the cost of alpha tests
-// ending at the first leaf), so only from surfaces facing away from the sun.
+// Whether a candidate is a solid cut-out's (a fence, a thatched wall, a unit's fur: RECORD_GRASS without the grass's
+// instances). Leaves' candidates are not: to the rays that ask, they are not there.
+#define SOLID_CUT_OUT_CANDIDATE(query) \
+  (((records[(query).CandidateInstanceID() + (query).CandidateGeometryIndex()].z >> 16) & RECORD_GRASS) != 0u)
+
+// Whether a solid surface lies along a ray: leaves pass it (the solid parts of those with opacity micromaps stay), the
+// smoke's and the grass's instances are left out (a blade blocks nothing here, and the ray walked every field it crossed).
+// Only from surfaces facing away from the sun. Solid cut-outs block where their alpha test passes: culled in the hardware
+// with the leaves, every part of a building without a known micromap state (its bake still on its way, a wall's triangle
+// over more than a texture's width: unknown opaque) let the sun through, onto grass and leaves in its shadow whose
+// pixels face away (ATN's debug41: grass in a burning house's shadow as bright as in the sun).
 bool OccludedSolid(float3 origin, float3 direction, float range) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
   ray.TMin = 0.f;
   ray.TMax = range;
-  SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;
+  SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
   query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, ray);
-  query.Proceed();
+  uint tests = 0u;
+  while (query.Proceed()) {
+    if (SOLID_CUT_OUT_CANDIDATE(query) && (++tests > MAX_CANDIDATES || CANDIDATE_PASSES(query))) {
+      query.CommitNonOpaqueTriangleHit();
+    }
+  }
   return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }
 
 // The nearest surface along a ray of the Light Bounce, its paths or the reflections (its query, committed:
 // CommittedStatus says whether one was; the smoke left out). With opacity micromaps solid surfaces only, the leaves'
 // solid parts among them (an alpha test for every candidate nearer than the hit, grass by the dozen, made them cost up
-// to 30 ms a frame, ATN 2026-10-29); else alpha-tested, at most MAX_CANDIDATES.
+// to 30 ms a frame, ATN 2026-10-29) and solid cut-outs where their alpha test passes (as OccludedSolid: culled, a
+// building's parts without a known micromap state were holes to the paths, the sky's light and the reflections); else
+// alpha-tested, at most MAX_CANDIDATES.
 #if defined(OPACITY_MICROMAPS)
-#define TRACE_SURFACE(query, ray)                                                      \
-  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;     \
-  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));                     \
-  query.Proceed();
+#define TRACE_SURFACE(query, ray)                                                                          \
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                                                    \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));                                         \
+  {                                                                                                          \
+    uint surface_tests = 0u;                                                                                 \
+    while (query.Proceed()) {                                                                                \
+      if (SOLID_CUT_OUT_CANDIDATE(query) && (++surface_tests > MAX_CANDIDATES || CANDIDATE_PASSES(query))) { \
+        query.CommitNonOpaqueTriangleHit();                                                                  \
+      }                                                                                                      \
+    }                                                                                                        \
+  }
 #else
 #define TRACE_SURFACE(query, ray)                                         \
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                   \

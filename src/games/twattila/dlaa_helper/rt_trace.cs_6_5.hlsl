@@ -206,6 +206,26 @@ float2 SunRay(float3 origin, float3 direction, uint instances, uint sheet) {
   return float2(lit * (more ? LEAF_TRANSMITTANCE * LEAF_TRANSMITTANCE : LEAF_TRANSMITTANCE), (first > 0.f) ? min(first, leaf) : leaf);
 }
 
+// Whether a pixel shows grass: one of its cards (shown, swaying, or the still copy of a swaying one) crosses the camera's
+// way within the surface's offsets of the pixel's place. By the depth's normal a blade's card is turned to the sun or away
+// as the camera and the sun stand, and the pixels turned away took OccludedSolid's answer: no shadow from grass, leaves or
+// smoke. Seen against the sun a whole field lost those shadows, seen with it it had them all (ATN's debug41: shadows
+// darker or lighter by the sun and the camera's angle, smoke's shadows missing on grass).
+bool ShowsGrass(float4 position) {
+  const float3 to_camera = normalize(sun[uint2(1, 0)].xyz - position.xyz);
+  const float reach = 2.f * SurfaceOffset(position.w);
+  RayDesc ray;
+  ray.Origin = position.xyz + to_camera * reach;
+  ray.Direction = -to_camera;
+  ray.TMin = 0.f;
+  ray.TMax = 2.f * reach;
+  SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
+  query.TraceRayInline(scene, RAY_FLAG_NONE, GRASS | GRASS_STILL, ray);
+  // A card there is enough, no alpha test: the pixel passed the game's own.
+  if (query.Proceed()) query.CommitNonOpaqueTriangleHit();
+  return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   if (id.x >= width || id.y >= height) return;
@@ -251,7 +271,12 @@ void main(uint3 id : SV_DispatchThreadID) {
       if (((records[record].z >> 16) & (RECORD_GRASS | RECORD_MASKED | RECORD_THIN)) == RECORD_THIN) sheet = record;
     }
   }
-  const bool facing = sheet != NO_SHEET || dot(normal, toward_sun.xyz) > 0.f;
+  const bool turned_to_sun = sheet != NO_SHEET || dot(normal, toward_sun.xyz) > 0.f;
+  // A blade of grass: the game lights it by its G-buffer normal whichever way the blade's card is turned, so its pixels
+  // take the sun's rays as those turned to the sun do (ShowsGrass).
+  const bool blade = !turned_to_sun && near_grass && (flags & SUN_SHADOWS) != 0u && (flags & PART_AMBIENT) == 0u && toward_sun.w != 0.f
+                     && ShowsGrass(position);
+  const bool facing = turned_to_sun || blade;
   float sun_visibility = 1.f;
   float blocker_distance = 0.f;
   float3 tint_out = 0.f;  // Coloured Shadows: 1 - the colour of the light that came through (0: none)
@@ -284,7 +309,8 @@ void main(uint3 id : SV_DispatchThreadID) {
       const float3 spot = (rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f;
       // Off along the normal and toward the sun; where not planar toward the camera. Grass apart, over the ray's first
       // stretch only (rays skimming whole fields toward a low sun cost the sun 22-27 ms zoomed into grass, ATN's debug29).
-      const float3 start = (planar ? origin + toward * offset : origin) + spot;
+      // A blade turned away: from its sun side (its normal's side is the camera's: the ray would cross the blade itself).
+      const float3 start = blade ? position.xyz + toward * offset : ((planar ? origin + toward * offset : origin) + spot);
       float2 result = facing ? SunRay(start, toward, NO_GRASS_SMOKE, sheet)
                              : float2(OccludedSolid(position.xyz + spot + (toward - (exact ? normal : 0.f)) * offset, toward, 1.0e4f) ? 0.f : 1.f, 0.f);
       if (facing && near_grass && result.x > 0.f) {

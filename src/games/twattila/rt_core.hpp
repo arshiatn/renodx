@@ -634,6 +634,11 @@ struct Runtime {
     uint32_t placed = 0;
     uint32_t last_instances = 0;
     bool all_draws = false;
+    // Its instances as the frame's trace went out, and whether the last traced frame drew none after that: its count at
+    // the trace is then the frame's whole count.
+    uint64_t traced_frame = 0;
+    uint32_t traced_instances = 0;
+    bool drawn_before_trace = false;
     uint32_t triangles = 0;
     bool placed_mesh = false;
   };
@@ -1415,6 +1420,7 @@ void Capture(Context& command, const SceneShader& shader) {
       }
       Runtime::Known& seen = known->second;
       if (seen.counted_frame != runtime.frame) {
+        seen.drawn_before_trace = seen.traced_frame == seen.counted_frame && seen.traced_instances == seen.instances;
         seen.all_draws = seen.instances != seen.last_instances;
         seen.last_instances = seen.instances;
         seen.instances = 0;
@@ -1555,7 +1561,9 @@ void Capture(Context& command, const SceneShader& shader) {
                          // Sprite soldiers and far trees block the sun's rays as grass does (leaves let some through).
                          | ((shader.grass || shader.sun_facing) ? dlaa_bridge::RT_GRASS : 0u)
                          | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u)
-                         | ((cut_out && (shader.dynamic || shader.clip_cut_outs)) ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u);
+                         // A rigid mesh the game's shadow pass alpha-tests too (a fence, a thatched house): as leaves a house let a
+                         // quarter of the sun through under Light Through Leaves.
+                         | (cut_out ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u);
   uint32_t& next_vertex = ((clip_captures && placed) ? runtime.world_vertices : runtime.captured_vertices);
   const UINT end_vertex = ((world_captures && !placed) ? WORLD_BASE : MAX_VERTICES);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
@@ -2467,13 +2475,19 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     new_sets.push_back({.key = set_key, .vertices = mesh.vertices, .clusters = mesh.clusters, .triangles = mesh.triangles});
     new_set_data.emplace_back(mesh.data);
   }
-  // A mesh whose instances this frame all went in, as many as last frame's (its draws after the trace are not in yet).
+  // A mesh whose instances this frame all went in: as many as last frame's (its draws after the trace are not in yet), or
+  // fewer of a mesh the last frame drew wholly before its trace. Fewer never counted: while the camera zoomed, a level of
+  // detail losing its places to the next kept its copies there beside the new ones, twice the grass in the sun's rays
+  // until the count stood still (ATN's debug41: blades' shadows dark for half a second after a zoom).
   for (dlaa_bridge::RtPlacement& placement : runtime.placements) {
     const auto known = runtime.known.find(placement.key);
-    if (known != runtime.known.end() && known->second.counted_frame == runtime.frame && known->second.placed >= known->second.instances
-        && known->second.instances >= known->second.last_instances) {
+    if (known == runtime.known.end() || known->second.counted_frame != runtime.frame) continue;
+    Runtime::Known& seen = known->second;
+    if (seen.placed >= seen.instances && (seen.instances >= seen.last_instances || seen.drawn_before_trace)) {
       placement.flags |= dlaa_bridge::RT_PLACE_WHOLE;
     }
+    seen.traced_frame = runtime.frame;
+    seen.traced_instances = seen.instances;
   }
   const dlaa_bridge::TraceRequest request = {
       .flags = (runtime.settings.sun_shadows ? dlaa_bridge::RT_SUN_SHADOWS : 0u)
