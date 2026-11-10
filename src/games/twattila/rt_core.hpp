@@ -196,6 +196,10 @@ struct SceneShader {
   // version, one point per instance with its rows at TEXCOORD0-2 (object_motion's): the mesh captured once (its first
   // instance; RT_INSTANCED), each draw's instances placed in the helper every frame (bridge v14 placements).
   std::span<const uint8_t> rows_shader;
+  // The rows version for a draw whose pixel shader is in Host::faded_pixel_shaders, with Host::faded_row on: it leaves out the instances
+  // that shader fades out (rt_place: a translation past MAX_TRANSLATION) and gives the fade in the record's w. A new mesh's first rows go
+  // through `rows_shader` (its BLAS's build rows are its first instance's, faded or not).
+  std::span<const uint8_t> faded_rows_shader;
   // A mesh the game's shadow pass alpha-tests (its diffuse map in Runtime::cut_out_textures: palm and pine cards, fences) is
   // captured by this version, with the UV, cut out as leaves are but still. A unit (dynamic): its draws whose G-buffer pixel
   // shader clips (cut_out_pixel_shaders: beards, fur, leaves on a tree unit; solid cards in the scene shaded them black).
@@ -274,6 +278,10 @@ struct Host {
   float local_light_scale = 1.f;
   // A metre in the campaign map's world units, for the rays' ranges (frame_history::campaign_frames; 1: as in a battle).
   float campaign_metre = 1.f;
+  // Pixel shaders (sorted) that discard by their instance's fade, and the row (0: off) that leaves such instances out of the
+  // rays (SceneShader::faded_rows_shader). Null: no such rule.
+  const float* faded_row = nullptr;
+  std::span<const uint32_t> faded_pixel_shaders;
 };
 
 namespace internal {
@@ -351,6 +359,8 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11VertexShader>> cut_out_shaders;  // as the scene shaders (SceneShader::cut_out_shader)
   std::vector<ComPtr<ID3D11GeometryShader>> cut_out_outputs;
   std::vector<ComPtr<ID3D11GeometryShader>> rows_outputs;
+  std::vector<ComPtr<ID3D11VertexShader>> faded_rows_shaders;  // as the scene shaders (SceneShader::faded_rows_shader)
+  std::vector<ComPtr<ID3D11GeometryShader>> faded_rows_outputs;
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
@@ -616,6 +626,9 @@ struct Runtime {
   // The placed draws logged per vertex shader (their instancing and vertex buffers, the first two each; ATN 2026-10-28:
   // no tree shadows).
   std::unordered_map<uint32_t, uint32_t> logged_draws;
+  // Log Details: the faded rows' draws read back (FADED_READS at most a session) and those among them with an instance left out.
+  uint32_t faded_reads = 0;
+  uint32_t faded_draws = 0;
   std::unordered_set<uint32_t> left_out_logged;  // shaders whose draws the capture can't take, each said once
   // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
   // objects.light_constants, b12) and whether it did.
@@ -785,7 +798,14 @@ inline bool PrepareDevice(ID3D11Device* device) {
     auto& rows_output_shader = objects.rows_outputs.emplace_back();
     auto& cut_out_shader = objects.cut_out_shaders.emplace_back();
     auto& cut_out_output = objects.cut_out_outputs.emplace_back();
-    return (shader.cut_out_shader.empty()
+    auto& faded_rows_shader = objects.faded_rows_shaders.emplace_back();
+    auto& faded_rows_output = objects.faded_rows_outputs.emplace_back();
+    return (shader.faded_rows_shader.empty()
+            || (SUCCEEDED(device->CreateVertexShader(shader.faded_rows_shader.data(), shader.faded_rows_shader.size(), nullptr, faded_rows_shader.GetAddressOf()))
+                && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.faded_rows_shader.data(), shader.faded_rows_shader.size(), rows_output.data(),
+                                                                          static_cast<UINT>(rows_output.size()), &ROWS_STRIDE, 1,
+                                                                          D3D11_SO_NO_RASTERIZED_STREAM, nullptr, faded_rows_output.GetAddressOf()))))
+           && (shader.cut_out_shader.empty()
             || (SUCCEEDED(device->CreateVertexShader(shader.cut_out_shader.data(), shader.cut_out_shader.size(), nullptr, cut_out_shader.GetAddressOf()))
                 && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.cut_out_shader.data(), shader.cut_out_shader.size(), &output, 1, &STRIDE,
                                                                           1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, cut_out_output.GetAddressOf()))))
@@ -1671,6 +1691,13 @@ void Capture(Context& command, const SceneShader& shader) {
     }
   }
   const UINT rows_vertex = next_vertex + (sway ? block_texels : (place ? 0u : vertex_count));
+  // A placement of a draw whose pixel shader fades its instances out: those rows left out. Not a new mesh's (its build rows), not a cascade's
+  // draw (the shadow pass has no such pixel shader: what it draws casts in the game too).
+  const uint32_t faded_pixel_shader =
+      (place && !cascade_draw && !shader.faded_rows_shader.empty() && host.faded_row != nullptr && *host.faded_row != 0.f)
+          ? renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache)
+          : 0u;
+  const bool faded = faded_pixel_shader != 0u && std::ranges::binary_search(host.faded_pixel_shaders, faded_pixel_shader);
   if (placed) {
     // As points (under the game's triangle list one vertex an instance made no primitive: nothing was streamed, the
     // helper placed every placed mesh by stale texels: giant shapes, long lines, no shadows, ATN 2026-10-28).
@@ -1678,8 +1705,8 @@ void Capture(Context& command, const SceneShader& shader) {
     const UINT rows_offset = rows_vertex * 16;
     // A new mesh's first rows go whole: its BLAS's build rows are its first instance's, in the view or not.
     if (cascade_draw && !place) native->VSSetConstantBuffers(0, 1, objects.cascade_no_view.GetAddressOf());
-    native->VSSetShader(objects.rows_shaders[index].Get(), nullptr, 0);
-    native->GSSetShader(objects.rows_outputs[index].Get(), nullptr, 0);
+    native->VSSetShader((faded ? objects.faded_rows_shaders : objects.rows_shaders)[index].Get(), nullptr, 0);
+    native->GSSetShader((faded ? objects.faded_rows_outputs : objects.rows_outputs)[index].Get(), nullptr, 0);
     native->SOSetTargets(1, &rows_target, &rows_offset);
     native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
     if constexpr (INDEXED) {
@@ -1688,6 +1715,34 @@ void Capture(Context& command, const SceneShader& shader) {
       native->DrawInstanced(1, instances, arguments.first_vertex, arguments.first_instance);
     }
     native->IASetPrimitiveTopology(topology);
+  }
+  // Log Details: which draws hold instances the game fades out, and how far (the first FADED_READS such draws of a session are read
+  // back, a wait each; those with one left out are said, FADED_LINES at most).
+  constexpr uint32_t FADED_READS = 512;
+  constexpr uint32_t FADED_LINES = 24;
+  if (faded && runtime.settings.debug_log && runtime.faded_reads < FADED_READS) {
+    ++runtime.faded_reads;
+    const D3D11_BUFFER_DESC read_desc = {.ByteWidth = instances * 64, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    const D3D11_BOX range = {.left = rows_vertex * 16, .top = 0, .front = 0, .right = (rows_vertex * 16) + (instances * 64), .bottom = 1, .back = 1};
+    ComPtr<ID3D11Buffer> read;
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    native->SOSetTargets(0, nullptr, nullptr);
+    if (SUCCEEDED(device->CreateBuffer(&read_desc, nullptr, read.GetAddressOf()))) {
+      native->CopySubresourceRegion(read.Get(), 0, 0, 0, 0, objects.captured.Get(), 0, &range);
+      if (SUCCEEDED(native->Map(read.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        const std::span<const std::array<float, 16>> rows(static_cast<const std::array<float, 16>*>(mapped.pData), instances);
+        const auto left_out = std::ranges::count_if(rows, [](const std::array<float, 16>& row) { return row[3] > 1e29f; });
+        const auto [least, most] = std::ranges::minmax(rows, {}, [](const std::array<float, 16>& row) { return row[15]; });
+        if (left_out != 0 && runtime.faded_draws++ < FADED_LINES) {
+          renodx::utils::log::i(std::format("[Total War] Ray tracing: faded rows: vs {:08X} with ps {:08X}, {} indices: {} of {} instances left out (fade {:.0f} to {:.0f} of 1000).",
+                                            shader.hash, faded_pixel_shader, vertex_count, left_out, instances, least[15], most[15]));
+        }
+        native->Unmap(read.Get(), 0);
+      }
+    }
+    if (runtime.faded_reads == FADED_READS) {
+      renodx::utils::log::i(std::format("[Total War] Ray tracing: faded rows: {} draws read, {} with an instance left out.", FADED_READS, runtime.faded_draws));
+    }
   }
   if (cascade_draw) {
     if (game_camera_first == 0) {

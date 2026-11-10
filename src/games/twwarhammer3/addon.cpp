@@ -52,6 +52,7 @@
 #include "../twattila/water_effects.hpp"
 #include "./building_masks.hpp"
 #include "./cut_out_masks.hpp"
+#include "./faded_pixel_shaders.hpp"
 #include "./game_gi.hpp"
 #include "./object_motion.hpp"
 #include "./vfx_particles.hpp"
@@ -2619,6 +2620,7 @@ float rays_units_out_of_view_row = 1.f;
 float rays_skip_cascade_trees_row = 0.f;
 float rays_banner_light_row = 0.f;
 float rays_branch_cut_outs_row = 0.f;
+float rays_faded_parts_row = 0.f;
 // The trees' draws into the cascades: 52 M of the shadow pass's indices on the replay's first view, 36 M in the siege (traces c1a, bm_siege).
 // Only fog, forward passes and the UI read the maps under Rays Replace Shadow Maps, the sun's shadow comes from rays. fx_rigidbranch_v3,
 // fx_rigidleaf_v3; drawn in no other target in any trace (b5_census: no render target).
@@ -2784,13 +2786,13 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> GROUND_MESH_PASSES = {{
 }};
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
-    {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0xF0395CC4},  // fx_rigidanisotropic
-    {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x8EE34EC5},  // fx_rigidambientmapfiremesh
+    {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0xF0395CC4},  // fx_rigidanisotropic
+    {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x8EE34EC5},  // fx_rigidambientmapfiremesh
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
-    {.hash = 0x4F35D09F, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = twwarhammer3::BUILDING_MASKS, .key_family = 0xF0395CC4},
+    {.hash = 0x4F35D09F, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = twwarhammer3::BUILDING_MASKS, .key_family = 0xF0395CC4},
     // Rocks. A rock's second draw into the terrain's targets (087C74E6, A5A266C3) only paints its blend: the same mesh again, not listed.
-    {.hash = 0x41AC9CB1, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .key_family = 0xF0395CC4},  // rigid_battle_rock_terrain_blend
-    {.hash = 0x33AF7AE5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .key_family = 0xF0395CC4},  // rigid_battle_rock
+    {.hash = 0x41AC9CB1, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .key_family = 0xF0395CC4},  // rigid_battle_rock_terrain_blend
+    {.hash = 0x33AF7AE5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .key_family = 0xF0395CC4},  // rigid_battle_rock
     {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
     {.hash = 0x474F97FB, .capture_shader = __rt_capture_branch, .rows_shader = __rt_rows_tree, .cut_out_shader = __rt_capture_branch_cut_out, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x474F97FB},                    // fx_rigidbranch_v3
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
@@ -2808,7 +2810,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x01830D95, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
     {.hash = 0x709BC4D7, .terrain = true, .dynamic = true, .tessellated = true, .pixel_masks = TERRAIN_MASKS, .tessellated_keep = __rt_terrain_keep, .tessellated_outside = __rt_terrain_outside},  // fx_rigidterraintessellation (the hills): every frame, as its hull shader tessellates and culls by the camera
     {.hash = 0xB8C567C3, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted (skinned units)
-    {.hash = 0x2C45437C, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x8EE34EC5},  // rigid_character_alpha
+    {.hash = 0x2C45437C, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x8EE34EC5},  // rigid_character_alpha
     {.hash = 0x3193A71F, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted's 4-bone units
     // The units' other vertex shaders (position through cb0[10-13], the UV at TEXCOORD1, by their bytes): in no trace so far.
     {.hash = 0x2A64D0C8, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},  // fx_weighted, burn
@@ -2873,6 +2875,8 @@ const twattila::rt_scene::Host RT_HOST = {
     .local_light_scale = 7.615242e-05f,
     // A tree on the map stands about 1.7 units (camera 4.97 over the sea, its height on screen), one in a battle about 10 m.
     .campaign_metre = 0.1f,
+    .faded_row = &rays_faded_parts_row,
+    .faded_pixel_shaders = twwarhammer3::FADED_PIXEL_SHADERS,
 };
 
 // What only the campaign map draws: its borders, the shroud's plane (rt_positions: its sea's level).
@@ -3566,6 +3570,7 @@ void ConfigureAddon() {
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_branch_cut_outs = &rays_branch_cut_outs_row,
                                              .rays_start_past = &rt_sliders.start_past,
+                                             .rays_faded_parts = &rays_faded_parts_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .pixel_trace = new renodx::utils::settings::Setting{
                                                  .value_type = renodx::utils::settings::SettingValueType::CUSTOM,

@@ -133,6 +133,7 @@ struct Bindings {
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   float* rays_branch_cut_outs = nullptr;  // Trunks and branches cut out in the rays as drawn; null: no such row
   float* rays_start_past = nullptr;  // Rays start past what hides a pixel from the camera; null: no such row
+  float* rays_faded_parts = nullptr;  // Instances the game fades out stay out of the rays (rt_core.hpp Host::faded_row); null: no such row
   float* rays_sheets_unselfed = nullptr;  // Cloth and sails don't shade themselves in the sun's rays; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
   std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
@@ -812,6 +813,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "No Black Patches on Trunks (Experimental)",
           .section = section,
           .tooltip = "Tree trunks and other placed objects with black patches in AO, shadows and Path-Traced AO: rays start clear of them. Costs a little.",
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_faded_parts != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedFadedParts",
+          .binding = b.rays_faded_parts,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "No Shadows From Hidden Parts (Experimental)",
+          .section = section,
+          .tooltip = "Parts of buildings and props the game hides cast no ray-traced shadows. For black spots on tents.",
           .is_visible = more_rays,
       });
     }
