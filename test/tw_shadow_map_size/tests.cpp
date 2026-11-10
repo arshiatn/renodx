@@ -532,6 +532,19 @@ int main(int argc, char** argv) {
     }
     std::printf("0xC883E3FA at 2x: ours on the 8192 maps against the game's 4096 result doubled: %u texels apart\n", apart);
     CHECK(apart == 0);
+    // A map of the game's own making whose buffer_size is not its size (a lower Shadows setting, should the game do that):
+    // the game's own math, whatever it reads.
+    const Map small_source = filled(512, random_map(512));
+    const Map small_target = MakeMap(512, 1, false);
+    for (const float buffer_size : {256.f, 1024.f}) {
+      const auto constants = copy_constants_of(37.f, -112.f, buffer_size);
+      immediate->UpdateSubresource(copy_constants.Get(), 0, nullptr, constants.data(), 0, 0);
+      const auto by_game = draw_copy(game_shaders[0].Get(), triangle_uv.Get(), small_target, 512.f, small_source.view.Get(), nullptr, copy_constants.Get());
+      const auto by_ours = draw_copy(our_shaders[0].Get(), triangle_uv.Get(), small_target, 512.f, small_source.view.Get(), nullptr, copy_constants.Get());
+      const bool same = std::memcmp(by_game.data(), by_ours.data(), by_game.size() * 4) == 0;
+      std::printf("0xC883E3FA on a 512 map with buffer_size %g: ours against the game's bytes: %s\n", buffer_size, same ? "the same to the bit" : "DIFFERENT");
+      CHECK(same);
+    }
   }
   CHECK(std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("Shadow Map Size: the game's shadow maps made at 8192") != std::string::npos; }) >= 1);
   std::printf("PASS\n");
