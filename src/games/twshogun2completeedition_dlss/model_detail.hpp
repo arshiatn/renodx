@@ -42,6 +42,7 @@ static SelectLod original_select_lod = nullptr;
 static LodFade original_lod_fade = nullptr;
 static std::vector<renodx::utils::detour::Function> hooks;
 static tw::native_hooks::Lifetime hook_lifetime;
+static bool hook_failed = false;
 static std::string status = "not searched";
 static std::atomic<float> inverse_scale_squared = 1.f;
 
@@ -56,9 +57,10 @@ inline float OnLodFade(void* model, float distance_squared) {
 
 }  // namespace internal
 
-// Device creation (the engine module is loaded by then).
+// Device creation (the engine module is loaded by then). Again after a detach that removed the hooks (frame generation
+// keeps the addon's image loaded, and a new device attaches the addon a second time in it); not after a hook that failed.
 inline void Install() {
-  if (!internal::hooks.empty() || internal::original_select_lod != nullptr) return;
+  if (internal::hook_failed || !internal::hooks.empty()) return;
   uint8_t* select_lod = engine::FindPattern(internal::SELECT_LOD);
   uint8_t* lod_fade = engine::FindPattern(internal::LOD_FADE);
   if (select_lod == nullptr || lod_fade == nullptr) {
@@ -77,6 +79,7 @@ inline void Install() {
       internal::status = std::format("hooked (select +{:#x}, fade +{:#x})", select_lod - base, lod_fade - base);
     } catch (const std::exception& error) {
       internal::hooks.clear();
+      internal::hook_failed = true;
       internal::status = std::format("hook failed: {}", error.what());
     }
   }

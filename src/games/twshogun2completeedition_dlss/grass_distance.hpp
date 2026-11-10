@@ -50,6 +50,7 @@ struct NodeDistance {
 static Update original_update = nullptr;
 static std::vector<renodx::utils::detour::Function> hooks;
 static tw::native_hooks::Lifetime hook_lifetime;
+static bool hook_failed = false;
 static std::string status = "not searched";  // Install / overlay (render thread)
 static std::atomic<float> scale = 1.f;
 static renodx::utils::data::ParallelFlatHashMap<uintptr_t, NodeDistance, std::shared_mutex> nodes;
@@ -73,9 +74,10 @@ inline uint64_t OnUpdate(uint8_t* node, void* second, void* third, void* fourth)
 
 }  // namespace internal
 
-// Device creation (the engine module is loaded by then).
+// Device creation (the engine module is loaded by then). Again after a detach that removed the hooks (frame generation
+// keeps the addon's image loaded, and a new device attaches the addon a second time in it); not after a hook that failed.
 inline void Install() {
-  if (internal::original_update != nullptr || !internal::hooks.empty()) return;
+  if (internal::hook_failed || !internal::hooks.empty()) return;
   uint8_t* update = engine::FindPattern(internal::UPDATE);
   if (update == nullptr) {
     internal::status = "the game's grass code was not found";
@@ -87,6 +89,7 @@ inline void Install() {
       internal::status = std::format("hooked (update +{:#x})", update - reinterpret_cast<uint8_t*>(engine::Module()));
     } catch (const std::exception& error) {
       internal::hooks.clear();
+      internal::hook_failed = true;
       internal::status = std::format("hook failed: {}", error.what());
     }
   }

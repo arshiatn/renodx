@@ -37,6 +37,7 @@ using UnitDistances = float* (*)(void* display, float* out, int32_t quality, boo
 static UnitDistances original_unit_distances = nullptr;
 static std::vector<renodx::utils::detour::Function> hooks;
 static tw::native_hooks::Lifetime hook_lifetime;
+static bool hook_failed = false;
 static std::string status = "not searched";
 static std::atomic<float> imposter_squared = 1.f;
 static std::atomic<float> animation_squared = 1.f;
@@ -57,9 +58,10 @@ inline float* OnUnitDistances(void* display, float* out, int32_t quality, bool s
 
 }  // namespace internal
 
-// Device creation (the engine module is loaded by then).
+// Device creation (the engine module is loaded by then). Again after a detach that removed the hooks (frame generation
+// keeps the addon's image loaded, and a new device attaches the addon a second time in it); not after a hook that failed.
 inline void Install() {
-  if (!internal::hooks.empty() || internal::original_unit_distances != nullptr) return;
+  if (internal::hook_failed || !internal::hooks.empty()) return;
   uint8_t* unit_distances = engine::FindPattern(internal::UNIT_DISTANCES);
   if (unit_distances == nullptr) {
     internal::status = "the game's unit distance code was not found";
@@ -71,6 +73,7 @@ inline void Install() {
       internal::status = std::format("hooked (+{:#x})", unit_distances - reinterpret_cast<uint8_t*>(engine::Module()));
     } catch (const std::exception& error) {
       internal::hooks.clear();
+      internal::hook_failed = true;
       internal::status = std::format("hook failed: {}", error.what());
     }
   }

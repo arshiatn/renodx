@@ -372,6 +372,8 @@ inline void Uninstall() {
   if (state.hooks.empty()) return;
   try {
     state.hook_lifetime.Uninstall(&state.hooks);
+    // Frame generation keeps the addon's image loaded: a new device attaches the addon again in it, and Install hooks again.
+    state.searched = false;
   } catch (const std::exception& error) {
     renodx::utils::log::e("[Shogun 2 DLSS] The game's DLSS hooks could not be removed; addon retained until process exit: ", error.what());
   }
