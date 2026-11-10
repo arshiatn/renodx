@@ -925,6 +925,12 @@ class RtScene12 {
   // sets' data), and a list that failed its Close never resets (debug36: one effect gone for six minutes, then a GPU
   // reset). main.cpp makes a new scene either way.
   [[nodiscard]] bool Lost() const { return request_failed_ || Removed(); }
+  // Lost because a request's wait for this queue's own work ran out on a live device (the game's GPU can be seconds
+  // behind): main.cpp keeps the scene until Idle instead of freeing it under that work (the destructor's wait would end
+  // the helper), and does not count it as a failed request.
+  [[nodiscard]] bool TimedOut() const { return timed_out_; }
+  // Nothing submitted can still run (done, or the device removed). Read with no request in flight.
+  [[nodiscard]] bool Idle() const { return !own_fence_ || own_fence_->GetCompletedValue() >= own_value_; }
 
   // Why the device was removed and, from DRED, where: each command list the GPU did not finish, its operations around
   // the one it stopped in (">"; the passes' markers by name), and a page fault's address with the allocations there.
@@ -2220,6 +2226,7 @@ class RtScene12 {
   // over it or freed under it: the scene counts as lost (no request records, main.cpp makes a new scene).
   bool WaitFor(uint64_t value) {
     if (WaitForGpu(own_fence_.Get(), event_, value, FENCE_TIMEOUT)) return true;
+    timed_out_ = true;
     request_failed_ = true;
     return false;
   }
@@ -5815,6 +5822,7 @@ class RtScene12 {
   size_t blas_chunks_logged_ = 0;  // their chunks at the last log line
   bool failed_ = false;
   std::atomic_bool request_failed_ = false;  // Lost (the worker sets it, main.cpp reads it)
+  std::atomic_bool timed_out_ = false;       // TimedOut (likewise)
   bool details_ = false;  // the addon's Log Details or profile (this request's): GPU times, markers, the status, the log's lines
   void NoteNrd(uint32_t signal, bool ran) {
     if (ran) {

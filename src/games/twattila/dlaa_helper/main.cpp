@@ -223,6 +223,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // nothing paused; the fourth leaves it off (whatever made it fail would come back each time).
   auto scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
   bool scene_open = false;
+  // A scene whose own GPU work a request could not wait out on a live device (TimedOut: the game's GPU seconds behind):
+  // kept until that work is done, since freeing it under the work would have to end the helper (and with it everything
+  // until the game restarts). Ray tracing passes meanwhile; then a new scene, nothing paused. A stall now and then is
+  // forgotten; the fourth with no more than STALL_MEMORY between them leaves ray tracing off (a GPU that keeps falling
+  // behind would have its scene made and captured again without end).
+  std::unique_ptr<twattila::dlaa_helper::RtScene12> stalled_scene;
+  constexpr auto STALL_MEMORY = std::chrono::minutes(10);
   // Ray tracing's and Ray Reconstruction's devices let go after IDLE_RELEASE without a request of theirs (gigabytes of the
   // GPU's memory: 15 GB stayed after RT/PT was turned off, 7.5 GB with it never on, ATN 2026-11-01), opened again with
   // their next one (the addon then captures its scene again: rt_device). FSR's and XeSS's too. Frame generation's resources, swap chain and window
@@ -241,10 +248,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   bool reconstruction_live = false;
   uint32_t scene_losses = 0;
   uint32_t scene_failures = 0;
-  const auto scene_off = [&] { return scene_losses >= 2 || scene_failures >= 4; };
+  uint32_t scene_stalls = 0;
+  auto scene_stalled = rt_used;
+  const auto scene_off = [&] { return scene_losses >= 2 || scene_failures >= 4 || scene_stalls >= 4; };
   constexpr uint32_t PAUSED_TRACE_FLAGS = twattila::dlaa_bridge::RT_GPU_MICROMAPS | twattila::dlaa_bridge::RT_SWAY_IN_VIEW;
   constexpr uint32_t PAUSED_PATH_FLAGS = twattila::dlaa_bridge::RT_PATH_SER | twattila::dlaa_bridge::RT_PATH_SHARC;
   constexpr const char* RT_OFF = "Ray tracing off after repeated failures (renodx-tw-dlaa64.log): restart the game";
+  const auto scene_status = [&]() -> std::string {
+    if (scene_off()) return RT_OFF;
+    return stalled_scene ? "Ray tracing waits for the GPU to finish its last requests" : scene->Status();
+  };
   // The handles the addon shared for the open set (its textures and fence, duplicated into this process), kept until the
   // next set: a new ray tracing device opens them again.
   std::vector<HANDLE> set_handles;
@@ -306,7 +319,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // Its status for the addon, (v15) the garbage triangles its scene left out so far, the last such capture's key, and
   // (v16) whether it takes compact draws.
   const auto publish = [&] {
-    strncpy_s(shared->rt_status, scene_off() ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
+    strncpy_s(shared->rt_status, scene_status().c_str(), _TRUNCATE);
     if (const std::string reports = scene->TakeReports(); !reports.empty()) ReShadeLogMessage(nullptr, 0, reports.c_str());
     if (version >= 15) {
       const auto& left_out = scene->LeftOutSoFar();
@@ -349,6 +362,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (removed) {
       ReShadeLogMessage(nullptr, 0, scene->LostReport().c_str());
     }
+    const bool stalled = !removed && scene->TimedOut();
+    if (stalled) {
+      stalled_scene = std::move(scene);
+    }
     scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
     scene_open = false;
     {
@@ -356,6 +373,18 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       rt_work.ran = {};
     }
     if (version >= 15) ++shared->rt_device;
+    if (stalled) {
+      const auto now = std::chrono::steady_clock::now();
+      if (now - scene_stalled > STALL_MEMORY) {
+        scene_stalls = 0;
+      }
+      scene_stalled = now;
+      ++scene_stalls;
+      LogWithTime(scene_off() ? "[TW ray tracing] Off until the game restarts (the GPU did not finish its requests in time, four times in a row)."
+                              : "[TW ray tracing] The GPU did not finish its last requests in time (its device was not removed): ray tracing "
+                                "passes until it has, then starts again.");
+      return;
+    }
     if (!removed) {
       ++scene_failures;
       ReShadeLogMessage(nullptr, 0, scene_off() ? "[TW ray tracing] Off until the game restarts (a fourth failed request)."
@@ -371,7 +400,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const auto open_scene = [&] {
     const bool details = (shared->rt_flags & twattila::dlaa_bridge::RT_DETAILS) != 0;
     scene_live = !scene_off();
-    scene_open = scene_live && scene->Initialize(adapter.Get(), folder, details, other_upscaler()) && scene->Open(*shared, version);
+    scene_open = scene_live && !stalled_scene && scene->Initialize(adapter.Get(), folder, details, other_upscaler()) && scene->Open(*shared, version);
     // From here on: a set's first request is an evaluation, and an open can take longer than the idle time by itself.
     rt_used = std::chrono::steady_clock::now();
   };
@@ -567,6 +596,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   while (next_request() == WAIT_OBJECT_0) {
     log_removed_devices();
     last_request = std::chrono::steady_clock::now();
+    // The stalled scene's work is done, or its device removed since (held, it would refuse the new devices below).
+    const bool scene_resumes = stalled_scene && stalled_scene->Idle();
+    if (scene_resumes) {
+      stalled_scene.reset();
+    }
     // A GPU reset removed one's device: it goes at once, whatever the set (no new device can be made while it is held:
     // MakeOwnDevice), a new one on this set (a new set usually follows: the shared fence reads all ones, dlaa_bridge::Prepare).
     if (reconstruction->Lost()) {
@@ -622,7 +656,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       scene_open = false;
       if (version >= 4 && shared->rt_vertices != 0 && !scene_idle) {
         open_scene();
-        if (!scene_open) strncpy_s(shared->rt_status, scene_off() ? RT_OFF : scene->Status().c_str(), _TRUNCATE);
+        if (!scene_open) strncpy_s(shared->rt_status, scene_status().c_str(), _TRUNCATE);
       } else {
         scene->Close();
       }
@@ -646,6 +680,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       } else if (FAILED(device5->OpenSharedFence(reinterpret_cast<HANDLE>(shared->fence), IID_PPV_ARGS(fence.GetAddressOf())))) {
         set_status("DLAA helper: the shared textures could not be opened");
         fence.Reset();
+      }
+    }
+    if (scene_resumes) {
+      if (!scene_open && version >= 4 && shared->rt_vertices != 0 && !scene_idle) {
+        open_scene();
+      }
+      // What the addon captured meanwhile reached no scene: again.
+      if (version >= 15) ++shared->rt_device;
+      if (!scene_off()) {
+        ReShadeLogMessage(nullptr, 0, "[TW ray tracing] Started again: the GPU finished its last requests.");
       }
     }
     publish_fence();
@@ -852,5 +896,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   rt_worker.join();
   // The game and its window are gone: nothing to wait for on FSR's or XeSS's swap chain.
   proxy_generation.release();
+  // Its work can only finish with the game's GPU, which is gone: no wait for it.
+  stalled_scene.release();
   return 0;
 }
