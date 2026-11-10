@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
@@ -23,6 +24,7 @@
 #include <include/reshade.hpp>
 
 #include "../../utils/directx.hpp"
+#include "../../utils/log.hpp"
 #include "./dlaa_bridge.hpp"
 
 // Frame generation (Experimental) for the 32-bit Total War games: NVIDIA's DLSS Frame Generation runs only in 64-bit
@@ -81,6 +83,8 @@ inline void SetCamera(Inputs* inputs, const std::array<float, 16>& projection, c
 namespace internal {
 
 constexpr UINT INJECTION_SLOT = 13;
+// DrawHudless calls (one or two a frame) before its failed objects are tried again.
+constexpr uint32_t SETUP_RETRY_CALLS = 120;
 
 // An scRGB swap chain's picture on its way to HDR10 (size 0: none): the back buffer's copy, or the HUD-less image.
 struct ScrgbPicture {
@@ -136,6 +140,8 @@ struct State {
   bool output_drawn = false;  // this frame's did
   Inputs inputs;
   DeviceObjects objects;
+  bool setup_failed = false;  // DrawHudless's objects could not be made: logged once a streak
+  uint32_t setup_skips = 0;   // and tried again after these calls
 };
 
 static State state;
@@ -190,7 +196,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     // ReShade's menu open: the game's frames only (generated ones warped the menu, ATN 2026-10-28). Textures that no longer
     // fit (the size changed, no DLSS frame yet) too: the window hidden, not frozen on its last frame.
     const bool fits = bridge.fg_frame && bridge.fg_format == state.format && bridge.width == back_desc.Width && bridge.height == back_desc.Height;
-    const uint32_t multiplier = ((state.overlay_open || !fits) ? 0u : settings.multiplier);
+    uint32_t multiplier = ((state.overlay_open || !fits) ? 0u : settings.multiplier);
     // Unavailable here: nothing to ask (NVAPI Reflex back). Off with the window hidden already: neither.
     if (dlaa_bridge::FrameGenerationFailed()) {
       state.presenting = false;
@@ -203,7 +209,10 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
         && (!objects.Ready() || !objects.scrgb.texture || !objects.scrgb.srv || !bridge.fg_frame_rtv
             || objects.scrgb.width != back_desc.Width || objects.scrgb.height != back_desc.Height
             || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf()))))) {
-      return;
+      // Presenting (the pass's objects failed, or the size changed): an off request, or the helper's window would stay on
+      // its last frame over the game.
+      if (!state.presenting) return;
+      multiplier = 0;
     }
     if (multiplier != 0) {
       dlaa_bridge::BeforeSharedWrites(native);
@@ -280,6 +289,10 @@ inline bool DrawHudless(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
   ComPtr<ID3D11Device1> device1;
   if (FAILED(device.As(&device1))) return false;
   if (objects.device != device1 || !objects.Ready()) {
+    if (state.setup_skips != 0) {
+      --state.setup_skips;
+      return false;
+    }
     objects = {};
     const D3D_FEATURE_LEVEL level = device1->GetFeatureLevel();
     const D3D11_SAMPLER_DESC sampler_desc = {
@@ -304,8 +317,16 @@ inline bool DrawHudless(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
         || FAILED(device1->CreateSamplerState(&sampler_desc, objects.sampler.GetAddressOf()))
         || FAILED(device1->CreateBuffer(&injection_desc, nullptr, objects.injection.GetAddressOf()))) {
       objects = {};
+      if (!std::exchange(state.setup_failed, true)) {
+        renodx::utils::log::w(std::format(
+            "[Total War] Frame generation: its HUD-less image's pass could not be made (the device's removed reason 0x{:08X}); "
+            "no HUD-less image until it can.",
+            static_cast<uint32_t>(device1->GetDeviceRemovedReason())));
+      }
+      state.setup_skips = SETUP_RETRY_CALLS;
       return false;
     }
+    state.setup_failed = false;
     objects.device = device1;
   }
   // The image to draw from: the target itself when it can be read, else a copy. An unreadable one is not kept: an scRGB

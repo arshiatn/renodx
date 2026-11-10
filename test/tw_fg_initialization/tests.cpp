@@ -6,7 +6,8 @@
 #include <cstdio>
 #include <cstring>
 #include "src/games/twattila/frame_generation.hpp"
-extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) {}
+static int log_lines = 0;
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) { ++log_lines; }
 using Microsoft::WRL::ComPtr;
 namespace fg = twattila::frame_generation::internal;
 #define CHECK(x)                                  \
@@ -57,8 +58,18 @@ int main() {
     fg::state.pixel_code = valid_pixel;
     fg::state.hdr10_pixel_code = valid_pixel;
     fg::state.injection_bytes = sizeof(constants);
+    // One warning a failure streak, and no creation while it backs off.
+    CHECK(log_lines == failure + 1 && fg::state.setup_failed && fg::state.setup_skips == fg::SETUP_RETRY_CALLS);
+    CHECK(!fg::DrawHudless(context.Get(), target.Get()));
+    CHECK(fg::state.setup_skips == fg::SETUP_RETRY_CALLS - 1 && !fg::state.objects.Ready());
+    fg::state.setup_skips = 0;
+    fg::state.vertex_code = {&invalid, 1};
+    CHECK(!fg::DrawHudless(context.Get(), target.Get()));
+    CHECK(log_lines == failure + 1);
+    fg::state.vertex_code = valid_vertex;
+    fg::state.setup_skips = 0;
     CHECK(fg::DrawHudless(context.Get(), target.Get()));
-    CHECK(fg::state.objects.Ready() && fg::state.hudless);
+    CHECK(fg::state.objects.Ready() && fg::state.hudless && !fg::state.setup_failed);
   }
   fg::state.scrgb = true;
   CHECK(fg::DrawHudless(context.Get(), target.Get()));
@@ -79,5 +90,5 @@ int main() {
   context->Flush();
   fg::state.objects = {};
   bridge.fg_hudless_rtv.Reset();
-  std::puts("PASS: four real setup failures, same-device retry, successful HUD-less draw and scRGB intermediate on WARP");
+  std::puts("PASS: four real setup failures logged once a streak, backoff, same-device retry, successful HUD-less draw and scRGB intermediate on WARP");
 }
