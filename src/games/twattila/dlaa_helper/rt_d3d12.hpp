@@ -1045,6 +1045,15 @@ class RtScene12 {
       placed_written_ = slots_[placed_slot_].left_out_data[LEFT_OUT_BYTES / 4];
       placed_slot_ = SLOTS;
     }
+    // Log Details: the placed instances 60 traces after One Model per Place changed, beside those before (one line a change).
+    if (const bool one_at_a_place = (shared.rt_flags & dlaa_bridge::RT_ONE_AT_A_PLACE) != 0; one_at_a_place != placed_rule_) {
+      placed_rule_ = one_at_a_place;
+      placed_before_rule_ = placed_written_;
+      placed_rule_traces_ = 60;
+    } else if (placed_rule_traces_ != 0 && --placed_rule_traces_ == 0 && details_) {
+      slow_report_ += std::format("{}[TW ray tracing] One Model per Place {}: {} placed instances with those kept, {} before.",
+                                  (slow_report_.empty() ? "" : "\n"), (placed_rule_ ? "on" : "off"), placed_written_, placed_before_rule_);
+    }
     if (!slot.capture_keys.empty()) {
       const uint32_t* found = slot.left_out_data;
       left_out_.far_off += found[0];
@@ -5596,6 +5605,9 @@ class RtScene12 {
   uint32_t placed_capacity_ = MAX_INSTANCES;  // their room now (PlacedRoom)
   uint32_t placed_limit_ = MAX_INSTANCES;     // the most (by the GPU's memory)
   uint32_t placed_written_ = 0;               // the last trace's, fitting or not (rt_place's counter)
+  bool placed_rule_ = false;                  // One Model per Place as the last trace had it
+  uint32_t placed_before_rule_ = 0;           // placed_written_ when it changed
+  uint32_t placed_rule_traces_ = 0;           // traces until the log line after a change (0: said)
   size_t placed_slot_ = SLOTS;                // whose readback holds the counter of the last trace (SLOTS: read already)
   std::future<std::unique_ptr<PlacedRoom>> placed_growing_;
   std::string room_note_;  // the status's: a room that found no memory

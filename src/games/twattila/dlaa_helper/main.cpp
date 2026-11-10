@@ -216,6 +216,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   bool upscaler_open = false;
   bool upscaler_live = false;
   const auto other_upscaler = [&] { return version >= 22 && shared->upscaler != twattila::dlaa_bridge::UPSCALER_DLSS; };
+  std::array<uint32_t, 7> upscale_said = {};
   // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there. After a GPU reset removed
   // it, a new one with the Experimental options that build the scene in their own way paused until the game restarts; a
   // second removal leaves ray tracing off (ATN 2026-10-29: a hang, then three new devices lost at once, and Windows then
@@ -728,6 +729,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     release_idle();
     bool evaluated = false;
     bool answered = false;
+    // The upscaler's request when it changes (one line, never a frame's): which one, its preset by NVIDIA's number (11 K, 12 L,
+    // 13 M; Ray Reconstruction's own), the sizes. A run's log then says what Auto chose.
+    if (fence && shared->color != 0 && !(version >= 5 && shared->fg_request != 0) && !(version >= 4 && shared->rt_request != 0)) {
+      const bool reconstructs = shared->ray_reconstruction != 0;
+      const std::array<uint32_t, 7> asked = {(version >= 22 ? shared->upscaler : 0u), (reconstructs ? 1u : 0u),
+                                             (reconstructs ? shared->ray_reconstruction_preset : shared->preset),
+                                             shared->width, shared->height, shared->output_width, shared->output_height};
+      if (asked != upscale_said) {
+        upscale_said = asked;
+        LogWithTime(std::format("[TW DLAA helper] Upscaling: {}, preset {}, {} x {} to {} x {}.",
+                                (other_upscaler() ? std::format("upscaler {}", asked[0]) : std::string(reconstructs ? "Ray Reconstruction" : "DLSS")),
+                                asked[2], asked[3], asked[4], asked[5], asked[6])
+                        .c_str());
+      }
+    }
     if (fence && version >= 5 && shared->fg_request != 0) {
       // Frame generation (D3D12): its copy queue waits for the addon's value and signals the next.
       const bool proxied = generation_backend != twattila::dlaa_bridge::FG_BACKEND_DLSS;
