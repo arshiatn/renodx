@@ -55,6 +55,7 @@
 #include "./cut_out_masks.hpp"
 #include "./faded_pixel_shaders.hpp"
 #include "./game_gi.hpp"
+#include "./shadow_map_size.hpp"
 #include "./object_motion.hpp"
 #include "./vfx_particles.hpp"
 #include "./resolution_scale.hpp"
@@ -3601,6 +3602,18 @@ void ConfigureAddon() {
       setting->is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
     }
   }
+  // Shadow Map Size (shadow_map_size.hpp): the page shows it with the game's shadow maps, and no preset writes it.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GraphicsShadowMapSize",
+      .binding = &twwarhammer3::shadow_map_size::row,
+      .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+      .default_value = 0.f,
+      .label = "Shadow Map Size (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Sharper sun shadows at the game's highest Shadows setting. About 1.5 GB more video memory.\n"
+                 "Applies after a restart.",
+      .labels = {"4096 (Game's)", "8192"},
+  });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedPointLightShadows",
       .binding = &rt_sliders.local_lights,
@@ -4032,6 +4045,7 @@ bool AttachAddon() {
 #endif
   reshade::register_event<reshade::addon_event::present>(OnPresent);
   twwarhammer3::game_gi::Install();
+  twwarhammer3::shadow_map_size::Install();
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
@@ -4074,6 +4088,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   tw::engine_tweaks::Uninstall(graphics_options);
   twwarhammer3::game_gi::Uninstall();
+  twwarhammer3::shadow_map_size::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);

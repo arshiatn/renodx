@@ -1,0 +1,32 @@
+/*
+ * Copyright (C) 2026 ArshiaTN
+ * SPDX-License-Identifier: MIT
+ */
+
+// Warhammer III, static_shadowmap (C883E3FA): a kept shadow map copied into the next one at its new place. The game's own code
+// line for line, but the map's size: its `buffer_size` is the game's 4096 whatever the map really is (shadow_map_size.hpp),
+// so the texel is taken by the map's own size. At the game's size the result is the game's to the bit (test/tw_shadow_map_size).
+cbuffer static_shadowmap_CB : register(b0) {
+  float2 current_tl;
+  float2 current_br;
+  float2 previous_tl;
+  float2 previous_br;
+  float2 current_size;
+  float2 buffer_size;
+  int split_index;
+}
+
+Texture2DArray<float4> t_previous_static_shadows : register(t0);
+
+float main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Depth {
+  const float2 previous_sum = previous_br + previous_tl;
+  const float2 current = uv * (current_br - current_tl) + current_tl;
+  const float2 in_previous = -previous_sum * 0.5f + current;
+  if (in_previous.x < -1.f || in_previous.y < -1.f || in_previous.x > 1.f || in_previous.y > 1.f) discard;
+  uint width;
+  uint height;
+  uint slices;
+  t_previous_static_shadows.GetDimensions(width, height, slices);
+  const float2 texel = floor((in_previous * float2(0.5f, -0.5f) + 0.5f) * float2(width, height));
+  return t_previous_static_shadows.Load(int4(int2(texel), split_index, 0)).x;
+}

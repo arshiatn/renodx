@@ -23,6 +23,7 @@
 #include "../../utils/data.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "./buffer_writes.hpp"
 
 // The game's Global Illumination off while ours is on (Light Bounce, any method): the flag every reader takes,
 // g_gi_enabled, goes to 0 where the game uploads it. lighting_VS_PS is 480 bytes in all 1228 shaders that have it,
@@ -36,19 +37,12 @@ namespace twwarhammer3::game_gi {
 constexpr uint64_t LIGHTING_BYTES = 480;
 constexpr uint64_t FLAG_OFFSET = 180;
 
-// A write map of a lighting buffer that has not been unmapped. A context is one thread's between a map and its unmap,
-// and a buffer can be mapped on several deferred contexts at once: one pointer a thread.
-struct OpenMap {
-  DWORD thread = 0;
-  uint8_t* data = nullptr;
-};
-
 static std::atomic_bool off = false;
 static std::atomic_bool logged = false;
-// The game's lighting buffers, from init_resource to destroy_resource, each with its open maps.
-static renodx::utils::data::ParallelFlatHashMap<uint64_t, std::vector<OpenMap>, std::shared_mutex> lighting_buffers;
-// Every buffer's unmap passes here: nothing is looked up while no map is open.
-static std::atomic_uint32_t open_map_count = 0;
+// The game's lighting buffers with their open maps (buffer_writes.hpp).
+static buffer_writes::Buffers lighting;
+static auto& lighting_buffers = lighting.known;
+static auto& open_map_count = lighting.open_map_count;
 
 static void LogOnce(const char* how) {
   if (!logged.exchange(true, std::memory_order_relaxed)) {
@@ -58,86 +52,42 @@ static void LogOnce(const char* how) {
 
 static void OnInitResource(reshade::api::device*, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
                            reshade::api::resource_usage, reshade::api::resource resource) {
-  if (desc.type != reshade::api::resource_type::buffer || desc.buffer.size != LIGHTING_BYTES
-      || (desc.usage & reshade::api::resource_usage::constant_buffer) == 0) {
-    return;
-  }
-  lighting_buffers.lazy_emplace_l(
-      resource.handle,
-      // Made again at an address whose destroy was never seen: the old buffer's pointers are not this one's.
-      [](auto& entry) {
-        open_map_count.fetch_sub(static_cast<uint32_t>(entry.second.size()), std::memory_order_relaxed);
-        entry.second.clear();
-      },
-      [&](const auto& construct) { construct(resource.handle, std::vector<OpenMap>()); });
+  buffer_writes::Add(&lighting, LIGHTING_BYTES, desc, resource);
 }
 
 static void OnDestroyResource(reshade::api::device*, reshade::api::resource resource) {
-  lighting_buffers.erase_if(resource.handle, [](const auto& entry) {
-    open_map_count.fetch_sub(static_cast<uint32_t>(entry.second.size()), std::memory_order_relaxed);
-    return true;
-  });
+  buffer_writes::Remove(&lighting, resource);
 }
 
 static void OnMapBufferRegion(reshade::api::device*, reshade::api::resource resource, uint64_t offset, uint64_t, reshade::api::map_access access, void** data) {
-  if (!off.load(std::memory_order_relaxed) || offset != 0 || data == nullptr || *data == nullptr || access == reshade::api::map_access::read_only) return;
-  lighting_buffers.modify_if(resource.handle, [data](auto& entry) {
-    auto& open_maps = entry.second;
-    const DWORD thread = GetCurrentThreadId();
-    // One pointer for a thread: a map whose unmap never came (a lost device) must not leave its old pointer for the
-    // next unmap to write through.
-    if (const auto own = std::ranges::find(open_maps, thread, &OpenMap::thread); own != open_maps.end()) {
-      own->data = static_cast<uint8_t*>(*data);
-    } else {
-      open_maps.push_back({.thread = thread, .data = static_cast<uint8_t*>(*data)});
-      open_map_count.fetch_add(1, std::memory_order_relaxed);
-    }
-  });
+  buffer_writes::Mapped(&lighting, off.load(std::memory_order_relaxed), resource, offset, access, data);
 }
 
-// Before the game's unmap: the pointer its map gave is still the buffer's memory.
 static void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource resource) {
-  if (open_map_count.load(std::memory_order_relaxed) == 0) return;
-  bool written = false;
-  lighting_buffers.modify_if(resource.handle, [&written](auto& entry) {
-    auto& open_maps = entry.second;
-    if (open_maps.empty()) return;
-    const auto own = std::ranges::find(open_maps, GetCurrentThreadId(), &OpenMap::thread);
-    if (own == open_maps.end()) {
-      // Unmapped on another thread than mapped (or mapped before the option came on): which map this ends is unknown,
-      // so no pointer of this buffer is written through any more.
-      open_map_count.fetch_sub(static_cast<uint32_t>(open_maps.size()), std::memory_order_relaxed);
-      open_maps.clear();
-      return;
-    }
+  const bool written = buffer_writes::Unmapped(&lighting, resource, [](uint8_t* constants) {
     // Turned off since the map: the game's flag stays.
-    if (off.load(std::memory_order_relaxed)) {
-      constexpr uint32_t GI_OFF = 0u;
-      std::memcpy(own->data + FLAG_OFFSET, &GI_OFF, sizeof(GI_OFF));
-      written = true;
-    }
-    open_maps.erase(own);
-    open_map_count.fetch_sub(1, std::memory_order_relaxed);
+    if (!off.load(std::memory_order_relaxed)) return false;
+    constexpr uint32_t GI_OFF = 0u;
+    std::memcpy(constants + FLAG_OFFSET, &GI_OFF, sizeof(GI_OFF));
+    return true;
   });
   if (written) {
     LogOnce("map");
   }
 }
 
-// The game's update, whole or past the flag, replaced by the same with the flag 0 on its own context (no event).
+// The game's update, whole or past the flag, replaced by the same with the flag 0.
 static bool UpdateWithFlagOff(ID3D11DeviceContext* native, const void* data, reshade::api::resource resource, uint64_t offset, uint64_t size) {
-  if (!off.load(std::memory_order_relaxed) || native == nullptr || data == nullptr || offset != 0 || size < FLAG_OFFSET + 4) return false;
-  if (!lighting_buffers.contains(resource.handle)) return false;
-  // Through ReShade's context the update would come back here.
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
-  std::array<uint8_t, LIGHTING_BYTES> patched = {};
-  std::memcpy(patched.data(), data, static_cast<size_t>(std::min(size, LIGHTING_BYTES)));
-  constexpr uint32_t GI_OFF = 0u;
-  std::memcpy(patched.data() + FLAG_OFFSET, &GI_OFF, sizeof(GI_OFF));
-  const D3D11_BOX part = {.left = 0, .top = 0, .front = 0, .right = static_cast<UINT>(std::min(size, LIGHTING_BYTES)), .bottom = 1, .back = 1};
-  native->UpdateSubresource(reinterpret_cast<ID3D11Resource*>(resource.handle), 0, (size < LIGHTING_BYTES) ? &part : nullptr, patched.data(), 0, 0);
-  LogOnce("update");
-  return true;
+  if (!off.load(std::memory_order_relaxed)) return false;
+  const bool sent = buffer_writes::Update<LIGHTING_BYTES>(lighting, native, data, resource, offset, size, FLAG_OFFSET + 4, [](uint8_t* constants) {
+    constexpr uint32_t GI_OFF = 0u;
+    std::memcpy(constants + FLAG_OFFSET, &GI_OFF, sizeof(GI_OFF));
+    return true;
+  });
+  if (sent) {
+    LogOnce("update");
+  }
+  return sent;
 }
 
 static bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource, uint64_t offset, uint64_t size) {
@@ -168,9 +118,7 @@ static void Uninstall() {
   reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(OnUnmapBufferRegion);
   reshade::unregister_event<reshade::addon_event::update_buffer_region>(OnUpdateBufferRegion);
   reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(OnUpdateBufferRegionCommand);
-  // An image kept loaded after the detach holds no buffer and no pointer.
-  lighting_buffers.clear();
-  open_map_count.store(0, std::memory_order_relaxed);
+  buffer_writes::Clear(&lighting);
 }
 
 }  // namespace twwarhammer3::game_gi
