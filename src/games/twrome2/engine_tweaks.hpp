@@ -574,6 +574,10 @@ inline void Start(std::span<Option*> options, std::span<const std::string_view> 
     hit.count = 0;
     hit.values = 0;
   }
+  // Pinned: the thread and its exception handler are this module's code, and the addon can be unloaded during the watch.
+  HMODULE pinned = nullptr;
+  GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                     reinterpret_cast<LPCWSTR>(&internal::running), &pinned);
   std::thread([addresses, watched, count, seconds]() {
     const auto module_offset = [](uintptr_t address) {
       HMODULE module = nullptr;
