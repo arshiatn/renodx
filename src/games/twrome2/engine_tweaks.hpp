@@ -288,7 +288,10 @@ inline void Apply(std::span<Option*> options) {
         } else if (option->scale >= 1.f) {
           tweak.written = 1u;
         }
-        *flag = static_cast<uint8_t>(tweak.written);
+        // Not at the game's own: a store there every present could undo one the game made in between.
+        if (*flag != tweak.written) {
+          *flag = static_cast<uint8_t>(tweak.written);
+        }
         continue;
       }
       uint32_t bits;
@@ -309,6 +312,50 @@ inline void Apply(std::span<Option*> options) {
       Write(tweak, tweak.written);
     }
   }
+}
+
+// The game's values under the addon's own, kept for the process in a named section: the addon's image goes with the
+// game's device and a new one comes with the next, while its values stay in the game's module. Writing the game's back
+// in between switched its flags and sizes twice in a running battle, with a frame drawn before the new image's first
+// present (Warhammer III's gi_enabled back at 1 ran a stage built without its textures: a crash).
+struct KeptValue {
+  uint64_t address = 0;
+  float game = 0.f;
+  uint32_t written = 0;
+};
+struct KeptValues {
+  uint32_t count = 0;
+  std::array<KeptValue, 4096> values;
+};
+
+inline std::wstring KeptValuesName() {
+  return std::format(L"Local\\RenoDX_TW_EngineValues_{}", GetCurrentProcessId());
+}
+
+// What an earlier image of the addon kept at its detach (Uninstall), for the values still as it left them.
+inline void Restore(std::span<Option*> options) {
+  const HANDLE section = OpenFileMappingW(FILE_MAP_READ, FALSE, KeptValuesName().c_str());
+  if (section == nullptr) return;
+  if (const auto* kept = static_cast<const KeptValues*>(MapViewOfFile(section, FILE_MAP_READ, 0, 0, 0)); kept != nullptr) {
+    const auto* kept_end = kept->values.data() + std::min<size_t>(kept->count, kept->values.size());
+    for (Option* option : options) {
+      for (Tweak& tweak : option->tweaks) {
+        if (tweak.value == nullptr || tweak.seen) continue;
+        const auto* found = std::find_if(kept->values.data(), kept_end, [&tweak](const KeptValue& value) {
+          return value.address == reinterpret_cast<uintptr_t>(tweak.value);
+        });
+        if (found == kept_end) continue;
+        uint32_t now = 0;
+        std::memcpy(&now, tweak.value, tweak.flag ? sizeof(uint8_t) : sizeof(now));
+        if (now != found->written) continue;
+        tweak.game = found->game;
+        tweak.written = found->written;
+        tweak.seen = true;
+      }
+    }
+    UnmapViewOfFile(kept);
+  }
+  CloseHandle(section);
 }
 
 // Overlay (Advanced): which tweaks were found.
@@ -392,6 +439,7 @@ inline void Update(const wchar_t* module_name, std::span<Option*> options, [[may
     if (module == nullptr) return;
     const auto sections = ModuleSections(module);
     internal::Find(sections, options);
+    internal::Restore(options);
     status->label = internal::Status(options);
 #if !defined(_WIN64)
     if (object_detail != nullptr) status->label += "; " + lod_pick::internal::Install(sections);
@@ -414,6 +462,7 @@ inline bool ApplyWhenSet(const wchar_t* module_name, std::span<Option*> options)
   HMODULE module = GetModuleHandleW(module_name);
   if (module == nullptr) return false;
   internal::Find(ModuleSections(module), options);
+  internal::Restore(options);
   for (const Option* option : options) {
     for (const Tweak& tweak : option->tweaks) {
       if (tweak.value == nullptr) return false;
@@ -660,28 +709,46 @@ inline void StartIfRequested(std::span<Option*> options, std::span<const std::st
 
 }  // namespace watch
 
-// Addon detach: the game's own values back where the addon's last still stand (in the game's module while it is
-// loaded), nothing remembered, and the LOD pick hook removed. A new device unloads the addon and loads it again: left
-// scaled, the new image took the scaled values for the game's and scaled them once more with every device (a flag once
-// set read back as the game's own).
+// Addon detach: the addon's values stay in the game's module (nothing is switched in a running battle), the game's own
+// under them kept for the image that comes with the next device (internal::Restore): left without them, it took the
+// scaled values for the game's and scaled them once more with every device (a flag once set read back as the game's
+// own). An image that stays loaded keeps what it saw. And the LOD pick hook removed.
 inline void Uninstall(std::span<Option*> options) {
+  const HANDLE section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(internal::KeptValues),
+                                            internal::KeptValuesName().c_str());
+  const bool section_held = section != nullptr && GetLastError() == ERROR_ALREADY_EXISTS;
+  auto* kept = (section != nullptr ? static_cast<internal::KeptValues*>(MapViewOfFile(section, FILE_MAP_WRITE, 0, 0, 0)) : nullptr);
+  if (kept != nullptr) {
+    kept->count = 0;
+  }
   for (Option* option : options) {
     for (Tweak& tweak : option->tweaks) {
-      if (tweak.value == nullptr || !std::exchange(tweak.seen, false)) continue;
+      if (tweak.value == nullptr || !tweak.seen) continue;
       MEMORY_BASIC_INFORMATION memory = {};
       if (VirtualQuery(tweak.value, &memory, sizeof(memory)) == 0 || memory.State != MEM_COMMIT || memory.Type != MEM_IMAGE) continue;
-      if (tweak.flag) {
-        auto* flag = static_cast<uint8_t*>(tweak.value);
-        if (*flag == tweak.written) {
-          *flag = static_cast<uint8_t>(tweak.game);
-        }
+      uint32_t now = 0;
+      std::memcpy(&now, tweak.value, tweak.flag ? sizeof(uint8_t) : sizeof(now));
+      if (now != tweak.written) continue;
+      if (kept != nullptr && kept->count < kept->values.size()) {
+        kept->values[kept->count] = {.address = reinterpret_cast<uintptr_t>(tweak.value), .game = tweak.game, .written = tweak.written};
+        ++kept->count;
         continue;
       }
-      uint32_t bits;
-      std::memcpy(&bits, tweak.value, sizeof(bits));
-      if (bits != tweak.written) continue;
+      // Nowhere to keep it: the game's value back, so that the next image does not scale the addon's.
+      tweak.seen = false;
+      if (tweak.flag) {
+        *static_cast<uint8_t*>(tweak.value) = static_cast<uint8_t>(tweak.game);
+        continue;
+      }
       internal::Write(tweak, tweak.integer ? std::bit_cast<uint32_t>(static_cast<int32_t>(std::lround(tweak.game))) : std::bit_cast<uint32_t>(tweak.game));
     }
+  }
+  if (kept != nullptr) {
+    UnmapViewOfFile(kept);
+  }
+  // The section's first handle stays open to the process's end: the section outlives this image.
+  if (section_held) {
+    CloseHandle(section);
   }
 #if !defined(_WIN64)
   lod_pick::internal::hooks_active.store(false, std::memory_order_relaxed);

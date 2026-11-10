@@ -70,7 +70,7 @@ extern "C" __declspec(dllexport) int InstallLod(void* target) {
 static float scaled_distance = 10.f;
 static float reset_distance = 10.f;
 static uint8_t forced_flag = 0;
-// -1: the detach did not put the game's values back where the addon's still stood (or touched one the game set again).
+// -1: the detach switched a value (the addon's stay, and one the game set again is the game's).
 extern "C" __declspec(dllexport) int RemoveLod(int stage) {
   tw::engine_tweaks::Option option = {
       .scale = 2.f,
@@ -86,9 +86,41 @@ extern "C" __declspec(dllexport) int RemoveLod(int stage) {
   detach_calls = 1;  // The LOD owner has just one hook.
   tw::engine_tweaks::Uninstall(options);
   fail_stage = 0;
-  if (!applied || scaled_distance != 10.f || reset_distance != 15.f || forced_flag != 0 || option.tweaks.front().seen) return -1;
+  if (!applied || scaled_distance != 20.f || reset_distance != 15.f || forced_flag != 1) return -1;
+  scaled_distance = 10.f;
   reset_distance = 10.f;
+  forced_flag = 0;
   return static_cast<int>(lod::hooks.size());
 }
 #endif
+// The game's engine values are the host's (its image stays, this one unloads). Phase 0, the first image: two values
+// scaled and a flag set, one value set again by the game, then the detach. Phase 1, the image after it: the same
+// sliders, then back at the game's. 0: as it must be.
+extern "C" __declspec(dllexport) int EngineValues(float* scaled, float* reset, uint8_t* flag, int phase) {
+  tw::engine_tweaks::Option numbers = {
+      .scale = 2.f,
+      .tweaks = {{.name = "scaled", .value = scaled}, {.name = "reset", .value = reset}},
+  };
+  tw::engine_tweaks::Option flags = {.scale = 1.f, .tweaks = {{.name = "flag", .flag = true, .value = flag}}};
+  std::array<tw::engine_tweaks::Option*, 2> options = {&numbers, &flags};
+  if (phase == 0) {
+    tw::engine_tweaks::internal::Apply(options);
+    if (*scaled != 20.f || *reset != 20.f || *flag != 1) return 1;
+    *reset = 15.f;
+    tw::engine_tweaks::Uninstall(options);
+    // Nothing is switched at the detach.
+    return (*scaled == 20.f && *reset == 15.f && *flag == 1) ? 0 : 2;
+  }
+  tw::engine_tweaks::internal::Restore(options);
+  tw::engine_tweaks::internal::Apply(options);
+  // Not scaled once more; the value the game set is its new base.
+  if (*scaled != 20.f || *reset != 30.f || *flag != 1) return 3;
+  numbers.scale = 1.f;
+  flags.scale = 0.f;
+  tw::engine_tweaks::internal::Apply(options);
+  // The game's own, known across the unload.
+  if (*scaled != 10.f || *reset != 15.f || *flag != 0) return 4;
+  tw::engine_tweaks::Uninstall(options);
+  return 0;
+}
 extern "C" __declspec(dllexport) constexpr const char* NAME = "Native hook lifetime test";

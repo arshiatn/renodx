@@ -24,6 +24,10 @@ __declspec(noinline) static void* __fastcall Lod(void*, void*, float distance, v
   calls = calls + 1;
   return reinterpret_cast<void*>(static_cast<uintptr_t>(distance));
 }
+// As the game's engine values: in the game's image, which stays while the addon's goes.
+static float scaled_value = 10.f;
+static float reset_value = 10.f;
+static uint8_t flag_value = 0;
 int main(int argc, char** argv) {
   CHECK(argc == 2);
   const int stage = std::atoi(argv[1]);
@@ -37,7 +41,9 @@ int main(int argc, char** argv) {
   auto install = reinterpret_cast<int (*)(void*, void*)>(GetProcAddress(module, "InstallTest"));
   auto remove = reinterpret_cast<int (*)(int)>(GetProcAddress(module, "RemoveTest"));
   auto reactivate = reinterpret_cast<int (*)()>(GetProcAddress(module, "ReactivateTest"));
-  CHECK(install && remove && reactivate);
+  auto engine_values = reinterpret_cast<int (*)(float*, float*, uint8_t*, int)>(GetProcAddress(module, "EngineValues"));
+  CHECK(install && remove && reactivate && engine_values);
+  CHECK(engine_values(&scaled_value, &reset_value, &flag_value, 0) == 0);
   CHECK(install(reinterpret_cast<void*>(distance_call), reinterpret_cast<void*>(&Scrub)) == 1);
   invoke_distance(nullptr, nullptr, out.data(), 0, 0, 0, 0);
   CHECK(out[0] == 20.f);
@@ -54,6 +60,9 @@ int main(int argc, char** argv) {
   install = reinterpret_cast<int (*)(void*, void*)>(GetProcAddress(module, "InstallTest"));
   remove = reinterpret_cast<int (*)(int)>(GetProcAddress(module, "RemoveTest"));
   reactivate = reinterpret_cast<int (*)()>(GetProcAddress(module, "ReactivateTest"));
+  engine_values = reinterpret_cast<int (*)(float*, float*, uint8_t*, int)>(GetProcAddress(module, "EngineValues"));
+  CHECK(engine_values && scaled_value == 20.f && flag_value == 1);
+  CHECK(engine_values(&scaled_value, &reset_value, &flag_value, 1) == 0);
   if (stage != 0)
     CHECK(reactivate());
   else
@@ -77,5 +86,5 @@ int main(int argc, char** argv) {
     CHECK(FreeLibrary(module));
   }
 #endif
-  std::printf("PASS stage %d: actual callbacks/Detours, host unload, retained records, retry and reload\n", stage);
+  std::printf("PASS stage %d: actual callbacks/Detours, host unload, retained records, retry and reload, engine values kept\n", stage);
 }
