@@ -746,23 +746,26 @@ class FrameGeneration12 {
     }
     window_.Fit();
     // SDR and HDR can use the same R10 format. Apply both directions even when
-    // dimensions are unchanged or Close/Open retained the existing swap chain.
+    // dimensions are unchanged or Close/Open retained the existing swap chain. A refusal is not a failure (the result
+    // went unchecked before be4ac169 and generation ran on): logged once, asked again at the next change.
     const auto set_color_space = [&] {
+      chain_sdr_ = sdr;
       const auto color_space = (format_ == DXGI_FORMAT_R10G10B10A2_UNORM && !sdr
                                     ? DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020
                                     : DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
-      UINT support = 0;
-      if (FAILED(chain_->CheckColorSpaceSupport(color_space, &support))
-          || (support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT) == 0
-          || FAILED(chain_->SetColorSpace1(color_space))) {
-        return Fail("its output color space could not be applied");
+      if (const HRESULT applied = chain_->SetColorSpace1(color_space); FAILED(applied) && !std::exchange(color_space_refused_, true)) {
+        reshade::log::message(reshade::log::level::warning,
+                              std::format("Frame generation: its swap chain did not take the output color space {} (0x{:08X}); "
+                                          "the colors can be off.",
+                                          static_cast<int>(color_space), static_cast<uint32_t>(applied))
+                                  .c_str());
       }
-      chain_sdr_ = sdr;
-      return true;
     };
     if (chain_ && chain_width_ == width_ && chain_height_ == height_ && chain_format_ == format_) {
-      if (chain_sdr_ == sdr) return true;
-      return set_color_space();
+      if (chain_sdr_ != sdr) {
+        set_color_space();
+      }
+      return true;
     }
     if (chain_) {
       // Generation off while the buffers change (NVIDIA: Present can deadlock otherwise), their count given (Streamline
@@ -775,7 +778,8 @@ class FrameGeneration12 {
         chain_width_ = width_;
         chain_height_ = height_;
         chain_format_ = format_;
-        return set_color_space();
+        set_color_space();
+        return true;
       }
       chain_.Reset();
     }
@@ -807,7 +811,7 @@ class FrameGeneration12 {
         || FAILED(created.As(&chain_))) {
       return Fail("its swap chain could not be made");
     }
-    if (!set_color_space()) return false;
+    set_color_space();
     chain_width_ = width_;
     chain_height_ = height_;
     chain_format_ = format_;
@@ -979,6 +983,7 @@ class FrameGeneration12 {
   UINT chain_height_ = 0;
   DXGI_FORMAT chain_format_ = DXGI_FORMAT_UNKNOWN;
   bool chain_sdr_ = false;
+  bool color_space_refused_ = false;  // logged
   UINT tearing_ = 0;
   uint32_t reflex_boost_ = 0;
   uint32_t frame_limit_ = 0;  // Reflex's frame rate limit as last set (rendered frames per second; 0: none)
