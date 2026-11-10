@@ -12,15 +12,22 @@
 Texture2D<float4> t_zeroth_moment : register(t3);
 Texture2D<float4> t_zeroth_moment_last : register(t4);
 
+// Last frame's transmittance at a render pixel; outside the rendered part no particles, as outside the texture at 100% (below 100%
+// the part lies in the texture's top-left and what lies beside it is not this view's).
+float ParticleSmearLast(int2 pixel, float2 render_size) {
+  if (any(pixel < 0) || any(float2(pixel) >= render_size)) return 1.f;
+  return exp2(-1.44269502f * t_zeroth_moment_last.Load(int3(pixel, 0)).x);
+}
+
 float2 ParticleSmearMotion(int2 pixel, float2 motion, float2 render_size) {
   const int2 last_pixel = pixel + int2(round(motion));
   const float now = exp2(-1.44269502f * t_zeroth_moment.Load(int3(pixel, 0)).x);
-  float lowest = exp2(-1.44269502f * t_zeroth_moment_last.Load(int3(last_pixel, 0)).x);
+  float lowest = ParticleSmearLast(last_pixel, render_size);
   if (abs(now - lowest) <= 0.02f) return motion;
   float highest = lowest;
   for (int y = -2; y <= 2; y += 2) {
     for (int x = -2; x <= 2; x += 2) {
-      const float last = exp2(-1.44269502f * t_zeroth_moment_last.Load(int3(last_pixel + int2(x, y), 0)).x);
+      const float last = ParticleSmearLast(last_pixel + int2(x, y), render_size);
       lowest = min(lowest, last);
       highest = max(highest, last);
     }

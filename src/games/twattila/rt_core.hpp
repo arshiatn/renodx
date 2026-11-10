@@ -886,7 +886,9 @@ inline bool PrepareDevice(ID3D11Device* device) {
     const auto make_query = [&](ComPtr<ID3D11Query>& query) { return SUCCEEDED(device->CreateQuery(&statistics_desc, query.GetAddressOf())); };
     made = made && SUCCEEDED(device->CreateBuffer(&tessellated_desc, nullptr, objects.tessellated.GetAddressOf()))
            && std::ranges::all_of(objects.tessellated_queries, make_query);
-    for (auto& count : objects.terrain_counts) made = made && std::ranges::all_of(count.queries, make_query);
+    for (auto& count : objects.terrain_counts) {
+      made = made && std::ranges::all_of(count.queries, make_query);
+    }
     for (const SceneShader& shader : scene_shaders) {
       if (!shader.tessellated_outside.empty()) {
         made = made && SUCCEEDED(device->CreateHullShader(shader.tessellated_outside.data(), shader.tessellated_outside.size(), nullptr, objects.tessellated_outside.GetAddressOf()));
@@ -1704,7 +1706,9 @@ void Capture(Context& command, const SceneShader& shader) {
       native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
       const auto free_count = std::ranges::find(objects.terrain_counts, 0u, &DeviceObjects::TerrainCount::draws);
       objects.terrain_count = (free_count != objects.terrain_counts.end()) ? &*free_count : nullptr;
-      if (objects.terrain_count != nullptr) objects.terrain_count->frame = runtime.frame;
+      if (objects.terrain_count != nullptr) {
+        objects.terrain_count->frame = runtime.frame;
+      }
     }
     // Null: counted later, and the GPU still owes every set's answers (this frame's count is then never known; the next known one serves).
     const auto count_query = [&]() -> ID3D11Query* {
@@ -1718,7 +1722,9 @@ void Capture(Context& command, const SceneShader& shader) {
     // the game's device removed, nvlddmkm 153; the helper idle; none with this Flush, none without the capture).
     if (shader.tessellated) native->Flush();
     ID3D11Query* draw_query = count_query();
-    if (draw_query != nullptr) native->Begin(draw_query);
+    if (draw_query != nullptr) {
+      native->Begin(draw_query);
+    }
     if constexpr (INDEXED) {
       if (compact || sway) {
         // Each block's vertices once: points through the mesh's remap indices (the game's index buffer and topology put
@@ -1736,7 +1742,9 @@ void Capture(Context& command, const SceneShader& shader) {
       native->DrawInstanced(arguments.vertex_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_vertex,
                             arguments.first_instance);
     }
-    if (draw_query != nullptr) native->End(draw_query);
+    if (draw_query != nullptr) {
+      native->End(draw_query);
+    }
     if constexpr (INDEXED) {
       if (shader.tessellated && runtime.settings.terrain_outside_view && objects.tessellated_outside && runtime.tessellated_draws + 1 < objects.tessellated_queries.size()) {
         ComPtr<ID3D11HullShader> game_hull_shader;
@@ -1744,9 +1752,13 @@ void Capture(Context& command, const SceneShader& shader) {
         native->HSSetShader(objects.tessellated_outside.Get(), nullptr, 0);
         ++runtime.tessellated_draws;
         ID3D11Query* outside_query = count_query();
-        if (outside_query != nullptr) native->Begin(outside_query);
+        if (outside_query != nullptr) {
+          native->Begin(outside_query);
+        }
         native->DrawIndexedInstanced(arguments.index_count, std::max(arguments.instance_count, 1u), arguments.first_index, arguments.vertex_offset, arguments.first_instance);
-        if (outside_query != nullptr) native->End(outside_query);
+        if (outside_query != nullptr) {
+          native->End(outside_query);
+        }
         native->HSSetShader(game_hull_shader.Get(), nullptr, 0);
       }
     }

@@ -3865,8 +3865,8 @@ void ConfigureAddon() {
                                                      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
                                                      .default_value = 0.f,
                                                      .label = "Particles Skip the Denoiser (Experimental)",
-                                                     .tooltip = "Smoke and fire are only upscaled, not denoised. They lose depth of field's blur.\n"
-                                                                "At 100% render scale.",
+                                                     .tooltip = "Smoke and fire are only upscaled, not denoised.\n"
+                                                                "At 100% render scale they lose depth of field's blur.",
                                                      .labels = {"Off", "On"},
                                                  },
                                                  new renodx::utils::settings::Setting{
@@ -3876,7 +3876,7 @@ void ConfigureAddon() {
                                                      .default_value = 0.f,
                                                      .label = "Picture Before Particles (Experimental)",
                                                      .tooltip = "Shows the denoiser the picture without smoke and fire, against ghosting and vanishing particles.\n"
-                                                                "At 100% render scale. Does nothing with Particles Skip the Denoiser.",
+                                                                "Does nothing with Particles Skip the Denoiser.",
                                                      .labels = {"Off", "On"},
                                                  },
                                                  new renodx::utils::settings::Setting{
@@ -3967,7 +3967,8 @@ bool AttachAddon() {
   twattila::rt_scene::InstallPointLights(std::span(traced_lights::SHADERS).first(traced_lights::POINT_LIGHT_SHADERS));
   twattila::rt_scene::InstallFogShadows(std::span(traced_lights::SHADERS).subspan(traced_lights::POINT_LIGHT_SHADERS, traced_lights::FOG_SHADERS));
   twwarhammer3::object_motion::Install([] { return twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.object_motion != 0.f; },
-                                       [] { return twattila::feature_settings::Upscaling(aa_sliders) && water_motion_row != 0.f; });
+                                       [] { return twattila::feature_settings::Upscaling(aa_sliders) && water_motion_row != 0.f; },
+                                       [] { return rt_sliders.debug_log != 0.f; });
   // After those two: they bind what decides here (none of these is a sun draw).
   for (const uint32_t& hash : traced_lights::SHADERS) {
     renodx::utils::command_action::Register(

@@ -57,8 +57,9 @@ namespace twwarhammer3::taa_dlss {
 using Microsoft::WRL::ComPtr;
 
 static float particle_smear_row = 0.f;
-// Ray Reconstruction's optional inputs, each a row of its own (at 100% render scale: below it the picture reaches the upscaler
-// after the tone mapper, in another space than any copy taken before).
+// Ray Reconstruction's optional inputs, each a row of its own. Below 100% the picture reaches the upscaler after the tone mapper, in
+// another space than any copy taken before: the two particle rows go through rr_extra_scaled there, the depth of field's guide
+// stays at 100%.
 static float rr_particle_layer_row = 0.f;
 static float rr_color_before_row = 0.f;
 static float rr_dof_guide_row = 0.f;
@@ -96,6 +97,7 @@ struct Objects {
   ComPtr<ID3D11ComputeShader> output;
   ComPtr<ID3D11ComputeShader> guides;
   ComPtr<ID3D11ComputeShader> rr_extra_inputs;
+  ComPtr<ID3D11ComputeShader> rr_extra_scaled;
   RrColorCopy rr_particles;
   RrColorCopy rr_before_particles;
   RrColorCopy rr_before_dof;
@@ -227,6 +229,7 @@ inline bool Create(ID3D11Device* device) {
                    || FAILED(device->CreateComputeShader(__dlss_output.data(), __dlss_output.size(), nullptr, objects.output.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__rr_guides.data(), __rr_guides.size(), nullptr, objects.guides.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__rr_extra_inputs.data(), __rr_extra_inputs.size(), nullptr, objects.rr_extra_inputs.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rr_extra_scaled.data(), __rr_extra_scaled.size(), nullptr, objects.rr_extra_scaled.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__dlss_scaled_inputs.data(), __dlss_scaled_inputs.size(), nullptr, objects.scaled_inputs.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__dlss_scaled_prepare.data(), __dlss_scaled_prepare.size(), nullptr, objects.scaled_prepare.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__dlss_scaled_finish.data(), __dlss_scaled_finish.size(), nullptr, objects.scaled_finish.GetAddressOf()))
@@ -306,10 +309,11 @@ inline bool MakeRrColorCopy(const D3D11_TEXTURE2D_DESC& source, bool render_targ
   return true;
 }
 
-// Whether a colour texture is the main view's at 100% render scale, as Ray Reconstruction's inputs need (state.mutex held).
-inline bool IsRrColor(const D3D11_TEXTURE2D_DESC& desc) {
+// Whether a colour texture is the main view's, as Ray Reconstruction's inputs need: at 100% render scale, or with `below_100` at any
+// (state.mutex held).
+inline bool IsRrColor(const D3D11_TEXTURE2D_DESC& desc, bool below_100) {
   const auto& bridge = twattila::dlaa_bridge::bridge;
-  return state.settings.ray_reconstruction && state.objects.device && state.scale_proof != ScaleProof::GOOD && bridge.guides
+  return state.settings.ray_reconstruction && state.objects.device && (below_100 || state.scale_proof != ScaleProof::GOOD) && bridge.guides
          && state.guides_frame == state.frame && desc.Width == bridge.width && desc.Height == bridge.height && desc.SampleDesc.Count == 1
          && desc.MipLevels == 1 && (desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT || desc.Format == DXGI_FORMAT_R16G16B16A16_TYPELESS);
 }
@@ -501,14 +505,19 @@ inline void Resolve(ID3D11DeviceContext* native) {
   // The optional inputs' memory only with their rows on. The particle layer leaves the colour without particles: a colour
   // before them would say nothing.
   uint32_t rr_extra = 0u;
-  if (state.settings.ray_reconstruction && !scaled) {
+  if (state.settings.ray_reconstruction) {
     using namespace twattila::dlaa_bridge;
     if (rr_particle_layer_row != 0.f) rr_extra |= 1u << RR_EXTRA_PARTICLE_LAYER;
     if (rr_color_before_row != 0.f && rr_particle_layer_row == 0.f) rr_extra |= 1u << RR_EXTRA_COLOR_BEFORE;
-    if (rr_dof_guide_row != 0.f) rr_extra |= 1u << RR_EXTRA_DOF_GUIDE;
+    if (rr_dof_guide_row != 0.f && !scaled) {
+      rr_extra |= 1u << RR_EXTRA_DOF_GUIDE;
+    }
   }
-  if ((rr_extra & (1u << twattila::dlaa_bridge::RR_EXTRA_PARTICLE_LAYER)) == 0u) state.objects.rr_particles = {};
-  if ((rr_extra & (1u << twattila::dlaa_bridge::RR_EXTRA_COLOR_BEFORE)) == 0u) state.objects.rr_before_particles = {};
+  // Below 100% either particle row reads both copies (rr_extra_scaled).
+  constexpr uint32_t PARTICLE_ROWS = (1u << twattila::dlaa_bridge::RR_EXTRA_PARTICLE_LAYER) | (1u << twattila::dlaa_bridge::RR_EXTRA_COLOR_BEFORE);
+  const bool both_copies = scaled && (rr_extra & PARTICLE_ROWS) != 0u;
+  if ((rr_extra & (1u << twattila::dlaa_bridge::RR_EXTRA_PARTICLE_LAYER)) == 0u && !both_copies) state.objects.rr_particles = {};
+  if ((rr_extra & (1u << twattila::dlaa_bridge::RR_EXTRA_COLOR_BEFORE)) == 0u && !both_copies) state.objects.rr_before_particles = {};
   if ((rr_extra & (1u << twattila::dlaa_bridge::RR_EXTRA_DOF_GUIDE)) == 0u) state.objects.rr_before_dof = {};
   if (!Create(device.Get()) || FAILED(native->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))
       || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height,
@@ -826,13 +835,37 @@ inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3
     std::array<float, 4> shader_settings = {internal::SquareRootInput(reconstruct) ? 1.f : 0.f, 0.f, static_cast<float>(width), static_cast<float>(height)};
     context1->UpdateSubresource(objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
     twattila::dlaa_bridge::bridge.color_square_root = shader_settings[0] != 0.f;
-    context1->CSSetShader(objects.scaled_prepare.Get(), nullptr, 0);
-    context1->CSSetShaderResources(0, 1, &picture);
-    context1->CSSetUnorderedAccessViews(0, 1, bridge.color.uav.GetAddressOf(), nullptr);
+    // Ray Reconstruction's particle rows (the composite's copies taken this frame): rr_extra_scaled writes the colour and theirs.
+    using namespace twattila::dlaa_bridge;
+    const uint32_t particle_inputs =
+        (reconstruct && state.rr_particles_frame == state.frame && state.rr_before_particles_frame == state.frame)
+            ? (bridge.rr_extra & ((1u << RR_EXTRA_PARTICLE_LAYER) | (1u << RR_EXTRA_COLOR_BEFORE)))
+            : 0u;
+    if (particle_inputs != 0u) {
+      const bool layer = (particle_inputs & (1u << RR_EXTRA_PARTICLE_LAYER)) != 0u;
+      shader_settings[0] = layer ? 1.f : 0.f;
+      context1->UpdateSubresource(objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
+      shader_settings[0] = 1.f;
+      const std::array<ID3D11ShaderResourceView*, 3> sources = {picture, objects.rr_particles.srv.Get(), objects.rr_before_particles.srv.Get()};
+      const std::array<ID3D11UnorderedAccessView*, 3> destinations = {
+          bridge.color.uav.Get(), layer ? bridge.rr_extra_textures[RR_EXTRA_PARTICLE_LAYER].uav.Get() : nullptr,
+          layer ? nullptr : bridge.rr_extra_textures[RR_EXTRA_COLOR_BEFORE].uav.Get()};
+      context1->CSSetShader(objects.rr_extra_scaled.Get(), nullptr, 0);
+      context1->CSSetShaderResources(0, static_cast<UINT>(sources.size()), sources.data());
+      context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(destinations.size()), destinations.data(), nullptr);
+    } else {
+      context1->CSSetShader(objects.scaled_prepare.Get(), nullptr, 0);
+      context1->CSSetShaderResources(0, 1, &picture);
+      context1->CSSetUnorderedAccessViews(0, 1, bridge.color.uav.GetAddressOf(), nullptr);
+    }
     context1->CSSetConstantBuffers(0, 1, objects.shader_settings.GetAddressOf());
     context1->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
     context1->ClearState();
-    evaluated = internal::EvaluateInputs(context1.Get(), width, height, state.taa_jitter, state.taa_reset, reconstruct, state.taa_camera.data());
+    if (state.rr_extra_logged != (particle_inputs | 8u) && particle_inputs != 0u) {
+      state.rr_extra_logged = particle_inputs | 8u;
+      renodx::utils::log::i(std::format("[Warhammer III] Ray Reconstruction's optional inputs written below 100%: {:03b} (depth of field, colour before, particle layer).", particle_inputs));
+    }
+    evaluated = internal::EvaluateInputs(context1.Get(), width, height, state.taa_jitter, state.taa_reset, reconstruct, state.taa_camera.data(), particle_inputs);
     shader_settings[1] = evaluated ? 0.f : 1.f;
     context1->UpdateSubresource(objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
     const std::array<ID3D11ShaderResourceView*, 2> sources = {bridge.output.srv.Get(), bridge.color.srv.Get()};
@@ -949,12 +982,37 @@ constexpr auto OnParticleComposite = []<typename Context>(Context& command) -> r
   if (!color) return {};
   D3D11_TEXTURE2D_DESC desc = {};
   color->GetDesc(&desc);
-  if (!IsRrColor(desc)) return {};
+  if (!IsRrColor(desc, true)) return {};
   const auto& bridge = twattila::dlaa_bridge::bridge;
   using namespace twattila::dlaa_bridge;
   if (!state.rr_composite_logged) {
     state.rr_composite_logged = true;
     renodx::utils::log::i("[Warhammer III] First run: the particles' composite, for Ray Reconstruction's optional inputs.");
+  }
+  // Below 100% the particles stay in the game's picture (its bloom, depth of field and tone mapper take them as ever) and the upscaler's
+  // inputs are made after the tone mapper (rr_extra_scaled) from two copies: the colour before this draw, and this draw once more
+  // without blending into a texture of the addon's (o0: the light, in alpha the transmittance). Then the game's own draw.
+  if (state.scale_proof == ScaleProof::GOOD) {
+    if constexpr (requires { command.arguments.vertex_count; }) {
+      if ((bridge.rr_extra & ((1u << RR_EXTRA_PARTICLE_LAYER) | (1u << RR_EXTRA_COLOR_BEFORE))) == 0u || !bridge.reconstructing
+          || !MakeRrColorCopy(desc, false, &state.objects.rr_before_particles) || !MakeRrColorCopy(desc, true, &state.objects.rr_particles)) {
+        return {};
+      }
+      const D3D11_BOX rendered = {.left = 0, .top = 0, .front = 0, .right = state.learned_size[0], .bottom = state.learned_size[1], .back = 1};
+      native->CopySubresourceRegion(state.objects.rr_before_particles.texture.Get(), 0, 0, 0, 0, color.Get(), 0, &rendered);
+      ComPtr<ID3D11BlendState> blend;
+      std::array<float, 4> blend_factor = {};
+      UINT blend_mask = 0;
+      native->OMGetBlendState(blend.GetAddressOf(), blend_factor.data(), &blend_mask);
+      native->OMSetRenderTargets(1, state.objects.rr_particles.rtv.GetAddressOf(), depth.Get());
+      native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFFu);
+      native->DrawInstanced(command.arguments.vertex_count, std::max(command.arguments.instance_count, 1u), command.arguments.first_vertex, command.arguments.first_instance);
+      native->OMSetRenderTargets(static_cast<UINT>(bound.size()), bound.data(), depth.Get());
+      native->OMSetBlendState(blend.Get(), blend_factor.data(), blend_mask);
+      state.rr_before_particles_frame = state.frame;
+      state.rr_particles_frame = state.frame;
+    }
+    return {};
   }
   if ((bridge.rr_extra & (1u << RR_EXTRA_COLOR_BEFORE)) != 0u && MakeRrColorCopy(desc, false, &state.objects.rr_before_particles)) {
     native->CopyResource(state.objects.rr_before_particles.texture.Get(), color.Get());
@@ -996,7 +1054,7 @@ constexpr auto OnDepthOfField = []<typename Context>(Context& command) -> renodx
   D3D11_TEXTURE2D_DESC desc = {};
   color->GetDesc(&desc);
   const std::unique_lock lock(state.mutex);
-  if (!IsRrColor(desc) || (twattila::dlaa_bridge::bridge.rr_extra & (1u << twattila::dlaa_bridge::RR_EXTRA_DOF_GUIDE)) == 0u
+  if (!IsRrColor(desc, false) || (twattila::dlaa_bridge::bridge.rr_extra & (1u << twattila::dlaa_bridge::RR_EXTRA_DOF_GUIDE)) == 0u
       || !MakeRrColorCopy(desc, false, &state.objects.rr_before_dof)) {
     return {};
   }

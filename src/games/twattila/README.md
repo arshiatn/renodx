@@ -4,6 +4,8 @@
 
 A kept placed instance can go where another mesh is placed and it is not (`rt_place.cs_6_5.hlsl` PLACE_ONE_AT_A_PLACE, flag `RT_ONE_AT_A_PLACE`, helper98; Warhammer III's row One Model per Place Out of View). Attila never sets the flag: nothing changes here.
 
+`rt_core.hpp` can read a tessellated draw's triangle count a frame or more late (Settings::terrain_count_later, WH3 batch 6 P5; Warhammer III's row Terrain Without Waiting). Attila has no tessellated scene shader and no such row: its captures and its trace are the same calls as before. No helper change (helper98 stays the newest).
+
 The helper's reflections can put a game's fog between a pixel and what its ray met (`rt_leg_fog.hlsli`, flag `RT_REFLECTIONS_FOG`, numbers in the sun texture's texels 9-13). Attila never sets the flag and writes no numbers: its reflections are the same. Bridge v30 as before; the newest helper is build/tw_dlaa_helper97 and ships with the addons. Checked without the game: all_modes.sh on helper97 (wh3_batch6/reports/all_modes_P3.txt), mode `reflect_fog_unasked` (numbers written, flag not set: nothing changes). Build: `cmake --build build32 --config Release --target renodx-twattila.addon32`.
 
 ### Sprite soldiers' captures last (WH3 batch 6 P2, 2026-11-10; not run in game)

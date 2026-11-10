@@ -13,6 +13,10 @@
 //
 // Not here: unit banners by wind, liquid and scrolling props (3689A926, 033108E7, 22B5CCC7, BC3F3209, 42E93502, 0EB3AF84, 006F8ED8,
 // A46C0E71: bones or rows in o1, sway after them, so no copy of the program gives their last position), drawn in no trace; particles.
+// Nor two families that are drawn and move with nothing in their bytes for where they were: the capture flags' own rows (vs 444F1190:
+// its rows in v6-8, no last rows; only its wave gets a last position above) and the skinned texture-blend units (vs C0ED2883 with ps
+// 1405BFB4: bones and a 184-byte record as fx_weighted's, but no previous position output and no velocity target). Log Details reads
+// their instance data for a few draws (OnInstanceLog), so a run can say what a fix may rest on.
 #ifndef SRC_GAMES_TWWARHAMMER3_OBJECT_MOTION_HPP_
 #define SRC_GAMES_TWWARHAMMER3_OBJECT_MOTION_HPP_
 
@@ -26,6 +30,7 @@
 #include <format>
 #include <shared_mutex>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -36,6 +41,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/pipeline.hpp"
 #include "../twattila/dxbc.hpp"
+#include "../twattila/frame_trace.hpp"
 
 namespace twwarhammer3::object_motion {
 
@@ -70,6 +76,14 @@ constexpr std::array<uint32_t, 83> GAP_PS = {
 };
 
 constexpr uint32_t MOTION_FILL_PS = 0xD409F9B5;
+// OnInstanceLog's two families, by their pixel shaders (989BED69 the capture flags', 1405BFB4 the texture-blend units'), the frames
+// read of each and the draws read in a frame.
+constexpr uint32_t FLAG_PS = 0x989BED69;
+constexpr uint32_t BLEND_UNIT_PS = 0x1405BFB4;
+constexpr uint32_t INSTANCE_LOG_FRAMES = 6;
+constexpr uint32_t INSTANCE_LOG_DRAWS = 4;
+constexpr uint32_t INSTANCE_LOG_INSTANCES = 4;
+constexpr UINT BLEND_UNIT_RECORD = 184;
 
 using Microsoft::WRL::ComPtr;
 
@@ -85,6 +99,15 @@ inline std::unordered_map<uint64_t, Patched> vertex_shaders;
 inline std::unordered_map<uint64_t, Patched> pixel_shaders;
 inline bool (*active)() = nullptr;
 inline bool (*water_active)() = nullptr;
+inline bool (*log_details)() = nullptr;
+// OnInstanceLog, per family: the frames read so far (the early return's test), and on the immediate context alone the last read draw's
+// time and its frame's draws.
+struct InstanceLog {
+  std::atomic_uint32_t frames = 0;
+  uint64_t tick = 0;
+  uint32_t draws = 0;
+};
+inline std::array<InstanceLog, 2> instance_logs;
 inline std::atomic_bool fill_logged = false;
 inline std::atomic_bool fill_refused = false;
 
@@ -284,9 +307,75 @@ constexpr auto OnMotionFill = []<typename Context>(Context& command) -> renodx::
   }};
 };
 
-inline void Install(bool (*is_active)(), bool (*is_water_active)()) {
+// Log Details: a few draws' instance data of the two families the header names, as floats, read back (a wait each; INSTANCE_LOG_FRAMES
+// frames of INSTANCE_LOG_DRAWS draws a family and session). The flags': each instance's 120 bytes of vb1 (rows in the first 48, v9 to
+// v14 after them): do instances keep their order and place in the buffer from frame to frame, and which value names a flag? The units':
+// each instance's 184-byte record of t2 (from cb3[0].x on): are +48 / +64 / +80 last frame's +0 / +16 / +32, as fx_weighted reads them?
+constexpr auto OnInstanceLog = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const bool flags = command.matched_shader_hash == FLAG_PS;
+  InstanceLog& log = instance_logs[flags ? 0 : 1];
+  if (log.frames.load(std::memory_order_relaxed) > INSTANCE_LOG_FRAMES || !log_details()) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || !VelocityBound(native)) return {};
+  // A frame's draws of a family come within a few milliseconds; the next frame's later.
+  const uint64_t tick = GetTickCount64();
+  if (tick > log.tick + 4) {
+    log.draws = 0;
+    if (log.frames.fetch_add(1, std::memory_order_relaxed) >= INSTANCE_LOG_FRAMES) return {};
+  }
+  log.tick = tick;
+  if (log.draws++ >= INSTANCE_LOG_DRAWS) return {};
+  // The callback is made for every command type; only direct draws are registered.
+  UINT draw_instances = 1;
+  UINT first_instance = 0;
+  if constexpr (requires { command.arguments.instance_count; }) {
+    draw_instances = std::max(command.arguments.instance_count, 1u);
+    first_instance = command.arguments.first_instance;
+  }
+  const UINT instances = std::min(draw_instances, INSTANCE_LOG_INSTANCES);
+  ComPtr<ID3D11Buffer> buffer;
+  UINT stride = BLEND_UNIT_RECORD;
+  UINT offset = 0;
+  if (flags) {
+    native->IAGetVertexBuffers(1, 1, buffer.GetAddressOf(), &stride, &offset);
+    offset += first_instance * stride;
+  } else {
+    ComPtr<ID3D11ShaderResourceView> records;
+    ComPtr<ID3D11Buffer> record_base;
+    native->VSGetShaderResources(2, 1, records.GetAddressOf());
+    native->VSGetConstantBuffers(3, 1, record_base.GetAddressOf());
+    if (!records || !record_base) return {};
+    ComPtr<ID3D11Resource> resource;
+    records->GetResource(resource.GetAddressOf());
+    resource.As(&buffer);
+    D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {};
+    records->GetDesc(&view_desc);
+    const auto base = twattila::frame_trace::ReadBuffer<uint32_t>(native, record_base.Get(), 0, 1);
+    if (view_desc.ViewDimension != D3D11_SRV_DIMENSION_BUFFEREX || base.empty()) return {};
+    offset = (view_desc.BufferEx.FirstElement * 4) + base[0];
+  }
+  if (!buffer || stride < 16 || stride > 256) return {};
+  const auto values = twattila::frame_trace::ReadBuffer<float>(native, buffer.Get(), offset, instances * stride / 4);
+  std::string text;
+  for (size_t index = 0; index < values.size(); ++index) {
+    if (index % (stride / 4) == 0) text += std::format(" | instance {}:", index / (stride / 4));
+    text += std::format(" {:.4g}", values[index]);
+  }
+  renodx::utils::log::i(std::format("[Warhammer III] Object motion: {} instance data at {} ms, frame {} draw {}, buffer {:016X} from byte {}, {} of {} instances, {} bytes each{}",
+                                    (flags ? "capture flag (ps 989BED69)" : "texture-blend unit (ps 1405BFB4)"), tick % 1000000, log.frames.load(std::memory_order_relaxed),
+                                    log.draws, reinterpret_cast<uint64_t>(buffer.Get()), offset, instances, draw_instances, stride,
+                                    (values.empty() ? ": not read." : text)));
+  return {};
+};
+
+inline void Install(bool (*is_active)(), bool (*is_water_active)(), bool (*is_log_details)()) {
   active = is_active;
   water_active = is_water_active;
+  log_details = is_log_details;
+  for (const uint32_t& hash : {FLAG_PS, BLEND_UNIT_PS}) {
+    renodx::utils::command_action::Register(OnInstanceLog, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   renodx::utils::pipeline::RegisterOnInitCallback(OnInitPipeline);
   renodx::utils::pipeline::RegisterOnDestroyCallback(OnDestroyPipeline);
   for (const uint32_t& hash : GAP_PS) {
@@ -300,6 +389,7 @@ inline void Uninstall() {
   renodx::utils::pipeline::UnregisterOnInitCallback(OnInitPipeline);
   renodx::utils::pipeline::UnregisterOnDestroyCallback(OnDestroyPipeline);
   renodx::utils::command_action::Unregister(OnPixelDraw);
+  renodx::utils::command_action::Unregister(OnInstanceLog);
   renodx::utils::command_action::Unregister(OnMotionFill);
 }
 
