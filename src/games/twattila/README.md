@@ -1,5 +1,19 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v141 (2026-11-10, WH3's batch 6; built, not run in game; renodx-tw-dlaa64.exe helper99, bridge v30: ship them together; no players' zip)
+
+No row and no default changed. Shared code only:
+
+- **After a GPU reset** the game's new swap chain gets its window (a player's v2.5.1 died there: the second device lost 15 ms after its first frame). Attila destroys its old device first: the step runs at that device's end. A real reset: not tested.
+- **Output is chosen for every new swap chain:** Auto follows Windows HDR each time; a chosen HDR10 or scRGB stays unless no display has Windows HDR on.
+- **Graphics (Experimental) values stay as they are when the add-on's image goes with a lost device,** and are not scaled twice by the next one.
+- **The add-on makes no D3D11 device of its own any more.** The helper's rescue did, on the game's thread (v116 to v135 = players' v2.5.1: a deadlock in one crash report, and the add-on unloading itself at a second device loss): the next players' release must carry this.
+- **When frames stop for 20 s:** one log line with the frame thread's place. `renodx-stall.dmp` beside the exe only once a device was lost in this session, or with `StallDump=1` under `[Total War]` in ReShade.ini.
+- **Sprite Soldier Shadows:** the cards are always the frame's last captures, so only the sun's rays meet them.
+- Helper99: the shared helper's fixes of WH3's batch 6 (reflections' light, one model per place, two log lines). Attila sets none of the new flags.
+
+Details in the sections below. Tests: `test/tw_*/run.ps1` (`-Architecture x86` and `amd64`).
+
 ### Helper97: fog on a reflection ray's leg (WH3 batch 6 P3, 2026-11-10; not run in game)
 
 A kept placed instance can go where another mesh is placed and it is not (`rt_place.cs_6_5.hlsl` PLACE_ONE_AT_A_PLACE, flag `RT_ONE_AT_A_PLACE`, helper98; Warhammer III's row One Model per Place Out of View). Attila never sets the flag: nothing changes here.
@@ -18,12 +32,12 @@ Shared by Attila, Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3 and Shogun 2 (`
 
 - **After a GPU reset** a removed device's bindings are cleared and flushed so the game's new swap chain gets the window (0x80070005 otherwise): before the new chain where the game keeps the old device (WH3), at the device's destroy where it does not (Attila). One log line with the removed reason, the last frame's age and whether the window was in front; three samples of the frame thread if frames stop (32-bit too).
 - **No frame for 90 s after a reset closes the game**, counting only time its window is in front or does not answer Windows: a game minimised or behind another program is left alone.
-- **Output is decided for every new swap chain**: Auto follows Windows HDR each time; a chosen HDR10 or scRGB becomes SDR for a chain made while Windows HDR is known off (white picture before). One log line per chain.
+- **Output is decided for every new swap chain**: Auto follows Windows HDR each time; a chosen HDR10 or scRGB becomes SDR for a chain made while Windows HDR is known off for every active display (white picture before; since the close, off for the window's display alone no longer counts: the window can still stand on an SDR display then). Auto keeps the chain before's output where Windows gives no answer. One log line per chain.
 - **The game's own blt swap chain after a failed flip one** (WH3, Pharaoh, Troy) is left as asked, shown in SDR, and not treated as upgraded.
 - **Objects released with the game's device**: water (caustics, clarity), the ray tracing's mask textures and point light readback, in-draw motion's last bindings, the bitmask AO's kept depth and camera (never bound on another device now). ReShade's "reference count is inconsistent" line should show a smaller number: read it in a run.
 - **Frame generation** drops the image it reads in place when the swap chain's buffers go (a readable back buffer kept there failed ResizeBuffers on WARP).
 
-- **When frames stop for 20 s (WH3 batch 6 P1)**: beside the frame thread's line, every thread's registers and stack go to `renodx-stall.dmp` next to the game's exe (small: registers and stacks only; a stall's first sample, at most three a session, the newest kept, none for a minimised game; opens in WinDbg: `~*k`). 64-bit games also get a line when the frame thread is inside an exception, with its code and address: a game crash whose own crash handler runs long looks like a hang (WH3, 2026-11-06). Nothing runs while frames come.
+- **When frames stop for 20 s (WH3 batch 6 P1)**: beside the frame thread's line, every thread's registers and stack go to `renodx-stall.dmp` next to the game's exe (small: registers and stacks only; a stall's first sample, at most three a session, the newest kept, none for a minimised game; opens in WinDbg: `~*k`). Since the close only once a device was lost in the session or with `StallDump=1` under `[Total War]` in ReShade.ini (a long load is a stop too; the dump has never run in a game); each stack is written straight to the file (64 KB a thread, 8 MB in all in a 32-bit game), and nothing thrown leaves the watching thread. 64-bit games also get a line when the frame thread is inside an exception, with its code and address: a game crash whose own crash handler runs long looks like a hang (WH3, 2026-11-06). Nothing runs while frames come.
 
 Tests: `test/tw_device_loss/run.ps1`, `test/tw_fg_initialization/run.ps1` (`-Architecture x86` and `amd64`). Build: the skill's two commands. In game: `tools/tw/wh3_batch6/run_requests.md`.
 

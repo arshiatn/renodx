@@ -1,5 +1,31 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v38 (2026-11-10, batch 6; renodx-tw-dlaa64.exe helper99, bridge v30: ship them together; one replay run before the close's fixes, see each section; no players' zip)
+
+- **Turning Global Illumination off in a battle no longer crashes the game** (v37). Run in game: off and on twice, 82 s more, no crash.
+- **Reflections Lit as This Frame, on:** ray-traced reflections with Global Illumination off are lit by this frame (they read last frame's picture, with black where the screen never looked). Run in game.
+- **After a GPU reset** the game gets its window back, and the HDR output is chosen again for each new swap chain. A real reset: not tested.
+- **DLSS Preset: Auto** (the default): L at 100%, K below, where L and M darken fine detail.
+- **Particles Skip the Denoiser and Picture Before Particles work below 100%** (both Experimental, off).
+- **Far Tree Shadows:** the far trees' cards no longer stand among the units for the other rays.
+- **New rows, all Experimental and off:** Shadow Map Size (8192), Terrain Without Waiting, Fog in Reflections, Skip the Shadow Maps, One Model per Place Out of View, Cut-outs on Units Out of View, Cut-outs on More Models, Tree Trunks as Drawn, No Shadows From Hidden Parts.
+- **Not fixed:** the black spot on tents with ray-traced shadows (cause not proven; three checks at the tent, below).
+
+Details per phase below. Round report and test list: `tools/tw/wh3_batch6/reports/round_report.md`.
+
+### Close: the review's fixes (WH3 batch 6 C, 2026-11-10; not run in game)
+
+- **When frames stop for 20 s** the log gets its one line as before; `renodx-stall.dmp` is written only once a device was lost in this session, or with `StallDump=1` under `[Total War]` in ReShade.ini. A long load is such a stop too, and the dump's memory could end a 32-bit game near its limit: each stack goes straight to the file now, and nothing thrown leaves the watching thread.
+- **A chosen HDR10 or scRGB output** stays unless no display has Windows HDR on (the window can still stand on an SDR display when its swap chain is made). **Auto** keeps its last output when Windows gives no answer.
+- **Graphics (Experimental) values** are no longer scaled twice after a device that never drew a frame.
+- **Shadow maps' copy (C883E3FA):** the game's own size constant on every map the game made; the map's own size only on one Shadow Map Size made larger.
+- **Fog in Reflections** (Experimental, off) puts every target of the fog's draw back, and clears its numbers when a frame has no fog draw.
+- **`Shadow map sizes` and `Cascades' split distances` log lines** only with Log Details: a default start reads no buffer back.
+- **Bitmask AO** keeps its depth, camera and passes when another device ends.
+- The game's quit cannot wait on the watching thread for ever (2 s at most).
+
+Tests: `test/tw_device_loss`, `tw_native_hook_lifetime`, `tw_shadow_map_size`, `tw_game_gi` `run.ps1`.
+
 ### AO depth-level recovery (F15, 2026-11-09, GPT-6 Astra; not run in game)
 
 Failed depth-level texture/view creation now releases all partial views and retries at the same resolution after a one-second cooldown. Build: `cmake --build build --config Release --target renodx-twwarhammer3.addon64`. Manual check: use an AO mode that reads depth levels, change resolution/render scale, and verify stable AO; after a transient allocation failure, depth levels should recover without another resolution change. Failure injection and real D3D11 WARP readback results are in `docs/Attila-crash-audit-2026-11-08.md` at the repository root. No shader behavior was changed.
