@@ -929,6 +929,9 @@ struct FogLearnConstants {
 };
 FogLearnConstants fog_learn_written;
 bool fog_learn_logged = false;
+// The fog's light draw wrote the sun texture's fog texels since the last march; they hold a fog's numbers.
+bool fog_learned = false;
+bool fog_in_sun_texels = false;
 
 // The copy in the game's place until SwapBack.
 bool Swap(ID3D11DeviceContext* native, Copy* copy) {
@@ -1018,8 +1021,7 @@ constexpr auto OnFogLight = []<typename Context>(Context& command) -> renodx::ut
     }
     if (constants.render_size[0] == 0 || constants.render_size[1] == 0) return;
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
-    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth;
-    native->OMGetRenderTargets(1, target.GetAddressOf(), depth.GetAddressOf());
+    native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
     if (!target) return;
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     native->GetDevice(device.GetAddressOf());
@@ -1052,9 +1054,15 @@ constexpr auto OnFogLight = []<typename Context>(Context& command) -> renodx::ut
     }
     std::array<ID3D11Buffer*, 2> kept_buffers = {};
     native->CSGetConstantBuffers(1, static_cast<UINT>(kept_buffers.size()), kept_buffers.data());
+    // Its light is this draw's target: readable only once unbound, and that unbinds the draw's whole output (every target,
+    // the depth, any unordered access view): all of it goes back after.
+    std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
+    std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT> game_output_views = {};
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth;
+    native->OMGetRenderTargetsAndUnorderedAccessViews(static_cast<UINT>(game_targets.size()), game_targets.data(), depth.GetAddressOf(), 0,
+                                                      static_cast<UINT>(game_output_views.size()), game_output_views.data());
     {
       const twattila::rt_scene::internal::ComputeState kept(native);
-      // Its light is this draw's target: readable only once unbound.
       native->OMSetRenderTargets(0, nullptr, nullptr);
       const std::array<ID3D11ShaderResourceView*, 2> views = {fog_light.Get(), bridge.rt_positions.srv.Get()};
       const std::array<ID3D11Buffer*, 3> buffers = {game_fog.Get(), game_camera.Get(), fog_learn_constants.Get()};
@@ -1064,13 +1072,35 @@ constexpr auto OnFogLight = []<typename Context>(Context& command) -> renodx::ut
       native->CSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
       native->Dispatch(1, 1, 1);
     }
+    fog_learned = true;
+    fog_in_sun_texels = true;
     native->CSSetConstantBuffers(1, static_cast<UINT>(kept_buffers.size()), kept_buffers.data());
     for (ID3D11Buffer* buffer : kept_buffers) {
       if (buffer != nullptr) {
         buffer->Release();
       }
     }
-    native->OMSetRenderTargets(1, target.GetAddressOf(), depth.Get());
+    const auto first_output_view = static_cast<UINT>(
+        std::ranges::find_if(game_output_views, [](auto* output_view) { return output_view != nullptr; }) - game_output_views.begin());
+    if (first_output_view == game_output_views.size()) {
+      native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), depth.Get());
+    } else {
+      constexpr std::array<UINT, D3D11_PS_CS_UAV_REGISTER_COUNT> KEEP_COUNTS = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX,
+                                                                                UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+      native->OMSetRenderTargetsAndUnorderedAccessViews(
+          first_output_view, game_targets.data(), depth.Get(), first_output_view,
+          static_cast<UINT>(game_output_views.size()) - first_output_view, game_output_views.data() + first_output_view, KEEP_COUNTS.data());
+    }
+    for (auto* game_target : game_targets) {
+      if (game_target != nullptr) {
+        game_target->Release();
+      }
+    }
+    for (auto* output_view : game_output_views) {
+      if (output_view != nullptr) {
+        output_view->Release();
+      }
+    }
   }};
 };
 
@@ -1087,6 +1117,17 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
   if (RaysOn() && main_depth && twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) {
     native->CSGetShaderResources(0, static_cast<UINT>(march_gbuffer.size()), march_gbuffer.data());
     native->CSGetConstantBuffers(0, 1, march_camera.ReleaseAndGetAddressOf());
+    // The fog's numbers are a frame old here (the game draws its fog after this pass). With no fog draw since the last
+    // march (a scene without that fog, the row or the rays off in between) they are an older scene's: the five texels
+    // cleared (rt_leg_fog.hlsli: texels 9-13 of the sun texture, texel 9's w 0 says no fog).
+    if (fog_in_sun_texels && !std::exchange(fog_learned, false)) {
+      fog_in_sun_texels = false;
+      if (const auto& sun_texture = twattila::dlaa_bridge::bridge.rt_sun.texture; sun_texture) {
+        constexpr std::array<float, 20> NO_FOG = {};
+        const D3D11_BOX fog_texels = {.left = 9, .top = 0, .front = 0, .right = 14, .bottom = 1, .back = 1};
+        native->UpdateSubresource(sun_texture.Get(), 0, &fog_texels, NO_FOG.data(), sizeof(NO_FOG), 0);
+      }
+    }
     std::array<ID3D11ShaderResourceView*, 2> views = {};
     {
       const twattila::rt_scene::internal::ComputeState kept(native);
@@ -1308,6 +1349,8 @@ void OnDestroyDevice(reshade::api::device*) {
   fog_light.Reset();
   fog_light_resource = nullptr;
   fog_learn_constants.Reset();
+  fog_learned = false;
+  fog_in_sun_texels = false;
 }
 
 }  // namespace reflections
@@ -1332,6 +1375,7 @@ float rays_replace_maps_row = 1.f;
 std::array<std::span<const uint8_t>, SHADERS.size()> codes = {};
 std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SHADERS.size()> ours = {};
 std::array<std::atomic_bool, SHADERS.size()> logged = {};
+std::atomic_bool shadow_constants_logged = false;
 Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
 Microsoft::WRL::ComPtr<ID3D11Buffer> fog_strength_buffer;  // b8: the slider minus 1
 float fog_strength_written = 1.f;
@@ -1347,8 +1391,10 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
-  // How far the cascades reach, so how far Shadow Casters Out of View sees what the camera never looked at (shadowmap_PS's g_split_distances, 560 bytes in, 16 apart: its values can't be read offline).
-  if (first_run && index == SUN_MASK && native != nullptr) {
+  // Log Details, once: how far the cascades reach, so how far Shadow Casters Out of View sees what the camera never looked at
+  // (shadowmap_PS's g_split_distances, 560 bytes in, 16 apart: its values can't be read offline), and the maps' size. A copy
+  // and a wait for it: not at a default start.
+  if (index == SUN_MASK && native != nullptr && rt_sliders.debug_log != 0.f && !shadow_constants_logged.exchange(true, std::memory_order_relaxed)) {
     Microsoft::WRL::ComPtr<ID3D11Buffer> shadow_constants;
     native->PSGetConstantBuffers(1, 1, shadow_constants.GetAddressOf());
     D3D11_BUFFER_DESC desc = {};
@@ -2846,10 +2892,11 @@ constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renod
 // Shadow Map Size above the game's highest needs three numbers no trace holds (batch 6 P4): the size in the shared shadow constants
 // (the sun's mask's line), the static maps' copy's (C883E3FA's static_shadowmap_CB: current_size and buffer_size at bytes 32 and 40;
 // it draws only when the game renews its static maps) and what the two half-size copies read and write (800F7F7F, D5DCC85F: `x 2` in
-// their code, so a source twice their target). Once each, at their first draw.
+// their code, so a source twice their target). With Log Details, once each, at their next draw.
 constexpr std::array<uint32_t, 3> SHADOW_SIZE_SHADERS = {0xC883E3FA, 0x800F7F7F, 0xD5DCC85F};
 std::array<std::atomic_bool, SHADOW_SIZE_SHADERS.size()> shadow_size_logged = {};
 constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (rt_sliders.debug_log == 0.f) return {};
   const auto& hash = command.template GetCallbackData<uint32_t>();
   if (shadow_size_logged[&hash - SHADOW_SIZE_SHADERS.data()].exchange(true, std::memory_order_relaxed)) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());

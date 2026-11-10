@@ -189,7 +189,7 @@ inline bool UpdateWithSize(ID3D11DeviceContext* native, const void* data, reshad
 }
 
 static bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource, uint64_t offset, uint64_t size) {
-  if (live_maps.load(std::memory_order_relaxed) == 0) return false;
+  if (live_maps.load(std::memory_order_relaxed) == 0 || !constants.known.contains(resource.handle)) return false;
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> immediate;
   reinterpret_cast<ID3D11Device*>(device->get_native())->GetImmediateContext(immediate.GetAddressOf());
   return UpdateWithSize(immediate.Get(), data, resource, offset, size);

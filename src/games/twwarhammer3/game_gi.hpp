@@ -91,7 +91,8 @@ static bool UpdateWithFlagOff(ID3D11DeviceContext* native, const void* data, res
 }
 
 static bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource, uint64_t offset, uint64_t size) {
-  if (!off.load(std::memory_order_relaxed)) return false;
+  // Every update of every buffer passes by: the table first.
+  if (!off.load(std::memory_order_relaxed) || !lighting.known.contains(resource.handle)) return false;
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> immediate;
   reinterpret_cast<ID3D11Device*>(device->get_native())->GetImmediateContext(immediate.GetAddressOf());
   return UpdateWithFlagOff(immediate.Get(), data, resource, offset, size);
