@@ -2794,6 +2794,7 @@ float reflection_lobe_row = 0.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
+float rays_terrain_count_later_row = 0.f;
 float rays_units_out_of_view_row = 1.f;
 float rays_skip_cascade_trees_row = 0.f;
 float rays_skip_cascades_row = 0.f;
@@ -2927,8 +2928,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .object_motion_tooltip = "Flags, glowing weapons and swaying props tell the upscaler how they move.\nOff: the game's own.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, Light Bounce, ray-traced AO's rate and Bend's shadow softness\n"
                                  "keep their 100% detail, and at half or below the water's reflections too. Looks better, can cost some performance.",
-    .dlss_preset_tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest (default).\n"
-                           "Below 100%: L comes out darker, up to 10% at half; K and M hold.",
+    .dlss_preset_tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest.\n"
+                           "Auto: L at 100%, K below 100%, where L and M come out darker (L up to 10% at half).",
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original, on water only. All Surfaces: the game's own march on armour, metal and the rest too,\n"
                            "no rays needed; costs more, may shimmer. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
@@ -3291,6 +3292,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.reflection_fog = reflections::fog_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  rt_settings.terrain_count_later = rays_terrain_count_later_row != 0.f;
   // Under rays and maps together the game's cascades already darken what these would.
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.one_at_a_place = rt_settings.casters_out_of_view && rays_one_at_a_place_row != 0.f;
@@ -3309,6 +3311,11 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   tw::ao_trace::OnPresent();
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
+  // DLSS Preset at Auto (this game's fourth choice; NVSDK_NGX_DLSS_Hint_Render_Preset K 11, L 12): L and M darken fine detail the more they
+  // upscale, whatever the colour's encoding (the harness' tones test: K within 1% at every scale, L 7 to 13% at 67 to 33%).
+  if (const float game_scale = twwarhammer3::resolution_scale::Current(); aa_sliders.dlaa_preset >= 3.f) {
+    aa_settings.dlaa_preset = ((game_scale > 0.f && game_scale < 1.f) ? 11u : 12u);
+  }
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twwarhammer3::taa_dlss::Update(swapchain, aa_settings, !third_party_upscale, rt_sliders.debug_log != 0.f);
@@ -3584,6 +3591,10 @@ void ConfigureAddon() {
   // Off here: night and fire in the fog have had no one's eye yet.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedLightGlow") setting->default_value = 0.f;
+    if (setting->key == "AntiAliasingDlaaPreset") {
+      setting->labels.emplace_back("Auto");
+      setting->default_value = 3.f;
+    }
     // Their shared rule reads dlss_mode, which no row sets here: the scale is the game's float (upscaling_mode_row).
     if (setting->key == "AntiAliasingTextureLodBias" || setting->key == "AntiAliasingEffectsAtOutput") {
       setting->is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
@@ -3880,6 +3891,7 @@ void ConfigureAddon() {
                                                  },
                                              },
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .rays_terrain_count_later = &rays_terrain_count_later_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,

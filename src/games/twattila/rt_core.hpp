@@ -166,6 +166,8 @@ struct Settings {
   bool sprite_shadows = false;
   bool far_tree_shadows = false;
   bool terrain_outside_view = false;
+  // The tessellated draws' triangle count read when the GPU has it, a frame or more late, in place of waiting for it at the trace.
+  bool terrain_count_later = false;
   // Casters out of the view from the shadow maps' draws (SceneShader::cascade_keep).
   bool casters_out_of_view = false;
   bool one_at_a_place = false;  // dlaa_bridge.h RT_ONE_AT_A_PLACE
@@ -339,6 +341,10 @@ constexpr UINT MAX_TESSELLATED_VERTICES = 6u << 20;
 // forest, and a frame past this one goes without the terrain in its rays.
 constexpr auto TERRAIN_COUNT_LIMIT = std::chrono::milliseconds(250);
 constexpr size_t MAX_TESSELLATED_DRAWS = 16;
+// Settings::terrain_count_later: the frames whose counts may be on their way at once, and the empty vertices one copy puts under a
+// frame's tessellated triangles.
+constexpr size_t TERRAIN_COUNT_FRAMES = 6;
+constexpr UINT TERRAIN_EMPTY_VERTICES = 1u << 19;
 constexpr uint64_t TESSELLATED_KEY = 0x54455353ull;
 // A placed mesh not seen moving is placed every this many frames, in turn (Capture; the helper keeps its instances).
 constexpr uint64_t PLACE_TURNS = 4;
@@ -384,6 +390,16 @@ struct DeviceObjects {
   ComPtr<ID3D11Buffer> tessellated;
   ComPtr<ID3D11HullShader> tessellated_outside;
   std::array<ComPtr<ID3D11Query>, MAX_TESSELLATED_DRAWS> tessellated_queries;
+  // Settings::terrain_count_later: a frame's counts until the GPU has them (`draws` 0: free), and vertices with a NaN x (the helper
+  // skips such triangles) to lay under a frame's tessellated triangles: fewer written than the last count known, the rest stays empty.
+  struct TerrainCount {
+    std::array<ComPtr<ID3D11Query>, MAX_TESSELLATED_DRAWS> queries;
+    uint32_t draws = 0;
+    uint64_t frame = 0;
+  };
+  std::array<TerrainCount, TERRAIN_COUNT_FRAMES> terrain_counts;
+  TerrainCount* terrain_count = nullptr;  // this frame's (null: none was free)
+  ComPtr<ID3D11Buffer> tessellated_empty;
   ComPtr<ID3D11Buffer> indirect_probe;  // the indirect draws' numbers of an earlier frame (CaptureIndirect)
   ComPtr<ID3D11ShaderResourceView> captured_uv_srv;
   ComPtr<ID3D11ComputeShader> vertices_shader;
@@ -554,6 +570,11 @@ struct Runtime {
   // The room the frame's other captures leave them: they join last, but the ground counts for more than what a full frame
   // drops instead. Last frame's corners, an eighth over for a moving camera; 0 in a game without such draws.
   uint32_t tessellated_reserved = 0;
+  // Settings::terrain_count_later: the newest count the GPU gave (the corners the draws wanted to write, and whose frame's), and the
+  // corners this frame's draws were given (emptied before the first of them).
+  uint64_t terrain_known_corners = 0;
+  uint64_t terrain_known_frame = 0;
+  uint32_t tessellated_expected = 0;
   uint64_t tessellated_room_log_tick = 0;
   uint64_t terrain_count_log_tick = 0;
   uint32_t dynamic_vertices = 0;
@@ -862,8 +883,10 @@ inline bool PrepareDevice(ID3D11Device* device) {
   if (std::ranges::any_of(scene_shaders, &SceneShader::tessellated)) {
     const D3D11_BUFFER_DESC tessellated_desc = {.ByteWidth = MAX_TESSELLATED_VERTICES * 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
     const D3D11_QUERY_DESC statistics_desc = {.Query = D3D11_QUERY_SO_STATISTICS};
+    const auto make_query = [&](ComPtr<ID3D11Query>& query) { return SUCCEEDED(device->CreateQuery(&statistics_desc, query.GetAddressOf())); };
     made = made && SUCCEEDED(device->CreateBuffer(&tessellated_desc, nullptr, objects.tessellated.GetAddressOf()))
-           && std::ranges::all_of(objects.tessellated_queries, [&](ComPtr<ID3D11Query>& query) { return SUCCEEDED(device->CreateQuery(&statistics_desc, query.GetAddressOf())); });
+           && std::ranges::all_of(objects.tessellated_queries, make_query);
+    for (auto& count : objects.terrain_counts) made = made && std::ranges::all_of(count.queries, make_query);
     for (const SceneShader& shader : scene_shaders) {
       if (!shader.tessellated_outside.empty()) {
         made = made && SUCCEEDED(device->CreateHullShader(shader.tessellated_outside.data(), shader.tessellated_outside.size(), nullptr, objects.tessellated_outside.GetAddressOf()));
@@ -1662,10 +1685,40 @@ void Capture(Context& command, const SceneShader& shader) {
       native->GSSetShaderResources(0, 1, keep_view.GetAddressOf());
       native->GSSetConstantBuffers(1, 1, keep_constants.GetAddressOf());
     }
+    // The count read later: this frame's triangles land on empty ones, as many as the last count known and an eighth (the capture's
+    // size at the trace, which no longer knows how many were written), and their counts go to a set of queries the GPU has answered.
+    if (shader.tessellated && runtime.settings.terrain_count_later && runtime.tessellated_draws == 0) {
+      if (!objects.tessellated_empty) {
+        const std::vector<uint32_t> empty(size_t{TERRAIN_EMPTY_VERTICES} * 4, 0x7FC00000u);
+        const D3D11_BUFFER_DESC empty_desc = {.ByteWidth = TERRAIN_EMPTY_VERTICES * 16, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+        const D3D11_SUBRESOURCE_DATA empty_data = {.pSysMem = empty.data()};
+        device->CreateBuffer(&empty_desc, &empty_data, objects.tessellated_empty.GetAddressOf());
+      }
+      runtime.tessellated_expected =
+          objects.tessellated_empty ? static_cast<uint32_t>(std::min<uint64_t>(runtime.terrain_known_corners / 24 * 27, MAX_TESSELLATED_VERTICES)) : 0u;
+      native->SOSetTargets(0, nullptr, nullptr);
+      for (UINT first = 0; first < runtime.tessellated_expected; first += TERRAIN_EMPTY_VERTICES) {
+        const D3D11_BOX emptied = {.left = 0, .top = 0, .front = 0, .right = std::min(TERRAIN_EMPTY_VERTICES, runtime.tessellated_expected - first) * 16, .bottom = 1, .back = 1};
+        native->CopySubresourceRegion(objects.tessellated.Get(), 0, first * 16, 0, 0, objects.tessellated_empty.Get(), 0, &emptied);
+      }
+      native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
+      const auto free_count = std::ranges::find(objects.terrain_counts, 0u, &DeviceObjects::TerrainCount::draws);
+      objects.terrain_count = (free_count != objects.terrain_counts.end()) ? &*free_count : nullptr;
+      if (objects.terrain_count != nullptr) objects.terrain_count->frame = runtime.frame;
+    }
+    // Null: counted later, and the GPU still owes every set's answers (this frame's count is then never known; the next known one serves).
+    const auto count_query = [&]() -> ID3D11Query* {
+      if (!shader.tessellated) return nullptr;
+      if (!runtime.settings.terrain_count_later) return objects.tessellated_queries[runtime.tessellated_draws].Get();
+      if (objects.terrain_count == nullptr) return nullptr;
+      objects.terrain_count->draws = runtime.tessellated_draws + 1;
+      return objects.terrain_count->queries[runtime.tessellated_draws].Get();
+    };
     // The GPU hung here now and then with the terrain's stream output in one batch with the compute before it (tree simulation, WH3's siege:
     // the game's device removed, nvlddmkm 153; the helper idle; none with this Flush, none without the capture).
     if (shader.tessellated) native->Flush();
-    if (shader.tessellated) native->Begin(objects.tessellated_queries[runtime.tessellated_draws].Get());
+    ID3D11Query* draw_query = count_query();
+    if (draw_query != nullptr) native->Begin(draw_query);
     if constexpr (INDEXED) {
       if (compact || sway) {
         // Each block's vertices once: points through the mesh's remap indices (the game's index buffer and topology put
@@ -1683,16 +1736,17 @@ void Capture(Context& command, const SceneShader& shader) {
       native->DrawInstanced(arguments.vertex_count, placed ? 1u : std::max(arguments.instance_count, 1u), arguments.first_vertex,
                             arguments.first_instance);
     }
-    if (shader.tessellated) native->End(objects.tessellated_queries[runtime.tessellated_draws].Get());
+    if (draw_query != nullptr) native->End(draw_query);
     if constexpr (INDEXED) {
       if (shader.tessellated && runtime.settings.terrain_outside_view && objects.tessellated_outside && runtime.tessellated_draws + 1 < objects.tessellated_queries.size()) {
         ComPtr<ID3D11HullShader> game_hull_shader;
         native->HSGetShader(game_hull_shader.GetAddressOf(), nullptr, nullptr);
         native->HSSetShader(objects.tessellated_outside.Get(), nullptr, 0);
         ++runtime.tessellated_draws;
-        native->Begin(objects.tessellated_queries[runtime.tessellated_draws].Get());
+        ID3D11Query* outside_query = count_query();
+        if (outside_query != nullptr) native->Begin(outside_query);
         native->DrawIndexedInstanced(arguments.index_count, std::max(arguments.instance_count, 1u), arguments.first_index, arguments.vertex_offset, arguments.first_instance);
-        native->End(objects.tessellated_queries[runtime.tessellated_draws].Get());
+        if (outside_query != nullptr) native->End(outside_query);
         native->HSSetShader(game_hull_shader.Get(), nullptr, 0);
       }
     }
@@ -2139,7 +2193,29 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     uint64_t triangles = 0;
     uint64_t triangles_needed = 0;
     HRESULT counted = S_OK;
-    {
+    if (runtime.settings.terrain_count_later) {
+      const CpuTime read(runtime.timed ? &runtime.costs.terrain_wait_ticks : nullptr);
+      // The earlier frames' counts the GPU has by now (no wait, no Flush: a present has submitted them); the newest serves.
+      for (auto& count : objects.terrain_counts) {
+        if (count.draws == 0 || &count == objects.terrain_count) continue;
+        uint64_t corners_needed = 0;
+        bool ready = true;
+        for (uint32_t draw = 0; draw < count.draws && ready; ++draw) {
+          D3D11_QUERY_DATA_SO_STATISTICS statistics = {};
+          ready = native->GetData(count.queries[draw].Get(), &statistics, sizeof(statistics), D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK;
+          corners_needed += statistics.PrimitivesStorageNeeded * 3;
+        }
+        if (!ready) continue;
+        count.draws = 0;
+        if (count.frame >= runtime.terrain_known_frame) {
+          runtime.terrain_known_frame = count.frame;
+          runtime.terrain_known_corners = corners_needed;
+        }
+      }
+      objects.terrain_count = nullptr;
+      triangles = runtime.tessellated_expected / 3;
+      triangles_needed = runtime.terrain_known_corners / 3;
+    } else {
       const CpuTime waited(runtime.timed ? &runtime.costs.terrain_wait_ticks : nullptr);
       // Submits the last End: the reads below don't, and without it they'd never finish.
       native->Flush();
@@ -2151,6 +2227,11 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
         } while (counted == S_FALSE && std::chrono::steady_clock::now() < deadline);
         triangles += statistics.NumPrimitivesWritten;
         triangles_needed += statistics.PrimitivesStorageNeeded;
+      }
+      // Settings::terrain_count_later switched on starts from this.
+      if (counted == S_OK) {
+        runtime.terrain_known_corners = triangles_needed * 3;
+        runtime.terrain_known_frame = runtime.frame;
       }
     }
     if (counted != S_OK) {
