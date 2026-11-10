@@ -3828,6 +3828,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer3::resolution_scale::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
 
+  reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   twattila::device_loss::InstallLast();
 
   attached = true;
@@ -3841,6 +3843,8 @@ void DetachAddon() {
   talesofarise::pixel_trace::Stop();
   twattila::pass_timing::Uninstall();
   twattila::device_loss::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(reflections::OnDestroyDevice);

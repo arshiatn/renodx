@@ -795,6 +795,14 @@ struct PointLightReadback {
 };
 static PointLightReadback point_light_readback;
 
+// The game's device is going away: its readback buffers with it.
+inline void OnDestroyPointLightDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  if (point_light_readback.device.Get() == reinterpret_cast<ID3D11Device*>(device->get_native())) {
+    point_light_readback = {};
+  }
+}
+
 inline void OnInitInputLayout(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
                               const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
@@ -927,6 +935,7 @@ inline void InstallPointLights(std::span<const uint32_t> shader_hashes) {
   internal::point_lights_installed = true;
   reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
   reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+  reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
   for (const uint32_t shader_hash : shader_hashes) {
     renodx::utils::command_action::Register(
         OnPointLightDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -1171,6 +1180,7 @@ inline void Uninstall() {
     renodx::utils::command_action::Unregister(OnPointLightDraw);
     reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
     reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+    reshade::unregister_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
   }
   renodx::utils::command_action::Unregister(OnCutOutShadowDraw);
   UninstallScene();

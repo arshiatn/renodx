@@ -1660,11 +1660,18 @@ inline void Uninstall() {
 // The game's device is going away: the motion objects on it with it.
 inline void OnDestroyDevice(ID3D11Device* device) {
   const std::unique_lock lock(internal::state.mutex);
-  if (internal::state.objects.device.Get() == device) {
+  const bool objects_device = internal::state.objects.device.Get() == device;
+  if (objects_device) {
     internal::state.objects = {};
     internal::targets_kept.store(false, std::memory_order_relaxed);
     internal::bindings_kept.store(false, std::memory_order_relaxed);
+  }
+  // The last in-draw draw's bindings and the patched pixel shaders stay held after the motion's objects went with its
+  // anti-aliasing (anti_aliasing.hpp): with nothing kept bound they are only references on a device.
+  if (objects_device || (!internal::state.objects.device && !internal::targets_kept.load(std::memory_order_relaxed)
+                         && !internal::bindings_kept.load(std::memory_order_relaxed))) {
     internal::state.in_draw = {};
+    for (auto& [pipeline, shader] : internal::state.pixel_shaders) shader.patched.clear();
   }
 }
 

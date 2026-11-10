@@ -1,4 +1,5 @@
-// The Total War addons' device-loss handling and output choice (twattila/device_loss.hpp, output_encoding.hpp) on WARP.
+// The Total War addons' device-loss handling and output choice (twattila/device_loss.hpp, output_encoding.hpp) and the
+// line-sweep AO's device change (twwarhammer2/line_sweep_ao.hpp) on WARP.
 // A removed device cannot be made on WARP: the test answers GetDeviceRemovedReason for chosen devices through the
 // device's vtable; everything else (ClearState, Flush, the swap chains, the window rules) is the real thing.
 #include <windows.h>
@@ -14,6 +15,7 @@
 #include <utility>
 #include <vector>
 #include "src/games/twattila/device_loss.hpp"
+#include "src/games/twwarhammer2/line_sweep_ao.hpp"
 
 using Microsoft::WRL::ComPtr;
 namespace loss = twattila::device_loss;
@@ -81,6 +83,57 @@ struct Device : device {
   uint64_t get_resource_view_gpu_address(resource_view view) const override { throw std::runtime_error("unexpected device call: get_resource_view_gpu_address"); }
   void get_acceleration_structure_size(acceleration_structure_type type, acceleration_structure_build_flags flags, uint32_t input_count, const acceleration_structure_build_input* inputs, uint64_t* out_size, uint64_t* out_build_scratch_size, uint64_t* out_update_scratch_size) const override { throw std::runtime_error("unexpected device call: get_acceleration_structure_size"); }
   bool get_pipeline_shader_group_handles(pipeline pipeline, uint32_t first, uint32_t count, void* out_handles) override { throw std::runtime_error("unexpected device call: get_pipeline_shader_group_handles"); }
+};
+
+struct CommandList : command_list {
+  Device* owner = nullptr;
+  Microsoft::WRL::ComPtr<ID3D11DeviceContext> native;
+  uint64_t get_native() const override { return reinterpret_cast<uint64_t>(native.Get()); }
+  device* get_device() override { return owner; }
+  void get_private_data(const uint8_t guid[16], uint64_t* data) const override { throw std::runtime_error("unexpected mock call: get_private_data"); }
+  void set_private_data(const uint8_t guid[16], const uint64_t data) override { throw std::runtime_error("unexpected mock call: set_private_data"); }
+  void barrier(uint32_t count, const resource* resources, const resource_usage* old_states, const resource_usage* new_states) override { throw std::runtime_error("unexpected command list call: barrier"); }
+  void begin_render_pass(uint32_t count, const render_pass_render_target_desc* rts, const render_pass_depth_stencil_desc* ds = nullptr) override { throw std::runtime_error("unexpected command list call: begin_render_pass"); }
+  void end_render_pass() override { throw std::runtime_error("unexpected command list call: end_render_pass"); }
+  void bind_render_targets_and_depth_stencil(uint32_t count, const resource_view* rtvs, resource_view dsv = {0}) override { throw std::runtime_error("unexpected command list call: bind_render_targets_and_depth_stencil"); }
+  void bind_pipeline(pipeline_stage stages, pipeline pipeline) override { throw std::runtime_error("unexpected command list call: bind_pipeline"); }
+  void bind_pipeline_states(uint32_t count, const dynamic_state* states, const uint32_t* values) override { throw std::runtime_error("unexpected command list call: bind_pipeline_states"); }
+  void bind_viewports(uint32_t first, uint32_t count, const viewport* viewports) override { throw std::runtime_error("unexpected command list call: bind_viewports"); }
+  void bind_scissor_rects(uint32_t first, uint32_t count, const rect* rects) override { throw std::runtime_error("unexpected command list call: bind_scissor_rects"); }
+  void push_constants(shader_stage stages, pipeline_layout layout, uint32_t param, uint32_t first, uint32_t count, const void* values) override { throw std::runtime_error("unexpected command list call: push_constants"); }
+  void push_descriptors(shader_stage stages, pipeline_layout layout, uint32_t param, const descriptor_table_update& update) override { throw std::runtime_error("unexpected command list call: push_descriptors"); }
+  void bind_descriptor_tables(shader_stage stages, pipeline_layout layout, uint32_t first, uint32_t count, const descriptor_table* tables) override { throw std::runtime_error("unexpected command list call: bind_descriptor_tables"); }
+  void bind_index_buffer(resource buffer, uint64_t offset, uint32_t index_size) override { throw std::runtime_error("unexpected command list call: bind_index_buffer"); }
+  void bind_vertex_buffers(uint32_t first, uint32_t count, const resource* buffers, const uint64_t* offsets, const uint32_t* strides) override { throw std::runtime_error("unexpected command list call: bind_vertex_buffers"); }
+  void bind_stream_output_buffers(uint32_t first, uint32_t count, const resource* buffers, const uint64_t* offsets, const uint64_t* max_sizes, const resource* counter_buffers, const uint64_t* counter_offsets) override { throw std::runtime_error("unexpected command list call: bind_stream_output_buffers"); }
+  void draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) override { throw std::runtime_error("unexpected command list call: draw"); }
+  void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) override { throw std::runtime_error("unexpected command list call: draw_indexed"); }
+  void dispatch(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z) override { throw std::runtime_error("unexpected command list call: dispatch"); }
+  void draw_or_dispatch_indirect(indirect_command type, resource buffer, uint64_t offset, uint32_t draw_count, uint32_t stride) override { throw std::runtime_error("unexpected command list call: draw_or_dispatch_indirect"); }
+  void copy_resource(resource source, resource dest) override { throw std::runtime_error("unexpected command list call: copy_resource"); }
+  void copy_buffer_region(resource source, uint64_t source_offset, resource dest, uint64_t dest_offset, uint64_t size) override { throw std::runtime_error("unexpected command list call: copy_buffer_region"); }
+  void copy_buffer_to_texture(resource source, uint64_t source_offset, uint32_t row_length, uint32_t slice_height, resource dest, uint32_t dest_subresource, const subresource_box* dest_box = nullptr) override { throw std::runtime_error("unexpected command list call: copy_buffer_to_texture"); }
+  void copy_texture_region(resource source, uint32_t source_subresource, const subresource_box* source_box, resource dest, uint32_t dest_subresource, const subresource_box* dest_box, filter_mode filter = filter_mode::min_mag_mip_point) override { throw std::runtime_error("unexpected command list call: copy_texture_region"); }
+  void copy_texture_to_buffer(resource source, uint32_t source_subresource, const subresource_box* source_box, resource dest, uint64_t dest_offset, uint32_t row_length = 0, uint32_t slice_height = 0) override { throw std::runtime_error("unexpected command list call: copy_texture_to_buffer"); }
+  void resolve_texture_region(resource source, uint32_t source_subresource, const subresource_box* source_box, resource dest, uint32_t dest_subresource, uint32_t dest_x, uint32_t dest_y, uint32_t dest_z, format format) override { throw std::runtime_error("unexpected command list call: resolve_texture_region"); }
+  void clear_depth_stencil_view(resource_view dsv, const float* depth, const uint8_t* stencil, uint32_t rect_count = 0, const rect* rects = nullptr) override { throw std::runtime_error("unexpected command list call: clear_depth_stencil_view"); }
+  void clear_render_target_view(resource_view rtv, const float color[4], uint32_t rect_count = 0, const rect* rects = nullptr) override { throw std::runtime_error("unexpected command list call: clear_render_target_view"); }
+  void clear_unordered_access_view_uint(resource_view uav, const uint32_t values[4], uint32_t rect_count = 0, const rect* rects = nullptr) override { throw std::runtime_error("unexpected command list call: clear_unordered_access_view_uint"); }
+  void clear_unordered_access_view_float(resource_view uav, const float values[4], uint32_t rect_count = 0, const rect* rects = nullptr) override { throw std::runtime_error("unexpected command list call: clear_unordered_access_view_float"); }
+  void generate_mipmaps(resource_view srv) override { throw std::runtime_error("unexpected command list call: generate_mipmaps"); }
+  void begin_query(query_heap heap, query_type type, uint32_t index) override { throw std::runtime_error("unexpected command list call: begin_query"); }
+  void end_query(query_heap heap, query_type type, uint32_t index) override { throw std::runtime_error("unexpected command list call: end_query"); }
+  void copy_query_heap_results(query_heap heap, query_type type, uint32_t first, uint32_t count, resource dest, uint64_t dest_offset, uint32_t stride) override { throw std::runtime_error("unexpected command list call: copy_query_heap_results"); }
+  void begin_debug_event(const char* label, const float color[4] = nullptr) override { throw std::runtime_error("unexpected command list call: begin_debug_event"); }
+  void end_debug_event() override { throw std::runtime_error("unexpected command list call: end_debug_event"); }
+  void insert_debug_marker(const char* label, const float color[4] = nullptr) override { throw std::runtime_error("unexpected command list call: insert_debug_marker"); }
+  void dispatch_mesh(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z) override { throw std::runtime_error("unexpected command list call: dispatch_mesh"); }
+  void dispatch_rays(resource raygen, uint64_t raygen_offset, uint64_t raygen_size, resource miss, uint64_t miss_offset, uint64_t miss_size, uint64_t miss_stride, resource hit_group, uint64_t hit_group_offset, uint64_t hit_group_size, uint64_t hit_group_stride, resource callable, uint64_t callable_offset, uint64_t callable_size, uint64_t callable_stride, uint32_t width, uint32_t height, uint32_t depth) override { throw std::runtime_error("unexpected command list call: dispatch_rays"); }
+  void copy_acceleration_structure(resource_view source, resource_view dest, acceleration_structure_copy_mode mode) override { throw std::runtime_error("unexpected command list call: copy_acceleration_structure"); }
+  void build_acceleration_structure(acceleration_structure_type type, acceleration_structure_build_flags flags, uint32_t input_count, const acceleration_structure_build_input* inputs, resource scratch, uint64_t scratch_offset, resource_view source, resource_view dest, acceleration_structure_build_mode mode) override { throw std::runtime_error("unexpected command list call: build_acceleration_structure"); }
+  void query_acceleration_structures(uint32_t count, const resource_view* acceleration_structures, query_heap heap, query_type type, uint32_t first) override { throw std::runtime_error("unexpected command list call: query_acceleration_structures"); }
+  void update_buffer_region(const void* data, resource dest, uint64_t dest_offset, uint64_t size) override { throw std::runtime_error("unexpected command list call: update_buffer_region"); }
+  void update_texture_region(const subresource_data& data, resource dest, uint32_t dest_subresource, const subresource_box* dest_box = nullptr) override { throw std::runtime_error("unexpected command list call: update_texture_region"); }
 };
 
 struct Swapchain : swapchain {
@@ -494,7 +547,58 @@ static int Parent(const wchar_t* self) {
     Reset();
   }
 
-  // 5. The limit after a loss: front and not answering are closed (exit 1), background, minimised and drawing games are not.
+  // 5. The line-sweep AO's kept depth and camera never cross to another device (a new device beside the old one), and
+  // go with a destroyed one.
+  {
+    namespace sweep = tw::line_sweep_ao;
+    mock::Device old_device;
+    mock::Device new_device;
+    mock::CommandList old_list;
+    mock::CommandList new_list;
+    CHECK(MakeDevice(&old_device, &old_list.native));
+    CHECK(MakeDevice(&new_device, &new_list.native));
+    old_list.owner = &old_device;
+    new_list.owner = &new_device;
+    const D3D11_TEXTURE2D_DESC depth_desc = {.Width = 8, .Height = 8, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                             .SampleDesc = {.Count = 1}, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_BUFFER_DESC camera_desc = {.ByteWidth = 64, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    for (mock::CommandList* list : {&old_list, &new_list}) {
+      ComPtr<ID3D11Texture2D> texture;
+      ComPtr<ID3D11ShaderResourceView> depth;
+      ComPtr<ID3D11Buffer> camera;
+      CHECK(SUCCEEDED(list->owner->native->CreateTexture2D(&depth_desc, nullptr, &texture)));
+      CHECK(SUCCEEDED(list->owner->native->CreateShaderResourceView(texture.Get(), nullptr, &depth)));
+      CHECK(SUCCEEDED(list->owner->native->CreateBuffer(&camera_desc, nullptr, &camera)));
+      list->native->CSSetShaderResources(0, 1, depth.GetAddressOf());
+      list->native->CSSetConstantBuffers(0, 1, camera.GetAddressOf());
+      sweep::KeepComputeDepth(list, 0);
+      sweep::KeepComputeCamera(list, 0);
+      CHECK(sweep::internal::depth == depth.Get() && sweep::internal::camera == camera.Get());
+      list->native->ClearState();
+      depth->AddRef();
+      CHECK(depth->Release() == 2);
+      if (list == &old_list) {
+        // The game's next collect is on its new device: skipped, nothing of the old device bound or held.
+        CHECK(!sweep::OnCollect(&new_list, true, true, 0, 1));
+        CHECK(sweep::internal::own_device == new_device.native.Get());
+        ComPtr<ID3D11ShaderResourceView> bound_depth;
+        ComPtr<ID3D11Buffer> bound_camera;
+        new_list.native->CSGetShaderResources(1, 1, &bound_depth);
+        new_list.native->CSGetConstantBuffers(0, 1, &bound_camera);
+        CHECK(!bound_depth && !bound_camera);
+      } else {
+        sweep::OnDestroyDevice(&new_device);
+        CHECK(sweep::internal::own_device == nullptr);
+      }
+      CHECK(sweep::internal::depth == nullptr && sweep::internal::camera == nullptr);
+      depth->AddRef();
+      CHECK(depth->Release() == 1);
+      camera->AddRef();
+      CHECK(camera->Release() == 1);
+    }
+  }
+
+  // 6. The limit after a loss: front and not answering are closed (exit 1), background, minimised and drawing games are not.
   const DWORD expected[std::size(modes)] = {1, 0, 0, 1, 0};
   int skipped = 0;
   for (size_t index = 0; index < std::size(modes); ++index) {

@@ -567,6 +567,23 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
   }};
 };
 
+// The game's device is going away: the water's objects on it with it (the draws make them again).
+inline void OnDestroyDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  if (caustics_objects.device.Get() == native) {
+    caustics_objects = {};
+  }
+  if (water_objects.device.Get() == native) {
+    water_objects = {};
+  }
+  if (material_objects.device.Get() == native) {
+    const std::unique_lock lock(water_mutex);
+    material_objects = {};
+    for (auto& [hash, entry] : material_waters) entry = {.code = std::move(entry.code)};
+  }
+}
+
 }  // namespace twattila::water_effects
 
 #endif  // SRC_GAMES_TWATTILA_WATER_EFFECTS_HPP_

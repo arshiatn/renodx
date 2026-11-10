@@ -3305,7 +3305,12 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.particle_stream.device.Get() == native) internal::runtime.particle_stream = {};
-  if (internal::runtime.objects.device.Get() == native) internal::runtime.objects = {};
+  if (internal::runtime.objects.device.Get() == native) {
+    internal::runtime.objects = {};
+    // The game's mask textures held for their slices, and the atlas the slices are in (as when ray tracing goes off).
+    internal::runtime.atlas_slices.clear();
+    dlaa_bridge::bridge.rt_atlas = {};
+  }
   internal::runtime.known.clear();
   internal::runtime.short_keys.clear();
   internal::runtime.cluster_meshes.clear();

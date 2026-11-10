@@ -65,6 +65,34 @@ inline void Release(T** object) {
   *object = nullptr;
 }
 
+// Everything kept and made, with the device they are of.
+inline void ReleaseObjects() {
+  Release(&depth);
+  Release(&camera);
+  for (auto& own : own_shaders) Release(&own.shader);
+  own_shaders.clear();
+  Release(&own_settings);
+  Release(&half_uav);
+  Release(&half_srv);
+  Release(&half_texture);
+  half_width = 0;
+  half_height = 0;
+  own_device = nullptr;
+}
+
+// The context's device. A game that made its device again beside the old one (a GPU reset) draws with another: nothing
+// kept or made on the old one may be bound on it (the first collect after it is the game's own).
+inline ID3D11Device* SameDevice(ID3D11DeviceContext* context) {
+  ID3D11Device* device = nullptr;
+  context->GetDevice(&device);
+  device->Release();
+  if (own_device != device) {
+    ReleaseObjects();
+    own_device = device;
+  }
+  return device;
+}
+
 // The addon's shader made from `bytecode` on own_device (null if it could not be made).
 inline ID3D11ComputeShader* OwnComputeShader(std::span<const uint8_t> bytecode) {
   auto own = std::ranges::find(own_shaders, bytecode.data(), &OwnShader::bytecode);
@@ -149,21 +177,10 @@ inline void KeepComputeCamera(reshade::api::command_list* cmd_list, UINT slot) {
 inline bool DispatchInstead(reshade::api::command_list* cmd_list, std::span<const uint8_t> bytecode, const void* settings,
                             UINT settings_size, bool kept, std::span<const uint8_t> upsample = {}, bool half = false, UINT settings_slot = 13) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return false;
-  if (kept && (internal::depth == nullptr || internal::camera == nullptr)) return false;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  ID3D11Device* device = nullptr;
-  context->GetDevice(&device);
-  device->Release();
-  if (internal::own_device != device) {
-    for (auto& own : internal::own_shaders) internal::Release(&own.shader);
-    internal::own_shaders.clear();
-    internal::Release(&internal::own_settings);
-    internal::Release(&internal::half_uav);
-    internal::Release(&internal::half_srv);
-    internal::Release(&internal::half_texture);
-    internal::half_width = 0;
-    internal::half_height = 0;
-    internal::own_device = device;
+  ID3D11Device* device = internal::SameDevice(context);
+  if (kept && (internal::depth == nullptr || internal::camera == nullptr)) return false;
+  if (internal::own_settings == nullptr) {
     const D3D11_BUFFER_DESC settings_desc = {
         .ByteWidth = (settings_size + 15u) & ~15u,
         .Usage = D3D11_USAGE_DEFAULT,
@@ -285,8 +302,9 @@ inline void KeepPixelCamera(reshade::api::command_list* cmd_list, UINT slot) {
 inline bool OnCollect(reshade::api::command_list* cmd_list, bool bitmask, bool with_depth = true, UINT camera_slot = 0,
                       UINT depth_slot = 1) {
   if (!bitmask || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return true;
-  if ((with_depth && internal::depth == nullptr) || internal::camera == nullptr) return false;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  internal::SameDevice(context);
+  if ((with_depth && internal::depth == nullptr) || internal::camera == nullptr) return false;
   internal::depth_bound = with_depth;
   internal::depth_slot = depth_slot;
   if (with_depth) {
@@ -314,6 +332,13 @@ inline void OnCollectDone(reshade::api::command_list* cmd_list) {
   if (internal::previous_camera != nullptr) internal::previous_camera->Release();
   internal::previous_depth = nullptr;
   internal::previous_camera = nullptr;
+}
+
+// A device of the game's is going away: everything kept and made released while D3D is there (kept and made again from
+// the next frame's passes).
+inline void OnDestroyDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  internal::ReleaseObjects();
 }
 
 }  // namespace tw::line_sweep_ao
