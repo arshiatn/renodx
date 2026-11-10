@@ -28,6 +28,7 @@
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "./device_end.hpp"
 #include "./dlaa_bridge.hpp"
 #include "./frame_history.hpp"
 #include "./light_bounce.h"
@@ -604,6 +605,8 @@ inline void Install(std::span<const SunDraw> draws) {
         OnSunDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW},
         &draw);
   }
+  // Here because every Total War addon installs this module (and registers its OnDestroyDevice).
+  reshade::register_event<reshade::addon_event::destroy_swapchain>(device_end::OnDestroySwapchain);
 }
 
 // Ray tracing's trace in place of the screen-space one (rt_scene.hpp; null: none).
@@ -624,6 +627,7 @@ inline void SetRayTraced(bool on, float resolution) {
 // The game's device is going away: the addon's objects on it with it.
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
+  device_end::Log(device, "device");
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
@@ -632,6 +636,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 }
 
 inline void Uninstall() {
+  reshade::unregister_event<reshade::addon_event::destroy_swapchain>(device_end::OnDestroySwapchain);
   renodx::utils::command_action::Unregister(OnSunDraw);
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.objects = {};
