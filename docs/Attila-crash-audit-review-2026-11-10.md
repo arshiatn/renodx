@@ -871,3 +871,72 @@ STILL UNADDRESSED: see problems. In short: no diagnostics for the next incident,
 ### Judged, no code change
 
 - `motion_capture.ps` first isfinite(position): fxc drops it, but the kept low/high exponent test and the integer span check reject every inf and NaN before the loops, so nothing was changed.
+
+### Second review of the repaired tree (HEAD b001559e): helper95
+
+Helper builds for the four entries below: `build/tw_dlaa_helper95` (ships with the addons) and `build/tw_dlaa_helper95_test` (the same source with `RENODX_TW_TEST_GPU_WAITS`, never shipped). All 134 `all_modes.sh` modes pass with helper95 (same names and verdicts as the helper91 run), and all 14 addons build (eleven x64, three x86).
+
+### A GPU wait that ran out fails its request, not the backend (bf3618c9)
+
+- Covers: "A single timed-out slot wait on a live device now latches the backend off" (RR, FSR / XeSS, DLSS-G, FSR / XeSS FG) and "WaitIdle in ProxyFrameGeneration12::Present uses the terminal release wait".
+- Changed: a request's wait that runs out drops that request only (nothing recorded, the game's value still signalled, history reset for the next one); `failed_` is no longer set, so RR's Initialize and Record agree again, the upscaler records on, and no backend lands in `generation_refused`. Frame generation hides its window for that present. XeSS FG's frame limit change waits with `WaitForGpu`, not the wait before a release.
+- Validated on the RTX 5090, helper95: harness `default`, `removal`, `upscaler_fsr`, `upscaler_xess`, `rr_all_inputs`, `release_rr`, `release_fsr` pass. Test helper with `RENODX_TW_TEST_GPU_TIMEOUT`: `fg_bridge_test` DLSS-G / FSR / XeSS / Auto phases with every 25th wait failing: `fg_failed` 0, the backend unchanged in every phase (Auto stayed on DLSS), the window shown again; `upscaler_xess` with every 3rd wait failing passes; `upscaler_fsr` with every 3rd keeps upscaling to the end (its one failed check compares two runs' motion, which the dropped frames' history resets make equal).
+- NOT validated: a real queue seconds behind (only the injected result); RR's own wait was not shown to be among the injected ones (one counter for the process, and that mode's waits are mostly ray tracing's); the XeSS frame limit change. A stall that lasts makes every request wait its 5 s (FG 10 s), as before the stability commits. The wait before a release (idle release, next set, a backend replaced) still ends the helper when a live device has not finished: nothing else can free that memory safely.
+
+### A ray tracing scene whose GPU work is late is kept until it is done (f0c461d7)
+
+- Covers: "The graceful timeout paths lead straight into the terminal release wait" (RT; for frame generation the entry above removes the path, since a timeout no longer reopens or frees a backend) and the ray tracing part of the latch problem (`scene_failures` counted timeouts and never went down).
+- Changed: `RtScene12::TimedOut()` / `Idle()`. main.cpp parks such a scene (`stalled_scene`) instead of destroying it under its work, opens no scene meanwhile (requests pass, status "Ray tracing waits for the GPU to finish its last requests"), and at the first request after its fence passed or its device was removed frees it, opens a new scene and raises `rt_device`. Stalls have their own count: four with no more than 10 minutes between them turn ray tracing off; `scene_failures` counts only requests that could not be recorded. Healthy path: one null test of a unique_ptr per request.
+- Validated: test helper, harness `default` with every 40th wait failing: 2 stalls, each followed by "Started again", ALL PASSED, helper up; with every 8th: 3 stalls and restarts, then "Off until the game restarts", helper up (2 checks fail, as they must with ray tracing off). helper95: `removal` passes (the GPU reset path is unchanged).
+- NOT validated: a real stall (the injected one is idle again at the next request, so a parked scene never waited for seconds); the parked scene keeps its memory until the next request after its work is done.
+
+### A build switch that makes GPU waits run out (be761d76)
+
+- Covers: "Regression tests cover gpu_completion.hpp and preset_writer.hpp in isolation; no owner's failure path and not main.cpp's handler".
+- Changed: `gpu_completion.hpp`, under `RENODX_TW_TEST_GPU_WAITS` only: `RENODX_TW_TEST_GPU_TIMEOUT=<n>` and `RENODX_TW_TEST_GPU_RELEASE_STALL=<n>`. Build: `$env:CL='-DRENODX_TW_TEST_GPU_WAITS'` before `build.ps1 <folder>`.
+- Validated: the runs of the two entries above; `RENODX_TW_TEST_GPU_RELEASE_STALL=1` with `release_rr`: main.cpp's real handler wrote "[TW DLAA helper] Stopped: the GPU did not finish FSR / XeSS upscaling's work in time ... Its resources cannot be freed safely.", the process ended and the harness reported the helper stopped.
+- NOT validated: not part of any run.ps1 (it needs the GPU harness and the vendor DLLs, which are outside the repo); the failed Reset / Close branches still have no switch.
+
+### Style in the helper: include groups, one set of preset results (8fca47d8)
+
+- Covers: "Style: new includes break the include groups; PresetWriter duplicates FrameGeneration12's preset result constants".
+- Changed: `./gpu_completion.hpp` and `./preset_writer.hpp` in the local include group of the five owners; `PRESET_*` removed (PresetWriter's constants everywhere); the save function given to PresetWriter's constructor.
+- Validated: helper95 builds; test/tw_preset_writer x86 and amd64; `fg_bridge_test` DLSS-G phases.
+
+### A helper that ends in Prepare; the watcher's recovery without allocations (91d566c5)
+
+- Covers: "A helper that dies while Prepare transfers the first set gets a generic sticky failure and up to 29 rollback warnings", "An exception in the watcher's failure path marks the bridge failed but skips ending the helper and the recovery".
+- Changed: Prepare's two transfer failure branches report a gone helper through `HelperLost` (its status, the log hint) and skip the rollback. Watcher: fixed arrays for the rescue's handles (16 sets) and command line (`swprintf`), the helper ended and the rescue started before any log line, the "did not move for 30 s" line in its own try after the TerminateProcess.
+- Validated: test/tw_helper_lifetime x86 and amd64 (all earlier cases, which run the rescue's new command line five times, and a new one: the helper ended at transfer 20 and at the fence's: "the helper stopped", the log named, exactly one warning, nothing kept). All 14 addons that include the bridge build.
+- NOT validated: an allocation failure itself was not injected (allocation-free by reading: `std::array`, `swprintf`, Win32 calls; `log::w` comes after the rescue). With more than 16 sets waiting at once only the 16 oldest are rescued (none seen above 2).
+
+### Texture LOD bias: a repeated bind takes no reference; the per-bind path is tested (e85957a7)
+
+- Covers: "Sampler lifetime test never calls OnPushDescriptors", "Style: new map callbacks use entry.first / entry.second ...", "Misindented statement in Shogun 2 DLSS AddonUninit", and part of "with the bias on, every pixel sampler bind and viewport bind still pays ...".
+- Changed: a slot that already holds the bound sampler is left alone (no AddRef / Release: the usual bind); callbacks destructure; includes sorted; the Shutdown line indented. Test: `OnPushDescriptors` with partial ranges, slot 15, refused ranges, repeats, replacement, clones, a released sampler.
+- Validated: test/tw_sampler_lifetime x86 and amd64; Attila (x86), Shogun 2 DLSS and WH3 build.
+- NOT done: the per-device lookup and the shared_ptr copy at each bind and viewport bind stay (a cached pointer to the last device's slots would have to be proven safe against CleanupDevice; without a measurement in a game that risk is not worth taking). Not measured: no game was run. The mock raises destroy_sampler only from its own destroy_sampler, so a final release from inside the callback is not exercised.
+
+### Graphics (Experimental): the game's engine values back at detach (2c70e7f4)
+
+- Covers: "Real unload/reload on device recreation compounds every Graphics (Experimental) scale".
+- Changed: `tw::engine_tweaks::Uninstall(options)` writes each seen tweak's game value back where the addon's last value still stands and the address is still in a mapped image, then clears `seen`. All seven callers pass their options; WH3 called no Uninstall before.
+- Validated: test/tw_native_hook_lifetime x86 (new: a scaled value and a flag are put back, a value the "game" set again is left, `seen` cleared; all four failure stages) and amd64; the seven addons build.
+- NOT fixed: the 32-bit games' model LOD distances and scrub cells / bias (`graphics_hooks.hpp` ScaleModelLods, OnScrubUpdate) still compound after a real unload: their records are pointers into the game's heap, which may be freed by the time of the detach, so a write-back there could corrupt memory. The at-start audio values are left (the game reads them once). NOT validated: whether the engine sets its values again on a new device, and whether ReShade really unloads the addon there; nothing was run in a game.
+
+### Shogun 2 DLSS: hooks install again in a retained image (18655288)
+
+- Covers: "Shogun 2 DLSS with frame generation on: after AddonUninit/AddonInit in the pinned image none of the four hook modules installs again".
+- Changed: `game_dlss::Uninstall` clears `searched` after a successful removal; grass, model and unit detail install whenever they hold no hooks, except after a failed hook (`hook_failed`, the old guard's effect).
+- Validated: the addon builds. NOT validated: no unload / reload was run; that the second search finds the game's code again after the detach restored it is read from the code only (patched immediates keep their first addresses through the opcode checks).
+
+### Expeditions: Rome DLSS: OnTonemapper unregistered (9f5f42ea)
+
+- Changed: one `Unregister(OnTonemapper)` in AddonUninit. Validated: the addon builds.
+
+### WH3: one map pointer for a lighting buffer; three stall samples (5ee267ba, 0dbd191f)
+
+- Covers: "WH3 GI flag write still matches the lighting buffer by size and keeps map pointers per thread by resource handle only", "WH3 stall line samples the frame thread once".
+- Changed: OnMapBufferRegion replaces the buffer's entry; OnUnmapBufferRegion writes only while the option is on and always drops the entry. The stall line is written at 20, 40 and 60 s of the same frame.
+- Validated: the addon builds. NOT validated: nothing run in the game.
+- Declined: identifying the lighting buffer by a traced reader instead of its size (needs a frame trace of WH3 to prove the slot; by size the worst case is 4 zeroed bytes in another 480-byte constant buffer, none known); a minidump from the watch thread (MiniDumpWriteDump on the own process, from inside it, while the frame thread may hold the heap or loader lock, and a WH3 dump with memory is many GB; the three samples answer whether the thread moved).
