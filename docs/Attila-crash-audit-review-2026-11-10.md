@@ -831,3 +831,43 @@ STILL UNADDRESSED: see problems. In short: no diagnostics for the next incident,
 - Validated: `test/tw_helper_lifetime/run.ps1` x86 and amd64 (software adapter, fake helper with the production `SignalAbandoned`): one warning and none in 100 more frames; 32 s idle and an unload with a wait queued start no process; five failure cases (exit after answer on a first, steady and deferred request, no answer, answered but GPU work never done), each with an older set's wait queued, get the game's queue past every wait with exactly one recovery process. helper91's real rescue mode by hand on the RTX 5090 against a SINGLETHREADED D3D11 device, from a 64-bit and a 32-bit caller: two chained sets freed in about 200 ms, fences exactly at 2 and 4, its line in renodx-tw-dlaa64.log. GPU harness rebuilt on the new bridge with helper91 in `build\tw_rt_harness_h91`: all 134 `all_modes.sh` modes pass (among them `removal`, `switching_removal`, `release_*`). With the real helper killed in the middle of a harness run: a scratch program on the production bridge (SINGLETHREADED device, 60 steady DLAA evaluations, then the helper ended and one more request sent): the game queue was past the wait after 15 ms, one "freed" line and one status line with the helper's own status, nothing in 100 more frames, Shutdown at once. There the ended helper left the fence at all ones on the RTX 5090 as well, so the wait passed by that; the recovery process ran and found nothing left to signal. All 14 addons that include the bridge build (x64 and the three x86).
 - NOT validated: nothing run in a game or under ReShade (the add-on counting is avoided by construction, not exercised); the 30 s stuck path against the real helper (only the fake one); whether the game's process can be opened for PROCESS_DUP_HANDLE by its child in every game (it could for a plain process here, 32- and 64-bit); a recovery right after a real GPU reset (the rescue makes one attempt at a D3D12 device; a removed device leaves the fence at all ones anyway, which frees the waits). On the software adapter a helper ended with a set's fence open left that fence at all ones, so in the two cases that end a live helper the current set was freed by that and not by the signals.
 - Left as is: after any helper failure everything stays off until the addon reloads or the game restarts, as at 0a6cd493 (`bridge.failed` was sticky there too); a bounded restart of the helper is not part of this fix. Object names are still by game PID only.
+
+### Texture LOD bias: the events' early return is back (29ab381a)
+
+- Changed: `texture_lod_bias.hpp` keeps a count of tracking devices; OnPushDescriptors, OnBindViewports and an untracked SetTracking return on that one relaxed atomic load, before `Immediate()`, the device lookup and any lock (as the old global `tracking` flag did). An untracked present makes no Slots entry. OnBindViewports compares `biased` before its lock again. F4/F8's per-device ownership is unchanged.
+- Pointer keys go through `uintptr_t`. Checked: clang-cl i686, which builds the addons, zero-extends (`0x90000000` stayed `90000000`), so the sign-extension was only a cl.exe hazard. The slots map is a leaked heap object, so the module's static destructors release no D3D11 sampler at a process exit with the device alive.
+- Validated: test/tw_sampler_lifetime x86 and amd64 (new checks: no Slots entry and count 0 while untracked, 2 / 1 / 0 as devices start and stop).
+- NOT validated: no timing was measured in a game. With the bias on, a tracked present still pays one lookup and one uncontended lock a frame (needed to find the device's slots), and each sampler bind the lookup and lock.
+
+### Frame generation's HUD-less pass: logged once, backs off, hides the helper's window (be916e1c)
+
+- Changed: `frame_generation.hpp` DrawHudless logs a failed setup once a failure streak (with the device's removed reason) and tries again after 120 calls instead of every call. On an scRGB chain, a present that finds the pass not ready while the helper still presents sends the off request (the helper hides its window) instead of returning; not presenting, it returns as before. No helper change was needed: the off request is the existing one.
+- Validated: test/tw_fg_initialization x86 and amd64 (one log line a streak, no creation during the back-off, retry succeeds).
+- NOT validated: the scRGB off request is read from the code only (OnReshadePresent needs a ReShade runtime); an scRGB size change while presenting now hides the window for those frames instead of holding the last frame.
+
+### Depth levels: one log line a failure streak (ba8791db)
+
+- Changed: `depth_levels.hpp` keeps the attempt each second and writes its warning once until a creation succeeds or the device changes.
+- Validated: test/tw_depth_levels x86 and amd64 (three more failures add no line; a new streak after a success logs again).
+
+### DLSS-G colour space and the preset writer (03c7fa06, 7b137cb0; helper92)
+
+- Changed: `fg_d3d12.hpp` no longer fails frame generation on a refused colour space: SetColorSpace1 is still called in both directions, a refusal is logged once and asked again at the next output change (before be4ac169 the result was ignored). `preset_writer.hpp`: the destructor joins the save in flight and starts no pending one (the next backend asks for its preset at its first present).
+- Validated: helper built into build/tw_dlaa_helper92; test/tw_preset_writer x86 and amd64 (rewritten: destruction joins save 4, never starts 5); fg_bridge_test on the RTX 5090 with helper92: DLSS-G HDR10 -> SDR -> HDR10 at one size, a resize, off: every phase answered, 2 frames per rendered frame, no colour-space warning.
+- NOT validated: a real refusal (HDR off in Windows, an SDR monitor) was not produced; all_modes.sh was not rerun with helper92 (only the FG class changed). A save in flight is still joined, bounded by one NVAPI profile save.
+
+### Callbacks and hooks left at detach (85615df0, 19b32c3a, 6f67a73b, 57589a27)
+
+- Changed: WH3 unregisters OnCascadeTree and has `object_motion::Uninstall` (two draw and two pipeline callbacks). Shogun 2 DLSS unregisters OnTonemapper, and its four hook modules use `tw::native_hooks::Lifetime` (a failed removal keeps the addon loaded and is logged); the header moved to `twattila/native_hook_lifetime.hpp`. The graphics watch pins its module before it starts its thread (debug only).
+- Validated: builds of all 14 consumers (three x86, eleven x64); test/tw_native_hook_lifetime x86 and amd64.
+- NOT validated: no addon unload or reload was run under ReShade; the Shogun 2 modules have no test of their own (they share the tested Lifetime).
+
+### Diagnostics for the game's device loss (97e36a3a)
+
+- Changed: new `twattila/device_end.hpp`. `light_bounce.hpp` (installed by all nine Total War HDR addons) calls it from OnDestroyDevice and registers destroy_swapchain in Install: one ReShade.log line with GetDeviceRemovedReason as text (S_OK / HUNG / RESET / REMOVED / DRIVER_INTERNAL_ERROR / E_OUTOFMEMORY / hex) and, in 32-bit builds, the free address space and the largest free block. A resize logs nothing. Nothing per frame.
+- Validated: a scratch program on WARP, x86 (large address aware) and amd64: both lines printed, the walk ends, a 512 MB reservation showed in the free figure.
+- NOT validated: no removed device was produced (D3D11 has no RemoveDevice), so only the S_OK text ran; whether ReShade raises destroy_swapchain where a game drops its chain after a real reset is not tested. The line is not written when only the Shogun 2 DLSS addon is installed (it does not install light_bounce).
+
+### Judged, no code change
+
+- `motion_capture.ps` first isfinite(position): fxc drops it, but the kept low/high exponent test and the integer span check reject every inf and NaN before the loops, so nothing was changed.
