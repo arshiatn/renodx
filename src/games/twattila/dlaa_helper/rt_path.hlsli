@@ -23,6 +23,7 @@
 
 #include "./rt_scene.hlsli"
 #include "./rt_camera.hlsli"
+#include "../rt_leg_fog.hlsli"
 
 Texture2D<float3> light : register(t9);               // the prepared light (bounce texels; PATH_LIGHT_FINAL: the light buffer, render pixels)
 Texture2D<float4> previous_color : register(t10);     // last frame's scene colour (render pixels)
@@ -88,6 +89,7 @@ static const uint PATH_LIGHT_FINAL = 67108864u;         // a reflections request
 static const uint PATH_SQUARED_LOBE = 536870912u;       // reflections: alpha = roughness^2 (ReflectAlpha)
 static const uint PATH_NRD = 268435456u;                // NVIDIA's REBLUR denoises this request's light (rt_nrd_front.hlsl)
 static const uint PATH_SKY_APART = 134217728u;          // Own Sky Rays: Path-Traced AO's sky past the reservoirs
+static const uint PATH_REFLECT_FOG = 16384u;            // reflections: the game's fog between a pixel and what its rays met
 static const uint REFLECT_NEIGHBOURS = 4u;
 static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
 static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away
@@ -729,6 +731,19 @@ void ReuseTexel(uint2 id) {
   if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = (combined.weight > 0.f) ? hit_distance : bounce_range;
 }
 
+// Fog in Reflections (PATH_REFLECT_FOG): the light a reflection's ray brings from `hit` to the pixel's `origin` through the
+// game's fog on that leg (rt_leg_fog.hlsli; the fog from the pixel to the camera is the game's own, drawn over the pixel
+// after). The hits' light is the scene's before its fog: far hills in a river came out darker than the hills themselves.
+float3 ThroughFog(float3 light_there, float3 origin, float3 hit) {
+  if ((path_flags & PATH_REFLECT_FOG) == 0u) return light_there;
+  const float4 texels[5] = {sun[uint2(LEG_FOG_TEXEL, 0)], sun[uint2(LEG_FOG_TEXEL + 1u, 0)], sun[uint2(LEG_FOG_TEXEL + 2u, 0)],
+                            sun[uint2(LEG_FOG_TEXEL + 3u, 0)], sun[uint2(LEG_FOG_TEXEL + 4u, 0)]};
+  const LegFog fog = LegFogOf(texels);
+  if (fog.set == 0.f) return light_there;
+  const float3 left = LegFogLeft(fog, origin, hit, distance(origin, Camera()));
+  return light_there * left + fog.source * (1.f - left);
+}
+
 // Tangent, bitangent and `normal`.
 float3x3 Basis(float3 normal) {
   const float3 helper = (abs(normal.y) < 0.999f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f);
@@ -893,7 +908,7 @@ void ReflectPixel(uint2 id) {
       const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, id, sample + 4u, first_distance, first_normal);
       if (first_distance < 1e29f) {
         const float weight = mirror ? 1.f : GgxSampleWeight(n_dot_v, n_dot_l, alpha);
-        gathered += sample_light * weight;
+        gathered += ThroughFog(sample_light, origin, origin + direction * first_distance) * weight;
         weights += weight;
         distances += first_distance;
         ++met;
@@ -912,15 +927,16 @@ void ReflectPixel(uint2 id) {
     const float3 to_hit = bounce.hit - origin;
     const float hit_distance = length(to_hit);
     const float3 own = (weights > 0.f) ? gathered / weights : 0.f;
+    const float3 bounce_light = ThroughFog(bounce.light, origin, bounce.hit);
     const float bounce_weight = (bounce.weight > 0.f && hit_distance > 1e-3f)
-                                    ? Luminance(bounce.light) * LobeDensity(origin, normal, view, alpha, bounce.hit) * bounce.weight
+                                    ? Luminance(bounce_light) * LobeDensity(origin, normal, view, alpha, bounce.hit) * bounce.weight
                                     : 0.f;
     const float own_weight = Luminance(own);
     const float total = own_weight + bounce_weight;
     if (total > 0.f) {
       const bool bounce_chosen = Random(uint3(id, frame * 16u + 3584u)) * total < bounce_weight
                                  && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE);
-      const float3 chosen = bounce_chosen ? bounce.light : own;
+      const float3 chosen = bounce_chosen ? bounce_light : own;
       gathered = chosen / max(Luminance(chosen), 1e-6f) * (0.5f * total);
       weights = 1.f;
       if (bounce_chosen) {
@@ -999,7 +1015,7 @@ void ReflectPixel(uint2 id) {
     const float3 to_hit = combined.hit - origin;
     const float hit_distance = length(to_hit);
     if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
-      const float3 reused = combined.light / max(Luminance(combined.light), 1e-6f) * (weight_sum / counted);
+      const float3 reused = ThroughFog(combined.light / max(Luminance(combined.light), 1e-6f) * (weight_sum / counted), origin, combined.hit);
       const float own_count = (weights > 0.f) ? (float)met : 0.f;
       gathered = (((weights > 0.f) ? gathered / weights : 0.f) * own_count + reused * counted) / (own_count + counted);
       weights = 1.f;

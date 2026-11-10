@@ -235,6 +235,9 @@ constexpr uint32_t RT_PATH_KEPT_CUBE = 32768;
 constexpr uint32_t RT_PATH_CACHE_FILL = 65536;
 // The colour (`color`, last frame's when the paths read it) holds the light's square root (DLSS L, M, Ray Reconstruction).
 constexpr uint32_t RT_PATH_COLOR_SQUARE_ROOT = 131072;
+// Fog in Reflections (a reflections request's; helpers before 97 ignore it): the game's fog between a pixel and what its rays
+// met, by the numbers the addon wrote into the sun texture's texels 9-13 (rt_leg_fog.hlsli; texel 9's w 0: none).
+constexpr uint32_t RT_REFLECTIONS_FOG = 262144;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

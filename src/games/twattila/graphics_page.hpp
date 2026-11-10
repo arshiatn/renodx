@@ -971,6 +971,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedReflectionSamples", .section = section, .shown = rays, .label = "Samples"});
     page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = rays, .label = "Reuse"});
     page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = b.texts->water_reflections_label, .tooltip = b.texts->water_reflections_tooltip});
+    page.Take({.match = "RayTracedReflectionLight", .section = section, .shown = rays, .only_some_games = true});
+    page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = rays, .only_some_games = true});
     page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
     page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
     page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = b.texts->water_caustics_label, .only_some_games = true});

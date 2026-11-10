@@ -903,6 +903,29 @@ bool all_surfaces_logged = false;
 bool one_to_one_logged = false;
 // Render at most the targets' size (half the display) with Effects at Output: a march pixel to each render pixel, not to 2.
 bool one_to_one = false;
+// Reflections Lit as This Frame (row): the light buffer the game's own march reads (3AC630DF copies it into the radiance's first
+// level; R16G16B16A16F, the water and our Global Illumination in it, the fog not yet), kept from that dispatch for the rays' hits
+// and written in the helper's format (rt_light_copy). Without it the hits read the Light Bounce's prepared light, and with
+// Global Illumination off last frame's picture after the tone mapper, what the screen never saw black.
+float light_row = 0.f;
+Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> frame_light;
+twattila::dlaa_bridge::Texture helper_light;
+Copy light_copy;
+bool light_logged = false;
+// Fog in Reflections (row): the game's fog numbers and its fog's light, measured after its light draw (rt_fog_learn), for the
+// helper's reflections one frame on (twattila/rt_leg_fog.hlsli).
+float fog_row = 0.f;
+Copy fog_learn;
+ID3D11Resource* fog_light_resource = nullptr;  // by identity only
+Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> fog_light;
+Microsoft::WRL::ComPtr<ID3D11Buffer> fog_learn_constants;
+struct FogLearnConstants {
+  float fog_strength = 0.f;
+  std::array<uint32_t, 2> render_size = {};
+  uint32_t padding = 0;
+};
+FogLearnConstants fog_learn_written;
+bool fog_learn_logged = false;
 
 // The copy in the game's place until SwapBack.
 bool Swap(ID3D11DeviceContext* native, Copy* copy) {
@@ -965,6 +988,89 @@ bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
   return true;
 }
 
+// 3AC630DF (the lit scene into the radiance's first level, before the march): its input is the frame's light buffer.
+bool OnRadiance(reshade::api::command_list* cmd_list) {
+  if (light_row == 0.f || rt_sliders.reflections == 0.f) return true;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native != nullptr) {
+    native->CSGetShaderResources(0, 1, frame_light.ReleaseAndGetAddressOf());
+  }
+  return true;
+}
+
+// After the fog's light draw (A8F5202D): its target is the fog's light at half the render's size, its b5 the fog's numbers.
+constexpr auto OnFogLight = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (fog_row == 0.f || rt_sliders.reflections == 0.f || !twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) return {};
+  return {.post_callback = [](Context& post, const void*) {
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    auto& bridge = twattila::dlaa_bridge::bridge;
+    if (native == nullptr || !bridge.rt_sun.uav || !bridge.rt_positions.srv) return;
+    FogLearnConstants constants = {.fog_strength = shader_injection.fog_strength};
+    {
+      auto& runtime = twattila::rt_scene::internal::runtime;
+      const std::unique_lock lock(runtime.mutex);
+      constants.render_size = {runtime.traced_size[0], runtime.traced_size[1]};
+    }
+    if (constants.render_size[0] == 0 || constants.render_size[1] == 0) return;
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth;
+    native->OMGetRenderTargets(1, target.GetAddressOf(), depth.GetAddressOf());
+    if (!target) return;
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+    target->GetResource(resource.GetAddressOf());
+    if (fog_light_resource != resource.Get()) {
+      fog_light.Reset();
+      fog_light_resource = resource.Get();
+      device->CreateShaderResourceView(resource.Get(), nullptr, fog_light.GetAddressOf());
+    }
+    if (!fog_light) return;
+    if (!fog_learn.shader && FAILED(device->CreateComputeShader(fog_learn.code.data(), fog_learn.code.size(), nullptr, fog_learn.shader.GetAddressOf()))) return;
+    if (!fog_learn_constants) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(constants), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      const D3D11_SUBRESOURCE_DATA data = {.pSysMem = &constants};
+      if (FAILED(device->CreateBuffer(&desc, &data, fog_learn_constants.GetAddressOf()))) return;
+      fog_learn_written = constants;
+    } else if (constants.fog_strength != fog_learn_written.fog_strength || constants.render_size != fog_learn_written.render_size) {
+      native->UpdateSubresource(fog_learn_constants.Get(), 0, nullptr, &constants, 0, 0);
+      fog_learn_written = constants;
+    }
+    Microsoft::WRL::ComPtr<ID3D11Buffer> game_fog;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> game_camera;
+    native->PSGetConstantBuffers(5, 1, game_fog.GetAddressOf());
+    native->PSGetConstantBuffers(0, 1, game_camera.GetAddressOf());
+    if (!game_fog || !game_camera) return;
+    if (!fog_learn_logged) {
+      fog_learn_logged = true;
+      renodx::utils::log::i("[Warhammer III] First run: the fog's numbers and light for the reflections, after ps A8F5202D.");
+    }
+    std::array<ID3D11Buffer*, 2> kept_buffers = {};
+    native->CSGetConstantBuffers(1, static_cast<UINT>(kept_buffers.size()), kept_buffers.data());
+    {
+      const twattila::rt_scene::internal::ComputeState kept(native);
+      // Its light is this draw's target: readable only once unbound.
+      native->OMSetRenderTargets(0, nullptr, nullptr);
+      const std::array<ID3D11ShaderResourceView*, 2> views = {fog_light.Get(), bridge.rt_positions.srv.Get()};
+      const std::array<ID3D11Buffer*, 3> buffers = {game_fog.Get(), game_camera.Get(), fog_learn_constants.Get()};
+      native->CSSetShader(fog_learn.shader.Get(), nullptr, 0);
+      native->CSSetUnorderedAccessViews(0, 1, bridge.rt_sun.uav.GetAddressOf(), nullptr);
+      native->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+      native->CSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+      native->Dispatch(1, 1, 1);
+    }
+    native->CSSetConstantBuffers(1, static_cast<UINT>(kept_buffers.size()), kept_buffers.data());
+    for (ID3D11Buffer* buffer : kept_buffers) {
+      if (buffer != nullptr) {
+        buffer->Release();
+      }
+    }
+    native->OMSetRenderTargets(1, target.GetAddressOf(), depth.Get());
+  }};
+};
+
 // The first of the pass's dispatches: the rays traced here, once a frame, before the G-buffer's slots change. False: left out.
 bool OnMarch(reshade::api::command_list* cmd_list) {
   pass = Pass::GAME;
@@ -981,7 +1087,64 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
     std::array<ID3D11ShaderResourceView*, 2> views = {};
     {
       const twattila::rt_scene::internal::ComputeState kept(native);
-      views = twattila::rt_scene::Reflections(native, main_depth.Get());
+      ID3D11ShaderResourceView* light_view = nullptr;
+      Microsoft::WRL::ComPtr<ID3D11Resource> light_resource;
+      if (frame_light) {
+        frame_light->GetResource(light_resource.GetAddressOf());
+      }
+      Microsoft::WRL::ComPtr<ID3D11Texture2D> light_texture;
+      D3D11_TEXTURE2D_DESC light_desc = {};
+      if (light_resource && SUCCEEDED(light_resource.As(&light_texture))) {
+        light_texture->GetDesc(&light_desc);
+      }
+      if (light_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT && light_desc.SampleDesc.Count == 1) {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        native->GetDevice(device.GetAddressOf());
+        D3D11_TEXTURE2D_DESC helper_desc = {};
+        if (helper_light.texture) {
+          helper_light.texture->GetDesc(&helper_desc);
+        }
+        if (helper_desc.Width != light_desc.Width || helper_desc.Height != light_desc.Height) {
+          helper_light = {};
+          const D3D11_TEXTURE2D_DESC desc = {
+              .Width = light_desc.Width,
+              .Height = light_desc.Height,
+              .MipLevels = 1,
+              .ArraySize = 1,
+              .Format = DXGI_FORMAT_R11G11B10_FLOAT,
+              .SampleDesc = {.Count = 1},
+              .Usage = D3D11_USAGE_DEFAULT,
+              .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS,
+          };
+          if (FAILED(device->CreateTexture2D(&desc, nullptr, helper_light.texture.GetAddressOf()))
+              || FAILED(device->CreateShaderResourceView(helper_light.texture.Get(), nullptr, helper_light.srv.GetAddressOf()))
+              || FAILED(device->CreateUnorderedAccessView(helper_light.texture.Get(), nullptr, helper_light.uav.GetAddressOf()))) {
+            helper_light = {};
+          }
+        }
+        if (helper_light.uav
+            && (light_copy.shader
+                || SUCCEEDED(device->CreateComputeShader(light_copy.code.data(), light_copy.code.size(), nullptr, light_copy.shader.GetAddressOf())))) {
+          // Below 100% the picture is the buffer's top left.
+          const uint32_t render_width = twattila::frame_history::render_width.load(std::memory_order_relaxed);
+          const uint32_t render_height = twattila::frame_history::render_height.load(std::memory_order_relaxed);
+          const UINT width = (render_width != 0) ? std::min<UINT>(render_width, light_desc.Width) : light_desc.Width;
+          const UINT height = (render_height != 0) ? std::min<UINT>(render_height, light_desc.Height) : light_desc.Height;
+          ID3D11UnorderedAccessView* no_target = nullptr;
+          native->CSSetShader(light_copy.shader.Get(), nullptr, 0);
+          native->CSSetShaderResources(0, 1, frame_light.GetAddressOf());
+          native->CSSetUnorderedAccessViews(0, 1, helper_light.uav.GetAddressOf(), nullptr);
+          native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+          native->CSSetUnorderedAccessViews(0, 1, &no_target, nullptr);
+          light_view = helper_light.srv.Get();
+          if (!light_logged) {
+            light_logged = true;
+            renodx::utils::log::i(std::format("[Warhammer III] First run: the frame's light for the reflections' hits, cs 3AC630DF's input, {} x {}.", width, height));
+          }
+        }
+      }
+      frame_light.Reset();
+      views = twattila::rt_scene::Reflections(native, main_depth.Get(), light_view);
     }
     for (auto*& view : march_gbuffer) {
       if (view != nullptr) view->Release();
@@ -1108,6 +1271,7 @@ bool OnResolve(reshade::api::command_list* cmd_list) {
 
 void OnResolved(reshade::api::command_list* cmd_list) {
   main_depth.Reset();
+  frame_light.Reset();
   mip_chain = MipChain::NONE;
   one_to_one = false;
   if (pass == Pass::GAME) return;
@@ -1134,6 +1298,13 @@ void OnDestroyDevice(reshade::api::device*) {
   gi_relevance.shader.Reset();
   shadow_blur.shader.Reset();
   game_b10.Reset();
+  frame_light.Reset();
+  helper_light = {};
+  light_copy.shader.Reset();
+  fog_learn.shader.Reset();
+  fog_light.Reset();
+  fog_light_resource = nullptr;
+  fog_learn_constants.Reset();
 }
 
 }  // namespace reflections
@@ -1509,6 +1680,9 @@ void BuildRuntimeData() {
   reflections::depth_step.code = __ssr_depth_step;
   reflections::gi_relevance.code = __gi_relevance_scaled;
   reflections::shadow_blur.code = __shadow_blur_scaled;
+  reflections::light_copy.code = __rt_light_copy;
+  reflections::fog_learn.code = __rt_fog_learn;
+  custom_shaders[0x3AC630DF] = {.crc32 = 0x3AC630DF, .on_inject = not_injected, .on_draw = &reflections::OnRadiance};
   custom_shaders[0x1810C89D] = {.crc32 = 0x1810C89D, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnScaleFix(cmd_list, &reflections::gi_relevance); }, .on_drawn = &reflections::SwapBack};
   custom_shaders[0xDDB14D2C] = {.crc32 = 0xDDB14D2C, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnScaleFix(cmd_list, &reflections::shadow_blur); }, .on_drawn = &reflections::SwapBack};
   custom_shaders[0x79F74068] = {.crc32 = 0x79F74068, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_down); }, .on_drawn = &reflections::OnMipStepDone};
@@ -3046,6 +3220,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // from the same trace, in the AO slot the game's SSAO left.
   rt_settings.ambient_occlusion = rt_settings.ambient_occlusion || rt_settings.path_ambient;
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
+  rt_settings.reflection_fog = reflections::fog_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Under rays and maps together the game's cascades already darken what these would.
@@ -3365,6 +3540,26 @@ void ConfigureAddon() {
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Ray-traced reflections blur by the material as the game's own light does: less mirror-like on armour.\n"
                  "Can be noisier.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedReflectionLight",
+      .binding = &reflections::light_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Reflections Lit as This Frame (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Ray-traced reflections show things lit as the picture is, also with Global Illumination off.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedReflectionFog",
+      .binding = &reflections::fog_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Fog in Reflections (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Far hills in ray-traced reflections get the game's fog. Best with Reflections Lit as This Frame.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
@@ -3694,6 +3889,9 @@ bool AttachAddon() {
     renodx::utils::command_action::Register(
         traced_lights::OnDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &hash);
   }
+  // After the fog's light draw's own hooks: only its target and constant buffers are read, after the draw.
+  renodx::utils::command_action::Register(
+      reflections::OnFogLight, {.shader_hash = 0xA8F5202D, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -3798,6 +3996,7 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(sun_ao::OnSunDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(sun_ao::OnDestroyDevice);
   renodx::utils::command_action::Unregister(traced_lights::OnDraw);
+  renodx::utils::command_action::Unregister(reflections::OnFogLight);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::command_action::Unregister(OnCascadeTree);
   twwarhammer3::object_motion::Uninstall();

@@ -109,6 +109,7 @@ struct Settings {
   bool reflection_own = false;
   // RT_REFLECTIONS_SQUARED_LOBE.
   bool reflection_squared_lobe = false;
+  bool reflection_fog = false;  // RT_REFLECTIONS_FOG (the host writes the fog: rt_leg_fog.hlsli)
   // The local lights' shadows (bridge v9): of the lights the game's light draws had (AddLocalLight) the last frame's
   // nearest and brightest go with the trace; their lit bits and positions for the light draws: BindLocalLights.
   bool local_lights = false;
@@ -2704,7 +2705,10 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
                  | (runtime.settings.reflection_reuse ? dlaa_bridge::RT_REFLECTIONS_REUSE : 0u)
                  | (runtime.settings.reflection_own ? dlaa_bridge::RT_REFLECTIONS_OWN : 0u)
                  | (runtime.settings.reflection_squared_lobe ? dlaa_bridge::RT_REFLECTIONS_SQUARED_LOBE : 0u)
-                 | (light_copied ? dlaa_bridge::RT_REFLECTIONS_LIGHT : 0u),
+                 | (light_copied ? dlaa_bridge::RT_REFLECTIONS_LIGHT : 0u)
+                 // Only over the scene's light before its fog (this pass's buffer, or the Light Bounce's prepared light): last
+                 // frame's picture has its fog in it.
+                 | ((runtime.settings.reflection_fog && (light_copied || runtime.bounced_frame == runtime.frame)) ? dlaa_bridge::RT_REFLECTIONS_FOG : 0u),
         .samples = runtime.settings.reflection_samples,
         .bounces = runtime.settings.path_tracing ? runtime.settings.path_bounces : 0u,
         .range = runtime.settings.light_bounce_range * internal::RangeScale(),
