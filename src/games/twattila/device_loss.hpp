@@ -9,10 +9,16 @@
 #include <dxgi.h>
 #include <windows.h>
 
+#include <minidumpapiset.h>
+#include <psapi.h>
+#include <tlhelp32.h>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstring>
+#include <ctime>
 #include <format>
 #include <mutex>
 #include <shared_mutex>
@@ -42,6 +48,11 @@ static uint64_t no_frame_limit_ms = 90000;
 // the frame thread ever left the code it was first seen in.
 constexpr uint64_t STALL_LOG_MS = 20000;
 constexpr uint32_t STALL_SAMPLES = 3;
+// A stall's first sample also writes every thread's place to a file in the game's folder, the last stall's over the one
+// before: a long load can be the first.
+constexpr uint32_t STALL_DUMPS = 3;
+constexpr size_t STALL_DUMP_STACK_BYTES = 256 * 1024;
+constexpr size_t STALL_DUMP_BYTES = 32 * 1024 * 1024;
 constexpr DWORD WATCH_POLL_MS = 1000;
 
 // Not owned: from init_device to destroy_device. A single-threaded device (Attila, Rome II, Thrones, Shogun 2) is only
@@ -93,11 +104,13 @@ static void DropBindings(ID3D11Device* device) {
 }
 
 // Where the frame thread stands when frames stopped: its instruction and the code addresses on its stack, nearest first (no
-// unwinding, so some are stale; nothing that can take a lock while it is suspended).
-static void LogStall(uint64_t age_ms) {
-  const HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, present_thread.load(std::memory_order_relaxed));
+// unwinding, so some are stale; nothing that can take a lock while it is suspended). With `dump`, every thread's
+// registers and stack go to renodx-stall.dmp beside the game's exe, for a debugger.
+static void LogStall(uint64_t age_ms, bool dump) {
+  const DWORD frame_thread = present_thread.load(std::memory_order_relaxed);
+  const HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, frame_thread);
   if (thread == nullptr) return;
-  std::array<uintptr_t, 1024> stack = {};
+  static std::array<uintptr_t, 4096> stack;
   SIZE_T stack_bytes = 0;
   CONTEXT context = {.ContextFlags = CONTEXT_CONTROL};
   SuspendThread(thread);
@@ -110,31 +123,287 @@ static void LogStall(uint64_t age_ms) {
   const uintptr_t stack_top = context.Esp;
 #endif
   if (stopped) {
-    ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(stack_top), stack.data(), sizeof(stack), &stack_bytes);
+    // A stack shorter than the array is read to its end.
+    MEMORY_BASIC_INFORMATION pages = {};
+    if (VirtualQuery(reinterpret_cast<const void*>(stack_top), &pages, sizeof(pages)) != 0) {
+      const size_t wanted = std::min<size_t>(sizeof(stack), reinterpret_cast<uintptr_t>(pages.BaseAddress) + pages.RegionSize - stack_top);
+      ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(stack_top), stack.data(), wanted, &stack_bytes);
+    }
   }
   ResumeThread(thread);
   CloseHandle(thread);
   if (!stopped) return;
-  std::string line = std::format("[Total War] No frame for {} s, the game's window {}, the frame thread at:", age_ms / 1000,
-                                 GameInFront() ? "in front" : "not in front");
-  const auto add_address = [&line](uintptr_t address) {
+  // "module+0xoffset" for an address in a module's code, else empty.
+  const auto code_place = [](uintptr_t address) {
     HMODULE module = nullptr;
-    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(address), &module) == FALSE) return false;
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(address), &module) == FALSE) return std::string();
     MEMORY_BASIC_INFORMATION page = {};
     constexpr DWORD EXECUTABLE = PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
-    if (VirtualQuery(reinterpret_cast<const void*>(address), &page, sizeof(page)) == 0 || (page.Protect & EXECUTABLE) == 0) return false;
+    if (VirtualQuery(reinterpret_cast<const void*>(address), &page, sizeof(page)) == 0 || (page.Protect & EXECUTABLE) == 0) return std::string();
     std::array<char, MAX_PATH> path = {};
     GetModuleFileNameA(module, path.data(), MAX_PATH);
     const std::string file = path.data();
-    line += std::format(" {}+0x{:X}", file.substr(file.find_last_of('\\') + 1), address - reinterpret_cast<uintptr_t>(module));
-    return true;
+    return std::format("{}+0x{:X}", file.substr(file.find_last_of('\\') + 1), address - reinterpret_cast<uintptr_t>(module));
   };
-  add_address(instruction);
+  std::string line = std::format("[Total War] No frame for {} s, the game's window {}, the frame thread at: {}", age_ms / 1000,
+                                 GameInFront() ? "in front" : "not in front", code_place(instruction));
   int added = 0;
   for (size_t word = 0; word < stack_bytes / sizeof(uintptr_t) && added < 32; ++word) {
-    if (add_address(stack[word])) ++added;
+    if (const std::string place = code_place(stack[word]); !place.empty()) {
+      line += " " + place;
+      ++added;
+    }
   }
   renodx::utils::log::w(line);
+#if defined(_WIN64)
+  // A fault's thread is inside ntdll's exception dispatcher, with the fault's registers right above that call and its
+  // record 0x4F0 further (Windows 10 and 11). A game's own crash handler can work there for minutes: ATN's "hang" of
+  // 2026-11-06 was Warhammer III compressing its crash report.
+  const auto dispatcher = reinterpret_cast<uintptr_t>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "KiUserExceptionDispatcher"));
+  constexpr size_t RECORD_OFFSET = 0x4F0;
+  for (size_t word = 0; (word + 1) * sizeof(uintptr_t) + RECORD_OFFSET + sizeof(EXCEPTION_RECORD) <= stack_bytes; ++word) {
+    if (dispatcher == 0 || stack[word] - dispatcher >= 0x80) continue;
+    CONTEXT fault = {};
+    EXCEPTION_RECORD record = {};
+    std::memcpy(&fault, &stack[word + 1], sizeof(fault));
+    std::memcpy(&record, reinterpret_cast<const uint8_t*>(&stack[word + 1]) + RECORD_OFFSET, sizeof(record));
+    if ((fault.ContextFlags & ~0xFFul) != CONTEXT_AMD64 || record.NumberParameters > EXCEPTION_MAXIMUM_PARAMETERS) continue;
+    const auto fault_address = reinterpret_cast<uintptr_t>(record.ExceptionAddress);
+    const std::string place = code_place(fault_address);
+    renodx::utils::log::w(std::format(
+        "[Total War] The frame thread is handling an exception: 0x{:08X} at {} (a crash, not a wait: the game's crash handler or a debugger has it; the fault's registers are at 0x{:X} on that thread's stack).",
+        static_cast<uint32_t>(record.ExceptionCode), place.empty() ? std::format("0x{:X}", fault_address) : place,
+        stack_top + (word + 1) * sizeof(uintptr_t)));
+    break;
+  }
+#endif
+  if (!dump) return;
+
+  // The dump is written by hand. MiniDumpWriteDump stops every other thread of its own process and then allocates and
+  // loads: with one of them stopped inside the heap or the loader it never returns, and a long load would become a
+  // hang. Here one thread at a time is stopped, for its registers and a copy of its stack into memory made before.
+  std::vector<DWORD> thread_ids = {frame_thread};
+  if (const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0); snapshot != INVALID_HANDLE_VALUE) {
+    THREADENTRY32 entry = {.dwSize = sizeof(THREADENTRY32)};
+    for (BOOL more = Thread32First(snapshot, &entry); more != FALSE; more = Thread32Next(snapshot, &entry)) {
+      if (entry.th32OwnerProcessID == GetCurrentProcessId() && entry.th32ThreadID != GetCurrentThreadId() && entry.th32ThreadID != frame_thread) {
+        thread_ids.push_back(entry.th32ThreadID);
+      }
+    }
+    CloseHandle(snapshot);
+  }
+  struct StoppedThread {
+    DWORD id = 0;
+    uintptr_t environment = 0;  // its TEB
+    CONTEXT context = {};
+    uintptr_t stack_start = 0;
+    size_t stack_offset = 0;  // in `stacks`
+    size_t stack_size = 0;
+  };
+  std::vector<StoppedThread> threads;
+  threads.reserve(thread_ids.size());
+  std::vector<uint8_t> stacks;
+  std::vector<uint8_t> one_stack(STALL_DUMP_STACK_BYTES);
+  // ntdll's THREAD_BASIC_INFORMATION (class 0): a debugger wants each thread's environment block.
+  struct ThreadBasics {
+    LONG exit_status;
+    void* environment;
+    void* process_id;
+    void* thread_id;
+    uintptr_t affinity;
+    LONG priority;
+    LONG base_priority;
+  };
+  using QueryThread = LONG(NTAPI*)(HANDLE, int, void*, ULONG, ULONG*);
+  const auto query_thread = reinterpret_cast<QueryThread>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationThread"));
+  for (const DWORD id : thread_ids) {
+    const HANDLE other = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, id);
+    if (other == nullptr) continue;
+    StoppedThread stopped_thread = {.id = id};
+    if (ThreadBasics basics = {}; query_thread != nullptr && query_thread(other, 0, &basics, sizeof(basics), nullptr) >= 0) {
+      stopped_thread.environment = reinterpret_cast<uintptr_t>(basics.environment);
+    }
+    stopped_thread.context.ContextFlags = CONTEXT_FULL;
+    SIZE_T copied = 0;
+    bool known = false;
+    if (SuspendThread(other) != static_cast<DWORD>(-1)) {
+      // Until the resume: system calls only (the stopped thread may hold the heap's or the loader's lock).
+      known = GetThreadContext(other, &stopped_thread.context) != FALSE;
+      if (known && stacks.size() < STALL_DUMP_BYTES) {
+#if defined(_WIN64)
+        stopped_thread.stack_start = stopped_thread.context.Rsp;
+#else
+        stopped_thread.stack_start = stopped_thread.context.Esp;
+#endif
+        // The stack's committed pages from the stack pointer up.
+        uintptr_t end = stopped_thread.stack_start;
+        MEMORY_BASIC_INFORMATION pages = {};
+        void* allocation = nullptr;
+        while (end - stopped_thread.stack_start < one_stack.size() && VirtualQuery(reinterpret_cast<const void*>(end), &pages, sizeof(pages)) != 0
+               && pages.State == MEM_COMMIT && (pages.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0
+               && (allocation == nullptr || pages.AllocationBase == allocation)) {
+          allocation = pages.AllocationBase;
+          end = reinterpret_cast<uintptr_t>(pages.BaseAddress) + pages.RegionSize;
+        }
+        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(stopped_thread.stack_start), one_stack.data(),
+                          std::min<size_t>(end - stopped_thread.stack_start, one_stack.size()), &copied);
+      }
+      ResumeThread(other);
+    }
+    CloseHandle(other);
+    if (!known) continue;
+    stopped_thread.stack_offset = stacks.size();
+    stopped_thread.stack_size = copied;
+    stacks.insert(stacks.end(), one_stack.begin(), one_stack.begin() + static_cast<ptrdiff_t>(copied));
+    threads.push_back(stopped_thread);
+  }
+
+  // The modules' places, read as another process would read them (no loader lock).
+  struct LoadedModule {
+    MINIDUMP_MODULE module = {};
+    std::wstring path;
+  };
+  std::vector<LoadedModule> modules;
+  static std::array<HMODULE, 2048> handles;
+  DWORD handle_bytes = 0;
+#if !defined(_WIN64)
+  // A 32-bit game on 64-bit Windows: its system modules are named in System32 and come from SysWOW64, where a
+  // debugger has to look.
+  std::array<wchar_t, MAX_PATH> system_folder = {};
+  std::array<wchar_t, MAX_PATH> loaded_from_folder = {};
+  const size_t system_folder_length = GetSystemDirectoryW(system_folder.data(), MAX_PATH);
+  const bool redirected = GetSystemWow64DirectoryW(loaded_from_folder.data(), MAX_PATH) != 0;
+#endif
+  if (K32EnumProcessModules(GetCurrentProcess(), handles.data(), sizeof(handles), &handle_bytes) != FALSE) {
+    for (size_t index = 0; index < std::min<size_t>(handle_bytes / sizeof(HMODULE), handles.size()); ++index) {
+      MODULEINFO info = {};
+      std::array<wchar_t, MAX_PATH> path = {};
+      if (K32GetModuleInformation(GetCurrentProcess(), handles[index], &info, sizeof(info)) == FALSE) continue;
+      K32GetModuleFileNameExW(GetCurrentProcess(), handles[index], path.data(), MAX_PATH);
+      LoadedModule loaded = {.path = path.data()};
+#if !defined(_WIN64)
+      if (redirected && _wcsnicmp(loaded.path.c_str(), system_folder.data(), system_folder_length) == 0 && loaded.path[system_folder_length] == L'\\') {
+        loaded.path = loaded_from_folder.data() + loaded.path.substr(system_folder_length);
+      }
+#endif
+      loaded.module.BaseOfImage = reinterpret_cast<uintptr_t>(info.lpBaseOfDll);
+      loaded.module.SizeOfImage = info.SizeOfImage;
+      // What a debugger matches the file on disk by.
+      IMAGE_DOS_HEADER dos = {};
+      IMAGE_NT_HEADERS headers = {};
+      if (ReadProcessMemory(GetCurrentProcess(), info.lpBaseOfDll, &dos, sizeof(dos), nullptr) != FALSE && dos.e_magic == IMAGE_DOS_SIGNATURE
+          && ReadProcessMemory(GetCurrentProcess(), static_cast<const uint8_t*>(info.lpBaseOfDll) + dos.e_lfanew, &headers, sizeof(headers), nullptr) != FALSE
+          && headers.Signature == IMAGE_NT_SIGNATURE) {
+        loaded.module.TimeDateStamp = headers.FileHeader.TimeDateStamp;
+        loaded.module.CheckSum = headers.OptionalHeader.CheckSum;
+      }
+      modules.push_back(std::move(loaded));
+    }
+  }
+
+  // The file: header, directory, then each stream's data where its entry points.
+  std::vector<uint8_t> file;
+  const auto append = [&file](const void* data, size_t size) {
+    const auto offset = static_cast<RVA>(file.size());
+    file.insert(file.end(), static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
+    return offset;
+  };
+  // A length in bytes, the text, a terminator.
+  const auto append_text = [&append](const std::wstring& text) {
+    const auto length = static_cast<ULONG32>(text.size() * sizeof(wchar_t));
+    const RVA offset = append(&length, sizeof(length));
+    append(text.c_str(), length + sizeof(wchar_t));
+    return offset;
+  };
+  constexpr ULONG32 STREAMS = 5;
+  const MINIDUMP_HEADER header = {.Signature = MINIDUMP_SIGNATURE,
+                                  .Version = MINIDUMP_VERSION,
+                                  .NumberOfStreams = STREAMS,
+                                  .StreamDirectoryRva = sizeof(MINIDUMP_HEADER),
+                                  .TimeDateStamp = static_cast<ULONG32>(std::time(nullptr))};
+  append(&header, sizeof(header));
+  std::array<MINIDUMP_DIRECTORY, STREAMS> directory = {};
+  append(directory.data(), sizeof(directory));
+
+  SYSTEM_INFO processor = {};
+  GetNativeSystemInfo(&processor);
+  RTL_OSVERSIONINFOW windows = {.dwOSVersionInfoSize = sizeof(windows)};
+  using GetVersion = LONG(WINAPI*)(RTL_OSVERSIONINFOW*);
+  if (const auto get_version = reinterpret_cast<GetVersion>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion")); get_version != nullptr) {
+    get_version(&windows);
+  }
+  MINIDUMP_SYSTEM_INFO system_info = {};
+#if defined(_WIN64)
+  system_info.ProcessorArchitecture = PROCESSOR_ARCHITECTURE_AMD64;
+#else
+  system_info.ProcessorArchitecture = PROCESSOR_ARCHITECTURE_INTEL;
+#endif
+  system_info.ProcessorLevel = processor.wProcessorLevel;
+  system_info.ProcessorRevision = processor.wProcessorRevision;
+  system_info.NumberOfProcessors = static_cast<UCHAR>(std::min<DWORD>(processor.dwNumberOfProcessors, 255));
+  system_info.ProductType = VER_NT_WORKSTATION;
+  system_info.MajorVersion = windows.dwMajorVersion;
+  system_info.MinorVersion = windows.dwMinorVersion;
+  system_info.BuildNumber = windows.dwBuildNumber;
+  system_info.PlatformId = VER_PLATFORM_WIN32_NT;
+  system_info.CSDVersionRva = append_text(L"");
+  directory[0] = {.StreamType = SystemInfoStream, .Location = {.DataSize = sizeof(system_info), .Rva = append(&system_info, sizeof(system_info))}};
+
+  const MINIDUMP_MISC_INFO process = {.SizeOfInfo = sizeof(MINIDUMP_MISC_INFO), .Flags1 = MINIDUMP_MISC1_PROCESS_ID, .ProcessId = GetCurrentProcessId()};
+  directory[1] = {.StreamType = MiscInfoStream, .Location = {.DataSize = sizeof(process), .Rva = append(&process, sizeof(process))}};
+
+  for (LoadedModule& loaded : modules) {
+    loaded.module.ModuleNameRva = append_text(loaded.path);
+  }
+  const auto module_count = static_cast<ULONG32>(modules.size());
+  directory[2] = {.StreamType = ModuleListStream,
+                  .Location = {.DataSize = static_cast<ULONG32>(sizeof(module_count) + modules.size() * sizeof(MINIDUMP_MODULE)),
+                               .Rva = append(&module_count, sizeof(module_count))}};
+  for (const LoadedModule& loaded : modules) {
+    append(&loaded.module, sizeof(loaded.module));
+  }
+
+  // The stacks' bytes and each thread's registers, then the two lists that point at them.
+  const RVA stacks_offset = append(stacks.data(), stacks.size());
+  std::vector<MINIDUMP_THREAD> thread_list;
+  std::vector<MINIDUMP_MEMORY_DESCRIPTOR> memory_list;
+  for (const StoppedThread& stopped_thread : threads) {
+    const MINIDUMP_MEMORY_DESCRIPTOR stack_memory = {
+        .StartOfMemoryRange = stopped_thread.stack_start,
+        .Memory = {.DataSize = static_cast<ULONG32>(stopped_thread.stack_size), .Rva = stacks_offset + static_cast<RVA>(stopped_thread.stack_offset)}};
+    thread_list.push_back({.ThreadId = stopped_thread.id,
+                           .Teb = stopped_thread.environment,
+                           .Stack = stack_memory,
+                           .ThreadContext = {.DataSize = sizeof(CONTEXT), .Rva = append(&stopped_thread.context, sizeof(CONTEXT))}});
+    if (stopped_thread.stack_size != 0) memory_list.push_back(stack_memory);
+  }
+  const auto thread_count = static_cast<ULONG32>(thread_list.size());
+  directory[3] = {.StreamType = ThreadListStream,
+                  .Location = {.DataSize = static_cast<ULONG32>(sizeof(thread_count) + thread_list.size() * sizeof(MINIDUMP_THREAD)),
+                               .Rva = append(&thread_count, sizeof(thread_count))}};
+  append(thread_list.data(), thread_list.size() * sizeof(MINIDUMP_THREAD));
+  const auto memory_count = static_cast<ULONG32>(memory_list.size());
+  directory[4] = {.StreamType = MemoryListStream,
+                  .Location = {.DataSize = static_cast<ULONG32>(sizeof(memory_count) + memory_list.size() * sizeof(MINIDUMP_MEMORY_DESCRIPTOR)),
+                               .Rva = append(&memory_count, sizeof(memory_count))}};
+  append(memory_list.data(), memory_list.size() * sizeof(MINIDUMP_MEMORY_DESCRIPTOR));
+  std::memcpy(file.data() + sizeof(MINIDUMP_HEADER), directory.data(), sizeof(directory));
+
+  std::array<wchar_t, MAX_PATH> exe = {};
+  GetModuleFileNameW(nullptr, exe.data(), MAX_PATH);
+  std::wstring path = exe.data();
+  path = path.substr(0, path.find_last_of(L'\\') + 1) + L"renodx-stall.dmp";
+  const HANDLE output = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  DWORD written = 0;
+  const bool saved = output != INVALID_HANDLE_VALUE && WriteFile(output, file.data(), static_cast<DWORD>(file.size()), &written, nullptr) != FALSE
+                     && written == file.size();
+  if (output != INVALID_HANDLE_VALUE) CloseHandle(output);
+  if (saved) {
+    renodx::utils::log::w(std::format("[Total War] Every thread's place when the frames stopped ({} threads, {} KB) is in renodx-stall.dmp beside the game's exe.",
+                                      threads.size(), file.size() / 1024));
+  } else {
+    renodx::utils::log::w("[Total War] The stalled threads' places could not be written to renodx-stall.dmp beside the game's exe.");
+  }
 }
 
 static DWORD WINAPI WatchLoop(void*) {
@@ -142,6 +411,7 @@ static DWORD WINAPI WatchLoop(void*) {
   bool last_front = false;
   uint64_t stalled_frame = 0;
   uint32_t stall_samples = 0;
+  uint32_t stall_dumps = 0;
   uint64_t awaited_ms = 0;
   while (WaitForSingleObject(watch_stop, WATCH_POLL_MS) == WAIT_TIMEOUT) {
     {
@@ -170,7 +440,11 @@ static DWORD WINAPI WatchLoop(void*) {
       }
       if (const uint64_t age = GetTickCount64() - frame; stall_samples < STALL_SAMPLES && age >= STALL_LOG_MS * (stall_samples + 1)) {
         ++stall_samples;
-        LogStall(age);
+        const bool dump = stall_samples == 1 && stall_dumps < STALL_DUMPS;
+        if (dump) {
+          ++stall_dumps;
+        }
+        LogStall(age, dump);
       }
     }
     if (!awaiting_frame.load(std::memory_order_relaxed)) continue;

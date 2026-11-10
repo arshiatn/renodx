@@ -5,13 +5,16 @@
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <minidumpapiset.h>
 #include <wrl/client.h>
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <iterator>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 #include "src/games/twattila/device_loss.hpp"
@@ -290,6 +293,21 @@ static void Pump(DWORD milliseconds) {
   }
 }
 
+// A game's frame thread that presents once, faults, and whose handler then works for a while before the thread goes on.
+static DWORD faulting_thread_id = 0;
+// A call: clang's __try covers faults in called functions, not in its own instructions.
+__declspec(noinline) static void WriteTo(volatile int* address) {
+  *address = 1;
+}
+static DWORD WINAPI FaultingFrameThread(void* chain) {
+  loss::OnPresent(nullptr, static_cast<reshade::api::swapchain*>(chain), nullptr, nullptr, 0, nullptr);
+  __try {
+    WriteTo(nullptr);
+  } __except (Sleep(24000), EXCEPTION_EXECUTE_HANDLER) {
+  }
+  return 0;
+}
+
 constexpr int SKIPPED = 77;
 
 // A game after a device loss, its limit 3 s: what its window does decides whether the limit closes it.
@@ -532,7 +550,16 @@ static int Parent(const wchar_t* self) {
     Sleep(1500);
     loss::OnPresent(nullptr, &chain, nullptr, nullptr, 0, nullptr);
     CHECK(Logged("GPU reset: the game's device removed") == removals + 2);
-    // No frame for 20 s: one line with this thread's place, a module and an offset.
+    // The frame thread faults and its handler takes its time (a game's crash reporter): after 20 s one line with that
+    // thread's place, a module and an offset; on x64 a second one naming the fault; and every thread's place in a file.
+    wchar_t dump_path[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, dump_path, MAX_PATH);
+    *(wcsrchr(dump_path, L'\\') + 1) = 0;
+    wcscat_s(dump_path, L"renodx-stall.dmp");
+    DeleteFileW(dump_path);
+    mock::Swapchain multi_chain;
+    multi_chain.owner = &multi_threaded;
+    const HANDLE frame_thread = CreateThread(nullptr, 0, FaultingFrameThread, &multi_chain, 0, &faulting_thread_id);
     Sleep(21500);
     CHECK(Logged("No frame for 2") == 1);
     {
@@ -540,6 +567,107 @@ static int Parent(const wchar_t* self) {
       const auto line = std::ranges::find_if(log_lines, [](const std::string& text) { return text.find("No frame for 2") != std::string::npos; });
       CHECK(line->find("the frame thread at: ") != std::string::npos && line->find("+0x") != std::string::npos);
       std::printf("%s\n", line->c_str());
+#if defined(_WIN64)
+      const auto fault = std::ranges::find_if(log_lines, [](const std::string& text) { return text.find("is handling an exception") != std::string::npos; });
+      CHECK(fault != log_lines.end());
+      CHECK(fault->find("0xC0000005 at device_loss.exe+0x") != std::string::npos);
+      std::printf("%s\n", fault->c_str());
+#endif
+    }
+    CHECK(Logged("Every thread's place when the frames stopped (") == 1 && Logged("could not be written") == 0);
+    {
+      // The file as a debugger reads it: the faulting thread first, this thread too, each with registers in this exe or
+      // a system module and a stack that starts at its stack pointer; this exe among the modules.
+      const HANDLE file = CreateFileW(dump_path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+      CHECK(file != INVALID_HANDLE_VALUE);
+      std::vector<uint8_t> dump(GetFileSize(file, nullptr));
+      DWORD read = 0;
+      CHECK(ReadFile(file, dump.data(), static_cast<DWORD>(dump.size()), &read, nullptr) != FALSE && read == dump.size());
+      CloseHandle(file);
+      const auto* header = reinterpret_cast<const MINIDUMP_HEADER*>(dump.data());
+      CHECK(header->Signature == MINIDUMP_SIGNATURE && header->NumberOfStreams == 5);
+      const auto* directory = reinterpret_cast<const MINIDUMP_DIRECTORY*>(dump.data() + header->StreamDirectoryRva);
+      const MINIDUMP_THREAD_LIST* thread_list = nullptr;
+      const MINIDUMP_MODULE_LIST* module_list = nullptr;
+      for (ULONG32 index = 0; index < header->NumberOfStreams; ++index) {
+        CHECK(directory[index].Location.Rva + directory[index].Location.DataSize <= dump.size());
+        if (directory[index].StreamType == ThreadListStream) thread_list = reinterpret_cast<const MINIDUMP_THREAD_LIST*>(dump.data() + directory[index].Location.Rva);
+        if (directory[index].StreamType == ModuleListStream) module_list = reinterpret_cast<const MINIDUMP_MODULE_LIST*>(dump.data() + directory[index].Location.Rva);
+      }
+      CHECK(thread_list != nullptr && module_list != nullptr);
+      CHECK(thread_list->NumberOfThreads >= 2 && thread_list->Threads[0].ThreadId == faulting_thread_id);
+      bool this_thread_listed = false;
+      for (ULONG32 index = 0; index < thread_list->NumberOfThreads; ++index) {
+        const MINIDUMP_THREAD& listed = thread_list->Threads[index];
+        CHECK(listed.ThreadId != GetThreadId(loss::watch_thread));
+        CHECK(listed.ThreadContext.DataSize == sizeof(CONTEXT) && listed.ThreadContext.Rva + sizeof(CONTEXT) <= dump.size());
+        CHECK(listed.Stack.Memory.Rva + listed.Stack.Memory.DataSize <= dump.size());
+        const auto* context = reinterpret_cast<const CONTEXT*>(dump.data() + listed.ThreadContext.Rva);
+#if defined(_WIN64)
+        CHECK(listed.Stack.StartOfMemoryRange == context->Rsp);
+#else
+        CHECK(listed.Stack.StartOfMemoryRange == context->Esp);
+#endif
+        if (listed.ThreadId == this_thread || listed.ThreadId == faulting_thread_id) CHECK(listed.Stack.Memory.DataSize >= 256);
+        this_thread_listed |= listed.ThreadId == this_thread;
+      }
+      CHECK(this_thread_listed);
+      bool exe_listed = false;
+      for (ULONG32 index = 0; index < module_list->NumberOfModules; ++index) {
+        const MINIDUMP_MODULE& listed = module_list->Modules[index];
+        if (listed.BaseOfImage != reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr))) continue;
+        const auto* name = reinterpret_cast<const MINIDUMP_STRING*>(dump.data() + listed.ModuleNameRva);
+        exe_listed = std::wstring(name->Buffer, name->Length / sizeof(wchar_t)).ends_with(L"device_loss.exe") && listed.SizeOfImage != 0
+                     && listed.TimeDateStamp != 0;
+      }
+      CHECK(exe_listed);
+      std::printf("stall dump: %u threads, %u modules, %zu KB\n", thread_list->NumberOfThreads, module_list->NumberOfModules, dump.size() / 1024);
+    }
+    // The thread leaves its handler: no thread was left stopped.
+    CHECK(WaitForSingleObject(frame_thread, 30000) == WAIT_OBJECT_0);
+    CloseHandle(frame_thread);
+    // Kept for run.ps1's debugger: the next step writes over the file.
+    std::wstring first_dump = dump_path;
+    first_dump.replace(first_dump.size() - 4, 4, L"-first.dmp");
+    CHECK(CopyFileW(dump_path, first_dump.c_str(), FALSE) != FALSE);
+    // Threads that live in the heap and the loader, sampled and dumped 200 times: a lock taken while one of them is
+    // stopped inside it would stop the sampler for good.
+    {
+      std::atomic_bool stop = false;
+      std::vector<std::thread> busy;
+      for (int index = 0; index < 8; ++index) {
+        busy.emplace_back([&stop, index] {
+          while (!stop) {
+            std::vector<std::string> blocks;
+            for (int block = 0; block < 64; ++block) blocks.emplace_back(static_cast<size_t>(64 + block * 16), 'x');
+            if (index % 2 == 0) {
+              FreeLibrary(LoadLibraryW(L"version.dll"));
+              GetModuleHandleW(L"kernel32.dll");
+            }
+          }
+        });
+      }
+      loss::present_thread = GetThreadId(busy[0].native_handle());
+      std::atomic_int done = 0;
+      const ULONGLONG started = GetTickCount64();
+      std::thread sampler([&done] {
+        for (int round = 0; round < 200; ++round) {
+          loss::LogStall(20000, true);
+          ++done;
+        }
+      });
+      while (done < 200 && GetTickCount64() - started < 120000) Sleep(50);
+      const ULONGLONG took = GetTickCount64() - started;
+      if (done < 200) {
+        std::printf("FAIL: the stall dump stopped after %d of 200 beside busy threads\n", done.load());
+        std::fflush(stdout);
+        TerminateProcess(GetCurrentProcess(), 1);
+      }
+      stop = true;
+      sampler.join();
+      for (auto& thread : busy) thread.join();
+      std::printf("stall dump beside 8 busy threads: 200 of 200, %.1f ms each\n", static_cast<double>(took) / 200.0);
+      CHECK(Logged("could not be written") == 0);
     }
     CHECK(AskedOffThread(single_threaded.native.Get(), this_thread) == 0);
     loss::OnDestroyDevice(&single_threaded);
