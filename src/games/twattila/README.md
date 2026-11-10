@@ -1,6 +1,6 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## v141 (2026-11-10, WH3's batch 6; built, not run in game; renodx-tw-dlaa64.exe helper99, bridge v30: ship them together; no players' zip)
+## v141 = players' v2.5.2 (2026-11-10, WH3's batch 6; built, not run in game; renodx-tw-dlaa64.exe helper99, bridge v30: ship them together; RenoDX_Attila_v2.5.2_HDR_only.zip: the add-on alone)
 
 No row and no default changed. Shared code only:
 
