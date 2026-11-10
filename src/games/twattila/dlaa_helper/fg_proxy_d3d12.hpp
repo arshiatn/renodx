@@ -69,6 +69,9 @@ class ProxyFrameGeneration12 {
       return false;
     }
     const D3D12_COMMAND_QUEUE_DESC queue_desc = {.Type = D3D12_COMMAND_LIST_TYPE_DIRECT};
+    // Before the fence: a start that fails later leaves no fence without its event (WaitIdle).
+    event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (event_ == nullptr) return Fail("Frame generation: no completion event");
     if (FAILED(device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(queue_.GetAddressOf())))
         || FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(own_fence_.GetAddressOf())))) {
       return Fail("Frame generation: no D3D12 queue");
@@ -81,8 +84,6 @@ class ProxyFrameGeneration12 {
         return Fail("Frame generation: no D3D12 command lists");
       }
     }
-    event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (event_ == nullptr) StopGpuProcess("Total War helper: completion event creation failed\n");
     if (backend == dlaa_bridge::FG_BACKEND_FSR) {
 #if defined(RENODX_FSR_FG)
       library_ = LoadLibraryExW((folder + L"\\amd_fidelityfx_loader_dx12.dll").c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
@@ -258,8 +259,12 @@ class ProxyFrameGeneration12 {
 
     Slot& slot = slots_[next_slot_];
     next_slot_ = (next_slot_ + 1) % slots_.size();
-    WaitFor(slot.done);
-    // No recording: nothing is executed, the backend gives up (main.cpp: Auto's next; after a GPU reset a new device).
+    // The slot's last use not proven done on a live device (its allocator still feeds the GPU), or no recording:
+    // nothing is executed, the backend gives up (main.cpp: Auto's next; after a GPU reset a new device).
+    if (!WaitForGpu(own_fence_.Get(), event_, slot.done, FENCE_TIMEOUT)) {
+      SignalOnly(value);
+      return Fail("Frame generation: its GPU work did not finish");
+    }
     if (FAILED(slot.allocator->Reset()) || FAILED(slot.list->Reset(slot.allocator.Get(), nullptr))) {
       SignalOnly(value);
       return Fail("Frame generation: D3D12 stopped");
@@ -410,12 +415,12 @@ class ProxyFrameGeneration12 {
       SignalOnly(value);
       return Fail("Frame generation: D3D12 stopped");
     }
-    RequireGpuResult(queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
+    queue_->Wait(fence_.Get(), value);
     ID3D12CommandList* lists[] = {slot.list.Get()};
     queue_->ExecuteCommandLists(1, lists);
-    RequireGpuResult(queue_->Signal(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
+    queue_->Signal(fence_.Get(), value + 1);
     slot.done = ++own_value_;
-    RequireGpuResult(queue_->Signal(own_fence_.Get(), slot.done), "Total War helper: queue synchronization failed\n");
+    queue_->Signal(own_fence_.Get(), slot.done);
 
     // The status line every 30 presents.
     if (presents_++ % 30 == 0) {
@@ -543,18 +548,14 @@ class ProxyFrameGeneration12 {
   // The copy queue's fence `value` signalled (the game never waits for nothing).
   void SignalOnly(uint64_t value) {
     if (!fence_ || !queue_) return;
-    RequireGpuResult(queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
-    RequireGpuResult(queue_->Signal(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
-  }
-
-  void WaitFor(uint64_t value) {
-    RequireGpuCompletion(own_fence_.Get(), event_, value, FENCE_TIMEOUT);
+    queue_->Wait(fence_.Get(), value);
+    queue_->Signal(fence_.Get(), value + 1);
   }
 
   void WaitIdle() {
     if (!queue_ || !own_fence_) return;
-    RequireGpuResult(queue_->Signal(own_fence_.Get(), ++own_value_), "Total War helper: queue synchronization failed\n");
-    WaitFor(own_value_);
+    queue_->Signal(own_fence_.Get(), ++own_value_);
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "frame generation (FSR / XeSS)");
   }
 
   // The chain at chain_width_ x chain_height_ in chain_format_ on the window, beside the requests.

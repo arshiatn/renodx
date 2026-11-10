@@ -275,7 +275,7 @@ class RtScene12 {
       return Fail("Ray tracing: no D3D12 queue");
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (event_ == nullptr) StopGpuProcess("Total War helper: completion event creation failed\n");
+    if (event_ == nullptr) return Fail("Ray tracing: no completion event");
     for (Slot& slot : slots_) {
       slot.instances = Buffer(uint64_t{MAX_INSTANCES} * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), D3D12_HEAP_TYPE_UPLOAD,
                               D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -862,7 +862,7 @@ class RtScene12 {
   }
 
   void Close() {
-    if (own_fence_) WaitFor(own_value_);
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "ray tracing");
     vertices_.Reset();
     positions_.Reset();
     sun_.Reset();
@@ -1129,13 +1129,13 @@ class RtScene12 {
     if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
     LARGE_INTEGER submit_start;
     QueryPerformanceCounter(&submit_start);
-    RequireGpuResult(queue_->Wait(fence_.Get(), shared.value), "Total War helper: queue synchronization failed\n");
+    queue_->Wait(fence_.Get(), shared.value);
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
-    RequireGpuResult(queue_->Signal(fence_.Get(), shared.value + 1), "Total War helper: queue synchronization failed\n");
-    RequireGpuResult(queue_->Signal(own_fence_.Get(), ++own_value_), "Total War helper: queue synchronization failed\n");
+    queue_->Signal(fence_.Get(), shared.value + 1);
+    queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
     trace_value_ = own_value_;
     LARGE_INTEGER submit_end;
@@ -1594,13 +1594,13 @@ class RtScene12 {
     }
     LARGE_INTEGER submit_start;
     QueryPerformanceCounter(&submit_start);
-    RequireGpuResult(queue_->Wait(fence_.Get(), shared.value), "Total War helper: queue synchronization failed\n");
+    queue_->Wait(fence_.Get(), shared.value);
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
-    RequireGpuResult(queue_->Signal(fence_.Get(), shared.value + 1), "Total War helper: queue synchronization failed\n");
-    RequireGpuResult(queue_->Signal(own_fence_.Get(), ++own_value_), "Total War helper: queue synchronization failed\n");
+    queue_->Signal(fence_.Get(), shared.value + 1);
+    queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
     LARGE_INTEGER submit_end;
     QueryPerformanceCounter(&submit_end);
@@ -1612,7 +1612,7 @@ class RtScene12 {
   }
 
   ~RtScene12() {
-    if (own_fence_) WaitFor(own_value_);
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "ray tracing");
     if (event_ != nullptr) CloseHandle(event_);
     for (auto& baking : micromap_baking_) {
       if (baking.valid()) baking.wait();
@@ -2214,8 +2214,14 @@ class RtScene12 {
     return false;
   }
 
-  void WaitFor(uint64_t value) {
-    RequireGpuCompletion(own_fence_.Get(), event_, value, 5000);
+  static constexpr DWORD FENCE_TIMEOUT = 5000;
+
+  // False: this queue's work up to `value` is not proven done on a live device (WaitForGpu). Nothing may be recorded
+  // over it or freed under it: the scene counts as lost (no request records, main.cpp makes a new scene).
+  bool WaitFor(uint64_t value) {
+    if (WaitForGpu(own_fence_.Get(), event_, value, FENCE_TIMEOUT)) return true;
+    request_failed_ = true;
+    return false;
   }
 
   D3D12_CPU_DESCRIPTOR_HANDLE Descriptor(UINT index) const {
@@ -2499,7 +2505,7 @@ class RtScene12 {
     if (signal->denoiser && signal->size == std::array<uint32_t, 2>{width, height}) return true;
     if (signal->failed) return false;
     if (signal->denoiser) {
-      WaitFor(own_value_);
+      if (!WaitFor(own_value_)) return false;
       signal->denoiser.reset();
     }
     const auto fail = [&](const std::string& why) {
@@ -4414,7 +4420,7 @@ class RtScene12 {
 #if defined(RENODX_NRD)
     for (NrdSignal* signal : {&nrd_sun_, &nrd_ambient_, &nrd_bounce_, &nrd_reflections_}) {
       if (signal->denoiser && signal->used_frame + NRD_RELEASE_FRAMES < frame) {
-        WaitFor(own_value_);
+        if (!WaitFor(own_value_)) break;
         signal->denoiser.reset();
         slow_report_ += std::format("{}[TW ray tracing] An NRD denoiser released (unused for {} frames).", slow_report_.empty() ? "" : "\n", NRD_RELEASE_FRAMES);
       }

@@ -1,4 +1,4 @@
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86')
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_gpu_completion'

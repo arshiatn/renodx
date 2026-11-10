@@ -105,6 +105,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   _wfopen_s(&log_file, log_path.c_str(), L"w");
   wcsncpy_s(dump_path.data(), dump_path.size(), (folder + L"\\renodx-tw-dlaa64.dmp").c_str(), _TRUNCATE);
   SetUnhandledExceptionFilter(OnUnhandledFault);
+  // A live GPU did not finish work whose resources are about to be freed (a removed device never gets here: a new one is
+  // made below). Freeing them under it is not safe and nothing else can go on: the reason logged, then the process ends
+  // without unwinding the GPU objects (the addon sees the exit).
+  twattila::dlaa_helper::unproven_gpu_completion = [](const char* owner, uint64_t completed, uint64_t wanted) {
+    LogWithTime(std::format("[TW DLAA helper] Stopped: the GPU did not finish {}'s work in time (its fence at {}, waited for {}; the "
+                            "device was not removed). Its resources cannot be freed safely.",
+                            owner, completed, wanted)
+                    .c_str());
+    TerminateProcess(GetCurrentProcess(), ERROR_DEVICE_HARDWARE_ERROR);
+  };
 #ifdef RENODX_TW_HELPER_FAULT_TEST
   // A test build only (build.ps1 with -DRENODX_TW_HELPER_FAULT_TEST added): RENODX_TW_HELPER_FAULT set, the dump's path on demand.
   if (GetEnvironmentVariableW(L"RENODX_TW_HELPER_FAULT", nullptr, 0) != 0) *static_cast<volatile int*>(nullptr) = 1;

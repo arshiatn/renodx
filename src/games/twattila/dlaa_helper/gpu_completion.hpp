@@ -6,37 +6,23 @@
 
 #include <windows.h>
 #include <cstdint>
-#include <cstdlib>
-#include <limits>
 
 namespace twattila::dlaa_helper {
 
-// Do not unwind GPU owners after an unproven completion. The bridge recovers its
-// fences only after observing helper process exit, so no old producer survives.
-[[noreturn]] inline void StopGpuProcess(const char* operation) {
-  OutputDebugStringA(operation);
-  TerminateProcess(GetCurrentProcess(), ERROR_DEVICE_HARDWARE_ERROR);
-  std::_Exit(ERROR_DEVICE_HARDWARE_ERROR);
-}
-
-inline void RequireGpuResult(HRESULT result, const char* operation) {
-  if (FAILED(result)) StopGpuProcess(operation);
-}
-
-// Fence is a native D3D12 fence in production; the narrow template also permits
-// deterministic registration-failure and removed-device controls in the test.
+// True: nothing submitted up to `value` can still run. The fence passed it, or its device was removed (the fence then
+// reads all ones: a GPU reset, and the owner makes a new device), or there is no fence (nothing was ever submitted).
+// False: not proven within `timeout` on a live device; the caller must not reset or free what that work uses.
+// Fence is a native D3D12 fence in production; the narrow template also permits deterministic registration-failure
+// and removed-device controls in the test.
 template <typename Fence>
 bool WaitForGpu(Fence* fence, HANDLE event, uint64_t value, DWORD timeout) {
-  if (fence == nullptr || event == nullptr) return false;
-  auto completed = fence->GetCompletedValue();
-  if (completed == std::numeric_limits<uint64_t>::max()) return false;
-  if (completed >= value) return true;
+  if (fence == nullptr || fence->GetCompletedValue() >= value) return true;
+  if (event == nullptr) return false;
   const ULONGLONG started = GetTickCount64();
-  if (FAILED(fence->SetEventOnCompletion(value, event))) return false;
+  // A removal between the read above and here fails the registration.
+  if (FAILED(fence->SetEventOnCompletion(value, event))) return fence->GetCompletedValue() >= value;
   for (;;) {
-    completed = fence->GetCompletedValue();
-    if (completed == std::numeric_limits<uint64_t>::max()) return false;
-    if (completed >= value) return true;
+    if (fence->GetCompletedValue() >= value) return true;
     const ULONGLONG elapsed = GetTickCount64() - started;
     if (elapsed >= timeout) return false;
     if (WaitForSingleObject(event, static_cast<DWORD>(timeout - elapsed)) != WAIT_OBJECT_0) return false;
@@ -44,9 +30,19 @@ bool WaitForGpu(Fence* fence, HANDLE event, uint64_t value, DWORD timeout) {
   }
 }
 
+// Called when work that is about to lose its resources was not proven done on a live device. The helper exe sets it
+// (main.cpp: one log line, then the process ends without unwinding its GPU owners). It stays null in a game's process
+// (Tales of Arise's DLSS add-on runs rr_d3d12.hpp there), which nothing here may end: the owner then goes on.
+inline void (*unproven_gpu_completion)(const char* owner, uint64_t completed, uint64_t wanted) = nullptr;
+
+// The wait before an owner frees what its submitted work uses (Close, a feature's release, a destructor).
 template <typename Fence>
-void RequireGpuCompletion(Fence* fence, HANDLE event, uint64_t value, DWORD timeout) {
-  if (!WaitForGpu(fence, event, value, timeout)) StopGpuProcess("Total War helper: GPU completion failed\n");
+void WaitForGpuBeforeRelease(Fence* fence, HANDLE event, uint64_t value, DWORD timeout, const char* owner) {
+  if (WaitForGpu(fence, event, value, timeout) || unproven_gpu_completion == nullptr) return;
+  // Done or removed meanwhile: nothing to stop for.
+  if (const uint64_t completed = fence->GetCompletedValue(); completed < value) {
+    unproven_gpu_completion(owner, completed, value);
+  }
 }
 
 }  // namespace twattila::dlaa_helper

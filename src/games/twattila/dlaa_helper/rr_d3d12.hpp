@@ -130,7 +130,7 @@ class RayReconstruction12 {
       }
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (event_ == nullptr) StopGpuProcess("Total War helper: completion event creation failed\n");
+    if (event_ == nullptr) return Fail("Ray Reconstruction: no completion event");
     std::wstring cache(MAX_PATH, L'\0');
     cache.resize(GetTempPathW(MAX_PATH, cache.data()));
     cache += L"RenoDX_TW_DLAA";
@@ -178,7 +178,7 @@ class RayReconstruction12 {
   // Its commands done, the textures let go (the game's GPU can be frames behind: releasing them under a request still
   // waiting for its value removed the device, 2026-11-03).
   void Close() {
-    if (own_fence_) WaitFor(own_value_);
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "Ray Reconstruction");
     inputs_ = {};
     hit_distance_.Reset();
     extra_ = {};
@@ -203,13 +203,13 @@ class RayReconstruction12 {
     next_slot_ = (next_slot_ + 1) % SLOTS;
     evaluated_ = false;
     const bool recorded = Record(request, &slot);
-    RequireGpuResult(queue_->Wait(fence_.Get(), request.value), "Total War helper: queue synchronization failed\n");
+    queue_->Wait(fence_.Get(), request.value);
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
-    RequireGpuResult(queue_->Signal(fence_.Get(), request.value + 1), "Total War helper: queue synchronization failed\n");
-    RequireGpuResult(queue_->Signal(own_fence_.Get(), ++own_value_), "Total War helper: queue synchronization failed\n");
+    queue_->Signal(fence_.Get(), request.value + 1);
+    queue_->Signal(own_fence_.Get(), ++own_value_);
     slot.value = own_value_;
     return evaluated_;
   }
@@ -217,7 +217,7 @@ class RayReconstruction12 {
   // Its feature freed (Super Resolution runs instead); the next request makes it again.
   void ReleaseFeature() {
     if (feature_ == nullptr) return;
-    WaitFor(own_value_);
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "Ray Reconstruction");
     NVSDK_NGX_D3D12_ReleaseFeature(feature_);
     feature_ = nullptr;
   }
@@ -229,7 +229,7 @@ class RayReconstruction12 {
   [[nodiscard]] const std::string& Status() const { return status_; }
 
   ~RayReconstruction12() {
-    if (own_fence_) WaitFor(own_value_);
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "Ray Reconstruction");
     if (feature_ != nullptr) NVSDK_NGX_D3D12_ReleaseFeature(feature_);
     if (parameters_ != nullptr) NVSDK_NGX_D3D12_DestroyParameters(parameters_);
     if (initialized_) NVSDK_NGX_D3D12_Shutdown1(device_.Get());
@@ -249,15 +249,16 @@ class RayReconstruction12 {
     return false;
   }
 
-  // The CPU waits until this queue passed `value` (a slot's last use: SLOTS requests back, normally long done).
-  void WaitFor(uint64_t value) {
-    RequireGpuCompletion(own_fence_.Get(), event_, value, 5000);
-  }
+  // The CPU's longest wait for this queue (a slot's last use is SLOTS requests back, normally long done).
+  static constexpr DWORD FENCE_TIMEOUT = 5000;
 
   // The request's commands into the slot's list (the feature made again when its size, mode or preset changes); false:
   // nothing recorded.
   bool Record(const Request& request, Slot* slot) {
-    WaitFor(slot->value);
+    // Its last use not proven done on a live device: its allocator still feeds the GPU, nothing is recorded.
+    if (!WaitForGpu(own_fence_.Get(), event_, slot->value, FENCE_TIMEOUT)) {
+      return Fail("Ray Reconstruction: its GPU work did not finish");
+    }
     ID3D12GraphicsCommandList* list = slot->list.Get();
     if (FAILED(slot->allocator->Reset()) || FAILED(list->Reset(slot->allocator.Get(), nullptr))) {
       return Fail("Ray Reconstruction: D3D12 stopped");
@@ -266,7 +267,10 @@ class RayReconstruction12 {
     if (feature_ == nullptr || width_ != request.width || height_ != request.height || output_width_ != request.output_width
         || output_height_ != request.output_height || preset_ != request.preset || create_flags_ != request.create_flags) {
       if (feature_ != nullptr) {
-        WaitFor(own_value_);
+        if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) {
+          list->Close();
+          return Fail("Ray Reconstruction: its GPU work did not finish");
+        }
         NVSDK_NGX_D3D12_ReleaseFeature(feature_);
         feature_ = nullptr;
       }

@@ -250,6 +250,9 @@ class FrameGeneration12 {
       return Fail("no D3D12 present queue");
     }
     present_queue_.Attach(static_cast<ID3D12CommandQueue*>(native_queue));
+    // Before the fence: a start that fails later leaves no fence without its event (WaitIdle).
+    event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (event_ == nullptr) return Fail("no completion event");
     if (FAILED(device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(copy_queue_.GetAddressOf())))
         || FAILED(device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(own_fence_.GetAddressOf())))) {
       return Fail("no D3D12 copy queue");
@@ -262,8 +265,6 @@ class FrameGeneration12 {
         return Fail("no D3D12 command lists");
       }
     }
-    event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (event_ == nullptr) StopGpuProcess("Total War helper: completion event creation failed\n");
     // The UI layer's pass (fg_ui.cs_6_0.hlsl): the frame and the HUD-less image in, the layer (and the debug view) out;
     // its size, threshold and whether the debug view is written. Without it the HUD is not recomposed.
     const std::array<D3D12_DESCRIPTOR_RANGE, 2> ranges = {{
@@ -400,8 +401,12 @@ class FrameGeneration12 {
     // The copy into the swap chain's back buffer and Streamline's copies of the inputs, after the addon's value.
     Slot& slot = slots_[next_slot_];
     next_slot_ = (next_slot_ + 1) % slots_.size();
-    WaitFor(slot.done);
-    // No recording: nothing is executed, the backend gives up (main.cpp: Auto's next; after a GPU reset a new device).
+    // The slot's last use not proven done on a live device (its allocator still feeds the GPU), or no recording:
+    // nothing is executed, the backend gives up (main.cpp: Auto's next; after a GPU reset a new device).
+    if (!WaitForGpu(own_fence_.Get(), event_, slot.done, FENCE_TIMEOUT)) {
+      SignalOnly(value);
+      return Fail("its GPU work did not finish");
+    }
     if (FAILED(slot.allocator->Reset()) || FAILED(slot.list->Reset(slot.allocator.Get(), nullptr))) {
       SignalOnly(value);
       return Fail("D3D12 stopped");
@@ -502,13 +507,13 @@ class FrameGeneration12 {
       SignalOnly(value);
       return Fail("D3D12 stopped");
     }
-    RequireGpuResult(copy_queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
+    copy_queue_->Wait(fence_.Get(), value);
     ID3D12CommandList* lists[] = {slot.list.Get()};
     copy_queue_->ExecuteCommandLists(1, lists);
-    RequireGpuResult(copy_queue_->Signal(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
+    copy_queue_->Signal(fence_.Get(), value + 1);
     slot.done = ++own_value_;
-    RequireGpuResult(copy_queue_->Signal(own_fence_.Get(), slot.done), "Total War helper: queue synchronization failed\n");
-    RequireGpuResult(present_queue_->Wait(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
+    copy_queue_->Signal(own_fence_.Get(), slot.done);
+    present_queue_->Wait(fence_.Get(), value + 1);
 
     UpdateStatus(inputs, shared->fg_hudless_valid != 0);
     // What to generate: off on frames without the inputs (menus, loading), keeping its memory meanwhile, and for the first
@@ -618,22 +623,18 @@ class FrameGeneration12 {
   // The copy queue's fence `value` signalled (the game never waits for nothing).
   void SignalOnly(uint64_t value) {
     if (!fence_ || !copy_queue_) return;
-    RequireGpuResult(copy_queue_->Wait(fence_.Get(), value), "Total War helper: queue synchronization failed\n");
-    RequireGpuResult(copy_queue_->Signal(fence_.Get(), value + 1), "Total War helper: queue synchronization failed\n");
-  }
-
-  void WaitFor(uint64_t value) {
-    RequireGpuCompletion(own_fence_.Get(), event_, value, FENCE_TIMEOUT);
+    copy_queue_->Wait(fence_.Get(), value);
+    copy_queue_->Signal(fence_.Get(), value + 1);
   }
 
   void WaitIdle() {
     if (!present_queue_ || !own_fence_) return;
     const uint64_t copied = ++own_value_;
-    RequireGpuResult(copy_queue_->Signal(own_fence_.Get(), copied), "Total War helper: queue synchronization failed\n");
-    RequireGpuResult(present_queue_->Wait(own_fence_.Get(), copied), "Total War helper: queue synchronization failed\n");
+    copy_queue_->Signal(own_fence_.Get(), copied);
+    present_queue_->Wait(own_fence_.Get(), copied);
     const uint64_t presented = ++own_value_;
-    RequireGpuResult(present_queue_->Signal(own_fence_.Get(), presented), "Total War helper: queue synchronization failed\n");
-    WaitFor(presented);
+    present_queue_->Signal(own_fence_.Get(), presented);
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, presented, FENCE_TIMEOUT, "frame generation (DLSS)");
   }
 
   // Frame generation's mode: `generated` frames per rendered frame (0: off; Dynamic: at most), with the HUD-less image
