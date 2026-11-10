@@ -2945,16 +2945,26 @@ void LogOnce(const char* how) {
 
 void OnMapBufferRegion(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t, reshade::api::map_access access, void** data) {
   if (!off.load(std::memory_order_relaxed) || offset != 0 || data == nullptr || *data == nullptr || access == reshade::api::map_access::read_only) return;
-  if (IsLighting(device, resource)) mapped.emplace_back(resource.handle, static_cast<uint8_t*>(*data));
+  if (!IsLighting(device, resource)) return;
+  // One pointer for a buffer: a map whose unmap never came on this thread (another thread's, a lost device) must not leave
+  // its old pointer for the next unmap to write through.
+  if (const auto found = std::ranges::find(mapped, resource.handle, &std::pair<uint64_t, uint8_t*>::first); found != mapped.end()) {
+    found->second = static_cast<uint8_t*>(*data);
+  } else {
+    mapped.emplace_back(resource.handle, static_cast<uint8_t*>(*data));
+  }
 }
 
 void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource resource) {
   const auto found = std::ranges::find(mapped, resource.handle, &std::pair<uint64_t, uint8_t*>::first);
   if (found == mapped.end()) return;
-  constexpr uint32_t GI_OFF = 0u;
-  std::memcpy(found->second + FLAG_OFFSET, &GI_OFF, sizeof(GI_OFF));
+  // Turned off since the map: the game's flag stays, and with it a pointer no map renewed is never written through.
+  if (off.load(std::memory_order_relaxed)) {
+    constexpr uint32_t GI_OFF = 0u;
+    std::memcpy(found->second + FLAG_OFFSET, &GI_OFF, sizeof(GI_OFF));
+    LogOnce("map");
+  }
   mapped.erase(found);
-  LogOnce("map");
 }
 
 // The game's update, whole or past the flag, replaced by the same with the flag 0 on its own context (no event).
