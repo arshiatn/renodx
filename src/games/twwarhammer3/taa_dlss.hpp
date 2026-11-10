@@ -1299,8 +1299,11 @@ inline std::array<UINT, 2> RenderSizeBelow100() {
 
 inline void Install() {
   // The motion fill, the water plane, the particles' shadow draw, fx_rigidtextureblend's 8 layers (its discard's weights are its
-  // b3's floats 44 to 55, its UVs' scale and offset its b2's first four): their constants in a trace.
-  twattila::frame_trace::Install(internal::SCREEN_SIZE / 4, internal::VIEWPORT / 4, {0xD409F9B5, 0xA5FC3927, 0x379B000C, 0x1405BFB4});
+  // b3's floats 44 to 55, its UVs' scale and offset its b2's first four): their constants in a trace. The shadow maps' size where
+  // the game keeps it: the sun's mask (b1's first four floats), the static maps' copy (b0's floats 8 to 11), the two half-size
+  // copies, and a tree's and a unit's first draw into the maps (b0's rows 10 to 13: that map's matrix).
+  twattila::frame_trace::Install(internal::SCREEN_SIZE / 4, internal::VIEWPORT / 4,
+                                 {0xD409F9B5, 0xA5FC3927, 0x379B000C, 0x1405BFB4, 0xE6BCBA8A, 0xC883E3FA, 0x800F7F7F, 0xD5DCC85F, 0xD75E6E2B, 0xBADA4FE3});
   twattila::reflex::Install();
   for (const uint32_t shader_hash : internal::TAA_SHADERS) {
     renodx::utils::command_action::Register(internal::OnTaa, {

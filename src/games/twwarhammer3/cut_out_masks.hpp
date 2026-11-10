@@ -17,7 +17,11 @@ namespace twwarhammer3 {
 // beside the dither fade, the sample and the test at the top level, the alpha untouched between; tools' wh3_batch6/p2/alpha_strict.py).
 inline float unseen_cut_outs_row = 0.f;
 
-inline constexpr std::array<twattila::rt_scene::PixelMask, 617> CUT_OUT_MASKS = {{
+// The row for units drawn into the shadow maps alone (batch 6 P4: fx_weighted's shadow pixel shader B2358145 tests t0's alpha at 0.5 at
+// TEXCOORD1, by its bytes; drawn with BADA4FE3 and 46E626D5 in the traces).
+inline float cascade_unit_cut_outs_row = 0.f;
+
+inline constexpr std::array<twattila::rt_scene::PixelMask, 618> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x007C7E41, .slot = 7, .uv_semantic_index = 1},
     {.pixel_shader = 0x030A74E4, .slot = 9, .uv_semantic_index = 1},
     {.pixel_shader = 0x0362ADF0, .slot = 6, .uv_semantic_index = 1},
@@ -453,6 +457,7 @@ inline constexpr std::array<twattila::rt_scene::PixelMask, 617> CUT_OUT_MASKS = 
     {.pixel_shader = 0xB08CC336, .slot = 7, .uv_semantic_index = 2},
     {.pixel_shader = 0xB0A4E5B8, .slot = 1, .uv_semantic_index = 2},
     {.pixel_shader = 0xB134DDFE, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0xB2358145, .slot = 0, .uv_semantic_index = 1, .row = &cascade_unit_cut_outs_row},
     {.pixel_shader = 0xB26805F1, .slot = 10, .uv_semantic_index = 1},
     {.pixel_shader = 0xB2BB7119, .slot = 12, .uv_semantic_index = 2},
     {.pixel_shader = 0xB392F721, .slot = 7, .uv_semantic_index = 1},

@@ -193,6 +193,9 @@ constexpr uint32_t RT_AO_REBLUR = 1u << 24;
 constexpr uint32_t RT_START_PAST = 1u << 25;
 // Banners Without Self-Shadows (v29): cloth and sails don't shade themselves in the sun's rays (rt_trace.cs_6_5.hlsl SunRay). Helpers before 88 ignore it.
 constexpr uint32_t RT_SHEETS_UNSELFED = 1u << 26;
+// One Level of Detail Out of View (helpers before 98 ignore it): a kept placed instance goes when the frame placed another mesh where it
+// stands and not it (rt_place.cs_6_5.hlsl PLACE_ONE_AT_A_PLACE): the game draws another level of detail of the thing, or its ruin.
+constexpr uint32_t RT_ONE_AT_A_PLACE = 1u << 27;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;

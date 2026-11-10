@@ -27,6 +27,7 @@
 
 #include <embed/shaders.h>
 #include "./rt_outside_view_gs.h"
+#include "./rt_outside_view_uv_gs.h"
 #include "./rt_terrain_keep_gs.h"
 #include "./rt_terrain_outside_hs.h"
 
@@ -1363,6 +1364,9 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
       if (SUCCEEDED(native->Map(copy.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
         const auto* splits = reinterpret_cast<const float*>(static_cast<const uint8_t*>(mapped.pData) + 560);
         renodx::utils::log::i(std::format("[Warhammer III] Cascades' split distances: {:g} {:g} {:g} {:g} {:g}.", splits[0], splits[4], splits[8], splits[12], splits[16]));
+        // g_vHardShadowBufferSize, the shared shadow constants' first four floats: the maps' size and one over it.
+        const auto* size = static_cast<const float*>(mapped.pData);
+        renodx::utils::log::i(std::format("[Warhammer III] Shadow map sizes: the shared shadow constants' {:g} {:g} {:g} {:g}.", size[0], size[1], size[2], size[3]));
         native->Unmap(copy.Get(), 0);
       }
     }
@@ -2792,6 +2796,8 @@ float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
 float rays_units_out_of_view_row = 1.f;
 float rays_skip_cascade_trees_row = 0.f;
+float rays_skip_cascades_row = 0.f;
+float rays_one_at_a_place_row = 0.f;
 float rays_banner_light_row = 0.f;
 float rays_branch_cut_outs_row = 0.f;
 float rays_faded_parts_row = 0.f;
@@ -2799,9 +2805,21 @@ float rays_trunks_as_drawn_row = 0.f;
 // The trees' draws into the cascades: 52 M of the shadow pass's indices on the replay's first view, 36 M in the siege (traces c1a, bm_siege).
 // Only fog, forward passes and the UI read the maps under Rays Replace Shadow Maps, the sun's shadow comes from rays. fx_rigidbranch_v3,
 // fx_rigidleaf_v3; drawn in no other target in any trace (b5_census: no render target).
-constexpr std::array<uint32_t, 4> CASCADE_TREE_SHADERS = {0xD75E6E2B, 0xAF3F74B2, 0x8F975E16, 0x2327ED2B};
-constexpr auto OnCascadeTree = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (rays_skip_cascade_trees_row == 0.f || traced_lights::rays_replace_maps_row == 0.f || !twattila::rt_scene::SunShadowsTraced()) return {};
+// Every other caster of the shadow pass after them (batch 6 P4, the 93 traces' census): far tree cards, standing and moving rigid meshes,
+// vertexpush, flags, units, tentacles. With the sun's mask from rays and the fog's shadows from rays (Fog Shadows: battlefog02 and 03
+// read no map then), who still samples the maps, by their bytes and the traces: the water (2076D289, DFA2AEA2, 034010C4), lit effect
+// meshes (9EA8D889), the particles' fog (VS 652893D4) and, through D5DCC85F's depth copy, the particles' shadows (379B000C / 5B535BA0,
+// which the rays' mask still reads at t1). Row Skip the Shadow Maps: those lose the sun's shadow.
+constexpr std::array<uint32_t, 13> CASCADE_CASTER_SHADERS = {0xD75E6E2B, 0xAF3F74B2, 0x8F975E16, 0x2327ED2B, 0xFA844DB5, 0x6EAC8CE5, 0x7852254A,
+                                                             0x53C5A7EC, 0x2B938A0C, 0xBADA4FE3, 0x46E626D5, 0x3434CE02, 0x4E83D6E8};
+constexpr size_t CASCADE_TREE_SHADERS = 4;  // the first of them
+std::atomic_bool cascade_skip_logged = false;
+constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const bool tree = static_cast<size_t>(&command.template GetCallbackData<uint32_t>() - CASCADE_CASTER_SHADERS.data()) < CASCADE_TREE_SHADERS;
+  if ((rays_skip_cascades_row == 0.f && (rays_skip_cascade_trees_row == 0.f || !tree)) || traced_lights::rays_replace_maps_row == 0.f
+      || !twattila::rt_scene::SunShadowsTraced()) {
+    return {};
+  }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
@@ -2815,7 +2833,56 @@ constexpr auto OnCascadeTree = []<typename Context>(Context& command) -> renodx:
   D3D11_TEXTURE2D_DESC depth_desc = {};
   depth_texture->GetDesc(&depth_desc);
   if (depth_desc.ArraySize != 4) return {};
+  if (!tree && !cascade_skip_logged.exchange(true, std::memory_order_relaxed)) {
+    renodx::utils::log::i(std::format("[Warhammer III] First run: a draw into the shadow maps skipped, vs {:08X}, the maps {}x{}.",
+                                      command.template GetCallbackData<uint32_t>(), depth_desc.Width, depth_desc.Height));
+  }
   return {.bypass = true};
+};
+
+// Shadow Map Size above the game's highest needs three numbers no trace holds (batch 6 P4): the size in the shared shadow constants
+// (the sun's mask's line), the static maps' copy's (C883E3FA's static_shadowmap_CB: current_size and buffer_size at bytes 32 and 40;
+// it draws only when the game renews its static maps) and what the two half-size copies read and write (800F7F7F, D5DCC85F: `x 2` in
+// their code, so a source twice their target). Once each, at their first draw.
+constexpr std::array<uint32_t, 3> SHADOW_SIZE_SHADERS = {0xC883E3FA, 0x800F7F7F, 0xD5DCC85F};
+std::array<std::atomic_bool, SHADOW_SIZE_SHADERS.size()> shadow_size_logged = {};
+constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const auto& hash = command.template GetCallbackData<uint32_t>();
+  if (shadow_size_logged[&hash - SHADOW_SIZE_SHADERS.data()].exchange(true, std::memory_order_relaxed)) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  const auto size_of = [](ID3D11View* view) {
+    if (view == nullptr) return std::string("none");
+    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+    view->GetResource(resource.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(resource.As(&texture))) return std::string("not a texture");
+    D3D11_TEXTURE2D_DESC desc = {};
+    texture->GetDesc(&desc);
+    return std::format("{}x{} [{}] format {}", desc.Width, desc.Height, desc.ArraySize, static_cast<int>(desc.Format));
+  };
+  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> colour;
+  Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth;
+  native->OMGetRenderTargets(1, colour.GetAddressOf(), depth.GetAddressOf());
+  std::array<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>, 2> inputs;
+  native->PSGetShaderResources(0, 1, inputs[0].GetAddressOf());
+  native->PSGetShaderResources(1, 1, inputs[1].GetAddressOf());
+  UINT viewports = 1;
+  D3D11_VIEWPORT viewport = {};
+  native->RSGetViewports(&viewports, &viewport);
+  std::string constants;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> buffer;
+  native->PSGetConstantBuffers(0, 1, buffer.GetAddressOf());
+  if (hash == 0xC883E3FA && buffer) {
+    for (const float value : twattila::frame_trace::ReadBuffer<float>(native, buffer.Get(), 0, 12)) {
+      constants += std::format(" {:g}", value);
+    }
+  }
+  renodx::utils::log::i(std::format("[Warhammer III] Shadow map sizes: ps {:08X}: colour {}, depth {}, viewport {:g}x{:g}, t0 {}, t1 {}{}{}.", hash,
+                                    size_of(colour.Get()), size_of(depth.Get()), viewport.Width, viewport.Height, size_of(inputs[0].Get()),
+                                    size_of(inputs[1].Get()), (constants.empty() ? "" : ", b0's first 12 floats"), constants));
+  return {};
 };
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
@@ -3006,8 +3073,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x783383C6, .capture_shader = __rt_capture_leaf, .rows_shader = __rt_rows_tree, .second_rows = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1, .key_family = 0x783383C6},
     // fx_weighted in the shadow pass (o0 = cb0[10-13] x the world position, o2 that position, by their bytes): drawn for casters whose
     // shadow falls in view, behind the camera too (trace c1a, bm_siege: depth 4096x4096 [4], PS none, 642CCC99, B2358145). Solid, as a unit without its mask.
-    {.hash = 0xBADA4FE3, .dynamic = true, .cascade_keep = __rt_outside_view},
-    {.hash = 0x46E626D5, .dynamic = true, .cascade_keep = __rt_outside_view},
+    // Cut out by the shadow pass's own mask with the row (B2358145: t0's alpha at TEXCOORD1, cut_out_masks), their UV through the second shader.
+    {.hash = 0xBADA4FE3, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1, .cascade_keep = __rt_outside_view, .cascade_keep_uv = __rt_outside_view_uv},
+    {.hash = 0x46E626D5, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1, .cascade_keep = __rt_outside_view, .cascade_keep_uv = __rt_outside_view_uv},
     // Every other caster family in the shadow pass (traces c1a, bm_siege, bm_gates, bm_battle, c5). Placed from their rows: a mesh's BLAS once, shared with the main pass's by key_family when
     // the main pass has it; 61 M tree indices a frame are some hundred BLASes and their rows. Their rows leave out what's in the view. Same position math as their main pass's, by their bytes.
     // Rigid, standing (no last rows, stride 120); shrubs, rocks, walls, props. Masks: 10BB9F8C, 8071B918, 6CBF7D90 read t0's alpha at TEXCOORD0; E55FDA7B and none are solid.
@@ -3225,6 +3293,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Under rays and maps together the game's cascades already darken what these would.
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
+  rt_settings.one_at_a_place = rt_settings.casters_out_of_view && rays_one_at_a_place_row != 0.f;
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -3763,6 +3832,9 @@ void ConfigureAddon() {
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
+                                             .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .rays_one_at_a_place = &rays_one_at_a_place_row,
+                                             .rays_cascade_unit_cut_outs = &twwarhammer3::cascade_unit_cut_outs_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_branch_cut_outs = &rays_branch_cut_outs_row,
                                              .rays_unseen_cut_outs = &twwarhammer3::unseen_cut_outs_row,
@@ -3921,9 +3993,13 @@ bool AttachAddon() {
   }
   reshade::register_event<reshade::addon_event::destroy_device>(sun_ao::OnDestroyDevice);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
-  for (const uint32_t shader_hash : CASCADE_TREE_SHADERS) {
+  for (const uint32_t& shader_hash : CASCADE_CASTER_SHADERS) {
     renodx::utils::command_action::Register(
-        OnCascadeTree, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+        OnCascadeCaster, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader_hash);
+  }
+  for (const uint32_t& shader_hash : SHADOW_SIZE_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnShadowSizeDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader_hash);
   }
 
   twwarhammer3::taa_dlss::Install();
@@ -3998,7 +4074,8 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(traced_lights::OnDraw);
   renodx::utils::command_action::Unregister(reflections::OnFogLight);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
-  renodx::utils::command_action::Unregister(OnCascadeTree);
+  renodx::utils::command_action::Unregister(OnCascadeCaster);
+  renodx::utils::command_action::Unregister(OnShadowSizeDraw);
   twwarhammer3::object_motion::Uninstall();
   twwarhammer3::vfx_particles::Uninstall();
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);

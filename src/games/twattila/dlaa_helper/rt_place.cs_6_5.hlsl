@@ -54,6 +54,8 @@ static const uint MODE_KEPT = 2u;
 static const uint PLACE_FOLIAGE = 1u;  // alpha-tested: not forced opaque
 static const uint PLACE_HIDDEN = 2u;   // mask 0 while drawn
 static const uint PLACE_GRASS = 4u;    // GRASS_INSTANCE (most rays pass it), kept GRASS_KEPT_FRAMES off-screen
+// In `sway_flags` beside rt_sway.hlsli's (dlaa_bridge.h RT_ONE_AT_A_PLACE): a kept instance goes where the frame placed another mesh.
+static const uint PLACE_ONE_AT_A_PLACE = 4u;
 static const uint INSTANCE_CULL_DISABLE = 1u;  // D3D12_RAYTRACING_INSTANCE_FLAG_*
 static const uint INSTANCE_FORCE_OPAQUE = 4u;
 // Instance masks (rt_d3d12.hpp): a solid mesh's, a leaves' mesh's (alpha-tested; Light Through Leaves counts them apart),
@@ -116,6 +118,11 @@ uint PlaceKey(uint record, float3 position, bool grass) {
 // Past the records' 24 bits: never a PlaceKey's record.
 uint MovedKey(uint record, int2 cell) {
   return CellKey(record | 0x80000000u, int3(cell.x, 0, cell.y));
+}
+
+// Where anything but grass was placed this frame, in 5 cm cells: never a PlaceKey's or a MovedKey's record.
+uint ThingKey(int3 cell) {
+  return CellKey(0xC0000000u, cell);
 }
 
 bool InTable(uint key) {
@@ -188,9 +195,21 @@ void main(uint3 id : SV_DispatchThreadID) {
     // Its rows place the BLAS (its first instance in world space): its origin there, the build's, where they put it.
     const float4 origin = float4(build_rows[record * 3u].w, build_rows[record * 3u + 1u].w, build_rows[record * 3u + 2u].w, 1.f);
     const float4 place = float4(dot(asfloat(row0), origin), dot(asfloat(row1), origin), dot(asfloat(row2), origin), 1.f);
-    const bool gone = ((blas.x & 4u) == 0u || (blas.x & 8u) != 0u || ((frame - tail.y) & FRAME_MASK) > KEPT_IN_VIEW_FRAMES) && any(view_projection[3] != 0.f)
+    // The frame drew none of its mesh, or placed all of it: not placed again means not drawn there.
+    const bool undrawn = (blas.x & 4u) == 0u || (blas.x & 8u) != 0u;
+    const bool gone = (undrawn || ((frame - tail.y) & FRAME_MASK) > KEPT_IN_VIEW_FRAMES) && any(view_projection[3] != 0.f)
                       && NearView(place, view_projection[0], view_projection[1], view_projection[3], 0.f);
-    if ((grass && !GrassInView(place.xyz)) || gone || !Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w)), grass))) return;
+    if ((grass && !GrassInView(place.xyz)) || gone) return;
+    // Another mesh placed where it stood (within 2.5 cm) while it wasn't: the game draws another level of detail of the thing there, or
+    // what is left of it. Off-screen nothing else says so, and both stayed until the scene ended.
+    if ((sway_flags & PLACE_ONE_AT_A_PLACE) != 0u && !grass && undrawn) {
+      const int3 cell = int3(floor(place.xyz * 20.f - 0.5f));
+      [loop]
+      for (uint corner = 0u; corner < 8u; ++corner) {
+        if (InTable(ThingKey(cell + int3(corner & 1u, (corner >> 1) & 1u, corner >> 2)))) return;
+      }
+    }
+    if (!Insert(PlaceKey(record, asfloat(uint3(row0.w, row1.w, row2.w)), grass))) return;
     if (recent_frames > KEPT_LONG_FRAMES && !grass && ((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u && ((frame - tail.y) & FRAME_MASK) <= KEPT_IN_VIEW_FRAMES) {
       const int2 cell = int2(floor(place.xz / MOVED_CELL_METRES));
       [loop]
@@ -248,6 +267,9 @@ void main(uint3 id : SV_DispatchThreadID) {
   }
   if (recent_frames > KEPT_LONG_FRAMES && (job.w & (PLACE_GRASS | PLACE_FOLIAGE)) == 0u) {
     Insert(MovedKey(record, int2(floor(float2(now0.w, now2.w) / MOVED_CELL_METRES))));
+  }
+  if ((sway_flags & PLACE_ONE_AT_A_PLACE) != 0u && (job.w & PLACE_GRASS) == 0u) {
+    Insert(ThingKey(int3(floor(float3(now0.w, now1.w, now2.w) * 20.f))));
   }
   // InstanceID (the record) and mask (its group; 0 hidden); the frame drawn and the flags; the BLAS (its moving bit
   // cleared).

@@ -130,6 +130,9 @@ struct Bindings {
   float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
+  float* rays_skip_cascades = nullptr;  // Under rays_replace_maps: nothing drawn into the shadow maps; null: no such row
+  float* rays_one_at_a_place = nullptr;  // A kept caster goes where another mesh is placed (dlaa_bridge.h RT_ONE_AT_A_PLACE); null: no such row
+  float* rays_cascade_unit_cut_outs = nullptr;  // Units from the shadow maps' draws cut out by their mask; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   float* rays_branch_cut_outs = nullptr;  // Trunks and branches cut out in the rays as drawn; null: no such row
   float* rays_unseen_cut_outs = nullptr;  // Cut-out masks no trace has shown drawn (rt_core.hpp PixelMask::row); null: no such row
@@ -765,8 +768,51 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Skip Trees in Shadow Maps (Experimental)",
           .section = section,
-          .tooltip = "With Rays Replace Shadow Maps: faster in forests. Fog loses the trees' shadows.",
+          .tooltip = "With Rays Replace Shadow Maps: faster in forests. Water, smoke and lit effects lose the trees' shadows;\n"
+                     "the fog too without Fog Shadows.",
           .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_skip_cascades != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedSkipCascades",
+          .binding = b.rays_skip_cascades,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Skip the Shadow Maps (Experimental)",
+          .section = section,
+          .tooltip = "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
+                     "buildings. Water, smoke and lit effects lose the sun's shadow; the fog too without Fog Shadows.",
+          .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_one_at_a_place != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedOneAtAPlace",
+          .binding = b.rays_one_at_a_place,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "One Model per Place Out of View (Experimental)",
+          .section = section,
+          .tooltip = "With Shadow Casters Out of View: when the game swaps a model behind the camera for a simpler one or for its\n"
+                     "ruin, the old one stops casting.",
+          .is_enabled = [casters = b.rays_units_out_of_view] { return casters == nullptr || *casters != 0.f; },
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_cascade_unit_cut_outs != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedCascadeUnitCutOuts",
+          .binding = b.rays_cascade_unit_cut_outs,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Cut-outs on Units Out of View (Experimental)",
+          .section = section,
+          .tooltip = "With Shadow Casters Out of View: units behind the camera cast with the holes the game cuts in them\n"
+                     "(capes, feathers, manes), not as solid shapes.",
+          .is_enabled = [casters = b.rays_units_out_of_view] { return casters == nullptr || *casters != 0.f; },
           .is_visible = more_rays,
       });
     }

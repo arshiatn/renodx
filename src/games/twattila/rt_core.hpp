@@ -168,6 +168,7 @@ struct Settings {
   bool terrain_outside_view = false;
   // Casters out of the view from the shadow maps' draws (SceneShader::cascade_keep).
   bool casters_out_of_view = false;
+  bool one_at_a_place = false;  // dlaa_bridge.h RT_ONE_AT_A_PLACE
 
   bool operator==(const Settings&) const = default;
 };
@@ -242,6 +243,8 @@ struct SceneShader {
   // instead, by its rows (cb0[10-13] is the main view, all 0 for a new mesh's first rows); the capture and rows shaders read no
   // state but the draw's vertex buffers (the game's shadow pass binds other resources than its main pass).
   std::span<const uint8_t> cascade_keep;
+  // The same with the draw's UV passed on (uv_semantic), for a cascade draw cut out by its pixel shader's mask (cut_out_masks).
+  std::span<const uint8_t> cascade_keep_uv;
   // A mesh's identity in place of `hash`: shaders that draw one mesh (the main pass's and the shadow pass's) share its BLAS and its
   // instances (0: its hash).
   uint32_t key_family = 0;
@@ -1576,7 +1579,10 @@ void Capture(Context& command, const SceneShader& shader) {
       }};
       constexpr std::array<UINT, 2> STRIDES = {16, 8};
       const UINT outputs = clip_uv ? 2 : 1;
-      std::span<const uint8_t> streamed_code = (cascade_draw ? shader.cascade_keep : shader.tessellated_keep);
+      std::span<const uint8_t> streamed_code = shader.tessellated_keep;
+      if (cascade_draw) {
+        streamed_code = (clip_uv ? shader.cascade_keep_uv : shader.cascade_keep);
+      }
       if (streamed_code.empty() && code != game_code.end()) streamed_code = code->second;
       if (streamed_code.empty()
           || FAILED(device->CreateGeometryShaderWithStreamOutput(streamed_code.data(), streamed_code.size(), entries.data(), outputs,
@@ -2390,6 +2396,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | ((runtime.settings.ao_reblur && dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_AO_REBLUR : 0u)
                | (runtime.settings.start_past ? dlaa_bridge::RT_START_PAST : 0u)
                | (runtime.settings.sheets_unselfed ? dlaa_bridge::RT_SHEETS_UNSELFED : 0u)
+               | (runtime.settings.one_at_a_place ? dlaa_bridge::RT_ONE_AT_A_PLACE : 0u)
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)

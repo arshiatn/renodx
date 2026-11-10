@@ -6,6 +6,18 @@ Failed depth-level texture/view creation now releases all partial views and retr
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer3.addon64`.
 
+### Casters out of view and the shadow maps (WH3 batch 6 P4, 2026-11-10; not run in game; needs **helper98**, bridge v30)
+
+Three rows under Shadows' More Options, all Experimental and off; with all off nothing changes but two log lines and the Skip Trees tooltip. An older helper ignores the new flag.
+
+- **One Model per Place Out of View (`RayTracedOneAtAPlace`):** a kept caster behind the camera goes when the frame placed another mesh where it stands (within 2.5 cm) and its own mesh was not drawn, or was placed whole without it: the game swapped the level of detail, or drew the ruin. Before, both stayed until the scene ended. Helper: `rt_place.cs_6_5.hlsl` PLACE_ONE_AT_A_PLACE, flag `RT_ONE_AT_A_PLACE`. Not covered: a thing that moved away or vanished with nothing drawn in its place (it stays until seen), and what the shadow pass never draws.
+- **Cut-outs on Units Out of View (`RayTracedCascadeUnitCutOuts`):** units captured from the shadow pass (BADA4FE3, 46E626D5) take the mask the game's own shadow pixel shader tests (B2358145: t0's alpha at 0.5 at TEXCOORD1, by its bytes), their UV streamed through `rt_outside_view_uv.gs_5_0.hlsl`. Off: solid, as before. Units' weapons and shields in the shadow pass are 53C5A7EC's draws, placed since v34.
+- **Skip the Shadow Maps (`RayTracedSkipCascades`):** with Rays Replace Shadow Maps no caster is drawn into the cascades (13 vertex shaders; the units' and trees' capture for the rays runs before the skip). Who still reads the maps then, by bytes and 93 traces: water (2076D289, DFA2AEA2, 034010C4), lit effect meshes (9EA8D889), the particles' fog (VS 652893D4) and the particles' shadows through D5DCC85F's depth copy: they lose the sun's shadow. The fog reads none with Fog Shadows on (battlefog02 / 03 take the rays' texture). 454 pixel shaders of the dump can read the maps; 7 were ever seen drawn. Skip Trees in Shadow Maps stays as the smaller step.
+- **Hills Out of View** does nothing for the sun's shadow by construction: the hills' shadow is the game's terrain shadow map (from the height map, not from the view), which the rays' mask keeps. The row only feeds AO, Light Bounce and reflections, as its tooltip says.
+- **Shadow Map Size:** no row. Log lines `Shadow map sizes:` print what the game keeps (the shared shadow constants' first four floats; C883E3FA's b0 when the static maps are renewed; 800F7F7F's and D5DCC85F's targets, viewports and inputs), and a Frame Trace lists those shaders' constants.
+
+Build: `cmake --build build --config Release --target renodx-twwarhammer3.addon64`; helper: `src\games\twattila\dlaa_helper\build.ps1 build\tw_dlaa_helper98`; `bin\fxc.exe` line in `rt_outside_view_uv.gs_5_0.hlsl` after a change to it. Test in game: `tools/tw/wh3_batch6/run_requests.md` P4-1 to P4-8.
+
 ### Reflections' light and fog (WH3 batch 6 P3, 2026-11-10; not run in game; needs **helper97**, bridge v30)
 
 Two rows under Reflections and Water, both Experimental and off; with both off nothing changes. The helper is new (build/tw_dlaa_helper97): ship it with the addon. An older helper ignores the fog's flag (no fog in reflections), nothing else differs; the bridge's block did not change.
