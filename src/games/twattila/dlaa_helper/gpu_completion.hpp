@@ -5,9 +5,27 @@
 #pragma once
 
 #include <windows.h>
+
 #include <cstdint>
+#ifdef RENODX_TW_TEST_GPU_WAITS
+#include <array>
+#include <cstdlib>
+#endif
 
 namespace twattila::dlaa_helper {
+
+#ifdef RENODX_TW_TEST_GPU_WAITS
+// A test build of the helper only (build.ps1 run with CL=-DRENODX_TW_TEST_GPU_WAITS, never shipped): `variable`=<n> in
+// the environment makes every n-th wait of its kind in this process count as not done in time on a live device, which
+// no harness can bring about on demand. RENODX_TW_TEST_GPU_TIMEOUT: WaitForGpu (a request's wait; one before a release
+// then sees the fence done and goes on). RENODX_TW_TEST_GPU_RELEASE_STALL: WaitForGpuBeforeRelease, to its end.
+inline bool TestWaitFails(const wchar_t* variable, uint32_t* waits) {
+  std::array<wchar_t, 16> value = {};
+  if (GetEnvironmentVariableW(variable, value.data(), static_cast<DWORD>(value.size())) == 0) return false;
+  const uint32_t every = std::wcstoul(value.data(), nullptr, 10);
+  return every != 0 && ++*waits % every == 0;
+}
+#endif
 
 // True: nothing submitted up to `value` can still run. The fence passed it, or its device was removed (the fence then
 // reads all ones: a GPU reset, and the owner makes a new device), or there is no fence (nothing was ever submitted).
@@ -16,6 +34,9 @@ namespace twattila::dlaa_helper {
 // and removed-device controls in the test.
 template <typename Fence>
 bool WaitForGpu(Fence* fence, HANDLE event, uint64_t value, DWORD timeout) {
+#ifdef RENODX_TW_TEST_GPU_WAITS
+  if (static uint32_t waits = 0; fence != nullptr && TestWaitFails(L"RENODX_TW_TEST_GPU_TIMEOUT", &waits)) return false;
+#endif
   if (fence == nullptr || fence->GetCompletedValue() >= value) return true;
   if (event == nullptr) return false;
   const ULONGLONG started = GetTickCount64();
@@ -38,6 +59,11 @@ inline void (*unproven_gpu_completion)(const char* owner, uint64_t completed, ui
 // The wait before an owner frees what its submitted work uses (Close, a feature's release, a destructor).
 template <typename Fence>
 void WaitForGpuBeforeRelease(Fence* fence, HANDLE event, uint64_t value, DWORD timeout, const char* owner) {
+#ifdef RENODX_TW_TEST_GPU_WAITS
+  if (static uint32_t releases = 0; unproven_gpu_completion != nullptr && TestWaitFails(L"RENODX_TW_TEST_GPU_RELEASE_STALL", &releases)) {
+    unproven_gpu_completion(owner, 0, value);
+  }
+#endif
   if (WaitForGpu(fence, event, value, timeout) || unproven_gpu_completion == nullptr) return;
   // Done or removed meanwhile: nothing to stop for.
   if (const uint64_t completed = fence->GetCompletedValue(); completed < value) {
