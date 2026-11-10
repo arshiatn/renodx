@@ -3640,10 +3640,7 @@ void ConfigureAddon() {
   // Off here: night and fire in the fog have had no one's eye yet.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedLightGlow") setting->default_value = 0.f;
-    if (setting->key == "AntiAliasingDlaaPreset") {
-      setting->labels.emplace_back("Auto");
-      setting->default_value = 3.f;
-    }
+    if (setting->key == "AntiAliasingDlaaPreset") setting->labels.emplace_back("Auto");
     // Their shared rule reads dlss_mode, which no row sets here: the scale is the game's float (upscaling_mode_row).
     if (setting->key == "AntiAliasingTextureLodBias" || setting->key == "AntiAliasingEffectsAtOutput") {
       setting->is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
