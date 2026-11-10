@@ -1,5 +1,9 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### Helper97: fog on a reflection ray's leg (WH3 batch 6 P3, 2026-11-10; not run in game)
+
+The helper's reflections can put a game's fog between a pixel and what its ray met (`rt_leg_fog.hlsli`, flag `RT_REFLECTIONS_FOG`, numbers in the sun texture's texels 9-13). Attila never sets the flag and writes no numbers: its reflections are the same. Bridge v30 as before; the newest helper is build/tw_dlaa_helper97 and ships with the addons. Checked without the game: all_modes.sh on helper97 (wh3_batch6/reports/all_modes_P3.txt), mode `reflect_fog_unasked` (numbers written, flag not set: nothing changes). Build: `cmake --build build32 --config Release --target renodx-twattila.addon32`.
+
 ### Sprite soldiers' captures last (WH3 batch 6 P2, 2026-11-10; not run in game)
 
 Sprite Soldier Shadows' cards go to the instance only the sun's rays meet when they are the last of a frame's captures (the helper's rule). A capture drawn after them kept them among the units, where the ambient's, lights' and paths' rays met them too. `rt_core.hpp` orders a frame's captures so they are always last. No helper change.
