@@ -153,7 +153,10 @@ int main() {
   auto* native_other=reinterpret_cast<ID3D11SamplerState*>(other_original.handle);
   commands.native->PSSetSamplers(0,1,&native_original);other.native->PSSetSamplers(0,1,&native_other);
   lod::SetMainView([] {return true;});lod::SetBias(-1.f);
+  lod::SetTracking(&queue,false);
+  Check(lod::internal::device_slots.size()==0 && lod::internal::tracking_devices.load()==0,"an untracked present makes no slots");
   lod::SetTracking(&queue,true);lod::SetTracking(&other_queue,true);
+  Check(lod::internal::tracking_devices.load()==2,"two tracking devices counted");
   lod::OnBindViewports(&commands,0,0,nullptr);lod::OnBindViewports(&other,0,0,nullptr);
   uint64_t clone=0;
   lod::internal::samplers.if_contains(original.handle,[&](const auto& entry){clone=entry.second.clone.handle;});
@@ -167,11 +170,13 @@ int main() {
   lod::SetTracking(&queue,false);
   Microsoft::WRL::ComPtr<ID3D11SamplerState> bound;commands.native->PSGetSamplers(0,1,&bound);
   Check(bound.Get()==native_original,"tracking off restores original");bound.Reset();
+  Check(lod::internal::tracking_devices.load()==1,"tracking off leaves the other device counted");
   commands.native->ClearState();
   lod::OnDestroyDevice(&first);
   Check(lod::SamplerCount()==1 && lod::internal::device_slots.size()==1,"device cleanup leaves other device intact");
   lod::Shutdown();
   Check(lod::SamplerCount()==0 && lod::internal::device_slots.size()==0,"shutdown clears all device caches");
+  Check(lod::internal::tracking_devices.load()==0,"shutdown leaves no tracking device: events return on the count");
   other.native->PSGetSamplers(0,1,&bound);Check(bound.Get()==native_other,"shutdown restores other device original");bound.Reset();
   commands.native->ClearState();other.native->ClearState();
   puts("PASS: original ownership, duplicate identity, two-device isolation, tracking restore and shutdown cleanup");

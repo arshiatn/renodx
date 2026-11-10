@@ -34,7 +34,8 @@
 // unbiased sampler, ATN): the game's samplers are tracked per slot and bound again, as clones or as the game's, when
 // the main view starts or ends (OnBindViewports, after the viewport scaling's).
 // v29: recorded only while the next frames can be biased (SetTracking at present: a render scale with the bias on),
-// starting from the immediate context's current samplers; otherwise its events return before any lock.
+// starting from the immediate context's current samplers; otherwise its events return on one atomic
+// (tracking_devices), before any lookup or lock.
 namespace twattila::texture_lod_bias {
 
 namespace internal {
@@ -63,7 +64,11 @@ struct Slots {
   std::array<uint64_t, SLOTS> bound = {};
   std::atomic<bool> biased = false;  // the last binding's state: bias and main view (read without the lock first)
 };
-static renodx::utils::data::ParallelFlatHashMap<reshade::api::device*, std::shared_ptr<Slots>, std::shared_mutex> device_slots;
+// Never destroyed: a game that exits with its device alive would otherwise release D3D11 samplers from this
+// module's static destructors, under the loader lock. CleanupDevice empties it on every other path.
+static auto& device_slots = *new renodx::utils::data::ParallelFlatHashMap<reshade::api::device*, std::shared_ptr<Slots>, std::shared_mutex>();
+// Devices whose Slots are tracking: 0 is the events' and the present's early return (no lookup, no lock).
+static std::atomic<uint32_t> tracking_devices = 0;
 
 inline std::shared_ptr<Slots> SlotsFor(reshade::api::device* device, bool create = true) {
   std::shared_ptr<Slots> result;
@@ -124,7 +129,7 @@ inline void BindSlots(reshade::api::command_list* cmd_list, uint32_t first, uint
   std::array<ID3D11SamplerState*, SLOTS> binding = {};
   bool changed = false;
   for (uint32_t slot = first; slot < first + count; ++slot) {
-    uint64_t sampler = reinterpret_cast<uint64_t>(slots.game[slot].Get());
+    uint64_t sampler = reinterpret_cast<uintptr_t>(slots.game[slot].Get());
     if (biased && sampler != 0u) {
       if (const uint64_t clone = BiasedClone(cmd_list->get_device(), sampler, current_bias); clone != 0u) {
         sampler = clone;
@@ -170,8 +175,10 @@ inline size_t SamplerCount() {
 // ones (it skips binding what a slot already holds); stopping, the game's are bound again if clones are.
 inline void SetTracking(reshade::api::command_queue* queue, bool tracking) {
   if (queue->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  if (!tracking && internal::tracking_devices.load(std::memory_order_relaxed) == 0u) return;
   reshade::api::command_list* cmd_list = queue->get_immediate_command_list();
-  auto state = internal::SlotsFor(queue->get_device());
+  auto state = internal::SlotsFor(queue->get_device(), tracking);
+  if (!state) return;
   std::array<Microsoft::WRL::ComPtr<ID3D11SamplerState>, internal::SLOTS> retired;
   const std::unique_lock lock(state->mutex);
   if (tracking == state->tracking) return;
@@ -181,14 +188,16 @@ inline void SetTracking(reshade::api::command_queue* queue, bool tracking) {
     for (uint32_t slot = 0; slot < internal::SLOTS; ++slot) {
       retired[slot] = std::move(state->game[slot]);
       state->game[slot].Attach(current[slot]);
-      state->bound[slot] = reinterpret_cast<uint64_t>(current[slot]);
+      state->bound[slot] = reinterpret_cast<uintptr_t>(current[slot]);
     }
+    internal::tracking_devices.fetch_add(1u, std::memory_order_relaxed);
   } else {
     if (state->biased.load(std::memory_order_relaxed)) {
       internal::BindSlots(cmd_list, 0, internal::SLOTS, false, state.get());
     }
     retired = std::move(state->game);
     state->bound = {};
+    internal::tracking_devices.fetch_sub(1u, std::memory_order_relaxed);
   }
   state->tracking = tracking;
 }
@@ -224,7 +233,8 @@ inline void OnDestroySampler(reshade::api::device* device, reshade::api::sampler
 // After the game's PSSetSamplers: its samplers recorded, and bound again as clones in the main view.
 inline void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api::shader_stage stages,
                               reshade::api::pipeline_layout, uint32_t, const reshade::api::descriptor_table_update& update) {
-  if (internal::addon_sampler
+  if (internal::tracking_devices.load(std::memory_order_relaxed) == 0u
+      || internal::addon_sampler
       || stages != reshade::api::shader_stage::pixel
       || update.type != reshade::api::descriptor_type::sampler || update.count == 0
       || update.binding >= internal::SLOTS || update.count > internal::SLOTS - update.binding || !internal::Immediate(cmd_list)) {
@@ -248,10 +258,11 @@ inline void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api
 
 // After the viewport scaling's: the main view started or ended, every slot bound again (clones or the game's).
 inline void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t, uint32_t, const reshade::api::viewport*) {
-  if (!internal::Immediate(cmd_list)) return;
+  if (internal::tracking_devices.load(std::memory_order_relaxed) == 0u || !internal::Immediate(cmd_list)) return;
   auto state = internal::SlotsFor(cmd_list->get_device(), false);
   if (!state) return;
   const bool biased = internal::Biased();
+  if (biased == state->biased.load(std::memory_order_relaxed)) return;
   const std::unique_lock lock(state->mutex);
   if (!state->tracking || biased == state->biased.load(std::memory_order_relaxed)) return;
   internal::BindSlots(cmd_list, 0, internal::SLOTS, biased, state.get());
@@ -265,6 +276,9 @@ inline void CleanupDevice(reshade::api::device* device, bool restore) {
     state = entry.second;
     return true;
   });
+  if (state && state->tracking) {
+    internal::tracking_devices.fetch_sub(1u, std::memory_order_relaxed);
+  }
   if (restore && state && state->tracking) {
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
     reinterpret_cast<ID3D11Device*>(device->get_native())->GetImmediateContext(context.GetAddressOf());
