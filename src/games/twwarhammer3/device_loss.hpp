@@ -33,7 +33,10 @@
 namespace twwarhammer3::device_loss {
 
 constexpr auto NO_FRAME_LIMIT = std::chrono::seconds(90);
+// A frame that does not come is sampled at 20, 40 and 60 s: one sample cannot tell a hang from a long job, nor whether
+// the frame thread ever left the code it was first seen in.
 constexpr uint64_t STALL_LOG_MS = 20000;
+constexpr uint32_t STALL_SAMPLES = 3;
 constexpr DWORD WATCH_POLL_MS = 1000;
 
 static std::shared_mutex devices_mutex;
@@ -101,7 +104,8 @@ static void LogStall(uint64_t age_ms) {
 
 static DWORD WINAPI WatchLoop(void*) {
   const char* last_front = nullptr;
-  uint64_t stall_logged_for = 0;
+  uint64_t stalled_frame = 0;
+  uint32_t stall_samples = 0;
   while (WaitForSingleObject(watch_stop, WATCH_POLL_MS) == WAIT_TIMEOUT) {
     {
       const std::unique_lock lock(devices_mutex);
@@ -114,8 +118,12 @@ static DWORD WINAPI WatchLoop(void*) {
         if (last_front != nullptr) renodx::utils::log::i("[Total War] The game's window: ", front, ".");
         last_front = front;
       }
-      if (const uint64_t age = GetTickCount64() - frame; age >= STALL_LOG_MS && stall_logged_for != frame) {
-        stall_logged_for = frame;
+      if (frame != stalled_frame) {
+        stalled_frame = frame;
+        stall_samples = 0;
+      }
+      if (const uint64_t age = GetTickCount64() - frame; stall_samples < STALL_SAMPLES && age >= STALL_LOG_MS * (stall_samples + 1)) {
+        ++stall_samples;
         LogStall(age);
       }
     }
