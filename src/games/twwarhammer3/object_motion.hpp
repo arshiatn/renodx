@@ -295,6 +295,14 @@ inline void Install(bool (*is_active)(), bool (*is_water_active)()) {
   renodx::utils::command_action::Register(OnMotionFill, {.shader_hash = MOTION_FILL_PS, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 }
 
+// Addon detach: the callbacks live in storage shared by the addons, which outlives this module.
+inline void Uninstall() {
+  renodx::utils::pipeline::UnregisterOnInitCallback(OnInitPipeline);
+  renodx::utils::pipeline::UnregisterOnDestroyCallback(OnDestroyPipeline);
+  renodx::utils::command_action::Unregister(OnPixelDraw);
+  renodx::utils::command_action::Unregister(OnMotionFill);
+}
+
 inline void OnDestroyDevice(reshade::api::device*) {
   const std::unique_lock lock(mutex);
   for (auto* shaders : {&vertex_shaders, &pixel_shaders}) {

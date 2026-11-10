@@ -3893,6 +3893,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(sun_ao::OnDestroyDevice);
   renodx::utils::command_action::Unregister(traced_lights::OnDraw);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::command_action::Unregister(OnCascadeTree);
+  twwarhammer3::object_motion::Uninstall();
   twwarhammer3::vfx_particles::Uninstall();
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
