@@ -796,3 +796,20 @@ WHAT ASTRA'S 16 COMMITS ADDRESS
 - Nothing in the 16 commits is proven to fix the tester's freeze. Astra says the same, and I agree.
 
 STILL UNADDRESSED: see problems. In short: no diagnostics for the next incident, no HDR check on swapchain re-creation, address space unmeasured, the driver-hang class around UAV overlap, the helper's own D3D11 device loss, a new threading hazard from F7 on Attila's single-threaded device, and the now really-unloading recovery path never run in a game.
+
+## Repairs
+
+### Helper waits (F9): GPU reset recovery back, no process kill from shared code (bb72ea36)
+
+- Covers: "Tales of Arise: the shared RR header now terminates the GAME process", "GPU-reset recovery replaced by helper suicide", "After a GPU reset the helper now kills itself" (helper side only), "Self-termination leaves no line in renodx-tw-dlaa64.log", "Null completion event after a failed Initialize", "Regression test asserts the wrong behaviour".
+- Changed: `WaitForGpu` returns true for a passed fence, a removed device (all ones) or no fence, false only on a live device. Request paths fail their backend without resetting or recording (RR / FSR-XeSS `Fail`, ray tracing `request_failed_`, FG `SignalOnly` + `Fail`). Waits before a release use `WaitForGpuBeforeRelease`; only main.cpp installs `unproven_gpu_completion` (one timed log line with owner and fence values, then TerminateProcess). In Tales the pointer is null: the old path. queue Wait/Signal unchecked again as at 0a6cd493. CreateEvent failure is `Fail()`; FG backends make the event before the fence.
+- Validated: helper built into `build\tw_dlaa_helper90`; `renodx-talesofarise_dlss.addon64` builds; `test/tw_gpu_completion/run.ps1` passes on amd64 and x86 (real WARP RemoveDevice returns at once, handler not called); GPU harness with helper90 in a copy folder: all 134 `all_modes.sh` modes pass, among them `removal`, `removal_sway` (ray tracing's device removed) and `switching_removal` (RR's device removed by RENODX_TW_TEST_DEVICE_REMOVAL: "a new one", RR runs again), `release_*`; `fg_bridge_test` DLSS / FSR / XeSS phases and switches answer, helper stays up.
+- NOT validated: nothing run in a game; Tales' fallback to Super Resolution after a failed wait is by reading only; a real timeout on a live device inside the helper (the terminal line) is only tested through the test's own handler, not main.cpp's; a real TDR (0x887A0006/7) as opposed to RemoveDevice; FG device removal has no harness switch.
+- Left as is: after the helper's terminal exit the bridge still keeps everything off until the game restarts (the F7 latch is the bridge's, not part of this fix). In Tales a release after an unproven wait goes on as before c67dc935 (no safe alternative without ending or leaking in the game).
+
+### FG recording failure (F10): fails the FG backend only (4dd59a56)
+
+- Covers: "FG recording failure kills the whole helper instead of failing the FG backend".
+- Changed: a failed allocator Reset, list Reset or Close in `FrameGeneration12::Present` / `ProxyFrameGeneration12::Present` is not executed and ends in `SignalOnly(value); return Fail("... D3D12 stopped")`. main.cpp refuses that backend (Auto's next) or, when the device is lost, makes a new one; DLSS / RR / ray tracing stay up.
+- Validated: in the helper90 build with the fix above; `fg_bridge_test` with RENODX_TW_TEST_FG_PRESENT_FAILS: Auto moves from DLSS to FSR with the helper up (the same refuse path). This commit alone was not built on its own.
+- NOT validated: no switch injects a failing Reset / Close, so the new branches themselves never ran.
