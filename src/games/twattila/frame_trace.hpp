@@ -183,6 +183,14 @@ inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D1
   D3D11_DEPTH_STENCIL_DESC depth_desc = {};
   if (depth_state) depth_state->GetDesc(&depth_desc);
   if (depth_desc.StencilEnable != FALSE) text += std::format(" stencil ref {} read {:x} write {:x}", stencil_ref, depth_desc.StencilReadMask, depth_desc.StencilWriteMask);
+  // Which faces the draw shows (D3D11_CULL_MODE: 1 both, 2 culls the front, 3 the back): a mesh the picture hides by its facing still stands in the rays.
+  ComPtr<ID3D11RasterizerState> rasterizer;
+  context->RSGetState(rasterizer.GetAddressOf());
+  if (rasterizer) {
+    D3D11_RASTERIZER_DESC rasterizer_desc = {};
+    rasterizer->GetDesc(&rasterizer_desc);
+    text += std::format(" cull {}{} bias {}", static_cast<int>(rasterizer_desc.CullMode), (rasterizer_desc.FrontCounterClockwise != FALSE ? " ccw" : ""), rasterizer_desc.DepthBias);
+  }
   return text;
 }
 

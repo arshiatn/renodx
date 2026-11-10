@@ -1507,6 +1507,11 @@ void Capture(Context& command, const SceneShader& shader) {
       cut_out = false;
       foliage = false;
       mask.Reset();
+      // Log Details, once a vertex shader (its hash's complement: beside the left-out lines' own marks).
+      if (runtime.settings.debug_log && runtime.left_out_logged.insert(~shader.hash).second) {
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: solid, its cut-outs without room: vs {:08X}, {} triangles ({} mask textures held of {}).",
+                                          shader.hash, triangles, runtime.atlas_slices.size(), dlaa_bridge::RT_ATLAS_SLICES));
+      }
     }
   }
   // A mesh without its cluster set (v16): its indices read back for one, its triangles captured meanwhile.
