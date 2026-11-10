@@ -11,11 +11,11 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
-#include <mutex>
 #include <memory>
-#include <vector>
-#include <utility>
+#include <mutex>
 #include <shared_mutex>
+#include <utility>
+#include <vector>
 
 #include <include/reshade.hpp>
 
@@ -73,13 +73,22 @@ static std::atomic<uint32_t> tracking_devices = 0;
 inline std::shared_ptr<Slots> SlotsFor(reshade::api::device* device, bool create = true) {
   std::shared_ptr<Slots> result;
   if (!create) {
-    device_slots.if_contains(device, [&](const auto& entry) { result = entry.second; });
+    device_slots.if_contains(device, [&](const auto& entry) {
+      const auto& [slots_device, slots] = entry;
+      result = slots;
+    });
     return result;
   }
-  device_slots.lazy_emplace_l(device, [&](auto& entry) { result = entry.second; }, [&](const auto& construct) {
-    result = std::make_shared<Slots>();
-    construct(device, result);
-  });
+  device_slots.lazy_emplace_l(
+      device,
+      [&](const auto& entry) {
+        const auto& [slots_device, slots] = entry;
+        result = slots;
+      },
+      [&](const auto& construct) {
+        result = std::make_shared<Slots>();
+        construct(device, result);
+      });
   return result;
 }
 
@@ -93,9 +102,10 @@ inline uint64_t BiasedClone(reshade::api::device* device, uint64_t game_sampler,
   reshade::api::sampler_desc desc = {};
   reshade::api::sampler clone = {0};
   const bool anisotropic = samplers.if_contains(game_sampler, [&](const auto& entry) {
-    desc = entry.second.desc;
-    if (entry.second.clone_bias == bias) {
-      clone = entry.second.clone;
+    const auto& [sampler_handle, biased_sampler] = entry;
+    desc = biased_sampler.desc;
+    if (biased_sampler.clone_bias == bias) {
+      clone = biased_sampler.clone;
     }
   });
   if (!anisotropic) return 0;
@@ -106,9 +116,10 @@ inline uint64_t BiasedClone(reshade::api::device* device, uint64_t game_sampler,
   if (created) {
     reshade::api::sampler previous = {0};
     created = samplers.modify_if(game_sampler, [&](auto& entry) {
-      previous = entry.second.clone;
-      entry.second.clone = clone;
-      entry.second.clone_bias = bias;
+      auto& [sampler_handle, biased_sampler] = entry;
+      previous = biased_sampler.clone;
+      biased_sampler.clone = clone;
+      biased_sampler.clone_bias = bias;
     });
     if (previous.handle != 0u) {
       device->destroy_sampler(previous);
@@ -217,8 +228,9 @@ inline void OnInitSampler(reshade::api::device* device, const reshade::api::samp
 inline void OnDestroySampler(reshade::api::device* device, reshade::api::sampler sampler) {
   reshade::api::sampler clone = {0};
   internal::samplers.erase_if(sampler.handle, [&](const auto& entry) {
-    if (entry.second.owner != device) return false;
-    clone = entry.second.clone;
+    const auto& [sampler_handle, biased_sampler] = entry;
+    if (biased_sampler.owner != device) return false;
+    clone = biased_sampler.clone;
     return true;
   });
   if (clone.handle != 0u) {
@@ -247,9 +259,13 @@ inline void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api
   const std::unique_lock lock(state->mutex);
   if (!state->tracking) return;
   for (uint32_t index = 0; index < update.count; ++index) {
-    retired[index] = std::move(state->game[update.binding + index]);
-    state->game[update.binding + index] = reinterpret_cast<ID3D11SamplerState*>(game_samplers[index].handle);
     state->bound[update.binding + index] = game_samplers[index].handle;
+    // The usual bind names the sampler the slot holds: no reference taken or dropped for it.
+    auto& game_sampler = state->game[update.binding + index];
+    auto* bound_sampler = reinterpret_cast<ID3D11SamplerState*>(game_samplers[index].handle);
+    if (game_sampler.Get() == bound_sampler) continue;
+    retired[index] = std::move(game_sampler);
+    game_sampler = bound_sampler;
   }
   if (const bool biased = internal::Biased(); biased) {
     internal::BindSlots(cmd_list, update.binding, update.count, biased, state.get());
@@ -268,12 +284,12 @@ inline void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t, uint
   internal::BindSlots(cmd_list, 0, internal::SLOTS, biased, state.get());
 }
 
-
 // Called with render callbacks quiescent. Release owned COM references outside map/slot locks.
 inline void CleanupDevice(reshade::api::device* device, bool restore) {
   std::shared_ptr<internal::Slots> state;
   internal::device_slots.erase_if(device, [&](const auto& entry) {
-    state = entry.second;
+    const auto& [slots_device, slots] = entry;
+    state = slots;
     return true;
   });
   if (state && state->tracking) {
@@ -290,16 +306,18 @@ inline void CleanupDevice(reshade::api::device* device, bool restore) {
   }
   std::vector<uint64_t> keys;
   internal::samplers.for_each([&](const auto& entry) {
-    if (entry.second.owner == device) {
-      keys.push_back(entry.first);
+    const auto& [game_sampler, biased_sampler] = entry;
+    if (biased_sampler.owner == device) {
+      keys.push_back(game_sampler);
     }
   });
   std::vector<Microsoft::WRL::ComPtr<ID3D11SamplerState>> clones;
   for (uint64_t key : keys) {
     internal::samplers.erase_if(key, [&](const auto& entry) {
-      if (entry.second.owner != device) return false;
+      const auto& [game_sampler, biased_sampler] = entry;
+      if (biased_sampler.owner != device) return false;
       Microsoft::WRL::ComPtr<ID3D11SamplerState> clone;
-      clone.Attach(reinterpret_cast<ID3D11SamplerState*>(entry.second.clone.handle));
+      clone.Attach(reinterpret_cast<ID3D11SamplerState*>(biased_sampler.clone.handle));
       clones.push_back(std::move(clone));
       return true;
     });
@@ -312,8 +330,14 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 
 inline void Shutdown() {
   std::vector<reshade::api::device*> devices;
-  internal::device_slots.for_each([&](const auto& entry) { devices.push_back(entry.first); });
-  internal::samplers.for_each([&](const auto& entry) { devices.push_back(entry.second.owner); });
+  internal::device_slots.for_each([&](const auto& entry) {
+    const auto& [slots_device, slots] = entry;
+    devices.push_back(slots_device);
+  });
+  internal::samplers.for_each([&](const auto& entry) {
+    const auto& [game_sampler, biased_sampler] = entry;
+    devices.push_back(biased_sampler.owner);
+  });
   for (auto* device : devices) {
     CleanupDevice(device, true);
   }
