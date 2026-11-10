@@ -96,12 +96,39 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   wchar_t** arguments = CommandLineToArgvW(GetCommandLineW(), &argument_count);
   if (arguments == nullptr || argument_count < 2) return 1;
   const DWORD game_id = std::wcstoul(arguments[1], nullptr, 10);
-  LocalFree(arguments);
 
   std::wstring folder(MAX_PATH, L'\0');
   folder.resize(GetModuleFileNameW(nullptr, folder.data(), MAX_PATH));
   folder = folder.substr(0, folder.find_last_of(L"\\/"));
   const std::wstring log_path = folder + L"\\renodx-tw-dlaa64.log";
+  // Started by the addon's watcher after the helper stopped, as "<game pid> rescue <LUID low> <LUID high>" and a
+  // "<fence handle> <value>" for each set the game's GPU may still wait on, oldest first (dlaa_bridge.hpp; the handles
+  // are the game's process's, taken from it here): the fences freed from this process, where ReShade counts no devices,
+  // and its line after the stopped helper's.
+  if (argument_count >= 7 && std::wcscmp(arguments[2], L"rescue") == 0) {
+    _wfopen_s(&log_file, log_path.c_str(), L"a");
+    const HANDLE game = OpenProcess(PROCESS_DUP_HANDLE, FALSE, game_id);
+    ComPtr<IDXGIFactory4> factory;
+    ComPtr<IDXGIAdapter1> adapter;
+    ComPtr<ID3D12Device> device;
+    bool freed = SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())))
+                 && SUCCEEDED(factory->EnumAdapterByLuid(
+                     LUID{.LowPart = std::wcstoul(arguments[3], nullptr, 10), .HighPart = std::wcstol(arguments[4], nullptr, 10)},
+                     IID_PPV_ARGS(adapter.GetAddressOf())))
+                 && SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.GetAddressOf())));
+    for (int index = 5; device && index + 1 < argument_count; index += 2) {
+      ComPtr<ID3D12Fence> fence;
+      HANDLE shared_fence = nullptr;
+      freed = DuplicateHandle(game, reinterpret_cast<HANDLE>(_wcstoui64(arguments[index], nullptr, 10)), GetCurrentProcess(), &shared_fence, 0,
+                              FALSE, DUPLICATE_SAME_ACCESS)
+              && SUCCEEDED(device->OpenSharedHandle(shared_fence, IID_PPV_ARGS(fence.GetAddressOf())))
+              && twattila::dlaa_helper::SignalAbandoned(fence.Get(), _wcstoui64(arguments[index + 1], nullptr, 10), 2000) && freed;
+    }
+    LogWithTime(freed ? "[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it is signalled."
+                      : "[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it could not be signalled.");
+    return freed ? 0 : 1;
+  }
+  LocalFree(arguments);
   _wfopen_s(&log_file, log_path.c_str(), L"w");
   wcsncpy_s(dump_path.data(), dump_path.size(), (folder + L"\\renodx-tw-dlaa64.dmp").c_str(), _TRUNCATE);
   SetUnhandledExceptionFilter(OnUnhandledFault);
@@ -518,12 +545,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       LogWithTime(std::format("[TW DLAA helper] A GPU reset removed {} device (0x{:08X}), last request {} ms ago.", whose, static_cast<uint32_t>(reason), age).c_str());
     }
   };
+  // v30: this set's fence as read now, for the addon's watcher (a request's work that the GPU never finishes shows there
+  // as a value that stays behind; the game's thread may be blocked by then, so also read each second without a request).
+  const auto publish_fence = [&] {
+    if (version < 30) return;
+    shared->fence_generation = opened_generation;
+    shared->fence_completed = (fence ? fence->GetCompletedValue() : UINT64_MAX);
+  };
   const HANDLE waits[] = {request, game};
   // With no requests coming (DLSS turned off) the wait still wakes for release_idle.
   const auto next_request = [&] {
     DWORD woken = WaitForMultipleObjects(2, waits, FALSE, 1000);
     for (; woken == WAIT_TIMEOUT; woken = WaitForMultipleObjects(2, waits, FALSE, 1000)) {
       log_removed_devices();
+      publish_fence();
       release_idle();
     }
     return woken;
@@ -613,6 +648,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         fence.Reset();
       }
     }
+    publish_fence();
     // A GPU reset removed frame generation's device: a new one on this set (until then requests pass without it).
     if (generation_open && generation_lost()) open_generation();
     const auto now = std::chrono::steady_clock::now();

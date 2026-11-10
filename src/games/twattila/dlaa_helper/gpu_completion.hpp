@@ -45,4 +45,19 @@ void WaitForGpuBeforeRelease(Fence* fence, HANDLE event, uint64_t value, DWORD t
   }
 }
 
+// The game's GPU waits on a shared fence for values the helper that stopped will never signal: each of the helper's
+// (even) signalled from the CPU once the game's own before it (odd) arrived, up to `value`. The game's queued work stays
+// in order, and a CPU signal cannot queue behind the wait it frees. True: the fence is at `value` (also a removed
+// device's, at all ones); false: the game's signal did not come within `timeout`.
+template <typename Fence>
+bool SignalAbandoned(Fence* fence, uint64_t value, DWORD timeout) {
+  const ULONGLONG started = GetTickCount64();
+  for (uint64_t completed = fence->GetCompletedValue(); completed < value; completed = fence->GetCompletedValue()) {
+    if (GetTickCount64() - started >= timeout) return false;
+    if ((completed & 1u) != 0 && FAILED(fence->Signal(completed + 1))) return false;
+    Sleep(1);
+  }
+  return true;
+}
+
 }  // namespace twattila::dlaa_helper

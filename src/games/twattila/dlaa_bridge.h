@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 29;
+constexpr uint32_t VERSION = 30;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -459,11 +459,18 @@ struct Shared {
   uint64_t rr_extra[RR_EXTRA_INPUTS] = {};
   uint32_t rr_extra_written = 0;
   uint32_t rr_v25_padding = 0;
+  // The helper's (v30): the set it has open (`generation` as it opened it) and that set's fence as it last read it (at
+  // each request and each second without one; all ones: none to read). The addon's watcher follows the helper's GPU work
+  // by these (dlaa_bridge.hpp): it has no device of its own in the game.
+  uint32_t fence_generation = 0;
+  uint32_t fence_v30_padding = 0;
+  uint64_t fence_completed = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 25) return sizeof(Shared);
+  if (version >= 30) return sizeof(Shared);
+  if (version >= 25) return offsetof(Shared, fence_generation);
   if (version == 24) return offsetof(Shared, rr_extra);
   if (version == 23) return offsetof(Shared, rt_kept_frames);
   if (version == 22) return offsetof(Shared, fg_running);
