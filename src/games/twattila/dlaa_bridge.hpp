@@ -655,38 +655,69 @@ inline bool Answer(DWORD timeout = 5000) {
   return true;
 }
 
-// The handles of what a set does not have, zero for the helper.
-inline void ClearHandles(Shared* shared, bool guides, bool ray_tracing, bool reflections, bool frames) {
-  if (!guides) {
-    shared->diffuse_albedo = 0;
-    shared->specular_albedo = 0;
-    shared->normals = 0;
-    shared->roughness = 0;
-    std::ranges::fill(shared->rr_extra, 0u);
-  }
-  if (!ray_tracing) {
-    shared->rt_vertices = 0;
-    shared->rt_positions = 0;
-    shared->rt_sun = 0;
-    shared->rt_visibility = 0;
-    shared->rt_ambient = 0;
-    shared->rt_atlas = 0;
-    shared->rt_light = 0;
-    shared->rt_bounce = 0;
-    shared->rt_light_mask = 0;
-    shared->rt_fog = 0;
-    shared->rt_fog_lights = 0;
-    shared->rt_tint = 0;
-  }
-  if (!reflections) {
-    shared->rt_reflection = 0;
-    shared->rt_specular = 0;
-    shared->rr_hit_distance = 0;
-  }
-  if (!frames) {
-    shared->fg_frame = 0;
-    shared->fg_hudless = 0;
-  }
+// A set's handles in the helper, by Shared's names (0: not in the set).
+struct SharedSet {
+  uint64_t color = 0;
+  uint64_t depth = 0;
+  uint64_t motion = 0;
+  uint64_t output = 0;
+  uint64_t fence = 0;
+  uint64_t diffuse_albedo = 0;
+  uint64_t specular_albedo = 0;
+  uint64_t normals = 0;
+  uint64_t roughness = 0;
+  std::array<uint64_t, RR_EXTRA_INPUTS> rr_extra = {};
+  uint64_t rt_vertices = 0;
+  uint64_t rt_positions = 0;
+  uint64_t rt_sun = 0;
+  uint64_t rt_visibility = 0;
+  uint64_t rt_ambient = 0;
+  uint64_t rt_atlas = 0;
+  uint64_t rt_light = 0;
+  uint64_t rt_bounce = 0;
+  uint64_t rt_light_mask = 0;
+  uint64_t rt_fog = 0;
+  uint64_t rt_fog_lights = 0;
+  uint64_t rt_tint = 0;
+  uint64_t rt_reflection = 0;
+  uint64_t rt_specular = 0;
+  uint64_t rr_hit_distance = 0;
+  uint64_t fg_frame = 0;
+  uint64_t fg_hudless = 0;
+};
+
+// `set` as the helper's next one. Field by field: the block also holds what the helper writes on its own threads at any
+// time (ready, its status lines, rt_device, ...), which a copy of the whole block would take back.
+inline void Publish(const SharedSet& set) {
+  auto& shared = *bridge.shared;
+  shared.color = set.color;
+  shared.depth = set.depth;
+  shared.motion = set.motion;
+  shared.output = set.output;
+  shared.fence = set.fence;
+  shared.diffuse_albedo = set.diffuse_albedo;
+  shared.specular_albedo = set.specular_albedo;
+  shared.normals = set.normals;
+  shared.roughness = set.roughness;
+  std::ranges::copy(set.rr_extra, shared.rr_extra);
+  shared.rt_vertices = set.rt_vertices;
+  shared.rt_positions = set.rt_positions;
+  shared.rt_sun = set.rt_sun;
+  shared.rt_visibility = set.rt_visibility;
+  shared.rt_ambient = set.rt_ambient;
+  shared.rt_atlas = set.rt_atlas;
+  shared.rt_light = set.rt_light;
+  shared.rt_bounce = set.rt_bounce;
+  shared.rt_light_mask = set.rt_light_mask;
+  shared.rt_fog = set.rt_fog;
+  shared.rt_fog_lights = set.rt_fog_lights;
+  shared.rt_tint = set.rt_tint;
+  shared.rt_reflection = set.rt_reflection;
+  shared.rt_specular = set.rt_specular;
+  shared.rr_hit_distance = set.rr_hit_distance;
+  shared.fg_frame = set.fg_frame;
+  shared.fg_hudless = set.fg_hudless;
+  ++shared.generation;
 }
 
 }  // namespace internal
@@ -756,9 +787,8 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   if (bridge.device != device) bridge.rt_atlas = {};
   bridge.device = device;
   bridge.width = 0;
-  const std::unique_ptr<Shared> staged(new (std::nothrow) Shared(*bridge.shared));
-  if (!staged) return internal::Fail("DLAA: staging the resource generation ran out of memory.");
-  auto& shared = *staged;
+  // Staged until all are made: the helper never sees part of a set, and what it got of a failed one is closed there.
+  internal::SharedSet shared;
   std::array<uint64_t, 64> transferred = {};
   size_t transferred_count = 0;
   bool published = false;
@@ -867,7 +897,6 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   const auto make_extra = [&] {
     static constexpr std::array<DXGI_FORMAT, RR_EXTRA_INPUTS> FORMATS = {DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT,
                                                                          DXGI_FORMAT_R16_FLOAT};
-    std::ranges::fill(shared.rr_extra, 0u);
     for (size_t index = 0; index < RR_EXTRA_INPUTS; ++index) {
       if ((rr_extra & (1u << index)) != 0u && !make(FORMATS[index], &bridge.rr_extra_textures[index], &shared.rr_extra[index])) return false;
     }
@@ -921,14 +950,12 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     bridge.rescue_fence = rescue_handle;
   }
   bridge.value = 0;
-  internal::ClearHandles(&shared, guides, ray_tracing, reflections, fg_format != DXGI_FORMAT_UNKNOWN);
-  shared.fg_format = static_cast<uint32_t>(fg_format);
-  shared.fg_failed = 0;
-  shared.rt_flags = (bridge.details ? RT_DETAILS : 0u);
-  shared.upscaler = upscaler;
-  shared.fg_backend = fg_backend;
-  ++shared.generation;
-  *bridge.shared = shared;
+  bridge.shared->fg_format = static_cast<uint32_t>(fg_format);
+  bridge.shared->fg_failed = 0;
+  bridge.shared->rt_flags = (bridge.details ? RT_DETAILS : 0u);
+  bridge.shared->upscaler = upscaler;
+  bridge.shared->fg_backend = fg_backend;
+  internal::Publish(shared);
   published = true;
   bridge.width = width;
   bridge.height = height;
@@ -1393,18 +1420,12 @@ inline void Release(bool tell_helper = false) {
   }
   if (!tell_helper || bridge.failed) return;
   auto& shared = *bridge.shared;
-  internal::ClearHandles(&shared, false, false, false, false);
-  shared.color = 0;
-  shared.depth = 0;
-  shared.motion = 0;
-  shared.output = 0;
-  shared.fence = 0;
   shared.rt_request = 0;
   shared.fg_request = 0;
   shared.ray_reconstruction = 0;
   shared.value = 0;
   bridge.value = 0;
-  ++shared.generation;
+  internal::Publish({});
   ResetEvent(bridge.done);
   SetEvent(bridge.request);
   internal::Answer(20000);
