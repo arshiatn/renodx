@@ -375,7 +375,9 @@ static void LogStall(uint64_t age_ms, bool dump) {
                            .Teb = stopped_thread.environment,
                            .Stack = stack_memory,
                            .ThreadContext = {.DataSize = sizeof(CONTEXT), .Rva = append(&stopped_thread.context, sizeof(CONTEXT))}});
-    if (stopped_thread.stack_size != 0) memory_list.push_back(stack_memory);
+    if (stopped_thread.stack_size != 0) {
+      memory_list.push_back(stack_memory);
+    }
   }
   const auto thread_count = static_cast<ULONG32>(thread_list.size());
   directory[3] = {.StreamType = ThreadListStream,
@@ -397,7 +399,9 @@ static void LogStall(uint64_t age_ms, bool dump) {
   DWORD written = 0;
   const bool saved = output != INVALID_HANDLE_VALUE && WriteFile(output, file.data(), static_cast<DWORD>(file.size()), &written, nullptr) != FALSE
                      && written == file.size();
-  if (output != INVALID_HANDLE_VALUE) CloseHandle(output);
+  if (output != INVALID_HANDLE_VALUE) {
+    CloseHandle(output);
+  }
   if (saved) {
     renodx::utils::log::w(std::format("[Total War] Every thread's place when the frames stopped ({} threads, {} KB) is in renodx-stall.dmp beside the game's exe.",
                                       threads.size(), file.size() / 1024));
@@ -440,7 +444,8 @@ static DWORD WINAPI WatchLoop(void*) {
       }
       if (const uint64_t age = GetTickCount64() - frame; stall_samples < STALL_SAMPLES && age >= STALL_LOG_MS * (stall_samples + 1)) {
         ++stall_samples;
-        const bool dump = stall_samples == 1 && stall_dumps < STALL_DUMPS;
+        // A minimised game may just not be drawing.
+        const bool dump = stall_samples == 1 && stall_dumps < STALL_DUMPS && IsIconic(game_window.load(std::memory_order_relaxed)) == FALSE;
         if (dump) {
           ++stall_dumps;
         }

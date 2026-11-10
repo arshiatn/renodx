@@ -119,7 +119,9 @@ static void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
     open_maps.erase(own);
     open_map_count.fetch_sub(1, std::memory_order_relaxed);
   });
-  if (written) LogOnce("map");
+  if (written) {
+    LogOnce("map");
+  }
 }
 
 // The game's update, whole or past the flag, replaced by the same with the flag 0 on its own context (no event).
