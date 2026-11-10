@@ -3877,8 +3877,9 @@ void ConfigureAddon() {
                                                      .default_value = 0.f,
                                                      .label = "Picture Before Particles (Experimental)",
                                                      .tooltip = "Shows the denoiser the picture without smoke and fire, against ghosting and vanishing particles.\n"
-                                                                "Does nothing with Particles Skip the Denoiser.",
+                                                                "Not needed with Particles Skip the Denoiser.",
                                                      .labels = {"Off", "On"},
+                                                     .is_enabled = [] { return twwarhammer3::taa_dlss::rr_particle_layer_row == 0.f; },
                                                  },
                                                  new renodx::utils::settings::Setting{
                                                      .key = "RayReconstructionDofGuide",

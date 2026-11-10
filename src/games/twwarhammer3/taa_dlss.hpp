@@ -63,6 +63,14 @@ static float particle_smear_row = 0.f;
 static float rr_particle_layer_row = 0.f;
 static float rr_color_before_row = 0.f;
 static float rr_dof_guide_row = 0.f;
+// Both particle rows on: the colour before is not written, by design. With the layer the upscaler's colour is already the picture
+// without particles (rr_extra_scaled writes the same texel to both: warp_tests/rr_scaled_wh3, check D), so the second copy says nothing
+// and its memory is not asked for. The two log lines say so (the run of 2026-11-10 read `001` with both rows on as a fault).
+inline const char* ColorBeforeNote() {
+  return (rr_particle_layer_row != 0.f && rr_color_before_row != 0.f)
+             ? " Picture Before Particles is left out: with the particle layer the colour is already that picture."
+             : "";
+}
 
 namespace internal {
 
@@ -629,7 +637,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
       }
       if (state.rr_extra_logged != rr_extra_written) {
         state.rr_extra_logged = rr_extra_written;
-        renodx::utils::log::i(std::format("[Warhammer III] Ray Reconstruction's optional inputs written: {:03b} (depth of field, colour before, particle layer).", rr_extra_written));
+        renodx::utils::log::i(std::format("[Warhammer III] Ray Reconstruction's optional inputs written: {:03b} (depth of field, colour before, particle layer).{}", rr_extra_written, ColorBeforeNote()));
       }
     }
     if (!scaled) evaluated = EvaluateInputs(context1.Get(), render_width, render_height, jitter, reset, reconstruct, c, rr_extra_written);
@@ -863,7 +871,7 @@ inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3
     context1->ClearState();
     if (state.rr_extra_logged != (particle_inputs | 8u) && particle_inputs != 0u) {
       state.rr_extra_logged = particle_inputs | 8u;
-      renodx::utils::log::i(std::format("[Warhammer III] Ray Reconstruction's optional inputs written below 100%: {:03b} (depth of field, colour before, particle layer).", particle_inputs));
+      renodx::utils::log::i(std::format("[Warhammer III] Ray Reconstruction's optional inputs written below 100%: {:03b} (depth of field, colour before, particle layer).{}", particle_inputs, ColorBeforeNote()));
     }
     evaluated = internal::EvaluateInputs(context1.Get(), width, height, state.taa_jitter, state.taa_reset, reconstruct, state.taa_camera.data(), particle_inputs);
     shader_settings[1] = evaluated ? 0.f : 1.f;
