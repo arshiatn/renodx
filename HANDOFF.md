@@ -1,5 +1,13 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## Review and repair of Astra's stability commits (2026-11-10, Claude) - DONE, nothing installed, not run in game
+- Review of the audit and the 16 commits, the repairs' notes ("## Repairs") and the second review: docs/Attila-crash-audit-review-2026-11-10.md. HEAD ed26c3b3, pushed.
+- Repaired: F9/F10 (helper survives a GPU reset again; shared code can't end Tales of Arise; FG faults fail FG only), F1/F6/F7 (no device made in the addon at unload or on the watcher; fence recovery runs in a second helper process `rescue`; Prepare writes only the addon's fields), smaller items (LOD bias cost, WH3 / Shogun 2 DLSS / Expeditions leftover callbacks and hooks, engine values put back at detach), one log line with the removal reason and 32-bit free address space when the game's device or swap chain ends (twattila/device_end.hpp).
+- Bridge is v30: addon and helper ship together. Newest helper built from HEAD: build/tw_dlaa_helper96 (compiled only; the 134-mode harness and fg_bridge_test ran on helper95, same sources but for a test switch).
+- All 14 addons + talesofarise_dlss build; every test/tw_*/run.ps1 passes x86 and amd64.
+- Not done: any game run, a real unload/reload under ReShade, a real TDR. The tester's first freeze is still unexplained; no audit finding matches a WH3 freeze (WH3 notes in the review workflow's answer, summarised in memory project_astra_review).
+- Open by choice: helper stays off after a failure until the game restarts (as before Astra); WH3's 90 s no-frame limit after a reset can close a game sitting in the background (plausible, low).
+
 ## Attila stability repairs (completed 2026-11-09, GPT-6 Astra)
 - F1-F8 code repairs and offline validation complete. Game reproduction, actual vendor GPU recovery and unload/reload remain manual validation, not claimed fixed.
 - Authorized: repair audit F1-F8, validate, commit each logical fix and push to arshiatn/renodx atn-mods. No game launches or installed-binary changes.
