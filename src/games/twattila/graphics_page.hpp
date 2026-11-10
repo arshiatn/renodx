@@ -1004,6 +1004,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "light_bounce_backface", .section = section, .shown = more_search});
     page.Take({.match = "light_bounce_auto_thickness", .section = section, .shown = more_search});
     page.Take({.match = "light_bounce_msaa_pixel", .section = section, .shown = more_on, .only_some_games = true});
+    page.Take({.match = "GlobalIlluminationGameSky", .section = section, .shown = more_on, .only_some_games = true});
     const auto more_paths = more(&more_gi, gi_is(GI_PATHS));
     page.Take({.match = "RayTracedPathSer", .section = section, .shown = more_paths, .label = "Shader Execution Reordering",
                .tooltip = (b.has_reflections ? "" : "Shader execution reordering for Path Tracing (DXR 1.2, RTX 40 / 50 series): may be faster.")});

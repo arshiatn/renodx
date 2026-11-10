@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -411,6 +412,62 @@ int main() {
   {
     const std::unique_lock lock(log_mutex);
     CHECK(log_lines.size() == 1 && log_lines[0].find("the game's Global Illumination flag off in its lighting constants (map)") != std::string::npos);
+  }
+
+  // 11. Sky Shade From the Game's Probes: at the probes' rays the compute stage's global_illumination constants (slot 2,
+  // 224 bytes, dynamic as the game's) are a copy with g_irradiance_power 0 and every other byte the game's; after the
+  // dispatch the game's own buffer is bound again, untouched. Twice (the copy is kept), then another size, a buffer too
+  // small and no buffer at all.
+  {
+    const auto filled = [](UINT bytes, uint8_t fill) {
+      auto buffer = MakeBuffer(bytes, D3D11_BIND_CONSTANT_BUFFER, D3D11_USAGE_DYNAMIC);
+      D3D11_MAPPED_SUBRESOURCE mapped = {};
+      immediate->Map(buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+      std::memset(mapped.pData, fill, bytes);
+      immediate->Unmap(buffer.Get(), 0);
+      return buffer;
+    };
+    const auto bound = [] {
+      ComPtr<ID3D11Buffer> buffer;
+      immediate->CSGetConstantBuffers(gi::PROBE_CONSTANTS_SLOT, 1, &buffer);
+      return buffer;
+    };
+    const auto power_only = [](const std::vector<uint8_t>& copy, uint8_t fill) {
+      for (size_t at = 0; at < copy.size(); ++at) {
+        const bool power = at >= gi::IRRADIANCE_POWER_OFFSET && at < gi::IRRADIANCE_POWER_OFFSET + 4;
+        if (copy[at] != (power ? 0 : fill)) return false;
+      }
+      return true;
+    };
+    for (const UINT size : {224u, 224u, 256u}) {
+      const uint8_t fill = static_cast<uint8_t>(0x40 + size / 16);
+      const auto game = filled(size, fill);
+      immediate->CSSetConstantBuffers(gi::PROBE_CONSTANTS_SLOT, 1, game.GetAddressOf());
+      gi::SkyOnlyProbeConstants(immediate.Get());
+      const auto copy = bound();
+      CHECK(copy && copy != game);
+      bytes = ReadBack(copy.Get());
+      CHECK(bytes.size() == size && power_only(bytes, fill));
+      gi::GameProbeConstants(immediate.Get());
+      CHECK(bound() == game);
+      bytes = ReadBack(game.Get());
+      CHECK(std::ranges::all_of(bytes, [fill](uint8_t byte) { return byte == fill; }));
+    }
+    const auto too_small = filled(208, 0x55);
+    immediate->CSSetConstantBuffers(gi::PROBE_CONSTANTS_SLOT, 1, too_small.GetAddressOf());
+    gi::SkyOnlyProbeConstants(immediate.Get());
+    CHECK(bound() == too_small);
+    gi::GameProbeConstants(immediate.Get());
+    CHECK(bound() == too_small);
+    ID3D11Buffer* none = nullptr;
+    immediate->CSSetConstantBuffers(gi::PROBE_CONSTANTS_SLOT, 1, &none);
+    gi::SkyOnlyProbeConstants(immediate.Get());
+    gi::GameProbeConstants(immediate.Get());
+    CHECK(!bound());
+    gi::OnDestroyDevice(nullptr);
+    CHECK(!gi::probe_constants && !gi::no_power && !gi::game_probe_constants);
+    const std::unique_lock lock(log_mutex);
+    CHECK(log_lines.size() == 2 && log_lines[1].find("the sky's light alone") != std::string::npos);
   }
   CHECK(gi::lighting_buffers.size() == 1);
   gi::lighting_buffers.clear();

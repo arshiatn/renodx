@@ -1,5 +1,12 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## WH3 v39 (follow-up on ATN's test of v38, 2026-11-11; no game start, ATN away)
+ATN's evidence (shots, logs, 30 s profile, pass timing, ini, replay 2): tools/tw/wh3_batch6/atn_run2. Report: wh3_batch6/reports/v39.md. Rules: wh3_batch6/plan.md.
+- [x] A "with Global Illumination on things look cooked": since v37 the game's g_gi_enabled was 0 under ours, so all 1019 readers took the ambient cube unshaded in place of the probes' light (9EAD8951: the probes REPLACE the cube; DC860C60: a probe ray's miss is the sky, a hit the voxel's lit colour x g_irradiance_power). ATN's pair (Path-Traced, RTAO): shade 2.0 to 2.8x the game's (dark tones x2.2 to x3.4, bluest most), sunlit x1.04. Fix: row Sky Shade From the Game's Probes (`GlobalIlluminationGameSky`, on): the flag stays the game's, the probes' hits are unlit (g_irradiance_power 0 in a copy of DC860C60's constants, once a frame), so the sky's shade is the game's and only the bounce is ours; fog, water and effects get the game's probes back. Off: v38. test/tw_game_gi stage 11 (WARP). NOT run in game.
+- [ ] B Skip the Shadow Maps: shadows of trees out of view
+- [ ] C ATN's questions (shadow maps' memory, what the rays lack, smoke, double work, perf_ideas.md)
+- [ ] D close as v39
+
 ## WH3 BATCH 6 (Monday batch, ATN's go 2026-11-10; ATN away, keep going)
 Plan and rules: C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/wh3_batch6/plan.md; items: list.md there; reports: wh3_batch6/reports. One bundled game run only (phase R).
 - [x] P0 device-loss handling in shared code (Attila first) + swap chain audit: twattila/device_loss.hpp + output_encoding.hpp in the 9 TW HDR addons (cure in both rebuild orders, limit spares a background game, output decided per new chain, objects released at destroy_device, line-sweep AO never binds across devices, FG drops its kept back buffer). test/tw_device_loss + tw_fg_initialization pass x86 and amd64; 14 addons build. NOT run in game; no helper change.

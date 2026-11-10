@@ -1735,6 +1735,8 @@ void BuildRuntimeData() {
   reflections::light_copy.code = __rt_light_copy;
   reflections::fog_learn.code = __rt_fog_learn;
   custom_shaders[0x3AC630DF] = {.crc32 = 0x3AC630DF, .on_inject = not_injected, .on_draw = &reflections::OnRadiance};
+  // The game's light probes' rays (fx_global_illumination): the sky's light alone under ours (game_gi.hpp).
+  custom_shaders[0xDC860C60] = {.crc32 = 0xDC860C60, .on_inject = not_injected, .on_draw = &twwarhammer3::game_gi::OnProbeRays, .on_drawn = &twwarhammer3::game_gi::OnProbeRaysDone};
   custom_shaders[0x1810C89D] = {.crc32 = 0x1810C89D, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnScaleFix(cmd_list, &reflections::gi_relevance); }, .on_drawn = &reflections::SwapBack};
   custom_shaders[0xDDB14D2C] = {.crc32 = 0xDDB14D2C, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnScaleFix(cmd_list, &reflections::shadow_blur); }, .on_drawn = &reflections::SwapBack};
   custom_shaders[0x79F74068] = {.crc32 = 0x79F74068, .on_inject = not_injected, .on_draw = [](auto* cmd_list) { return reflections::OnMipStep(cmd_list, &reflections::mip_down); }, .on_drawn = &reflections::OnMipStepDone};
@@ -2969,7 +2971,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                            "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
     .light_glow_label = "Torch and Fire Light in Fog (Experimental)",
     .light_glow_tooltip = "Torches and fires light the fog around them, with their shafts and shadows in it. Needs Fog Shadows. 0: off.",
-    .gi_tooltip_end = "\nOn, it replaces the game's own bounce light. Off: the game's.",
+    .gi_tooltip_end = "\nOn, it replaces the game's own bounce light; the sky's light stays the game's. Off: the game's.",
     .coloured_shadows_tooltip = "Sunlight through capture flags takes their colour.\n"
                                 "Needs Light Through Leaves, and DLSS Ray Reconstruction or path-traced Global Illumination.",
     .rays_a_pixel_shadows_tooltip = "The sun's shadows take the extra rays.",
@@ -3377,7 +3379,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   // Below about 2/3 the AO reads the display's depth, with data in the render size's corner only.
   twattila::depth_levels::SetUsedSize(twwarhammer3::taa_dlss::RenderSizeBelow100());
-  twwarhammer3::game_gi::off.store(shader_injection.light_bounce_strength > 0.f, std::memory_order_relaxed);
+  const bool own_global_illumination = shader_injection.light_bounce_strength > 0.f;
+  twwarhammer3::game_gi::sky_only.store(own_global_illumination && twwarhammer3::game_gi::sky_row != 0.f, std::memory_order_relaxed);
+  twwarhammer3::game_gi::off.store(own_global_illumination && twwarhammer3::game_gi::sky_row == 0.f, std::memory_order_relaxed);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
@@ -3657,6 +3661,17 @@ void ConfigureAddon() {
       .tooltip = "Sharper sun shadows at the game's highest Shadows setting. About 1.5 GB more video memory.\n"
                  "Applies after a restart.",
       .labels = {"4096 (Game's)", "8192"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GlobalIlluminationGameSky",
+      .binding = &twwarhammer3::game_gi::sky_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 1.f,
+      .label = "Sky Shade From the Game's Probes",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Under trees, roofs and walls the sky's light stays as dark as in the game's own picture.\n"
+                 "Off: the sky's light at full strength everywhere, so shade is brighter.",
+      .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedPointLightShadows",
