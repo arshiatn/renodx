@@ -495,9 +495,25 @@ static void OnInitDevice(reshade::api::device* device) {
   }
 }
 
+// The references on the game's device as its destroy begins (the first of the addon's handlers) and once the last of them has
+// run: the difference is what the addon held and let go; what is left is the game's, ReShade's and whatever the addon still
+// holds. ReShade's own count ("Reference count ... is inconsistent (N)") comes after it unloaded the addon, with no line of
+// ours beside it: WH3's quit of 2026-11-10 said 851 and nothing could say whose. One line a device's end.
+static ULONG references_at_destroy = 0;
+
+static void BeforeDestroyDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  native->AddRef();
+  references_at_destroy = native->Release();
+}
+
 static void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  native->AddRef();
+  renodx::utils::log::i(std::format("[Total War] References on the game's device: {} as its end began, {} after the addon's releases.",
+                                    references_at_destroy, native->Release()));
   bool last_device = false;
   {
     const std::unique_lock lock(devices_mutex);
@@ -591,6 +607,7 @@ static void Install() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(BeforeDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
 }
 
@@ -608,6 +625,7 @@ static void Uninstall() {
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(BeforeDestroyDevice);
   StopWatch();
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   // An image kept loaded after the detach tracks nothing.
