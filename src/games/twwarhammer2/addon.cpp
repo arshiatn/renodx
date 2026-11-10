@@ -1944,7 +1944,7 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::ao_filter::Uninstall();
   talesofarise::pixel_trace::Stop();
-  tw::engine_tweaks::Uninstall();
+  tw::engine_tweaks::Uninstall(graphics_options);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);

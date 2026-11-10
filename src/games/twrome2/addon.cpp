@@ -1791,7 +1791,7 @@ void DetachAddon() {
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
-  tw::engine_tweaks::Uninstall();
+  tw::engine_tweaks::Uninstall(graphics_options);
   twattila::graphics_hooks::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();

@@ -1764,7 +1764,7 @@ void DetachAddon() {
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::ao_filter::Uninstall();
-  tw::engine_tweaks::Uninstall();
+  tw::engine_tweaks::Uninstall(graphics_options);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 

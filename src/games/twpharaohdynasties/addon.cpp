@@ -2117,7 +2117,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
-  tw::engine_tweaks::Uninstall();
+  tw::engine_tweaks::Uninstall(graphics_options);
   twpharaohdynasties::dead_units::Uninstall();
   twpharaohdynasties::shadow_map::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);

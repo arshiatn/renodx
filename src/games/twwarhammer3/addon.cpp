@@ -3875,6 +3875,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::present>(bloom_fix::OnPresent);
 #endif
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  tw::engine_tweaks::Uninstall(graphics_options);
   reshade::unregister_event<reshade::addon_event::map_buffer_region>(game_gi::OnMapBufferRegion);
   reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(game_gi::OnUnmapBufferRegion);
   reshade::unregister_event<reshade::addon_event::update_buffer_region>(game_gi::OnUpdateBufferRegion);

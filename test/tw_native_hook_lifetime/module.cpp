@@ -1,6 +1,8 @@
 #include <windows.h>
 
 #include <detours.h>
+#include <array>
+#include <cstdint>
 #include <cstdio>
 #include <stdexcept>
 
@@ -64,11 +66,28 @@ extern "C" __declspec(dllexport) int InstallLod(void* target) {
   lod::hooks_active = true;
   return 1;
 }
+// As the game's engine values: in a module's image.
+static float scaled_distance = 10.f;
+static float reset_distance = 10.f;
+static uint8_t forced_flag = 0;
+// -1: the detach did not put the game's values back where the addon's still stood (or touched one the game set again).
 extern "C" __declspec(dllexport) int RemoveLod(int stage) {
+  tw::engine_tweaks::Option option = {
+      .scale = 2.f,
+      .tweaks = {{.name = "scaled", .value = &scaled_distance},
+                 {.name = "reset", .value = &reset_distance},
+                 {.name = "flag", .flag = true, .value = &forced_flag}},
+  };
+  std::array<tw::engine_tweaks::Option*, 1> options = {&option};
+  tw::engine_tweaks::internal::Apply(options);
+  const bool applied = scaled_distance == 20.f && reset_distance == 20.f && forced_flag == 1;
+  reset_distance = 15.f;
   fail_stage = stage;
   detach_calls = 1;  // The LOD owner has just one hook.
-  tw::engine_tweaks::Uninstall();
+  tw::engine_tweaks::Uninstall(options);
   fail_stage = 0;
+  if (!applied || scaled_distance != 10.f || reset_distance != 15.f || forced_flag != 0 || option.tweaks.front().seen) return -1;
+  reset_distance = 10.f;
   return static_cast<int>(lod::hooks.size());
 }
 #endif

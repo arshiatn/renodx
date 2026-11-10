@@ -1974,7 +1974,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
   twattila::engine_tests::StopAtStart(&at_start_stop);
-  tw::engine_tweaks::Uninstall();
+  tw::engine_tweaks::Uninstall(graphics_options);
   twattila::graphics_hooks::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
   renodx::utils::command_action::Unregister(OnCampaignDraw);

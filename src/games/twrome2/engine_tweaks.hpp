@@ -23,6 +23,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <include/reshade.hpp>
@@ -251,6 +252,21 @@ inline void Find(const Sections& sections, std::span<Option*> options) {
 #endif
 }
 
+// `bits` into a float or integer tweak's value.
+inline void Write(const Tweak& tweak, uint32_t bits) {
+  if (tweak.code_pattern.empty()) {
+    std::memcpy(tweak.value, &bits, sizeof(bits));
+    return;
+  }
+  // Code: writable only while it is patched.
+  DWORD protection;
+  if (VirtualProtect(tweak.value, sizeof(bits), PAGE_EXECUTE_READWRITE, &protection) != FALSE) {
+    std::memcpy(tweak.value, &bits, sizeof(bits));
+    VirtualProtect(tweak.value, sizeof(bits), protection, &protection);
+    FlushInstructionCache(GetCurrentProcess(), tweak.value, sizeof(bits));
+  }
+}
+
 // The game's values x the sliders.
 inline void Apply(std::span<Option*> options) {
   for (Option* option : options) {
@@ -290,17 +306,7 @@ inline void Apply(std::span<Option*> options) {
       }
       tweak.written = tweak.integer ? std::bit_cast<uint32_t>(static_cast<int32_t>(std::lround(scaled))) : std::bit_cast<uint32_t>(scaled);
       if (tweak.written == bits) continue;
-      if (tweak.code_pattern.empty()) {
-        std::memcpy(tweak.value, &tweak.written, sizeof(bits));
-        continue;
-      }
-      // Code: writable only while it is patched.
-      DWORD protection;
-      if (VirtualProtect(tweak.value, sizeof(bits), PAGE_EXECUTE_READWRITE, &protection) != FALSE) {
-        std::memcpy(tweak.value, &tweak.written, sizeof(bits));
-        VirtualProtect(tweak.value, sizeof(bits), protection, &protection);
-        FlushInstructionCache(GetCurrentProcess(), tweak.value, sizeof(bits));
-      }
+      Write(tweak, tweak.written);
     }
   }
 }
@@ -654,8 +660,29 @@ inline void StartIfRequested(std::span<Option*> options, std::span<const std::st
 
 }  // namespace watch
 
-// Addon detach: the LOD pick hook removed (the scaled values stay until the game sets them again).
-inline void Uninstall() {
+// Addon detach: the game's own values back where the addon's last still stand (in the game's module while it is
+// loaded), nothing remembered, and the LOD pick hook removed. A new device unloads the addon and loads it again: left
+// scaled, the new image took the scaled values for the game's and scaled them once more with every device (a flag once
+// set read back as the game's own).
+inline void Uninstall(std::span<Option*> options) {
+  for (Option* option : options) {
+    for (Tweak& tweak : option->tweaks) {
+      if (tweak.value == nullptr || !std::exchange(tweak.seen, false)) continue;
+      MEMORY_BASIC_INFORMATION memory = {};
+      if (VirtualQuery(tweak.value, &memory, sizeof(memory)) == 0 || memory.State != MEM_COMMIT || memory.Type != MEM_IMAGE) continue;
+      if (tweak.flag) {
+        auto* flag = static_cast<uint8_t*>(tweak.value);
+        if (*flag == tweak.written) {
+          *flag = static_cast<uint8_t>(tweak.game);
+        }
+        continue;
+      }
+      uint32_t bits;
+      std::memcpy(&bits, tweak.value, sizeof(bits));
+      if (bits != tweak.written) continue;
+      internal::Write(tweak, tweak.integer ? std::bit_cast<uint32_t>(static_cast<int32_t>(std::lround(tweak.game))) : std::bit_cast<uint32_t>(tweak.game));
+    }
+  }
 #if !defined(_WIN64)
   lod_pick::internal::hooks_active.store(false, std::memory_order_relaxed);
   if (lod_pick::internal::hooks.empty()) return;
