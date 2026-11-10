@@ -907,8 +907,9 @@ bool one_to_one = false;
 // Reflections Lit as This Frame (row): the light buffer the game's own march reads (3AC630DF copies it into the radiance's first
 // level; R16G16B16A16F, the water and our Global Illumination in it, the fog not yet), kept from that dispatch for the rays' hits
 // and written in the helper's format (rt_light_copy). Without it the hits read the Light Bounce's prepared light, and with
-// Global Illumination off last frame's picture after the tone mapper, what the screen never saw black.
-float light_row = 0.f;
+// Global Illumination off last frame's picture after the tone mapper, what the screen never saw black. On by default since the
+// run of 2026-11-10: with Global Illumination off the reflections' view fell from 3.68x of the path-traced reference to 1.03x, at no cost.
+float light_row = 1.f;
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> frame_light;
 twattila::dlaa_bridge::Texture helper_light;
 Copy light_copy;
@@ -3626,8 +3627,8 @@ void ConfigureAddon() {
       .key = "RayTracedReflectionLight",
       .binding = &reflections::light_row,
       .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-      .default_value = 0.f,
-      .label = "Reflections Lit as This Frame (Experimental)",
+      .default_value = 1.f,
+      .label = "Reflections Lit as This Frame",
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Ray-traced reflections show things lit as the picture is, also with Global Illumination off.",
       .labels = {"Off", "On"},
@@ -3639,7 +3640,7 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Fog in Reflections (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "Far hills in ray-traced reflections get the game's fog. Best with Reflections Lit as This Frame.",
+      .tooltip = "Far hills in ray-traced reflections get the game's fog. Needs Reflections Lit as This Frame for the right brightness.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
