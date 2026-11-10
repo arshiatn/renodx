@@ -1,5 +1,18 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## WH3 BATCH 6 (Monday batch, ATN's go 2026-11-10; ATN away, keep going)
+Plan and rules: C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/wh3_batch6/plan.md; items: list.md there; reports: wh3_batch6/reports. One bundled game run only (phase R).
+- [ ] P0 device-loss handling in shared code (Attila first) + swap chain audit
+- [ ] P1 GI-off hang (item 1)
+- [ ] P2 RT shadow capture (items 2, 3, 5, 6)
+- [ ] P3 reflections and water (items 4, 14)
+- [ ] P4 casters and cascades (items 7, 10, offline 8 and 17)
+- [ ] P5 terrain wait, motion, particles, preset L (items 9, 12, 13, 16)
+- [ ] R one bundled game run
+- [ ] P7 act on the run (item 11's verdicts)
+- [ ] C close: builds, review, zips, install, round report
+- [ ] S skill improved
+
 ## Review and repair of Astra's stability commits (2026-11-10, Claude) - DONE, nothing installed, not run in game
 - Review of the audit and the 16 commits, the repairs' notes ("## Repairs") and the second review: docs/Attila-crash-audit-review-2026-11-10.md. HEAD ed26c3b3, pushed.
 - Repaired: F9/F10 (helper survives a GPU reset again; shared code can't end Tales of Arise; FG faults fail FG only), F1/F6/F7 (no device made in the addon at unload or on the watcher; fence recovery runs in a second helper process `rescue`; Prepare writes only the addon's fields), smaller items (LOD bias cost, WH3 / Shogun 2 DLSS / Expeditions leftover callbacks and hooks, engine values put back at detach), one log line with the removal reason and 32-bit free address space when the game's device or swap chain ends (twattila/device_end.hpp).
