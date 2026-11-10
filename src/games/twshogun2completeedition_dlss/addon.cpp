@@ -1047,6 +1047,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
   if (attached) {
     twshogun2::frame_trace::Stop();
+    renodx::utils::command_action::Unregister(OnTonemapper);
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     twshogun2::dlss_jitter::Use(DLL_PROCESS_DETACH);
