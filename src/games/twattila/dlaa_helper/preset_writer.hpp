@@ -12,8 +12,9 @@
 
 namespace twattila::dlaa_helper {
 
-// One ordered writer, with intermediate selections coalesced. Destruction drains
-// the latest request before joining; a replaced backend cannot save an old preset later.
+// One ordered writer, with intermediate selections coalesced. Destruction joins the save in flight, so a replaced
+// backend cannot save an old preset later, and starts no other: the join runs on the helper's request thread (a
+// backend replaced after a GPU reset), and the next backend asks for its preset again at its first present.
 class PresetWriter {
  public:
   static constexpr int PENDING = -1;
@@ -32,7 +33,7 @@ class PresetWriter {
           std::unique_lock lock(mutex_);
           for (;;) {
             changed_.wait(lock, [&] { return stopping_ || completed_ != requested_; });
-            if (completed_ == requested_) return;
+            if (stopping_ || completed_ == requested_) return;
             const uint64_t generation = requested_;
             const uint32_t preset = preset_;
             lock.unlock();
