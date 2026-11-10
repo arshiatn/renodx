@@ -1004,6 +1004,9 @@ constexpr auto OnParticleComposite = []<typename Context>(Context& command) -> r
       std::array<float, 4> blend_factor = {};
       UINT blend_mask = 0;
       native->OMGetBlendState(blend.GetAddressOf(), blend_factor.data(), &blend_mask);
+      // No light and all of the colour where the draw leaves a pixel out.
+      constexpr std::array<float, 4> NO_PARTICLES = {0.f, 0.f, 0.f, 1.f};
+      native->ClearRenderTargetView(state.objects.rr_particles.rtv.Get(), NO_PARTICLES.data());
       native->OMSetRenderTargets(1, state.objects.rr_particles.rtv.GetAddressOf(), depth.Get());
       native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFFu);
       native->DrawInstanced(command.arguments.vertex_count, std::max(command.arguments.instance_count, 1u), command.arguments.first_vertex, command.arguments.first_instance);
