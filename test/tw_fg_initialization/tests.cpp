@@ -88,7 +88,40 @@ int main() {
   context->Unmap(readback.Get(), 0);
   context->ClearState();
   context->Flush();
+  // A back buffer the game made readable (Troy's and Pharaoh's BufferUsage 0x30) as the HUD-less image's source is read
+  // in place and kept: the game's ResizeBuffers fails until the swap chain's destroy drops it.
+  fg::state.scrgb = false;
+  ComPtr<IDXGIFactory1> factory;
+  CHECK(SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))));
+  HWND window = CreateWindowExW(0, L"STATIC", L"tw_fg", WS_OVERLAPPEDWINDOW, 0, 0, 64, 64, nullptr, nullptr, nullptr, nullptr);
+  DXGI_SWAP_CHAIN_DESC chain_desc = {
+      .BufferDesc = {.Width = 64, .Height = 64, .Format = DXGI_FORMAT_R8G8B8A8_UNORM},
+      .SampleDesc = {.Count = 1},
+      .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT,
+      .BufferCount = 2,
+      .OutputWindow = window,
+      .Windowed = TRUE,
+      .SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD,
+  };
+  ComPtr<IDXGISwapChain> chain;
+  CHECK(SUCCEEDED(factory->CreateSwapChain(device.Get(), &chain_desc, &chain)));
+  {
+    ComPtr<ID3D11Texture2D> back_buffer;
+    CHECK(SUCCEEDED(chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer))));
+    CHECK(fg::DrawHudless(context.Get(), back_buffer.Get()));
+    CHECK(fg::state.hudless && fg::state.objects.target.Get() == back_buffer.Get() && fg::state.objects.target_srv);
+  }
+  context->ClearState();
+  context->Flush();
+  CHECK(chain->ResizeBuffers(2, 128, 128, DXGI_FORMAT_UNKNOWN, 0) == DXGI_ERROR_INVALID_CALL);
+  fg::OnDestroySwapchain(nullptr, true);
+  CHECK(!fg::state.objects.target && !fg::state.objects.target_srv);
+  context->Flush();
+  CHECK(SUCCEEDED(chain->ResizeBuffers(2, 128, 128, DXGI_FORMAT_UNKNOWN, 0)));
+  chain.Reset();
+  DestroyWindow(window);
   fg::state.objects = {};
   bridge.fg_hudless_rtv.Reset();
-  std::puts("PASS: four real setup failures logged once a streak, backoff, same-device retry, successful HUD-less draw and scRGB intermediate on WARP");
+  std::puts("PASS: four real setup failures logged once a streak, backoff, same-device retry, successful HUD-less draw and scRGB intermediate, "
+            "and a kept back buffer dropped before ResizeBuffers on WARP");
 }

@@ -265,6 +265,14 @@ inline bool OnOpenOverlay(reshade::api::effect_runtime*, bool open, reshade::api
   return false;
 }
 
+// The swap chain's buffers go (a ResizeBuffers, or its end): the image kept to read in place may be a back buffer the game
+// made readable (Troy's and Pharaoh's BufferUsage 0x30), and one reference to it fails the game's ResizeBuffers.
+inline void OnDestroySwapchain(reshade::api::swapchain*, bool) {
+  const std::unique_lock lock(state.mutex);
+  state.objects.target.Reset();
+  state.objects.target_srv.Reset();
+}
+
 }  // namespace internal
 
 // The format frame generation's textures take (the frames': unknown until a present; anti_aliasing.hpp passes it to
@@ -481,11 +489,13 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
   }
   reshade::register_event<reshade::addon_event::reshade_present>(internal::OnReshadePresent);
   reshade::register_event<reshade::addon_event::reshade_open_overlay>(internal::OnOpenOverlay);
+  reshade::register_event<reshade::addon_event::destroy_swapchain>(internal::OnDestroySwapchain);
 }
 
 inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::reshade_present>(internal::OnReshadePresent);
   reshade::unregister_event<reshade::addon_event::reshade_open_overlay>(internal::OnOpenOverlay);
+  reshade::unregister_event<reshade::addon_event::destroy_swapchain>(internal::OnDestroySwapchain);
   const std::unique_lock lock(internal::state.mutex);
   internal::state.objects = {};
   internal::state.vertex_code = {};
