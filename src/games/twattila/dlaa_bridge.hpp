@@ -27,6 +27,7 @@
 #include <span>
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <string>
 #include <utility>
 #include <vector>
@@ -471,12 +472,16 @@ inline bool Start(ID3D11Device* device) {
       // helper busy in a request is its to judge first); a helper told to end gets 5 s to be gone.
       constexpr uint32_t STUCK_POLLS = 30000 / POLL_MS;
       constexpr uint32_t ENDING_POLLS = 5000 / POLL_MS;
-      // Out of memory in here must not end the game: the watcher goes instead.
+      // The sets whose fences one rescue frees (the open one and those retired before the game's GPU got to them).
+      constexpr size_t RESCUED_SETS = 16;
+      // Out of memory in here must not end the game: the watcher goes instead. Up to the rescue's start nothing allocates
+      // (a 32-bit game short of address space with a stuck helper keeps its recovery), and no log line comes before it.
       try {
         const std::array<HANDLE, 2> stop_or_exit = {bridge.watcher_stop, bridge.process};
         uint64_t completed = 0;
         uint32_t stuck_polls = 0;
         uint32_t ending_polls = 0;
+        bool ended_as_stuck = false;
         // Polls are counted, not time read: a PC that slept does not make the work look stuck.
         while (ending_polls < ENDING_POLLS) {
           const DWORD woken = WaitForMultipleObjects(2, stop_or_exit.data(), FALSE, POLL_MS);
@@ -491,35 +496,48 @@ inline bool Start(ID3D11Device* device) {
             completed = read;
             stuck_polls = (stuck ? stuck_polls + 1 : 0);
             if (stuck_polls < STUCK_POLLS) continue;
-            renodx::utils::log::w("[Total War] DLAA: the helper's GPU work did not move for 30 s (the helper is ended).");
             bridge.watchdog.failed.store(true);
+            ended_as_stuck = true;
           }
           // Stuck, or without an answer on the game's thread (Answer): ended.
           if (ending_polls++ == 0) {
             TerminateProcess(bridge.process, 0);
+            if (ended_as_stuck) {
+              try {
+                renodx::utils::log::w("[Total War] DLAA: the helper's GPU work did not move for 30 s (the helper is ended).");
+              } catch (const std::exception&) {
+                // No-op: out of memory costs this line, not the recovery below.
+              }
+            }
           }
         }
         bridge.watchdog.failed.store(true);
         // What the game's GPU may still wait for from the helper, freed once: its exe again in its rescue mode (its own
         // D3D12 device in its own process signals the fences from the CPU), given this thread's own copies of the
         // handles, which it takes from this process by their values.
-        std::vector<HANDLE> copies;
-        std::wstring command = L"\"" + path + L"\" " + std::to_wstring(GetCurrentProcessId()) + L" rescue "
-                               + std::to_wstring(bridge.shared->adapter_luid_low) + L" " + std::to_wstring(bridge.shared->adapter_luid_high);
+        std::array<HANDLE, RESCUED_SETS> copies = {};
+        size_t copy_count = 0;
+        // The path, four numbers, then two of at most 20 digits for each set.
+        std::array<wchar_t, MAX_PATH + 64 + (RESCUED_SETS * 42)> command = {};
+        int command_length = std::swprintf(command.data(), command.size(), L"\"%ls\" %lu rescue %lu %ld", path.c_str(), GetCurrentProcessId(),
+                                           static_cast<unsigned long>(bridge.shared->adapter_luid_low),
+                                           static_cast<long>(bridge.shared->adapter_luid_high));
         {
           const std::shared_lock lock(bridge.watchdog.mutex);
           const auto add = [&](HANDLE recovery, uint64_t value) {
             HANDLE copy = nullptr;
-            if (recovery == nullptr || value == 0
+            if (recovery == nullptr || value == 0 || command_length < 0 || copy_count == copies.size()
                 || !DuplicateHandle(GetCurrentProcess(), recovery, GetCurrentProcess(), &copy, 0, FALSE, DUPLICATE_SAME_ACCESS)) return;
-            copies.push_back(copy);
-            command += L" " + std::to_wstring(reinterpret_cast<uintptr_t>(copy)) + L" " + std::to_wstring(value);
+            copies[copy_count++] = copy;
+            command_length += std::swprintf(command.data() + command_length, command.size() - command_length, L" %llu %llu",
+                                            static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(copy)),
+                                            static_cast<unsigned long long>(value));
           };
           // Oldest first: the game's queue reaches a later set's signals only past the earlier sets' waits.
           for (const RetiredFence& retired : bridge.watchdog.retired) add(retired.recovery, retired.value);
           add(bridge.watchdog.recovery, bridge.watchdog.waited.load());
         }
-        if (copies.empty()) return;
+        if (copy_count == 0) return;
         STARTUPINFOW rescue_startup = {.cb = sizeof(STARTUPINFOW)};
         PROCESS_INFORMATION rescue = {};
         bool freed = false;
@@ -536,7 +554,7 @@ inline bool Start(ID3D11Device* device) {
           CloseHandle(rescue.hThread);
           CloseHandle(rescue.hProcess);
         }
-        for (const HANDLE copy : copies) CloseHandle(copy);
+        for (size_t index = 0; index < copy_count; ++index) CloseHandle(copies[index]);
         renodx::utils::log::w("[Total War] DLAA: the helper stopped; what the game's GPU waited for from it was ",
                               (freed ? "freed." : "not freed."));
       } catch (const std::exception&) {
@@ -879,9 +897,18 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                                                                         bridge.fg_hudless_rtv.GetAddressOf()))))
                     && SUCCEEDED(device->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(bridge.fence.GetAddressOf())))
                     && SUCCEEDED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &fence_handle));
-  if (!made) return internal::Fail("DLAA: the shared textures could not be made.");
+  // A helper that ended meanwhile (a start that failed: nothing can be duplicated into it) is said as that, with its own
+  // status and log, and what it was given went with it: nothing to close there.
+  const auto fail = [&](const char* status) {
+    if (WaitForSingleObject(bridge.process, 0) != WAIT_OBJECT_0) return internal::Fail(status);
+    transferred_count = 0;
+    bridge.watchdog.failed.store(true);
+    internal::HelperLost();
+    return false;
+  };
+  if (!made) return fail("DLAA: the shared textures could not be made.");
   shared.fence = transfer(fence_handle);
-  if (shared.fence == 0) return internal::Fail("DLAA: could not transfer the shared fence.");
+  if (shared.fence == 0) return fail("DLAA: could not transfer the shared fence.");
   // A second handle of the fence stays here for the recovery (without one nothing frees this set if the helper stops).
   HANDLE recovery = nullptr;
   if (FAILED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &recovery))) {

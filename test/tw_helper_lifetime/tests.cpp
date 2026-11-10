@@ -12,6 +12,7 @@
 namespace {
 unsigned fail_transfer_at = 0;
 unsigned transfer_calls = 0;
+unsigned end_helper_at_transfer = 0;
 bool fail_assign = false;
 bool fail_resume = false;
 bool fail_duplicate = false;
@@ -87,6 +88,11 @@ BOOL WINAPI TestDuplicateHandle(HANDLE source_process, HANDLE source, HANDLE tar
     ++shared->rt_device;
     shared->rt_compact_ok = 77;
     strcpy_s(shared->status, "written by the helper during Prepare");
+  }
+  if (end_helper_at_transfer != 0 && transfer && ++transfer_calls == end_helper_at_transfer) {
+    // The helper ends in the middle of Prepare making a set: this transfer and every later one fails by itself.
+    TerminateProcess(target_process, 1);
+    WaitForSingleObject(target_process, 5000);
   }
   if (fail_transfer_at != 0 && transfer && ++transfer_calls == fail_transfer_at) {
     CloseHandle(source); // Match DUPLICATE_CLOSE_SOURCE even on failure.
@@ -341,6 +347,25 @@ int main(int argc, char** argv) {
     CheckClosed();
   }
   std::puts("PASS: transfer failures across a full set (guides, ray tracing, reflections, frames, fence) roll back remote ownership and publication");
+
+  // The helper ends while Prepare transfers a set (a texture's handle, then the fence's): said as the stopped helper with
+  // its own status and its log, once, and nothing is closed in a process that is gone (no rollback warnings).
+  for (unsigned ending : {20u, 26u}) {
+    StartReady(game, "start helper-ends-in-Prepare test");
+    const unsigned warnings_before_end = warnings.load();
+    end_helper_at_transfer = ending;
+    transfer_calls = 0;
+    Check(!bridge_api::Prepare(device, 16, 16, true, true, DXGI_FORMAT_R10G10B10A2_UNORM, true), "a helper that ends in Prepare fails it");
+    end_helper_at_transfer = 0;
+    Check(transfer_calls >= ending, "reached the transfer the helper ended at");
+    Check(bridge.failed && bridge.status.find("the helper stopped") != std::string::npos
+          && bridge.status.find("renodx-tw-dlaa64.log") != std::string::npos, "the ended helper is named, with its log");
+    Check(warnings.load() == warnings_before_end + 1, "one line for a helper that ended in Prepare, none for its handles");
+    Check(bridge.width == 0 && !bridge.color.texture && !bridge.fence && bridge.watchdog.recovery == nullptr, "nothing kept of the set");
+    bridge_api::Shutdown();
+    CheckClosed();
+  }
+  std::puts("PASS: a helper that ends while Prepare transfers a set shows as the stopped helper, with one log line");
 
   // Prepare owns the set's handles and settings only. What the helper writes while Prepare makes the set stays.
   Check(bridge_api::internal::Start(device), "start publication test");
