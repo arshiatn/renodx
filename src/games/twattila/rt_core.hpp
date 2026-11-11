@@ -496,6 +496,7 @@ struct Profile {
   int64_t capture_ticks = 0;
   int64_t trace_ticks = 0;
   int64_t answer_ticks = 0;
+  int64_t present_answer_ticks = 0;
   int64_t set_ticks = 0;
   uint64_t left_out = 0;
   uint64_t no_room = 0;
@@ -3130,19 +3131,21 @@ inline void Update(const Settings& settings) {
     QueryPerformanceFrequency(&frequency);
     const auto ms = [&](int64_t ticks) { return static_cast<double>(ticks) * 1000.0 / static_cast<double>(frequency.QuadPart); };
     const int64_t set_ticks = runtime.set_ticks.load();
-    profile.file << std::format("{},{:.2f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{:.3f},{:.3f}\n",
+    profile.file << std::format("{},{:.2f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{:.3f},{:.3f},{:.3f}\n",
                                 runtime.frame - 1, ms(now.QuadPart - profile.started.QuadPart), ms(now.QuadPart - profile.presented.QuadPart),
                                 ms(costs.capture_ticks - profile.capture_ticks), ms(costs.trace_ticks - profile.trace_ticks),
                                 ms(dlaa_bridge::bridge.answer_ticks - profile.answer_ticks), ms(set_ticks - profile.set_ticks), runtime.set_builds,
                                 profile.counts[0], profile.counts[1], profile.counts[2], profile.counts[3], static_cast<double>(profile.counts[4]) / 1.0e6,
                                 runtime.dynamic_vertices / 1.0e6, static_cast<double>(costs.left_out - profile.left_out) / 1.0e6,
                                 static_cast<double>(costs.no_room - profile.no_room) / 1.0e6, profile.counts[5],
-                                (runtime.traced_frame + 1 == runtime.frame) ? 1 : 0, profile.gpu_frame, profile.passes_ms, profile.waiting_ms);
+                                (runtime.traced_frame + 1 == runtime.frame) ? 1 : 0, profile.gpu_frame, profile.passes_ms, profile.waiting_ms,
+                                ms(dlaa_bridge::bridge.present_answer_ticks - profile.present_answer_ticks));
     profile.counts = {};
     profile.presented = now;
     profile.capture_ticks = costs.capture_ticks;
     profile.trace_ticks = costs.trace_ticks;
     profile.answer_ticks = dlaa_bridge::bridge.answer_ticks;
+    profile.present_answer_ticks = dlaa_bridge::bridge.present_answer_ticks;
     profile.set_ticks = set_ticks;
     profile.left_out = costs.left_out;
     profile.no_room = costs.no_room;
@@ -3331,13 +3334,14 @@ inline void StartProfile() {
   }
   profile.file << "frame,time_ms,frame_ms,capture_ms,trace_ms,answer_wait_ms,set_worker_ms,sets_started,captures,compact_draws,placements,"
                   "new_sets,captured_mtexels,dynamic_mtexels,left_out_mtexels,no_room_mtexels,lights,traced,gpu_frame,gpu_passes_ms,"
-                  "gpu_helper_wait_ms\n";
+                  "gpu_helper_wait_ms,present_pacing_ms\n";
   profile.end_time = GetTickCount64() + internal::PROFILE_MS;
   QueryPerformanceCounter(&profile.started);
   profile.presented = profile.started;
   profile.capture_ticks = runtime.costs.capture_ticks;
   profile.trace_ticks = runtime.costs.trace_ticks;
   profile.answer_ticks = dlaa_bridge::bridge.answer_ticks;
+  profile.present_answer_ticks = dlaa_bridge::bridge.present_answer_ticks;
   profile.set_ticks = runtime.set_ticks.load();
   profile.left_out = runtime.costs.left_out;
   profile.no_room = runtime.costs.no_room;

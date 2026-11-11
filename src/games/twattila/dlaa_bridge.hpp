@@ -280,6 +280,9 @@ struct Bridge {
   RequestKind pending_kind = EVALUATE;
   // The game's thread waiting for the helper's answers so far (QueryPerformanceCounter ticks; the ray tracing profile).
   int64_t answer_ticks = 0;
+  // Of those, the frame generation presents' answers: the helper's Present and Reflex's sleep for the next frame, where
+  // frame generation paces the game (not a wait for the helper's work).
+  int64_t present_answer_ticks = 0;
   // The helper's value the game's GPU has yet to wait for (0: none): a frame generation present's (its copies of the
   // frame, depth and motion) or an unevaluated request's, waited for before the next request's signal or the next
   // writes into the shared textures (BeforeSharedWrites) instead of stalling the game's GPU right after the request.
@@ -976,7 +979,10 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
     return true;
   }
   // Waited for: the first after new shared objects may start NVIDIA's features (Streamline and DLSS-G: seconds when cold).
-  if (!Answer(20000)) return false;
+  const int64_t answer_ticks_before = bridge.answer_ticks;
+  const bool answered = Answer(20000);
+  if (kind == PRESENT_FRAME) bridge.present_answer_ticks += bridge.answer_ticks - answer_ticks_before;
+  if (!answered) return false;
   bridge.steady[kind] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
   bridge.watchdog.waited.store(bridge.value);
   // Nothing of the helper's to read after a present or without a result: its value is waited for later (`deferred`).
@@ -1390,6 +1396,7 @@ inline void Shutdown() {
   bridge.value = 0;
   bridge.answered = false;
   bridge.answer_ticks = 0;
+  bridge.present_answer_ticks = 0;
   bridge.logged = {};
   bridge.logged_time = 0;
   bridge.nrd_ask_bounce = false;
