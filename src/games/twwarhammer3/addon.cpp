@@ -2844,6 +2844,7 @@ twattila::feature_settings::AaSliders aa_sliders;
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 feature_settings::DLSS_MODE_SCALES, 7 Custom
 float below_100_detail_row = 1.f;
+float lod_bias_trilinear_row = 0.f;
 float reflection_lobe_row = 0.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
@@ -3357,6 +3358,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // from the same trace, in the AO slot the game's SSAO left.
   rt_settings.ambient_occlusion = rt_settings.ambient_occlusion || rt_settings.path_ambient;
   rt_settings.path_probe_sky = path_probe_sky_row != 0.f;
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   rt_settings.cheap_fog_alone = true;
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
   rt_settings.reflection_fog = reflections::fog_row != 0.f;
@@ -3962,6 +3964,7 @@ void ConfigureAddon() {
                                              .upscaling_mode = &upscaling_mode_row,
                                              .upscaling_mode_found = twwarhammer3::resolution_scale::Found,
                                              .below_100_detail = &below_100_detail_row,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .water_motion = &water_motion_row,
                                              .scale_fix_gi_shadow = &reflections::scale_fix_row,
                                              .placed_objects = &placed_objects_row,

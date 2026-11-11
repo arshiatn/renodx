@@ -11,9 +11,11 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -36,6 +38,9 @@
 // v29: recorded only while the next frames can be biased (SetTracking at present: a render scale with the bias on),
 // starting from the immediate context's current samplers; otherwise its events return on one atomic
 // (tracking_devices), before any lookup or lock.
+// SetWrappingTrilinear (Warhammer III's row): the game's trilinear samplers that wrap too. Its terrain, buildings, grass
+// and texture blends take their textures through named samplers (s_xml_sampler, trilinear_wrap_srgb_sampler in the
+// shaders' bytes) whose anisotropic filter is not proven; post passes clamp.
 namespace twattila::texture_lod_bias {
 
 namespace internal {
@@ -47,9 +52,12 @@ struct BiasedSampler {
   reshade::api::sampler_desc desc;  // the game's
   reshade::api::sampler clone = {0};
   float clone_bias = 0.f;
+  bool trilinear = false;  // a wrapping trilinear sampler (biased with SetWrappingTrilinear only)
 };
 static renodx::utils::data::ParallelFlatHashMap<uint64_t, BiasedSampler, std::shared_mutex> samplers;
 static std::atomic<float> bias = 0.f;  // 0: none
+static std::atomic<bool> wrapping_trilinear = false;
+static std::atomic<uint32_t> other_samplers = 0;  // the game's samplers of other filters or addresses (Report)
 // Whether the main view is bound now (SetMainView; none: never).
 static std::atomic<bool (*)()> main_view = nullptr;
 // The addon creating or destroying a clone, or binding samplers (its own events skipped; BindSlots holds
@@ -101,14 +109,16 @@ inline bool Immediate(reshade::api::command_list* cmd_list) {
 inline uint64_t BiasedClone(reshade::api::device* device, uint64_t game_sampler, float bias) {
   reshade::api::sampler_desc desc = {};
   reshade::api::sampler clone = {0};
-  const bool anisotropic = samplers.if_contains(game_sampler, [&](const auto& entry) {
+  bool biasable = false;
+  samplers.if_contains(game_sampler, [&](const auto& entry) {
     const auto& [sampler_handle, biased_sampler] = entry;
     desc = biased_sampler.desc;
+    biasable = !biased_sampler.trilinear || wrapping_trilinear.load(std::memory_order_relaxed);
     if (biased_sampler.clone_bias == bias) {
       clone = biased_sampler.clone;
     }
   });
-  if (!anisotropic) return 0;
+  if (!biasable) return 0;
   if (clone.handle != 0u) return clone.handle;
   desc.mip_lod_bias += bias;
   const bool was_addon_sampler = std::exchange(addon_sampler, true);
@@ -182,6 +192,26 @@ inline size_t SamplerCount() {
   return internal::samplers.size();
 }
 
+inline void SetWrappingTrilinear(bool biased) {
+  internal::wrapping_trilinear.store(biased, std::memory_order_relaxed);
+}
+
+// Log Details' line: the game's samplers the bias can take, the others, and those with a copy at the bias now.
+inline std::string Report() {
+  const float now = internal::bias.load(std::memory_order_relaxed);
+  uint32_t anisotropic = 0;
+  uint32_t trilinear = 0;
+  uint32_t biased = 0;
+  internal::samplers.for_each([&](const auto& entry) {
+    const auto& [game_sampler, biased_sampler] = entry;
+    ++(biased_sampler.trilinear ? trilinear : anisotropic);
+    if (biased_sampler.clone.handle != 0u && biased_sampler.clone_bias == now) ++biased;
+  });
+  return std::format("Texture LOD Bias {:.2f}: the game's samplers {} anisotropic, {} trilinear wrapping ({}), {} others; {} of them with a biased copy now.",
+                     now, anisotropic, trilinear, internal::wrapping_trilinear.load(std::memory_order_relaxed) ? "biased" : "as the game's",
+                     internal::other_samplers.load(std::memory_order_relaxed), biased);
+}
+
 // Present: whether the next frames can be biased. Starting, the game's samplers are the immediate context's current
 // ones (it skips binding what a slot already holds); stopping, the game's are bound again if clones are.
 inline void SetTracking(reshade::api::command_queue* queue, bool tracking) {
@@ -215,13 +245,16 @@ inline void SetTracking(reshade::api::command_queue* queue, bool tracking) {
 
 inline void OnInitSampler(reshade::api::device* device, const reshade::api::sampler_desc& desc, reshade::api::sampler sampler) {
   if (internal::addon_sampler || device->get_api() != reshade::api::device_api::d3d11) return;
-  if (desc.filter != reshade::api::filter_mode::anisotropic
+  const bool trilinear = desc.filter == reshade::api::filter_mode::min_mag_mip_linear && desc.address_u == reshade::api::texture_address_mode::wrap
+                         && desc.address_v == reshade::api::texture_address_mode::wrap;
+  if (!trilinear && desc.filter != reshade::api::filter_mode::anisotropic
       && desc.filter != reshade::api::filter_mode::min_mag_anisotropic_mip_point) {
+    internal::other_samplers.fetch_add(1u, std::memory_order_relaxed);
     return;
   }
   // D3D11 can return an existing identity for an identical descriptor. Keep its owned clone.
   internal::samplers.lazy_emplace_l(sampler.handle, [](auto&) {}, [&](const auto& construct) {
-    construct(sampler.handle, internal::BiasedSampler{.owner = device, .desc = desc});
+    construct(sampler.handle, internal::BiasedSampler{.owner = device, .desc = desc, .trilinear = trilinear});
   });
 }
 
@@ -343,6 +376,7 @@ inline void Shutdown() {
   }
   internal::bias.store(0.f);
   internal::main_view.store(nullptr);
+  internal::other_samplers.store(0u);
 }
 
 }  // namespace twattila::texture_lod_bias

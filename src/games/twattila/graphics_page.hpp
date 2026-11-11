@@ -128,6 +128,7 @@ struct Bindings {
   float* upscaling_mode = nullptr;
   bool (*upscaling_mode_found)() = nullptr;
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
+  float* lod_bias_trilinear = nullptr;  // texture_lod_bias.hpp SetWrappingTrilinear; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
   float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
@@ -567,6 +568,19 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                .tooltip = "How sharp textures are while the upscaler renders below 100%.\n"
                           "Matched: as sharp as at your display's resolution. Sharper / Sharpest: one / two steps more\n"
                           "(more detail, can shimmer)."});
+    if (b.lod_bias_trilinear != nullptr) {
+      page.Add(new Setting{
+          .key = "AntiAliasingTextureLodBiasTrilinear",
+          .binding = b.lod_bias_trilinear,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Texture LOD Bias on All Textures (Experimental)",
+          .section = section,
+          .tooltip = "Texture LOD Bias also on the textures the game filters without anisotropy.\n"
+                     "Can shimmer.",
+          .is_visible = more(&more_aa, below_100_rows),
+      });
+    }
     page.Take({.match = "AntiAliasingEffectsAtOutput", .section = section, .shown = more(&more_aa, below_100_rows), .label = "Effects at Output Resolution",
                .tooltip = b.texts->effects_at_output_tooltip});
     page.Take({.match = "AntiAliasingObjectMotion", .section = section,

@@ -215,6 +215,8 @@ struct State {
   bool log_details = false;
   std::array<UINT, 2> jitter_size = {};
   std::vector<std::array<float, 2>> jitter_samples;
+  // Log Details: the Texture LOD Bias's samplers once, 300 presents into a bias (texture_lod_bias::Report).
+  uint32_t lod_bias_presents = 0;
 };
 static State state;
 
@@ -1193,6 +1195,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   bool view_3d = false;
   float lod_bias = 0.f;
+  bool report_lod_bias = false;
   {
     const std::unique_lock lock(state.mutex);
     view_3d = state.camera_seen || state.taa_frame == state.frame;
@@ -1218,9 +1221,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     if (const int choice = state.settings.texture_lod_bias; choice != 0 && state.scale_proof == ScaleProof::GOOD) {
       lod_bias = std::log2(state.learned_share) - static_cast<float>(choice - 1);
     }
+    state.lod_bias_presents = (state.log_details && lod_bias != 0.f) ? state.lod_bias_presents + 1 : 0;
+    report_lod_bias = state.lod_bias_presents == 300;
   }
   twattila::texture_lod_bias::SetTracking(queue, lod_bias != 0.f);
   twattila::texture_lod_bias::SetBias(lod_bias);
+  if (report_lod_bias) renodx::utils::log::i("[Warhammer III] ", twattila::texture_lod_bias::Report());
   // FrameTrace: a frame of the 3D view (600 presents with its camera or its TAA: any Resolution Scale, DLSS on or off), or
   // the next one when renodx_trace_now sits next to the exe (checked each second; removed).
   if (static uint32_t presents = 0; ++presents % 60 == 0) {
