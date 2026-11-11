@@ -13,7 +13,8 @@
 // 5. Flat depth, a first frame, a uniform half zeroth moment: ours gives the game's to 1e-5.
 // 6. A near box in front of smoke the game drew into the half layer behind it (its depth the farthest of each 2 x 2): the box's
 //    pixels get under 1% of it, where the game's gives the pixels next to the edge half of it; away from the edge the game's.
-// 7. Rows off: the game's shader stays bound, nothing captured.
+// 7. Rows off: the game's shader stays bound, nothing captured. The composite with a writable depth target on the depth the
+//    upsample reads: the game's composite (one log line); read-only: ours.
 // Attila (particle_layer.hpp's callbacks with mock ReShade objects):
 // 8. Over, premultiplied and added particles through the layer: within one R11G11B10 rounding of the blend math away from the
 //    quads' edges; a subtract or destination-colour blend stays at full size (one log line), and the frame's later draws.
@@ -21,7 +22,8 @@
 //    composite writes only the render's part.
 // 10. The layer's camera is the game's but c30 (the layer's size); the game's state after each draw; a static scene with Smooth
 //     Half-Size Particles as without (its first frame to the bit); a layer no reader takes stops the row (one log line) until
-//     it goes off and on.
+//     it goes off and on; a particle draw with an output-stage UAV bound stays at full size, and at the layer's reader such a
+//     UAV is bound again after the composite with its counter kept.
 // --time: on the hardware GPU at 4K, the passes' time (median of 60 frames).
 #include <windows.h>
 #include <d3d11.h>
@@ -221,6 +223,38 @@ static ComPtr<ID3D11Buffer> MakeBuffer(const void* data, UINT size) {
   ComPtr<ID3D11Buffer> buffer;
   REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, &initial, buffer.GetAddressOf())));
   return buffer;
+}
+
+// A structured buffer's UAV with a counter (the game's output-stage UAV in the tests), and its counter read back.
+static ComPtr<ID3D11UnorderedAccessView> MakeCounted() {
+  const D3D11_BUFFER_DESC desc = {.ByteWidth = 64 * 4, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+                                  .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, .StructureByteStride = 4};
+  ComPtr<ID3D11Buffer> buffer;
+  REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, nullptr, buffer.GetAddressOf())));
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC view = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                 .Buffer = {.FirstElement = 0, .NumElements = 64, .Flags = D3D11_BUFFER_UAV_FLAG_COUNTER}};
+  ComPtr<ID3D11UnorderedAccessView> uav;
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(buffer.Get(), &view, uav.GetAddressOf())));
+  return uav;
+}
+static std::vector<uint8_t> ReadBuffer(ID3D11Buffer* buffer);
+static uint32_t CounterOf(ID3D11UnorderedAccessView* uav) {
+  const std::array<uint32_t, 4> nothing = {};
+  const D3D11_BUFFER_DESC desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = nothing.data()};
+  ComPtr<ID3D11Buffer> count;
+  REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, &initial, count.GetAddressOf())));
+  context->CopyStructureCount(count.Get(), 0, uav);
+  const auto bytes = ReadBuffer(count.Get());
+  uint32_t value = 0;
+  std::memcpy(&value, bytes.data(), sizeof(value));
+  return value;
+}
+// The output-stage UAV at `slot` now.
+static ComPtr<ID3D11UnorderedAccessView> BoundOutputView(UINT slot) {
+  ComPtr<ID3D11UnorderedAccessView> view;
+  context->OMGetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, slot, 1, view.GetAddressOf());
+  return view;
 }
 
 static std::vector<uint8_t> ReadBuffer(ID3D11Buffer* buffer) {
@@ -502,7 +536,7 @@ struct CompositeInputs {
 struct CompositeTextures {
   UINT width = 0;
   UINT height = 0;
-  frame_history::Target full_depth;
+  Depth full_depth;  // the game's depth buffer
   frame_history::Target half_depth;
   frame_history::Target full_optical_depth;
   frame_history::Target half_optical_depth;
@@ -516,7 +550,7 @@ static CompositeTextures UploadComposite(const CompositeInputs& in) {
   const UINT half_height = in.height / 2;
   return {.width = in.width,
           .height = in.height,
-          .full_depth = Upload(DXGI_FORMAT_R32_FLOAT, in.width, in.height, Expand(in.full_depth)),
+          .full_depth = MakeDepth(in.width, in.height, in.full_depth),
           .half_depth = Upload(DXGI_FORMAT_R32_FLOAT, half_width, half_height, Expand(in.half_depth)),
           .full_optical_depth = Upload(DXGI_FORMAT_R32_FLOAT, in.width, in.height, in.full_optical_depth),
           .half_optical_depth = Upload(DXGI_FORMAT_R32_FLOAT, half_width, half_height, in.half_optical_depth),
@@ -537,12 +571,14 @@ struct CompositeRig {
   ComPtr<ID3D11PixelShader> game_shader;
   ComPtr<ID3D11SamplerState> sampler;
   ComPtr<ID3D11Buffer> camera;
+  ComPtr<ID3D11DepthStencilState> no_depth;
 };
 
 struct GpuTimer;
 static void Stamp(GpuTimer* timer, size_t index);
 
-static CompositeOutputs RunComposite(CompositeRig* rig, bool smoothing, const CompositeTextures& in, bool read = true, GpuTimer* timer = nullptr) {
+static CompositeOutputs RunComposite(CompositeRig* rig, bool smoothing, const CompositeTextures& in, bool read = true, GpuTimer* timer = nullptr,
+                                     ID3D11DepthStencilView* depth_target = nullptr) {
   const UINT half_width = in.width / 2;
   const UINT half_height = in.height / 2;
   frame_history::Target o0;
@@ -574,11 +610,11 @@ static CompositeOutputs RunComposite(CompositeRig* rig, bool smoothing, const Co
 
   // The game's composite.
   const std::array<ID3D11RenderTargetView*, 2> targets = {o0.rtv.Get(), o1.rtv.Get()};
-  context->OMSetRenderTargets(2, targets.data(), nullptr);
+  context->OMSetRenderTargets(2, targets.data(), depth_target);
   context->RSSetViewports(1, &full_viewport);
   context->RSSetState(nullptr);
   context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFFu);
-  context->OMSetDepthStencilState(nullptr, 0);
+  context->OMSetDepthStencilState(rig->no_depth.Get(), 0);
   context->IASetInputLayout(nullptr);
   context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   context->VSSetShader(full_screen_vs.Get(), nullptr, 0);
@@ -631,6 +667,8 @@ static CompositeRig MakeCompositeRig(const char* dump, UINT width, UINT height) 
                                       .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
                                       .ComparisonFunc = D3D11_COMPARISON_NEVER, .MaxLOD = D3D11_FLOAT32_MAX};
   REQUIRE(SUCCEEDED(device->CreateSamplerState(&sampler, rig.sampler.GetAddressOf())));
+  const D3D11_DEPTH_STENCIL_DESC no_depth = {};
+  REQUIRE(SUCCEEDED(device->CreateDepthStencilState(&no_depth, rig.no_depth.GetAddressOf())));
   rig.camera = MakeCamera({.render_width = static_cast<float>(width), .render_height = static_cast<float>(height),
                            .display_width = static_cast<float>(width), .display_height = static_cast<float>(height)});
   return rig;
@@ -748,6 +786,18 @@ static void TestComposite(const char* dump) {
     const auto game = RunComposite(&rig, false, in);
     CHECK(!game.replaced && vfx::internal::smoothing.layer_count == 0 && !vfx::internal::smoothing.half_optical_depth);
     std::printf("7. rows off: the game's composite, nothing captured\n");
+    // The composite's depth target on the depth buffer the upsample reads: writable, the game's composite; read-only, ours.
+    const auto clash = RunComposite(&rig, true, in, false, nullptr, in.full_depth.dsv.Get());
+    const auto again = RunComposite(&rig, true, in, false, nullptr, in.full_depth.dsv.Get());
+    const D3D11_DEPTH_STENCIL_VIEW_DESC read_only_desc = {.Format = DXGI_FORMAT_D32_FLOAT, .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D,
+                                                          .Flags = D3D11_DSV_READ_ONLY_DEPTH};
+    ComPtr<ID3D11DepthStencilView> read_only;
+    REQUIRE(SUCCEEDED(device->CreateDepthStencilView(in.full_depth.texture.Get(), &read_only_desc, read_only.GetAddressOf())));
+    const auto shared = RunComposite(&rig, true, in, false, nullptr, read_only.Get());
+    const size_t clash_lines = LogCount("the composite's depth target is a depth it reads");
+    std::printf("7. depth target on the depth it reads: writable %s / %s, read-only %s; %zu log line\n", clash.replaced ? "ours" : "the game's",
+                again.replaced ? "ours" : "the game's", shared.replaced ? "ours" : "the game's", clash_lines);
+    CHECK(!clash.replaced && !again.replaced && shared.replaced && clash_lines == 1);
   }
   CHECK(LogCount("Smooth Half-Size Particles: the first composite smoothed") == 1);
 }
@@ -790,6 +840,7 @@ struct AttilaRig {
   ComPtr<ID3D11PixelShader> quad_ps;
   ComPtr<ID3D11PixelShader> gradient_ps;
   ComPtr<ID3D11DepthStencilState> depth_test;
+  ComPtr<ID3D11UnorderedAccessView> output_view;  // bound at the output stage's slot 1 with the particles when set
 };
 
 static AttilaRig MakeAttilaRig(UINT display_width, UINT display_height, UINT render_width, UINT render_height, const std::vector<float>& depth) {
@@ -839,7 +890,9 @@ static std::vector<bool> DrawParticles(AttilaRig* rig, std::span<const Particle>
                                        static_cast<float>(particle.rect[2]) / width * 2.f - 1.f, 1.f - static_cast<float>(particle.rect[3]) / height * 2.f,
                                        particle.colour[0], particle.colour[1], particle.colour[2], particle.colour[3]};
     context->UpdateSubresource(rig->quad.Get(), 0, nullptr, quad.data(), 0, 0);
-    context->OMSetRenderTargets(1, rig->light.rtv.GetAddressOf(), rig->scene.dsv.Get());
+    const UINT keep_count = UINT_MAX;
+    context->OMSetRenderTargetsAndUnorderedAccessViews(1, rig->light.rtv.GetAddressOf(), rig->scene.dsv.Get(), 1, rig->output_view ? 1 : 0,
+                                                       rig->output_view.GetAddressOf(), &keep_count);
     context->OMSetBlendState(blend.Get(), nullptr, 0xFFFFFFFFu);
     context->OMSetDepthStencilState(rig->depth_test.Get(), 0);
     context->RSSetViewports(1, &rig->viewport);
@@ -879,6 +932,7 @@ static std::vector<bool> DrawParticles(AttilaRig* rig, std::span<const Particle>
     context->PSGetConstantBuffers(0, 1, buffers[2].GetAddressOf());
     context->PSGetConstantBuffers(particle_history::CONSTANTS_SLOT, 1, buffers[3].GetAddressOf());
     CHECK(target.Get() == rig->light.rtv.Get() && depth.Get() == rig->scene.dsv.Get() && bound_blend.Get() == blend.Get());
+    CHECK(BoundOutputView(1).Get() == rig->output_view.Get());
     CHECK(count == 1 && std::memcmp(&viewport, &rig->viewport, sizeof(viewport)) == 0);
     CHECK(buffers[0].Get() == rig->camera.Get() && buffers[1].Get() == rig->camera.Get() && buffers[2].Get() == rig->camera.Get()
           && buffers[3].Get() == rig->sentinel.Get());
@@ -1002,6 +1056,48 @@ static void TestLayer() {
     CHECK(layered[0]);
     CHECK(LogCount("a particle blend it can't take") == 1);
     std::printf("8. subtract and destination-colour blends at full size (and the frame's later ones), one log line\n");
+    // 10. An output-stage UAV with the particles: full size, the UAV and its counter as the game bound them.
+    rig.output_view = MakeCounted();
+    {
+      const UINT seven = 7;
+      context->OMSetRenderTargetsAndUnorderedAccessViews(1, rig.light.rtv.GetAddressOf(), nullptr, 1, 1, rig.output_view.GetAddressOf(), &seven);
+    }
+    AttilaFrame(&rig, particles, true, &layered);
+    const bool uav_draws_full = std::ranges::none_of(layered, [](bool value) { return value; });
+    CHECK(uav_draws_full);
+    CHECK(LogCount("MSAA, a scissor or UAVs") == 1);
+    const uint32_t count_after_draws = CounterOf(rig.output_view.Get());
+    CHECK(count_after_draws == 7);
+    // At the reader: the game's target at slot 0 and the UAV at slot 1 bound again after the composite (the layer's passes under
+    // DrawState), its counter kept.
+    const auto reader_view = rig.output_view;
+    rig.output_view.Reset();
+    frame_history::Target reader_target;
+    REQUIRE(frame_history::MakeTarget(device.Get(), 32, 24, DXGI_FORMAT_R16G16B16A16_FLOAT, &reader_target));
+    size_t reader_kept = 0;
+    for (const float smoothing : {0.f, 1.f}) {
+      layer::smoothing_row = smoothing;
+      layer::Update(&rig.swapchain);
+      DrawWith(rig.gradient_ps.Get(), rig.light.rtv.Get(), rig.display_width, rig.display_height, nullptr);
+      const auto drawn = DrawParticles(&rig, std::span(particles).first(1));
+      CHECK(drawn[0]);
+      const UINT keep_count = UINT_MAX;
+      context->OMSetRenderTargetsAndUnorderedAccessViews(1, reader_target.rtv.GetAddressOf(), nullptr, 1, 1, reader_view.GetAddressOf(), &keep_count);
+      DrawContext reader;
+      reader.cmd_list = &rig.commands;
+      reader.matched_shader_hash = 0x781681E4;
+      layer::internal::OnLayerReader(reader);
+      ComPtr<ID3D11RenderTargetView> target;
+      context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+      const bool kept = target.Get() == reader_target.rtv.Get() && BoundOutputView(1).Get() == reader_view.Get() && CounterOf(reader_view.Get()) == 7;
+      CHECK(kept);
+      reader_kept += kept ? 1 : 0;
+      CHECK(layer::internal::runtime.closed_frame == layer::internal::runtime.frame);
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+    }
+    layer::smoothing_row = 0.f;
+    std::printf("10. an output-stage UAV: particles with it at full size (%s), counter %u; at the reader target and UAV bound again, "
+                "counter kept (%zu of 2, smoothing off / on)\n", uav_draws_full ? "all" : "NOT all", count_after_draws, reader_kept);
     // 10. No reader: stopped at the next present (one log line), until the row goes off and on.
     AttilaFrame(&rig, particles, false, &layered);
     CHECK(layered[0]);

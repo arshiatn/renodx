@@ -124,6 +124,7 @@ struct Smoothing {
   ComPtr<ID3D11ShaderResourceView> half_optical_depth;  // the half layer's zeroth moment (A759AD5D's t0)
   bool restart = true;                                   // the history starts again at the next resolve
   float half_resolution_seen = 0.f;
+  bool depth_clash_logged = false;
   ComPtr<ID3D11PixelShader> game_shader;
   std::array<ID3D11ShaderResourceView*, particle_history::VIEW_COUNT> game_views = {};
   std::array<ID3D11Buffer*, particle_history::CONSTANTS_COUNT> game_constants = {};
@@ -424,6 +425,29 @@ constexpr auto OnComposite = []<typename Context>(Context& command) -> renodx::u
   const LayerDraw* half_layer = layer_of_width(half_width);
   const LayerDraw* full_layer = layer_of_width(full_width);
   if (half_layer == nullptr || full_layer == nullptr) return {};
+  // The composite's depth target (taa_dlss.hpp reads and rebinds it): writable and a depth the upsample reads, that read would be
+  // unbound. Then the game's composite.
+  ComPtr<ID3D11DepthStencilView> depth_target;
+  native->OMGetRenderTargets(0, nullptr, depth_target.GetAddressOf());
+  if (depth_target) {
+    D3D11_DEPTH_STENCIL_VIEW_DESC depth_target_desc = {};
+    depth_target->GetDesc(&depth_target_desc);
+    ComPtr<ID3D11Resource> target_resource;
+    depth_target->GetResource(target_resource.GetAddressOf());
+    const auto written = [&](ID3D11ShaderResourceView* view) {
+      ComPtr<ID3D11Resource> resource;
+      view->GetResource(resource.GetAddressOf());
+      return resource == target_resource;
+    };
+    if ((depth_target_desc.Flags & D3D11_DSV_READ_ONLY_DEPTH) == 0 && (written(half_layer->depth.Get()) || written(full_layer->depth.Get()))) {
+      if (!smoothing.depth_clash_logged) {
+        smoothing.depth_clash_logged = true;
+        renodx::utils::log::w("[Warhammer III] Smooth Half-Size Particles: the composite's depth target is a depth it reads: the game's "
+                              "composite.");
+      }
+      return {};
+    }
+  }
   ComPtr<ID3D11Buffer> camera;
   native->PSGetConstantBuffers(0, 1, camera.GetAddressOf());
   if (!camera) return {};
@@ -510,7 +534,9 @@ inline void OnPresent() {
   smoothing.layer_count = 0;
   smoothing.half_optical_depth.Reset();
   if (smoothing_row == 0.f) {
-    if (internal::objects.history.width != 0) particle_history::ReleaseHistories(&internal::objects.history);
+    if (internal::objects.history.width != 0 || internal::objects.history.failed_width != 0) {
+      particle_history::ReleaseHistories(&internal::objects.history);
+    }
     smoothing.restart = true;
   }
   if (smoothing.half_resolution_seen != half_resolution_row) {

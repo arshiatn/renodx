@@ -38,8 +38,8 @@
 // half viewport, its blend with the alpha keeping the share of the scene left (over: x (1 - alpha); added: x 1), the copy at
 // b0 of every stage, the layer's constants at the pixel stage's b8 (vfx00 reads the rays' shadow by them); put back after.
 // The composite (particle_composite; with Smooth Half-Size Particles the history first, particle_history.hpp) brings it up by
-// depth: light x alpha + rgb. A draw with any other blend, a scissor, more targets or the game's MSAA stays at full size (one
-// log line). D3D11, the main view.
+// depth: light x alpha + rgb. A draw with any other blend, a scissor, more targets, the game's MSAA or the output stage's UAVs
+// bound stays at full size, and the frame's later ones (one log line for the blends, one for the rest). D3D11, the main view.
 namespace twattila::particle_layer {
 
 using Microsoft::WRL::ComPtr;
@@ -66,6 +66,8 @@ struct DeviceObjects {
   // The layer's textures, for a light buffer of `light_width` x `light_height`.
   UINT light_width = 0;
   UINT light_height = 0;
+  UINT failed_light_width = 0;  // a light buffer's size the textures could not be made for: not tried again
+  UINT failed_light_height = 0;
   frame_history::Target layer;
   ComPtr<ID3D11DepthStencilView> depth_target;
   ComPtr<ID3D11ShaderResourceView> depth_view;
@@ -106,7 +108,8 @@ struct Runtime {
   D3D11_VIEWPORT layer_viewport = {};
   uint32_t draws = 0;  // particle draws in the open layer
   GameBindings game;
-  bool refusal_logged = false;
+  bool refusal_logged = false;        // a blend it can't take
+  bool state_refusal_logged = false;  // MSAA, a scissor or UAVs
   bool lost_logged = false;
   bool applied_logged = false;
   DeviceObjects objects;
@@ -185,6 +188,7 @@ inline bool Prepare(ID3D11Device* device, const D3D11_TEXTURE2D_DESC& light_desc
   }
   if (objects.failed) return false;
   if (objects.layer.texture && objects.light_width == light_desc.Width && objects.light_height == light_desc.Height) return true;
+  if (objects.failed_light_width == light_desc.Width && objects.failed_light_height == light_desc.Height) return false;
   objects.layer = {};
   objects.depth_target.Reset();
   objects.depth_view.Reset();
@@ -213,7 +217,10 @@ inline bool Prepare(ID3D11Device* device, const D3D11_TEXTURE2D_DESC& light_desc
       || FAILED(device->CreateDepthStencilView(depth.Get(), &depth_target, objects.depth_target.GetAddressOf()))
       || FAILED(device->CreateShaderResourceView(depth.Get(), &depth_view, objects.depth_view.GetAddressOf()))) {
     objects.layer = {};
-    renodx::utils::log::w("[Total War] Particles at Half Resolution: could not create its textures (", width, " x ", height, ").");
+    objects.failed_light_width = light_desc.Width;
+    objects.failed_light_height = light_desc.Height;
+    renodx::utils::log::w("[Total War] Particles at Half Resolution: could not create its textures (", width, " x ", height,
+                          "): off at this size.");
     return false;
   }
   objects.light_width = light_desc.Width;
@@ -303,12 +310,17 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   const std::unique_lock lock(runtime.mutex);
   if (runtime.stopped || runtime.closed_frame == runtime.frame || runtime.refused_frame == runtime.frame) return {};
 
-  // One target, the light buffer (the display's size; its view at the render size), and the scene's depth.
+  // One target, the light buffer (the display's size; its view at the render size), and the scene's depth. The output stage's
+  // UAVs too (their slots read as no target): the layer's targets would unbind them.
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> bound = {};
   ComPtr<ID3D11DepthStencilView> scene_depth;
-  native->OMGetRenderTargets(static_cast<UINT>(bound.size()), bound.data(), scene_depth.GetAddressOf());
+  std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT> bound_output_views = {};
+  native->OMGetRenderTargetsAndUnorderedAccessViews(static_cast<UINT>(bound.size()), bound.data(), scene_depth.GetAddressOf(), 0,
+                                                    static_cast<UINT>(bound_output_views.size()), bound_output_views.data());
   std::array<ComPtr<ID3D11RenderTargetView>, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets;
   for (size_t index = 0; index < bound.size(); ++index) targets[index].Attach(bound[index]);
+  std::array<ComPtr<ID3D11UnorderedAccessView>, D3D11_PS_CS_UAV_REGISTER_COUNT> output_views;
+  for (size_t index = 0; index < bound_output_views.size(); ++index) output_views[index].Attach(bound_output_views[index]);
   if (!targets[0] || !scene_depth || std::ranges::any_of(targets.begin() + 1, targets.end(), [](const auto& target) { return target != nullptr; })) {
     return {};
   }
@@ -331,11 +343,17 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   if (rasterizer) rasterizer->GetDesc(&rasterizer_desc);
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (light_desc.SampleDesc.Count != 1 || rasterizer_desc.ScissorEnable || !Prepare(device.Get(), light_desc)) {
-    if (!runtime.refusal_logged) {
-      runtime.refusal_logged = true;
-      renodx::utils::log::i("[Total War] Particles at Half Resolution: particles with the game's MSAA or a scissor: those stay at full size.");
+  if (light_desc.SampleDesc.Count != 1 || rasterizer_desc.ScissorEnable
+      || std::ranges::any_of(output_views, [](const auto& view) { return view != nullptr; })) {
+    if (!runtime.state_refusal_logged) {
+      runtime.state_refusal_logged = true;
+      renodx::utils::log::i("[Total War] Particles at Half Resolution: particles with the game's MSAA, a scissor or UAVs: those stay "
+                            "at full size.");
     }
+    runtime.refused_frame = runtime.frame;
+    return {};
+  }
+  if (!Prepare(device.Get(), light_desc)) {
     runtime.refused_frame = runtime.frame;
     return {};
   }

@@ -8,7 +8,9 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <cstring>
 
@@ -41,7 +43,8 @@ constexpr float CAMERA_CUT = 25.f;    // metres in a frame: farther is a cut
 constexpr float LAYER_SCALE = 2.f;
 
 // The graphics state a full-screen pass of the particle modules sets, kept and put back: the shaders, input, viewports,
-// rasterizer, targets, blend, depth, and the pixel stage's views t0-t55, constants b8-b11 and sampler s12.
+// rasterizer, targets and the output stage's UAVs (their counters kept), blend, depth, and the pixel stage's views t0-t55,
+// constants b8-b11 and sampler s12.
 struct DrawState {
   ComPtr<ID3D11VertexShader> vertex_shader;
   ComPtr<ID3D11HullShader> hull_shader;
@@ -55,6 +58,7 @@ struct DrawState {
   ComPtr<ID3D11RasterizerState> rasterizer;
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets = {};
   ComPtr<ID3D11DepthStencilView> depth;
+  std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT> output_views = {};  // by slot, above the targets
   ComPtr<ID3D11BlendState> blend;
   std::array<float, 4> blend_factor = {};
   UINT sample_mask = 0;
@@ -74,7 +78,8 @@ struct DrawState {
     native->IAGetPrimitiveTopology(&topology);
     native->RSGetViewports(&viewport_count, viewports.data());
     native->RSGetState(rasterizer.GetAddressOf());
-    native->OMGetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), depth.GetAddressOf());
+    native->OMGetRenderTargetsAndUnorderedAccessViews(static_cast<UINT>(targets.size()), targets.data(), depth.GetAddressOf(), 0,
+                                                      static_cast<UINT>(output_views.size()), output_views.data());
     native->OMGetBlendState(blend.GetAddressOf(), blend_factor.data(), &sample_mask);
     native->OMGetDepthStencilState(depth_state.GetAddressOf(), &stencil_reference);
     native->PSGetShaderResources(0, KEPT_VIEWS, views.data());
@@ -91,8 +96,21 @@ struct DrawState {
     native_->IASetPrimitiveTopology(topology);
     native_->RSSetViewports(viewport_count, viewports.data());
     native_->RSSetState(rasterizer.Get());
-    // The targets before the views: a view of one of the pass's targets is bound again only once that is no target.
-    native_->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), depth.Get());
+    // The targets before the views: a view of one of the pass's targets is bound again only once that is no target. A pass's
+    // OMSetRenderTargets unbinds the output stage's UAVs: they go back above the last target, their counters as they were.
+    if (std::ranges::any_of(output_views, [](auto* view) { return view != nullptr; })) {
+      UINT target_count = 0;
+      for (UINT slot = 0; slot < targets.size(); ++slot) {
+        if (targets[slot] != nullptr) target_count = slot + 1;
+      }
+      std::array<UINT, D3D11_PS_CS_UAV_REGISTER_COUNT> keep_counts = {};
+      keep_counts.fill(UINT_MAX);
+      native_->OMSetRenderTargetsAndUnorderedAccessViews(target_count, targets.data(), depth.Get(), target_count,
+                                                         static_cast<UINT>(output_views.size()) - target_count,
+                                                         output_views.data() + target_count, keep_counts.data());
+    } else {
+      native_->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), depth.Get());
+    }
     native_->OMSetBlendState(blend.Get(), blend_factor.data(), sample_mask);
     native_->OMSetDepthStencilState(depth_state.Get(), stencil_reference);
     native_->PSSetShaderResources(0, KEPT_VIEWS, views.data());
@@ -100,6 +118,9 @@ struct DrawState {
     native_->PSSetSamplers(SAMPLER_SLOT, 1, sampler.GetAddressOf());
     for (auto* target : targets) {
       if (target != nullptr) target->Release();
+    }
+    for (auto* view : output_views) {
+      if (view != nullptr) view->Release();
     }
     for (auto* view : views) {
       if (view != nullptr) view->Release();
@@ -142,6 +163,8 @@ struct History {
   std::array<frame_history::Target, 2> colours;
   std::array<frame_history::Target, 2> extras;  // the optical depth and the frames
   std::array<frame_history::Target, 2> means;   // the layer's 3 x 3 mean: luminance and coverage
+  UINT failed_width = 0;                        // a size the histories could not be made at: not tried again
+  UINT failed_height = 0;
   size_t index = 0;                            // the one the last resolve wrote
   uint64_t resolved_frame = UINT64_MAX;
 };
@@ -187,13 +210,15 @@ inline void Upload(ID3D11DeviceContext* context, const ParticleLayerConstants& c
   history->uploaded = constants;
 }
 
-// The histories' memory back (made again, empty, at the next resolve).
+// The histories' memory back (made again, empty, at the next resolve; a size that failed is tried again).
 inline void ReleaseHistories(History* history) {
   history->colours = {};
   history->extras = {};
   history->means = {};
   history->width = 0;
   history->height = 0;
+  history->failed_width = 0;
+  history->failed_height = 0;
 }
 
 // One full-screen triangle over `viewport` with `shader`, its views at t50 and constants at b8 (the targets the caller's).
@@ -235,14 +260,17 @@ inline std::array<ID3D11ShaderResourceView*, 2> Resolve(ID3D11DeviceContext* con
   texture->GetDesc(&desc);
   const bool same_viewport = std::memcmp(&history->viewport, &layer.viewport, sizeof(D3D11_VIEWPORT)) == 0;
   if (history->width != desc.Width || history->height != desc.Height || !same_viewport) {
+    if (history->failed_width == desc.Width && history->failed_height == desc.Height) return {};
     ReleaseHistories(history);
     for (size_t index = 0; index < 2; ++index) {
       if (!frame_history::MakeTarget(device.Get(), desc.Width, desc.Height, DXGI_FORMAT_R16G16B16A16_FLOAT, &history->colours[index])
           || !frame_history::MakeTarget(device.Get(), desc.Width, desc.Height, DXGI_FORMAT_R32G32_FLOAT, &history->extras[index])
           || !frame_history::MakeTarget(device.Get(), desc.Width, desc.Height, DXGI_FORMAT_R16G16_FLOAT, &history->means[index])) {
         ReleaseHistories(history);
+        history->failed_width = desc.Width;
+        history->failed_height = desc.Height;
         renodx::utils::log::w("[Total War] Smooth Half-Size Particles: could not create its textures (", desc.Width, " x ",
-                              desc.Height, ").");
+                              desc.Height, "): off at this size.");
         return {};
       }
     }
