@@ -1,8 +1,20 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
-## v42 (in progress, round v42; not run in game)
+## v42 (2026-11-11, round v42; renodx-tw-dlaa64.exe helper103 as in v41, bridge v30: ship them together; not run in game; no players' zip)
+
+Every new row is Experimental and off: with them off the picture is v41's (WARP below). Page against v41's: the six rows, the DLSS Preset tooltip without Auto (e9bb6b9e, after v41's dump) and the Build Date.
 
 - **Smooth Half-Size Particles (Experimental, off; VFX):** the game's half-size particle layer (what it draws soft, and all sprites with Particles at Half Resolution) kept over frames and brought up by depth. Its composite (43606BB8) is drawn with `particle_composite.ps_5_0.hlsl`: the same sums, with the half layer's colour and zeroth moment smoothed (`twattila/particle_history.hpp`: last frame's moved by the depth, held within this frame's 3 x 3, kept while this frame's 3 x 3 mean matches last frame's) and each pixel taking the 2 x 2 texels around it by depth (bilinear unless one is more than 10% off, then by nearness: the rule of the game's own unused filtered composite 1EF17B33). Smoke no longer covers the edge of a soldier in front of it; a flickering spark averages, a moving one stays whole. WARP `test/tw_particle_history`: at a first frame on flat depth it is the game's composite to 2.75e-6; at a box edge the box gets 0.2% of the smoke behind it, the game's composite half. RTX 5090, 4K: +0.07 ms.
+- **Bend Screen-Space Shadows: five Experimental rows, off** (shared `twattila/screen_space_shadows.hpp`, `screen_space_lights.hpp`; an extended march `sss_bend_extended` in four variants that runs only where a row asks for it):
+  - **Auto Thickness:** each object taken to be as thick as it is wide (Ottosson's rule, CC0): fuller shadows behind houses and walls, poles as thin as before.
+  - **Light Through Banners** (0 to 1) and **Coloured Shadows:** banners, flags, tents and sails (233A0281, 219075F3, 72CDA7A1, 444F1190; C0ED2883 with Light Through All Banners) drawn again into their own depth after the game's draw; their shadows keep the row's share of the sun, tinted by the cloth (t50, where the rays bind none).
+  - **Softer Away from the Caster** (the sun's size in degrees, 0 = off): sharp at contact, softer farther from the caster; a fixed disc, no temporal pattern.
+  - **Torch and Fire Shadows** (Off / 4 / 8 / 16, without ray-traced point light shadows): the light draws' instances copied on the GPU, the nearest and brightest picked as the rays pick them, one screen-space march each over the rectangle their reach covers (two screens' cap); the replaced light shaders read the result as they read the rays'.
+  - Not possible in screen space, said in D.md: casters off screen, far reach. Smoke under them was already the game's (its t_vfx_shadows in the sun mask).
+  - RTX 5090, 4K at 100% (WARP-checked shaders timed on hardware): Banners +0.08 ms, Coloured +0.60, Softer +0.53, Auto +0.73, torches 0.35 / 0.65 / 1.2 ms for 4 / 8 / 16 lights 40 m away (at most 1.4 ms close).
+- **Weapon jitter after the camera comes back (Attila's fix, shared):** no code of Warhammer III's changed: it has no unit motion of ours (its skinned units' motion is the game's; ours only MOVING_VS weapons and TIME_VS / GAP_PS, all in the game's draw). If weapons jitter here, Object Motion Vectors off / on tells the game's from ours (run request B4).
+
+Tests: WARP `test/tw_particle_history`, `test/tw_screen_space_shadows` (rows off to the bit against the plain march; 50% / 58% render scale counts), every `test/tw_*` x86 / amd64 PASS (round v42 E). Helper103 unchanged: seven harness modes on the stamped helper pass.
 
 ## v41 (2026-11-11, fixes; renodx-tw-dlaa64.exe helper103, bridge v30: ship them together; not run in game; no players' zip)
 
