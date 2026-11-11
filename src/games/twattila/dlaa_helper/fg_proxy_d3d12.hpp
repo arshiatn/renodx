@@ -436,6 +436,7 @@ class ProxyFrameGeneration12 {
       // The lines between don't read its count: the next one starts over.
       if (!failure_.empty() || !inputs) fsr_present_count_ = 0;
 #endif
+      presented_ = 0;
       if (!failure_.empty()) {
         status_ = "Frame generation: " + std::exchange(failure_, {});
       } else if (!inputs) {
@@ -449,6 +450,7 @@ class ProxyFrameGeneration12 {
           UINT present_count = 0;
           const bool counted = SUCCEEDED(chain_->GetLastPresentCount(&present_count)) && present_count != 0 && fsr_present_count_ != 0;
           const std::string frames = (counted ? std::format("{:.1f} frames presented per rendered frame", static_cast<float>(present_count - fsr_present_count_) / 30.f) : std::string("started"));
+          if (counted) presented_ = std::min(static_cast<uint32_t>(std::lround(static_cast<float>(present_count - fsr_present_count_) / 30.f)), 255u);
           fsr_present_count_ = present_count;
           status_ = std::format("AMD FSR Frame Generation {}: {}{}{}", (provider.versionName != nullptr ? provider.versionName : "?"), frames, no_hudless, started_);
         }
@@ -462,6 +464,7 @@ class ProxyFrameGeneration12 {
           if (last.frameGenResult < XEFG_SWAPCHAIN_RESULT_SUCCESS) {
             status_ = std::format("XeSS Frame Generation: not generating (code {})", static_cast<int>(last.frameGenResult));
           } else {
+            presented_ = std::min(static_cast<uint32_t>(last.framesPresented), 255u);
             status_ = std::format("XeSS Frame Generation {}.{}.{}: {} frames presented per rendered frame{}{}{}", version.major, version.minor, version.patch,
                                   last.framesPresented, no_hudless, (xefg_composed_ ? ", HUD recomposed" : ""), started_);
           }
@@ -523,6 +526,10 @@ class ProxyFrameGeneration12 {
 
   [[nodiscard]] uint32_t Backend() const { return backend_; }
   [[nodiscard]] const std::string& Status() const { return status_; }
+  // Shared::fg_presented: the frames it last presented per rendered frame, the most it presents here (FSR: one generated frame).
+  [[nodiscard]] uint32_t Presented() const {
+    return presented_ | ((backend_ == dlaa_bridge::FG_BACKEND_XESS ? std::min(xefg_most_ + 1u, 255u) : 2u) << 8);
+  }
   // It gave up on this device or driver (its chain could not be made, ...).
   [[nodiscard]] bool Failed() const { return failed_; }
   // A GPU reset removed its device (the helper makes a new one).
@@ -701,6 +708,7 @@ class ProxyFrameGeneration12 {
   std::string failure_;
   std::string started_;  // how long its start took, for the status line
   uint64_t presents_ = 0;
+  uint32_t presented_ = 0;  // frames presented per rendered frame at the last status line (0: none generated)
   UINT fsr_present_count_ = 0;  // at the last status line
 
   // The addon's objects, FSR's copy of the HUD-less image.

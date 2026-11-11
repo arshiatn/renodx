@@ -8,11 +8,13 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <format>
 #include <functional>
 #include <iterator>
 #include <set>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -527,11 +529,28 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .labels = {"Auto", "DLSS", "FSR", "XeSS"},
         .is_visible = frame_generation,
     });
-    // What the helper says it really does (refreshed every 30 presents): frames generated, or why none.
+    // What the helper says it really did (its line of every 30 presents: frames generated, or why none). This is drawn in ReShade's
+    // menu, and under it frame generation pauses (frame_generation.hpp overlay_open): the line is of before the menu opened, and
+    // said so (ATN: the number only followed the row after the menu was closed and opened again). Then what the backend
+    // presents at most here, where the row asks for more.
     page.Add(new Setting{.value_type = SettingValueType::CUSTOM,
                          .section = section,
-                         .on_draw = [] {
-                           ImGui::TextWrapped("%s", dlaa_bridge::FrameGenerationStatus().c_str());
+                         .on_draw = [b] {
+                           ImGui::TextWrapped("Frame generation pauses while this menu is open. A new choice applies when it closes.");
+                           std::string status = dlaa_bridge::FrameGenerationStatus();
+                           constexpr std::string_view PREFIX = "Frame generation: ";
+                           if (status.starts_with(PREFIX)) status.erase(0, PREFIX.size());
+                           if (!status.empty()) ImGui::TextWrapped("Before it opened: %s", status.c_str());
+                           const uint32_t most = (dlaa_bridge::FrameGenerationPresented() >> 8) & 0xFFu;
+                           const int row = static_cast<int>(b.aa->frame_generation);
+                           // Dynamic is DLSS's alone: the others run it as their most.
+                           const bool dynamic_as_most = row >= 6 && dlaa_bridge::FrameGenerationBackend() != dlaa_bridge::FG_BACKEND_DLSS;
+                           if (!dlaa_bridge::FrameGenerationFailed() && most >= 2u && (dynamic_as_most || (row < 6 && row + 1 > static_cast<int>(most)))) {
+                             constexpr std::array<const char*, 3> BACKENDS = {"DLSS", "FSR", "XeSS"};
+                             const std::string asked = (row >= 6) ? std::string("Dynamic") : std::format("{}x", row + 1);
+                             ImGui::TextWrapped("%s presents %u frames per rendered frame at most on this system: %s runs as %ux.",
+                                                BACKENDS[std::min<uint32_t>(dlaa_bridge::FrameGenerationBackend(), 2u)], most, asked.c_str(), most);
+                           }
                            return false;
                          },
                          .is_visible = frame_generation});

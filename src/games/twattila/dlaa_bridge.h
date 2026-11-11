@@ -409,7 +409,10 @@ struct Shared {
   // The addon's (v13): frame generation's debug view (1: the HUD-less image presented, without a UI layer; 2: the UI
   // layer tinted magenta over the frame; 0: off).
   uint32_t fg_debug = 0;
-  uint32_t fg_v13_padding = 0;
+  // The helper's (in v13's padding; a helper before 102 leaves it 0: unknown): what its frame generation backend last really did.
+  // Bits 0-7: frames presented per rendered frame (0: none generated); bits 8-15: the most it presents here (FSR 2, XeSS and
+  // DLSS by the GPU and driver; 0: not known yet).
+  uint32_t fg_presented = 0;
   // The addon's (v14): a trace request's placed draws of known BLASes (RT_INSTANCED's every frame they are drawn).
   uint32_t rt_placement_count = 0;
   // The addon's (v18, in v14's padding): how far from the camera along the view swaying placed draws' instances keep

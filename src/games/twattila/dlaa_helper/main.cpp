@@ -425,6 +425,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const auto generation_status = [&] {
     return (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->Status().c_str() : proxy_generation->Status().c_str();
   };
+  const auto generation_presented = [&] {
+    return (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->Presented() : proxy_generation->Presented();
+  };
   const auto generation_lost = [&] {
     return (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->Lost() : proxy_generation->Lost();
   };
@@ -494,6 +497,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       generation->Close();
     }
     strncpy_s(shared->fg_status, generation_status(), _TRUNCATE);
+    if (version >= 13) shared->fg_presented = generation_presented();
     shared->fg_failed = (generation_open ? 0u : 1u);
     if (version >= 23) shared->fg_running = generation_backend;
     if (streamline_lost && reconstruction_open) open_reconstruction();
@@ -755,6 +759,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         context->Flush();
       }
       strncpy_s(shared->fg_status, generation_status(), _TRUNCATE);
+      if (version >= 13) shared->fg_presented = generation_presented();
       // A backend gave up on this GPU or driver (a GPU reset is not that: a new device, above): Auto's next, or the addon stops asking.
       if (generation_open && !generation_lost() && (proxied ? proxy_generation->Failed() : generation->Failed())) {
         ReShadeLogMessage(nullptr, 0, generation_status());

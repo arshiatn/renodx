@@ -1320,6 +1320,11 @@ inline uint32_t FrameGenerationBackend() {
   return (bridge.shared != nullptr) ? bridge.shared->fg_running : FG_BACKEND_DLSS;
 }
 
+// What the helper's frame generation last really presented and the most its backend presents here (Shared::fg_presented).
+inline uint32_t FrameGenerationPresented() {
+  return (bridge.shared != nullptr) ? bridge.shared->fg_presented : 0u;
+}
+
 // The helper's last frame generation status (one line).
 inline std::string FrameGenerationStatus() {
   return (bridge.shared != nullptr) ? std::string(bridge.shared->fg_status) : std::string();

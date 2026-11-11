@@ -575,6 +575,8 @@ class FrameGeneration12 {
   }
 
   const std::string& Status() const { return status_; }
+  // Shared::fg_presented: the frames it last presented per rendered frame, the most the GPU and driver take.
+  [[nodiscard]] uint32_t Presented() const { return presented_ | (std::min(max_frames_, 255u) << 8); }
   // It gave up on this device or driver (its chain could not be made, ...).
   [[nodiscard]] bool Failed() const { return failed_; }
   // A GPU reset removed its device (the helper starts Streamline again on a new one).
@@ -877,6 +879,7 @@ class FrameGeneration12 {
     if (presents_++ % 30 != 0 || get_state_(VIEWPORT, state, nullptr) != sl::Result::eOk) return;
     if (state.numFramesToGenerateMax != 0) max_frames_ = state.numFramesToGenerateMax + 1;
     dynamic_supported_ = state.bIsDynamicMFGSupported == sl::Boolean::eTrue;
+    presented_ = (failure_.empty() && state.status == sl::DLSSGStatus::eOk && inputs) ? std::min(state.numFramesActuallyPresented, 255u) : 0u;
     std::string reasons;
     const auto add = [&](sl::DLSSGStatus flag, const char* reason) {
       if (!(state.status & flag)) return;
@@ -996,6 +999,7 @@ class FrameGeneration12 {
   bool applied_dynamic_ = false;
   bool applied_ui_ = false;
   uint32_t max_frames_ = 0;
+  uint32_t presented_ = 0;  // frames presented per rendered frame at the last status line (0: none generated)
   bool dynamic_supported_ = false;  // Dynamic frame generation (DLSS 4.5, RTX 50)
   uint64_t presents_ = 0;
 };
