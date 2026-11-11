@@ -227,6 +227,9 @@ struct SceneShader {
   bool grass = false;  // within the grass's share (half the helper's alpha-tested corners)
   bool thin = false;   // cloth and sails (RT_THIN)
   const float* thin_row = nullptr;  // thin only with this row on (Warhammer III's banners among other unit parts)
+  // With this row on, its draws from a dynamic vertex buffer that the game draws from both sides (no back-face culling) are thin:
+  // Attila's flags are rigid meshes the CPU moves, by the shader its buildings have.
+  const float* thin_sheets_row = nullptr;
   bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at t0
   bool far_tree = false;    // a far tree's billboard (with sun_facing)
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
@@ -1128,7 +1131,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // G-buffer draw alone: with both, the share paid twice, and past it an instance hidden by one (its swaying copy traced)
   // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera). Cloth and sails
   // too, should the game prefill them: their texels paid twice for one sheet.
-  const bool thin = shader.thin || (shader.thin_row != nullptr && *shader.thin_row != 0.f);
+  bool thin = shader.thin || (shader.thin_row != nullptr && *shader.thin_row != 0.f);
   const bool cascade_draw = !shader.cascade_keep.empty();
   if (cascade_draw && !runtime.settings.casters_out_of_view) return;
   if (!cascade_draw && ((shader.foliage && !shader.rows_shader.empty()) || thin)) {
@@ -1161,6 +1164,27 @@ void Capture(Context& command, const SceneShader& shader) {
       buffers[slot]->GetDesc(&buffer_desc);
       dynamic = dynamic || buffer_desc.Usage == D3D11_USAGE_DYNAMIC;
       buffers[slot]->Release();
+    }
+  }
+  if (!thin && dynamic && !cascade_draw && shader.thin_sheets_row != nullptr && *shader.thin_sheets_row != 0.f) {
+    ComPtr<ID3D11RasterizerState> rasterizer;
+    native->RSGetState(rasterizer.GetAddressOf());
+    if (D3D11_RASTERIZER_DESC rasterizer_desc = {}; rasterizer) {
+      rasterizer->GetDesc(&rasterizer_desc);
+      thin = rasterizer_desc.CullMode == D3D11_CULL_NONE;
+    }
+    if (thin) {
+      // Its G-buffer draw alone, as the cloth above.
+      ComPtr<ID3D11RenderTargetView> colour_target;
+      native->OMGetRenderTargets(1, colour_target.GetAddressOf(), nullptr);
+      if (!colour_target) return;
+      // Log Details, once a vertex shader: that the row made its draws thin (its hash's bits turned: beside the left-out lines' marks).
+      const std::unique_lock lock(runtime.mutex);
+      if (runtime.settings.debug_log && runtime.left_out_logged.insert(shader.hash ^ 0x5448494Eu).second) {
+        renodx::utils::log::i(std::format(
+            "[Total War] Ray tracing: thin by the banners' row: vs {:08X} with ps {:08X}, from a dynamic vertex buffer, drawn from both sides.", shader.hash,
+            renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache)));
+      }
     }
   }
   const bool placed = !shader.rows_shader.empty() && !dynamic;
@@ -1240,7 +1264,9 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   // A leaf's opacity mask: its pixel shader's diffuse map; a rigid mesh's, when the game's shadow pass alpha-tests it.
   ComPtr<ID3D11ShaderResourceView> mask;
-  if ((shader.foliage || !shader.cut_out_shader.empty()) && !shader.clip_cut_outs) native->PSGetShaderResources(shader.mask_slot, 1, mask.GetAddressOf());
+  // A sheet made thin by its row stays whole: cut out, it would block the sun as a fence does.
+  const bool sheet_by_row = thin && !shader.thin && shader.thin_row == nullptr;
+  if ((shader.foliage || !shader.cut_out_shader.empty()) && !shader.clip_cut_outs && !sheet_by_row) native->PSGetShaderResources(shader.mask_slot, 1, mask.GetAddressOf());
   bool cut_out = false;
   if (shader.clip_cut_outs && (shader.cut_out_row == nullptr || *shader.cut_out_row != 0.f)) {
     const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
