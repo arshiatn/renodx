@@ -1,5 +1,13 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## ROUND v42 (ATN 2026-11-11 after WH3 v41; no game start; offline only)
+Plan and rules: tools/tw/round_v42/plan.md. Reports: tools/tw/round_v42/reports/.
+- [ ] A Attila v145 = players' v2.5.6: helper103's ReShade fix (shared since 3bd71292), fg_bridge_test, install, stamp, zips, notes
+- [ ] B weapon jitter after the camera comes back (Attila, then WH3): cause, fix, offline proof
+- [ ] C Particles at Half Resolution: depth-aware upsample + temporal history (WH3), half-res layer + upsample in Attila
+- [ ] D SSS additions (thickness, colour, distance-softened edges, torch shadows, smoke; impossible ones named)
+- [ ] E close: builds, tests, review, WH3 v42 + Attila v146 zips, install, round report
+
 ## WH3 v41 (ATN's test of v40, 2026-11-11; no game start, ATN away; offline only)
 Evidence: tools/tw/wh3_v41/atn_run1 (ReShade.log, the helper's ReShade.log1, renodx-tw-dlaa64.log, sl.log, ini, preferences). Report: tools/tw/wh3_v41/reports/v41.md. Rules: wh3_batch6/plan.md "Rules (every phase)" (commit lines end Claude Opus 5.5).
 - [x] 1 Path-Traced AO too dark: rt_sun took the spherical harmonics' sky, but with the game's Global Illumination on (true in every pre-v37 trace) the sun shaders take the light probes, whose open sky is the environment maps x g_ambient_fudge_factor (cs DC860C60). ATN's helper lines: "the game's ambient" 1/12 to 1/58 of the screen's shade. rt_sun now builds that sky (row Sky as Bright as the Game's, on). WARP rt_sun_test. The game's SSAO: skipped under RTAO, Path-Traced AO and GT-VBAO (code read).
