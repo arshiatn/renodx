@@ -70,8 +70,8 @@ inline void Install() {
     internal::original_select_lod = reinterpret_cast<internal::SelectLod>(select_lod);
     internal::original_lod_fade = reinterpret_cast<internal::LodFade>(lod_fade);
     internal::hooks = {
-        renodx::utils::detour::Function(&internal::original_select_lod, &internal::OnSelectLod),
-        renodx::utils::detour::Function(&internal::original_lod_fade, &internal::OnLodFade),
+        renodx::utils::detour::Function(&internal::original_select_lod, &internal::OnSelectLod, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE),
+        renodx::utils::detour::Function(&internal::original_lod_fade, &internal::OnLodFade, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE),
     };
     try {
       internal::hook_lifetime.Install(internal::hooks);

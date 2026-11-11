@@ -68,7 +68,7 @@ static State state;
 
 inline ID3D11DeviceContext* ImmediateContext(reshade::api::command_list* cmd_list) {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return nullptr;
   return context;
 }
@@ -222,7 +222,7 @@ inline void OnPresent(reshade::api::command_queue* queue, const std::string& pre
   const std::lock_guard lock(state.mutex);
   if (state.phase == Phase::IDLE) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
   switch (state.phase) {
     case Phase::REQUESTED: {

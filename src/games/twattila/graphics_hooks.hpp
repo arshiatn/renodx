@@ -503,7 +503,7 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
         return;
       }
       *original = target;
-      internal::hooks.emplace_back(original, replacement);
+      internal::hooks.emplace_back(original, replacement, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE);
     };
     add(rome2 ? internal::UNIT_DISTANCES_ROME2 : internal::UNIT_DISTANCES,
         reinterpret_cast<void**>(&internal::original_unit_distances), reinterpret_cast<void*>(&internal::OnUnitDistances),

@@ -828,7 +828,7 @@ inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3
   if (!state.tonemap_at_render_size) return;
   state.tonemap_at_render_size = false;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   native->RSSetViewports(1, &state.tonemap_viewport);
   ComPtr<ID3D11RenderTargetView> target_view;
   native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
@@ -911,7 +911,7 @@ inline bool ScaledThisFrame() {
 inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   using internal::state;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
   const std::unique_lock lock(state.mutex);
   if (state.settings.debug_view != 1u || state.evaluated_frame != state.frame) return;
@@ -957,7 +957,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
 inline void KeepFrame(reshade::api::command_list* cmd_list) {
   using internal::state;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
   const std::unique_lock lock(state.mutex);
   if (state.generation_frame != state.frame) return;
@@ -970,7 +970,7 @@ inline void KeepFrame(reshade::api::command_list* cmd_list) {
 inline void KeepOutput(reshade::api::command_list* cmd_list) {
   if (twattila::frame_generation::Format() == DXGI_FORMAT_UNKNOWN) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
   if (const auto target = internal::PictureTarget(native)) twattila::frame_generation::KeepOutput(native, target.Get());
 }
@@ -984,7 +984,7 @@ namespace internal {
 constexpr auto OnParticleComposite = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (rr_particle_layer_row == 0.f && rr_color_before_row == 0.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
   const std::unique_lock lock(state.mutex);
   std::array<ComPtr<ID3D11RenderTargetView>, 2> targets;
@@ -1046,7 +1046,7 @@ constexpr auto OnParticleComposite = []<typename Context>(Context& command) -> r
   state.rr_particles_frame = state.frame;
   return {.post_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     if (native == nullptr) return;
     const std::unique_lock lock(state.mutex);
     const std::array<ID3D11RenderTargetView*, 2> targets = {state.composite_targets[0].Get(), state.composite_targets[1].Get()};
@@ -1063,7 +1063,7 @@ constexpr auto OnParticleComposite = []<typename Context>(Context& command) -> r
 constexpr auto OnDepthOfField = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (rr_dof_guide_row == 0.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
   ComPtr<ID3D11ShaderResourceView> view;
   native->CSGetShaderResources(3, 1, view.GetAddressOf());
@@ -1088,7 +1088,7 @@ constexpr auto OnDepthOfField = []<typename Context>(Context& command) -> renodx
 constexpr auto OnTaa = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (twattila::frame_trace::Tracing()) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     ComPtr<ID3D11Buffer> camera;
     if (native != nullptr) native->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
     MarkCamera(native, camera.Get(), "the game's TAA");
@@ -1104,7 +1104,7 @@ constexpr auto OnTaa = []<typename Context>(Context& command) -> renodx::utils::
   }
   return {.post_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     if (native != nullptr && native->GetType() == D3D11_DEVICE_CONTEXT_IMMEDIATE) Resolve(native);
   }};
 };
@@ -1428,7 +1428,7 @@ inline void Uninstall() {
 // The game's device is going away: the addon's objects on it with it.
 inline void OnDestroyDevice(reshade::api::device* device) {
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   twattila::frame_generation::OnDestroyDevice(native);
   twattila::reflex::OnDestroyDevice(native);
   const std::unique_lock lock(internal::state.mutex);

@@ -171,7 +171,7 @@ static constexpr auto OnCommand = []<typename Context>(Context& command)
   if (target == TARGETS.end()) return {};
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   if (context == nullptr) return {};
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   const bool immediate = context->GetType() == D3D11_DEVICE_CONTEXT_IMMEDIATE;
   const auto device_handle = command.cmd_list->get_device()->get_native();
   const auto now = Clock::now();
@@ -372,7 +372,7 @@ static constexpr auto OnCommand = []<typename Context>(Context& command)
     ComPtr<ID3D11Device> source_device;
     buffer->GetDevice(source_device.GetAddressOf());
     auto* native_source_device = source_device.Get();
-    renodx::utils::directx::NativeFromReShadeProxy(&native_source_device);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native_source_device);
     const uint64_t end = (uint64_t{first} + vectors) * 16;
     if (native_source_device != device.Get() || (desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) == 0
         || desc.ByteWidth == 0 || desc.ByteWidth > 64 * 1024 || end > desc.ByteWidth || vectors > count) {
@@ -420,7 +420,7 @@ static void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   if (queue == nullptr || queue->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_native());
   if (context == nullptr) return;
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
   const auto device_handle = queue->get_device()->get_native();
   const auto now = Clock::now();

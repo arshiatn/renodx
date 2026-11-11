@@ -239,7 +239,7 @@ inline bool Enabled() {
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   twattila::object_motion::OnDestroyDevice(native);
   const std::unique_lock lock(internal::state.mutex);
   if (internal::state.objects.device.Get() != native) return;

@@ -121,7 +121,7 @@ inline void SaveAtStart(const std::filesystem::path& folder) {
     const uint8_t* system = code + internal::LOADER_SYSTEM_MOV + internal::RIP_MOV_SIZE + displacement;
     state.pak = reinterpret_cast<void* const*>(system + internal::PAK_FROM_SYSTEM);
     internal::original_loader = reinterpret_cast<internal::Loader>(code);
-    state.hooks = {renodx::utils::detour::Function(&internal::original_loader, &internal::OnLoad)};
+    state.hooks = {renodx::utils::detour::Function(&internal::original_loader, &internal::OnLoad, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE)};
     try {
       renodx::utils::detour::Install(state.hooks);
       state.status = "waiting for the game to load them";

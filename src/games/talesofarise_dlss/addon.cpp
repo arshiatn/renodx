@@ -1419,7 +1419,7 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
   }
   if (mode_changed) Reset(true);
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   if (native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
     SetStatus("Game TAA: temporal dispatch recorded on a deferred context");
@@ -1625,7 +1625,7 @@ template <DrawCommand Command>
 void DrawAtOutputSize(Command& command, const void*) {
   const uint64_t frame = CurrentFrame();
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return;
   const std::unique_lock lock(post.mutex);
   if (post.frame != frame) return;
@@ -1736,7 +1736,7 @@ void DrawAtOutputSize(Command& command, const void*) {
 template <DrawCommand Command>
 void DrawHudlessAfterTonemapper(Command& command, const void*) {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return;
   ComPtr<ID3D11RenderTargetView> target;
   context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
@@ -1765,7 +1765,7 @@ constexpr uint32_t TRANSLUCENCY_COMPOSITE_SHADER = 0x00438BF1u;
 constexpr auto OnTranslucencyComposite = []<DrawCommand Command>(Command& command) -> renodx::utils::command_action::CallbackResult<Command> {
   if (!spark_fix.load() || requested_mode.load() == AAMode::OFF) return {};
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return {};
   ComPtr<ID3D11ShaderResourceView> translucency;
   context->PSGetShaderResources(0, 1, translucency.GetAddressOf());
@@ -1781,7 +1781,7 @@ constexpr auto OnTranslucencyComposite = []<DrawCommand Command>(Command& comman
 template <DrawCommand Command>
 void CaptureDepthDraw(Command& command, const void*) {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return;
   const bool opaque = std::ranges::find(talesofarise::rt_shadows::DEPTH_SHADERS, command.matched_shader_hash,
                                         &talesofarise::rt_shadows::DepthShader::hash)
@@ -1817,11 +1817,11 @@ constexpr auto OnDepthPrepass = []<DrawCommand Command>(Command&) -> renodx::uti
 
 constexpr auto OnSunShadowMask = [](Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr || !talesofarise::rt_shadows::Trace(context)) return {};
   return {.post_callback = [](Context& command, const void*) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     if (context != nullptr) {
       talesofarise::rt_shadows::Unbind(context);
     }
@@ -1834,7 +1834,7 @@ template <DrawCommand Command>
 void DrawSparkMotion(Command& command, const void*) {
   const auto sprite = std::ranges::find_if(SPRITE_SHADERS, [&](const auto& entry) { return entry.first == command.matched_shader_hash; });
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (sprite == SPRITE_SHADERS.end() || context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
   BoundViews<ID3D11RenderTargetView, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets;
@@ -1936,7 +1936,7 @@ constexpr UINT AMBIENT_SLOT = 41;
 template <DrawCommand Command>
 void UnbindAmbient(Command& command, const void*) {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return;
   constexpr std::array<ID3D11ShaderResourceView*, 4> NONE = {};
   context->PSSetShaderResources(AMBIENT_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
@@ -1944,7 +1944,7 @@ void UnbindAmbient(Command& command, const void*) {
 
 constexpr auto OnLightingDraw = []<DrawCommand Command>(Command& command) -> renodx::utils::command_action::CallbackResult<Command> {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return {};
   renodx::utils::command_action::CallbackResult<Command> result = {};
   talesofarise::rt_shadows::LightingResult lighting;
@@ -2010,7 +2010,7 @@ constexpr auto OnUpscale = []<DrawCommand Command>(Command& command) -> renodx::
   if (mode == AAMode::OFF || mode == AAMode::DLAA) return {};
   const uint64_t frame = CurrentFrame();
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
   const std::unique_lock lock(post.mutex);
@@ -2135,7 +2135,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   talesofarise::frame_trace::OnPresent();
   {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     talesofarise::rt_shadows::OnPresent(context);
     if (talesofarise::frame_generation::Presenting()) {
       const uint64_t frame = CurrentFrame();

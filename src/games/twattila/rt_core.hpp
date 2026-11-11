@@ -799,7 +799,7 @@ inline bool GrassMet() {
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return nullptr;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   return (native != nullptr && native->GetType() == D3D11_DEVICE_CONTEXT_IMMEDIATE) ? native : nullptr;
 }
 
@@ -3582,7 +3582,7 @@ inline void UninstallScene() {
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.particle_stream.device.Get() == native) internal::runtime.particle_stream = {};
   if (internal::runtime.objects.device.Get() == native) {

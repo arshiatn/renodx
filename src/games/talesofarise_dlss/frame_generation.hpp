@@ -1135,8 +1135,8 @@ inline void Install(const std::filesystem::path& directory, const std::string& n
     internal::original_create_swap_chain_for_hwnd = reinterpret_cast<internal::CreateSwapChainForHwndFunction>(
         internal::OriginalEntry(&table[internal::CREATE_SWAP_CHAIN_FOR_HWND_SLOT]));
     renodx::utils::detour::Install(std::array{
-        renodx::utils::detour::Function(&internal::original_create_swap_chain, &internal::CreateSwapChain),
-        renodx::utils::detour::Function(&internal::original_create_swap_chain_for_hwnd, &internal::CreateSwapChainForHwnd)});
+        renodx::utils::detour::Function(&internal::original_create_swap_chain, &internal::CreateSwapChain, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE),
+        renodx::utils::detour::Function(&internal::original_create_swap_chain_for_hwnd, &internal::CreateSwapChainForHwnd, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE)});
     internal::SetStatus("Waiting for the game's swap chain.");
   } catch (const std::exception& error) {
     internal::SetStatus(std::format("Did not start: {}", error.what()));

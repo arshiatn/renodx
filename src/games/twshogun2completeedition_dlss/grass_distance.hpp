@@ -83,7 +83,7 @@ inline void Install() {
     internal::status = "the game's grass code was not found";
   } else {
     internal::original_update = reinterpret_cast<internal::Update>(update);
-    internal::hooks = {renodx::utils::detour::Function(&internal::original_update, &internal::OnUpdate)};
+    internal::hooks = {renodx::utils::detour::Function(&internal::original_update, &internal::OnUpdate, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE)};
     try {
       internal::hook_lifetime.Install(internal::hooks);
       internal::status = std::format("hooked (update +{:#x})", update - reinterpret_cast<uint8_t*>(engine::Module()));

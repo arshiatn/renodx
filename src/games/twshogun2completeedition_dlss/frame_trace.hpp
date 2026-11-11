@@ -83,7 +83,7 @@ std::string DescribeView(View* view) {
 
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   return context;
 }
 

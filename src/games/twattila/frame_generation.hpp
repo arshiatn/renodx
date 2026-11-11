@@ -167,7 +167,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
   auto* device = runtime->get_device();
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(runtime->get_command_queue()->get_immediate_command_list()->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   auto* back_buffer = reinterpret_cast<ID3D11Resource*>(runtime->get_current_back_buffer().handle);
   ComPtr<ID3D11Texture2D> back_texture;
   if (native == nullptr || back_buffer == nullptr || FAILED(back_buffer->QueryInterface(IID_PPV_ARGS(back_texture.GetAddressOf())))) return;

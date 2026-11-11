@@ -111,7 +111,7 @@ constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::c
   if (!talesofarise::frame_generation::Presenting()) return {};
   return {.post_callback = [](Context& command, const void*) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     if (context == nullptr) return;
     ComPtr<ID3D11RenderTargetView> target;
     context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
@@ -318,7 +318,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
   twshogun2::terrain_detail::Apply(terrain_detail.load() == 1);
   if (talesofarise::frame_generation::Presenting()) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     const uint64_t frame = presents.load();
     talesofarise::frame_generation::Inputs inputs;
     {

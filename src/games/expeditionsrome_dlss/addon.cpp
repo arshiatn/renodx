@@ -997,7 +997,7 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
   }
   if (mode_changed) Reset(true);
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   if (native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
     SetStatus("Stock TAA: temporal dispatch recorded on a deferred context");
@@ -1227,7 +1227,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Update(ray_tracing_settings, ray_traced_bounce_strength);
   if (talesofarise::frame_generation::Presenting()) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     uint64_t frame;
     {
       const std::shared_lock lock(state.mutex);
@@ -1912,7 +1912,7 @@ constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::c
   if (!talesofarise::frame_generation::Presenting()) return {};
   return {.post_callback = [](Context& command, const void*) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     if (context == nullptr) return;
     ComPtr<ID3D11RenderTargetView> target;
     context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);

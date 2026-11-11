@@ -286,7 +286,7 @@ inline size_t Copy(ID3D11DeviceContext* context, const Target& target) {
 
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   return native;
 }
 

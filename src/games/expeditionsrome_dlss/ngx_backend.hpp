@@ -283,7 +283,7 @@ class Backend {
         status_.store("Unknown anti-aliasing mode; stock TAA", std::memory_order_relaxed);
         return false;
     }
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     if (context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
       status_.store("Immediate context required; stock TAA", std::memory_order_relaxed);
       return false;
@@ -316,7 +316,7 @@ class Backend {
       textures[index]->GetDevice(owner.GetAddressOf());
       // ReShade hooks native resources' GetDevice to return its proxy; unwrap only a borrowed identity.
       auto* native_owner = owner.Get();
-      renodx::utils::directx::NativeFromReShadeProxy(&native_owner);
+      renodx::utils::directx::TryNativeFromReShadeProxy(&native_owner);
       if (native_owner != device.Get()) {
         status_.store("Temporal textures belong to another device; stock TAA", std::memory_order_relaxed);
         return false;

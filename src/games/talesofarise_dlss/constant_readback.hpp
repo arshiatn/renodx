@@ -223,7 +223,7 @@ struct ConstantReadback {
       // through native buffers. Preserve the returned COM ownership and unwrap
       // only a borrowed comparison pointer; the context is already native.
       auto* native_source_device = source_device.Get();
-      renodx::utils::directx::NativeFromReShadeProxy(&native_source_device);
+      renodx::utils::directx::TryNativeFromReShadeProxy(&native_source_device);
       byte_offsets[slot] = uint64_t{first_constants[slot]} * 16;
       if (native_source_device != device.Get()) return fail(std::format("b{} belongs to a different native device", slot));
       if ((source_desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) == 0) {

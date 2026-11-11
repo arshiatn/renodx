@@ -116,7 +116,7 @@ inline void Update(reshade::api::swapchain* swapchain, uint32_t mode, uint32_t f
   const uint32_t wanted = (paced ? 0u : mode);
   const uint32_t wanted_limit = (wanted != 0 ? frame_limit : 0u);
   auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&device);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&device);
   const std::unique_lock lock(state.mutex);
   if (wanted == state.mode && wanted_limit == state.frame_limit && (wanted == 0 || device == state.device.Get())) return;
   if (!state.loaded) {

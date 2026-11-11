@@ -857,7 +857,7 @@ inline void Install() {
     auto& option = options[hook.option];
     if (starts[index] == nullptr || !option.available) continue;
     *hook.original = starts[index];
-    hooks.emplace_back(hook.original, hook.replacement);
+    hooks.emplace_back(hook.original, hook.replacement, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE);
     option.details += std::format("{}hook exe+0x{:X}", (option.details.empty() ? "" : ", "), starts[index] - image);
   }
   if (!hooks.empty()) {

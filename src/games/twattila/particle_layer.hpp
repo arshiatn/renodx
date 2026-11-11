@@ -304,7 +304,7 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   if (half_resolution_row == 0.f) return {};
   if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
   if (!frame_history::MainViewport(native)) return {};
   const std::unique_lock lock(runtime.mutex);
@@ -395,7 +395,7 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   ++runtime.draws;
   return {.finalize_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
     const std::unique_lock post_lock(runtime.mutex);
     auto& put_back = runtime.game;
     post_native->OMSetRenderTargets(1, put_back.target.GetAddressOf(), put_back.depth.Get());
@@ -413,7 +413,7 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
 // Particles, smoothed first).
 constexpr auto OnLayerReader = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
   const std::unique_lock lock(runtime.mutex);
   if (runtime.open_frame != runtime.frame) return {};
@@ -503,7 +503,7 @@ inline void Update(reshade::api::swapchain* swapchain) {
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.objects.device.Get() != native) return;
   internal::runtime.objects = {};

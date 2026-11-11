@@ -481,7 +481,7 @@ inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data,
   std::memcpy(copy.data(), data, copy.size());
   if (!JitterCamera(buffer, copy.data())) return false;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   ComPtr<ID3D11DeviceContext> context;
   native->GetImmediateContext(context.GetAddressOf());
   context->UpdateSubresource(buffer, 0, nullptr, copy.data(), 0, 0);
@@ -635,7 +635,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     if (!temporal.load(std::memory_order_relaxed)) return {};
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
     const auto& sun_draw = command.template GetCallbackData<T>();
     ComPtr<ID3D11Buffer> camera;
@@ -994,7 +994,7 @@ inline void UpscaleDepth(ID3D11DeviceContext* native, ID3D11DepthStencilView* vi
 // tone mapper, the depth stretched first (once a frame).
 constexpr auto OnFullDepthDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
   const std::unique_lock lock(runtime.mutex);
   if (runtime.depth_upscaled_frame == runtime.frame || runtime.tonemapped_frame != runtime.frame || !runtime.scene_depth
@@ -1339,7 +1339,7 @@ inline bool MotionView(ID3D11Buffer* camera, object_motion::View* view) {
 inline void OnOutputEffectDrawn(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || frame_generation::Format() == DXGI_FORMAT_UNKNOWN) return;
   ComPtr<ID3D11RenderTargetView> target_view;
   native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
@@ -1357,7 +1357,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   const std::unique_lock lock(runtime.mutex);
   if (runtime.settings.method == Method::OFF) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
   ComPtr<ID3D11RenderTargetView> target_view;
   native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
@@ -1510,7 +1510,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   {
     // The patched shaders' render scale (view_share.hpp): render / display.
     auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&device);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&device);
     ComPtr<ID3D11DeviceContext> context;
     if (device != nullptr) device->GetImmediateContext(context.GetAddressOf());
     view_share::Update(context.Get(), scaled, render, {display.texture.width, display.texture.height});
@@ -1630,7 +1630,7 @@ inline std::array<UINT, 2> RenderSize() {
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   object_motion::OnDestroyDevice(native);
   frame_generation::OnDestroyDevice(native);
   reflex::OnDestroyDevice(native);

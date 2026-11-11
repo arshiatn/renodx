@@ -674,7 +674,7 @@ constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::uti
                              &command.bound_state_cache);
   if (!reads.has_value()) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   std::array<float, 4> values = {1.f, 1.f, frame_x, frame_y};
   if (reads->region_slots != 0) {
@@ -745,7 +745,7 @@ constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::uti
           return {
               .post_callback = [](Context& drawn, const void* data) {
                 auto* context = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
-                renodx::utils::directx::NativeFromReShadeProxy(&context);
+                renodx::utils::directx::TryNativeFromReShadeProxy(&context);
                 if (context == nullptr) return;
                 const auto& replaced = *static_cast<const WholeDraw*>(data);
                 context->RSSetViewports(1, &replaced.viewport);
@@ -769,7 +769,7 @@ constexpr auto OnVertexShareDraw = []<typename Context>(Context& command) -> ren
   const float frame_x = frame_share_x.load(std::memory_order_relaxed);
   if (frame_x == 0.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   Bind(native, {1.f, 1.f, frame_x, frame_share_y.load(std::memory_order_relaxed)}, reshade::api::pipeline_stage::vertex_shader);
   return {};

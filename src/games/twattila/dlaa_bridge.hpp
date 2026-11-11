@@ -303,7 +303,7 @@ inline bool OnNvidia() {
 // The game's GPU's vendor from its device (ReShade's proxy or not), once. RENODX_TW_FAKE_VENDOR (tests): another's.
 inline void ReadGpuVendor(ID3D11Device* device) {
   if (gpu_vendor.load(std::memory_order_relaxed) != 0) return;
-  renodx::utils::directx::NativeFromReShadeProxy(&device);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&device);
   ComPtr<IDXGIDevice> dxgi_device;
   ComPtr<IDXGIAdapter> adapter;
   if (DXGI_ADAPTER_DESC description = {}; device != nullptr && SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(dxgi_device.GetAddressOf())))

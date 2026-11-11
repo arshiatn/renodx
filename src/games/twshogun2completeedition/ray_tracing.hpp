@@ -205,7 +205,7 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT depth_slot) {
 constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& draw = command.template GetCallbackData<SunDraw>();
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   twattila::rt_scene::Settings settings;
   {
@@ -244,7 +244,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
   native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(visibilities.size()), visibilities.data());
   return {.post_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     constexpr std::array<ID3D11ShaderResourceView*, 2> NONE = {};
     if (native != nullptr) native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
   }};
@@ -254,7 +254,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
 // positions bound (put back after).
 constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   ComPtr<ID3D11Buffer> point_light;
   native->PSGetConstantBuffers(2, 1, point_light.GetAddressOf());
@@ -266,7 +266,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
   if (!twattila::rt_scene::BindLocalLights(native)) return {};
   return {.post_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     if (native != nullptr) twattila::rt_scene::UnbindLocalLights(native);
   }};
 };
@@ -307,7 +307,7 @@ inline void KeepColor(reshade::api::command_list* cmd_list) {
     render_size = internal::state.render_size;
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   auto& bridge = twattila::dlaa_bridge::bridge;
   if (native == nullptr || !bridge.color.texture || render_size[0] == 0 || render_size[0] > bridge.width || render_size[1] > bridge.height) {
     return;

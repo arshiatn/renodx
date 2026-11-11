@@ -164,7 +164,7 @@ inline void GameProbeConstants(ID3D11DeviceContext* native) {
 static bool OnProbeRays(reshade::api::command_list* cmd_list) {
   if (!sky_only.load(std::memory_order_relaxed)) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native != nullptr) {
     SkyOnlyProbeConstants(native);
   }
@@ -173,7 +173,7 @@ static bool OnProbeRays(reshade::api::command_list* cmd_list) {
 
 static void OnProbeRaysDone(reshade::api::command_list* cmd_list) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native != nullptr) {
     GameProbeConstants(native);
   }

@@ -216,21 +216,21 @@ static bool OnUpdateBufferRegionCommand(reshade::api::command_list* cmd_list, co
 static void OnBindRenderTargetsAndDepthStencil(reshade::api::command_list* cmd_list, uint32_t, const reshade::api::resource_view*, reshade::api::resource_view) {
   if (live_maps.load(std::memory_order_relaxed) == 0) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   TargetsBound(native);
 }
 
 static void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, const reshade::api::viewport* viewports) {
   if (live_maps.load(std::memory_order_relaxed) == 0 || first != 0 || count == 0) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   AreaBound(native, viewports[0].width, viewports[0].height);
 }
 
 static void OnBindScissorRects(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, const reshade::api::rect* rects) {
   if (live_maps.load(std::memory_order_relaxed) == 0 || first != 0 || count == 0) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   AreaBound(native, static_cast<float>(rects[0].right - rects[0].left), static_cast<float>(rects[0].bottom - rects[0].top));
 }
 

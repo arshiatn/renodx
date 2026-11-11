@@ -276,7 +276,7 @@ inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) 
   thread_local ID3D11DeviceContext* native = nullptr;
   if (const uint64_t current = cmd_list->get_native(); current != wrapped) {
     native = reinterpret_cast<ID3D11DeviceContext*>(current);
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     wrapped = current;
   }
   return native;

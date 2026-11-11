@@ -106,6 +106,21 @@ inline bool NativeFromReShadeProxy(T** reshade_proxy) {
   return false;
 }
 
+// For an interface that may or may not be a ReShade proxy (D3D10/11 get_native() already returns the downstream
+// object): replaces it with its downstream interface when it is a proxy, else leaves it as it is, silently (no debug
+// output: callers run per draw).
+template <typename T>
+inline bool TryNativeFromReShadeProxy(T** interface_or_proxy) {
+  if (interface_or_proxy == nullptr || *interface_or_proxy == nullptr) return false;
+  ReShadeRetrieveBaseInterface* native_base = nullptr;
+  if (FAILED(static_cast<IUnknown*>(*interface_or_proxy)->QueryInterface(&native_base)) || native_base == nullptr) {
+    return false;
+  }
+  native_base->Release();
+  *interface_or_proxy = reinterpret_cast<T*>(native_base);
+  return true;
+}
+
 static bool Initialize() {
   if (internal::initialized) return true;
 

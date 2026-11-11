@@ -341,7 +341,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
   } else {
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
     // Other views' sun draws (the battle portrait's 3D) neither trace nor take the main view's bounce.
     if (!frame_history::MainViewport(native)) return {};
@@ -642,7 +642,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   device_end::Log(device, "device");
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.objects.device.Get() != native) return;
   internal::runtime.objects = {};

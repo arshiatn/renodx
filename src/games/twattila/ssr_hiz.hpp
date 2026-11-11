@@ -355,7 +355,7 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
 inline ID3D11DeviceContext* ImmediateContext(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return nullptr;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return nullptr;
   return native;
 }
@@ -468,7 +468,7 @@ inline void Update(bool enabled, bool denoise, int rays) {
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.objects.device.Get() != native) return;
   internal::runtime.objects = {};

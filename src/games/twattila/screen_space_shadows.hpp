@@ -1061,7 +1061,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
   } else {
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
     auto& runtime = internal::runtime;
     const std::unique_lock lock(runtime.mutex);
@@ -1179,7 +1179,7 @@ constexpr auto OnFoliageOrder = []<typename T, typename Context>(Context& comman
     }
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || !frame_history::MainViewport(native)) return {};
     ComPtr<ID3D11DepthStencilView> depth;
     native->OMGetRenderTargets(0, nullptr, depth.GetAddressOf());
@@ -1239,7 +1239,7 @@ constexpr auto OnThinDraw = []<typename T, typename Context>(Context& command) -
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     return {.finalize_callback = [](Context& drawn, const void*) {
       auto* native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
-      renodx::utils::directx::NativeFromReShadeProxy(&native);
+      renodx::utils::directx::TryNativeFromReShadeProxy(&native);
       if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || !frame_history::MainViewport(native)) return;
       auto& runtime = internal::runtime;
       const std::unique_lock lock(runtime.mutex);
@@ -1469,7 +1469,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
     return;
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
   ComPtr<ID3D11RenderTargetView> target_view;
   native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
@@ -1559,7 +1559,7 @@ inline void Install(std::span<const light_bounce::SunDraw> draws) {
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.objects.device.Get() != native) return;
   internal::runtime.objects = {};

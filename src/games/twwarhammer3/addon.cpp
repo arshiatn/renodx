@@ -952,7 +952,7 @@ bool Swap(ID3D11DeviceContext* native, Copy* copy) {
 void SwapBack(reshade::api::command_list* cmd_list) {
   if (!game_shader) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return;
   native->CSSetShader(game_shader.Get(), nullptr, 0);
   game_shader.Reset();
@@ -969,7 +969,7 @@ bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
   const bool effects = render_width != 0 && twattila::frame_history::effect_share.load(std::memory_order_relaxed) < 1.f;
   if (!RaysOn() && !effects) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return true;
   if (RaysOn()) native->CSGetShaderResources(0, 1, main_depth.ReleaseAndGetAddressOf());
   if (effects) {
@@ -1002,7 +1002,7 @@ bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
 bool OnRadiance(reshade::api::command_list* cmd_list) {
   if (light_row == 0.f || rt_sliders.reflections == 0.f) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native != nullptr) {
     native->CSGetShaderResources(0, 1, frame_light.ReleaseAndGetAddressOf());
   }
@@ -1014,7 +1014,7 @@ constexpr auto OnFogLight = []<typename Context>(Context& command) -> renodx::ut
   if (fog_row == 0.f || rt_sliders.reflections == 0.f || !twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) return {};
   return {.post_callback = [](Context& post, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     auto& bridge = twattila::dlaa_bridge::bridge;
     if (native == nullptr || !bridge.rt_sun.uav || !bridge.rt_positions.srv) return;
     FogLearnConstants constants = {.fog_strength = shader_injection.fog_strength};
@@ -1113,7 +1113,7 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
   pass = Pass::GAME;
   if (mip_chain == MipChain::RADIANCE) mip_chain = MipChain::HIT;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return true;
   const bool all_surfaces = all_surfaces_row != 0.f && rt_sliders.reflections == 0.f;
   if (all_surfaces || one_to_one) pass = Pass::OURS;
@@ -1243,7 +1243,7 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
 void OnMarched(reshade::api::command_list* cmd_list) {
   if (!game_shader) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native != nullptr) {
     ID3D11Buffer* none = nullptr;
     native->CSSetConstantBuffers(1, 1, &none);
@@ -1255,7 +1255,7 @@ bool OnBlur(reshade::api::command_list* cmd_list, Copy* copy) {
   if (pass == Pass::RAYS) return false;
   if (!one_to_one) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native != nullptr) Swap(native, copy);
   return true;
 }
@@ -1264,7 +1264,7 @@ bool OnBlur(reshade::api::command_list* cmd_list, Copy* copy) {
 bool OnMipStep(reshade::api::command_list* cmd_list, Copy* copy, bool depth_levels = false) {
   if (mip_chain == MipChain::NONE) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return true;
   const auto& share = (depth_levels || mip_chain == MipChain::HIT) ? hit_share : radiance_share;
   const std::array<float, 4> values = {share[0], share[1], 0.f, 0.f};
@@ -1287,7 +1287,7 @@ bool OnScaleFix(reshade::api::command_list* cmd_list, Copy* copy) {
   if (scale_fix_row == 0.f || twattila::frame_history::render_width.load(std::memory_order_relaxed) == 0) return true;
   if (twattila::frame_history::effect_share.load(std::memory_order_relaxed) >= 1.f) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native != nullptr) Swap(native, copy);
   return true;
 }
@@ -1295,7 +1295,7 @@ bool OnScaleFix(reshade::api::command_list* cmd_list, Copy* copy) {
 void OnMipStepDone(reshade::api::command_list* cmd_list) {
   if (!game_shader) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native != nullptr) {
     ID3D11Buffer* none = nullptr;
     native->CSSetConstantBuffers(12, 1, &none);
@@ -1306,7 +1306,7 @@ void OnMipStepDone(reshade::api::command_list* cmd_list) {
 bool OnResolve(reshade::api::command_list* cmd_list) {
   if (pass == Pass::GAME) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || !Swap(native, &resolve)) {
     pass = Pass::GAME;
     return true;
@@ -1325,7 +1325,7 @@ void OnResolved(reshade::api::command_list* cmd_list) {
   if (pass == Pass::GAME) return;
   pass = Pass::GAME;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return;
   native->CSSetConstantBuffers(10, 1, game_b10.GetAddressOf());
   game_b10.Reset();
@@ -1394,7 +1394,7 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
     renodx::utils::log::i(std::format("[Warhammer III] First run: {} draw, ps {:08X}.", (index == SUN_MASK) ? "sun mask" : "light or fog", hash));
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   // Log Details, once: how far the cascades reach, so how far Shadow Casters Out of View sees what the camera never looked at
   // (shadowmap_PS's g_split_distances, 560 bytes in, 16 apart: its values can't be read offline), and the maps' size. A copy
   // and a wait for it: not at a default start.
@@ -1461,7 +1461,7 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
   native->PSSetShader(shader.Get(), nullptr, 0);
   return {.post_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
     if (post_native == nullptr) return;
     post_native->PSSetShader(game_shader.Get(), nullptr, 0);
     game_shader.Reset();
@@ -1761,7 +1761,7 @@ void BuildRuntimeData() {
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     // A traced frame's: its camera (b1) and hdr_to_screen_PS's overscan (b4, c6.y).
     if (twattila::frame_trace::Tracing()) {
       Microsoft::WRL::ComPtr<ID3D11Buffer> camera;
@@ -1801,7 +1801,7 @@ void BuildRuntimeData() {
     if (rt_sliders.debug_log != 0.f && logged_term != shader_injection.sharpening_term) {
       logged_term = shader_injection.sharpening_term;
       auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-      renodx::utils::directx::NativeFromReShadeProxy(&native);
+      renodx::utils::directx::TryNativeFromReShadeProxy(&native);
       Microsoft::WRL::ComPtr<ID3D11Buffer> constants;
       native->PSGetConstantBuffers(1, 1, constants.GetAddressOf());
       if (const auto strength = (constants ? twattila::frame_trace::ReadBuffer<float>(native, constants.Get(), 0, 1) : std::vector<float>{}); !strength.empty()) {
@@ -2899,7 +2899,7 @@ constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renod
     return {};
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth_view;
   native->OMGetRenderTargets(0, nullptr, depth_view.GetAddressOf());
@@ -2936,7 +2936,7 @@ constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> reno
   // The half copy's t1: the kept maps (OnCascadeCaster), from the first frame on.
   if (hash == 0x800F7F7F) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> kept;
     if (context != nullptr) context->PSGetShaderResources(1, 1, kept.GetAddressOf());
     Microsoft::WRL::ComPtr<ID3D11Resource> resource;
@@ -2946,7 +2946,7 @@ constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> reno
   if (rt_sliders.debug_log == 0.f) return {};
   if (shadow_size_logged[&hash - SHADOW_SIZE_SHADERS.data()].exchange(true, std::memory_order_relaxed)) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   const auto size_of = [](ID3D11View* view) {
     if (view == nullptr) return std::string("none");
@@ -3255,7 +3255,7 @@ void OnDestroyDevice(reshade::api::device*) {
 constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> bound;
   native->PSGetShaderResources(draw.ao_slot, 1, bound.GetAddressOf());
@@ -3284,7 +3284,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
   native->PSSetConstantBuffers(draw.ssao_constants_slot, 1, one_to_one.GetAddressOf());
   return {.finalize_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
     if (post_native == nullptr) return;
     post_native->PSSetConstantBuffers(post.template GetCallbackData<twattila::light_bounce::SunDraw>().ssao_constants_slot, 1, game_constants.GetAddressOf());
   }};
@@ -3299,7 +3299,7 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
     twattila::test_hooks::StartClock();
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   if (draw.ao_slot != UINT_MAX) native->PSGetShaderResources(draw.ao_slot, 1, sun_ao::game_view.ReleaseAndGetAddressOf());
   twwarhammer3::taa_dlss::WriteGuides(native, draw.gbuffer_slot, draw.camera_slot, draw.diffuse_rule);

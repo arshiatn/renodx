@@ -185,7 +185,7 @@ inline ComPtr<ID3D11ShaderResourceView> Build(ID3D11DeviceContext* context, ID3D
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   if (runtime.objects.device.Get() != native) return;

@@ -212,7 +212,7 @@ void BuildRuntimeData() {
     ID3D11DeviceContext* context = nullptr;
     if (ray_tracing_installed && cmd_list->get_device()->get_api() == reshade::api::device_api::d3d11) {
       context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-      renodx::utils::directx::NativeFromReShadeProxy(&context);
+      renodx::utils::directx::TryNativeFromReShadeProxy(&context);
       if (rysesonofrome::ray_tracing::Trace(context)) {
         const auto [sun, ambient] = twattila::rt_scene::Visibilities();
         if (rt_sliders.sun_shadows != 0.f) sun_visibility = sun;
@@ -235,7 +235,7 @@ void BuildRuntimeData() {
     const auto power_of_two = [](float exponent) { return static_cast<float>(1u << static_cast<uint32_t>(std::clamp(exponent, 0.f, 3.f))); };
     if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     if (ray_tracing_installed) rysesonofrome::ray_tracing::RestoreReflections(context);
     rysesonofrome::light_bounce::Apply(context,
                                        {
@@ -262,7 +262,7 @@ void BuildRuntimeData() {
   const auto keep_color = [](reshade::api::command_list* cmd_list) {
     if (!ray_tracing_installed || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     rysesonofrome::ray_tracing::KeepColor(context);
   };
   custom_shaders[0x3BA5B162] = {.crc32 = 0x3BA5B162, .on_replace = keep_shader, .on_drawn = keep_color};

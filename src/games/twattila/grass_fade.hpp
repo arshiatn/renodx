@@ -157,7 +157,7 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
   } else {
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     if (native == nullptr) return {};
     auto& runtime = internal::runtime;
     const std::unique_lock lock(runtime.mutex);
@@ -180,7 +180,7 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
     native->PSSetConstantBuffers(SLOT, 1, runtime.buffer.GetAddressOf());
     return {.post_callback = [](Context& post, const void*) {
       auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-      renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+      renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
       if (post_native == nullptr) return;
       const std::unique_lock post_lock(internal::runtime.mutex);
       post_native->PSSetConstantBuffers(SLOT, 1, internal::runtime.game_buffer.GetAddressOf());
@@ -215,7 +215,7 @@ inline void Uninstall() {
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   const std::unique_lock lock(internal::runtime.mutex);
   if (internal::runtime.device.Get() != native) return;
   internal::runtime.buffer.Reset();

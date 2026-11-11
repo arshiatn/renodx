@@ -524,7 +524,7 @@ inline void HookParticleBuffers() {
     std::memcpy(&displacement, cvar_code + 3, sizeof(displacement));
     internal::particle_vertices = reinterpret_cast<int*>(const_cast<uint8_t*>(cvar_code) + internal::RIP_LEA_SIZE + displacement);
     internal::original_particle_buffers = reinterpret_cast<internal::ParticleBuffers>(buffers_code);
-    state.buffer_hooks = {renodx::utils::detour::Function(&internal::original_particle_buffers, &internal::OnParticleBuffers)};
+    state.buffer_hooks = {renodx::utils::detour::Function(&internal::original_particle_buffers, &internal::OnParticleBuffers, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE)};
     try {
       renodx::utils::detour::Install(state.buffer_hooks);
     } catch (const std::exception& error) {
@@ -561,8 +561,8 @@ inline void Install() {
   if (code != nullptr && light_code != nullptr) {
     internal::original_container_spawn = reinterpret_cast<internal::ContainerSpawn>(code);
     internal::original_particle_light = reinterpret_cast<internal::ParticleLight>(light_code);
-    state.hooks = {renodx::utils::detour::Function(&internal::original_container_spawn, &internal::OnContainerSpawn),
-                   renodx::utils::detour::Function(&internal::original_particle_light, &internal::OnParticleLight)};
+    state.hooks = {renodx::utils::detour::Function(&internal::original_container_spawn, &internal::OnContainerSpawn, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE),
+                   renodx::utils::detour::Function(&internal::original_particle_light, &internal::OnParticleLight, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE)};
   }
   // The light list: the overlay's counts and the light limit (every site as expected, the raised arrays near the exe:
   // rel32 reach).
@@ -574,7 +574,7 @@ inline void Install() {
     };
     internal::cull_info = target(cull_info_code);
     internal::original_light_list = reinterpret_cast<internal::LightList>(light_list_code);
-    state.hooks.push_back(renodx::utils::detour::Function(&internal::original_light_list, &internal::OnLightList));
+    state.hooks.push_back(renodx::utils::detour::Function(&internal::original_light_list, &internal::OnLightList, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE));
     std::string create_at;
     uint8_t* create_code = engine_memory::FindPattern(internal::BUFFER_CREATE_CODE, &create_at);
     uint8_t* arrays = nullptr;
@@ -638,7 +638,7 @@ inline void Install() {
     internal::renderer = reinterpret_cast<uint8_t* const*>(vertex_alloc_code + internal::VERTEX_ALLOC_RENDERER + internal::RIP_LEA_SIZE
                                                             + renderer_offset);
     internal::original_vertex_alloc = reinterpret_cast<internal::VertexAlloc>(vertex_alloc_code);
-    state.hooks.push_back(renodx::utils::detour::Function(&internal::original_vertex_alloc, &internal::OnVertexAlloc));
+    state.hooks.push_back(renodx::utils::detour::Function(&internal::original_vertex_alloc, &internal::OnVertexAlloc, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE));
   }
   // The pool is made with the particle system, before any level: its block size and count as the getter makes them.
   if (alloc_code != nullptr && pool_code != nullptr) {
@@ -654,7 +654,7 @@ inline void Install() {
       }
       internal::GrowParticlePool();
       internal::original_particle_alloc = reinterpret_cast<internal::ParticleAlloc>(alloc_code);
-      state.hooks.push_back(renodx::utils::detour::Function(&internal::original_particle_alloc, &internal::OnParticleAlloc));
+      state.hooks.push_back(renodx::utils::detour::Function(&internal::original_particle_alloc, &internal::OnParticleAlloc, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE));
     }
     state.details += std::format(" ({} blocks of {} bytes{})", blocks, block_size,
                                  (internal::particle_pool.pool != nullptr ? "" : ": not as expected, not grown"));

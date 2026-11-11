@@ -277,13 +277,13 @@ inline void Install() {
     internal::original_evaluate = reinterpret_cast<internal::Evaluate>(evaluate);
     internal::original_jitter = reinterpret_cast<internal::Jitter>(jitter);
     state.hooks = {
-        renodx::utils::detour::Function(&internal::original_create, &internal::OnCreateFeature),
-        renodx::utils::detour::Function(&internal::original_evaluate, &internal::OnEvaluate),
-        renodx::utils::detour::Function(&internal::original_jitter, &internal::OnJitter),
+        renodx::utils::detour::Function(&internal::original_create, &internal::OnCreateFeature, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE),
+        renodx::utils::detour::Function(&internal::original_evaluate, &internal::OnEvaluate, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE),
+        renodx::utils::detour::Function(&internal::original_jitter, &internal::OnJitter, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE),
     };
     if (set_ui != nullptr) {
       internal::original_set_ui = reinterpret_cast<internal::SetUI>(set_ui);
-      state.hooks.push_back(renodx::utils::detour::Function(&internal::original_set_ui, &internal::OnSetUI));
+      state.hooks.push_back(renodx::utils::detour::Function(&internal::original_set_ui, &internal::OnSetUI, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE));
     }
     try {
       state.hook_lifetime.Install(state.hooks);

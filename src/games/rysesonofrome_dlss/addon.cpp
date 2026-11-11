@@ -1207,7 +1207,7 @@ void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint
   const bool after_taa = taa_frame.load(std::memory_order_relaxed) == frame;
   if ((!after_taa && count > 6) || trace_lines.fetch_add(1) >= 2000) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return;
   ComPtr<ID3D11RenderTargetView> target;
   context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
@@ -1284,7 +1284,7 @@ struct OptionsMeasure {
 
 void CountDraw(reshade::api::command_list* cmd_list, uint32_t count) {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return;
   ComPtr<ID3D11RenderTargetView> color;
   ComPtr<ID3D11DepthStencilView> depth;
@@ -1300,7 +1300,7 @@ void CountDraw(reshade::api::command_list* cmd_list, uint32_t count) {
 
 void TraceShadowDraw(reshade::api::command_list* cmd_list) {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr) return;
   ComPtr<ID3D11RenderTargetView> color;
   ComPtr<ID3D11DepthStencilView> depth;
@@ -1666,7 +1666,7 @@ void SetStatus(std::string_view message) {
 // The native immediate context of a command, or null.
 ComPtr<ID3D11DeviceContext1> ImmediateContext(reshade::api::command_list* cmd_list) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   ComPtr<ID3D11DeviceContext1> context;
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE
       || FAILED(native->QueryInterface(IID_PPV_ARGS(context.GetAddressOf())))) {
@@ -2605,7 +2605,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   if (talesofarise::frame_generation::Presenting()) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     talesofarise::frame_generation::Inputs inputs;
     {
       const std::shared_lock lock(frame_generation_frame.mutex);

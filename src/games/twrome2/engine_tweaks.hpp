@@ -414,7 +414,7 @@ inline std::string Install(const tw::engine_tweaks::Sections& sections) {
   uint8_t* pick_lod = tw::engine_tweaks::FindPattern(sections.code, PATTERN);
   if (pick_lod == nullptr) return "object detail: the game's LOD code was not found";
   original_pick_lod = reinterpret_cast<PickLod>(pick_lod);
-  hooks = {renodx::utils::detour::Function(&original_pick_lod, &OnPickLod)};
+  hooks = {renodx::utils::detour::Function(&original_pick_lod, &OnPickLod, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE)};
   try {
     hook_lifetime.Install(hooks);
     hooks_active.store(true, std::memory_order_relaxed);

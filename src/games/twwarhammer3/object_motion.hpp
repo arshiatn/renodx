@@ -172,7 +172,7 @@ inline bool VelocityBound(ID3D11DeviceContext* native) {
 constexpr auto OnPixelDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (!active()) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || !VelocityBound(native)) return {};
   ComPtr<ID3D11VertexShader> game_vertex;
   native->VSGetShader(game_vertex.GetAddressOf(), nullptr, nullptr);
@@ -244,7 +244,7 @@ constexpr auto OnPixelDraw = []<typename Context>(Context& command) -> renodx::u
   }
   return {.post_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
     if (post_native == nullptr) return;
     post_native->PSSetShader(swapped.pixel.Get(), nullptr, 0);
     swapped.pixel.Reset();
@@ -261,7 +261,7 @@ constexpr auto OnPixelDraw = []<typename Context>(Context& command) -> renodx::u
 constexpr auto OnMotionFill = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (!water_active() || fill_refused.load(std::memory_order_relaxed)) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
   ComPtr<ID3D11RenderTargetView> target;
   ComPtr<ID3D11DepthStencilView> depth;
@@ -295,7 +295,7 @@ constexpr auto OnMotionFill = []<typename Context>(Context& command) -> renodx::
   }
   return {.post_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
     if (post_native == nullptr) return;
     ID3D11ShaderResourceView* no_view = nullptr;
     post_native->PSSetShaderResources(1, 1, &no_view);
@@ -316,7 +316,7 @@ constexpr auto OnInstanceLog = []<typename Context>(Context& command) -> renodx:
   InstanceLog& log = instance_logs[flags ? 0 : 1];
   if (log.frames.load(std::memory_order_relaxed) > INSTANCE_LOG_FRAMES || !log_details()) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || !VelocityBound(native)) return {};
   // A frame's draws of a family come within a few milliseconds; the next frame's later.
   const uint64_t tick = GetTickCount64();

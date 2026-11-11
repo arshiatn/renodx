@@ -115,7 +115,7 @@ bool Update(const Buffers& buffers, ID3D11DeviceContext* native, const void* dat
   std::memcpy(patched.data(), data, static_cast<size_t>(std::min<uint64_t>(size, BYTES)));
   if (!write(patched.data())) return false;
   // Through ReShade's context the update would come back here.
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   const D3D11_BOX part = {.left = 0, .top = 0, .front = 0, .right = static_cast<UINT>(std::min<uint64_t>(size, BYTES)), .bottom = 1, .back = 1};
   native->UpdateSubresource(reinterpret_cast<ID3D11Resource*>(resource.handle), 0, (size < BYTES) ? &part : nullptr, patched.data(), 0, 0);
   return true;

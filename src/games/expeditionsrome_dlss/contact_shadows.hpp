@@ -68,7 +68,7 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   const float contact_length = length.load(std::memory_order_relaxed);
   if (contact_length <= 0.f || ray_traced.load(std::memory_order_relaxed)) return {};
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
 
@@ -141,7 +141,7 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   context->PSSetConstantBuffers(1, 1, &light_copy);
   return {.post_callback = [](Context& command, const void*) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     ComPtr<ID3D11DeviceContext1> context1;
     if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
     ID3D11Buffer* game_light = objects.game_light.Get();

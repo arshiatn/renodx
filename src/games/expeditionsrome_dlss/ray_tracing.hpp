@@ -268,7 +268,7 @@ inline bool MakeBounceTexture(ID3D11Device* device, DXGI_FORMAT format, twattila
 template <typename Context>
 void OnSunLit(Context& command, const void*) {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
   ComPtr<ID3D11RenderTargetView> target;
@@ -370,7 +370,7 @@ void OnSunLit(Context& command, const void*) {
 constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   contact_shadows::ray_traced.store(false, std::memory_order_relaxed);
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
   twattila::rt_scene::Settings settings;
@@ -540,7 +540,7 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
 // not traced this frame.
 constexpr auto OnReflection = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
   {

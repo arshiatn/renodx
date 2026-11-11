@@ -126,7 +126,7 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
     return;
   }
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&context);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
   ComPtr<ID3D11ShaderResourceView> depth;

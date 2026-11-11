@@ -383,7 +383,7 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
 constexpr auto OnMomentsCombine = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (smoothing_row == 0.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
   const std::unique_lock lock(mutex);
   native->PSGetShaderResources(0, 1, smoothing.half_optical_depth.ReleaseAndGetAddressOf());
@@ -397,7 +397,7 @@ constexpr auto OnMomentsCombine = []<typename Context>(Context& command) -> reno
 constexpr auto OnComposite = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (smoothing_row == 0.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::NativeFromReShadeProxy(&native);
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
   const std::unique_lock lock(mutex);
   if (smoothing.layer_count == 0 || !smoothing.half_optical_depth) return {};
@@ -486,7 +486,7 @@ constexpr auto OnComposite = []<typename Context>(Context& command) -> renodx::u
   }
   return {.finalize_callback = [](Context& post, const void*) {
     auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
-    renodx::utils::directx::NativeFromReShadeProxy(&post_native);
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
     const std::unique_lock post_lock(mutex);
     post_native->PSSetShader(smoothing.game_shader.Get(), nullptr, 0);
     post_native->PSSetShaderResources(particle_history::VIEWS_SLOT, particle_history::VIEW_COUNT, smoothing.game_views.data());
