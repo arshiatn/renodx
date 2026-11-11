@@ -723,6 +723,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .is_visible = screen,
       });
     }
+    for (const auto* key : {"ScreenSpaceShadowsAutoThickness", "ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsBannerLight",
+                            "ScreenSpaceShadowsColoured", "ScreenSpaceShadowsTorches"}) {
+      page.Take({.match = key, .section = section, .shown = screen});
+    }
     if (b.smoke_strength != nullptr) {
       const auto no_rays = [b] { return ShadowMethodOf(b) != SHADOW_RAYS; };
       page.Add(new Setting{
@@ -861,7 +865,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "Light Through All Banners (Experimental)",
           .section = section,
           .tooltip = "Every unit banner lets some sunlight through, as thin cloth.",
-          .is_visible = more_rays,
+          // The screen-space shadows' banners too (screen_space_shadows::InstallThin's unit banners).
+          .is_visible = [more_rays, more_screen, b] { return more_rays() || (more_screen() && b.sss->banner_light > 0.f); },
       });
     }
     if (b.rays_sheets_unselfed != nullptr) {

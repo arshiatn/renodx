@@ -13,6 +13,7 @@
 #include "../../utils/settings.hpp"
 #include "./anti_aliasing.hpp"
 #include "./lighting_settings.hpp"
+#include "./screen_space_lights.hpp"
 #include "./screen_space_shadows.hpp"
 #include "./ssr_hiz.hpp"
 
@@ -43,6 +44,13 @@ struct SssSliders {
   float debug_view = 0.f;
   float mirror_edges = 0.f;
   float foliage_light = 0.f;  // Attila's (graphics_page.hpp)
+  // Experimental: Auto Thickness, Softer Away from the Caster (degrees of the sun's disk), Light Through Banners (the sun's
+  // share), Coloured Shadows, Torch and Fire Shadows (Off, 4, 8, 16 lights).
+  float auto_thickness = 0.f;
+  float distance_softness = 0.f;
+  float banner_light = 0.f;
+  float coloured = 0.f;
+  float torches = 0.f;
 };
 
 struct AaSliders {
@@ -86,6 +94,11 @@ inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
       .debug_view = static_cast<int>(sliders.debug_view),
       .mirror_edges = (sliders.mirror_edges != 0.f),
       .foliage_light = sliders.foliage_light,
+      .auto_thickness = (sliders.auto_thickness != 0.f),
+      .sun_disk = sliders.distance_softness,
+      .thin_light = sliders.banner_light,
+      .coloured = (sliders.coloured != 0.f),
+      .lights = std::array<uint32_t, 4>{0u, 4u, 8u, 16u}[std::clamp(static_cast<int>(sliders.torches), 0, 3)],
   };
 }
 
@@ -211,6 +224,61 @@ inline void AppendSss(std::vector<renodx::utils::settings::Setting*>* settings, 
                                             .tooltip = "Smooths the shadows' edges along surfaces, never across objects. Almost free.",
                                             .labels = {"Off", "1 px", "2 px", "3 px"},
                                             .is_enabled = sss_enabled,
+                                        },
+                                        sss_toggle("ScreenSpaceShadowsAutoThickness", &sliders->auto_thickness, "Auto Thickness (Experimental)",
+                                                   "Each object is taken to be as thick as it is wide: fuller shadows behind walls and carts,\n"
+                                                   "thin things keep thin shadows."),
+                                        new renodx::utils::settings::Setting{
+                                            .key = "ScreenSpaceShadowsDistanceSoftness",
+                                            .binding = &sliders->distance_softness,
+                                            .default_value = 0.f,
+                                            .label = "Softer Away from the Caster (Experimental)",
+                                            .section = SSS_SECTION,
+                                            .tooltip = "Shadows sharp where things touch the ground, softer farther from them, as under the sun.\n"
+                                                       "The sun's size in degrees. 0: off.",
+                                            .min = 0.f,
+                                            .max = 2.f,
+                                            .format = "%.2f",
+                                            .is_enabled = sss_enabled,
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "ScreenSpaceShadowsBannerLight",
+                                            .binding = &sliders->banner_light,
+                                            .default_value = 0.f,
+                                            .label = "Light Through Banners (Experimental)",
+                                            .section = SSS_SECTION,
+                                            .tooltip = "How much sun comes through the shadows banners, flags, tents and sails cast: they are\n"
+                                                       "thin cloth. 0: off.",
+                                            .min = 0.f,
+                                            .max = 1.f,
+                                            .format = "%.2f",
+                                            .is_enabled = sss_enabled,
+                                            .is_visible = [] { return screen_space_shadows::thin_installed; },
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "ScreenSpaceShadowsColoured",
+                                            .binding = &sliders->coloured,
+                                            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                                            .default_value = 0.f,
+                                            .label = "Coloured Shadows (Experimental)",
+                                            .section = SSS_SECTION,
+                                            .tooltip = "The sun through banners and sails takes their colour.",
+                                            .labels = {"Off", "On"},
+                                            .is_enabled = [sliders] { return sliders->enabled != 0.f && sliders->banner_light > 0.f; },
+                                            .is_visible = [] { return screen_space_shadows::thin_installed; },
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "ScreenSpaceShadowsTorches",
+                                            .binding = &sliders->torches,
+                                            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                                            .default_value = 0.f,
+                                            .label = "Torch and Fire Shadows (Experimental)",
+                                            .section = SSS_SECTION,
+                                            .tooltip = "Torches, fires and burning buildings cast shadows of what is on screen, for this many\n"
+                                                       "of the nearest and brightest. More: heavier.",
+                                            .labels = {"Off", "4", "8", "16"},
+                                            .is_enabled = sss_enabled,
+                                            .is_visible = [] { return screen_space_lights::installed; },
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "ScreenSpaceShadowsContrast",

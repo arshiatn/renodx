@@ -3189,6 +3189,15 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0xA4527F25, .dynamic = true, .foliage = true, .grass = true, .indirect = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = GRASS_MASKS},
 }};
 
+// The screen-space shadows' Light Through Banners: cloth, banners and flags, the unit parts with Light Through All Banners (as the rays).
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 5> THIN_SHADERS = {{
+    {.hash = 0x233A0281},
+    {.hash = 0x219075F3},
+    {.hash = 0x72CDA7A1},
+    {.hash = 0x444F1190},
+    {.hash = 0xC0ED2883, .row = &rays_banner_light_row},
+}};
+
 // Ray tracing's view of the game: DLSS's camera (taa_dlss.hpp; uploaded jittered, as the scene and its depth were drawn)
 // and render size; the G-buffer guides (WriteGuides, at the sun draws before the trace).
 const twattila::rt_scene::Host RT_HOST = {
@@ -4177,6 +4186,8 @@ bool AttachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Before the Light Bounce's (its callback draws the sun draw again).
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Banners: cloth, banners and flags (as the rays), the G-buffer's colour linear.
+  twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
   for (const auto& draw : LIGHT_BOUNCE_DRAWS) {

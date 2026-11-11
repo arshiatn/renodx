@@ -1256,6 +1256,16 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x4657DA8A, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
 }};
 
+// The screen-space shadows' Light Through Banners: cloth and sails, the unit banners with Light Through All Banners (as the rays).
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 6> THIN_SHADERS = {{
+    {.hash = 0x772B26FF},
+    {.hash = 0x902253FD},
+    {.hash = 0xD11B5EC7},
+    {.hash = 0x202FA188},
+    {.hash = 0xB06CB969, .row = &rays_banner_light_row},
+    {.hash = 0x10FE7EBC, .row = &rays_banner_light_row},
+}};
+
 // What only the campaign map draws: its borders, the shroud's plane, its sea.
 constexpr std::array<uint32_t, 4> CAMPAIGN_SHADERS = {0x0CC96E53, 0xC1B5C13E, twattila::rt_scene::CAMPAIGN_SEA_SHADERS[0], twattila::rt_scene::CAMPAIGN_SEA_SHADERS[1]};
 constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
@@ -1934,6 +1944,8 @@ bool AttachAddon() {
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::InstallFoliage(FOLIAGE_VERTEX_SHADERS, AFTER_FOLIAGE_VERTEX_SHADERS);
+  // The G-buffer's colour squared (gamma 2).
+  twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   twattila::grass_fade::Install();

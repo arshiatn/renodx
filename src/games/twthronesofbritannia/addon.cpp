@@ -1268,6 +1268,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
 }};
 
+// The screen-space shadows' Light Through Banners: cloth and sails (as the rays).
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{{.hash = 0x772B26FF}, {.hash = 0x902253FD}, {.hash = 0xD11B5EC7}, {.hash = 0x202FA188}}};
+
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
 // half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
 constexpr std::array<twattila::view_share::RegionRead, 6> RENDER_SCALE_READS = {{
@@ -1765,6 +1768,8 @@ bool AttachAddon() {
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Banners: cloth and sails (as the rays), the G-buffer's colour squared (gamma 2).
+  twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,

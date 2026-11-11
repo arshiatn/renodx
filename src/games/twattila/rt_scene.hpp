@@ -43,6 +43,7 @@
 #include "./feature_settings.hpp"
 #include "./object_motion.hpp"
 #include "./light_bounce.hpp"
+#include "./screen_space_lights.hpp"
 #include "./ssr_hiz.hpp"
 
 // Ray tracing in the Total War games (rt_core.hpp's core with the TW games' passes and settings): at the game's ambient
@@ -853,28 +854,31 @@ inline void OnDestroyInputLayout(reshade::api::device*, reshade::api::pipeline p
 }  // namespace internal
 
 // A point light draw (the addon's replaced light shaders with rt_local_lights.hlsli): its instances copied for the next
-// traces; this frame's traced lights' bits and positions bound (put back after).
+// traces; this frame's traced lights' bits and positions bound (put back after). Without rays tracing them, the
+// screen-space shadows' Torch and Fire Shadows' (screen_space_lights.hpp) where on.
 constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (!internal::active.load(std::memory_order_relaxed)) return {};
-  auto* native = internal::NativeContext(command.cmd_list);
-  if (native == nullptr) return {};
+  bool traced = internal::active.load(std::memory_order_relaxed);
   uint64_t frame = 0;
-  {
+  if (traced) {
     const std::unique_lock lock(internal::runtime.mutex);
-    if (!internal::runtime.settings.local_lights) return {};
+    traced = internal::runtime.settings.local_lights;
     frame = internal::runtime.frame;
   }
+  if (!traced && !screen_space_lights::Wanted()) return {};
+  auto* native = internal::NativeContext(command.cmd_list);
+  if (native == nullptr) return {};
   auto& readback = internal::point_light_readback;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (readback.device != device) {
+  // The rays' readback (the screen-space shadows' copies stay on the GPU).
+  if (traced && readback.device != device) {
     readback = {.device = device};
     const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = internal::POINT_LIGHT_BYTES, .Usage = D3D11_USAGE_STAGING,
                                             .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
     for (auto& buffer : readback.staging) device->CreateBuffer(&staging_desc, nullptr, buffer.GetAddressOf());
   }
   // A new frame: the buffer filled three frames ago read (each light once) into this frame's lights, then filled again.
-  if (readback.frame != frame) {
+  if (traced && readback.frame != frame) {
     readback.frame = frame;
     readback.current = (readback.current + 1) % readback.staging.size();
     auto& buffer = readback.staging[readback.current];
@@ -924,23 +928,33 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
   } else if (!std::exchange(internal::point_light_layout_missed, true)) {
     renodx::utils::log::i("[Total War] Local lights: a light draw's input layout has no POSITION1 and POSITION2 in one buffer: not read.");
   }
-  auto& buffer = readback.staging[readback.current];
-  UINT& used = readback.used[readback.current];
   UINT instance_count = 0;
   UINT first_instance = 0;
   if constexpr (requires { command.arguments.instance_count; }) {
     instance_count = command.arguments.instance_count;
     first_instance = command.arguments.first_instance;
   }
-  const UINT count = (stride == 0) ? 0 : std::min(instance_count, (internal::POINT_LIGHT_BYTES - used) / stride);
-  if (instances && buffer && count != 0 && std::max(layout.colour, layout.position) + 16 <= stride) {
-    const UINT first = offset + (first_instance * stride);
-    const D3D11_BOX box = {.left = first, .top = 0, .front = 0, .right = first + (count * stride), .bottom = 1, .back = 1};
-    native->CopySubresourceRegion(buffer.Get(), 0, used, 0, 0, instances.Get(), 0, &box);
-    readback.copies[readback.current].push_back({.offset = used, .count = count, .stride = stride, .layout = layout});
-    used += count * stride;
+  const bool readable = instances && std::max(layout.colour, layout.position) + 16 <= stride;
+  const UINT first = offset + (first_instance * stride);
+  if (traced) {
+    auto& buffer = readback.staging[readback.current];
+    UINT& used = readback.used[readback.current];
+    const UINT count = (stride == 0) ? 0 : std::min(instance_count, (internal::POINT_LIGHT_BYTES - used) / stride);
+    if (readable && buffer && count != 0) {
+      const D3D11_BOX box = {.left = first, .top = 0, .front = 0, .right = first + (count * stride), .bottom = 1, .back = 1};
+      native->CopySubresourceRegion(buffer.Get(), 0, used, 0, 0, instances.Get(), 0, &box);
+      readback.copies[readback.current].push_back({.offset = used, .count = count, .stride = stride, .layout = layout});
+      used += count * stride;
+    }
+    if (!BindLocalLights(native)) return {};
+  } else if (!screen_space_lights::OnLightDraw(native, {.buffer = (readable ? instances.Get() : nullptr),
+                                                         .first = first,
+                                                         .count = instance_count,
+                                                         .stride = stride,
+                                                         .position = layout.position,
+                                                         .colour = layout.colour})) {
+    return {};
   }
-  if (!BindLocalLights(native)) return {};
   return {.post_callback = [](Context& post, const void*) {
     auto* post_native = internal::NativeContext(post.cmd_list);
     if (post_native != nullptr) UnbindLocalLights(post_native);
@@ -956,6 +970,7 @@ constexpr std::array<uint32_t, 8> POINT_LIGHT_SHADERS = {0x6426B042, 0x90981DA1,
 // game's input layouts tracked from now (before the device: install at load), Ray-Traced Point Light Shadows shown.
 inline void InstallPointLights(std::span<const uint32_t> shader_hashes) {
   internal::point_lights_installed = true;
+  screen_space_lights::installed = true;
   reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
   reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
   reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
