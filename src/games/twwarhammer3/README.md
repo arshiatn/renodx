@@ -1,5 +1,17 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v41 (2026-11-11, fixes; renodx-tw-dlaa64.exe helper103, bridge v30: ship them together; not run in game; no players' zip)
+
+- **Path-Traced AO no longer too dark ("cooked").** With the game's Global Illumination on, its sun shader lights open ground from its light probes (the environment maps), not from the sky's spherical harmonics our Path-Traced AO took: our sky was 12 to 58 times dimmer than the screen's shade. New row **Sky as Bright as the Game's** (on): our sky built from the same probes. Off: v40's. The game's SSAO stays skipped under ray-traced AO, Path-Traced AO and GT-VBAO.
+- **Cheap ray features stay cheap.** Fog Shadows alone no longer switch on Ray Reconstruction or wait for the terrain's count, and the grass is captured only while a ray that sees it runs (sun shadows, AO, Path-Traced AO).
+- **Far Tree Shadows keep their shape** (helper103): the far trees' cards no longer use up the smoke's count, so a ray through a wood stops at the first solid card whatever their order.
+- **DLSS Preset Auto removed:** a saved Auto loads as L.
+- **Frame generation after DLSS 6x -> FSR:** ReShade no longer loads into the helper (its "errors loading add-ons" banner sat on FSR's window); a count above what the running backend presents asks for its most.
+- **Texture LOD Bias on All Textures (Experimental, off):** the bias also on textures the game filters without anisotropy (its terrain, building, grass and texture-blend shaders take named samplers, one of them trilinear by name). With Log Details: one line with the samplers the bias takes.
+- **Skip the Shadow Maps:** the game's kept shadow maps stay drawn, so switching the rays off mid-battle (RT/PT -> Reset) gives the game's shadows back at once (they stayed empty or stale before: a flat picture).
+- **Shadow Maps Under Rays (Experimental, off):** with Rays Replace Shadow Maps, the game's shadow maps at 2048 or 1024 for what still reads them (water, lit effects, particles): about 400 / 500 MB less video memory. From the next start, until the one after.
+- Details, numbers and the test list: `tools/tw/wh3_v41/reports/v41.md`.
+
 ## v40 (2026-11-11, fixes and performance; renodx-tw-dlaa64.exe helper102, bridge v30: ship them together; not run in game; no players' zip)
 
 - **Helper102** (Attila v144's): Global Illumination > Path-Traced > **Bounces** now does what it says and ends at 2 (3 and 4 measured the same as 2; a saved 3 or 4 runs as 2). It only matters for light from places the camera does not see; out-of-sight light keeps updating during a battle. Frame Generation's status says that it pauses while this menu is open.
