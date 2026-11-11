@@ -3024,7 +3024,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .effects_at_output_tooltip = "While the upscaler renders below 100%, Light Bounce, ray-traced AO's rate and Bend's shadow softness\n"
                                  "keep their 100% detail, and at half or below the water's reflections too. Looks better, can cost some performance.",
     .dlss_preset_tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest.\n"
-                           "Auto: L at 100%, K below 100%, where L and M come out darker (L up to 10% at half).",
+                           "Below 100% L and M come out darker than K (L up to 10% at half).",
     .reflections_tooltip = "Reflections. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original, on water only. All Surfaces: the game's own march on armour, metal and the rest too,\n"
                            "no rays needed; costs more, may shimmer. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
