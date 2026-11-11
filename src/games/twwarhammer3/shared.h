@@ -128,6 +128,7 @@ struct ShaderInjectData {
   float fog_strength;   // battlefog00 / 01: x the fog's opacity and light (1: the game's)
   float tonemap_at_render_size;  // t00: 1 drawn at the render size, top-left (taa_dlss.hpp, below 100%), its overscan not used
   float sharpening_term;  // sharpening00: the game's part for its own upscale, taken off behind the addon's upscaler
+  float shadow_map_scale;  // shadowcopy: the shadow maps' size against the game's 4096 when the addon made them (0.5, 0.25, 2), else 1
 };
 
 #define SI shader_injection

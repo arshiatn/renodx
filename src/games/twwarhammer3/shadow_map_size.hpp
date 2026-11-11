@@ -44,11 +44,18 @@
 namespace twwarhammer3::shadow_map_size {
 
 constexpr uint32_t GAME_SIZE = 4096;
-constexpr uint32_t SCALE = 2;
 constexpr uint32_t SLICES = 4;
 constexpr uint64_t CONSTANTS_BYTES = 640;
 
 static float row = 0.f;  // 0: the game's maps; 1: twice their size, from the next time the game makes them
+// Shadow Maps Under Rays: 0 the game's; 1 2048, 2 1024 while Rays Replace Shadow Maps is on at the start (its readers left:
+// water, lit effects, the particles' fog and shadows).
+static float smaller_row = 0.f;
+// The size the maps are made at (Install; the game's: none made).
+static uint32_t made_size = GAME_SIZE;
+// Set by OnCreateResource for the init that follows on its thread: the game makes 2048 and 1024 maps of its own at lower
+// Shadows settings, alike in their description.
+static thread_local bool made_here = false;
 // The maps made larger and still alive (their resources, by address).
 static std::shared_mutex maps_mutex;
 static std::vector<uint64_t> maps;
@@ -65,13 +72,18 @@ inline bool IsMap(const reshade::api::resource_desc& desc, uint32_t size) {
          && (desc.usage & reshade::api::resource_usage::depth_stencil) != 0;
 }
 
-// g_vHardShadowBufferSize (the buffer's first four floats) at the larger maps' size while it holds the game's.
+// The maps' size against the game's while the addon's are alive (shader_injection.shadow_map_scale), else 1.
+inline float Scale() {
+  return (live_maps.load(std::memory_order_relaxed) != 0) ? static_cast<float>(made_size) / static_cast<float>(GAME_SIZE) : 1.f;
+}
+
+// g_vHardShadowBufferSize (the buffer's first four floats) at the made maps' size while it holds the game's.
 inline bool WriteSize(uint8_t* shadow_constants) {
   std::array<float, 4> size = {};
   std::memcpy(size.data(), shadow_constants, sizeof(size));
   if (size[0] != static_cast<float>(GAME_SIZE) || size[1] != static_cast<float>(GAME_SIZE)) return false;
-  constexpr float LARGER = static_cast<float>(GAME_SIZE * SCALE);
-  size = {LARGER, LARGER, 1.f / LARGER, 1.f / LARGER};
+  const auto made = static_cast<float>(made_size);
+  size = {made, made, 1.f / made, 1.f / made};
   std::memcpy(shadow_constants, size.data(), sizeof(size));
   return true;
 }
@@ -87,10 +99,10 @@ inline bool DrawsIntoMap(ID3D11DeviceContext* native) {
   return std::ranges::find(maps, reinterpret_cast<uint64_t>(resource.Get())) != maps.end();
 }
 
-// The context's first viewport and scissor rect from the game's size to the larger maps' (`larger`), or back.
+// The context's first viewport and scissor rect from the game's size to the made maps' (`larger`: to them), or back.
 inline void Rescale(ID3D11DeviceContext* native, bool larger) {
-  const uint32_t from = (larger ? GAME_SIZE : GAME_SIZE * SCALE);
-  const uint32_t to = (larger ? GAME_SIZE * SCALE : GAME_SIZE);
+  const uint32_t from = (larger ? GAME_SIZE : made_size);
+  const uint32_t to = (larger ? made_size : GAME_SIZE);
   UINT viewport_count = 1;
   D3D11_VIEWPORT viewport = {};
   native->RSGetViewports(&viewport_count, &viewport);
@@ -131,21 +143,23 @@ inline void AreaBound(ID3D11DeviceContext* native, float width, float height) {
 }
 
 static bool OnCreateResource(reshade::api::device*, reshade::api::resource_desc& desc, reshade::api::subresource_data*, reshade::api::resource_usage) {
-  if (row == 0.f || !IsMap(desc, GAME_SIZE)) return false;
-  desc.texture.width = GAME_SIZE * SCALE;
-  desc.texture.height = GAME_SIZE * SCALE;
+  if (made_size == GAME_SIZE || !IsMap(desc, GAME_SIZE)) return false;
+  desc.texture.width = made_size;
+  desc.texture.height = made_size;
+  made_here = true;
   return true;
 }
 
 static void OnInitResource(reshade::api::device*, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
                            reshade::api::resource_usage, reshade::api::resource resource) {
   buffer_writes::Add(&constants, CONSTANTS_BYTES, desc, resource);
-  if (!IsMap(desc, GAME_SIZE * SCALE)) return;
+  // Larger: no map of the game's is that size. Smaller: only the one made here.
+  if (const bool made = std::exchange(made_here, false); !IsMap(desc, made_size) || (made_size < GAME_SIZE && !made)) return;
   const std::unique_lock lock(maps_mutex);
   if (std::ranges::find(maps, resource.handle) != maps.end()) return;
   maps.push_back(resource.handle);
   if (live_maps.fetch_add(1, std::memory_order_relaxed) == 0) {
-    renodx::utils::log::i(std::format("[Warhammer III] Shadow Map Size: the game's shadow maps made at {} x {} [{}].", GAME_SIZE * SCALE, GAME_SIZE * SCALE, SLICES));
+    renodx::utils::log::i(std::format("[Warhammer III] Shadow Map Size: the game's shadow maps made at {} x {} [{}].", made_size, made_size, SLICES));
   }
 }
 
@@ -164,7 +178,7 @@ static void OnMapBufferRegion(reshade::api::device*, reshade::api::resource reso
 
 static void LogConstants(const char* how) {
   if (!constants_logged.exchange(true, std::memory_order_relaxed)) {
-    renodx::utils::log::i(std::format("[Warhammer III] Shadow Map Size: the shared shadow constants say {} ({}).", GAME_SIZE * SCALE, how));
+    renodx::utils::log::i(std::format("[Warhammer III] Shadow Map Size: the shared shadow constants say {} ({}).", made_size, how));
   }
 }
 
@@ -220,10 +234,12 @@ static void OnBindScissorRects(reshade::api::command_list* cmd_list, uint32_t fi
   AreaBound(native, static_cast<float>(rects[0].right - rects[0].left), static_cast<float>(rects[0].bottom - rects[0].top));
 }
 
-// At the addon's attach, once its settings are read. With the row off then, nothing is registered: no call of the game's
-// passes by here, and turning the row on needs a restart anyway (the maps are made at the game's start).
-static void Install() {
-  if (row == 0.f) return;
+// At the addon's attach, once its settings are read (`rays_replace`: Rays Replace Shadow Maps on, for smaller_row). With
+// the rows off then, nothing is registered: no call of the game's passes by here, and turning a row on needs a restart
+// anyway (the maps are made at the game's start).
+static void Install(bool rays_replace) {
+  made_size = (row != 0.f) ? GAME_SIZE * 2 : ((smaller_row != 0.f && rays_replace) ? GAME_SIZE >> static_cast<uint32_t>(std::clamp(smaller_row, 1.f, 2.f)) : GAME_SIZE);
+  if (made_size == GAME_SIZE) return;
   reshade::register_event<reshade::addon_event::create_resource>(OnCreateResource);
   reshade::register_event<reshade::addon_event::init_resource>(OnInitResource);
   reshade::register_event<reshade::addon_event::destroy_resource>(OnDestroyResource);

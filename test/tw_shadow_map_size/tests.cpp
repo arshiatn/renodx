@@ -12,6 +12,10 @@
 // 5. The three pixel shaders: at the game's size ours give the game's own bytes' result to the bit; at 2x, over a map whose
 //    texels are the 1x map's doubled, the two half-size copies give the 1x result to the bit and the kept maps' copy gives
 //    the 1x result doubled.
+// 6. Shadow Maps Under Rays: the maps made at 2048 and 1024 (only those made here tracked, not the game's own of that size),
+//    the viewport and constants at their size, and the three shaders with shader_injection.shadow_map_scale 0.5 and 0.25: the
+//    half copies over the game's 2048 / 1024 targets give the game's result to the bit at 0.5 and the 4 x 4 deepest at 0.25,
+//    the kept maps' copy the game's result halved / quartered.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -27,6 +31,7 @@
 #include <string>
 #include <vector>
 #include "src/games/twwarhammer3/shadow_map_size.hpp"
+#include "src/games/twwarhammer3/shared.h"
 
 using Microsoft::WRL::ComPtr;
 namespace size = twwarhammer3::shadow_map_size;
@@ -162,15 +167,15 @@ int main(int argc, char** argv) {
   CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
                                     immediate.GetAddressOf())));
   constexpr uint32_t GAME = size::GAME_SIZE;
-  constexpr uint32_t LARGER = size::GAME_SIZE * size::SCALE;
+  constexpr uint32_t LARGER = size::GAME_SIZE * 2;
 
   // 1.
   {
     reshade::api::resource_desc map(GAME, GAME, 4, 1, reshade::api::format::r32_typeless, 1, reshade::api::memory_heap::gpu_only,
                                     reshade::api::resource_usage::depth_stencil | reshade::api::resource_usage::shader_resource);
-    size::row = 0.f;
+    size::made_size = size::GAME_SIZE;
     CHECK(!size::OnCreateResource(nullptr, map, nullptr, reshade::api::resource_usage::undefined) && map.texture.width == GAME);
-    size::row = 1.f;
+    size::made_size = LARGER;
     for (auto other : {reshade::api::resource_desc(2048, 2048, 4, 1, reshade::api::format::r32_typeless, 1, reshade::api::memory_heap::gpu_only,
                                                    reshade::api::resource_usage::depth_stencil | reshade::api::resource_usage::shader_resource),
                        reshade::api::resource_desc(GAME, GAME, 1, 1, reshade::api::format::r32_typeless, 1, reshade::api::memory_heap::gpu_only,
@@ -189,9 +194,9 @@ int main(int argc, char** argv) {
   // The game's two maps with the row on, and a depth target of the game's size that is none of them.
   Map dynamic = MakeMap(GAME, 4, true);
   CHECK(dynamic.texture && WidthOf(dynamic) == LARGER && size::live_maps == 1);
-  size::row = 0.f;
+  size::made_size = size::GAME_SIZE;
   Map other = MakeMap(GAME, 1, true);
-  size::row = 1.f;
+  size::made_size = LARGER;
   CHECK(other.texture && WidthOf(other) == GAME && size::live_maps == 1);
 
   // 2.
@@ -452,7 +457,7 @@ int main(int argc, char** argv) {
   };
   // One of the copies drawn into `target` with `viewport`, its inputs at t0 and t1, its constants at b0.
   const auto draw_copy = [&](ID3D11PixelShader* shader, ID3D11VertexShader* vertex_shader, const Map& target, float viewport_size, ID3D11ShaderResourceView* first,
-                             ID3D11ShaderResourceView* second, ID3D11Buffer* shader_constants) {
+                             ID3D11ShaderResourceView* second, ID3D11Buffer* shader_constants, ID3D11Buffer* injection = nullptr) {
     immediate->ClearState();
     immediate->ClearDepthStencilView(target.depth.Get(), D3D11_CLEAR_DEPTH, 0.25f, 0);
     const D3D11_VIEWPORT viewport = {.TopLeftX = 0.f, .TopLeftY = 0.f, .Width = viewport_size, .Height = viewport_size, .MinDepth = 0.f, .MaxDepth = 1.f};
@@ -467,6 +472,7 @@ int main(int argc, char** argv) {
     const std::array<ID3D11ShaderResourceView*, 2> inputs = {first, second};
     immediate->PSSetShaderResources(0, 2, inputs.data());
     immediate->PSSetConstantBuffers(0, 1, &shader_constants);
+    if (injection != nullptr) immediate->PSSetConstantBuffers(10, 1, &injection);
     immediate->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     immediate->Draw(3, 0);
     immediate->ClearState();
@@ -547,6 +553,114 @@ int main(int argc, char** argv) {
     }
   }
   CHECK(std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("Shadow Map Size: the game's shadow maps made at 8192") != std::string::npos; }) >= 1);
+
+  // 6.
+  {
+    const auto injection_of = [](float scale) {
+      ShaderInjectData data = {};
+      data.shadow_map_scale = scale;
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = (sizeof(ShaderInjectData) + 15u) & ~15u, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      std::vector<uint8_t> bytes(desc.ByteWidth);
+      std::memcpy(bytes.data(), &data, sizeof(data));
+      const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = bytes.data()};
+      ComPtr<ID3D11Buffer> buffer;
+      device->CreateBuffer(&desc, &initial, buffer.GetAddressOf());
+      return buffer;
+    };
+    // The deepest of each `factor` x `factor` block.
+    const auto reduced = [](uint32_t width, const std::vector<float>& values, uint32_t factor) {
+      const uint32_t out = width / factor;
+      std::vector<float> result(size_t{out} * out, 0.f);
+      for (uint32_t y = 0; y < width; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+          float& deepest = result[(size_t{y / factor} * out) + (x / factor)];
+          deepest = std::max(deepest, values[(size_t{y} * width) + x]);
+        }
+      }
+      return result;
+    };
+    for (const uint32_t factor : {2u, 4u}) {
+      const uint32_t made = GAME / factor;
+      const float scale = 1.f / static_cast<float>(factor);
+      // Made at `made`; the game's own map of that size is not tracked.
+      size::made_size = made;
+      const uint32_t live_before = size::live_maps;
+      Map own = MakeMap(made, 4, true);
+      CHECK(own.texture && WidthOf(own) == made && size::live_maps == live_before);
+      Map made_map = MakeMap(GAME, 4, true);
+      CHECK(made_map.texture && WidthOf(made_map) == made && size::live_maps == live_before + 1);
+      CHECK(size::Scale() == scale);
+      GameSetsViewport(immediate.Get(), static_cast<float>(GAME));
+      GameSetsScissor(immediate.Get(), static_cast<LONG>(GAME));
+      GameBindsDepth(immediate.Get(), made_map.depth.Get());
+      CHECK(ViewportOf(immediate.Get()) == made && ScissorOf(immediate.Get()) == static_cast<LONG>(made));
+      GameBindsDepth(immediate.Get(), other.depth.Get());
+      CHECK(ViewportOf(immediate.Get()) == GAME && ScissorOf(immediate.Get()) == static_cast<LONG>(GAME));
+      GameBindsDepth(immediate.Get(), own.depth.Get());
+      CHECK(ViewportOf(immediate.Get()) == GAME);
+      immediate->ClearState();
+      {
+        ComPtr<ID3D11Buffer> constants_buffer = make_constants(D3D11_USAGE_DYNAMIC, BYTES);
+        upload(constants_buffer.Get(), game_constants(static_cast<float>(GAME)));
+        CHECK(read_back(constants_buffer.Get()) == game_constants(static_cast<float>(made)));
+      }
+      const auto injection = injection_of(scale);
+      // The half copies: the game's bytes on a 4096 map into its own targets against ours on the reduced map.
+      for (const size_t index : {size_t{1}, size_t{2}}) {
+        immediate->UpdateSubresource(copy_constants.Get(), 0, nullptr, slice_zero.data(), 0, 0);
+        const auto game_values = random_map(GAME);
+        const Map game_source = filled(GAME, game_values);
+        const Map small_source = filled(made, reduced(GAME, game_values, factor));
+        const uint32_t target_size = (index == 1) ? 2048u : 1024u;
+        const Map game_target = MakeMap(target_size, 1, false);
+        const auto at_game = draw_copy(game_shaders[index].Get(), triangle.Get(), game_target, 2048.f, game_source.view.Get(), game_source.view.Get(), copy_constants.Get());
+        const auto at_small = draw_copy(our_shaders[index].Get(), triangle.Get(), game_target, 2048.f, small_source.view.Get(), small_source.view.Get(), copy_constants.Get(),
+                                        injection.Get());
+        // At 0.5 the same; at 0.25 the 4 x 4 deepest under the game's 2 x 2 (never shallower).
+        const auto expected = (factor == 2) ? at_game : [&] {
+          const auto blocks = reduced(GAME, game_values, 4);
+          std::vector<float> result(size_t{target_size} * target_size);
+          for (uint32_t y = 0; y < target_size; ++y) {
+            for (uint32_t x = 0; x < target_size; ++x) result[(size_t{y} * target_size) + x] = blocks[(size_t{y / 2} * (GAME / 4)) + (x / 2)];
+          }
+          return result;
+        }();
+        uint32_t apart = 0;
+        uint32_t shallower = 0;
+        for (size_t texel = 0; texel < at_small.size(); ++texel) {
+          apart += (at_small[texel] == expected[texel]) ? 0u : 1u;
+          shallower += (at_small[texel] < at_game[texel]) ? 1u : 0u;
+        }
+        std::printf("%s at 1/%u: ours on the %u map against the game's on the 4096 one: %u texels apart, %u shallower\n", hashes[index], factor, made, apart, shallower);
+        CHECK(apart == 0 && shallower == 0);
+      }
+      // The kept maps' copy: moved by whole texels of the made size; ours against the game's result reduced.
+      {
+        const auto game_values = random_map(GAME);
+        const Map game_source = filled(GAME, game_values);
+        const Map small_source = filled(made, reduced(GAME, game_values, factor));
+        const Map game_target = MakeMap(GAME, 1, false);
+        const Map small_target = MakeMap(made, 1, false);
+        uint32_t apart = 0;
+        for (const auto& [moved_x, moved_y] : {std::pair{0.f, 0.f}, std::pair{40.f, -112.f}, std::pair{-904.f, 8.f}}) {
+          const float dx = moved_x * 2.f / static_cast<float>(GAME);
+          const float dy = moved_y * 2.f / static_cast<float>(GAME);
+          const std::array<float, 16> constants = {-1.f, 1.f, 1.f, -1.f, -1.f + dx, 1.f + dy, 1.f + dx, -1.f + dy, 2.f, -2.f, static_cast<float>(GAME), static_cast<float>(GAME)};
+          immediate->UpdateSubresource(copy_constants.Get(), 0, nullptr, constants.data(), 0, 0);
+          const auto by_game = draw_copy(game_shaders[0].Get(), triangle_uv.Get(), game_target, static_cast<float>(GAME), game_source.view.Get(), nullptr, copy_constants.Get());
+          const auto by_small = draw_copy(our_shaders[0].Get(), triangle_uv.Get(), small_target, static_cast<float>(made), small_source.view.Get(), nullptr, copy_constants.Get(),
+                                          injection.Get());
+          // A copy's discarded texels keep the target's clear (0.25) in both.
+          const auto expected = reduced(GAME, by_game, factor);
+          for (size_t texel = 0; texel < by_small.size(); ++texel) apart += (by_small[texel] == expected[texel]) ? 0u : 1u;
+        }
+        std::printf("0xC883E3FA at 1/%u: ours on the %u maps against the game's 4096 result reduced: %u texels apart\n", factor, made, apart);
+        CHECK(apart == 0);
+      }
+      size::OnDestroyResource(nullptr, {reinterpret_cast<uint64_t>(made_map.texture.Get())});
+    }
+    size::made_size = LARGER;
+  }
   std::printf("PASS\n");
   return 0;
 }
