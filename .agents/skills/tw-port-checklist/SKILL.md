@@ -46,7 +46,7 @@ Read the file for every area the work touches before planning. Each row is a mis
 2. Read the reference file for each area you touch, and every row of [game-facts.md](references/game-facts.md) for the target game.
 3. Read the target game's own shader, buffer and trace. **Never carry over the source game's values, registers, slots, formulas, encodings, scales or texture slots unread.** "Same as Attila" needs file and symbol for both games.
 4. Ask of the feature: does the game already do this? The same effect computed twice is the most common waste ([ao-gi.md](references/ao-gi.md)).
-5. The maintainer expects Attila's full set in every TW game. A "won't get" needs its proof in the commit (hash not in the dump, pass not in any trace), or it will be asked for later.
+5. A new TW game gets the whole package in its first round: HDR (already in every TW addon) plus everything Attila has. A "won't get" needs its proof in the commit (hash not in the dump, pass not in any trace), or it will be asked for later. The cost to avoid is the maintainer's hours of in-game testing: every check that can run offline runs before the build reaches them.
 6. Order areas by what they need: the RT scene before anything that replaces the game's shadows; a reader census before any replacement; the render-scale audit before tuning effects at one scale.
 
 ## A new game in order
@@ -78,7 +78,7 @@ A hash goes in only with its proof in the commit message: the shader's family na
 ## The maintainer's rules
 
 - **Game runs** only when the maintainer allows them, per batch; the permission ends when the batch closes. Bundle what needs the game into one run. Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini` and the game's preferences right before each install or run, never restore an older copy, compare hashes after.
-- **Unproven work** ships as an Experimental row, off, with a player tooltip and one verdict line on the test list. Defaults change only from measured numbers. Don't let Experimental rows pile up without verdicts.
+- **Unproven work** ships as an Experimental row, off, with a player tooltip and one verdict line on the test list. Defaults change only from measured numbers. A section's More Options may hold as many Experimental rows as needed; the maintainer decides each row: on by default, in which presets, or left under More Options. Give them the numbers for that decision (cost, what it fixes, what it risks).
 - **Look**: keep the developers' look; scale quality, distance and resolution; a look change is an Experimental row, off. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended presets use PsychoV31; ask the maintainer for each game's PsychoV31 hue settings (Hue Clip's default is measured, see [game-facts.md](references/game-facts.md)).
 - **Cost**: no per-frame counters or log lines, no per-frame CPU on the game's thread without a measured reason, hot callbacks return on one atomic.
 - **Rows**: tooltips short and for players, naming nothing the game lacks; keys stay when rows move or saved values are lost.

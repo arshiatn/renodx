@@ -23,7 +23,7 @@ Most of what the game showed could have been found offline:
 
 Only look verdicts, the real crash path and real-scene cost needed the game.
 
-Root causes, each now a rule below: features built before the data run; agent runs on agent settings (shadow quality and GI off, where the maintainer runs both on); game passes replaced without a reader census; registers assumed from Attila; a "this game won't get" list later overturned row by row (Upscaling Mode, LOD Bias, Object Motion, VFX rows, the shadow-map skip, Shadow Map Size, far trees); 19 Experimental rows waiting for a verdict; a run plan never checked against the maintainer's preset (a debug view that needed a row the preset had off; a test key the game doesn't have).
+Root causes, each now a rule below: features built before the data run; agent runs on agent settings (shadow quality and GI off, where the maintainer runs both on); game passes replaced without a reader census; registers assumed from Attila; a "this game won't get" list later overturned row by row (Upscaling Mode, LOD Bias, Object Motion, VFX rows, the shadow-map skip, Shadow Map Size, far trees); 19 Experimental rows shipped without the numbers the maintainer needs to decide each (on by default, in presets, or left under More Options); a run plan never checked against the maintainer's preset (a debug view that needed a row the preset had off; a test key the game doesn't have).
 
 Shipped, then changed: path-traced AO five times, the game's SSAO handling five, its GI four, shadow-map replacement five, the DLSS preset default four. Each change came from a fact a census would have given up front.
 
