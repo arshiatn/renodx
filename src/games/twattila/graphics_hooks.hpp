@@ -28,7 +28,9 @@
 #include "../../utils/log.hpp"
 #include "../../utils/settings.hpp"
 #include "../twrome2/engine_tweaks.hpp"
+#include "./frame_trace.hpp"
 #include "./native_hook_lifetime.hpp"
+#include "./object_motion.hpp"
 
 // Attila's Graphics (Experimental) in empire.retail.dll, found by byte patterns: the unit, tree, grass and animation
 // packing hooks, each scaled live by its slider. Rome II: the unit and dead unit hooks (its own patterns and offsets; trees and
@@ -109,7 +111,9 @@ constexpr uint8_t SOLDIER_ALIVE = 1;
 // SHADOW_PACK_CALL): soldiers left over keep an older frame's offset and their shadows are drawn with other soldiers'
 // bones: huge stretched shadows jumping around in big fights (ATN, 8x unit sizes; v12's taller pages made soldiers
 // vanish: most likely the 32-bit game's address space). Big Battle Fix: while soldiers are left over there, unit
-// detail and animation distances come in (fewer 3D, individually animated soldiers), then slowly back out.
+// detail and animation distances come in (fewer 3D, individually animated soldiers), then slowly back out. Before every
+// pack, object motion records the soldiers drawn since the last one (object_motion.hpp FlushUnitRecords: their bones are
+// gone after it).
 constexpr std::string_view PACK_ANIMATIONS =
     "51 53 8B 5C 24 1C 55 8B 6C 24 1C 56 57 8B F1 39 5D 00 0F 84 ?? ?? ?? ?? 8B 46 04 B9";
 // lea ecx, [esi + 0xbd0]; push dword ptr [esp + 0x1c]; call PackAnimations. Its return address: the match + 15.
@@ -224,11 +228,17 @@ static uint32_t frames_without_overflow = 0;  // the shadow pass's thread
 static bool __fastcall OnPackAnimations(void* pages, void* unused_edx, uint32_t first, uint32_t second, void* soldiers,
                                         uint32_t* next, uint32_t end) {
   if (!hooks_active.load(std::memory_order_relaxed)) return original_pack_animations(pages, unused_edx, first, second, soldiers, next, end);
+  // The soldiers drawn since the last pack: their motion's bones recorded while the pages still hold them.
+  object_motion::FlushUnitRecords();
   const uint32_t start = (next != nullptr ? *next : end);
   const bool packed = original_pack_animations(pages, unused_edx, first, second, soldiers, next, end);
   const auto* return_slot = static_cast<const uint8_t*>(_AddressOfReturnAddress());
   uint8_t* return_address;
   std::memcpy(&return_address, return_slot, sizeof(return_address));
+  if (frame_trace::Tracing()) {
+    frame_trace::Mark(std::format("soldiers' bones packed ({} pass): soldiers {} to {} of {}", (return_address == shadow_pack_return ? "shadow" : "main"),
+                                  start, (next != nullptr ? *next : end), end));
+  }
   if (return_address != shadow_pack_return || next == nullptr || end <= start) return packed;
   const uint32_t fitted = std::min(*next, end) - start;
   const uint32_t total = end - start;

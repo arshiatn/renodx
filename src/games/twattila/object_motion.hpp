@@ -21,6 +21,7 @@
 #include <shared_mutex>
 #include <span>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -34,6 +35,7 @@
 #include "../../utils/pipeline.hpp"
 #include "./dxbc.hpp"
 #include "./frame_history.hpp"
+#include "./frame_trace.hpp"
 #include "./nvapi.hpp"
 
 // Object motion (DLSS's motion vectors of what moves on its own): swaying grass, leaves and branches, units, moving
@@ -190,11 +192,15 @@ constexpr std::array<D3D11_SO_DECLARATION_ENTRY, 4> RIGID_RECORD_OUTPUT = {{
     {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
 }};
 
-// A unit draw's records this frame (motion_unit_records.cs at the frame's end) and the animation texture they read.
+// A unit draw's records this frame (motion_unit_records.cs at the frame's end, or before the game packs its bones again:
+// FlushUnitRecords) and the animation texture they read; `stale`: the game wrote that texture since, its bones are other
+// soldiers' (the records keep their placements, without bones).
 struct UnitRecordDraw {
   UINT first = 0;
   UINT count = 0;
   ComPtr<ID3D11ShaderResourceView> animation_map;
+  ID3D11Resource* animation_texture = nullptr;  // compared only
+  bool stale = false;
 };
 
 // A rigid mesh: recorded until `sample_until` (first seen), recorded and drawn again until `moving_until`.
@@ -303,12 +309,15 @@ struct DeviceObjects {
   std::array<ComPtr<ID3D11UnorderedAccessView>, 2> bone_key_uavs;
   std::array<ComPtr<ID3D11ShaderResourceView>, 2> bone_entry_srvs;
   std::array<ComPtr<ID3D11UnorderedAccessView>, 2> bone_entry_uavs;
-  // The animation textures the units' draws read (their position + 1: the bone pool's key with the bone base). Compared
-  // only.
+  // This frame's animation textures the units' draws read (their position + 1: the bone pool's key with the bone base),
+  // compared only. One the game writes again (it packs, draws and packs again into the same pages until all its soldiers
+  // are drawn) is null from then on, so its next draws take a new key: two packs' soldiers at one place of one page never
+  // share a key.
   std::vector<ID3D11Resource*> animation_textures;
-  // The last draw's animation view and its key, and its depth state and that's description (consecutive draws share
-  // them).
+  // The last draw's animation view, its texture and key, and its depth state and that's description (consecutive draws
+  // share them).
   ComPtr<ID3D11ShaderResourceView> last_animation_map;
+  ID3D11Resource* last_animation_texture = nullptr;
   uint32_t last_animation_key = 0;
   ComPtr<ID3D11DepthStencilState> last_depth_state;
   D3D11_DEPTH_STENCIL_DESC last_depth_desc = {};
@@ -341,14 +350,17 @@ struct DeviceObjects {
   UINT deformed_draw_count = 0;
   // The ocean: its displacement textures by slot.
   std::array<TextureHistory, HISTORY_SLOTS> texture_histories;
-  // Units' streamed records (Shaders::unit_records_compute_shader): the recording, its range, this frame's records and
-  // the draws they came from.
+  // Units' streamed records (Shaders::unit_records_compute_shader): the recording, its range, this frame's records, the
+  // draws they came from (the first `unit_record_draws_recorded` of them recorded) and the thread that drew them (the
+  // immediate context's).
   ComPtr<ID3D11ComputeShader> unit_records_compute;
   ComPtr<ID3D11Buffer> unit_record_constants;
   ComPtr<ID3D11Buffer> unit_records;
   ComPtr<ID3D11ShaderResourceView> unit_records_srv;
   UINT unit_record_count = 0;
   std::vector<UnitRecordDraw> unit_record_draws;
+  size_t unit_record_draws_recorded = 0;
+  std::thread::id unit_record_thread;
   // In-draw: the vertex shaders (as Shaders::shaders; null: none), the targets (R16G16_FLOAT: the motion in render
   // pixels; R32_FLOAT: the depth, 0 not written; the motion target's size, cleared with it) and the blend states (the
   // game's, targets 6 and 7 without blending: by the game's state, kept so no other takes its address).
@@ -389,6 +401,8 @@ static State state;
 static std::atomic_bool active = false;
 static std::atomic_bool targets_kept = false;
 static std::atomic_bool bindings_kept = false;
+// Unit records streamed out this frame and not yet recorded (FlushUnitRecords returns at once without).
+static std::atomic_bool unit_records_pending = false;
 // Targets 6 and 7's views (PrepareDevice): the game binding them back (a set it read while they were kept) drops them.
 static std::array<std::atomic_uint64_t, 2> drawn_target_views = {};
 
@@ -894,10 +908,15 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
       objects.deformed_draw_count = 0;
       objects.unit_record_count = 0;
       objects.unit_record_draws.clear();
+      objects.unit_record_draws_recorded = 0;
+      unit_records_pending.store(false, std::memory_order_relaxed);
+      objects.animation_textures.clear();
+      objects.last_animation_map.Reset();
+      objects.last_animation_texture = nullptr;
       objects.placement_frame = frame;
     }
     if (shader.kind == MotionKind::UNIT) {
-      // The draw's animation texture (its bones), and its key for the pool.
+      // The draw's animation texture (its bones), and its key for the pool: this frame's, new since the game last wrote it.
       native->VSGetShaderResources(0, 1, animation_map.GetAddressOf());
       if (animation_map && animation_map == objects.last_animation_map) {
         draw_word = objects.last_animation_key;
@@ -906,13 +925,11 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
         animation_map->GetResource(animation_texture.GetAddressOf());
         auto known = std::ranges::find(objects.animation_textures, animation_texture.Get());
         if (known == objects.animation_textures.end()) {
-          if (objects.animation_textures.size() >= 64) {
-            objects.animation_textures.clear();
-          }
           known = objects.animation_textures.insert(objects.animation_textures.end(), animation_texture.Get());
         }
         draw_word = static_cast<uint32_t>(known - objects.animation_textures.begin()) + 1;
         objects.last_animation_map = animation_map;
+        objects.last_animation_texture = animation_texture.Get();
         objects.last_animation_key = draw_word;
       }
     }
@@ -1200,9 +1217,13 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   if (unit_stream && animation_map
       && objects.unit_record_count + uint64_t{arguments.instance_count} <= UNIT_RECORDS) {
     stream_records(objects.unit_records.Get(), objects.unit_record_count * UNIT_RECORD_BYTES);
-    objects.unit_record_draws.push_back(
-        {.first = objects.unit_record_count, .count = arguments.instance_count, .animation_map = animation_map});
+    objects.unit_record_draws.push_back({.first = objects.unit_record_count,
+                                         .count = arguments.instance_count,
+                                         .animation_map = animation_map,
+                                         .animation_texture = objects.last_animation_texture});
     objects.unit_record_count += arguments.instance_count;
+    objects.unit_record_thread = std::this_thread::get_id();
+    unit_records_pending.store(true, std::memory_order_relaxed);
   }
   if (drawn_pixel_shader) {
     // The game's draw writes the motion: its in-draw vertex shader, its pixel shader patched, targets 6 and 7 with
@@ -1437,6 +1458,134 @@ inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info)
   state.pixel_shaders.erase(info.pipeline.handle);
 }
 
+// The game's compute bindings the records' recordings change (the shader, b0, t0, t14-t15 and u0-u5), put back after them.
+struct GameComputeBindings {
+  ComPtr<ID3D11ComputeShader> shader;
+  ComPtr<ID3D11Buffer> constants;
+  std::array<ID3D11ShaderResourceView*, 3> views = {};       // t0, t14, t15 (held)
+  std::array<ID3D11UnorderedAccessView*, 6> output_views = {};  // u0-u5 (held)
+};
+
+inline GameComputeBindings SaveComputeBindings(ID3D11DeviceContext* native) {
+  GameComputeBindings game;
+  native->CSGetShader(game.shader.GetAddressOf(), nullptr, nullptr);
+  native->CSGetConstantBuffers(0, 1, game.constants.GetAddressOf());
+  native->CSGetShaderResources(0, 1, game.views.data());
+  native->CSGetShaderResources(PLACEMENT_SRV_SLOT + 3, 2, game.views.data() + 1);
+  native->CSGetUnorderedAccessViews(0, static_cast<UINT>(game.output_views.size()), game.output_views.data());
+  return game;
+}
+
+inline void RestoreComputeBindings(ID3D11DeviceContext* native, const GameComputeBindings& game) {
+  native->CSSetShader(game.shader.Get(), nullptr, 0);
+  ID3D11Buffer* constants = game.constants.Get();
+  native->CSSetConstantBuffers(0, 1, &constants);
+  native->CSSetShaderResources(0, 1, game.views.data());
+  native->CSSetShaderResources(PLACEMENT_SRV_SLOT + 3, 2, game.views.data() + 1);
+  native->CSSetUnorderedAccessViews(0, static_cast<UINT>(game.output_views.size()), game.output_views.data(), nullptr);
+  for (auto* view : game.views) {
+    if (view != nullptr) {
+      view->Release();
+    }
+  }
+  for (auto* output_view : game.output_views) {
+    if (output_view != nullptr) {
+      output_view->Release();
+    }
+  }
+}
+
+// The units' records not yet recorded (streamed out by their draws) into this frame's table and bone pool
+// (motion_unit_records.cs: u1-u5 as motion_unit_records.hlsli), consecutive draws on one animation texture in one dispatch
+// (its bones as they are now), those whose texture the game wrote since their draw (stale) without bones, under NVIDIA's
+// UAV overlap. The caller holds the lock and keeps the game's compute bindings.
+inline void RecordUnits(ID3D11DeviceContext* native) {
+  auto& objects = state.objects;
+  const auto& draws = objects.unit_record_draws;
+  unit_records_pending.store(false, std::memory_order_relaxed);
+  if (objects.unit_record_draws_recorded >= draws.size()) return;
+  const size_t current = objects.placement_index;
+  const uint32_t campaign = (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? 1u : 0u);
+  const std::array<ID3D11UnorderedAccessView*, 6> unit_outputs = {
+      nullptr, objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
+      objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
+  ID3D11Buffer* unit_constants = objects.unit_record_constants.Get();
+  ID3D11ShaderResourceView* unit_records = objects.unit_records_srv.Get();
+  native->CSSetShader(objects.unit_records_compute.Get(), nullptr, 0);
+  native->CSSetConstantBuffers(0, 1, &unit_constants);
+  native->CSSetShaderResources(0, 1, &unit_records);
+  native->CSSetUnorderedAccessViews(0, static_cast<UINT>(unit_outputs.size()), unit_outputs.data(), nullptr);
+  const auto& overlap = state.uav_overlap;
+  if (overlap.begin != nullptr) {
+    overlap.begin(native, 0);
+  }
+  for (size_t first = objects.unit_record_draws_recorded; first < draws.size();) {
+    size_t next = first + 1;
+    UINT count = draws[first].count;
+    while (next < draws.size() && draws[next].animation_map == draws[first].animation_map && draws[next].stale == draws[first].stale
+           && draws[next].first == draws[first].first + count) {
+      count += draws[next].count;
+      ++next;
+    }
+    const std::array<uint32_t, 4> range = {draws[first].first, count, campaign, (draws[first].stale ? 1u : 0u)};
+    native->UpdateSubresource(unit_constants, 0, nullptr, range.data(), 0, 0);
+    ID3D11ShaderResourceView* animation_map = draws[first].animation_map.Get();
+    native->CSSetShaderResources(ANIMATION_SRV_SLOT, 1, &animation_map);
+    native->Dispatch((count + 63) / 64, 1, 1);
+    first = next;
+  }
+  if (overlap.end != nullptr) {
+    overlap.end(native);
+  }
+  constexpr std::array<ID3D11UnorderedAccessView*, 6> NO_UNIT_OUTPUTS = {};
+  native->CSSetUnorderedAccessViews(0, static_cast<UINT>(NO_UNIT_OUTPUTS.size()), NO_UNIT_OUTPUTS.data(), nullptr);
+  objects.unit_record_draws_recorded = draws.size();
+}
+
+// The game writes a texture (after its Map, before its UpdateSubresource; any thread): where it is one of this frame's
+// animation pages, it holds other soldiers' bones from now on. Its next draws take a new key, and its draws' records not
+// yet recorded (FlushUnitRecords did not run before the write) record their placements without bones: this frame's pose
+// at last frame's place next frame, never another soldier's.
+inline void OnTextureWritten(uint64_t resource) {
+  auto* texture = reinterpret_cast<ID3D11Resource*>(resource);
+  if (texture == nullptr) return;
+  {
+    const std::shared_lock lock(state.mutex);
+    if (std::ranges::find(state.objects.animation_textures, texture) == state.objects.animation_textures.end()) return;
+  }
+  const std::unique_lock lock(state.mutex);
+  auto& objects = state.objects;
+  const auto page = std::ranges::find(objects.animation_textures, texture);
+  if (page == objects.animation_textures.end()) return;
+  *page = nullptr;
+  if (objects.last_animation_texture == texture) {
+    objects.last_animation_map.Reset();
+    objects.last_animation_texture = nullptr;
+  }
+  uint32_t stale = 0;
+  for (auto& draw : objects.unit_record_draws | std::views::drop(objects.unit_record_draws_recorded)) {
+    if (draw.animation_texture == texture && !draw.stale) {
+      draw.stale = true;
+      ++stale;
+    }
+  }
+  if (frame_trace::Tracing()) {
+    frame_trace::Mark(std::format("object motion: an animation page written again, {} unit draws' records without bones", stale));
+  }
+}
+
+inline void OnMapTextureRegion(reshade::api::device*, reshade::api::resource resource, uint32_t, const reshade::api::subresource_box*,
+                               reshade::api::map_access access, reshade::api::subresource_data*) {
+  if (access == reshade::api::map_access::read_only) return;
+  OnTextureWritten(resource.handle);
+}
+
+inline bool OnUpdateTextureRegion(reshade::api::device*, const reshade::api::subresource_data&, reshade::api::resource resource, uint32_t,
+                                  const reshade::api::subresource_box*) {
+  OnTextureWritten(resource.handle);
+  return false;
+}
+
 }  // namespace internal
 
 // The host draws motion from now on (true) or not.
@@ -1445,9 +1594,10 @@ inline void SetActive(bool active) {
 }
 
 // The frame's end, after its last motion draw: the rigid objects' flags of a few frames back read (which meshes move),
-// the units' streamed records into this frame's table (motion_unit_records.cs), then the rigid objects' records matched
-// with last frame's table into this frame's (motion_rigid.cs), their draws' flags copied to be read back. The compute
-// bindings it changes are put back.
+// the units' streamed records not yet recorded into this frame's table (motion_unit_records.cs; FlushUnitRecords recorded
+// those drawn before the game packed its bones again), then the rigid objects' records matched with last frame's table
+// into this frame's (motion_rigid.cs), their draws' flags copied to be read back. The compute bindings it changes are put
+// back.
 inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
   using namespace internal;
   RestoreBindings(native);
@@ -1469,61 +1619,19 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
     native->Unmap(readback.flags.Get(), 0);
     readback.meshes.clear();
   }
-  if (objects.placement_frame != frame || (objects.unit_record_draws.empty() && objects.rigid_record_count == 0)) return;
+  const bool units = objects.unit_record_draws_recorded < objects.unit_record_draws.size();
+  if (objects.placement_frame != frame || (!units && objects.rigid_record_count == 0)) return;
   const size_t current = objects.placement_index;
   // The campaign map's placements a twentieth apart (motion.hlsli PlacementScale).
   const uint32_t campaign = (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? 1u : 0u);
-  // The game's compute bindings: the shader, b0, t0, t14-t15 and u0-u5.
-  ComPtr<ID3D11ComputeShader> game_shader;
-  native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
-  ComPtr<ID3D11Buffer> game_constants;
-  native->CSGetConstantBuffers(0, 1, game_constants.GetAddressOf());
-  ID3D11ShaderResourceView* game_records_view = nullptr;
-  native->CSGetShaderResources(0, 1, &game_records_view);
-  std::array<ID3D11ShaderResourceView*, 2> game_table_views = {};
-  native->CSGetShaderResources(PLACEMENT_SRV_SLOT + 3, 2, game_table_views.data());
-  std::array<ID3D11UnorderedAccessView*, 6> game_uavs = {};
-  native->CSGetUnorderedAccessViews(0, 6, game_uavs.data());
-
-  if (!objects.unit_record_draws.empty()) {
-    // The units' records (streamed out by their draws) into this frame's table and bone pool (motion_unit_records.cs:
-    // u1-u5 as motion_unit_records.hlsli), consecutive draws on one animation texture (as it is now: the game writes each
-    // once a frame) in one dispatch, under NVIDIA's UAV overlap.
-    const std::array<ID3D11UnorderedAccessView*, 6> unit_outputs = {
-        nullptr, objects.placement_key_uavs[current].Get(), objects.placement_uavs[current].Get(), objects.bone_uavs[current].Get(),
-        objects.bone_key_uavs[current].Get(), objects.bone_entry_uavs[current].Get()};
-    ID3D11Buffer* unit_constants = objects.unit_record_constants.Get();
-    ID3D11ShaderResourceView* unit_records = objects.unit_records_srv.Get();
-    native->CSSetShader(objects.unit_records_compute.Get(), nullptr, 0);
-    native->CSSetConstantBuffers(0, 1, &unit_constants);
-    native->CSSetShaderResources(0, 1, &unit_records);
-    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(unit_outputs.size()), unit_outputs.data(), nullptr);
-    const auto& overlap = state.uav_overlap;
-    if (overlap.begin != nullptr) {
-      overlap.begin(native, 0);
-    }
-    const auto& draws = objects.unit_record_draws;
-    for (size_t first = 0; first < draws.size();) {
-      size_t next = first + 1;
-      UINT count = draws[first].count;
-      while (next < draws.size() && draws[next].animation_map == draws[first].animation_map
-             && draws[next].first == draws[first].first + count) {
-        count += draws[next].count;
-        ++next;
-      }
-      const std::array<uint32_t, 4> range = {draws[first].first, count, campaign, 0u};
-      native->UpdateSubresource(unit_constants, 0, nullptr, range.data(), 0, 0);
-      ID3D11ShaderResourceView* animation_map = draws[first].animation_map.Get();
-      native->CSSetShaderResources(ANIMATION_SRV_SLOT, 1, &animation_map);
-      native->Dispatch((count + 63) / 64, 1, 1);
-      first = next;
-    }
-    if (overlap.end != nullptr) {
-      overlap.end(native);
-    }
-    constexpr std::array<ID3D11UnorderedAccessView*, 6> NO_UNIT_OUTPUTS = {};
-    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(NO_UNIT_OUTPUTS.size()), NO_UNIT_OUTPUTS.data(), nullptr);
+  const GameComputeBindings game = SaveComputeBindings(native);
+  if (units) {
+    RecordUnits(native);
   }
+  // This frame's keys end with its records (the next frame's first packs then find no page here).
+  objects.animation_textures.clear();
+  objects.last_animation_map.Reset();
+  objects.last_animation_texture = nullptr;
 
   if (objects.rigid_record_count != 0) {
     const std::array<uint32_t, 4> rigid = {objects.rigid_record_count, (objects.previous_placements ? 1u : 0u), campaign, 0u};
@@ -1546,25 +1654,7 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
     native->CSSetUnorderedAccessViews(0, 3, NO_OUTPUTS.data(), nullptr);
   }
 
-  native->CSSetShader(game_shader.Get(), nullptr, 0);
-  ID3D11Buffer* constants = game_constants.Get();
-  native->CSSetConstantBuffers(0, 1, &constants);
-  native->CSSetShaderResources(0, 1, &game_records_view);
-  native->CSSetShaderResources(PLACEMENT_SRV_SLOT + 3, 2, game_table_views.data());
-  native->CSSetUnorderedAccessViews(0, static_cast<UINT>(game_uavs.size()), game_uavs.data(), nullptr);
-  if (game_records_view != nullptr) {
-    game_records_view->Release();
-  }
-  for (auto* game_view : game_table_views) {
-    if (game_view != nullptr) {
-      game_view->Release();
-    }
-  }
-  for (auto* game_uav : game_uavs) {
-    if (game_uav != nullptr) {
-      game_uav->Release();
-    }
-  }
+  RestoreComputeBindings(native, game);
 
   if (objects.rigid_record_count != 0) {
     auto& readback = objects.rigid_readbacks[frame % RIGID_READBACKS];
@@ -1573,6 +1663,34 @@ inline void Resolve(ID3D11DeviceContext* native, uint64_t frame) {
     native->CopyResource(readback.flags.Get(), flags.Get());
     readback.meshes = objects.rigid_draws;
     readback.frame = frame;
+  }
+}
+
+// Before the game packs its soldiers' bones into its animation pages again (graphics_hooks.hpp PackAnimations: its main
+// pass packs, draws and packs again into the same pages until all its soldiers are drawn): this frame's unit records drawn
+// so far recorded while the pages still hold the bones they were drawn with, and every page's next draws take a new key.
+// Only on the thread of those draws (the immediate context's); elsewhere the pages' writes leave their records without
+// bones (OnTextureWritten). The compute bindings it changes are put back.
+inline void FlushUnitRecords() {
+  using namespace internal;
+  if (!unit_records_pending.load(std::memory_order_relaxed)) return;
+  const std::unique_lock lock(state.mutex);
+  auto& objects = state.objects;
+  if (!objects.device || objects.unit_record_thread != std::this_thread::get_id()
+      || objects.unit_record_draws_recorded >= objects.unit_record_draws.size()) {
+    return;
+  }
+  ComPtr<ID3D11DeviceContext> native;
+  objects.device->GetImmediateContext(native.GetAddressOf());
+  const size_t draws = objects.unit_record_draws.size() - objects.unit_record_draws_recorded;
+  const GameComputeBindings game = SaveComputeBindings(native.Get());
+  RecordUnits(native.Get());
+  RestoreComputeBindings(native.Get(), game);
+  std::ranges::fill(objects.animation_textures, nullptr);
+  objects.last_animation_map.Reset();
+  objects.last_animation_texture = nullptr;
+  if (frame_trace::Tracing()) {
+    frame_trace::Mark(std::format("object motion: {} unit draws' records recorded before the bones' next pack", draws));
   }
 }
 
@@ -1637,12 +1755,19 @@ inline void Install(const Shaders& shaders, MakeView make_view) {
                                              | renodx::utils::command_action::COMMAND_TYPE_INDIRECT});
     reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindRenderTargets);
   }
+  // Units: the game's writes of their animation pages.
+  if (std::ranges::any_of(shaders.shaders, [](const MotionShader& shader) { return shader.kind == MotionKind::UNIT; })) {
+    reshade::register_event<reshade::addon_event::map_texture_region>(internal::OnMapTextureRegion);
+    reshade::register_event<reshade::addon_event::update_texture_region>(internal::OnUpdateTextureRegion);
+  }
 }
 
 inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnMovingDraw);
   renodx::utils::command_action::Unregister(internal::OnAnyDraw);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindRenderTargets);
+  reshade::unregister_event<reshade::addon_event::map_texture_region>(internal::OnMapTextureRegion);
+  reshade::unregister_event<reshade::addon_event::update_texture_region>(internal::OnUpdateTextureRegion);
   renodx::utils::pipeline::UnregisterOnInitCallback(internal::OnInitPipeline);
   renodx::utils::pipeline::UnregisterOnDestroyCallback(internal::OnDestroyPipeline);
   SetActive(false);
