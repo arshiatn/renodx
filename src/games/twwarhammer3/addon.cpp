@@ -2882,11 +2882,20 @@ float rays_trunks_as_drawn_row = 0.f;
 constexpr std::array<uint32_t, 13> CASCADE_CASTER_SHADERS = {0xD75E6E2B, 0xAF3F74B2, 0x8F975E16, 0x2327ED2B, 0xFA844DB5, 0x6EAC8CE5, 0x7852254A,
                                                              0x53C5A7EC, 0x2B938A0C, 0xBADA4FE3, 0x46E626D5, 0x3434CE02, 0x4E83D6E8};
 constexpr size_t CASCADE_TREE_SHADERS = 4;  // the first of them
+// The kept (static) maps' array. The game's two cascade arrays swap at each scroll (b5_mom): C883E3FA (vs 4E83D6E8, the
+// list's last) copies the kept maps, shifted, out of the last kept array (its t_previous_static_shadows) into the other one,
+// which gets the newly shown strips' casters and stays the kept maps (t_static_objects_shadowmap_array, t1 of the half copy
+// 800F7F7F) until the next scroll; the last kept array takes the dynamic casters. Skipped with the rest, the copy and the
+// strips left the kept maps empty or stale for the rest of the battle once the rows went off (ATN, v40: RT/PT -> Reset,
+// a flat picture): only draws into the dynamic maps are skipped, none before the kept array is known.
+std::atomic<uintptr_t> kept_maps = 0;
 std::atomic_bool cascade_skip_logged = false;
 constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  const bool tree = static_cast<size_t>(&command.template GetCallbackData<uint32_t>() - CASCADE_CASTER_SHADERS.data()) < CASCADE_TREE_SHADERS;
-  if ((rays_skip_cascades_row == 0.f && (rays_skip_cascade_trees_row == 0.f || !tree)) || traced_lights::rays_replace_maps_row == 0.f
-      || !twattila::rt_scene::SunShadowsTraced()) {
+  const uint32_t* caster = &command.template GetCallbackData<uint32_t>();
+  const bool kept_copy = caster == &CASCADE_CASTER_SHADERS.back();
+  const bool tree = static_cast<size_t>(caster - CASCADE_CASTER_SHADERS.data()) < CASCADE_TREE_SHADERS;
+  if (!kept_copy && ((rays_skip_cascades_row == 0.f && (rays_skip_cascade_trees_row == 0.f || !tree)) || traced_lights::rays_replace_maps_row == 0.f
+                     || !twattila::rt_scene::SunShadowsTraced())) {
     return {};
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -2897,6 +2906,13 @@ constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renod
   if (!depth_view) return {};
   Microsoft::WRL::ComPtr<ID3D11Resource> depth_resource;
   depth_view->GetResource(depth_resource.GetAddressOf());
+  const auto target = reinterpret_cast<uintptr_t>(depth_resource.Get());
+  if (kept_copy) {
+    kept_maps.store(target, std::memory_order_relaxed);
+    return {};
+  }
+  const uintptr_t kept = kept_maps.load(std::memory_order_relaxed);
+  if (kept == 0 || target == kept) return {};
   Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_texture;
   if (FAILED(depth_resource.As(&depth_texture))) return {};
   D3D11_TEXTURE2D_DESC depth_desc = {};
@@ -2916,8 +2932,18 @@ constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renod
 constexpr std::array<uint32_t, 3> SHADOW_SIZE_SHADERS = {0xC883E3FA, 0x800F7F7F, 0xD5DCC85F};
 std::array<std::atomic_bool, SHADOW_SIZE_SHADERS.size()> shadow_size_logged = {};
 constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (rt_sliders.debug_log == 0.f) return {};
   const auto& hash = command.template GetCallbackData<uint32_t>();
+  // The half copy's t1: the kept maps (OnCascadeCaster), from the first frame on.
+  if (hash == 0x800F7F7F) {
+    auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+    renodx::utils::directx::NativeFromReShadeProxy(&context);
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> kept;
+    if (context != nullptr) context->PSGetShaderResources(1, 1, kept.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+    if (kept) kept->GetResource(resource.GetAddressOf());
+    if (resource) kept_maps.store(reinterpret_cast<uintptr_t>(resource.Get()), std::memory_order_relaxed);
+  }
+  if (rt_sliders.debug_log == 0.f) return {};
   if (shadow_size_logged[&hash - SHADOW_SIZE_SHADERS.data()].exchange(true, std::memory_order_relaxed)) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::NativeFromReShadeProxy(&native);
