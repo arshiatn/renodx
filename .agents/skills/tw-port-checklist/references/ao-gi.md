@@ -9,7 +9,7 @@ Shadow maps, SSAO, GI, the fog's shadow march, SSR: the same rules.
 1. **Readers by resource handle, in traces**, for every method and at 100% and 50%. The dump gives candidates only. Code-read audits were wrong both ways: WH3's water and fog were said to read the SSAO, the reflections to lose it; by handle only the sun draws read it, and the reflection resolve 89AF6FF5 binds a 1x1 white texture there [d6d9f92b].
 2. **Every term the output multiplies**, per reader. WH3's `t_ssao` also occludes the cube's reflection; Attila's AO darkened the RT reflections a second time [43dc26e6]. Each term gets exactly one occlusion.
 3. **Per-frame or kept across frames.** A per-frame output may be skipped. Anything kept (caches, kept arrays, probes, voxels, histories) is never skipped, or is refilled on the way back. Every skip comes back the next frame.
-4. **Split what the pass carries.** A game's GI may carry the sky's light and shade as well as the bounce: remove only the bounce (rule set 2.1).
+4. **Split what the pass carries.** A game's GI may carry the sky's light and shade as well as the bounce: remove only the bounce (section 2, first row).
 5. **Never switch a render stage's engine value back on live** ([game-facts.md](game-facts.md)); use the shader's constant flag.
 6. **Exactly one method**, enforced at load and at present, not only in the slider: a saved ini once ran RTAO and GT-VBAO together, the slider showing one while both multiplied [6b805678].
 7. **Attach to a pass that always runs** (the sun draw). WH3's AO downsample stops below about 2/3 scale; Pharaoh has no AO draw to wait for; Attila's GT-VBAO needs the game's SSAO on [f98564bb, 49cb4d47].

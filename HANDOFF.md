@@ -104,7 +104,7 @@ Plan and rules: C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/wh3_batch
 - [x] Attila players' v2.5.2 = v141 (2026-11-10): the close's stamped build as it was (no rebuild; addon 81285079..., helper99 0931c68d...). Downloads: RenoDX_Attila_v2.5.2.zip, RenoDX_Attila_v2.5.2_HDR_only.zip, attila_github_v2.5.2_notes.md (everything since v2.5; every line New / Fixed / Changed). Same 47 / 17 files as v2.5.1's zips.
   Installed next to Attila.exe (v2.5 = v134, helper74 was there; the two replaced files in tools/tw/attila_v252_install_backup_20261110_233057; ReShade.ini and ReShadePreset.ini untouched; no DevKit). NOT run in game.
   No tag, no upload, no Nexus text: ATN's. A tag twattila-v141 belongs on the README commit "docs(twattila): v141 = players' v2.5.2". Next: ATN's start, battle, Alt-Tab 30 s, quit (round report's items 14, 15).
-- [ ] S skill improved
+- [x] S skill improved (2026-11-12): tw-port-checklist rewritten, SKILL.md plus 10 reference files by area (bring-up order, game facts, RT coverage, AO/GI and double work, render scale/DLSS/motion, SSS/particles/water/fog, helper/FG/stability, shaders/HDR/page, testing, release); old lessons.md split in, wrong rows fixed; independent review: 1 wrong hash, a bring-up order that needed the game in phase 0, VERSION rule, 8 lost rows, 7 unresolvable names: all fixed. Research: tools/tw/skill_v2/research. all_modes.sh gained far_cards_20 / far_cards_48. Next: ATN's Attila / WH3 findings go into the skill.
 
 ## Review and repair of Astra's stability commits (2026-11-10, Claude) - DONE, nothing installed, not run in game
 - Review of the audit and the 16 commits, the repairs' notes ("## Repairs") and the second review: docs/Attila-crash-audit-review-2026-11-10.md. HEAD ed26c3b3, pushed.

@@ -1,6 +1,6 @@
 # Bringing up a TW game
 
-The order for a new or older TW game, and for any round big enough to need one. Tools named here live in the maintainer's `tools/tw` folder, outside the repo, unless a repo path is given.
+The order for a new or older TW game, and for any round big enough to need one. Tools named here live in the maintainer's `tools/tw` folder, outside the repo, unless a repo path is given: ask the maintainer for its path.
 
 ## Why this order
 
@@ -27,19 +27,20 @@ Root causes, each now a rule below: features built before the data run; agent ru
 
 Shipped, then changed: path-traced AO five times, the game's SSAO handling five, its GI four, shadow-map replacement five, the DLSS preset default four. Each change came from a fact a census would have given up front.
 
-## Phase 0: offline census, no game
+## Phase 0: offline census
 
-- **Shader names** from the game's packs: `tw_pack.py`, `tw_names.py` to `names.tsv`; `tw_shaders.py`, `tw_missing.py`, `tw_family.py`; `vs_names.py`. Check every hash you plan on against `names.tsv` (a fog-looking hash at `gfx_fog 0` was fog of war).
+- **Shader names** from the game's packs: `tw_pack.py`, `tw_names.py` to `names.tsv` (in `bin/cmd_Decompiler-1.3.16/dump_shader_<game>_pack/`, not in the repo); `tw_shaders.py`, `tw_missing.py`, `tw_family.py`; `vs_names.py`. Check every hash you plan on against `names.tsv` (a fog-looking hash at `gfx_fog 0` was fog of war).
 - **Engine values**: `tw_tweak_survey.py`, `tw_engine_values.py`. Take names from the value constructors' call sites, never from strings.
-- **Game-facts sheet**: answer every row of [game-facts.md](game-facts.md) with a proof level.
+- **Game-facts sheet**: answer every row of [game-facts.md](game-facts.md) you can from the dump and the exe, with a proof level; the rest wait for the traces.
 - **Parity table** against Attila's page dump: each row gets it, or doesn't with proof.
-- **Unmodded `ReShade.log`**: device flags (single-threaded?), flip or blt chain, probe devices, fullscreen, bitness.
 - **Start from** the closest TW addon by bitness, sun-shader patch route and capture model (clip-space or world-space), not from `src/games/generic`.
+- **A first build** from that addon with only Frame Trace, Log Details and Record Profile, every feature off: the data run needs it.
+- **An unmodded `ReShade.log`** (from the maintainer, or from the data run's first start): device flags (single-threaded?), flip or blt chain, probe devices, fullscreen, bitness.
 
 ## Phase 1: the data run (ask first)
 
 - Port the run and check scripts first (`run_game.ps1`, `check_run.py`), so the run reports itself.
-- Frame Traces at 100, 67, 50 and 33% in a settled battle (mid-battle: the first frame has other flags), the siege benchmark with fire, a dark or night map, the campaign.
+- Frame Traces in a settled battle (mid-battle: the first frame has other flags), the siege benchmark with fire, a dark or night map, the campaign. At 100%, and at 67, 50 and 33% through the game's own scale setting; where the addon owns the scale, the low-scale traces come after Phase 3 step 5.
 - Log Details from the start, Record Profile for 30 s with ReShade's menu closed.
 - On the maintainer's ini and preset, and again on defaults. Fresh backups right before.
 - With each game setting you will touch (AO, GI, SSR, shadow quality, fog) on and off.
@@ -51,6 +52,7 @@ Shipped, then changed: path-traced AO five times, the game's SSAO handling five,
 - **Capture candidates** by VS family and PS: the discard's texture, instance source, GS or tessellation, indirect draws; main pass and shadow pass.
 - **Diffs**: pass lists and index counts between scales and settings; flag values counted across all traces.
 - **Constants**: `cb_audit.py`; a buffer identified by size only if no other buffer has that size.
+- **Game facts again**: answer the rows of [game-facts.md](game-facts.md) that waited, and re-check the others against the traces.
 
 ## Phase 3: features in dependency order
 

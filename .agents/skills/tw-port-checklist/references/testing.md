@@ -13,8 +13,8 @@
 | `warp_tests/*` | A game shader's bytes against ours on WARP: patches, replacements, stream output, level chains, scale copies | GPU hangs (WARP never hangs), real scene content |
 | `page_dump` | An addon's settings as data with ImGui and ReShade faked: rows, what shows in every state, what buttons and method sliders write | Whether the hook behind a row runs |
 | `sun_attila/make_sun_patch_test.py`, `warp_tests/sun_wh3` | The sun patch lands on the sun term; the ambient formula | - |
-| `scale_audit.py`, `scale_scan.py`, `p9_ndc_trace.py` | Candidates for below-100% bugs | Nothing passes by itself: read each hit |
-| Census scripts (`b3_cull.py`, `b5_census.py`, cut-out and proxy scans) | Families, cut-outs, culling laws from traces | Draws no trace holds |
+| `scale_audit.py`, `scale_scan.py`, `wh3_batch5/p9_ndc_trace.py` | Candidates for below-100% bugs | Nothing passes by itself: read each hit |
+| Census scripts (`wh3_batch3/b3_cull.py`, `wh3_batch3/b5_census.py`, cut-out and proxy scans) | Families, cut-outs, culling laws from traces | Draws no trace holds |
 | [cb_audit.py](../scripts/cb_audit.py), [scan_register.py](../scripts/scan_register.py) | Decompiler constants; dropped `Register` lambdas | A wrong member of the right buffer |
 
 Rules:

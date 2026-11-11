@@ -4,7 +4,7 @@
 
 **What it does**: Bend's wavefront march over a copy of the scene depth, at the first main-view sun draw: `sss_depth`, `sss_setup` (the dispatch list built on the GPU), 8 indirect `sss_bend` dispatches, optional `sss_blur`. The patched sun shaders multiply their shadow term by 1 - t49, so only direct sunlight changes. Smoke (`smoke_map`, Attila only) and the RT occlusion use the same t49.
 
-**What it includes** (since v42, all Experimental, off): Auto Thickness and Softer Away from the Caster (all 7 SSS addons); Light Through Banners, Coloured Shadows (t50, only where the rays bind none) and Torch and Fire Shadows (Attila, Thrones, WH3); Light Through Foliage (Attila only).
+**What it includes** (since WH3 v42 and Attila v146, all Experimental, off): Auto Thickness and Softer Away from the Caster (all 7 SSS addons); Light Through Banners, Coloured Shadows (t50, only where the rays bind none) and Torch and Fire Shadows (Attila, Thrones, WH3); Light Through Foliage (Attila only).
 
 **Cost** (4K, 100%): base 0.81 ms; Banners +0.08, Coloured +0.60, Softer +0.53, Auto +0.73 ms; torches 0.35 to 1.4 ms; smoke map 0.1 to 0.16 ms.
 
@@ -17,7 +17,7 @@
 | Mistake | Rule | Check |
 |---|---|---|
 | 64-px blocks, a shadowed arc on flat ground, one corner fully shadowed for four versions: SRVs bound before UAVs, so D3D11 nulled the previous pass's outputs. Four builds chased "16-bit depth" and "camera mapping" first | In chained compute passes bind UAVs before SRVs. When the GPU disagrees with WARP, capture the real input and the GPU's output once and replay the addon's exact bind order on WARP before forming a theory | `warp_tests/sss/sss_real.cpp` reproduced the GPU mask exactly |
-| The sun patch on the wrong term: in three WH3 sun shaders t49 sat on the AO, so Bend and the RT sun only darkened the ambient [b7076619] | Write down what t49 multiplies, per sun PS ([game-facts.md](game-facts.md) lists the routes) | WARP: t49, t50, t51 unbound equals the game (0 of 262,144 differ) |
+| The sun patch on the wrong term: in three WH3 sun shaders t49 sat on the AO, so Bend and the RT sun only darkened the ambient [b7076619] | Write down what t49 multiplies, per sun PS ([game-facts.md](game-facts.md) lists the routes) | WARP: t49, t50, t51 unbound equals the game (0 of 131,072 differ) |
 | Depth: the G-buffer's depth too coarse far away; sky at z = w streaked; the campaign backdrop at 75% of far; a side-on sun with w = 0 | Copy the depth-stencil the sun draws keep bound (R24 or R32, MSAA sample 0); skip sky pixels; fade 0.4 to 0.6 of far; z = `_m22 / _m23` and w's sign from the divisor | `sss_scene` with that camera and 6 sun directions, horizon included |
 | Sun direction and camera layout assumed to be Attila's: SSS lines, shadows 180 degrees off | Name them per draw (`sun_draw_layouts.py`) | WARP `sss_scene` |
 | Striped hills and combed fences below 100% | Thickness and the bilinear threshold are tolerances per pixel step: divide them by the render share, samples x share; extended variants round counts to fours | `test/tw_screen_space_shadows` case 1 at 50% and 58% |

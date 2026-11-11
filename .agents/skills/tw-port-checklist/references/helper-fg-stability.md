@@ -6,14 +6,14 @@ The helper (`renodx-tw-dlaa64.exe`) is a standalone D3D12 process for DLSS, RR, 
 
 Before any test round of a new game or a big change:
 
-1. From an unmodded `ReShade.log`: device flags, flip or blt chain, probe devices and chains, fullscreen, bitness. Write them in the commit.
+1. From an unmodded `ReShade.log` (the maintainer's, or the data run's first start): device flags, flip or blt chain, probe devices and chains, fullscreen, bitness. Write them in the commit.
 2. Wire the shared `device_loss` (Install before the swapchain mod, InstallLast at the end of `AttachAddon`, Uninstall at detach) and `output_encoding`; `light_bounce` installs `device_end`.
 3. Every `Register` and `Install` paired with its `Unregister` and `Uninstall`; `engine_tweaks::Uninstall(options)`; native hooks behind `tw::native_hooks::Lifetime`; no detached threads, joined in `AddonUninit`; `DllMain` returns TRUE.
 4. Every static game-device object released at `destroy_device`; no game-device calls off its thread; no device made by the addon.
 5. Render-stage engine values only on to off live; constant flags preferred; values written back at detach.
 6. In-frame side work: targets kept, stream output without PS, compute at frame end, no GPU readback waits; an off row and a Flush candidate per batch.
 7. Hot callbacks return on one atomic; no counters, no per-frame logs; log once per failure streak.
-8. A helper or bridge change: a new `tw_dlaa_helperN`, `VERSION` bumped, only owned fields published; `all_modes.sh` by name (`removal`, `switching_removal`, `release_*`, `leaf_storm`), `fg_bridge_test`, `test/tw_helper_lifetime`, `test/tw_gpu_completion`.
+8. A helper change: a new folder as `build.ps1`'s first argument (`build\tw_dlaa_helperN`); a bridge layout change bumps `VERSION` and keeps `OLDEST_VERSION` readable; only owned fields published; `all_modes.sh` by name (`removal`, `switching_removal`, `release_*`, `leaf_storm`), `fg_bridge_test`, `test/tw_helper_lifetime`, `test/tw_gpu_completion`.
 9. All 14 consumers built, `build32` too; every `test/tw_*` on x86 and amd64.
 10. Profiling ready before the first run: Record Ray Tracing Profile, Time Each Pass, Frame Trace.
 
@@ -31,10 +31,10 @@ Before any test round of a new game or a big change:
 | The helper treated a fence at all ones as failure and ended itself at every GPU reset; shared RR code could end Tales [bb72ea36, bf3618c9, f0c461d7, 4dd59a56] | A removed device means done; a timeout drops the request, not the backend; end a process only where memory can't be freed safely, only in the helper, after a flushed log line naming owner and fence values | `test/tw_gpu_completion`; harness `removal`, `removal_sway`, `switching_removal`, `switching_debug_layer`, `release_*`; helper built with `RENODX_TW_TEST_GPU_WAITS` |
 | Watchdogs and failure paths: `GetTickCount64` counts sleep; `Fail()` logged every frame; a failed rescue retried every 50 ms; `bad_alloc` in a raw thread terminates | Count polls (stuck = 120 x 250 ms); one recovery, no retry; log on transition; allocation-free failure paths; the 90 s no-frame limit counts only foreground time | `test/tw_helper_lifetime` |
 | A whole-struct copy-back erased the helper's ready flag: DLSS, RT and FG silently never started [e0218e39] | `Prepare` publishes only addon-owned fields, generation last; 64-bit fields, `VERSION`, `OLDEST_VERSION`, `offsetof` per version | Helper writes during `Prepare` survive (`test/tw_helper_lifetime`) |
-| GPU reset classes: a trace recorded over the last trace; helper work after the game's signal; WH3's own device hung on tree compute plus our tessellated stream output in one batch [a6e4dbb6] | First ask whose device was removed. Every new in-frame compute or stream-output batch gets an off row and a Flush candidate. Prove with 6 runs or more per state, the control first, counting event 153; bisect with fence signals at chosen hashes and take a cure as the proof | No offline check: WARP never hangs |
+| GPU reset classes: a trace recorded over the last trace; helper work after the game's signal; WH3's own device hung on tree compute plus our tessellated stream output in one batch [a6e4dbb6] | First ask whose device was removed: the debug layer and DRED see only D3D12 (the helper), never the game's D3D11 device, which has no breadcrumbs. Every new in-frame compute or stream-output batch gets an off row and a Flush candidate. Prove with 6 runs or more per state, the control first, counting event 153; bisect with fence signals at chosen hashes and take a cure as the proof | No offline check: WARP never hangs |
 | Each driver reset leaves a dead process with its commit until a reboot: 100 runs filled the page file, then "No memory" changed the scene and runs proved nothing | Count resets; the maintainer reboots after a batch with resets | Committed Bytes |
 | One clean run or 0 of 5 clears nothing: the same path gave 0 of 5 and 3 of 6 | 6 runs at least per state; read the feature-off control and the rays-off control together | Event 153 count |
-| A held removed D3D12 device blocks every new device in the process; Streamline never lets go | `MakeOwnDevice` (factory, no singleton) for RR, FSR, XeSS; retry each second | `singleton_test`, harness |
+| A held removed D3D12 device blocks every new device in the process; Streamline never lets go | `MakeOwnDevice` (factory, no singleton) for RR, FSR, XeSS; retry each second | Harness `removal`, `switching_removal` |
 | A removed device leaves shared fences at all ones: every wait passes, RR and MFG look "broken", fps "better" | A new fence set in `dlaa_bridge::Prepare`; the helper treats all ones as done | `RENODX_TW_TEST_REMOVAL` |
 | After a removal, "N failed" lines are a result, not a cause; "no page fault" rules out nothing; DRED labels can be stale | Read in order; reading freed memory hangs with no fault | Debug layer `RENODX_TW_D3D12_DEBUG` |
 
@@ -64,10 +64,10 @@ Before any test round of a new game or a big change:
 | SDR is 10-bit too: "10-bit means HDR10" turned the window red [582065c9] | Send the colour space | `sl.log` |
 | A colour-space refusal made fatal ended DLSS-G for the helper's lifetime [03c7fa06] | Log once, ask again at the next output change | `fg_bridge_test` HDR10, SDR, HDR10 |
 | ReShade screenshots never show the helper's window | Display capture or the log | - |
-| HUD-less must hold everything but UI; taking the tone mapper's output before the final pass counted all pixels as UI [f3b2cc91] | Keep output after the last scene pass (`OnOutputEffectDrawn`); flares and vignette after the tone mapper belong in it; a pass that also runs after the UI must not feed it | FG Debug View |
+| HUD-less must hold everything but UI; taking the tone mapper's output before the final pass counted all pixels as UI [f3b2cc91] | Keep output after the last scene pass (`OnOutputEffectDrawn`); flares and vignette after the tone mapper belong in it; a pass that also runs after the UI must not feed it; passes that don't run every frame fall back | FG Debug View |
 | The swap-chain shader's constants aren't at b13 in every game | The game's `shared.h`; `frame_generation::Install`'s `injection_slot` | `wh3_fg_keep_test` (WARP, built shaders) |
 | Resize: off and on in one frame races Present | Two presents off; drop the kept back buffer at `destroy_swapchain` | `test/tw_fg_initialization` |
-| A frozen window when textures no longer fit or open fails; an early return in a present path while the helper presents [be916e1c] | Hide it, say why; send the off request | `fg_bridge_test` |
+| A frozen window when textures no longer fit or open fails; an early return in a present path while the helper presents [be916e1c] | Show the window only after a Present that worked; hide it after 60 failed Presents in a row and say why [f3b2cc91, 6f4a8ea0]; send the off request | `fg_bridge_test` |
 | FG off kept 590 to 605 MiB under Streamline, +64 MiB per on and off | Free resources | Helper log |
 | FG presets are the driver profile, not Streamline: read once at load; Global VSync caps it | DRS key 0x10E41DF1 on the helper exe | - |
 | FG is off under ReShade's menu, so the status line showed what ran before the menu opened [f3c4d3c5] | Status says so | Read |

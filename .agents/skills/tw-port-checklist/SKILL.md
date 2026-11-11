@@ -1,12 +1,14 @@
 ---
 name: tw-port-checklist
-description: "RenoDX workflow for Total War (TW) addons: bringing up a new or older TW game (Rome II, Thrones of Britannia, Troy, Pharaoh, WH1, WH2, WH3, Shogun 2) and porting features between TW addons, Attila (src/games/twattila) first and in both directions. Covers the dlaa_helper process and bridge, DLSS, DLAA, FSR, XeSS, Ray Reconstruction, frame generation, Reflex, render scale, jitter and motion vectors, RT shadow coverage (casters, cut-outs, grass, trees, far cards, units out of view, black patches), the game's shadow maps and cascades, AO, GI, path-traced AO, double work, screen-space shadows (Bend), smoke, particles, MBOIT, SSR, water, fog, HDR output, PsychoV31, PsychoV35, Hue Clip, replaced shaders, frame traces, shader census, names.tsv, engine values, the graphics page and presets, crashes, GPU resets, device loss, game runs, the maintainer's test list, release and install. Use when bringing up, porting, reviewing or debugging a TW feature, adding a hash or a row, or editing shared code under twattila or twrome2."
+description: "RenoDX workflow for Total War (TW) addons: bringing up a new or older TW game (Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3, Shogun 2) and porting features between TW addons in both directions, Attila (src/games/twattila) first. Covers the dlaa_helper process and bridge, DLSS, DLAA, FSR, XeSS, Ray Reconstruction, frame generation, Reflex, render scale, jitter, motion vectors, RT shadow coverage (casters, cut-outs, grass, trees, far cards, units out of view, black patches), the game's shadow maps, AO, GI, path-traced AO, double work, screen-space shadows (Bend), smoke, particles, SSR, water, fog, HDR output, PsychoV35, Hue Clip, replaced shaders, frame traces, shader census, engine values, the graphics page, presets, crashes, GPU resets, device loss, game runs, the test list, release. Use when bringing up, porting, reviewing or debugging a TW feature, adding a hash or a row, or editing shared code under twattila or twrome2."
 argument-hint: "target game, feature or phase, and the Attila or WH3 code it comes from"
 ---
 
 # Total War Port Checklist
 
-Bring up a TW game, or bring a feature from one TW addon to another, so that the first build is right and the maintainer's test round confirms instead of discovers. Attila carries most of the shared code (`src/games/twattila`, `src/games/twrome2`); 14 addons compile it directly.
+Bring up a TW game, or bring a feature from one TW addon to another, so that the first build is right and the maintainer's test round confirms instead of discovers. Attila carries most of the shared code (`src/games/twattila`, `src/games/twrome2`); 13 addons compile it directly.
+
+Many checks use the maintainer's `tools/tw` folder (harness, WARP tests, census scripts), which is outside the repo: ask the maintainer for its path, and without it say in the report which checks couldn't run.
 
 WH3's port took 13 versions, about 180 commits and 105 test items for the maintainer; most of what the game showed an offline check could have shown first ([references/bringup.md](references/bringup.md) lists them). This skill is those checks.
 
@@ -41,7 +43,7 @@ Read the file for every area the work touches before planning. Each row is a mis
 ## Before you start
 
 1. `git status`, `git log` and the checklist in `HANDOFF.md`: an earlier attempt may have got further. Continue it, don't redo it.
-2. Read the reference file for each area you touch, and the game's row in [game-facts.md](references/game-facts.md).
+2. Read the reference file for each area you touch, and every row of [game-facts.md](references/game-facts.md) for the target game.
 3. Read the target game's own shader, buffer and trace. **Never carry over the source game's values, registers, slots, formulas, encodings, scales or texture slots unread.** "Same as Attila" needs file and symbol for both games.
 4. Ask of the feature: does the game already do this? The same effect computed twice is the most common waste ([ao-gi.md](references/ao-gi.md)).
 5. The maintainer expects Attila's full set in every TW game. A "won't get" needs its proof in the commit (hash not in the dump, pass not in any trace), or it will be asked for later.
@@ -51,9 +53,9 @@ Read the file for every area the work touches before planning. Each row is a mis
 
 Details, exit criteria and the WH3 history in [bringup.md](references/bringup.md).
 
-0. Offline census, no game: shader names, engine values, the game-facts sheet, a parity table against Attila's page.
-1. One data run, only when the maintainer allows it: frame traces at four scales in four scenes, on the maintainer's settings and on defaults.
-2. Offline from the traces: pass map, reader census by handle, capture candidates, pass diffs between scales and settings.
+0. Offline census: shader names, engine values, the game-facts sheet, a parity table against Attila's page; a first build from the closest TW addon with only the trace and log rows, every feature off.
+1. One data run, only when the maintainer allows it: frame traces in four scenes, on the maintainer's settings and on defaults, at 100% and at the game's own lower scales.
+2. Offline from the traces: pass map, reader census by handle, capture candidates, pass diffs between scales and settings; the game-facts rows answered again from the traces.
 3. Features in dependency order, each with its offline check green before the next.
 4. The settings matrix offline: GI, paths, RR, 50%, FG, Reset mid-battle; each row's cost alone.
 5. One bundled game run, its plan checked against a page dump of the maintainer's preset.
@@ -77,7 +79,7 @@ A hash goes in only with its proof in the commit message: the shader's family na
 
 - **Game runs** only when the maintainer allows them, per batch; the permission ends when the batch closes. Bundle what needs the game into one run. Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini` and the game's preferences right before each install or run, never restore an older copy, compare hashes after.
 - **Unproven work** ships as an Experimental row, off, with a player tooltip and one verdict line on the test list. Defaults change only from measured numbers. Don't let Experimental rows pile up without verdicts.
-- **Look**: keep the developers' look; scale quality, distance and resolution. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended presets use PsychoV31; ask the maintainer for each game's hue defaults.
+- **Look**: keep the developers' look; scale quality, distance and resolution; a look change is an Experimental row, off. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended presets use PsychoV31; ask the maintainer for each game's PsychoV31 hue settings (Hue Clip's default is measured, see [game-facts.md](references/game-facts.md)).
 - **Cost**: no per-frame counters or log lines, no per-frame CPU on the game's thread without a measured reason, hot callbacks return on one atomic.
 - **Rows**: tooltips short and for players, naming nothing the game lacks; keys stay when rows move or saved values are lost.
 - **Two ways**: a fix in shared code or a pattern goes to every addon that carries it; a new game's row goes back to Attila.
@@ -97,7 +99,7 @@ cmake --build build32 --config Release --target renodx-twattila.addon32 renodx-t
 
 A behaviour one game needs goes behind a parameter that defaults to today's value.
 
-**Helper or `dlaa_bridge.h`**: build into a new `build\tw_dlaa_helperN` with `src\games\twattila\dlaa_helper\build.ps1`, never over an old one; bump `VERSION`; `Prepare` publishes only addon-owned fields. Run the full harness by mode name, `fg_bridge_test` and the `tw_helper_lifetime`, `tw_gpu_completion` suites. Addon and helper ship together.
+**Helper or `dlaa_bridge.h`**: build into a new folder passed as the first argument of `src\games\twattila\dlaa_helper\build.ps1` (`build\tw_dlaa_helperN`; without it the script writes over `build\tw_dlaa_helper`), never over an old one. A change to the bridge's layout bumps `VERSION` and keeps `OLDEST_VERSION` readable; `Prepare` publishes only addon-owned fields. Run the full harness by mode name, `fg_bridge_test` and the `tw_helper_lifetime`, `tw_gpu_completion` suites. Addon and helper ship together.
 
 **New replacement shader**: run [scripts/cb_audit.py](scripts/cb_audit.py) with `python -I`, naming the game (`cb_audit.py twwarhammer3`), and read each line of part 2. Then a WARP test against the game's bytes with a control that must fail. The script reads the decompiler's pack under `bin/`, which isn't in the repo.
 
