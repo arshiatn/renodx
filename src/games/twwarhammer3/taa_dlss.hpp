@@ -819,7 +819,8 @@ inline bool OnTonemapDraw(ID3D11DeviceContext* native, bool redirected, UINT wid
 
 // The tone mapper drew at the render size into `picture` (its on_drawn; its target that texture, still bound): through the upscaler,
 // over the whole display. The viewport back first: nothing after it is at the render size. No result: stretched, never only the corner.
-inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3D11ShaderResourceView* picture) {
+// `picture_uav`: the same texture for the finish to write (it reads only the helper's textures); null: through a copy of the display's size.
+inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3D11ShaderResourceView* picture, ID3D11UnorderedAccessView* picture_uav) {
   using internal::state;
   const std::unique_lock lock(state.mutex);
   if (!state.tonemap_at_render_size) return;
@@ -836,6 +837,7 @@ inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3
   const auto& bridge = twattila::dlaa_bridge::bridge;
   const auto [width, height] = state.learned_size;
   bool evaluated = false;
+  const bool in_place = picture_uav != nullptr && internal::TextureOf(picture_uav) == target;
   twattila::dlaa_bridge::BeforeSharedWrites(native);
   {
     talesofarise::dlss::ContextStateScope scope(context1.Get(), objects.private_state.Get());
@@ -882,12 +884,15 @@ inline void OnTonemapDrawnAtRenderSize(reshade::api::command_list* cmd_list, ID3
     context1->CSSetShader(objects.scaled_finish.Get(), nullptr, 0);
     context1->CSSetShaderResources(0, static_cast<UINT>(sources.size()), sources.data());
     context1->CSSetSamplers(0, 1, objects.linear_sampler.GetAddressOf());
-    context1->CSSetUnorderedAccessViews(0, 1, objects.display_copy_uav.GetAddressOf(), nullptr);
+    ID3D11UnorderedAccessView* const result = (in_place ? picture_uav : objects.display_copy_uav.Get());
+    context1->CSSetUnorderedAccessViews(0, 1, &result, nullptr);
     context1->CSSetConstantBuffers(0, 1, objects.shader_settings.GetAddressOf());
     context1->Dispatch((desc.Width + 7) / 8, (desc.Height + 7) / 8, 1);
     context1->ClearState();
   }
-  native->CopyResource(target.Get(), objects.display_copy.Get());
+  if (!in_place) {
+    native->CopyResource(target.Get(), objects.display_copy.Get());
+  }
   state.scaled_done_frame = state.frame;
   if (evaluated) internal::OnEvaluated(width, height, state.taa_jitter, state.taa_reset, state.taa_camera.data());
 }

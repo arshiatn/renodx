@@ -516,6 +516,8 @@ struct Data {
   ID3D11Texture2D* texture = nullptr;
   ID3D11RenderTargetView* rtv = nullptr;
   ID3D11ShaderResourceView* srv = nullptr;
+  // The upscaler's finish below 100% writes the picture through it (taa_dlss.hpp).
+  ID3D11UnorderedAccessView* uav = nullptr;
   UINT width = 0;
   UINT height = 0;
 };
@@ -580,6 +582,7 @@ bool IsSwapChain(uintptr_t resource) {
 
 // Caller holds the mutex.
 void Release() {
+  if (data.uav != nullptr) data.uav->Release();
   if (data.srv != nullptr) data.srv->Release();
   if (data.rtv != nullptr) data.rtv->Release();
   if (data.texture != nullptr) data.texture->Release();
@@ -600,10 +603,11 @@ bool Ensure(ID3D11Device* device, UINT width, UINT height) {
   desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
   desc.SampleDesc.Count = 1;
   desc.Usage = D3D11_USAGE_DEFAULT;
-  desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+  desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
   if (FAILED(device->CreateTexture2D(&desc, nullptr, &data.texture))
       || FAILED(device->CreateRenderTargetView(data.texture, nullptr, &data.rtv))
-      || FAILED(device->CreateShaderResourceView(data.texture, nullptr, &data.srv))) {
+      || FAILED(device->CreateShaderResourceView(data.texture, nullptr, &data.srv))
+      || FAILED(device->CreateUnorderedAccessView(data.texture, nullptr, &data.uav))) {
     Release();
     return false;
   }
@@ -1499,7 +1503,7 @@ void OnDestroyDevice(reshade::api::device*) {
           .on_draw = &aa_target::OnDrawTonemap,                    \
           .on_drawn = [](auto* cmd_list) {                         \
             twattila::screen_space_shadows::OnTonemapDrawn(cmd_list); \
-            twwarhammer3::taa_dlss::OnTonemapDrawnAtRenderSize(cmd_list, aa_target::data.srv); \
+            twwarhammer3::taa_dlss::OnTonemapDrawnAtRenderSize(cmd_list, aa_target::data.srv, aa_target::data.uav); \
             twattila::rt_scene::OnTonemapDrawn(cmd_list);          \
             twwarhammer3::taa_dlss::OnTonemapDrawn(cmd_list);      \
             twwarhammer3::taa_dlss::KeepFrame(cmd_list);           \
