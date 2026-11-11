@@ -4129,6 +4129,13 @@ void ConfigureAddon() {
                                              .rays_preset_water_reflections = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
+  // Under More Options: Graphics 2 of 2's tests, and the particle rows few players change.
+  twattila::graphics_page::Fold(&settings, engine_sections.front(), [&engine_sections](const renodx::utils::settings::Setting& setting) {
+    return std::ranges::find(engine_sections.begin() + 1, engine_sections.end(), setting.section) != engine_sections.end();
+  });
+  twattila::graphics_page::Fold(&settings, "VFX", [](const renodx::utils::settings::Setting& setting) {
+    return setting.key == "VfxHalfResolution" || setting.key == "VfxParticleSmoothing" || setting.key == "VfxParticleSmear";
+  });
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

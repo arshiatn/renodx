@@ -1,5 +1,12 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v148 (2026-11-12, a cleaner page; built, not run in game, not installed; renodx-tw-dlaa64.exe helper103 as in v147)
+
+Same picture and settings as v147: every key kept, only where rows show moved (shared `graphics_page.hpp`, which only Attila and Warhammer III use). Page dump against v147: three new More Options lines, no key added or lost.
+
+- **Rays a Pixel under Upscaling Mode** (ATN: players at Ultra Performance never found it at the page's end), shown while something is ray-traced. Its default stays 1. The page's presets no longer change it, as the rest of Anti-Aliasing and Upscaling (RT/PT set it back to 1 before).
+- **Into More Options** (closed at each start): Bend's five Experimental rows; Smoke Shadow Quality; RTAO's Rate; Steady Bounce Light; the reflections' Denoiser, Reuse and Ray-Traced Specular Occlusion; Ray Tracing Denoiser and AO under Ray Reconstruction; Graphics 2 of 2's test sections (one More Options under Graphics (Experimental)); on HDR & Effects Modded Auto Exposure: Sensitivity, Sky Debanding, Particles at Half Resolution and Smooth Half-Size Particles.
+
 ## v147 (2026-11-11, PsychoV35 round; ATN's test, not a players' release; built, not run in game; renodx-tw-dlaa64.exe helper103 as in v146)
 
 The first build after the upstream merge (d3d6425b). With Rendering Mode SDR / V30 / V31 the picture is v146's (WARP below). Page against v146's: the new rows, Rendering Mode's label and tooltip, the credits and the Build Date.

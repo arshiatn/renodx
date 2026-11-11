@@ -1,5 +1,12 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v44 (2026-11-12, a cleaner page; renodx-tw-dlaa64.exe helper103 as in v43; built, not run in game, not installed)
+
+Same picture and settings as v43: every key kept, only where rows show moved (Attila's `graphics_page.hpp`). Page dump against v43: three new More Options lines, no key added or lost.
+
+- **Rays a Pixel under Upscaling Mode** (ATN: players at Ultra Performance never found it at the page's end), shown while something is ray-traced, now with Attila's label "(Use higher for lower scalings)". Its default stays 1. The page's presets no longer change it (RT/PT set it back to 1 before).
+- **Into More Options** (closed at each start): Bend's five Experimental rows; Steady Bounce Light and Sky as Bright as the Game's; Reflections Lit as This Frame, Fog in Reflections, Reflections as Rough as the Game's (before a stray row at the page's end) and Ray-Traced Specular Occlusion; Ray Tracing Denoiser and AO under Ray Reconstruction; Graphics 2 of 2's test sections (one More Options under Graphics (Experimental)); on HDR & Effects the three particle rows of VFX.
+
 ## v43 (2026-11-11, PsychoV35 round; ATN's test; renodx-tw-dlaa64.exe helper103 as in v42; not run in game; no players' zip)
 
 The first build after the upstream merge (d3d6425b). With Rendering Mode SDR / Extended / V30 / V31 the picture is v42's (WARP below). Page against v42's: the new rows, Rendering Mode's label and tooltip, the credits and the Build Date.

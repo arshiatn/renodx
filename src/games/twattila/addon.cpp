@@ -1924,6 +1924,14 @@ void ConfigureAddon() {
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
                                              .rays_banner_light = &rays_banner_light_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed});
+  // Under More Options: Graphics 2 of 2's tests, and the HDR page's rows few players change.
+  twattila::graphics_page::Fold(&settings, engine_sections.front(), [&engine_sections](const renodx::utils::settings::Setting& setting) {
+    return std::ranges::find(engine_sections.begin() + 1, engine_sections.end(), setting.section) != engine_sections.end();
+  });
+  twattila::graphics_page::Fold(&settings, "Extra (Experimental)", [](const renodx::utils::settings::Setting& setting) {
+    return setting.key == "auto_exposure_highlight_headroom_stops" || setting.key == "sky_deband" || setting.key == "VfxHalfResolution"
+           || setting.key == "VfxParticleSmoothing";
+  });
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

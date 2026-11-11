@@ -37,7 +37,9 @@ Shipped, then changed: path-traced AO five times, the game's SSAO handling five,
 - **A first build** from that addon with only Frame Trace, Log Details and Record Profile, every feature off: the data run needs it.
 - **An unmodded `ReShade.log`** (from the maintainer, or from the data run's first start): device flags (single-threaded?), flip or blt chain, probe devices, fullscreen, bitness.
 
-## Phase 1: the data run (ask first)
+## Phase 1: the data run
+
+The maintainer allows one agent-driven data run at the start of each new TW game: start, settle, trace, save the logs, quit. It collects data and tests nothing; feature tests still need the maintainer's OK per batch. Give the agent that drives it medium effort: the steps are scripted, the reading happens offline afterwards.
 
 - Port the run and check scripts first (`run_game.ps1`, `check_run.py`), so the run reports itself.
 - Frame Traces in a settled battle (mid-battle: the first frame has other flags), the siege benchmark with fire, a dark or night map, the campaign. At 100%, and at 67, 50 and 33% through the game's own scale setting; where the addon owns the scale, the low-scale traces come after Phase 3 step 5.
