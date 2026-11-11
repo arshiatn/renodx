@@ -656,7 +656,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
   const internal::ComputeState kept(native);
   ComPtr<ID3D11Buffer> game_second;
   native->CSGetConstantBuffers(1, 1, game_second.GetAddressOf());
-  const std::array<uint32_t, 4> offset = {draw.sun_direction, internal::ambient_cube, runtime.settings.path_ambient ? 1u : 0u, 0};
+  const bool probe_sky = runtime.settings.path_ambient && runtime.settings.path_probe_sky && draw.environment_slot != UINT_MAX;
+  const std::array<uint32_t, 4> offset = {draw.sun_direction, internal::ambient_cube, runtime.settings.path_ambient ? 1u : 0u, probe_sky ? 1u : 0u};
   native->UpdateSubresource(runtime.objects.sun_constants.Get(), 0, nullptr, offset.data(), 0, 0);
   native->CSSetShader(runtime.objects.sun_shader.Get(), nullptr, 0);
   ID3D11UnorderedAccessView* sun = dlaa_bridge::bridge.rt_sun.uav.Get();
@@ -674,9 +675,29 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
     native->CSGetConstantBuffers(2, 1, game_third.GetAddressOf());
     native->CSSetConstantBuffers(2, 1, camera.GetAddressOf());
   }
+  // The environment maps at t1 (ComputeState puts the game's back), their weights at b3, their sampler at s0.
+  ComPtr<ID3D11Buffer> game_fourth;
+  ComPtr<ID3D11SamplerState> game_sampler;
+  if (probe_sky) {
+    ComPtr<ID3D11ShaderResourceView> environment_maps;
+    native->PSGetShaderResources(draw.environment_slot, 1, environment_maps.GetAddressOf());
+    native->CSSetShaderResources(1, 1, environment_maps.GetAddressOf());
+    ComPtr<ID3D11Buffer> environment;
+    native->PSGetConstantBuffers(draw.environment_slot, 1, environment.GetAddressOf());
+    native->CSGetConstantBuffers(3, 1, game_fourth.GetAddressOf());
+    native->CSSetConstantBuffers(3, 1, environment.GetAddressOf());
+    ComPtr<ID3D11SamplerState> sampler;
+    native->PSGetSamplers(draw.environment_slot, 1, sampler.GetAddressOf());
+    native->CSGetSamplers(0, 1, game_sampler.GetAddressOf());
+    native->CSSetSamplers(0, 1, sampler.GetAddressOf());
+  }
   native->Dispatch(1, 1, 1);
   native->CSSetConstantBuffers(1, 1, game_second.GetAddressOf());
   if (draw.sky_harmonics_slot != UINT_MAX) native->CSSetConstantBuffers(2, 1, game_third.GetAddressOf());
+  if (probe_sky) {
+    native->CSSetConstantBuffers(3, 1, game_fourth.GetAddressOf());
+    native->CSSetSamplers(0, 1, game_sampler.GetAddressOf());
+  }
   runtime.sun_frame = runtime.frame;
   return {};
 };

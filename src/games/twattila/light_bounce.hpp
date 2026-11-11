@@ -78,6 +78,9 @@ struct SunDraw {
   float diffuse_rule = 0.f;
   // Warhammer III: its t_world_spherical_harmonics, for the sky rt_sun builds (UINT_MAX: rt_sun reads no texture).
   UINT sky_harmonics_slot = UINT_MAX;
+  // Warhammer III: the slot of its environment_PS constants, its t_specular_array and its sampler (the same in its sun
+  // shaders), for the sky rt_sun builds as the game's light probes see it (UINT_MAX: none).
+  UINT environment_slot = UINT_MAX;
 };
 
 // The Light Bounce sliders, as the addon's settings hold them (strength 0: off).

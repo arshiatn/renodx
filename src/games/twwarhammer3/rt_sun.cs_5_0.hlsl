@@ -11,6 +11,11 @@
 // x g_ambient_fudge_factor (c18.w). On: the cube is only what they fade to outside the playable area (9EAD8951: 0 to 0.07, sides
 // at 0); the sky is t_world_spherical_harmonics, 9EAD8951's loop at the camera's place, evaluated along the six sides. Only
 // Path-Traced AO's sky takes it: texel 3's w stays 0 without, so Light Bounce's escaping paths keep the learned shade.
+// With the game's Global Illumination on (c11.y) the sun shaders take neither inside its volumes but its light probes
+// (9EAD8951: (visibility, ambient) = lerp((1, either), the probes', their fade)), and a probe's ray that meets nothing brings
+// the environment maps (t_specular_array by g_environment_weights) x g_ambient_fudge_factor (cs DC860C60). So with rt_sun.w
+// (Path-Traced AO, its row) and the flag on, each side is that: the environment maps' cosine-weighted mean over the side's
+// half of the sky x the fudge factor, the light an open surface facing it gets from the game's probes; texel 4's w then 1.
 cbuffer lighting_VS_PS : register(b0)
 {
   float4 lighting[19];
@@ -18,7 +23,7 @@ cbuffer lighting_VS_PS : register(b0)
 
 cbuffer rt_sun : register(b1)
 {
-  uint4 rt_sun;  // x the first float of sun_direction, y of the ambient cube, z 1 with Path-Traced AO on
+  uint4 rt_sun;  // x the first float of sun_direction, y of the ambient cube, z 1 with Path-Traced AO on, w 1: the probes' sky
 }
 
 cbuffer camera : register(b2)
@@ -26,17 +31,62 @@ cbuffer camera : register(b2)
   float3 camera_position;
 }
 
+// The sun draw's environment_PS: g_environment_weights[8] in c0-c7's x, g_environment_indices[8] in c8-c15's x, the count c15.y.
+cbuffer environment_PS : register(b3)
+{
+  float4 environment[16];
+}
+
 Texture2D<float4> world_spherical_harmonics : register(t0);
+TextureCubeArray<float4> specular_array : register(t1);
+SamplerState specular_sampler : register(s0);
 RWTexture2D<float4> sun : register(u0);
+
+static const uint SKY_RAYS = 64u;
+// The mip whose faces are about this wide: a ray's share of a half sky (2 pi / 64) is about a texel there.
+static const float SKY_FACE_TEXELS = 8.f;
+
+groupshared float3 side_sums[6][SKY_RAYS];
 
 float LightingValue(uint index)
 {
   return lighting[index / 4u][index % 4u];
 }
 
-[numthreads(1, 1, 1)]
-void main()
+[numthreads(SKY_RAYS, 1, 1)]
+void main(uint3 thread : SV_GroupThreadID)
 {
+  const bool spherical_harmonics = asuint(lighting[11].z) != 0u;
+  const uint maps = (uint)clamp(round(environment[15].y), 0.f, 8.f);
+  const bool probe_sky = rt_sun.z != 0u && rt_sun.w != 0u && asuint(lighting[11].y) != 0u && maps != 0u;
+  if (probe_sky)
+  {
+    uint width, height, elements, levels;
+    specular_array.GetDimensions(0, width, height, elements, levels);
+    const float mip = clamp(log2(max((float)width, 1.f) / SKY_FACE_TEXELS), 0.f, (float)max(levels, 1u) - 1.f);
+    // Cosine-weighted around each side (stratified in the cosine, the angle by the golden ratio).
+    const float u = (thread.x + 0.5f) / SKY_RAYS;
+    const float angle = 6.2831853f * frac(thread.x * 0.618034f);
+    const float3 local = float3(sqrt(u) * cos(angle), sqrt(u) * sin(angle), sqrt(1.f - u));
+    [unroll]
+    for (uint side = 0u; side < 6u; ++side)
+    {
+      float3 axis = 0.f;
+      axis[side / 2u] = ((side & 1u) != 0u) ? -1.f : 1.f;
+      const float3 helper = (abs(axis.y) < 0.5f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f);
+      const float3 tangent = normalize(cross(helper, axis));
+      const float3 direction = local.x * tangent + local.y * cross(axis, tangent) + local.z * axis;
+      float3 sky = 0.f;
+      for (uint map = 0u; map < maps; ++map)
+      {
+        sky += specular_array.SampleLevel(specular_sampler, float4(direction, environment[8u + map].x), mip).rgb * environment[map].x;
+      }
+      side_sums[side][thread.x] = sky;
+    }
+  }
+  GroupMemoryBarrierWithGroupSync();
+  if (thread.x != 0u) return;
+
   const float3 sun_direction = float3(LightingValue(rt_sun.x), LightingValue(rt_sun.x + 1u), LightingValue(rt_sun.x + 2u));
   const float length_squared = dot(sun_direction, sun_direction);
   sun[uint2(0, 0)] = (length_squared > 0.f) ? float4(-sun_direction * rsqrt(length_squared), 1.f) : 0.f;
@@ -48,9 +98,22 @@ void main()
     const uint first = rt_sun.y + side * 4u;
     sides[side] = float3(LightingValue(first), LightingValue(first + 1u), LightingValue(first + 2u));
   }
-  const bool spherical_harmonics = asuint(lighting[11].z) != 0u;
   float scale = lighting[18].w;
-  if (spherical_harmonics)
+  if (probe_sky)
+  {
+    [unroll]
+    for (uint side = 0u; side < 6u; ++side)
+    {
+      float3 sum = 0.f;
+      for (uint ray = 0u; ray < SKY_RAYS; ++ray)
+      {
+        sum += side_sums[side][ray];
+      }
+      sides[side] = max(sum / SKY_RAYS, 0.f) * lighting[18].w;
+    }
+    scale = 1.f;
+  }
+  else if (spherical_harmonics)
   {
     scale = 1.f;
     uint width, height;

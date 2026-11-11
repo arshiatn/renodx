@@ -97,6 +97,9 @@ struct Settings {
   bool path_ambient = false;
   bool path_sky_apart = false;  // its sky averaged from each texel's rays, past ReSTIR GI's reservoirs
   bool path_kept_cube = false;  // dlaa_bridge.h RT_PATH_KEPT_CUBE
+  // Its sky from the game's environment maps as the game's light probes see them, where its Global Illumination is on
+  // (Warhammer III's rt_sun; the sun draws' SunDraw::environment_slot).
+  bool path_probe_sky = false;
   // Ray-traced reflections and specular occlusion (bridge v8; the game's reflection pass reads them: Reflections()).
   bool reflections = false;
   bool specular_occlusion = false;

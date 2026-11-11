@@ -2858,6 +2858,10 @@ float rays_skip_cascades_row = 0.f;
 // tracing off for 10 s, another upscaler). With the maps skipped their reach costs the GPU nothing: the first map's reach goes
 // to just under the second's at every Shadows setting (150 / 250 / 500 m), unless the player's own reach row is set.
 float rays_tree_reach_row = 0.f;
+// Path-Traced AO's sky as the game's light probes bring it with its Global Illumination on (rt_sun.cs_5_0.hlsl). Off (v40): the
+// spherical harmonics' sky, which ATN's logs put at 1/12 to 1/58 of the shade the screen shows ("the game's ambient" against
+// "shade" in the helper's Path-Traced AO line): dark, cooked.
+float path_probe_sky_row = 1.f;
 constexpr float TREE_REACH_METRES = 149.f;
 tw::engine_tweaks::Option* first_map_reach = nullptr;  // engine_tests' battle_shadow_split_0
 std::atomic_bool tree_reach_logged = false;
@@ -3055,13 +3059,13 @@ constexpr std::array<twattila::frame_history::CameraRun, 7> CAMERA_LAYOUT = {{
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws, one shader for every model (g_skin_enable), the camera at b1,
 // the G-buffer's channels 1-4 from their first slot.
 constexpr std::array<twattila::light_bounce::SunDraw, 7> LIGHT_BOUNCE_DRAWS = {{
-    {.shader_hash = 0x18A84893, .standard = true, .gbuffer_slot = 10, .camera_slot = 1, .lighting_slot = 4, .camera_layout = CAMERA_LAYOUT, .ao_slot = 4, .ssao_constants_slot = 3, .ambient_final_sites = 2, .sky_harmonics_slot = 5},
-    {.shader_hash = 0x24F97B7B, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2},
-    {.shader_hash = 0x76A707E5, .standard = true, .gbuffer_slot = 6, .camera_slot = 1, .camera_layout = CAMERA_LAYOUT, .ambient_final_sites = 1, .diffuse_rule = 2.f, .sky_harmonics_slot = 1},
-    {.shader_hash = 0x9EAD8951, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2},
-    {.shader_hash = 0xCCEF2C1E, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2},
-    {.shader_hash = 0xF0E2D5EC, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2},
-    {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 2, .sky_harmonics_slot = 2},
+    {.shader_hash = 0x18A84893, .standard = true, .gbuffer_slot = 10, .camera_slot = 1, .lighting_slot = 4, .camera_layout = CAMERA_LAYOUT, .ao_slot = 4, .ssao_constants_slot = 3, .ambient_final_sites = 2, .sky_harmonics_slot = 5, .environment_slot = 0},
+    {.shader_hash = 0x24F97B7B, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2, .environment_slot = 0},
+    {.shader_hash = 0x76A707E5, .standard = true, .gbuffer_slot = 6, .camera_slot = 1, .camera_layout = CAMERA_LAYOUT, .ambient_final_sites = 1, .diffuse_rule = 2.f, .sky_harmonics_slot = 1, .environment_slot = 0},
+    {.shader_hash = 0x9EAD8951, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2, .environment_slot = 0},
+    {.shader_hash = 0xCCEF2C1E, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2, .environment_slot = 0},
+    {.shader_hash = 0xF0E2D5EC, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 1, .diffuse_rule = 1.f, .sky_harmonics_slot = 2, .environment_slot = 0},
+    {.shader_hash = 0xF9F8CE80, .standard = true, .gbuffer_slot = 7, .camera_slot = 1, .lighting_slot = 3, .camera_layout = CAMERA_LAYOUT, .ao_slot = 1, .ssao_constants_slot = 2, .ambient_final_sites = 2, .sky_harmonics_slot = 2, .environment_slot = 0},
 }};
 
 // Ray tracing's scene (twattila/rt_scene.hpp): the G-buffer's opaque meshes as the game's own vertex shaders draw them
@@ -3352,6 +3356,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // Path-Traced AO takes the sun's diffuse ambient (t51); what the sun still lights from the sky (the cube's reflection) takes RTAO
   // from the same trace, in the AO slot the game's SSAO left.
   rt_settings.ambient_occlusion = rt_settings.ambient_occlusion || rt_settings.path_ambient;
+  rt_settings.path_probe_sky = path_probe_sky_row != 0.f;
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
   rt_settings.reflection_fog = reflections::fog_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
@@ -3699,6 +3704,17 @@ void ConfigureAddon() {
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Under trees, roofs and walls the sky's light stays as dark as in the game's own picture.\n"
                  "Off: the sky's light at full strength everywhere, so shade is brighter.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedPathProbeSky",
+      .binding = &path_probe_sky_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 1.f,
+      .label = "Sky as Bright as the Game's",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Open ground in Path-Traced AO gets the sky's light as the game's own lighting gives it.\n"
+                 "Off: a dimmer sky, darker shade.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
