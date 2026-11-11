@@ -10,6 +10,7 @@
 // HDR 3 (PsychoV31): as HDR 2 with PsychoV31.
 // HDR 2 (Psycho): Reinhard dropped, scene-linear with SDR's mid grey pinned to 0.18
 //        -> HDR-safe native grade -> PsychoV30.
+// HDR 4 (PsychoV35, Experimental): as HDR 2 with Hue Clip before the grade, then PsychoV35.
 // Sliders: SI.bloom, SI.uvdistort.
 
 struct Auto_exposure_output
@@ -158,6 +159,7 @@ Texture3D<float4> lut_secondary_texture_3 : register(t11);
 #include "../shared.h"
 #include "../psycho_test30.hlsli"
 #include "../psycho_test31.hlsli"
+#include "../../../shaders/tonemap/psychov/test35.hlsl"
 
 // PsychoV31, on the scene-linear handoff (mid gray at 0.18); target-only where its source cage returns
 // black. Highlight Hue / Saturation Shift: toward the SDR image's, which clips each channel at white (bright fire turns
@@ -200,9 +202,21 @@ float3 ApplyPsychoV31(float3 color)
   return result;
 }
 
-// The Psycho modes: PsychoV30 (Rendering Mode 2) or PsychoV31 (3).
+// The Psycho modes: PsychoV30 (Rendering Mode 2), PsychoV31 (3) or PsychoV35 (4).
 float3 ApplyWH3Psycho(float3 color)
 {
+  [branch]
+  if (HDR >= 3.5f) {
+    // PsychoV35 with PsychoV31's sliders, anchored at mid gray (the handoff carries the game's exposure; the Hue Clip
+    // before the grade replaces V31's highlight shifts). Highlight Roll-off: 0 latest, 1 V35's own compression, 2 soonest.
+    const float3 mapped = renodx::tonemap::psychov::psychotm_test35(
+        color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, max(SI.v31_contrast, 0.01f),
+        SI.v31_saturation, 1.f, 100.f, 1.f, 1.f, 0, 1.f, 0.18f, 0.18f, SI.v31_gamut_compression,
+        (SI.swap_chain_encoding == 2.f) ? 0 : 1, 1.f, exp2(1.f - SI.v31_roll_off));
+    // Shadows below 1 take the darkest pixels under zero, where V35 gives NaN: black. A bit test, as fxc folds
+    // isnan (renodx::math::ZeroNaN) away here.
+    return ((asuint(mapped) & 0x7fffffffu) > 0x7f800000u) ? 0.f : mapped;
+  }
   [branch]
   if (HDR >= 2.5f) {
     return ApplyPsychoV31(color);
@@ -368,6 +382,13 @@ void main(
     float slope = 1.f + (x_mid * inv_w) / (1.f + x_mid * inv_w) - x_mid / (1.f + x_mid);
     float handoff_y = 0.18f * pow(max(exposure * y / x_mid, 0.f), slope);
     hdr_color = (y == 0.f) ? 0.f : color * (handoff_y / y);
+    // PsychoV35: Hue Clip toward the hue the stock Reinhard's per-channel clip, saturate(g_brightness * x), gives.
+    [branch]
+    if (HDR >= 3.5f && SI.hue_clip > 0.f && handoff_y > 0.f) {
+      float stock_x = exposure * y;
+      float stock_y = stock_x * (1 + stock_x / white_sq) / (stock_x + 1);
+      hdr_color = renodx::tonemap::psychov::HueClip(hdr_color, g_brightness * stock_y / handoff_y, SI.hue_clip);
+    }
   }
 
   // Secondary LUT strength: flagged pixels only, smoothstep over camera distance (stock).
