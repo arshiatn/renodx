@@ -179,6 +179,11 @@ float SmokeTransmittance(float3 origin, float3 direction, float range, uint part
   float transmittance = 1.f;
   uint dimming = 0u;
   uint met = 0u;
+  // The sun-only cards apart from the particles' count: a far tree's card is mostly clear, and a low sun's ray through a wood
+  // met more of them than the count allows before the one whose test passed (the fog's rays after 4), so it came out lit; which
+  // ones came first followed the BLAS, rebuilt each frame: far trees' shadows changing shape all the time (ATN, v40). Past
+  // MAX_CANDIDATES of them it counts as blocked, as Occluded's rays do: the same whatever their order.
+  uint cards = 0u;
   while (query.Proceed()) {
     const uint4 record = records[query.CandidateInstanceID() + query.CandidateGeometryIndex()];
     if (((record.z >> 16) & RECORD_SMOKE) != 0u) {
@@ -196,12 +201,12 @@ float SmokeTransmittance(float3 origin, float3 direction, float range, uint part
         transmittance *= 1.f - density;
         if (density > SMOKE_FAINT) ++dimming;
       }
-    } else if (CANDIDATE_PASSES(query)) {
+      if (dimming >= particles || ++met >= particles * 2u || transmittance < SMOKE_DARK) query.Abort();
+    } else if (++cards > MAX_CANDIDATES || CANDIDATE_PASSES(query)) {
       // A sprite soldier or far tree with it (RT_SUN_ONLY) blocks where its alpha test passes.
       query.CommitNonOpaqueTriangleHit();
       query.Abort();
     }
-    if (dimming >= particles || ++met >= particles * 2u || transmittance < SMOKE_DARK) query.Abort();
   }
   return (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) ? 0.f : transmittance;
 }
