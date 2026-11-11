@@ -77,7 +77,9 @@ inline bool OnLightDraw(ID3D11DeviceContext* native, const Instances& instances)
   auto& objects = runtime.objects;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (!runtime.settings.enabled || runtime.settings.lights == 0 || objects.device.Get() != device.Get() || !objects.bend_extended) return false;
+  if (!runtime.settings.enabled || runtime.settings.lights == 0 || objects.device.Get() != device.Get() || !objects.bend_extended[0]) {
+    return false;
+  }
   // Their objects on the screen-space shadows' device, made when first needed.
   if (!objects.lights_shader) {
     const auto buffer = [&](UINT bytes, UINT bind, UINT misc, UINT stride, ComPtr<ID3D11Buffer>* made) {
@@ -167,7 +169,7 @@ inline bool OnLightDraw(ID3D11DeviceContext* native, const Instances& instances)
       constexpr std::array<UINT, 4> ALL_LIT = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
       native->ClearUnorderedAccessViewUint(objects.light_mask_uav.Get(), ALL_LIT.data());
       ID3D11ShaderResourceView* thin = (settings.thin_light > 0.f) ? objects.thin_srv.Get() : nullptr;
-      ComputeState::Bind(native, objects.bend_extended.Get(),
+      ComputeState::Bind(native, objects.bend_extended[screen_space_shadows::internal::ExtendedVariant(runtime.settings.auto_thickness, false)].Get(),
                          {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin, nullptr, objects.light_dispatches_srv.Get(), objects.light_coordinates_srv.Get()},
                          {nullptr, nullptr, nullptr, objects.light_mask_uav.Get()},
                          {objects.light_camera.Get(), nullptr, objects.settings.Get(), objects.light_mode.Get(), objects.light_settings.Get()});

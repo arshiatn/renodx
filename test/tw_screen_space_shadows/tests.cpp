@@ -1,0 +1,1089 @@
+// The screen-space shadows' extended march (twattila/screen_space_shadows.hpp, screen_space_lights.hpp and their shaders)
+// on WARP, through the module's own Compute, OnThinDraw and OnLightDraw with Attila's embedded shaders (build32\
+// twattila.include). tests.exe <fc24dbce's plain shaders, run.ps1's before_cso> [--time | --time-only]
+// The scenes: a ground plane 2 m below a camera looking 25 degrees down (60 degrees high), boxes on it, ray-traced on the
+// CPU into the depth (and the G-buffer's colour, the banners' depth) and a reference shadow.
+// 1. Rows off: the occlusion and the softened occlusion to the bit as fc24dbce's sss_depth / sss_setup / sss_bend / sss_blur
+//    give them (sss_setup's dispatch list moved into sss_dispatch.hlsli; its arguments and parameters to the bit too), and
+//    the extended march with nothing to do (no banners in view, Auto Thickness off) the plain march's to the bit, with
+//    foliage marked. Pixels Bend's waves write twice in one dispatch vary between runs of the same shaders on WARP (both
+//    sides', under 0.2% of the picture): 8 runs each in turns, a pixel apart where no value of one side's is the other's.
+// 2. Auto Thickness: a deep box and a thick wall the sun shines past towards the camera leak less light behind their
+//    fronts (fewer ground pixels wrong against the reference), a pole no worse (5% + 20 pixels).
+// 3. A red banner: its shadow lets Light Through Banners of the sun through (its occlusion its solid one's x 0.65, within
+//    0.12), its filter is the banner's colour over its brightest channel (Coloured Shadows: green and blue taken, red
+//    kept), none in the sun.
+// 4. Softer Away from the Caster: the penumbra each shadowed pixel gets is its caster's distance x tan(half the disk) in
+//    render pixels (median within 25% of the reference caster's), growing away from a pole; the softened shadow's edge
+//    widens with it.
+// 5. Torch and Fire Shadows: a light beside a box: its bit agrees with a ray-traced reference on 95% of the ground within
+//    its reach, all bits set outside the rectangle its reach covers; of 100 lights (one repeated) the pick is the CPU's
+//    partial_sort by the rays' score, in order, the repeat once.
+// 6. Light Through Banners' replay: a banner's G-buffer draw drawn again after it: tagged (its depth the scene's) where it
+//    stays in view, not where a later draw covers it, far elsewhere; the depth, targets (one kept at slot 6), shader,
+//    rasterizer, depth and blend states as they were.
+// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, and the CPU
+// time of a later light draw. --time-only: that alone.
+#include <windows.h>
+#include <d3d11.h>
+#include <d3dcompiler.h>
+#include <wrl/client.h>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <iterator>
+#include <mutex>
+#include <numeric>
+#include <random>
+#include <ranges>
+#include <span>
+#include <string>
+#include <vector>
+#include "src/games/twattila/screen_space_lights.hpp"
+#include "test/tw_particle_history/mock_reshade.hpp"
+
+using Microsoft::WRL::ComPtr;
+using Vector = std::array<float, 3>;
+using Matrix = std::array<std::array<float, 4>, 4>;  // m[row][column], row vectors: clip = position x m
+namespace action = renodx::utils::command_action;
+namespace sss = twattila::screen_space_shadows;
+namespace lights = twattila::screen_space_lights;
+using DrawContext = action::CommandContext<action::DrawArguments>;
+
+static int failures = 0;
+#define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); ++failures; } } while (false)
+#define REQUIRE(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); std::exit(1); } } while (false)
+
+static std::mutex log_mutex;
+static std::vector<std::string> log_lines;
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) {
+  const std::unique_lock lock(log_mutex);
+  log_lines.emplace_back(message);
+}
+
+static ComPtr<ID3D11Device> device;
+static ComPtr<ID3D11DeviceContext> context;
+
+static void MakeDevice(D3D_DRIVER_TYPE type) {
+  sss::internal::runtime.objects = {};
+  device.Reset();
+  context.Reset();
+  REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, type, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
+                                      context.GetAddressOf())));
+}
+
+static ComPtr<ID3DBlob> Compile(const char* source, const char* target) {
+  ComPtr<ID3DBlob> code;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3DCompile(source, std::strlen(source), nullptr, nullptr, nullptr, "main", target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                        code.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("compile: %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+    std::exit(1);
+  }
+  return code;
+}
+
+static std::vector<uint8_t> ReadFile(const std::string& path) {
+  std::ifstream file(path, std::ios::binary);
+  return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
+
+// ---- Geometry ---------------------------------------------------------------------------------------------------------
+
+constexpr float NEAR_PLANE = 0.1f;
+constexpr float FAR_PLANE = 2000.f;
+constexpr float GROUND_Y = -2.f;
+constexpr float TAN_HALF_Y = 0.57735027f;  // 60 degrees high
+
+static Vector Normalize(Vector v) {
+  const float length = std::sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]));
+  return {v[0] / length, v[1] / length, v[2] / length};
+}
+static float Distance(const Vector& a, const Vector& b) {
+  return std::sqrt(((a[0] - b[0]) * (a[0] - b[0])) + ((a[1] - b[1]) * (a[1] - b[1])) + ((a[2] - b[2]) * (a[2] - b[2])));
+}
+
+static Matrix Multiply(const Matrix& a, const Matrix& b) {
+  Matrix m = {};
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      for (int k = 0; k < 4; ++k) m[i][j] += a[i][k] * b[k][j];
+    }
+  }
+  return m;
+}
+
+static Matrix Inverse(Matrix m) {
+  Matrix inverse = {{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}};
+  for (int column = 0; column < 4; ++column) {
+    int pivot = column;
+    for (int row = column + 1; row < 4; ++row) {
+      if (std::fabs(m[row][column]) > std::fabs(m[pivot][column])) pivot = row;
+    }
+    std::swap(m[column], m[pivot]);
+    std::swap(inverse[column], inverse[pivot]);
+    const float scale = 1.f / m[column][column];
+    for (int j = 0; j < 4; ++j) {
+      m[column][j] *= scale;
+      inverse[column][j] *= scale;
+    }
+    for (int row = 0; row < 4; ++row) {
+      if (row == column) continue;
+      const float factor = m[row][column];
+      for (int j = 0; j < 4; ++j) {
+        m[row][j] -= factor * m[column][j];
+        inverse[row][j] -= factor * inverse[column][j];
+      }
+    }
+  }
+  return inverse;
+}
+
+enum class Kind { SOLID, THIN, FOLIAGE };
+
+struct Box {
+  Vector low;
+  Vector high;
+  Kind kind = Kind::SOLID;
+  Vector albedo = {0.5f, 0.5f, 0.5f};
+};
+
+// The ray from `origin` along `direction` into `box`: its entry distance (> 0) or none.
+static bool HitBox(const Box& box, const Vector& origin, const Vector& direction, float* entry) {
+  float t0 = 0.f;
+  float t1 = 1e30f;
+  for (int axis = 0; axis < 3; ++axis) {
+    if (std::fabs(direction[axis]) < 1e-9f) {
+      if (origin[axis] < box.low[axis] || origin[axis] > box.high[axis]) return false;
+      continue;
+    }
+    float ta = (box.low[axis] - origin[axis]) / direction[axis];
+    float tb = (box.high[axis] - origin[axis]) / direction[axis];
+    if (ta > tb) std::swap(ta, tb);
+    t0 = std::max(t0, ta);
+    t1 = std::min(t1, tb);
+    if (t0 > t1) return false;
+  }
+  *entry = t0;
+  return true;
+}
+
+struct Camera {
+  UINT width = 0;
+  UINT height = 0;
+  Matrix view = {};
+  Matrix projection = {};
+  Matrix view_projection = {};
+};
+
+static Camera MakeCamera(UINT width, UINT height) {
+  const float tilt = 25.f * 3.14159265f / 180.f;
+  const float c = std::cos(tilt);
+  const float s = std::sin(tilt);
+  const float tan_half_x = TAN_HALF_Y * static_cast<float>(width) / static_cast<float>(height);
+  Camera camera = {.width = width, .height = height};
+  camera.view = {{{1, 0, 0, 0}, {0, c, -s, 0}, {0, s, c, 0}, {0, 0, 0, 1}}};
+  camera.projection = {{{1.f / tan_half_x, 0, 0, 0},
+                        {0, 1.f / TAN_HALF_Y, 0, 0},
+                        {0, 0, FAR_PLANE / (FAR_PLANE - NEAR_PLANE), 1},
+                        {0, 0, -NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE), 0}}};
+  camera.view_projection = Multiply(camera.view, camera.projection);
+  return camera;
+}
+
+static std::array<float, 4> Project(const Camera& camera, const Vector& p) {
+  std::array<float, 4> clip = {};
+  for (int j = 0; j < 4; ++j) {
+    clip[j] = (p[0] * camera.view_projection[0][j]) + (p[1] * camera.view_projection[1][j]) + (p[2] * camera.view_projection[2][j])
+              + camera.view_projection[3][j];
+  }
+  return clip;
+}
+
+// What each pixel sees: its depth (1 the sky), the box it is of (-1 the ground, -2 the sky), its world position.
+struct Picture {
+  std::vector<float> depth;
+  std::vector<int> hit;
+  std::vector<Vector> position;
+};
+
+static Picture Trace(const Camera& camera, std::span<const Box> boxes) {
+  const UINT w = camera.width;
+  const UINT h = camera.height;
+  const float tan_half_x = TAN_HALF_Y * static_cast<float>(w) / static_cast<float>(h);
+  Picture picture = {.depth = std::vector<float>(w * h, 1.f), .hit = std::vector<int>(w * h, -2), .position = std::vector<Vector>(w * h)};
+  for (UINT y = 0; y < h; ++y) {
+    for (UINT x = 0; x < w; ++x) {
+      const float ndc_x = ((static_cast<float>(x) + 0.5f) / static_cast<float>(w) * 2.f) - 1.f;
+      const float ndc_y = 1.f - ((static_cast<float>(y) + 0.5f) / static_cast<float>(h) * 2.f);
+      const Vector view_direction = {ndc_x * tan_half_x, ndc_y * TAN_HALF_Y, 1.f};
+      Vector direction = {};
+      for (int j = 0; j < 3; ++j) {
+        direction[j] = (view_direction[0] * camera.view[j][0]) + (view_direction[1] * camera.view[j][1]) + (view_direction[2] * camera.view[j][2]);
+      }
+      float nearest = 1e30f;
+      int hit = -2;
+      for (size_t index = 0; index < boxes.size(); ++index) {
+        float entry = 0.f;
+        if (HitBox(boxes[index], {0, 0, 0}, direction, &entry) && entry < nearest) {
+          nearest = entry;
+          hit = static_cast<int>(index);
+        }
+      }
+      if (direction[1] < 0.f && (GROUND_Y / direction[1]) < nearest) {
+        nearest = GROUND_Y / direction[1];
+        hit = -1;
+      }
+      if (hit == -2) continue;
+      const Vector p = {direction[0] * nearest, direction[1] * nearest, direction[2] * nearest};
+      const auto clip = Project(camera, p);
+      const size_t pixel = (y * w) + x;
+      picture.depth[pixel] = clip[2] / clip[3];
+      picture.hit[pixel] = hit;
+      picture.position[pixel] = p;
+    }
+  }
+  return picture;
+}
+
+// The first box (of `kinds`) the ray from `from` along `direction` meets within `reach`: its index (or -1) and distance.
+static int Occluder(std::span<const Box> boxes, const Vector& from, const Vector& direction, float reach, float* distance) {
+  int found = -1;
+  float nearest = reach;
+  const Vector start = {from[0] + (direction[0] * 1e-3f), from[1] + (direction[1] * 1e-3f), from[2] + (direction[2] * 1e-3f)};
+  for (size_t index = 0; index < boxes.size(); ++index) {
+    float entry = 0.f;
+    if (HitBox(boxes[index], start, direction, &entry) && entry < nearest) {
+      nearest = entry;
+      found = static_cast<int>(index);
+    }
+  }
+  *distance = nearest;
+  return found;
+}
+
+// ---- GPU objects ------------------------------------------------------------------------------------------------------
+
+struct Texture {
+  ComPtr<ID3D11Texture2D> texture;
+  ComPtr<ID3D11ShaderResourceView> srv;
+};
+
+static Texture MakeTexture(UINT width, UINT height, DXGI_FORMAT format, const void* data, UINT pitch, UINT bind = D3D11_BIND_SHADER_RESOURCE) {
+  const D3D11_TEXTURE2D_DESC desc = {width, height, 1, 1, format, {1, 0}, D3D11_USAGE_DEFAULT, bind, 0, 0};
+  const D3D11_SUBRESOURCE_DATA initial = {data, pitch, 0};
+  Texture made;
+  REQUIRE(SUCCEEDED(device->CreateTexture2D(&desc, (data != nullptr) ? &initial : nullptr, made.texture.GetAddressOf())));
+  if ((bind & D3D11_BIND_SHADER_RESOURCE) != 0) {
+    REQUIRE(SUCCEEDED(device->CreateShaderResourceView(made.texture.Get(), nullptr, made.srv.GetAddressOf())));
+  }
+  return made;
+}
+
+static ComPtr<ID3D11Buffer> MakeBuffer(UINT bytes, UINT bind, const void* data, UINT misc = 0, UINT stride = 0) {
+  const D3D11_BUFFER_DESC desc = {bytes, D3D11_USAGE_DEFAULT, bind, 0, misc, stride};
+  const D3D11_SUBRESOURCE_DATA initial = {data, 0, 0};
+  ComPtr<ID3D11Buffer> buffer;
+  REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, (data != nullptr) ? &initial : nullptr, buffer.GetAddressOf())));
+  return buffer;
+}
+
+// A texture's texels (`T` each) through a staging copy.
+template <typename T>
+static std::vector<T> ReadTexture(ID3D11Resource* resource) {
+  ComPtr<ID3D11Texture2D> texture;
+  REQUIRE(SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(texture.GetAddressOf()))));
+  D3D11_TEXTURE2D_DESC desc = {};
+  texture->GetDesc(&desc);
+  desc.Usage = D3D11_USAGE_STAGING;
+  desc.BindFlags = 0;
+  desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  desc.MiscFlags = 0;
+  ComPtr<ID3D11Texture2D> staging;
+  REQUIRE(SUCCEEDED(device->CreateTexture2D(&desc, nullptr, staging.GetAddressOf())));
+  context->CopyResource(staging.Get(), texture.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  REQUIRE(SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped)));
+  std::vector<T> texels(desc.Width * desc.Height);
+  for (UINT y = 0; y < desc.Height; ++y) {
+    std::memcpy(texels.data() + (y * desc.Width), static_cast<const uint8_t*>(mapped.pData) + (y * mapped.RowPitch), desc.Width * sizeof(T));
+  }
+  context->Unmap(staging.Get(), 0);
+  return texels;
+}
+template <typename T>
+static std::vector<T> ReadView(ID3D11View* view) {
+  ComPtr<ID3D11Resource> resource;
+  view->GetResource(resource.GetAddressOf());
+  return ReadTexture<T>(resource.Get());
+}
+template <typename T>
+static std::vector<T> ReadBuffer(ID3D11Buffer* buffer) {
+  D3D11_BUFFER_DESC desc = {};
+  buffer->GetDesc(&desc);
+  const D3D11_BUFFER_DESC staging_desc = {desc.ByteWidth, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ,
+                                         desc.MiscFlags & D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, desc.StructureByteStride};
+  ComPtr<ID3D11Buffer> staging;
+  REQUIRE(SUCCEEDED(device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf())));
+  context->CopyResource(staging.Get(), buffer);
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  REQUIRE(SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped)));
+  std::vector<T> values(desc.ByteWidth / sizeof(T));
+  std::memcpy(values.data(), mapped.pData, values.size() * sizeof(T));
+  context->Unmap(staging.Get(), 0);
+  return values;
+}
+
+// The frame's inputs as the sun draw gives them: the depth (as the depth-stencil copy), the camera in Attila's layout
+// (c0 its position, c5 projection, c9 view projection, c17 and c21 their inverses), the sun's travel direction at float 1
+// of lighting_VS_PS (Attila's), the G-buffer's colour (square roots: gamma 2), the banners' depth (sss_thin's: 1 none).
+struct Frame {
+  Camera camera;
+  Picture picture;
+  Vector sun = {};
+  Texture depth;
+  ComPtr<ID3D11Buffer> camera_constants;
+  ComPtr<ID3D11Buffer> lighting;
+  Texture colour;
+  Texture thin;
+};
+
+static Frame MakeFrame(UINT width, UINT height, std::span<const Box> boxes, const Vector& sun) {
+  Frame frame = {.camera = MakeCamera(width, height), .sun = Normalize(sun)};
+  frame.picture = Trace(frame.camera, boxes);
+  frame.depth = MakeTexture(width, height, DXGI_FORMAT_R32_FLOAT, frame.picture.depth.data(), width * 4);
+  std::array<float, 30 * 4> constants = {};
+  const auto put = [&](UINT base, const Matrix& m) {
+    for (int i = 0; i < 4; ++i) {
+      for (int j = 0; j < 4; ++j) constants[((base + j) * 4) + i] = m[i][j];
+    }
+  };
+  put(5, frame.camera.projection);
+  put(9, frame.camera.view_projection);
+  put(17, Inverse(frame.camera.projection));
+  put(21, Inverse(frame.camera.view_projection));
+  frame.camera_constants = MakeBuffer(sizeof(constants), D3D11_BIND_CONSTANT_BUFFER, constants.data());
+  std::array<float, 16> lighting = {};
+  std::copy(frame.sun.begin(), frame.sun.end(), lighting.begin() + 1);
+  frame.lighting = MakeBuffer(sizeof(lighting), D3D11_BIND_CONSTANT_BUFFER, lighting.data());
+  std::vector<uint32_t> colour(width * height);
+  std::vector<float> thin(width * height, 1.f);
+  for (size_t pixel = 0; pixel < colour.size(); ++pixel) {
+    const int hit = frame.picture.hit[pixel];
+    const Vector albedo = (hit >= 0) ? boxes[hit].albedo : Vector{0.5f, 0.5f, 0.5f};
+    uint32_t packed = 0xFF000000u;
+    for (int channel = 0; channel < 3; ++channel) {
+      packed |= static_cast<uint32_t>(std::lround(std::sqrt(albedo[channel]) * 255.f)) << (8 * channel);
+    }
+    colour[pixel] = packed;
+    if (hit >= 0 && boxes[hit].kind == Kind::THIN) thin[pixel] = frame.picture.depth[pixel];
+  }
+  frame.colour = MakeTexture(width, height, DXGI_FORMAT_R8G8B8A8_UNORM, colour.data(), width * 4);
+  frame.thin = MakeTexture(width, height, DXGI_FORMAT_R32_FLOAT, thin.data(), width * 4);
+  return frame;
+}
+
+// The foliage's depth pass for sss_depth: the depth before it (without the foliage boxes) and after (with them).
+struct Foliage {
+  Texture before;
+  Texture after;
+};
+
+// One frame of the module: its settings, then the march at the sun's draw (Compute; the banners' depth this frame's where
+// `thin` is set; the foliage's copies where given). Returns what the sun draws read (the softened occlusion with
+// Softness or Softer Away from the Caster).
+static ID3D11ShaderResourceView* RunFrame(const Frame& frame, const sss::Settings& settings, bool thin = false, const Foliage* foliage = nullptr) {
+  auto& runtime = sss::internal::runtime;
+  auto& objects = runtime.objects;
+  ++runtime.frame;
+  runtime.settings = settings;
+  runtime.display_width = frame.camera.width;
+  runtime.display_height = frame.camera.height;
+  REQUIRE(sss::internal::Prepare(device.Get(), frame.camera.width, frame.camera.height));
+  if (thin) {
+    objects.thin_texture = frame.thin.texture;
+    objects.thin_srv = frame.thin.srv;
+    runtime.thin_frame = runtime.frame;
+  }
+  if (foliage != nullptr) {
+    objects.before_foliage_srv = foliage->before.srv;
+    objects.after_foliage_srv = foliage->after.srv;
+    runtime.before_foliage_frame = runtime.frame;
+    runtime.after_foliage_frame = runtime.frame;
+  }
+  sss::internal::Compute(context.Get(), frame.depth.srv.Get(), false, frame.camera_constants.Get(), frame.lighting.Get(), 1,
+                         settings.coloured ? frame.colour.srv.Get() : nullptr);
+  runtime.computed_frame = runtime.frame;
+  return sss::internal::Softened(settings) ? objects.soft_srv.Get() : objects.occlusion_srv.Get();
+}
+
+static sss::Settings Defaults() { return {.enabled = true}; }
+
+// Ground pixels wrong against the reference (occlusion over half where it is lit, under half where it is shadowed).
+static int WrongPixels(const Frame& frame, std::span<const Box> boxes, const std::vector<uint8_t>& occlusion) {
+  int wrong = 0;
+  const Vector to_sun = {-frame.sun[0], -frame.sun[1], -frame.sun[2]};
+  for (size_t pixel = 0; pixel < occlusion.size(); ++pixel) {
+    if (frame.picture.hit[pixel] != -1) continue;
+    float distance = 0.f;
+    const bool shadowed = Occluder(boxes, frame.picture.position[pixel], to_sun, 1e30f, &distance) >= 0;
+    if (shadowed != (occlusion[pixel] > 127)) ++wrong;
+  }
+  return wrong;
+}
+
+// ---- Cases ------------------------------------------------------------------------------------------------------------
+
+static const std::array<Box, 1> BOX_SCENE = {{{.low = {-1.f, -2.f, 9.f}, .high = {1.f, 1.f, 11.f}}}};
+static const Vector BOX_SUN = {0.6f, -0.5f, 0.6f};
+
+static void TestRowsOff(const std::string& before_folder) {
+  std::printf("1. rows off\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const Frame frame = MakeFrame(480, 270, BOX_SCENE, BOX_SUN);
+  auto& objects = sss::internal::runtime.objects;
+  // Bend's waves near a quadrant's diagonal can write a pixel twice in one dispatch, and WARP runs the groups in any
+  // order: such a pixel can differ between two runs of the same shaders (today's too). Both sides run 8 times, in turns;
+  // a pixel is apart when no run of one gives a value a run of the other gave.
+  constexpr int RUNS = 8;
+  const auto compare = [](const char* what, const std::vector<std::vector<uint8_t>>& ours, const std::vector<std::vector<uint8_t>>& theirs) {
+    int varying = 0;
+    int apart = 0;
+    int shadowed = 0;
+    for (size_t pixel = 0; pixel < ours[0].size(); ++pixel) {
+      bool stable = true;
+      bool shared = false;
+      for (int run = 0; run < RUNS; ++run) {
+        stable = stable && ours[run][pixel] == ours[0][pixel] && theirs[run][pixel] == ours[0][pixel];
+        for (int other = 0; other < RUNS; ++other) shared = shared || ours[run][pixel] == theirs[other][pixel];
+      }
+      varying += stable ? 0 : 1;
+      apart += shared ? 0 : 1;
+      shadowed += (stable && ours[0][pixel] > 127) ? 1 : 0;
+    }
+    std::printf("   %s: %d shadowed pixels the same, %d apart, %d varying between runs\n", what, shadowed, apart, varying);
+    CHECK(apart == 0);
+    CHECK(shadowed > 100 && varying < static_cast<int>(ours[0].size() / 500));
+  };
+  for (const float softness : {0.f, 2.f}) {
+    sss::Settings settings = Defaults();
+    settings.softness = softness;
+    // fc24dbce's passes in place of the module's own (the module's bindings), in turns.
+    const auto load = [&](const char* name) {
+      const auto code = ReadFile(before_folder + "\\" + name + ".cso");
+      REQUIRE(!code.empty());
+      ComPtr<ID3D11ComputeShader> shader;
+      REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
+      return shader;
+    };
+    REQUIRE(sss::internal::Prepare(device.Get(), frame.camera.width, frame.camera.height));
+    const std::array<ComPtr<ID3D11ComputeShader>, 4> module_shaders = {objects.depth_copy, objects.setup, objects.bend, objects.blur};
+    const std::array<ComPtr<ID3D11ComputeShader>, 4> before_shaders = {load("sss_depth"), load("sss_setup"), load("sss_bend"), load("sss_blur")};
+    std::vector<std::vector<uint8_t>> ours;
+    std::vector<std::vector<uint8_t>> theirs;
+    std::array<std::vector<uint8_t>, 2> parameters;
+    std::array<std::vector<uint8_t>, 2> arguments;
+    for (int run = 0; run < RUNS * 2; ++run) {
+      const auto& shaders = ((run % 2) == 0) ? module_shaders : before_shaders;
+      objects.depth_copy = shaders[0];
+      objects.setup = shaders[1];
+      objects.bend = shaders[2];
+      objects.blur = shaders[3];
+      auto& results = ((run % 2) == 0) ? ours : theirs;
+      results.push_back(ReadView<uint8_t>(RunFrame(frame, settings)));
+      parameters[run % 2] = ReadBuffer<uint8_t>(objects.parameters.Get());
+      arguments[run % 2] = ReadBuffer<uint8_t>(objects.arguments.Get());
+    }
+    objects.depth_copy = module_shaders[0];
+    objects.setup = module_shaders[1];
+    objects.bend = module_shaders[2];
+    objects.blur = module_shaders[3];
+    // sss_setup's output, the march's whole input from it: to the bit.
+    CHECK(parameters[0] == parameters[1]);
+    CHECK(arguments[0] == arguments[1]);
+    compare((softness == 0.f) ? "against fc24dbce's" : "Softness 2 px against fc24dbce's", ours, theirs);
+  }
+  // The extended march with nothing to do: banners on but none in view, foliage marked (a bush's depth pass).
+  const std::array<Box, 2> bush_scene = {{BOX_SCENE[0], {.low = {2.f, -2.f, 7.f}, .high = {3.f, -1.f, 8.f}, .kind = Kind::FOLIAGE}}};
+  const Frame bush = MakeFrame(480, 270, bush_scene, BOX_SUN);
+  const Frame without = MakeFrame(480, 270, std::span(bush_scene).first(1), BOX_SUN);
+  const Foliage foliage = {.before = without.depth, .after = bush.depth};
+  sss::Settings plain_settings = Defaults();
+  plain_settings.foliage_light = 0.5f;
+  sss::Settings extended_settings = plain_settings;
+  extended_settings.thin_light = 0.35f;
+  std::vector<std::vector<uint8_t>> plain;
+  std::vector<std::vector<uint8_t>> extended;
+  for (int run = 0; run < RUNS; ++run) {
+    plain.push_back(ReadView<uint8_t>(RunFrame(bush, plain_settings, false, &foliage)));
+    extended.push_back(ReadView<uint8_t>(RunFrame(bush, extended_settings, true, &foliage)));
+    CHECK(sss::internal::runtime.objects.uploaded_extended.thin_light == 0.35f);
+  }
+  const auto lit_through = std::ranges::count_if(plain[0], [](uint8_t value) { return value > 40 && value < 200; });
+  std::printf("   foliage at 0.5: %zu half-lit pixels\n", static_cast<size_t>(lit_through));
+  CHECK(lit_through > 50);
+  compare("extended march with nothing to do against the plain one", extended, plain);
+}
+
+static void TestAutoThickness() {
+  std::printf("2. Auto Thickness\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  // The sun shines past them towards the camera: their shadows fall in front of them.
+  const Vector sun = {0.25f, -0.55f, -0.8f};
+  struct Case {
+    const char* name;
+    Box box;
+    bool must_improve;
+  };
+  const std::array<Case, 3> cases = {{
+      {"deep box 4 x 3 x 4 m", {.low = {-2.f, -2.f, 14.f}, .high = {2.f, 1.f, 18.f}}, true},
+      {"thick wall 8 x 2 x 2 m", {.low = {-4.f, -2.f, 14.f}, .high = {4.f, 0.f, 16.f}}, true},
+      {"pole 0.2 x 3 x 0.2 m", {.low = {-0.1f, -2.f, 12.f}, .high = {0.1f, 1.f, 12.2f}}, false},
+  }};
+  for (const auto& test_case : cases) {
+    const std::array<Box, 1> boxes = {test_case.box};
+    const Frame frame = MakeFrame(480, 270, boxes, sun);
+    sss::Settings settings = Defaults();
+    const int off = WrongPixels(frame, boxes, ReadView<uint8_t>(RunFrame(frame, settings)));
+    settings.auto_thickness = true;
+    const int on = WrongPixels(frame, boxes, ReadView<uint8_t>(RunFrame(frame, settings)));
+    std::printf("   %s: wrong ground pixels %d off, %d on\n", test_case.name, off, on);
+    if (test_case.must_improve) {
+      CHECK(on < off);
+    } else {
+      CHECK(on <= (off * 105 / 100) + 20);
+    }
+  }
+}
+
+static void TestBanner() {
+  std::printf("3. Light Through Banners, Coloured Shadows\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const Vector sun = {0.2f, -0.6f, -0.77f};
+  std::array<Box, 1> boxes = {{{.low = {-1.f, -0.6f, 12.f}, .high = {1.f, 1.4f, 12.05f}, .kind = Kind::THIN, .albedo = {0.8f, 0.1f, 0.1f}}}};
+  const Frame frame = MakeFrame(480, 270, boxes, sun);
+  sss::internal::runtime.albedo_power = 2.f;
+  sss::Settings settings = Defaults();
+  settings.thin_light = 0.35f;
+  settings.coloured = true;
+  const auto occlusion = ReadView<uint8_t>(RunFrame(frame, settings, true));
+  REQUIRE(sss::internal::runtime.objects.tint_srv);
+  const auto tint = ReadView<uint32_t>(sss::internal::runtime.objects.tint_srv.Get());
+  settings.thin_light = 0.f;
+  settings.coloured = false;
+  const auto solid = ReadView<uint8_t>(RunFrame(frame, settings));
+  // The banner's shadow on the ground, away from its edges (3 pixels in), and the ground in the sun.
+  const Vector to_sun = {-frame.sun[0], -frame.sun[1], -frame.sun[2]};
+  const UINT w = frame.camera.width;
+  const UINT h = frame.camera.height;
+  std::vector<uint8_t> shadow(w * h, 0);
+  for (size_t pixel = 0; pixel < shadow.size(); ++pixel) {
+    float distance = 0.f;
+    if (frame.picture.hit[pixel] == -1 && Occluder(boxes, frame.picture.position[pixel], to_sun, 1e30f, &distance) >= 0) shadow[pixel] = 1;
+  }
+  double occlusion_sum = 0.0;
+  double solid_sum = 0.0;
+  std::array<double, 3> tint_sum = {};
+  int inner = 0;
+  uint32_t sunlit_tint = 0;
+  for (UINT y = 3; y + 3 < h; ++y) {
+    for (UINT x = 3; x + 3 < w; ++x) {
+      bool all = true;
+      bool none = true;
+      for (int dy = -3; dy <= 3; ++dy) {
+        for (int dx = -3; dx <= 3; ++dx) {
+          const uint8_t value = shadow[((y + dy) * w) + x + dx];
+          all = all && value != 0;
+          none = none && value == 0;
+        }
+      }
+      const size_t pixel = (y * w) + x;
+      if (all) {
+        occlusion_sum += occlusion[pixel] / 255.0;
+        solid_sum += solid[pixel] / 255.0;
+        for (int channel = 0; channel < 3; ++channel) tint_sum[channel] += ((tint[pixel] >> (8 * channel)) & 0xFF) / 255.0;
+        ++inner;
+      } else if (none && frame.picture.hit[pixel] == -1) {
+        sunlit_tint = std::max(sunlit_tint, tint[pixel] & 0xFFFFFFu);
+      }
+    }
+  }
+  REQUIRE(inner > 50);
+  const double mean = occlusion_sum / inner;
+  const double solid_mean = solid_sum / inner;
+  const std::array<double, 3> filter = {tint_sum[0] / inner, tint_sum[1] / inner, tint_sum[2] / inner};
+  std::printf("   %d shadow pixels: occlusion %.3f (solid %.3f), filter %.3f %.3f %.3f (expected 0 0.875 0.875), in the sun %06X\n", inner, mean,
+              solid_mean, filter[0], filter[1], filter[2], sunlit_tint);
+  // Bend's 4 lanes average a thin sheet's shadow (a lane shadows only where one of its samples meets it): the banner's
+  // occlusion is its solid one's x (1 - its share).
+  CHECK(solid_mean > 0.3);
+  CHECK(std::fabs((mean / solid_mean) - 0.65) < 0.12);
+  CHECK(filter[0] < 0.1 && filter[1] > 0.6 && filter[2] > 0.6);
+  CHECK(sunlit_tint == 0);
+}
+
+static void TestSofter() {
+  std::printf("4. Softer Away from the Caster\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const Vector sun = {0.8f, -0.6f, 0.f};
+  const std::array<Box, 1> boxes = {{{.low = {-0.1f, -2.f, 14.9f}, .high = {0.1f, 2.f, 15.1f}}}};
+  const UINT w = 960;
+  const UINT h = 540;
+  const Frame frame = MakeFrame(w, h, boxes, sun);
+  sss::Settings settings = Defaults();
+  settings.sun_disk = 2.f;
+  const auto soft = ReadView<uint8_t>(RunFrame(frame, settings));
+  const auto penumbra = ReadView<uint16_t>(sss::internal::runtime.objects.penumbra_srv.Get());
+  const auto half_to_float = [](uint16_t half) {
+    const uint32_t sign = (half & 0x8000u) << 16;
+    const uint32_t exponent = (half >> 10) & 0x1Fu;
+    const uint32_t mantissa = half & 0x3FFu;
+    const uint32_t bits = (exponent == 0) ? sign : (sign | ((exponent + 112u) << 23) | (mantissa << 13));
+    float value = 0.f;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+  };
+  const Vector to_sun = {-frame.sun[0], -frame.sun[1], -frame.sun[2]};
+  const float tangent = std::tan(1.f * 3.14159265f / 180.f);
+  std::vector<float> ratios;
+  double near_radius = 0.0;
+  double far_radius = 0.0;
+  int near_count = 0;
+  int far_count = 0;
+  for (size_t pixel = 0; pixel < penumbra.size(); ++pixel) {
+    float distance = 0.f;
+    if (frame.picture.hit[pixel] != -1 || Occluder(boxes, frame.picture.position[pixel], to_sun, 1e30f, &distance) < 0) continue;
+    const float radius = half_to_float(penumbra[pixel]);
+    if (radius <= 0.f) continue;
+    const Vector& p = frame.picture.position[pixel];
+    const float view_z = (p[1] * frame.camera.view[1][2]) + (p[2] * frame.camera.view[2][2]);
+    const float expected = distance * tangent * 0.5f * static_cast<float>(h) * frame.camera.projection[1][1] / view_z;
+    if (expected >= sss::internal::SOFT_RADIUS_2160 * static_cast<float>(h) / 2160.f) continue;
+    ratios.push_back(radius / expected);
+    // Along the shadow: its first metre and its last.
+    if (p[0] < 1.5f) {
+      near_radius += radius;
+      ++near_count;
+    } else if (p[0] > 3.5f) {
+      far_radius += radius;
+      ++far_count;
+    }
+  }
+  REQUIRE(ratios.size() > 50 && near_count > 5 && far_count > 5);
+  std::ranges::nth_element(ratios, ratios.begin() + static_cast<ptrdiff_t>(ratios.size() / 2));
+  const float median = ratios[ratios.size() / 2];
+  near_radius /= near_count;
+  far_radius /= far_count;
+  // The softened shadow's edge: pixels between a tenth and nine tenths shadowed near the pole and far from it.
+  int near_edge = 0;
+  int far_edge = 0;
+  for (size_t pixel = 0; pixel < soft.size(); ++pixel) {
+    if (frame.picture.hit[pixel] != -1 || soft[pixel] < 26 || soft[pixel] > 229) continue;
+    const float x = frame.picture.position[pixel][0];
+    if (x > 0.2f && x < 1.5f) ++near_edge;
+    if (x > 3.5f && x < 4.8f) ++far_edge;
+  }
+  std::printf("   %zu shadowed pixels: penumbra over the reference median %.3f; radius %.2f px near, %.2f px far; edge pixels %d near, %d far\n",
+              ratios.size(), median, near_radius, far_radius, near_edge, far_edge);
+  CHECK(median > 0.75f && median < 1.25f);
+  CHECK(far_radius > near_radius * 1.5);
+  CHECK(far_edge > near_edge);
+}
+
+// A light draw's instance: its colour (POSITION1) and position and reach (POSITION2), 48 bytes apart.
+struct LightInstance {
+  std::array<float, 4> colour;
+  std::array<float, 4> light;
+  std::array<float, 4> other;
+};
+
+// Two frames of light draws (`instances` each), the second marching the first's: true if the second bound the lit bits.
+static bool LightFrames(const Frame& frame, std::span<const LightInstance> instances, uint32_t wanted) {
+  const auto buffer = MakeBuffer(static_cast<UINT>(instances.size_bytes()), D3D11_BIND_VERTEX_BUFFER, instances.data());
+  sss::Settings settings = Defaults();
+  settings.lights = wanted;
+  bool bound = false;
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    RunFrame(frame, settings);
+    bound = lights::OnLightDraw(context.Get(), {.buffer = buffer.Get(),
+                                                .first = 0,
+                                                .count = static_cast<UINT>(instances.size()),
+                                                .stride = sizeof(LightInstance),
+                                                .position = offsetof(LightInstance, light),
+                                                .colour = offsetof(LightInstance, colour)});
+  }
+  return bound;
+}
+
+static void TestTorches() {
+  std::printf("5. Torch and Fire Shadows\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const std::array<Box, 1> boxes = {{{.low = {-0.5f, -2.f, 9.5f}, .high = {0.5f, -1.f, 10.5f}}}};
+  const Frame frame = MakeFrame(480, 270, boxes, BOX_SUN);
+  const LightInstance torch = {.colour = {4.f, 2.f, 0.5f, 0.f}, .light = {2.f, -1.2f, 10.f, 6.f}};
+  REQUIRE(LightFrames(frame, std::span(&torch, 1), 4));
+  auto& objects = sss::internal::runtime.objects;
+  const auto mask = ReadView<uint32_t>(objects.light_mask_uav.Get());
+  const auto list = ReadBuffer<std::array<float, 4>>(objects.light_list.Get());
+  uint32_t count = 0;
+  std::memcpy(&count, &list[32][0], sizeof(count));
+  CHECK(count == 1 && list[0] == torch.light);
+  // The rectangle its reach covers on screen (sss_lights': its box's corners).
+  float low_x = 1e30f;
+  float low_y = 1e30f;
+  float high_x = -1e30f;
+  float high_y = -1e30f;
+  for (int corner = 0; corner < 8; ++corner) {
+    const float reach = torch.light[3];
+    const Vector p = {torch.light[0] + (((corner & 1) != 0) ? reach : -reach), torch.light[1] + (((corner & 2) != 0) ? reach : -reach),
+                      torch.light[2] + (((corner & 4) != 0) ? reach : -reach)};
+    const auto clip = Project(frame.camera, p);
+    const float x = ((clip[0] / clip[3] * 0.5f) + 0.5f) * static_cast<float>(frame.camera.width);
+    const float y = ((clip[1] / clip[3] * -0.5f) + 0.5f) * static_cast<float>(frame.camera.height);
+    low_x = std::min(low_x, x);
+    low_y = std::min(low_y, y);
+    high_x = std::max(high_x, x);
+    high_y = std::max(high_y, y);
+  }
+  int agree = 0;
+  int compared = 0;
+  int shadowed = 0;
+  int outside_not_lit = 0;
+  const Vector light = {torch.light[0], torch.light[1], torch.light[2]};
+  for (UINT y = 0; y < frame.camera.height; ++y) {
+    for (UINT x = 0; x < frame.camera.width; ++x) {
+      const size_t pixel = (y * frame.camera.width) + x;
+      const bool inside = static_cast<float>(x) >= std::floor(low_x) - 1.f && static_cast<float>(x) < std::ceil(high_x) + 1.f
+                          && static_cast<float>(y) >= std::floor(low_y) - 1.f && static_cast<float>(y) < std::ceil(high_y) + 1.f;
+      if (!inside) {
+        if (mask[pixel] != UINT32_MAX) ++outside_not_lit;
+        continue;
+      }
+      if (frame.picture.hit[pixel] != -1) continue;
+      const Vector& p = frame.picture.position[pixel];
+      const float to_light = Distance(p, light);
+      if (to_light > torch.light[3]) continue;
+      const Vector direction = {(light[0] - p[0]) / to_light, (light[1] - p[1]) / to_light, (light[2] - p[2]) / to_light};
+      float distance = 0.f;
+      const bool blocked = Occluder(boxes, p, direction, to_light, &distance) >= 0;
+      const bool lit = (mask[pixel] & 1u) != 0;
+      shadowed += blocked ? 1 : 0;
+      agree += (blocked != lit) ? 1 : 0;
+      ++compared;
+    }
+  }
+  std::printf("   %d ground pixels in reach (%d shadowed by the reference): %.1f%% agree; %d outside the rectangle not all lit\n", compared,
+              shadowed, 100.0 * agree / std::max(compared, 1), outside_not_lit);
+  CHECK(compared > 1000 && shadowed > 100);
+  CHECK(agree >= compared * 95 / 100);
+  CHECK(outside_not_lit == 0);
+
+  // 100 lights, one of them twice: the pick as the rays' (rt_core.hpp's score, partial_sort).
+  std::mt19937 random(7);
+  std::uniform_real_distribution<float> spread(-30.f, 30.f);
+  std::uniform_real_distribution<float> unit(0.1f, 4.f);
+  std::vector<LightInstance> many;
+  for (int index = 0; index < 100; ++index) {
+    many.push_back({.colour = {unit(random), unit(random), unit(random), 0.f}, .light = {spread(random), -1.f, 20.f + spread(random), unit(random) * 3.f}});
+  }
+  many.push_back(many[17]);
+  REQUIRE(LightFrames(frame, many, 8));
+  const auto picked = ReadBuffer<std::array<float, 4>>(objects.light_list.Get());
+  const auto score = [](const LightInstance& instance) {
+    const auto& l = instance.light;
+    return std::max({instance.colour[0], instance.colour[1], instance.colour[2]}) * l[3] * l[3] / std::max((l[0] * l[0]) + (l[1] * l[1]) + (l[2] * l[2]), 1.f);
+  };
+  std::vector<LightInstance> unique(many.begin(), many.end() - 1);
+  std::ranges::stable_sort(unique, [&](const LightInstance& a, const LightInstance& b) { return score(a) > score(b); });
+  std::memcpy(&count, &picked[32][0], sizeof(count));
+  bool same = count == 8;
+  for (uint32_t rank = 0; same && rank < 8; ++rank) {
+    same = picked[rank] == unique[rank].light && picked[33 + rank][0] == unique[rank].colour[0];
+  }
+  std::printf("   100 lights + a repeat: the 8 picked are the CPU's, in order: %s\n", same ? "yes" : "NO");
+  CHECK(same);
+}
+
+static void TestReplay() {
+  std::printf("6. the banners' replay\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  constexpr UINT W = 256;
+  constexpr UINT H = 144;
+  auto& runtime = sss::internal::runtime;
+  const Frame frame = MakeFrame(W, H, BOX_SCENE, BOX_SUN);
+  sss::Settings settings = Defaults();
+  settings.thin_light = 0.35f;
+  RunFrame(frame, settings);  // the module's objects
+  ++runtime.frame;
+  // The game: a G-buffer target, its depth (D32), a vertex shader placing quads by the camera, a pixel shader.
+  const char* vertex_source = R"(
+cbuffer camera : register(b0) { float4x4 view_projection; }
+float4 main(float3 position : POSITION) : SV_Position { return mul(float4(position, 1), view_projection); })";
+  const char* pixel_source = R"(float4 main(float4 position : SV_Position) : SV_Target { return float4(0.5, 0.25, 0.125, 1); })";
+  const auto vertex_code = Compile(vertex_source, "vs_5_0");
+  ComPtr<ID3D11VertexShader> vertex_shader;
+  REQUIRE(SUCCEEDED(device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex_shader.GetAddressOf())));
+  const auto pixel_code = Compile(pixel_source, "ps_5_0");
+  ComPtr<ID3D11PixelShader> pixel_shader;
+  REQUIRE(SUCCEEDED(device->CreatePixelShader(pixel_code->GetBufferPointer(), pixel_code->GetBufferSize(), nullptr, pixel_shader.GetAddressOf())));
+  const D3D11_INPUT_ELEMENT_DESC element = {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0};
+  ComPtr<ID3D11InputLayout> layout;
+  REQUIRE(SUCCEEDED(device->CreateInputLayout(&element, 1, vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), layout.GetAddressOf())));
+  // A banner 2 x 2 m at 10 m, then a board in front of its left half.
+  const std::array<float, 36> quads = {-1.f, -1.f, 10.f, -1.f, 1.f, 10.f, 1.f, 1.f, 10.f, -1.f, -1.f, 10.f, 1.f, 1.f, 10.f, 1.f, -1.f, 10.f,
+                                       -3.f, -3.f, 8.f, -3.f, 3.f, 8.f, 0.f, 3.f, 8.f, -3.f, -3.f, 8.f, 0.f, 3.f, 8.f, 0.f, -3.f, 8.f};
+  const auto vertices = MakeBuffer(sizeof(quads), D3D11_BIND_VERTEX_BUFFER, quads.data());
+  std::array<float, 16> matrix = {};
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) matrix[(j * 4) + i] = frame.camera.view_projection[i][j];
+  }
+  const auto camera = MakeBuffer(sizeof(matrix), D3D11_BIND_CONSTANT_BUFFER, matrix.data());
+  const Texture target = MakeTexture(W, H, DXGI_FORMAT_R8G8B8A8_UNORM, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+  const Texture kept = MakeTexture(W, H, DXGI_FORMAT_R8G8B8A8_UNORM, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> target_view;
+  ComPtr<ID3D11RenderTargetView> kept_view;
+  REQUIRE(SUCCEEDED(device->CreateRenderTargetView(target.texture.Get(), nullptr, target_view.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateRenderTargetView(kept.texture.Get(), nullptr, kept_view.GetAddressOf())));
+  const D3D11_TEXTURE2D_DESC depth_desc = {W, H, 1, 1, DXGI_FORMAT_R32_TYPELESS, {1, 0}, D3D11_USAGE_DEFAULT,
+                                           D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  ComPtr<ID3D11Texture2D> depth;
+  REQUIRE(SUCCEEDED(device->CreateTexture2D(&depth_desc, nullptr, depth.GetAddressOf())));
+  const D3D11_DEPTH_STENCIL_VIEW_DESC dsv_desc = {.Format = DXGI_FORMAT_D32_FLOAT, .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D};
+  ComPtr<ID3D11DepthStencilView> depth_view;
+  REQUIRE(SUCCEEDED(device->CreateDepthStencilView(depth.Get(), &dsv_desc, depth_view.GetAddressOf())));
+  const D3D11_DEPTH_STENCIL_DESC depth_state_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL,
+                                                     .DepthFunc = D3D11_COMPARISON_LESS, .StencilEnable = TRUE, .StencilReadMask = 0xFF,
+                                                     .StencilWriteMask = 0xFF,
+                                                     .FrontFace = {D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_KEEP, D3D11_COMPARISON_ALWAYS},
+                                                     .BackFace = {D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_KEEP, D3D11_COMPARISON_ALWAYS}};
+  ComPtr<ID3D11DepthStencilState> depth_state;
+  REQUIRE(SUCCEEDED(device->CreateDepthStencilState(&depth_state_desc, depth_state.GetAddressOf())));
+  const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE, .DepthClipEnable = TRUE};
+  ComPtr<ID3D11RasterizerState> rasterizer;
+  REQUIRE(SUCCEEDED(device->CreateRasterizerState(&rasterizer_desc, rasterizer.GetAddressOf())));
+  D3D11_BLEND_DESC blend_desc = {};
+  blend_desc.RenderTarget[0] = {TRUE, D3D11_BLEND_ONE, D3D11_BLEND_ONE, D3D11_BLEND_OP_ADD, D3D11_BLEND_ONE, D3D11_BLEND_ONE, D3D11_BLEND_OP_ADD, 0x7};
+  ComPtr<ID3D11BlendState> blend;
+  REQUIRE(SUCCEEDED(device->CreateBlendState(&blend_desc, blend.GetAddressOf())));
+  context->ClearDepthStencilView(depth_view.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.f, 0);
+  std::array<ID3D11RenderTargetView*, 8> targets = {target_view.Get(), nullptr, nullptr, nullptr, nullptr, nullptr, kept_view.Get(), nullptr};
+  context->OMSetRenderTargets(8, targets.data(), depth_view.Get());
+  const D3D11_VIEWPORT viewport = {0.f, 0.f, static_cast<float>(W), static_cast<float>(H), 0.f, 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->RSSetState(rasterizer.Get());
+  const std::array<float, 4> blend_factor = {0.1f, 0.2f, 0.3f, 0.4f};
+  context->OMSetBlendState(blend.Get(), blend_factor.data(), 0x00FF00FFu);
+  context->OMSetDepthStencilState(depth_state.Get(), 7);
+  context->IASetInputLayout(layout.Get());
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  const UINT stride = 12;
+  const UINT offset = 0;
+  context->IASetVertexBuffers(0, 1, vertices.GetAddressOf(), &stride, &offset);
+  context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+  context->VSSetConstantBuffers(0, 1, camera.GetAddressOf());
+  context->PSSetShader(pixel_shader.Get(), nullptr, 0);
+
+  mock::Device mock_device;
+  mock_device.native = device;
+  mock::CommandList commands;
+  commands.owner = &mock_device;
+  commands.native = context;
+  static constexpr sss::ThinShader BANNER = {.hash = 0x12345678};
+  DrawContext command;
+  command.cmd_list = &commands;
+  command.callback_data = &BANNER;
+  command.arguments = {.vertex_count = 6, .instance_count = 1};
+  context->Draw(6, 0);  // the game's draw
+  const auto depth_drawn = ReadTexture<float>(depth.Get());
+  const auto result = sss::OnThinDraw.template operator()<sss::ThinShader>(command);
+  REQUIRE(result.finalize_callback != nullptr && result.post_callback == nullptr && !result.bypass);
+  result.finalize_callback(command, nullptr);
+  CHECK(runtime.thin_frame == runtime.frame);
+  CHECK(depth_drawn == ReadTexture<float>(depth.Get()));
+  // The game's state as it was.
+  std::array<ID3D11RenderTargetView*, 8> bound_targets = {};
+  ComPtr<ID3D11DepthStencilView> bound_depth;
+  context->OMGetRenderTargets(8, bound_targets.data(), bound_depth.GetAddressOf());
+  CHECK(bound_targets == targets);
+  CHECK(bound_depth.Get() == depth_view.Get());
+  for (auto* bound : bound_targets) {
+    if (bound != nullptr) bound->Release();
+  }
+  ComPtr<ID3D11PixelShader> bound_pixel_shader;
+  context->PSGetShader(bound_pixel_shader.GetAddressOf(), nullptr, nullptr);
+  CHECK(bound_pixel_shader.Get() == pixel_shader.Get());
+  ComPtr<ID3D11RasterizerState> bound_rasterizer;
+  context->RSGetState(bound_rasterizer.GetAddressOf());
+  CHECK(bound_rasterizer.Get() == rasterizer.Get());
+  ComPtr<ID3D11DepthStencilState> bound_depth_state;
+  UINT stencil_reference = 0;
+  context->OMGetDepthStencilState(bound_depth_state.GetAddressOf(), &stencil_reference);
+  CHECK(bound_depth_state.Get() == depth_state.Get() && stencil_reference == 7);
+  ComPtr<ID3D11BlendState> bound_blend;
+  std::array<float, 4> bound_factor = {};
+  UINT sample_mask = 0;
+  context->OMGetBlendState(bound_blend.GetAddressOf(), bound_factor.data(), &sample_mask);
+  CHECK(bound_blend.Get() == blend.Get() && bound_factor == blend_factor && sample_mask == 0x00FF00FFu);
+
+  context->Draw(6, 6);  // a later draw: the board
+  const auto scene_depth = ReadTexture<float>(depth.Get());
+  const auto thin = ReadView<float>(runtime.objects.thin_srv.Get());
+  int tagged = 0;
+  int covered = 0;
+  int covered_tagged = 0;
+  int elsewhere_wrong = 0;
+  const auto matches = [](float thin_depth, float depth_value) {
+    const float remaining = std::fabs(1.f - depth_value);
+    return remaining > 1e-7f && std::fabs(thin_depth - depth_value) <= 4e-7f + (2e-4f * remaining);
+  };
+  for (size_t pixel = 0; pixel < thin.size(); ++pixel) {
+    const bool banner = depth_drawn[pixel] < 1.f;
+    const bool board = scene_depth[pixel] < depth_drawn[pixel] || (!banner && scene_depth[pixel] < 1.f);
+    if (banner && !board) {
+      tagged += matches(thin[pixel], scene_depth[pixel]) ? 1 : 0;
+    } else if (banner) {
+      ++covered;
+      covered_tagged += matches(thin[pixel], scene_depth[pixel]) ? 1 : 0;
+    } else if (thin[pixel] != 1.f) {
+      ++elsewhere_wrong;
+    }
+  }
+  const auto visible = std::ranges::count_if(std::views::iota(size_t{0}, thin.size()), [&](size_t pixel) {
+    return depth_drawn[pixel] < 1.f && !(scene_depth[pixel] < depth_drawn[pixel]);
+  });
+  std::printf("   banner pixels in view %zu: %d tagged; covered later %d: %d tagged; elsewhere not far: %d\n", static_cast<size_t>(visible), tagged,
+              covered, covered_tagged, elsewhere_wrong);
+  CHECK(visible > 100 && tagged == visible);
+  CHECK(covered > 100 && covered_tagged == 0);
+  CHECK(elsewhere_wrong == 0);
+}
+
+// ---- --time -----------------------------------------------------------------------------------------------------------
+
+// The median GPU time (ms) of `work` over 30 frames, after 5 to warm up.
+template <typename Work>
+static double GpuMilliseconds(Work work) {
+  ComPtr<ID3D11Query> disjoint;
+  ComPtr<ID3D11Query> start;
+  ComPtr<ID3D11Query> end;
+  const D3D11_QUERY_DESC disjoint_desc = {D3D11_QUERY_TIMESTAMP_DISJOINT, 0};
+  const D3D11_QUERY_DESC stamp_desc = {D3D11_QUERY_TIMESTAMP, 0};
+  REQUIRE(SUCCEEDED(device->CreateQuery(&disjoint_desc, disjoint.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateQuery(&stamp_desc, start.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateQuery(&stamp_desc, end.GetAddressOf())));
+  std::vector<double> times;
+  for (int frame = 0; frame < 35; ++frame) {
+    context->Begin(disjoint.Get());
+    context->End(start.Get());
+    work();
+    context->End(end.Get());
+    context->End(disjoint.Get());
+    D3D11_QUERY_DATA_TIMESTAMP_DISJOINT frequency = {};
+    while (context->GetData(disjoint.Get(), &frequency, sizeof(frequency), 0) != S_OK) {
+    }
+    UINT64 begin_time = 0;
+    UINT64 end_time = 0;
+    while (context->GetData(start.Get(), &begin_time, sizeof(begin_time), 0) != S_OK) {
+    }
+    while (context->GetData(end.Get(), &end_time, sizeof(end_time), 0) != S_OK) {
+    }
+    if (frame >= 5 && !frequency.Disjoint) times.push_back(static_cast<double>(end_time - begin_time) * 1000.0 / static_cast<double>(frequency.Frequency));
+  }
+  std::ranges::sort(times);
+  return times.empty() ? -1.0 : times[times.size() / 2];
+}
+
+static void Time() {
+  std::printf("--time: the hardware GPU at 3840 x 2160\n");
+  MakeDevice(D3D_DRIVER_TYPE_HARDWARE);
+  const std::array<Box, 4> boxes = {{
+      {.low = {-2.f, -2.f, 14.f}, .high = {2.f, 1.f, 18.f}},
+      {.low = {-6.f, -2.f, 20.f}, .high = {6.f, 0.f, 22.f}},
+      {.low = {3.f, -2.f, 10.f}, .high = {3.2f, 2.f, 10.2f}},
+      {.low = {-4.f, -0.6f, 11.f}, .high = {-2.f, 1.4f, 11.05f}, .kind = Kind::THIN, .albedo = {0.8f, 0.1f, 0.1f}},
+  }};
+  const Frame frame = MakeFrame(3840, 2160, boxes, {0.25f, -0.55f, -0.8f});
+  sss::internal::runtime.albedo_power = 2.f;
+  struct Row {
+    const char* name;
+    sss::Settings settings;
+    bool thin;
+  };
+  sss::Settings base = Defaults();
+  sss::Settings auto_thickness = base;
+  auto_thickness.auto_thickness = true;
+  sss::Settings banners = base;
+  banners.thin_light = 0.35f;
+  sss::Settings coloured = banners;
+  coloured.coloured = true;
+  sss::Settings softer = base;
+  softer.sun_disk = 0.5f;
+  sss::Settings softness = base;
+  softness.softness = 2.f;
+  const std::array<Row, 6> rows = {{{"rows off", base, false},
+                                    {"Softness 2 px (today's blur)", softness, false},
+                                    {"Auto Thickness", auto_thickness, false},
+                                    {"Light Through Banners", banners, true},
+                                    {"+ Coloured Shadows", coloured, true},
+                                    {"Softer Away from the Caster 0.5", softer, false}}};
+  double off = 0.0;
+  for (const auto& row : rows) {
+    const double milliseconds = GpuMilliseconds([&] { RunFrame(frame, row.settings, row.thin); });
+    if (&row == &rows[0]) off = milliseconds;
+    std::printf("   %-34s %.3f ms (%+.3f)\n", row.name, milliseconds, milliseconds - off);
+  }
+  // Torches: the frame's first light draw (the pick and the march over last frame's 16 lights), near (9 to 11 m: each
+  // one's reach covers most of the screen) and at a battle's distance (40 to 60 m).
+  for (const float distance : {9.f, 40.f}) {
+    std::vector<LightInstance> torches;
+    for (int index = 0; index < 16; ++index) {
+      const float x = (-6.f + (0.8f * static_cast<float>(index))) * distance / 9.f;
+      torches.push_back({.colour = {4.f, 2.f, 0.5f, 0.f}, .light = {x, -1.2f, distance + (static_cast<float>(index % 3) * distance / 9.f), 6.f}});
+    }
+    const auto buffer = MakeBuffer(static_cast<UINT>(torches.size() * sizeof(LightInstance)), D3D11_BIND_VERTEX_BUFFER, torches.data());
+    const lights::Instances drawn = {.buffer = buffer.Get(), .first = 0, .count = 16, .stride = sizeof(LightInstance),
+                                     .position = offsetof(LightInstance, light), .colour = offsetof(LightInstance, colour)};
+    for (const uint32_t wanted : {4u, 8u, 16u}) {
+      sss::Settings settings = base;
+      settings.lights = wanted;
+      RunFrame(frame, settings);
+      lights::OnLightDraw(context.Get(), drawn);
+      const double march = GpuMilliseconds([&] {
+        ++sss::internal::runtime.frame;
+        sss::internal::runtime.computed_frame = sss::internal::runtime.frame;
+        lights::OnLightDraw(context.Get(), drawn);
+      });
+      std::printf("   Torch and Fire Shadows %2u, lights %2.0f m away: %.3f ms at the first light draw\n", wanted, distance, march);
+    }
+    if (distance == 40.f) {
+      // CPU: a later light draw (its copy and the binds).
+      const auto start = std::chrono::steady_clock::now();
+      for (int repeat = 0; repeat < 1000; ++repeat) lights::OnLightDraw(context.Get(), drawn);
+      const double light_draw = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() / 1000.0;
+      std::printf("   a later light draw: %.2f us CPU\n", light_draw);
+    }
+  }
+}
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    std::printf("usage: tests.exe <fc24dbce's plain shaders> [--time]\n");
+    return 2;
+  }
+  const std::string mode = (argc > 2) ? argv[2] : "";
+  if (mode != "--time-only") {
+    TestRowsOff(argv[1]);
+    TestAutoThickness();
+    TestBanner();
+    TestSofter();
+    TestTorches();
+    TestReplay();
+  }
+  if (mode == "--time" || mode == "--time-only") Time();
+  std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
+  return failures == 0 ? 0 : 1;
+}

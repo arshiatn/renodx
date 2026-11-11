@@ -22,6 +22,12 @@
 #ifdef SSS_EXTENDED
 #define BEND_SSS_EXTENDED
 #endif
+#ifdef SSS_AUTO_THICKNESS
+#define BEND_SSS_AUTO_THICKNESS
+#endif
+#ifdef SSS_FIND
+#define BEND_SSS_FIND
+#endif
 #include "../twshogun2completeedition/shaders/bend_sss_gpu.hlsli"
 
 cbuffer sss_dispatch : register(b3)
@@ -141,6 +147,8 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   dp.ThinCasters = (g_sss_thin_light > 0.f);
   dp.ThinLight = g_sss_thin_light;
   dp.ThinDepth = t_sss_thin;
+  dp.FindHit = (g_sss_sun_tangent > 0.f);
+  dp.FindThin = (g_sss_coloured != 0.f);
   [branch] if (g_sss_light_mode != 0u)
   {
     // This group's dispatch (the one whose groups hold it) and its place in it.
@@ -167,6 +175,8 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
     dp.WaveOffset = t_sss_light_dispatches[2 + 2 * low].xy;
     dp.FarFade = 0.f;
     dp.NearLightShare = 0.f;
+    dp.FindHit = false;
+    dp.FindThin = false;
   }
 #endif
 

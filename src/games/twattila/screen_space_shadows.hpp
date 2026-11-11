@@ -546,9 +546,10 @@ struct DeviceObjects {
   ComPtr<ID3D11ShaderResourceView> after_foliage_srv;
   bool logged_gbuffer_depth = false;
   ShaderSettings uploaded = {};
-  // The extended march (sss_bend_extended), Softer Away from the Caster (sss_soft), Light Through Banners' draws again
+  // The extended march (sss_bend_extended; by ExtendedVariant: with Auto Thickness, with what Softer Away from the Caster
+  // and Coloured Shadows need found, both), Softer Away from the Caster (sss_soft), Light Through Banners' draws again
   // (sss_thin) and their constants (b4).
-  ComPtr<ID3D11ComputeShader> bend_extended;
+  std::array<ComPtr<ID3D11ComputeShader>, 4> bend_extended;
   ComPtr<ID3D11ComputeShader> soft;
   ComPtr<ID3D11PixelShader> thin_pixel_shader;
   ComPtr<ID3D11Buffer> extended_settings;
@@ -637,6 +638,10 @@ static Runtime runtime;
 // The occlusion the sun draws read is the softened one (sss_blur's Softness or sss_soft's Softer Away from the Caster).
 inline bool Softened(const Settings& settings) { return settings.softness > 0.f || settings.sun_disk > 0.f; }
 
+// The extended march's variant (DeviceObjects::bend_extended) with Auto Thickness (`auto_thickness`) and with what Softer Away
+// from the Caster and Coloured Shadows need found (`find`).
+inline size_t ExtendedVariant(bool auto_thickness, bool find) { return (auto_thickness ? 1 : 0) + (find ? 2 : 0); }
+
 // A texture of the screen's `width` x `height` the compute writes and the draws read.
 inline bool MakeTexture(ID3D11Device* device, UINT width, UINT height, DXGI_FORMAT format, ComPtr<ID3D11UnorderedAccessView>* uav,
                         ComPtr<ID3D11ShaderResourceView>* srv) {
@@ -701,7 +706,9 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
     bool made = compute(__sss_depth, &objects.depth_copy) && compute(__sss_depth_ms, &objects.depth_copy_ms)
                 && compute(__sss_setup, &objects.setup) && compute(__sss_bend, &objects.bend)
                 && compute(__sss_blur, &objects.blur) && compute(__sss_debug, &objects.debug)
-                && compute(__sss_bend_extended, &objects.bend_extended) && compute(__sss_soft, &objects.soft)
+                && compute(__sss_bend_extended, &objects.bend_extended[0]) && compute(__sss_bend_extended_auto, &objects.bend_extended[1])
+                && compute(__sss_bend_extended_find, &objects.bend_extended[2]) && compute(__sss_bend_extended_auto_find, &objects.bend_extended[3])
+                && compute(__sss_soft, &objects.soft)
                 && SUCCEEDED(device->CreatePixelShader(__sss_thin.data(), __sss_thin.size(), nullptr, objects.thin_pixel_shader.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&extended_desc, nullptr, objects.extended_settings.GetAddressOf()))
@@ -967,7 +974,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     if (coloured) {
       native->ClearUnorderedAccessViewFloat(objects.tint_uav.Get(), ZEROS.data());
     }
-    ComputeState::Bind(native, objects.bend_extended.Get(),
+    ComputeState::Bind(native, objects.bend_extended[ExtendedVariant(runtime.settings.auto_thickness, soft || coloured)].Get(),
                        {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin ? objects.thin_srv.Get() : nullptr, coloured ? colour : nullptr},
                        {objects.occlusion_uav.Get(), soft ? objects.penumbra_uav.Get() : nullptr, coloured ? objects.tint_uav.Get() : nullptr},
                        {camera, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});

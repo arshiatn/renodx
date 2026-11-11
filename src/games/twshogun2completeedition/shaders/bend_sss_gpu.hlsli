@@ -134,12 +134,16 @@ struct DispatchParameters
 	// RenoDX extended (Attila's sss_bend_extended, with BEND_SSS_LIGHT_CASTERS): Auto Thickness, an occluder's thickness
 	// growing by this many windows a sample along its run (0 off); banners where ThinDepth holds their depth (ThinCasters)
 	// keep ThinLight of the light; samples nearer the light's screen point than NearLightShare of the pixel's own distance
-	// left out (0.5 the sun's; 0 a point light, whose occluders lie anywhere up to it). WriteExtended writes the result.
+	// left out (0.5 the sun's; 0 a point light, whose occluders lie anywhere up to it). WriteExtended writes the result,
+	// with the first shadowing sample where FindHit and the banner sample shadowing most where FindThin. Each only where
+	// compiled in (BEND_SSS_AUTO_THICKNESS, BEND_SSS_FIND: their code even when skipped takes registers Bend's waves need).
 	float AutoThicknessScale;
 	bool ThinCasters;
 	float ThinLight;
 	Texture2D<float> ThinDepth;
 	float NearLightShare;
+	bool FindHit;
+	bool FindThin;
 #endif
 
 	// Set sensible starting tuning values
@@ -165,6 +169,8 @@ struct DispatchParameters
 		ThinCasters					= false;
 		ThinLight					= 0;
 		NearLightShare				= 0.5;
+		FindHit						= false;
+		FindThin					= false;
 #endif
 	}
 
@@ -323,6 +329,76 @@ struct DispatchParameters
 #endif
 	groupshared bool LdsEarlyOut;
 
+#ifdef BEND_SSS_EXTENDED
+	// RenoDX extended: what the loops carry between samples. Auto Thickness's run (its first sample, the depth and step of
+	// the sample before); the first shadowing sample (FindHit), the banner sample shadowing most and by how much (FindThin):
+	// one each, not one a lane (fewer registers: Bend waits on groupshared reads, its speed is how many waves fit).
+	struct ExtendedState
+	{
+		int run_start;
+		float previous_depth;
+		float previous_step;
+		int hit;
+		int thin;
+		float thin_weight;
+	};
+
+	// Samples `first` to `first` + 3 (groupshared from `sample_index` on) against `start_depth` as Bend's loops take them
+	// (their depth delta after the light casters' least), the extended march's on top: Auto Thickness (Bjorn Ottosson's "as
+	// thick as it is wide", CC0, as bitmask.hlsli's): a run starts where the depth jumps more than a window from the sample
+	// before or bends by more than half of one; a sample's back lies 2 (m - 1) windows further than Bend's, m growing along
+	// the run, its front edge Bend's; light casters (foliage, banners) stay thin.
+	float4 ExtendedDeltas(DispatchParameters inParameters, inout ExtendedState state, int first, int sample_index, float start_depth,
+	                      float depth_scale, float z_sign)
+	{
+		const int4 index = first + int4(0, 1, 2, 3);
+		const float4 sample_depth = float4(DepthData[sample_index + first], DepthData[sample_index + first + 1],
+		                                   DepthData[sample_index + first + 2], DepthData[sample_index + first + 3]) * depth_scale;
+		const float4 light_data = float4(LightData[sample_index + first], LightData[sample_index + first + 1],
+		                                 LightData[sample_index + first + 2], LightData[sample_index + first + 3]);
+		const float4 offset = start_depth - sample_depth;
+		float4 depth_delta = abs(offset);
+#ifdef BEND_SSS_AUTO_THICKNESS
+		[branch] if (inParameters.AutoThicknessScale > 0)
+		{
+			const float4 step = sample_depth - float4(state.previous_depth, sample_depth.xyz);
+			const float4 bend = step - float4(state.previous_step, step.xyz);
+			// Each sample's run's first sample: the last break up to it.
+			int4 starts = (abs(step) > 1 || abs(bend) > 0.5) ? index : state.run_start;
+			starts.y = max(starts.y, starts.x);
+			starts.z = max(starts.z, starts.y);
+			starts.w = max(starts.w, starts.z);
+			state.run_start = starts.w;
+			state.previous_depth = sample_depth.w;
+			state.previous_step = step.w;
+			const float4 m = (light_data != 0) ? 1 : min(1 + (float4)(index - starts) * inParameters.AutoThicknessScale, 16);
+			const float4 behind = offset * z_sign;
+			depth_delta = max(-behind, behind - 2 * (m - 1));
+		}
+#endif
+#ifdef BEND_SSS_FIND
+		[branch] if (inParameters.FindHit && state.hit < 0)
+		{
+			const bool4 shadows = depth_delta < 1;
+			state.hit = shadows.x ? index.x : shadows.y ? index.y : shadows.z ? index.z : shadows.w ? index.w : -1;
+		}
+		[branch] if (inParameters.FindThin)
+		{
+			const float4 weight = (light_data < 0 && depth_delta < 1)
+			                          ? 1 - saturate(depth_delta * inParameters.ShadowContrast + (1 - inParameters.ShadowContrast))
+			                          : 0;
+			const float most = max(max(weight.x, weight.y), max(weight.z, weight.w));
+			if (most > state.thin_weight)
+			{
+				state.thin_weight = most;
+				state.thin = (weight.x == most) ? index.x : (weight.y == most) ? index.y : (weight.z == most) ? index.z : index.w;
+			}
+		}
+#endif
+		return max(depth_delta, abs(light_data));
+	}
+#endif
+
 	// Generate the shadow
 	//	Call this function from a compute shader with thread dimensions: numthreads[WAVE_SIZE, 1, 1]
 	// 
@@ -471,8 +547,8 @@ struct DispatchParameters
 #ifdef BEND_SSS_LIGHT_CASTERS
 				// The contrast below turns this least delta into the caster's share of the light.
 #ifdef BEND_SSS_EXTENDED
-				// A banner's as -(1 + it) (its colour and its thickness told apart from foliage's).
-				LightData[idx] = thin_caster    ? -(2 - (1 - inParameters.ThinLight) / inParameters.ShadowContrast)
+				// A banner's negative (its colour told apart from foliage's; above 0 for any ThinLight above 0, Contrast 1 up).
+				LightData[idx] = thin_caster    ? -(1 - (1 - inParameters.ThinLight) / inParameters.ShadowContrast)
 				                 : light_caster ? 1 - (1 - inParameters.CasterLight) / inParameters.ShadowContrast
 				                                : 0;
 #else
@@ -561,64 +637,34 @@ struct DispatchParameters
 		start_depth = start_depth * depth_scale - z_sign;
 
 #ifdef BEND_SSS_EXTENDED
-		// RenoDX extended: the three loops below as one, sample by sample in order along the ray (the same minimums into the
-		// same lanes), which follows each occluder's run for Auto Thickness (Bjorn Ottosson's "as thick as it is wide", CC0,
-		// as bitmask.hlsli's): a run starts where the depth jumps more than a window from the sample before or bends by more
-		// than half of one; a sample's back lies 2 (m - 1) windows further than Bend's, m growing along the run, the front
-		// edge Bend's. Light casters (foliage, banners) stay thin. Its first shadowing sample (hit) and the banner sample
-		// that shadows it most come out for WriteExtended.
-		int run_start = 0;
-		float previous_depth = DepthData[sample_index - 1] * depth_scale;
-		float previous_step = 0;
-		int hit = -1;
-		int thin_hit = -1;
-		float thin_weight = 0;
-		const int fade_start = inSampleCount - inParameters.FadeOutSamples;
-		[loop] for (i = 0; i < inSampleCount; i++)
+		// RenoDX extended: Bend's three loops 4 samples at a time (its counts are multiples of 4: the same minimums into the
+		// same lanes), each sample's delta from ExtendedDeltas.
+		ExtendedState state;
+		state.run_start = 0;
+		state.previous_depth = DepthData[sample_index - 1] * depth_scale;
+		state.previous_step = 0;
+		state.hit = -1;
+		state.thin = -1;
+		state.thin_weight = 0;
+		[loop] for (i = 0; i < inParameters.HardShadowSamples; i += 4)
 		{
-			const float sample_depth = DepthData[sample_index + i] * depth_scale;
-			const float light_data = LightData[sample_index + i];
-			const bool thin_sample = light_data < 0;
-			const float offset = start_depth - sample_depth;
-			float depth_delta = abs(offset);
-			[branch] if (inParameters.AutoThicknessScale > 0)
-			{
-				const float step = sample_depth - previous_depth;
-				if (i == 0 || abs(step) > 1 || abs(step - previous_step) > 0.5) run_start = i;
-				previous_step = step;
-				previous_depth = sample_depth;
-				const float m = (light_data != 0) ? 1 : min(1 + (float)(i - run_start) * inParameters.AutoThicknessScale, 16);
-				const float behind = offset * z_sign;
-				depth_delta = max(-behind, behind - 2 * (m - 1));
-			}
-			if (hit < 0 && depth_delta < 1) hit = i;
-			if (thin_sample && depth_delta < 1)
-			{
-				const float weight = 1 - saturate(depth_delta * inParameters.ShadowContrast + (1 - inParameters.ShadowContrast));
-				if (weight > thin_weight)
-				{
-					thin_weight = weight;
-					thin_hit = i;
-				}
-			}
-			depth_delta = max(depth_delta, thin_sample ? -light_data - 1 : light_data);
-			if (i < inParameters.HardShadowSamples)
-			{
-				hard_shadow = min(hard_shadow, depth_delta);
-			}
-			else if (i < fade_start)
-			{
-				const bool4 lane = ((i & 3) == int4(0, 1, 2, 3));
-				shadow_value = lane ? min(shadow_value, depth_delta) : shadow_value;
-			}
-			else
-			{
-				const int fade = i - fade_start;
-				const float fade_out = (float)(fade + 1) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
-				const bool4 lane = ((fade & 3) == int4(0, 1, 2, 3));
-				shadow_value = lane ? min(shadow_value, depth_delta + fade_out) : shadow_value;
-			}
+			const float4 depth_delta = ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign);
+			hard_shadow = min(hard_shadow, min(min(depth_delta.x, depth_delta.y), min(depth_delta.z, depth_delta.w)));
 		}
+		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
+		{
+			shadow_value = min(shadow_value, ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign));
+		}
+		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade += 4)
+		{
+			const float4 fade_out = (float4)(fade + int4(1, 2, 3, 4)) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
+			const float4 depth_delta = ExtendedDeltas(inParameters, state, inSampleCount - inParameters.FadeOutSamples + fade, sample_index,
+			                                          start_depth, depth_scale, z_sign);
+			shadow_value = min(shadow_value, depth_delta + fade_out);
+		}
+		const int hit = state.hit;
+		const int thin_hit = state.thin;
+		float thin_weight = state.thin_weight;
 #else
 		// The first number of hard shadow samples, a single pixel can produce a full shadow
 		[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
