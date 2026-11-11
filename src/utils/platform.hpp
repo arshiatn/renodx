@@ -29,48 +29,15 @@
 
 namespace renodx::utils::platform {
 
-namespace internal {
-
-template <typename T>
-inline T* AllocateProcessHeap(std::size_t byte_count, DWORD flags = 0u) {
-  if constexpr (alignof(T) <= MEMORY_ALLOCATION_ALIGNMENT) {
-    return static_cast<T*>(::HeapAlloc(::GetProcessHeap(), flags, byte_count));
-  } else {
-    constexpr std::size_t ALIGNMENT_PADDING = alignof(T) - 1u;
-    constexpr std::size_t OVERHEAD = sizeof(void*) + ALIGNMENT_PADDING;
-    if (byte_count > (std::numeric_limits<std::size_t>::max)() - OVERHEAD) return nullptr;
-
-    auto* allocation = static_cast<std::byte*>(::HeapAlloc(
-        ::GetProcessHeap(),
-        flags,
-        byte_count + OVERHEAD));
-    if (allocation == nullptr) return nullptr;
-
-    const auto first_address = reinterpret_cast<std::uintptr_t>(allocation + sizeof(void*));
-    const auto aligned_address = (first_address + ALIGNMENT_PADDING)
-                                 & ~static_cast<std::uintptr_t>(ALIGNMENT_PADDING);
-    auto* storage = reinterpret_cast<T*>(aligned_address);
-    std::construct_at(reinterpret_cast<void**>(storage) - 1, static_cast<void*>(allocation));
-    return storage;
-  }
+// A pinned module cannot be unloaded before process exit; do not call this for temporary references.
+inline bool PinModule(const void* address) {
+  HMODULE module = nullptr;
+  return ::GetModuleHandleExW(
+             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+             reinterpret_cast<LPCWSTR>(address), &module)
+         != FALSE
+         && module != nullptr;
 }
-
-template <typename T>
-inline void FreeProcessHeap(T* storage) noexcept {
-  if (storage == nullptr) return;
-
-  if constexpr (alignof(T) <= MEMORY_ALLOCATION_ALIGNMENT) {
-    ::HeapFree(::GetProcessHeap(), 0u, storage);
-  } else {
-    auto* allocation = reinterpret_cast<void**>(storage)[-1];
-    assert(allocation != nullptr);
-    if (allocation != nullptr) {
-      ::HeapFree(::GetProcessHeap(), 0u, allocation);
-    }
-  }
-}
-
-}  // namespace internal
 
 template <typename T>
 struct ProcessAllocator {
@@ -84,13 +51,23 @@ struct ProcessAllocator {
   }
 
   [[nodiscard]] T* allocate(std::size_t count) {  // NOLINT(readability-identifier-naming)
-    if (count > (std::numeric_limits<std::size_t>::max)() / sizeof(T)) {
+    constexpr std::size_t padding = (alignof(T) > MEMORY_ALLOCATION_ALIGNMENT
+                                        ? alignof(T) - 1 + sizeof(void*)
+                                        : 0);
+    if (count > ((std::numeric_limits<std::size_t>::max)() - padding) / sizeof(T)) {
       throw std::bad_array_new_length();
     }
 
-    auto* storage = internal::AllocateProcessHeap<T>(count * sizeof(T));
+    auto* storage = static_cast<T*>(::HeapAlloc(::GetProcessHeap(), 0, (count * sizeof(T)) + padding));
     if (storage == nullptr) {
       throw std::bad_alloc();
+    }
+    if constexpr (alignof(T) > MEMORY_ALLOCATION_ALIGNMENT) {
+      // Container nodes can themselves contain over-aligned parallel maps.
+      const auto address = reinterpret_cast<std::uintptr_t>(storage) + sizeof(void*);
+      const auto aligned_address = (address + alignof(T) - 1) & ~(static_cast<std::uintptr_t>(alignof(T)) - 1);
+      reinterpret_cast<void**>(aligned_address)[-1] = storage;
+      return reinterpret_cast<T*>(aligned_address);
     }
     return storage;
   }
@@ -98,7 +75,11 @@ struct ProcessAllocator {
   void deallocate(T* storage, std::size_t count) noexcept {  // NOLINT(readability-identifier-naming)
     (void)count;
     if (storage == nullptr) return;
-    internal::FreeProcessHeap(storage);
+    void* allocation = storage;
+    if constexpr (alignof(T) > MEMORY_ALLOCATION_ALIGNMENT) {
+      allocation = reinterpret_cast<void**>(storage)[-1];
+    }
+    ::HeapFree(::GetProcessHeap(), 0, allocation);
   }
 };
 
@@ -118,24 +99,44 @@ inline bool operator!=(const ProcessAllocator<T>& left, const ProcessAllocator<U
 
 template <typename T, typename... Args>
 inline T* CreateSharedObject(Args&&... args) {
-  auto* storage = internal::AllocateProcessHeap<T>(sizeof(T), HEAP_ZERO_MEMORY);
+  constexpr std::size_t padding = (alignof(T) > MEMORY_ALLOCATION_ALIGNMENT
+                                      ? alignof(T) - 1 + sizeof(void*)
+                                      : 0);
+  static_assert(sizeof(T) <= (std::numeric_limits<std::size_t>::max)() - padding);
+  // Keep the original heap pointer until construction succeeds, including on exceptions.
+  std::unique_ptr<void, decltype([](void* allocation) {
+                    ::HeapFree(::GetProcessHeap(), 0, allocation);
+                  })>
+      allocation(::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(T) + padding));
+  auto* storage = static_cast<T*>(allocation.get());
+  if (storage == nullptr) {
+    ::OutputDebugStringA("RenoDX: shared-object process-heap allocation failed.\n");
+  }
   assert(storage != nullptr);
   if (storage == nullptr) return nullptr;
 
-  try {
-    return std::construct_at(storage, std::forward<Args>(args)...);
-  } catch (...) {
-    internal::FreeProcessHeap(storage);
-    throw;
+  if constexpr (alignof(T) > MEMORY_ALLOCATION_ALIGNMENT) {
+    // HeapAlloc guarantees only 8-byte alignment on x86 (16 on x64).
+    const auto address = reinterpret_cast<std::uintptr_t>(storage) + sizeof(void*);
+    const auto aligned_address = (address + alignof(T) - 1) & ~(static_cast<std::uintptr_t>(alignof(T)) - 1);
+    storage = reinterpret_cast<T*>(aligned_address);
+    reinterpret_cast<void**>(storage)[-1] = allocation.get();
   }
+  std::construct_at(storage, std::forward<Args>(args)...);
+  allocation.release();
+  return storage;
 }
 
 template <typename T>
 inline void DeleteSharedObject(T* object) {
   if (object == nullptr) return;
 
+  void* allocation = object;
+  if constexpr (alignof(T) > MEMORY_ALLOCATION_ALIGNMENT) {
+    allocation = reinterpret_cast<void**>(object)[-1];
+  }
   object->~T();
-  internal::FreeProcessHeap(object);
+  ::HeapFree(::GetProcessHeap(), 0, allocation);
 }
 
 template <typename T>

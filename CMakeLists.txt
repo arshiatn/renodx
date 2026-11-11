@@ -62,6 +62,8 @@ endif()
 
 # Use executable to convert resources to .h files for embedding
 add_executable(embed_file src/embed_file.cpp)
+add_executable(assemble_shader src/assemble_shader.cpp)
+target_compile_definitions(assemble_shader PRIVATE NOMINMAX)
 # Helper executable that analyzes shader #include dependencies and outputs .d files
 add_executable(analyze_shader_deps src/analyze_shader_deps.cpp)
 add_executable(decomp ./src/decompiler/cli.cpp)
@@ -382,6 +384,45 @@ function(build_shader_target ADDON ADDON_PATH)
     endif()
   endforeach()
 
+  file(GLOB_RECURSE SHADER_LL_SOURCES CONFIGURE_DEPENDS ${ADDON_PATH}/*.ll)
+  set(SHADER_ASSEMBLER_TOOLS_PATH "${CMAKE_CURRENT_SOURCE_DIR}/bin")
+  if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    string(APPEND SHADER_ASSEMBLER_TOOLS_PATH "/x86")
+  endif()
+  set(SHADER_LL_OUTPUTS "")
+  foreach(FILE IN LISTS SHADER_LL_SOURCES)
+    file(RELATIVE_PATH SHADER_RELATIVE_PATH "${ADDON_PATH}" "${FILE}")
+    if(SHADER_RELATIVE_PATH MATCHES "(^|/)\\.[^/]+(/|$)")
+      continue()
+    endif()
+    cmake_path(GET FILE FILENAME FILENAME)
+    # The module carries its profile; allow both hash-only and profiled names.
+    string(REGEX MATCH "^(.*0x[0-9A-Fa-f]+)(\\.(lib|[pcvghdma]s)_[0-9]+_[0-9]+)?\\.ll$" _ "${FILENAME}")
+    set(SHADER_NAME "${CMAKE_MATCH_1}")
+    if(NOT SHADER_NAME)
+      message(FATAL_ERROR "Invalid LLVM shader filename: ${FILE}; expected name_0x12345678[.lib_6_6].ll")
+    endif()
+    string(REGEX MATCH "0x[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$" SHADER_HASH "${SHADER_NAME}")
+    if(NOT SHADER_HASH)
+      message(FATAL_ERROR "LLVM shader must have an eight-digit hash: ${FILE}")
+    endif()
+    set(SHADER_OUTPUT "${EMBED_FOLDER}/${SHADER_HASH}.cso")
+    if(SHADER_OUTPUT IN_LIST SHADER_BINARIES)
+      message(FATAL_ERROR "Duplicate shader output for ${FILE}: ${SHADER_OUTPUT}")
+    endif()
+    if(NOT EXISTS "${SHADER_ASSEMBLER_TOOLS_PATH}/dxcompiler.dll")
+      message(FATAL_ERROR "LLVM assembly requires ${SHADER_ASSEMBLER_TOOLS_PATH}/dxcompiler.dll; run scripts/setup-dev-env.ps1 -Update -Tools dxc")
+    endif()
+    add_custom_command(
+      OUTPUT "${SHADER_OUTPUT}"
+      COMMAND $<TARGET_FILE:assemble_shader> "${FILE}" "${SHADER_OUTPUT}" "${SHADER_ASSEMBLER_TOOLS_PATH}"
+      DEPENDS "${FILE}" assemble_shader
+        "${SHADER_ASSEMBLER_TOOLS_PATH}/dxcompiler.dll"
+      VERBATIM)
+    list(APPEND SHADER_BINARIES "${SHADER_OUTPUT}")
+    list(APPEND SHADER_LL_OUTPUTS "${SHADER_OUTPUT}")
+  endforeach()
+
   file(GLOB_RECURSE SHADER_CSO_FILES CONFIGURE_DEPENDS ${ADDON_PATH}/*.cso)
   foreach(FILE ${SHADER_CSO_FILES})
     cmake_path(GET FILE FILENAME FILENAME)
@@ -395,9 +436,15 @@ function(build_shader_target ADDON ADDON_PATH)
     endif()
 
     if(SHADER_HASH)
+      if("${EMBED_FOLDER}/${SHADER_HASH}.cso" IN_LIST SHADER_LL_OUTPUTS)
+        message(FATAL_ERROR "Precompiled shader conflicts with LLVM source: ${FILE}")
+      endif()
       configure_file(${FILE} ${EMBED_FOLDER}/${SHADER_HASH}.cso COPYONLY)
       list(APPEND SHADER_BINARIES ${EMBED_FOLDER}/${SHADER_HASH}.cso)
     elseif(SHADER_NAME)
+      if("${EMBED_FOLDER}/${SHADER_NAME}.cso" IN_LIST SHADER_LL_OUTPUTS)
+        message(FATAL_ERROR "Precompiled shader conflicts with LLVM source: ${FILE}")
+      endif()
       configure_file(${FILE} ${EMBED_FOLDER}/${SHADER_NAME}.cso COPYONLY)
       list(APPEND SHADER_BINARIES ${EMBED_FOLDER}/${SHADER_NAME}.cso)
     endif()
@@ -489,6 +536,53 @@ function(build_shader_target ADDON ADDON_PATH)
     endif()
   endforeach()
 
+  # SPIR-V assembly sources
+  file(MAKE_DIRECTORY ${EMBED_FOLDER})
+  file(GLOB_RECURSE SHADER_SPVASM_SOURCES CONFIGURE_DEPENDS "${ADDON_PATH}/*.spvasm")
+  list(FILTER SHADER_SPVASM_SOURCES EXCLUDE REGEX "(^|[/\\\\])\\.[^/\\\\]+([/\\\\]|$)")
+  set(SHADER_SPVASM_OUTPUTS "")
+  if(SHADER_SPVASM_SOURCES)
+    set(RENODX_SPIRV_TARGET_ENV "vulkan1.3" CACHE STRING
+      "SPIRV-Tools target environment for textual SPIR-V assembly and validation")
+    set(RENODX_SPIRV_VALIDATOR_FLAGS "--uniform-buffer-standard-layout" CACHE STRING
+      "Additional spirv-val flags for Vulkan features enabled by the target application")
+    find_program(SPIRV_AS_BIN NAMES spirv-as.exe spirv-as
+      HINTS "${CMAKE_SOURCE_DIR}/bin" "$ENV{VULKAN_SDK}/Bin")
+    find_program(SPIRV_VAL_BIN NAMES spirv-val.exe spirv-val
+      HINTS "${CMAKE_SOURCE_DIR}/bin" "$ENV{VULKAN_SDK}/Bin")
+    if(NOT SPIRV_AS_BIN OR NOT SPIRV_VAL_BIN)
+      message(FATAL_ERROR
+        "SPIR-V assembly requires spirv-as and spirv-val from SPIRV-Tools. Set SPIRV_AS_BIN and SPIRV_VAL_BIN to the installed tools.")
+    endif()
+  endif()
+  foreach(FILE IN LISTS SHADER_SPVASM_SOURCES)
+    cmake_path(GET FILE FILENAME FILENAME)
+    string(REGEX MATCH "^(.+)\\.(frag|vert|comp)\\.spvasm$" _ "${FILENAME}")
+    set(SPVASM_OUTPUT_STEM "${CMAKE_MATCH_1}")
+    if(NOT SPVASM_OUTPUT_STEM)
+      message(FATAL_ERROR "Invalid SPIR-V assembly filename: ${FILE}; expected name.frag.spvasm, name.vert.spvasm, or name.comp.spvasm")
+    endif()
+    string(REGEX MATCH "0x[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$" SPVASM_HASH "${SPVASM_OUTPUT_STEM}")
+    if(SPVASM_HASH)
+      set(SPVASM_OUTPUT_STEM "${SPVASM_HASH}")
+    endif()
+    set(SPVASM_OUTPUT "${EMBED_FOLDER}/${SPVASM_OUTPUT_STEM}.spv")
+    if(SPVASM_OUTPUT IN_LIST SHADER_BINARIES)
+      message(FATAL_ERROR "Duplicate shader output for ${FILE}: ${SPVASM_OUTPUT}")
+    endif()
+    add_custom_command(
+      OUTPUT "${SPVASM_OUTPUT}"
+      COMMAND "${SPIRV_AS_BIN}" --preserve-numeric-ids --target-env "${RENODX_SPIRV_TARGET_ENV}"
+        "${FILE}" -o "${SPVASM_OUTPUT}.unvalidated"
+      COMMAND "${SPIRV_VAL_BIN}" --target-env "${RENODX_SPIRV_TARGET_ENV}"
+        ${RENODX_SPIRV_VALIDATOR_FLAGS} "${SPVASM_OUTPUT}.unvalidated"
+      COMMAND "${CMAKE_COMMAND}" -E rename "${SPVASM_OUTPUT}.unvalidated" "${SPVASM_OUTPUT}"
+      DEPENDS "${FILE}" "${SPIRV_AS_BIN}" "${SPIRV_VAL_BIN}"
+      VERBATIM)
+    list(APPEND SHADER_BINARIES "${SPVASM_OUTPUT}")
+    list(APPEND SHADER_SPVASM_OUTPUTS "${SPVASM_OUTPUT}")
+  endforeach()
+
   file(GLOB_RECURSE SHADER_SPV_FILES CONFIGURE_DEPENDS ${ADDON_PATH}/*.spv)
   foreach(FILE ${SHADER_SPV_FILES})
     cmake_path(GET FILE FILENAME FILENAME)
@@ -514,6 +608,9 @@ function(build_shader_target ADDON ADDON_PATH)
     endif()
 
     list(FIND SHADER_BINARIES ${EMBED_FOLDER}/${SPV_OUTPUT_STEM}.spv SHADER_BINARY_INDEX)
+    if("${EMBED_FOLDER}/${SPV_OUTPUT_STEM}.spv" IN_LIST SHADER_SPVASM_OUTPUTS)
+      message(FATAL_ERROR "Precompiled shader conflicts with SPIR-V assembly source: ${FILE}")
+    endif()
     if(NOT SHADER_BINARY_INDEX EQUAL -1)
       continue()
     endif()
@@ -672,6 +769,16 @@ set_target_properties(detours PROPERTIES
 add_custom_target(detours_build DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/external/Detours/lib.${DETOURS_ARCH}/detours.lib)
 add_dependencies(detours detours_build)
 
+if(NOT CMAKE_C_COMPILER)
+  set(CMAKE_C_COMPILER "${CMAKE_CXX_COMPILER}")
+endif()
+enable_language(C)
+block(SCOPE_FOR VARIABLES)
+  set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+  set(BUILD_SHARED_LIBS OFF)
+  add_subdirectory(external/minhook EXCLUDE_FROM_ALL)
+endblock()
+
 
 file(GLOB ADDON_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/**/**/addon.cpp)
 set(SKIPPED_ADDON_TARGETS "")
@@ -714,7 +821,7 @@ foreach(FILE ${ADDON_FILES})
   generate_resource_rc(${ADDON})
   add_dependencies(${ADDON} ${ADDON}-shaders)
   add_dependencies(${ADDON} detours)
-  target_link_libraries(${ADDON} PRIVATE detours)
+  target_link_libraries(${ADDON} PRIVATE detours minhook)
   if(ADDON STREQUAL "expeditionsrome_dlss" OR ADDON STREQUAL "rysesonofrome_dlss" OR ADDON STREQUAL "talesofarise_dlss")
     # Shared RenoDX STL objects must match the installed Release addons, even
     # when this target uses /MTd. NGX provides the matching Debug iterator-0 lib.
@@ -725,6 +832,7 @@ foreach(FILE ${ADDON_FILES})
       RENODX_NGX_RUNTIME_PATH=L"${CMAKE_CURRENT_SOURCE_DIR}/external/DLSS/lib/Windows_x86_64/rel")
   endif()
   target_include_directories(${ADDON} SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/Detours/include)
+  target_include_directories(${ADDON} SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/minhook/include)
   target_include_directories(${ADDON} SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/json/include)
   target_include_directories(${ADDON} SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/frozen/include)
   target_include_directories(${ADDON} SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/gtl/include)
