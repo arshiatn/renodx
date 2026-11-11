@@ -15,7 +15,8 @@
 // 6. Shadow Maps Under Rays: the maps made at 2048 and 1024 (only those made here tracked, not the game's own of that size),
 //    the viewport and constants at their size, and the three shaders with shader_injection.shadow_map_scale 0.5 and 0.25: the
 //    half copies over the game's 2048 / 1024 targets give the game's result to the bit at 0.5 and the 4 x 4 deepest at 0.25,
-//    the kept maps' copy the game's result halved / quartered.
+//    the kept maps' copy the game's result halved / quartered; a caster drawn with the game's calls is read where the fog
+//    reads it (uv x the constants' size).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -603,6 +604,39 @@ int main(int argc, char** argv) {
         ComPtr<ID3D11Buffer> constants_buffer = make_constants(D3D11_USAGE_DYNAMIC, BYTES);
         upload(constants_buffer.Get(), game_constants(static_cast<float>(GAME)));
         CHECK(read_back(constants_buffer.Get()) == game_constants(static_cast<float>(made)));
+        // Writer and reader: the rectangle of part 4 (uv 0.25, 0.5 to 0.875, 0.9375), the game's 4096 viewport and scissor.
+        immediate->ClearDepthStencilView(made_map.depth.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+        GameSetsViewport(immediate.Get(), static_cast<float>(GAME));
+        GameSetsScissor(immediate.Get(), static_cast<LONG>(GAME));
+        GameBindsDepth(immediate.Get(), made_map.depth.Get());
+        const std::array<float, 8> area = {-0.5f, 0.f, 0.75f, -0.875f, 0.5f};
+        immediate->UpdateSubresource(area_buffer.Get(), 0, nullptr, area.data(), 0, 0);
+        immediate->VSSetShader(triangle.Get(), nullptr, 0);
+        immediate->VSSetConstantBuffers(0, 1, area_buffer.GetAddressOf());
+        immediate->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        immediate->OMSetDepthStencilState(always.Get(), 0);
+        immediate->RSSetState(scissored.Get());
+        immediate->Draw(3, 0);
+        immediate->ClearState();
+        std::array<float, 4> reader_size = {};
+        std::memcpy(reader_size.data(), read_back(constants_buffer.Get()).data(), sizeof(reader_size));
+        const std::vector<float> texels = ReadSlice(made_map.texture.Get(), 0);
+        uint32_t wrong = 0;
+        std::uniform_real_distribution<float> any(0.f, 1.f);
+        for (int sample = 0; sample < 20000; ++sample) {
+          const float u = any(rng);
+          const float v = any(rng);
+          const float s = (u - 0.25f) / 0.625f;
+          const float t = (v - 0.5f) / 0.4375f;
+          // Away from the triangle's edges by more than a made texel.
+          const float edge = std::min({s, t, 2.f - s - t});
+          if (std::abs(edge) < 0.02f || s > 2.f || t > 2.f) continue;
+          const bool inside = edge > 0.f && u < 1.f && v < 1.f;
+          const float depth = texels[(size_t{static_cast<uint32_t>(v * reader_size[1])} * made) + static_cast<uint32_t>(u * reader_size[0])];
+          wrong += (depth == (inside ? 0.5f : 1.f)) ? 0u : 1u;
+        }
+        std::printf("writer and reader at 1/%u: map %u, viewport from the game's 4096, reader's size %g: %u of the samples wrong\n", factor, made, reader_size[0], wrong);
+        CHECK(reader_size[0] == static_cast<float>(made) && wrong == 0);
       }
       const auto injection = injection_of(scale);
       // The half copies: the game's bytes on a 4096 map into its own targets against ours on the reduced map.
