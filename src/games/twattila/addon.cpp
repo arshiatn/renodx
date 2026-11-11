@@ -81,6 +81,15 @@ bool IsPsychoV31Mode() {
   return shader_injection.hdr == 2.f;
 }
 
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 3.f;
+}
+
+// PsychoV31's rows that PsychoV35 reads too.
+bool IsPsychoV31OrV35Mode() {
+  return IsPsychoV31Mode() || IsPsychoV35Mode();
+}
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
 }
@@ -139,6 +148,7 @@ void ApplyHDRPreset(
       {"v31_gamut_compression_mode", 1.f},
       {"v31_highlight_hue_shift", highlight_hue_shift},
       {"v31_highlight_saturation_shift", 0.f},
+      {"hue_clip", 40.f},
       {"video_autohdr", video_autohdr},
       {"sky_deband", 0.f},
       {"sky_smooth", 0.f},
@@ -207,9 +217,9 @@ void BuildRuntimeData() {
   }
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // PsychoV31 sliders: 0 - max, 1 = its own.
+  // PsychoV31 sliders: 0 - max, 1 = its own; `shown` IsPsychoV31OrV35Mode for the ones PsychoV35 reads too.
   auto v31_slider = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
-                       float max = 2.f, float default_value = 1.f) {
+                       float max = 2.f, float default_value = 1.f, bool (*shown)() = IsPsychoV31Mode) {
     return new renodx::utils::settings::Setting{
         .key = key,
         .binding = binding,
@@ -219,8 +229,8 @@ void BuildRuntimeData() {
         .tooltip = tooltip,
         .max = max,
         .format = "%.2f",
-        .is_enabled = IsPsychoV31Mode,
-        .is_visible = IsPsychoV31Mode,
+        .is_enabled = shown,
+        .is_visible = shown,
     };
   };
 
@@ -339,8 +349,9 @@ void BuildRuntimeData() {
         .section = "General",
         .tooltip = "SDR: Attila's original SDR tonemapper.\n"
                    "HDR (PsychoV30): the HDR pipeline with PsychoV30 (default).\n"
-                   "HDR (PsychoV31): the HDR pipeline with PsychoV31, more grading sliders.",
-        .labels = {"SDR", "HDR (PsychoV30)", "HDR (PsychoV31)"},
+                   "HDR (PsychoV31): the HDR pipeline with PsychoV31, more grading sliders.\n"
+                   "PsychoV35 (Experimental): the HDR pipeline with PsychoV35 and Hue Clip.",
+        .labels = {"SDR", "HDR (PsychoV30)", "HDR (PsychoV31)", "PsychoV35 (Experimental)"},
     },
     new renodx::utils::settings::Setting{
         .key = "gamma_correction",
@@ -561,11 +572,32 @@ void BuildRuntimeData() {
         .is_enabled = IsHDRMode,
         .is_visible = IsPsychoV30Mode,
     },
+    // PsychoV35 (Experimental) /////////////////////////////////////////////////////////////////////
+    new renodx::utils::settings::Setting{
+        .key = "hue_clip",
+        .binding = &shader_injection.hue_clip,
+        .default_value = 40.f,
+        .label = "Hue Clip",
+        .section = "PsychoV35",
+        .tooltip = "Bright colors take the hue SDR clips them to: fire more orange / yellow, sky more cyan.\n"
+                   "0 = off. Default 40: the closest to the SDR picture.",
+        .max = 100.f,
+        .is_enabled = IsPsychoV35Mode,
+        .parse = [](float value) { return value * 0.01f; },
+        .is_visible = IsPsychoV35Mode,
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "PsychoV35 also uses the PsychoV31 sliders shown below.",
+        .section = "PsychoV35",
+        .is_visible = IsPsychoV35Mode,
+    },
     // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
-    v31_slider("v31_exposure", &shader_injection.v31_exposure, "Exposure", ""),
-    v31_slider("v31_highlights", &shader_injection.v31_highlights, "Highlights", ""),
-    v31_slider("v31_shadows", &shader_injection.v31_shadows, "Shadows", ""),
-    v31_slider("v31_contrast", &shader_injection.v31_contrast, "Contrast", "1 = PsychoV31's own."),
+    v31_slider("v31_exposure", &shader_injection.v31_exposure, "Exposure", "", 2.f, 1.f, IsPsychoV31OrV35Mode),
+    v31_slider("v31_highlights", &shader_injection.v31_highlights, "Highlights", "", 2.f, 1.f, IsPsychoV31OrV35Mode),
+    v31_slider("v31_shadows", &shader_injection.v31_shadows, "Shadows", "", 2.f, 1.f, IsPsychoV31OrV35Mode),
+    v31_slider("v31_contrast", &shader_injection.v31_contrast, "Contrast", "1 = PsychoV31's own.", 2.f, 1.f,
+               IsPsychoV31OrV35Mode),
     v31_slider("v31_highlight_contrast", &shader_injection.v31_highlight_contrast, "Highlight Contrast",
                "Contrast above mid gray. 1 = PsychoV31's own."),
     v31_slider("v31_shadow_contrast", &shader_injection.v31_shadow_contrast, "Shadow Contrast",
@@ -583,15 +615,17 @@ void BuildRuntimeData() {
         .parse = [](float value) { return std::pow(value, 5.f); },
         .is_visible = IsPsychoV31Mode,
     },
-    v31_slider("v31_saturation", &shader_injection.v31_saturation, "Saturation / Purity", "1 = PsychoV31's own."),
+    v31_slider("v31_saturation", &shader_injection.v31_saturation, "Saturation / Purity", "1 = PsychoV31's own.",
+               2.f, 1.f, IsPsychoV31OrV35Mode),
     v31_slider("v31_dechroma", &shader_injection.v31_dechroma, "Dechroma",
                "Very bright colors fade toward white, as if overexposed. 0 = off.", 1.f, 0.f),
     v31_slider("v31_roll_off", &shader_injection.v31_roll_off, "Highlight Roll-off",
-               "How soon highlights start to compress toward Peak. 0 = latest, 1 = default, 2 = soonest."),
+               "How soon highlights start to compress toward Peak. 0 = latest, 1 = default, 2 = soonest.", 2.f, 1.f,
+               IsPsychoV31OrV35Mode),
     v31_slider("v31_gamut_compression", &shader_injection.v31_gamut_compression, "Gamut Compression",
                "Pulls colors your display can't show back inside its color space.\n"
                "0 = off (the display clips them), 1 = full (default).",
-               1.f),
+               1.f, 1.f, IsPsychoV31OrV35Mode),
     new renodx::utils::settings::Setting{
         .key = "v31_gamut_compression_mode",
         .binding = &shader_injection.v31_gamut_compression_mode,
@@ -1825,10 +1859,10 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30 and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. Visibility "
-                   "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
-                   "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024); auto thickness after "
-                   "Bjorn Ottosson.\n"
+          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip by ShortFuse. This mod uses Musa's custom "
+                   "PsychoV31. Visibility Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque "
+                   "and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024); auto "
+                   "thickness after Bjorn Ottosson.\n"
                    "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License "
                    "2.0.\n"
                    "SMAA: Jimenez, Echevarria, Masia, Navarro and Gutierrez (2013), MIT License. CMAA2: Filip Strugar, "

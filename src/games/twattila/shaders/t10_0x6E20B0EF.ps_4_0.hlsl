@@ -57,7 +57,7 @@ void main(
   if (HDR >= 1.f) {
     const float2 texcoord = g_screen_size.zw * (g_vpos_texel_offset + v0.xy);
     o0 = ToneMapperHdr(g_hdr_rgb_texture_sampler.SampleLevel(g_hdr_rgb_texture_sampler_s, texcoord, 0), 0.f.xxxx,
-                       float2(g_luma_black_point, g_luma_white_point));
+                       float2(g_luma_black_point, g_luma_white_point), false);
     return;
   }
 

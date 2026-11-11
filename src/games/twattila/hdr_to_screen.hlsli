@@ -6,6 +6,7 @@
 #include "./shared.h"
 #include "./psycho_test30.hlsli"
 #include "./psycho_test31.hlsli"
+#include "../../shaders/tonemap/psychov/test35.hlsl"
 
 // PsychoV31, anchored at mid gray (Attila's S-curve runs before, in t00); target-only where its source cage returns
 // black. Highlight Hue / Saturation Shift: toward the SDR image's, which clips each channel at white (bright fire turns
@@ -51,7 +52,8 @@ float3 ApplyPsychoV31(float3 color)
 }
 
 // HDR: the colour matrix (made for the clipped SDR image, gamma 2.0 = stock at in-game gamma 20) on a copy compressed
-// into 0 - 1 (Neutwo by max channel, its exact inverse after), PsychoV30 or V31, Paper White relative to UI, 2.0 encoded.
+// into 0 - 1 (Neutwo by max channel, its exact inverse after), PsychoV30, V31 or V35, Paper White relative to UI, 2.0
+// encoded.
 float4 HdrToScreenOutput(float3 hdr_color, float alpha)
 {
   const float matrix_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, HDR_PEAK);
@@ -63,10 +65,23 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
   const float3 graded_hdr = renodx::math::DivideSafe(graded_shaped, matrix_scale.xxx, graded_shaped);
   float3 color;
   [branch]
-  if (HDR >= 2.f) {
-    color = ApplyPsychoV31(graded_hdr);
+  if (HDR >= 3.f) {
+    // PsychoV35 with PsychoV31's sliders, anchored at mid gray (t00 applied Attila's auto exposure; its Hue Clip
+    // replaces V31's highlight shifts). Highlight Roll-off: 0 latest, 1 V35's own compression, 2 soonest.
+    color = renodx::tonemap::psychov::psychotm_test35(
+        graded_hdr, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, max(SI.v31_contrast, 0.01f),
+        SI.v31_saturation, 1.f, 100.f, 1.f, 1.f, 0, 1.f, 0.18f, 0.18f, SI.v31_gamut_compression,
+        ATTILA_SDR_OUTPUT ? 0 : 1, 1.f, exp2(1.f - SI.v31_roll_off));
+    // Shadows below 1 take the darkest pixels under zero, where V35 gives NaN: black. A bit test, as fxc folds
+    // isnan (renodx::math::ZeroNaN) away here.
+    color = ((asuint(color) & 0x7fffffffu) > 0x7f800000u) ? 0.f : color;
   } else {
-    color = ApplyAttilaPsychoV30(graded_hdr);
+    [branch]
+    if (HDR >= 2.f) {
+      color = ApplyPsychoV31(graded_hdr);
+    } else {
+      color = ApplyAttilaPsychoV30(graded_hdr);
+    }
   }
   color *= ATTILA_PAPER_WHITE;
   return float4(renodx::color::gamma::EncodeSafe(color, 2.f), saturate(alpha));
