@@ -3357,6 +3357,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // from the same trace, in the AO slot the game's SSAO left.
   rt_settings.ambient_occlusion = rt_settings.ambient_occlusion || rt_settings.path_ambient;
   rt_settings.path_probe_sky = path_probe_sky_row != 0.f;
+  rt_settings.cheap_fog_alone = true;
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
   rt_settings.reflection_fog = reflections::fog_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.

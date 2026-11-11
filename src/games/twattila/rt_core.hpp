@@ -140,6 +140,10 @@ struct Settings {
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
+  // Fog shadows as the only ray-traced effect pay for nothing else (Warhammer III; false: as before): no Ray Reconstruction (no
+  // ray-traced light on surfaces to denoise: DLSS's own model, rt_scene.hpp Configure) and the terrain's count a frame late
+  // (Settings::terrain_count_later's way: the fog's shadow of a hill a frame or two short after a camera cut, never a wait).
+  bool cheap_fog_alone = false;
   // Leaf micromaps: the helper bakes new leaves' opacity micromaps (NVIDIA's OMM SDK): fewer alpha tests per ray.
   bool micromaps = false;
   // GPU Micromap Baking: on the GPU (the SDK's GPU baker), not the helper's CPU threads.
@@ -778,6 +782,20 @@ inline bool Enabled() {
          || runtime.settings.specular_occlusion || runtime.settings.local_lights || runtime.settings.fog_shadows;
 }
 
+// Fog shadows the only ray-traced effect, with Settings::cheap_fog_alone.
+inline bool CheapFogAlone(const Settings& settings) {
+  return settings.cheap_fog_alone && settings.fog_shadows
+         && !(settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce || settings.reflections || settings.specular_occlusion
+              || settings.local_lights);
+}
+
+// Whether any ray this frame meets grass (the helper's GRASS and GRASS_STILL instance masks: the sun's rays, the AO's and Path-Traced
+// AO's short ones; the fog's, the lights', the Light Bounce's, the paths' and the reflections' pass it): else grass is not captured
+// (nor its indirect draws' numbers read back), the same picture. Units' cut-outs are not grass (SceneShader::grass).
+inline bool GrassMet() {
+  return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.path_ambient;
+}
+
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return nullptr;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -1138,6 +1156,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // G-buffer draw alone: with both, the share paid twice, and past it an instance hidden by one (its swaying copy traced)
   // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera). Cloth and sails
   // too, should the game prefill them: their texels paid twice for one sheet.
+  if (shader.grass && !GrassMet()) return;
   bool thin = shader.thin || (shader.thin_row != nullptr && *shader.thin_row != 0.f);
   const bool cascade_draw = !shader.cascade_keep.empty();
   if (cascade_draw && !runtime.settings.casters_out_of_view) return;
@@ -1737,7 +1756,7 @@ void Capture(Context& command, const SceneShader& shader) {
     // The count read later: this frame's triangles land on empty ones, as many as the last count known and an eighth (the capture's
     // size at the trace, which no longer knows how many were written), and their counts go to a set of queries the GPU has answered.
     if (shader.tessellated && runtime.tessellated_draws == 0) {
-      runtime.terrain_later = runtime.settings.terrain_count_later && runtime.terrain_known_corners != 0
+      runtime.terrain_later = (runtime.settings.terrain_count_later || CheapFogAlone(runtime.settings)) && runtime.terrain_known_corners != 0
                               && runtime.terrain_known_frame + TERRAIN_COUNT_FRAMES >= runtime.frame;
     }
     if (shader.tessellated && runtime.terrain_later && runtime.tessellated_draws == 0) {
@@ -2140,6 +2159,7 @@ template <typename Context>
 void CaptureIndirect(Context& command, const void*) {
   const auto& arguments = command.arguments;
   if (arguments.command != reshade::api::indirect_command::draw_indexed) return;
+  if (command.template GetCallbackData<SceneShader>().grass && !GrassMet()) return;
   auto* native = NativeContext(command.cmd_list);
   if (native == nullptr || runtime.traced_frame == runtime.frame) return;
   auto* buffer = reinterpret_cast<ID3D11Buffer*>(arguments.buffer.handle);

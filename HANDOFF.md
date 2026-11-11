@@ -3,7 +3,7 @@
 ## WH3 v41 (ATN's test of v40, 2026-11-11; no game start, ATN away; offline only)
 Evidence: tools/tw/wh3_v41/atn_run1 (ReShade.log, the helper's ReShade.log1, renodx-tw-dlaa64.log, sl.log, ini, preferences). Report: tools/tw/wh3_v41/reports/v41.md. Rules: wh3_batch6/plan.md "Rules (every phase)" (commit lines end Claude Opus 5.5).
 - [x] 1 Path-Traced AO too dark: rt_sun took the spherical harmonics' sky, but with the game's Global Illumination on (true in every pre-v37 trace) the sun shaders take the light probes, whose open sky is the environment maps x g_ambient_fudge_factor (cs DC860C60). ATN's helper lines: "the game's ambient" 1/12 to 1/58 of the screen's shade. rt_sun now builds that sky (row Sky as Bright as the Game's, on). WARP rt_sun_test. The game's SSAO: skipped under RTAO, Path-Traced AO and GT-VBAO (code read).
-- [ ] 2 any ray feature's fixed cost (Fog Shadows only)
+- [x] 2 any ray feature's fixed cost: Fog Shadows alone switched on Ray Reconstruction (+2 ms at 50%, +6.6 ms at 100%), the terrain's count wait (14-22 ms of the frame thread in run R, the cap when not GPU-bound) and the grass's capture, indirect read-back and clusters (grass about 3/4 of the helper's per-frame clusters; harness: 40,000 cards +0.64 ms) that no fog ray meets. Now (shared rt_core / rt_scene): grass captured only while a ray meets it (sun, AO, Path-Traced AO: same picture); WH3's Settings::cheap_fog_alone: fog alone without Ray Reconstruction and with the count a frame late. Attila: binary changes, picture the same (its flag false).
 - [ ] 3 far tree shadows changing LODs
 - [ ] 4 DLSS Preset Auto gone; FG 6x DLSS -> FSR error
 - [ ] 5 Texture LOD Bias
