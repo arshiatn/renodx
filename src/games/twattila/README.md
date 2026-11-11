@@ -1,5 +1,11 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v146 (in progress, round v42; not run in game)
+
+- **Particles at Half Resolution (Experimental, off; Extra):** smoke, fire and dust (the particle draws, VS A7F257B5) drawn into a half-size layer of the addon's (`particle_layer.hpp`) against a half-size depth (the farthest of each 2 x 2), their soft edges reading the scene's depth by the layer's size (the camera copy's c30), the layer's alpha the share of the scene it leaves. It goes into the light buffer before its next reader (the luma / bloom downsample 781681E4, else the tone mappers), each pixel taking the 2 x 2 texels around it by depth. A particle blend other than over / premultiplied / added, a scissor or the game's MSAA: those particles stay at full size (one log line). The rays' sun shadow on smoke (vfx00's t49) is read at the render pixel. RTX 5090, 4K, 100 full-screen particles: 4.79 -> 1.22 ms, plus 0.09 ms for the layer.
+- **Smooth Half-Size Particles (Experimental, off; Extra, with the row above):** Warhammer III's: the layer kept over frames (`particle_history.hpp`), +0.04 ms at 4K.
+- WARP `test/tw_particle_history` (x86 + amd64): the blends through the layer within one R11G11B10 step of the blend math, the layer's depth the CPU's at 66% render scale, nothing outside the render, the game's state after each draw, vfx00 the same at full size.
+
 ## v145 = players' v2.5.6 (2026-11-11, round v42 A; built, not run in game; renodx-tw-dlaa64.exe helper103, bridge v30: ship them together; RenoDX_Attila_v2.5.6_HDR_only.zip: the add-on alone)
 
 v144 with Warhammer III v41's shared changes and helper. No row and no default changed: the page is v144's (page dump: the Build Date only).

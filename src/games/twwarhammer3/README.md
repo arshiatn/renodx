@@ -1,5 +1,9 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v42 (in progress, round v42; not run in game)
+
+- **Smooth Half-Size Particles (Experimental, off; VFX):** the game's half-size particle layer (what it draws soft, and all sprites with Particles at Half Resolution) kept over frames and brought up by depth. Its composite (43606BB8) is drawn with `particle_composite.ps_5_0.hlsl`: the same sums, with the half layer's colour and zeroth moment smoothed (`twattila/particle_history.hpp`: last frame's moved by the depth, held within this frame's 3 x 3, kept while this frame's 3 x 3 mean matches last frame's) and each pixel taking the 2 x 2 texels around it by depth (bilinear unless one is more than 10% off, then by nearness: the rule of the game's own unused filtered composite 1EF17B33). Smoke no longer covers the edge of a soldier in front of it; a flickering spark averages, a moving one stays whole. WARP `test/tw_particle_history`: at a first frame on flat depth it is the game's composite to 2.75e-6; at a box edge the box gets 0.2% of the smoke behind it, the game's composite half. RTX 5090, 4K: +0.07 ms.
+
 ## v41 (2026-11-11, fixes; renodx-tw-dlaa64.exe helper103, bridge v30: ship them together; not run in game; no players' zip)
 
 - **Path-Traced AO no longer too dark ("cooked").** With the game's Global Illumination on, its sun shader lights open ground from its light probes (the environment maps), not from the sky's spherical harmonics our Path-Traced AO took: our sky was 12 to 58 times dimmer than the screen's shade. New row **Sky as Bright as the Game's** (on): our sky built from the same probes. Off: v40's. The game's SSAO stays skipped under ray-traced AO, Path-Traced AO and GT-VBAO.
