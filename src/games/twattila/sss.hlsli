@@ -31,4 +31,17 @@ cbuffer sss_settings : register(b2)
   float g_sss_foliage_light;  // Light Through Foliage: the sun's share through what grass and leaves shadow (sss_depth, sss_bend)
 }
 
+// sss_bend_extended's, sss_soft's and sss_lights' (screen_space_shadows.hpp ExtendedSettings; unused by the others).
+cbuffer sss_extended : register(b4)
+{
+  float g_sss_auto_thickness;  // Auto Thickness: 1 on
+  float g_sss_sun_tangent;     // Softer Away from the Caster: tan of half the sun's disk, 0 off (u1 the penumbra)
+  float g_sss_thin_light;      // Light Through Banners: their share of the sun (t2 their depth), 0 off
+  float g_sss_coloured;        // Coloured Shadows: 1 (u2 the filter)
+  float g_sss_albedo_power;    // the G-buffer colour's gamma (t3)
+  float g_sss_soft_radius;     // the penumbra's most, render pixels
+  uint g_sss_lights_wanted;    // torch and fire shadows: how many lights (sss_lights)
+  uint g_sss_light_draws;      // the light draws' records last frame (sss_lights t1)
+}
+
 #endif  // SRC_GAMES_TWATTILA_SSS_HLSLI_

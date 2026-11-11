@@ -130,6 +130,17 @@ struct DispatchParameters
 	// RenoDX (Attila's Light Through Foliage): what a depth marked negative shadows keeps this share of the light.
 	float CasterLight;
 #endif
+#ifdef BEND_SSS_EXTENDED
+	// RenoDX extended (Attila's sss_bend_extended, with BEND_SSS_LIGHT_CASTERS): Auto Thickness, an occluder's thickness
+	// growing by this many windows a sample along its run (0 off); banners where ThinDepth holds their depth (ThinCasters)
+	// keep ThinLight of the light; samples nearer the light's screen point than NearLightShare of the pixel's own distance
+	// left out (0.5 the sun's; 0 a point light, whose occluders lie anywhere up to it). WriteExtended writes the result.
+	float AutoThicknessScale;
+	bool ThinCasters;
+	float ThinLight;
+	Texture2D<float> ThinDepth;
+	float NearLightShare;
+#endif
 
 	// Set sensible starting tuning values
 	void SetDefaults()
@@ -149,6 +160,12 @@ struct DispatchParameters
 		FadeOutSamples				= FADE_OUT_SAMPLES;
 		MirrorEdges					= false;
 		FarFade						= float2(0, 0);
+#ifdef BEND_SSS_EXTENDED
+		AutoThicknessScale			= 0;
+		ThinCasters					= false;
+		ThinLight					= 0;
+		NearLightShare				= 0.5;
+#endif
 	}
 
 	// Runtime data returned from BuildDispatchList():
@@ -186,6 +203,24 @@ struct DispatchParameters
 	void WriteScreenSpaceShadow(DispatchParameters inParameters, int3 inGroupID, int inGroupThreadID, int inSampleCount);
 
 	float ReadShadowMap(float2 pixel_xy);
+
+#ifdef BEND_SSS_EXTENDED
+	// RenoDX extended: what the march found for a pixel. The first sample that shadows it at all (hit, at hit_xy) and the
+	// banner sample that shadows it most (thin, at thin_xy, by thin_weight 0-1), in screen pixels; the pixel's own depth.
+	struct ExtendedResult
+	{
+		bool hit;
+		float2 hit_xy;
+		bool thin;
+		float2 thin_xy;
+		float thin_weight;
+		float depth;
+	};
+
+	// Writes `result` (and what else the includer keeps) for the pixel at `xy`. Declared here, defined by the includer (as
+	// ReadShadowMap), which owns the outputs.
+	void WriteExtended(DispatchParameters inParameters, int2 xy, float result, ExtendedResult extended);
+#endif
 
 #if !defined(WAVE_SIZE) || !defined(SAMPLE_COUNT) || !defined(HARD_SHADOW_SAMPLES) || !defined(FADE_OUT_SAMPLES)
 	#error Before including bend_sss_gpu.h, four macros must be defined to configure the shader compile: WAVE_SIZE, SAMPLE_COUNT, HARD_SHADOW_SAMPLES, and FADE_OUT_SAMPLES. See the top of this file for details.
@@ -315,6 +350,11 @@ struct DispatchParameters
 		bool is_edge = false;
 		bool skip_pixel = false;
 		float2 write_xy = floor(pixel_xy);
+#ifdef BEND_SSS_EXTENDED
+		// The groupshared samples' order runs along the ray: index thread + 1 + n lies n + 1 of these steps from the pixel.
+		const float2 own_xy = pixel_xy;
+		const float2 step_xy = xy_delta * direction / (float)WAVE_SIZE;
+#endif
 
 		[loop] for (i = 0; i < read_count; i++)
 		{
@@ -352,6 +392,16 @@ struct DispatchParameters
 #ifdef BEND_SSS_LIGHT_CASTERS
 			const bool light_caster = depths.x < 0;
 			depths = abs(depths);
+#endif
+#ifdef BEND_SSS_EXTENDED
+			// A banner's pixel: the depth its own draw left (InstallThin) is the scene's there (within its depth bias).
+			bool thin_caster = false;
+			if (inParameters.ThinCasters && !light_caster)
+			{
+				const float thin_depth = inParameters.ThinDepth.SampleLevel(inParameters.PointBorderSampler, RenderDepthUV(inParameters, read_xy), 0);
+				const float remaining = abs(inParameters.FarDepthValue - depths.x);
+				thin_caster = remaining > 1e-7 && abs(thin_depth - depths.x) <= 4e-7 + 2e-4 * remaining;
+			}
 #endif
 
 			// Depth thresholds (bilinear/shadow thickness) are based on a fractional ratio of the difference between sampled depth and the far clip depth
@@ -408,7 +458,11 @@ struct DispatchParameters
 					// RenoDX: also those nearer the light's screen point than half the pixel's own distance: there the
 					// divide by the distance magnifies the depth's error past the shadow window (ATN, Attila: long shadows
 					// towards the sun striped along Bend's 64-pixel rings, moving with the camera).
+#ifdef BEND_SSS_EXTENDED
+					stored_depth = sample_distance > inParameters.NearLightShare * first_sample_distance ? stored_depth : 1e10;
+#else
 					stored_depth = sample_distance > 0.5 * first_sample_distance ? stored_depth : 1e10;
+#endif
 				}
 
 				// Store the depth values in groupshared
@@ -416,7 +470,14 @@ struct DispatchParameters
 				DepthData[idx] = stored_depth;
 #ifdef BEND_SSS_LIGHT_CASTERS
 				// The contrast below turns this least delta into the caster's share of the light.
+#ifdef BEND_SSS_EXTENDED
+				// A banner's as -(1 + it) (its colour and its thickness told apart from foliage's).
+				LightData[idx] = thin_caster    ? -(2 - (1 - inParameters.ThinLight) / inParameters.ShadowContrast)
+				                 : light_caster ? 1 - (1 - inParameters.CasterLight) / inParameters.ShadowContrast
+				                                : 0;
+#else
 				LightData[idx] = light_caster ? 1 - (1 - inParameters.CasterLight) / inParameters.ShadowContrast : 0;
+#endif
 #endif
 			}
 
@@ -499,6 +560,66 @@ struct DispatchParameters
 
 		start_depth = start_depth * depth_scale - z_sign;
 
+#ifdef BEND_SSS_EXTENDED
+		// RenoDX extended: the three loops below as one, sample by sample in order along the ray (the same minimums into the
+		// same lanes), which follows each occluder's run for Auto Thickness (Bjorn Ottosson's "as thick as it is wide", CC0,
+		// as bitmask.hlsli's): a run starts where the depth jumps more than a window from the sample before or bends by more
+		// than half of one; a sample's back lies 2 (m - 1) windows further than Bend's, m growing along the run, the front
+		// edge Bend's. Light casters (foliage, banners) stay thin. Its first shadowing sample (hit) and the banner sample
+		// that shadows it most come out for WriteExtended.
+		int run_start = 0;
+		float previous_depth = DepthData[sample_index - 1] * depth_scale;
+		float previous_step = 0;
+		int hit = -1;
+		int thin_hit = -1;
+		float thin_weight = 0;
+		const int fade_start = inSampleCount - inParameters.FadeOutSamples;
+		[loop] for (i = 0; i < inSampleCount; i++)
+		{
+			const float sample_depth = DepthData[sample_index + i] * depth_scale;
+			const float light_data = LightData[sample_index + i];
+			const bool thin_sample = light_data < 0;
+			const float offset = start_depth - sample_depth;
+			float depth_delta = abs(offset);
+			[branch] if (inParameters.AutoThicknessScale > 0)
+			{
+				const float step = sample_depth - previous_depth;
+				if (i == 0 || abs(step) > 1 || abs(step - previous_step) > 0.5) run_start = i;
+				previous_step = step;
+				previous_depth = sample_depth;
+				const float m = (light_data != 0) ? 1 : min(1 + (float)(i - run_start) * inParameters.AutoThicknessScale, 16);
+				const float behind = offset * z_sign;
+				depth_delta = max(-behind, behind - 2 * (m - 1));
+			}
+			if (hit < 0 && depth_delta < 1) hit = i;
+			if (thin_sample && depth_delta < 1)
+			{
+				const float weight = 1 - saturate(depth_delta * inParameters.ShadowContrast + (1 - inParameters.ShadowContrast));
+				if (weight > thin_weight)
+				{
+					thin_weight = weight;
+					thin_hit = i;
+				}
+			}
+			depth_delta = max(depth_delta, thin_sample ? -light_data - 1 : light_data);
+			if (i < inParameters.HardShadowSamples)
+			{
+				hard_shadow = min(hard_shadow, depth_delta);
+			}
+			else if (i < fade_start)
+			{
+				const bool4 lane = ((i & 3) == int4(0, 1, 2, 3));
+				shadow_value = lane ? min(shadow_value, depth_delta) : shadow_value;
+			}
+			else
+			{
+				const int fade = i - fade_start;
+				const float fade_out = (float)(fade + 1) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
+				const bool4 lane = ((fade & 3) == int4(0, 1, 2, 3));
+				shadow_value = lane ? min(shadow_value, depth_delta + fade_out) : shadow_value;
+			}
+		}
+#else
 		// The first number of hard shadow samples, a single pixel can produce a full shadow
 		[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
 		{
@@ -544,6 +665,7 @@ struct DispatchParameters
 			const bool4 lane = ((fade & 3) == int4(0, 1, 2, 3));
 			shadow_value = lane ? min(shadow_value, depth_delta + fade_out) : shadow_value;
 		}
+#endif
 
 		// Apply the contrast value.
 		// A value of 0 indicates a sample was exactly matched to the reference depth (and the result is fully shadowed)
@@ -570,6 +692,9 @@ struct DispatchParameters
 		{
 			const float distance_share = (inParameters.LightCoordinate.z - 1) / (inParameters.LightCoordinate.z - first_sampling_depth);
 			result = lerp(result, 1, smoothstep(inParameters.FarFade.x, inParameters.FarFade.y, distance_share));
+#ifdef BEND_SSS_EXTENDED
+			thin_weight *= 1 - smoothstep(inParameters.FarFade.x, inParameters.FarFade.y, distance_share);
+#endif
 		}
 
 		// Add shadowmap data
@@ -591,7 +716,18 @@ struct DispatchParameters
 
 			// Asking the GPU to write scattered single-byte pixels isn't great,
 			// But thankfully the latency is hidden by all the work we're doing...
+#ifdef BEND_SSS_EXTENDED
+			ExtendedResult extended;
+			extended.hit = hit >= 0;
+			extended.hit_xy = own_xy + (float)(hit + 1) * step_xy;
+			extended.thin = thin_hit >= 0 && thin_weight > 0;
+			extended.thin_xy = own_xy + (float)(thin_hit + 1) * step_xy;
+			extended.thin_weight = thin_weight;
+			extended.depth = first_sampling_depth;
+			WriteExtended(inParameters, (int2)write_xy, result, extended);
+#else
 			inParameters.OutputTexture[(int2)write_xy] = result;
+#endif
 		}
 	}
 

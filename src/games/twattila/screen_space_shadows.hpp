@@ -33,6 +33,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/pipeline.hpp"
 #include "./dxbc.hpp"
+#include "./frame_history.hpp"
 #include "./light_bounce.hpp"
 #include "./view_share.hpp"
 
@@ -68,7 +69,25 @@ struct Settings {
   int debug_view = 0;            // 0 off, 1 the occlusion, 2 with the screen edge's limit (sss_debug)
   bool mirror_edges = false;     // past the left, right and bottom edges: the depth mirrored (Bend's MirrorEdges)
   float foliage_light = 0.f;     // the sun's share through the shadows grass and leaves cast (InstallFoliage)
+  // The extended march (sss_bend_extended), each off by default: each occluder as thick as it is wide, `thickness` the
+  // least; shadows softer away from their casters by a sun's disk of this many degrees (sss_soft); the sun's share through
+  // banners, flags, tents and sails (InstallThin) and, with it, their colour (Coloured Shadows, t50); torch and fire
+  // shadows for this many lights (screen_space_lights.hpp).
+  bool auto_thickness = false;
+  float sun_disk = 0.f;
+  float thin_light = 0.f;
+  bool coloured = false;
+  uint32_t lights = 0;
 };
+
+// A vertex shader whose main-view G-buffer draws are banners, flags, tents or sails (InstallThin; `row`: only while it is on).
+struct ThinShader {
+  uint32_t hash = 0;
+  const float* row = nullptr;
+};
+
+// Light Through Banners' rows are shown where InstallThin knows the game's banners.
+static bool thin_installed = false;
 
 namespace internal {
 
@@ -109,6 +128,21 @@ struct ShaderSettings {
   float render_height = 0.f;
   float foliage_light = 0.f;  // sss_depth, sss_bend
 };
+
+// sss.hlsli's sss_extended.
+struct ExtendedSettings {
+  float auto_thickness = 0.f;
+  float sun_tangent = 0.f;
+  float thin_light = 0.f;
+  float coloured = 0.f;
+  float albedo_power = 1.f;
+  float soft_radius = 0.f;
+  uint32_t lights_wanted = 0;  // screen_space_lights.hpp's
+  uint32_t light_draws = 0;
+};
+
+// The penumbra's most at 2160 render lines (Softer Away from the Caster; render pixels, by the render's height).
+constexpr float SOFT_RADIUS_2160 = 32.f;
 
 // A shadowed sun light shader with the screen-space shadow, its shadow x (1 - t49 at the pixel), rT = 1 - t49 from
 //   ftou rT.xy, vP.xyxx / mov rT.zw, l(0) / ld rT.x, rT.xyzw, t49.xyzw / mad rT.x, rT.x, l(-1), l(1)
@@ -512,6 +546,27 @@ struct DeviceObjects {
   ComPtr<ID3D11ShaderResourceView> after_foliage_srv;
   bool logged_gbuffer_depth = false;
   ShaderSettings uploaded = {};
+  // The extended march (sss_bend_extended), Softer Away from the Caster (sss_soft), Light Through Banners' draws again
+  // (sss_thin) and their constants (b4).
+  ComPtr<ID3D11ComputeShader> bend_extended;
+  ComPtr<ID3D11ComputeShader> soft;
+  ComPtr<ID3D11PixelShader> thin_pixel_shader;
+  ComPtr<ID3D11Buffer> extended_settings;
+  ExtendedSettings uploaded_extended = {};
+  // The screen's size, made when first needed: each pixel's penumbra radius (R16F) and its colour filter (Coloured
+  // Shadows: 1 - the colour, RGBA8, the sun shaders' t50).
+  ComPtr<ID3D11UnorderedAccessView> penumbra_uav;
+  ComPtr<ID3D11ShaderResourceView> penumbra_srv;
+  ComPtr<ID3D11UnorderedAccessView> tint_uav;
+  ComPtr<ID3D11ShaderResourceView> tint_srv;
+  // The banners' depth (their G-buffer draws again, R32F at the depth-stencil buffer's size) and those draws' states: depth
+  // test less-equal, no writes, a little nearer than the game's (DepthBias), by the game's rasterizer state.
+  ComPtr<ID3D11Texture2D> thin_texture;
+  ComPtr<ID3D11RenderTargetView> thin_rtv;
+  ComPtr<ID3D11ShaderResourceView> thin_srv;
+  ComPtr<ID3D11DepthStencilState> thin_depth_state;
+  std::unordered_map<ID3D11RasterizerState*, std::pair<ComPtr<ID3D11RasterizerState>, ComPtr<ID3D11RasterizerState>>> thin_rasterizers;
+  bool logged_thin = false;
 };
 
 struct Runtime {
@@ -538,9 +593,37 @@ struct Runtime {
   std::vector<uint32_t> forward_hashes;
   DeviceObjects objects;
   uint32_t off_presents = 0;
+  // Light Through Banners (InstallThin): the G-buffer colour's gamma for their colour, the frame their depth is of.
+  float albedo_power = 1.f;
+  uint64_t thin_frame = UINT64_MAX;
+  uint64_t tint_frame = UINT64_MAX;  // the frame the colour filter is of (Coloured Shadows)
+  // The game's camera layout (the sun draws': screen_space_lights.hpp's for the light draws).
+  std::span<const frame_history::CameraRun> camera_layout = {};
 };
 
 static Runtime runtime;
+
+// The occlusion the sun draws read is the softened one (sss_blur's Softness or sss_soft's Softer Away from the Caster).
+inline bool Softened(const Settings& settings) { return settings.softness > 0.f || settings.sun_disk > 0.f; }
+
+// A texture of the screen's `width` x `height` the compute writes and the draws read.
+inline bool MakeTexture(ID3D11Device* device, UINT width, UINT height, DXGI_FORMAT format, ComPtr<ID3D11UnorderedAccessView>* uav,
+                        ComPtr<ID3D11ShaderResourceView>* srv) {
+  const D3D11_TEXTURE2D_DESC desc = {
+      .Width = width,
+      .Height = height,
+      .MipLevels = 1,
+      .ArraySize = 1,
+      .Format = format,
+      .SampleDesc = {.Count = 1},
+      .Usage = D3D11_USAGE_DEFAULT,
+      .BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE,
+  };
+  ComPtr<ID3D11Texture2D> texture;
+  return SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))
+         && SUCCEEDED(device->CreateUnorderedAccessView(texture.Get(), nullptr, uav->GetAddressOf()))
+         && SUCCEEDED(device->CreateShaderResourceView(texture.Get(), nullptr, srv->GetAddressOf()));
+}
 
 // The device's objects (the size-bound ones again when the screen's size changes); false: not available.
 inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
@@ -552,6 +635,8 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
       return SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader->GetAddressOf()));
     };
     const D3D11_BUFFER_DESC settings_desc = {.ByteWidth = sizeof(ShaderSettings), .Usage = D3D11_USAGE_DEFAULT,
+                                             .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_BUFFER_DESC extended_desc = {.ByteWidth = sizeof(ExtendedSettings), .Usage = D3D11_USAGE_DEFAULT,
                                              .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
     const D3D11_BUFFER_DESC arguments_desc = {
         .ByteWidth = DISPATCH_COUNT * 12,
@@ -585,7 +670,10 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
     bool made = compute(__sss_depth, &objects.depth_copy) && compute(__sss_depth_ms, &objects.depth_copy_ms)
                 && compute(__sss_setup, &objects.setup) && compute(__sss_bend, &objects.bend)
                 && compute(__sss_blur, &objects.blur) && compute(__sss_debug, &objects.debug)
+                && compute(__sss_bend_extended, &objects.bend_extended) && compute(__sss_soft, &objects.soft)
+                && SUCCEEDED(device->CreatePixelShader(__sss_thin.data(), __sss_thin.size(), nullptr, objects.thin_pixel_shader.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
+                && SUCCEEDED(device->CreateBuffer(&extended_desc, nullptr, objects.extended_settings.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&arguments_desc, nullptr, objects.arguments.GetAddressOf()))
                 && SUCCEEDED(device->CreateUnorderedAccessView(objects.arguments.Get(), &arguments_view,
                                                                objects.arguments_uav.GetAddressOf()))
@@ -620,25 +708,13 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
   objects.soft_srv.Reset();
   objects.debug_texture.Reset();
   objects.debug_uav.Reset();
-  const auto make = [&](DXGI_FORMAT format, ComPtr<ID3D11UnorderedAccessView>* uav, ComPtr<ID3D11ShaderResourceView>* srv) {
-    const D3D11_TEXTURE2D_DESC desc = {
-        .Width = width,
-        .Height = height,
-        .MipLevels = 1,
-        .ArraySize = 1,
-        .Format = format,
-        .SampleDesc = {.Count = 1},
-        .Usage = D3D11_USAGE_DEFAULT,
-        .BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE,
-    };
-    ComPtr<ID3D11Texture2D> texture;
-    return SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))
-           && SUCCEEDED(device->CreateUnorderedAccessView(texture.Get(), nullptr, uav->GetAddressOf()))
-           && SUCCEEDED(device->CreateShaderResourceView(texture.Get(), nullptr, srv->GetAddressOf()));
-  };
-  if (!make(DXGI_FORMAT_R32_FLOAT, &objects.depth_uav, &objects.depth_srv)
-      || !make(DXGI_FORMAT_R8_UNORM, &objects.occlusion_uav, &objects.occlusion_srv)
-      || !make(DXGI_FORMAT_R8_UNORM, &objects.soft_uav, &objects.soft_srv)) {
+  objects.penumbra_uav.Reset();
+  objects.penumbra_srv.Reset();
+  objects.tint_uav.Reset();
+  objects.tint_srv.Reset();
+  if (!MakeTexture(device, width, height, DXGI_FORMAT_R32_FLOAT, &objects.depth_uav, &objects.depth_srv)
+      || !MakeTexture(device, width, height, DXGI_FORMAT_R8_UNORM, &objects.occlusion_uav, &objects.occlusion_srv)
+      || !MakeTexture(device, width, height, DXGI_FORMAT_R8_UNORM, &objects.soft_uav, &objects.soft_srv)) {
     renodx::utils::log::w("[Total War] Screen-space shadows: could not create its textures (", width, " x ", height, ").");
     return false;
   }
@@ -699,10 +775,10 @@ inline ID3D11ShaderResourceView* SceneDepth(ID3D11Device* device, ID3D11DeviceCo
   return objects.scene_depth_srv.Get();
 }
 
-// This frame's occlusion from the scene's depth (`depth_view`; `msaa`: multisampled), camera and sun constants, with
-// the compute stage's bindings put back after.
+// This frame's occlusion from the scene's depth (`depth_view`; `msaa`: multisampled), camera and sun constants (and the
+// G-buffer's colour, `colour`, for Coloured Shadows; null: none), with the compute stage's bindings put back after.
 inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth_view, bool msaa, ID3D11Buffer* camera, ID3D11Buffer* lighting,
-                    UINT sun_direction) {
+                    UINT sun_direction, ID3D11ShaderResourceView* colour) {
   auto& objects = runtime.objects;
   // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%;
   // Bend's per-pixel depth tolerances over it (a render pixel holds more of the scene: the depth steps between neighbours
@@ -739,62 +815,102 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
     objects.uploaded = settings;
   }
+  // The extended march where one of its rows asks for it: the banners' depth drawn this frame (their draws come before
+  // the sun's) at this size, their colour with the G-buffer's; the textures it writes made when first needed.
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  D3D11_TEXTURE2D_DESC thin_desc = {};
+  if (objects.thin_texture) objects.thin_texture->GetDesc(&thin_desc);
+  const bool thin = runtime.settings.thin_light > 0.f && runtime.thin_frame == runtime.frame && thin_desc.Width == objects.width
+                    && thin_desc.Height == objects.height;
+  const bool soft = runtime.settings.sun_disk > 0.f
+                    && (objects.penumbra_uav
+                        || MakeTexture(device.Get(), objects.width, objects.height, DXGI_FORMAT_R16_FLOAT, &objects.penumbra_uav, &objects.penumbra_srv));
+  const bool coloured = thin && runtime.settings.coloured && colour != nullptr
+                        && (objects.tint_uav
+                            || MakeTexture(device.Get(), objects.width, objects.height, DXGI_FORMAT_R8G8B8A8_UNORM, &objects.tint_uav, &objects.tint_srv));
+  const bool extended = runtime.settings.auto_thickness || soft || thin;
+  const ExtendedSettings extended_settings = {
+      .auto_thickness = (runtime.settings.auto_thickness ? 1.f : 0.f),
+      .sun_tangent = (soft ? std::tan(runtime.settings.sun_disk * (3.14159265f / 360.f)) : 0.f),
+      .thin_light = (thin ? runtime.settings.thin_light : 0.f),
+      .coloured = (coloured ? 1.f : 0.f),
+      .albedo_power = runtime.albedo_power,
+      .soft_radius = SOFT_RADIUS_2160 * static_cast<float>(render[1]) / 2160.f,
+  };
+  if (std::memcmp(&extended_settings, &objects.uploaded_extended, sizeof(ExtendedSettings)) != 0) {
+    native->UpdateSubresource(objects.extended_settings.Get(), 0, nullptr, &extended_settings, 0, 0);
+    objects.uploaded_extended = extended_settings;
+  }
 
+  constexpr UINT VIEWS = 4;
+  constexpr UINT UAVS = 3;
+  constexpr UINT CONSTANTS = 5;
   ComPtr<ID3D11ComputeShader> game_shader;
   native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
-  std::array<ID3D11ShaderResourceView*, 3> game_views = {};
-  native->CSGetShaderResources(0, 3, game_views.data());
-  std::array<ID3D11UnorderedAccessView*, 2> game_uavs = {};
-  native->CSGetUnorderedAccessViews(0, 2, game_uavs.data());
-  std::array<ID3D11Buffer*, 4> game_constants = {};
-  native->CSGetConstantBuffers(0, 4, game_constants.data());
+  std::array<ID3D11ShaderResourceView*, VIEWS> game_views = {};
+  native->CSGetShaderResources(0, VIEWS, game_views.data());
+  std::array<ID3D11UnorderedAccessView*, UAVS> game_uavs = {};
+  native->CSGetUnorderedAccessViews(0, UAVS, game_uavs.data());
+  std::array<ID3D11Buffer*, CONSTANTS> game_constants = {};
+  native->CSGetConstantBuffers(0, CONSTANTS, game_constants.data());
   ID3D11SamplerState* game_sampler = nullptr;
   native->CSGetSamplers(0, 1, &game_sampler);
 
-  // The occlusion is written below: not bound for the pixel shaders meanwhile.
-  ID3D11ShaderResourceView* no_view = nullptr;
-  native->PSSetShaderResources(MASK_SLOT, 1, &no_view);
-  constexpr UINT KEEP_COUNTS[2] = {UINT_MAX, UINT_MAX};
+  // The occlusion and the filter are written below: not bound for the pixel shaders meanwhile.
+  constexpr std::array<ID3D11ShaderResourceView*, 2> NO_VIEWS = {};
+  native->PSSetShaderResources(MASK_SLOT, coloured ? 2 : 1, NO_VIEWS.data());
+  constexpr std::array<UINT, UAVS> KEEP_COUNTS = {UINT_MAX, UINT_MAX, UINT_MAX};
   // The unordered access views first: D3D11 drops a view of a resource still bound for writing (the last pass's
   // output), which had Bend read null parameters and depth (ATN debug7: one corner fully shadowed).
-  const auto bind = [&](ID3D11ComputeShader* shader, std::array<ID3D11ShaderResourceView*, 2> views,
-                        std::array<ID3D11UnorderedAccessView*, 2> uavs, std::array<ID3D11Buffer*, 4> constants) {
+  const auto bind = [&](ID3D11ComputeShader* shader, const std::array<ID3D11ShaderResourceView*, VIEWS>& views,
+                        const std::array<ID3D11UnorderedAccessView*, UAVS>& uavs, const std::array<ID3D11Buffer*, CONSTANTS>& constants) {
     native->CSSetShader(shader, nullptr, 0);
-    native->CSSetUnorderedAccessViews(0, 2, uavs.data(), KEEP_COUNTS);
-    native->CSSetShaderResources(0, 2, views.data());
-    native->CSSetConstantBuffers(0, 4, constants.data());
+    native->CSSetUnorderedAccessViews(0, UAVS, uavs.data(), KEEP_COUNTS.data());
+    native->CSSetShaderResources(0, VIEWS, views.data());
+    native->CSSetConstantBuffers(0, CONSTANTS, constants.data());
   };
   // The depth (8 x 8 groups; with Light Through Foliage its foliage marked), the dispatch list, the occlusion cleared,
   // Bend's dispatches.
   const ComPtr<ID3D11ComputeShader>& depth_copy = (msaa ? objects.depth_copy_ms : objects.depth_copy);
   const bool foliage_marked = runtime.before_foliage_frame == runtime.frame && runtime.after_foliage_frame == runtime.frame;
-  bind(depth_copy.Get(), {depth_view, foliage_marked ? objects.before_foliage_srv.Get() : nullptr}, {objects.depth_uav.Get(), nullptr},
-       {nullptr, nullptr, objects.settings.Get(), nullptr});
-  ID3D11ShaderResourceView* after_foliage = foliage_marked ? objects.after_foliage_srv.Get() : nullptr;
-  native->CSSetShaderResources(2, 1, &after_foliage);
+  bind(depth_copy.Get(),
+       {depth_view, foliage_marked ? objects.before_foliage_srv.Get() : nullptr, foliage_marked ? objects.after_foliage_srv.Get() : nullptr, nullptr},
+       {objects.depth_uav.Get(), nullptr, nullptr}, {nullptr, nullptr, objects.settings.Get(), nullptr, nullptr});
   native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
-  bind(objects.setup.Get(), {}, {objects.arguments_uav.Get(), objects.parameters_uav.Get()},
-       {camera, lighting, objects.settings.Get(), nullptr});
+  bind(objects.setup.Get(), {}, {objects.arguments_uav.Get(), objects.parameters_uav.Get(), nullptr},
+       {camera, lighting, objects.settings.Get(), nullptr, nullptr});
   native->Dispatch(1, 1, 1);
-  constexpr FLOAT NO_OCCLUSION[4] = {0.f, 0.f, 0.f, 0.f};
-  native->ClearUnorderedAccessViewFloat(objects.occlusion_uav.Get(), NO_OCCLUSION);
-  bind(objects.bend.Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get()}, {objects.occlusion_uav.Get(), nullptr},
-       {nullptr, nullptr, objects.settings.Get(), nullptr});
+  constexpr std::array<FLOAT, 4> ZEROS = {};
+  native->ClearUnorderedAccessViewFloat(objects.occlusion_uav.Get(), ZEROS.data());
+  if (extended) {
+    // Bend leaves the pixels it skips (the sky) as they were.
+    if (soft) native->ClearUnorderedAccessViewFloat(objects.penumbra_uav.Get(), ZEROS.data());
+    if (coloured) native->ClearUnorderedAccessViewFloat(objects.tint_uav.Get(), ZEROS.data());
+    bind(objects.bend_extended.Get(),
+         {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin ? objects.thin_srv.Get() : nullptr, coloured ? colour : nullptr},
+         {objects.occlusion_uav.Get(), soft ? objects.penumbra_uav.Get() : nullptr, coloured ? objects.tint_uav.Get() : nullptr},
+         {camera, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
+  } else {
+    bind(objects.bend.Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get(), nullptr, nullptr}, {objects.occlusion_uav.Get(), nullptr, nullptr},
+         {nullptr, nullptr, objects.settings.Get(), nullptr, nullptr});
+  }
   native->CSSetSamplers(0, 1, objects.border.GetAddressOf());
   for (UINT index = 0; index < DISPATCH_COUNT; ++index) {
     native->CSSetConstantBuffers(3, 1, objects.dispatch_indexes[index].GetAddressOf());
     native->DispatchIndirect(objects.arguments.Get(), index * 12);
   }
-  if (runtime.settings.softness > 0.f) {
-    bind(objects.blur.Get(), {objects.depth_srv.Get(), objects.occlusion_srv.Get()}, {objects.soft_uav.Get(), nullptr},
-         {nullptr, nullptr, objects.settings.Get(), nullptr});
+  if (soft || runtime.settings.softness > 0.f) {
+    bind(soft ? objects.soft.Get() : objects.blur.Get(), {objects.depth_srv.Get(), objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr, nullptr},
+         {objects.soft_uav.Get(), nullptr, nullptr}, {nullptr, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
     native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
   }
+  runtime.tint_frame = coloured ? runtime.frame : UINT64_MAX;
 
   native->CSSetShader(game_shader.Get(), nullptr, 0);
-  native->CSSetUnorderedAccessViews(0, 2, game_uavs.data(), KEEP_COUNTS);
-  native->CSSetShaderResources(0, 3, game_views.data());
-  native->CSSetConstantBuffers(0, 4, game_constants.data());
+  native->CSSetUnorderedAccessViews(0, UAVS, game_uavs.data(), KEEP_COUNTS.data());
+  native->CSSetShaderResources(0, VIEWS, game_views.data());
+  native->CSSetConstantBuffers(0, CONSTANTS, game_constants.data());
   native->CSSetSamplers(0, 1, &game_sampler);
   for (auto* view : game_views) {
     if (view != nullptr) view->Release();
@@ -913,16 +1029,24 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
                 runtime.objects.logged_gbuffer_depth = true;
               }
             }
+            // Coloured Shadows: the G-buffer's colour (not under the game's MSAA).
+            ComPtr<ID3D11ShaderResourceView> colour;
+            if (runtime.settings.coloured && runtime.settings.thin_light > 0.f) {
+              native->PSGetShaderResources(sun_draw.gbuffer_slot + 1, 1, colour.GetAddressOf());
+              D3D11_SHADER_RESOURCE_VIEW_DESC colour_desc = {};
+              if (colour) colour->GetDesc(&colour_desc);
+              if (colour_desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D) colour.Reset();
+            }
             internal::Compute(native, scene_depth, msaa,
                               frame_history::AttilaCamera(device.Get(), native, camera[0], sun_draw.camera_layout, &runtime.objects.camera),
-                              lighting[0], sun_draw.sun_direction);
+                              lighting[0], sun_draw.sun_direction, colour.Get());
             runtime.computed_frame = runtime.frame;
           }
           if (camera[0] != nullptr) camera[0]->Release();
           if (lighting[0] != nullptr) lighting[0]->Release();
         }
         if (runtime.settings.enabled && runtime.computed_frame == runtime.frame) {
-          const auto& mask = (runtime.settings.softness > 0.f ? runtime.objects.soft_srv : runtime.objects.occlusion_srv);
+          const auto& mask = (internal::Softened(runtime.settings) ? runtime.objects.soft_srv : runtime.objects.occlusion_srv);
           occlusion = mask.Get();
         }
         if (internal::extra_occlusion != nullptr) {
@@ -934,6 +1058,17 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       }
     }
     native->PSSetShaderResources(internal::MASK_SLOT, 1, &occlusion);
+    // Coloured Shadows' filter where the rays bound none at t50 (they bind theirs or none); our last one taken off after.
+    if (runtime.objects.tint_srv) {
+      ComPtr<ID3D11ShaderResourceView> tint;
+      native->PSGetShaderResources(internal::TINT_SLOT, 1, tint.GetAddressOf());
+      if (!tint || tint.Get() == runtime.objects.tint_srv.Get()) {
+        ID3D11ShaderResourceView* filter = (occlusion != nullptr && runtime.settings.enabled && runtime.tint_frame == runtime.frame)
+                                               ? runtime.objects.tint_srv.Get()
+                                               : nullptr;
+        native->PSSetShaderResources(internal::TINT_SLOT, 1, &filter);
+      }
+    }
     return {};
   }
 };
@@ -996,6 +1131,162 @@ inline void InstallFoliage(std::span<const uint32_t> foliage_shaders, std::span<
   }
   for (const uint32_t hash : following_shaders) {
     renodx::utils::command_action::Register(OnFoliageOrder, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &AFTER);
+  }
+}
+
+// Light Through Banners: a banner's, flag's, tent's or sail's main-view G-buffer draw drawn again after it (finalize: also
+// when another callback drew it) by sss_thin into the banners' depth (cleared to the far plane at the frame's first),
+// against the game's depth (less-equal, a little nearer, not written), the game's bindings put back after. Its pixels
+// later draws cover keep a depth the scene's no longer is: the march takes a pixel as a banner's where both are the same.
+constexpr auto OnThinDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  using Arguments = typename Context::ArgumentType;
+  if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    return {};
+  } else {
+    const auto& shader = command.template GetCallbackData<T>();
+    {
+      const std::shared_lock lock(internal::runtime.mutex);
+      const auto& settings = internal::runtime.settings;
+      if (!settings.enabled || settings.thin_light <= 0.f || (shader.row != nullptr && *shader.row == 0.f)) return {};
+    }
+    if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+    return {.finalize_callback = [](Context& drawn, const void*) {
+      auto* native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
+      renodx::utils::directx::NativeFromReShadeProxy(&native);
+      if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || !frame_history::MainViewport(native)) return;
+      auto& runtime = internal::runtime;
+      const std::unique_lock lock(runtime.mutex);
+      auto& objects = runtime.objects;
+      ComPtr<ID3D11Device> device;
+      native->GetDevice(device.GetAddressOf());
+      if (objects.device.Get() != device.Get() || !objects.thin_pixel_shader) return;
+      // The game's targets, depth and output views (a G-buffer draw writing views is left alone: setting targets drops them).
+      std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
+      ComPtr<ID3D11DepthStencilView> depth_stencil;
+      std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT> game_output_views = {};
+      native->OMGetRenderTargetsAndUnorderedAccessViews(static_cast<UINT>(game_targets.size()), game_targets.data(), depth_stencil.GetAddressOf(), 0,
+                                                        static_cast<UINT>(game_output_views.size()), game_output_views.data());
+      const bool output_views = std::ranges::any_of(game_output_views, [](auto* view) { return view != nullptr; });
+      for (auto* view : game_output_views) {
+        if (view != nullptr) view->Release();
+      }
+      const auto release_targets = [&] {
+        for (auto* target : game_targets) {
+          if (target != nullptr) target->Release();
+        }
+      };
+      ComPtr<ID3D11Resource> depth_resource;
+      if (depth_stencil) depth_stencil->GetResource(depth_resource.GetAddressOf());
+      ComPtr<ID3D11Texture2D> depth_texture;
+      D3D11_TEXTURE2D_DESC depth_desc = {};
+      if (depth_resource && SUCCEEDED(depth_resource.As(&depth_texture))) depth_texture->GetDesc(&depth_desc);
+      if (output_views || game_targets[0] == nullptr || depth_desc.Width != runtime.display_width || depth_desc.Height != runtime.display_height
+          || depth_desc.ArraySize != 1 || depth_desc.Width == 0) {
+        release_targets();
+        return;
+      }
+      if (depth_desc.SampleDesc.Count != 1) {
+        if (!objects.logged_thin) {
+          renodx::utils::log::i("[Total War] Screen-space shadows: Light Through Banners is off under the game's MSAA.");
+          objects.logged_thin = true;
+        }
+        release_targets();
+        return;
+      }
+      D3D11_TEXTURE2D_DESC thin_desc = {};
+      if (objects.thin_texture) objects.thin_texture->GetDesc(&thin_desc);
+      if (thin_desc.Width != depth_desc.Width || thin_desc.Height != depth_desc.Height) {
+        objects.thin_texture.Reset();
+        objects.thin_rtv.Reset();
+        objects.thin_srv.Reset();
+        const D3D11_TEXTURE2D_DESC desc = {
+            .Width = depth_desc.Width,
+            .Height = depth_desc.Height,
+            .MipLevels = 1,
+            .ArraySize = 1,
+            .Format = DXGI_FORMAT_R32_FLOAT,
+            .SampleDesc = {.Count = 1},
+            .Usage = D3D11_USAGE_DEFAULT,
+            .BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
+        };
+        const D3D11_DEPTH_STENCIL_DESC depth_state_desc = {
+            .DepthEnable = TRUE,
+            .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO,
+            .DepthFunc = D3D11_COMPARISON_LESS_EQUAL,
+        };
+        if (FAILED(device->CreateTexture2D(&desc, nullptr, objects.thin_texture.GetAddressOf()))
+            || FAILED(device->CreateRenderTargetView(objects.thin_texture.Get(), nullptr, objects.thin_rtv.GetAddressOf()))
+            || FAILED(device->CreateShaderResourceView(objects.thin_texture.Get(), nullptr, objects.thin_srv.GetAddressOf()))
+            || (!objects.thin_depth_state && FAILED(device->CreateDepthStencilState(&depth_state_desc, objects.thin_depth_state.GetAddressOf())))) {
+          objects.thin_texture.Reset();
+          objects.thin_rtv.Reset();
+          objects.thin_srv.Reset();
+          release_targets();
+          return;
+        }
+      }
+      // The game's rasterizer state with the replay a little nearer: 4 steps of a 24-bit depth (within the march's match).
+      ComPtr<ID3D11RasterizerState> game_rasterizer;
+      native->RSGetState(game_rasterizer.GetAddressOf());
+      auto& [held, nearer] = objects.thin_rasterizers[game_rasterizer.Get()];
+      if (!nearer) {
+        D3D11_RASTERIZER_DESC rasterizer_desc = {
+            .FillMode = D3D11_FILL_SOLID,
+            .CullMode = D3D11_CULL_BACK,
+            .DepthClipEnable = TRUE,
+        };
+        if (game_rasterizer) game_rasterizer->GetDesc(&rasterizer_desc);
+        rasterizer_desc.DepthBias -= 4;
+        held = game_rasterizer;
+        if (FAILED(device->CreateRasterizerState(&rasterizer_desc, nearer.GetAddressOf()))) {
+          release_targets();
+          return;
+        }
+      }
+      if (runtime.thin_frame != runtime.frame) {
+        constexpr std::array<FLOAT, 4> FAR_PLANE = {1.f, 1.f, 1.f, 1.f};
+        native->ClearRenderTargetView(objects.thin_rtv.Get(), FAR_PLANE.data());
+        runtime.thin_frame = runtime.frame;
+      }
+      ComPtr<ID3D11PixelShader> game_pixel_shader;
+      native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
+      ComPtr<ID3D11BlendState> game_blend;
+      std::array<FLOAT, 4> blend_factor = {};
+      UINT sample_mask = 0;
+      native->OMGetBlendState(game_blend.GetAddressOf(), blend_factor.data(), &sample_mask);
+      ComPtr<ID3D11DepthStencilState> game_depth_state;
+      UINT stencil_reference = 0;
+      native->OMGetDepthStencilState(game_depth_state.GetAddressOf(), &stencil_reference);
+
+      native->OMSetRenderTargets(1, objects.thin_rtv.GetAddressOf(), depth_stencil.Get());
+      native->PSSetShader(objects.thin_pixel_shader.Get(), nullptr, 0);
+      native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+      native->OMSetDepthStencilState(objects.thin_depth_state.Get(), 0);
+      native->RSSetState(nearer.Get());
+      frame_history::DrawAgain(native, drawn.arguments);
+
+      native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), depth_stencil.Get());
+      native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
+      native->OMSetBlendState(game_blend.Get(), blend_factor.data(), sample_mask);
+      native->OMSetDepthStencilState(game_depth_state.Get(), stencil_reference);
+      native->RSSetState(game_rasterizer.Get());
+      release_targets();
+    }};
+  }
+};
+
+// The game's banners, flags, tents and sails (`shaders`: the addon's, kept while installed; Light Through Banners) and the
+// gamma of its G-buffer's colour (`albedo_power`: 2 a squared one, 1 linear) for Coloured Shadows.
+inline void InstallThin(std::span<const ThinShader> shaders, float albedo_power) {
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    internal::runtime.albedo_power = albedo_power;
+  }
+  thin_installed = true;
+  for (const auto& shader : shaders) {
+    renodx::utils::command_action::Register(OnThinDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW},
+                                            &shader);
   }
 }
 
@@ -1102,7 +1393,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   ID3D11Buffer* game_constants = nullptr;
   native->CSGetConstantBuffers(2, 1, &game_constants);
 
-  const auto& mask = (runtime.settings.softness > 0.f ? objects.soft_srv : objects.occlusion_srv);
+  const auto& mask = (internal::Softened(runtime.settings) ? objects.soft_srv : objects.occlusion_srv);
   const std::array<ID3D11ShaderResourceView*, 2> views = {mask.Get(), objects.parameters_srv.Get()};
   constexpr UINT KEEP_COUNT = UINT_MAX;
   native->CSSetShader(objects.debug.Get(), nullptr, 0);
@@ -1129,6 +1420,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
 inline void Install(std::span<const light_bounce::SunDraw> draws) {
   {
     const std::unique_lock lock(internal::runtime.mutex);
+    if (!draws.empty()) internal::runtime.camera_layout = draws.front().camera_layout;
     for (const auto& draw : draws) {
       internal::runtime.sun_hashes.push_back(draw.shader_hash);
       if (draw.ambient_final_sites != 0) internal::runtime.ambient_final_sites[draw.shader_hash] = draw.ambient_final_sites;
@@ -1164,6 +1456,8 @@ inline void Uninstall() {
   renodx::utils::pipeline::UnregisterOnCreateCallback(internal::OnCreatePipeline);
   renodx::utils::command_action::Unregister(OnSunDraw);
   renodx::utils::command_action::Unregister(OnFoliageOrder);
+  renodx::utils::command_action::Unregister(OnThinDraw);
+  thin_installed = false;
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.objects = {};
 }
