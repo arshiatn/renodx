@@ -1,5 +1,10 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## CLEANER PAGE (ATN 2026-11-12; offline; Attila v148, WH3 v44)
+- [x] code 14577b7f: Rays a Pixel under Upscaling Mode (default 1, presets leave it), rarely changed rows under More Options (graphics_page::Fold), keys unchanged (page dumps tools/tw/page_dump/page_*_skill_before/after).
+- [x] install: both stamped (build/stamped/attila_v148, wh3_v44), only the add-on replaced, helper103 unchanged, ATN's ini / preset / preferences backed up first and unchanged by hash (tools/tw/page_v148/install_backup_20261112_005919), no DevKit. Script tools/tw/page_v148/install_v148.py. NOT run in game.
+- NEXT: ATN tests Attila (v147's PsychoV35 checks plus this page).
+
 ## PSYCHOV35 + HUE CLIP (ATN 2026-11-11 after the upstream merge; no game start; offline only; Attila v147, WH3 v43)
 - [x] code: Rendering Mode "PsychoV35 (Experimental)" (Attila 3, WH3 4; not default, Recommended stays V31) = ShortFuse's psychotm_test35 at 0.18 / 0.18 with the game's exposure, V31's sliders (exposure, highlights, shadows, contrast, purity, roll-off = compression, gamut compression); Hue Clip row (Attila 40, WH3 100) before the grade toward the stock SDR path's per-channel clip, sky x2 clamped (acd00002, 522c5e2e).
 - [x] proof: test/tw_psychov35 x86 + amd64 PASS (8f9de984): other modes 0 pixels different from d3d6425b, other shaders same bytes (fxc + dxc); Hue Clip keeps luminance / signs / grey; V35 within peak, finite. Page dumps: only the new rows, Rendering Mode's label / tooltip, credits, date.
