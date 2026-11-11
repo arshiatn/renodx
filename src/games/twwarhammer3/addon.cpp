@@ -3341,6 +3341,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   talesofarise::pixel_trace::OnPresent(queue);
   twattila::pass_timing::OnPresent(queue, "wh3");
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twwarhammer3::vfx_particles::OnPresent();
   reflections::sun_standard = false;
   reflections::sun_low_quality = false;
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -3861,6 +3862,17 @@ void ConfigureAddon() {
       .section = "VFX",
       .tooltip = "All smoke, fire and dust sprites drawn at half the render's size, as the game already does for some.\n"
                  "Much faster in big fires and storms, softer particle edges.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxParticleSmoothing",
+      .binding = &twwarhammer3::vfx_particles::smoothing_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Smooth Half-Size Particles (Experimental)",
+      .section = "VFX",
+      .tooltip = "Half-size smoke, fire and dust keep clean edges against units and flicker less.\n"
+                 "Small cost.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
