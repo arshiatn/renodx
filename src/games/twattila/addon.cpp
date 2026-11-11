@@ -47,6 +47,7 @@
 #include "./graphics_page.hpp"
 #include "./light_bounce.hpp"
 #include "./lighting_settings.hpp"
+#include "./particle_layer.hpp"
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
 #include "./test_hooks.hpp"
@@ -957,6 +958,29 @@ void BuildRuntimeData() {
                    "Higher: removes wider bands, softens sky details more.",
         .labels = {"Off", "Low", "Medium", "High"},
     },
+    new renodx::utils::settings::Setting{
+        .key = "VfxHalfResolution",
+        .binding = &twattila::particle_layer::half_resolution_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Particles at Half Resolution",
+        .section = "Extra (Experimental)",
+        .tooltip = "Smoke, fire and dust drawn at half the render's size.\n"
+                   "Much faster in big fires and smoke, softer particle edges.",
+        .labels = {"Off", "On"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twattila::particle_layer::smoothing_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles",
+        .section = "Extra (Experimental)",
+        .tooltip = "Half-size smoke, fire and dust keep clean edges against units and flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
     //     new renodx::utils::settings::Setting{
     //     .key = "vfxdebugmode",
     //     .binding = &shader_injection.vfxdebugmode,
@@ -1047,6 +1071,10 @@ constexpr std::array<twattila::view_share::RegionRead, 6> RENDER_SCALE_READS = {
     {.shader_hash = 0x820D451B, .slots = 0b11, .whole = true},  // water refraction (3 channels)
     {.shader_hash = 0x25944B2D, .slots = 0b1, .whole = true},   // water refraction (4 channels)
 }};
+// Particles at Half Resolution (twattila/particle_layer.hpp): the light buffer's readers after the particles, where their layer
+// goes in: the luma / bloom downsample (the first in the traced frame), else the tone mappers (BuildRuntimeData's replaced ones).
+constexpr std::array<uint32_t, 12> PARTICLE_LAYER_READERS = {0x781681E4, 0x8BF6B657, 0x2C8169CA, 0xFEA9F9E2, 0xBA446301, 0xB7FBF3E2,
+                                                             0xA2D88FCD, 0xCC79C76F, 0x836B7901, 0xF42FDDC6, 0x95398068, 0x6E20B0EF};
 // The game's vertex shaders the addon replaces with ones that read the render share below 100% (cb12).
 constexpr std::array<uint32_t, 1> RENDER_SCALE_VERTEX_SHADERS = {
     0x7C04E880,  // lens flare: the sun's occlusion counted at the render size (lensflare04)
@@ -1312,6 +1340,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twattila::particle_layer::Update(swapchain);
   // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS
   // on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -1935,8 +1964,11 @@ bool AttachAddon() {
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  // After the smoke's capture on the same draws (it sees the game's targets and camera).
+  twattila::particle_layer::Install(twattila::rt_scene::PARTICLE_VERTEX_SHADER, PARTICLE_LAYER_READERS);
 
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
   twattila::device_loss::InstallLast();
 
   attached = true;
@@ -1947,7 +1979,9 @@ void DetachAddon() {
   if (!attached) return;
 
   twattila::device_loss::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  twattila::particle_layer::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);

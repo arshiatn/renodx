@@ -1,5 +1,6 @@
 #include "../shared.h"
 #include "../rt_local_lights.hlsli"
+#include "../particle_layer.h"
 
 // ---- Reconstructed from 0xACE33D5D.ps_5_0.cso
 // ---- Total War: Attila VFX pixel shader (Shader Model 5.0)
@@ -122,7 +123,8 @@ Texture2D<float4> g_tShadowBuffer_SM50 : register(t3);
 Texture2DArray<float4> g_tex_diffuse : register(t4);
 Texture2DArray<float4> g_tex_normal : register(t5);
 // Ray-Traced Shadows Only (rt_scene.hpp OnShadowReaderDraw): the rays' sun occlusion at the pixel (of the surface behind
-// the particle); unbound (reads 0) otherwise.
+// the particle); unbound (reads 0) otherwise. Drawn into Particles at Half Resolution's layer (particle_layer.hpp, b8 bound):
+// at its render pixel (x layer_scale); otherwise b8 reads 0, x 1.
 Texture2D<float> rt_sun_occlusion : register(t49);
 
 
@@ -577,7 +579,7 @@ void main(
       r0.y = r2.w + r0.z;
       r0.y = ps_receive_shadows_high_quality_params[r0.x].x * r0.y;
       r0.y = 0.166666672 * r0.y;
-      r0.y *= 1.f - rt_sun_occlusion.Load(int3(v0.xy, 0));
+      r0.y *= 1.f - rt_sun_occlusion.Load(int3(v0.xy * max(PL.layer_scale, 1.f), 0));
     } else {
       r0.y = 1;
     }
