@@ -403,11 +403,6 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     // the game's viewport / scale (no depth / stencil: every texel). The game's vertex stage, input, viewports,
     // rasterizer, depth / stencil state and targets are put back after.
     if (sun_draw.standard && objects.traced_frame != runtime.frame) {
-      if (msaa) {
-        native->ResolveSubresource(objects.light_copy.Get(), 0, light_texture.Get(), 0, light_view.Format);
-      } else {
-        native->CopyResource(objects.light_copy.Get(), light_texture.Get());
-      }
       ComPtr<ID3D11VertexShader> game_vertex_shader;
       native->VSGetShader(game_vertex_shader.GetAddressOf(), nullptr, nullptr);
       ComPtr<ID3D11InputLayout> game_layout;
@@ -431,6 +426,21 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
           .Height = std::ceil(game_viewport.Height / scale),
           .MaxDepth = 1.f,
       };
+      if (msaa) {
+        native->ResolveSubresource(objects.light_copy.Get(), 0, light_texture.Get(), 0, light_view.Format);
+      } else {
+        // Only the texels the prepare reads: `scale` a side for each pixel of the trace's viewport (all of them at 100%; below it
+        // the view is the texture's top-left part, and the rest was three quarters of the copy at half the size).
+        const D3D11_BOX read = {
+            .left = static_cast<UINT>(trace_viewport.TopLeftX) * scale,
+            .top = static_cast<UINT>(trace_viewport.TopLeftY) * scale,
+            .front = 0,
+            .right = std::min(objects.light_desc.Width, static_cast<UINT>(trace_viewport.TopLeftX + trace_viewport.Width) * scale),
+            .bottom = std::min(objects.light_desc.Height, static_cast<UINT>(trace_viewport.TopLeftY + trace_viewport.Height) * scale),
+            .back = 1,
+        };
+        native->CopySubresourceRegion(objects.light_copy.Get(), 0, read.left, read.top, 0, light_texture.Get(), 0, &read);
+      }
       // The view's part of the prepared textures (all of them at 100%; the top-left with the DLSS render scale).
       D3D11_TEXTURE2D_DESC prepared_desc = {};
       objects.prepared_light.texture->GetDesc(&prepared_desc);
