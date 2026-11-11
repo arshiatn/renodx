@@ -92,6 +92,10 @@ static LONG WINAPI OnUnhandledFault(EXCEPTION_POINTERS* fault) {
 }
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+  // Windows' own DXGI and Direct3D before anything calls them (build.ps1 delay-loads them): ReShade's dxgi.dll / d3d11.dll
+  // / d3d12.dll in the game's folder stay out of this process (its add-on load failed here, and its "errors loading
+  // add-ons" banner showed on frame generation's window; a DevKit there crashed the helper).
+  for (const wchar_t* library : {L"dxgi.dll", L"d3d11.dll", L"d3d12.dll"}) LoadLibraryExW(library, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
   int argument_count = 0;
   wchar_t** arguments = CommandLineToArgvW(GetCommandLineW(), &argument_count);
   if (arguments == nullptr || argument_count < 2) return 1;

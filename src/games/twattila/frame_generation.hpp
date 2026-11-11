@@ -197,6 +197,9 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     // fit (the size changed, no DLSS frame yet) too: the window hidden, not frozen on its last frame.
     const bool fits = bridge.fg_frame && bridge.fg_format == state.format && bridge.width == back_desc.Width && bridge.height == back_desc.Height;
     uint32_t multiplier = ((state.overlay_open || !fits) ? 0u : settings.multiplier);
+    // More than the running backend presents at most (FSR 2, XeSS and DLSS by the GPU: Shared::fg_presented) asks for its most:
+    // a switch from DLSS's 6x to FSR keeps a count FSR has.
+    if (const uint32_t most = (dlaa_bridge::FrameGenerationPresented() >> 8) & 0xFFu; most >= 2u && multiplier > most) multiplier = most;
     // Unavailable here: nothing to ask (NVAPI Reflex back). Off with the window hidden already: neither.
     if (dlaa_bridge::FrameGenerationFailed()) {
       state.presenting = false;

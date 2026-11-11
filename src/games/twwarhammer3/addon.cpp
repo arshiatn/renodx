@@ -3380,12 +3380,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
   tw::ao_trace::OnPresent();
   twattila::rt_scene::Update(rt_settings);
+  // A DLSS Preset saved at v38's Auto (3) loads as L (the row's last choice).
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
-  // DLSS Preset at Auto (this game's fourth choice; NVSDK_NGX_DLSS_Hint_Render_Preset K 11, L 12): L and M darken fine detail the more they
-  // upscale, whatever the colour's encoding (the harness' tones test: K within 1% at every scale, L 7 to 13% at 67 to 33%).
-  if (const float game_scale = twwarhammer3::resolution_scale::Current(); aa_sliders.dlaa_preset >= 3.f) {
-    aa_settings.dlaa_preset = ((game_scale > 0.f && game_scale < 1.f) ? 11u : 12u);
-  }
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twwarhammer3::taa_dlss::Update(swapchain, aa_settings, !third_party_upscale, rt_sliders.debug_log != 0.f);
@@ -3678,7 +3674,6 @@ void ConfigureAddon() {
   // Off here: night and fire in the fog have had no one's eye yet.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedLightGlow") setting->default_value = 0.f;
-    if (setting->key == "AntiAliasingDlaaPreset") setting->labels.emplace_back("Auto");
     // Their shared rule reads dlss_mode, which no row sets here: the scale is the game's float (upscaling_mode_row).
     if (setting->key == "AntiAliasingTextureLodBias" || setting->key == "AntiAliasingEffectsAtOutput") {
       setting->is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
