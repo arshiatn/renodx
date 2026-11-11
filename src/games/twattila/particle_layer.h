@@ -14,7 +14,9 @@ struct ParticleLayerConstants {
   float region_width;   // the layer's part of its textures (its viewport), in texels
   float region_height;
   float layer_scale;    // render pixels per layer texel along a side (2); unbound: 0, read as 1
-  float padding[3];
+  float padding0;       // three floats, not an array (an HLSL array takes a register an element)
+  float padding1;
+  float padding2;
 };
 
 #ifndef __cplusplus

@@ -5,12 +5,13 @@
 
 // Smooth Half-Size Particles (Experimental), the resolve (particle_history.hpp): this frame's half-size particle layer (t50;
 // with PARTICLE_OPTICAL_DEPTH its optical depth at t51, else its alpha is the share of the scene it leaves) and the last
-// frames' at the same place (t53-t54, moved with the camera by the depth the layer was drawn against, t52; read through a
+// frames' at the same place (t53-t55, moved with the camera by the depth the layer was drawn against, t52; read through a
 // Catmull-Rom filter, so panning doesn't blur it). The history is held within this frame's 3 x 3 (their least and most: what
-// left goes, a spark flipping to the next texel stays) and kept by how close it is to their mean (a new or moving spark comes
-// through whole, a flicker of the camera's jitter averages out), frames counted as the Light Bounce's resolve does (a newly
-// seen spot averages its first frames evenly). Out: the layer (SV_Target0), its optical depth and frames (SV_Target1).
-// Game-neutral: the includer's light_bounce.hlsli first (its camera at b11, the last frame's at b10).
+// left goes) and kept by how close this frame's 3 x 3 mean is to the last frame's there (a spark flipping to the next texel
+// keeps its mean and is averaged, a new or moved spark changes it and comes through whole), frames counted as the Light
+// Bounce's resolve does (a newly seen spot averages its first frames evenly). Out: the layer (SV_Target0), its optical depth
+// and frames (SV_Target1), the 3 x 3 mean's luminance and coverage (SV_Target2). Game-neutral: the includer's
+// light_bounce.hlsli first (its camera at b11, the last frame's at b10).
 #include "./particle_layer.hlsli"
 
 Texture2D<float4> t_layer : register(t50);
@@ -18,6 +19,7 @@ Texture2D<float> t_layer_optical_depth : register(t51);
 Texture2D<float> t_layer_depth : register(t52);
 Texture2D<float4> t_history : register(t53);
 Texture2D<float4> t_history_extra : register(t54);  // x the optical depth, y the frames
+Texture2D<float2> t_history_means : register(t55);  // the last frame's 3 x 3 mean: x luminance, y coverage
 SamplerState s_history : register(s12);              // linear, clamped
 
 // How much of the scene behind the layer is covered (0: none).
@@ -50,7 +52,12 @@ float4 ParticleCatmullRom(Texture2D<float4> history, float2 coordinate, float2 s
   return sum / (w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y);
 }
 
-void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out float2 o1 : SV_Target1) {
+// How far apart two values of a frame's look are (0: the same, 1: one of them is none), at least `floor` apart to count.
+float ParticleChange(float a, float b, float floor) {
+  return abs(a - b) / max(max(a, b), floor);
+}
+
+void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out float2 o1 : SV_Target1, out float2 o2 : SV_Target2) {
   const int2 texel = int2(v0.xy);
   const int2 last = int2(PL.region_width, PL.region_height) - 1;
   const float4 layer = t_layer.Load(int3(texel, 0));
@@ -59,10 +66,6 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out float2 o1 : 
 #else
   const float optical_depth = 0.f;
 #endif
-  o0 = layer;
-  o1 = float2(optical_depth, 1.f);
-  if (!(PL.history_most > 0.f)) return;
-
   float4 lowest = layer;
   float4 highest = layer;
   float4 sum = 0.f;
@@ -86,6 +89,13 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out float2 o1 : 
 #endif
     }
   }
+  const float3 LUMINANCE = float3(0.2126f, 0.7152f, 0.0722f);
+  const float4 mean = sum / 9.f;
+  const float2 means = float2(dot(mean.rgb, LUMINANCE), ParticleCoverage(mean, optical_sum / 9.f));
+  o0 = layer;
+  o1 = float2(optical_depth, 1.f);
+  o2 = means;
+  if (!(PL.history_most > 0.f)) return;
 
   // Where it was: its first render pixel at the depth it was drawn against, moved with the camera; in layer texels.
   const float3 previous = BouncePrevious(BounceViewPositionAt(texel * PARTICLE_LAYER_SCALE, t_layer_depth.Load(int3(texel, 0))));
@@ -100,16 +110,8 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out float2 o1 : 
   const float4 history = clamp(ParticleCatmullRom(t_history, coordinate, size), lowest, highest);
   const float history_optical_depth = clamp(ParticleCatmullRom(t_history_extra, coordinate, size).x, optical_lowest, optical_highest);
   const float frames = t_history_extra.Load(int3(clamp(int2(coordinate), 0, last), 0)).y;
-
-  const float4 mean = sum / 9.f;
-  const float optical_mean = optical_sum / 9.f;
-  const float3 LUMINANCE = float3(0.2126f, 0.7152f, 0.0722f);
-  const float mean_luminance = dot(mean.rgb, LUMINANCE);
-  const float history_luminance = dot(history.rgb, LUMINANCE);
-  const float mean_coverage = ParticleCoverage(mean, optical_mean);
-  const float history_coverage = ParticleCoverage(history, history_optical_depth);
-  const float change = max(abs(mean_luminance - history_luminance) / max(max(mean_luminance, history_luminance), 1e-4f),
-                           abs(mean_coverage - history_coverage) / max(max(mean_coverage, history_coverage), 1e-3f));
+  const float2 previous_means = t_history_means.SampleLevel(s_history, coordinate / size, 0);
+  const float change = max(ParticleChange(means.x, previous_means.x, 1e-4f), ParticleChange(means.y, previous_means.y, 1e-3f));
   const float kept = min(frames / (frames + 1.f), PL.history_most) * saturate(1.f - 2.f * change);
   o0 = lerp(layer, history, kept);
   o1 = float2(lerp(optical_depth, history_optical_depth, kept), (change > 0.5f) ? 1.f : min(frames + 1.f, 16.f));

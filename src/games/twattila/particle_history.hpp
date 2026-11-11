@@ -141,6 +141,7 @@ struct History {
   D3D11_VIEWPORT viewport = {};
   std::array<frame_history::Target, 2> colours;
   std::array<frame_history::Target, 2> extras;  // the optical depth and the frames
+  std::array<frame_history::Target, 2> means;   // the layer's 3 x 3 mean: luminance and coverage
   size_t index = 0;                            // the one the last resolve wrote
   uint64_t resolved_frame = UINT64_MAX;
 };
@@ -190,6 +191,7 @@ inline void Upload(ID3D11DeviceContext* context, const ParticleLayerConstants& c
 inline void ReleaseHistories(History* history) {
   history->colours = {};
   history->extras = {};
+  history->means = {};
   history->width = 0;
   history->height = 0;
 }
@@ -236,7 +238,8 @@ inline std::array<ID3D11ShaderResourceView*, 2> Resolve(ID3D11DeviceContext* con
     ReleaseHistories(history);
     for (size_t index = 0; index < 2; ++index) {
       if (!frame_history::MakeTarget(device.Get(), desc.Width, desc.Height, DXGI_FORMAT_R16G16B16A16_FLOAT, &history->colours[index])
-          || !frame_history::MakeTarget(device.Get(), desc.Width, desc.Height, DXGI_FORMAT_R32G32_FLOAT, &history->extras[index])) {
+          || !frame_history::MakeTarget(device.Get(), desc.Width, desc.Height, DXGI_FORMAT_R32G32_FLOAT, &history->extras[index])
+          || !frame_history::MakeTarget(device.Get(), desc.Width, desc.Height, DXGI_FORMAT_R16G16_FLOAT, &history->means[index])) {
         ReleaseHistories(history);
         renodx::utils::log::w("[Total War] Smooth Half-Size Particles: could not create its textures (", desc.Width, " x ",
                               desc.Height, ").");
@@ -248,6 +251,7 @@ inline std::array<ID3D11ShaderResourceView*, 2> Resolve(ID3D11DeviceContext* con
     for (size_t index = 0; index < 2; ++index) {
       context->ClearRenderTargetView(history->colours[index].rtv.Get(), NOTHING);
       context->ClearRenderTargetView(history->extras[index].rtv.Get(), NOTHING);
+      context->ClearRenderTargetView(history->means[index].rtv.Get(), NOTHING);
     }
     history->width = desc.Width;
     history->height = desc.Height;
@@ -266,10 +270,12 @@ inline std::array<ID3D11ShaderResourceView*, 2> Resolve(ID3D11DeviceContext* con
   const size_t written = read ^ 1;
   {
     const DrawState game_state(context);
-    const std::array<ID3D11RenderTargetView*, 2> targets = {history->colours[written].rtv.Get(), history->extras[written].rtv.Get()};
+    const std::array<ID3D11RenderTargetView*, 3> targets = {history->colours[written].rtv.Get(), history->extras[written].rtv.Get(),
+                                                            history->means[written].rtv.Get()};
     context->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), nullptr);
     DrawFullScreen(context, *history, layer.viewport, history->resolve.Get(),
-                   {layer.colour, layer.optical_depth, layer.depth, history->colours[read].srv.Get(), history->extras[read].srv.Get(), nullptr},
+                   {layer.colour, layer.optical_depth, layer.depth, history->colours[read].srv.Get(), history->extras[read].srv.Get(),
+                    history->means[read].srv.Get()},
                    {history->constants.Get(), nullptr, history->previous_camera.Get(), layer.camera}, nullptr, history->no_depth.Get());
   }
   // This frame's camera for the next resolve.
