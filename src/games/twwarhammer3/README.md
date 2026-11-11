@@ -1,5 +1,13 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v40 (2026-11-11, fixes and performance; renodx-tw-dlaa64.exe helper102, bridge v30: ship them together; not run in game; no players' zip)
+
+- **Helper102** (Attila v144's): Global Illumination > Path-Traced > **Bounces** now does what it says and ends at 2 (3 and 4 measured the same as 2; a saved 3 or 4 runs as 2). It only matters for light from places the camera does not see; out-of-sight light keeps updating during a battle. Frame Generation's status says that it pauses while this menu is open.
+- **Upscaling below 100%: two copies of the whole display less each frame** (the upscaler's result is written straight into the picture; the Light Bounce copies only the rendered part of the light). Same picture, bit for bit on WARP. About 0.08 ms at 4K on an RTX 5090: small.
+- **Terrain Without Waiting (Experimental, off):** a battle's first frames, and the first after a menu, wait for the terrain once more, so the rays never start without terrain.
+- **Looked at and not built, with numbers** (`tools/tw/wh3_v40/reports/v40.md`): a depth pre-pass for grass and leaves is slower on the RTX 5090, not faster (2.6 to 3.4 ms became 4.7 to 5.4 ms in the test scene); the wait at the sun's draw is the helper's own GPU work plus about 0.45 ms of hand-over, not idle time.
+- **Fastest switches you already have** (4K, path tracing): Light Bounce Resolution Half (about 1 ms), Reflections off or fewer samples, Ray Reconstruction off (DLSS alone is much cheaper; the rays then need the denoisers). Upscaling Mode, measured in ATN's 30 s recording while he stepped through it: Ultra Performance 15.6 ms a frame, Performance 20.5, Balanced 22.7, Quality 26.1, 100% (DLAA) 41.3.
+
 ## v39 (2026-11-11; renodx-tw-dlaa64.exe helper99, bridge v30, both unchanged; not run in game; no players' zip)
 
 - **Global Illumination no longer brightens the shade ("cooked").** Since v37 our Global Illumination switched the game's light probes off, and with them the sky's shade under trees, roofs and walls: shade was 2 to 2.8 times as bright as in the game's own picture (sunlit ground the same). New row **Sky Shade From the Game's Probes**, on: the game's probes bring the sky's light as they do in the game's own picture, only their bounce is replaced by ours. Fog, water and effects get the game's probes back too. Off: v38's picture.
