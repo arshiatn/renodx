@@ -1,5 +1,14 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v147 (2026-11-11, PsychoV35 round; ATN's test, not a players' release; built, not run in game; renodx-tw-dlaa64.exe helper103 as in v146)
+
+The first build after the upstream merge (d3d6425b). With Rendering Mode SDR / V30 / V31 the picture is v146's (WARP below). Page against v146's: the new rows, Rendering Mode's label and tooltip, the credits and the Build Date.
+
+- **Rendering Mode "PsychoV35 (Experimental)"** (mode 3, not the default; the Recommended presets stay PsychoV31): ShortFuse's `psychotm_test35` in `hdr_to_screen.hlsli` in place of V31, anchored at 0.18 in and out, Attila's auto exposure kept, V31's LUT bridge order. PsychoV31's Exposure, Highlights, Shadows, Contrast, Saturation / Purity, Highlight Roll-off (V35's compression, exp2(1 - roll-off)) and Gamut Compression rows drive it; V31's highlight saturation / hue shifts are not used. Contrast is kept at 0.01 or above; V35's NaN (Shadows below 1 on near-black pixels) is black.
+- **Hue Clip** (PsychoV35, 0 - 100, default 40): in the tone mappers before the S-curve and the LUT, the middle channel bent toward where Attila's per-channel SDR clip puts it (`HueClip` in `psycho_test31.hlsli`: Neutwo per channel at the luminance the stock path gives the pixel, its highlight limit in t00 / t09, bloom, the white clamp), signs, smallest and largest magnitude and BT.709 luminance kept; sky blue (b >= g >= r) twice as far, clamped. Default 40: the smallest OkLab hue error against the SDR picture where SDR clips (fire 7.19 -> 3.13 degrees, sky 7.84 -> 3.75).
+
+Tests: WARP `test/tw_psychov35` x86 + amd64 PASS: SDR / V30 / V31 0 pixels different from d3d6425b in t00 - t10, every other shader the same bytes; Hue Clip keeps luminance and signs, grey unchanged; V35 within peak and finite over the ramps at 1000 / 400 nits and SDR.
+
 ## v146 = players' v2.5.7 (2026-11-11, round v42; built, not run in game; renodx-tw-dlaa64.exe helper103 as in v145, bridge v30: ship them together; RenoDX_Attila_v2.5.7_HDR_only.zip: the add-on alone)
 
 One fix and seven new rows, all Experimental and off: with them off the picture is v145's but for the fix. Page against v145's: the seven rows and the Build Date.

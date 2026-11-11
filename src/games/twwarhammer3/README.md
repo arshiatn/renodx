@@ -1,5 +1,14 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v43 (2026-11-11, PsychoV35 round; ATN's test; renodx-tw-dlaa64.exe helper103 as in v42; not run in game; no players' zip)
+
+The first build after the upstream merge (d3d6425b). With Rendering Mode SDR / Extended / V30 / V31 the picture is v42's (WARP below). Page against v42's: the new rows, Rendering Mode's label and tooltip, the credits and the Build Date.
+
+- **Rendering Mode "PsychoV35 (Experimental)"** (mode 4, not the default; the Recommended presets stay PsychoV31): t00's handoff as in V31, then ShortFuse's `psychotm_test35` anchored at 0.18 in and out (the handoff carries the game's exposure), V31's LUT bridge order. PsychoV31's Exposure, Highlights, Shadows, Contrast, Saturation / Purity, Highlight Roll-off and Gamut Compression rows drive it; V31's highlight saturation / hue shifts are not used. Contrast is kept at 0.01 or above; V35's NaN on near-black pixels is black.
+- **Hue Clip** (PsychoV35, 0 - 100, default 100; Reset writes it): before the grade, the middle channel bent toward where the stock Extended Reinhard's per-channel clip, saturate(g_brightness * x), puts it (Attila's `HueClip`); sky blue twice as far, clamped. Default 100: the game's Reinhard keeps growing into the clip, so its SDR fire and sky are far more yellow / cyan (OkLab hue error against SDR where it clips: fire 30.1 -> 5.2 degrees, sky 26.6 -> 7.1).
+
+Tests: WARP `test/tw_psychov35` x86 + amd64 PASS: SDR / Extended / V30 / V31 0 pixels different from d3d6425b in t00, every other shader the same bytes; V35 within peak and finite over the ramps at 1000 / 400 nits and SDR.
+
 ## v42 (2026-11-11, round v42; renodx-tw-dlaa64.exe helper103 as in v41, bridge v30: ship them together; not run in game; no players' zip)
 
 Every new row is Experimental and off: with them off the picture is v41's (WARP below). Page against v41's: the six rows, the DLSS Preset tooltip without Auto (e9bb6b9e, after v41's dump) and the Build Date.
