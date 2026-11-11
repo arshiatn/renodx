@@ -109,6 +109,7 @@ static const float CACHE_SCALE = 256.f;
 static const float CACHE_MAX = 1024.f;
 static const float CACHE_BLEND = 0.2f;
 static const float CACHE_LIFETIME = 1800.f;
+static const float CACHE_RELEARN = 0.125f;  // the share of the paths that leaves the cache out (PathRadiance)
 static const float LIGHT_FIT_X = 4096.f;
 static const float LIGHT_FIT_Y = 64.f;
 static const float LIGHT_FIT_MAX_Y = 16.f;
@@ -289,8 +290,8 @@ float3 PreviousLight(uint2 pixel) {
 }
 
 // The light leaving a surface a ray met (false: nobody knows it): the screen's now, else last frame's, else the
-// radiance cache's (SHaRC's instead in PathRadiance with SHaRC Radiance Cache).
-bool HitLight(float3 hit, out float3 light_there) {
+// radiance cache's (SHaRC's instead in PathRadiance with SHaRC Radiance Cache), unless `cached` is false.
+bool HitLight(float3 hit, out float3 light_there, bool cached = true) {
   light_there = 0.f;
   uint2 pixel;
   if ((path_flags & PATH_LIGHT) != 0u && SeenNow(hit, pixel)) {
@@ -313,7 +314,7 @@ bool HitLight(float3 hit, out float3 light_there) {
 #if defined(SHARC)
   return false;
 #else
-  return (path_flags & PATH_CACHE_VALID) != 0u && CacheLookup(hit, light_there);
+  return cached && (path_flags & PATH_CACHE_VALID) != 0u && CacheLookup(hit, light_there);
 #endif
 }
 
@@ -458,7 +459,11 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     const float3 position = origin + direction * query.CommittedRayT();
     if (vertex == 0u) first_distance = query.CommittedRayT();
     float3 light_there;
-    if (HitLight(position, light_there)) {
+    // CACHE_RELEARN of the paths leave the radiance cache out and go on: a cell nobody sees took its first frame's paths and
+    // kept them until it was dropped, as only a path that found no light there adds to it. The light from out of sight never
+    // followed a change, the count of bounces among them (ATN: Bounces showed nothing).
+    const bool relearn = Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 49152u)) < CACHE_RELEARN;
+    if (HitLight(position, light_there, !relearn)) {
       radiance += throughput * light_there;
       break;
     }

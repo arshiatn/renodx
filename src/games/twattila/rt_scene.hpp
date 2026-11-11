@@ -164,7 +164,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .light_bounce_range = sliders.light_bounce_range,
       .light_bounce_resolution = sliders.light_bounce_resolution,
       .path_tracing = sliders.light_bounce == 2.f && bounce,
-      .path_bounces = static_cast<uint32_t>(sliders.path_bounces),
+      // 3 and 4 (the row's until v144) measured as 2: within half a percent in a room wholly out of sight.
+      .path_bounces = std::min(static_cast<uint32_t>(sliders.path_bounces), 2u),
       .path_ambient = path_ambient,
       .path_sky_apart = sliders.path_sky_apart != 0.f,
       .path_kept_cube = sliders.path_kept_cube != 0.f,
@@ -1721,9 +1722,11 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 2.f,
           .label = "Path Tracing Bounces",
           .section = section,
-          .tooltip = "Bounces past the first. More: brighter shade, heavier.",
+          .tooltip = "How many more surfaces a light path follows where the camera sees nothing (behind you, behind walls).\n"
+                     "What is on screen already carries every bounce, so there is little to see: at 2, slightly darker light\n"
+                     "out of closed-in places.",
           .min = 1.f,
-          .max = 4.f,
+          .max = 2.f,
           .format = "%d",
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },
