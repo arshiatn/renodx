@@ -1,5 +1,19 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v143 (2026-11-11, performance round on ATN's 30 s profile; built, not run in game; renodx-tw-dlaa64.exe helper101, bridge v30: ship them together; a dev build, no players' release)
+
+No row and no default changed, and the picture is the same: the harness's outputs (sun, ambient, Light Bounce, reflections, light mask, specular occlusion) are bit for bit helper100's, standing and with the camera moving.
+
+- **Light Bounce and reflections: one 4K copy a frame less.** The paths keep last frame's world positions for their history. They copied them twice a frame (this frame's into a spare, the spare into "last frame's"); now two slices take the copy in turn (`rt_d3d12.hpp` kept_positions_, `rt_path.hlsli` previous_positions_slice). 4K harness, the Light Bounce's first stage: 0.85 to 0.69 ms at Full, 0.48 to 0.31 ms at Half.
+- **Record Ray Tracing Profile says more.** `tw_rt_profile.csv` has `present_pacing_ms`: the share of `answer_wait_ms` that is frame generation's present and Reflex's sleep. `tw_rt_profile_helper.csv` has `cpu_record_parts`: the helper's CPU time for a trace by pass.
+
+What the profile's numbers were (measured without the game; tools/tw/attila_v143/reports/v143.md):
+
+- The game's thread waiting about 22 ms in 40% of the frames is frame generation pacing the game (Streamline's present, then Reflex's sleep, in the helper), in the frames recorded with ReShade's menu closed. Nothing is lost there: with the GPU held 134 ms behind, the wait was 134.9 ms a frame with frame generation and the frame rate the same without it.
+- Ray Reconstruction at 3840 x 2160 in and out takes about 8.3 ms a frame on the RTX 5090 (DLSS alone 1.7 ms), frame generation 2.5 to 3.8 ms a rendered frame: together about two thirds of the 16.7 ms the profile could not split.
+- The sun rays' 5.6 ms against 2.9 ms is not a spike: one step at a single frame with the scene standing and ReShade's menu open (a setting changed), which also took the Light Bounce's paths from 1.7 to 2.9 ms and the reflections from 1.9 to 2.8 ms.
+- Light Bounce Resolution (the row; RT/PT sets Full): Half takes the Light Bounce from 4.3 to 1.4 ms in the 4K harness.
+
 ## v142 (2026-11-11, from ATN's test of v2.5.2; built, not run in game; renodx-tw-dlaa64.exe helper100, bridge v30: ship them together; a dev build, no players' release)
 
 No row and no default changed. Ray-traced shadows:

@@ -22,6 +22,7 @@ cbuffer Paths : register(b3) {
   float reflection_range;  // metres (specular occlusion's reach)
   float sky_range;         // metres: what blocks Path-Traced Ambient's sky (the AO's reach, as Ray-Traced AO)
   uint previous_square_root;  // 1: last frame's colour holds the light's square root (rt_path.hlsli PreviousLight)
+  uint previous_positions_slice;  // last frame's positions' slice of previous_positions (rt_path.hlsli)
 };
 static const uint PATH_START_PAST = 2147483648u;  // RT_START_PAST: StartPast
 static const uint PATH_AMBIENT_HISTORY = 16384u;  // path_flags in the trace: last trace's ambient and positions are valid

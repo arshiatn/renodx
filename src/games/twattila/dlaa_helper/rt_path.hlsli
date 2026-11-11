@@ -27,7 +27,8 @@
 
 Texture2D<float3> light : register(t9);               // the prepared light (bounce texels; PATH_LIGHT_FINAL: the light buffer, render pixels)
 Texture2D<float4> previous_color : register(t10);     // last frame's scene colour (render pixels)
-Texture2D<float4> previous_positions : register(t11); // last frame's world positions
+// Last frame's world positions at slice previous_positions_slice; the other slice takes this frame's for the next.
+Texture2DArray<float4> previous_positions : register(t11);
 Texture2D<float4> guide_normals : register(t12);      // world normals (x 0: none)
 Texture2D<float4> guide_albedo : register(t13);       // diffuse albedo
 Texture2D<float> guide_roughness : register(t14);
@@ -243,7 +244,7 @@ bool SeenLastFrame(float3 world, out uint2 pixel) {
   const float2 uv = clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f;
   if (any(uv < 0.f) || any(uv >= 1.f)) return false;
   pixel = min(uint2(uv * float2(width, height)), uint2(width, height) - 1u);
-  const float4 seen = previous_positions[pixel];
+  const float4 seen = previous_positions[uint3(pixel, previous_positions_slice)];
   return seen.w > 0.f && distance(seen.xyz, world) < 0.03f + 0.01f * seen.w;
 }
 

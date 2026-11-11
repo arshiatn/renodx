@@ -890,8 +890,7 @@ class RtScene12 {
     guide_normals_.Reset();
     guide_albedo_.Reset();
     guide_roughness_.Reset();
-    previous_positions_.Reset();
-    positions_copy_.Reset();
+    kept_positions_.Reset();
     reflection_.Reset();
     specular_.Reset();
     hit_distance_.Reset();
@@ -1025,7 +1024,7 @@ class RtScene12 {
       profile_ << "request,frame,kind,cpu_wait_ms,cpu_record_ms,cpu_submit_ms,dynamic_mtriangles,terrain_mtriangles,grass_mtriangles,"
                   "clusters,templated,compact_draws,sets,new_sets,template_builds,meshes,new_blases,micromaps_built,micromaps_waiting,"
                   "instances,placed,cluster_room,static_blas_mb,gpu_scene_ms,gpu_clusters_ms,gpu_tlas_ms,gpu_trace_ms,gpu_paths_ms,"
-                  "gpu_a_ms,gpu_b_ms,gpu_c_ms,gpu_d_ms,gpu_bakes,gpu_bakes_ms\n";
+                  "gpu_a_ms,gpu_b_ms,gpu_c_ms,gpu_d_ms,gpu_bakes,gpu_bakes_ms,cpu_record_parts\n";
     }
     profiling_ = profiling;
     details_ = profiling || (shared.rt_flags & dlaa_bridge::RT_DETAILS) != 0;
@@ -1040,6 +1039,7 @@ class RtScene12 {
     WaitFor(trace_value_);
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
+    cpu_marks_.clear();
     // The last trace's placed instances (it is done: its slot's readback).
     if (placed_slot_ != SLOTS) {
       placed_written_ = slots_[placed_slot_].left_out_data[LEFT_OUT_BYTES / 4];
@@ -1157,6 +1157,18 @@ class RtScene12 {
     if (details_) {
       cpu_timings_ += std::format(", submit {:.2f}", CpuMs(submit_start, submit_end));
     }
+    // The record's CPU time by pass (each from its mark to the next; "start": before the first).
+    slot.profile_parts.clear();
+    if (profiling_) {
+      LARGE_INTEGER part_start = cpu_waited;
+      std::string part = "start";
+      cpu_marks_.emplace_back(L"", cpu_recorded);
+      for (const auto& [pass, marked] : cpu_marks_) {
+        slot.profile_parts += std::format("{}{} {:.3f}", (slot.profile_parts.empty() ? "" : ";"), part, CpuMs(part_start, marked));
+        part.assign(pass, pass + std::wcslen(pass));
+        part_start = marked;
+      }
+    }
     slot.profile = profiling_ ? std::format("{},{},trace,{:.3f},{:.3f},{:.3f}{}", own_value_, shared.rt_frame, CpuMs(cpu_start, cpu_waited),
                                             CpuMs(cpu_waited, cpu_recorded), CpuMs(submit_start, submit_end),
                                             recorded ? profile_counts_ : std::string(PROFILE_COUNTS, ','))
@@ -1180,6 +1192,7 @@ class RtScene12 {
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
     ReadTimes(slot_index);
+    slot.profile_parts.clear();
     slot_traced_[slot_index] = false;
     slot_reflected_[slot_index] = reflections;
     const uint32_t frame = shared.rt_frame;
@@ -1314,36 +1327,30 @@ class RtScene12 {
         const uint32_t height = std::max(shared.rt_height, 1u);
         if (frame != paths_frame_) {
           history_valid_ = copied_frame_ != UINT32_MAX && copied_frame_ + 1 == frame && previous_color_;
+          // The slice that took the last copy is last frame's now, the other takes this frame's: one copy a frame (the two
+          // textures before took two, 0.15 ms of a 4K frame each).
+          previous_positions_slice_ = copied_slice_;
+          copied_slice_ = 1u - copied_slice_;
           const D3D12_BOX region = {.left = 0, .top = 0, .front = 0, .right = width, .bottom = height, .back = 1};
-          const auto copy = [&](ID3D12Resource* destination, ID3D12Resource* source) {
-            const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = destination, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
-            const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = source, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
-            list->CopyTextureRegion(&to, 0, 0, 0, &from, &region);
-          };
-          std::array<D3D12_RESOURCE_BARRIER, 3> to_copy = {
-              Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
-              Transition(positions_copy_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE),
+          std::array<D3D12_RESOURCE_BARRIER, 2> to_copy = {
+              Transition(kept_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
               Transition(positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
           };
+          to_copy[0].Transition.Subresource = copied_slice_;
           list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
-          copy(previous_positions_.Get(), positions_copy_.Get());
-          std::array<D3D12_RESOURCE_BARRIER, 2> swap = {
-              Transition(positions_copy_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
-              Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON),
-          };
-          list->ResourceBarrier(static_cast<UINT>(swap.size()), swap.data());
-          copy(positions_copy_.Get(), positions_.Get());
-          std::array<D3D12_RESOURCE_BARRIER, 2> back = {
-              Transition(positions_copy_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON),
-              Transition(positions_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-          };
-          list->ResourceBarrier(static_cast<UINT>(back.size()), back.data());
+          const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = kept_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                                                  .SubresourceIndex = copied_slice_};
+          const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+          list->CopyTextureRegion(&to, 0, 0, 0, &from, &region);
+          for (auto& barrier : to_copy) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+          list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
           std::copy_n(current_view_projection_.begin(), 16, previous_view_projection_.begin());
           std::copy_n(shared.rt_view_projection, 16, current_view_projection_.begin());
           copied_frame_ = frame;
           paths_frame_ = frame;
         }
-        const auto to_previous = Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        auto to_previous = Transition(kept_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        to_previous.Transition.Subresource = previous_positions_slice_;
         list->ResourceBarrier(1, &to_previous);
         if (!reflections) light_frame_ = frame;
         uint32_t flags = 0;
@@ -1450,6 +1457,7 @@ class RtScene12 {
             .reflection_range = std::clamp(shared.rt_reflection_range, 0.5f, 200.02019f),
             .sky_range = std::clamp(shared.rt_ambient_range, 0.1f, 100.000854f),
             .previous_square_root = (version >= 28 && (requested & dlaa_bridge::RT_PATH_COLOR_SQUARE_ROOT) != 0) ? 1u : 0u,
+            .previous_positions_slice = previous_positions_slice_,
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -1571,8 +1579,8 @@ class RtScene12 {
             list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
           }
         }
-        const auto from_previous = Transition(previous_positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
-        list->ResourceBarrier(1, &from_previous);
+        std::swap(to_previous.Transition.StateBefore, to_previous.Transition.StateAfter);
+        list->ResourceBarrier(1, &to_previous);
       }
 #if defined(RENODX_NRD)
       if (nrd_signal != nullptr) {
@@ -1921,6 +1929,7 @@ class RtScene12 {
     float reflection_range = 10.f;
     float sky_range = 2.f;  // rt_camera.hlsli
     uint32_t previous_square_root = 0;  // RT_PATH_COLOR_SQUARE_ROOT
+    uint32_t previous_positions_slice = 0;  // kept_positions_' slice with last frame's
   };
 #if defined(RENODX_NRD)
   // NRD's texture of a signal (nrd_d3d12.hpp), with a place in the trace's descriptors when rt_nrd_front.hlsl writes it (0: none).
@@ -1976,6 +1985,7 @@ class RtScene12 {
     std::vector<std::pair<uint64_t, uint64_t>> compactions;
     ComPtr<ID3D12Resource> paths;  // its paths' constants (b3)
     uint8_t* paths_data = nullptr;
+    std::string profile_parts;  // the profile line's last field (a trace's record by pass)
     ComPtr<ID3D12Resource> lights;  // its trace's local lights (b4: rt_trace.cs_6_5.hlsl)
     // Instanced captures' rows copied for the CPU (read when the slot comes round): mesh key, its build, where, how many.
     ComPtr<ID3D12Resource> rows_readback;
@@ -2445,15 +2455,21 @@ class RtScene12 {
   }
 #endif
 
+  // The kept positions' view without them (two slices, as the paths' shaders declare it).
+  static constexpr D3D12_SHADER_RESOURCE_VIEW_DESC NO_KEPT_POSITIONS = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM,
+                                                                        .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
+                                                                        .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                                                                        .Texture2DArray = {.MipLevels = 1, .ArraySize = 2}};
   // The paths' textures not shared (yet): null views, so their descriptors are always valid (the cache's too until
   // EnsureCache makes it).
   void WriteNullPathDescriptors() {
     const D3D12_SHADER_RESOURCE_VIEW_DESC texture_view = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
                                                           .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                                                           .Texture2D = {.MipLevels = 1}};
-    for (const auto descriptor : {PREVIOUS_COLOR, PREVIOUS_POSITIONS, GUIDE_NORMALS, GUIDE_ALBEDO, GUIDE_ROUGHNESS}) {
+    for (const auto descriptor : {PREVIOUS_COLOR, GUIDE_NORMALS, GUIDE_ALBEDO, GUIDE_ROUGHNESS}) {
       device_->CreateShaderResourceView(nullptr, &texture_view, Descriptor(descriptor));
     }
+    device_->CreateShaderResourceView(nullptr, &NO_KEPT_POSITIONS, Descriptor(PREVIOUS_POSITIONS));
     const D3D12_UNORDERED_ACCESS_VIEW_DESC texture_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
     for (UINT set = 0; set < 2; ++set) {
       for (const UINT descriptor : {REUSE_SAMPLES, REUSE_DATA, REFLECT_SAMPLES, REFLECT_DATA}) {
@@ -2562,19 +2578,22 @@ class RtScene12 {
     history_used_[kind] = frame;
     switch (kind) {
       case HISTORY_PATHS:
-        // Last frame's positions and this frame's (copied for the next).
-        if (previous_positions_) return true;
-        if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &previous_positions_, D3D12_RESOURCE_STATE_COMMON)
-            || !Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &positions_copy_, D3D12_RESOURCE_STATE_COMMON)) {
-          previous_positions_.Reset();
-          positions_copy_.Reset();
-          return false;
-        }
+        // Last frame's positions and this frame's (copied for the next): two slices, taking the copy in turn.
+        if (kept_positions_) return true;
         {
-          const D3D12_SHADER_RESOURCE_VIEW_DESC view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
-                                                        .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-                                                        .Texture2D = {.MipLevels = 1}};
-          device_->CreateShaderResourceView(previous_positions_.Get(), &view, Descriptor(PREVIOUS_POSITIONS));
+          D3D12_RESOURCE_DESC desc = positions_->GetDesc();
+          desc.DepthOrArraySize = 2;
+          desc.MipLevels = 1;
+          desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+          desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+          const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+          if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                      IID_PPV_ARGS(kept_positions_.GetAddressOf())))) {
+            return false;
+          }
+          D3D12_SHADER_RESOURCE_VIEW_DESC view = NO_KEPT_POSITIONS;
+          view.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+          device_->CreateShaderResourceView(kept_positions_.Get(), &view, Descriptor(PREVIOUS_POSITIONS));
         }
         copied_frame_ = UINT32_MAX;
         paths_frame_ = UINT32_MAX;
@@ -2670,12 +2689,9 @@ class RtScene12 {
       }
     };
     const auto unused = [&](History kind) { return history_used_[kind] + HISTORY_FRAMES < frame; };
-    if (previous_positions_ && unused(HISTORY_PATHS)) {
-      const D3D12_SHADER_RESOURCE_VIEW_DESC null_view = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
-                                                         .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-                                                         .Texture2D = {.MipLevels = 1}};
-      device_->CreateShaderResourceView(nullptr, &null_view, Descriptor(PREVIOUS_POSITIONS));
-      release("paths' positions", {std::addressof(previous_positions_), std::addressof(positions_copy_)}, {});
+    if (kept_positions_ && unused(HISTORY_PATHS)) {
+      device_->CreateShaderResourceView(nullptr, &NO_KEPT_POSITIONS, Descriptor(PREVIOUS_POSITIONS));
+      release("paths' positions", {std::addressof(kept_positions_)}, {});
     }
     if (reuse_samples_[0] && unused(HISTORY_REUSE)) {
       release("ReSTIR GI", {std::addressof(reuse_samples_[0]), std::addressof(reuse_samples_[1]), std::addressof(reuse_data_[0]), std::addressof(reuse_data_[1])},
@@ -2702,6 +2718,7 @@ class RtScene12 {
   // A pass's name among the list's DRED breadcrumbs, kept with its slot (LostReport: DRED leaves markers unnamed).
   void Mark(ID3D12GraphicsCommandList* list, const wchar_t* pass) {
     if (!details_) return;
+    if (profiling_) QueryPerformanceCounter(&cpu_marks_.emplace_back(pass, LARGE_INTEGER{}).second);
     list->SetMarker(0, pass, static_cast<UINT>((std::wcslen(pass) + 1) * sizeof(wchar_t)));
     for (Slot& slot : slots_) {
       if (slot.list.Get() == list) slot.marks.push_back(pass);
@@ -4713,7 +4730,7 @@ class RtScene12 {
     std::string& line = slots_[slot_index].profile;
     if (line.empty()) return;
     if (profile_.is_open()) {
-      profile_ << line << gpu_times << '\n';
+      profile_ << line << gpu_times << ',' << slots_[slot_index].profile_parts << '\n';
       if (!profiling_) profile_.flush();
     }
     line.clear();
@@ -5757,8 +5774,11 @@ class RtScene12 {
   ComPtr<ID3D12Resource> reflection_;
   ComPtr<ID3D12Resource> specular_;
   ComPtr<ID3D12Resource> hit_distance_;  // Ray Reconstruction's specular hit distance (v17; u31)
-  ComPtr<ID3D12Resource> previous_positions_;  // last frame's positions (t11)
-  ComPtr<ID3D12Resource> positions_copy_;      // this frame's, for the next
+  // Last frame's positions and this frame's for the next (t11), a slice each: copied_slice_ took the last copy,
+  // previous_positions_slice_ is what this frame's requests read.
+  ComPtr<ID3D12Resource> kept_positions_;
+  uint32_t copied_slice_ = 0;
+  uint32_t previous_positions_slice_ = 0;
   ComPtr<ID3D12Resource> specular_accumulated_;
   ComPtr<ID3D12Resource> specular_history_;
   ComPtr<ID3D12Resource> specular_meta_;
@@ -5822,7 +5842,7 @@ class RtScene12 {
   std::array<float, 16> current_view_projection_ = {};
   std::array<float, 16> previous_view_projection_ = {};
   uint32_t paths_frame_ = UINT32_MAX;     // the frame of the last path request (the history copied then)
-  uint32_t copied_frame_ = UINT32_MAX;    // the frame positions_copy_ holds
+  uint32_t copied_frame_ = UINT32_MAX;    // the frame kept_positions_' copied_slice_ holds
   uint32_t light_frame_ = UINT32_MAX;     // the frame the prepared light is from
   uint32_t cache_frame_ = UINT32_MAX;     // the frame the cache was last filled
   uint32_t specular_frame_ = UINT32_MAX;  // the frame of the last reflections
@@ -5868,6 +5888,8 @@ class RtScene12 {
   std::filesystem::path folder_;
   std::ofstream profile_;
   bool profiling_ = false;
+  // A recording's trace being recorded: its passes' marks and when the CPU reached them.
+  std::vector<std::pair<const wchar_t*, LARGE_INTEGER>> cpu_marks_;
   std::string profile_counts_;
 };
 
