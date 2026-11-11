@@ -505,6 +505,40 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
   return dxbc::Write(code, program);
 }
 
+// Torch and Fire Shadows' (screen_space_lights.hpp; let go when the row is turned off): the camera kept at the sun's draw;
+// sss_lights; the light draws' instances copied on the GPU (two: this frame's filling, last frame's read) and their
+// records; the pick's dispatch list, light coordinates, indirect arguments and b9's content; the lights' constants (b9),
+// the march's (b4, b3); the lit bits (R32_UINT, rt_local_lights.hlsli's t42).
+struct LightObjects {
+  ComPtr<ID3D11Buffer> camera;
+  ComPtr<ID3D11ComputeShader> shader;
+  std::array<ComPtr<ID3D11Buffer>, 2> instances;
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> instances_srv;
+  std::array<std::vector<std::array<uint32_t, 4>>, 2> records;
+  std::array<UINT, 2> bytes = {};
+  size_t current = 0;
+  uint64_t frame = UINT64_MAX;  // the frame the current copies are of
+  bool marched = false;         // this frame's lit bits made
+  ComPtr<ID3D11Buffer> draws;
+  ComPtr<ID3D11ShaderResourceView> draws_srv;
+  ComPtr<ID3D11Buffer> dispatches;
+  ComPtr<ID3D11UnorderedAccessView> dispatches_uav;
+  ComPtr<ID3D11ShaderResourceView> dispatches_srv;
+  ComPtr<ID3D11Buffer> coordinates;
+  ComPtr<ID3D11UnorderedAccessView> coordinates_uav;
+  ComPtr<ID3D11ShaderResourceView> coordinates_srv;
+  ComPtr<ID3D11Buffer> arguments;
+  ComPtr<ID3D11UnorderedAccessView> arguments_uav;
+  ComPtr<ID3D11Buffer> list;
+  ComPtr<ID3D11UnorderedAccessView> list_uav;
+  ComPtr<ID3D11Buffer> constants;
+  ComPtr<ID3D11Buffer> settings;
+  ExtendedSettings uploaded_settings = {};
+  ComPtr<ID3D11Buffer> mode;
+  ComPtr<ID3D11UnorderedAccessView> mask_uav;
+  ComPtr<ID3D11ShaderResourceView> mask_srv;
+};
+
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11ComputeShader> depth_copy;
@@ -568,37 +602,7 @@ struct DeviceObjects {
   ComPtr<ID3D11DepthStencilState> thin_depth_state;
   std::unordered_map<ID3D11RasterizerState*, std::pair<ComPtr<ID3D11RasterizerState>, ComPtr<ID3D11RasterizerState>>> thin_rasterizers;
   bool logged_thin = false;
-  // Torch and Fire Shadows (screen_space_lights.hpp): the camera kept at the sun's draw; sss_lights; the light draws'
-  // instances copied on the GPU (two: this frame's filling, last frame's read) and their records; the pick's dispatch
-  // list, light coordinates, indirect arguments and b9's content; the lights' constants (b9), the march's (b4, b3); the
-  // lit bits (R32_UINT, rt_local_lights.hlsli's t42).
-  ComPtr<ID3D11Buffer> light_camera;
-  ComPtr<ID3D11ComputeShader> lights_shader;
-  std::array<ComPtr<ID3D11Buffer>, 2> light_instances;
-  std::array<ComPtr<ID3D11ShaderResourceView>, 2> light_instances_srv;
-  std::array<std::vector<std::array<uint32_t, 4>>, 2> light_records;
-  std::array<UINT, 2> light_bytes = {};
-  size_t light_current = 0;
-  uint64_t light_frame = UINT64_MAX;  // the frame the current copies are of
-  bool lights_marched = false;        // this frame's lit bits made
-  ComPtr<ID3D11Buffer> light_draws;
-  ComPtr<ID3D11ShaderResourceView> light_draws_srv;
-  ComPtr<ID3D11Buffer> light_dispatches;
-  ComPtr<ID3D11UnorderedAccessView> light_dispatches_uav;
-  ComPtr<ID3D11ShaderResourceView> light_dispatches_srv;
-  ComPtr<ID3D11Buffer> light_coordinates;
-  ComPtr<ID3D11UnorderedAccessView> light_coordinates_uav;
-  ComPtr<ID3D11ShaderResourceView> light_coordinates_srv;
-  ComPtr<ID3D11Buffer> light_arguments;
-  ComPtr<ID3D11UnorderedAccessView> light_arguments_uav;
-  ComPtr<ID3D11Buffer> light_list;
-  ComPtr<ID3D11UnorderedAccessView> light_list_uav;
-  ComPtr<ID3D11Buffer> light_constants;
-  ComPtr<ID3D11Buffer> light_settings;
-  ExtendedSettings uploaded_light_settings = {};
-  ComPtr<ID3D11Buffer> light_mode;
-  ComPtr<ID3D11UnorderedAccessView> light_mask_uav;
-  ComPtr<ID3D11ShaderResourceView> light_mask_srv;
+  LightObjects lights;
 };
 
 struct Runtime {
@@ -629,14 +633,15 @@ struct Runtime {
   float albedo_power = 1.f;
   uint64_t thin_frame = UINT64_MAX;
   uint64_t tint_frame = UINT64_MAX;  // the frame the colour filter is of (Coloured Shadows)
+  // The filter the sun draws left at t50 (taken off at the next where it still is, also once let go or made again).
+  ComPtr<ID3D11ShaderResourceView> bound_tint;
+  // The frame sss_blur or sss_soft softened the occlusion of: the sun draws read soft_srv in it, else occlusion_srv.
+  uint64_t soft_frame = UINT64_MAX;
   // The game's camera layout (the sun draws': screen_space_lights.hpp's for the light draws).
   std::span<const frame_history::CameraRun> camera_layout = {};
 };
 
 static Runtime runtime;
-
-// The occlusion the sun draws read is the softened one (sss_blur's Softness or sss_soft's Softer Away from the Caster).
-inline bool Softened(const Settings& settings) { return settings.softness > 0.f || settings.sun_disk > 0.f; }
 
 // The extended march's variant (DeviceObjects::bend_extended) with Auto Thickness (`auto_thickness`) and with what Softer Away
 // from the Caster and Coloured Shadows need found (`find`).
@@ -750,8 +755,8 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
   objects.penumbra_srv.Reset();
   objects.tint_uav.Reset();
   objects.tint_srv.Reset();
-  objects.light_mask_uav.Reset();
-  objects.light_mask_srv.Reset();
+  objects.lights.mask_uav.Reset();
+  objects.lights.mask_srv.Reset();
   if (!MakeTexture(device, width, height, DXGI_FORMAT_R32_FLOAT, &objects.depth_uav, &objects.depth_srv)
       || !MakeTexture(device, width, height, DXGI_FORMAT_R8_UNORM, &objects.occlusion_uav, &objects.occlusion_srv)
       || !MakeTexture(device, width, height, DXGI_FORMAT_R8_UNORM, &objects.soft_uav, &objects.soft_srv)) {
@@ -946,7 +951,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
 
   // Torch and Fire Shadows (screen_space_lights.hpp): this camera kept for the light draws.
   if (runtime.settings.lights != 0) {
-    frame_history::KeepCamera(device.Get(), native, camera, &objects.light_camera);
+    frame_history::KeepCamera(device.Get(), native, camera, &objects.lights.camera);
   }
 
   const ComputeState game_state(native);
@@ -993,6 +998,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     ComputeState::Bind(native, smooth.Get(), {objects.depth_srv.Get(), objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr},
                        {objects.soft_uav.Get()}, {nullptr, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
     native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
+    runtime.soft_frame = runtime.frame;
   }
   runtime.tint_frame = (coloured ? runtime.frame : UINT64_MAX);
 }
@@ -1123,7 +1129,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
           if (lighting[0] != nullptr) lighting[0]->Release();
         }
         if (runtime.settings.enabled && runtime.computed_frame == runtime.frame) {
-          const auto& mask = (internal::Softened(runtime.settings) ? runtime.objects.soft_srv : runtime.objects.occlusion_srv);
+          const auto& mask = ((runtime.soft_frame == runtime.frame) ? runtime.objects.soft_srv : runtime.objects.occlusion_srv);
           occlusion = mask.Get();
         }
         if (internal::extra_occlusion != nullptr) {
@@ -1136,14 +1142,17 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     }
     native->PSSetShaderResources(internal::MASK_SLOT, 1, &occlusion);
     // Coloured Shadows' filter where the rays bound none at t50 (they bind theirs or none); our last one taken off after.
-    if (runtime.objects.tint_srv) {
+    if (runtime.objects.tint_srv || runtime.bound_tint) {
       ComPtr<ID3D11ShaderResourceView> tint;
       native->PSGetShaderResources(internal::TINT_SLOT, 1, tint.GetAddressOf());
-      if (!tint || tint.Get() == runtime.objects.tint_srv.Get()) {
+      if (!tint || tint.Get() == runtime.bound_tint.Get()) {
         ID3D11ShaderResourceView* filter = (occlusion != nullptr && runtime.settings.enabled && runtime.tint_frame == runtime.frame)
                                                ? runtime.objects.tint_srv.Get()
                                                : nullptr;
         native->PSSetShaderResources(internal::TINT_SLOT, 1, &filter);
+        runtime.bound_tint = filter;
+      } else {
+        runtime.bound_tint.Reset();
       }
     }
     return {};
@@ -1392,8 +1401,29 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   // Off for 600 presents: its memory back (Prepare makes it again; the other occlusions use nothing of it). Not at once: a 4K copy
   // made again at each switch of what replaces it.
   internal::runtime.off_presents = settings.enabled ? 0 : internal::runtime.off_presents + 1;
-  if (internal::runtime.off_presents > 600 && internal::runtime.objects.device) {
-    internal::runtime.objects = {};
+  auto& objects = internal::runtime.objects;
+  if (internal::runtime.off_presents > 600 && objects.device) {
+    objects = {};
+  }
+  // A row turned off: what only it uses let go (made again when it is turned on; the filter at t50 taken off at the next
+  // sun draw).
+  if (settings.thin_light <= 0.f) {
+    objects.thin_texture.Reset();
+    objects.thin_rtv.Reset();
+    objects.thin_srv.Reset();
+    objects.thin_depth_state.Reset();
+    objects.thin_rasterizers.clear();
+  }
+  if (settings.thin_light <= 0.f || !settings.coloured) {
+    objects.tint_uav.Reset();
+    objects.tint_srv.Reset();
+  }
+  if (settings.sun_disk <= 0.f) {
+    objects.penumbra_uav.Reset();
+    objects.penumbra_srv.Reset();
+  }
+  if (settings.lights == 0) {
+    objects.lights = {};
   }
   ++internal::runtime.frame;
 }
@@ -1482,7 +1512,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   ID3D11Buffer* game_constants = nullptr;
   native->CSGetConstantBuffers(2, 1, &game_constants);
 
-  const auto& mask = (internal::Softened(runtime.settings) ? objects.soft_srv : objects.occlusion_srv);
+  const auto& mask = ((runtime.soft_frame == runtime.frame) ? objects.soft_srv : objects.occlusion_srv);
   const std::array<ID3D11ShaderResourceView*, 2> views = {mask.Get(), objects.parameters_srv.Get()};
   constexpr UINT KEEP_COUNT = UINT_MAX;
   native->CSSetShader(objects.debug.Get(), nullptr, 0);

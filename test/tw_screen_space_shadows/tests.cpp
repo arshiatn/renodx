@@ -8,6 +8,8 @@
 //    the extended march with nothing to do (no banners in view, Auto Thickness off) the plain march's to the bit, with
 //    foliage marked. Pixels Bend's waves write twice in one dispatch vary between runs of the same shaders on WARP (both
 //    sides', under 0.2% of the picture): 8 runs each in turns, a pixel apart where no value of one side's is the other's.
+//    At 50% and 58% render scale (30 and 35 samples, fade-outs 14 and 19 after 16 hard ones) the extended march's counts
+//    in fours: the plain march's with 32 and 36, 12 and 16, to the bit.
 // 2. Auto Thickness: a deep box and a thick wall the sun shines past towards the camera leak less light behind their
 //    fronts (fewer ground pixels wrong against the reference), a pole no worse (5% + 20 pixels).
 // 3. A red banner: its shadow lets Light Through Banners of the sun through (its occlusion its solid one's x 0.65, within
@@ -15,13 +17,15 @@
 //    kept), none in the sun.
 // 4. Softer Away from the Caster: the penumbra each shadowed pixel gets is its caster's distance x tan(half the disk) in
 //    render pixels (median within 25% of the reference caster's), growing away from a pole; the softened shadow's edge
-//    widens with it.
+//    widens with it. Softness 0 and the penumbra's texture not made: the sun draws read the occlusion (no pass softened it).
 // 5. Torch and Fire Shadows: a light beside a box: its bit agrees with a ray-traced reference on 95% of the ground within
 //    its reach, all bits set outside the rectangle its reach covers; of 100 lights (one repeated) the pick is the CPU's
 //    partial_sort by the rays' score, in order, the repeat once.
 // 6. Light Through Banners' replay: a banner's G-buffer draw drawn again after it: tagged (its depth the scene's) where it
 //    stays in view, not where a later draw covers it, far elsewhere; the depth, targets (one kept at slot 6), shader,
 //    rasterizer, depth and blend states as they were.
+// 7. Rows turned off (sss::Update): Coloured Shadows' filter (taken off t50 at the next sun draw), the penumbra, the
+//    lights' objects, the banners' depth let go (their resources' last reference the test's), made again when turned on.
 // --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, and the CPU
 // time of a later light draw. --time-only: that alone.
 #include <windows.h>
@@ -394,8 +398,8 @@ struct Foliage {
 };
 
 // One frame of the module: its settings, then the march at the sun's draw (Compute; the banners' depth this frame's where
-// `thin` is set; the foliage's copies where given). Returns what the sun draws read (the softened occlusion with
-// Softness or Softer Away from the Caster).
+// `thin` is set; the foliage's copies where given). Returns what the sun draws read (the softened occlusion where sss_blur
+// or sss_soft ran).
 static ID3D11ShaderResourceView* RunFrame(const Frame& frame, const sss::Settings& settings, bool thin = false, const Foliage* foliage = nullptr) {
   auto& runtime = sss::internal::runtime;
   auto& objects = runtime.objects;
@@ -418,7 +422,7 @@ static ID3D11ShaderResourceView* RunFrame(const Frame& frame, const sss::Setting
   sss::internal::Compute(context.Get(), frame.depth.srv.Get(), false, frame.camera_constants.Get(), frame.lighting.Get(), 1,
                          settings.coloured ? frame.colour.srv.Get() : nullptr);
   runtime.computed_frame = runtime.frame;
-  return sss::internal::Softened(settings) ? objects.soft_srv.Get() : objects.occlusion_srv.Get();
+  return (runtime.soft_frame == runtime.frame) ? objects.soft_srv.Get() : objects.occlusion_srv.Get();
 }
 
 static sss::Settings Defaults() { return {.enabled = true}; }
@@ -450,7 +454,9 @@ static void TestRowsOff(const std::string& before_folder) {
   // order: such a pixel can differ between two runs of the same shaders (today's too). Both sides run 8 times, in turns;
   // a pixel is apart when no run of one gives a value a run of the other gave.
   constexpr int RUNS = 8;
-  const auto compare = [](const char* what, const std::vector<std::vector<uint8_t>>& ours, const std::vector<std::vector<uint8_t>>& theirs) {
+  // `same` false: the sides must differ (more than 20 pixels apart).
+  const auto compare = [](const char* what, const std::vector<std::vector<uint8_t>>& ours, const std::vector<std::vector<uint8_t>>& theirs,
+                          bool same = true) {
     int varying = 0;
     int apart = 0;
     int shadowed = 0;
@@ -466,8 +472,12 @@ static void TestRowsOff(const std::string& before_folder) {
       shadowed += (stable && ours[0][pixel] > 127) ? 1 : 0;
     }
     std::printf("   %s: %d shadowed pixels the same, %d apart, %d varying between runs\n", what, shadowed, apart, varying);
-    CHECK(apart == 0);
-    CHECK(shadowed > 100 && varying < static_cast<int>(ours[0].size() / 500));
+    if (same) {
+      CHECK(apart == 0);
+      CHECK(shadowed > 100 && varying < static_cast<int>(ours[0].size() / 500));
+    } else {
+      CHECK(apart > 20);
+    }
   };
   for (const float softness : {0.f, 2.f}) {
     sss::Settings settings = Defaults();
@@ -527,6 +537,55 @@ static void TestRowsOff(const std::string& before_folder) {
   std::printf("   foliage at 0.5: %zu half-lit pixels\n", static_cast<size_t>(lit_through));
   CHECK(lit_through > 50);
   compare("extended march with nothing to do against the plain one", extended, plain);
+
+  // Below 100% (the render the top-left of the display's textures, 960 x 540): the sun's 60 samples are 30 at 50% and 35
+  // at 58% (557 x 313), their fade-outs (32 after 16 hard ones) 14 and 19. The extended march (nothing to do) takes them
+  // in fours: the plain march's with 32 and 36 samples, fade-outs 12 and 16 (which differs from the plain one's with the
+  // odd counts).
+  struct Scale {
+    UINT width;
+    UINT height;
+    float samples;  // the plain march's Length for the rounded count at this scale
+    float fade;
+  };
+  // The box, a wall behind it and a pole beside it.
+  const std::array<Box, 3> casters = {{BOX_SCENE[0], {.low = {-6.f, -2.f, 20.f}, .high = {6.f, 0.f, 22.f}}, {.low = {3.f, -2.f, 10.f}, .high = {3.2f, 2.f, 10.2f}}}};
+  for (const auto& scale : {Scale{480, 270, 64.f, 12.f}, Scale{557, 313, 62.f, 16.f}}) {
+    const Frame render = MakeFrame(scale.width, scale.height, casters, BOX_SUN);
+    Frame scaled = MakeFrame(960, 540, {}, BOX_SUN);  // the display's size; its banners' depth all far
+    std::vector<float> depth(960 * 540, 1.f);
+    for (UINT y = 0; y < scale.height; ++y) {
+      std::copy_n(render.picture.depth.begin() + (y * scale.width), scale.width, depth.begin() + (y * 960));
+    }
+    scaled.depth = MakeTexture(960, 540, DXGI_FORMAT_R32_FLOAT, depth.data(), 960 * 4);
+    scaled.camera_constants = render.camera_constants;
+    twattila::frame_history::render_width = scale.width;
+    twattila::frame_history::render_height = scale.height;
+    sss::Settings odd = Defaults();
+    odd.samples = 60.f;
+    odd.hard_samples = 16.f;
+    odd.fade_samples = 32.f;
+    sss::Settings rounded = odd;
+    rounded.samples = scale.samples;
+    rounded.fade_samples = scale.fade;
+    sss::Settings odd_extended = odd;
+    odd_extended.thin_light = 0.35f;
+    std::vector<std::vector<uint8_t>> odd_plain;
+    std::vector<std::vector<uint8_t>> rounded_plain;
+    std::vector<std::vector<uint8_t>> rounded_extended;
+    for (int run = 0; run < RUNS; ++run) {
+      odd_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, odd)));
+      rounded_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, rounded)));
+      rounded_extended.push_back(ReadView<uint8_t>(RunFrame(scaled, odd_extended, true)));
+    }
+    std::printf("   %u x %u of 960 x 540: the module's %.0f samples, fade-out %.0f\n", scale.width, scale.height, objects.uploaded.samples,
+                objects.uploaded.fade_samples);
+    CHECK(objects.uploaded.samples == std::round(60.f * static_cast<float>(scale.width) / 960.f) && std::fmod(objects.uploaded.samples, 4.f) != 0.f);
+    compare("   extended march in fours against the plain one's with the counts in fours", rounded_extended, rounded_plain);
+    compare("   the plain march's with the counts in fours against its own with the odd ones", rounded_plain, odd_plain, false);
+  }
+  twattila::frame_history::render_width = 0;
+  twattila::frame_history::render_height = 0;
 }
 
 static void TestAutoThickness() {
@@ -626,6 +685,14 @@ static void TestBanner() {
   CHECK(sunlit_tint == 0);
 }
 
+// The device's CreateTexture2D (TestSofter puts this in its vtable for a frame): R16_FLOAT, the penumbra's format, failing.
+using CreateTexture2D = HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*, const D3D11_TEXTURE2D_DESC*, const D3D11_SUBRESOURCE_DATA*, ID3D11Texture2D**);
+static CreateTexture2D create_texture_2d = nullptr;
+static HRESULT STDMETHODCALLTYPE CreateTexture2DFailingPenumbra(ID3D11Device* self, const D3D11_TEXTURE2D_DESC* desc, const D3D11_SUBRESOURCE_DATA* data,
+                                                                ID3D11Texture2D** texture) {
+  return (desc->Format == DXGI_FORMAT_R16_FLOAT) ? E_OUTOFMEMORY : create_texture_2d(self, desc, data, texture);
+}
+
 static void TestSofter() {
   std::printf("4. Softer Away from the Caster\n");
   MakeDevice(D3D_DRIVER_TYPE_WARP);
@@ -692,6 +759,28 @@ static void TestSofter() {
   CHECK(median > 0.75f && median < 1.25f);
   CHECK(far_radius > near_radius * 1.5);
   CHECK(far_edge > near_edge);
+
+  // Softness 0 and no penumbra to write (its texture not made: the device's CreateTexture2D failing R16_FLOAT, the
+  // penumbra's format, for a frame): no pass softened this frame's occlusion, the sun draws read it, not the softened one
+  // of the frame before.
+  auto& objects = sss::internal::runtime.objects;
+  CHECK(sss::internal::runtime.soft_frame == sss::internal::runtime.frame);
+  objects.penumbra_uav.Reset();
+  objects.penumbra_srv.Reset();
+  constexpr size_t CREATE_TEXTURE_2D = 5;  // ID3D11Device's vtable: IUnknown's 3, CreateBuffer, CreateTexture1D
+  void** vtable = *reinterpret_cast<void***>(device.Get());
+  const auto patch = [&](void* function) {
+    DWORD protection = 0;
+    REQUIRE(VirtualProtect(&vtable[CREATE_TEXTURE_2D], sizeof(void*), PAGE_EXECUTE_READWRITE, &protection));
+    vtable[CREATE_TEXTURE_2D] = function;
+    VirtualProtect(&vtable[CREATE_TEXTURE_2D], sizeof(void*), protection, &protection);
+  };
+  create_texture_2d = reinterpret_cast<CreateTexture2D>(vtable[CREATE_TEXTURE_2D]);
+  patch(reinterpret_cast<void*>(&CreateTexture2DFailingPenumbra));
+  const auto* read = RunFrame(frame, settings);
+  patch(reinterpret_cast<void*>(create_texture_2d));
+  std::printf("   no penumbra texture, Softness 0: the sun draws read the %s occlusion\n", (read == objects.soft_srv.Get()) ? "SOFTENED" : "plain");
+  CHECK(!objects.penumbra_uav && objects.uploaded_extended.sun_tangent == 0.f && read == objects.occlusion_srv.Get());
 }
 
 // A light draw's instance: its colour (POSITION1) and position and reach (POSITION2), 48 bytes apart.
@@ -727,8 +816,8 @@ static void TestTorches() {
   const LightInstance torch = {.colour = {4.f, 2.f, 0.5f, 0.f}, .light = {2.f, -1.2f, 10.f, 6.f}};
   REQUIRE(LightFrames(frame, std::span(&torch, 1), 4));
   auto& objects = sss::internal::runtime.objects;
-  const auto mask = ReadView<uint32_t>(objects.light_mask_uav.Get());
-  const auto list = ReadBuffer<std::array<float, 4>>(objects.light_list.Get());
+  const auto mask = ReadView<uint32_t>(objects.lights.mask_uav.Get());
+  const auto list = ReadBuffer<std::array<float, 4>>(objects.lights.list.Get());
   uint32_t count = 0;
   std::memcpy(&count, &list[32][0], sizeof(count));
   CHECK(count == 1 && list[0] == torch.light);
@@ -792,7 +881,7 @@ static void TestTorches() {
   }
   many.push_back(many[17]);
   REQUIRE(LightFrames(frame, many, 8));
-  const auto picked = ReadBuffer<std::array<float, 4>>(objects.light_list.Get());
+  const auto picked = ReadBuffer<std::array<float, 4>>(objects.lights.list.Get());
   const auto score = [](const LightInstance& instance) {
     const auto& l = instance.light;
     return std::max({instance.colour[0], instance.colour[1], instance.colour[2]}) * l[3] * l[3] / std::max((l[0] * l[0]) + (l[1] * l[1]) + (l[2] * l[2]), 1.f);
@@ -962,6 +1051,97 @@ float4 main(float3 position : POSITION) : SV_Position { return mul(float4(positi
   CHECK(elsewhere_wrong == 0);
 }
 
+static void TestRowsTurnedOff() {
+  std::printf("7. rows turned off\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  auto& runtime = sss::internal::runtime;
+  auto& objects = runtime.objects;
+  const std::array<Box, 2> boxes = {{BOX_SCENE[0], {.low = {-1.f, -0.6f, 12.f}, .high = {1.f, 1.4f, 12.05f}, .kind = Kind::THIN, .albedo = {0.8f, 0.1f, 0.1f}}}};
+  const Frame frame = MakeFrame(480, 270, boxes, BOX_SUN);
+  const LightInstance torch = {.colour = {4.f, 2.f, 0.5f, 0.f}, .light = {2.f, -1.2f, 10.f, 6.f}};
+  const auto buffer = MakeBuffer(sizeof(torch), D3D11_BIND_VERTEX_BUFFER, &torch);
+  const lights::Instances drawn = {.buffer = buffer.Get(), .first = 0, .count = 1, .stride = sizeof(LightInstance),
+                                   .position = offsetof(LightInstance, light), .colour = offsetof(LightInstance, colour)};
+  sss::Settings all = Defaults();
+  all.thin_light = 0.35f;
+  all.coloured = true;
+  all.sun_disk = 0.5f;
+  all.lights = 4;
+  // Two frames (the second marches the first's light), the lights taken off after each light draw (rt_scene's
+  // UnbindLocalLights).
+  const auto run_all = [&] {
+    for (int repeat = 0; repeat < 2; ++repeat) {
+      RunFrame(frame, all, true);
+      lights::OnLightDraw(context.Get(), drawn);
+      ID3D11ShaderResourceView* none = nullptr;
+      context->PSSetShaderResources(lights::internal::LIGHT_MASK_SLOT, 1, &none);
+    }
+  };
+  run_all();
+  REQUIRE(objects.tint_srv && objects.penumbra_srv && objects.lights.shader && objects.lights.mask_srv && runtime.tint_frame == runtime.frame);
+  // Their resources held here too: this the one reference left once the module lets them go.
+  const auto resource = [](ID3D11View* view) {
+    ComPtr<ID3D11Resource> held;
+    view->GetResource(held.GetAddressOf());
+    return held;
+  };
+  const auto only_here = [](IUnknown* object) {
+    object->AddRef();
+    return object->Release() == 1;
+  };
+  const ComPtr<ID3D11Resource> tint = resource(objects.tint_srv.Get());
+  const ComPtr<ID3D11Resource> penumbra = resource(objects.penumbra_srv.Get());
+  const ComPtr<ID3D11Resource> mask = resource(objects.lights.mask_srv.Get());
+  const ComPtr<ID3D11Buffer> instances = objects.lights.instances[0];
+  // The filter a sun draw left at t50.
+  context->PSSetShaderResources(sss::internal::TINT_SLOT, 1, objects.tint_srv.GetAddressOf());
+  runtime.bound_tint = objects.tint_srv;
+
+  mock::Device mock_device;
+  mock_device.native = device;
+  mock_device.back_buffer.type = reshade::api::resource_type::texture_2d;
+  mock_device.back_buffer.texture.width = 480;
+  mock_device.back_buffer.texture.height = 270;
+  mock::Swapchain swapchain;
+  swapchain.owner = &mock_device;
+  mock::CommandList commands;
+  commands.owner = &mock_device;
+  commands.native = context;
+  sss::Settings settings = all;
+  settings.coloured = false;
+  sss::Update(&swapchain, settings);
+  CHECK(!objects.tint_srv && !objects.tint_uav && objects.thin_srv && objects.penumbra_srv && objects.lights.shader);
+  // The next sun draw (of a shader not patched: no occlusion) takes the filter off.
+  static const twattila::light_bounce::SunDraw SUN = {.shader_hash = 0x87654321u};
+  DrawContext command;
+  command.cmd_list = &commands;
+  command.callback_data = &SUN;
+  sss::OnSunDraw.template operator()<twattila::light_bounce::SunDraw>(command);
+  ComPtr<ID3D11ShaderResourceView> bound;
+  context->PSGetShaderResources(sss::internal::TINT_SLOT, 1, bound.GetAddressOf());
+  const bool tint_freed = !bound && !runtime.bound_tint && only_here(tint.Get());
+  settings.sun_disk = 0.f;
+  sss::Update(&swapchain, settings);
+  const bool penumbra_freed = !objects.penumbra_uav && !objects.penumbra_srv && only_here(penumbra.Get());
+  CHECK(objects.thin_srv && objects.lights.shader);
+  settings.lights = 0;
+  sss::Update(&swapchain, settings);
+  const bool lights_freed = !objects.lights.shader && !objects.lights.camera && !objects.lights.mask_uav && !objects.lights.mask_srv
+                            && objects.lights.records[0].empty() && objects.lights.records[1].empty() && only_here(mask.Get())
+                            && only_here(instances.Get());
+  CHECK(objects.thin_srv);
+  settings.thin_light = 0.f;
+  sss::Update(&swapchain, settings);
+  const bool banners_freed = !objects.thin_texture && !objects.thin_rtv && !objects.thin_srv && !objects.thin_depth_state && objects.thin_rasterizers.empty();
+  std::printf("   let go: Coloured Shadows' filter %s (t50 %s), the penumbra %s, the lights' %s, the banners' depth %s\n", tint_freed ? "yes" : "NO",
+              bound ? "still bound" : "free", penumbra_freed ? "yes" : "NO", lights_freed ? "yes" : "NO", banners_freed ? "yes" : "NO");
+  CHECK(tint_freed && penumbra_freed && lights_freed && banners_freed);
+  // On again: made again.
+  run_all();
+  CHECK(objects.tint_srv && objects.penumbra_srv && objects.lights.shader && objects.lights.mask_srv && runtime.tint_frame == runtime.frame
+        && runtime.soft_frame == runtime.frame);
+}
+
 // ---- --time -----------------------------------------------------------------------------------------------------------
 
 // The median GPU time (ms) of `work` over 30 frames, after 5 to warm up.
@@ -1082,6 +1262,7 @@ int main(int argc, char** argv) {
     TestSofter();
     TestTorches();
     TestReplay();
+    TestRowsTurnedOff();
   }
   if (mode == "--time" || mode == "--time-only") Time();
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);

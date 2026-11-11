@@ -637,8 +637,8 @@ struct DispatchParameters
 		start_depth = start_depth * depth_scale - z_sign;
 
 #ifdef BEND_SSS_EXTENDED
-		// RenoDX extended: Bend's three loops 4 samples at a time (its counts are multiples of 4: the same minimums into the
-		// same lanes), each sample's delta from ExtendedDeltas.
+		// RenoDX extended: Bend's three loops 4 samples at a time (the caller's counts multiples of 4, twattila's sss_bend
+		// rounds them: the same minimums into the same lanes), each sample's delta from ExtendedDeltas.
 		ExtendedState state;
 		state.run_start = 0;
 		state.previous_depth = DepthData[sample_index - 1] * depth_scale;

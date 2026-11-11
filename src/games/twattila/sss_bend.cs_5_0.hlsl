@@ -178,7 +178,12 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
     dp.FindHit = false;
     dp.FindThin = false;
   }
-#endif
-
+  // Its loops take four samples at a time (Hard Shadow Samples are fours): the count rounded up to fours (below 100%
+  // render scale: 30 at 50%), the fade-out's down (4 at least, within those after the hard ones).
+  const int sample_count = ((int)g_sss_samples + 3) & ~3;
+  dp.FadeOutSamples = max(min(dp.FadeOutSamples, sample_count - dp.HardShadowSamples) & ~3, 4);
+  WriteScreenSpaceShadow(dp, group_id, thread_id, sample_count);
+#else
   WriteScreenSpaceShadow(dp, group_id, thread_id, (int)g_sss_samples);
+#endif
 }
