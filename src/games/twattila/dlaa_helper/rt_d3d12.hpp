@@ -1771,6 +1771,7 @@ class RtScene12 {
   static constexpr UINT LEAF_INSTANCE = 0x04;
   static constexpr UINT GRASS_INSTANCE = 0x08;       // placed grass (most rays pass it)
   static constexpr UINT GRASS_SWAY_INSTANCE = 0x10;  // the swaying grass's cluster BLAS
+  static constexpr UINT CUT_OUT_INSTANCE = 0x40;     // static solid cut-outs (rt_scene.hlsli CUT_OUTS)
   static constexpr float LEAF_ALPHA_CUTOFF = 0.5f;  // rt_scene_data.cs_6_5.hlsl
   static constexpr uint32_t PLACE_FOLIAGE = 1;  // rt_place.cs_6_5.hlsl
   static constexpr uint32_t PLACE_HIDDEN = 2;
@@ -2031,7 +2032,7 @@ class RtScene12 {
     bool terrain = false;
     bool foliage = false;
     bool grass = false;  // RT_GRASS: its instances GRASS_INSTANCE
-    bool solid_cut_out = false;  // RT_SOLID_CUT_OUT: alpha-tested among the solids (SOLID_INSTANCE), no light through it
+    bool solid_cut_out = false;  // RT_SOLID_CUT_OUT: alpha-tested in its own group (CUT_OUT_INSTANCE), no light through it
     // Instanced (RT_INSTANCED): each instance's transform from the first one's space (its BLAS's), read back from its
     // capture; their places (instance indices, the partitioned TLAS's) from first_instance on.
     std::vector<std::array<float, 12>> transforms;
@@ -5524,10 +5525,11 @@ class RtScene12 {
            | ((masked && (capture.flags & (dlaa_bridge::RT_DYNAMIC | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SMOKE | dlaa_bridge::RT_SOLID_CUT_OUT)) == 0) ? RECORD_LEAF : 0u);
   }
 
-  // A static mesh's instances' group: grass, leaves (alpha-tested), or solid (a solid cut-out too: a fence, a thatched wall).
+  // A static mesh's instances' group: grass, leaves (alpha-tested), solid cut-outs (a fence, a thatched wall), or solid.
   static UINT InstanceMask(const Mesh& mesh) {
     if (mesh.grass) return GRASS_INSTANCE;
-    return (mesh.foliage && !mesh.solid_cut_out) ? LEAF_INSTANCE : SOLID_INSTANCE;
+    if (mesh.solid_cut_out) return CUT_OUT_INSTANCE;
+    return mesh.foliage ? LEAF_INSTANCE : SOLID_INSTANCE;
   }
 
   // A world-space BLAS into the slot's TLAS instances (leaves not opaque: their alpha is tested), its InstanceID its

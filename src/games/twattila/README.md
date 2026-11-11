@@ -1,5 +1,16 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v142 (2026-11-11, from ATN's test of v2.5.2; built, not run in game; renodx-tw-dlaa64.exe helper100, bridge v30: ship them together; a dev build, no players' release)
+
+No row and no default changed. Ray-traced shadows:
+
+- **Grass in a building's shadow is no longer lit** (ATN: grass in a burning house's shadow as bright as in the sun under RT/PT, about 4.6x the game's own). A blade's pixel is turned to the sun or away from it as the camera and the sun stand; the pixels turned away asked only for solid surfaces: no shadow from grass, leaves or smoke, and none from alpha-tested buildings where their micromap state is unknown. A pixel on grass now always takes the sun's full ray (`rt_trace.cs_6_5.hlsl` ShowsGrass).
+- **Shadows on grass no longer change with the camera's and the sun's angle** (same cause: seen against the sun a field lost its blades', leaves' and smoke's shadows, seen with the sun it had them all). Smoke's shadows reach all of the grass.
+- **Fences, thatched houses and other rigid meshes the game alpha-tests block the sun fully.** They counted as leaves: under Light Through Leaves a house behind a tree let a quarter of the sun through. They are their own group in the scene now (`RT_SOLID_CUT_OUT` on static captures, the helper's CUT_OUT_INSTANCE), alpha-tested by every ray toward the sun, also from surfaces turned away (`rt_scene.hlsli` OccludedSolid), and the sky of Path-Traced Ambient no longer shines through them. The campaign's palms and pines are such meshes: no light through their cards any more, as under the game's shadow maps.
+- **Grass shadows after a zoom** (ATN: blades' shadows dark for half a second, then right): while a level of detail lost places to the next one, its kept copies stayed up to 8 frames beside the new ones (the flag that drops them was only sent while its count did not shrink). It is also sent now for a mesh the frame before drew wholly before the trace (`rt_core.hpp`, shared by every Total War add-on).
+
+Not changed, found on the way: the paths' and reflections' nearest-surface rays still pass the parts of such buildings whose micromap state is unknown (asked of every ray, dense leaves cost the paths 2 to 4 times as much in the 4K harness); leaves' pixels turned away from the sun still ask only for solids (tree crowns seen against the sun). Harness: 169 modes on helper100, names and verdicts as helper99's plus four new (`leaf_cut_out*`). Cost at 4K in the harness against helper99: in tools/tw/attila_v142/reports/v142.md.
+
 ## v141 = players' v2.5.2 (2026-11-10, WH3's batch 6; built, not run in game; renodx-tw-dlaa64.exe helper99, bridge v30: ship them together; RenoDX_Attila_v2.5.2_HDR_only.zip: the add-on alone)
 
 No row and no default changed. Shared code only:

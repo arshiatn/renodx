@@ -440,9 +440,16 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     if (!hit) {
       // Past the first surface the sky (the game's ambient by direction); from the camera's pixel the game's own
       // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).
+      // No sky for the pixel itself through a solid cut-out either (TRACE_SURFACE culls what is alpha-tested: a thatched
+      // house's parts without a known micromap state were holes to it). Only here: asked of every ray that escapes, the
+      // bounce and the reflections cost 7 to 8% more (4K harness).
       if (vertex > 0u) {
         radiance += throughput * SkyLight(direction, shade.rgb);
-      } else if ((path_flags & PATH_AMBIENT) != 0u && !Occluded(origin, direction, min(range, GRASS_AMBIENT_RANGE), GRASS_STILL)) {
+      } else if ((path_flags & PATH_AMBIENT) != 0u && !Occluded(origin, direction, min(range, GRASS_AMBIENT_RANGE), GRASS_STILL)
+#if defined(OPACITY_MICROMAPS)
+                 && !Occluded(origin, direction, range, CUT_OUTS)
+#endif
+      ) {
         radiance += SkyLight(direction, shade.rgb) * sky_calibration;
       }
       break;

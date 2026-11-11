@@ -54,7 +54,7 @@ static const uint MODE_KEPT = 2u;
 static const uint PLACE_FOLIAGE = 1u;  // alpha-tested: not forced opaque
 static const uint PLACE_HIDDEN = 2u;   // mask 0 while drawn
 static const uint PLACE_GRASS = 4u;    // GRASS_INSTANCE (most rays pass it), kept GRASS_KEPT_FRAMES off-screen
-static const uint PLACE_CUT_OUT = 8u;  // with PLACE_FOLIAGE: among the solids (a fence, a thatched wall: no light through it)
+static const uint PLACE_CUT_OUT = 8u;  // with PLACE_FOLIAGE: CUT_OUT_INSTANCE (a fence, a thatched wall: no light through it)
 // In `sway_flags` beside rt_sway.hlsli's (dlaa_bridge.h RT_ONE_AT_A_PLACE): a kept instance goes where the frame placed another mesh.
 static const uint PLACE_ONE_AT_A_PLACE = 4u;
 static const uint INSTANCE_CULL_DISABLE = 1u;  // D3D12_RAYTRACING_INSTANCE_FLAG_*
@@ -64,6 +64,7 @@ static const uint INSTANCE_FORCE_OPAQUE = 4u;
 static const uint SOLID_INSTANCE = 0x01u;
 static const uint LEAF_INSTANCE = 0x04u;
 static const uint GRASS_INSTANCE = 0x08u;
+static const uint CUT_OUT_INSTANCE = 0x40u;
 static const uint GRASS_STILL_INSTANCE = 0x20u;
 // Grass kept two turns (the addon places a still mesh every 4th frame): its shadows are short, and fields of it kept 5 s
 // multiplied the instances every ray met (ATN's 2026-10-29 profile: 46-65 K placed).
@@ -221,7 +222,9 @@ void main(uint3 id : SV_DispatchThreadID) {
         }
       }
     }
-    const uint kept_mask = grass ? GRASS_INSTANCE : (((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u || (blas.x & 32u) != 0u)) ? SOLID_INSTANCE : LEAF_INSTANCE);
+    const uint kept_mask = grass                                                ? GRASS_INSTANCE
+                           : ((blas.x & 32u) != 0u)                              ? CUT_OUT_INSTANCE
+                           : ((((tail.y >> 24) & INSTANCE_FORCE_OPAQUE) != 0u) ? SOLID_INSTANCE : LEAF_INSTANCE);
     Append(row0, row1, row2, uint4(record | (kept_mask << 24), tail.y, blas.x & ~0xFFu, blas.y));
     return;
   }
@@ -280,7 +283,8 @@ void main(uint3 id : SV_DispatchThreadID) {
                           || SwayTraced(float3(now0.w, now1.w, now2.w), view_projection[0], view_projection[1], view_projection[3], sway_range, sway_flags));
   const uint mask = hidden                          ? (((job.w & PLACE_GRASS) != 0u) ? GRASS_STILL_INSTANCE : 0u)
                     : ((job.w & PLACE_GRASS) != 0u)  ? GRASS_INSTANCE
-                    : ((job.w & (PLACE_FOLIAGE | PLACE_CUT_OUT)) == PLACE_FOLIAGE) ? LEAF_INSTANCE
+                    : ((job.w & PLACE_CUT_OUT) != 0u) ? CUT_OUT_INSTANCE
+                    : ((job.w & PLACE_FOLIAGE) != 0u) ? LEAF_INSTANCE
                                                       : SOLID_INSTANCE;
   Append(asuint(float4(rotation[0], translation.x)), asuint(float4(rotation[1], translation.y)), asuint(float4(rotation[2], translation.z)),
          uint4(record | (mask << 24), (frame & FRAME_MASK) | (flags << 24), blas.x & ~0xFFu, blas.y));
