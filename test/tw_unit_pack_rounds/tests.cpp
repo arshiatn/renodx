@@ -9,7 +9,8 @@
 // 3. A's pose moves 0.2 m between frames 1 and 2 (B's does not), pack hook on: A's motion that move's (-2.56 px in x) in
 //    frame 2 and 0 in frame 3, B 0 px.
 // 4. 65 pages in one pack, a soldier at row 0 of each, each with its own pose: all 0 px (bone keys never shared).
-// Then the fix's CPU cost on the game's thread (the texture write check, the pack hook) timed.
+// Then the fix's cost timed: on the game's thread the texture write check and the pack hook, and a pack round's records on
+// 10 pages on the CPU and the GPU (timestamps: real numbers with `hardware` only).
 // Built with /DGAME_CALLS_ONLY the game's calls alone reach the addon (no write event, no pack hook), as before the fix.
 // tests.exe <the built shaders' folder (motion_unit_*.cso)> <the game's shaders' folder (0x5F9CD405.vs_4_0.cso)> [hardware]
 #include <windows.h>
@@ -614,6 +615,63 @@ int main(int argc, char** argv) {
     const double idle_ns = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() / CALLS * 1e9;
     std::printf("a texture write that is no page: %.1f ns with 60 pages listed, %.1f ns after the frame's end; the pack hook with nothing to record: %.1f ns\n",
                 listed_ns, empty_ns, idle_ns);
+
+    // A pack round's records: soldiers drawn on 1 page, then on 10 (a battle's round: a dispatch each), recorded by the pack
+    // hook; its CPU time and its GPU time between two timestamps, the GPU idle before, and an empty interval's just before it
+    // (medians of 100 frames).
+    ComPtr<ID3D11Query> idle;
+    ComPtr<ID3D11Query> disjoint;
+    std::array<ComPtr<ID3D11Query>, 3> stamps;
+    D3D11_QUERY_DESC query = {.Query = D3D11_QUERY_EVENT};
+    CHECK(SUCCEEDED(device->CreateQuery(&query, idle.GetAddressOf())));
+    query.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+    CHECK(SUCCEEDED(device->CreateQuery(&query, disjoint.GetAddressOf())));
+    query.Query = D3D11_QUERY_TIMESTAMP;
+    for (auto& stamp : stamps) {
+      CHECK(SUCCEEDED(device->CreateQuery(&query, stamp.GetAddressOf())));
+    }
+    const auto median = [](std::vector<double> values) {
+      if (values.empty()) return 0.0;
+      std::ranges::nth_element(values, values.begin() + (values.size() / 2));
+      return values[values.size() / 2];
+    };
+    for (const UINT page_count : {1u, 10u}) {
+      std::vector<double> round_cpu_us;
+      std::vector<double> round_gpu_us;
+      std::vector<double> empty_gpu_us;
+      for (int round = 0; round < 100; ++round) {
+        BeginFrame();
+        for (UINT index = 0; index < page_count; ++index) {
+          DrawSoldier(pages[index], 2 + index);
+        }
+        context->End(idle.Get());
+        BOOL done = FALSE;
+        while (context->GetData(idle.Get(), &done, sizeof(done), 0) == S_FALSE) {}
+        context->Begin(disjoint.Get());
+        context->End(stamps[0].Get());
+        context->End(stamps[1].Get());
+        const auto round_start = std::chrono::steady_clock::now();
+        om::FlushUnitRecords();
+        round_cpu_us.push_back(std::chrono::duration<double>(std::chrono::steady_clock::now() - round_start).count() * 1e6);
+        CHECK(om::internal::state.objects.unit_record_draws_recorded == page_count);
+        context->End(stamps[2].Get());
+        context->End(disjoint.Get());
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT frequency = {};
+        std::array<uint64_t, 3> ticks = {};
+        while (context->GetData(disjoint.Get(), &frequency, sizeof(frequency), 0) == S_FALSE) {}
+        for (size_t stamp = 0; stamp < stamps.size(); ++stamp) {
+          while (context->GetData(stamps[stamp].Get(), &ticks[stamp], sizeof(ticks[stamp]), 0) == S_FALSE) {}
+        }
+        if (!frequency.Disjoint && frequency.Frequency != 0) {
+          const double tick_us = 1e6 / static_cast<double>(frequency.Frequency);
+          empty_gpu_us.push_back(static_cast<double>(ticks[1] - ticks[0]) * tick_us);
+          round_gpu_us.push_back(static_cast<double>(ticks[2] - ticks[1]) * tick_us);
+        }
+        om::Resolve(context.Get(), current_frame);
+      }
+      std::printf("a pack round's records on %u page%s (a dispatch each): %.2f us CPU, %.2f us GPU (an empty interval: %.2f us; medians of %zu)\n",
+                  page_count, (page_count == 1 ? "" : "s"), median(round_cpu_us), median(round_gpu_us), median(empty_gpu_us), round_gpu_us.size());
+    }
   }
 #endif
   std::printf("%s\n", failures == 0 ? "PASS" : "FAIL");
