@@ -122,6 +122,9 @@ struct Texts {
   const char* fog_shadows_tooltip = "";  // Empty: the row's own.
   const char* light_glow_label = "";     // Empty: the row's own.
   const char* light_glow_tooltip = "";   // Empty: the row's own.
+  const char* replace_maps_tooltip =
+      "The sun's shadows from rays alone, so Softness shows in full. Smoke, clouds and hills keep the game's.\n"
+      "Off: the rays' shadows on top of the game's shadow maps and contact shadows.";
   const char* gi_tooltip_end = "";
   const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
@@ -190,6 +193,7 @@ struct Bindings {
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
   // The sun's shadow from rays alone where they'd multiply its mask (off: Shadow Map Size under the rays too); null: no such row.
   float* rays_replace_maps = nullptr;
+  bool rays_replace_maps_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   bool units_out_of_view_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
@@ -828,11 +832,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .key = "RayTracedReplaceShadowMaps",
           .binding = b.rays_replace_maps,
           .value_type = SettingValueType::BOOLEAN,
-          .default_value = 1.f,
-          .label = "Rays Replace Shadow Maps",
+          .default_value = b.rays_replace_maps_tested ? 1.f : 0.f,
+          .label = b.rays_replace_maps_tested ? "Rays Replace Shadow Maps" : "Rays Replace Shadow Maps (Experimental)",
           .section = section,
-          .tooltip = "The sun's shadows from rays alone, so Softness shows in full. Smoke, clouds and hills keep the game's.\n"
-                     "Off: the rays' shadows on top of the game's shadow maps and contact shadows.",
+          .tooltip = b.texts->replace_maps_tooltip,
           .is_visible = more_rays,
       });
     }

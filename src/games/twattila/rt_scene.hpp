@@ -489,8 +489,13 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
       D3D11_TEXTURE2D_DESC desc = {};
       if (FAILED(resource.As(&texture))) continue;
       texture->GetDesc(&desc);
-      if (desc.Width == desc.Height && desc.Width >= 1024
-          && (desc.Format == DXGI_FORMAT_R32_TYPELESS || desc.Format == DXGI_FORMAT_R24G8_TYPELESS || desc.Format == DXGI_FORMAT_R16_TYPELESS)) {
+      // The host's per-frame map where it names one (Pharaoh: never its kept baked map, a square R16 too).
+      const bool per_frame_map = ((internal::host.cascade_target != nullptr)
+                                      ? internal::host.cascade_target(desc)
+                                      : (desc.Width == desc.Height && desc.Width >= 1024
+                                         && (desc.Format == DXGI_FORMAT_R32_TYPELESS || desc.Format == DXGI_FORMAT_R24G8_TYPELESS
+                                             || desc.Format == DXGI_FORMAT_R16_TYPELESS)));
+      if (per_frame_map) {
         map = reinterpret_cast<uintptr_t>(resource.Get());
       }
     }

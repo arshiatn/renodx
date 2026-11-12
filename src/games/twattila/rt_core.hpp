@@ -326,7 +326,8 @@ struct Host {
   // streams out world positions (a foliage draw's UV in w), so the scene stays a world-space one.
   bool cascade_world = false;
   // Whether a cascade draw's depth target is the game's per-frame sun shadow map (null: a square array of 4, Warhammer III's cascades;
-  // the same shaders may draw a UI's small view).
+  // the same shaders may draw a UI's small view). Also the map Ray-Traced Shadows Only skips the casters of (null: the sun draws'
+  // last square depth texture).
   bool (*cascade_target)(const D3D11_TEXTURE2D_DESC& desc) = nullptr;
 };
 
