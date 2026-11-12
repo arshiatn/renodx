@@ -29,6 +29,11 @@ leave ATN a note to reboot. One writer at a time. Install the newest stamped bui
   - [x] 4 GPU vendor read: Attila's OnPresent lines (ReadGpuVendor, saved DLSS -> XeSS on Intel / FSR elsewhere). Dump p47e: AMD states (v1) list no DLSS (AA slider 0..6), hide Reflex / Frame Rate Limit / DLSS rows; stub's WARP ReadGpuVendor with RENODX_TW_FAKE_VENDOR=1002 -> 0x1002, OnNvidia 0
   - [x] builds (17:08-17:10, HEAD of item 4): the skill's 15 x64 targets + Attila / Rome II / Thrones x86, clean. Dumps: page_a_v156 vs v155, page_w_v52 vs v51: the build date only; page_p_v47 vs v46: 581 -> 598 keys, lost exactly the 11 dead, added 28 (24 tests + 4 page rows), 98 rows moved / relabelled (14 of them with a RAYS_PRESET default) (tools/tw/pharaoh/keydiff_v46_v47.txt, key_diff.py, names_check.py). README v47. Not stamped, not installed (the data run's v46 copies stay), not run in game.
     Not done / for ATN: GitHub button and the General page's full-download note (Attila / WH3 have both); engine_tests.hpp's Attila tooltips have upper-case words (GRASS, SHADOWS, DISTANCES, CAMPAIGN, EFFECTS, AUDIO since e92046f6), shared by every TW addon: a fix changes Attila's page; WH3's RayTracedWaterReflections default 0 line is overridden by the RAYS_PRESET defaults (since b2fb27f9, dumps show 1); tw_game_tests.py still picks Attila tests by the read list (find_emu.py would be right)
+  Round v48 (implementer, offline, page fixes; built only, not run in game):
+  - [x] 1 engine_tests.hpp tooltips: 17 capital words (GRASS, DISTANCES, SHADOWS, EFFECTS, CAMPAIGN, AUDIO) in normal case; keys and engine names unchanged
+  - [ ] 2 Pharaoh General page: full-download note + GitHub (Downloads) button (WH3's), README download link
+  - [ ] 3 graphics_page Bindings rays_multiply_maps (default false): Shadow Map Size stays under ray-traced shadows; Pharaoh true
+  - [ ] builds (Pharaoh x64, the skill's x64 line, Attila / Rome II / Thrones x86) + dumps a_v157 / w_v53 / p_v48, README v48 (+ Attila v151 / WH3 v47 lines)
 - [ ] Pharaoh round report (per item done / not done, ATN's <= 10-line test list)
 
 ## ATN'S 2026-11-12 THIRD LIST (offline; no game runs; Attila first, then the TW addons that share it)
