@@ -84,6 +84,7 @@ inline const std::string RT_SECTION = "Ray Tracing Extra Options";
 constexpr uint32_t TITLE_TINT = 0x7FBFFF;
 constexpr uint32_t MORE_TINT = 0xFFB86B;
 constexpr uint32_t WARNING_TINT = 0xFF5050;
+constexpr uint32_t NOTICE_TINT = 0xFFE066;
 constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 
 // What the page says that is true of one game only.
@@ -560,12 +561,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracingOutputResolution", .section = section, .shown = ray_traced,
                .tooltip = (b.has_scale_rows ? "" : "More rays for every pixel, each from its own spot of it: less noise, finer shadow edges.\nThe cost grows with the rays. "
                                                  "Match Output: as many rays on screen as at 100% in-game Resolution Scale (up to 8 a pixel, 1 at 100%).")});
-    // Which effects take them: under it, once it gives more than one ray.
+    // Which effects take them: under More Options (ATN), once it gives more than one ray.
     const auto extra_rays = [b, ray_traced] { return ray_traced() && b.rt->output_rays != 0.f; };
-    page.Take({.match = "RayTracingRaysShadows", .section = section, .shown = extra_rays, .tooltip = b.texts->rays_a_pixel_shadows_tooltip});
-    page.Take({.match = "RayTracingRaysAmbient", .section = section, .shown = extra_rays});
-    page.Take({.match = "RayTracingRaysReflections", .section = section, .shown = [b, extra_rays] { return b.has_reflections && extra_rays(); }});
-    page.Take({.match = "RayTracingRaysPaths", .section = section, .shown = extra_rays, .tooltip = b.texts->rays_a_pixel_paths_tooltip});
     page.Take({.match = "AntiAliasingDlaaPreset", .section = section, .shown = dlss, .label = "DLSS Preset",
                .tooltip = b.texts->dlss_preset_tooltip});
     page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "DLSS Ray Reconstruction",
@@ -594,7 +591,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(new Setting{.value_type = SettingValueType::CUSTOM,
                          .section = section,
                          .on_draw = [b] {
+                           ImGui::PushStyleColor(ImGuiCol_Text, renodx::utils::settings::ImVec4FromHex(NOTICE_TINT));
                            ImGui::TextWrapped("Frame generation pauses while this menu is open. A new choice applies when it closes.");
+                           ImGui::PopStyleColor();
                            std::string status = dlaa_bridge::FrameGenerationStatus();
                            constexpr std::string_view PREFIX = "Frame generation: ";
                            if (status.starts_with(PREFIX)) status.erase(0, PREFIX.size());
@@ -620,6 +619,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           "Needs Reflex or frame generation on. 0: off."});
     const auto cmaa = [b] { return b.aa->method == 2.f; };
     page.Add(MoreOptions(section, &more_aa, [b] { return feature_settings::Upscaling(*b.aa) || b.aa->method == 2.f; }));
+    const auto more_rays = more(&more_aa, extra_rays);
+    page.Take({.match = "RayTracingRaysShadows", .section = section, .shown = more_rays, .tooltip = b.texts->rays_a_pixel_shadows_tooltip});
+    page.Take({.match = "RayTracingRaysAmbient", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracingRaysReflections", .section = section, .shown = more(&more_aa, [b, extra_rays] { return b.has_reflections && extra_rays(); })});
+    page.Take({.match = "RayTracingRaysPaths", .section = section, .shown = more_rays, .tooltip = b.texts->rays_a_pixel_paths_tooltip});
     page.Take({.match = "AntiAliasingExtraSharpness", .section = section, .shown = more(&more_aa, cmaa), .label = "Extra Sharpness"});
     page.Take({.match = "AntiAliasingTextureLodBias", .section = section, .shown = more(&more_aa, below_100_rows),
                .tooltip = "How sharp textures are while the upscaler renders below 100%.\n"

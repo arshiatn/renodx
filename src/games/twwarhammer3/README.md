@@ -10,6 +10,9 @@
 - **Light Through Foliage** for the screen-space shadows (0.5 as in Attila): grass, leaves and tree cards are found by the G-buffer's foliage bit (128 in channel 3's alpha, the bit the game's own sun mask lets light through); off under MSAA. WARP test PASS: 0 pixels apart from the depth-copy result.
 - **RT/PT preset = Attila's** (ATN's 2026-11-12 settings, `graphics_page::RAYS_PRESET`), and its values are now this page's defaults for every row the methods leave (the methods stay off): Bounces 1; Far Tree, Fog, Smoke and Sprite Soldier Shadows, Light Through Leaves, Torch and Fire Shadows with RIS, Light in Fog, Steady Bounce Light, Specular Occlusion, Water Reflections and Caustics on; GI Range 50 m, Rays 1, Resolution Full; Reflection Reuse 2; Softness 0.8; Smoke Shadow Quality Ultra; Swaying Shadows Range 50 m.
 
+- **Rays a Pixel: Shadows / Ray-Traced AO / Reflections / Global Illumination** under Anti-Aliasing's More Options (ATN); Rays a Pixel stays under Upscaling Mode.
+- The Frame Generation line "pauses while this menu is open, applies when it closes" in yellow.
+
 ## v46 (2026-11-12, PsychoV35 in every game; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper103 as in v45)
 
 - **Red line under Anti-Aliasing** (ATN: two players had no upscaler): "In-game Anti-Aliasing must be TAA or TAA High for DLSS, FSR, XeSS and Frame Generation (restart after changing it)." The upscalers take over the game's TAA pass; `gfx_aa` below 2 (Off, FXAA) has none, and preferences.script.txt is read once at start (`taa_dlss.hpp`). The tooltip and status line name the same two (TAA, TAA High).

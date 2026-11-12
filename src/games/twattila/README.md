@@ -10,6 +10,9 @@
 - **Texture LOD Bias on All Textures** (Experimental, off; Warhammer III's row): the game's wrapping trilinear samplers take the LOD bias too.
 - The RT/PT preset is one list shared with Warhammer III (`graphics_page::RAYS_PRESET`); its result here is unchanged (page dump).
 
+- **Rays a Pixel: Shadows / Ray-Traced AO / Reflections / Global Illumination** under Anti-Aliasing's More Options (ATN); Rays a Pixel stays under Upscaling Mode.
+- The Frame Generation line "pauses while this menu is open, applies when it closes" in yellow.
+
 ## v150 (2026-11-12, PsychoV35 in every game; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper103 as in v149)
 
 - **Red line under Anti-Aliasing** (ATN: two players had no upscaler): "In-game Anti-Aliasing must be Off for DLSS, FSR, XeSS and Frame Generation." The game's MSAA leaves the depth multisampled, so the upscalers (and TAA / SMAA T2x) never start (`anti_aliasing.hpp`); one Texts field in `graphics_page.hpp`, every game with that page shows its own.
