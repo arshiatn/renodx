@@ -1481,12 +1481,14 @@ constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
 // DLAA / DLSS object motion (twattila/anti_aliasing.hpp, as Attila's): the game's shaders whose things move on
 // their own and their motion versions (tools\tw\attila_motion\port_motion.py, GPU-checked by test_motion.py).
 using twattila::anti_aliasing::MotionKind;
-constexpr std::array<twattila::anti_aliasing::MotionShader, 27> MOTION_SHADERS = {{
+constexpr std::array<twattila::anti_aliasing::MotionShader, 30> MOTION_SHADERS = {{
     {.hash = 0x07936F02, .motion_shader = __motion_unit_weighted_0793, .kind = MotionKind::UNIT},
     {.hash = 0x15389925, .motion_shader = __motion_unit_weighted_standard_4_feat_1538, .kind = MotionKind::UNIT},
     {.hash = 0x1FEF98F9, .motion_shader = __motion_oldocean_ocean_1fef},
     {.hash = 0x2A6B49A6, .motion_shader = __motion_grass_vfx_phar_grass_flame_ti_2a6b},
     {.hash = 0x2C5A6427, .motion_shader = __motion_unit_weighted_standard_2_feat_2c5a, .kind = MotionKind::UNIT},
+    // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): their rows, time and wind last frame.
+    {.hash = 0x2F2A0E7E, .motion_shader = __motion_rigid_cloth_wind_2f2a, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_cloth_wind_2f2a},
     {.hash = 0x3EF23291, .motion_shader = __motion_tree_troy_prefab_sky_cylinder_3ef2},
     {.hash = 0x475A8CDF, .motion_shader = __motion_unit_weighted_475a, .kind = MotionKind::UNIT},
     {.hash = 0x4A716936, .motion_shader = __motion_unit_weighted_4a71, .kind = MotionKind::UNIT},
@@ -1496,7 +1498,10 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 27> MOTION_SHADERS =
     {.hash = 0x621E86DD, .motion_shader = __motion_unit_weighted4_fur_alpha_621e, .kind = MotionKind::UNIT},
     {.hash = 0x6A599241, .motion_shader = __motion_rigid_rigidambientmapground_6a59, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_rigidambientmapground_6a59},
     {.hash = 0x72BD9CFD, .motion_shader = __motion_unit_weighted_standard_4_feat_72bd, .kind = MotionKind::UNIT},
+    // Banners (rigidtextureblend 2_bones): FF969484's skinning to the byte, only their UVs differ.
+    {.hash = 0x76225B91, .motion_shader = __motion_unit_weighted_ff96, .kind = MotionKind::UNIT},
     {.hash = 0x88A29130, .motion_shader = __motion_sail_sailsymbol_88a2, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sailsymbol_88a2},
+    {.hash = 0x8DE94E2F, .motion_shader = __motion_rigid_default_flag_8de9, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_default_flag_8de9},
     {.hash = 0x9BD142BD, .motion_shader = __motion_grass_vfx_phar_grass_flame_ti_9bd1},
     {.hash = 0xCB04CFA7, .motion_shader = __motion_rigid_rigidtextureblendwind_cb04, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_rigidtextureblendwind_cb04},
     {.hash = 0xD23C2625, .motion_shader = __motion_ocean_coast_ocean2_d23c, .kind = MotionKind::HISTORY, .history_textures = 0b10101},
