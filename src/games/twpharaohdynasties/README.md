@@ -1,5 +1,21 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Round v47 (2026-11-12, graphics page, tests page, sun facts; built only, not run in game)
+
+- **New: Graphics 1 of 2 laid out as Attila's and Warhammer III's.** Anti-Aliasing and Upscaling, Shadows, Ambient Occlusion, Global Illumination and Ray Tracing Extra Options, each with a Method slider and only that method's rows, the rest under More Options. Every setting keeps its saved value. Shadow Map Size moved here from Graphics 2 of 2 (same sizes).
+- **New: Reset, No RT/PT (Recommended) and RT/PT buttons** on Graphics 1 of 2. RT/PT is ATN's Attila setup, and the ray-traced rows start at its values (the methods themselves stay off until you choose them).
+- **New: FSR and XeSS** in Anti-Aliasing beside DLSS, and Attila's TAA Motion Vectors, Frame Generation Method, Ray Tracing Denoiser (NRD by default) and AO under Ray Reconstruction rows.
+- **Fixed: Bend's screen-space shadows no longer run under ray-traced shadows** (the Shadows method picks one of them, as in Attila).
+- **New: 24 of Attila's tests on Graphics 2 of 2**, every one whose values this game has: Tree LOD Scale, Projected Tree LODs, Far Tree Shadow Shapes, Object Detail Distances, Object Size Factors, Big Building Detail, Rope Distance, Objects / Buildings Never Vanish, Building Distance Culling, Building Detail by Size, Fixed Building Detail Range, Shadow Slope Bias, Sprite Soldier Shadows, Cutscene Point Light Shadows: High, Sort Particles, Shared Pose Scale, Fast Soldier Culling, All Soldiers as Sprites, Campaign Cloud Distance, Campaign Trees / Plants Never Vanish, Campaign Sea Transparency, Campaign Sea Pattern Scale.
+- **Fixed: 11 rows that did nothing are gone** (their values don't exist in this game): Far Buildings, Building Collapse Effects, Building Collapse Animations, and More Tests' vegetation_create_default_soft_collision, CLOTH_FLAG_COMPOSITE_TEXTURE_OFFSET_X / _Y, ENTITY_DISPLAY_ENABLE_ALPHA_CHANGE, FLAG_DISPLAY_REGISTRATION_ENABLED, texture_manager_drop_extra_campaign_entity_mip, BATTLE_VISIBILITY_HEIGHT_OFFSET, enable_rendered_visibility. Every value left on the page is found in Pharaoh.exe (checked offline).
+- **New: Attila's two Graphics presets**, "With my 4x / 8x unit sizes" and "With vanilla unit sizes". Reset and the presets also put every test back to the game's.
+- **Fixed: Blood Build-Up, Campaign Sun Camera Depth, Shadow Cascade Blend and Rope Distance** tooltips give this game's values, not Attila's.
+- **New: Path-Traced AO (Experimental)** in Ambient Occlusion, with Own Sky Rays and Steady Bounce Light: the rays now read the game's ambient light, which path-traced Global Illumination also takes as the sky's light.
+- **Fixed: the rays' sky light no longer changes with the clouds' position** (they read a value that is Attila's ambient scale but this game's cloud shadow position).
+- **New: AMD and Intel GPUs** see no DLSS-only rows, and a saved DLSS starts as FSR (XeSS on Intel), as in Attila.
+
+Build: `cmake --build build --config Release --target renodx-twpharaohdynasties.addon64`. Manual check: Graphics 1 of 2 shows the five sections with their Method sliders and your old values; ReShade.log's "[Total War] Graphics: Engine values found: N of N" has no "not found"; with Path-Traced AO the ground under open sky stays about as lit as with the game's ambient.
+
 ### Round v46 (2026-11-12, trace build for the data run; built only, not run in game)
 
 - **Scripted runs:** `RENODX_TW_SET` / `RENODX_TW_SHOT` / `RENODX_TW_PROFILE` work here too (`twattila/test_hooks.hpp`, as Attila: the clock starts at the first present).
