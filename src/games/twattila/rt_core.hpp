@@ -151,7 +151,9 @@ struct Settings {
   // Smoke shadows: the lit particles drawn since the last trace (InstallSmokeShadows' shaders: smoke and dust) dim the
   // ray-traced sun, a frame late (CaptureParticles, rt_smoke).
   bool smoke_shadows = false;
-  uint32_t smoke_quality = 1;  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT; 3, Ultra: High's rays, more room)
+  // Smoke Shadow Quality (dlaa_bridge.h RT_SMOKE_QUALITY_SHIFT): 3, Ultra: High's rays, more room; 4 and 5, Extreme and
+  // Maximum: twice the rays, room and particles twice and four times Ultra's.
+  uint32_t smoke_quality = 1;
   bool nrd = false;            // Ray Tracing Denoiser: NRD without Ray Reconstruction (dlaa_bridge.h RT_NRD)
   bool ao_reblur = false;      // AO under Ray Reconstruction: REBLUR, not the history (dlaa_bridge.h RT_AO_REBLUR)
   bool start_past = false;     // dlaa_bridge.h RT_START_PAST
@@ -338,8 +340,9 @@ constexpr uint32_t KEPT_FOREVER = 0xFFFFFF;  // rt_place's frames wrap there
 constexpr uint64_t SCENE_GONE_FRAMES = 30;
 // Smoke Shadows: the particles streamed out between traces at most (48 bytes each; a draw holds its whole list, nearly all
 // without opacity: 742 of a battle's 47884 had some, and at 65536 a list drawn first took the place of the catapults' smoke
-// for good, ATN's debug36), the quads for those with opacity at most (rt_smoke; Smoke Shadow Quality High twice these, Ultra
-// four times), their capture's key.
+// for good, ATN's debug36; Smoke Shadow Quality Extreme twice these, Maximum four times: ATN's 2026-11-12 siege filled
+// them every frame, burning smoke flickered at Ultra), the quads for those with opacity at most (rt_smoke; High twice these,
+// Ultra four times, Extreme 8, Maximum 16), their capture's key.
 constexpr UINT MAX_PARTICLES = 1u << 19;
 constexpr UINT MAX_SMOKE_QUADS = 1u << 15;
 constexpr float SMOKE_LEAST = 0.05f;  // the opacity over area a particle needs for a quad, at the least
@@ -373,6 +376,7 @@ constexpr uint64_t PROFILE_MS = 30000;
 // and scale and emitter; behaviours: their cb_vfx_emitter_constants_common at the frame's first draw.
 struct ParticleStream {
   ComPtr<ID3D11Device> device;
+  UINT capacity = 0;  // particles (MAX_PARTICLES, by Smoke Shadow Quality)
   ComPtr<ID3D11Buffer> particles;
   ComPtr<ID3D11ShaderResourceView> srv;
   ComPtr<ID3D11GeometryShader> output;
@@ -2060,17 +2064,17 @@ void CaptureParticles(Context& command) {
     runtime.particles = 0;
     runtime.particles_frame = runtime.frame;
   }
-  const UINT count = std::min(vertex_count, MAX_PARTICLES - runtime.particles);
-  if (count == 0) return;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
   auto& stream = runtime.particle_stream;
-  if (stream.device.Get() != device.Get()) {
-    stream = {.device = device};
-    const D3D11_BUFFER_DESC particles_desc = {.ByteWidth = MAX_PARTICLES * 48, .Usage = D3D11_USAGE_DEFAULT,
+  const UINT capacity = MAX_PARTICLES << (std::max(runtime.settings.smoke_quality, 3u) - 3u);
+  if (stream.device.Get() != device.Get() || stream.capacity != capacity) {
+    stream = {.device = device, .capacity = capacity};
+    runtime.particles = 0;
+    const D3D11_BUFFER_DESC particles_desc = {.ByteWidth = capacity * 48, .Usage = D3D11_USAGE_DEFAULT,
                                               .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
     D3D11_SHADER_RESOURCE_VIEW_DESC particles_view = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
-    particles_view.Buffer.NumElements = MAX_PARTICLES * 3;
+    particles_view.Buffer.NumElements = capacity * 3;
     const D3D11_BUFFER_DESC behaviours_desc = {.ByteWidth = 8192, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
     const std::array<uint32_t, 2048> no_behaviours = {};
     const D3D11_SUBRESOURCE_DATA behaviours_data = {.pSysMem = no_behaviours.data()};
@@ -2094,7 +2098,8 @@ void CaptureParticles(Context& command) {
                                         smoke_vertex_shader));
     }
   }
-  if (!stream.output) return;
+  const UINT count = std::min(vertex_count, capacity - runtime.particles);
+  if (!stream.output || count == 0) return;
   if (first_draw && runtime.settings.stream_particles) {
     // cb_vfx_emitter_constants_common (the particle vertex shader's cb3): smoke_map_list tells the weather by it.
     ComPtr<ID3D11Buffer> behaviours;
@@ -2570,7 +2575,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.scene_test == 4 ? dlaa_bridge::RT_NO_KEPT : 0u) | dlaa_bridge::RT_DRAWN_PLACED
                | (runtime.profile.file.is_open() ? dlaa_bridge::RT_PROFILE : 0u)
                | (runtime.settings.debug_log ? dlaa_bridge::RT_DETAILS : 0u)
-               | (std::min(runtime.settings.smoke_quality, 2u) << dlaa_bridge::RT_SMOKE_QUALITY_SHIFT),
+               | (std::array<uint32_t, 6>{0u, 1u, 2u, 2u, 3u, 3u}[std::min(runtime.settings.smoke_quality, 5u)] << dlaa_bridge::RT_SMOKE_QUALITY_SHIFT),
       .kept_frames = (runtime.scene_gone ? 1u : runtime.kept_frames),
       .ambient_range = runtime.settings.ambient_range * RangeScale(),
       .ambient_rays = runtime.settings.ambient_rays,

@@ -1621,9 +1621,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Smoke Shadow Quality",
           .section = section,
           .tooltip = "Higher: fewer holes and less flicker in thick smoke, slower there.\n"
-                     "Layers a sun ray counts: Low 8, Medium 16, High and Ultra 32.\n"
-                     "Particles with a shadow at most: Low and Medium 32,768, High 65,536, Ultra 131,072. Past that the smallest give way.",
-          .labels = {"Low", "Medium", "High", "Ultra"},
+                     "Layers a sun ray counts: Low 8, Medium 16, High and Ultra 32, Extreme and Maximum 64.\n"
+                     "Particles with a shadow at most: Low and Medium 32,768, High 65,536, Ultra 131,072, Extreme 262,144,\n"
+                     "Maximum 524,288. Past that the smallest give way. Extreme and Maximum also follow 2 and 4 times the particles.",
+          .labels = {"Low", "Medium", "High", "Ultra", "Extreme", "Maximum"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f && sliders->smoke_shadows != 0.f; },
           .is_visible = [] { return internal::smoke_shadows_installed; },
       },
