@@ -1,6 +1,6 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
-## v50 (2026-11-13, RT/PT no longer leaves GT-VBAO under Path-Traced AO; built only, not run in game; renodx-tw-dlaa64.exe helper105 as in v49)
+## v50 (2026-11-13, RT/PT no longer leaves GT-VBAO under Path-Traced AO; stamped and installed 00:43, not run in game; renodx-tw-dlaa64.exe helper105 as in v49)
 
 - Fixed: **RT/PT** now turns GT-VBAO off. Here the paths' AO multiplies the game's SSAO (`graphics_page::Bindings::rays_replace_ao` false), so with GT-VBAO, the page's default, still on it ran hidden under the paths and its shading added to theirs. The AO method's Path-Traced choice already turned it off (`ChooseAo`); the preset now writes the same (`ssao_mode` 0), in the shared `graphics_page.hpp`. Attila's RT/PT is unchanged (its rays replace the game's AO). Page dump `w v62` vs v61: only RT/PT's writes gain `ssao_mode 1 -> 0`, besides the build date.
 
