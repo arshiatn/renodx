@@ -67,8 +67,10 @@ struct Options {
   // The camera's g_screen_size and g_viewport_dimensions registers (Attila's camera_VS_PS).
   uint32_t camera_screen_register = 27;
   uint32_t camera_viewport_register = 29;
-  std::vector<uint32_t> value_hashes;  // a draw of these shaders, once each in a trace, its constants too
-  bool on_demand = false;              // renodx_trace_now next to the exe (looked for each 60 presents, removed): the next frame
+  std::vector<uint32_t> value_hashes;  // a draw of these shaders, once each in a trace, its constants too:
+  uint32_t value_slots = 4;            // VS and PS b0 to b(value_slots - 1),
+  uint32_t value_floats = 64;          // the first floats of each
+  bool on_demand = false;             // renodx_trace_now next to the exe (looked for each 60 presents, removed): the next frame
   bool at_100 = false;                 // FrameTrace's 600 presents count the 3D view at any scale (OnPresent's view_3d)
 };
 
@@ -205,24 +207,26 @@ inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D1
   return text;
 }
 
-// The first floats of a draw's constant buffers (VS and PS, b0 to b3).
+// The first floats of a draw's constant buffers (VS and PS; Install's value_slots and value_floats).
 inline std::string DescribeConstants(ID3D11DeviceContext* context) {
+  using Buffers = std::array<ID3D11Buffer*, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT>;
+  const UINT slots = std::min<UINT>(state.options.value_slots, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT);
   std::string text;
-  const auto read = [&](const char* stage, std::array<ID3D11Buffer*, 4> buffers) {
-    for (uint32_t slot = 0; slot < buffers.size(); ++slot) {
+  const auto read = [&](const char* stage, const Buffers& buffers) {
+    for (uint32_t slot = 0; slot < slots; ++slot) {
       if (buffers[slot] == nullptr) continue;
       D3D11_BUFFER_DESC desc = {};
       buffers[slot]->GetDesc(&desc);
       text += std::format("\n  {} b{} {} bytes:", stage, slot, desc.ByteWidth);
-      for (const float value : ReadBuffer<float>(context, buffers[slot], 0, std::min(desc.ByteWidth / 4, 64u))) text += std::format(" {}", value);
+      for (const float value : ReadBuffer<float>(context, buffers[slot], 0, std::min<UINT>(desc.ByteWidth / 4, state.options.value_floats))) text += std::format(" {}", value);
       buffers[slot]->Release();
     }
   };
-  std::array<ID3D11Buffer*, 4> buffers = {};
-  context->VSGetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+  Buffers buffers = {};
+  context->VSGetConstantBuffers(0, slots, buffers.data());
   read("vs", buffers);
   buffers = {};
-  context->PSGetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+  context->PSGetConstantBuffers(0, slots, buffers.data());
   read("ps", buffers);
   return text;
 }
