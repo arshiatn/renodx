@@ -1228,16 +1228,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   twattila::texture_lod_bias::SetBias(lod_bias);
   if (report_lod_bias) renodx::utils::log::i("[Warhammer III] ", twattila::texture_lod_bias::Report());
   // FrameTrace: a frame of the 3D view (600 presents with its camera or its TAA: any Resolution Scale, DLSS on or off), or
-  // the next one when renodx_trace_now sits next to the exe (checked each second; removed).
-  if (static uint32_t presents = 0; ++presents % 60 == 0) {
-    std::wstring exe(32768, L'\0');
-    exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
-    const auto marker = std::filesystem::path(exe).parent_path() / L"renodx_trace_now";
-    if (DeleteFileW(marker.c_str()) != 0) {
-      twattila::frame_trace::StartSoon();
-      view_3d = true;
-    }
-  }
+  // the next one when renodx_trace_now sits next to the exe (Install's on_demand: checked each second; removed).
   twattila::frame_trace::OnPresent(view_3d);
 }
 
@@ -1382,8 +1373,12 @@ inline void Install() {
   // b3's floats 44 to 55, its UVs' scale and offset its b2's first four): their constants in a trace. The shadow maps' size where
   // the game keeps it: the sun's mask (b1's first four floats), the static maps' copy (b0's floats 8 to 11), the two half-size
   // copies, and a tree's and a unit's first draw into the maps (b0's rows 10 to 13: that map's matrix).
-  twattila::frame_trace::Install(internal::SCREEN_SIZE / 4, internal::VIEWPORT / 4,
-                                 {0xD409F9B5, 0xA5FC3927, 0x379B000C, 0x1405BFB4, 0xE6BCBA8A, 0xC883E3FA, 0x800F7F7F, 0xD5DCC85F, 0xD75E6E2B, 0xBADA4FE3});
+  twattila::frame_trace::Install({
+      .camera_screen_register = internal::SCREEN_SIZE / 4,
+      .camera_viewport_register = internal::VIEWPORT / 4,
+      .value_hashes = {0xD409F9B5, 0xA5FC3927, 0x379B000C, 0x1405BFB4, 0xE6BCBA8A, 0xC883E3FA, 0x800F7F7F, 0xD5DCC85F, 0xD75E6E2B, 0xBADA4FE3},
+      .on_demand = true,
+  });
   twattila::reflex::Install();
   for (const uint32_t shader_hash : internal::TAA_SHADERS) {
     renodx::utils::command_action::Register(internal::OnTaa, {

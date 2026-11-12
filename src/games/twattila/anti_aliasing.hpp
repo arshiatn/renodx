@@ -1494,7 +1494,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   }
   runtime.display_width = display.texture.width;
   runtime.display_height = display.texture.height;
-  frame_trace::OnPresent(runtime.render_width != 0 && runtime.render_width < runtime.display_width);
+  frame_trace::OnPresent(runtime.render_width != 0 && runtime.render_width < runtime.display_width,
+                         runtime.tonemapped_frame == runtime.frame);
   ++runtime.frame;
   frame_history::tonemapped.store(false, std::memory_order_relaxed);
   runtime.scene_depth.Reset();
@@ -1539,11 +1540,13 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
 // render-size textures at the display's size below 100% (`region_reads`, with the half-size passes drawn whole and the
 // names their outputs' readers give them: `whole_textures`), the vertex shaders the addon replaces with ones that read
 // the render share (`vertex_shares`) and the game's 3D sprites drawn against the scene's depth after the tone mapper
-// (`full_depth_shaders`, vertex shaders: the depth stretched for them below 100%).
+// (`full_depth_shaders`, vertex shaders: the depth stretched for them below 100%). The frame trace's options (`trace`;
+// its 3D view at 100%: the tone mapper anti-aliased this frame).
 inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMotion& motion = {},
                     std::span<const view_share::RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shares = {},
-                    std::span<const uint32_t> full_depth_shaders = {}, std::span<const char* const> whole_textures = {}) {
-  frame_trace::Install();
+                    std::span<const uint32_t> full_depth_shaders = {}, std::span<const char* const> whole_textures = {},
+                    const frame_trace::Options& trace = {}) {
+  frame_trace::Install(trace);
   view_share::Install(region_reads, vertex_shares, whole_textures);
   for (const uint32_t hash : full_depth_shaders) {
     renodx::utils::command_action::Register(

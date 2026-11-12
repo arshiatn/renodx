@@ -29,11 +29,13 @@
 #include "../../utils/log.hpp"
 #include "../../utils/state.hpp"
 
-// Debug (ReShade.ini [renodx] FrameTrace=1, read at start): one frame, 600 presents after the DLSS render scale began,
-// every draw, dispatch (direct and indirect), clear and copy with its shaders, targets, viewport, inputs and the camera's
-// screen / viewport sizes (the camera at b0, its registers from Install) into tw_frame_trace.txt next to the exe, with
-// the anti-aliasing's marks (tone mapper, DLSS). For the render scale audit (tools\tw\scale_audit.py): which passes read
-// the 3D image's part of a display-size texture as if it filled it. Its events are registered only for the traced frame.
+// Debug (ReShade.ini [renodx] FrameTrace=1, read at start): one frame, 600 presents after the DLSS render scale began
+// (Options' at_100: after the 3D view began, also at 100%), or the next frame when renodx_trace_now sits next to the exe
+// (Options' on_demand), every draw, dispatch (direct and indirect), clear and copy with its shaders, targets, viewport,
+// inputs and the camera's screen / viewport sizes (the camera at b0, its registers from Install) into tw_frame_trace.txt
+// next to the exe, with the anti-aliasing's marks (tone mapper, DLSS). For the render scale audit
+// (tools\tw\scale_audit.py): which passes read the 3D image's part of a display-size texture as if it filled it. Its
+// events are registered only for the traced frame.
 namespace twattila::frame_trace {
 
 // `count` values of a buffer from `offset` bytes on, read back (it waits for the GPU: for traced frames); empty: past the
@@ -60,6 +62,16 @@ std::vector<T> ReadBuffer(ID3D11DeviceContext* context, ID3D11Buffer* buffer, UI
   return result;
 }
 
+// Install's.
+struct Options {
+  // The camera's g_screen_size and g_viewport_dimensions registers (Attila's camera_VS_PS).
+  uint32_t camera_screen_register = 27;
+  uint32_t camera_viewport_register = 29;
+  std::vector<uint32_t> value_hashes;  // a draw of these shaders, once each in a trace, its constants too
+  bool on_demand = false;              // renodx_trace_now next to the exe (looked for each 60 presents, removed): the next frame
+  bool at_100 = false;                 // FrameTrace's 600 presents count the 3D view at any scale (OnPresent's view_3d)
+};
+
 namespace internal {
 
 using Microsoft::WRL::ComPtr;
@@ -69,15 +81,14 @@ constexpr uint32_t SCALED_PRESENTS = 600;
 
 struct State {
   std::mutex mutex;
-  bool wanted = false;      // the ini asked for one trace this run
+  bool wanted = false;  // a trace to come this run (the ini's, or the marker's)
   uint32_t scaled_presents = 0;
   std::atomic_bool tracing = false;
   std::string text;
   uint32_t lines = 0;
-  // Attila's camera_VS_PS: g_screen_size, g_viewport_dimensions.
-  uint32_t camera_screen_register = 27;
-  uint32_t camera_viewport_register = 29;
-  std::vector<uint32_t> value_hashes;  // Install's: a draw of these shaders, once each in a trace, its constants too
+  Options options;
+  std::filesystem::path folder;  // the exe's: the trace and the marker
+  uint32_t presents = 0;         // on demand: the marker looked for at every 60th
   std::vector<uint32_t> values_written;
   bool indirect_values_written = false;
 };
@@ -123,8 +134,8 @@ inline std::string DescribeCamera(ID3D11DeviceContext* context, ID3D11Buffer* bu
   D3D11_BUFFER_DESC desc = {};
   buffer->GetDesc(&desc);
   if (desc.ByteWidth > 4096) return "";
-  const UINT screen = state.camera_screen_register * 4;
-  const UINT viewport = state.camera_viewport_register * 4;
+  const UINT screen = state.options.camera_screen_register * 4;
+  const UINT viewport = state.options.camera_viewport_register * 4;
   const auto c = ReadBuffer<float>(context, buffer, 0, std::max(screen, viewport) + 4);
   if (c.empty()) return "";
   return std::format(" | camera screen {}x{} viewport {}x{}", c[screen], c[screen + 1], c[viewport], c[viewport + 1]);
@@ -257,7 +268,7 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
       values = true;
     }
     for (const uint32_t hash : {vertex_hash, pixel_hash}) {
-      if (std::ranges::find(state.value_hashes, hash) != state.value_hashes.end() && std::ranges::find(state.values_written, hash) == state.values_written.end()) {
+      if (std::ranges::find(state.options.value_hashes, hash) != state.options.value_hashes.end() && std::ranges::find(state.values_written, hash) == state.values_written.end()) {
         state.values_written.push_back(hash);
         values = true;
       }
@@ -378,27 +389,19 @@ inline void UseEvents(bool use) {
 
 }  // namespace internal
 
-// At the addon's start: whether this run traces a frame; the camera's g_screen_size and g_viewport_dimensions registers;
-// shaders whose first draw in a trace also lists its constants.
-inline void Install(uint32_t camera_screen_register = 27, uint32_t camera_viewport_register = 29, std::vector<uint32_t> value_hashes = {}) {
+// At the addon's start: whether this run traces a frame (FrameTrace), and how.
+inline void Install(Options options = {}) {
   bool wanted = false;
   reshade::get_config_value(nullptr, "renodx", "FrameTrace", wanted);
+  std::wstring exe(32768, L'\0');
+  exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
   const std::lock_guard lock(internal::state.mutex);
   internal::state.wanted = wanted;
-  internal::state.camera_screen_register = camera_screen_register;
-  internal::state.camera_viewport_register = camera_viewport_register;
-  internal::state.value_hashes = std::move(value_hashes);
+  internal::state.options = std::move(options);
+  internal::state.folder = std::filesystem::path(exe).parent_path();
 }
 
-// A mark in the traced frame (the anti-aliasing's tone mapper end, DLSS).
-// A trace of the next frame given to OnPresent as scaled (debug: on demand).
-inline void StartSoon() {
-  const std::lock_guard lock(internal::state.mutex);
-  internal::state.wanted = true;
-  internal::state.scaled_presents = internal::SCALED_PRESENTS - 1;
-}
-
-// Whether a trace is still to come this run (FrameTrace).
+// Whether a trace is still to come this run (FrameTrace, the marker).
 inline bool Wanted() {
   const std::lock_guard lock(internal::state.mutex);
   return internal::state.wanted;
@@ -409,19 +412,29 @@ inline bool Tracing() {
   return internal::state.tracing.load(std::memory_order_relaxed);
 }
 
+// A mark in the traced frame (the anti-aliasing's tone mapper end, DLSS).
 inline void Mark(std::string_view text) {
   if (internal::state.tracing.load(std::memory_order_relaxed)) internal::Append(std::string("MARK ") + std::string(text));
 }
 
-// Every present (`scaled`: the DLSS render scale ran this frame): ends a traced frame (writes the file); starts one
-// after SCALED_PRESENTS scaled presents.
-inline void OnPresent(bool scaled) {
+// Every present (`scaled`: the DLSS render scale ran this frame; `view_3d`: the 3D view drew, at any scale): ends a
+// traced frame (writes the file); starts one after SCALED_PRESENTS scaled presents (at_100: of the 3D view), or at once
+// when the marker is there (on_demand).
+inline void OnPresent(bool scaled, bool view_3d = false) {
   auto& state = internal::state;
+  bool counted = scaled || (state.options.at_100 && view_3d);
+  if (state.options.on_demand) {
+    ++state.presents;
+    if (state.presents % 60 == 0 && DeleteFileW((state.folder / L"renodx_trace_now").c_str()) != 0) {
+      const std::lock_guard lock(state.mutex);
+      state.wanted = true;
+      state.scaled_presents = internal::SCALED_PRESENTS - 1;
+      counted = true;
+    }
+  }
   if (state.tracing.exchange(false)) {
     internal::UseEvents(false);
-    std::wstring exe(32768, L'\0');
-    exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
-    const auto path = std::filesystem::path(exe).parent_path() / L"tw_frame_trace.txt";
+    const auto path = state.folder / L"tw_frame_trace.txt";
     const std::lock_guard lock(state.mutex);
     std::ofstream(path, std::ios::binary | std::ios::trunc) << state.text;
     renodx::utils::log::i("[Total War] Frame trace: ", state.lines, " lines saved to ", path.string());
@@ -432,7 +445,7 @@ inline void OnPresent(bool scaled) {
   {
     const std::lock_guard lock(state.mutex);
     if (!state.wanted) return;
-    state.scaled_presents = scaled ? state.scaled_presents + 1 : 0;
+    state.scaled_presents = counted ? state.scaled_presents + 1 : 0;
     if (state.scaled_presents >= internal::SCALED_PRESENTS) {
       state.wanted = false;
       state.text = "One frame at the DLSS render scale: draws, dispatches, copies (vs / ps / cs, targets, viewport, inputs, camera).\n";
