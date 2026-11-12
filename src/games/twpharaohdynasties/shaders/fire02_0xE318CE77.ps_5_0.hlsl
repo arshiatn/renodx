@@ -136,6 +136,8 @@ Texture2D<float4> t_sheen_lut : register(t4);
 // 3Dmigoto declarations
 #define cmp -
 #include "../shared.h"
+// x the light's traced visibility (Torch and Fire Shadows: twattila/rt_scene.hpp InstallPointLights; nothing bound: 1).
+#include "../../twattila/rt_local_lights.hlsli"
 
 
 void main(
@@ -466,6 +468,7 @@ void main(
   r0.xzw = r1.xyz * r0.xxx;
   r0.xyz = r0.yyy * r0.xzw;
   if (HDR >= 0.5f) o0.xyz = max(float3(0,0,0), r0.xyz) * VfxFireBrightness;
+  o0.xyz *= RtLocalLightVisibility(int2(v0.xy), v3.xyz);
   o0.w = 1;
   return;
 }

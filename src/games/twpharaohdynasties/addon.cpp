@@ -10,6 +10,9 @@
 #define DEBUG_LEVEL_0
 
 #include <d3d11.h>
+#include <array>
+#include <atomic>
+#include <format>
 #include <mutex>
 #include <cmath>
 #include <string>
@@ -1449,6 +1452,36 @@ twattila::rt_scene::Sliders rt_sliders;
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
 
+// Log Details' light count, once (a frame trace gives a light draw's indices times its instances, not its lights): one whole
+// frame's draws, instances and indices (or vertices) of the point lights (E318CE77: a light an instance, POSITION1-4) and of
+// the particle lights (5AD46115: their layout unknown). Logged the first frame either draws, again the first frame point
+// lights draw; with Log Details off a draw reads one flag.
+struct LightCount {
+  std::mutex mutex;
+  std::array<uint32_t, 2> draws = {};  // point lights, particle lights
+  std::array<uint64_t, 2> instances = {};
+  std::array<uint64_t, 2> indices = {};
+  bool logged = false;
+  bool points_logged = false;
+};
+LightCount light_count;
+std::atomic<bool> light_counting = false;  // from a present on: the whole frame to the next
+constexpr auto OnLightCountDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!light_counting.load(std::memory_order_relaxed)) return {};
+  if constexpr (requires { command.arguments.instance_count; }) {
+    const size_t family = (command.matched_shader_hash == 0xE318CE77) ? 0 : 1;
+    const std::unique_lock lock(light_count.mutex);
+    ++light_count.draws[family];
+    light_count.instances[family] += command.arguments.instance_count;
+    if constexpr (requires { command.arguments.index_count; }) {
+      light_count.indices[family] += command.arguments.index_count;
+    } else {
+      light_count.indices[family] += command.arguments.vertex_count;
+    }
+  }
+  return {};
+};
+
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
@@ -1669,6 +1702,22 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   twpharaohdynasties::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  {
+    const std::unique_lock lock(light_count.mutex);
+    const bool points = light_count.draws[0] != 0 && !light_count.points_logged;
+    if (light_counting.load() && (points || (light_count.draws[1] != 0 && !light_count.logged))) {
+      renodx::utils::log::i(std::format("[Total War] Light draws in a frame: point lights (E318CE77) {} draws, {} instances, {} indices; "
+                                        "particle lights (5AD46115) {} draws, {} instances, {} indices.",
+                                        light_count.draws[0], light_count.instances[0], light_count.indices[0], light_count.draws[1],
+                                        light_count.instances[1], light_count.indices[1]));
+      light_count.logged = true;
+      light_count.points_logged = light_count.points_logged || points;
+    }
+    light_count.draws = {};
+    light_count.instances = {};
+    light_count.indices = {};
+    light_counting.store(rt_sliders.debug_log != 0.f && !light_count.points_logged);
+  }
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
@@ -1681,7 +1730,7 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons), ray-traced AO the game's SSAO; no point lights, smoke, fog or reflections hooked.
+// (the sun shaders' patched comparisons), ray-traced AO the game's SSAO; point lights hooked, no smoke, fog or reflections.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -2225,6 +2274,19 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Warhammer III's), ATN's RT/PT preset as the defaults of what the methods leave, then
   // Settings Mode's pages. Only what this game hooks: no smoke map, foliage light or reflections.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  // Torch and Fire Shadows from rays (Warhammer III's row): after the preset's defaults, so it starts off (Experimental: no game
+  // run has shown the light draws read yet).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedPointLightShadows",
+      .binding = &rt_sliders.local_lights,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Torch and Fire Shadows (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Torches and fires cast their shadows from rays too.\n"
+                 "With Path-Traced Global Illumination they also light what the screen never saw.",
+      .labels = {"Off", "On"},
+  });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
@@ -2232,6 +2294,7 @@ void ConfigureAddon() {
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
+                                             .lights_own_row = true,
                                              .has_reflections = false,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
@@ -2302,7 +2365,16 @@ bool AttachAddon() {
   rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
     return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
   };
+  // The point light PS's diffuse scale (E318CE77's literal 0x389FB405, Warhammer III's).
+  rt_host.local_light_scale = 7.615242e-05f;
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
+  // The point lights (siege trace: one instanced draw, VS E19549A1 with PS E318CE77, after the sun draw F883F5B2; fire02 reads
+  // the rays' bits). Log Details' light count also counts the particle lights (5AD46115).
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0xE318CE77});
+  for (const uint32_t shader_hash : {0xE318CE77u, 0x5AD46115u}) {
+    renodx::utils::command_action::Register(
+        OnLightCountDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
@@ -2338,6 +2410,7 @@ void DetachAddon() {
   twattila::screen_space_shadows::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
+  renodx::utils::command_action::Unregister(OnLightCountDraw);
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
