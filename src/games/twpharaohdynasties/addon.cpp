@@ -1511,6 +1511,35 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 27> MOTION_SHADERS =
     {.hash = 0xFF969484, .motion_shader = __motion_unit_weighted_ff96, .kind = MotionKind::UNIT},
 }};
 
+// Ray tracing's scene: 1ACBD907 (shaders__alphablend.xml and 87 other materials) draws the buildings, walls, clutter and the
+// props blended into the terrain, and also the depth prefill again (6FDC1F3D, which binds a colour target: the 5BB18374 meshes, 498
+// draws and 15.9 M indices in the six traces as 5BB18374's), the sea (water_troy 833E7963) and effects (vfx_spline_border 0051B762,
+// ash 1B1F50CA). Only its G-buffer pixel shaders below are in the scene: the 21 the battle and siege traces drew, each with the
+// texture its discard tests (no texture named: no discard; a dither: solid).
+constexpr std::array<twattila::rt_scene::PixelMask, 21> BUILDING_MASKS = {{
+    {.pixel_shader = 0x0842DFD4, .slot = 4},  // phar_rigid_battle_blendmask_3tex_walls_sett (t_mask_texture.w)
+    {.pixel_shader = 0x1ABDA979},             // phar_rigid_battle_blendmask_4tex_walls_uv2
+    {.pixel_shader = 0x23D56657},             // clutter_default
+    {.pixel_shader = 0x246D4945},             // rigid_default_alpha_colorise (t_diffuse.w)
+    {.pixel_shader = 0x2B2C6C82},             // rigid_default_colorize (t0 dither)
+    {.pixel_shader = 0x3907635C},             // phar_rigid_battle_blendmask_3tex_statue
+    {.pixel_shader = 0x538067F6, .slot = 2},  // phar_rigid_battle_blendmask_3tex_walls (t_mask_texture.w)
+    {.pixel_shader = 0x5BB18374, .slot = 2},  // phar_rigid_battle_blendmask_2tex_terrain (t_mask_texture.y)
+    {.pixel_shader = 0x5F579E7F},             // rigid_default (t0 dither)
+    {.pixel_shader = 0x7758E0D6},             // rigid_building_default
+    {.pixel_shader = 0x81DC17E9},             // phar_rigid_battle_blendmask_3tex_floor_sett
+    {.pixel_shader = 0x8EFA45A0},             // phar_rigid_battle_blendmask_3tex_uv2_noise_sand
+    {.pixel_shader = 0x97572547},             // phar_rigid_battle_blendmask_3tex
+    {.pixel_shader = 0xA5A850D3},             // phar_rigid_battle_blendmask_3tex_uv2
+    {.pixel_shader = 0xAC279A1B},             // phar_rigid_default_alpha (t_diffuse.w)
+    {.pixel_shader = 0xB50D4F41},             // phar_rigid_default_alpha_colorize (t_diffuse.w)
+    {.pixel_shader = 0xB87E0393},             // rigid_default_alpha (t_diffuse.w)
+    {.pixel_shader = 0xC4349867},             // phar_rigid_battle_blendmask_2tex_walls
+    {.pixel_shader = 0xC835A077},             // phar_rigid_building_default
+    {.pixel_shader = 0xE25FD05C},             // phar_rigid_battle_blendmask_3tex_sand
+    {.pixel_shader = 0xEA4AF236},             // phar_rigid_battle_blendmask_4tex_walls
+}};
+
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws (standard and skin lighting
 // models), with the camera at b1 and the G-buffer's channels 1-4 from their first slot.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
@@ -1520,7 +1549,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
-    {.hash = 0x1ACBD907, .capture_shader = __rt_capture_rigid_default},
+    {.hash = 0x1ACBD907, .capture_shader = __rt_capture_rigid_default, .pixel_masks = BUILDING_MASKS},
     {.hash = 0x6A599241, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidambientmapground_6a59},
     {.hash = 0x6061911B, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_6061},
     {.hash = 0xCB04CFA7, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_cb04},
