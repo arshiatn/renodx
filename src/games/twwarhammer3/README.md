@@ -1,5 +1,10 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v48 (2026-11-12, after v47's install; stamped and installed, not run in game; renodx-tw-dlaa64.exe helper105 as in v47)
+
+- Fixed: **Sprite Soldier Shadows** is no longer shown: Warhammer III has no sprite soldiers (its sun-facing cards are far trees).
+- The `renodx_trace_now` frame trace moved into the shared trace code (same behaviour).
+
 ## v47 (2026-11-12, ATN's third list; stamped and installed, not run in game; renodx-tw-dlaa64.exe helper105)
 
 - **Torch and fire shadows: up to 128 lights** (bridge v31, helper104; Experimental rows, defaults as before): **Torch and Fire Shadow Lights** 32 / 64 / 128 (the nearest and brightest first) and **Torch and Fire Shadow Range** (metres from the camera, 0 any). Each 8 x 8 block of the screen traces the 32 lights that reach it most (the helper's `rt_lights` lists them below the light mask's pixels), so a burning city's far fires keep their shadows without each pixel tracing more. The light shaders match the drawn light within its block's list (`rt_local_lights.hlsli`). Harness: default and 125 lights PASS (trace 0.15 -> 0.19 ms, 29 -> 125 lights).
