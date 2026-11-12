@@ -7,6 +7,7 @@
 - [x] Graphics 1 of 2: Rays a Pixel's four rows under it (shown above one ray); NRD default (SettingsRevision: Attila 1, WH3 33 clears the saved Denoiser / Banners / Coloured once); RT/PT = ATN's screenshot; SSS: Auto Thickness row gone (all SSS add-ons), all but Length under More Options, Shadow Map Size / UI 4K under SSS too, Light Through Banners 0.35 and Coloured on.
 - [x] About: buttons first, then credits and licences.
 - [x] proof: 11 add-ons built (Attila / Rome II / Thrones x86; WH3, Troy, Pharaoh, WH1, WH2, Shogun 2, Expeditions DLSS, Ryse x64); test/tw_psychov35 x86 + amd64 PASS (other modes 0 pixels from d3d6425b, other shaders same bytes, V35 every slider at its ends finite and within Peak; Gamut Compression 0: within 1%, Musa's mean is the cones'); hue report: best Hue Clip still 0.40 Attila / 1.00 WH3. Page dumps page_a_v149 / page_w_v45 against *_skill_after: 12 new v35_* keys, Auto Thickness gone, nothing else lost.
+- [x] install: both stamped (build/stamped/attila_v149, wh3_v45), only the add-on replaced, helper103 unchanged, ATN's ini / preset / preferences backed up first and unchanged by hash (tools/tw/round_v149/install_backup_20261112_105729), no DevKit. Script tools/tw/round_v149/install_v149.py. NOT run in game.
 - NOT PROVEN: V35's look in game, smoke Extreme / Maximum cost, NRD default's look, banners' coloured shadows in Attila (ATN traces them next).
 - NEXT: ATN's banner traces (Coloured Shadows not seen in Attila), then water reflections at lower scalings.
 
