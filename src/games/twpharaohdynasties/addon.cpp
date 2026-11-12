@@ -2596,16 +2596,6 @@ void ConfigureAddon() {
                                              .lights_own_row = true,
                                              .has_reflections = false,
                                              .rays_replace_ao = false});
-  // RT/PT's AO as the AO method's Path-Traced (graphics_page.hpp ChooseAo): the paths' AO multiplies the game's SSAO here, so
-  // GT-VBAO (the page's default) goes off with it; else it ran hidden under the paths, its shading on theirs.
-  for (auto* setting : settings) {
-    if (setting->group == "page-presets" && setting->label == "RT/PT") {
-      setting->on_change = [apply = setting->on_change] {
-        apply();
-        renodx::utils::settings::UpdateSettings({{"ssao_mode", 0.f}});
-      };
-    }
-  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

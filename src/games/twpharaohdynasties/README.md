@@ -18,6 +18,8 @@
 
   Needs a trace: the apply's blend factors. Risks: water brighter than the game's (RGBA8, clipped at 25), a rougher look on waves than the planar mirror, no fog in the reflected leg, MSAA (keep the game's), shallow and campaign water untraced.
 
+- RT/PT's GT-VBAO off (v54's local wrap of the button) is now in the shared `graphics_page.hpp`, for every game whose rays multiply the game's AO (`rays_replace_ao` false: here and Warhammer III, whose RT/PT left GT-VBAO on). Page dump v57 vs v56: the same but the build date (RT/PT still writes `ssao_mode 1 -> 0`).
+
 Build: `cmake --build build --config Release --target renodx-twpharaohdynasties.addon64` (the shared `screen_space_shadows.hpp` and `graphics_page.hpp` changes: the tw-port-checklist x64 list and build32 Attila, Rome II, Thrones built too; `test/tw_screen_space_shadows` x86 and amd64 PASS). Manual check: a siege with Bend Screen-Space, Light Through Banners 0.35 and Coloured Shadows on (Log Details on): the shadows of tents' cloth and flags are lighter and take their colour; with the rays' Coloured Shadows the ground under cloth keeps the sun's direction (no brighter or darker patches than without the cloth). Light Through Foliage 0.5: Bend's shadows of leaves and grass half as dark, walls' and soldiers' as before. With the game's MSAA both banner rows do nothing (one log line).
 
 ### Round v54 (2026-11-12, fog shadows, rays replacing the shadow maps, presets; stamped and installed 23:50 for the maintainer's test, not run in game)

@@ -738,6 +738,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     Values rays_values = RAYS_PRESET;
     // No paths for the sky's light here: ray-traced AO, over the game's.
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
+    // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
+    if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
