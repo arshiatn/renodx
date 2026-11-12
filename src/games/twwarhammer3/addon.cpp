@@ -3731,7 +3731,8 @@ void ConfigureAddon() {
       setting->is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
     }
   }
-  // Shadow Map Size (shadow_map_size.hpp): the page shows it with the game's shadow maps, and no preset writes it.
+  // Shadow Map Size (shadow_map_size.hpp): the page shows it where the game's shadow maps shadow (rays too, with Rays
+  // Replace Shadow Maps off), and no preset writes it.
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "GraphicsShadowMapSize",
       .binding = &twwarhammer3::shadow_map_size::row,

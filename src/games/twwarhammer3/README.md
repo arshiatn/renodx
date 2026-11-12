@@ -1,5 +1,9 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v49 (2026-11-12, Shadow Map Size under Screen-Space Shadows and rays; built only, not run in game; renodx-tw-dlaa64.exe helper105 as in v48)
+
+- **Shadow Map Size** shows under Bend Screen-Space (as before) and now under Ray-Traced (DXR) too while **Rays Replace Shadow Maps** is off: then the rays multiply the game's shadow maps, so their size still matters. With that row on (the default) the rays alone shadow sunlit surfaces and the row stays hidden (`graphics_page::Bindings::rays_replace_maps`, read live; Attila and Pharaoh unchanged).
+
 ## v48 (2026-11-12, after v47's install; stamped and installed, not run in game; renodx-tw-dlaa64.exe helper105 as in v47)
 
 - Fixed: **Sprite Soldier Shadows** is no longer shown: Warhammer III has no sprite soldiers (its sun-facing cards are far trees).

@@ -188,7 +188,8 @@ struct Bindings {
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   float* lod_bias_trilinear = nullptr;  // texture_lod_bias.hpp SetWrappingTrilinear; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
-  float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
+  // The sun's shadow from rays alone where they'd multiply its mask (off: Shadow Map Size under the rays too); null: no such row.
+  float* rays_replace_maps = nullptr;
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   bool units_out_of_view_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
@@ -221,7 +222,8 @@ struct Bindings {
   bool lights_own_row = false;
   bool has_reflections = true;
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
-  bool rays_multiply_maps = false;  // The rays' sun shadows multiply the game's shadow maps: Shadow Map Size stays under them.
+  // The rays' sun shadows always multiply the game's shadow maps (no rays_replace_maps row): Shadow Map Size stays under them.
+  bool rays_multiply_maps = false;
 };
 
 enum AoMethod : int { AO_GAME, AO_GTVBAO, AO_RAYS, AO_PATHS };
@@ -746,9 +748,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ShadowMethodOf(b) == SHADOW_RAYS && !feature_settings::Upscaling(*b.aa); }));
     // The game's shadow maps' size and the UI 4K mod's lock on it (Graphics 2 of 2's before v120): Bend's shadows draw over
-    // the game's maps too, and so do the rays where they multiply them. Of Bend's rows only Length on the page, the rest and
-    // the smoke's shadows without rays under More Options (ATN).
-    const auto game_maps = [b] { return b.rays_multiply_maps || ShadowMethodOf(b) != SHADOW_RAYS; };
+    // the game's maps too, and so do the rays where they multiply them (always, or with Rays Replace Shadow Maps off). Of
+    // Bend's rows only Length on the page, the rest and the smoke's shadows without rays under More Options (ATN).
+    const auto game_maps = [b] {
+      return ShadowMethodOf(b) != SHADOW_RAYS || b.rays_multiply_maps || (b.rays_replace_maps != nullptr && *b.rays_replace_maps == 0.f);
+    };
     page.Take({.match = "GraphicsShadowMapSize", .section = section, .shown = game_maps, .only_some_games = true});
     page.Take({.match = "UI 4K Mod Compatibility", .section = section, .shown = game_maps, .only_some_games = true});
     page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
