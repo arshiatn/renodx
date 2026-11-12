@@ -4,6 +4,7 @@
 
 - **Fixed: Sprite Soldier Shadows is hidden.** It gated only flat soldiers turned to the sun, and both sun-facing entries here are far tree cards (97C53219, EB2A56A1: Far Tree Shadows' row), so it did nothing. No trace drew sprite soldiers. Shared `twattila/rt_scene.hpp`: the row shows only where a sun-facing entry isn't a far tree (Attila unchanged; Warhammer III hides it too).
 - **Fixed: Torch and Fire Light in Fog and Smoke is hidden.** It reaches the picture only through the fog shadows (Pharaoh has no fog hook) or through lit particle shaders that read the lights' glow (none of Pharaoh's does: `fire02` reads only the traced bits). Shared `twattila/rt_scene.hpp`: the row shows only where fog shadows or that particle hook are installed (Attila, Thrones and Warhammer III unchanged).
+- **Fixed: v51's contact-shadow copy at a device's end.** Any D3D11 device ending (not only the game's) dropped the copy and the game's lighting buffer held for the draw, so one ending between a sun draw and its end would have left that sun draw's slot empty for the rest of the frame. Now only the copy's own device drops it, and the game's buffer is always bound again after the draw.
 
 ### Round v51 (2026-11-12, one method each: the game's contact shadows and SSEO; built only, not run in game)
 

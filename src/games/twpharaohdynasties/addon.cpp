@@ -1561,13 +1561,15 @@ constexpr auto OnSunContactShadows = []<typename T, typename Context>(Context& c
   }};
 };
 
-void OnDestroyContactShadowsDevice(reshade::api::device*) {
+// Only the copy's device: another device's end between a sun draw and its finalize must leave the game's buffer to bind again.
+void OnDestroyContactShadowsDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto& state = contact_shadows_off;
   const std::unique_lock lock(state.mutex);
+  if (state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
   state.lighting.Reset();
   state.lighting_bytes = 0;
   state.zeros.Reset();
-  state.game_lighting.Reset();
   state.device = nullptr;
 }
 
