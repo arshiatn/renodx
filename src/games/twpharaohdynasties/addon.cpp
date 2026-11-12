@@ -2092,12 +2092,14 @@ bool AttachAddon() {
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also
+  // at 100% (twattila/frame_trace.hpp).
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS);
+                                   RENDER_SCALE_READS, {}, {}, {}, {.on_demand = true, .at_100 = true});
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
