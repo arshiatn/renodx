@@ -1436,13 +1436,9 @@ class RtScene12 {
           }
         }
         // The local lights with their colours (v11): what the paths meet unseen by the screen lit by them too.
-        const uint32_t light_count = (version >= 11 && (shared.rt_flags & dlaa_bridge::RT_LOCAL_LIGHTS) != 0)
-                                         ? std::min(shared.rt_light_count, dlaa_bridge::RT_MAX_LIGHTS)
-                                         : 0u;
+        const uint32_t light_count = ((shared.rt_flags & dlaa_bridge::RT_LOCAL_LIGHTS) != 0) ? SharedLightCount(shared, version) : 0u;
         if (light_count != 0) {
-          std::memcpy(slot.light_data, shared.rt_lights, light_count * sizeof(shared.rt_lights[0]));
-          std::memcpy(slot.light_data + sizeof(shared.rt_lights), &light_count, sizeof(light_count));
-          std::memcpy(slot.light_data + sizeof(shared.rt_lights) + 16, shared.rt_light_colours, light_count * sizeof(shared.rt_light_colours[0]));
+          CopyLights(shared, light_count, slot.light_data);
           flags |= PATH_LOCAL_LIGHTS;
         }
         list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot.lights->GetGPUVirtualAddress());
@@ -1963,8 +1959,31 @@ class RtScene12 {
     ROOT_LIGHTS,  // b4: the trace's local lights
     ROOT_SMOKE,   // t15: the smoke's TLAS (rt_scene.hlsli smoke_scene)
   };
-  // b4: RT_MAX_LIGHTS of world position and reach, then their count (a CBV's 256-byte multiple).
-  static constexpr UINT LIGHT_CONSTANT_BYTES = 1280;  // positions, count, colours (v11)
+  // b4 (rt_scene.hlsli Lights): RT_ALL_LIGHTS of world position and reach, their count, their colours, their places in
+  // the last trace's list (a byte each); a CBV's 256-byte multiple.
+  static constexpr UINT LIGHT_COUNT_OFFSET = dlaa_bridge::RT_ALL_LIGHTS * 16;
+  static constexpr UINT LIGHT_COLOURS_OFFSET = LIGHT_COUNT_OFFSET + 16;
+  static constexpr UINT LIGHT_PREVIOUS_OFFSET = LIGHT_COLOURS_OFFSET + (dlaa_bridge::RT_ALL_LIGHTS * 16);
+  static constexpr UINT LIGHT_CONSTANT_BYTES = (LIGHT_PREVIOUS_OFFSET + dlaa_bridge::RT_ALL_LIGHTS + 255) / 256 * 256;
+
+  // The addon's lights: at most RT_MAX_LIGHTS before v31; light `index`'s position and reach (or colour), the first
+  // RT_MAX_LIGHTS in rt_lights, the others in rt_lights_more.
+  static uint32_t SharedLightCount(const dlaa_bridge::Shared& shared, uint32_t version) {
+    return std::min(shared.rt_light_count, (version >= 31) ? dlaa_bridge::RT_ALL_LIGHTS : dlaa_bridge::RT_MAX_LIGHTS);
+  }
+  static const float* SharedLight(const dlaa_bridge::Shared& shared, uint32_t index, bool colour) {
+    if (index < dlaa_bridge::RT_MAX_LIGHTS) return colour ? shared.rt_light_colours[index] : shared.rt_lights[index];
+    const uint32_t more = index - dlaa_bridge::RT_MAX_LIGHTS;
+    return colour ? shared.rt_light_colours_more[more] : shared.rt_lights_more[more];
+  }
+  // b4's positions, count and colours.
+  static void CopyLights(const dlaa_bridge::Shared& shared, uint32_t count, uint8_t* data) {
+    for (uint32_t light = 0; light < count; ++light) {
+      std::memcpy(data + (light * 16), SharedLight(shared, light, false), 16);
+      std::memcpy(data + LIGHT_COLOURS_OFFSET + (light * 16), SharedLight(shared, light, true), 16);
+    }
+    std::memcpy(data + LIGHT_COUNT_OFFSET, &count, sizeof(count));
+  }
 
   struct Slot {
     ComPtr<ID3D12CommandAllocator> allocator;
@@ -2515,14 +2534,14 @@ class RtScene12 {
     return false;
   }
 
-  // A texture of the helper's own at the shared textures' size (over `divisor`, rounded up), and a UAV of one at
-  // `descriptor`.
+  // A texture of the helper's own at the shared textures' size (over `divisor`, rounded up; `extra_rows` more), and a
+  // UAV of one at `descriptor`.
   bool Texture(DXGI_FORMAT format, ComPtr<ID3D12Resource>* resource, D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-               UINT divisor = 1) const {
+               UINT divisor = 1, UINT extra_rows = 0) const {
     const D3D12_RESOURCE_DESC positions = positions_->GetDesc();
     const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
     const D3D12_RESOURCE_DESC desc = {.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D, .Width = (positions.Width + divisor - 1) / divisor,
-                                      .Height = (positions.Height + divisor - 1) / divisor,
+                                      .Height = ((positions.Height + divisor - 1) / divisor) + extra_rows,
                                       .DepthOrArraySize = 1, .MipLevels = 1, .Format = format, .SampleDesc = {.Count = 1},
                                       .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
     return SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr, IID_PPV_ARGS(resource->GetAddressOf())));
@@ -2659,9 +2678,12 @@ class RtScene12 {
         ambient_frame_ = UINT32_MAX;
         return true;
       case HISTORY_LIGHTS:
-        // The local lights' bits: two sets in turn (the ambient's parity, its positions).
+        // The local lights' bits: two sets in turn (the ambient's parity, its positions), their tiles' lists below them
+        // (v31, as the light mask's).
         if (light_history_[1]) return true;
-        if (!Texture(DXGI_FORMAT_R32_UINT, &light_history_[0]) || !Texture(DXGI_FORMAT_R32_UINT, &light_history_[1])) {
+        if (const UINT rows = dlaa_bridge::LightTileRows(static_cast<uint32_t>(positions_->GetDesc().Height));
+            !Texture(DXGI_FORMAT_R32_UINT, &light_history_[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 1, rows)
+            || !Texture(DXGI_FORMAT_R32_UINT, &light_history_[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 1, rows)) {
           light_history_ = {};
           return false;
         }
@@ -4402,7 +4424,7 @@ class RtScene12 {
     };
     if (atlas_) textures.emplace_back(atlas_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     // The local lights (v9): their positions and reaches to b4, their lit bits out.
-    const uint32_t light_count = (version >= 9) ? std::min(shared.rt_light_count, dlaa_bridge::RT_MAX_LIGHTS) : 0u;
+    const uint32_t light_count = SharedLightCount(shared, version);
     const bool local_lights = (shared.rt_flags & dlaa_bridge::RT_LOCAL_LIGHTS) != 0 && light_mask_ && light_count != 0;
     // The fog shadows (v11): a quarter of the render pixels each way.
     const bool fog = (shared.rt_flags & dlaa_bridge::RT_FOG_SHADOWS) != 0 && fog_;
@@ -4419,26 +4441,22 @@ class RtScene12 {
     if (tint_guides) textures.emplace_back(guide_albedo_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     // Their places in the last trace's list (the addon orders them by importance each frame; the same position and
     // reach: the same light), a byte each after the colours (255: new).
-    std::array<uint8_t, dlaa_bridge::RT_MAX_LIGHTS> light_previous = {};
+    std::array<uint8_t, dlaa_bridge::RT_ALL_LIGHTS> light_previous = {};
     if (local_lights) {
       textures.emplace_back(light_mask_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-      std::memcpy(slot->light_data, shared.rt_lights, light_count * sizeof(shared.rt_lights[0]));
-      std::memcpy(slot->light_data + sizeof(shared.rt_lights), &light_count, sizeof(light_count));
-      // Their colours (v11) for the fog's torch and fire light (rt_fog; the paths' requests copy them too).
-      if (version >= 11) {
-        std::memcpy(slot->light_data + sizeof(shared.rt_lights) + 16, shared.rt_light_colours, light_count * sizeof(shared.rt_light_colours[0]));
-      }
+      // With their colours for the fog's torch and fire light (rt_fog; the paths' requests copy them too).
+      CopyLights(shared, light_count, slot->light_data);
       for (uint32_t light = 0; light < light_count; ++light) {
+        const float* position = SharedLight(shared, light, false);
         const auto found = std::ranges::find_if(previous_lights_.begin(), previous_lights_.begin() + previous_light_count_,
                                                 [&](const std::array<float, 4>& other) {
-                                                  return std::equal(other.begin(), other.end(), shared.rt_lights[light]);
+                                                  return std::equal(other.begin(), other.end(), position);
                                                 });
         light_previous[light] = (found != previous_lights_.begin() + previous_light_count_)
                                     ? static_cast<uint8_t>(found - previous_lights_.begin())
                                     : uint8_t{255};
       }
-      std::memcpy(slot->light_data + sizeof(shared.rt_lights) + 16 + sizeof(shared.rt_light_colours), light_previous.data(),
-                  light_previous.size());
+      std::memcpy(slot->light_data + LIGHT_PREVIOUS_OFFSET, light_previous.data(), light_previous.size());
     }
     std::vector<D3D12_RESOURCE_BARRIER> barriers = {uav_barrier};
     for (const auto& [resource, used] : textures) {
@@ -4502,6 +4520,8 @@ class RtScene12 {
         (version >= 18) ? std::clamp(shared.rt_shadow_rays, 1u, 8u) : 1u,
         std::bit_cast<uint32_t>((version >= 18) ? std::clamp(shared.rt_light_size, 0.f, 2.f) : 0.f),
         std::bit_cast<uint32_t>((version >= 18) ? std::clamp(shared.rt_grass_shadow_range, 0.f, 1.0001666e4f) : 0.f),
+        // v31: the light mask's tiles' first row (rt_lights).
+        (version >= 31) ? shared.rt_light_tile_row : 0u,
     };
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());
@@ -4569,7 +4589,7 @@ class RtScene12 {
     ProfileStamp(list, slot_index, 2);
     // This trace's lights for the next one's places.
     if (lights_kept) {
-      for (uint32_t light = 0; light < light_count; ++light) std::copy_n(shared.rt_lights[light], 4, previous_lights_[light].begin());
+      for (uint32_t light = 0; light < light_count; ++light) std::copy_n(SharedLight(shared, light, false), 4, previous_lights_[light].begin());
       previous_light_count_ = light_count;
       lights_frame_ = frame;
     }
@@ -5760,7 +5780,7 @@ class RtScene12 {
   // The local lights' bits kept over frames (HISTORY_LIGHTS), the last trace that wrote them and its lights.
   std::array<ComPtr<ID3D12Resource>, 2> light_history_;
   uint32_t lights_frame_ = UINT32_MAX;
-  std::array<std::array<float, 4>, dlaa_bridge::RT_MAX_LIGHTS> previous_lights_ = {};
+  std::array<std::array<float, 4>, dlaa_bridge::RT_ALL_LIGHTS> previous_lights_ = {};
   uint32_t previous_light_count_ = 0;
   ComPtr<ID3D12PipelineState> fog_pipeline_;
   ComPtr<ID3D12PipelineState> lights_pipeline_;

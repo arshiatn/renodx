@@ -33,7 +33,8 @@ cbuffer Settings : register(b0) {
   uint shadow_rays;   // rays a pixel toward the sun and each light (v18; Ray Tracing at Output Resolution)
   float light_size;   // the local lights' radius in metres for soft shadows under Ray Reconstruction (v18; 0: hard)
   float grass_shadow_range;  // Grass Shadow Range (v18): rays from pixels farther (view depth, metres) pass grass; 0: none
-  uint2 settings_padding;
+  uint light_tile_row;       // the light mask's tiles' first row (v31, rt_lights; 0: none)
+  uint settings_padding;
 };
 
 static const uint SUN_SHADOWS = 1u;
@@ -66,12 +67,13 @@ static const uint RECORD_LEAF = 16u;   // a leaves' mesh (its instances LEAF_INS
 static const float LEAF_TRANSMITTANCE = 0.25f;
 static const float THIN_TRANSMITTANCE = 0.35f;  // cloth and sails
 
-// The local lights (bridge v9; their colours v11, for the paths): world position and reach (metres), their count.
+// The local lights (bridge v9; their colours v11, for the paths; up to 128 v31, the paths and the fog the first 32):
+// world position and reach (metres), their count.
 cbuffer Lights : register(b4) {
-  float4 lights[32];
+  float4 lights[128];
   uint light_count;
-  float4 light_colours[32];  // rgb
-  uint4 light_previous[2];   // each light's place in the last trace's list, a byte each (255: new)
+  float4 light_colours[128];  // rgb
+  uint4 light_previous[8];    // each light's place in the last trace's list, a byte each (255: new)
 };
 
 // Where the rays toward a local light stop before it (metres; at most half the way): its lamp, torch or fire's wood.

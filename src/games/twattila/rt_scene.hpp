@@ -94,6 +94,8 @@ struct Sliders {
   float path_ser = 0.f;
   float sharc = 0.f;
   float light_importance = 0.f;
+  float light_count = 0.f;  // Torch and Fire Shadow Lights: 32, 64, 128
+  float light_range = 0.f;  // metres (0: any distance)
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
   float ambient_range = 6.f;       // metres
   float ambient_rays = 2.f;
@@ -179,6 +181,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       // Ray-traced sun shadows are every shadow: the point lights' too (games whose light draws InstallPointLights hooks),
       // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
       .local_lights = sliders.local_lights != 0.f && sliders.sun_shadows != 0.f && dlaa,
+      .light_count = dlaa_bridge::RT_MAX_LIGHTS << std::clamp(static_cast<int>(sliders.light_count), 0, 2),
+      .light_range = sliders.light_range,
       .leaf_light = sliders.leaf_light != 0.f,
       .coloured_shadows = sliders.coloured_shadows != 0.f && sliders.leaf_light != 0.f && internal::ambient_cube != 0,
       .grass_sway = sliders.grass_sway != 0.f,
@@ -1298,6 +1302,33 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Two torch / fire shadow rays a pixel, picked by how much light they give (as ReSTIR DI picks lights):\n"
                      "faster with many fires; dim fires' shadows follow moving units slower.",
           .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::point_lights_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightCount",
+          .binding = &sliders->light_count,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Torch and Fire Shadow Lights (Experimental)",
+          .section = section,
+          .tooltip = "How many torches and fires cast ray-traced shadows, the nearest and brightest first.\n"
+                     "Each spot of the screen traces the 32 that light it most. More: heavier in big fires.",
+          .labels = {"32", "64", "128"},
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::point_lights_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightRange",
+          .binding = &sliders->light_range,
+          .default_value = 0.f,
+          .label = "Torch and Fire Shadow Range (Experimental)",
+          .section = section,
+          .tooltip = "Only torches and fires this close to the camera cast ray-traced shadows; the count goes to\n"
+                     "the nearer ones. 0 m: any distance.",
+          .min = 0.f,
+          .max = 500.f,
+          .format = "%.0f m",
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
       },

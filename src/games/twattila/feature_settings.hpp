@@ -45,11 +45,12 @@ struct SssSliders {
   float mirror_edges = 0.f;
   float foliage_light = 0.f;  // Attila's (graphics_page.hpp)
   // Softer Away from the Caster (degrees of the sun's disk), Light Through Banners (the sun's share), Coloured Shadows,
-  // Torch and Fire Shadows (Off, 4, 8, 16 lights).
+  // Torch and Fire Shadows (Off, 4, 8, 16, 32 lights) and their range (metres from the camera, 0 any).
   float distance_softness = 0.f;
   float banner_light = 0.35f;
   float coloured = 1.f;
   float torches = 0.f;
+  float torch_range = 0.f;
 };
 
 struct AaSliders {
@@ -96,7 +97,8 @@ inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
       .sun_disk = sliders.distance_softness,
       .thin_light = sliders.banner_light,
       .coloured = (sliders.coloured != 0.f),
-      .lights = std::array<uint32_t, 4>{0u, 4u, 8u, 16u}[std::clamp(static_cast<int>(sliders.torches), 0, 3)],
+      .lights = std::array<uint32_t, 5>{0u, 4u, 8u, 16u, 32u}[std::clamp(static_cast<int>(sliders.torches), 0, 4)],
+      .light_range = sliders.torch_range,
   };
 }
 
@@ -271,8 +273,22 @@ inline void AppendSss(std::vector<renodx::utils::settings::Setting*>* settings, 
                                             .section = SSS_SECTION,
                                             .tooltip = "Torches, fires and burning buildings cast shadows of what is on screen, for this many\n"
                                                        "of the nearest and brightest. More: heavier.",
-                                            .labels = {"Off", "4", "8", "16"},
+                                            .labels = {"Off", "4", "8", "16", "32"},
                                             .is_enabled = sss_enabled,
+                                            .is_visible = [] { return screen_space_lights::installed; },
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "ScreenSpaceShadowsTorchRange",
+                                            .binding = &sliders->torch_range,
+                                            .default_value = 0.f,
+                                            .label = "Torch and Fire Shadow Range (Experimental)",
+                                            .section = SSS_SECTION,
+                                            .tooltip = "Only torches and fires this close to the camera cast shadows; the count goes to the\n"
+                                                       "nearer ones. 0 m: any distance.",
+                                            .min = 0.f,
+                                            .max = 500.f,
+                                            .format = "%.0f m",
+                                            .is_enabled = [sliders] { return sliders->enabled != 0.f && sliders->torches != 0.f; },
                                             .is_visible = [] { return screen_space_lights::installed; },
                                         },
                                         new renodx::utils::settings::Setting{

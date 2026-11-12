@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 30;
+constexpr uint32_t VERSION = 31;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -32,8 +32,15 @@ constexpr uint32_t RT_DRAWN = 16384;
 // The leaves' opacity masks (v6): an R8 texture array of RT_ATLAS_SLICES slices RT_ATLAS_SIZE square.
 constexpr uint32_t RT_ATLAS_SIZE = 512;
 constexpr uint32_t RT_ATLAS_SLICES = 256;
-// Local lights' shadows (v9): at most this many lights a request (a bit each in the lit mask).
+// Local lights' shadows (v9): at most this many lights a request (a bit each in the lit mask); v31: RT_ALL_LIGHTS, each
+// 8 x 8 tile of the mask its own RT_MAX_LIGHTS (their list in the mask's rows from rt_light_tile_row on).
 constexpr uint32_t RT_MAX_LIGHTS = 32;
+constexpr uint32_t RT_ALL_LIGHTS = 128;
+// The lit mask's tiles (v31): a tile's RT_MAX_LIGHTS lights a byte each (RT_NO_LIGHT past the last), its eight words at
+// column tile x * 4 + (word & 3), row rt_light_tile_row + tile y * 2 + (word >> 2); the mask that many rows taller.
+constexpr uint32_t RT_LIGHT_TILE = 8;
+constexpr uint32_t RT_NO_LIGHT = 0xFF;
+constexpr uint32_t LightTileRows(uint32_t height) { return ((height + RT_LIGHT_TILE - 1) / RT_LIGHT_TILE) * 2; }
 // Placed draws (v14) a frame at most, besides the new captures (v20: 16384).
 constexpr uint32_t RT_PLACEMENTS = 16384;
 
@@ -475,11 +482,18 @@ struct Shared {
   uint32_t fence_generation = 0;
   uint32_t fence_v30_padding = 0;
   uint64_t fence_completed = 0;
+  // The addon's (v31): the local lights past the first RT_MAX_LIGHTS (rt_light_count up to RT_ALL_LIGHTS), and the lit
+  // mask's first tile row (its set's: the textures' height; 0: no tiles, a bit a light as before v31).
+  float rt_lights_more[RT_ALL_LIGHTS - RT_MAX_LIGHTS][4] = {};
+  float rt_light_colours_more[RT_ALL_LIGHTS - RT_MAX_LIGHTS][4] = {};
+  uint32_t rt_light_tile_row = 0;
+  uint32_t rt_v31_padding = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 30) return sizeof(Shared);
+  if (version >= 31) return sizeof(Shared);
+  if (version == 30) return offsetof(Shared, rt_lights_more);
   if (version >= 25) return offsetof(Shared, fence_generation);
   if (version == 24) return offsetof(Shared, rr_extra);
   if (version == 23) return offsetof(Shared, rt_kept_frames);

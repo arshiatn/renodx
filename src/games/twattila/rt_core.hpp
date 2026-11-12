@@ -114,8 +114,12 @@ struct Settings {
   bool reflection_squared_lobe = false;
   bool reflection_fog = false;  // RT_REFLECTIONS_FOG (the host writes the fog: rt_leg_fog.hlsli)
   // The local lights' shadows (bridge v9): of the lights the game's light draws had (AddLocalLight) the last frame's
-  // nearest and brightest go with the trace; their lit bits and positions for the light draws: BindLocalLights.
+  // nearest and brightest go with the trace; their lit bits and positions for the light draws: BindLocalLights. At most
+  // `light_count` of them (v31: up to RT_ALL_LIGHTS, each 8 x 8 tile its own RT_MAX_LIGHTS), those within `light_range`
+  // metres of the camera (0: any distance).
   bool local_lights = false;
+  uint32_t light_count = dlaa_bridge::RT_MAX_LIGHTS;
+  float light_range = 0.f;
   // Light through leaves (bridge v11): the sun's rays pass each leaf at a share (else leaves block it).
   bool leaf_light = false;
   // Coloured Shadows (bridge v19, with leaf_light): the sun's light through cloth and sails takes their colour (the sun
@@ -832,7 +836,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
   captured_uv_view.Buffer.NumElements = MAX_VERTICES;
   const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC sun_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-  const D3D11_BUFFER_DESC light_constants_desc = {.ByteWidth = ((dlaa_bridge::RT_MAX_LIGHTS * 2) + 1) * 16, .Usage = D3D11_USAGE_DEFAULT,
+  const D3D11_BUFFER_DESC light_constants_desc = {.ByteWidth = ((dlaa_bridge::RT_ALL_LIGHTS * 2) + 1) * 16, .Usage = D3D11_USAGE_DEFAULT,
                                                   .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC water_flags_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   constexpr std::array<uint32_t, 4> WATER_FLAGS = {1u, 0u, 0u, 0u};
@@ -2502,31 +2506,38 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     }
   }
   // The local lights: last frame's nearest and brightest (their reach over their distance, squared, by their colour's
-  // brightest channel).
+  // brightest channel) within Torch and Fire Shadow Range.
   runtime.lights.clear();
   runtime.light_colours.clear();
   if (runtime.settings.local_lights && !runtime.lights_last.empty()) {
-    const auto score = [&](const LocalLight& light) {
+    const auto distance_squared = [&](const LocalLight& light) {
       const float x = light.light[0] - camera.position[0];
       const float y = light.light[1] - camera.position[1];
       const float z = light.light[2] - camera.position[2];
+      return (x * x) + (y * y) + (z * z);
+    };
+    const auto score = [&](const LocalLight& light) {
       return std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3] * light.light[3]
-             / std::max((x * x) + (y * y) + (z * z), 1.f);
+             / std::max(distance_squared(light), 1.f);
     };
     auto& candidates = runtime.lights_last;
-    const size_t count = std::min<size_t>(candidates.size(), dlaa_bridge::RT_MAX_LIGHTS);
+    if (const float range = runtime.settings.light_range; range > 0.f) {
+      std::erase_if(candidates, [&](const LocalLight& light) { return distance_squared(light) > range * range; });
+    }
+    const size_t count = std::min<size_t>({candidates.size(), runtime.settings.light_count, dlaa_bridge::RT_ALL_LIGHTS});
     std::partial_sort(candidates.begin(), candidates.begin() + static_cast<ptrdiff_t>(count), candidates.end(),
                       [&](const LocalLight& a, const LocalLight& b) { return score(a) > score(b); });
-    // b9 (rt_local_lights.hlsli): positions and reach, the count and the glow (torch and fire light in fog and smoke),
-    // the colours.
-    std::array<std::array<float, 4>, (dlaa_bridge::RT_MAX_LIGHTS * 2) + 1> constants = {};
+    // b9 (rt_local_lights.hlsli): positions and reach, the count, the glow (torch and fire light in fog and smoke) and the
+    // lit mask's first tile row (bridge v31), the colours.
+    std::array<std::array<float, 4>, (dlaa_bridge::RT_ALL_LIGHTS * 2) + 1> constants = {};
     for (size_t index = 0; index < count; ++index) {
       runtime.lights.push_back(candidates[index].light);
       runtime.light_colours.push_back(candidates[index].colour);
       constants[index] = candidates[index].light;
-      constants[dlaa_bridge::RT_MAX_LIGHTS + 1 + index] = candidates[index].colour;
+      constants[dlaa_bridge::RT_ALL_LIGHTS + 1 + index] = candidates[index].colour;
     }
-    constants[dlaa_bridge::RT_MAX_LIGHTS] = {std::bit_cast<float>(static_cast<uint32_t>(count)), runtime.settings.light_glow, 0.f, 0.f};
+    constants[dlaa_bridge::RT_ALL_LIGHTS] = {std::bit_cast<float>(static_cast<uint32_t>(count)), runtime.settings.light_glow,
+                                             std::bit_cast<float>(dlaa_bridge::bridge.rt_light_tile_row), 0.f};
     native->UpdateSubresource(objects.light_constants.Get(), 0, nullptr, constants.data(), 0, 0);
   }
   const bool lights = !runtime.lights.empty();

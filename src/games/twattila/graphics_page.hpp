@@ -755,7 +755,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       });
     }
     for (const auto* key : {"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured",
-                            "ScreenSpaceShadowsTorches", "ScreenSpaceShadowsContrast", "ScreenSpaceShadowsHardSamples",
+                            "ScreenSpaceShadowsTorches", "ScreenSpaceShadowsTorchRange", "ScreenSpaceShadowsContrast", "ScreenSpaceShadowsHardSamples",
                             "ScreenSpaceShadowsFadeSamples", "ScreenSpaceShadowsEdgeThreshold", "ScreenSpaceShadowsIgnoreEdges",
                             "ScreenSpaceShadowsPrecisionOffset", "ScreenSpaceShadowsAlongRay", "ScreenSpaceShadowsMirrorEdges",
                             "ScreenSpaceShadowsDebugView"}) {
@@ -794,6 +794,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedPointLightShadows", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_lights, .label = "Importance-Sampled Torch Shadows (RIS)"});
+    page.Take({.match = "RayTracedLightCount", .section = section, .shown = more_lights});
+    page.Take({.match = "RayTracedLightRange", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays});
     if (b.rays_replace_maps != nullptr) {

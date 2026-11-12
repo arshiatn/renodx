@@ -40,9 +40,10 @@ namespace internal {
 
 constexpr UINT INSTANCE_BYTES = 512 * 1024;  // a frame's light instances (rt_scene.hpp's readback's)
 constexpr UINT MAX_DRAWS = 256;              // sss_lights' records
-constexpr UINT MAX_LIGHTS = 32;              // rt_local_lights.hlsli's
+constexpr UINT MAX_LIGHTS = 32;              // the mask's bits (sss_lights)
 constexpr UINT MAX_ENTRIES = 1 + (2 * MAX_LIGHTS * 8);  // the dispatch list: its header, two entries each of 8 a light
-constexpr UINT LIGHT_LIST = (MAX_LIGHTS * 2) + 1;       // b9's float4s: positions, count, colours
+constexpr UINT LIST_LIGHTS = 128;            // rt_local_lights.hlsli's b9 arrays (dlaa_bridge.h RT_ALL_LIGHTS)
+constexpr UINT LIGHT_LIST = (LIST_LIGHTS * 2) + 1;      // b9's float4s: positions, count, colours
 constexpr UINT LIGHT_MASK_SLOT = 42;
 constexpr UINT LIGHT_CONSTANTS_SLOT = 9;
 static bool logged_order = false;
@@ -156,6 +157,7 @@ inline bool OnLightDraw(ID3D11DeviceContext* native, const Instances& instances)
       settings.coloured = 0.f;
       settings.lights_wanted = std::min(runtime.settings.lights, internal::MAX_LIGHTS);
       settings.light_draws = static_cast<uint32_t>(last_records.size());
+      settings.light_range = runtime.settings.light_range;
       if (std::memcmp(&settings, &lights.uploaded_settings, sizeof(settings)) != 0) {
         native->UpdateSubresource(lights.settings.Get(), 0, nullptr, &settings, 0, 0);
         lights.uploaded_settings = settings;

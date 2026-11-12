@@ -243,6 +243,7 @@ struct Bridge {
   Texture rt_light;
   Texture rt_bounce;
   Texture rt_light_mask;  // v9: the local lights' lit bits
+  uint32_t rt_light_tile_row = 0;  // v31: its tiles' first row (LightTileRows below the pixels); 0: none
   Texture rt_fog;         // v11: the fog shadows (a quarter of the size each way)
   Texture rt_fog_lights;  // v18: the local lights' light in the fog (as rt_fog)
   Texture rt_tint;        // v19: Coloured Shadows' filter (as rt_visibility)
@@ -639,6 +640,7 @@ struct SharedSet {
   uint64_t rt_light = 0;
   uint64_t rt_bounce = 0;
   uint64_t rt_light_mask = 0;
+  uint32_t rt_light_tile_row = 0;
   uint64_t rt_fog = 0;
   uint64_t rt_fog_lights = 0;
   uint64_t rt_tint = 0;
@@ -672,6 +674,7 @@ inline void Publish(const SharedSet& set) {
   shared.rt_light = set.rt_light;
   shared.rt_bounce = set.rt_bounce;
   shared.rt_light_mask = set.rt_light_mask;
+  shared.rt_light_tile_row = set.rt_light_tile_row;
   shared.rt_fog = set.rt_fog;
   shared.rt_fog_lights = set.rt_fog_lights;
   shared.rt_tint = set.rt_tint;
@@ -730,6 +733,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     bridge.rt_light = {};
     bridge.rt_bounce = {};
     bridge.rt_light_mask = {};
+    bridge.rt_light_tile_row = 0;
     bridge.rt_fog = {};
     bridge.rt_fog_lights = {};
     bridge.rt_tint = {};
@@ -883,7 +887,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_ambient, &shared.rt_ambient)
                             && make(DXGI_FORMAT_R11G11B10_FLOAT, &bridge.rt_light, &shared.rt_light)
                             && make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_bounce, &shared.rt_bounce)
-                            && make(DXGI_FORMAT_R32_UINT, &bridge.rt_light_mask, &shared.rt_light_mask)
+                            && make(DXGI_FORMAT_R32_UINT, &bridge.rt_light_mask, &shared.rt_light_mask, width, height + LightTileRows(height))
                             && make(DXGI_FORMAT_R8_UNORM, &bridge.rt_fog, &shared.rt_fog, (width + 3) / 4, (height + 3) / 4)
                             && make(DXGI_FORMAT_R16G16B16A16_FLOAT, &bridge.rt_fog_lights, &shared.rt_fog_lights, (width + 3) / 4, (height + 3) / 4)
                             && make(DXGI_FORMAT_R8G8B8A8_UNORM, &bridge.rt_tint, &shared.rt_tint)
@@ -910,6 +914,8 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
     return false;
   };
   if (!made) return fail("DLAA: the shared textures could not be made.");
+  bridge.rt_light_tile_row = (ray_tracing ? height : 0u);
+  shared.rt_light_tile_row = bridge.rt_light_tile_row;
   shared.fence = transfer(fence_handle);
   if (shared.fence == 0) return fail("DLAA: could not transfer the shared fence.");
   // A second handle of the fence stays here for the recovery (without one nothing frees this set if the helper stops).
@@ -1037,10 +1043,13 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
     std::copy_n(request.slices.begin(), std::min<size_t>(request.slices.size(), shared->rt_capture_count), shared->rt_capture_slices);
     shared->rt_drawn_count = static_cast<uint32_t>(std::min<size_t>(request.drawn.size(), RT_DRAWN));
     std::copy_n(request.drawn.begin(), shared->rt_drawn_count, shared->rt_drawn);
-    shared->rt_light_count = static_cast<uint32_t>(std::min<size_t>(request.lights.size(), RT_MAX_LIGHTS));
+    shared->rt_light_count = static_cast<uint32_t>(std::min<size_t>(request.lights.size(), RT_ALL_LIGHTS));
     for (uint32_t light = 0; light < shared->rt_light_count; ++light) {
-      std::copy_n(request.lights[light].begin(), 4, shared->rt_lights[light]);
-      if (light < request.light_colours.size()) std::copy_n(request.light_colours[light].begin(), 4, shared->rt_light_colours[light]);
+      const bool first = light < RT_MAX_LIGHTS;
+      float* position = (first ? shared->rt_lights[light] : shared->rt_lights_more[light - RT_MAX_LIGHTS]);
+      float* colour = (first ? shared->rt_light_colours[light] : shared->rt_light_colours_more[light - RT_MAX_LIGHTS]);
+      std::copy_n(request.lights[light].begin(), 4, position);
+      if (light < request.light_colours.size()) std::copy_n(request.light_colours[light].begin(), 4, colour);
     }
     std::copy_n(request.view_projection.begin(), 16, shared->rt_view_projection);
     shared->rt_placement_count = static_cast<uint32_t>(std::min<size_t>(request.placements.size(), RT_PLACEMENTS));
@@ -1352,6 +1361,7 @@ inline void Release(bool tell_helper = false) {
   bridge.rt_light = {};
   bridge.rt_bounce = {};
   bridge.rt_light_mask = {};
+  bridge.rt_light_tile_row = 0;
   bridge.rt_fog = {};
   bridge.rt_fog_lights = {};
   bridge.rt_tint = {};

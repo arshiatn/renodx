@@ -3,7 +3,7 @@
 ## ATN'S 2026-11-12 THIRD LIST (offline; no game runs; Attila first, then the TW addons that share it)
 - [x] WH3's in-game AA names back: TAA or TAA High (ATN confirmed).
 - [x] smoke flicker cause: not the room. The 262,144 "particles a frame" is the game drawing its whole pool every frame (dead ones too; 2^18), our stream holds 2^19 and ATN's siege wanted at most 35,304 quads of High's 65,536 (ATN's preset1: RayTracedSmokeQuality=2). Likely the per-ray cap (SmokeTransmittance stops at 32 dimming / 64 met particles; which come first follows the smoke BLAS, rebuilt each frame). Test: Ultra against Extreme in one siege.
-- [ ] torch and fire shadows: up to 128 lights (bridge v31), each 8 x 8 tile its own 32 (helper rt_lights), the light shaders read the tile's list (rt_local_lights.hlsli t43), a camera range row; SSS torches 32 and a range.
+- [x] torch and fire shadows: up to 128 lights (bridge v31, helper104), each 8 x 8 tile its own 32 (helper rt_lights; the tiles' lists in the light mask's rows below the pixels, the history's too), the light shaders match within the tile's list (rt_local_lights.hlsli, b9 z the tiles' row). Rows (Experimental): Torch and Fire Shadow Lights 32 / 64 / 128, Torch and Fire Shadow Range (0 m any). SSS torches: 32 added, its own range row. Harness: default and 125-light stress PASS (trace 0.15 -> 0.19 ms, 29 -> 125 lights). Not run in game.
 - [ ] particles: Attila's layer at half or quarter, full-resolution edges (Cantlay, GPU Gems 3 ch. 23), the depth-aware upsample at any scale.
 - [ ] licences: audit of everything shipped (agent), missing texts and credits added.
 - [ ] builds (every RT addon, helper104), harness / WARP, READMEs, commits, push, report.

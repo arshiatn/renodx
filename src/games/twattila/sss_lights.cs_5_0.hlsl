@@ -9,7 +9,8 @@
 // their distance squared, at least 1 m; each once), then for each its Bend dispatches over the rectangle its reach covers
 // on screen (sss_dispatch.hlsli), all in one list for the extended march's light mode (u0: [0] their count and groups,
 // then two entries each; u1 the lights' coordinates; u2 the indirect arguments: up to 65535 groups a row), and the
-// lights as rt_local_lights.hlsli's b9 holds them (u3: positions and reach, count, colours) for the light draws.
+// lights as rt_local_lights.hlsli's b9 holds them (u3: positions and reach, count, colours) for the light draws. Lights
+// farther from the camera than g_sss_light_range (metres, 0 any) are not picked.
 #include "./sss.hlsli"
 #include "./sss_dispatch.hlsli"
 
@@ -28,7 +29,8 @@ RWStructuredBuffer<float4> t_rw_lights : register(u3);
 
 static const uint THREADS = 256u;
 static const uint MAX_CANDIDATES = 4096u;
-static const uint MAX_LIGHTS = 32u;  // rt_local_lights.hlsli's
+static const uint MAX_LIGHTS = 32u;   // the mask's bits
+static const uint LIST_LIGHTS = 128u;  // rt_local_lights.hlsli's b9 arrays
 static const uint MAX_DRAWS = 256u;
 static const int MAX_GROUPS_X = 65535;
 
@@ -88,7 +90,8 @@ void main(uint thread : SV_GroupThreadID)
     const float4 light = asfloat(t_instances.Load4(at + (draw.w & 0xFFFFu)));
     const float3 colour = asfloat(t_instances.Load3(at + (draw.w >> 16)));
     const float3 offset = light.xyz - camera_position;
-    scores[scored] = (light.w > 0.f) ? max(colour.r, max(colour.g, colour.b)) * light.w * light.w / max(dot(offset, offset), 1.f) : -1.f;
+    const bool within = (g_sss_light_range <= 0.f) || (dot(offset, offset) <= g_sss_light_range * g_sss_light_range);
+    scores[scored] = (light.w > 0.f && within) ? max(colour.r, max(colour.g, colour.b)) * light.w * light.w / max(dot(offset, offset), 1.f) : -1.f;
   }
   GroupMemoryBarrierWithGroupSync();
   // The same light drawn again (another of its draws): only its first.
@@ -124,7 +127,7 @@ void main(uint thread : SV_GroupThreadID)
     const uint at = InstanceByte(ranked, draw);
     const float4 light = asfloat(t_instances.Load4(at + (draw.w & 0xFFFFu)));
     t_rw_lights[rank] = light;
-    t_rw_lights[MAX_LIGHTS + 1u + rank] = float4(asfloat(t_instances.Load3(at + (draw.w >> 16))), 0.f);
+    t_rw_lights[LIST_LIGHTS + 1u + rank] = float4(asfloat(t_instances.Load3(at + (draw.w >> 16))), 0.f);
     InterlockedMax(picked, rank + 1u);
   }
   GroupMemoryBarrierWithGroupSync();
@@ -190,6 +193,6 @@ void main(uint thread : SV_GroupThreadID)
     t_rw_dispatches[0] = int4(entries, groups, 0, 0);
     const uint rows = (uint)(groups + MAX_GROUPS_X - 1) / (uint)MAX_GROUPS_X;
     t_rw_arguments.Store3(0, uint3((uint)min(groups, MAX_GROUPS_X), max(rows, 1u), (groups > 0) ? 1u : 0u));
-    t_rw_lights[MAX_LIGHTS] = float4(asfloat(count), 0.f, 0.f, 0.f);
+    t_rw_lights[LIST_LIGHTS] = float4(asfloat(count), 0.f, 0.f, 0.f);
   }
 }

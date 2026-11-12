@@ -42,6 +42,7 @@ cbuffer sss_extended : register(b4)
   float g_sss_soft_radius;     // the penumbra's most, render pixels
   uint g_sss_lights_wanted;    // torch and fire shadows: how many lights (sss_lights)
   uint g_sss_light_draws;      // the light draws' records last frame (sss_lights t1)
+  float g_sss_light_range;     // torch and fire shadows: lights within this many metres of the camera, 0 any (sss_lights)
 }
 
 #endif  // SRC_GAMES_TWATTILA_SSS_HLSLI_

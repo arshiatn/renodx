@@ -72,12 +72,13 @@ struct Settings {
   // The extended march (sss_bend_extended), each off by default: each occluder as thick as it is wide, `thickness` the
   // least; shadows softer away from their casters by a sun's disk of this many degrees (sss_soft); the sun's share through
   // banners, flags, tents and sails (InstallThin) and, with it, their colour (Coloured Shadows, t50); torch and fire
-  // shadows for this many lights (screen_space_lights.hpp).
+  // shadows for this many lights within `light_range` metres of the camera, 0 any (screen_space_lights.hpp).
   bool auto_thickness = false;
   float sun_disk = 0.f;
   float thin_light = 0.f;
   bool coloured = false;
   uint32_t lights = 0;
+  float light_range = 0.f;
 };
 
 // A vertex shader whose main-view G-buffer draws are banners, flags, tents or sails (InstallThin; `row`: only while it is on).
@@ -139,6 +140,8 @@ struct ExtendedSettings {
   float soft_radius = 0.f;
   uint32_t lights_wanted = 0;  // screen_space_lights.hpp's
   uint32_t light_draws = 0;
+  float light_range = 0.f;
+  std::array<float, 3> padding = {};
 };
 
 // The penumbra's most at 2160 render lines (Softer Away from the Caster; render pixels, by the render's height).
