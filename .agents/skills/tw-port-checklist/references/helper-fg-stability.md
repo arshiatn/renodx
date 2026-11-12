@@ -56,6 +56,7 @@ Before any test round of a new game or a big change:
 | RT off kept 15 GB; effects off kept textures [625742fc, 80239089] | Idle release 10 s, RT objects 15 s, effects free when off, `Release(true)` on leaving DLSS | Helper "release" lines; memory counters |
 | A shared texture opened twice in a process stays in VRAM (+195 MiB per RR cycle); a handle never closed (+32 MiB per set) | D3D11 opens at the set's first DLSS request; check every new shared texture's handle | `fg_bridge_test` memory phases |
 | A slow API in the first request passed the 5 s answer limit (`dlaa_bridge::Answer`; a later answer turns DLSS off) | Worker thread (`rt_worker` in `dlaa_helper/main.cpp`) | Helper log |
+| Pharaoh v52 crashed at every game exit: a destroy handler called `device->get_api()`, and `DetachAddon` calls the same handler with nullptr [d3013b0b, 97840ddd] | nullptr means the addon is ending: skip the device checks, drop the state | Read each destroy handler's `DetachAddon` call |
 | Room growth by `CreateCommittedResource` (up to 2.5 GB) stalled requests | On a worker at 3/4 [c12d17c7] | Harness |
 | Root UAVs have no bounds checks | `BUFFER_AT_OFFSET` clamps | Harness |
 | A 64-bit ReShade `dxgi.dll` beside the helper loaded our addons into it: a CRT fault each start, the DevKit crashed it, ReShade's banner on FSR FG's window | The helper loads `dxgi`, `d3d11`, `d3d12` from System32 first (delay-loaded) [3bd71292]; addons keep `DllMain` TRUE with `AddonInit` failing in a foreign host | `fg_bridge_test` module list with a ReShade in the helper's folder |

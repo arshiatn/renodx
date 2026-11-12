@@ -94,6 +94,7 @@ Overflow answers: blocked for solids and cards; lit only for grass still baking.
 ## 5. The game's shadow maps under rays
 
 - **Multiply or Replace, first.** Under Multiply, light through leaves and cloth shows only past the maps' reach. Replace (WH3's default as of 2026-11) needs the off-screen casters of section 3 first.
+- **Replace where the sun PS reads the maps itself** (Pharaoh: 12 of 25 sun PS read the atlas at t3 / s2): bind an ALWAYS point comparison sampler at that slot while the rays' shadow is bound at t49, and the game's back in finalize; kept maps (the baked 4096^2) stay the game's [86544b2f].
 - **Readers left under Replace**: water (WH3 2076D289, DFA2AEA2, 034010C4), lit effects (9EA8D889), particles' fog. In WH3, 454 shaders can read the maps and 7 were seen drawn: list them from traces, `InstallShadowReaders`, and Shadow Maps Under Rays for the rest.
 - **`InstallShadowsOnly`** learns the map from a square depth texture bound at the sun draw; a game whose sun PS reads a screen mask binds none, so it can't work there.
 - **Skip only per-frame draws.** Anything kept across frames (the static cache, its copy, new strips on scroll) stays drawn, or RT or PT to Reset shows a flat picture until the cache refreshes [dfb2334e].
