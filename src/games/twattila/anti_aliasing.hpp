@@ -136,7 +136,7 @@ struct ShaderSettings {
 };
 
 // aa.hlsli's aa_taa: the cameras in the game's register layout.
-// aa_rr_guides' b0: which way each pixel looks. The other games' guides ignore it.
+// aa_rr_guides' b0: which way each pixel looks (Attila's and Pharaoh's guides read it; the others ignore it).
 struct GuidesCamera {
   std::array<float, 16> inverse_view_projection = {};
   std::array<float, 3> position = {};
@@ -294,6 +294,8 @@ struct Runtime {
   Camera previous_camera;
   std::vector<Upload> uploads;
   ComPtr<ID3D11Texture2D> scene_depth;
+  // The G-buffer channels 1-3 the guides were written from this frame (RewriteSunGuides), released at the frame's end.
+  std::array<ComPtr<ID3D11ShaderResourceView>, 3> guides_gbuffer;
   DeviceObjects objects;
 };
 
@@ -682,7 +684,10 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     // Channels 1-3 (normal, colour, constants: each game's aa_rr_guides reads what its G-buffer keeps there).
     std::array<ID3D11ShaderResourceView*, 3> gbuffer = {};
     native->PSGetShaderResources(sun_draw.gbuffer_slot, 3, gbuffer.data());
-    if (WriteGuides(native, gbuffer)) objects.guides_frame = runtime.frame;
+    if (WriteGuides(native, gbuffer)) {
+      objects.guides_frame = runtime.frame;
+      std::ranges::copy(gbuffer, runtime.guides_gbuffer.begin());
+    }
     for (auto* view : gbuffer) {
       if (view != nullptr) view->Release();
     }
@@ -1517,6 +1522,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   ++runtime.frame;
   frame_history::tonemapped.store(false, std::memory_order_relaxed);
   runtime.scene_depth.Reset();
+  runtime.guides_gbuffer = {};
   // What ran last frame: an upscaler once it answered (render scale, jitter), TAA and SMAA T2x once they ran (jitter).
   const bool ran = ((Upscales(settings.method) ? runtime.upscaled_frame : runtime.applied_frame) + 1 == runtime.frame);
   // An upscaler: below 100% once it ran last frame (a frame without it, a menu, ends the scaling: nothing would stretch the
@@ -1650,6 +1656,15 @@ inline void RewriteGuides(ID3D11DeviceContext* native) {
   }
 }
 
+// The G-buffer guides again from the channels the frame's first sun light draw had, with what was drawn into them since
+// (Pharaoh's water, after the sun), where they were written this frame.
+inline void RewriteSunGuides(ID3D11DeviceContext* native) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  auto& runtime = internal::runtime;
+  if (runtime.objects.guides_frame != runtime.frame) return;
+  internal::WriteGuides(native, {runtime.guides_gbuffer[0].Get(), runtime.guides_gbuffer[1].Get(), runtime.guides_gbuffer[2].Get()});
+}
+
 // DLAA's render size this frame (DLSS: below the display's).
 inline std::array<UINT, 2> RenderSize() {
   const std::unique_lock lock(internal::runtime.mutex);
@@ -1670,6 +1685,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   internal::runtime.objects = {};
   dlaa_bridge::Release();
   internal::runtime.scene_depth.Reset();
+  internal::runtime.guides_gbuffer = {};
   internal::runtime.uploads.clear();
 }
 

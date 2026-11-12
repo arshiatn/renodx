@@ -1561,6 +1561,17 @@ constexpr auto OnSunContactShadows = []<typename T, typename Context>(Context& c
   }};
 };
 
+// Ray Reconstruction's guides again after the water (water_troy 833E7963 writes the G-buffer after the sun draws, and the
+// sky dome 9CF980D0 draws after it, once a frame in every data-run trace): from the first sun draw's channels.
+constexpr auto OnSkyDomeGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
+  twattila::anti_aliasing::RewriteSunGuides(native);
+  return {};
+};
+
 // Only the copy's device: another device's end between a sun draw and its finalize must leave the game's buffer to bind again.
 void OnDestroyContactShadowsDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
@@ -2500,6 +2511,8 @@ bool AttachAddon() {
   }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
+  renodx::utils::command_action::Register(
+      OnSkyDomeGuides, {.shader_hash = 0x9CF980D0, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   twattila::device_loss::InstallLast();
@@ -2537,6 +2550,7 @@ void DetachAddon() {
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
   renodx::utils::command_action::Unregister(OnLightCountDraw);
+  renodx::utils::command_action::Unregister(OnSkyDomeGuides);
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
