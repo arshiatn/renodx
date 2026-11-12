@@ -123,6 +123,7 @@ struct Sliders {
   float water_reflections = 1.f;  // the water's from its own surface (games whose reflection pass OnReflectionDraw hooks)
   float reflection_samples = 1.f;
   float reflection_reuse = 0.f;  // 0 off, 1 from ReSTIR GI, 2 Own ReSTIR
+  float water_steady = 0.f;  // Steadier Water Reflections
   float debug_view = 0.f;  // games whose tone mapper hook calls OnTonemapDrawn
   float scene_test = 0.f;  // with the Debug View on
 };
@@ -178,6 +179,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reflection_samples = static_cast<uint32_t>(sliders.reflection_samples) * rays_of(sliders.rays_reflections),
       .reflection_reuse = sliders.reflection_reuse == 1.f && sliders.light_bounce == 2.f,
       .reflection_own = sliders.reflection_reuse == 2.f,
+      .water_steady = sliders.water_steady != 0.f,
       // Ray-traced sun shadows are every shadow: the point lights' too (games whose light draws InstallPointLights hooks),
       // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
       .local_lights = sliders.local_lights != 0.f && sliders.sun_shadows != 0.f && dlaa,
@@ -1850,6 +1852,20 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             .tooltip = "Rivers and lakes reflect what the rays find, also off screen. Off: screen-space reflections there.",
             .labels = {"Off", "On"},
             .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f; },
+            .is_visible = [] { return internal::water_pass; },
+        },
+        new renodx::utils::settings::Setting{
+            .key = "RayTracedWaterSteady",
+            .binding = &sliders->water_steady,
+            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+            .default_value = 0.f,
+            .label = "Steadier Water Reflections (Experimental)",
+            .section = section,
+            .tooltip = "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.",
+            .labels = {"Off", "On"},
+            .is_enabled = [sliders, aa] {
+              return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f && sliders->water_reflections != 0.f;
+            },
             .is_visible = [] { return internal::water_pass; },
         },
         new renodx::utils::settings::Setting{

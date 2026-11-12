@@ -110,6 +110,8 @@ struct Settings {
   bool reflection_reuse = false;
   // Own ReSTIR (bridge v19, helpers 55 on): their own reservoirs instead.
   bool reflection_own = false;
+  // Steadier Water Reflections (RT_REFLECTIONS_STEADY): a mirror's within the range its neighbours show.
+  bool water_steady = false;
   // RT_REFLECTIONS_SQUARED_LOBE.
   bool reflection_squared_lobe = false;
   bool reflection_fog = false;  // RT_REFLECTIONS_FOG (the host writes the fog: rt_leg_fog.hlsli)
@@ -2897,6 +2899,7 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
                  | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                  | (runtime.settings.reflection_reuse ? dlaa_bridge::RT_REFLECTIONS_REUSE : 0u)
                  | (runtime.settings.reflection_own ? dlaa_bridge::RT_REFLECTIONS_OWN : 0u)
+                 | (runtime.settings.water_steady ? dlaa_bridge::RT_REFLECTIONS_STEADY : 0u)
                  | (runtime.settings.reflection_squared_lobe ? dlaa_bridge::RT_REFLECTIONS_SQUARED_LOBE : 0u)
                  | (light_copied ? dlaa_bridge::RT_REFLECTIONS_LIGHT : 0u)
                  // Only over the scene's light before its fog (this pass's buffer, or the Light Bounce's prepared light): last

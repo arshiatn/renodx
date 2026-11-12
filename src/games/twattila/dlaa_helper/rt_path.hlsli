@@ -92,6 +92,7 @@ static const uint PATH_SQUARED_LOBE = 536870912u;       // reflections: alpha = 
 static const uint PATH_NRD = 268435456u;                // NVIDIA's REBLUR denoises this request's light (rt_nrd_front.hlsl)
 static const uint PATH_SKY_APART = 134217728u;          // Own Sky Rays: Path-Traced AO's sky past the reservoirs
 static const uint PATH_REFLECT_FOG = 16384u;            // reflections: the game's fog between a pixel and what its rays met
+static const uint PATH_REFLECT_STEADY = 32768u;         // Steadier Water Reflections (rt_reflect_filter.cs_6_5.hlsl)
 static const uint REFLECT_NEIGHBOURS = 4u;
 static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
 static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away
