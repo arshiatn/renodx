@@ -20,6 +20,7 @@
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -45,6 +46,13 @@ bool IsExtendedMode() {
 bool IsPsychoMode() {
   return shader_injection.hdr == 2.f && IsAdvancedSettings();
 }
+
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+}
+
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
+constexpr float HUE_CLIP_DEFAULT = 70.f;
 
 void ApplyResetPreset() {
   // Peak / Paper White / UI, Settings Mode and output are kept.
@@ -72,6 +80,7 @@ void ApplyResetPreset() {
       {"godrays", 1.f},
       {"volumetric_fog", 1.f},
   });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
 // Moves the bound render targets to their 16-bit clones (hot swap), so the HDR frame
@@ -217,19 +226,21 @@ void BuildRuntimeData() {
                      "HDR (UE Extended): the game's Filmic tonemapper extended into HDR with UE Filmic Extended\n"
                      "from RenoDX's UE Extended addon (by marat569), at that addon's defaults (default).\n"
                      "HDR (PsychoV31): replaces ACES tonemapper with PsychoV31, keeping the artist's\n"
-                     "grading (white balance, color grading, fades). Recommended.",
-          .labels = {"SDR", "HDR (UE Extended)", "HDR (PsychoV31)"},
+                     "grading (white balance, color grading, fades).\n"
+                     "HDR (PsychoV35): the same with Musa's PsychoV35 and Hue Clip Emulation. Recommended.",
+          .labels = {"SDR", "HDR (UE Extended)", "HDR (PsychoV31)", "HDR (PsychoV35)"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Recommended (Deeper shadows)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended look: HDR (PsychoV31). Deeper shadows.\n"
+          .tooltip = "Recommended look: HDR (PsychoV35). Deeper shadows.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
-            renodx::utils::settings::UpdateSettings({{"tonemapper", 2.f}, {"volumetric_fog", 0.5f}, {"sharpening", 0.0f},{"shadows",0.0f}});
+            renodx::utils::settings::UpdateSettings(
+                {{"tonemapper", 3.f}, {"volumetric_fog", 0.5f}, {"sharpening", 0.0f}, {"shadows", 0.0f}, {"v35_shadows", 0.0f}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -237,11 +248,11 @@ void BuildRuntimeData() {
           .label = "Recommended",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended look: HDR (PsychoV31)\n"
+          .tooltip = "Recommended look: HDR (PsychoV35)\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
-            renodx::utils::settings::UpdateSettings({{"tonemapper", 2.f}, {"volumetric_fog", 0.5f}, {"sharpening", 0.0f}});
+            renodx::utils::settings::UpdateSettings({{"tonemapper", 3.f}, {"volumetric_fog", 0.5f}, {"sharpening", 0.0f}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -389,6 +400,7 @@ void BuildRuntimeData() {
              "Extra (Probably not used)", "Multiplier on the game's chromatic aberration (where the game uses it).",
              IsHDRMode, IsAdvancedSettings),
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 bool configured = false;
@@ -499,6 +511,12 @@ void ConfigureAddon() {
     settings.push_back(setting);
   }
 
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::TEXT,
+      .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
+               "and PsychoV35. UE Extended by Marat.",
+      .section = "About",
+  });
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,

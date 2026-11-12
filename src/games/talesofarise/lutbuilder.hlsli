@@ -14,6 +14,7 @@
 
 #include "./shared.h"
 #include "./psycho_test31.hlsli"
+#include "../twattila/psycho35.hlsli"
 #include "./ue_extended.hlsli"
 
 cbuffer cb0 : register(b0)
@@ -368,13 +369,19 @@ int TargetGamut()
   return (TOA_SDR_OUTPUT ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709 : int(SI.gamut_compression_mode));
 }
 
+// Where the game's curve puts mid gray (PsychoV31's and PsychoV35's anchor).
+float GameMidGray()
+{
+  const float mid_gray = GameCurveY(0.18f);
+  return (mid_gray > 0.f) ? mid_gray : 0.18f;
+}
+
 // HDR (PsychoV31), like Pharaoh: Dynasties: the artist's grading and PsychoV31 only, anchored on the
 // game curve's mid gray, with its own contrast, shadows and colors. Extended where V31 fails.
 float3 ApplyPsychoV31(float3 untonemapped_ap1, float peak)
 {
   float3 untonemapped_bt709 = renodx::color::bt709::from::AP1(untonemapped_ap1);
-  float anchor_out = GameCurveY(0.18f);
-  anchor_out = (anchor_out > 0.f) ? anchor_out : 0.18f;
+  const float anchor_out = GameMidGray();
   float y_in = max(renodx::color::y::from::BT709(untonemapped_bt709), 1e-7f);
   // Highlight Roll-off: V31's shoulder compression. 0: 1, 1: 1.5 (default), 2: 3.
   float compression = 1.f + 0.5f * SI.roll_off * SI.roll_off;
@@ -583,15 +590,37 @@ float4 GenerateHDRLut(float3 untonemapped_ap1)
     float3 mid_gray = UEExtendedPostGrade(ApplySDRLuts(mid_gray_tonemapped));
     color = renodx::color::correct::GammaSafe(ue_extended::DisplayMap(graded, mid_gray, peak));
   } else {
-    // HDR (PsychoV31): the game's post grade after the complete tone curve (fades must not be undone by the HDR
-    // shoulder).
-    color = renodx::color::correct::GammaSafe(PostGradeHDR(ApplySDRLuts(ApplyPsychoV31(untonemapped_ap1, peak))));
-    // Highlight Hue Shift and the game's grading come after PsychoV31's gamut compression and can leave the target
-    // again: such colors are brought back to its edge (luminance and hue kept); colors inside stay as they are.
+    // HDR (PsychoV31, PsychoV35): the game's post grade after the complete tone curve (fades must not be undone by the
+    // HDR shoulder).
+    float3 tonemapped;
+    float gamut_compression;
+    int target_gamut;
     [branch]
-    if (SI.gamut_compression > 0.f) {
+    if (HDR >= 3.f) {
+    // PsychoV35 (twattila/psycho35.hlsli) on the game curve's mid gray; Hue Clip Emulation toward the hue the game's
+    // curve gives each channel, clipped (it replaces V31's highlight shifts).
+    float3 untonemapped_bt709 = renodx::color::bt709::from::AP1(untonemapped_ap1);
+    [branch]
+    if (SI.hue_clip > 0.f) {
+      untonemapped_bt709 = renodx::tonemap::psychov::HueTransfer(untonemapped_bt709, saturate(ToneCurve(untonemapped_ap1)),
+                                                                 SI.hue_clip);
+    }
+      tonemapped = ApplyPsychoV35(untonemapped_bt709, peak, TOA_SDR_OUTPUT, GameMidGray());
+      gamut_compression = SI.v35_gamut_compression;
+      target_gamut = (TOA_SDR_OUTPUT ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709
+                                     : renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020);
+    } else {
+      tonemapped = ApplyPsychoV31(untonemapped_ap1, peak);
+      gamut_compression = SI.gamut_compression;
+      target_gamut = TargetGamut();
+    }
+    color = renodx::color::correct::GammaSafe(PostGradeHDR(ApplySDRLuts(tonemapped)));
+    // Highlight Hue Shift and the game's grading come after the gamut compression and can leave the target again:
+    // such colors are brought back to its edge (luminance and hue kept); colors inside stay as they are.
+    [branch]
+    if (gamut_compression > 0.f) {
       float3x3 target_to_lms = renodx::color::macleod_boynton::BT709_TO_LMS_WEIGHTED_MAT;
-      switch (TargetGamut()) {
+      switch (target_gamut) {
         case renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020:
           target_to_lms = renodx::color::macleod_boynton::BT2020_TO_LMS_WEIGHTED_MAT;
           break;

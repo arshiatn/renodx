@@ -1,5 +1,10 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v150 (2026-11-12, PsychoV35 in every game; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper103 as in v149)
+
+- **Red line under Anti-Aliasing** (ATN: two players had no upscaler): "In-game Anti-Aliasing must be Off for DLSS, FSR, XeSS and Frame Generation." The game's MSAA leaves the depth multisampled, so the upscalers (and TAA / SMAA T2x) never start (`anti_aliasing.hpp`); one Texts field in `graphics_page.hpp`, every game with that page shows its own.
+- PsychoV35's pieces shared by every game: `ApplyPsychoV35` takes a game's own mid gray and contrast scale (defaults as before), Musa's file has SM3 forms (RUSE) behind `__SHADER_TARGET_MAJOR`; SM4+ the same code. No change in the picture here.
+
 ## v149 (2026-11-12, ATN's list; stamped and installed, not run in game; renodx-tw-dlaa64.exe helper103 as in v148)
 
 - **PsychoV35 in every Recommended preset and Reset** (ATN; the SDR preset stays SDR). It is now **Musa's custom PsychoV35** (`twattila/psycho_test35.hlsli`, his file, only its include path changed) with **its own sliders** (`v35_*`, apart from V31's) in V31's order: Exposure, Highlights, Shadows, Contrast, Highlight Contrast, Shadow Contrast, Flare, Saturation / Purity, Dechroma, Highlight Roll-off, Gamut Compression, then "Fire too pink, too orange or too pale?", Highlight Saturation and **Hue Clip Emulation** (was Hue Clip; default 40). Anchored at mid gray (0.18) as V31; Highlight Roll-off 1 = Musa's compression 1.5. Rendering Mode label "HDR (PsychoV35)".

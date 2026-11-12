@@ -35,6 +35,7 @@
 #include "../twattila/ssr_hiz.hpp"
 #include "./more_tests.h"
 #include "./engine_tweaks.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -58,11 +59,19 @@ bool IsPsychoV31Mode() {
   return shader_injection.hdr == 2.f;
 }
 
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 3.f;
+}
+
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, a luminance curve then the clip).
+constexpr float HUE_CLIP_DEFAULT = 80.f;
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
 }
 
-// rendering_mode: PsychoV31 (2) in all of them (ATN: Recommended in V31; Reset too, as there is no Extended mode).
+// rendering_mode: PsychoV35 (3) in all of them (ATN 2026-11-12: Recommended in V35; Reset too, as there is no Extended
+// mode), every mode's sliders at their defaults.
 void ApplyHDRPreset(
     float rendering_mode,
     float video_autohdr,
@@ -132,6 +141,7 @@ void ApplyHDRPreset(
       {"v31_highlight_hue_shift", 0.05f},
       {"v31_highlight_saturation_shift", 0.f},
   });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
 #define UpgradeRTVReplaceShader(value)                                                                \
@@ -323,8 +333,9 @@ void BuildRuntimeData() {
         .section = "General",
         .tooltip = "SDR: the game's SDR.\n"
                    "HDR (PsychoV30): the HDR pipeline with PsychoV30 (default).\n"
-                   "HDR (PsychoV31): the HDR pipeline with PsychoV31, more grading sliders.",
-        .labels = {"SDR", "HDR (PsychoV30)", "HDR (PsychoV31)"},
+                   "HDR (PsychoV31): the HDR pipeline with PsychoV31, more grading sliders.\n"
+                   "HDR (PsychoV35): the HDR pipeline with Musa's PsychoV35 and Hue Clip Emulation (the Recommended presets).",
+        .labels = {"SDR", "HDR (PsychoV30)", "HDR (PsychoV31)", "HDR (PsychoV35)"},
     },
     new renodx::utils::settings::Setting{
         .key = "gamma_correction",
@@ -346,7 +357,7 @@ void BuildRuntimeData() {
         .tooltip = "Settings, I would use with a 2500nits screen.",
         .on_change = []() {
           ApplyHDRPreset(
-              2.f, 0.2f,  // rendering mode, video AutoHDR
+              3.f, 0.2f,  // rendering mode, video AutoHDR
               1.0f,  // exposure
               1.0f,  // highlights
               1.0f,  // shadows
@@ -379,7 +390,7 @@ void BuildRuntimeData() {
         .tooltip = "Settings, I would use with a 1000nits screen.",
         .on_change = []() {
           ApplyHDRPreset(
-              2.f, 0.2f,  // rendering mode, video AutoHDR
+              3.f, 0.2f,  // rendering mode, video AutoHDR
               1.0f,  // exposure
               1.0f,  // highlights
               1.0f,  // shadows
@@ -412,7 +423,7 @@ void BuildRuntimeData() {
         .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.",
         .on_change = []() {
           ApplyHDRPreset(
-              2.f, 0.f,  // rendering mode (no Extended mode here: PsychoV31, ATN), video AutoHDR
+              3.f, 0.f,  // rendering mode (no Extended mode here: PsychoV35, ATN), video AutoHDR
               1.0f,  // exposure
               1.0f,  // highlights
               1.0f,  // shadows
@@ -1093,6 +1104,7 @@ void BuildRuntimeData() {
     //     },
     // },
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 // Graphics (Experimental): the sliders, through the LOD pick hook (model detail), Attila's unit hook
@@ -1662,7 +1674,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30 and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. Visibility "
+          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
+                   "PsychoV31 and PsychoV35. Visibility "
                    "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
                    "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
                    "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "

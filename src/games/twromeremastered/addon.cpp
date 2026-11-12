@@ -29,6 +29,7 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -54,6 +55,13 @@ bool IsPsychoMode() {
 bool IsPsychoV31Mode() {
   return shader_injection.hdr == 3.f && current_settings_mode == 1;
 }
+
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 4.f && current_settings_mode == 1;
+}
+
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, Hable on the luminance).
+constexpr float HUE_CLIP_DEFAULT = 80.f;
 
 // Extra sliders: both HDR modes.
 bool IsHDRMode() {
@@ -123,13 +131,14 @@ void ApplyResetPreset() {
       // {"vfx_base_brightness", 1.f},
       // {"sky_deband", 2.f},
   });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
 void ApplyPsychoRecommended() {
-  // ATN: every recommended preset in PsychoV31 (its sliders at their defaults), Video AutoHDR 0.20.
+  // ATN 2026-11-12: every recommended preset in PsychoV35 (its sliders at their defaults), Video AutoHDR 0.20.
   ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 3.f},
+      {"tonemapper", 4.f},
       {"video_autohdr", 0.2f},
       {"exposure", 1.f},
       {"highlights", 1.f},
@@ -680,15 +689,16 @@ void BuildRuntimeData() {
         .tooltip = "SDR: the game's original tonemapper (Uncharted 2 / Hable).\n"
                    "HDR (Extended): Used (Uncharted 2/Hable Extended) instead\n"
                    "HDR (PsychoV30): replaces (Uncharted 2 / Hable) with PsychoV30 as tonemapper.\n"
-                   "HDR (PsychoV31): replaces it with PsychoV31, more grading sliders.",
-        .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)", "HDR (PsychoV31)"},
+                   "HDR (PsychoV31): replaces it with PsychoV31, more grading sliders.\n"
+                   "HDR (PsychoV35): replaces it with Musa's PsychoV35 and Hue Clip Emulation (Recommended).",
+        .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)", "HDR (PsychoV31)", "HDR (PsychoV35)"},
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV31) and Video AutoHDR 0.20, the rest at its default.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyPsychoRecommended();
         },
@@ -1460,6 +1470,7 @@ void BuildRuntimeData() {
     //     },
     // },
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 bool configured = false;
@@ -1695,7 +1706,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30 and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. Uncharted 2 extended: Musa and DabVeed.",
+          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
+                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{

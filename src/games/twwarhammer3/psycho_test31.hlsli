@@ -2276,28 +2276,6 @@ float3 FitToTargetGamut(float3 color_bt709, int target_gamut_mode) {
                  mul(renodx::color::macleod_boynton::BT709_TO_LMS_WEIGHTED_MAT, color_bt709), target_to_lms, 1.f));
 }
 
-// Hue Clip (PsychoV35, before the game's grade): the middle channel moved toward the place the game's per-channel SDR
-// clip gives it (`clip_scale` brings the colour to the game's clip at 1; Neutwo per channel is that clip made smooth,
-// so the bend has no edge where every channel clips). Signs, the smallest and the largest magnitude are kept, then the
-// BT.709 luminance. `strength` 0 none, 1 the clip's place. Sky blue (blue the largest, red the smallest) twice as far,
-// never past the largest channel: the games' SDR pictures turn sky cyan more than fire yellow (test/tw_psychov35).
-float3 HueClip(float3 color_bt709, float clip_scale, float strength) {
-  const float3 magnitude = abs(color_bt709);
-  const float3 reference = renodx::tonemap::neutwo::PerChannel(magnitude * clip_scale);
-  const float reference_min = renodx::math::Min(reference);
-  const float reference_range = renodx::math::Max(reference) - reference_min;
-  if (reference_range == 0.f) return color_bt709;
-  const float magnitude_min = renodx::math::Min(magnitude);
-  const float magnitude_max = renodx::math::Max(magnitude);
-  const float3 transferred = lerp(magnitude_min, magnitude_max, (reference - reference_min) / reference_range);
-  const bool sky = magnitude.b >= magnitude.g && magnitude.g >= magnitude.r;
-  const float3 bent = renodx::math::CopySign(
-      clamp(lerp(magnitude, transferred, (sky ? 2.f : 1.f) * strength), magnitude_min, magnitude_max), color_bt709);
-  const float original_y = renodx::color::y::from::BT709(color_bt709);
-  const float bent_y = renodx::color::y::from::BT709(bent);
-  return (original_y > 0.f && bent_y > 0.f) ? bent * (original_y / bent_y) : color_bt709;
-}
-
 }  // namespace psychov
 }  // namespace tonemap
 }  // namespace renodx

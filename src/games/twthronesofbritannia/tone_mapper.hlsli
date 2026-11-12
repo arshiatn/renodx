@@ -5,12 +5,15 @@
 // bloom: fixed ones; Attila's family): adaptive black / white exposure and the per-channel S-curve kept as grading,
 // without the SDR highlight cap, forced whitening and final clamp. Include after the shader's cbuffers.
 #include "./shared.h"
+#include "../twattila/psycho35.hlsli"
 
-float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_white_points)
+// `stock_highlight_limit`: the stock path limits the scene's highlights before bloom (t00, t17; not t18), for Hue Clip.
+float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_white_points, bool stock_highlight_limit = true)
 {
   // Stock bloom strength is 1.0. SI.bloom is an intuitive HDR multiplier.
+  const float3 bloom_color = bloom_sample.xyz * SI.bloom;
   float3 hdr_color =
-      max(scene_sample.xyz + bloom_sample.xyz * SI.bloom, 0.f.xxx);
+      max(scene_sample.xyz + bloom_color, 0.f.xxx);
 
   float black_point = black_white_points.x;
   float white_point = black_white_points.y;
@@ -31,6 +34,14 @@ float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_whit
           : 1.f;
 
   float3 untonemapped = hdr_color * normalization_scale;
+
+  // PsychoV35: Hue Clip Emulation before the S-curve (twattila/psycho35.hlsli; Attila's engine).
+  [branch]
+  if (HDR >= 3.f && SI.hue_clip > 0.f) {
+    untonemapped = renodx::tonemap::psychov::AttilaEngineHueClip(untonemapped, normalized_hdr_luminance, scene_sample.xyz,
+                                                                 bloom_color, black_point, white_point, stock_highlight_limit,
+                                                                 SI.hue_clip);
+  }
 
   // Britannia/Attila's S-curve is a per-channel SDR curve. Compress the HDR
   // signal into its valid domain, apply the native curve, then undo only the

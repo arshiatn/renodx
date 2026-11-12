@@ -6,6 +6,7 @@
 #include "./shared.h"
 #include "./psycho_test30.hlsli"
 #include "./psycho_test31.hlsli"
+#include "../twattila/psycho35.hlsli"
 
 // The native matrix + LUT are authored for a bounded gamma-domain signal. Compress
 // reversibly, grade in that domain, expand back. Same bridge as Troy.
@@ -118,6 +119,10 @@ float3 ApplyPsychoV31(float3 color)
 // The Psycho modes: PsychoV30 (Rendering Mode 2) or PsychoV31 (3).
 float3 ApplyPharaohPsycho(float3 color)
 {
+  [branch]
+  if (HDR >= 3.5f) {
+    return ApplyPsychoV35(color, HDR_PEAK, SI.swap_chain_encoding == 2.f);
+  }
   [branch]
   if (HDR >= 2.5f) {
     return ApplyPsychoV31(color);

@@ -1,7 +1,7 @@
-// Hue Clip (psycho_test31.hlsli's HueClip) alone, for tests.cpp: run.ps1 compiles it once with Attila's folder and once
-// with WH3's as the include path (/I), so both copies are tested.
+// Hue Clip (twattila/psycho35.hlsli's HueClip) alone, for tests.cpp: run.ps1 compiles it with Attila's folder
+// as the include path (/I): one copy for every game.
 #include "shared.h"
-#include "psycho_test31.hlsli"
+#include "psycho35.hlsli"
 
 struct HueClipCase {
   float4 color_and_strength;  // xyz the colour, w the strength

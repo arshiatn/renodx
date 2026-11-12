@@ -2,6 +2,11 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+## v6 (2026-11-12, PsychoV35 round; built only, not run in game)
+
+- **HDR (PsychoV35)** (Rendering Mode 4): Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`). Hue Clip Emulation (default 80) before the LUT, toward the stock Hable on the luminance and its per-channel clip. Recommended in PsychoV35; Reset stays HDR (Extended).
+- Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain.
+
 ## v5 (2026-10-22)
 
 - Graphics (Experimental), Ambient Occlusion and their preset buttons: Advanced only (the round-4 check never hid

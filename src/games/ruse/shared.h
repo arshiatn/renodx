@@ -1,14 +1,14 @@
 #ifndef SRC_RUSE_SHARED_H_
 #define SRC_RUSE_SHARED_H_
 
-// Multiple of 4 floats: DX9 reads it as float4 registers (see SM3 below).
+// Multiple of 4 floats: DX9 reads it as float4 registers (c200-c209, see SM3 below).
 struct ShaderInjectData {
   float peak_white_nits;
   float diffuse_white_nits;
   float graphics_white_nits;
   float swap_chain_encoding;
 
-  float hdr;  // 0 SDR, 1 PsychoV31 Native Tone, 2 PsychoV31 Full Replacement.
+  float hdr;  // 0 SDR, 1 PsychoV31 Native Tone, 2 PsychoV31 Full Replacement, 3 PsychoV35 (Full Replacement).
   float bloom;
   float vignette;
 
@@ -34,6 +34,24 @@ struct ShaderInjectData {
   float video_scale;  // CPU-computed gamma 2.2 Paper White gain for final video draws.
   float reserved_5;
   float reserved_6;
+
+  // PsychoV35 (Rendering Mode 3): Musa's (twattila/psycho35.hlsli), its own sliders as V31's, appended.
+  float hue_clip;                  // Hue Clip Emulation, 0 - 1
+  float v35_exposure;
+  float v35_highlights;
+  float v35_shadows;
+  float v35_contrast;
+  float v35_highlight_contrast;    // above mid gray, 1 V35's own
+  float v35_shadow_contrast;       // below mid gray, 1 V35's own
+  float v35_flare;                 // 0 none, deeper blacks above it
+  float v35_saturation;
+  float v35_dechroma;              // 0 none, bright colors toward white above it
+  float v35_highlight_saturation;
+  float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
+  float v35_gamut_compression;     // 0 none (the display clips), 1 full
+  float reserved_7;
+  float reserved_8;
+  float reserved_9;
 };
 
 #define SI shader_injection
@@ -58,11 +76,13 @@ struct ShaderInjectData {
 #ifndef __cplusplus
 #if (__SHADER_TARGET_MAJOR == 3)
 // DX9 (the game's shaders): no constant buffers. The addon writes the struct into
-// c200-c205 (constant_buffer_offset = 200 * 4). High registers: the game uses the low ones.
-float4 shader_injection_registers[6] : register(c200);
+// c200-c209 (constant_buffer_offset = 200 * 4). High registers: the game uses the low ones.
+float4 shader_injection_registers[10] : register(c200);
 static const ShaderInjectData shader_injection = {
   shader_injection_registers[0], shader_injection_registers[1], shader_injection_registers[2],
-  shader_injection_registers[3], shader_injection_registers[4], shader_injection_registers[5]
+  shader_injection_registers[3], shader_injection_registers[4], shader_injection_registers[5],
+  shader_injection_registers[6], shader_injection_registers[7], shader_injection_registers[8],
+  shader_injection_registers[9]
 };
 #elif ((__SHADER_TARGET_MAJOR == 5 && __SHADER_TARGET_MINOR >= 1) || __SHADER_TARGET_MAJOR >= 6)
 cbuffer shader_injection : register(b13, space50) {

@@ -35,6 +35,7 @@
 #include "../twshogun2completeedition_dlss/dlss_jitter.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "./ray_tracing.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 #include "./vfx_effects.hpp"
 
@@ -64,6 +65,13 @@ bool IsExtendedMode() {
 bool IsPsychoMode() {
   return shader_injection.hdr == 2.f && IsAdvancedSettings();
 }
+
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+}
+
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
+constexpr float HUE_CLIP_DEFAULT = 70.f;
 
 bool IsHdrOutput() {
   return shader_injection.swap_chain_encoding != 2.f;
@@ -114,14 +122,15 @@ void ApplyResetPreset() {
       {"video_autohdr", 0.f},
       {"video_dithering", 1.f},
   });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
-// The recommended presets (ATN's settings): HDR (PsychoV31), no lens flares, faint foliage glints, faint haze, brighter
-// VFX and videos.
+// The recommended presets (ATN's settings; 2026-11-12: Musa's PsychoV35 at its defaults): HDR (PsychoV35), no lens
+// flares, faint foliage glints, faint haze, brighter VFX and videos. PsychoV31's sliders as before, for that mode.
 void ApplyRecommendedPreset() {
   ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 2.f},
+      {"tonemapper", 3.f},
       {"highlight_saturation", 0.75f},
       {"lens_flare", 0.f},
       {"foliage_glints", 0.15f},
@@ -602,15 +611,16 @@ void BuildRuntimeData() {
           .tooltip = "SDR: the game's SDR.\n"
                      "HDR (Extended): the game's own tone curve, extended into HDR. Default.\n"
                      "HDR (PsychoV31): PsychoV31 instead of the game's curve.\n"
-                     "SDR output: HDR (Extended) keeps the game's curve, PsychoV31 is mapped to SDR.",
-          .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV31)"},
+                     "HDR (PsychoV35): Musa's PsychoV35 instead of it, with Hue Clip Emulation (Recommended).\n"
+                     "SDR output: HDR (Extended) keeps the game's curve, PsychoV31 and PsychoV35 are mapped to SDR.",
+          .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV31)", "HDR (PsychoV35)"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Recommended",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "HDR (PsychoV31), no lens flares, faint foliage glints, brighter sun, VFX and videos.\n"
+          .tooltip = "HDR (PsychoV35), no lens flares, faint foliage glints, brighter sun, VFX and videos.\n"
                      "Keeps Peak, Paper White, UI and output.",
           .on_change = []() { ApplyRecommendedPreset(); },
       },
@@ -628,6 +638,8 @@ void BuildRuntimeData() {
                 {"cone_response_exponent", 1.3f},
                 {"highlight_saturation", 1.00f},
                 {"roll_off", 2.00f},
+                {"v35_contrast", 1.3f},
+                {"v35_roll_off", 2.00f},
             });
           },
       },
@@ -889,6 +901,7 @@ void BuildRuntimeData() {
       // test_assign("Set as Big Fires", twshogun2::vfx_effects::Kind::BIG_FIRE),
       // test_assign("Set as Campfires", twshogun2::vfx_effects::Kind::CAMPFIRE),
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 
@@ -1099,7 +1112,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31.\n"
+          .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31\n"
+                   "and PsychoV35.\n"
                    "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0\n"
                    "(APACHE_LICENSE-2.0.txt).",
           .section = "About",

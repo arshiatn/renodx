@@ -41,6 +41,7 @@
 #include "./contact_shadows.hpp"
 #include "./light_bounce.hpp"
 #include "./ray_tracing.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -70,6 +71,13 @@ bool IsExtendedMode() {
 bool IsPsychoMode() {
   return shader_injection.hdr == 2.f && IsAdvancedSettings();
 }
+
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+}
+
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, Hable on each channel).
+constexpr float HUE_CLIP_DEFAULT = 80.f;
 
 bool IsHdrOutput() {
   return shader_injection.swap_chain_encoding != 2.f;
@@ -105,9 +113,9 @@ const std::vector<std::pair<std::string, float>> EXT_FIRE_OPTION_2 = {
     {"ext_fire_hue", -0.05f},
     {"ext_fire_hue_focus", 0.75f},
 };
-// Recommended, also under its deeper shadows twin.
+// Recommended, also under its deeper shadows twin (ATN 2026-11-12: PsychoV35, its sliders at their defaults).
 const std::vector<std::pair<std::string, float>> LESS_POST_PROCESSING = {
-    {"tonemapper", 2.f},
+    {"tonemapper", 3.f},
     {"film_grain", 0.f},
     {"motion_blur_camera", 0.f},
     {"motion_blur_object", 0.f},
@@ -153,6 +161,7 @@ void ApplyResetPreset() {
   });
   renodx::utils::settings::UpdateSettings(FIRE_OPTION_1);
   renodx::utils::settings::UpdateSettings(EXT_FIRE_OPTION_1);
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
 renodx::mods::shader::CustomShaders custom_shaders;
@@ -348,21 +357,22 @@ void BuildRuntimeData() {
                      "HDR (Extended): the game's native Filmic (Uncharted 2) tonemapper, extended into HDR\n"
                      "(UC2 Extended). As close as possible to the original SDR look (default).\n"
                      "HDR (PsychoV31): replaces the Filmic tonemapper with PsychoV31, keeping the game's\n"
-                     "grading (exposure, bloom, color balance, sun shafts, color charts).",
-          .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV31)"},
+                     "grading (exposure, bloom, color balance, sun shafts, color charts).\n"
+                     "HDR (PsychoV35): the same with Musa's PsychoV35 and Hue Clip Emulation (Recommended).",
+          .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV31)", "HDR (PsychoV35)"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Recommended (All Post Processing On)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended look: HDR (PsychoV31), with all vanilla post processing, \n"
+          .tooltip = "Recommended look: HDR (PsychoV35), with all vanilla post processing, \n"
                      "hidden chromatic aberration, sharpening at 0.5, depth of field at 2 and Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
             renodx::utils::settings::UpdateSettings({
-                {"tonemapper", 2.f},
+                {"tonemapper", 3.f},
                 {"film_grain", 0.25f},
                 {"motion_blur_camera", 0.20f},
                 {"motion_blur_object", 0.50f},
@@ -379,7 +389,7 @@ void BuildRuntimeData() {
           .label = "Recommended",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended look: HDR (PsychoV31), no film grain, no motion blur,\n"
+          .tooltip = "Recommended look: HDR (PsychoV35), no film grain, no motion blur,\n"
                      "no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
@@ -393,11 +403,11 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "As Recommended, with deeper shadows closer to the game's\n"
-                     "(PsychoV31 Shadows 0.75, Flare 0.25).",
+                     "(PsychoV35 Shadows 0.75; in PsychoV31 Shadows 0.75, Flare 0.25).",
           .on_change = []() {
             ApplyResetPreset();
             renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
-            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}});
+            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}, {"v35_shadows", 0.75f}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -991,6 +1001,7 @@ void BuildRuntimeData() {
           .is_enabled = [] { return rt_sliders.path_tracing != 0.f; },
       },
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 // The execution skull above enemies: the largest 0x1B59F534 draw, missing from frames without it (F9 logs, 4K).
@@ -1562,8 +1573,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. UC2 Extended by Musa and "
-                   "Jon.",
+          .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
+                   "and PsychoV35. UC2 Extended by Musa and Jon.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{

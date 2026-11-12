@@ -67,6 +67,7 @@ Texture2D<float4> g_hdr_rgb_texture : register(t0);
 // 3Dmigoto declarations
 #define cmp -
 #include "../shared.h"
+#include "../../twattila/psycho35.hlsli"
 
 // Stock Narkowicz fit, Troy's exact constants.
 float3 TroyAcesFit(float3 x)
@@ -182,6 +183,13 @@ void main(
     float handoff_scale = kMidGrey / exposed_mid;
 
     o0.xyz = exposed * handoff_scale;
+
+    // PsychoV35: Hue Clip Emulation toward the hue the stock ACES fit gives each channel, clipped (twattila/psycho35.hlsli).
+    [branch]
+    if (HDR >= 3.5f && SI.hue_clip > 0.f) {
+      o0.xyz = renodx::tonemap::psychov::HueTransfer(o0.xyz, saturate(saturate(TroyAcesFit(exposed + curve_lift)) - black_offset),
+                                                     SI.hue_clip);
+    }
     o0.w = scene_sample.w;
     return;
   }

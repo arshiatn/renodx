@@ -29,6 +29,7 @@
 #include "./shared.h"
 #include "./psycho_test30.hlsli"
 #include "./psycho_test31.hlsli"
+#include "../twattila/psycho35.hlsli"
 #include "./shaders/common.hlsl"
 
 // Hable, textbook constants: A .15, B .50, C .10, D .20, E .02, F .30.
@@ -118,7 +119,7 @@ float4 ResolveMainColor(float2 v1)
 {
   static const float3 luma_weights = float3(0.212599993f, 0.715200007f, 0.0722000003f);
   // Threshold the float setting so a stray value cannot produce a hybrid mode.
-  const int mode = (HDR < 0.5f) ? 0 : ((HDR < 1.5f) ? 1 : ((HDR < 2.5f) ? 2 : 3));
+  const int mode = (HDR < 0.5f) ? 0 : ((HDR < 1.5f) ? 1 : ((HDR < 2.5f) ? 2 : ((HDR < 3.5f) ? 3 : 4)));
 
   const float2 screen_size = (float2)asuint(cb0[0].xy);
   const int2 pixel = (int2)(uint2)(v1.xy * screen_size);
@@ -156,7 +157,14 @@ float4 ResolveMainColor(float2 v1)
       // Hable dropped. Scene-linear handoff, scaled so the exposed value stock maps to
       // 0.18 (SDR mid grey) arrives at 0.18. Also samples the LUT where SDR does there.
       float mid_grey_input = InverseUncharted2(0.18f, white_point, HABLE_COEFFS);
-      hdr_color = color * (exposure * 0.18f / max(mid_grey_input, 0.0001f));
+      const float handoff_scale = exposure * 0.18f / max(mid_grey_input, 0.0001f);
+      hdr_color = color * handoff_scale;
+      // PsychoV35: Hue Clip Emulation toward the hue the stock Hable on the luminance and its per-channel clip give
+      // (twattila/psycho35.hlsli), before the LUT as there.
+      [branch]
+      if (hdr_mode == 4 && SI.hue_clip > 0.f) {
+        hdr_color = renodx::tonemap::psychov::HueClip(hdr_color, sdr_y / (y * handoff_scale), SI.hue_clip);
+      }
     }
   }
 #else
@@ -241,8 +249,10 @@ float4 ResolveMainColor(float2 v1)
     graded_hdr = ApplyExtendedPeakShoulder(graded_hdr);
   } else if (hdr_mode == 2) {
     graded_hdr = ApplyPsychoV30(graded_hdr);
-  } else {
+  } else if (hdr_mode == 3) {
     graded_hdr = ApplyPsychoV31(graded_hdr);
+  } else {
+    graded_hdr = ApplyPsychoV35(graded_hdr, HDR_PEAK, SI.swap_chain_encoding == 2.f);
   }
 
   float4 o0;

@@ -1,7 +1,8 @@
 #ifndef PSYCHOV_CUSTOMTEST35_HLSLI_
 #define PSYCHOV_CUSTOMTEST35_HLSLI_
 
-// Total War: ATTILA and Warhammer III: copy of Musa's customtest35 (2026-11-12), only this include's path changed.
+// Total War: ATTILA and Warhammer III: copy of Musa's customtest35 (2026-11-12), only this include's path changed and
+// the SM3 forms below (RUSE's DX9 shaders: no bit casts, no bitwise operations on bools). SM4 and later: unchanged.
 // Needs renodx.hlsl (shared.h).
 
 /*
@@ -11,6 +12,18 @@
  */
 
 #include "../../shaders/tonemap/psychov/test35.hlsl"
+
+// A failed pixel's NaN (black after ApplyPsychoV35, twattila/psycho35.hlsli): black at once on SM3; -infinity: the lowest
+// float there.
+#if __SHADER_TARGET_MAJOR >= 4
+#define PSYCHO35_FAILED asfloat(0x7fc00000u)
+#define PSYCHO35_NEGATIVE_INFINITY asfloat(0xff800000u)
+#define PSYCHO35_AND(a, b) ((a) & (b))
+#else
+#define PSYCHO35_FAILED 0.f
+#define PSYCHO35_NEGATIVE_INFINITY (-3.402823466e+38f)
+#define PSYCHO35_AND(a, b) ((a) && (b))
+#endif
 
 namespace renodx {
 namespace tonemap {
@@ -48,7 +61,7 @@ CUSTOM_PSYCHO35_C_INFINITY_ROLLOFF_GENERATOR(float3)
 // Derivatives accompany the grade because test35's optional boundary trade
 // must use the response actually rendered, not the original sigmoid's speed.
 float3 custom_psycho35_CInfinityTransition(float3 position, out float3 derivative) {
-  const bool3 interior = (position > 0.f) & (position < 1.f);
+  const bool3 interior = PSYCHO35_AND(position > 0.f, position < 1.f);
   const float3 t = renodx::math::Select(interior, position, 0.5f);
   const float3 value = rcp(1.f + exp2((1.f - 2.f * t) / (t * (1.f - t))));
   derivative = renodx::math::Select(interior, log(2.f) * value * (1.f - value) * (rcp(t * t) + rcp((1.f - t) * (1.f - t))), 0.f);
@@ -230,16 +243,16 @@ float3 custom_psychotm_test35(
     // Retain test35's homogeneous human-boundary intersection and local A/C
     // trade, evaluating the substituted anchored response and its derivative.
     const float mean_q = psycho35_Mean(source_ratio);
-    if (!(mean_q > 0.f) || isinf(mean_q)) return asfloat(0x7fc00000u).xxx;
+    if (!(mean_q > 0.f) || isinf(mean_q)) return PSYCHO35_FAILED.xxx;
     const float3 direction_q = source_ratio - mean_q;
     float3 origin_weighted = (anchor_in * mean_q) * PSYCHO35_MB_WEIGHTS;
     float3 direction_weighted = (anchor_in * direction_q) * PSYCHO35_MB_WEIGHTS;
     const float origin_y = origin_weighted.x + origin_weighted.y;
-    if (!(origin_y > 0.f) || isinf(origin_y)) return asfloat(0x7fc00000u).xxx;
+    if (!(origin_y > 0.f) || isinf(origin_y)) return PSYCHO35_FAILED.xxx;
     origin_weighted /= origin_y;
     direction_weighted /= origin_y;
     if (any(isnan(origin_weighted)) || any(isinf(origin_weighted))
-        || any(isnan(direction_weighted)) || any(isinf(direction_weighted))) return asfloat(0x7fc00000u).xxx;
+        || any(isnan(direction_weighted)) || any(isinf(direction_weighted))) return PSYCHO35_FAILED.xxx;
     const float direction_y = direction_weighted.x + direction_weighted.y;
     float boundary_t = 1.f;
     [unroll]
@@ -248,38 +261,38 @@ float3 custom_psychotm_test35(
       const float offset = renodx::color::gamut::CIE1702_HALFSPACE_NUMERATORS[edge] + dot(normal, PSYCHO35_MB_WHITE);
       const float margin = offset * (origin_weighted.x + origin_weighted.y) - dot(normal, origin_weighted.xz);
       const float denominator = dot(normal, direction_weighted.xz) - offset * direction_y;
-      if (!(margin >= 0.f) || isnan(denominator) || isinf(denominator)) return asfloat(0x7fc00000u).xxx;
+      if (!(margin >= 0.f) || isnan(denominator) || isinf(denominator)) return PSYCHO35_FAILED.xxx;
       if (denominator > 0.f) boundary_t = min(boundary_t, margin / denominator);
     }
     [unroll]
     for (int cone = 0; cone < 3; ++cone) {
       if (direction_q[cone] < 0.f) boundary_t = min(boundary_t, mean_q / -direction_q[cone]);
     }
-    if (!(origin_weighted.x + origin_weighted.y + boundary_t * direction_y > 0.f)) return asfloat(0x7fc00000u).xxx;
+    if (!(origin_weighted.x + origin_weighted.y + boundary_t * direction_y > 0.f)) return PSYCHO35_FAILED.xxx;
     if (boundary_t < 1.f) {
       float3 boundary_q = mean_q + boundary_t * direction_q;
-      if (any(boundary_q < -1e-6f * mean_q)) return asfloat(0x7fc00000u).xxx;
+      if (any(boundary_q < -1e-6f * mean_q)) return PSYCHO35_FAILED.xxx;
       if (any(boundary_q <= 0.f)) boundary_q = lerp(boundary_q, mean_q.xxx, 1e-6f);
-      if (any(boundary_q <= 0.f) || any(isnan(boundary_q)) || any(isinf(boundary_q))) return asfloat(0x7fc00000u).xxx;
+      if (any(boundary_q <= 0.f) || any(isnan(boundary_q)) || any(isinf(boundary_q))) return PSYCHO35_FAILED.xxx;
       float3 exposure_derivative;
       const float3 response = custom_psycho35_Response(
           boundary_q, anchor_out, peak_value, compression, clip_point, contrast,
           flare, highlight_contrast, shadow_contrast, highlights, shadows, exposure_derivative);
       const float derivative_scale = max(exposure_derivative.x, max(exposure_derivative.y, exposure_derivative.z));
-      if (!(derivative_scale > 0.f) || isinf(derivative_scale)) return asfloat(0x7fc00000u).xxx;
+      if (!(derivative_scale > 0.f) || isinf(derivative_scale)) return PSYCHO35_FAILED.xxx;
       exposure_derivative /= derivative_scale;
       const float3 incoming_derivative = exposure_derivative * direction_q / boundary_q;
       const float3 residual = response - psycho35_Mean(response);
       const float radius = length(residual);
       if (!(radius > 0.f) || isinf(radius)
           || any(isnan(exposure_derivative)) || any(isinf(exposure_derivative))
-          || any(isnan(incoming_derivative)) || any(isinf(incoming_derivative))) return asfloat(0x7fc00000u).xxx;
+          || any(isnan(incoming_derivative)) || any(isinf(incoming_derivative))) return PSYCHO35_FAILED.xxx;
       const float incoming_speed = length(float2(sqrt(3.f) * psycho35_Mean(incoming_derivative), dot(residual / radius, incoming_derivative)));
       const float exposure_speed = length(float2(sqrt(3.f) * psycho35_Mean(exposure_derivative), dot(residual / radius, exposure_derivative)));
       if (!(exposure_speed > 0.f) || isnan(exposure_speed) || isinf(exposure_speed)
-          || isnan(incoming_speed) || isinf(incoming_speed)) return asfloat(0x7fc00000u).xxx;
+          || isnan(incoming_speed) || isinf(incoming_speed)) return PSYCHO35_FAILED.xxx;
       boundary_q *= 1.f + (1.f - boundary_t) * incoming_speed / exposure_speed;
-      if (any(isnan(boundary_q)) || any(isinf(boundary_q))) return asfloat(0x7fc00000u).xxx;
+      if (any(isnan(boundary_q)) || any(isinf(boundary_q))) return PSYCHO35_FAILED.xxx;
       source_ratio = boundary_q;
     }
     source_ratio = max(source_ratio, 0.f);
@@ -367,7 +380,7 @@ float3 custom_psychotm_test35(
       return mean + psycho35_TargetResidual(residual * lerp(1.f, support, gamut_compression), 0);
     }
   }
-  float3 log_pressure = asfloat(0xff800000u);
+  float3 log_pressure = PSYCHO35_NEGATIVE_INFINITY;
   bool endpoint_contact = false;
   [unroll]
   for (int channel = 0; channel < 3; ++channel) {

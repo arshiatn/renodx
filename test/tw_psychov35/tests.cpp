@@ -6,7 +6,7 @@
 //    PsychoV30 / PsychoV31, at HDR10, scRGB and SDR output, sliders at their defaults and moved, Hue Clip at 0.7 and
 //    PsychoV35's sliders moved (which must do nothing there). 64 colours (every hue, greys, negative channels, black) x
 //    48 brightness steps.
-// 2. Hue Clip alone (psycho_test31.hlsli's HueClip, both games' copies): fire orange and sky blue move their middle
+// 2. Hue Clip alone (twattila/psycho35.hlsli's HueClip, every game's): fire orange and sky blue move their middle
 //    channel toward the clip's place, the smallest and largest channel keep their ratio, BT.709 luminance is kept; grey
 //    and strength 0 unchanged; a negative channel keeps its sign; a dark colour (far below the clip) about unchanged.
 // 3. PsychoV35 through the real chain (Attila t00 -> t01, WH3 t00), an exposure ramp of 64 colours, 2^-8 to 2^12 of the
@@ -15,6 +15,9 @@
 //    grey's ramp never darker as it rises.
 // 4. Report: PsychoV35's hue (OkLab) against the game's own SDR picture (the same chain in its SDR mode) where SDR
 //    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from.
+// 5. The same for the other games' kinds of stock curve (hue_curves.hlsl: a luminance curve then each channel clipped,
+//    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form (WH2's) agrees
+//    with part 4's WH3 (1.00).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -705,8 +708,6 @@ static void TestHueClip(const std::filesystem::path& folder) {
   std::vector<HueClipCase> cases;
   for (const auto& e : expects) cases.push_back({{e.color[0], e.color[1], e.color[2], e.strength}, {e.clip_scale, 0, 0, 0}});
   const auto attila_results = RunHueClip(folder / "hue_clip_twattila.cso", cases);
-  const auto wh3_results = RunHueClip(folder / "hue_clip_twwarhammer3.cso", cases);
-  CHECK(std::memcmp(attila_results.data(), wh3_results.data(), attila_results.size() * 16) == 0);
   for (size_t i = 0; i < expects.size(); ++i) {
     const auto& e = expects[i];
     const Float3 out = {attila_results[i][0], attila_results[i][1], attila_results[i][2]};
@@ -745,6 +746,7 @@ struct Chain {
   const Pair* attila_tone_mapper;
   const Pair* attila_hdr_to_screen;
   const Pair* wh3;
+  const Shader* curves;  // hue_curves.hlsl (part 5)
 };
 
 // Linear BT.709 in units of the UI's white (x graphics nits = nits) of PsychoV35's (or the SDR mode's) output.
@@ -905,6 +907,23 @@ static void ReportHue(const Chain& chain) {
                        return RunWh3(chain, Scene(columns, first_stop, stops_per_row, Wh3White(burn)), si, burn);
                      }});
   }
+  // 5. The other games: their kind of stock curve (hue_curves.hlsl), PsychoV35 at its defaults, white at 1.
+  const char* const curve_names[] = {"5. Luminance Reinhard + clip (WH2)", "5. Luminance Hable + clip (Rome Remastered)",
+                                     "5. Clip alone (RUSE)", "5. Hable per channel (Ryse)",
+                                     "5. UE film per AP1 channel (Tales, Expeditions, Shogun 2)", "5. ACES fit per channel (Troy, Pharaoh)"};
+  for (int curve = 0; curve < 6; ++curve) {
+    games.push_back({curve_names[curve], [&, curve](float mode, float hue_clip) {
+                       Bindings bindings;
+                       bindings.views["scene"] = Texture2D(WIDTH, HEIGHT, Scene(columns, first_stop, stops_per_row, 1.f));
+                       bindings.words["curve"] = F({static_cast<float>(curve)});
+                       bindings.words["strength"] = F({hue_clip});
+                       bindings.words["sdr"] = F({mode == 0.f ? 1.f : 0.f});
+                       bindings.injection = Bytes(AttilaInjection(3.f, 0.f));
+                       std::vector<Float3> linear;
+                       for (const auto& o : Draw(*chain.curves, bindings)) linear.push_back({o[0], o[1], o[2]});
+                       return linear;
+                     }});
+  }
   for (const auto& game : games) {
     const bool wh3_game = std::string(game.name).starts_with("WH3");
     const auto sdr = game.run(0.f, 0.f);
@@ -979,7 +998,8 @@ int main(int argc, char** argv) {
     TestBits(shaders);
     TestHueClip(after);
   }
-  const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"]};
+  const Shader curves = LoadPixelShader(after / "hue_curves.cso");
+  const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves};
   if (!report_only) TestPsychoV35(chain);
   ReportHue(chain);
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);

@@ -38,6 +38,7 @@
 #include "./dead_units.hpp"
 #include "./shadow_map.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -64,6 +65,13 @@ bool IsHDRMode() {
 bool IsPsychoV31Mode() {
   return shader_injection.hdr == 3.f;
 }
+
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 4.f;
+}
+
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the ACES fit).
+constexpr float HUE_CLIP_DEFAULT = 80.f;
 
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f && IsHDRMode();
@@ -130,13 +138,14 @@ void ApplyResetPreset() {
       {"sky_deband", 2.f},
       {"filmgrain", 0.f},
   });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
 void ApplyPsychoRecommendedNoVFXBoost() {
-  // ATN: every recommended preset in PsychoV31 (its sliders at their defaults), Video AutoHDR 0.20.
+  // ATN 2026-11-12: every recommended preset in PsychoV35 (its sliders at their defaults), Video AutoHDR 0.20.
   ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 3.f},
+      {"tonemapper", 4.f},
       {"video_autohdr", 0.2f},
       {"exposure", 1.f},
       {"highlights", 1.f},
@@ -165,10 +174,10 @@ void ApplyPsychoRecommendedNoVFXBoost() {
 }
 
 void ApplyPsychoRecommendedVFXBoost2500() {
-  // ATN: every recommended preset in PsychoV31 (its sliders at their defaults), Video AutoHDR 0.20.
+  // ATN 2026-11-12: every recommended preset in PsychoV35 (its sliders at their defaults), Video AutoHDR 0.20.
   ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 3.f},
+      {"tonemapper", 4.f},
       {"video_autohdr", 0.2f},
       {"exposure", 1.f},
       {"highlights", 1.f},
@@ -197,10 +206,10 @@ void ApplyPsychoRecommendedVFXBoost2500() {
 }
 
 void ApplyPsychoRecommendedVFXBoost1000() {
-  // ATN: every recommended preset in PsychoV31 (its sliders at their defaults), Video AutoHDR 0.20.
+  // ATN 2026-11-12: every recommended preset in PsychoV35 (its sliders at their defaults), Video AutoHDR 0.20.
   ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
-      {"tonemapper", 3.f},
+      {"tonemapper", 4.f},
       {"video_autohdr", 0.2f},
       {"exposure", 1.f},
       {"highlights", 1.f},
@@ -538,8 +547,9 @@ void BuildRuntimeData() {
         .section = "General",
         .tooltip = "SDR uses original SDR tonemapper.\nExtended unclips and extends the native ACES tonemapper.\n"
                    "HDR (PsychoV30) enables the HDR pipeline and uses PsychoV30 as tonemapper.\n"
-                   "HDR (PsychoV31): PsychoV31 as tonemapper, more grading sliders.",
-        .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)", "HDR (PsychoV31)"},
+                   "HDR (PsychoV31): PsychoV31 as tonemapper, more grading sliders.\n"
+                   "HDR (PsychoV35): Musa's PsychoV35 as tonemapper, with Hue Clip Emulation (the Recommended presets).",
+        .labels = {"SDR", "HDR (Extended)", "HDR (PsychoV30)", "HDR (PsychoV31)", "HDR (PsychoV35)"},
     },
     new renodx::utils::settings::Setting{
         .key = "gamma_correction",
@@ -578,7 +588,7 @@ void BuildRuntimeData() {
         .label = "Recommended (no VFX boost)",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV31) and Video AutoHDR 0.20, the rest at its default.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyPsychoRecommendedNoVFXBoost();
         },
@@ -1394,6 +1404,7 @@ void BuildRuntimeData() {
     //     },
     // },
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 // Graphics (Experimental): engine values x the sliders (their tweaks are filled in ConfigureAddon).
@@ -2000,7 +2011,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30 and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. Visibility "
+          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
+                   "PsychoV31 and PsychoV35. Visibility "
                    "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
                    "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
                    "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "

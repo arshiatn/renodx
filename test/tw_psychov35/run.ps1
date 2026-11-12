@@ -95,14 +95,18 @@ if ($AllShaders) {
   if ($others.Count -ne 0) { throw 'Shaders outside the tone mappers changed' }
 }
 
-# Hue Clip alone, from each game's copy of psycho_test31.hlsli.
+# Hue Clip alone (twattila/psycho35.hlsli, the one copy every game includes).
 # From here on fxc's and clang's warnings on stderr must not stop the script: exit codes decide.
 $ErrorActionPreference = 'Continue'
-foreach ($game in @('twattila', 'twwarhammer3')) {
+foreach ($game in @('twattila')) {
   & $fxc (Join-Path $testRoot 'hue_clip.hlsl') /T cs_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main `
       /I (Join-Path $repairRoot "src\games\$game") /Fo (Join-Path $afterShaders "hue_clip_$game.cso") 2>$null | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "fxc failed: hue_clip.hlsl ($game)" }
 }
+# Part 5's curves (hue_curves.hlsl), with Attila's folder as the include path.
+& $fxc (Join-Path $testRoot 'hue_curves.hlsl') /T ps_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main `
+    /I (Join-Path $repairRoot 'src\games\twattila') /Fo (Join-Path $afterShaders 'hue_curves.cso') 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'fxc failed: hue_curves.hlsl' }
 
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation

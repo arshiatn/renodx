@@ -81,6 +81,7 @@ Texture2D<float4> g_hdr_rgb_texture : register(t0);
 // 3Dmigoto declarations
 #define cmp -
 #include "../shared.h"
+#include "../../twattila/psycho35.hlsli"
 
 
 // Stock Narkowicz fit, Pharaoh's exact constants (identical to Troy's).
@@ -209,7 +210,18 @@ void main(
 
     float handoff_scale = kMidGrey / exposed_mid;
 
-    o0.xyz = lerp(exposed * handoff_scale, scene_color, bypass_mix);
+    float3 handoff = exposed * handoff_scale;
+
+    // PsychoV35: Hue Clip Emulation toward the hue the stock gives: its ACES fit on each channel, the crossfade toward
+    // the raw scene, the clip (twattila/psycho35.hlsli).
+    [branch]
+    if (HDR >= 3.5f && SI.hue_clip > 0.f) {
+      handoff = renodx::tonemap::psychov::HueTransfer(
+          handoff, saturate(lerp(saturate(PharaohAcesFit(exposed + curve_lift)) - black_offset, scene_color, bypass_mix)),
+          SI.hue_clip);
+    }
+
+    o0.xyz = lerp(handoff, scene_color, bypass_mix);
     o0.w = scene_sample.w;
     return;
   }

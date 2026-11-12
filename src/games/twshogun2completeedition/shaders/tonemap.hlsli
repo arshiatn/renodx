@@ -18,6 +18,7 @@
 // curve (no room above white to extend into), PsychoV31 maps to that white within BT.709; clipped as the game.
 #include "../shared.h"
 #include "../psycho_test31.hlsli"
+#include "../../twattila/psycho35.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -379,6 +380,19 @@ float4 HdrToScreen(float3 hdr_linear_colour, float3 bloom, float tone_mapper_bri
     }
     scene = graded;
     hue_shift = (SHOGUN_SDR_OUTPUT ? 0.f : SI.ext_highlight_hue_shift);
+  } else if (HDR >= 3.f) {
+    // PsychoV35 (twattila/psycho35.hlsli) as V31: on the curve's mid gray, each map's contrast, the grading after it.
+    // Hue Clip Emulation toward the hue the game's curve gives each channel, clipped; it replaces V31's highlight shifts.
+    float3 untonemapped_bt709 = AP1ToBT709(untonemapped);
+    [branch]
+    if (SI.hue_clip > 0.f) {
+      untonemapped_bt709 = renodx::tonemap::psychov::HueTransfer(
+          untonemapped_bt709, AP1ToBT709(saturate(FilmToneMap(untonemapped, white_clip))), SI.hue_clip);
+    }
+    colour = GradeAP1(BT709ToAP1(
+        ApplyPsychoV35(untonemapped_bt709, peak, SHOGUN_SDR_OUTPUT, mid_gray, g_tone_mapping_film_slope / 0.88f)));
+    scene = untonemapped;
+    hue_shift = 0.f;
   } else {
     colour = GradeAP1(ApplyPsychoV31(untonemapped, peak, mid_gray, mid_slope));
     scene = untonemapped * SI.exposure;
@@ -405,9 +419,17 @@ float4 HdrToScreen(float3 hdr_linear_colour, float3 bloom, float tone_mapper_bri
     }
   }
   colour = ApplyGameGamma(colour);
-  // PsychoV31: the hue shift and the game's grading come after its gamut compression and can leave the target again.
+  // PsychoV31, PsychoV35: the hue shift and the game's grading come after their gamut compression and can leave the
+  // target again.
   [branch]
-  if (HDR >= 2.f && SI.gamut_compression > 0.f) {
+  if (HDR >= 3.f) {
+    [branch]
+    if (SI.v35_gamut_compression > 0.f) {
+      colour = renodx::tonemap::psychov::FitToTargetGamut(
+          colour, (SHOGUN_SDR_OUTPUT ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709
+                                     : renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020));
+    }
+  } else if (HDR >= 2.f && SI.gamut_compression > 0.f) {
     colour = renodx::tonemap::psychov::FitToTargetGamut(colour, TargetGamut());
   }
   [branch]

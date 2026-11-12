@@ -31,6 +31,7 @@
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../../utils/vtable.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -39,7 +40,7 @@ constexpr char BUILD_TIME[] = __TIME__;
 namespace {
 
 ShaderInjectData shader_injection;
-static_assert(sizeof(ShaderInjectData) == 6 * 4 * sizeof(float), "Keep the DX9 c200-c205 injection layout in sync.");
+static_assert(sizeof(ShaderInjectData) == 10 * 4 * sizeof(float), "Keep the DX9 c200-c209 injection layout in sync.");
 // Capture controls once for all replaced draws in a host frame. Presentation
 // uses a fixed nit reference, so UI changes cannot rescale an older scene frame.
 ShaderInjectData frame_injection;
@@ -231,12 +232,24 @@ bool IsAdvancedSettings() {
 }
 
 bool HasHDRScene() {
-  return shader_injection.hdr >= 1.f && shader_injection.hdr <= 2.f;
+  return shader_injection.hdr >= 1.f && shader_injection.hdr <= 3.f;
 }
 
+// Every HDR mode's rows (Extra).
 bool IsPsychoMode() {
   return HasHDRScene() && IsAdvancedSettings();
 }
+
+bool IsPsychoV31Mode() {
+  return shader_injection.hdr >= 1.f && shader_injection.hdr <= 2.f && IsAdvancedSettings();
+}
+
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+}
+
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the clip alone).
+constexpr float HUE_CLIP_DEFAULT = 100.f;
 
 bool OnFrameShaderDraw(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return true;
@@ -396,12 +409,15 @@ void ApplyResetPreset() {
       {"motion_blur",1.f},
       {"depth_of_field",1.f},
   });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
+// ATN 2026-11-12: Musa's PsychoV35 at its defaults; PsychoV31's sliders as before, for its modes.
 void ApplyPsychoRecommended() {
   // Display/output settings and the independent Motion Blur/DOF controls are preserved.
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
   renodx::utils::settings::UpdateSettings({
-      {"rendering_mode", 2.f},
+      {"rendering_mode", 3.f},
 
       // PsychoV31
       {"exposure", 1.f},
@@ -487,8 +503,9 @@ void BuildRuntimeData() {
                      "SDR: the game's original picture (no tonemapper, highlights clip).\n"
                      "PsychoV31 - Native Tone: applies PsychoV31 after the game's gamma/brightness response.\n"
                      "PsychoV31 - Full Replacement: PsychoV31 replaces that response.\n"
+                     "PsychoV35: Musa's PsychoV35 replaces it, with Hue Clip Emulation (Recommended).\n"
                      "All HDR modes retain the game's colour grading, bloom and vignette.",
-          .labels = {"SDR", "HDR (PsychoV31 - Native Tone)", "HDR (PsychoV31 - Full Replacement)"},
+          .labels = {"SDR", "HDR (PsychoV31 - Native Tone)", "HDR (PsychoV31 - Full Replacement)", "HDR (PsychoV35)"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -503,10 +520,10 @@ void BuildRuntimeData() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "Recommended (Full Replacement)",
+          .label = "Recommended (PsychoV35)",
           .section = "Presets",
           .group = "preset-line-2",
-          .tooltip = "Selects PsychoV31 - Full Replacement with neutral Psycho controls.\n"
+          .tooltip = "Selects HDR (PsychoV35) with its controls at their defaults.\n"
                      "Peak, Paper White, UI, output, Motion Blur and Depth of Field are preserved.",
           .on_change = []() {
             ApplyPsychoRecommended();
@@ -524,8 +541,8 @@ void BuildRuntimeData() {
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
-          .is_enabled = IsPsychoMode,
-          .is_visible = IsPsychoMode,
+          .is_enabled = IsPsychoV31Mode,
+          .is_visible = IsPsychoV31Mode,
       },
       new renodx::utils::settings::Setting{
           .key = "highlights",
@@ -537,8 +554,8 @@ void BuildRuntimeData() {
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
-          .is_enabled = IsPsychoMode,
-          .is_visible = IsPsychoMode,
+          .is_enabled = IsPsychoV31Mode,
+          .is_visible = IsPsychoV31Mode,
       },
       new renodx::utils::settings::Setting{
           .key = "shadows",
@@ -550,8 +567,8 @@ void BuildRuntimeData() {
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
-          .is_enabled = IsPsychoMode,
-          .is_visible = IsPsychoMode,
+          .is_enabled = IsPsychoV31Mode,
+          .is_visible = IsPsychoV31Mode,
       },
       new renodx::utils::settings::Setting{
           .key = "contrast",
@@ -563,8 +580,8 @@ void BuildRuntimeData() {
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
-          .is_enabled = IsPsychoMode,
-          .is_visible = IsPsychoMode,
+          .is_enabled = IsPsychoV31Mode,
+          .is_visible = IsPsychoV31Mode,
       },
       new renodx::utils::settings::Setting{
           .key = "purity_scale",
@@ -576,8 +593,8 @@ void BuildRuntimeData() {
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
-          .is_enabled = IsPsychoMode,
-          .is_visible = IsPsychoMode,
+          .is_enabled = IsPsychoV31Mode,
+          .is_visible = IsPsychoV31Mode,
       },
       new renodx::utils::settings::Setting{
           .key = "cone_response_exponent",
@@ -590,8 +607,8 @@ void BuildRuntimeData() {
           .min = 0.00f,
           .max = 2.00f,
           .format = "%.2f",
-          .is_enabled = IsPsychoMode,
-          .is_visible = IsPsychoMode,
+          .is_enabled = IsPsychoV31Mode,
+          .is_visible = IsPsychoV31Mode,
       },
 
       new renodx::utils::settings::Setting{
@@ -607,8 +624,8 @@ void BuildRuntimeData() {
           .min = 1.f,
           .max = 2.f,
           .format = "%.2f",
-          .is_enabled = IsPsychoMode,
-          .is_visible = IsPsychoMode,
+          .is_enabled = IsPsychoV31Mode,
+          .is_visible = IsPsychoV31Mode,
       },
 
       // Extra //////////////////////////////////////////////////////////////////////////////////
@@ -708,7 +725,7 @@ void ConfigureAddon() {
   BuildRuntimeData();
 
   // Shaders: DX9 has no constant buffers, the injection goes into pixel shader
-  // constants c200-c205 (shared.h). The game's shaders use the low registers.
+  // constants c200-c209 (shared.h). The game's shaders use the low registers.
   renodx::mods::shader::force_pipeline_cloning = true;
   renodx::mods::shader::expected_constant_buffer_space = 50;
   renodx::mods::shader::expected_constant_buffer_index = 13;
@@ -754,10 +771,18 @@ void ConfigureAddon() {
     settings.push_back(setting);
   }
 
+  twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+
   // Appended Settings (About)
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = "Turn on the in-game HDR setting.",
+      .section = "About",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::TEXT,
+      .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
+               "and PsychoV35.",
       .section = "About",
   });
   settings.push_back(new renodx::utils::settings::Setting{

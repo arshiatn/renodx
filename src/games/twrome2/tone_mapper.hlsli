@@ -4,6 +4,7 @@
 // hdr_tone_mapper's tone mappers (basic: the auto exposure's black / white points; constant and constant with bloom:
 // fixed ones), their HDR path. Include after the shader's cbuffers (camera, vignette, S-curve texture).
 #include "./shared.h"
+#include "../twattila/psycho35.hlsli"
 
 // 1) Scene x vignette (Vignette slider, only with the game's vignette on) + bloom x Bloom slider.
 // 2) The stock black subtraction and exposure normalization, without the clamp to the white point and the 0.011 black
@@ -30,14 +31,30 @@ float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float4 black_whit
   const float linear_luminance_range = max(black_white_points.w - black_white_points.y, 0.000001f);
   const float hdr_luminance = dot(hdr_color, luminance_weights);
   const float normalized_luminance = max(hdr_luminance - black_white_points.y, 0.f) / linear_luminance_range;
-  const float3 untonemapped = (hdr_luminance > 0.f ? hdr_color * (normalized_luminance / hdr_luminance) : 0.f.xxx);
+  float3 untonemapped = (hdr_luminance > 0.f ? hdr_color * (normalized_luminance / hdr_luminance) : 0.f.xxx);
+  const float log_luminance_range = max(black_white_points.z - black_white_points.x, 0.000001f);
+
+  // PsychoV35: Hue Clip Emulation before the S-curve (twattila/psycho35.hlsli), toward the hue Rome II's SDR picture
+  // has: the colour at the luminance the stock path gives it (the scene's clamped at the white point, bloom, the S-curve),
+  // each channel clipped at 1.
+  [branch]
+  if (HDR >= 3.f && SI.hue_clip > 0.f) {
+    const float stock_luminance = max(min(dot(scene_sample.xyz * vignette_scale, luminance_weights), black_white_points.w)
+                                          + dot(bloom_sample.xyz * SI.bloom, luminance_weights),
+                                      0.000001f);
+    const float stock_coordinate = (log2(stock_luminance) * 0.30103001f - black_white_points.x) / log_luminance_range;
+    const float stock_curve = g_scurve_texture_sampler.Sample(g_scurve_texture_sampler_s, float2(stock_coordinate, 0.5f)).x;
+    const float stock_mapped = (exp2((stock_curve * log_luminance_range + black_white_points.x) * 3.32192802f) - black_white_points.y)
+                               / linear_luminance_range;
+    untonemapped = renodx::tonemap::psychov::HueClip(
+        untonemapped, renodx::math::DivideSafe(max(stock_mapped, 0.f), normalized_luminance, 0.f), SI.hue_clip);
+  }
 
   const float curve_scale = (normalized_luminance > 0.f
                                  ? renodx::tonemap::Neutwo(normalized_luminance) / normalized_luminance
                                  : 1.f);
   const float3 curve_input = untonemapped * curve_scale;
   const float curve_input_luminance = normalized_luminance * curve_scale;
-  const float log_luminance_range = max(black_white_points.z - black_white_points.x, 0.000001f);
   const float curve_domain_luminance = max(black_white_points.y + curve_input_luminance * linear_luminance_range, 0.000001f);
   const float curve_coordinate = (log2(curve_domain_luminance) * 0.30103001f - black_white_points.x) / log_luminance_range;
   const float curve_value = g_scurve_texture_sampler.Sample(g_scurve_texture_sampler_s, float2(curve_coordinate, 0.5f)).x;

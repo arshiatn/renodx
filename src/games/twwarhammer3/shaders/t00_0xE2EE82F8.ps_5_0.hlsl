@@ -159,7 +159,7 @@ Texture3D<float4> lut_secondary_texture_3 : register(t11);
 #include "../shared.h"
 #include "../psycho_test30.hlsli"
 #include "../psycho_test31.hlsli"
-#include "../../twattila/psycho_test35.hlsli"
+#include "../../twattila/psycho35.hlsli"
 
 // PsychoV31, on the scene-linear handoff (mid gray at 0.18); target-only where its source cage returns
 // black. Highlight Hue / Saturation Shift: toward the SDR image's, which clips each channel at white (bright fire turns
@@ -207,16 +207,9 @@ float3 ApplyWH3Psycho(float3 color)
 {
   [branch]
   if (HDR >= 3.5f) {
-    // Musa's PsychoV35 with its own sliders, anchored at mid gray (the handoff carries the game's exposure; the Hue
-    // Clip Emulation before the grade replaces V31's highlight shifts). Highlight Roll-off: 0 latest, 1 Musa's
-    // compression (1.5), 2 soonest.
-    const float3 mapped = renodx::tonemap::psychov::custom_psychotm_test35(
-        color, HDR_PEAK, SI.v35_exposure, SI.v35_highlights, SI.v35_shadows, max(SI.v35_contrast, 0.01f), SI.v35_flare,
-        SI.v35_highlight_contrast, SI.v35_shadow_contrast, SI.v35_saturation, SI.v35_highlight_saturation, SI.v35_dechroma,
-        0.18f, 0.18f, 0.f, SI.v35_gamut_compression, (SI.swap_chain_encoding == 2.f) ? 0 : 1, 1.f + 0.5f * SI.v35_roll_off);
-    // A NaN left (a low Shadows' darkest pixels): black. A bit test, as fxc folds
-    // isnan (renodx::math::ZeroNaN) away here.
-    return ((asuint(mapped) & 0x7fffffffu) > 0x7f800000u) ? 0.f : mapped;
+    // PsychoV35 (twattila/psycho35.hlsli; the handoff carries the game's exposure, the Hue Clip Emulation before the
+    // grade replaces V31's highlight shifts).
+    return ApplyPsychoV35(color, HDR_PEAK, SI.swap_chain_encoding == 2.f);
   }
   [branch]
   if (HDR >= 2.5f) {

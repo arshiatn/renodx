@@ -124,6 +124,21 @@ struct ShaderInjectData {
   float ssao_denoise;   // the Denoiser (ao_filter.hpp)
   float sky_smooth;               // the fog's and the sky's sky cube smoothed (twattila/sky_smooth.hlsli): 1 Low, 2 Medium, 3 High
   float sky_smooth_strength;      // how wide, x 0 to 2
+
+  // PsychoV35 (Rendering Mode 4): Musa's (twattila/psycho35.hlsli), its own sliders as V31's, appended.
+  float hue_clip;                  // Hue Clip Emulation, 0 - 1
+  float v35_exposure;
+  float v35_highlights;
+  float v35_shadows;
+  float v35_contrast;
+  float v35_highlight_contrast;    // above mid gray, 1 V35's own
+  float v35_shadow_contrast;       // below mid gray, 1 V35's own
+  float v35_flare;                 // 0 none, deeper blacks above it
+  float v35_saturation;
+  float v35_dechroma;              // 0 none, bright colors toward white above it
+  float v35_highlight_saturation;
+  float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
+  float v35_gamut_compression;     // 0 none (the display clips), 1 full
 };
 
 #define SI shader_injection

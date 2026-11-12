@@ -50,6 +50,8 @@ struct Texts {
   // The anti-aliasing methods' names by value, all of them: a saved value is clamped to these at each start.
   std::array<const char*, 8> aa_labels;
   const char* aa_tooltip;
+  // The red line under Anti-Aliasing: the in-game anti-aliasing the upscalers and frame generation need.
+  const char* in_game_aa_note = "In-game Anti-Aliasing must be Off for DLSS, FSR, XeSS and Frame Generation.";
   const char* reset_tooltip;
   const char* no_rays_tooltip;
   const char* rays_tooltip;
@@ -413,6 +415,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       if (setting->key == "AntiAliasingDebugView" && !b.has_scale_rows) setting->labels = {"Off", "Motion Vectors"};
     }
     page.Add(Note(FULL_DOWNLOAD_NOTE, section, WARNING_TINT, [] { return !dlaa_bridge::HelperInstalled(); }));
+    page.Add(Note(b.texts->in_game_aa_note, section, WARNING_TINT, [] { return true; }));
     page.Take({.match = "AntiAliasing", .section = section, .shown = [] { return false; }});
     // The list without DLSS off NVIDIA's GPUs: the slider's places past it are one lower than the values.
     page.Add(new Setting{

@@ -1293,7 +1293,7 @@ inline std::string Status() {
   if (in_last_second(state.scale_refused_frame)) return "Not running: unexpected constants at this in-game Resolution Scale (values in ReShade.log). The game's own TAA and upscale stay.";
   if (in_last_second(state.no_camera_frame)) return "Not running: in-game Resolution Scale is below 100%. The game's own TAA and upscale stay.";
   if (in_last_second(state.taa_frame)) return bridge.status;
-  return "Not running: keep in-game Anti-aliasing on TAA or TAA High (menus have none).";
+  return "Not running: keep in-game Anti-aliasing on TAA (Fast) or TAA (menus have none).";
 }
 
 // The main view's camera constants as uploaded this frame when `buffer` holds them (ray tracing's camera); false: not.

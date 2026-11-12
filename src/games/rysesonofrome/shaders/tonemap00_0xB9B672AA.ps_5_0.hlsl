@@ -9,6 +9,7 @@
 // value past 1 (stock saturate) as light, rolled off below Peak.
 #include "../shared.h"
 #include "../psycho_test31.hlsli"
+#include "../../twattila/psycho35.hlsli"
 #include "../uncharted2extended.hlsli"
 
 cbuffer PER_BATCH : register(b0)
@@ -129,12 +130,18 @@ float3 ShiftHighlightHue(float3 color, float3 exposed, float scene_y, float hue_
   return shifted;
 }
 
+// Where Hable puts mid gray (PsychoV31's and PsychoV35's anchor).
+float HableMidGray()
+{
+  const float mid_gray = FilmCurveY(0.18f);
+  return (mid_gray > 0.f) ? mid_gray : 0.18f;
+}
+
 // HDR (PsychoV31): the game's grading and PsychoV31 only, anchored on Hable's mid gray. Extended
 // where V31 fails.
 float3 ApplyPsychoV31(float3 untonemapped, float peak)
 {
-  float anchor_out = FilmCurveY(0.18f);
-  anchor_out = (anchor_out > 0.f) ? anchor_out : 0.18f;
+  const float anchor_out = HableMidGray();
   float y_in = max(renodx::color::y::from::BT709(untonemapped), 1e-7f);
   // Highlight Roll-off: V31's shoulder compression. 0: 1, 1: 1.5 (default), 2: 3.
   float compression = 1.f + 0.5f * SI.roll_off * SI.roll_off;
@@ -309,13 +316,23 @@ void main(
     tonemapped = ShiftHighlightHue(ApplyExtended(untonemapped, peak), untonemapped,
                                    renodx::color::y::from::BT709(untonemapped), SI.ext_highlight_hue_shift,
                                    SI.ext_highlight_saturation_shift);
+  } else if (HDR >= 3.f) {
+    // PsychoV35 (twattila/psycho35.hlsli) on Hable's mid gray; Hue Clip Emulation toward the hue Hable gives each
+    // channel, clipped. It replaces V31's highlight and fire hue shifts.
+    float3 untonemapped = r0.xyz;
+    [branch]
+    if (SI.hue_clip > 0.f) {
+      untonemapped = renodx::tonemap::psychov::HueTransfer(untonemapped, saturate(FilmCurve(untonemapped)), SI.hue_clip);
+    }
+    tonemapped = ApplyPsychoV35(untonemapped, peak, RYSE_SDR_OUTPUT, HableMidGray());
   } else {
     tonemapped = ApplyPsychoV31(r0.xyz, peak);
   }
   float3 color = renodx::color::correct::GammaSafe(ApplyShaftsAndChart(tonemapped, shafts));
   [branch]
   if (HDR >= 2.f) {
-    color = AdjustFireHue(color, SI.fire_hue, SI.fire_hue_focus);
+    // PsychoV31's own (PsychoV35's Hue Clip Emulation above takes its place).
+    if (HDR < 3.f) color = AdjustFireHue(color, SI.fire_hue, SI.fire_hue_focus);
   } else {
     color = AdjustFireHue(color, SI.ext_fire_hue, SI.ext_fire_hue_focus);
   }

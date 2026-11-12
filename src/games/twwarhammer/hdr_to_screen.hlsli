@@ -6,6 +6,7 @@
 #include "./shared.h"
 #include "./psycho_test30.hlsli"
 #include "./psycho_test31.hlsli"
+#include "../twattila/psycho35.hlsli"
 
 // PsychoV31, anchored at mid gray (Warhammer's S-curve runs before, in t00); target-only where its source cage returns
 // black. Highlight Hue / Saturation Shift: toward the SDR image's, which clips each channel at white (bright fire turns
@@ -77,7 +78,9 @@ float4 HdrToScreenOutput(float3 hdr_color, float output_alpha)
 
   float3 color;
   [branch]
-  if (HDR >= 2.f) {
+  if (HDR >= 3.f) {
+    color = ApplyPsychoV35(graded_hdr, HDR_PEAK, SI.swap_chain_encoding == 2.f);
+  } else if (HDR >= 2.f) {
     color = ApplyPsychoV31(graded_hdr);
   } else {
     color = ApplyPsychoV30(graded_hdr);

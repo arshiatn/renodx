@@ -15,6 +15,7 @@
 
 #include "../shared.h"
 #include "../psycho_test31.hlsli"
+#include "../../twattila/psycho35.hlsli"
 
 float4 PostProcess[11] : register(c0);
 #define OverlayColor      PostProcess[1].xyz
@@ -65,7 +66,7 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
 #endif
 {
   bool injection_valid = SI.peak_white_nits > 0.f && SI.diffuse_white_nits > 0.f;
-  int hdr_mode = injection_valid ? (int)clamp(floor(HDR + 0.5f), 0.f, 2.f) : 0;
+  int hdr_mode = injection_valid ? (int)clamp(floor(HDR + 0.5f), 0.f, 3.f) : 0;
   bool hdr = hdr_mode != 0;
 
   // Native scene/bloom storage is UNORM. Keep its range multiplier after sampling.
@@ -131,12 +132,13 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
     }
   }
 
-  // SDR and Native Tone keep the native response; degenerate anchors/fades do too.
+  // SDR and Native Tone keep the native response; degenerate anchors/fades do too. `responded`: the SDR picture before
+  // its clip (PsychoV35's Hue Clip Emulation).
+  const float luma = dot(color, kLuma);
+  const float3 responded = ((luma > 0.f) ? color * pow(luma, Gamma - 1.f) : 0.f) * Brightness;
   [branch]
   if (!direct_response) {
-    float luma = dot(color, kLuma);
-    color = (luma > 0.f) ? color * pow(luma, Gamma - 1.f) : 0.f;
-    color *= Brightness;
+    color = responded;
   }
 
   if (!hdr) {
@@ -146,9 +148,20 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
     return float4(renodx::color::gamma::EncodeSafe(color), 1.f);
   }
 
-  // Both HDR modes use the supplied V31 response and retain decoded RGB ratios.
+  // The HDR modes use the supplied V31 response (or Musa's PsychoV35) and retain decoded RGB ratios.
   color = renodx::color::gamma::DecodeSafe(color);
-  color = ApplyPsychoV31Reference(color, psycho_anchor_in);
+  [branch]
+  if (hdr_mode >= 3) {
+    // PsychoV35 (twattila/psycho35.hlsli), anchored as Full Replacement; Hue Clip Emulation toward the hue the game's
+    // response and its per-channel clip give.
+    [branch]
+    if (SI.hue_clip > 0.f) {
+      color = renodx::tonemap::psychov::HueTransfer(color, renodx::color::gamma::DecodeSafe(saturate(responded)), SI.hue_clip);
+    }
+    color = ApplyPsychoV35(color * (0.18f / psycho_anchor_in), HDR_PEAK, false);
+  } else {
+    color = ApplyPsychoV31Reference(color, psycho_anchor_in);
+  }
   color *= SI.diffuse_white_nits / RUSE_REFERENCE_WHITE;
   return float4(renodx::color::gamma::EncodeSafe(color), 1.f);
 }

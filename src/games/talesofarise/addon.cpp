@@ -25,6 +25,7 @@
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../talesofarise_dlss/post_filters.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -50,6 +51,13 @@ bool IsExtendedMode() {
 bool IsPsychoMode() {
   return shader_injection.hdr == 2.f && IsAdvancedSettings();
 }
+
+bool IsPsychoV35Mode() {
+  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+}
+
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
+constexpr float HUE_CLIP_DEFAULT = 70.f;
 
 bool IsHdrOutput() {
   return shader_injection.swap_chain_encoding != 2.f;
@@ -102,6 +110,7 @@ void ApplyResetPreset() {
       {"video_highlights", 0.f},
       {"video_dithering", 1.f},
   });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
 // Set once the tone mapper (or a pass after it) has drawn this frame; the next present starts a new frame.
@@ -341,9 +350,10 @@ void BuildRuntimeData() {
           .section = "General",
           .tooltip = "SDR: the game's own look.\n"
                      "HDR (UE Extended): the game's look extended into HDR (default).\n"
-                     "HDR (PsychoV31): PsychoV31 with the game's color grading (recommended).\n"
+                     "HDR (PsychoV31): PsychoV31 with the game's color grading.\n"
+                     "HDR (PsychoV35): Musa's PsychoV35 and Hue Clip Emulation with it (recommended).\n"
                      "SDR output: the HDR modes are fitted into SDR.",
-          .labels = {"SDR", "HDR (UE Extended)", "HDR (PsychoV31)"},
+          .labels = {"SDR", "HDR (UE Extended)", "HDR (PsychoV31)", "HDR (PsychoV35)"},
       },
       new renodx::utils::settings::Setting{
           .key = "sdr_curve",
@@ -363,13 +373,13 @@ void BuildRuntimeData() {
           .label = "Recommended (Vanilla shadows)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended look with similar vanilla shadows: HDR (PsychoV31), Video AutoHDR 0.25, Motion Blur and Film Grain 0.\n"
+          .tooltip = "Recommended look with similar vanilla shadows: HDR (PsychoV35), Video AutoHDR 0.25, Motion Blur and Film Grain 0.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
             renodx::utils::settings::UpdateSettings(
-                {{"tonemapper", 2.f}, {"video_highlights", 0.25f}, {"motion_blur", 0.f}, {"film_grain", 0.f}, {"shadows", 0.5f},
-                 {"flare", 0.39f}});
+                {{"tonemapper", 3.f}, {"video_highlights", 0.25f}, {"motion_blur", 0.f}, {"film_grain", 0.f}, {"shadows", 0.5f},
+                 {"flare", 0.39f}, {"v35_shadows", 0.5f}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -377,12 +387,12 @@ void BuildRuntimeData() {
           .label = "Recommended",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended look: HDR (PsychoV31), Video AutoHDR 0.25, Motion Blur and Film Grain 0.\n"
+          .tooltip = "Recommended look: HDR (PsychoV35), Video AutoHDR 0.25, Motion Blur and Film Grain 0.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() {
             ApplyResetPreset();
             renodx::utils::settings::UpdateSettings(
-                {{"tonemapper", 2.f}, {"video_highlights", 0.25f}, {"motion_blur", 0.f}, {"film_grain", 0.f}});
+                {{"tonemapper", 3.f}, {"video_highlights", 0.25f}, {"motion_blur", 0.f}, {"film_grain", 0.f}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -672,6 +682,7 @@ void BuildRuntimeData() {
           .is_visible = IsAdvancedSettings,
       },
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 bool configured = false;
@@ -832,8 +843,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX and PsychoV31 by ShortFuse. This mod uses Musa's custom PsychoV31. UE Extended by Marat, blue "
-                   "correction by Pumbo.",
+          .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
+                   "and PsychoV35. UE Extended by Marat, blue correction by Pumbo.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{

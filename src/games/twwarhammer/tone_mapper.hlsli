@@ -5,6 +5,7 @@
 // bloom: fixed ones): Warhammer's adaptive exposure and S-curve kept as grading, without the stock whiteout /
 // desaturation and upper SDR clamp. Include after the shader's cbuffers (g_scurve_texture).
 #include "./shared.h"
+#include "../twattila/psycho35.hlsli"
 
 // Literally the same as Attila
 float3 ApplyWarhammerSCurve(float3 color)
@@ -32,6 +33,14 @@ float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_whit
 
   float hdr_normalization_scale = hdr_luminance > 0.f ? normalized_hdr_luminance / hdr_luminance : 1.f;
   float3 untonemapped = hdr_color * hdr_normalization_scale;
+
+  // PsychoV35: Hue Clip Emulation before the S-curve (twattila/psycho35.hlsli; Attila's engine, the stock path without
+  // its highlight limit, the bloom already in).
+  [branch]
+  if (HDR >= 3.f && SI.hue_clip > 0.f) {
+    untonemapped = renodx::tonemap::psychov::AttilaEngineHueClip(untonemapped, normalized_hdr_luminance, hdr_color, 0.f,
+                                                                 black_point, white_point, false, SI.hue_clip);
+  }
 
   // Warhammer's S-curve is per-channel, like Attila's. Compress the unclipped signal into the LUT's valid 0-1 domain, apply the native
   // curve as artistic grading, then undo the same scalar compression.

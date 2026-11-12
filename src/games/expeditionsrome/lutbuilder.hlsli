@@ -14,6 +14,7 @@
 
 #include "./shared.h"
 #include "./psycho_test31.hlsli"
+#include "../twattila/psycho35.hlsli"
 #include "./ue_extended.hlsli"
 
 cbuffer cb0 : register(b0)
@@ -302,13 +303,19 @@ ue_extended::FilmCurve GameFilmCurve()
   return ue_extended::CreateFilmCurve(cb0[36].x, cb0[36].y, cb0[36].z, 0.f, cb0[37].x);
 }
 
+// Where the game's curve puts mid gray (PsychoV31's and PsychoV35's anchor).
+float GameMidGray()
+{
+  const float mid_gray = GameCurveY(0.18f);
+  return (mid_gray > 0.f) ? mid_gray : 0.18f;
+}
+
 // HDR (PsychoV31), like Pharaoh: Dynasties: the artist's grading and PsychoV31 only, anchored on the
 // game curve's mid gray, with its own contrast, shadows and colors. Extended where V31 fails.
 float3 ApplyPsychoV31(float3 untonemapped_ap1, float peak)
 {
   float3 untonemapped_bt709 = renodx::color::bt709::from::AP1(untonemapped_ap1);
-  float anchor_out = GameCurveY(0.18f);
-  anchor_out = (anchor_out > 0.f) ? anchor_out : 0.18f;
+  const float anchor_out = GameMidGray();
   float y_in = max(renodx::color::y::from::BT709(untonemapped_bt709), 1e-7f);
   // Highlight Roll-off: V31's shoulder compression. 0: 1, 1: 1.5 (default), 2: 3.
   float compression = 1.f + 0.5f * SI.roll_off * SI.roll_off;
@@ -492,6 +499,17 @@ float4 GenerateHDRLut(float3 untonemapped_ap1)
     float3 graded = UEExtendedPostGrade(ApplySDRLuts(ue_extended::ToneMap(ApplyExtendedGrading(untonemapped_ap1), curve)));
     float3 mid_gray = UEExtendedPostGrade(ApplySDRLuts(ue_extended::ToneMap(ApplyExtendedGrading(0.18f.xxx), curve)));
     color = renodx::color::correct::GammaSafe(ue_extended::DisplayMap(graded, mid_gray, peak));
+  } else if (HDR >= 3.f) {
+    // PsychoV35 (twattila/psycho35.hlsli) on the game curve's mid gray; Hue Clip Emulation toward the hue the game's
+    // curve gives each channel, clipped (it replaces V31's highlight shifts).
+    float3 untonemapped_bt709 = renodx::color::bt709::from::AP1(untonemapped_ap1);
+    [branch]
+    if (SI.hue_clip > 0.f) {
+      untonemapped_bt709 = renodx::tonemap::psychov::HueTransfer(untonemapped_bt709, saturate(ToneCurve(untonemapped_ap1)),
+                                                                 SI.hue_clip);
+    }
+    color = renodx::color::correct::GammaSafe(
+        PostGradeHDR(ApplySDRLuts(ApplyPsychoV35(untonemapped_bt709, peak, false, GameMidGray()))));
   } else {
     // HDR (PsychoV31): the game's post grade after the complete tone curve (fades must not be undone by the HDR
     // shoulder).

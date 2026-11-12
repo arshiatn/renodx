@@ -6,7 +6,7 @@
 #include "./shared.h"
 #include "./psycho_test30.hlsli"
 #include "./psycho_test31.hlsli"
-#include "./psycho_test35.hlsli"
+#include "./psycho35.hlsli"
 
 // PsychoV31, anchored at mid gray (Attila's S-curve runs before, in t00); target-only where its source cage returns
 // black. Highlight Hue / Saturation Shift: toward the SDR image's, which clips each channel at white (bright fire turns
@@ -66,15 +66,8 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
   float3 color;
   [branch]
   if (HDR >= 3.f) {
-    // Musa's PsychoV35 with its own sliders, anchored at mid gray (t00 applied Attila's auto exposure; its Hue Clip
-    // Emulation replaces V31's highlight shifts). Highlight Roll-off: 0 latest, 1 Musa's compression (1.5), 2 soonest.
-    color = renodx::tonemap::psychov::custom_psychotm_test35(
-        graded_hdr, HDR_PEAK, SI.v35_exposure, SI.v35_highlights, SI.v35_shadows, max(SI.v35_contrast, 0.01f), SI.v35_flare,
-        SI.v35_highlight_contrast, SI.v35_shadow_contrast, SI.v35_saturation, SI.v35_highlight_saturation, SI.v35_dechroma,
-        0.18f, 0.18f, 0.f, SI.v35_gamut_compression, ATTILA_SDR_OUTPUT ? 0 : 1, 1.f + 0.5f * SI.v35_roll_off);
-    // A NaN left (a low Shadows' darkest pixels): black. A bit test, as fxc folds
-    // isnan (renodx::math::ZeroNaN) away here.
-    color = ((asuint(color) & 0x7fffffffu) > 0x7f800000u) ? 0.f : color;
+    // PsychoV35 (psycho35.hlsli; t00 applied Attila's auto exposure, its Hue Clip Emulation replaces V31's highlight shifts).
+    color = ApplyPsychoV35(graded_hdr, HDR_PEAK, ATTILA_SDR_OUTPUT);
   } else {
     [branch]
     if (HDR >= 2.f) {

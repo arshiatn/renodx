@@ -48,6 +48,7 @@
 #include "../talesofarise_dlss/pixel_trace.hpp"
 #include "../twattila/pass_timing.hpp"
 #include "../twattila/graphics_page.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
@@ -97,6 +98,9 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 4.f;
 }
 
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to Warhammer III's SDR picture).
+constexpr float HUE_CLIP_DEFAULT = 100.f;
+
 // bool IsModdedAutoExposureEnabled() {
 //   return shader_injection.auto_exposure_highlight_protection == 1.f;
 // }
@@ -127,20 +131,7 @@ void ApplyResetPreset() {
       {"v31_highlight_hue_shift", 0.15f},
       {"v31_highlight_saturation_shift", 0.f},
 
-      // PsychoV35
-      {"v35_exposure", 1.f},
-      {"v35_highlights", 1.f},
-      {"v35_shadows", 1.f},
-      {"v35_contrast", 1.f},
-      {"v35_highlight_contrast", 1.f},
-      {"v35_shadow_contrast", 1.f},
-      {"v35_flare", 0.f},
-      {"v35_saturation", 1.f},
-      {"v35_dechroma", 0.f},
-      {"v35_roll_off", 1.f},
-      {"v35_gamut_compression", 1.f},
-      {"v35_highlight_saturation", 1.f},
-      {"hue_clip", 100.f},
+      // PsychoV35: twattila::psycho35::Defaults, below.
 
       // PsychoV30
       {"exposure", 1.f},
@@ -170,6 +161,7 @@ void ApplyResetPreset() {
       {"sky_deband", 0.f},
       {"fog_strength", 1.f},
   });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
 void ApplyPsychoRecommended2500() {
@@ -1840,26 +1832,22 @@ void BuildRuntimeData() {
     };
   }
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // PsychoV31's and PsychoV35's sliders, each mode its own: 0 - max, 1 = its own.
-  const auto psycho_slider = [](const char* section, bool (*shown)()) {
-    return [section, shown](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
-                            float max = 2.f, float default_value = 1.f) {
-      return new renodx::utils::settings::Setting{
-          .key = key,
-          .binding = binding,
-          .default_value = default_value,
-          .label = label,
-          .section = section,
-          .tooltip = tooltip,
-          .max = max,
-          .format = "%.2f",
-          .is_enabled = shown,
-          .is_visible = shown,
-      };
+  // PsychoV31 sliders: 0 - max, 1 = its own (PsychoV35's: twattila/psycho35_settings.hpp).
+  const auto v31_slider = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
+                             float max = 2.f, float default_value = 1.f) {
+    return new renodx::utils::settings::Setting{
+        .key = key,
+        .binding = binding,
+        .default_value = default_value,
+        .label = label,
+        .section = "PsychoV31",
+        .tooltip = tooltip,
+        .max = max,
+        .format = "%.2f",
+        .is_enabled = IsPsychoV31Mode,
+        .is_visible = IsPsychoV31Mode,
     };
   };
-  const auto v31_slider = psycho_slider("PsychoV31", IsPsychoV31Mode);
-  const auto v35_slider = psycho_slider("PsychoV35", IsPsychoV35Mode);
 
   settings = {
     new renodx::utils::settings::Setting{
@@ -2309,58 +2297,6 @@ void BuildRuntimeData() {
     //     .is_enabled = IsHDRMode,  
     //     .is_visible = IsAdvancedSettings,
     // },
-    // PsychoV35: Musa's, its own sliders in PsychoV31's order (ATN) ////////////////////////////////////////////
-    v35_slider("v35_exposure", &shader_injection.v35_exposure, "Exposure", ""),
-    v35_slider("v35_highlights", &shader_injection.v35_highlights, "Highlights", ""),
-    v35_slider("v35_shadows", &shader_injection.v35_shadows, "Shadows", ""),
-    v35_slider("v35_contrast", &shader_injection.v35_contrast, "Contrast", "1 = PsychoV35's own."),
-    v35_slider("v35_highlight_contrast", &shader_injection.v35_highlight_contrast, "Highlight Contrast",
-               "Contrast above mid gray. 1 = PsychoV35's own."),
-    v35_slider("v35_shadow_contrast", &shader_injection.v35_shadow_contrast, "Shadow Contrast",
-               "Contrast below mid gray. 1 = PsychoV35's own."),
-    new renodx::utils::settings::Setting{
-        .key = "v35_flare",
-        .binding = &shader_injection.v35_flare,
-        .default_value = 0.f,
-        .label = "Flare",
-        .section = "PsychoV35",
-        .tooltip = "Deepens the darkest shadows. 0 = off.",
-        .max = 1.f,
-        .format = "%.2f",
-        .is_enabled = IsPsychoV35Mode,
-        .parse = [](float value) { return 0.1f * std::pow(value, 10.f); },
-        .is_visible = IsPsychoV35Mode,
-    },
-    v35_slider("v35_saturation", &shader_injection.v35_saturation, "Saturation / Purity", "1 = PsychoV35's own."),
-    v35_slider("v35_dechroma", &shader_injection.v35_dechroma, "Dechroma",
-               "Very bright colors fade toward white, as if overexposed. 0 = off.", 1.f, 0.f),
-    v35_slider("v35_roll_off", &shader_injection.v35_roll_off, "Highlight Roll-off",
-               "How soon highlights start to compress toward Peak. 0 = latest, 1 = default, 2 = soonest."),
-    v35_slider("v35_gamut_compression", &shader_injection.v35_gamut_compression, "Gamut Compression",
-               "Pulls colors your display can't show back inside its color space.\n"
-               "0 = off (the display clips them), 1 = full (default).",
-               1.f, 1.f),
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-        .label = "Fire too pink, too orange or too pale? Change the settings below.",
-        .section = "PsychoV35",
-        .is_visible = IsPsychoV35Mode,
-    },
-    v35_slider("v35_highlight_saturation", &shader_injection.v35_highlight_saturation, "Highlight Saturation",
-               "Saturation of bright colors. 0 = less, 1 = PsychoV35's own, 2 = more."),
-    new renodx::utils::settings::Setting{
-        .key = "hue_clip",
-        .binding = &shader_injection.hue_clip,
-        .default_value = 100.f,
-        .label = "Hue Clip Emulation",
-        .section = "PsychoV35",
-        .tooltip = "Bright colors take the hue SDR clips them to: fire more orange / yellow, sky more cyan.\n"
-                   "0 = off. Default 100: the closest to the SDR picture.",
-        .max = 100.f,
-        .is_enabled = IsPsychoV35Mode,
-        .parse = [](float value) { return value * 0.01f; },
-        .is_visible = IsPsychoV35Mode,
-    },
     // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
     v31_slider("v31_exposure", &shader_injection.v31_exposure, "Exposure", ""),
     v31_slider("v31_highlights", &shader_injection.v31_highlights, "Highlights", ""),
@@ -2868,6 +2804,7 @@ void BuildRuntimeData() {
     //     },
     // },
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 // Graphics (Experimental): the LOD tweaks (pixels per triangle before a model's next LOD) / the sliders (their tweaks
@@ -3060,10 +2997,11 @@ constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> reno
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
-    .aa_tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High.\n"
+    .aa_tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA (Fast) or TAA.\n"
                   "Upscaling Mode: the rows below.\n"
                   "DLSS: NVIDIA's (RTX). FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
                   "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs next to Warhammer3.exe.",
+    .in_game_aa_note = "In-game Anti-Aliasing must be TAA (Fast) or TAA for DLSS, FSR, XeSS and Frame Generation (restart after changing it).",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion\n"
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"

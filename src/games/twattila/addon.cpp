@@ -45,6 +45,7 @@
 #include "./feature_settings.hpp"
 #include "./grass_fade.hpp"
 #include "./graphics_page.hpp"
+#include "./psycho35_settings.hpp"
 #include "./light_bounce.hpp"
 #include "./lighting_settings.hpp"
 #include "./particle_layer.hpp"
@@ -85,6 +86,9 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f;
 }
 
+// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to Attila's SDR picture).
+constexpr float HUE_CLIP_DEFAULT = 40.f;
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
 }
@@ -109,7 +113,7 @@ void ApplyHDRPreset(
     float video_autohdr,
     float highlight_saturation = 0.7f,
     float highlight_hue_shift = 0.04f) {
-  renodx::utils::settings::UpdateSettings({
+  std::vector<std::pair<std::string, float>> values = {
       {"tonemapper", rendering_mode},
       {"gamma_correction", 1.f},
       {"highlights", highlights},
@@ -144,25 +148,15 @@ void ApplyHDRPreset(
       {"v31_gamut_compression_mode", 1.f},
       {"v31_highlight_hue_shift", highlight_hue_shift},
       {"v31_highlight_saturation_shift", 0.f},
-      {"v35_exposure", 1.f},
-      {"v35_highlights", 1.f},
-      {"v35_shadows", 1.f},
-      {"v35_contrast", 1.f},
-      {"v35_highlight_contrast", 1.f},
-      {"v35_shadow_contrast", 1.f},
-      {"v35_flare", 0.f},
-      {"v35_saturation", 1.f},
-      {"v35_dechroma", 0.f},
-      {"v35_roll_off", 1.f},
-      {"v35_gamut_compression", 1.f},
-      {"v35_highlight_saturation", 1.f},
-      {"hue_clip", 40.f},
       {"video_autohdr", video_autohdr},
       {"sky_deband", 0.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
       {"fog_strength", 1.f},
-  });
+  };
+  const auto v35 = twattila::psycho35::Defaults(HUE_CLIP_DEFAULT);
+  values.insert(values.end(), v35.begin(), v35.end());
+  renodx::utils::settings::UpdateSettings(values);
 }
 
 // SDR: Attila's own tonemapper and look (ATN 2026-11-01: this ran the HDR pipeline, PsychoV31, darker than the game);
@@ -225,26 +219,22 @@ void BuildRuntimeData() {
   }
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // PsychoV31's and PsychoV35's sliders, each mode its own: 0 - max, 1 = its own.
-  const auto psycho_slider = [](const char* section, bool (*shown)()) {
-    return [section, shown](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
-                            float max = 2.f, float default_value = 1.f) {
-      return new renodx::utils::settings::Setting{
-          .key = key,
-          .binding = binding,
-          .default_value = default_value,
-          .label = label,
-          .section = section,
-          .tooltip = tooltip,
-          .max = max,
-          .format = "%.2f",
-          .is_enabled = shown,
-          .is_visible = shown,
-      };
+  // PsychoV31 sliders: 0 - max, 1 = its own (PsychoV35's: twattila/psycho35_settings.hpp).
+  const auto v31_slider = [](const std::string& key, float* binding, const std::string& label, const std::string& tooltip,
+                             float max = 2.f, float default_value = 1.f) {
+    return new renodx::utils::settings::Setting{
+        .key = key,
+        .binding = binding,
+        .default_value = default_value,
+        .label = label,
+        .section = "PsychoV31",
+        .tooltip = tooltip,
+        .max = max,
+        .format = "%.2f",
+        .is_enabled = IsPsychoV31Mode,
+        .is_visible = IsPsychoV31Mode,
     };
   };
-  const auto v31_slider = psycho_slider("PsychoV31", IsPsychoV31Mode);
-  const auto v35_slider = psycho_slider("PsychoV35", IsPsychoV35Mode);
 
   settings = {
     new renodx::utils::settings::Setting{
@@ -583,58 +573,6 @@ void BuildRuntimeData() {
         .format = "%.2f",
         .is_enabled = IsHDRMode,
         .is_visible = IsPsychoV30Mode,
-    },
-    // PsychoV35: Musa's, its own sliders in PsychoV31's order (ATN) ////////////////////////////////////////////
-    v35_slider("v35_exposure", &shader_injection.v35_exposure, "Exposure", ""),
-    v35_slider("v35_highlights", &shader_injection.v35_highlights, "Highlights", ""),
-    v35_slider("v35_shadows", &shader_injection.v35_shadows, "Shadows", ""),
-    v35_slider("v35_contrast", &shader_injection.v35_contrast, "Contrast", "1 = PsychoV35's own."),
-    v35_slider("v35_highlight_contrast", &shader_injection.v35_highlight_contrast, "Highlight Contrast",
-               "Contrast above mid gray. 1 = PsychoV35's own."),
-    v35_slider("v35_shadow_contrast", &shader_injection.v35_shadow_contrast, "Shadow Contrast",
-               "Contrast below mid gray. 1 = PsychoV35's own."),
-    new renodx::utils::settings::Setting{
-        .key = "v35_flare",
-        .binding = &shader_injection.v35_flare,
-        .default_value = 0.f,
-        .label = "Flare",
-        .section = "PsychoV35",
-        .tooltip = "Deepens the darkest shadows. 0 = off.",
-        .max = 1.f,
-        .format = "%.2f",
-        .is_enabled = IsPsychoV35Mode,
-        .parse = [](float value) { return 0.1f * std::pow(value, 10.f); },
-        .is_visible = IsPsychoV35Mode,
-    },
-    v35_slider("v35_saturation", &shader_injection.v35_saturation, "Saturation / Purity", "1 = PsychoV35's own."),
-    v35_slider("v35_dechroma", &shader_injection.v35_dechroma, "Dechroma",
-               "Very bright colors fade toward white, as if overexposed. 0 = off.", 1.f, 0.f),
-    v35_slider("v35_roll_off", &shader_injection.v35_roll_off, "Highlight Roll-off",
-               "How soon highlights start to compress toward Peak. 0 = latest, 1 = default, 2 = soonest."),
-    v35_slider("v35_gamut_compression", &shader_injection.v35_gamut_compression, "Gamut Compression",
-               "Pulls colors your display can't show back inside its color space.\n"
-               "0 = off (the display clips them), 1 = full (default).",
-               1.f, 1.f),
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-        .label = "Fire too pink, too orange or too pale? Change the settings below.",
-        .section = "PsychoV35",
-        .is_visible = IsPsychoV35Mode,
-    },
-    v35_slider("v35_highlight_saturation", &shader_injection.v35_highlight_saturation, "Highlight Saturation",
-               "Saturation of bright colors. 0 = less, 1 = PsychoV35's own, 2 = more."),
-    new renodx::utils::settings::Setting{
-        .key = "hue_clip",
-        .binding = &shader_injection.hue_clip,
-        .default_value = 40.f,
-        .label = "Hue Clip Emulation",
-        .section = "PsychoV35",
-        .tooltip = "Bright colors take the hue SDR clips them to: fire more orange / yellow, sky more cyan.\n"
-                   "0 = off. Default 40: the closest to the SDR picture.",
-        .max = 100.f,
-        .is_enabled = IsPsychoV35Mode,
-        .parse = [](float value) { return value * 0.01f; },
-        .is_visible = IsPsychoV35Mode,
     },
     // PsychoV31 ///////////////////////////////////////////////////////////////////////////////////
     v31_slider("v31_exposure", &shader_injection.v31_exposure, "Exposure", ""),
@@ -1081,6 +1019,7 @@ void BuildRuntimeData() {
     //     .format = "%.0f",
     // }
   };
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
 
 // Graphics (Experimental): the sliders, through the LOD pick hook (object detail), Attila's unit hook

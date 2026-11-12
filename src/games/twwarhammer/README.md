@@ -21,6 +21,12 @@ The startup audio-setting worker is now cancelled and waited for through its act
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twwarhammer.addon64`.
 
+## v37 (2026-11-12, PsychoV35 round; built only, not run in game)
+
+- **HDR (PsychoV35)** (Rendering Mode 3): Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`). Hue Clip Emulation (0 - 100, default 40) Attila's engine (`AttilaEngineHueClip`, the bloom already in the scene, no highlight limit); default 40 = Attila's (part 4). Reset and Recommended in PsychoV35 (no Extended mode here).
+- Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain (Thrones and WH1 take Attila's).
+- Other modes: unchanged code paths (not bit-checked on this game; Attila's and WH3's are).
+
 ## v36 (2026-11-05, built only, not run in game; renodx-tw-dlaa64.exe helper89, bridge v29: ship them together)
 
 - **Shared helper:** cloth and sails can trace without shading themselves (WH3's Smooth Banner Shadows, batch 5); no row here, nothing changes.

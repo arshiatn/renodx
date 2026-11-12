@@ -11,6 +11,7 @@ HDR presentation proxy.
 | SDR | Original scene response and clipped highlights, scaled by Paper White. |
 | PsychoV31 - Native Tone | Applies PsychoV31 after the game's gamma/brightness response. The Faithful to SDR preset selects this mode. |
 | PsychoV31 - Full Replacement | Replaces that gamma/brightness response with PsychoV31. Same response and grey calibration as the preceding build's last V31 mode. Default. |
+| PsychoV35 | Recommended (2026-11-12). Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`), anchored as Full Replacement; Hue Clip Emulation (default 100) toward the game's response and its per-channel clip. Injection now c200 - c209 (10 registers). V35 builds for the game's SM3 shaders: on SM3 its failed pixels are black at once (as after ApplyPsychoV35 elsewhere). Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain (the clip alone). Built only, not run in game. |
 
 Both Psycho modes retain the game's colour grading and each shader variant's
 bloom, vignette and directional blur. Native no-bloom variants remain without

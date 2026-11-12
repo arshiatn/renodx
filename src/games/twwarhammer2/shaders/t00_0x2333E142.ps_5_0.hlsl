@@ -48,6 +48,7 @@ Texture2D<float4> g_hdr_rgb_bloom_texture : register(t1);
 #define cmp -
 #include "../shared.h"
 #include "../psycho_test30.hlsli"
+#include "../../twattila/psycho35.hlsli"
 
 // Stock: one bilinear tap of the bloom; bloom_filter.hlsli: a cubic B-spline over 4 x 4 texels.
 #define BLOOM_SAMPLE_ONLY
@@ -127,6 +128,14 @@ void main(
   float scene_y = dot(hdr_color, float3(0.212599993f, 0.715200007f, 0.0722000003f));
   float handoff_y = 0.18f * pow(max(scene_y / x_mid, 0.f), slope);
   hdr_color *= (scene_y > 0.f) ? handoff_y / scene_y : 0.f;
+
+  // PsychoV35: Hue Clip Emulation toward the hue the stock Extended Reinhard (on the luminance) and its per-channel clip
+  // give (twattila/psycho35.hlsli).
+  [branch]
+  if (HDR >= 3.5f && SI.hue_clip > 0.f && handoff_y > 0.f) {
+    const float stock_y = scene_y * (1.f + scene_y * inv_w) / (1.f + scene_y);
+    hdr_color = renodx::tonemap::psychov::HueClip(hdr_color, stock_y / handoff_y, SI.hue_clip);
+  }
 
   o0.xyz = hdr_color;
   o0.w = scene_sample.w;
