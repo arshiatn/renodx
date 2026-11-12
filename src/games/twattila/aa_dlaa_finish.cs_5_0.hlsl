@@ -4,14 +4,20 @@
  */
 
 // DLAA (anti_aliasing.hpp): NVIDIA's result (t0, BT.2020: linear, or its square root for presets L and M and Ray
-// Reconstruction) back to the tone mapper's signed BT.709 and its 2.0 encoding (square root, sign kept), the frame's own
-// alpha (t1), into the result (u0). Its Debug View instead: the motion
+// Reconstruction) back to the tone mapper's signed BT.709 and its 2.0 encoding (square root, sign kept; linear with
+// TW_AA_FRAME_LINEAR), the frame's own alpha (t1), into the result (u0). Its Debug View instead: the motion
 // NVIDIA got (1: t2) or the objects' own (2: t3, motion.hlsli MotionTexel; t4 the depth), at the input size (top-left),
 // stretched over the picture: the direction as the hue, brighter the faster (32 pixels a frame: full). Object Motion
 // (t5 / t6 the in-draw motion and depth too): grey where an object's is the final surface but still (yellowish: drawn
 // again, not in-draw), dark red where it is hidden (not used), the scene dimmed where there is none.
 #include "./aa.hlsli"
 #include "./motion.hlsli"
+
+// The tone mapper's output: 0 its square root (Attila, Rome II, Thrones, WH3...), 1 linear (Pharaoh). A game folder's
+// copy of this shader defines it before its #include.
+#ifndef TW_AA_FRAME_LINEAR
+#define TW_AA_FRAME_LINEAR 0
+#endif
 
 Texture2D<float4> t_dlaa : register(t0);
 Texture2D<float4> t_current : register(t1);
@@ -53,5 +59,5 @@ void main(uint2 pixel : SV_DispatchThreadID)
                                            -0.1245505f, 1.1328999f, -0.0083494f,
                                            -0.0181508f, -0.1005789f, 1.1187297f),
                                   dlaa);
-  t_rw_result[pixel] = float4(sign(linear_color) * sqrt(abs(linear_color)), current.a);
+  t_rw_result[pixel] = float4((TW_AA_FRAME_LINEAR ? linear_color : (sign(linear_color) * sqrt(abs(linear_color)))), current.a);
 }
