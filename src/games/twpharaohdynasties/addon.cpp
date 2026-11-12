@@ -2548,9 +2548,10 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Warhammer III's), ATN's RT/PT preset as the defaults of what the methods leave, then
   // Settings Mode's pages. Only what this game hooks: no smoke map, foliage light or reflections.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows starts off too (Experimental: no game run has shown it here yet); RT/PT turns it on, as ATN's list does.
+  // Fog Shadows and the torches' light in it start off too (Experimental: no game run has shown them here yet); RT/PT turns them
+  // on, as ATN's list does.
   for (auto* setting : settings) {
-    if (setting->key == "RayTracedFogShadows") {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow") {
       setting->default_value = 0.f;
     }
   }
@@ -2580,6 +2581,16 @@ void ConfigureAddon() {
                                              .lights_own_row = true,
                                              .has_reflections = false,
                                              .rays_replace_ao = false});
+  // RT/PT's AO as the AO method's Path-Traced (graphics_page.hpp ChooseAo): the paths' AO multiplies the game's SSAO here, so
+  // GT-VBAO (the page's default) goes off with it; else it ran hidden under the paths, its shading on theirs.
+  for (auto* setting : settings) {
+    if (setting->group == "page-presets" && setting->label == "RT/PT") {
+      setting->on_change = [apply = setting->on_change] {
+        apply();
+        renodx::utils::settings::UpdateSettings({{"ssao_mode", 0.f}});
+      };
+    }
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
