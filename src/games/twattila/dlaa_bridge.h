@@ -252,6 +252,10 @@ constexpr uint32_t RT_REFLECTIONS_FOG = 262144;
 // Steadier Water Reflections (a reflections request's; helpers before 105 ignore it): a mirror's reflection (one ray, no
 // history, no filter: calm water) within the range its neighbours on the same surface show.
 constexpr uint32_t RT_REFLECTIONS_STEADY = 524288;
+// Softer Water Reflections (a reflections request's; helpers before 105 ignore it): the positions hold the water's surface,
+// written since the frame's first paths request took them (the riverbed's): the reflections' history from last frame's at
+// this request.
+constexpr uint32_t RT_REFLECTIONS_WATER_POSITIONS = 1048576;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

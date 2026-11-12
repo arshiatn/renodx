@@ -98,6 +98,7 @@ struct Settings {
   // DLAA / DLSS: the G-buffer guides for ray tracing's paths (path tracing, reflections) and the reflections' textures.
   bool ray_traced_guides = false;
   bool ray_traced_reflections = false;
+  float water_roughness = 0.f;  // the guides' least roughness on water (rt_scene's Softer Water Reflections; 0: their own)
   uint32_t frame_generation = 0;           // DLAA / DLSS: frames shown per rendered frame (2-6; 1 Dynamic; 0 off: frame_generation.hpp)
   uint32_t frame_backend = dlaa_bridge::FG_BACKEND_DLSS;  // which makes them
   uint32_t reflex = 0;        // NVIDIA Reflex: 0 off, 1 on, 2 on + boost (with frame generation: on whatever this is)
@@ -141,7 +142,8 @@ struct GuidesCamera {
   std::array<float, 3> position = {};
   float padding = 0.f;
   std::array<float, 2> inverse_render_size = {};
-  std::array<float, 2> padding_end = {};
+  float water_roughness = 0.f;  // Settings::water_roughness
+  float padding_end = 0.f;
 };
 
 struct TaaConstants {
@@ -600,6 +602,7 @@ inline bool WriteGuides(ID3D11DeviceContext* native, const std::array<ID3D11Shad
       .inverse_view_projection = runtime.camera.inverse_view_projection,
       .position = runtime.camera.position,
       .inverse_render_size = {1.f / static_cast<float>(runtime.render_width), 1.f / static_cast<float>(runtime.render_height)},
+      .water_roughness = runtime.settings.water_roughness,
   };
   native->UpdateSubresource(runtime.objects.guides_camera.Get(), 0, nullptr, &guides_camera, 0, 0);
   const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),

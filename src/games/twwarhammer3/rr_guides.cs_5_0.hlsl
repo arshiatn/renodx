@@ -31,6 +31,7 @@ cbuffer camera : register(b0) {
 
 cbuffer guides_settings : register(b1) {
   float diffuse_rule;
+  float water_roughness;  // Softer Water Reflections' least roughness on water (0: 0.01)
 };
 
 [numthreads(8, 8, 1)]
@@ -57,5 +58,5 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float n_dot_v = dot(view, normalize(on_ray.xyz / on_ray.w));
   specular_albedo[id.xy] = float4((water || rest < 0.f) ? specular : RrSpecularAlbedo(specular, linear_roughness, n_dot_v), 1.f);
   normals[id.xy] = float4(dot(world, world) > 0.f ? normalize(world) : float3(0.f, 0.f, 1.f), 0.f);
-  roughness[id.xy] = water ? 0.01f : linear_roughness;
+  roughness[id.xy] = water ? max(0.01f, water_roughness) : linear_roughness;
 }

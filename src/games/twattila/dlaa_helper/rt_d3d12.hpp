@@ -891,6 +891,7 @@ class RtScene12 {
     guide_albedo_.Reset();
     guide_roughness_.Reset();
     kept_positions_.Reset();
+    water_positions_.Reset();
     reflection_.Reset();
     specular_.Reset();
     hit_distance_.Reset();
@@ -1325,7 +1326,8 @@ class RtScene12 {
         // The history at the frame's first request: last frame's positions (copied then) kept, this frame's copied.
         const uint32_t width = std::max(shared.rt_width, 1u);
         const uint32_t height = std::max(shared.rt_height, 1u);
-        if (frame != paths_frame_) {
+        const bool first_paths_request = frame != paths_frame_;
+        if (first_paths_request) {
           history_valid_ = copied_frame_ != UINT32_MAX && copied_frame_ + 1 == frame && previous_color_;
           // The slice that took the last copy is last frame's now, the other takes this frame's: one copy a frame (the two
           // textures before took two, 0.15 ms of a 4K frame each).
@@ -1348,6 +1350,38 @@ class RtScene12 {
           std::copy_n(shared.rt_view_projection, 16, current_view_projection_.begin());
           copied_frame_ = frame;
           paths_frame_ = frame;
+        }
+        // Softer Water Reflections (RT_REFLECTIONS_WATER_POSITIONS): the addon wrote the water's surface over the positions
+        // after the frame's first paths request took them (the riverbed's: deep water failed every reflection history test).
+        // Last frame's at this request go over the slice the earlier requests read (the next frame's copy takes that slice),
+        // and this frame's are kept for the next: two copies at the render size (about 0.15 ms each at 4K).
+        if (reflections && !first_paths_request && (requested & dlaa_bridge::RT_REFLECTIONS_WATER_POSITIONS) != 0 && water_frame_ != frame
+            && EnsureHistory(HISTORY_WATER, frame)) {
+          const D3D12_BOX region = {.left = 0, .top = 0, .front = 0, .right = width, .bottom = height, .back = 1};
+          const D3D12_TEXTURE_COPY_LOCATION water = {.pResource = water_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+          if (water_frame_ != UINT32_MAX && water_frame_ + 1 == frame) {
+            std::array<D3D12_RESOURCE_BARRIER, 2> to_previous_copy = {
+                Transition(kept_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
+                Transition(water_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE),
+            };
+            to_previous_copy[0].Transition.Subresource = previous_positions_slice_;
+            list->ResourceBarrier(static_cast<UINT>(to_previous_copy.size()), to_previous_copy.data());
+            const D3D12_TEXTURE_COPY_LOCATION previous = {.pResource = kept_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                                                          .SubresourceIndex = previous_positions_slice_};
+            list->CopyTextureRegion(&previous, 0, 0, 0, &water, &region);
+            for (auto& barrier : to_previous_copy) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+            list->ResourceBarrier(static_cast<UINT>(to_previous_copy.size()), to_previous_copy.data());
+          }
+          std::array<D3D12_RESOURCE_BARRIER, 2> to_water_copy = {
+              Transition(water_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
+              Transition(positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+          };
+          list->ResourceBarrier(static_cast<UINT>(to_water_copy.size()), to_water_copy.data());
+          const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+          list->CopyTextureRegion(&water, 0, 0, 0, &from, &region);
+          for (auto& barrier : to_water_copy) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+          list->ResourceBarrier(static_cast<UINT>(to_water_copy.size()), to_water_copy.data());
+          water_frame_ = frame;
         }
         auto to_previous = Transition(kept_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         to_previous.Transition.Subresource = previous_positions_slice_;
@@ -1806,7 +1840,7 @@ class RtScene12 {
   static constexpr double SLOW_MS = 100.0;
   static constexpr uint32_t SLOW_REPORTS = 50;
   // The effects' history (EnsureHistory): its kinds, released after this many frames unused (~10 s).
-  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_LIGHTS, HISTORY_REFLECT, HISTORY_KINDS };
+  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_LIGHTS, HISTORY_REFLECT, HISTORY_WATER, HISTORY_KINDS };
   static constexpr uint32_t HISTORY_FRAMES = 600;
   // The descriptor table: SRVs t1-t7, UAVs u0-u5.
   enum Descriptor : UINT {
@@ -2648,6 +2682,23 @@ class RtScene12 {
         }
         reflect_frame_ = UINT32_MAX;
         return true;
+      case HISTORY_WATER:
+        // Softer Water Reflections: the positions at the last reflections request that had the water's (~130 MB at 4K).
+        if (water_positions_) return true;
+        {
+          D3D12_RESOURCE_DESC desc = positions_->GetDesc();
+          desc.DepthOrArraySize = 1;
+          desc.MipLevels = 1;
+          desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+          desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+          const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+          if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                      IID_PPV_ARGS(water_positions_.GetAddressOf())))) {
+            return false;
+          }
+        }
+        water_frame_ = UINT32_MAX;
+        return true;
       case HISTORY_SPECULAR:
         // The reflections' accumulation and its metadata, this frame's and the last.
         if (specular_accumulated_) return true;
@@ -2717,6 +2768,7 @@ class RtScene12 {
       device_->CreateShaderResourceView(nullptr, &NO_KEPT_POSITIONS, Descriptor(PREVIOUS_POSITIONS));
       release("paths' positions", {std::addressof(kept_positions_)}, {});
     }
+    if (water_positions_ && unused(HISTORY_WATER)) release("water's positions", {std::addressof(water_positions_)}, {});
     if (reuse_samples_[0] && unused(HISTORY_REUSE)) {
       release("ReSTIR GI", {std::addressof(reuse_samples_[0]), std::addressof(reuse_samples_[1]), std::addressof(reuse_data_[0]), std::addressof(reuse_data_[1])},
               {REUSE_SAMPLES, REUSE_SAMPLES + 1, REUSE_DATA, REUSE_DATA + 1});
@@ -5801,6 +5853,9 @@ class RtScene12 {
   ComPtr<ID3D12Resource> kept_positions_;
   uint32_t copied_slice_ = 0;
   uint32_t previous_positions_slice_ = 0;
+  // Softer Water Reflections: the positions at the reflections request of frame water_frame_ (the water's surface).
+  ComPtr<ID3D12Resource> water_positions_;
+  uint32_t water_frame_ = UINT32_MAX;
   ComPtr<ID3D12Resource> specular_accumulated_;
   ComPtr<ID3D12Resource> specular_history_;
   ComPtr<ID3D12Resource> specular_meta_;

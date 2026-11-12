@@ -9,7 +9,8 @@
 // at the G-buffer's size. The
 // sky (no normal: the G-buffer cleared) takes NVIDIA's defaults: diffuse albedo 0.5, specular albedo 0. Water (the
 // material flag 4, written again at the reflection pass, after it is drawn: rt_core.hpp Reflections): no diffuse
-// albedo, water's specular albedo, nearly smooth (its own gloss there is no roughness).
+// albedo, water's specular albedo, nearly smooth (its own gloss there is no roughness; Softer Water Reflections: at least
+// g_water_roughness).
 #include "./rr_specular.hlsli"
 
 Texture2D<float4> gbuffer_normal : register(t0);    // world normal x 0.5 + 0.5, gloss
@@ -23,6 +24,7 @@ cbuffer guides_camera : register(b0) {
   float4x4 g_inverse_view_projection;  // as the depth was drawn (anti_aliasing.hpp GuidesCamera)
   float3 g_camera_position;
   float2 g_inverse_render_size;  // starts the next register, as GuidesCamera's padding keeps it
+  float g_water_roughness;       // GuidesCamera::water_roughness (0: 0.03)
 };
 
 [numthreads(8, 8, 1)]
@@ -45,5 +47,5 @@ void main(uint3 id : SV_DispatchThreadID)
   const float n_dot_v = dot(world_normal, normalize(g_camera_position - on_ray.xyz / on_ray.w));
   specular_albedo[id.xy] = float4(sky ? (float3)0.f : (water ? (float3)0.02f : RrSpecularAlbedo(lerp(0.04f, albedo, colour.a), linear_roughness, n_dot_v)), 1.f);
   normals[id.xy] = float4(world_normal, 0.f);
-  roughness[id.xy] = water ? 0.03f : linear_roughness;
+  roughness[id.xy] = water ? max(0.03f, g_water_roughness) : linear_roughness;
 }

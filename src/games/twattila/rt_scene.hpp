@@ -124,6 +124,7 @@ struct Sliders {
   float reflection_samples = 1.f;
   float reflection_reuse = 0.f;  // 0 off, 1 from ReSTIR GI, 2 Own ReSTIR
   float water_steady = 0.f;  // Steadier Water Reflections
+  float water_soft = 0.f;    // Softer Water Reflections
   float debug_view = 0.f;  // games whose tone mapper hook calls OnTonemapDrawn
   float scene_test = 0.f;  // with the Debug View on
 };
@@ -180,6 +181,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reflection_reuse = sliders.reflection_reuse == 1.f && sliders.light_bounce == 2.f,
       .reflection_own = sliders.reflection_reuse == 2.f,
       .water_steady = sliders.water_steady != 0.f,
+      .water_soft = sliders.water_soft != 0.f && sliders.reflections != 0.f && sliders.water_reflections != 0.f && dlaa,
       // Ray-traced sun shadows are every shadow: the point lights' too (games whose light draws InstallPointLights hooks),
       // the game's sun shadow maps not drawn (games that InstallShadowsOnly).
       .local_lights = sliders.local_lights != 0.f && sliders.sun_shadows != 0.f && dlaa,
@@ -214,6 +216,10 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
   };
 }
 
+// Softer Water Reflections' least roughness on water (Attila's guides give it 0.03, Warhammer III's 0.01): past the helper's
+// mirrors (ReflectPixel: under 0.05, one ray, no history, no filter), so Samples, the history and the 3 x 3 filter take it.
+constexpr float WATER_SOFT_ROUGHNESS = 0.06f;
+
 // What the anti-aliasing's bridge makes for these settings: the ray tracing textures, the G-buffer guides (the paths read
 // them) and the reflections' textures.
 inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
@@ -226,6 +232,7 @@ inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
   aa->ray_traced_reflections = settings.reflections || settings.specular_occlusion;
   // The Light Bounce through rays: at their own resolution, no Checkerboard.
   light_bounce::SetRayTraced(settings.light_bounce, settings.light_bounce_resolution);
+  aa->water_roughness = settings.water_soft ? WATER_SOFT_ROUGHNESS : 0.f;
 }
 
 // The TW games' view: DLAA's (anti_aliasing.hpp); a rigid draw DLAA's motion saw moving stays out of the scene.
@@ -1862,6 +1869,21 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             .label = "Steadier Water Reflections (Experimental)",
             .section = section,
             .tooltip = "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.",
+            .labels = {"Off", "On"},
+            .is_enabled = [sliders, aa] {
+              return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f && sliders->water_reflections != 0.f;
+            },
+            .is_visible = [] { return internal::water_pass; },
+        },
+        new renodx::utils::settings::Setting{
+            .key = "RayTracedWaterSoft",
+            .binding = &sliders->water_soft,
+            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+            .default_value = 0.f,
+            .label = "Softer Water Reflections (Experimental)",
+            .section = section,
+            .tooltip = "Calmer water reflections, a little softer. Samples and the other reflection settings then work on water too.\n"
+                       "Heavier.",
             .labels = {"Off", "On"},
             .is_enabled = [sliders, aa] {
               return feature_settings::Upscaling(*aa) && sliders->reflections != 0.f && sliders->water_reflections != 0.f;

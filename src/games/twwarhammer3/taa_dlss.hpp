@@ -262,7 +262,7 @@ inline void DispatchGuides(ID3D11DeviceContext* native, ID3D11DeviceContext1* co
   auto& bridge = twattila::dlaa_bridge::bridge;
   twattila::dlaa_bridge::BeforeSharedWrites(native);
   talesofarise::dlss::ContextStateScope scope(context1, state.objects.private_state.Get());
-  const std::array<float, 4> shader_settings = {state.guides_rule, 0.f, 0.f, 0.f};
+  const std::array<float, 4> shader_settings = {state.guides_rule, state.settings.water_roughness, 0.f, 0.f};
   context1->UpdateSubresource(state.objects.shader_settings.Get(), 0, nullptr, shader_settings.data(), 0, 0);
   const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
                                                             bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
