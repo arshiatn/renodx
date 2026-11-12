@@ -117,6 +117,7 @@ static const float LIGHT_FIT_MAX_Y = 16.f;
 static const float LIGHT_FIT_BLEND = 0.1f;
 static const float UNSEEN_ALBEDO = 0.35f;
 static const float CONTACT_RANGE = 0.3f;  // metres (ContactShade)
+static const float SEEN_FACE = 0.25f;  // SeenNow: a hit's normal within 75 degrees of the pixel's
 static const float ROUGH_LIMIT = 0.75f;  // rougher surfaces keep the game's reflection: only their occlusion is traced
 static const float MAX_SPECULAR_FRAMES = 12.f;
 static const float SKY_HIT_DISTANCE = 65504.f;  // NVIDIA's for the sky (FP16's most)
@@ -236,9 +237,19 @@ void CacheSetAlbedo(float3 world, float3 normal, float3 albedo) {
   cache_albedo[entry] = uint2(bytes.r | (bytes.g << 8) | (bytes.b << 16) | (255u << 24), frame + 1u);
 }
 
-// A world position's clip coordinates through a camera's registers.
-// This frame's pixel of a world position where the camera sees that same surface (false: off screen or hidden).
-bool SeenNow(float3 world, out uint2 pixel) {
+// The pixel's normal: the G-buffer's when the guides hold it, else from the positions.
+float3 PixelNormal(uint2 pixel, float4 position) {
+  if ((path_flags & PATH_GUIDES) != 0u) {
+    const float3 guide = guide_normals[pixel].xyz;
+    if (dot(guide, guide) > 0.5f) return normalize(guide);
+  }
+  return SurfaceNormal(int2(pixel), position);
+}
+
+// This frame's pixel of a world position where the camera sees that same surface (false: off screen or hidden), facing the
+// same way as `normal` (0: any). Within 5 cm and 2% of the depth (0.95 m at 45 m) the face beside it is "the same surface"
+// too: a wall's back or a step's face in shade took the light of the sunlit top the camera saw there.
+bool SeenNow(float3 world, float3 normal, out uint2 pixel) {
   pixel = 0u;
   const float4 clip = ClipOf(world, view_projection);
   if (clip.w <= 0.f) return false;
@@ -246,7 +257,8 @@ bool SeenNow(float3 world, out uint2 pixel) {
   if (any(uv < 0.f) || any(uv >= 1.f)) return false;
   pixel = min(uint2(uv * float2(width, height)), uint2(width, height) - 1u);
   const float4 seen = positions[pixel];
-  return seen.w > 0.f && distance(seen.xyz, world) < 0.05f + 0.02f * seen.w;
+  if (seen.w <= 0.f || distance(seen.xyz, world) >= 0.05f + 0.02f * seen.w) return false;
+  return all(normal == 0.f) || dot(normal, PixelNormal(pixel, seen)) > SEEN_FACE;
 }
 
 // Last frame's pixel of a world position where last frame saw that same surface (false: not).
@@ -302,13 +314,13 @@ float3 PreviousLight(uint2 pixel) {
   return (previous_square_root != 0u) ? color * color : color;
 }
 
-// The light leaving a surface a ray met (false: nobody knows it): the screen's now, else (without this frame's light) last
-// frame's, else the radiance cache's at the face `hit_normal` turns to (SHaRC's instead in PathRadiance with SHaRC Radiance
-// Cache), unless `cached` is false.
+// The light leaving a surface a ray met (false: nobody knows it): the screen's now where it shows that face, else (without
+// this frame's light) last frame's, else the radiance cache's at the face `hit_normal` turns to (SHaRC's instead in
+// PathRadiance with SHaRC Radiance Cache), unless `cached` is false.
 bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached = true) {
   light_there = 0.f;
   uint2 pixel;
-  if ((path_flags & PATH_LIGHT) != 0u && SeenNow(hit, pixel)) {
+  if ((path_flags & PATH_LIGHT) != 0u && SeenNow(hit, hit_normal, pixel)) {
     if ((path_flags & PATH_LIGHT_FINAL) != 0u) {
       light_there = max(light[pixel], 0.f);
       return true;
@@ -334,15 +346,6 @@ bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached
 #endif
 }
 
-
-// The pixel's normal: the G-buffer's when the guides hold it, else from the positions.
-float3 PixelNormal(uint2 pixel, float4 position) {
-  if ((path_flags & PATH_GUIDES) != 0u) {
-    const float3 guide = guide_normals[pixel].xyz;
-    if (dot(guide, guide) > 0.5f) return normalize(guide);
-  }
-  return SurfaceNormal(int2(pixel), position);
-}
 
 // The local lights' light on a surface the screen never saw: one of them picked by what it would give (its colour, the
 // games' smooth falloff (1 - distance / reach)^2, its angle; reservoir sampling with one number) and weighted back by its
