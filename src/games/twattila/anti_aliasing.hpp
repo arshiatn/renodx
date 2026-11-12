@@ -284,6 +284,7 @@ struct Runtime {
   UINT render_height = 0;
   uint64_t camera_frame = UINT64_MAX;      // the frame `camera` and `scene_depth` are from (a sun light draw's)
   uint64_t tonemapped_frame = UINT64_MAX;  // after it: no jitter
+  uint64_t view_3d_frame = UINT64_MAX;     // the tone mapper drew, any method or none (FrameTrace's 3D view)
   uint64_t applied_frame = UINT64_MAX;     // the last frame TAA / SMAA T2x ran
   uint64_t upscaled_frame = UINT64_MAX;    // the last frame DLSS answered
   uint64_t depth_upscaled_frame = UINT64_MAX;  // DLSS below 100%: the last frame UpscaleDepth ran
@@ -1374,6 +1375,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
+  runtime.view_3d_frame = runtime.frame;
   if (runtime.settings.method == Method::OFF) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -1511,7 +1513,7 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   runtime.display_width = display.texture.width;
   runtime.display_height = display.texture.height;
   frame_trace::OnPresent(runtime.render_width != 0 && runtime.render_width < runtime.display_width,
-                         runtime.tonemapped_frame == runtime.frame);
+                         runtime.view_3d_frame == runtime.frame);
   ++runtime.frame;
   frame_history::tonemapped.store(false, std::memory_order_relaxed);
   runtime.scene_depth.Reset();
@@ -1557,7 +1559,8 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
 // names their outputs' readers give them: `whole_textures`), the vertex shaders the addon replaces with ones that read
 // the render share (`vertex_shares`) and the game's 3D sprites drawn against the scene's depth after the tone mapper
 // (`full_depth_shaders`, vertex shaders: the depth stretched for them below 100%; `full_depth_copy`: also against one copy
-// of it, Pharaoh's battle). The frame trace's options (`trace`; its 3D view at 100%: the tone mapper anti-aliased this frame).
+// of it, Pharaoh's battle). The frame trace's options (`trace`; its 3D view at 100%: the tone mapper drew this frame, with any
+// anti-aliasing or none).
 inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMotion& motion = {},
                     std::span<const view_share::RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shares = {},
                     std::span<const uint32_t> full_depth_shaders = {}, std::span<const char* const> whole_textures = {},
