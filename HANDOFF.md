@@ -24,7 +24,7 @@ leave ATN a note to reboot. One writer at a time. Install the newest stamped bui
 - [ ] Pharaoh P6 features in order: output fix + graphics_page + RAYS_PRESET + page 2 parity (keys kept); stability; AA at 100% with the encoding parameter; FG / Reflex; render-scale audit; RT scene (16 steps); replace game passes (contact march, SSEO, fog march, shadow maps with the baked buffer kept); RR guides; SSS extras, smoke, water, fog shadows; presets; Reset gives the game's effects back
   Round v47 (implementer, offline, no trace needed; beside the P4 data run, which uses plain stamped v46 copies):
   - [x] 1 Graphics 1 of 2 on graphics_page (WH3's way): 0 keys lost (581 -> 585: + TAA Motion Vectors, FG Method, RT Denoiser, AO under RR), Shadow Map Size to Shadows; graphics_page::SetRaysPresetDefaults shared (WH3's loop moved); ray_traced's Fog Shadows gated on the fog hook; SSS off under RT sun shadows (as Attila / WH3). Dumps: a_v156a / w_v52a date only
-  - [ ] 2 Graphics 2 of 2 matched to Attila (24 tests in, 11 dead rows out, Attila's two presets)
+  - [x] 2 Graphics 2 of 2 matched to Attila: 24 Attila tests in (33 of Attila's 54 now), 11 dead rows out (3 Attila tests, 8 More Tests), Rope Distance without ROPE_DISTANCE / _FADEOUT, 4 tooltips with Pharaoh's game values, Attila's two presets, Reset / presets reset the tests too; more_tests.h marked hand-edited (generator's read list missed / kept the wrong ones). find_emu.py on Pharaoh.exe: 467 of 467 names found (before: 437 of 448, misses = the 10-27 run's 11). Dump p47a -> p47b: lost 11 (asked), added 24
   - [ ] 3 sun facts: cube 24, rt_sun without Attila's scale switch, WARP
   - [ ] 4 GPU vendor read (OnNvidia, RENODX_TW_FAKE_VENDOR)
   - [ ] builds of every consumer, page dumps, README v47

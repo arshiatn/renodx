@@ -1808,8 +1808,17 @@ void ConfigureAddon() {
   contact_shadow_quality.tweaks = {
       {.name = "screen_space_shadows_step_count", .integer = true},
   };
-  // Graphics 2 of 2's tests: Attila's that this game has, then More Tests (more_tests.h).
+  // Graphics 2 of 2's tests: Attila's that this game has, as it has them (without the values it lacks, its own game values
+  // in the tooltips), then More Tests (more_tests.h).
   engine_tests = twattila::engine_tests::Only(twattila::engine_tests::Attila(), more_tests::ATTILA_TESTS);
+  for (auto& test : engine_tests) {
+    std::erase_if(test.option.tweaks, [](const tw::engine_tweaks::Tweak& tweak) {
+      return std::ranges::find(more_tests::MISSING_VALUES, tweak.name) != more_tests::MISSING_VALUES.end();
+    });
+    if (const auto tooltip = std::ranges::find(more_tests::TOOLTIPS, test.key, &std::pair<std::string, std::string>::first); tooltip != more_tests::TOOLTIPS.end()) {
+      test.tooltip = tooltip->second;
+    }
+  }
   {
     auto more = more_tests::MoreTests();
     engine_tests.insert(engine_tests.end(), more.begin(), more.end());
@@ -1821,9 +1830,9 @@ void ConfigureAddon() {
       .label = "Engine values: not searched yet",
       .section = "Graphics (Experimental)",
   };
-  // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all
-  // graphics settings at their defaults; not the ambient occlusion or the Light Bounce).
-  const std::vector<std::pair<std::string, float>> graphics_defaults = {
+  // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all graphics settings and tests at their
+  // defaults, as Attila's; not the ambient occlusion or the Light Bounce).
+  std::vector<std::pair<std::string, float>> graphics_defaults = {
       {"GraphicsShadowMapSize", 0.f},
       {"GraphicsUnitDetailVerySmall", 1.f},
       {"GraphicsUnitDetailSmall", 1.f},
@@ -1843,6 +1852,10 @@ void ConfigureAddon() {
       {"GraphicsReflectionQuality", 1.f},
       {"GraphicsContactShadowQuality", 1.f},
   };
+  for (const auto& test : engine_tests) {
+    // Its option's start: the game's (1x, Game's or -1).
+    graphics_defaults.emplace_back(test.key, test.option.scale);
+  }
   const std::vector<std::pair<std::string, float>> graphics_max = {
       {"GraphicsShadowMapSize", 3.f},
       {"GraphicsUnitDetailVerySmall", 8.f},
@@ -1863,9 +1876,34 @@ void ConfigureAddon() {
       {"GraphicsReflectionQuality", 4.f},
       {"GraphicsContactShadowQuality", 4.f},
   };
+  // A preset: every graphics setting and test at its default but `changes`.
+  const auto preset = [&graphics_defaults](const std::vector<std::pair<std::string, float>>& changes) {
+    auto values = graphics_defaults;
+    for (const auto& [key, value] : changes) {
+      std::ranges::find(values, key, &std::pair<std::string, float>::first)->second = value;
+    }
+    return values;
+  };
+  // Attila's two (ATN's settings with the Unit Sizes mod's 4x / 8x units, and with the game's), as this game has the rows:
+  // Unit Animation also holds the faces and hands, Campaign Detail the plants; no campaign props here.
+  const auto with_units = [&preset](float unit_detail, float dead_units, float animation, float buildings) {
+    return preset({
+        {"GraphicsUnitDetailVerySmall", unit_detail},
+        {"GraphicsUnitDetailSmall", unit_detail},
+        {"GraphicsUnitDetailMedium", unit_detail},
+        {"GraphicsUnitDetailLarge", unit_detail},
+        {"GraphicsUnitDetailVeryLarge", unit_detail},
+        {"GraphicsDeadUnits", dead_units},
+        {"GraphicsUnitAnimation", animation},
+        {"GraphicsBuildingDetail", buildings},
+        {"GraphicsUnitVariety", 3.f},
+        {"GraphicsFootstepEffects", 3.f},
+        {"GraphicsCampaignDetail", 4.f},
+        {"GraphicsShadowMapSize", 1.f},
+    });
+  };
   // ATN's own settings: every graphics setting at its default but these.
-  auto graphics_atn = graphics_defaults;
-  for (const auto& [key, value] : std::vector<std::pair<std::string, float>>{
+  const auto graphics_atn = preset({
       {"GraphicsUnitDetailVerySmall", 1.2f},
       {"GraphicsUnitDetailSmall", 1.2f},
       {"GraphicsUnitDetailMedium", 1.2f},
@@ -1883,17 +1921,33 @@ void ConfigureAddon() {
       {"GraphicsCampaignDetail", 4.f},
       {"GraphicsContactShadowQuality", 4.f},
       {"GraphicsShadowMapSize", 1.f},
-       }) {
-    std::ranges::find(graphics_atn, key, &std::pair<std::string, float>::first)->second = value;
-  }
+  });
   settings.insert(settings.end(), {
       tw::engine_tweaks::Note(),
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "With my 4x / 8x unit sizes",
+          .section = "Graphics (Experimental)",
+          .group = "graphics-presets",
+          .tooltip = "Unit Detail 0.69x, Dead Unit Detail 0.50x, Unit Animation 1.50x, Unit Variety and Footstep Effects\n"
+                     "3x, Building Detail 3x, Campaign Detail 4x, Shadow Map Size 8192. The rest at its default.",
+          .on_change = [values = with_units(0.69f, 0.5f, 1.5f, 3.f)]() { renodx::utils::settings::UpdateSettings(values); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "With vanilla unit sizes",
+          .section = "Graphics (Experimental)",
+          .group = "graphics-presets",
+          .tooltip = "Unit Detail 1.20x, Dead Unit Detail 0.85x, Unit Animation, Unit Variety and Footstep Effects 3x,\n"
+                     "Building Detail 4x, Campaign Detail 4x, Shadow Map Size 8192. The rest at its default.",
+          .on_change = [values = with_units(1.2f, 0.85f, 3.f, 4.f)]() { renodx::utils::settings::UpdateSettings(values); },
+      },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Reset",
           .section = "Graphics (Experimental)",
           .group = "graphics-presets",
-          .tooltip = "Every graphics setting back to its default.",
+          .tooltip = "Every graphics setting and test back to its default.",
           .on_change = [graphics_defaults]() { renodx::utils::settings::UpdateSettings(graphics_defaults); },
       },
       new renodx::utils::settings::Setting{
