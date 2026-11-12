@@ -32,7 +32,7 @@ leave ATN a note to reboot. One writer at a time. Install the newest stamped bui
   Round v48 (implementer, offline, page fixes; built only, not run in game):
   - [x] 1 engine_tests.hpp tooltips: 17 capital words (GRASS, DISTANCES, SHADOWS, EFFECTS, CAMPAIGN, AUDIO) in normal case; keys and engine names unchanged
   - [x] 2 Pharaoh General page: full-download note (under Settings Mode) + GitHub (Downloads) button in About (WH3's); README download link with v48
-  - [ ] 3 graphics_page Bindings rays_multiply_maps (default false): Shadow Map Size stays under ray-traced shadows; Pharaoh true
+  - [x] 3 graphics_page Bindings rays_multiply_maps (default false): Shadow Map Size (and Attila's UI 4K lock) stays under ray-traced shadows; Pharaoh true. Attila replaces (InstallShadowsOnly); WH3 replaces by default, multiplies with Rays Replace Shadow Maps off (left hidden there)
   - [ ] builds (Pharaoh x64, the skill's x64 line, Attila / Rome II / Thrones x86) + dumps a_v157 / w_v53 / p_v48, README v48 (+ Attila v151 / WH3 v47 lines)
 - [ ] Pharaoh round report (per item done / not done, ATN's <= 10-line test list)
 

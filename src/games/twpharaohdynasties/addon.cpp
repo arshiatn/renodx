@@ -2167,7 +2167,8 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .has_reflections = false,
-                                             .rays_replace_ao = false});
+                                             .rays_replace_ao = false,
+                                             .rays_multiply_maps = true});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

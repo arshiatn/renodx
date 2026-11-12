@@ -220,6 +220,7 @@ struct Bindings {
   bool lights_own_row = false;
   bool has_reflections = true;
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
+  bool rays_multiply_maps = false;  // The rays' sun shadows multiply the game's shadow maps: Shadow Map Size stays under them.
 };
 
 enum AoMethod : int { AO_GAME, AO_GTVBAO, AO_RAYS, AO_PATHS };
@@ -744,9 +745,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ShadowMethodOf(b) == SHADOW_RAYS && !feature_settings::Upscaling(*b.aa); }));
     // The game's shadow maps' size and the UI 4K mod's lock on it (Graphics 2 of 2's before v120): Bend's shadows draw over
-    // the game's maps too. Of Bend's rows only Length on the page, the rest and the smoke's shadows without rays under More
-    // Options (ATN).
-    const auto game_maps = [b] { return ShadowMethodOf(b) != SHADOW_RAYS; };
+    // the game's maps too, and so do the rays where they multiply them. Of Bend's rows only Length on the page, the rest and
+    // the smoke's shadows without rays under More Options (ATN).
+    const auto game_maps = [b] { return b.rays_multiply_maps || ShadowMethodOf(b) != SHADOW_RAYS; };
     page.Take({.match = "GraphicsShadowMapSize", .section = section, .shown = game_maps, .only_some_games = true});
     page.Take({.match = "UI 4K Mod Compatibility", .section = section, .shown = game_maps, .only_some_games = true});
     page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
