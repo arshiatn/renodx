@@ -1543,9 +1543,12 @@ constexpr std::array<twattila::rt_scene::PixelMask, 21> BUILDING_MASKS = {{
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws (standard and skin lighting
 // models), with the camera at b1 and the G-buffer's channels 1-4 from their first slot.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
-// branches and leaves, units and grass, and their capture versions (world positions; leaves and grass also UVs).
-// The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow.
-constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
+// branches and leaves, units, grass, far tree cards, cloth and flags, and their capture versions (world positions; leaves,
+// grass and cards also UVs).
+// The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
+// blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
+// shadow there the game's kept baked map.
+constexpr std::array<twattila::rt_scene::SceneShader, 19> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1555,8 +1558,14 @@ constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
     {.hash = 0xCB04CFA7, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_cb04},
     {.hash = 0x513D52B1, .capture_shader = __rt_capture_rigid_vertexpush},
     {.hash = 0x8C511965, .capture_shader = __rt_capture_rigid_terrain_blend},
-    {.hash = 0x4A82B8C2, .capture_shader = __rt_capture_branch},
+    // Branches blend two sets of instance rows (v8-v10, v11-v13 by v6.xy): every frame as drawn, never placed.
+    {.hash = 0x4A82B8C2, .capture_shader = __rt_capture_branch, .dynamic = true},
     {.hash = 0xF704C8EC, .capture_shader = __rt_capture_leaf, .foliage = true},
+    // Far trees' cards (rigidtreebillboard vs40_main): turned to the sun, their alpha at t3 (t0 dissolve, t1 dither).
+    {.hash = 0x97C53219, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): sheets moved by the time and the wind, every frame.
+    {.hash = 0x2F2A0E7E, .capture_shader = __rt_capture_cloth_wind, .dynamic = true, .thin = true},
+    {.hash = 0x8DE94E2F, .capture_shader = __rt_capture_flag, .dynamic = true, .thin = true},
     {.hash = 0xFF969484, .capture_shader = __rt_capture_unit, .dynamic = true},
     {.hash = 0x4A716936, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
     {.hash = 0x475A8CDF, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
