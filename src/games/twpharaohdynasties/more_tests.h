@@ -15,7 +15,9 @@
 // trees, units, buildings and culling only). Do not edit by hand.
 namespace more_tests {
 
-// Attila's tests whose engine values this game reads (all of them).
+// Attila's tests whose engine values this game reads. Edited by hand (v46): without the generator's four audio memory
+// tests (AudioDefaultMemory, AudioVoiceMemory, AudioStreamingMemory, AudioStreamingManagerMemory): their SOUND_* values
+// were never found in game (2026-10-27), and their at-start retry held every Graphics slider back for about 60 s.
 inline const std::vector<std::string> ATTILA_TESTS = {
     "GraphicsPlantSway",
     "GraphicsFarBuildings",
@@ -29,10 +31,6 @@ inline const std::vector<std::string> ATTILA_TESTS = {
     "GraphicsTest_VFX_WIND_SCALE_FACTOR",
     "GraphicsSpriteVariety",
     "GraphicsCampaignSunCameraDepth",
-    "AudioDefaultMemory",
-    "AudioVoiceMemory",
-    "AudioStreamingMemory",
-    "AudioStreamingManagerMemory",
 };
 
 // Every other graphics value its code reads ("More Tests", ATN: unsure ones too): numbers 0.25-8x, flags Game's / Off /
