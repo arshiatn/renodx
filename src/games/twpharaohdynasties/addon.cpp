@@ -1729,9 +1729,13 @@ constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
     {.hash = 0xEB2A56A1, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
 }};
 
-// The game's passes that read render-size textures at the display's size (texture slots), below 100%.
-constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
+// The game's passes that read render-size textures at the display's size (texture slots), below 100%; and the AO blurs,
+// which read their input at their uv (TEXCOORD0 of the full-screen vertex shader 31C49ED2: 0-1 over the viewport, the
+// render scale's share of their half-size target).
+constexpr std::array<twattila::view_share::RegionRead, 3> RENDER_SCALE_READS = {{
     {.shader_hash = 0x57E5140E, .slots = 0b110},  // glow bright pass (after DLSS)
+    {.shader_hash = 0x7F637259, .slots = 0b1},    // ssao2 blur_x
+    {.shader_hash = 0xBFD285BD, .slots = 0b1},    // ssao2 blur_y
 }};
 // The game's 3D sprites (sprite.hlsl vertex_3d_gamma: the unit markers) drawn at the display's size after the tone mapper
 // against the scene's depth (battle f07e0, siege 3aa60) and, in the battle, its copy (ec5e0): both stretched below 100%.
@@ -2461,7 +2465,9 @@ bool AttachAddon() {
                                                         .rigid_compute_shader = __motion_rigid},
                                    RENDER_SCALE_READS, {}, FULL_DEPTH_SHADERS, {},
                                    {
-                                       .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74},
+                                       // Also the point light's and the AO's (g_viewport_offset_scale, g_Resolution: their
+                                       // 100% values below 100%, assumed until a trace lists them).
+                                       .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74, 0xE318CE77, 0xD42C3523},
                                        .value_slots = 6,
                                        .value_floats = 256,
                                        .on_demand = true,
