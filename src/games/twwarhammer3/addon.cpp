@@ -2997,11 +2997,11 @@ constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> reno
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "Game's TAA", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
-    .aa_tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA (Fast) or TAA.\n"
+    .aa_tooltip = "An upscaler in place of the game's TAA: keep in-game Anti-aliasing on TAA or TAA High.\n"
                   "Upscaling Mode: the rows below.\n"
                   "DLSS: NVIDIA's (RTX). FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
                   "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs next to Warhammer3.exe.",
-    .in_game_aa_note = "In-game Anti-Aliasing must be TAA (Fast) or TAA for DLSS, FSR, XeSS and Frame Generation (restart after changing it).",
+    .in_game_aa_note = "In-game Anti-Aliasing must be TAA or TAA High for DLSS, FSR, XeSS and Frame Generation (restart after changing it).",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion\n"
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"

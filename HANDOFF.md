@@ -1,12 +1,20 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## ATN'S 2026-11-12 THIRD LIST (offline; no game runs; Attila first, then the TW addons that share it)
+- [x] WH3's in-game AA names back: TAA or TAA High (ATN confirmed).
+- [x] smoke flicker cause: not the room. The 262,144 "particles a frame" is the game drawing its whole pool every frame (dead ones too; 2^18), our stream holds 2^19 and ATN's siege wanted at most 35,304 quads of High's 65,536 (ATN's preset1: RayTracedSmokeQuality=2). Likely the per-ray cap (SmokeTransmittance stops at 32 dimming / 64 met particles; which come first follows the smoke BLAS, rebuilt each frame). Test: Ultra against Extreme in one siege.
+- [ ] torch and fire shadows: up to 128 lights (bridge v31), each 8 x 8 tile its own 32 (helper rt_lights), the light shaders read the tile's list (rt_local_lights.hlsli t43), a camera range row; SSS torches 32 and a range.
+- [ ] particles: Attila's layer at half or quarter, full-resolution edges (Cantlay, GPU Gems 3 ch. 23), the depth-aware upsample at any scale.
+- [ ] licences: audit of everything shipped (agent), missing texts and credits added.
+- [ ] builds (every RT addon, helper104), harness / WARP, READMEs, commits, push, report.
+
 ## ATN'S 2026-11-12 SECOND LIST (offline; PsychoV35 everywhere, blood check, Pharaoh hotfix, AA red line; Attila v150, WH3 v46)
 - [x] blood: only Pharaoh's lens blood (0xE4931F75, amount x 20 - 8.55 below 0.45) needed the 8-bit clamp; WH3's lensblood00 already fixed. Attila / Thrones blood.pack: mesh shaders only; Troy shaders_bl.pack: mesh + river_blood compute; Rome II blood_rome2.pack: particle VFX; WH1 / WH2: no blood pack on disk, their shaders.pack has no lens blood (not checkable).
 - [x] Pharaoh HDR-only hotfix v1.03: branch pharaoh-hdr-hotfix (8f99e030, v1.02 source ec46f956 + the blood shader only), worktree D:/Dev/renodx_pharaoh_hotfix; stamped build/stamped/pharaoh_v1.03; zip Downloads/renodx-twpharaohdynasties-v1.03.zip. Not run in game.
 - [x] PsychoV35 + Hue Clip Emulation in all 14 HDR add-ons: shared twattila/psycho35.hlsli (HueTransfer, HueClip, AttilaEngineHueClip, ApplyPsychoV35 with mid gray / contrast scale) + psycho35_settings.hpp (rows, defaults). Modes: Attila / Thrones / WH1 / Rome II / Shogun 2 / Ryse / Tales / Expeditions / RUSE 3, WH3 / WH2 / Troy / Pharaoh / Rome Remastered 4. Recommended -> V35 everywhere; Reset follows where there is no Extended mode (Attila, Thrones, WH1, Rome II); RUSE keeps its Faithful to SDR reset.
 - [x] Hue Clip defaults: Attila 40, WH3 100 (real chains, part 4); test/tw_psychov35 part 5 (hue_curves.hlsl, WARP; its WH3 form gives WH3's 1.00): WH2 / RUSE 100, Rome II / Rome Remastered / Ryse / Troy / Pharaoh 80, Shogun 2 / Tales / Expeditions 70; Thrones / WH1 40 (Attila's engine).
 - [x] RUSE: injection c200 - c209; Musa's file has SM3 forms (PSYCHO35_FAILED / NEGATIVE_INFINITY / AND) behind __SHADER_TARGET_MAJOR, SM4+ unchanged tokens.
-- [x] AA red line (graphics_page Texts.in_game_aa_note): Attila "Off", WH3 "TAA (Fast) or TAA ... (restart after changing it)"; WH3's tooltip / status say TAA (Fast) / TAA (ATN's names; preferences comment says TAA / TAA High).
+- [x] AA red line (graphics_page Texts.in_game_aa_note): Attila "Off", WH3 "TAA or TAA High ... (restart after changing it)" (ATN confirmed the menu's names).
 - [x] smoke Maximum vs Ultra (from code + round_v149 log, not measured): VRAM +72 MB fixed (particle stream 24 -> 96 MB) + smoke BLAS only as far as quads grow (ATN's siege peaked 35k quads of Ultra's 131k room); RAM ~0; GPU: 64 vs 32 layers only in thick smoke, BLAS build per quad.
 - NOT PROVEN: every V35 look in game; Hue Clip defaults outside Attila / WH3 measured on curve kinds, not the games' chains; other modes not bit-checked outside Attila / WH3; RUSE's V35 on real DX9 hardware.
 - NEXT: ATN's tests; then WH3, then Pharaoh's RT / DLSS bring-up.

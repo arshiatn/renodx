@@ -2,7 +2,7 @@
 
 ## v46 (2026-11-12, PsychoV35 in every game; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper103 as in v45)
 
-- **Red line under Anti-Aliasing** (ATN: two players had no upscaler): "In-game Anti-Aliasing must be TAA (Fast) or TAA for DLSS, FSR, XeSS and Frame Generation (restart after changing it)." The upscalers take over the game's TAA pass; `gfx_aa` below 2 (Off, FXAA) has none, and preferences.script.txt is read once at start (`taa_dlss.hpp`). The in-game names follow ATN (TAA (Fast), TAA); the tooltip and status line say the same now.
+- **Red line under Anti-Aliasing** (ATN: two players had no upscaler): "In-game Anti-Aliasing must be TAA or TAA High for DLSS, FSR, XeSS and Frame Generation (restart after changing it)." The upscalers take over the game's TAA pass; `gfx_aa` below 2 (Off, FXAA) has none, and preferences.script.txt is read once at start (`taa_dlss.hpp`). The tooltip and status line name the same two (TAA, TAA High).
 - PsychoV35's pieces shared by every game: `ApplyPsychoV35` takes a game's own mid gray and contrast scale (defaults as before), Musa's file has SM3 forms (RUSE) behind `__SHADER_TARGET_MAJOR`; SM4+ the same code. No change in the picture here.
 
 ## v45 (2026-11-12, ATN's list; stamped and installed, not run in game; renodx-tw-dlaa64.exe helper103 as in v44)
@@ -440,7 +440,7 @@ v29 is used twice: the zip twwarhammer3_v29.zip (2026-10-28, its README ends at 
 
 ## v24 (2026-10-27)
 
-- **DLSS** (Graphics 1 of 2, DLSS section; keep in-game Anti-aliasing on TAA (Fast) or TAA): NVIDIA's DLSS replaces the
+- **DLSS** (Graphics 1 of 2, DLSS section; keep in-game Anti-aliasing on TAA or TAA High): NVIDIA's DLSS replaces the
   game's TAA resolve (cs 0x1ADBFF18 TAA / 0x6A8FC282 TAA High; taa_dlss.hpp). Its inputs are the game's own: this
   frame's jittered colour (t4), depth (t0's x), the velocity buffer its TAA uses (t2: units, grass and leaves move in it; flags and glowing weapons
   by Object Motion Vectors, v32) and its jitter (camera g_camera_jitter, the projection's own); they go
