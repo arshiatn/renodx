@@ -3149,7 +3149,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x70F4C9F9, .dynamic = true},  // rigid_campaign_mountain: its height comes from a buffer by the instance
     {.hash = 0x474F97FB, .capture_shader = __rt_capture_branch, .rows_shader = __rt_rows_tree, .second_rows = true, .dynamic_row = &rays_trunks_as_drawn_row, .cut_out_shader = __rt_capture_branch_cut_out, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x474F97FB},                    // fx_rigidbranch_v3
     // Trees with branches moved by the simulation (structured buffers by the instance): every frame.
-    {.hash = 0x31584506, .dynamic = true, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidbranch_v3
+    {.hash = 0x31584506, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
     {.hash = 0xC0ED2883, .dynamic = true, .thin_row = &rays_banner_light_row},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
     // The campaign's ground where the tessellated terrain's mask leaves it: tiles on the height map (a pass with no holes), every frame as they're culled by the view.
@@ -4042,8 +4042,6 @@ void ConfigureAddon() {
                                              .upscaling_mode_found = twwarhammer3::resolution_scale::Found,
                                              .below_100_detail = &below_100_detail_row,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
-                                             .water_motion = &water_motion_row,
-                                             .scale_fix_gi_shadow = &reflections::scale_fix_row,
                                              .placed_objects = &placed_objects_row,
                                              .rays_replace_maps = &traced_lights::rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
@@ -4098,6 +4096,8 @@ void ConfigureAddon() {
                                              },
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .rays_terrain_count_later = &rays_terrain_count_later_row,
+                                             .water_motion = &water_motion_row,
+                                             .scale_fix_gi_shadow = &reflections::scale_fix_row,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
