@@ -791,10 +791,11 @@ struct LightInstance {
 };
 
 // Two frames of light draws (`instances` each), the second marching the first's: true if the second bound the lit bits.
-static bool LightFrames(const Frame& frame, std::span<const LightInstance> instances, uint32_t wanted) {
+static bool LightFrames(const Frame& frame, std::span<const LightInstance> instances, uint32_t wanted, float range = 0.f) {
   const auto buffer = MakeBuffer(static_cast<UINT>(instances.size_bytes()), D3D11_BIND_VERTEX_BUFFER, instances.data());
   sss::Settings settings = Defaults();
   settings.lights = wanted;
+  settings.light_range = range;
   bool bound = false;
   for (int repeat = 0; repeat < 2; ++repeat) {
     RunFrame(frame, settings);
@@ -819,7 +820,7 @@ static void TestTorches() {
   const auto mask = ReadView<uint32_t>(objects.lights.mask_uav.Get());
   const auto list = ReadBuffer<std::array<float, 4>>(objects.lights.list.Get());
   uint32_t count = 0;
-  std::memcpy(&count, &list[32][0], sizeof(count));
+  std::memcpy(&count, &list[lights::internal::LIST_LIGHTS][0], sizeof(count));
   CHECK(count == 1 && list[0] == torch.light);
   // The rectangle its reach covers on screen (sss_lights': its box's corners).
   float low_x = 1e30f;
@@ -888,13 +889,34 @@ static void TestTorches() {
   };
   std::vector<LightInstance> unique(many.begin(), many.end() - 1);
   std::ranges::stable_sort(unique, [&](const LightInstance& a, const LightInstance& b) { return score(a) > score(b); });
-  std::memcpy(&count, &picked[32][0], sizeof(count));
+  std::memcpy(&count, &picked[lights::internal::LIST_LIGHTS][0], sizeof(count));
   bool same = count == 8;
   for (uint32_t rank = 0; same && rank < 8; ++rank) {
-    same = picked[rank] == unique[rank].light && picked[33 + rank][0] == unique[rank].colour[0];
+    same = picked[rank] == unique[rank].light && picked[lights::internal::LIST_LIGHTS + 1 + rank][0] == unique[rank].colour[0];
   }
   std::printf("   100 lights + a repeat: the 8 picked are the CPU's, in order: %s\n", same ? "yes" : "NO");
   CHECK(same);
+  // Torch and Fire Shadow Range 25 m: the 32 picked of those within it (the camera at the origin), in order.
+  constexpr float RANGE = 25.f;
+  REQUIRE(LightFrames(frame, many, 32, RANGE));
+  const auto ranged = ReadBuffer<std::array<float, 4>>(objects.lights.list.Get());
+  std::vector<LightInstance> within;
+  std::ranges::copy_if(unique, std::back_inserter(within), [&](const LightInstance& instance) {
+    const auto& l = instance.light;
+    return (l[0] * l[0]) + (l[1] * l[1]) + (l[2] * l[2]) <= RANGE * RANGE;
+  });
+  std::memcpy(&count, &ranged[lights::internal::LIST_LIGHTS][0], sizeof(count));
+  const auto expected = static_cast<uint32_t>(std::min<size_t>(within.size(), 32));
+  // The range must change the pick: some of the 32 best without it are farther.
+  const bool dropped = std::ranges::any_of(std::span(unique).first(32), [&](const LightInstance& instance) {
+    const auto& l = instance.light;
+    return (l[0] * l[0]) + (l[1] * l[1]) + (l[2] * l[2]) > RANGE * RANGE;
+  });
+  bool in_range = count == expected && dropped;
+  for (uint32_t rank = 0; in_range && rank < expected; ++rank) in_range = ranged[rank] == within[rank].light;
+  std::printf("   range %.0f m: %u of %zu within it picked (of 100; some of the best 32 farther: %s), in order: %s\n", RANGE, count,
+              within.size(), dropped ? "yes" : "no", in_range ? "yes" : "NO");
+  CHECK(in_range);
 }
 
 static void TestReplay() {
