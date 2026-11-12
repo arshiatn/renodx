@@ -31,6 +31,7 @@
 #include "../../utils/swapchain.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
+#include "../twattila/credits.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twshogun2completeedition_dlss/dlss_jitter.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
@@ -1116,6 +1117,16 @@ void ConfigureAddon() {
                    "and PsychoV35.\n"
                    "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0\n"
                    "(APACHE_LICENSE-2.0.txt).",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::HELPER,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::DLSS_ADDON,
           .section = "About",
       },
       new renodx::utils::settings::Setting{

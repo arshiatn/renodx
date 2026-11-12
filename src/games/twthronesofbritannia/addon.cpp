@@ -29,6 +29,7 @@
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/credits.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
@@ -1710,6 +1711,11 @@ void ConfigureAddon() {
                    "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
                    "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
                    "(Apache 2.0, Intel), reflections: AMD FidelityFX SSSR (MIT).",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::HELPER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{

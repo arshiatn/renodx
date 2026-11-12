@@ -43,6 +43,7 @@
 #include "./device_loss.hpp"
 #include "./engine_tests.hpp"
 #include "./feature_settings.hpp"
+#include "./credits.hpp"
 #include "./grass_fade.hpp"
 #include "./graphics_page.hpp"
 #include "./psycho35_settings.hpp"
@@ -1888,7 +1889,7 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::feature_settings::HELPER_CREDITS,
+          .label = twattila::credits::HELPER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{

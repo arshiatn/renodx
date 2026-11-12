@@ -21,6 +21,7 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "../twattila/credits.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -517,6 +518,13 @@ void ConfigureAddon() {
                "and PsychoV35. UE Extended by Marat.",
       .section = "About",
   });
+  for (const char* line : {twattila::credits::ACES, twattila::credits::HELPER, twattila::credits::DLSS_ADDON}) {
+    settings.push_back(new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = line,
+        .section = "About",
+    });
+  }
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,

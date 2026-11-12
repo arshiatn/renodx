@@ -32,6 +32,7 @@
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -2017,6 +2018,11 @@ void ConfigureAddon() {
                    "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
                    "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
                    "(Apache 2.0, Intel).",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::HELPER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{

@@ -6,4 +6,6 @@ This mod uses NVIDIA DLSS through the NVIDIA DLSS (NGX) SDK, under the NVIDIA RT
 (https://github.com/NVIDIA/DLSS/blob/main/LICENSE.txt). NVIDIA, the NVIDIA logo, NVIDIA RTX and DLSS are trademarks
 and/or registered trademarks of NVIDIA Corporation in the U.S. and other countries.
 
-nvngx_dlss.dll is not included: it is NVIDIA's, from NVIDIA (https://github.com/NVIDIA/DLSS) or a game that ships it.
+nvngx_dlss.dll (and nvngx_dlssd.dll, nvngx_dlssg.dll) are NVIDIA's (https://github.com/NVIDIA/DLSS): where a zip
+includes them they are redistributed unmodified under that license; else take them from NVIDIA or a game that
+ships them.

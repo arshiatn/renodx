@@ -26,6 +26,7 @@
 #include "../../utils/swapchain.hpp"
 #include "../talesofarise_dlss/post_filters.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "../twattila/credits.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -849,8 +850,12 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "ACES: Copyright (C) 2015 Academy of Motion Picture Arts and Sciences (A.M.P.A.S.). Portions contributed "
-                   "by others as indicated. All rights reserved. License and disclaimer: ACES_LICENSE.txt.",
+          .label = twattila::credits::ACES,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::DLSS_ADDON,
           .section = "About",
       },
       new renodx::utils::settings::Setting{

@@ -45,6 +45,7 @@
 #include "../twattila/device_loss.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/credits.hpp"
 #include "../talesofarise_dlss/pixel_trace.hpp"
 #include "../twattila/pass_timing.hpp"
 #include "../twattila/graphics_page.hpp"
@@ -4002,7 +4003,7 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::feature_settings::HELPER_CREDITS,
+          .label = twattila::credits::HELPER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{

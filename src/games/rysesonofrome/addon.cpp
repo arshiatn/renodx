@@ -42,6 +42,7 @@
 #include "./light_bounce.hpp"
 #include "./ray_tracing.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "../twattila/credits.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -1575,6 +1576,16 @@ void ConfigureAddon() {
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
                    "and PsychoV35. UC2 Extended by Musa and Jon.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::HELPER,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::DLSS_ADDON,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
