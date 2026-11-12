@@ -75,6 +75,20 @@ inline const Values RAYS_PRESET = {
     {"RayTracedPointLightShadows", 1.f},  // Warhammer III's own row
 };
 
+// RAYS_PRESET as a game's defaults of what the methods leave (Warhammer III, Pharaoh); the methods themselves (sun
+// shadows, Path-Traced AO, Global Illumination and its strength, reflections) stay off. Before Apply: the page's Reset
+// reads the defaults as it is built.
+inline void SetRaysPresetDefaults(std::vector<Setting*>* settings) {
+  constexpr std::array<std::string_view, 5> RAY_METHODS = {"RayTracedSunShadows", "RayTracedPathAmbient", "RayTracedLightBounce",
+                                                           "light_bounce_strength", "RayTracedReflections"};
+  for (Setting* setting : *settings) {
+    const auto preset = std::ranges::find(RAYS_PRESET, setting->key, &Values::value_type::first);
+    if (preset != RAYS_PRESET.end() && std::ranges::find(RAY_METHODS, setting->key) == RAY_METHODS.end()) {
+      setting->default_value = preset->second;
+    }
+  }
+}
+
 inline const std::string AA_SECTION = "Anti-Aliasing and Upscaling";
 inline const std::string AO_SECTION = "Ambient Occlusion";
 inline const std::string SHADOWS_SECTION = "Shadows";
@@ -429,10 +443,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   const auto gi_is = [b](int method) { return [b, method] { return GiMethodOf(b) == method; }; };
   const auto gi_traced = [b] { return GiMethodOf(b) >= GI_RAYS; };
   const auto reflections_are = [b](int method) { return [b, method] { return ReflectionMethodOf(b) == method; }; };
+  // Fog Shadows only where a fog is hooked (SetRaysPresetDefaults can leave the row on where none is).
   const auto ray_traced = [b] {
     return feature_settings::Upscaling(*b.aa)
            && (ShadowMethodOf(b) == SHADOW_RAYS || AoMethodOf(b) >= AO_RAYS || GiMethodOf(b) >= GI_RAYS
-               || ReflectionMethodOf(b) == REFLECTION_RAYS || b.rt->fog_shadows != 0.f);
+               || ReflectionMethodOf(b) == REFLECTION_RAYS || (b.rt->fog_shadows != 0.f && rt_scene::internal::fog_shadows_installed));
   };
   const auto more = [](const bool* open, std::function<bool()> shown) {
     return [open, shown = std::move(shown)] { return *open && shown(); };

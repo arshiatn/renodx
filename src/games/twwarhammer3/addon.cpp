@@ -4032,16 +4032,8 @@ void ConfigureAddon() {
   for (auto* setting : settings) {
     if (setting->key == "RayTracedWaterReflections") setting->default_value = 0.f;
   }
-  // ATN's RT/PT preset (Attila's page, 2026-11-12) as the defaults of what the methods leave; the methods themselves (sun
-  // shadows, Path-Traced AO, GI, its strength, reflections) stay off.
-  constexpr std::array<std::string_view, 5> RAY_METHODS = {"RayTracedSunShadows", "RayTracedPathAmbient", "RayTracedLightBounce",
-                                                           "light_bounce_strength", "RayTracedReflections"};
-  for (auto* setting : settings) {
-    const auto preset = std::ranges::find(twattila::graphics_page::RAYS_PRESET, setting->key, &twattila::graphics_page::Values::value_type::first);
-    if (preset != twattila::graphics_page::RAYS_PRESET.end() && std::ranges::find(RAY_METHODS, setting->key) == RAY_METHODS.end()) {
-      setting->default_value = preset->second;
-    }
-  }
+  // ATN's RT/PT preset (Attila's page, 2026-11-12) as the defaults of what the methods leave.
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &reflections::all_surfaces_row,
