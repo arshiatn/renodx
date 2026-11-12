@@ -398,6 +398,12 @@ void OnDestroyDevice(reshade::api::device* device) {
       },                                                                                              \
   }
 
+// The fog's in-scattering (battlefog inscattering_transmittance, shadows_hardware_gather_5_0; the only fog light shader in the
+// data run's battle, siege and SSAO-off traces, a quarter of the render) marches the sun's shadow maps (the atlas t2, the kept
+// baked map t0): Fog Shadows' (OnFogShadowsDraw). The other permutations (fetch4, gather 4.1, pcf, baked shadows only) were
+// drawn in no trace: left as the game's. WARP on the game's bytes: tools\tw\warp_tests\pharaoh\fog_v54.
+constexpr std::array<uint32_t, 1> FOG_SHADERS = {0x598C59F3};
+
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
@@ -421,6 +427,8 @@ void BuildRuntimeData() {
       // UpgradeRTVReplaceShader(EMPTY),
       __ALL_CUSTOM_SHADERS,
   };
+  // The fog's in-scattering stays the game's: our copy is bound only for Fog Shadows' draws (OnFogShadowsDraw).
+  custom_shaders.erase(FOG_SHADERS[0]);
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
@@ -1585,6 +1593,62 @@ void OnDestroyContactShadowsDevice(reshade::api::device* device) {
   state.device = nullptr;
 }
 
+// Fog Shadows (FOG_SHADERS): in a draw where rt_scene's fog hook (InstallFogShadows, registered before this) bound this frame's
+// rays at t43, our copy (shaders/battlefog00: the march's gate false, the sun's light in the fog x the rays) draws in its place
+// and the game's shader is bound again after it (finalize); otherwise the game's own bytes.
+struct FogShadows {
+  std::shared_mutex mutex;
+  ID3D11Device* device = nullptr;  // ours' (compared only)
+  Microsoft::WRL::ComPtr<ID3D11PixelShader> ours;
+  Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;  // bound again after the draw
+  bool logged = false;
+};
+FogShadows fog_shadows;
+constexpr auto OnFogShadowsDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> rays;
+  native->PSGetShaderResources(43, 1, rays.GetAddressOf());
+  if (!rays) return {};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = fog_shadows;
+  const std::unique_lock lock(state.mutex);
+  if (state.device != device.Get()) {
+    state.ours.Reset();
+    state.device = nullptr;
+    if (FAILED(device->CreatePixelShader(__0x598C59F3.data(), __0x598C59F3.size(), nullptr, state.ours.GetAddressOf()))) return {};
+    state.device = device.Get();
+  }
+  native->PSGetShader(state.game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  native->PSSetShader(state.ours.Get(), nullptr, 0);
+  if (!std::exchange(state.logged, true)) {
+    renodx::utils::log::i("[Total War] First run: Fog Shadows: the fog's in-scattering 598C59F3 drawn with the rays.");
+  }
+  return {.finalize_callback = [](Context& drawn, const void*) {
+    auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
+    auto& drawn_state = fog_shadows;
+    const std::unique_lock drawn_lock(drawn_state.mutex);
+    if (drawn_native != nullptr) {
+      drawn_native->PSSetShader(drawn_state.game_shader.Get(), nullptr, 0);
+    }
+    drawn_state.game_shader.Reset();
+  }};
+};
+
+// Only our shader's device (nullptr: the addon's end, DetachAddon).
+void OnDestroyFogShadowsDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  auto& state = fog_shadows;
+  const std::unique_lock lock(state.mutex);
+  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  state.ours.Reset();
+  state.device = nullptr;
+}
+
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
@@ -1805,6 +1869,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   // the other rays).
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer III's).
+  rt_settings.cheap_fog_alone = true;
   // Ray-traced shadows replace the screen-space ones (the Shadows method, as Attila's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -1851,7 +1917,8 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons), ray-traced AO the game's SSAO; point lights hooked, no smoke, fog or reflections.
+// (the sun shaders' patched comparisons), ray-traced AO the game's SSAO; point lights and the fog hooked, no smoke or
+// reflections.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1874,6 +1941,11 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
                   "turns it on below. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
+    .fog_shadows_label = "Fog Shadows (Experimental)",
+    .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog: it loses the sun's glow in the shadow of\n"
+                           "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
+    .light_glow_label = "Torch and Fire Light in Fog (Experimental)",
+    .light_glow_tooltip = "Torches and fires light the fog around them, with their shafts and shadows in it. Needs Fog Shadows. 0: off.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, ambient occlusion, Light Bounce and shadow softness keep\n"
                                  "their 100% detail. Looks better, can cost some performance.",
 };
@@ -2396,6 +2468,12 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Warhammer III's), ATN's RT/PT preset as the defaults of what the methods leave, then
   // Settings Mode's pages. Only what this game hooks: no smoke map, foliage light or reflections.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  // Fog Shadows starts off too (Experimental: no game run has shown it here yet); RT/PT turns it on, as ATN's list does.
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedFogShadows") {
+      setting->default_value = 0.f;
+    }
+  }
   // Torch and Fire Shadows from rays (Warhammer III's row): after the preset's defaults, so it starts off (Experimental: no game
   // run has shown the light draws read yet).
   settings.push_back(new renodx::utils::settings::Setting{
@@ -2510,6 +2588,11 @@ bool AttachAddon() {
     renodx::utils::command_action::Register(
         OnLightCountDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
+  // Fog Shadows: rt_scene's fog hook binds the rays, then ours swaps the fog's shader where they are bound (registration order).
+  twattila::rt_scene::InstallFogShadows(FOG_SHADERS);
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);
+  renodx::utils::command_action::Register(
+      OnFogShadowsDraw, {.shader_hash = FOG_SHADERS[0], .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   renodx::utils::command_action::Register(
@@ -2550,6 +2633,9 @@ void DetachAddon() {
   OnDestroyContactShadowsDevice(nullptr);
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
+  renodx::utils::command_action::Unregister(OnFogShadowsDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);
+  OnDestroyFogShadowsDevice(nullptr);
   renodx::utils::command_action::Unregister(OnLightCountDraw);
   renodx::utils::command_action::Unregister(OnSkyDomeGuides);
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
