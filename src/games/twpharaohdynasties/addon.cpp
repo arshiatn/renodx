@@ -10,6 +10,7 @@
 #define DEBUG_LEVEL_0
 
 #include <d3d11.h>
+#include <wrl/client.h>
 #include <array>
 #include <atomic>
 #include <format>
@@ -17,6 +18,7 @@
 #include <shared_mutex>
 #include <cmath>
 #include <string>
+#include <utility>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -25,6 +27,7 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/directx.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/ao_pass.hpp"
@@ -1483,6 +1486,91 @@ constexpr auto OnLightCountDraw = []<typename Context>(Context& command) -> reno
   return {};
 };
 
+// One method for contact shadows: the sun PS's own march toward the sun (lighting_VS_PS's g_contact_shadows, an int at byte 4
+// in all 25 sun draws; 16 steps at ATN's settings, its result min'ed into the shadow) goes in a sun draw that ours shadow:
+// Bend or the rays, whose mask screen_space_shadows' OnSunDraw (registered before this) bound at t49 for that draw. The draw
+// reads a copy of its lighting constants with the flag 0, the game's bound again after it (finalize: the Light Bounce draws
+// the sun draw itself and bypasses). Without our mask the game's buffer, flag and bytes stay. WARP on the game's bytes with
+// the traces' constants: tools\tw\pharaoh\sun_test.
+constexpr UINT CONTACT_SHADOWS_OFFSET = 4;
+struct ContactShadowsOff {
+  std::shared_mutex mutex;
+  ID3D11Device* device = nullptr;  // the copy's (compared only)
+  Microsoft::WRL::ComPtr<ID3D11Buffer> lighting;
+  UINT lighting_bytes = 0;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> zeros;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> game_lighting;  // bound again after the draw
+  UINT game_slot = 0;
+  bool logged = false;
+};
+ContactShadowsOff contact_shadows_off;
+constexpr auto OnSunContactShadows = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> our_shadow;
+  native->PSGetShaderResources(twattila::screen_space_shadows::internal::MASK_SLOT, 1, our_shadow.GetAddressOf());
+  if (!our_shadow) return {};
+  const auto& sun_draw = command.template GetCallbackData<T>();
+  Microsoft::WRL::ComPtr<ID3D11Buffer> game_lighting;
+  native->PSGetConstantBuffers(sun_draw.lighting_slot, 1, game_lighting.GetAddressOf());
+  if (!game_lighting) return {};
+  D3D11_BUFFER_DESC desc = {};
+  game_lighting->GetDesc(&desc);
+  if (desc.ByteWidth < CONTACT_SHADOWS_OFFSET + sizeof(uint32_t)) return {};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = contact_shadows_off;
+  const std::unique_lock lock(state.mutex);
+  if (state.device != device.Get() || state.lighting_bytes != desc.ByteWidth) {
+    state.lighting.Reset();
+    state.lighting_bytes = 0;
+    state.device = nullptr;
+    constexpr std::array<uint32_t, 4> ZEROS = {};
+    const D3D11_BUFFER_DESC copy = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_BUFFER_DESC zeros = {.ByteWidth = sizeof(ZEROS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA zeros_data = {.pSysMem = ZEROS.data()};
+    if (FAILED(device->CreateBuffer(&copy, nullptr, state.lighting.GetAddressOf()))
+        || FAILED(device->CreateBuffer(&zeros, &zeros_data, state.zeros.ReleaseAndGetAddressOf()))) {
+      state.lighting.Reset();
+      return {};
+    }
+    state.lighting_bytes = desc.ByteWidth;
+    state.device = device.Get();
+  }
+  // A constant buffer takes no update of a part: the game's whole, then the flag from the buffer of zeros.
+  native->CopyResource(state.lighting.Get(), game_lighting.Get());
+  const D3D11_BOX flag = {.left = 0, .top = 0, .front = 0, .right = sizeof(uint32_t), .bottom = 1, .back = 1};
+  native->CopySubresourceRegion(state.lighting.Get(), 0, CONTACT_SHADOWS_OFFSET, 0, 0, state.zeros.Get(), 0, &flag);
+  native->PSSetConstantBuffers(sun_draw.lighting_slot, 1, state.lighting.GetAddressOf());
+  state.game_lighting = std::move(game_lighting);
+  state.game_slot = sun_draw.lighting_slot;
+  if (!std::exchange(state.logged, true)) {
+    renodx::utils::log::i(std::format("[Total War] First run: the game's contact shadows off in sun draw {:08X} (ours shadow it).", sun_draw.shader_hash));
+  }
+  return {.finalize_callback = [](Context& drawn, const void*) {
+    auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
+    auto& drawn_state = contact_shadows_off;
+    const std::unique_lock drawn_lock(drawn_state.mutex);
+    if (drawn_native != nullptr) {
+      drawn_native->PSSetConstantBuffers(drawn_state.game_slot, 1, drawn_state.game_lighting.GetAddressOf());
+    }
+    drawn_state.game_lighting.Reset();
+  }};
+};
+
+void OnDestroyContactShadowsDevice(reshade::api::device*) {
+  auto& state = contact_shadows_off;
+  const std::unique_lock lock(state.mutex);
+  state.lighting.Reset();
+  state.lighting_bytes = 0;
+  state.zeros.Reset();
+  state.game_lighting.Reset();
+  state.device = nullptr;
+}
+
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
@@ -2147,7 +2235,8 @@ void ConfigureAddon() {
       tw::engine_tweaks::Slider(&reflection_quality, "GraphicsReflectionQuality", "Reflection Quality",
                                 "More steps for screen-space reflections: fewer gaps. Heavier.", 4.f),
       tw::engine_tweaks::Slider(&contact_shadow_quality, "GraphicsContactShadowQuality", "Contact Shadow Quality",
-                                "More steps for the small screen-space shadows. Heavier.", 4.f),
+                                "More steps for the game's small screen-space shadows. Heavier.\n"
+                                "Only with Game's Shadow Maps: Bend's and ray-traced shadows replace them.", 4.f),
       new renodx::utils::settings::Setting{
           .key = "GraphicsShadowMapSize",
           .binding = &shadow_map_size,
@@ -2339,6 +2428,14 @@ bool AttachAddon() {
   // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z; WARP on all 25 sun shaders, tools\tw\pharaoh\sun_test).
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // The game's contact shadows off where ours shadow: after the screen-space shadows' (they bind ours at t49), before the Light
+  // Bounce's (it draws the sun draw itself with the constants bound then).
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyContactShadowsDevice);
+  for (const auto& sun_draw : LIGHT_BOUNCE_DRAWS) {
+    renodx::utils::command_action::Register(
+        OnSunContactShadows, {.shader_hash = sun_draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW},
+        &sun_draw);
+  }
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also
   // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once
   // each: b0-b5 up to 1 KB (camera b1 with camera_near_far at c25, shadowmap_PS b2's splits and baked map,
@@ -2414,6 +2511,9 @@ void DetachAddon() {
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
+  renodx::utils::command_action::Unregister(OnSunContactShadows);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyContactShadowsDevice);
+  OnDestroyContactShadowsDevice(nullptr);
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
   renodx::utils::command_action::Unregister(OnLightCountDraw);
