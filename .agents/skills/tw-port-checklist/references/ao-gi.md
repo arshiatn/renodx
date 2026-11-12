@@ -52,5 +52,9 @@ At each round's end, one line per game pass that our features touch:
 | e.g. WH3 SSAO | 0.51 ms at 4K | Sun draws only | No | RTAO, GT-VBAO, PT AO (0.09 ms left) |
 | e.g. WH3 GI probes, six passes | 0.22 ms | 1019 sun-shader readers | Yes: they carry the sky's shade | Bounce zeroed under our GI |
 | e.g. dynamic shadow cascades | per game | Water, lit effects, fog | Under Multiply | Replace, kept cache stays |
+| Pharaoh contact shadows (sun PS's own march, `g_contact_shadows`, 16 steps) | not measured (inside the sun draws) | The sun's shadow term only (min'ed in) | Only without ours | Bend, RT sun shadows: off in each sun draw where t49 is bound (a lighting copy with byte 4 = 0) [v51] |
+| Pharaoh SSEO (sun PS, quality 4 with SSAO 3: the bleed; 16 steps, 1000 m) | not measured | The specular cube reflection only: WARP, specular coefficient 0, quality 4 = 0 in all 25 | Yes: ours add only diffuse light (`light_bounce_apply`) and our AO takes SSAO's t12, which the game multiplies into that reflection itself | Stays under every method; goes only under a ray-traced specular occlusion (none in Pharaoh) [v51] |
+| Pharaoh SSAO (ssao2, half the viewport at every scale) | not measured | Sun draws only (t12, through `ao_filter`) | Yes: GT-VBAO is its generate; RTAO multiplies it (`rays_replace_ao` false) | Nothing yet |
+| Pharaoh cascades (16384 atlas, 4 tiles a frame) and baked 4096 map (kept) | not measured | Sun, water, river, fog 598C59F3, particles 3F1B86E1 | Yes: the rays multiply them (`rays_multiply_maps`) | Nothing; the baked map is never skipped |
 
 Known costs (RTX 5090, 4K): NRD memory SIGMA 360 MB, AO 220 MB, Light Bounce 125 MB, reflections 580 MB; Attila PT Light Bounce in the harness Full 4.25 against Half 1.41 ms (5.18 ms in game); WH3 at Performance: bounce 1.80 ms, sun and AO rays 1.18 ms.
