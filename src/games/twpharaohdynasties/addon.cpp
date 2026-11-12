@@ -42,6 +42,11 @@
 #include "./shadow_map.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "./rt_outside_view_branch_gs.h"
+#include "./rt_outside_view_card_gs.h"
+#include "./rt_outside_view_leaf_gs.h"
+#include "./rt_outside_view_unit_gs.h"
+#include "./rt_outside_view_world_gs.h"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -1439,6 +1444,10 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
+// The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View, and Hills Out of
+// View for its terrain (Experimental, off: no game run has shown them yet).
+float rays_units_out_of_view_row = 0.f;
+float rays_hills_out_of_view_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1549,7 +1558,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 21> BUILDING_MASKS = {{
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
 // blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
 // shadow there the game's kept baked map.
-constexpr std::array<twattila::rt_scene::SceneShader, 18> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1571,6 +1580,18 @@ constexpr std::array<twattila::rt_scene::SceneShader, 18> SCENE_SHADERS = {{
     {.hash = 0x475A8CDF, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
     {.hash = 0x07936F02, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
     {.hash = 0xE710D4E7, .capture_shader = __rt_capture_grass_e710, .dynamic = true, .foliage = true, .grass = true},
+    // The shadow pass's casters (pass 6 of tools\tw\pharaoh\phase2.md, into the 2 x 2 atlas): what is out of the main view still casts
+    // there (rt_outside_view.gs_5_0.hlsl: the game's own draws, world positions from their vertex shaders' outputs). Every frame as drawn;
+    // solid as the main pass's, leaves and far cards cut out by their shadow pixel shaders' masks (6CA31B12 t0, 31718466 t2). No sprite
+    // soldiers: none drawn in any trace.
+    {.hash = 0x67E28AF9, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0xDC5FE525, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0xBC8DA38B, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x731EF7DD, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x039A9620, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x5AFB107C, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
+    {.hash = 0xA709F459, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
+    {.hash = 0xEB2A56A1, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
@@ -1625,7 +1646,11 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, false, (shader_injection.ssao_resolution != 0.f) ? 2.f : 1.f,
                             false);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // As Warhammer III's rows (here the game's shadow maps under the rays shadow from behind the camera already: the casters are for
+  // the other rays).
+  rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
+  rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Ray-traced shadows replace the screen-space ones (the Shadows method, as Attila's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -2202,6 +2227,9 @@ void ConfigureAddon() {
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .rays_units_out_of_view = &rays_units_out_of_view_row,
+                                             .units_out_of_view_tested = false,
+                                             .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .has_reflections = false,
@@ -2267,7 +2295,14 @@ bool AttachAddon() {
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
-  twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);
+  // The TW games' view; the shadow pass's casters through world positions (its vertex shaders' view-projection at cb0[9-12], not
+  // Warhammer III's cb0[10-13]), from the sun's per-frame atlas only (R32, 2 x 2 cascades; not the kept baked map, R16 4096 x 4096).
+  twattila::rt_scene::Host rt_host = twattila::rt_scene::TW_HOST;
+  rt_host.cascade_world = true;
+  rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
+    return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
+  };
+  twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 

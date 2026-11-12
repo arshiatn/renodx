@@ -190,6 +190,7 @@ struct Bindings {
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
   float* rays_replace_maps = nullptr;  // The sun's shadow from rays alone where they'd multiply its mask; null: no such row
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
+  bool units_out_of_view_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
   float* rays_skip_cascades = nullptr;  // Under rays_replace_maps: nothing drawn into the shadow maps; null: no such row
   float* rays_one_at_a_place = nullptr;  // A kept caster goes where another mesh is placed (dlaa_bridge.h RT_ONE_AT_A_PLACE); null: no such row
@@ -836,10 +837,14 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .key = "RayTracedUnitsOutOfView",
           .binding = b.rays_units_out_of_view,
           .value_type = SettingValueType::BOOLEAN,
-          .default_value = 1.f,
-          .label = "Shadow Casters Out of View",
+          .default_value = b.units_out_of_view_tested ? 1.f : 0.f,
+          .label = b.units_out_of_view_tested ? "Shadow Casters Out of View" : "Shadow Casters Out of View (Experimental)",
           .section = section,
-          .tooltip = "Rays' sun shadows: trees, buildings, rocks and units behind the camera keep their shadows, as far as the game's shadow distance reaches.",
+          // Under the game's shadow maps those already shadow from behind the camera: there it is what the other rays see.
+          .tooltip = b.rays_multiply_maps
+                         ? "Trees, buildings, rocks and units behind the camera, as far as the game's shadow distance reaches, stay in\n"
+                           "the rays: ray-traced AO and Global Illumination near the screen's edges see them."
+                         : "Rays' sun shadows: trees, buildings, rocks and units behind the camera keep their shadows, as far as the game's shadow distance reaches.",
           .is_visible = more_rays,
       });
     }
@@ -994,7 +999,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Hills Out of View (Experimental)",
           .section = section,
-          .tooltip = "Hills outside the view give ray-traced AO, Light Bounce and reflections.",
+          .tooltip = b.has_reflections ? "Hills outside the view give ray-traced AO, Light Bounce and reflections."
+                                       : "Hills outside the view give ray-traced AO and Light Bounce.",
           .is_visible = more_rays,
       });
     }

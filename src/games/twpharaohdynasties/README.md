@@ -1,5 +1,11 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Round v50 (2026-11-12, casters out of view, point lights, 3D UI below 100%; built only, not run in game)
+
+- **New: Shadow Casters Out of View (Experimental, off) and Hills Out of View (Experimental, off)** under Shadows' More Options with Ray-Traced (DXR) shadows. Trees, buildings, rocks and units the sun's shadow pass draws outside the view (behind the camera too) go into the ray-traced scene, so the rays near the screen's edges see them. Hills Out of View adds the shadow pass's terrain. The game's shadow maps already shadow from behind the camera here, so these rows are for ray-traced AO, Global Illumination and torch rays. The shadow pass's eight vertex shaders (terrain 67E28AF9, rigid DC5FE525, units BC8DA38B / 731EF7DD / 039A9620, branches 5AFB107C, leaves A709F459, far cards EB2A56A1) keep their own constants. A geometry shader (`rt_outside_view.gs_5_0.hlsl`) keeps the triangles outside the main view and streams out the world positions those shaders already write. Leaves and far cards keep their UV for the cut-out. Only the per-frame 16384 x 16384 atlas counts; the kept 4096 x 4096 baked map doesn't. Shared: `twattila/rt_core.hpp` `Host::cascade_world` / `Host::cascade_target` (Warhammer III unchanged) and `graphics_page::Bindings::units_out_of_view_tested`.
+
+Build: `cmake --build build --config Release --target renodx-twpharaohdynasties.addon64`. Manual check: a battle with Ray-Traced (DXR) shadows, Ray-Traced AO and Shadow Casters Out of View on. A wall or tree just off the screen's edge darkens the ground next to it as it does on screen. Turning the row off and on causes no stutter and no missing shadows.
+
 ### Round v49 (2026-11-12, ray-traced scene tables; built only, not run in game)
 
 - **Fixed: buildings and props no longer go into the ray-traced scene twice.** Their vertex shader (1ACBD907) also draws the depth prefill, the sea and some effects; only its 21 G-buffer pixel shaders are in the scene now, each with the texture its cut-out tests. The sea, the spline borders and the ash no longer cast ray-traced shadows.

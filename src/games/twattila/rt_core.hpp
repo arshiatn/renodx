@@ -266,7 +266,9 @@ struct SceneShader {
   // cascades (Settings::casters_out_of_view) are streamed out through this geometry shader, with the main view's matrix at its
   // cb0[10-13]; it collapses what the main pass has. Their count stays, so never compact. With a rows_shader: a placed draw
   // instead, by its rows (cb0[10-13] is the main view, all 0 for a new mesh's first rows); the capture and rows shaders read no
-  // state but the draw's vertex buffers (the game's shadow pass binds other resources than its main pass).
+  // state but the draw's vertex buffers (the game's shadow pass binds other resources than its main pass). With Host::cascade_world
+  // the draw keeps its constants, this reads the world positions the vertex shader writes and streams them out (with a foliage draw's
+  // UV in w); a terrain's (`terrain`) under Settings::terrain_outside_view instead.
   std::span<const uint8_t> cascade_keep;
   // The same with the draw's UV passed on (uv_semantic), for a cascade draw cut out by its pixel shader's mask (cut_out_masks).
   std::span<const uint8_t> cascade_keep_uv;
@@ -318,6 +320,14 @@ struct Host {
   // rays (SceneShader::faded_rows_shader). Null: no such rule.
   const float* faded_row = nullptr;
   std::span<const uint32_t> faded_pixel_shaders;
+  // SceneShader::cascade_keep's draws. False: the main view's matrix put in at the shadow vertex shader's cb0[10-13] (Warhammer III), its
+  // clip space streamed out. True (Pharaoh: its shadow vertex shaders keep their own view-projection at cb0[9-12] and write each corner's
+  // world position to an output): the game's constants stay, the geometry shader takes the main view's matrix at its b0[10-13] and
+  // streams out world positions (a foliage draw's UV in w), so the scene stays a world-space one.
+  bool cascade_world = false;
+  // Whether a cascade draw's depth target is the game's per-frame sun shadow map (null: a square array of 4, Warhammer III's cascades;
+  // the same shaders may draw a UI's small view).
+  bool (*cascade_target)(const D3D11_TEXTURE2D_DESC& desc) = nullptr;
 };
 
 namespace internal {
@@ -406,7 +416,7 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
-  ComPtr<ID3D11Buffer> cascade_camera;  // SceneShader::cascade_keep's cb0: the main view's matrix at [10-13]
+  ComPtr<ID3D11Buffer> cascade_camera;  // SceneShader::cascade_keep's cb0 (Host::cascade_world: its b0): the main view's matrix at [10-13]
   ComPtr<ID3D11Buffer> cascade_no_view;  // All 0: a new mesh's first rows, none left out
   ComPtr<ID3D11Buffer> captured;  // stream output: world positions, three per triangle
   ComPtr<ID3D11ShaderResourceView> captured_srv;
@@ -1175,7 +1185,7 @@ void Capture(Context& command, const SceneShader& shader) {
   if (shader.grass && !GrassMet()) return;
   bool thin = shader.thin || (shader.thin_row != nullptr && *shader.thin_row != 0.f);
   const bool cascade_draw = !shader.cascade_keep.empty();
-  if (cascade_draw && !runtime.settings.casters_out_of_view) return;
+  if (cascade_draw && !(shader.terrain ? runtime.settings.terrain_outside_view : runtime.settings.casters_out_of_view)) return;
   if (!cascade_draw && ((shader.foliage && !shader.rows_shader.empty()) || thin)) {
     ComPtr<ID3D11RenderTargetView> colour_target;
     native->OMGetRenderTargets(1, colour_target.GetAddressOf(), nullptr);
@@ -1567,8 +1577,9 @@ void Capture(Context& command, const SceneShader& shader) {
   if (FAILED(depth_resource.As(&depth_texture))) return;
   depth_texture->GetDesc(&depth_desc);
   if (cascade_draw) {
-    // The cascades' array only; the same shaders may draw a UI's small view.
-    if (depth_desc.ArraySize != 4 || depth_desc.Width != depth_desc.Height) return;
+    const bool cascades = (host.cascade_target != nullptr) ? host.cascade_target(depth_desc)
+                                                           : (depth_desc.ArraySize == 4 && depth_desc.Width == depth_desc.Height);
+    if (!cascades) return;
   } else if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != dlaa_bridge::bridge.width || depth_desc.Height != dlaa_bridge::bridge.height) {
     return;
   }
@@ -1764,8 +1775,15 @@ void Capture(Context& command, const SceneShader& shader) {
       native->UpdateSubresource(objects.cascade_camera.Get(), 0, nullptr, cascade_constants.data(), 0, 0);
       runtime.cascade_camera_frame = runtime.frame;
     }
-    native1->VSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
-    native->VSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
+    // Host::cascade_world: the game's shadow vertex shader as bound, the main view's matrix for the geometry shader (the game's b0 there
+    // put back too, though its shadow pass draws without one).
+    if (host.cascade_world) {
+      native1->GSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+      native->GSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
+    } else {
+      native1->VSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+      native->VSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
+    }
   }
   if (!place || sway) {
     // A tessellated draw's triangles: how many is known only after it, so into their own buffer, after the frame's others.
@@ -1775,7 +1793,9 @@ void Capture(Context& command, const SceneShader& shader) {
     if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
-    if (shader.sun_facing) native->VSSetShaderResources(0, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
+    // A capture version turned to the sun reads rt_sun; the game's shadow vertex shader (a cascade draw) turns its cards to the sun itself,
+    // and its t0 stays as the game set it for the next draw.
+    if (shader.sun_facing && !cascade_draw) native->VSSetShaderResources(0, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
     ComPtr<ID3D11ShaderResourceView> game_keep_view;
     ComPtr<ID3D11Buffer> game_keep_constants;
     if (!shader.tessellated_keep.empty()) {
@@ -1871,7 +1891,7 @@ void Capture(Context& command, const SceneShader& shader) {
       native->GSSetShaderResources(0, 1, game_keep_view.GetAddressOf());
       native->GSSetConstantBuffers(1, 1, game_keep_constants.GetAddressOf());
     }
-    if (shader.sun_facing) {
+    if (shader.sun_facing && !cascade_draw) {
       ID3D11ShaderResourceView* no_view = nullptr;
       native->VSSetShaderResources(0, 1, &no_view);
     }
@@ -1943,7 +1963,13 @@ void Capture(Context& command, const SceneShader& shader) {
                                         (faded ? "with an instance left out" : "with second rows apart from the first")));
     }
   }
-  if (cascade_draw) {
+  if (cascade_draw && host.cascade_world) {
+    if (game_camera_first == 0) {
+      native->GSSetConstantBuffers(0, 1, game_camera.GetAddressOf());
+    } else {
+      native1->GSSetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+    }
+  } else if (cascade_draw) {
     if (game_camera_first == 0) {
       native->VSSetConstantBuffers(0, 1, game_camera.GetAddressOf());
     } else {
@@ -3600,8 +3626,10 @@ constexpr auto OnAnyDraw = []<typename Context>(Context&) -> renodx::utils::comm
 inline void InstallScene(std::span<const SceneShader> shaders, const Host& host) {
   internal::scene_shaders = shaders;
   internal::host = host;
-  internal::clip_captures = host.scene_draw != nullptr
-                            || std::ranges::any_of(shaders, [](const SceneShader& shader) { return shader.capture_shader.empty(); });
+  // A cascade draw streaming out world positions (Host::cascade_world) is no clip-space capture.
+  internal::clip_captures = host.scene_draw != nullptr || std::ranges::any_of(shaders, [&host](const SceneShader& shader) {
+                              return shader.capture_shader.empty() && !(host.cascade_world && !shader.cascade_keep.empty());
+                            });
   internal::world_captures = internal::clip_captures && std::ranges::any_of(shaders, [](const SceneShader& shader) { return !shader.rows_shader.empty(); });
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
