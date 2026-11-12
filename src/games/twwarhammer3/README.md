@@ -7,6 +7,8 @@
 - **Correction to v149's smoke note:** the stream was not full. The log's 262,144 particles a frame is the game drawing its whole particle pool every frame (dead ones too); the stream holds 524,288 and the siege wanted at most 35,304 of High's 65,536 quads. The likely cause of the flicker is each sun ray's cap in the smoke (it stops after 32 dimming / 64 met particles, which come first following the smoke's BVH, rebuilt each frame). Extreme and Maximum raise that cap; an A/B of Ultra against Extreme in one siege tells.
 - Particles: unchanged (the game's own half layer; Attila's Quarter and edges are Attila's only for now).
 - **About:** the shared credits in `twattila/credits.hpp`; MiniEngine's licence next to CMAA2; every zip gets ReShade's, ImGui's, Detours', frozen's and gtl's licences.
+- **Light Through Foliage** for the screen-space shadows (0.5 as in Attila): grass, leaves and tree cards are found by the G-buffer's foliage bit (128 in channel 3's alpha, the bit the game's own sun mask lets light through); off under MSAA. WARP test PASS: 0 pixels apart from the depth-copy result.
+- **RT/PT preset = Attila's** (ATN's 2026-11-12 settings, `graphics_page::RAYS_PRESET`), and its values are now this page's defaults for every row the methods leave (the methods stay off): Bounces 1; Far Tree, Fog, Smoke and Sprite Soldier Shadows, Light Through Leaves, Torch and Fire Shadows with RIS, Light in Fog, Steady Bounce Light, Specular Occlusion, Water Reflections and Caustics on; GI Range 50 m, Rays 1, Resolution Full; Reflection Reuse 2; Softness 0.8; Smoke Shadow Quality Ultra; Swaying Shadows Range 50 m.
 
 ## v46 (2026-11-12, PsychoV35 in every game; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper103 as in v45)
 
