@@ -1,5 +1,23 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## ATN'S 2026-11-12 FOURTH LIST + PHARAOH (started 15:07; ATN away until ~21:00, plays 21:00-01:00)
+Rules for this batch: game runs (Pharaoh trace-only data runs, medium-effort agent, few runs, fresh backups incl. replays/saves) allowed
+before 21:00 and after 01:00 only; NEVER restart the PC (a restart ends this session; nothing resumes it); before any GPU job check
+Committed Bytes (24.6 GB of 31.7 GB RAM at 15:07, 5.7 h uptime): if it climbs past ~60 GB stop GPU work, keep offline work going and
+leave ATN a note to reboot. One writer at a time. Install the newest stamped builds at the end of each round (install_v151.py pattern).
+- [x] Fable 5.2 review of the TW skill, checked and applied (de8b5da3); restructure: one home per rule, newest helper first (2ab87370)
+- [x] Rays a Pixel's four effect rows under More Options; FG menu line yellow (9239b3e6)
+- [ ] helper105: PT GI cache keyed by facing + short-hit guard + no tone-mapped PreviousLight under a light buffer (Attila, WH3)
+- [ ] water reflections: no CACHE_RELEARN for reflections (bug fix); Steadier Water Reflections (Exp, off: mirror firefly clamp); Samples tooltip
+- [ ] capture flag (Attila): dynamic 347F3DD9 + PS ED1DF335 (D830AD9B + CE6F17A1, B) thin; Log Details line per (vs, ps, t0, cull)
+- [ ] Softer Water Reflections (Exp, off): water roughness floor 0.06 in both games' guides + water positions for the reflection history
+- [ ] WH3: the same fixes where they apply (shared helper and rows; WH3's rr_guides; WH3 banner / flag equivalent?); README v47
+- [ ] skill rows: cache key with facing, the mirror path (one ray, no history, no reuse), thin rule by PS not cull, page 2 parity rule
+- [ ] build + stamp + install Attila v151, WH3 v47, helper105 (tools/tw/round_v151/install_v151.py; installed now: v149 / wh3 v45, helper103)
+- [ ] Pharaoh plan: offline census (names.tsv, dump, the addon as it is: page dump, installs, A/B/C per table entry), parity with Attila incl. Graphics 2 of 2, data-run plan
+- [ ] Pharaoh data run (before 21:00 or after 01:00): traces at 100% and lower scales, settled battle, siege, campaign; logs
+- [ ] Pharaoh implementation, in dependency order, each with its offline check; round report
+
 ## ATN'S 2026-11-12 THIRD LIST (offline; no game runs; Attila first, then the TW addons that share it)
 - [x] WH3's in-game AA names back: TAA or TAA High (ATN confirmed).
 - [x] smoke flicker cause: not the room. The 262,144 "particles a frame" is the game drawing its whole pool every frame (dead ones too; 2^18), our stream holds 2^19 and ATN's siege wanted at most 35,304 quads of High's 65,536 (ATN's preset1: RayTracedSmokeQuality=2). Likely the per-ray cap (SmokeTransmittance stops at 32 dimming / 64 met particles; which come first follows the smoke BLAS, rebuilt each frame). Test: Ultra against Extreme in one siege.
