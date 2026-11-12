@@ -1359,7 +1359,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 2.f,
           .format = "%.2f",
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
-          .is_visible = [] { return internal::point_lights_installed; },
+          // Its readers: the fog shadows' (RT_FOG_LIGHTS) and the lit particles' b9.y, bound only by the shadow readers' hook (Attila's vfx00 / vfx01).
+          .is_visible = [] { return internal::point_lights_installed && (internal::fog_shadows_installed || internal::shadow_readers_installed); },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracingOutputResolution",
