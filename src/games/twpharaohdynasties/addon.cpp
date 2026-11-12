@@ -448,6 +448,8 @@ void BuildRuntimeData() {
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
+    twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
+                                  [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .value_type = renodx::utils::settings::SettingValueType::BULLET,
@@ -2138,6 +2140,14 @@ void ConfigureAddon() {
           .group = "line_1",
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarpharaoh/mods/19"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
       },
   });
 

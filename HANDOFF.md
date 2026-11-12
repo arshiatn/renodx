@@ -31,7 +31,7 @@ leave ATN a note to reboot. One writer at a time. Install the newest stamped bui
     Not done / for ATN: GitHub button and the General page's full-download note (Attila / WH3 have both); engine_tests.hpp's Attila tooltips have upper-case words (GRASS, SHADOWS, DISTANCES, CAMPAIGN, EFFECTS, AUDIO since e92046f6), shared by every TW addon: a fix changes Attila's page; WH3's RayTracedWaterReflections default 0 line is overridden by the RAYS_PRESET defaults (since b2fb27f9, dumps show 1); tw_game_tests.py still picks Attila tests by the read list (find_emu.py would be right)
   Round v48 (implementer, offline, page fixes; built only, not run in game):
   - [x] 1 engine_tests.hpp tooltips: 17 capital words (GRASS, DISTANCES, SHADOWS, EFFECTS, CAMPAIGN, AUDIO) in normal case; keys and engine names unchanged
-  - [ ] 2 Pharaoh General page: full-download note + GitHub (Downloads) button (WH3's), README download link
+  - [x] 2 Pharaoh General page: full-download note (under Settings Mode) + GitHub (Downloads) button in About (WH3's); README download link with v48
   - [ ] 3 graphics_page Bindings rays_multiply_maps (default false): Shadow Map Size stays under ray-traced shadows; Pharaoh true
   - [ ] builds (Pharaoh x64, the skill's x64 line, Attila / Rome II / Thrones x86) + dumps a_v157 / w_v53 / p_v48, README v48 (+ Attila v151 / WH3 v47 lines)
 - [ ] Pharaoh round report (per item done / not done, ATN's <= 10-line test list)
