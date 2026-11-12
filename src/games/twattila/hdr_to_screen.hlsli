@@ -6,7 +6,7 @@
 #include "./shared.h"
 #include "./psycho_test30.hlsli"
 #include "./psycho_test31.hlsli"
-#include "../../shaders/tonemap/psychov/test35.hlsl"
+#include "./psycho_test35.hlsli"
 
 // PsychoV31, anchored at mid gray (Attila's S-curve runs before, in t00); target-only where its source cage returns
 // black. Highlight Hue / Saturation Shift: toward the SDR image's, which clips each channel at white (bright fire turns
@@ -66,13 +66,13 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
   float3 color;
   [branch]
   if (HDR >= 3.f) {
-    // PsychoV35 with PsychoV31's sliders, anchored at mid gray (t00 applied Attila's auto exposure; its Hue Clip
-    // replaces V31's highlight shifts). Highlight Roll-off: 0 latest, 1 V35's own compression, 2 soonest.
-    color = renodx::tonemap::psychov::psychotm_test35(
-        graded_hdr, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, max(SI.v31_contrast, 0.01f),
-        SI.v31_saturation, 1.f, 100.f, 1.f, 1.f, 0, 1.f, 0.18f, 0.18f, SI.v31_gamut_compression,
-        ATTILA_SDR_OUTPUT ? 0 : 1, 1.f, exp2(1.f - SI.v31_roll_off));
-    // Shadows below 1 take the darkest pixels under zero, where V35 gives NaN: black. A bit test, as fxc folds
+    // Musa's PsychoV35 with its own sliders, anchored at mid gray (t00 applied Attila's auto exposure; its Hue Clip
+    // Emulation replaces V31's highlight shifts). Highlight Roll-off: 0 latest, 1 Musa's compression (1.5), 2 soonest.
+    color = renodx::tonemap::psychov::custom_psychotm_test35(
+        graded_hdr, HDR_PEAK, SI.v35_exposure, SI.v35_highlights, SI.v35_shadows, max(SI.v35_contrast, 0.01f), SI.v35_flare,
+        SI.v35_highlight_contrast, SI.v35_shadow_contrast, SI.v35_saturation, SI.v35_highlight_saturation, SI.v35_dechroma,
+        0.18f, 0.18f, 0.f, SI.v35_gamut_compression, ATTILA_SDR_OUTPUT ? 0 : 1, 1.f + 0.5f * SI.v35_roll_off);
+    // A NaN left (a low Shadows' darkest pixels): black. A bit test, as fxc folds
     // isnan (renodx::math::ZeroNaN) away here.
     color = ((asuint(color) & 0x7fffffffu) > 0x7f800000u) ? 0.f : color;
   } else {

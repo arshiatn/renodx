@@ -278,23 +278,6 @@ inline Setting* MoreOptions(const std::string& section, bool* open, std::functio
   };
 }
 
-// The rows `folded` picks, in their order and sections, under one More Options line after the last row left in `section`
-// (ATN: what most players never change stays off the page until opened). Before feature_settings::AssignPages.
-inline void Fold(std::vector<Setting*>* settings, const std::string& section, const std::function<bool(const Setting&)>& folded) {
-  auto* open = new bool(false);
-  std::vector<Setting*> rows;
-  std::erase_if(*settings, [&](Setting* setting) {
-    if (!folded(*setting)) return false;
-    setting->is_visible = [open, own = setting->is_visible] { return *open && (own == nullptr || own()); };
-    rows.push_back(setting);
-    return true;
-  });
-  const auto last = std::find_if(settings->rbegin(), settings->rend(), [&section](const Setting* setting) { return setting->section == section; });
-  if (last == settings->rend()) renodx::utils::log::w("[Total War] Graphics page: no section ", section.c_str());
-  rows.insert(rows.begin(), MoreOptions(section, open, [] { return true; }));
-  settings->insert((last == settings->rend()) ? settings->end() : last.base(), rows.begin(), rows.end());
-}
-
 // A row of the page: the settings with this key, or this button group, or this label; `shown` when the method needs it.
 struct Row {
   std::string match;
@@ -387,7 +370,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   static bool more_ao = false;
   static bool more_shadows = false;
   static bool more_gi = false;
-  static bool more_reflections = false;
   static bool more_rt = false;
   static Values page_defaults;
 
@@ -537,6 +519,12 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracingOutputResolution", .section = section, .shown = ray_traced,
                .tooltip = (b.has_scale_rows ? "" : "More rays for every pixel, each from its own spot of it: less noise, finer shadow edges.\nThe cost grows with the rays. "
                                                  "Match Output: as many rays on screen as at 100% in-game Resolution Scale (up to 8 a pixel, 1 at 100%).")});
+    // Which effects take them: under it, once it gives more than one ray.
+    const auto extra_rays = [b, ray_traced] { return ray_traced() && b.rt->output_rays != 0.f; };
+    page.Take({.match = "RayTracingRaysShadows", .section = section, .shown = extra_rays, .tooltip = b.texts->rays_a_pixel_shadows_tooltip});
+    page.Take({.match = "RayTracingRaysAmbient", .section = section, .shown = extra_rays});
+    page.Take({.match = "RayTracingRaysReflections", .section = section, .shown = [b, extra_rays] { return b.has_reflections && extra_rays(); }});
+    page.Take({.match = "RayTracingRaysPaths", .section = section, .shown = extra_rays, .tooltip = b.texts->rays_a_pixel_paths_tooltip});
     page.Take({.match = "AntiAliasingDlaaPreset", .section = section, .shown = dlss, .label = "DLSS Preset",
                .tooltip = b.texts->dlss_preset_tooltip});
     page.Take({.match = "AntiAliasingRayReconstruction", .section = section, .shown = dlss, .label = "DLSS Ray Reconstruction",
@@ -678,16 +666,21 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}));
     page.Add(preset_button("No RT/PT (Recommended)", b.texts->no_rays_tooltip,
                            {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}}));
+    // ATN's 2026-11-12 settings (their screenshot of Attila's page).
     Values rays_values = {{"RayTracedSunShadows", 1.f},
-                            {"RayTracedShadowSoftness", 0.75f},
+                            {"RayTracedShadowSoftness", 0.8f},
                             {"RayTracedLeafLight", 1.f},
                             {"RayTracedColouredShadows", 1.f},
                             {"RayTracedSmokeShadows", 1.f},
-                            {"RayTracedSmokeQuality", 2.f},
+                            {"RayTracedSmokeQuality", 3.f},
                             {"RayTracedLightSoftness", 0.25f},
                             {"RayTracedLightImportance", 1.f},
-                            {"RayTracedSpriteShadows", 0.f},
-                            {"RayTracedFarTreeShadows", 0.f},
+                            {"RayTracedSpriteShadows", 1.f},
+                            {"RayTracedFarTreeShadows", 1.f},
+                            {"RayTracedBannerLight", 1.f},
+                            {"RayTracedSheetsUnselfed", 1.f},
+                            {"RayTracedPathKeptCube", 1.f},
+                            {"RayTracingDenoiser", 1.f},
                             {"RayTracedLightGlow", 1.f},
                             {"RayTracedGrassSway", 1.f},
                             {"RayTracedSwayRange", 50.f},
@@ -703,7 +696,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                             {"PathTracingBounces", 1.f},
                             {"RayTracedReflections", 1.f},
                             {"RayTracedReflectionSamples", 1.f},
-                            {"RayTracedReflectionReuse", 0.f},
+                            {"RayTracedReflectionReuse", 2.f},
                             {"RayTracedWaterReflections", 1.f},
                             {"RayTracedSpecularOcclusion", 1.f},
                             {"WaterClarity", 1.f},
@@ -728,13 +721,21 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           [](int method) { ChooseShadows(method); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ShadowMethodOf(b) == SHADOW_RAYS && !feature_settings::Upscaling(*b.aa); }));
-    // The game's shadow maps' size and the UI 4K mod's lock on it (Graphics 2 of 2's before v120), with the game's shadows only.
-    const auto game = shadows_are(SHADOW_GAME);
-    page.Take({.match = "GraphicsShadowMapSize", .section = section, .shown = game, .only_some_games = true});
-    page.Take({.match = "UI 4K Mod Compatibility", .section = section, .shown = game, .only_some_games = true});
+    // The game's shadow maps' size and the UI 4K mod's lock on it (Graphics 2 of 2's before v120): Bend's shadows draw over
+    // the game's maps too. Of Bend's rows only Length on the page, the rest and the smoke's shadows without rays under More
+    // Options (ATN).
+    const auto game_maps = [b] { return ShadowMethodOf(b) != SHADOW_RAYS; };
+    page.Take({.match = "GraphicsShadowMapSize", .section = section, .shown = game_maps, .only_some_games = true});
+    page.Take({.match = "UI 4K Mod Compatibility", .section = section, .shown = game_maps, .only_some_games = true});
     page.Take({.match = "ScreenSpaceShadowsLength", .section = section, .shown = screen});
-    page.Take({.match = "ScreenSpaceShadowsSoftness", .section = section, .shown = screen});
-    page.Take({.match = "ScreenSpaceShadowsThickness", .section = section, .shown = screen});
+    page.Take({.match = "RayTracedShadowSoftness", .section = section, .shown = rays, .label = "Softness"});
+    page.Take({.match = "RayTracedLeafLight", .section = section, .shown = rays});
+    page.Take({.match = "RayTracedColouredShadows", .section = section, .shown = rays, .tooltip = b.texts->coloured_shadows_tooltip});
+    page.Take({.match = "RayTracedSmokeShadows", .section = section, .shown = rays, .label = "Smoke Shadows"});
+    page.Add(MoreOptions(section, &more_shadows, [b] { return ShadowMethodOf(b) != SHADOW_GAME || b.smoke_strength != nullptr; }));
+    const auto more_screen = more(&more_shadows, screen);
+    page.Take({.match = "ScreenSpaceShadowsSoftness", .section = section, .shown = more_screen});
+    page.Take({.match = "ScreenSpaceShadowsThickness", .section = section, .shown = more_screen});
     if (b.has_foliage_light) {
       page.Add(new Setting{
           .key = "ScreenSpaceShadowsFoliage",
@@ -747,11 +748,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .min = 0.f,
           .max = 1.f,
           .format = "%.2f",
-          .is_visible = screen,
+          .is_visible = more_screen,
       });
     }
+    for (const auto* key : {"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured",
+                            "ScreenSpaceShadowsTorches", "ScreenSpaceShadowsContrast", "ScreenSpaceShadowsHardSamples",
+                            "ScreenSpaceShadowsFadeSamples", "ScreenSpaceShadowsEdgeThreshold", "ScreenSpaceShadowsIgnoreEdges",
+                            "ScreenSpaceShadowsPrecisionOffset", "ScreenSpaceShadowsAlongRay", "ScreenSpaceShadowsMirrorEdges",
+                            "ScreenSpaceShadowsDebugView"}) {
+      page.Take({.match = key, .section = section, .shown = more_screen});
+    }
     if (b.smoke_strength != nullptr) {
-      const auto no_rays = [b] { return ShadowMethodOf(b) != SHADOW_RAYS; };
+      const auto more_no_rays = more(&more_shadows, [b] { return ShadowMethodOf(b) != SHADOW_RAYS; });
       page.Add(new Setting{
           .key = "SmokeShadowMapStrength",
           .binding = b.smoke_strength,
@@ -762,7 +770,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .min = 0.f,
           .max = 2.f,
           .format = "%.2f",
-          .is_visible = no_rays,
+          .is_visible = more_no_rays,
       });
       page.Add(new Setting{
           .key = "SmokeShadowMapSoftness",
@@ -774,20 +782,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .min = 0.f,
           .max = 8.f,
           .format = "%.1f m",
-          .is_visible = [b, no_rays] { return no_rays() && *b.smoke_strength > 0.f; },
+          .is_visible = [b, more_no_rays] { return more_no_rays() && *b.smoke_strength > 0.f; },
       });
-    }
-    page.Take({.match = "RayTracedShadowSoftness", .section = section, .shown = rays, .label = "Softness"});
-    page.Take({.match = "RayTracedLeafLight", .section = section, .shown = rays});
-    page.Take({.match = "RayTracedColouredShadows", .section = section, .shown = rays, .tooltip = b.texts->coloured_shadows_tooltip});
-    page.Take({.match = "RayTracedSmokeShadows", .section = section, .shown = rays, .label = "Smoke Shadows"});
-    page.Add(MoreOptions(section, &more_shadows, [b] { return ShadowMethodOf(b) != SHADOW_GAME; }));
-    const auto more_screen = more(&more_shadows, screen);
-    for (const auto* key : {"ScreenSpaceShadowsAutoThickness", "ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsBannerLight",
-                            "ScreenSpaceShadowsColoured", "ScreenSpaceShadowsTorches", "ScreenSpaceShadowsContrast", "ScreenSpaceShadowsHardSamples", "ScreenSpaceShadowsFadeSamples", "ScreenSpaceShadowsEdgeThreshold",
-                            "ScreenSpaceShadowsIgnoreEdges", "ScreenSpaceShadowsPrecisionOffset", "ScreenSpaceShadowsAlongRay",
-                            "ScreenSpaceShadowsMirrorEdges", "ScreenSpaceShadowsDebugView"}) {
-      page.Take({.match = key, .section = section, .shown = more_screen});
     }
     const auto more_rays = more(&more_shadows, rays);
     const auto more_lights = [b, more_rays] { return more_rays() && b.rt->local_lights != 0.f; };
@@ -1010,28 +1006,30 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           [b](int method) { ChooseAo(b, method); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return AoMethodOf(b) >= AO_RAYS && !feature_settings::Upscaling(*b.aa); }));
-    page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao});
+    page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao,
+               .label = "Darker shading behind trees and objects: raise Thickness (More Options). Lighter around spears: lower it."});
     page.Take({.match = "ao-presets", .section = section, .shown = gtvbao});
     page.Take({.match = "ssao_strength", .section = section, .shown = gtvbao});
     page.Take({.match = "ssao_radius", .section = section, .shown = gtvbao});
-    page.Take({.match = "ssao_thickness", .section = section, .shown = [b] { return AoMethodOf(b) == AO_GTVBAO || GiMethodOf(b) == GI_GTVBGI; },
-               .tooltip = "How thick objects are taken to be (GT-VBAO and GT-VBGI).\n"
-                          "Lower: light gets behind thin things; higher: darker behind them.",
-               .enabled = always});
     page.Take({.match = "ssao_resolution", .section = section, .shown = gtvbao});
     page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
+    page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
     page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
+    page.Take({.match = "RayTracedPathKeptCube", .section = section, .shown = ao_is(AO_PATHS), .label = "Steady Bounce Light (Experimental)"});
+    page.Take({.match = "RayTracedPathProbeSky", .section = section, .shown = ao_is(AO_PATHS), .only_some_games = true});
     page.Add(Note("Follows Global Illumination below (its Path-Traced settings).", section, MORE_TINT, ao_is(AO_PATHS)));
-    page.Add(MoreOptions(section, &more_ao, [b] { return AoMethodOf(b) != AO_GAME; }));
+    // GT-VBAO's More Options, its Thickness too (GT-VBGI's, which reads it, opens it with GT-VBAO off).
+    const auto thickness_read = [b] { return AoMethodOf(b) == AO_GTVBAO || GiMethodOf(b) == GI_GTVBGI; };
+    page.Add(MoreOptions(section, &more_ao, thickness_read));
+    page.Take({.match = "ssao_thickness", .section = section, .shown = more(&more_ao, thickness_read),
+               .tooltip = "How thick objects are taken to be (GT-VBAO and GT-VBGI).\n"
+                          "Lower: light gets behind thin things; higher: darker behind them.",
+               .enabled = always});
     const auto more_gtvbao = more(&more_ao, gtvbao);
     for (const auto* key : {"ssao_quality", "ssao_directions", "ssao_auto_thickness", "ssao_temporal", "ssao_edge_fix", "ssao_denoise"}) {
       page.Take({.match = key, .section = section, .shown = more_gtvbao});
     }
-    page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = more(&more_ao, rays), .label = "Rate"});
-    const auto more_paths = more(&more_ao, ao_is(AO_PATHS));
-    page.Take({.match = "RayTracedPathKeptCube", .section = section, .shown = more_paths, .label = "Steady Bounce Light (Experimental)"});
-    page.Take({.match = "RayTracedPathProbeSky", .section = section, .shown = more_paths, .only_some_games = true});
     page.Add(EmptyLine(section));
   }
 
@@ -1094,18 +1092,16 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                   [b] { return ReflectionMethodOf(b) == REFLECTION_RAYS && !feature_settings::Upscaling(*b.aa); }));
     page.Take({.match = "ssr_quality", .section = section, .shown = [b] { return ReflectionMethodOf(b) != REFLECTION_RAYS; }, .label = "Quality", .only_some_games = true});
     page.Take({.match = "ssr_rays", .section = section, .shown = hierarchical, .label = "Rays", .only_some_games = true});
+    page.Take({.match = "SSRDenoiser", .section = section, .shown = hierarchical, .label = "Denoiser", .only_some_games = true});
     page.Take({.match = "RayTracedReflectionSamples", .section = section, .shown = rays, .label = "Samples"});
+    page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = rays, .label = "Reuse"});
     page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = b.texts->water_reflections_label, .tooltip = b.texts->water_reflections_tooltip});
+    page.Take({.match = "RayTracedReflectionLight", .section = section, .shown = rays, .only_some_games = true});
+    page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = rays, .only_some_games = true});
+    page.Take({.match = "RayTracedReflectionLobe", .section = section, .shown = rays, .only_some_games = true});
+    page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
     page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
     page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = b.texts->water_caustics_label, .only_some_games = true});
-    page.Add(MoreOptions(section, &more_reflections, always));
-    const auto more_rays = more(&more_reflections, rays);
-    page.Take({.match = "SSRDenoiser", .section = section, .shown = more(&more_reflections, hierarchical), .label = "Denoiser", .only_some_games = true});
-    page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = more_rays, .label = "Reuse"});
-    page.Take({.match = "RayTracedReflectionLight", .section = section, .shown = more_rays, .only_some_games = true});
-    page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = more_rays, .only_some_games = true});
-    page.Take({.match = "RayTracedReflectionLobe", .section = section, .shown = more_rays, .only_some_games = true});
-    page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = more(&more_reflections, always), .label = b.texts->specular_occlusion_label});
     page.Add(EmptyLine(section));
   }
 
@@ -1120,8 +1116,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
         .key = "RayTracingDenoiser",
         .binding = &b.rt->denoiser,
         .value_type = SettingValueType::INTEGER,
-        .default_value = 0.f,
-        .label = "Ray Tracing Denoiser (Experimental)",
+        .default_value = 1.f,
+        .label = "Ray Tracing Denoiser",
         .section = section,
         .tooltip = (b.has_reflections ? "Cleans the ray-traced shadows, AO, Light Bounce and reflections when DLSS Ray Reconstruction is off.\n"
                                         "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory."
@@ -1145,10 +1141,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                  && (b.rt->ambient_occlusion != 0.f || (b.rt->path_ambient != 0.f && b.rt->light_bounce == 2.f));
         },
     });
-    page.Take({.match = "RayTracingRaysShadows", .section = section, .shown = more_rt_rows, .tooltip = b.texts->rays_a_pixel_shadows_tooltip});
-    page.Take({.match = "RayTracingRaysAmbient", .section = section, .shown = more_rt_rows});
-    page.Take({.match = "RayTracingRaysReflections", .section = section, .shown = more(&more_rt, [b, upscaling] { return b.has_reflections && upscaling(); })});
-    page.Take({.match = "RayTracingRaysPaths", .section = section, .shown = more_rt_rows, .tooltip = b.texts->rays_a_pixel_paths_tooltip});
     page.Take({.match = "RayTracedLeafMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps (Leaves)"});
     page.Take({.match = "RayTracedGpuMicromaps", .section = section, .shown = more_rt_rows, .label = "Opacity Micromaps: GPU Baking"});
     page.Take({.match = "RayTracedFastLeafShadows", .section = section, .shown = more_rt_rows, .label = "Fast Leaf Shadows"});

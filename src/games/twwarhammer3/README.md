@@ -1,5 +1,19 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v45 (2026-11-12, ATN's list; stamped and installed, not run in game; renodx-tw-dlaa64.exe helper103 as in v44)
+
+- **PsychoV35 in every Recommended preset** (ATN; the SDR preset stays SDR). It is now **Musa's custom PsychoV35** (`twattila/psycho_test35.hlsli`, his file, only its include path changed) with **its own sliders** (`v35_*`, apart from V31's) in V31's order: Exposure, Highlights, Shadows, Contrast, Highlight Contrast, Shadow Contrast, Flare, Saturation / Purity, Dechroma, Highlight Roll-off, Gamut Compression, then "Fire too pink, too orange or too pale?", Highlight Saturation and **Hue Clip Emulation** (was Hue Clip; default 100). Anchored at mid gray (0.18) as V31; Highlight Roll-off 1 = Musa's compression 1.5. Rendering Mode label "HDR (PsychoV35)".
+- **Smoke Shadow Quality: Extreme and Maximum** above Ultra: 64 layers a sun ray, and room for 2x / 4x Ultra's smoke quads and streamed particles. ATN's siege log at Ultra: the particle stream was full every 10 s window (262,144 a frame on average), so which smoke got a shadow changed from frame to frame (flicker).
+- **Rays a Pixel's four rows** (Shadows, AO, Reflections, Global Illumination) now sit under Rays a Pixel in Anti-Aliasing and Upscaling, shown when it gives more than one ray.
+- **Ray Tracing Denoiser: NRD by default** (was Built-in). Only used while DLSS Ray Reconstruction is off and something is ray-traced.
+- **RT/PT preset: ATN's settings** (Softness 0.80, Smoke Quality Ultra, RIS, Sprite Soldier and Far Tree Shadows, Light Through All Banners, Smooth Banner Shadows, Steady Bounce Light, reflections' Reuse Own ReSTIR; the rest as before).
+- **More Options reverted** on HDR & Effects and on Graphics 2 of 2. Ray-Traced and Path-Traced AO and Reflections and Water show every row again; GT-VBAO's More Options holds its Thickness too.
+- **Screen-space shadows:** Auto Thickness removed (ATN: it broke at some angles); everything but Length under More Options; Shadow Map Size shown under Bend Screen-Space too; **Light Through Banners (0.35) and Coloured Shadows on by default**.
+- Once, at the first start: the saved Ray Tracing Denoiser, Light Through Banners and Coloured Shadows are cleared, so they take the new defaults.
+- **About:** the Ko-fi, NexusMods and GitHub buttons first, then the credits and licences.
+
+Reset stays HDR (Extended). Page dump against v44: 12 new keys (`v35_*`), ScreenSpaceShadowsAutoThickness gone, no other key added or lost. WARP test/tw_psychov35 (x86 + amd64): SDR / Extended / V30 / V31 0 pixels different from d3d6425b; V35 finite and within Peak (Gamut Compression 0: within 1%).
+
 ## v44 (2026-11-12, a cleaner page; renodx-tw-dlaa64.exe helper103 as in v43; built, not run in game, not installed)
 
 Same picture and settings as v43: every key kept, only where rows show moved (Attila's `graphics_page.hpp`). Page dump against v43: three new More Options lines, no key added or lost.

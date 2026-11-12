@@ -1,15 +1,18 @@
 // PsychoV35 and Hue Clip on WARP: Attila's tone mappers (t00 - t10: tone_mapper.hlsli's Hue Clip, hdr_to_screen.hlsli's
 // PsychoV35, Rendering Mode 3) and WH3's t00 (Rendering Mode 4), compiled by run.ps1 from this tree and from d3d6425b with
-// the build's flags. tests.exe <before_cso> <after_cso>
+// the build's flags. tests.exe <before_cso> <after_cso>. PsychoV35: Musa's (twattila/psycho_test35.hlsli), its own v35_*
+// sliders.
 // 1. Every other mode gives the same bits as d3d6425b: Attila SDR / PsychoV30 / PsychoV31, WH3 SDR / Extended /
-//    PsychoV30 / PsychoV31, at HDR10, scRGB and SDR output, sliders at their defaults and moved, Hue Clip at 0.7 (which
-//    must do nothing there). 64 colours (every hue, greys, negative channels, black) x 48 brightness steps.
+//    PsychoV30 / PsychoV31, at HDR10, scRGB and SDR output, sliders at their defaults and moved, Hue Clip at 0.7 and
+//    PsychoV35's sliders moved (which must do nothing there). 64 colours (every hue, greys, negative channels, black) x
+//    48 brightness steps.
 // 2. Hue Clip alone (psycho_test31.hlsli's HueClip, both games' copies): fire orange and sky blue move their middle
 //    channel toward the clip's place, the smallest and largest channel keep their ratio, BT.709 luminance is kept; grey
 //    and strength 0 unchanged; a negative channel keeps its sign; a dark colour (far below the clip) about unchanged.
 // 3. PsychoV35 through the real chain (Attila t00 -> t01, WH3 t00), an exposure ramp of 64 colours, 2^-8 to 2^12 of the
-//    game's white, at 203 / 1000 and 203 / 400 nits and SDR output, sliders at their ends: finite; BT.2020 within Peak
-//    (SDR: BT.709 within 1) with Gamut Compression 1, luminance within Peak always; grey's ramp never darker as it rises.
+//    game's white, at 203 / 1000 and 203 / 400 nits and SDR output, every V35 slider at its ends: finite; BT.2020 within Peak
+//    (SDR: BT.709 within 1) with Gamut Compression 1, luminance within Peak always (Gamut Compression 0: within 1%);
+//    grey's ramp never darker as it rises.
 // 4. Report: PsychoV35's hue (OkLab) against the game's own SDR picture (the same chain in its SDR mode) where SDR
 //    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from.
 #include <windows.h>
@@ -324,6 +327,16 @@ static attila::ShaderInjectData AttilaInjection(float mode, float encoding) {
   si.v31_gamut_compression = 1.f;
   si.v31_gamut_compression_mode = 1.f;
   si.v31_highlight_hue_shift = 0.04f;
+  si.v35_exposure = 1.f;
+  si.v35_highlights = 1.f;
+  si.v35_shadows = 1.f;
+  si.v35_contrast = 1.f;
+  si.v35_highlight_contrast = 1.f;
+  si.v35_shadow_contrast = 1.f;
+  si.v35_saturation = 1.f;
+  si.v35_highlight_saturation = 1.f;
+  si.v35_roll_off = 1.f;
+  si.v35_gamut_compression = 1.f;
   si.effects_share = 1.f;
   si.sky_smooth_strength = 1.f;
   si.fog_strength = 1.f;
@@ -371,6 +384,16 @@ static wh3::ShaderInjectData Wh3Injection(float mode, float encoding) {
   si.v31_gamut_compression = 1.f;
   si.v31_gamut_compression_mode = 1.f;
   si.v31_highlight_hue_shift = 0.15f;
+  si.v35_exposure = 1.f;
+  si.v35_highlights = 1.f;
+  si.v35_shadows = 1.f;
+  si.v35_contrast = 1.f;
+  si.v35_highlight_contrast = 1.f;
+  si.v35_shadow_contrast = 1.f;
+  si.v35_saturation = 1.f;
+  si.v35_highlight_saturation = 1.f;
+  si.v35_roll_off = 1.f;
+  si.v35_gamut_compression = 1.f;
   si.fog_strength = 1.f;
   si.shadow_map_scale = 1.f;
   si.hue_clip = 0.7f;
@@ -505,6 +528,18 @@ static void MoveAttilaSliders(attila::ShaderInjectData* si, int set) {
   si->v31_gamut_compression_mode = (set == 1 ? 0.f : 3.f);
   si->v31_highlight_hue_shift = 0.5f;
   si->v31_highlight_saturation_shift = 0.4f;
+  si->v35_exposure = 1.3f;
+  si->v35_highlights = 1.15f;
+  si->v35_shadows = 0.9f;
+  si->v35_contrast = 1.2f;
+  si->v35_highlight_contrast = 0.8f;
+  si->v35_shadow_contrast = 1.1f;
+  si->v35_flare = 0.05f;
+  si->v35_saturation = 0.8f;
+  si->v35_dechroma = 0.5f;
+  si->v35_highlight_saturation = 1.4f;
+  si->v35_roll_off = 1.6f;
+  si->v35_gamut_compression = 0.4f;
   si->gamma_correction = (set == 1 ? 0.f : 1.f);
   si->bloom = 0.6f;
 }
@@ -538,6 +573,18 @@ static void MoveWh3Sliders(wh3::ShaderInjectData* si, int set) {
   si->v31_gamut_compression_mode = (set == 1 ? 0.f : 3.f);
   si->v31_highlight_hue_shift = 0.5f;
   si->v31_highlight_saturation_shift = 0.4f;
+  si->v35_exposure = 1.3f;
+  si->v35_highlights = 1.15f;
+  si->v35_shadows = 0.9f;
+  si->v35_contrast = 1.2f;
+  si->v35_highlight_contrast = 0.8f;
+  si->v35_shadow_contrast = 1.1f;
+  si->v35_flare = 0.05f;
+  si->v35_saturation = 0.8f;
+  si->v35_dechroma = 0.5f;
+  si->v35_highlight_saturation = 1.4f;
+  si->v35_roll_off = 1.6f;
+  si->v35_gamut_compression = 0.4f;
   si->gamma_correction = (set == 1 ? 0.f : 1.f);
   si->bloom = 0.6f;
 }
@@ -742,7 +789,9 @@ static void CheckRamp(const char* label, const std::vector<Float3>& linear, floa
       const float low = std::min({target[0], target[1], target[2]}) * scale;
       highest_y = std::max(highest_y, lum);
       highest_channel = std::max(highest_channel, high);
-      bool ok = finite && lum <= limit * 1.002f + 1e-3f;
+      // Without the fit (Gamut Compression 0) Musa's V35 lands up to 0.5% over Peak near white: its mean is the cones'
+      // mean, not BT.709's Y (the display clips it there).
+      bool ok = finite && lum <= limit * (gamut_fit ? 1.002f : 1.01f) + 1e-3f;
       if (gamut_fit) ok = ok && high <= limit * 1.002f + 1e-3f && low >= -limit * 2e-3f;
       if (!ok) {
         if (bad == 0) std::printf("   %s: pixel %u,%u (%.6g %.6g %.6g) limit %.1f\n", label, x, y, c[0], c[1], c[2], limit);
@@ -772,23 +821,39 @@ static void TestPsychoV35(const Chain& chain) {
       {1, 1, 1, 1, 2, 1, 1, 0.5f}, {1, 1, 1, 1, 1, 0, 1, 0.5f}, {1, 1, 1, 1, 1, 2, 1, 0.5f}, {1, 1, 1, 1, 1, 1, 0, 0.5f},
       {2, 2, 2, 2, 2, 2, 1, 1},    {0.5f, 0, 0, 0.5f, 2, 0, 1, 1},
   };
+  // Musa's own rows, at their defaults above, then at their ends with the others at theirs: highlight contrast, shadow
+  // contrast, flare (as parsed: 0.1 at the slider's 1), dechroma, highlight saturation.
+  constexpr std::array<float, 8> DEFAULTS = {1, 1, 1, 1, 1, 1, 1, 0.5f};
+  std::vector<std::pair<std::array<float, 8>, std::array<float, 5>>> sets;
+  for (const auto& s : slider_sets) sets.push_back({s, {1, 1, 0, 0, 1}});
+  for (const std::array<float, 5>& e : {std::array<float, 5>{0, 1, 0, 0, 1}, {2, 1, 0, 0, 1}, {1, 0, 0, 0, 1}, {1, 2, 0, 0, 1},
+                                        {1, 1, 0.1f, 0, 1}, {1, 1, 0, 1, 1}, {1, 1, 0, 0, 0}, {1, 1, 0, 0, 2}, {2, 0, 0.1f, 1, 2},
+                                        {0, 2, 0.1f, 1, 0}}) {
+    sets.push_back({DEFAULTS, e});
+  }
   int failures_in_ramp = 0;
   for (const auto& [peak, encoding] : {std::pair{1000.f, 1.f}, std::pair{400.f, 0.f}, std::pair{1000.f, 2.f}}) {
-    for (const auto& s : slider_sets) {
-      char settings[96];
-      std::snprintf(settings, sizeof(settings), "%.0f nits %s, sliders %.2f %.2f %.2f %.2f %.2f %.2f %.2f hue %.1f", peak,
-                    encoding == 2.f ? "SDR" : (encoding == 0.f ? "HDR10" : "scRGB"), s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]);
+    for (const auto& [s, e] : sets) {
+      char settings[160];
+      std::snprintf(settings, sizeof(settings), "%.0f nits %s, sliders %.2f %.2f %.2f %.2f %.2f %.2f %.2f hue %.1f own %.2f %.2f %.2f %.2f %.2f",
+                    peak, encoding == 2.f ? "SDR" : (encoding == 0.f ? "HDR10" : "scRGB"), s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
+                    e[0], e[1], e[2], e[3], e[4]);
       auto a = AttilaInjection(3.f, encoding);
       auto w = Wh3Injection(4.f, encoding);
       a.peak_white_nits = w.peak_white_nits = peak;
-      a.v31_exposure = w.v31_exposure = s[0];
-      a.v31_highlights = w.v31_highlights = s[1];
-      a.v31_shadows = w.v31_shadows = s[2];
-      a.v31_contrast = w.v31_contrast = s[3];
-      a.v31_saturation = w.v31_saturation = s[4];
-      a.v31_roll_off = w.v31_roll_off = s[5];
-      a.v31_gamut_compression = w.v31_gamut_compression = s[6];
+      a.v35_exposure = w.v35_exposure = s[0];
+      a.v35_highlights = w.v35_highlights = s[1];
+      a.v35_shadows = w.v35_shadows = s[2];
+      a.v35_contrast = w.v35_contrast = s[3];
+      a.v35_saturation = w.v35_saturation = s[4];
+      a.v35_roll_off = w.v35_roll_off = s[5];
+      a.v35_gamut_compression = w.v35_gamut_compression = s[6];
       a.hue_clip = w.hue_clip = s[7];
+      a.v35_highlight_contrast = w.v35_highlight_contrast = e[0];
+      a.v35_shadow_contrast = w.v35_shadow_contrast = e[1];
+      a.v35_flare = w.v35_flare = e[2];
+      a.v35_dechroma = w.v35_dechroma = e[3];
+      a.v35_highlight_saturation = w.v35_highlight_saturation = e[4];
       const bool sdr = (encoding == 2.f);
       const bool fit = (s[6] == 1.f);
       // V35's own Highlights under 0.5 bends white back toward mid gray (0: white at mid gray): not monotonic there.

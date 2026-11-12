@@ -129,7 +129,21 @@ struct ShaderInjectData {
   float tonemap_at_render_size;  // t00: 1 drawn at the render size, top-left (taa_dlss.hpp, below 100%), its overscan not used
   float sharpening_term;  // sharpening00: the game's part for its own upscale, taken off behind the addon's upscaler
   float shadow_map_scale;  // shadowcopy: the shadow maps' size against the game's 4096 when the addon made them (0.5, 0.25, 2), else 1
-  float hue_clip;          // PsychoV35 (Rendering Mode 4): t00's Hue Clip, 0 - 1
+  float hue_clip;          // PsychoV35 (Rendering Mode 4): t00's Hue Clip Emulation, 0 - 1
+
+  // Musa's PsychoV35 (psycho_test35.hlsli), its own sliders as V31's, appended.
+  float v35_exposure;
+  float v35_highlights;
+  float v35_shadows;
+  float v35_contrast;
+  float v35_highlight_contrast;    // above mid gray, 1 V35's own
+  float v35_shadow_contrast;       // below mid gray, 1 V35's own
+  float v35_flare;                 // 0 none, deeper blacks above it
+  float v35_saturation;
+  float v35_dechroma;              // 0 none, bright colors toward white above it
+  float v35_highlight_saturation;
+  float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
+  float v35_gamut_compression;     // 0 none (the display clips), 1 full
 };
 
 #define SI shader_injection

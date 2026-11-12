@@ -1,5 +1,9 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Round v45 (2026-11-12, shared code from Attila / Warhammer III; built, not released, not run in game)
+
+- **Bend Screen-Space Shadows: Auto Thickness removed** (ATN: it broke at some angles).
+
 ### Round v42 (2026-11-11, shared code from Attila / Warhammer III; built, not released, not run in game)
 
 - **Object Motion Vectors: each soldier keeps its own bones.** When the game packs its soldiers' bones into the animation pages more than once a frame (big battles), a later round's soldier at a reused row shared a key with an earlier one and could take its last-frame bones: false motion on still soldiers' shields, swords and spears under DLSS, FSR or XeSS. Keys are now this frame's and new after every page write (`twattila/object_motion.hpp`; the 64-page clear that gave page 65 page 1's key is gone). WARP `test/tw_unit_pack_rounds` (Attila's path; this add-on claims bones in the draw, so the keys are its fix).

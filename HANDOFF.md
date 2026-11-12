@@ -1,5 +1,15 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## ATN'S 2026-11-12 LIST (offline; Attila v149, WH3 v45; evidence tools/tw/round_v149/atn_run1)
+- [x] smoke flicker at Ultra: the particle stream was full (262144 particles a frame in every window) -> Smoke Shadow Quality Extreme / Maximum (64 layers, room and stream 2x / 4x Ultra's), 2e4c8657.
+- [x] PsychoV35 = Musa's customtest35 (his first file, include path only: twattila/psycho_test35.hlsli; the second file is the same math, self-contained, an SM6 switch) with its own v35_* sliders in V31's order, Hue Clip Emulation under it, "Fire too ..." text; Recommended presets (Attila also Reset) -> V35, SDR stays; V31's rows V31's alone; Rendering Mode "HDR (PsychoV35)".
+- [x] reverts: HDR & Effects and Graphics 2 of 2 More Options (Fold gone), RT / PT AO and Reflections without More Options; GT-VBAO's More Options with Thickness.
+- [x] Graphics 1 of 2: Rays a Pixel's four rows under it (shown above one ray); NRD default (SettingsRevision: Attila 1, WH3 33 clears the saved Denoiser / Banners / Coloured once); RT/PT = ATN's screenshot; SSS: Auto Thickness row gone (all SSS add-ons), all but Length under More Options, Shadow Map Size / UI 4K under SSS too, Light Through Banners 0.35 and Coloured on.
+- [x] About: buttons first, then credits and licences.
+- [x] proof: 11 add-ons built (Attila / Rome II / Thrones x86; WH3, Troy, Pharaoh, WH1, WH2, Shogun 2, Expeditions DLSS, Ryse x64); test/tw_psychov35 x86 + amd64 PASS (other modes 0 pixels from d3d6425b, other shaders same bytes, V35 every slider at its ends finite and within Peak; Gamut Compression 0: within 1%, Musa's mean is the cones'); hue report: best Hue Clip still 0.40 Attila / 1.00 WH3. Page dumps page_a_v149 / page_w_v45 against *_skill_after: 12 new v35_* keys, Auto Thickness gone, nothing else lost.
+- NOT PROVEN: V35's look in game, smoke Extreme / Maximum cost, NRD default's look, banners' coloured shadows in Attila (ATN traces them next).
+- NEXT: ATN's banner traces (Coloured Shadows not seen in Attila), then water reflections at lower scalings.
+
 ## CLEANER PAGE (ATN 2026-11-12; offline; Attila v148, WH3 v44)
 - [x] code 14577b7f: Rays a Pixel under Upscaling Mode (default 1, presets leave it), rarely changed rows under More Options (graphics_page::Fold), keys unchanged (page dumps tools/tw/page_dump/page_*_skill_before/after).
 - [x] install: both stamped (build/stamped/attila_v148, wh3_v44), only the add-on replaced, helper103 unchanged, ATN's ini / preset / preferences backed up first and unchanged by hash (tools/tw/page_v148/install_backup_20261112_005919), no DevKit. Script tools/tw/page_v148/install_v148.py. NOT run in game.
