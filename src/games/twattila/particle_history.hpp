@@ -40,7 +40,7 @@ constexpr UINT CONSTANTS_COUNT = 4;  // b8 the layer's, b9 none, b10 the last fr
 constexpr UINT SAMPLER_SLOT = 12;
 constexpr float HISTORY_MOST = 0.9f;  // about the last 10 frames at most (the upscaler keeps its own after it)
 constexpr float CAMERA_CUT = 25.f;    // metres in a frame: farther is a cut
-constexpr float LAYER_SCALE = 2.f;
+constexpr float LAYER_SCALE = 2.f;  // a half layer's (Warhammer III's)
 
 // The graphics state a full-screen pass of the particle modules sets, kept and put back: the shaders, input, viewports,
 // rasterizer, targets and the output stage's UAVs (their counters kept), blend, depth, and the pixel stage's views t0-t55,
@@ -143,6 +143,7 @@ struct Layer {
   ID3D11ShaderResourceView* depth = nullptr;          // the depth it was drawn against, at its size
   ID3D11Buffer* camera = nullptr;                     // the game's camera (the includer's light_bounce.hlsli layout)
   D3D11_VIEWPORT viewport = {};                       // the layer's part of its textures
+  float scale = LAYER_SCALE;                          // render pixels per layer texel along a side
 };
 
 // Made on the game's device, again when it changes; the histories again when the layer's size or viewport changes.
@@ -292,7 +293,7 @@ inline std::array<ID3D11ShaderResourceView*, 2> Resolve(ID3D11DeviceContext* con
           .camera_cut = CAMERA_CUT,
           .region_width = layer.viewport.Width,
           .region_height = layer.viewport.Height,
-          .layer_scale = LAYER_SCALE},
+          .layer_scale = layer.scale},
          history);
   const size_t read = history->index;
   const size_t written = read ^ 1;

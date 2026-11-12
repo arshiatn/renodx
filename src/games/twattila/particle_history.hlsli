@@ -97,9 +97,11 @@ void main(float4 v0 : SV_Position0, out float4 o0 : SV_Target0, out float2 o1 : 
   o2 = means;
   if (!(PL.history_most > 0.f)) return;
 
-  // Where it was: its first render pixel at the depth it was drawn against, moved with the camera; in layer texels.
-  const float3 previous = BouncePrevious(BounceViewPositionAt(texel * PARTICLE_LAYER_SCALE, t_layer_depth.Load(int3(texel, 0))));
-  const float2 coordinate = previous.xy / PARTICLE_LAYER_SCALE + 0.25f;
+  // Where it was: its first render pixel at the depth it was drawn against, moved with the camera; in layer texels (that
+  // pixel's centre: half a pixel in).
+  const float scale = (float)ParticleLayerScale();
+  const float3 previous = BouncePrevious(BounceViewPositionAt(texel * ParticleLayerScale(), t_layer_depth.Load(int3(texel, 0))));
+  const float2 coordinate = previous.xy / scale + (0.5f - (0.5f / scale));
   const bool inside = all(coordinate >= 0.f) && all(coordinate <= float2(PL.region_width, PL.region_height));
   // A camera cut (or the camera moved farther than a frame's flight): nothing of before.
   const bool cut = distance(camera_position, previous_camera_position) > PL.camera_cut;

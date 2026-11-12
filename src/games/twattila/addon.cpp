@@ -974,13 +974,25 @@ void BuildRuntimeData() {
     new renodx::utils::settings::Setting{
         .key = "VfxHalfResolution",
         .binding = &twattila::particle_layer::half_resolution_row,
-        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
-        .label = "Particles at Half Resolution",
+        .label = "Particle Resolution",
         .section = "Extra (Experimental)",
-        .tooltip = "Smoke, fire and dust drawn at half the render's size.\n"
-                   "Much faster in big fires and smoke, softer particle edges.",
+        .tooltip = "Smoke, fire and dust drawn at half or a quarter of the render's size.\n"
+                   "Much faster in big fires and smoke, softer particles.",
+        .labels = {"Full", "Half", "Quarter"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxFullResolutionEdges",
+        .binding = &twattila::particle_layer::edges_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Full-Resolution Particle Edges",
+        .section = "Extra (Experimental)",
+        .tooltip = "Smoke, fire and dust stay sharp against the outlines of units, trees and walls:\n"
+                   "drawn at full size there. Small cost.",
         .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
     },
     new renodx::utils::settings::Setting{
         .key = "VfxParticleSmoothing",

@@ -24,6 +24,10 @@
 //     Half-Size Particles as without (its first frame to the bit); a layer no reader takes stops the row (one log line) until
 //     it goes off and on; a particle draw with an output-stage UAV bound stays at full size, and at the layer's reader such a
 //     UAV is bound again after the composite with its counter kept.
+// 11. Particle Resolution Half and Quarter (its layer 32 x 24, 16 x 12), smoke over the screen between a near box (0.6 m) and
+//     a wall (30 m) against the game's full-size draws, away from the screen's edges: with Full-Resolution Particle Edges every pixel
+//     within one R11G11B10 step (the box's outline drawn again at full size: those pixels to the bit); without, the box's
+//     outline as the depth-weighted upsample leaves it (printed).
 // --time: on the hardware GPU at 4K, the passes' time (median of 60 frames).
 #include <windows.h>
 #include <d3d11.h>
@@ -911,6 +915,7 @@ static std::vector<bool> DrawParticles(AttilaRig* rig, std::span<const Particle>
     DrawContext command;
     command.cmd_list = &rig->commands;
     command.matched_shader_hash = 0xA7F257B5;
+    command.arguments = {.vertex_count = 4, .instance_count = 1};
     if (layered.empty()) Stamp(timer, 0);
     const auto result = layer::internal::OnParticleDraw(command);
     if (layered.empty()) Stamp(timer, 1);
@@ -1199,6 +1204,77 @@ static void TestLayer() {
     frame_history::render_width = 0;
     frame_history::render_height = 0;
   }
+  // 11. Half and Quarter, a near box in front of the smoke: with and without Full-Resolution Particle Edges.
+  for (const float resolution : {1.f, 2.f}) {
+    const int scale = (resolution >= 2.f) ? 4 : 2;
+    constexpr std::array<int, 4> BOX = {22, 14, 43, 34};  // render pixels: left, top, right, bottom (exclusive)
+    // Smoke over the whole screen, an added glow on it.
+    const std::array<Particle, 2> smoke = {{
+        {{0, 0, 64, 48}, {0.8f, 0.6f, 0.4f, 0.6f}, D3D11_BLEND_SRC_ALPHA, D3D11_BLEND_INV_SRC_ALPHA},
+        {{0, 0, 64, 48}, {1.0f, 0.5f, 0.2f, 0.3f}, D3D11_BLEND_SRC_ALPHA, D3D11_BLEND_ONE, D3D11_BLEND_OP_ADD, 0x7},
+    }};
+    std::vector<float> depth(64 * 48, DepthAt(30.f));
+    for (int y = BOX[1]; y < BOX[3]; ++y) {
+      for (int x = BOX[0]; x < BOX[2]; ++x) depth[static_cast<size_t>(y) * 64 + x] = DepthAt(0.6f);
+    }
+    auto rig = MakeAttilaRig(64, 48, 64, 48, depth);
+    layer::half_resolution_row = 0.f;
+    const auto direct = AttilaFrame(&rig, smoke);
+    layer::half_resolution_row = resolution;
+    layer::edges_row = 0.f;
+    std::vector<bool> layered;
+    const auto without = AttilaFrame(&rig, smoke, true, &layered);
+    CHECK(std::ranges::all_of(layered, [](bool value) { return value; }));
+    layer::edges_row = 1.f;
+    const auto with = AttilaFrame(&rig, smoke, true, &layered);
+    CHECK(std::ranges::all_of(layered, [](bool value) { return value; }));
+    const D3D11_VIEWPORT& layer_viewport = layer::internal::runtime.layer_viewport;
+    CHECK(layer_viewport.Width == static_cast<float>(64 / scale) && layer_viewport.Height == static_cast<float>(48 / scale));
+    CHECK(layer::internal::runtime.objects.edges_target != nullptr);
+    const auto near_quad_edge = [&](int x, int y) {
+      return std::ranges::any_of(smoke, [&](const Particle& particle) {
+        const auto& r = particle.rect;
+        const bool across_x = (std::abs(x - r[0]) < scale || std::abs(x - r[2]) < scale) && y > r[1] - scale && y < r[3] + scale;
+        const bool across_y = (std::abs(y - r[1]) < scale || std::abs(y - r[3]) < scale) && x > r[0] - scale && x < r[2] + scale;
+        return across_x || across_y;
+      });
+    };
+    const auto near_box_edge = [&](int x, int y) {
+      const bool inside_band = x > BOX[0] - scale && x < BOX[2] + scale && y > BOX[1] - scale && y < BOX[3] + scale;
+      const bool deep_inside = x >= BOX[0] + scale && x < BOX[2] - scale && y >= BOX[1] + scale && y < BOX[3] - scale;
+      return inside_band && !deep_inside;
+    };
+    constexpr std::array<float, 3> STEP = {1.f / 64.f, 1.f / 64.f, 1.f / 32.f};
+    float worst_with = 0.f;
+    float worst_without_outline = 0.f;
+    size_t outline_exact = 0;
+    size_t outline = 0;
+    size_t compared = 0;
+    for (int y = 0; y < 48; ++y) {
+      for (int x = 0; x < 64; ++x) {
+        if (near_quad_edge(x, y)) continue;
+        const size_t index = static_cast<size_t>(y) * 64 + x;
+        for (int channel = 0; channel < 3; ++channel) {
+          const float allowed = STEP[channel] * std::max(direct[index][channel], 0.05f);
+          worst_with = std::max(worst_with, std::abs(with[index][channel] - direct[index][channel]) / allowed);
+          if (near_box_edge(x, y)) {
+            worst_without_outline = std::max(worst_without_outline, std::abs(without[index][channel] - direct[index][channel]) / allowed);
+          }
+        }
+        if (near_box_edge(x, y)) {
+          ++outline;
+          outline_exact += (std::memcmp(&with[index], &direct[index], sizeof(Float4)) == 0) ? 1 : 0;
+        }
+        ++compared;
+      }
+    }
+    std::printf("11. %s (%d x %d layer), smoke behind a near box: with Full-Resolution Particle Edges %zu pixels at most %.2f steps from the "
+                "game's full-size draws (%zu of %zu outline pixels to the bit); without, the outline at most %.2f steps\n",
+                (scale == 2) ? "Half" : "Quarter", 64 / scale, 48 / scale, compared, worst_with, outline_exact, outline, worst_without_outline);
+    CHECK(worst_with <= 1.f);
+    layer::half_resolution_row = 0.f;
+    AttilaFrame(&rig, {});
+  }
 }
 #endif
 
@@ -1267,11 +1343,27 @@ static void TimePasses(const char* dump) {
   }
 #else
   (void)dump;
-  auto rig = MakeAttilaRig(3840, 2160, 3840, 2160, std::vector<float>(3840 * 2160, DepthAt(30.f)));
+  // A flat wall, and one with a near post every 32 pixels (4 wide: the outlines' worst case for Full-Resolution Particle Edges).
+  std::vector<float> posts(3840 * 2160, DepthAt(30.f));
+  for (size_t index = 0; index < posts.size(); ++index) {
+    if ((index % 3840) % 32 < 4) posts[index] = DepthAt(0.6f);
+  }
+  for (const bool with_posts : {false, true}) {
+  auto rig = MakeAttilaRig(3840, 2160, 3840, 2160, with_posts ? posts : std::vector<float>(3840 * 2160, DepthAt(30.f)));
   std::vector<Particle> smoke(100, Particle{{0, 0, 3840, 2160}, {0.5f, 0.45f, 0.4f, 0.05f}, D3D11_BLEND_SRC_ALPHA, D3D11_BLEND_INV_SRC_ALPHA});
-  for (const auto& [half, smoothing] : {std::pair{0.f, 0.f}, std::pair{1.f, 0.f}, std::pair{1.f, 1.f}}) {
-    layer::half_resolution_row = half;
-    layer::smoothing_row = smoothing;
+  struct Mode {
+    float resolution;
+    float smoothing;
+    float edges;
+    const char* name;
+  };
+  for (const Mode& mode : {Mode{0.f, 0.f, 1.f, "full size"}, Mode{1.f, 0.f, 0.f, "half size"}, Mode{1.f, 0.f, 1.f, "half size, edges"},
+                           Mode{1.f, 1.f, 1.f, "half size smoothed, edges"}, Mode{2.f, 0.f, 0.f, "quarter size"},
+                           Mode{2.f, 0.f, 1.f, "quarter size, edges"}}) {
+    if (!with_posts && mode.resolution == 0.f) continue;
+    layer::half_resolution_row = mode.resolution;
+    layer::smoothing_row = mode.smoothing;
+    layer::edges_row = mode.edges;
     std::vector<double> open;
     std::vector<double> draws;
     std::vector<double> close;
@@ -1285,12 +1377,14 @@ static void TimePasses(const char* dump) {
         close.push_back(times[3] - times[2]);
       }
     }
-    std::printf("time, 4K, 100 full-screen particles, %s: layer opened %.3f ms, particles %.3f ms, layer in %.3f ms\n",
-                half == 0.f ? "full size" : (smoothing == 0.f ? "half size" : "half size smoothed"), Median(open), Median(draws), Median(close));
+    std::printf("time, 4K, 100 full-screen particles, %s, %s: layer opened %.3f ms, particles %.3f ms, layer in %.3f ms\n",
+                with_posts ? "a post every 32 pixels" : "a flat wall", mode.name, Median(open), Median(draws), Median(close));
   }
   layer::half_resolution_row = 0.f;
   layer::smoothing_row = 0.f;
+  layer::edges_row = 1.f;
   AttilaFrame(&rig, {}, true, nullptr, false);
+  }
 #endif
 }
 
