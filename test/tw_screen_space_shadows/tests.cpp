@@ -395,6 +395,7 @@ static Frame MakeFrame(UINT width, UINT height, std::span<const Box> boxes, cons
 struct Foliage {
   Texture before;
   Texture after;
+  ID3D11ShaderResourceView* material = nullptr;  // the G-buffer's channel 3 marking it instead (foliage_material_bit)
 };
 
 // One frame of the module: its settings, then the march at the sun's draw (Compute; the banners' depth this frame's where
@@ -413,14 +414,14 @@ static ID3D11ShaderResourceView* RunFrame(const Frame& frame, const sss::Setting
     objects.thin_srv = frame.thin.srv;
     runtime.thin_frame = runtime.frame;
   }
-  if (foliage != nullptr) {
+  if (foliage != nullptr && foliage->material == nullptr) {
     objects.before_foliage_srv = foliage->before.srv;
     objects.after_foliage_srv = foliage->after.srv;
     runtime.before_foliage_frame = runtime.frame;
     runtime.after_foliage_frame = runtime.frame;
   }
   sss::internal::Compute(context.Get(), frame.depth.srv.Get(), false, frame.camera_constants.Get(), frame.lighting.Get(), 1,
-                         settings.coloured ? frame.colour.srv.Get() : nullptr);
+                         settings.coloured ? frame.colour.srv.Get() : nullptr, (foliage != nullptr) ? foliage->material : nullptr);
   runtime.computed_frame = runtime.frame;
   return (runtime.soft_frame == runtime.frame) ? objects.soft_srv.Get() : objects.occlusion_srv.Get();
 }
@@ -536,6 +537,21 @@ static void TestRowsOff(const std::string& before_folder) {
   const auto lit_through = std::ranges::count_if(plain[0], [](uint8_t value) { return value > 40 && value < 200; });
   std::printf("   foliage at 0.5: %zu half-lit pixels\n", static_cast<size_t>(lit_through));
   CHECK(lit_through > 50);
+  // The same bush marked by the G-buffer instead (Warhammer III: channel 3's alpha byte, bit 128; the rest 5, its rigid
+  // objects'): the same occlusion as the depth copies'.
+  {
+    const auto bush_depth = ReadView<float>(bush.depth.srv.Get());
+    const auto plain_depth = ReadView<float>(without.depth.srv.Get());
+    std::vector<uint32_t> bytes(bush_depth.size());
+    for (size_t index = 0; index < bytes.size(); ++index) bytes[index] = ((bush_depth[index] != plain_depth[index]) ? 132u : 5u) << 24;
+    const Texture material = MakeTexture(480, 270, DXGI_FORMAT_R8G8B8A8_UNORM, bytes.data(), 480 * 4);
+    const Foliage marked = {.material = material.srv.Get()};
+    sss::foliage_material_bit = 128;
+    std::vector<std::vector<uint8_t>> by_material;
+    for (int run = 0; run < RUNS; ++run) by_material.push_back(ReadView<uint8_t>(RunFrame(bush, plain_settings, false, &marked)));
+    sss::foliage_material_bit = 0;
+    compare("foliage marked by the G-buffer's material byte against the depth copies", by_material, plain);
+  }
   compare("extended march with nothing to do against the plain one", extended, plain);
 
   // Below 100% (the render the top-left of the display's textures, 960 x 540): the sun's 60 samples are 30 at 50% and 35

@@ -89,6 +89,10 @@ struct ThinShader {
 
 // Light Through Banners' rows are shown where InstallThin knows the game's banners.
 static bool thin_installed = false;
+// Light Through Foliage where the G-buffer marks foliage: the bit of its channel 3's alpha byte (the sun draws'
+// gbuffer_slot + 2; Warhammer III's 128, which its own contact shadows let the sun through), 0: none (Attila's
+// InstallFoliage instead).
+static uint32_t foliage_material_bit = 0;
 
 namespace internal {
 
@@ -128,6 +132,8 @@ struct ShaderSettings {
   float render_width = 0.f;   // the 3D image's (DLSS: the top-left corner of the depth)
   float render_height = 0.f;
   float foliage_light = 0.f;  // sss_depth, sss_bend
+  float foliage_bit = 0.f;    // sss_depth (foliage_material_bit; 0 with the game's MSAA)
+  std::array<float, 3> padding = {};
 };
 
 // sss.hlsli's sss_extended.
@@ -883,9 +889,10 @@ class ComputeState {
 };
 
 // This frame's occlusion from the scene's depth (`depth_view`; `msaa`: multisampled), camera and sun constants (and the
-// G-buffer's colour, `colour`, for Coloured Shadows; null: none), with the compute stage's bindings put back after.
+// G-buffer's colour, `colour`, for Coloured Shadows; its material channel, `material`, for Light Through Foliage where it
+// marks foliage; null: none), with the compute stage's bindings put back after.
 inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth_view, bool msaa, ID3D11Buffer* camera, ID3D11Buffer* lighting,
-                    UINT sun_direction, ID3D11ShaderResourceView* colour) {
+                    UINT sun_direction, ID3D11ShaderResourceView* colour, ID3D11ShaderResourceView* material) {
   auto& objects = runtime.objects;
   // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%;
   // Bend's per-pixel depth tolerances over it (a render pixel holds more of the scene: the depth steps between neighbours
@@ -917,6 +924,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
       .render_width = static_cast<float>(render[0]),
       .render_height = static_cast<float>(render[1]),
       .foliage_light = runtime.settings.foliage_light,
+      .foliage_bit = (material != nullptr) ? static_cast<float>(foliage_material_bit) : 0.f,
   };
   if (std::memcmp(&settings, &objects.uploaded, sizeof(ShaderSettings)) != 0) {
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
@@ -967,7 +975,8 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
   const ComPtr<ID3D11ComputeShader>& depth_copy = (msaa ? objects.depth_copy_ms : objects.depth_copy);
   const bool foliage_marked = runtime.before_foliage_frame == runtime.frame && runtime.after_foliage_frame == runtime.frame;
   ComputeState::Bind(native, depth_copy.Get(),
-                     {depth_view, foliage_marked ? objects.before_foliage_srv.Get() : nullptr, foliage_marked ? objects.after_foliage_srv.Get() : nullptr},
+                     {depth_view, foliage_marked ? objects.before_foliage_srv.Get() : nullptr, foliage_marked ? objects.after_foliage_srv.Get() : nullptr,
+                      msaa ? nullptr : material},
                      {objects.depth_uav.Get()}, {nullptr, nullptr, objects.settings.Get()});
   native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
   ComputeState::Bind(native, objects.setup.Get(), {}, {objects.arguments_uav.Get(), objects.parameters_uav.Get()}, {camera, lighting, objects.settings.Get()});
@@ -1123,9 +1132,21 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
                 colour.Reset();
               }
             }
+            // Light Through Foliage where the G-buffer marks foliage (foliage_material_bit): its channel 3.
+            ComPtr<ID3D11ShaderResourceView> material;
+            if (foliage_material_bit != 0 && runtime.settings.foliage_light > 0.f) {
+              native->PSGetShaderResources(sun_draw.gbuffer_slot + 2, 1, material.GetAddressOf());
+              D3D11_SHADER_RESOURCE_VIEW_DESC material_desc = {};
+              if (material) {
+                material->GetDesc(&material_desc);
+              }
+              if (material_desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D) {
+                material.Reset();
+              }
+            }
             internal::Compute(native, scene_depth, msaa,
                               frame_history::AttilaCamera(device.Get(), native, camera[0], sun_draw.camera_layout, &runtime.objects.camera),
-                              lighting[0], sun_draw.sun_direction, colour.Get());
+                              lighting[0], sun_draw.sun_direction, colour.Get(), (msaa ? nullptr : material.Get()));
             runtime.computed_frame = runtime.frame;
           }
           if (camera[0] != nullptr) camera[0]->Release();

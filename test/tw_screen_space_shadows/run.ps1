@@ -37,7 +37,8 @@ foreach ($shader in $shaders) {
   if ($a -ne $b) { $changed += $name }
 }
 Write-Host "Shader bytes changed since fc24dbce: $($changed -join ', ')"
-if (($changed | Where-Object { $_ -ne 'sss_setup' }).Count -ne 0) { throw "Plain shader bytes changed: $($changed -join ', ')" }
+# sss_depth (and its MSAA form): the G-buffer's foliage mark (Warhammer III); its output against fc24dbce's on WARP too.
+if (($changed | Where-Object { $_ -notin @('sss_setup', 'sss_depth', 'sss_depth_ms') }).Count -ne 0) { throw "Plain shader bytes changed: $($changed -join ', ')" }
 
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation

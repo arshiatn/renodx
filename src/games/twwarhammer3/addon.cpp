@@ -4102,7 +4102,7 @@ void ConfigureAddon() {
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
                                              .has_scale_rows = false,
                                              .has_object_motion = true,
-                                             .has_foliage_light = false,
+                                             .has_foliage_light = true,
                                              .rays_preset_path_ambient = false,
                                              .rays_preset_caustics = false,
                                              .rays_preset_water_reflections = false,
@@ -4208,6 +4208,9 @@ bool AttachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Before the Light Bounce's (its callback draws the sun draw again).
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Foliage: the G-buffer's channel 3 alpha byte, bit 128 (leaves 132, tree cards 160, grass x 128 | 5; the
+  // bit its own contact shadows, sun_mask E6BCBA8A, let the sun through).
+  twattila::screen_space_shadows::foliage_material_bit = 128;
   // Light Through Banners: cloth, banners and flags (as the rays), the G-buffer's colour linear.
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).

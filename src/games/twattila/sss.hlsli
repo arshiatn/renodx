@@ -29,6 +29,7 @@ cbuffer sss_settings : register(b2)
   float g_sss_sun_direction;  // sss_setup: sun_direction's first float in lighting_VS_PS (Attila c0.y: 1)
   float2 g_sss_render_size;   // the 3D image's (DLSS: the depth's top-left corner; else the depth's size)
   float g_sss_foliage_light;  // Light Through Foliage: the sun's share through what grass and leaves shadow (sss_depth, sss_bend)
+  float g_sss_foliage_bit;    // where the G-buffer marks foliage (sss_depth t3's alpha byte; Warhammer III 128), 0: none
 }
 
 // sss_bend_extended's, sss_soft's and sss_lights' (screen_space_shadows.hpp ExtendedSettings; unused by the others).
