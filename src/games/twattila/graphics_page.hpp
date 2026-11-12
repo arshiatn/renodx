@@ -34,6 +34,47 @@ using renodx::utils::settings::Setting;
 using renodx::utils::settings::SettingValueType;
 using Values = std::vector<std::pair<std::string, float>>;
 
+// ATN's 2026-11-12 settings (their screenshot of Attila's page): the RT/PT preset, and Warhammer III's defaults of what
+// the methods leave (its addon.cpp). A game without one of these rows skips it (UpdateSettings).
+inline const Values RAYS_PRESET = {
+    {"RayTracedSunShadows", 1.f},
+    {"RayTracedShadowSoftness", 0.8f},
+    {"RayTracedLeafLight", 1.f},
+    {"RayTracedColouredShadows", 1.f},
+    {"RayTracedSmokeShadows", 1.f},
+    {"RayTracedSmokeQuality", 3.f},
+    {"RayTracedLightSoftness", 0.25f},
+    {"RayTracedLightImportance", 1.f},
+    {"RayTracedSpriteShadows", 1.f},
+    {"RayTracedFarTreeShadows", 1.f},
+    {"RayTracedBannerLight", 1.f},
+    {"RayTracedSheetsUnselfed", 1.f},
+    {"RayTracedPathKeptCube", 1.f},
+    {"RayTracingDenoiser", 1.f},
+    {"RayTracedLightGlow", 1.f},
+    {"RayTracedGrassSway", 1.f},
+    {"RayTracedSwayRange", 50.f},
+    {"RayTracedOffScreenSway", 1.f},
+    {"RayTracedGrassShadowRange", 0.f},
+    {"RayTracedPathAmbient", 1.f},
+    {"RayTracedPathSkyApart", 1.f},
+    {"RayTracedLightBounce", 2.f},
+    {"light_bounce_strength", 1.f},
+    {"RayTracedLightBounceRays", 1.f},
+    {"RayTracedLightBounceResolution", 0.f},
+    {"RayTracedLightBounceRange", 50.f},
+    {"PathTracingBounces", 1.f},
+    {"RayTracedReflections", 1.f},
+    {"RayTracedReflectionSamples", 1.f},
+    {"RayTracedReflectionReuse", 2.f},
+    {"RayTracedWaterReflections", 1.f},
+    {"RayTracedSpecularOcclusion", 1.f},
+    {"WaterClarity", 1.f},
+    {"WaterCaustics", 1.f},
+    {"RayTracedFogShadows", 1.f},
+    {"RayTracedPointLightShadows", 1.f},  // Warhammer III's own row
+};
+
 inline const std::string AA_SECTION = "Anti-Aliasing and Upscaling";
 inline const std::string AO_SECTION = "Ambient Occlusion";
 inline const std::string SHADOWS_SECTION = "Shadows";
@@ -160,9 +201,6 @@ struct Bindings {
   bool has_object_motion = false;  // Without the scale rows: Object Motion Vectors still has an effect.
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
-  bool rays_preset_path_ambient = true;  // The RT/PT preset takes it; false: ray-traced AO, over the game's.
-  bool rays_preset_caustics = true;      // The RT/PT preset turns Water Caustics on.
-  bool rays_preset_water_reflections = true;  // The RT/PT preset turns Water Reflections on.
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
   bool has_reflections = true;
@@ -669,47 +707,9 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            {{"ssao_mode", 0.f}, {"ssr_hierarchical", 0.f}, {"WaterClarity", 1.f}, {"WaterCaustics", 0.f}}));
     page.Add(preset_button("No RT/PT (Recommended)", b.texts->no_rays_tooltip,
                            {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}}));
-    // ATN's 2026-11-12 settings (their screenshot of Attila's page).
-    Values rays_values = {{"RayTracedSunShadows", 1.f},
-                            {"RayTracedShadowSoftness", 0.8f},
-                            {"RayTracedLeafLight", 1.f},
-                            {"RayTracedColouredShadows", 1.f},
-                            {"RayTracedSmokeShadows", 1.f},
-                            {"RayTracedSmokeQuality", 3.f},
-                            {"RayTracedLightSoftness", 0.25f},
-                            {"RayTracedLightImportance", 1.f},
-                            {"RayTracedSpriteShadows", 1.f},
-                            {"RayTracedFarTreeShadows", 1.f},
-                            {"RayTracedBannerLight", 1.f},
-                            {"RayTracedSheetsUnselfed", 1.f},
-                            {"RayTracedPathKeptCube", 1.f},
-                            {"RayTracingDenoiser", 1.f},
-                            {"RayTracedLightGlow", 1.f},
-                            {"RayTracedGrassSway", 1.f},
-                            {"RayTracedSwayRange", 50.f},
-                            {"RayTracedOffScreenSway", 1.f},
-                            {"RayTracedGrassShadowRange", 0.f},
-                            {"RayTracedPathAmbient", 1.f},
-                            {"RayTracedPathSkyApart", 1.f},
-                            {"RayTracedLightBounce", 2.f},
-                            {"light_bounce_strength", 1.f},
-                            {"RayTracedLightBounceRays", 1.f},
-                            {"RayTracedLightBounceResolution", 0.f},
-                            {"RayTracedLightBounceRange", 50.f},
-                            {"PathTracingBounces", 1.f},
-                            {"RayTracedReflections", 1.f},
-                            {"RayTracedReflectionSamples", 1.f},
-                            {"RayTracedReflectionReuse", 2.f},
-                            {"RayTracedWaterReflections", 1.f},
-                            {"RayTracedSpecularOcclusion", 1.f},
-                            {"WaterClarity", 1.f},
-                            {"WaterCaustics", 1.f},
-                            {"RayTracedFogShadows", 1.f}};
+    Values rays_values = RAYS_PRESET;
     // No paths for the sky's light here: ray-traced AO, over the game's.
-    if (!b.has_path_ambient || !b.rays_preset_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
-    if (!b.rays_preset_caustics) rays_values.emplace_back("WaterCaustics", 0.f);
-    if (!b.rays_preset_water_reflections) rays_values.emplace_back("RayTracedWaterReflections", 0.f);
-    if (b.lights_own_row) rays_values.insert(rays_values.end(), {{"RayTracedPointLightShadows", 1.f}, {"RayTracedLightImportance", 0.f}, {"RayTracedFogShadows", 0.f}, {"RayTracedLightGlow", 0.f}});
+    if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the

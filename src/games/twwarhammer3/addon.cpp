@@ -3725,9 +3725,7 @@ void ConfigureAddon() {
   // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
-  // Off here: night and fire in the fog have had no one's eye yet.
   for (auto* setting : settings) {
-    if (setting->key == "RayTracedLightGlow") setting->default_value = 0.f;
     // Their shared rule reads dlss_mode, which no row sets here: the scale is the game's float (upscaling_mode_row).
     if (setting->key == "AntiAliasingTextureLodBias" || setting->key == "AntiAliasingEffectsAtOutput") {
       setting->is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
@@ -4034,6 +4032,16 @@ void ConfigureAddon() {
   for (auto* setting : settings) {
     if (setting->key == "RayTracedWaterReflections") setting->default_value = 0.f;
   }
+  // ATN's RT/PT preset (Attila's page, 2026-11-12) as the defaults of what the methods leave; the methods themselves (sun
+  // shadows, Path-Traced AO, GI, its strength, reflections) stay off.
+  constexpr std::array<std::string_view, 5> RAY_METHODS = {"RayTracedSunShadows", "RayTracedPathAmbient", "RayTracedLightBounce",
+                                                           "light_bounce_strength", "RayTracedReflections"};
+  for (auto* setting : settings) {
+    const auto preset = std::ranges::find(twattila::graphics_page::RAYS_PRESET, setting->key, &twattila::graphics_page::Values::value_type::first);
+    if (preset != twattila::graphics_page::RAYS_PRESET.end() && std::ranges::find(RAY_METHODS, setting->key) == RAY_METHODS.end()) {
+      setting->default_value = preset->second;
+    }
+  }
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &reflections::all_surfaces_row,
@@ -4103,9 +4111,6 @@ void ConfigureAddon() {
                                              .has_scale_rows = false,
                                              .has_object_motion = true,
                                              .has_foliage_light = true,
-                                             .rays_preset_path_ambient = false,
-                                             .rays_preset_caustics = false,
-                                             .rays_preset_water_reflections = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
