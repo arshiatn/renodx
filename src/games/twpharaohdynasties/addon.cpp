@@ -2093,13 +2093,22 @@ bool AttachAddon() {
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also
-  // at 100% (twattila/frame_trace.hpp).
+  // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once
+  // each: b0-b5 up to 1 KB (camera b1 with camera_near_far at c25, shadowmap_PS b2's splits and baked map,
+  // lighting_VS_PS b4's sun and ambient cube, directional_light_PS b5; the tone mapper's camera b0 and tone_mapping b1).
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS, {}, {}, {}, {.on_demand = true, .at_100 = true});
+                                   RENDER_SCALE_READS, {}, {}, {},
+                                   {
+                                       .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74},
+                                       .value_slots = 6,
+                                       .value_floats = 256,
+                                       .on_demand = true,
+                                       .at_100 = true,
+                                   });
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).

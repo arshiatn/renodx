@@ -4,6 +4,7 @@
 
 - **Scripted runs:** `RENODX_TW_SET` / `RENODX_TW_SHOT` / `RENODX_TW_PROFILE` work here too (`twattila/test_hooks.hpp`, as Attila: the clock starts at the first present).
 - **Frame trace on demand and at 100%:** an empty file `renodx_trace_now` next to Pharaoh.exe traces the next frame (looked for each second, then removed; any anti-aliasing, any scale); `[renodx] FrameTrace=1` also traces at 100% (600 presents of the 3D view). Both write `tw_frame_trace.txt` next to the exe, over the last one (the shared `twattila/frame_trace.hpp`, off in the other games; WH3's own marker is now this one).
+- **The trace lists the sun's and the tone mapper's constants:** the first draw of the sun light shaders F883F5B2 (standard) and E238D4C7 (skin) and of the tone mapper 976C1C74 writes its VS and PS constant buffers b0-b5, up to 256 floats each (near / far, sun direction and colour, the ambient cube, the shadow splits and baked map).
 
 ### Round v45 (2026-11-12, shared code from Attila / Warhammer III; built, not released, not run in game)
 
