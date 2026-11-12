@@ -14,12 +14,10 @@
 - Version the addon and the README; a README line per change, `New:` and `Fixed:` first words in the players' notes.
 - Release builds are stamped by the maintainer's private step. Never rebuild after stamping: install and zip the stamped copies.
 - `release_zip.py` names the helper folder; Attila players get the slim zip from `player_zip.py`. Compare the new zip's entries with the last one (a licence file once dropped out).
-- Install only when the maintainer asked for it, with the game closed: a fresh backup of their ini, preset and the game's preferences right before, the installed files' hashes equal to the stamped copies after, their files unchanged by hash. No DevKit.
-- Never mix addons built before and after an upstream merge in one game folder.
-- No tags (the maintainer tags); no Nexus text.
+- Install only when the maintainer asked for it, with the game closed and the backups of the Game runs rule in [SKILL.md](../SKILL.md); after, the installed files' hashes equal the stamped copies'. Its Builds and Git rules hold here too.
 
 ## 3. Report and hand-off
 
-- One commit per item with cause and numbers; the `HANDOFF.md` checklist ticked in the same commit; pushed to the fork's `atn-mods`, never upstream.
+- Commits and the `HANDOFF.md` checklist as in [SKILL.md](../SKILL.md)'s Process and Git rules.
 - Report per game: done, not done, what the maintainer tests (in the format of [testing.md](testing.md)). State what wasn't run, built or installed.
 - Each bug the maintainer finds in game becomes a row in the right reference file, with the offline check that would have caught it. A row that turned out wrong is fixed or deleted in the same commit.

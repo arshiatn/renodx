@@ -1,8 +1,6 @@
 # RT scene: shadows that hold everything
 
-Ray-traced and path-traced shadows, AO and light need every caster the game's shadow maps had. One family missing (trunks, banners, far trees, units behind the camera) looks worse than the game's own maps, and in WH3 each missing family cost a test round. Build the whole census before the first test round.
-
-Order found in WH3 (each a round): units only; leaves on the wrong slot, grass, tessellated terrain; the sun patch on the ambient; terrain skirts and proxy boxes as black patches; banners and cut-outs; buildings, rocks, indirect grass; placed objects; the dragon off screen; casters from the shadow pass; trunks, banners and missed cut-outs again; a tent stand-in; trees past 40 m; the far-card budget. Attila's list was similar: the sky dome blocking every ray, rows under a triangle list, back faces, 2-state grass, sprite soldiers, far trees, smoke, palms, grass twice, cut-outs, cloth, receivers.
+Ray-traced and path-traced shadows, AO and light need every caster the game's shadow maps had. One family missing (trunks, banners, far trees, units behind the camera) looks worse than the game's own maps, and in WH3 each missing family cost a test round, as in Attila before it: each is now a step of section 1 or a row below. Build the whole census before the first test round.
 
 ## 1. Coverage checklist (a new game, in order)
 
@@ -11,7 +9,7 @@ Order found in WH3 (each a round): units only; leaves on the wrong slot, grass, 
 3. **Census of the main and the shadow pass** in traces: VS, PS, index count, instances. Map each shadow VS to its main-pass family. Flag stand-ins (in the shadow pass only) and LOD pairs.
 4. **Terrain**: tessellated? A GS that only makes skirts? A camera-distance height push? A mask discard (sea)? Its room first. Where the hills' shadow comes from.
 5. **Rigid statics** (buildings, rocks, props): a VS shared with water or decals needs a PS allow list; proxy boxes (PS reads depth and discards) stay out; a position from `SV_InstanceID` means `.dynamic`; place a mesh only per rule 3 below; rows drawn as points.
-6. **Moving rigid** (weapons, armour, siege engines, projectiles): last frame's rows mean moving; classify siege engines and projectiles in the census, nothing records them as a family yet.
+6. **Moving rigid** (weapons, armour, siege engines, projectiles): last frame's rows mean moving; classify siege engines and projectiles in the census (as of 2026-11 no family records them).
 7. **Units**: every VS variant (burn, wind alpha), shares, cut-outs, dissolve, units out of view from the shadow pass (`rt_outside_view` and its UV mask), sprite soldiers (sun-facing, sorted last).
 8. **Trees**: trunks and branches (a two-matrix blend?), leaves (mask slot, burn map), sway, 4-state micromaps, far cards (sun-facing, own count, sorted last), trees past cascade 1.
 9. **Grass**: direct and indirect (`CaptureIndirect`), mask per PS, captured from the G-buffer draw only, dedupe on x and z, shrink by distance, never 2-state, receivers take the full ray, captured only while a ray that meets it runs.
@@ -39,7 +37,7 @@ Write one line per family for each game. A budget without a stated overflow answ
 | Smoke | Particle draws | Regular sorted BLAS, own TLAS, own ray [6ad8a2c2, 321434ab] | Smallest give way [6875b28f, f8606d9a] |
 | TLAS and room | - | - | Fixed caps dropped kept instances past 262,144 and flickered with no error [6ad8a2c2]; the capture count ran out at 256 [eae66fca, 64c6938c]. Grow on a worker at 3/4, step x4/3 [c7ffc569]; start at half the limit on big GPUs [965c89cd]; check with `RENODX_TW_TEST_ROOM` and the stress modes |
 
-Overflow answers: blocked for solids and cards; lit only for grass still baking. The harness modes `far_cards_20` and `far_cards_48` prove the far-card answer (helper102 lit 28 of 28, helper103 shadowed 28 of 28).
+Overflow answers: blocked for solids and cards; lit only for grass still baking. The harness modes `far_cards_20` and `far_cards_48` prove the far-card answer: 28 of 28 cards shadowed, none lit.
 
 ## 3. Rules learned
 
@@ -47,16 +45,14 @@ Overflow answers: blocked for solids and cards; lit only for grass still baking.
 |---|---|---|
 | Far-tree shadows flickered, a dark wedge at each tree's foot: the helper took sun-only captures from the *tail* of the frame's list, and WH3 draws units and terrain after its cards [10ea2b61] | No meaning by position in the capture list: a flag or an explicit sort. List every first or last rule in `rt_d3d12` when porting | Capture order in a trace; game: Far Tree Shadows at a forest edge, low sun |
 | Far trees lit through a wood, shadows changing with LOD: cards counted against smoke's particle count, and the ray gave up lit [5d240089]. Grass past 64 went black, then lit; cloth's 4 sheets let no light through [ad70391a, f19e5423] | One line per family: budget, overflow answer, log line, stress mode | Harness stress per family |
-| Black trunks in AO, shadows and PT AO: WH3's tree VS 474F97FB and 783383C6 blend two sets of per-instance rows by `v6.x`; a placed BLAS is its first instance's blend. Open | Place a mesh only when its VS position is rows x VB position and nothing else per instance (no blend, bones, wind); else capture it each frame | WARP with two or more instances whose extra per-instance data differs; game: AO Debug View on pines, Placed Objects off and on |
-| A black spot on tents: a 204-index stand-in drawn alone by the shadow pass is also in the G-buffer pass, captured over the 13,632-index cloth; rays start between the sheets. Open | Census meshes per material, main against shadow pass; a mesh only in the shadow pass is a stand-in: take it only out of view, or not at all | Census over traces by index counts; game: a tent, Shadow Casters Out of View off and on |
+| Black trunks in AO, shadows and PT AO: WH3's tree VS 474F97FB and 783383C6 blend two sets of per-instance rows by `v6.x`; a placed BLAS is its first instance's blend | Place a mesh only when its VS position is rows x VB position and nothing else per instance (no blend, bones, wind); else capture it each frame | WARP with two or more instances whose extra per-instance data differs; game: AO Debug View on pines, Placed Objects off and on |
+| A black spot on tents: a 204-index stand-in drawn alone by the shadow pass is also in the G-buffer pass, captured over the 13,632-index cloth; rays start between the sheets | Census meshes per material, main against shadow pass; a mesh only in the shadow pass is a stand-in: take it only out of view, or not at all | Census over traces by index counts; game: a tent, Shadow Casters Out of View off and on |
 | A dragon's shadow gone just off screen; a flat picture after RT or PT to Reset mid-battle [e8aaefcb, 9a182b5f, 2ca382d2, dfb2334e] | Per family: which pass draws it each frame, to what range, and whether the game keeps a static cache. Skip only draws into the per-frame maps | WARP `outside_view_wh3`, `casters_wh3`; harness `HARNESS_KEPT`; game: pan off a forest and a wall, then Reset mid-battle |
 | Shortcuts on the receiving pixel leaked light: pixels facing away trusted N.L [90bebfa1]; those then took a solids-only ray, grass in a house's shadow 4.6x too bright [b9f2df6a]; a two-sided banner traced by each triangle's facing came out blocky [ad21eedd] | Every receiver takes the full set of casters; facing from the game's shading normal; thin or two-sided sheets trace from the camera's side | Harness plate behind a wall, `leaf_cut_out*`, `cloth_folds_self` against `cloth_folds_smooth` |
 | The cut-out census came out incomplete five times: black beards (92 PS) [78c0f619]; palms as solid cards [43dddcf3]; 541 shaders, then two missed because the script took one discard per shader [5eed585f], then 66 in no trace [10ea2b61]; alpha-tested rigid counted as leaves let a quarter of the sun through houses | Classify every discard of every PS, in scene rows and the shadow pass: base alpha means a mask; dither means solid; an instance fade is read; dissolve or a multi-layer product is level C. Solid cut-outs are their own group, never leaves | The census script prints only the declined shaders |
 | No light shader seen drawn; vertices read as lights under an unknown layout; torch rays clamped at 4 when Rays a Pixel went 8 [8f0035de] | Read the light VS layout; log the trace cap; take back the game's point-light shadow share | WARP `lights_wh3`; game: siege at night, Debug View 6 not magenta |
 | One frame-wide top 32 lights: a siege's 156 lights dropped torches across the screen | Bridge v31: up to 128 lights in b9 (positions, then the count row with `tile_row`, then colours); each 8x8 tile keeps its own 32 in extra mask rows (`LightTileRows`, one byte a light, 0xFF none), built in groupshared memory by the helper's `rt_lights`; the history converts last frame's lists through `light_previous`. A bridge change bumps the version on both sides | Harness stress up to 128 lights with a tile-list decode |
-| Fog Shadows alone turned RR on, waited for the terrain count, captured grass: 90 to 50 fps [bf21d2d2] | Each ray feature declares what it needs (terrain, grass, RR); capture only for rays that run (`CheapFogAlone`) | Harness fog-only scene: 0.83 against 0.19 ms |
 | Hills Out of View could not change the sun's shadow: WH3's hill shadow is a height-map shadow map | Read where each shadow comes from before building a row for it | The shadow pass's draws by family |
-| A run plan that couldn't measure: the AO view needs the AO row on (magenta otherwise); a test key the game doesn't have; a helper that didn't log placed instances | Check each planned shot against a page dump of the preset, and each log line it relies on | `page_dump` |
 
 ## 4. Capture traps
 
@@ -91,13 +87,12 @@ Overflow answers: blocked for solids and cards; lit only for grass still baking.
 | Rays start wrong: own blade [b11f567c], own surface [8e044106], riverbed under water, 3 mm helmets [6902136f]; terminator facets trust the depth normal [db34e39d] | Per-surface offsets; ask the triangle when edge-on | Harness plate checks |
 | Screen-edge pixels take a normal from past the view: black first and last columns [5a995075, 88270d2b]; border fade cut reflections [97e0fe87] | Use the neighbour inside; test at the edges | Harness edge modes |
 | A hull or vertex shader's culling and factors read the screen: behind the camera they mean nothing | An own hull shader for what's out of view (`rt_outside_view`) | WARP `outside_view_wh3`: behind the camera too |
-| Something marks foliage | Attila: nothing in stencil or G-buffer, so depth copies around its prefill. WH3: G-buffer channel 3's alpha (bit 128 foliage: leaves 132, tree cards 160, grass (x\*128)\|5; 64 water; 16 own motion; rigid 1, 3, 5). Ask per game | The sun and lighting PS's test on that channel (`fxc //dumpbin`); stencil refs from a trace |
-| Foliage via an extra target at SV_Target3 wrote nothing and fought kept targets | Don't | - |
+| Something marks foliage | Read it per game ([game-facts.md](game-facts.md), G-buffer material byte); never an extra target at SV_Target3: it wrote nothing and fought kept targets | The sun and lighting PS's test on that channel |
 | A row is alive because its table entry exists | Coloured Shadows' filter comes only from `.thin` captures (or `InstallThin` under SSS): no such entry, a dead row | Grep what the feature reads back to the capture flag |
 
 ## 5. The game's shadow maps under rays
 
-- **Multiply or Replace, first.** Under Multiply, light through leaves and cloth shows only past the maps' reach. Replace (default since WH3 v33) needs the off-screen casters of section 3 first.
+- **Multiply or Replace, first.** Under Multiply, light through leaves and cloth shows only past the maps' reach. Replace (WH3's default as of 2026-11) needs the off-screen casters of section 3 first.
 - **Readers left under Replace**: water (WH3 2076D289, DFA2AEA2, 034010C4), lit effects (9EA8D889), particles' fog. In WH3, 454 shaders can read the maps and 7 were seen drawn: list them from traces, `InstallShadowReaders`, and Shadow Maps Under Rays for the rest.
 - **`InstallShadowsOnly`** learns the map from a square depth texture bound at the sun draw; a game whose sun PS reads a screen mask binds none, so it can't work there.
 - **Skip only per-frame draws.** Anything kept across frames (the static cache, its copy, new strips on scroll) stays drawn, or RT or PT to Reset shows a flat picture until the cache refreshes [dfb2334e].

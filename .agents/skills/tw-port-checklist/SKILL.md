@@ -43,11 +43,12 @@ Read the file for every area the work touches before planning. Each row is a mis
 ## Before you start
 
 1. `git status`, `git log` and the checklist in `HANDOFF.md`: an earlier attempt may have got further. Continue it, don't redo it.
-2. Read the reference file for each area you touch, and every row of [game-facts.md](references/game-facts.md) for the target game.
-3. Read the target game's own shader, buffer and trace. **Never carry over the source game's values, registers, slots, formulas, encodings, scales or texture slots unread.** "Same as Attila" needs file and symbol for both games.
-4. Ask of the feature: does the game already do this? The same effect computed twice is the most common waste ([ao-gi.md](references/ao-gi.md)).
-5. A new TW game gets the whole package in its first round: HDR (already in every TW addon) plus everything Attila has. A "won't get" needs its proof in the commit (hash not in the dump, pass not in any trace), or it will be asked for later. The cost to avoid is the maintainer's hours of in-game testing: every check that can run offline runs before the build reaches them.
-6. Order areas by what they need: the RT scene before anything that replaces the game's shadows; a reader census before any replacement; the render-scale audit before tuning effects at one scale.
+2. **The newest helper and bridge, never an older copy.** A new or older TW game, and any non-TW addon on the bridge, builds against today's `twattila/dlaa_bridge.h` and ships with the `renodx-tw-dlaa64.exe` built from the same commit; an addon built against an older bridge is rebuilt and shipped with the matching helper. What the newer helpers fixed: the top of [helper-fg-stability.md](references/helper-fg-stability.md).
+3. Read the reference file for each area you touch, and every row of [game-facts.md](references/game-facts.md) for the target game.
+4. Read the target game's own shader, buffer and trace. **Never carry over the source game's values, registers, slots, formulas, encodings, scales or texture slots unread.** "Same as Attila" needs file and symbol for both games.
+5. Ask of the feature: does the game already do this? The same effect computed twice is the most common waste ([ao-gi.md](references/ao-gi.md)).
+6. A new TW game gets the whole package in its first round: HDR (already in every TW addon) plus everything Attila has. A "won't get" needs its proof in the commit (hash not in the dump, pass not in any trace), or it will be asked for later. The cost to avoid is the maintainer's hours of in-game testing: every check that can run offline runs before the build reaches them.
+7. Order areas by what they need: the RT scene before anything that replaces the game's shadows; a reader census before any replacement; the render-scale audit before tuning effects at one scale.
 
 ## A new game in order
 
@@ -59,7 +60,7 @@ Details, exit criteria and the WH3 history in [bringup.md](references/bringup.md
 3. Features in dependency order, each with its offline check green before the next.
 4. The settings matrix offline: GI, paths, RR, 50%, FG, Reset mid-battle; each row's cost alone.
 5. One bundled game run, its plan checked against a page dump of the maintainer's preset.
-6. The maintainer's list: 10 lines or fewer.
+6. The maintainer's test list ([testing.md](references/testing.md) section 3).
 
 ## Proof levels for a game fact
 
@@ -77,13 +78,13 @@ A hash goes in only with its proof in the commit message: the shader's family na
 
 ## The maintainer's rules
 
-- **Game runs** only when the maintainer allows them, per batch; the permission ends when the batch closes. Bundle what needs the game into one run. Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini`, the game's preferences and the replays and saves a run can write, right before each install or run, never restore an older copy, compare hashes after.
+- **Game runs** only when the maintainer allows them, per batch; the permission ends when the batch closes. Bundle what needs the game into one run. Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini`, the game's preferences and the replays and saves a run can write (WH3: `$WH3_PROTECTED` in `test_scripts/wh3_common.ps1`), right before each install or run, never restore an older copy, compare hashes after.
 - **Unproven work** ships as an Experimental row, off, with a player tooltip and one verdict line on the test list. Defaults change only from measured numbers. A section's More Options may hold as many Experimental rows as needed; the maintainer decides each row: on by default, in which presets, or left under More Options. Give them the numbers for that decision (cost, what it fixes, what it risks).
-- **Look**: keep the developers' look; scale quality, distance and resolution; a look change is an Experimental row, off. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended uses PsychoV35 in every HDR addon: a new game takes `twattila/psycho35_settings.hpp` with its own `HUE_CLIP_DEFAULT`, measured with `test/tw_psychov35`; ask the maintainer for its hue settings (Hue Clip's default is measured, see [game-facts.md](references/game-facts.md)).
+- **Look**: keep the developers' look; scale quality, distance and resolution; a look change is an Experimental row, off. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended uses PsychoV35 in every HDR addon: a new game takes `twattila/psycho35_settings.hpp` with its own `HUE_CLIP_DEFAULT`, measured with `test/tw_psychov35`; ask the maintainer for its hue settings (Hue Clip's default is measured, see [shaders-ui.md](references/shaders-ui.md)).
 - **Cost**: no per-frame counters or log lines, no per-frame CPU on the game's thread without a measured reason, hot callbacks return on one atomic.
 - **Rows**: tooltips short and for players, naming nothing the game lacks; keys stay when rows move or saved values are lost.
 - **Two ways**: a fix in shared code or a pattern goes to every addon that carries it; a new game's row goes back to Attila.
-- **Process**: one implementer at a time on one tree, on a verified plan; read-only surveys may run beside it. The batch checklist lives in `HANDOFF.md`, ticked and committed after every step, so a stop or a compaction loses nothing.
+- **Process**: one implementer at a time on one tree, on a verified plan; read-only surveys may run beside it. The batch checklist lives in `HANDOFF.md`, ticked in the commit of every step, so a stop or a compaction loses nothing.
 - **Git**: one commit per item with cause and numbers, pushed to the fork's `atn-mods` right away, never upstream. No tags (the maintainer tags). No Nexus text.
 - **Builds**: never mix addons built before and after an upstream merge in one game folder. No DevKit left in a TW game folder.
 - **Licences**: licence text for anything shipped; no code from mods without a licence.
@@ -92,7 +93,7 @@ A hash goes in only with its proof in the commit message: the shader's family na
 
 Tales of Arise, Ryse, Expeditions: Rome and later non-TW games share part of the code and all of the method.
 
-- **Shared code**: `twattila/rt_core.hpp` through a host's `scene_draw` and `main_view` (Ryse); the helper and `dlaa_bridge` (Ryse, Expeditions, Shogun 2); `talesofarise_dlss/` (NGX, frame generation: Attila and the helper include it); `psycho35_settings.hpp` and `credits.hpp` in every HDR addon. A helper or bridge change rebuilds and ships those addons with the matching helper.
+- **Shared code**: `twattila/rt_core.hpp` through a host's `scene_draw` and `main_view` (Ryse); the helper and `dlaa_bridge` (Ryse, Expeditions, Shogun 2); `talesofarise_dlss/` (NGX, frame generation: Attila and the helper include it); `psycho35_settings.hpp` and `credits.hpp` in every HDR addon.
 - **Method**: proof levels, a fact sheet per game, the maintainer's rules above, WARP tests against the game's bytes, page dumps, Experimental rows, the round report. [game-facts.md](references/game-facts.md)'s Warscape questions (t49 routes, `shared.h` registers, cascades) become the engine's: who owns jitter and scale, depth direction, tiled or deferred lights.
 - **Differences**: no offline shader dump for CryEngine (a packed `ShaderCache.pak`) or for code Denuvo hides, so level B means "seen in a runtime dump". Most have two addons (HDR plus `_dlss`, graphics rows in the DLSS overlay), their own trace header (`talesofarise_dlss/frame_trace.hpp`) and tool folders beside `tools/tw` (`toa`, `ryse`, `exr`, `expeditions`, `shogun2`, `ingame`). Tales takes Ray Reconstruction through NGX D3D12: D3D11 RR with a GPU wait went black.
 - A rule that holds in a second engine belongs in a shared skill, not in two copies.
@@ -108,7 +109,7 @@ cmake --build build32 --config Release --target renodx-twattila.addon32 renodx-t
 
 A behaviour one game needs goes behind a parameter that defaults to today's value.
 
-**Helper or `dlaa_bridge.h`**: build into a new folder passed as the first argument of `src\games\twattila\dlaa_helper\build.ps1` (`build\tw_dlaa_helperN`; without it the script writes over `build\tw_dlaa_helper`), never over an old one. A change to the bridge's layout bumps `VERSION` and keeps `OLDEST_VERSION` readable; `Prepare` publishes only addon-owned fields. Copy the new helper into `build\tw_rt_harness` and `build\tw_fg_test` first (the scripts run whatever helper sits there), rebuild the harness after a bridge change (it includes `dlaa_bridge.hpp`), and check the helper log's version line. Then run the full harness by mode name, `fg_bridge_test` and the `tw_helper_lifetime`, `tw_gpu_completion` suites. Addon and helper ship together.
+**Helper or `dlaa_bridge.h`**: build into a new folder passed as the first argument of `src\games\twattila\dlaa_helper\build.ps1` (`build\tw_dlaa_helperN`; without it the script writes over `build\tw_dlaa_helper`), never over an old one. A change to the bridge's layout bumps `VERSION` and keeps `OLDEST_VERSION` readable; `Prepare` publishes only addon-owned fields. Copy the new helper into `build\tw_rt_harness` and `build\tw_fg_test` first (the scripts run whatever helper sits there), rebuild the harness after a bridge change (it includes `dlaa_bridge.hpp`), and check the helper log's version line. Then run the full harness by mode name (`removal`, `switching_removal`, `release_*`, `leaf_storm`), `fg_bridge_test` and the `tw_helper_lifetime`, `tw_gpu_completion` suites. Addon and helper ship together.
 
 **New replacement shader**: TW folders name it `shaders/<name>_0x<CRC>.<target>.hlsl` (not `src/games/AGENTS.md`'s CRC-only form; `cb_audit` reads only this form). Build first, then run [scripts/cb_audit.py](scripts/cb_audit.py) with `python -I`, naming the game (`cb_audit.py twwarhammer3`), and read each line of part 2; the new shader must not be in its last line's "not compared" list. Then a WARP test against the game's bytes with a control that must fail. The script reads the decompiler's pack under `bin/`, which isn't in the repo.
 
@@ -118,7 +119,7 @@ A behaviour one game needs goes behind a parameter that defaults to today's valu
 
 **New caster family or capture row**: its line in the census of [rt-scene.md](references/rt-scene.md), with which pass draws it, its budget, its overflow answer, a log line and a harness stress mode.
 
-**Replacing or skipping a game pass** (AO, GI, shadow maps, fog march, SSR): readers by resource handle in traces at 100% and 50%; every term the output multiplies; per-frame or kept across frames; never switch a render stage's engine value back on live; exactly one method, enforced at load and at present. See [ao-gi.md](references/ao-gi.md).
+**Replacing or skipping a game pass** (AO, GI, shadow maps, fog march, SSR): readers by resource handle in traces at 100% and 50%; every term the output multiplies; per-frame or kept across frames; never switch a render stage's engine value back on live ([game-facts.md](references/game-facts.md) traps); exactly one method, enforced at load and at present. See [ao-gi.md](references/ao-gi.md).
 
 **A ray feature or row**: write down what it switches on (RR, NRD, the terrain wait, grass capture) and measure its fixed cost alone. A cheap feature must not pull in the costly ones.
 
@@ -130,7 +131,7 @@ A behaviour one game needs goes behind a parameter that defaults to today's valu
 
 **New rows**: check the key and label set; hidden when without effect in this game, and a shared row made visible by a new table entry counts as a new row. Dry-run every preset button in a page dump.
 
-**Patch scripts**: written to a file, not a heredoc (backslashes collapse, raw NUL bytes end up in sources). Text searches treat a file with a NUL as binary and skip it.
+**Patch scripts**: written to a file, not a heredoc (backslashes collapse, raw NUL bytes end up in sources). Text searches treat a file with a NUL as binary and skip it: find such files with `rg -a`, then fix them.
 
 ## Testing without the game
 
@@ -144,16 +145,8 @@ Inventory and traps in [testing.md](references/testing.md). In short:
 
 ## Asking the maintainer for a test
 
-At most 10 lines, the most important first, grouped by scene. Each line: scene, exact row name and value, what to look for, which file to send. Start with a control (rows off looks like the last version), compare on and off inside one run, and prefer lines the build reports itself (applied lines, Record Ray Tracing Profile (30 s), Frame Trace, Time Each Pass). Check every line against a page dump of the maintainer's current preset: the row shows, the debug view is made, the key exists. Never ask what an offline check or an allowed agent run can show. Format in [testing.md](references/testing.md).
+At most 10 lines, never what an offline check can show: format and dry-run in [testing.md](references/testing.md) section 3.
 
 ## Finishing a round
 
-Full list in [release.md](references/release.md).
-
-1. Ask the double-work question again: is anything now computed twice?
-2. List the source game's code you compared, by file and symbol.
-3. For a bug found on the way: is it compiled from shared code (fixed for all, rebuild), or the same pattern in `twattila/` (fix there and in the addons that carry it, with a README line each)? Check the source game without the game: `build32`, harness, WARP or offline test, numeric identity on a refactor, key diff on the page.
-4. One independent review of the round's diff, then one agent for its fixes: every close so far found real bugs.
-5. One commit per item, the `HANDOFF.md` checklist ticked in the same commit, pushed to the fork.
-6. Report per game: done, not done, what the maintainer tests. State what wasn't run.
-7. Every bug the maintainer found in game becomes a row in the right reference file, with the offline check that would have caught it. Fix or delete a row that turned out wrong in the same commit.
+Work through [release.md](references/release.md) in order: the double-work question, every consumer built, one independent review and one agent for its fixes, then the report per game (done, not done, what the maintainer tests, what wasn't run). Every bug the maintainer found in game becomes a row in the right reference file, with the offline check that would have caught it.

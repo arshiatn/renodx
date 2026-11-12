@@ -36,10 +36,10 @@ Order: trace the composite, its layers and readers; count only particles with op
 |---|---|---|
 | Particle Trails flagged blocks while paused: WH3's MBOIT moments are half size and point-copied (A759AD5D), so jitter flips 2-px texels at edges [716ae95f] | History rejection on a half-size or point-copied buffer tests the range of the neighbours around last frame's place | `warp_tests/smear_wh3` (edge flags 216 to 0) |
 | Smooth Half-Size Particles' first design threw flipping sparks away; an HLSL array made a 32-byte struct's cbuffer 68 bytes [f51b4d05] | Write the flip, move, pan and cut cases before the shader; the reflected cbuffer size equals `sizeof` | `test/tw_particle_history` |
-| A redirected draw unbound the OM UAVs (`OMGetRenderTargets` doesn't report them); WH3's composite carried a writable DSV on the depth being read [ade0799d] | `OMGetRenderTargetsAndUnorderedAccessViews`, restore UAVs with their counts; refuse other blends, scissor or MSAA with one log line; compare the DSV's resource with every SRV read | Read |
+| A redirected draw unbound the OM UAVs (`OMGetRenderTargets` doesn't report them); WH3's composite carried a writable DSV on the depth being read [ade0799d] | `OMGetRenderTargetsAndUnorderedAccessViews`, restore UAVs with their counts; refuse other blends, scissor or MSAA with one log line; compare the DSV's resource with every SRV read | Read the redirect in `twattila/particle_layer.hpp` |
 | RR's particle inputs: skipping the denoiser loses DOF's blur; Picture Before Particles makes the rest 2.5% brighter; the particle mask was read by no preset. Below 100% RR's colour comes after the tone mapper, so the composite is redrawn unblended into a cleared texture [ef9be189] | Test each optional NVIDIA input per preset in the harness, and know its colour space at each scale. Particles at output resolution are impossible: they would lose exposure, bloom, DOF and grading, and there is no display-size depth | `HARNESS_RR_EXTRA` |
 | Smoke: Bend never sees particles; RGBA16F height moments failed | `smoke_map` splats last frame's lit particles into a 1024 squared RGBA32F map from the sun | `smoke_map_test` |
-| Smoke shadows flickered at Ultra and the log's 262,144 particles looked like a full stream: that is the whole pool, drawn every frame, dead ones too; the siege used 35,304 of 65,536 smoke slots. Likely cause, unproven: each sun ray stops after 32 smoke particles that dim it or 64 it meets, and which come first changes every frame | Read what a count counts before raising a limit; log how often a ray hits its cap | A siege with Ultra against Extreme in one run |
+| Smoke shadows flickered at Ultra and the log's 262,144 particles looked like a full stream: that is the whole pool, drawn every frame, dead ones too; the siege used 35,304 of 65,536 smoke slots. Likely cause, unproven as of 2026-11: each sun ray stops after 32 smoke particles that dim it or 64 it meets, and which come first changes every frame | Read what a count counts before raising a limit; log how often a ray hits its cap | A siege with Ultra against Extreme in one run |
 | Particles at a half or quarter layer smeared across sharp edges (units, walls against smoke) | Full-Resolution Particle Edges (Cantlay, GPU Gems 3 ch. 23): `particle_edges` marks edge pixels in stencil with the scene depth in an own DSV (D24S8, D32S8 for float depth); each particle draw is drawn again there at full size with the game's depth state and stencil EQUAL 1; the composite takes stencil EQUAL 0. Reset the edge target when the layer is made again | `test/tw_particle_history` case 11: full-screen smoke at Quarter 26 steps off without edges, at most 1 with; a first version over the quads' edges, which the check skips, passed both ways |
 
 ## 3. Reflections and water
@@ -56,8 +56,7 @@ Order: which pass reflects which surface (its gate and flags); water hashes and 
 | SSR below 100%: the Hi-Z step and the mip chains read the whole target [d70febbf, 454e0ffa]; Shogun 2 traced at half its render size (640x360 at 33%); SSSR needs a nearest-depth pyramid and hit refinement against full-resolution depth | Clamp copies at the picture's share; march one to one at or below half | `warp_tests/scale_copies`, `warp_tests/ssr` |
 | The plan's water hash was wrong (A5FC3927; the real ones 4F35D09F with DFA2AEA2, 2076D289, 034010C4); water refraction read by several names | Take hashes from a trace; pass slots as parameters | Dump; trace |
 | Water clarity is per material | Scale each Beer-Lambert exponent [2705350a] | WARP |
-| Water Motion couldn't be proven | Stays Experimental under the stop rule | - |
-| The 8-bit environment cube caps sky reflections at paper white | Left as is: the developers' look | - |
+| The 8-bit environment cube caps sky reflections at paper white | Left as is: the developers' look | The cube's format in a trace |
 
 ## 4. Fog
 
@@ -65,9 +64,9 @@ Order: does the fog march the shadow maps; fog PS by trace, a proof level each; 
 
 | Mistake | Rule | Check |
 |---|---|---|
-| Fog Shadows alone took 90 to 50 fps: any ray row switched on RR (+6.6 ms at 100%), the terrain count wait (14 to 22 ms of the frame thread) and grass capture [bf21d2d2] | Each ray feature declares what it needs | Harness fog-only scene: 0.83 against 0.19 ms |
+| Fog Shadows alone took 90 to 50 fps: any ray row switched on RR (+6.6 ms at 100%), the terrain count wait (14 to 22 ms of the frame thread) and grass capture [bf21d2d2] | Each ray feature declares what it needs (terrain, grass, RR) and captures only for rays that run. With fog the only ray effect, `CheapFogAlone` (`twattila/rt_core.hpp`) keeps RR off (`rt_scene.hpp` `Configure`) and reads the terrain count late | Harness fog-only scene: 0.83 against 0.19 ms |
 | Fog Shadows alone had no shafts: `rt_sun` ran only with RT sun shadows | Grep every reader of what you gate | Page dump of the settings' combinations |
 | WH3's fog already marches its shadow maps; Attila's factor would darken twice | Replace the march (the game's gate false, rays in its place), don't multiply on top | WARP: ours at visibility 1 against the game with its own strength at 0 |
-| At Fog Strength 2 thick fog is 1.8x as bright; a correct limit needs T from a side draw (34719E09) | Left for the maintainer's decision | - |
+| At Fog Strength 2 thick fog is 1.8x as bright; a correct limit needs T from a side draw (34719E09) | The maintainer's decision, open as of 2026-11 | - |
 | A swapped copy that needs a value | Its own small buffer holding value minus default, so unbound (0) is the game's and WARP can test it unbound | WARP unbound |
 | Decompiled fog or sky: a horizon row as vertical lines through fog (an 8-bit low-res sky cube) | Fog and Sky Smoothing only with the cause proven in that game | Contrast-stretch a shot |

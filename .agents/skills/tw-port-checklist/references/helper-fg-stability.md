@@ -1,6 +1,11 @@
 # Helper, frame generation, stability, cost
 
-The helper (`renodx-tw-dlaa64.exe`) is a standalone D3D12 process for DLSS, RR, FG, FSR, XeSS and the ray tracing, reached through `dlaa_bridge.h` in shared memory. It isn't a ReShade addon; it shares a few headers with the addons.
+The helper (`renodx-tw-dlaa64.exe`, `src/games/twattila/dlaa_helper/`) is a standalone D3D12 process for DLSS, RR, FG, FSR, XeSS and the ray tracing, reached through `twattila/dlaa_bridge.h` in shared memory (the addon's side: `dlaa_bridge.hpp`). It isn't a ReShade addon; it shares a few headers with the addons.
+
+**Take the newest helper and bridge.** Most freezes, crashes and limits of the Attila and WH3 rounds were fixed in the helper and the bridge. A new or older TW game, and any non-TW addon on the bridge, builds against today's `dlaa_bridge.h` and ships with the helper built from the same commit, never an older copy.
+
+- The helper answers addons of bridge `OLDEST_VERSION` to `VERSION` (20 to 31 as of 2026-11) and refuses others ("Shared memory unusable (another version?)" in its log). The addon's half of a fix (`Prepare`'s new fence set, owned fields only) reaches only a rebuilt addon: an addon built against an older bridge is rebuilt and shipped with the matching helper.
+- What newer helpers fixed: a held removed device, shared fences after a loss and the GPU reset classes ([section 2](#2-crashes-hangs-and-gpu-resets)); ReShade kept out of the helper, request overflow, requests answered off the game's thread on workers ([section 3](#3-helper-memory-and-lifetime)); TLAS room and the capture count ([rt-scene.md](rt-scene.md#2-families-where-drawn-budget-overflow-answer)).
 
 ## 1. First-build stability checklist
 
@@ -10,10 +15,10 @@ Before any test round of a new game or a big change:
 2. Wire the shared `device_loss` (Install before the swapchain mod, InstallLast at the end of `AttachAddon`, Uninstall at detach) and `output_encoding`; `light_bounce` installs `device_end`.
 3. Every `Register` and `Install` paired with its `Unregister` and `Uninstall`; `engine_tweaks::Uninstall(options)`; native hooks behind `tw::native_hooks::Lifetime`; no detached threads, joined in `AddonUninit`; `DllMain` returns TRUE.
 4. Every static game-device object released at `destroy_device`; no game-device calls off its thread; no device made by the addon.
-5. Render-stage engine values only on to off live; constant flags preferred; values written back at detach.
+5. Engine values: the render-stage trap in [game-facts.md](game-facts.md); detach switches nothing back (`engine_tweaks::Uninstall` in `twrome2/engine_tweaks.hpp` keeps the game's own values for the next image).
 6. In-frame side work: targets kept, stream output without PS, compute at frame end, no GPU readback waits; an off row and a Flush candidate per batch.
 7. Hot callbacks return on one atomic; no counters, no per-frame logs; log once per failure streak.
-8. A helper change: a new folder as `build.ps1`'s first argument (`build\tw_dlaa_helperN`); a bridge layout change bumps `VERSION` and keeps `OLDEST_VERSION` readable; only owned fields published; `all_modes.sh` by name (`removal`, `switching_removal`, `release_*`, `leaf_storm`), `fg_bridge_test`, `test/tw_helper_lifetime`, `test/tw_gpu_completion`.
+8. A helper or bridge change: the steps under **Helper or `dlaa_bridge.h`** in [SKILL.md](../SKILL.md)'s checks.
 9. Every target in `SKILL.md`'s build lines built, `build32` too; every `test/tw_*` on x86 and amd64.
 10. Profiling ready before the first run: Record Ray Tracing Profile, Time Each Pass, Frame Trace.
 
@@ -50,10 +55,10 @@ Before any test round of a new game or a big change:
 | `slShutdown` then RR plus RT start hung the helper | `slFreeResources`; `Shutdown1` from idle RR crashes the next evaluation | `fg_bridge_test` |
 | RT off kept 15 GB; effects off kept textures [625742fc, 80239089] | Idle release 10 s, RT objects 15 s, effects free when off, `Release(true)` on leaving DLSS | Helper "release" lines; memory counters |
 | A shared texture opened twice in a process stays in VRAM (+195 MiB per RR cycle); a handle never closed (+32 MiB per set) | D3D11 opens at the set's first DLSS request; check every new shared texture's handle | `fg_bridge_test` memory phases |
-| A slow API in the first request passed the 5 s answer limit | Worker thread | Helper log |
+| A slow API in the first request passed the 5 s answer limit (`dlaa_bridge::Answer`; a later answer turns DLSS off) | Worker thread (`rt_worker` in `dlaa_helper/main.cpp`) | Helper log |
 | Room growth by `CreateCommittedResource` (up to 2.5 GB) stalled requests | On a worker at 3/4 [c12d17c7] | Harness |
 | Root UAVs have no bounds checks | `BUFFER_AT_OFFSET` clamps | Harness |
-| A 64-bit ReShade `dxgi.dll` beside the helper loaded our addons into it: a CRT fault each start, the DevKit crashed it, ReShade's banner on FSR FG's window | Since helper103 the helper loads `dxgi`, `d3d11`, `d3d12` from System32 first (delay-loaded) [3bd71292]; addons keep `DllMain` TRUE with `AddonInit` failing in a foreign host | `fg_bridge_test` module list with a ReShade in the helper's folder |
+| A 64-bit ReShade `dxgi.dll` beside the helper loaded our addons into it: a CRT fault each start, the DevKit crashed it, ReShade's banner on FSR FG's window | The helper loads `dxgi`, `d3d11`, `d3d12` from System32 first (delay-loaded) [3bd71292]; addons keep `DllMain` TRUE with `AddonInit` failing in a foreign host | `fg_bridge_test` module list with a ReShade in the helper's folder |
 | 32-bit: address space (peak 3158 of 4096 MB), mapped or dynamic textures (Animated Soldier Limit made soldiers invisible), `HeapAlloc` aligning to 8 [bc0ead39], ReShade's screenshot `bad_alloc` | Cast pointers via `uintptr_t`; don't take Attila's RAM caps as needed in a 64-bit game | `build32` and an x86 run of every `test/tw_*` |
 
 ## 4. Frame generation
@@ -70,7 +75,7 @@ Before any test round of a new game or a big change:
 | A frozen window when textures no longer fit or open fails; an early return in a present path while the helper presents [be916e1c] | Show the window only after a Present that worked; hide it after 60 failed Presents in a row and say why [f3b2cc91, 6f4a8ea0]; send the off request | `fg_bridge_test` |
 | FG off kept 590 to 605 MiB under Streamline, +64 MiB per on and off | Free resources | Helper log |
 | FG presets are the driver profile, not Streamline: read once at load; Global VSync caps it | DRS key 0x10E41DF1 on the helper exe | - |
-| FG is off under ReShade's menu, so the status line showed what ran before the menu opened [f3c4d3c5] | Status says so | Read |
+| FG is off under ReShade's menu, so the status line showed what ran before the menu opened [f3c4d3c5] | Status says so (`graphics_page.hpp`, `frame_generation.hpp`'s `overlay_open`) | Read the status line's `on_draw` |
 | Backends present at most FSR 2x, XeSS the GPU's, DLSS the driver's; asking more asks for the most | Rows per backend maximum [3bd71292] | `fg_bridge_test` at 2x and 6x per backend |
 | A 22 ms wait on the game's thread was FG's pacing, not the helper [5797d2a6] | Read `present_pacing_ms` before optimising | Record Ray Tracing Profile (30 s) with the menu closed |
 | No status line: nobody knows why no frames | Reason text [78c0f619] | `fg_bridge_test` |

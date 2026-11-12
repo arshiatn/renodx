@@ -21,16 +21,15 @@
 Rules:
 
 - Compare `all_modes.sh` runs by mode name against the last log, not by count. Run it in the background beside compiling, not beside another GPU job, and don't copy a helper into its folder until it ends.
-- A pass counts only with a "ready" or "applied" line. A build that failed PSO creation once "passed".
+- A pass counts only with a "ready" or "applied" line: a build that failed PSO creation once "passed". A run without a new log is invalid (an old log was once copied, a second game failed silently).
 - Give WARP tests the game's real ranges, and a control that must fail.
 - Say in the report what the harness can't show.
 
 ## 2. Game runs
 
-- Only when the maintainer allows it, per batch; the permission ends at the batch's close. So do the scripts that start one (`run_game`, `soak`, `fg_run`, `fg_mem_test`, `shot_run3`, `install`, `overlay_test`, `profile_run2`).
-- Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini`, the game's preferences and the replays and saves a run can write (WH3: `$WH3_PROTECTED` in `test_scripts/wh3_common.ps1`) right before; never restore an older copy; compare hashes after.
-- Run on the maintainer's current ini and preset. Agent settings once hid the game's GI from a whole round; a "0 of 8" held only for one ini.
-- Never two GPU jobs at once; no DevKit in the folder.
+- Permission and backups: the Game runs rule in [SKILL.md](../SKILL.md). It covers the scripts that start a game too (`run_game`, `soak`, `fg_run`, `fg_mem_test`, `shot_run3`, `install`, `overlay_test`, `profile_run2`).
+- Run on the maintainer's current ini and preset (the proof levels in [SKILL.md](../SKILL.md)); a "0 of 8" once held only for one ini.
+- Never two GPU jobs at once.
 - **Driving a run**: `test_scripts/run_game.ps1` (`-Game`, `-Shot s`, `-Profile s`, `-Set "s:key=value;..."`, `-Env`, `-Keys "W:6.4"`, `-Campaign`) sets `RENODX_TW_SHOT`, `RENODX_TW_PROFILE`, `RENODX_TW_SET` (`twattila/test_hooks.hpp`) and closes the game through its window; `wh3_batch3/check_run.py` proves the run ran.
 - Steam started elevated (the maintainer's SteamAdminStart task) passes that to the game and blocks input: `(Get-Process steam).Path` empty means elevated; `steam.exe -shutdown`, then `-silent`; don't touch the task.
 - Start forms: `game_startup_mode replay "<full path>"` (WH3 crashes on a bare name), `campaign_load "<save>"`, `battle_benchmark "<xml>"` (WH3). Try them before building a plan on one.
@@ -48,7 +47,7 @@ Rules:
 - On and off inside one run: pause freezes the picture, and settings changed while paused show no change; each paused run freezes a random wind phase.
 - Every Experimental row gets one A/B line naming the decision it drives.
 - Prefer what the build reports itself: "applied" lines, Record Ray Tracing Profile (30 s), Frame Trace, Time Each Pass, a pixel trace. Then the maintainer only sends `ReShade.log`, the helper log and the ini.
-- Dry-run each line against a page dump of the maintainer's current preset: the row shows, the debug view is made (an AO view without the AO row is magenta), the key exists in this game.
+- Dry-run each line, and every agent run's plan, against a page dump of the maintainer's current preset: the row shows, the debug view is made (an AO view without the AO row is magenta), the key exists in this game, and every log line the plan relies on exists in the build (a helper once didn't log placed instances).
 - Never ask what an offline check or an allowed agent run can show; never repeat an unchanged item.
 - A longer scripted list belongs to agent runs only.
 
@@ -73,7 +72,6 @@ Rules:
 
 | Trap | How to avoid |
 |---|---|
-| A run that didn't run: an old log copied, a second game failed silently | Mark runs without a new log invalid |
 | Reports without a check | Numbers from the run, else "not checked" |
 | A fix proves half | Keep the repro after the first fix |
 | Debug layer | Needs Graphics Tools; deterministic for lifetime bugs (`RENODX_TW_D3D12_DEBUG`) |

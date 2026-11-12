@@ -10,8 +10,8 @@ Shadow maps, SSAO, GI, the fog's shadow march, SSR: the same rules.
 2. **Every term the output multiplies**, per reader. WH3's `t_ssao` also occludes the cube's reflection; Attila's AO darkened the RT reflections a second time [43dc26e6]. Each term gets exactly one occlusion.
 3. **Per-frame or kept across frames.** A per-frame output may be skipped. Anything kept (caches, kept arrays, probes, voxels, histories) is never skipped, or is refilled on the way back. Every skip comes back the next frame.
 4. **Split what the pass carries.** A game's GI may carry the sky's light and shade as well as the bounce: remove only the bounce (section 2, first row).
-5. **Never switch a render stage's engine value back on live** ([game-facts.md](game-facts.md)); use the shader's constant flag.
-6. **Exactly one method**, enforced at load and at present, not only in the slider: a saved ini once ran RTAO and GT-VBAO together, the slider showing one while both multiplied [6b805678].
+5. **A render stage's engine value**: see [game-facts.md](game-facts.md)'s traps.
+6. **Exactly one method**, enforced at load and at present, not only in the slider: a saved ini once ran RTAO and GT-VBAO together, the slider showing one while both multiplied (3.3% brighter alone than over the game's) [6b805678]. Check with a page dump of the saved-ini case.
 7. **Attach to a pass that always runs** (the sun draw). WH3's AO downsample stops below about 2/3 scale; Pharaoh has no AO draw to wait for; Attila's GT-VBAO needs the game's SSAO on [f98564bb, 49cb4d47].
 8. **Calibrate against the branch the shader takes in steady state**, from mid-battle traces, as the game uploaded the values.
 9. **Prove it**: WARP on the game's bytes with ours in the slot, "0 values differ" where it must be the game's, plus a control that must differ. Then the pass's time saved, measured.
@@ -26,10 +26,8 @@ Shadow maps, SSAO, GI, the fog's shadow march, SSR: the same rules.
 | Learned light froze early: 30% darker than the same view a minute later; Bounces did nothing because a cache cell out of sight kept its first paths for 1800 frames [0d8b36ac, 85bfb847] | Learn after the battle settles (150 frames); every cache keeps relearning (an eighth of paths); log what was learned at each start | A setting changed halfway must end equal to that setting alone; harness `bounces_*`, `paths_kept_cube` |
 | The kept shadow cache's copy skipped with the maps: flat picture after RT or PT to Reset mid-battle [dfb2334e] | Classify outputs before skipping (rule 3) | Game: a preset switch mid-battle; far shadows and AO right at once |
 | GT-VBAO depth from a downsample that stops below 2/3 scale; settings read at b10 while we bound b13; display texcoords taken as screen positions; GT-VBGI's history camera overwritten by the battle portrait | Attach to a pass that runs at every scale and setting; settings at the game's register; `MainViewport` for histories | Start the game at 50%; `warp_tests/ao/render_scale_test.cpp` |
-| Two AO methods at once (3.3% brighter alone than multiplied over the game's) | One method, enforced at load and at present | Page dump of the saved-ini case |
 | AO denoiser default under RR flipped three times: "RR only" left about 20% of the noise; REBLUR cost 0.85 ms and 215 MB and darkened a wall's foot (0.74 to 0.57) | RR has no AO input: AO keeps its own history under RR. Light History (raw rays plus 20% history) is the default, REBLUR an option [f481d567]; ReSTIR shows one sample whatever the ray count, so Own Sky Rays [e392d43b]. Where NRD didn't run, our own filters stay on | `HARNESS_RR` numbers: no history, settled, mean |
 | SHaRC hung the GPU at propagation depth 4 with cache resampling; its reflections variant hung at 4K; a `-Od` build failed PSO creation and still counted as a pass | Bisect cache variants with an env var inside one helper build; require a "ready" line naming the variant | Harness |
-| Buffers identified by size: the 224-byte GI constants share their size with 101 others | Count every buffer of a size first; else take it at its dispatch | Dump scan |
 
 ## 3. Procedure for a new game's AO and GI
 
@@ -38,7 +36,7 @@ Shadow maps, SSAO, GI, the fog's shadow march, SSR: the same rules.
 3. **The ambient formula** per sun shader from its disassembly: SH, cube and probe branches and their lerp, fudge and scale, normal stretch, metal rule, foliage sheen, AO divisor. Count flag values across traces. WARP on the game's bytes.
 4. **Constants**: the settings register from `shared.h`; buffers by size only if unique; overscan factors; `cb_audit`; WARP with the slot unbound equals the game's.
 5. **Skip the game's AO**: only per-frame passes whose every reader is ours; clear to open until ours is ready; one method enforced at present; the Screen-Space AO Debug View; Time Each Pass.
-6. **Replace the GI**: zero only the bounce through a constants copy at its dispatch; keep the sky passes; never write the engine's on/off value; in game GI off and on twice in one battle.
+6. **Replace the GI**: zero only the bounce through a constants copy at its dispatch; keep the sky passes; the engine's GI value left alone (rule 5); in game GI off and on twice in one battle.
 7. **Sky and PT AO**: calibrate against the branch in use, with the game's scale and formula and RTAO's range; sky in every resampler; learn after the battle settles; caches relearn.
 8. **Denoise**: Light History under RR, REBLUR optional, NRD fallbacks; Rays a Pixel must lower the noise.
 9. **Presets and switches**: a page dump of every preset button; every skip back the next frame; nothing kept skipped; bypass state restored in `finalize_callback`.

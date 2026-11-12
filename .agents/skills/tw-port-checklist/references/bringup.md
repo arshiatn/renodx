@@ -13,9 +13,9 @@ Most of what the game showed could have been found offline:
 | Black patches on the ground | Read the terrain's GS and its PS's discard before streaming it out |
 | GT-VBAO flat white below 100% | Read the game's `shared.h`: settings at b10, not Attila's b13 |
 | Stale banner shadows | Read the VS position chain: rows from `SV_InstanceID` |
-| GI off crashed the game | Read the engine value's constructor and its graphics-change listener |
+| GI off crashed the game | Read the engine value's constructor and its graphics-change listener ([game-facts.md](game-facts.md)) |
 | "Cooked" light with GI off; PT AO too dark | Read the sun shader's probe lerp; count readers; test with GI on, as the game runs mid-battle |
-| Fog Shadows alone cost 40 fps | Audit what each row switches on |
+| Fog Shadows alone cost 40 fps | Audit what each row switches on ([sss-particles-water-fog.md](sss-particles-water-fog.md)) |
 | Texture LOD Bias did nothing on terrain | Sampler census in traces |
 | Flat picture after a preset switch | The array swap of the kept shadow cache was already in a trace |
 | ReShade's banner on the FG window | `fg_bridge_test` with the game's `dxgi.dll` beside the helper |
@@ -23,7 +23,7 @@ Most of what the game showed could have been found offline:
 
 Only look verdicts, the real crash path and real-scene cost needed the game.
 
-Root causes, each now a rule below: features built before the data run; agent runs on agent settings (shadow quality and GI off, where the maintainer runs both on); game passes replaced without a reader census; registers assumed from Attila; a "this game won't get" list later overturned row by row (Upscaling Mode, LOD Bias, Object Motion, VFX rows, the shadow-map skip, Shadow Map Size, far trees); 19 Experimental rows shipped without the numbers the maintainer needs to decide each (on by default, in presets, or left under More Options); a run plan never checked against the maintainer's preset (a debug view that needed a row the preset had off; a test key the game doesn't have).
+Root causes, each now a rule below: features built before the data run; agent runs on agent settings (shadow quality and GI off, where the maintainer runs both on); game passes replaced without a reader census; registers assumed from Attila; a "this game won't get" list later overturned row by row (Upscaling Mode, LOD Bias, Object Motion, VFX rows, the shadow-map skip, Shadow Map Size, far trees); 19 Experimental rows shipped without the numbers the maintainer decides each by; a run plan never checked against the maintainer's preset (a debug view that needed a row the preset had off; a test key the game doesn't have).
 
 Shipped, then changed: path-traced AO five times, the game's SSAO handling five, its GI four, shadow-map replacement five, the DLSS preset default four. Each change came from a fact a census would have given up front.
 
@@ -44,10 +44,10 @@ Shipped, then changed: path-traced AO five times, the game's SSAO handling five,
 The maintainer allows one agent-driven data run at the start of each new TW game: start, settle, trace, save the logs, quit. It collects data and tests nothing; feature tests still need the maintainer's OK per batch. Give the agent that drives it medium effort: the steps are scripted, the reading happens offline afterwards.
 
 - Port the run and check scripts first (`run_game.ps1`, `check_run.py`), so the run reports itself.
-- **Taking a trace**: `[renodx] FrameTrace=1` in `ReShade.ini`, read at start: one frame 600 presents after the render scale began, and only below 100% (`anti_aliasing.hpp` passes `render_width < display_width`); it writes `tw_frame_trace.txt` next to the exe, over the last one. Only WH3 also traces on demand when `renodx_trace_now` appears next to the exe (`twwarhammer3/taa_dlss.hpp`). Move that trigger and a 100% path into shared `frame_trace` first (a parameter, today's default), or plan one trace a start: about ten, not the whole matrix.
+- **Taking a trace**: `[renodx] FrameTrace=1` in `ReShade.ini`, read at start: one frame 600 presents after the render scale began, and only below 100% (`anti_aliasing.hpp` passes `render_width < display_width`); it writes `tw_frame_trace.txt` next to the exe, over the last one. As of 2026-11 only WH3 also traces on demand when `renodx_trace_now` appears next to the exe (`twwarhammer3/taa_dlss.hpp`). Move that trigger and a 100% path into shared `frame_trace` first (a parameter, today's default), or plan one trace a start: about ten, not the whole matrix.
 - Frame Traces in a settled battle (mid-battle: the first frame has other flags), the siege benchmark with fire, a dark or night map, the campaign. At 100%, and at 67, 50 and 33% through the game's own scale setting; where the addon owns the scale, the low-scale traces come after Phase 3 step 5.
 - Log Details from the start, Record Ray Tracing Profile (30 s) with ReShade's menu closed (it needs the helper's AA on).
-- On the maintainer's ini and preset, and again on defaults. Fresh backups right before.
+- On the maintainer's ini and preset, and again on defaults.
 - With each game setting you will touch (AO, GI, SSR, shadow quality, fog) on and off.
 
 ## Phase 2: offline from the traces
@@ -82,10 +82,8 @@ GI on and off, paths on and off, RR on and off, 100% and 50%, FG on and off, a p
 
 ## Phase 5: one bundled run (ask first)
 
-- The plan dry-run against a page dump of the maintainer's current preset: each planned shot's rows exist and show, each debug view is made, each test key exists in this game.
-- Every log line the plan relies on exists in the build.
-- Controls first; on and off inside one run; for a GPU reset at least 6 runs per state, the control first.
+Planned and dry-run as in [testing.md](testing.md) section 3; a GPU reset needs at least 6 runs per state, the control first ([helper-fg-stability.md](helper-fg-stability.md)).
 
 ## Phase 6: the maintainer's list
 
-10 lines or fewer, in the format of [testing.md](testing.md).
+In the format of [testing.md](testing.md) section 3.
