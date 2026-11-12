@@ -57,6 +57,8 @@ Order: which pass reflects which surface (its gate and flags); water hashes and 
 | The plan's water hash was wrong (A5FC3927; the real ones 4F35D09F with DFA2AEA2, 2076D289, 034010C4); water refraction read by several names | Take hashes from a trace; pass slots as parameters | Dump; trace |
 | Water clarity is per material | Scale each Beer-Lambert exponent [2705350a] | WARP |
 | The 8-bit environment cube caps sky reflections at paper white | Left as is: the developers' look | The cube's format in a trace |
+| Water reflections flickered on a paused picture and Samples did nothing: water's guide roughness (0.01 to 0.03) is below the 0.05 mirror line, so one ray, no history, no reuse, no filter, and 12.5% of hits re-rolled cached light into a random path each frame [8f866568] | Reflections never re-roll cached light; know which reflection rows act on mirrors (Samples, Reuse and Rays a Pixel don't); a mirror's steadiness is its own row: a neighbour clamp (Steadier) or a 0.06 floor with history (Softer) [a50849fd, 29e8e4e4] | `HARNESS_REFLECT_FLICKER`: 0.0163 to 0.0084 without the re-roll, 0.00134 with Softer |
+| Water's reflection history always failed: the helper copied positions at the frame's first paths request (the Light Bounce), before the addon rewrote them to the water surface, so deep water compared against last frame's sea floor [29e8e4e4] | A history test reads positions of the same surface as this frame's: copy them at the request that rewrote them | Harness: history frames > 1 on water only with the copy (0.00658 without it, 0.00134 with) |
 
 ## 4. Fog
 

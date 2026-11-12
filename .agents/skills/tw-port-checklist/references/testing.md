@@ -30,6 +30,7 @@ Rules:
 - Permission and backups: the Game runs rule in [SKILL.md](../SKILL.md). It covers the scripts that start a game too (`run_game`, `soak`, `fg_run`, `fg_mem_test`, `shot_run3`, `install`, `overlay_test`, `profile_run2`).
 - Run on the maintainer's current ini and preset (the proof levels in [SKILL.md](../SKILL.md)); a "0 of 8" once held only for one ini.
 - Never two GPU jobs at once.
+- The game folder holds plain stamped copies before a run: Pharaoh's addon and a DevKit were symlinks into `build/Release` (as of 2026-11), so any build would have swapped the addon mid-run and the DevKit broke the no-DevKit rule. `ls -l` the folder first.
 - **Driving a run**: `test_scripts/run_game.ps1` (`-Game`, `-Shot s`, `-Profile s`, `-Set "s:key=value;..."`, `-Env`, `-Keys "W:6.4"`, `-Campaign`) sets `RENODX_TW_SHOT`, `RENODX_TW_PROFILE`, `RENODX_TW_SET` (`twattila/test_hooks.hpp`) and closes the game through its window; `wh3_batch3/check_run.py` proves the run ran.
 - Steam started elevated (the maintainer's SteamAdminStart task) passes that to the game and blocks input: `(Get-Process steam).Path` empty means elevated; `steam.exe -shutdown`, then `-silent`; don't touch the task.
 - Start forms: `game_startup_mode replay "<full path>"` (WH3 crashes on a bare name), `campaign_load "<save>"`, `battle_benchmark "<xml>"` (WH3). Try them before building a plan on one.

@@ -89,6 +89,7 @@ Overflow answers: blocked for solids and cards; lit only for grass still baking.
 | A hull or vertex shader's culling and factors read the screen: behind the camera they mean nothing | An own hull shader for what's out of view (`rt_outside_view`) | WARP `outside_view_wh3`: behind the camera too |
 | Something marks foliage | Read it per game ([game-facts.md](game-facts.md), G-buffer material byte); never an extra target at SV_Target3: it wrote nothing and fought kept targets | The sun and lighting PS's test on that channel |
 | A row is alive because its table entry exists | Coloured Shadows' filter comes only from `.thin` captures (or `InstallThin` under SSS): no such entry, a dead row | Grep what the feature reads back to the capture flag |
+| Cloth recognised by rasterizer state: the capture-point flag (rigid VS 347F3DD9, the houses' alpha-tested PS ED1DF335) is CPU-moved but back-face culled, so "dynamic and cull none" never fired and its shadow had no colour [c67d3153] | Where cloth shares a VS with buildings, mark it by dynamic VB plus a PS list (`thin_sheets_pixel_shaders`); before trusting a state, log each (VS, PS, t0 size, cull) once under Log Details | `ReShade.log`: "thin by the banners' row" against the dynamic-draw counter |
 
 ## 5. The game's shadow maps under rays
 
