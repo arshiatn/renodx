@@ -1,5 +1,16 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Round v48 (2026-11-12, page fixes; built only, not run in game)
+
+- **New: the full-download note on General** (as Attila and Warhammer III): without renodx-tw-dlaa64.exe installed, a red line says DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub.
+- **New: GitHub (Downloads)** in About, beside Ko-fi and NexusMods: https://github.com/arshiatn/renodx/releases.
+- **Fixed: Shadow Map Size stays on Graphics 1 of 2 with Ray-Traced shadows.** Here the rays' sun shadow multiplies the game's shadow maps instead of replacing them, so their size still matters (`graphics_page::Bindings::rays_multiply_maps`, on for this game only; Attila and Warhammer III keep the row hidden under rays).
+- **Fixed: Graphics 2 of 2 tooltips without words in capitals** ("their detail DISTANCES grow", "cast SHADOWS"; the shared `twattila/engine_tests.hpp`, every Total War add-on).
+
+Download: https://github.com/arshiatn/renodx/releases (the full download, with renodx-tw-dlaa64.exe for DLSS, FSR, XeSS, Frame Generation and ray tracing).
+
+Build: `cmake --build build --config Release --target renodx-twpharaohdynasties.addon64`. Manual check: without the helper, General shows the red full-download line and About's GitHub (Downloads) opens the releases page; Graphics 1 of 2 with Shadows on Ray-Traced (DXR) still lists Shadow Map Size.
+
 ### Round v47 (2026-11-12, graphics page, tests page, sun facts; built only, not run in game)
 
 - **New: Graphics 1 of 2 laid out as Attila's and Warhammer III's.** Anti-Aliasing and Upscaling, Shadows, Ambient Occlusion, Global Illumination and Ray Tracing Extra Options, each with a Method slider and only that method's rows, the rest under More Options. Every setting keeps its saved value. Shadow Map Size moved here from Graphics 2 of 2 (same sizes).

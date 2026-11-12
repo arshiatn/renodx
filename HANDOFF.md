@@ -37,7 +37,7 @@ Was P5: pass maps 33/50/67/100, reader census by handle, capture candidates, vel
   - [x] 1 engine_tests.hpp tooltips: 17 capital words (GRASS, DISTANCES, SHADOWS, EFFECTS, CAMPAIGN, AUDIO) in normal case; keys and engine names unchanged
   - [x] 2 Pharaoh General page: full-download note (under Settings Mode) + GitHub (Downloads) button in About (WH3's); README download link with v48
   - [x] 3 graphics_page Bindings rays_multiply_maps (default false): Shadow Map Size (and Attila's UI 4K lock) stays under ray-traced shadows; Pharaoh true. Attila replaces (InstallShadowsOnly); WH3 replaces by default, multiplies with Rays Replace Shadow Maps off (left hidden there)
-  - [ ] builds (Pharaoh x64, the skill's x64 line, Attila / Rome II / Thrones x86) + dumps a_v157 / w_v53 / p_v48, README v48 (+ Attila v151 / WH3 v47 lines)
+  - [x] builds (HEAD 8941d3e7): the skill's 15 x64 targets + Attila / Rome II / Thrones x86, clean (relinked: WH1, WH2, Troy, Pharaoh, WH3, Attila, Rome II, Thrones). Dumps: page_a_v157 vs v156: 14 tooltips + date; page_w_v53 vs v52: date only (WH3's tests carry their own tooltips); page_p_v48 vs v47: 667 -> 669 rows (note, GitHub), 7 tooltips + date; states: GitHub in About everywhere, the note on page 0, Shadow Map Size in all 1024 page-1 Ray-Traced states; buttons and sliders the same but row numbers. README v48 (+ Attila v151 / WH3 v47 lines). Not stamped, not installed, not run in game.
 - [ ] Pharaoh round report (per item done / not done, ATN's <= 10-line test list)
 
 ## ATN'S 2026-11-12 THIRD LIST (offline; no game runs; Attila first, then the TW addons that share it)
