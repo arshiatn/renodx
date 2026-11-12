@@ -1235,6 +1235,9 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // Light Through All Banners (Experimental): the unit banners (rigidtextureblend and its wind version: the 3D UI's army_banner_flag
 // models' material) and the flags the CPU moves (rigidcommon from a dynamic vertex buffer, drawn from both sides) as thin cloth.
 float rays_banner_light_row = 0.f;
+// Texture LOD Bias on All Textures (Experimental, graphics_page.hpp; Warhammer III's row): the game's wrapping trilinear
+// samplers biased too (texture_lod_bias.hpp SetWrappingTrilinear).
+float lod_bias_trilinear_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1385,6 +1388,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -1916,7 +1920,7 @@ void ConfigureAddon() {
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
-                                             .rays_banner_light = &rays_banner_light_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed});
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
