@@ -6,7 +6,8 @@
 // 1. Rows off: the occlusion and the softened occlusion to the bit as fc24dbce's sss_depth / sss_setup / sss_bend / sss_blur
 //    give them (sss_setup's dispatch list moved into sss_dispatch.hlsli; its arguments and parameters to the bit too), and
 //    the extended march with nothing to do (no banners in view, Auto Thickness off) the plain march's to the bit, with
-//    foliage marked. Pixels Bend's waves write twice in one dispatch vary between runs of the same shaders on WARP (both
+//    foliage marked (by the depth copies, Warhammer III's material byte, and Pharaoh's bytes with bit 128; CONTROL: its
+//    water's bit 64 must differ). Pixels Bend's waves write twice in one dispatch vary between runs of the same shaders on WARP (both
 //    sides', under 0.2% of the picture): 8 runs each in turns, a pixel apart where no value of one side's is the other's.
 //    At 50% and 58% render scale (30 and 35 samples, fade-outs 14 and 19 after 16 hard ones) the extended march's counts
 //    in fours: the plain march's with 32 and 36, 12 and 16, to the bit.
@@ -14,13 +15,14 @@
 //    fronts (fewer ground pixels wrong against the reference), a pole no worse (5% + 20 pixels).
 // 3. A red banner: its shadow lets Light Through Banners of the sun through (its occlusion its solid one's x 0.65, within
 //    0.12), its filter is the banner's colour over its brightest channel (Coloured Shadows: green and blue taken, red
-//    kept), none in the sun.
+//    kept), none in the sun. Pharaoh's form (the sun at float 4, an sRGB colour, power 1): the same within 0.01; CONTROL: a
+//    decoy direction at Attila's float 1 read there must differ.
 // 4. Softer Away from the Caster: the penumbra each shadowed pixel gets is its caster's distance x tan(half the disk) in
 //    render pixels (median within 25% of the reference caster's), growing away from a pole; the softened shadow's edge
 //    widens with it. Softness 0 and the penumbra's texture not made: the sun draws read the occlusion (no pass softened it).
 // 5. Torch and Fire Shadows: a light beside a box: its bit agrees with a ray-traced reference on 95% of the ground within
 //    its reach, all bits set outside the rectangle its reach covers; of 100 lights (one repeated) the pick is the CPU's
-//    partial_sort by the rays' score, in order, the repeat once.
+//    partial_sort by the rays' score, in order, the repeat once. Pharaoh's 64-byte instances: the same light and bits.
 // 6. Light Through Banners' replay: a banner's G-buffer draw drawn again after it: tagged (its depth the scene's) where it
 //    stays in view, not where a later draw covers it, far elsewhere; the depth, targets (one kept at slot 6), shader,
 //    rasterizer, depth and blend states as they were.
@@ -352,6 +354,7 @@ struct Frame {
   Texture depth;
   ComPtr<ID3D11Buffer> camera_constants;
   ComPtr<ID3D11Buffer> lighting;
+  UINT sun_direction = 1;  // its first float in `lighting` (Attila's 1; Pharaoh's 4)
   Texture colour;
   Texture thin;
 };
@@ -420,7 +423,7 @@ static ID3D11ShaderResourceView* RunFrame(const Frame& frame, const sss::Setting
     runtime.before_foliage_frame = runtime.frame;
     runtime.after_foliage_frame = runtime.frame;
   }
-  sss::internal::Compute(context.Get(), frame.depth.srv.Get(), false, frame.camera_constants.Get(), frame.lighting.Get(), 1,
+  sss::internal::Compute(context.Get(), frame.depth.srv.Get(), false, frame.camera_constants.Get(), frame.lighting.Get(), frame.sun_direction,
                          settings.coloured ? frame.colour.srv.Get() : nullptr, (foliage != nullptr) ? foliage->material : nullptr);
   runtime.computed_frame = runtime.frame;
   return (runtime.soft_frame == runtime.frame) ? objects.soft_srv.Get() : objects.occlusion_srv.Get();
@@ -551,6 +554,25 @@ static void TestRowsOff(const std::string& before_folder) {
     for (int run = 0; run < RUNS; ++run) by_material.push_back(ReadView<uint8_t>(RunFrame(bush, plain_settings, false, &marked)));
     sss::foliage_material_bit = 0;
     compare("foliage marked by the G-buffer's material byte against the depth copies", by_material, plain);
+    // Pharaoh: its bit 128 on leaves, tree cards and the far forest's blocks (128) and grass (160); every other byte its drawn
+    // G-buffer shaders write (branches 0, rigid 1, skin 8, banners 10, terrain 21, units and props 33, water 64), in turns.
+    // CONTROL (must differ): the water's SSR bit (64) taken as the mark.
+    constexpr std::array<uint32_t, 2> PHARAOH_FOLIAGE = {128u, 160u};
+    constexpr std::array<uint32_t, 7> PHARAOH_OTHERS = {0u, 1u, 8u, 10u, 21u, 33u, 64u};
+    for (size_t index = 0; index < bytes.size(); ++index) {
+      bytes[index] = ((bush_depth[index] != plain_depth[index]) ? PHARAOH_FOLIAGE[index % PHARAOH_FOLIAGE.size()] : PHARAOH_OTHERS[index % PHARAOH_OTHERS.size()]) << 24;
+    }
+    const Texture pharaoh_material = MakeTexture(480, 270, DXGI_FORMAT_R8G8B8A8_UNORM, bytes.data(), 480 * 4);
+    const Foliage pharaoh_marked = {.material = pharaoh_material.srv.Get()};
+    std::vector<std::vector<uint8_t>> by_pharaoh_bit;
+    std::vector<std::vector<uint8_t>> by_water_bit;
+    sss::foliage_material_bit = 128;
+    for (int run = 0; run < RUNS; ++run) by_pharaoh_bit.push_back(ReadView<uint8_t>(RunFrame(bush, plain_settings, false, &pharaoh_marked)));
+    sss::foliage_material_bit = 64;
+    for (int run = 0; run < RUNS; ++run) by_water_bit.push_back(ReadView<uint8_t>(RunFrame(bush, plain_settings, false, &pharaoh_marked)));
+    sss::foliage_material_bit = 0;
+    compare("Pharaoh's material bytes, bit 128, against the depth copies", by_pharaoh_bit, plain);
+    compare("CONTROL Pharaoh's material bytes, bit 64 (water), against the depth copies", by_water_bit, plain, false);
   }
   compare("extended march with nothing to do against the plain one", extended, plain);
 
@@ -660,45 +682,91 @@ static void TestBanner() {
     float distance = 0.f;
     if (frame.picture.hit[pixel] == -1 && Occluder(boxes, frame.picture.position[pixel], to_sun, 1e30f, &distance) >= 0) shadow[pixel] = 1;
   }
-  double occlusion_sum = 0.0;
-  double solid_sum = 0.0;
-  std::array<double, 3> tint_sum = {};
-  int inner = 0;
-  uint32_t sunlit_tint = 0;
-  for (UINT y = 3; y + 3 < h; ++y) {
-    for (UINT x = 3; x + 3 < w; ++x) {
-      bool all = true;
-      bool none = true;
-      for (int dy = -3; dy <= 3; ++dy) {
-        for (int dx = -3; dx <= 3; ++dx) {
-          const uint8_t value = shadow[((y + dy) * w) + x + dx];
-          all = all && value != 0;
-          none = none && value == 0;
+  struct Means {
+    double occlusion = 0.0;
+    double solid = 0.0;
+    std::array<double, 3> filter = {};
+    int inner = 0;
+    uint32_t sunlit_tint = 0;
+  };
+  const auto measure = [&](const std::vector<uint8_t>& occlusion, const std::vector<uint32_t>& tint) {
+    Means means;
+    for (UINT y = 3; y + 3 < h; ++y) {
+      for (UINT x = 3; x + 3 < w; ++x) {
+        bool all = true;
+        bool none = true;
+        for (int dy = -3; dy <= 3; ++dy) {
+          for (int dx = -3; dx <= 3; ++dx) {
+            const uint8_t value = shadow[((y + dy) * w) + x + dx];
+            all = all && value != 0;
+            none = none && value == 0;
+          }
+        }
+        const size_t pixel = (y * w) + x;
+        if (all) {
+          means.occlusion += occlusion[pixel] / 255.0;
+          means.solid += solid[pixel] / 255.0;
+          for (int channel = 0; channel < 3; ++channel) means.filter[channel] += ((tint[pixel] >> (8 * channel)) & 0xFF) / 255.0;
+          ++means.inner;
+        } else if (none && frame.picture.hit[pixel] == -1) {
+          means.sunlit_tint = std::max(means.sunlit_tint, tint[pixel] & 0xFFFFFFu);
         }
       }
-      const size_t pixel = (y * w) + x;
-      if (all) {
-        occlusion_sum += occlusion[pixel] / 255.0;
-        solid_sum += solid[pixel] / 255.0;
-        for (int channel = 0; channel < 3; ++channel) tint_sum[channel] += ((tint[pixel] >> (8 * channel)) & 0xFF) / 255.0;
-        ++inner;
-      } else if (none && frame.picture.hit[pixel] == -1) {
-        sunlit_tint = std::max(sunlit_tint, tint[pixel] & 0xFFFFFFu);
-      }
     }
-  }
-  REQUIRE(inner > 50);
-  const double mean = occlusion_sum / inner;
-  const double solid_mean = solid_sum / inner;
-  const std::array<double, 3> filter = {tint_sum[0] / inner, tint_sum[1] / inner, tint_sum[2] / inner};
-  std::printf("   %d shadow pixels: occlusion %.3f (solid %.3f), filter %.3f %.3f %.3f (expected 0 0.875 0.875), in the sun %06X\n", inner, mean,
-              solid_mean, filter[0], filter[1], filter[2], sunlit_tint);
+    REQUIRE(means.inner > 50);
+    means.occlusion /= means.inner;
+    means.solid /= means.inner;
+    for (double& channel : means.filter) channel /= means.inner;
+    return means;
+  };
+  const Means attila = measure(occlusion, tint);
+  std::printf("   %d shadow pixels: occlusion %.3f (solid %.3f), filter %.3f %.3f %.3f (expected 0 0.875 0.875), in the sun %06X\n", attila.inner,
+              attila.occlusion, attila.solid, attila.filter[0], attila.filter[1], attila.filter[2], attila.sunlit_tint);
   // Bend's 4 lanes average a thin sheet's shadow (a lane shadows only where one of its samples meets it): the banner's
   // occlusion is its solid one's x (1 - its share).
-  CHECK(solid_mean > 0.3);
-  CHECK(std::fabs((mean / solid_mean) - 0.65) < 0.12);
-  CHECK(filter[0] < 0.1 && filter[1] > 0.6 && filter[2] > 0.6);
-  CHECK(sunlit_tint == 0);
+  CHECK(attila.solid > 0.3);
+  CHECK(std::fabs((attila.occlusion / attila.solid) - 0.65) < 0.12);
+  CHECK(attila.filter[0] < 0.1 && attila.filter[1] > 0.6 && attila.filter[2] > 0.6);
+  CHECK(attila.sunlit_tint == 0);
+
+  // Pharaoh: the sun's direction at float 4 of lighting_VS_PS (its c1; float 1 holds another direction here, a decoy), the
+  // G-buffer's colour an sRGB texture (read linear: albedo_power 1). The same occlusion and filter within 0.01. CONTROL
+  // (must differ): the decoy read, at Attila's float 1.
+  Frame pharaoh = frame;
+  std::array<float, 16> lighting = {};
+  const Vector decoy = Normalize({-0.6f, -0.6f, 0.5f});
+  std::copy(decoy.begin(), decoy.end(), lighting.begin() + 1);
+  std::copy(frame.sun.begin(), frame.sun.end(), lighting.begin() + 4);
+  pharaoh.lighting = MakeBuffer(sizeof(lighting), D3D11_BIND_CONSTANT_BUFFER, lighting.data());
+  pharaoh.sun_direction = 4;
+  std::vector<uint32_t> srgb(w * h);
+  for (size_t pixel = 0; pixel < srgb.size(); ++pixel) {
+    const int hit = frame.picture.hit[pixel];
+    const Vector albedo = (hit >= 0) ? boxes[hit].albedo : Vector{0.5f, 0.5f, 0.5f};
+    uint32_t packed = 0xFF000000u;
+    for (int channel = 0; channel < 3; ++channel) {
+      const float linear = albedo[channel];
+      const float encoded = (linear <= 0.0031308f) ? (12.92f * linear) : ((1.055f * std::pow(linear, 1.f / 2.4f)) - 0.055f);
+      packed |= static_cast<uint32_t>(std::lround(encoded * 255.f)) << (8 * channel);
+    }
+    srgb[pixel] = packed;
+  }
+  pharaoh.colour = MakeTexture(w, h, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, srgb.data(), w * 4);
+  sss::internal::runtime.albedo_power = 1.f;
+  settings.thin_light = 0.35f;
+  settings.coloured = true;
+  const auto pharaoh_occlusion = ReadView<uint8_t>(RunFrame(pharaoh, settings, true));
+  const Means pharaoh_means = measure(pharaoh_occlusion, ReadView<uint32_t>(sss::internal::runtime.objects.tint_srv.Get()));
+  pharaoh.sun_direction = 1;
+  const Means decoy_means = measure(ReadView<uint8_t>(RunFrame(pharaoh, settings, true)), ReadView<uint32_t>(sss::internal::runtime.objects.tint_srv.Get()));
+  sss::internal::runtime.albedo_power = 2.f;
+  std::printf("   Pharaoh (sun at float 4, sRGB colour): occlusion %.3f, filter %.3f %.3f %.3f, in the sun %06X; CONTROL the decoy at float 1: occlusion %.3f\n",
+              pharaoh_means.occlusion, pharaoh_means.filter[0], pharaoh_means.filter[1], pharaoh_means.filter[2], pharaoh_means.sunlit_tint,
+              decoy_means.occlusion);
+  CHECK(std::fabs(pharaoh_means.occlusion - attila.occlusion) < 0.01);
+  for (int channel = 0; channel < 3; ++channel) CHECK(std::fabs(pharaoh_means.filter[channel] - attila.filter[channel]) < 0.01);
+  CHECK(pharaoh_means.sunlit_tint == 0);
+  CHECK(std::fabs(decoy_means.occlusion - attila.occlusion) > 0.1);
 }
 
 // The device's CreateTexture2D (TestSofter puts this in its vtable for a frame): R16_FLOAT, the penumbra's format, failing.
@@ -806,8 +874,18 @@ struct LightInstance {
   std::array<float, 4> other;
 };
 
+// Pharaoh's (its light VS E19549A1, vb1 stride 64), in the VS's input order: POSITION1 the colour, POSITION2 position and
+// reach, POSITION3 the spot's direction, POSITION4 its cone.
+struct PharaohLightInstance {
+  std::array<float, 4> colour;
+  std::array<float, 4> light;
+  std::array<float, 4> spot;
+  std::array<float, 4> cone;
+};
+
 // Two frames of light draws (`instances` each), the second marching the first's: true if the second bound the lit bits.
-static bool LightFrames(const Frame& frame, std::span<const LightInstance> instances, uint32_t wanted, float range = 0.f) {
+template <typename Instance>
+static bool LightFrames(const Frame& frame, std::span<const Instance> instances, uint32_t wanted, float range = 0.f) {
   const auto buffer = MakeBuffer(static_cast<UINT>(instances.size_bytes()), D3D11_BIND_VERTEX_BUFFER, instances.data());
   sss::Settings settings = Defaults();
   settings.lights = wanted;
@@ -818,9 +896,9 @@ static bool LightFrames(const Frame& frame, std::span<const LightInstance> insta
     bound = lights::OnLightDraw(context.Get(), {.buffer = buffer.Get(),
                                                 .first = 0,
                                                 .count = static_cast<UINT>(instances.size()),
-                                                .stride = sizeof(LightInstance),
-                                                .position = offsetof(LightInstance, light),
-                                                .colour = offsetof(LightInstance, colour)});
+                                                .stride = sizeof(Instance),
+                                                .position = offsetof(Instance, light),
+                                                .colour = offsetof(Instance, colour)});
   }
   return bound;
 }
@@ -887,6 +965,21 @@ static void TestTorches() {
   CHECK(compared > 1000 && shadowed > 100);
   CHECK(agree >= compared * 95 / 100);
   CHECK(outside_not_lit == 0);
+  // Pharaoh's instances (64 bytes a light): the same light picked and the same lit bits (up to the pixels Bend's waves write
+  // twice, under 0.2%).
+  const PharaohLightInstance pharaoh_torch = {.colour = torch.colour, .light = torch.light, .spot = {0.f, -1.f, 0.f, 0.f}, .cone = {1.f, 0.f, 0.f, 0.f}};
+  REQUIRE(LightFrames(frame, std::span(&pharaoh_torch, 1), 4));
+  const auto pharaoh_mask = ReadView<uint32_t>(objects.lights.mask_uav.Get());
+  const auto pharaoh_list = ReadBuffer<std::array<float, 4>>(objects.lights.list.Get());
+  uint32_t pharaoh_count = 0;
+  std::memcpy(&pharaoh_count, &pharaoh_list[lights::internal::LIST_LIGHTS][0], sizeof(pharaoh_count));
+  size_t pharaoh_apart = 0;
+  for (size_t pixel = 0; pixel < mask.size(); ++pixel) pharaoh_apart += ((mask[pixel] ^ pharaoh_mask[pixel]) & 1u);
+  std::printf("   Pharaoh's 64-byte instances: %u light, %s; %zu of %zu pixels' bits apart from the 48-byte ones'\n", pharaoh_count,
+              (pharaoh_list[0] == torch.light && pharaoh_list[lights::internal::LIST_LIGHTS + 1][0] == torch.colour[0]) ? "the same" : "ANOTHER",
+              pharaoh_apart, mask.size());
+  CHECK(pharaoh_count == 1 && pharaoh_list[0] == torch.light && pharaoh_list[lights::internal::LIST_LIGHTS + 1][0] == torch.colour[0]);
+  CHECK(pharaoh_apart * 500 < mask.size());
 
   // 100 lights, one of them twice: the pick as the rays' (rt_core.hpp's score, partial_sort).
   std::mt19937 random(7);
@@ -897,7 +990,7 @@ static void TestTorches() {
     many.push_back({.colour = {unit(random), unit(random), unit(random), 0.f}, .light = {spread(random), -1.f, 20.f + spread(random), unit(random) * 3.f}});
   }
   many.push_back(many[17]);
-  REQUIRE(LightFrames(frame, many, 8));
+  REQUIRE(LightFrames(frame, std::span<const LightInstance>(many), 8));
   const auto picked = ReadBuffer<std::array<float, 4>>(objects.lights.list.Get());
   const auto score = [](const LightInstance& instance) {
     const auto& l = instance.light;
@@ -914,7 +1007,7 @@ static void TestTorches() {
   CHECK(same);
   // Torch and Fire Shadow Range 25 m: the 32 picked of those within it (the camera at the origin), in order.
   constexpr float RANGE = 25.f;
-  REQUIRE(LightFrames(frame, many, 32, RANGE));
+  REQUIRE(LightFrames(frame, std::span<const LightInstance>(many), 32, RANGE));
   const auto ranged = ReadBuffer<std::array<float, 4>>(objects.lights.list.Get());
   std::vector<LightInstance> within;
   std::ranges::copy_if(unique, std::back_inserter(within), [&](const LightInstance& instance) {

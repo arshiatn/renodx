@@ -1880,6 +1880,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
     {.hash = 0xEB2A56A1, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
 }};
 
+// The screen-space shadows' Light Through Banners: the siege's cloth (phar_rigid_battle_cloth_wind, PS 5277CF9F and 97850C83)
+// and flags (rigid_default_flag, PS 369C9E2E), as in the rays; both VS write SV_Position at o0. The banners (76225B91) stay
+// out as there: the game draws them unlit (material 10) and gives them no shadow.
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{{.hash = 0x2F2A0E7E}, {.hash = 0x8DE94E2F}}};
+
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%; and the AO blurs,
 // which read their input at their uv (TEXCOORD0 of the full-screen vertex shader 31C49ED2: 0-1 over the viewport, the
 // render scale's share of their half-size target).
@@ -2546,13 +2551,22 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer III's), ATN's RT/PT preset as the defaults of what the methods leave, then
-  // Settings Mode's pages. Only what this game hooks: no smoke map, foliage light or reflections.
+  // Settings Mode's pages. Only what this game hooks: no smoke map or reflections.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off too (Experimental: no game run has shown them here yet); RT/PT turns them
-  // on, as ATN's list does.
+  // on, as ATN's list does. Bend's Light Through Banners and Coloured Shadows (v55: the cloth and flags, InstallThin) also start
+  // off, Experimental, before the page reads its defaults (the presets write them).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow") {
       setting->default_value = 0.f;
+    } else if (setting->key == "ScreenSpaceShadowsBannerLight") {
+      setting->default_value = 0.f;
+      setting->label = "Light Through Banners (Experimental)";
+      setting->tooltip = "How much sun comes through the shadows cloth and flags cast: they are thin. 0: off.";
+    } else if (setting->key == "ScreenSpaceShadowsColoured") {
+      setting->default_value = 0.f;
+      setting->label = "Coloured Shadows (Experimental)";
+      setting->tooltip = "The sun through cloth and flags takes their colour.";
     }
   }
   // Torch and Fire Shadows from rays (Warhammer III's row): after the preset's defaults, so it starts off (Experimental: no game
@@ -2577,7 +2591,8 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
-                                             .has_foliage_light = false,
+                                             .has_foliage_light = true,
+                                             .foliage_light_tested = false,
                                              .lights_own_row = true,
                                              .has_reflections = false,
                                              .rays_replace_ao = false});
@@ -2627,7 +2642,16 @@ bool AttachAddon() {
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube starts at
   // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z; WARP on all 25 sun shaders, tools\tw\pharaoh\sun_test).
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24);
+  // Coloured Shadows (Bend's and the rays' filter at t50) on the sun's colour: lighting_VS_PS c3 (sun_colour; c1 is
+  // sun_direction), in all 25 sun shaders' RDEF.
+  twattila::screen_space_shadows::sun_colour_register = 3;
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Foliage: the G-buffer's channel 3 alpha byte, bit 128: leaves (5FC6C4AF), far tree cards (3DE66666) and
+  // the far forest's blocks (6622ADC5) write 128, grass (12A15935) 160, no other drawn G-buffer shader sets it; the bit the
+  // sun shader's own contact march lets half the sun through.
+  twattila::screen_space_shadows::foliage_material_bit = 128;
+  // Light Through Banners: the cloth and flags, the G-buffer's colour linear (an sRGB texture).
+  twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // The game's contact shadows off where ours shadow: after the screen-space shadows' (they bind ours at t49), before the Light
   // Bounce's (it draws the sun draw itself with the constants bound then).
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyContactShadowsDevice);

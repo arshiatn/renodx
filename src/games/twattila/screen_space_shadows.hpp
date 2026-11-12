@@ -93,6 +93,10 @@ static bool thin_installed = false;
 // gbuffer_slot + 2; Warhammer III's 128, which its own contact shadows let the sun through), 0: none (Attila's
 // InstallFoliage instead).
 static uint32_t foliage_material_bit = 0;
+// Coloured Shadows: the register of the sun shaders' lighting_VS_PS holding the sun's colour, which the filter at t50
+// multiplies (Attila's, Thrones', Rome II's and Warhammer III's c1; Pharaoh's c3, its c1 the sun's direction). Set before
+// the game makes its sun shaders.
+static uint32_t sun_colour_register = 1;
 
 namespace internal {
 
@@ -162,15 +166,15 @@ constexpr float SOFT_RADIUS_2160 = 32.f;
 // - Else (Troy, Pharaoh, Warhammer: their shadow ends differently in each shader): after each shadow map comparison
 //   (sample_c, sample_c_lz, gather4_c, gather4_po_c) mul rX.mask, rX.xyzw, rT.xxxx: the shadow is their filtered
 //   average, so it is scaled the same.
-// - With lighting_VS_PS (Attila's and the others' sun colour at its c1, the RDEF's slot for it): every read of c1 from
-//   rC (one more temp), the colour x the filter at t50 (Coloured Shadows: light through cloth and sails), before rT's
-//   ld: ld rC.xyzw, rT.xyzw, t50.xyzw / mad rC.xyz, rC.xyzx, l(-1), l(1) / mul rC.xyz, rC.xyzx, cbL[1].xyzx. None when
-//   one reads c1 relatively or its w.
+// - With lighting_VS_PS (the RDEF's slot for it; its sun colour at c`colour_register`, Attila's and the others' c1,
+//   Pharaoh's c3): every read of that register from rC (one more temp), the colour x the filter at t50 (Coloured Shadows:
+//   light through cloth and sails), before rT's ld: ld rC.xyzw, rT.xyzw, t50.xyzw / mad rC.xyz, rC.xyzx, l(-1), l(1) /
+//   mul rC.xyz, rC.xyzx, cbL[colour_register].xyzx. None when one reads it relatively or its w.
 // - Else (Warhammer III's shadow mask): rT first, and after each read of the texture named t_shadow (ld / sample) the
 //   same mul.
 // - A forward pass reading the sun's shadow map (`forward`: Attila's under Ray-Traced Shadows Only) as Troy's.
 // Empty: not such a shader.
-inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = false) {
+inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = false, uint32_t colour_register = 1) {
   constexpr uint32_t OP_CUSTOMDATA = 53, OP_DIV = 14, OP_FTOU = 28, OP_LD = 45, OP_MAD = 50, OP_MIN = 51, OP_MOV = 54,
                      OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_C = 70, OP_SAMPLE_C_LZ = 71, OP_SAMPLE_L = 72,
                      OP_GATHER4_C = 126, OP_GATHER4_PO_C = 128;
@@ -210,7 +214,7 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
     }
   }
 
-  // The sun colour's reads (c1 of lighting_VS_PS) from rC, the temp after rT.
+  // The sun colour's reads (c`colour_register` of lighting_VS_PS) from rC, the temp after rT.
   const auto temps = std::ranges::find_if(tokens.begin() + 2, tokens.end(), [](uint32_t token) { return (token & 0x7FF) == OP_DCL_TEMPS; });
   const uint32_t colour_temp = (temps != tokens.end() && temps + 1 != tokens.end()) ? *(temps + 1) + 1 : UINT32_MAX;
   bool coloured = lighting_slot != UINT32_MAX && colour_temp != UINT32_MAX;
@@ -233,7 +237,7 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
       dxbc::Operand operand;
       const size_t operand_length = dxbc::ParseOperand(tokens, operand_at, at + length, &operand);
       if (operand_length == 0) break;
-      const bool sun_colour = operand.type == TYPE_CONSTANT_BUFFER && operand.index[0] == lighting_slot && operand.index[1] == 1;
+      const bool sun_colour = operand.type == TYPE_CONSTANT_BUFFER && operand.index[0] == lighting_slot && operand.index[1] == colour_register;
       if (sun_colour) {
         const bool reads_w = (operand.mode == 1) ? std::ranges::any_of(std::array{0u, 2u, 4u, 6u}, [&](uint32_t shift) { return ((operand.select >> shift) & 3) == 3; })
                                                  : (operand.mode == 2 && operand.select == 3);
@@ -343,7 +347,7 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
                              2u | (TYPE_IMMEDIATE << 12), MINUS_ONE, MINUS_ONE, MINUS_ONE, MINUS_ONE,
                              2u | (TYPE_IMMEDIATE << 12), ONE, ONE, ONE, ONE});
     load.insert(load.end(), {OP_MUL | (8u << 24), masked(colour, 0b0111)[0], colour, swizzled(TYPE_TEMP, colour, XYZX)[0], colour,
-                             (swizzled(TYPE_CONSTANT_BUFFER, lighting_slot, XYZX)[0] & ~(3u << 20)) | (2u << 20), lighting_slot, 1});
+                             (swizzled(TYPE_CONSTANT_BUFFER, lighting_slot, XYZX)[0] & ~(3u << 20)) | (2u << 20), lighting_slot, colour_register});
   }
   instruction(&load, OP_LD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XYZW), swizzled(TYPE_RESOURCE, MASK_SLOT, XYZW)});
   instruction(&load, OP_MAD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XXXX), {1u | (TYPE_IMMEDIATE << 12), MINUS_ONE},
@@ -1034,7 +1038,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     if (!forward && std::ranges::find(runtime.sun_hashes, hash) == runtime.sun_hashes.end()) continue;
     auto [entry, added] = runtime.patched.try_emplace(hash);
     if (added) {
-      entry->second = Patch(code, forward);
+      entry->second = Patch(code, forward, sun_colour_register);
       std::stringstream s;
       s << "[Total War] Screen-space shadows: " << (forward ? "forward shader " : "sun shader ") << PRINT_CRC32(hash)
         << (entry->second.empty() ? " has no shadow to patch." : " patched.");

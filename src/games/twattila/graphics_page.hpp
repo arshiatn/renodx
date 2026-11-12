@@ -221,7 +221,8 @@ struct Bindings {
   bool has_scale_rows = true;
   bool has_object_motion = false;  // Without the scale rows: Object Motion Vectors still has an effect.
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
-  bool has_path_ambient = true;   // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
+  bool foliage_light_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
+  bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
   bool has_reflections = true;
@@ -772,8 +773,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Add(new Setting{
           .key = "ScreenSpaceShadowsFoliage",
           .binding = &b.sss->foliage_light,
-          .default_value = 0.5f,
-          .label = "Light Through Foliage",
+          .default_value = b.foliage_light_tested ? 0.5f : 0.f,
+          .label = b.foliage_light_tested ? "Light Through Foliage" : "Light Through Foliage (Experimental)",
           .section = section,
           .tooltip = "How much sun comes through the shadows grass and leaves cast: they are thin. Walls and soldiers\n"
                      "keep their full shadows, on foliage too. 0: as dark as any other shadow.",
