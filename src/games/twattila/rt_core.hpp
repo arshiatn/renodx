@@ -242,9 +242,11 @@ struct SceneShader {
   bool grass = false;  // within the grass's share (half the helper's alpha-tested corners)
   bool thin = false;   // cloth and sails (RT_THIN)
   const float* thin_row = nullptr;  // thin only with this row on (Warhammer III's banners among other unit parts)
-  // With this row on, its draws from a dynamic vertex buffer that the game draws from both sides (no back-face culling) are thin:
-  // Attila's flags are rigid meshes the CPU moves, by the shader its buildings have.
+  // With this row on, its draws from a dynamic vertex buffer that the game draws from both sides (no back-face culling) or with
+  // one of `thin_sheets_pixel_shaders` are thin: Attila's flags are rigid meshes the CPU moves, by the shader its buildings
+  // have (its capture-point flag culled, by its alpha-tested G-buffer pixel shader).
   const float* thin_sheets_row = nullptr;
+  std::span<const uint32_t> thin_sheets_pixel_shaders;
   bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at t0
   bool far_tree = false;    // a far tree's billboard (with sun_facing)
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
@@ -691,6 +693,7 @@ struct Runtime {
   // Log Details: the rows read back (Capture's ROWS_READS) and the draws among them worth a line, for faded draws and second-rows draws.
   std::array<std::array<uint32_t, 2>, 2> rows_reads = {};
   std::unordered_set<uint32_t> left_out_logged;  // shaders whose draws the capture can't take, each said once
+  std::unordered_set<std::string> thin_sheets_logged;  // Log Details: each kind of the banners' row's dynamic draws, said once
   // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
   // objects.light_constants, b12) and whether it did.
   std::vector<LocalLight> lights_drawn;
@@ -1202,13 +1205,33 @@ void Capture(Context& command, const SceneShader& shader) {
       buffers[slot]->Release();
     }
   }
-  if (!thin && dynamic && !cascade_draw && shader.thin_sheets_row != nullptr && *shader.thin_sheets_row != 0.f) {
+  if (!thin && dynamic && !cascade_draw && shader.thin_sheets_row != nullptr && (*shader.thin_sheets_row != 0.f || runtime.settings.debug_log)) {
     ComPtr<ID3D11RasterizerState> rasterizer;
     native->RSGetState(rasterizer.GetAddressOf());
-    if (D3D11_RASTERIZER_DESC rasterizer_desc = {}; rasterizer) {
-      rasterizer->GetDesc(&rasterizer_desc);
-      thin = rasterizer_desc.CullMode == D3D11_CULL_NONE;
+    D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_BACK};  // none bound: D3D11's default
+    if (rasterizer) rasterizer->GetDesc(&rasterizer_desc);
+    const uint32_t pixel_shader =
+        renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
+    const bool both_sides = rasterizer_desc.CullMode == D3D11_CULL_NONE;
+    const bool listed = std::ranges::find(shader.thin_sheets_pixel_shaders, pixel_shader) != shader.thin_sheets_pixel_shaders.end();
+    // Log Details: each kind of these draws once (its shaders, its t0's size, its culling), with the row on or off: whether a
+    // flag or banner comes from a dynamic vertex buffer, and how it is culled.
+    if (runtime.settings.debug_log) {
+      ComPtr<ID3D11ShaderResourceView> texture_view;
+      native->PSGetShaderResources(0, 1, texture_view.GetAddressOf());
+      D3D11_TEXTURE2D_DESC texture_desc = {};
+      if (ComPtr<ID3D11Resource> resource; texture_view) {
+        texture_view->GetResource(resource.GetAddressOf());
+        if (ComPtr<ID3D11Texture2D> texture; SUCCEEDED(resource.As(&texture))) texture->GetDesc(&texture_desc);
+      }
+      const std::string line = std::format(
+          "[Total War] Ray tracing: the banners' row's vs {:08X} from a dynamic vertex buffer with ps {:08X}, t0 {} x {}, culled {}.", shader.hash,
+          pixel_shader, texture_desc.Width, texture_desc.Height,
+          both_sides ? "none" : ((rasterizer_desc.CullMode == D3D11_CULL_FRONT) ? "front" : "back"));
+      const std::unique_lock lock(runtime.mutex);
+      if (runtime.thin_sheets_logged.insert(line).second) renodx::utils::log::i(line);
     }
+    thin = *shader.thin_sheets_row != 0.f && (both_sides || listed);
     if (thin) {
       // Its G-buffer draw alone, as the cloth above.
       ComPtr<ID3D11RenderTargetView> colour_target;
@@ -1217,9 +1240,8 @@ void Capture(Context& command, const SceneShader& shader) {
       // Log Details, once a vertex shader: that the row made its draws thin (its hash's bits turned: beside the left-out lines' marks).
       const std::unique_lock lock(runtime.mutex);
       if (runtime.settings.debug_log && runtime.left_out_logged.insert(shader.hash ^ 0x5448494Eu).second) {
-        renodx::utils::log::i(std::format(
-            "[Total War] Ray tracing: thin by the banners' row: vs {:08X} with ps {:08X}, from a dynamic vertex buffer, drawn from both sides.", shader.hash,
-            renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache)));
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: thin by the banners' row: vs {:08X} with ps {:08X}, from a dynamic vertex buffer, {}.",
+                                          shader.hash, pixel_shader, both_sides ? "drawn from both sides" : "its pixel shader listed"));
       }
     }
   }

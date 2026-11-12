@@ -1233,8 +1233,13 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // Ray tracing's scene (twattila/rt_scene.hpp): the main view's terrain (rigidterrain geom / custom geom, shader models 3 and
 // 4.1, old and new), rigid objects and tree branches, and their capture versions (world positions).
 // Light Through All Banners (Experimental): the unit banners (rigidtextureblend and its wind version: the 3D UI's army_banner_flag
-// models' material) and the flags the CPU moves (rigidcommon from a dynamic vertex buffer, drawn from both sides) as thin cloth.
+// models' material) and the flags the CPU moves (rigidcommon from a dynamic vertex buffer, drawn from both sides or by the
+// capture-point flag's pixel shaders) as thin cloth.
 float rays_banner_light_row = 0.f;
+// The capture-point flag: rigidstandard's ps30_gbuffer_alpha_test with vs 347F3DD9 (a pixel trace and names.tsv: level A), its
+// ps41_gbuffer_alpha_test_ms twin with vs D830AD9B under MSAA (the shader dump only: level B). The game culls its back faces.
+constexpr std::array<uint32_t, 1> FLAG_PIXEL_SHADERS = {0xED1DF335};
+constexpr std::array<uint32_t, 1> FLAG_PIXEL_SHADERS_MS = {0xCE6F17A1};
 // Texture LOD Bias on All Textures (Experimental, graphics_page.hpp; Warhammer III's row): the game's wrapping trilinear
 // samplers biased too (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
@@ -1248,8 +1253,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0xD8DA0B13, .capture_shader = __rt_capture_terrain_custom_material_sm41, .terrain = true},
     {.hash = 0x829CDC4F, .capture_shader = __rt_capture_terrain_custom_sm41, .terrain = true},
     {.hash = 0xF1C6020E, .capture_shader = __rt_capture_terrain_custom_sm3, .terrain = true},
-    {.hash = 0x347F3DD9, .capture_shader = __rt_capture_rigid_sm3, .rows_shader = __motion_record_rigid_sm3, .cut_out_shader = __rt_capture_rigid_cut_out_sm3, .thin_sheets_row = &rays_banner_light_row},
-    {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .cut_out_shader = __rt_capture_rigid_cut_out_sm41, .thin_sheets_row = &rays_banner_light_row},
+    {.hash = 0x347F3DD9, .capture_shader = __rt_capture_rigid_sm3, .rows_shader = __motion_record_rigid_sm3, .cut_out_shader = __rt_capture_rigid_cut_out_sm3, .thin_sheets_row = &rays_banner_light_row,
+     .thin_sheets_pixel_shaders = FLAG_PIXEL_SHADERS},
+    {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .cut_out_shader = __rt_capture_rigid_cut_out_sm41, .thin_sheets_row = &rays_banner_light_row,
+     .thin_sheets_pixel_shaders = FLAG_PIXEL_SHADERS_MS},
     {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3, .thin_row = &rays_banner_light_row},
     {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3, .thin_row = &rays_banner_light_row},
     // Rocks and cliffs blended into the terrain (rigidterrainblend): its depth pass (its material pass has no camera).
