@@ -436,9 +436,10 @@ float3 SkyCalibration(float3 normal) {
 }
 
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal;
-// `sky_calibration`: SkyCalibration's, for the sky it meets first).
-float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_calibration, uint2 seed, uint path, out float first_distance,
-                    out float3 first_normal) {
+// `sky_calibration`: SkyCalibration's, for the sky it meets first; `may_relearn`: CACHE_RELEARN of its hits leave the cache
+// out).
+float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_calibration, uint2 seed, uint path, bool may_relearn,
+                    out float first_distance, out float3 first_normal) {
   first_distance = 1e30f;
   first_normal = 0.f;
   float3 radiance = 0.f;
@@ -483,8 +484,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     float3 light_there;
     // CACHE_RELEARN of the paths leave the radiance cache out and go on: a cell nobody sees took its first frame's paths and
     // kept them until it was dropped, as only a path that found no light there adds to it. The light from out of sight never
-    // followed a change, the count of bounces among them (ATN: Bounces showed nothing).
-    const bool relearn = Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 49152u)) < CACHE_RELEARN;
+    // followed a change, the count of bounces among them (ATN: Bounces showed nothing). Not the reflections': a mirror's one
+    // ray a frame, no history, no filter, showed each re-rolled hit as a warm dot jumping about a paused picture (ATN: water).
+    const bool relearn = may_relearn && Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 49152u)) < CACHE_RELEARN;
     // No cached answer for a ray shorter than its cell (as SHaRC's): the cell may be the ray's own start's.
     if (HitLight(position, normal, light_there, !relearn && query.CommittedRayT() >= CacheCellSize(position))) {
       radiance += throughput * light_there;
@@ -682,7 +684,7 @@ void PathTraceTexel(uint2 id) {
                                              sky_apart ? frac(turn + (float)path * 0.618034f) : Random(uint3(id, frame * 16u + path * 2u + 1025u)));
     float first_distance;
     float3 first_normal;
-    const float3 sample_light = PathRadiance(origin, direction, first_range, sky_calibration, id, path, first_distance, first_normal)
+    const float3 sample_light = PathRadiance(origin, direction, first_range, sky_calibration, id, path, true, first_distance, first_normal)
                                 * ContactShade(first_distance);
     arriving += sample_light;
     hit_sum += min(first_distance, first_range);
@@ -873,7 +875,7 @@ void ReflectReservoirTexel(uint2 id) {
   if (dot(normal, direction) > 0.f) {
     float first_distance;
     float3 first_normal;
-    const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, pixel, 24u, first_distance, first_normal);
+    const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, pixel, 24u, false, first_distance, first_normal);
     if (first_distance < 1e29f) {
       Reservoir candidate;
       candidate.hit = origin + direction * first_distance;
@@ -943,7 +945,7 @@ void ReflectPixel(uint2 id) {
     if (traced) {
       float first_distance;
       float3 first_normal;
-      const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, id, sample + 4u, first_distance, first_normal);
+      const float3 sample_light = PathRadiance(origin, direction, 1.0e4f, 1.f, id, sample + 4u, false, first_distance, first_normal);
       if (first_distance < 1e29f) {
         const float weight = mirror ? 1.f : GgxSampleWeight(n_dot_v, n_dot_l, alpha);
         gathered += ThroughFog(sample_light, origin, origin + direction * first_distance) * weight;
