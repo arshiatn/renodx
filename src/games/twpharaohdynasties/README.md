@@ -1,5 +1,16 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Round v49 (2026-11-12, ray-traced scene tables; built only, not run in game)
+
+- **Fixed: buildings and props no longer go into the ray-traced scene twice.** Their vertex shader (1ACBD907) also draws the depth prefill, the sea and some effects; only its 21 G-buffer pixel shaders are in the scene now, each with the texture its cut-out tests. The sea, the spline borders and the ash no longer cast ray-traced shadows.
+- **New: far tree cards cast ray-traced shadows** (the Far Tree Shadows row, now shown, on by default), turned to the sun as the game's own shadow pass turns them. The far forest's blocks stay out: the game gives them no shadow either.
+- **New: cloth and flags cast ray-traced shadows**, moving with the wind as drawn, and colour sunlight through them with Coloured Shadows. Tree branches are now taken as drawn every frame (they blend two placements).
+- **New: DLSS / DLAA / FSR / XeSS motion for banners, cloth and flags** (they moved with the camera only before).
+- **Fixed: the tables lost five entries this game never draws** (the campaign oceans of Troy and Warhammer II and an older terrain-blend shader: here the water and the terrain-blend props are drawn by other shaders).
+- Not changed: the fog, smoke, point light and shadow-reader hooks. Their shaders are in the census (fog 598C59F3, particles 3F1B86E1 / 740B2536 on 109B79CE, sea 833E7963, river 4CA0D9CC), but none of them reads the rays' slots, and here the rays multiply the game's shadow maps, so a hook would do nothing until the replace mode, the fog march and the particle layout are done.
+
+Build: `cmake --build build --config Release --target renodx-twpharaohdynasties.addon64`. Manual check: a siege with Ray-Traced (DXR) shadows and Log Details on: ReShade.log's "left out: vs 1ACBD907 with ps ..." lines name only the prefill, sea and effect pixel shaders (6FDC1F3D, 833E7963, 0051B762, 1B1F50CA), far trees' cards shade the ground at a distance, cloth and flags cast moving shadows, the sea casts none; with DLSS, waving flags and banners stay sharp.
+
 ### Round v48 (2026-11-12, page fixes; built only, not run in game)
 
 - **New: the full-download note on General** (as Attila and Warhammer III): without renodx-tw-dlaa64.exe installed, a red line says DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub.
