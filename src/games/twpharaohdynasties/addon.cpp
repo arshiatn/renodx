@@ -1481,10 +1481,9 @@ constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
 // DLAA / DLSS object motion (twattila/anti_aliasing.hpp, as Attila's): the game's shaders whose things move on
 // their own and their motion versions (tools\tw\attila_motion\port_motion.py, GPU-checked by test_motion.py).
 using twattila::anti_aliasing::MotionKind;
-constexpr std::array<twattila::anti_aliasing::MotionShader, 30> MOTION_SHADERS = {{
+constexpr std::array<twattila::anti_aliasing::MotionShader, 26> MOTION_SHADERS = {{
     {.hash = 0x07936F02, .motion_shader = __motion_unit_weighted_0793, .kind = MotionKind::UNIT},
     {.hash = 0x15389925, .motion_shader = __motion_unit_weighted_standard_4_feat_1538, .kind = MotionKind::UNIT},
-    {.hash = 0x1FEF98F9, .motion_shader = __motion_oldocean_ocean_1fef},
     {.hash = 0x2A6B49A6, .motion_shader = __motion_grass_vfx_phar_grass_flame_ti_2a6b},
     {.hash = 0x2C5A6427, .motion_shader = __motion_unit_weighted_standard_2_feat_2c5a, .kind = MotionKind::UNIT},
     // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): their rows, time and wind last frame.
@@ -1492,7 +1491,6 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 30> MOTION_SHADERS =
     {.hash = 0x3EF23291, .motion_shader = __motion_tree_troy_prefab_sky_cylinder_3ef2},
     {.hash = 0x475A8CDF, .motion_shader = __motion_unit_weighted_475a, .kind = MotionKind::UNIT},
     {.hash = 0x4A716936, .motion_shader = __motion_unit_weighted_4a71, .kind = MotionKind::UNIT},
-    {.hash = 0x5C5A5D8A, .motion_shader = __motion_ocean_deep_ocean2_5c5a, .kind = MotionKind::HISTORY, .history_textures = 0b1},
     {.hash = 0x5CE17813, .motion_shader = __motion_unit_weighted_standard_2_feat_5ce1, .kind = MotionKind::UNIT},
     {.hash = 0x6061911B, .motion_shader = __motion_rigid_rigidtextureblend_6061, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_rigidtextureblend_6061},
     {.hash = 0x621E86DD, .motion_shader = __motion_unit_weighted4_fur_alpha_621e, .kind = MotionKind::UNIT},
@@ -1504,10 +1502,8 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 30> MOTION_SHADERS =
     {.hash = 0x8DE94E2F, .motion_shader = __motion_rigid_default_flag_8de9, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_default_flag_8de9},
     {.hash = 0x9BD142BD, .motion_shader = __motion_grass_vfx_phar_grass_flame_ti_9bd1},
     {.hash = 0xCB04CFA7, .motion_shader = __motion_rigid_rigidtextureblendwind_cb04, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_rigidtextureblendwind_cb04},
-    {.hash = 0xD23C2625, .motion_shader = __motion_ocean_coast_ocean2_d23c, .kind = MotionKind::HISTORY, .history_textures = 0b10101},
     {.hash = 0xDB1EC9BA, .motion_shader = __motion_unit_weighted_standard_2_feat_db1e, .kind = MotionKind::UNIT},
     {.hash = 0xDD5D5694, .motion_shader = __motion_rope_rope_dd5d, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_rope_rope_dd5d},
-    {.hash = 0xE383E0D4, .motion_shader = __motion_ocean_shallow_ocean2_e383, .kind = MotionKind::HISTORY, .history_textures = 0b101},
     {.hash = 0xE7792B60, .motion_shader = __motion_tree_campaignvegetation_e779},
     {.hash = 0xED0BC391, .motion_shader = __motion_sail_sail_ed0b, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sail_ed0b},
     {.hash = 0xF704C8EC, .motion_shader = __motion_leaf_leaf_v3_f704},
@@ -1553,7 +1549,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 21> BUILDING_MASKS = {{
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
 // blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
 // shadow there the game's kept baked map.
-constexpr std::array<twattila::rt_scene::SceneShader, 19> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 18> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1562,7 +1558,6 @@ constexpr std::array<twattila::rt_scene::SceneShader, 19> SCENE_SHADERS = {{
     {.hash = 0x6061911B, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_6061},
     {.hash = 0xCB04CFA7, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_cb04},
     {.hash = 0x513D52B1, .capture_shader = __rt_capture_rigid_vertexpush},
-    {.hash = 0x8C511965, .capture_shader = __rt_capture_rigid_terrain_blend},
     // Branches blend two sets of instance rows (v8-v10, v11-v13 by v6.xy): every frame as drawn, never placed.
     {.hash = 0x4A82B8C2, .capture_shader = __rt_capture_branch, .dynamic = true},
     {.hash = 0xF704C8EC, .capture_shader = __rt_capture_leaf, .foliage = true},
