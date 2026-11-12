@@ -1,5 +1,13 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v47 (2026-11-12, ATN's third list; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper104)
+
+- **Torch and fire shadows: up to 128 lights** (bridge v31, helper104; Experimental rows, defaults as before): **Torch and Fire Shadow Lights** 32 / 64 / 128 (the nearest and brightest first) and **Torch and Fire Shadow Range** (metres from the camera, 0 any). Each 8 x 8 block of the screen traces the 32 lights that reach it most (the helper's `rt_lights` lists them below the light mask's pixels), so a burning city's far fires keep their shadows without each pixel tracing more. The light shaders match the drawn light within its block's list (`rt_local_lights.hlsli`). Harness: default and 125 lights PASS (trace 0.15 -> 0.19 ms, 29 -> 125 lights).
+- **Screen-space torch shadows:** a 32 option and their own range row (WARP test PASS: the pick within the range is the CPU's).
+- **Correction to v149's smoke note:** the stream was not full. The log's 262,144 particles a frame is the game drawing its whole particle pool every frame (dead ones too); the stream holds 524,288 and the siege wanted at most 35,304 of High's 65,536 quads. The likely cause of the flicker is each sun ray's cap in the smoke (it stops after 32 dimming / 64 met particles, which come first following the smoke's BVH, rebuilt each frame). Extreme and Maximum raise that cap; an A/B of Ultra against Extreme in one siege tells.
+- Particles: unchanged (the game's own half layer; Attila's Quarter and edges are Attila's only for now).
+- **About:** the shared credits in `twattila/credits.hpp`; MiniEngine's licence next to CMAA2; every zip gets ReShade's, ImGui's, Detours', frozen's and gtl's licences.
+
 ## v46 (2026-11-12, PsychoV35 in every game; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper103 as in v45)
 
 - **Red line under Anti-Aliasing** (ATN: two players had no upscaler): "In-game Anti-Aliasing must be TAA or TAA High for DLSS, FSR, XeSS and Frame Generation (restart after changing it)." The upscalers take over the game's TAA pass; `gfx_aa` below 2 (Off, FXAA) has none, and preferences.script.txt is read once at start (`taa_dlss.hpp`). The tooltip and status line name the same two (TAA, TAA High).
