@@ -10,6 +10,11 @@
 // into texels 3-8 (w 1; texel 3's w 0: none), the paths' sky (dlaa_helper/rt_path.hlsli SkyLight). Attila's sun light
 // shaders scale that ambient by c11.x's choice: 360 x 0.004 (c11.x > 0) or 1, their foliage ones 0.6 or 0.8 of that:
 // texel 4's w the first (the paths' sky in the game's units), texel 5's w the foliage's share (light_bounce_apply).
+// TW_RT_SUN_SCALE_SWITCH 0 (an includer's define): a game without that choice (Pharaoh: its float there is
+// g_cloud_shadow_position.x, the cube taken x 1): the unscaled weights always.
+#ifndef TW_RT_SUN_SCALE_SWITCH
+#define TW_RT_SUN_SCALE_SWITCH 1
+#endif
 cbuffer lighting_VS_PS : register(b0)
 {
   float4 lighting[16];
@@ -34,7 +39,7 @@ void main()
   const float length_squared = dot(sun_direction, sun_direction);
   sun[uint2(0, 0)] = (length_squared > 0.f) ? float4(-sun_direction * rsqrt(length_squared), 1.f) : 0.f;
   // c11.x: nine registers past the cube's c2.
-  const bool scaled = rt_sun.y != 0u && LightingValue(rt_sun.y + 36u) > 0.f;
+  const bool scaled = TW_RT_SUN_SCALE_SWITCH && rt_sun.y != 0u && LightingValue(rt_sun.y + 36u) > 0.f;
   [unroll]
   for (uint side = 0u; side < 6u; ++side)
   {

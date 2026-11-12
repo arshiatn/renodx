@@ -1618,7 +1618,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
                        "The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced shadows and ambient occlusion, path-traced Global Illumination at my settings. The rest of\n"
+    .rays_tooltip = "Ray-traced shadows, path-traced ambient occlusion and Global Illumination at my settings. The rest of\n"
                     "this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
@@ -1629,7 +1629,10 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
+                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.\n"
+                  "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                  "turns it on below. Needs an upscaler.",
+    .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, ambient occlusion, Light Bounce and shadow softness keep\n"
                                  "their 100% detail. Looks better, can cost some performance.",
 };
@@ -2141,14 +2144,12 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer III's), ATN's RT/PT preset as the defaults of what the methods leave, then
-  // Settings Mode's pages. Only what this game hooks: no smoke map, foliage light, reflections or Path-Traced AO (the
-  // sun draws' ambient cube is not read).
+  // Settings Mode's pages. Only what this game hooks: no smoke map, foliage light or reflections.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
-                                             .has_path_ambient = false,
                                              .has_reflections = false,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2184,8 +2185,9 @@ bool AttachAddon() {
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's (its callback draws the sun draw again).
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube starts at
+  // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z; WARP on all 25 sun shaders, tools\tw\pharaoh\sun_test).
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also
   // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once

@@ -134,6 +134,11 @@ namespace internal {
 static UINT ambient_cube = 0;
 static bool fog_shadows_installed = false;
 static bool smoke_shadows_installed = false;
+
+// Cloth, sails or banners among the captures (thin): what Coloured Shadows colours. Without them it has nothing to do.
+inline bool ThinInScene() {
+  return std::ranges::any_of(scene_shaders, [](const SceneShader& shader) { return shader.thin || shader.thin_row != nullptr || shader.thin_sheets_row != nullptr; });
+}
 }  // namespace internal
 
 // `light_bounce_strength`: the game's Light Bounce (its rays and paths replace the Light Bounce's trace; off, nothing to
@@ -188,7 +193,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .light_count = dlaa_bridge::RT_MAX_LIGHTS << std::clamp(static_cast<int>(sliders.light_count), 0, 2),
       .light_range = sliders.light_range,
       .leaf_light = sliders.leaf_light != 0.f,
-      .coloured_shadows = sliders.coloured_shadows != 0.f && sliders.leaf_light != 0.f && internal::ambient_cube != 0,
+      .coloured_shadows = sliders.coloured_shadows != 0.f && sliders.leaf_light != 0.f && internal::ambient_cube != 0 && internal::ThinInScene(),
       .grass_sway = sliders.grass_sway != 0.f,
       .sway_range = sliders.sway_range,
       .sway_off_screen = sliders.sway_off_screen != 0.f,
@@ -1474,7 +1479,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Sunlight through cloth, sails and banners takes their colour.\nNeeds Light Through Leaves and DLSS Ray Reconstruction (NVIDIA only).",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f && sliders->leaf_light != 0.f; },
-          .is_visible = [] { return internal::ambient_cube != 0; },
+          .is_visible = [] { return internal::ambient_cube != 0 && internal::ThinInScene(); },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedGrassSway",
