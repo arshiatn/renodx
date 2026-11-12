@@ -1823,7 +1823,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             .default_value = 1.f,
             .label = "Ray-Traced Reflection Samples",
             .section = section,
-            .tooltip = "Rays per pixel on rough surfaces: less noise. Heavier.",
+            .tooltip = "More rays per pixel smooth rough metal and armour; water and mirrors take one ray. Heavier.",
             .min = 1.f,
             .max = 8.f,
             .format = "%d",
