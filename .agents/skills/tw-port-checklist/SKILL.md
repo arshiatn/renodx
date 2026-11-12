@@ -6,7 +6,7 @@ argument-hint: "target game, feature or phase, and the Attila or WH3 code it com
 
 # Total War Port Checklist
 
-Bring up a TW game, or bring a feature from one TW addon to another, so that the first build is right and the maintainer's test round confirms instead of discovers. Attila carries most of the shared code (`src/games/twattila`, `src/games/twrome2`); 13 addons compile it directly.
+Bring up a TW game, or bring a feature from one TW addon to another, so that the first build is right and the maintainer's test round confirms instead of discovers. Shared code is any file another game folder includes: mostly `twattila/` and `twrome2/`, also `twwarhammer2/` (AO, light bounce), `talesofarise_dlss/` (NGX, frame generation, pixel trace: in Attila and the helper) and Shogun 2's Bend shader. List who includes a file before editing it: `grep -rlE '\.\./(twattila|twrome2|twwarhammer2|talesofarise_dlss|twshogun2completeedition)/' src/games`.
 
 Many checks use the maintainer's `tools/tw` folder (harness, WARP tests, census scripts), which is outside the repo: ask the maintainer for its path, and without it say in the report which checks couldn't run.
 
@@ -19,7 +19,7 @@ Before editing C++, read `AGENTS.md`, `src/games/AGENTS.md` and `docs/CXX_STYLE.
 | Need | Use |
 |---|---|
 | Anything in a TW addon: bring-up, port, capture, helper, rows | This skill and the reference files below |
-| A new game folder, build targets, links | `setup-game-mod-dev`; for TW use FrameTrace and capture marks instead of the DevKit, and start from the closest TW addon, not `src/games/generic` |
+| A new game folder, build targets, links | `setup-game-mod-dev`, with TW's overrides: Release builds from `build` and `build32`, plain copies (no symlinks), no DevKit (FrameTrace and capture marks instead), a pinned addon renamed aside; start from the closest TW addon, not `src/games/generic` |
 | Proving where the output goes, swapchain and proxy state | `swapchain-resource-analysis` |
 | Tone mapper and LUT math in a proven pass | `handle-sdr-tonemap-lut` |
 
@@ -77,9 +77,9 @@ A hash goes in only with its proof in the commit message: the shader's family na
 
 ## The maintainer's rules
 
-- **Game runs** only when the maintainer allows them, per batch; the permission ends when the batch closes. Bundle what needs the game into one run. Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini` and the game's preferences right before each install or run, never restore an older copy, compare hashes after.
+- **Game runs** only when the maintainer allows them, per batch; the permission ends when the batch closes. Bundle what needs the game into one run. Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini`, the game's preferences and the replays and saves a run can write, right before each install or run, never restore an older copy, compare hashes after.
 - **Unproven work** ships as an Experimental row, off, with a player tooltip and one verdict line on the test list. Defaults change only from measured numbers. A section's More Options may hold as many Experimental rows as needed; the maintainer decides each row: on by default, in which presets, or left under More Options. Give them the numbers for that decision (cost, what it fixes, what it risks).
-- **Look**: keep the developers' look; scale quality, distance and resolution; a look change is an Experimental row, off. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended uses PsychoV35 in Attila and WH3 (since 2026-11-12) and PsychoV31 in the addons not yet tested with it; ask the maintainer for each game's hue settings (Hue Clip's default is measured, see [game-facts.md](references/game-facts.md)).
+- **Look**: keep the developers' look; scale quality, distance and resolution; a look change is an Experimental row, off. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended uses PsychoV35 in every HDR addon: a new game takes `twattila/psycho35_settings.hpp` with its own `HUE_CLIP_DEFAULT`, measured with `test/tw_psychov35`; ask the maintainer for its hue settings (Hue Clip's default is measured, see [game-facts.md](references/game-facts.md)).
 - **Cost**: no per-frame counters or log lines, no per-frame CPU on the game's thread without a measured reason, hot callbacks return on one atomic.
 - **Rows**: tooltips short and for players, naming nothing the game lacks; keys stay when rows move or saved values are lost.
 - **Two ways**: a fix in shared code or a pattern goes to every addon that carries it; a new game's row goes back to Attila.
@@ -90,22 +90,27 @@ A hash goes in only with its proof in the commit message: the shader's family na
 
 ## Outside Total War
 
-Tales of Arise, Ryse, Expeditions: Rome and later non-TW games share the method, not the code. Carry over: proof levels, a fact sheet per game (ask [game-facts.md](references/game-facts.md)'s questions, don't copy its answers), the maintainer's rules above, WARP tests against the game's own bytes, page dumps, Experimental rows, the round report. Don't carry over unread: `twattila` code (a TW D3D11 engine), the bridge and helper as they are (Tales takes Ray Reconstruction through NGX D3D12: D3D11 RR with a GPU wait went black), any slot, register or encoding. A rule that holds in a second engine belongs in a shared skill, not in two copies.
+Tales of Arise, Ryse, Expeditions: Rome and later non-TW games share part of the code and all of the method.
+
+- **Shared code**: `twattila/rt_core.hpp` through a host's `scene_draw` and `main_view` (Ryse); the helper and `dlaa_bridge` (Ryse, Expeditions, Shogun 2); `talesofarise_dlss/` (NGX, frame generation: Attila and the helper include it); `psycho35_settings.hpp` and `credits.hpp` in every HDR addon. A helper or bridge change rebuilds and ships those addons with the matching helper.
+- **Method**: proof levels, a fact sheet per game, the maintainer's rules above, WARP tests against the game's bytes, page dumps, Experimental rows, the round report. [game-facts.md](references/game-facts.md)'s Warscape questions (t49 routes, `shared.h` registers, cascades) become the engine's: who owns jitter and scale, depth direction, tiled or deferred lights.
+- **Differences**: no offline shader dump for CryEngine (a packed `ShaderCache.pak`) or for code Denuvo hides, so level B means "seen in a runtime dump". Most have two addons (HDR plus `_dlss`, graphics rows in the DLSS overlay), their own trace header (`talesofarise_dlss/frame_trace.hpp`) and tool folders beside `tools/tw` (`toa`, `ryse`, `exr`, `expeditions`, `shogun2`, `ingame`). Tales takes Ray Reconstruction through NGX D3D12: D3D11 RR with a GPU wait went black.
+- A rule that holds in a second engine belongs in a shared skill, not in two copies.
 
 ## Checks by kind of change
 
-**Shared code** (anything under `twattila/` or `twrome2/` that another addon includes): build every addon that includes it, 32-bit too. Attila, Rome II and Thrones are only meaningful from `build32`. After a shared edit:
+**Shared code** (any file another game folder includes; the grep at the top lists who): build every addon that includes it, 32-bit too; a change in `talesofarise_dlss/ngx_backend.hpp` also rebuilds the helper. Attila, Rome II and Thrones are only meaningful from `build32`. After a shared edit:
 
 ```text
-cmake --build build --config Release --target renodx-twtroy.addon64 renodx-twpharaohdynasties.addon64 renodx-twwarhammer.addon64 renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64 renodx-twshogun2completeedition.addon64 renodx-twshogun2completeedition_dlss.addon64 renodx-rysesonofrome.addon64 renodx-rysesonofrome_dlss.addon64 renodx-expeditionsrome_dlss.addon64 renodx-talesofarise_dlss.addon64
+cmake --build build --config Release --target renodx-ruse.addon64 renodx-twromeremastered.addon64 renodx-talesofarise.addon64 renodx-expeditionsrome.addon64 renodx-twtroy.addon64 renodx-twpharaohdynasties.addon64 renodx-twwarhammer.addon64 renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64 renodx-twshogun2completeedition.addon64 renodx-twshogun2completeedition_dlss.addon64 renodx-rysesonofrome.addon64 renodx-rysesonofrome_dlss.addon64 renodx-expeditionsrome_dlss.addon64 renodx-talesofarise_dlss.addon64
 cmake --build build32 --config Release --target renodx-twattila.addon32 renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32
 ```
 
 A behaviour one game needs goes behind a parameter that defaults to today's value.
 
-**Helper or `dlaa_bridge.h`**: build into a new folder passed as the first argument of `src\games\twattila\dlaa_helper\build.ps1` (`build\tw_dlaa_helperN`; without it the script writes over `build\tw_dlaa_helper`), never over an old one. A change to the bridge's layout bumps `VERSION` and keeps `OLDEST_VERSION` readable; `Prepare` publishes only addon-owned fields. Run the full harness by mode name, `fg_bridge_test` and the `tw_helper_lifetime`, `tw_gpu_completion` suites. Addon and helper ship together.
+**Helper or `dlaa_bridge.h`**: build into a new folder passed as the first argument of `src\games\twattila\dlaa_helper\build.ps1` (`build\tw_dlaa_helperN`; without it the script writes over `build\tw_dlaa_helper`), never over an old one. A change to the bridge's layout bumps `VERSION` and keeps `OLDEST_VERSION` readable; `Prepare` publishes only addon-owned fields. Copy the new helper into `build\tw_rt_harness` and `build\tw_fg_test` first (the scripts run whatever helper sits there), rebuild the harness after a bridge change (it includes `dlaa_bridge.hpp`), and check the helper log's version line. Then run the full harness by mode name, `fg_bridge_test` and the `tw_helper_lifetime`, `tw_gpu_completion` suites. Addon and helper ship together.
 
-**New replacement shader**: run [scripts/cb_audit.py](scripts/cb_audit.py) with `python -I`, naming the game (`cb_audit.py twwarhammer3`), and read each line of part 2. Then a WARP test against the game's bytes with a control that must fail. The script reads the decompiler's pack under `bin/`, which isn't in the repo.
+**New replacement shader**: TW folders name it `shaders/<name>_0x<CRC>.<target>.hlsl` (not `src/games/AGENTS.md`'s CRC-only form; `cb_audit` reads only this form). Build first, then run [scripts/cb_audit.py](scripts/cb_audit.py) with `python -I`, naming the game (`cb_audit.py twwarhammer3`), and read each line of part 2; the new shader must not be in its last line's "not compared" list. Then a WARP test against the game's bytes with a control that must fail. The script reads the decompiler's pack under `bin/`, which isn't in the repo.
 
 **New `command_action::Register`**: without callback data use `[]<typename Context>`; a `<typename T, typename Context>` lambda is dropped silently. [scripts/scan_register.py](scripts/scan_register.py) must print nothing. Add a one-shot "applied" log line. A `.bypass` nearby needs its state back in `finalize_callback`. Every `Register` and `Install` has its `Unregister` and `Uninstall` in `DetachAddon`.
 
@@ -139,7 +144,7 @@ Inventory and traps in [testing.md](references/testing.md). In short:
 
 ## Asking the maintainer for a test
 
-At most 10 lines, the most important first, grouped by scene. Each line: scene, exact row name and value, what to look for, which file to send. Start with a control (rows off looks like the last version), compare on and off inside one run, and prefer lines the build reports itself (applied lines, Record Profile, Frame Trace, Time Each Pass). Check every line against a page dump of the maintainer's current preset: the row shows, the debug view is made, the key exists. Never ask what an offline check or an allowed agent run can show. Format in [testing.md](references/testing.md).
+At most 10 lines, the most important first, grouped by scene. Each line: scene, exact row name and value, what to look for, which file to send. Start with a control (rows off looks like the last version), compare on and off inside one run, and prefer lines the build reports itself (applied lines, Record Ray Tracing Profile (30 s), Frame Trace, Time Each Pass). Check every line against a page dump of the maintainer's current preset: the row shows, the debug view is made, the key exists. Never ask what an offline check or an allowed agent run can show. Format in [testing.md](references/testing.md).
 
 ## Finishing a round
 

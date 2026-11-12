@@ -7,6 +7,8 @@ Answer every row for a new game before planning, with a proof level (A, B, C as 
 | Fact | Known answers | Read it from |
 |---|---|---|
 | Bitness and device | Attila, Rome II, Thrones are 32-bit (`build32`). Attila, Rome II, Thrones and Shogun 2 make a single-threaded D3D11 device (Flags 0x1): no call on it from another thread | An unmodded `ReShade.log` |
+| The game's MSAA | WH3 and Shogun 2 have none; the other TW games do, and the maintainer plays with it (in-game MSAA silently keeps DLAA off). Every listed hash has an `_ms` permutation reading Texture2DMS: `LIGHT_BOUNCE_DRAWS` once lacked them and the feature did nothing. Rows proven in WH3 were proven without MSAA | The dump's `_ms` names; MSAA on in the data run and the settings matrix |
+| Is the exe readable | Troy, WH1, WH2 and WH3 are protected: tweak names and types come from Pharaoh's code (`tw_borrow64.py`, `tw_convert64.py`); WH3's `.arch` section is Denuvo, `.xpdata` plain. No detour on exe code without a test | The exe's sections; `wh3_batch/reports/notdone.md` |
 | Swap chain after a device loss | WH3, Pharaoh and Troy keep the old device and make a new chain; Attila destroys the device first | `ReShade.log` around a loss; `device_loss` order |
 | Settings register and swap-chain constants | Attila b13, WH3 b10: a HUD-less image and GT-VBAO drawn with b13 in WH3 came out black or flat | The game's `shared.h` |
 | Depth direction | Read it per game; it sets the inversion flags for FSR, XeSS and FG | TAA's nearest-depth test in its CS |
@@ -28,6 +30,11 @@ Answer every row for a new game before planning, with a proof level (A, B, C as 
 | G-buffer material byte | WH3: channel 3's alpha at `gbuffer_slot + 2`, bit 128 foliage (its sun mask lets light through), 64 water, 16 own motion; Attila: nothing marks foliage | The sun and lighting PS's `and` on that channel; values from a trace's readback |
 | Tone mapper | WH2 and WH3 use a per-map Reinhard: the hand-off must match its value and its log-log slope at mid grey. Attila's bloom high pass caps luminance at 25 (a flat halo in HDR: extend it logarithmically); WH3 has no cap. Hue Clip's default from the OkLab hue error against that game's SDR clip: Attila 40, WH3 100 | The tone mapper's bytes; `test/tw_psychov35` |
 | Test keys | Plant Wind Sway exists in Attila only; WH3 has no such value | The game's preferences file |
+
+Outside the usual pattern:
+
+- **Shogun 2**: graphics rows live in its `_dlss` addon, which has its own trace header; tweaks are built in `empire.retail.x64.dll` as `lea rdi, [name]; lea rsi, [obj]; call`, the value at obj + 0xb8 for ints, a form `tw_tweaks.py` and `engine_tweaks::Find` don't read.
+- **Rome Remastered**: Feral's Forward+, no G-buffer pass (ASSAO, a CSM resolve that is a screen-space shadow mask, Feral SSR compute, SMAA and FXAA): the G-buffer and sun-shader rows here don't apply.
 
 ## Traps when reading a fact
 

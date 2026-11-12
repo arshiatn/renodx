@@ -14,7 +14,7 @@ Before any test round of a new game or a big change:
 6. In-frame side work: targets kept, stream output without PS, compute at frame end, no GPU readback waits; an off row and a Flush candidate per batch.
 7. Hot callbacks return on one atomic; no counters, no per-frame logs; log once per failure streak.
 8. A helper change: a new folder as `build.ps1`'s first argument (`build\tw_dlaa_helperN`); a bridge layout change bumps `VERSION` and keeps `OLDEST_VERSION` readable; only owned fields published; `all_modes.sh` by name (`removal`, `switching_removal`, `release_*`, `leaf_storm`), `fg_bridge_test`, `test/tw_helper_lifetime`, `test/tw_gpu_completion`.
-9. All 14 consumers built, `build32` too; every `test/tw_*` on x86 and amd64.
+9. Every target in `SKILL.md`'s build lines built, `build32` too; every `test/tw_*` on x86 and amd64.
 10. Profiling ready before the first run: Record Ray Tracing Profile, Time Each Pass, Frame Trace.
 
 ## 2. Crashes, hangs and GPU resets
@@ -72,7 +72,7 @@ Before any test round of a new game or a big change:
 | FG presets are the driver profile, not Streamline: read once at load; Global VSync caps it | DRS key 0x10E41DF1 on the helper exe | - |
 | FG is off under ReShade's menu, so the status line showed what ran before the menu opened [f3c4d3c5] | Status says so | Read |
 | Backends present at most FSR 2x, XeSS the GPU's, DLSS the driver's; asking more asks for the most | Rows per backend maximum [3bd71292] | `fg_bridge_test` at 2x and 6x per backend |
-| A 22 ms wait on the game's thread was FG's pacing, not the helper [5797d2a6] | Read `present_pacing_ms` before optimising | Record Profile with the menu closed |
+| A 22 ms wait on the game's thread was FG's pacing, not the helper [5797d2a6] | Read `present_pacing_ms` before optimising | Record Ray Tracing Profile (30 s) with the menu closed |
 | No status line: nobody knows why no frames | Reason text [78c0f619] | `fg_bridge_test` |
 | Frame Rate Limit, Reflex, Dynamic rows where they don't apply; FG's Debug View left on under the menu [c8b5dde6] | Rows per method; off while the menu is open | Page dump |
 

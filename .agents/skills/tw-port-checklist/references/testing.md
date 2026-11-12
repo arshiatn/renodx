@@ -11,7 +11,7 @@
 | `all_modes.sh` and `rt_harness` | The bridge, the helper, part of the D3D11 capture; stress per family (`far_cards_20`, `far_cards_48`, `leaf_storm`, `removal`, `switching_removal`, `release_*`, `bounces_*`) | A game's own passes, real melee, burning houses, cloth; the helper's CPU cost at game scale |
 | `fg_child/fg_bridge_test` | FG per backend at 2x and 6x, colour-space changes, memory phases, the module list with a ReShade `dxgi.dll` beside the helper | The game's pacing |
 | `warp_tests/*` | A game shader's bytes against ours on WARP: patches, replacements, stream output, level chains, scale copies | GPU hangs (WARP never hangs), real scene content |
-| `page_dump` | An addon's settings as data with ImGui and ReShade faked: rows, what shows in every state, what buttons and method sliders write; `games_compare.py` puts two games' (or versions') rows, defaults and a button's result side by side | Whether the hook behind a row runs; rows behind install flags the dump doesn't set (`dump_w` sets only the scene table: sprite and far-tree rows and WH3's torch rows don't show) |
+| `page_dump` | An addon's settings as data with ImGui and ReShade faked: rows, what shows in every state, what buttons and method sliders write; `games_compare.py` puts two games' (or versions') rows, defaults and a button's result side by side | Whether the hook behind a row runs; rows behind install flags the dump doesn't set (`dump_w` sets only the scene table: sprite and far-tree rows and WH3's torch rows don't show); a new game needs its own `dump_x.cpp` |
 | `fxc //nologo //dumpbin x.cso` (Git Bash doubles the slashes), the decompiler dump with `names.tsv` | What a game's own shader reads and tests: a material byte's bits, slots, `SV_Position` at o0 | The values at run time |
 | `sun_attila/make_sun_patch_test.py`, `warp_tests/sun_wh3` | The sun patch lands on the sun term; the ambient formula | - |
 | `scale_audit.py`, `scale_scan.py`, `wh3_batch5/p9_ndc_trace.py` | Candidates for below-100% bugs | Nothing passes by itself: read each hit |
@@ -28,10 +28,14 @@ Rules:
 ## 2. Game runs
 
 - Only when the maintainer allows it, per batch; the permission ends at the batch's close. So do the scripts that start one (`run_game`, `soak`, `fg_run`, `fg_mem_test`, `shot_run3`, `install`, `overlay_test`, `profile_run2`).
-- Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini` and the game's preferences right before; never restore an older copy; compare hashes after.
+- Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini`, the game's preferences and the replays and saves a run can write (WH3: `$WH3_PROTECTED` in `test_scripts/wh3_common.ps1`) right before; never restore an older copy; compare hashes after.
 - Run on the maintainer's current ini and preset. Agent settings once hid the game's GI from a whole round; a "0 of 8" held only for one ini.
 - Never two GPU jobs at once; no DevKit in the folder.
-- WH3's replay start needs the replay's full path; a bare name crashes. Try start forms before building a plan on one.
+- **Driving a run**: `test_scripts/run_game.ps1` (`-Game`, `-Shot s`, `-Profile s`, `-Set "s:key=value;..."`, `-Env`, `-Keys "W:6.4"`, `-Campaign`) sets `RENODX_TW_SHOT`, `RENODX_TW_PROFILE`, `RENODX_TW_SET` (`twattila/test_hooks.hpp`) and closes the game through its window; `wh3_batch3/check_run.py` proves the run ran.
+- Steam started elevated (the maintainer's SteamAdminStart task) passes that to the game and blocks input: `(Get-Process steam).Path` empty means elevated; `steam.exe -shutdown`, then `-silent`; don't touch the task.
+- Start forms: `game_startup_mode replay "<full path>"` (WH3 crashes on a bare name), `campaign_load "<save>"`, `battle_benchmark "<xml>"` (WH3). Try them before building a plan on one.
+- The games read the mouse through DirectInput: synthetic clicks never land. Keys by SendInput scan codes after `SetForegroundWindow`; settings through `ReShade.ini` or `RENODX_TW_SET`.
+- Delete `ReShade.log` before waiting on a line (the old log holds it); in WH3 wait for a new "First run: sun light draw", not for the helper.
 - Replays end at their own length, then a still results scene: a 20-minute soak held 6 minutes of live battle.
 - A plan's list of what test material lacks is a guess until the game's packs are read: WH3's benchmark XMLs held a burning siege.
 
@@ -43,7 +47,7 @@ Rules:
 - First line a control: rows off looks like the last version.
 - On and off inside one run: pause freezes the picture, and settings changed while paused show no change; each paused run freezes a random wind phase.
 - Every Experimental row gets one A/B line naming the decision it drives.
-- Prefer what the build reports itself: "applied" lines, Record Profile, Frame Trace, Time Each Pass, a pixel trace. Then the maintainer only sends `ReShade.log`, the helper log and the ini.
+- Prefer what the build reports itself: "applied" lines, Record Ray Tracing Profile (30 s), Frame Trace, Time Each Pass, a pixel trace. Then the maintainer only sends `ReShade.log`, the helper log and the ini.
 - Dry-run each line against a page dump of the maintainer's current preset: the row shows, the debug view is made (an AO view without the AO row is magenta), the key exists in this game.
 - Never ask what an offline check or an allowed agent run can show; never repeat an unchanged item.
 - A longer scripted list belongs to agent runs only.

@@ -31,10 +31,12 @@ Shipped, then changed: path-traced AO five times, the game's SSAO handling five,
 
 - **Shader names** from the game's packs: `tw_pack.py`, `tw_names.py` to `names.tsv` (in `bin/cmd_Decompiler-1.3.16/dump_shader_<game>_pack/`, not in the repo); `tw_shaders.py`, `tw_missing.py`, `tw_family.py`; `vs_names.py`. Check every hash you plan on against `names.tsv` (a fog-looking hash at `gfx_fog 0` was fog of war).
 - **Engine values**: `tw_tweak_survey.py`, `tw_engine_values.py`. Take names from the value constructors' call sites, never from strings.
+- **Port scripts** (the maintainer's `tools/tw`): `port/port_tw_game.py` (pages, SSS, AA, tests, wrappers); `rt_port.py` and `rt_scene_map.py` (Attila's scene shaders mapped by `names.tsv`: level B at best); `tw_game_tests.py` (Graphics 2 of 2); `cbuffer_slots.py` (free slots); `scale_families.py`; `tooltip_sync.py`; `find_emu.py` (`engine_tweaks::Find` emulated offline). The page dump has stubs only for Attila and WH3 (`dump_a.cpp`, `dump_w.cpp`), and the census scripts are batch-local (`wh3_batch3/trace_facts.py`, `wh3_batch4/casters/census.py`, `wh3_batch5/v37_*_readers.py`): a stub and game-neutral copies are Phase 0 work.
+- **An addon that already exists**: several TW addons besides Attila and WH3 ship script-ported rows (RT, DLSS, FG, SSS) never run in game (their READMEs say "built only"). Page dump and the install list first, every table entry classed A, B or C, shipped keys kept; fix what's there before adding.
 - **Game-facts sheet**: answer every row of [game-facts.md](game-facts.md) you can from the dump and the exe, with a proof level; the rest wait for the traces.
 - **Parity table** against Attila's page dump: each row gets it, or doesn't with proof.
 - **Start from** the closest TW addon by bitness, sun-shader patch route and capture model (clip-space or world-space), not from `src/games/generic`.
-- **A first build** from that addon with only Frame Trace, Log Details and Record Profile, every feature off: the data run needs it.
+- **A first build** from that addon with only Frame Trace, Log Details and Record Ray Tracing Profile (30 s), every feature off: the data run needs it.
 - **An unmodded `ReShade.log`** (from the maintainer, or from the data run's first start): device flags (single-threaded?), flip or blt chain, probe devices, fullscreen, bitness.
 
 ## Phase 1: the data run
@@ -42,8 +44,9 @@ Shipped, then changed: path-traced AO five times, the game's SSAO handling five,
 The maintainer allows one agent-driven data run at the start of each new TW game: start, settle, trace, save the logs, quit. It collects data and tests nothing; feature tests still need the maintainer's OK per batch. Give the agent that drives it medium effort: the steps are scripted, the reading happens offline afterwards.
 
 - Port the run and check scripts first (`run_game.ps1`, `check_run.py`), so the run reports itself.
+- **Taking a trace**: `[renodx] FrameTrace=1` in `ReShade.ini`, read at start: one frame 600 presents after the render scale began, and only below 100% (`anti_aliasing.hpp` passes `render_width < display_width`); it writes `tw_frame_trace.txt` next to the exe, over the last one. Only WH3 also traces on demand when `renodx_trace_now` appears next to the exe (`twwarhammer3/taa_dlss.hpp`). Move that trigger and a 100% path into shared `frame_trace` first (a parameter, today's default), or plan one trace a start: about ten, not the whole matrix.
 - Frame Traces in a settled battle (mid-battle: the first frame has other flags), the siege benchmark with fire, a dark or night map, the campaign. At 100%, and at 67, 50 and 33% through the game's own scale setting; where the addon owns the scale, the low-scale traces come after Phase 3 step 5.
-- Log Details from the start, Record Profile for 30 s with ReShade's menu closed.
+- Log Details from the start, Record Ray Tracing Profile (30 s) with ReShade's menu closed (it needs the helper's AA on).
 - On the maintainer's ini and preset, and again on defaults. Fresh backups right before.
 - With each game setting you will touch (AO, GI, SSR, shadow quality, fog) on and off.
 

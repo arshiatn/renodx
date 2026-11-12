@@ -22,7 +22,7 @@
 | Helper shaders named `*.cs_6_N.hlsl` get compiled by the addon's CMake glob | Plain `.hlsl` when they need defines | The build |
 | A game's `*.hlsl` that wrap `../twattila/*`: edits reach both games | Remember both, build both | Build |
 | Patches run in order: the render scale's patch changed sun shaders before the shadow patch saw them; SSS patched water first; Water Caustics never patched | `view_share::Repatched` carries the game's hash; log "patched" or "not as expected" per patch | WARP patch test (`make_sun_patch_test.py`) |
-| A replaced shader loses the render scale's correction: torch light slid | Add both patches to each new replacement | `scale_audit patch_test` |
+| A replaced shader loses the render scale's correction: torch light slid | Add both patches to each new replacement | `view_share_test.cpp` (WARP: the patch over a dump's shaders, `VIEW_SHARE_SHOW=<hash>`) |
 | An HLSL array in a cbuffer pads each element to 16 bytes | The reflected size equals `sizeof` | Reflection check |
 | In-place format upgrades lost clamps (Ryse) | View cloning for new mods; don't retrofit | Read |
 | Debug edits put back with `Copy-Item` keep the old file time: the build skips the shader | Set the time after restoring; check the `.cso`'s time; look at the picture before the numbers | - |
@@ -39,7 +39,7 @@ Tone-map and LUT math belongs to `handle-sdr-tonemap-lut`; these are the TW-spec
 | Attila's bloom high pass caps luminance at 25: a flat halo in HDR | Extend it logarithmically; WH3 has no cap | Read the bloom PS |
 | Extended's fire came out flat salmon | Its shoulder rolls off per channel above paper white | Fire in a ramp test |
 | A Hue Clip default copied from another game | Default from the OkLab hue error of PsychoV35 against that game's SDR clip (Attila 40, WH3 100); sky blue bends twice as far | `test/tw_psychov35`: ramps never above peak or NaN, other modes 0 pixels different, other shaders the same bytes |
-| PsychoV35 shipped as the default | First an Experimental Rendering Mode; Recommended took it (Musa's V35) only after the maintainer's test, in Attila and WH3; no new per-frame CPU | Page dump |
+| PsychoV35 shipped as the default | First an Experimental Rendering Mode; Recommended took it (Musa's V35) only after the maintainer's test, now in every HDR addon; no new per-frame CPU | Page dump |
 | The SDR preset set PsychoV31 | It sets Rendering Mode SDR | Page dump |
 | SDR output re-encoded the gamma 2.0 frame as 2.2: darks brighter | Decode what that game's pass encoded | WARP ramp |
 | WH3's lens blood reached 9.5 in FP16 | Clamp additive overlays at paper white | Read the overlay PS |
@@ -66,7 +66,7 @@ Tone-map and LUT math belongs to `handle-sdr-tonemap-lut`; these are the TW-spec
 | Add-on running alone [9a909c13, 6875b28f] | Red notice, GitHub button; a missing helper must not crash | The path taken with the helper absent |
 | Tooltips with dev notes, trace names, other games; DLSS-only wording once FSR and XeSS exist [43141539] | Short, player-facing | Grep tooltip lines, multi-line text too |
 | Per-game hue defaults copied | Ask the maintainer; don't copy Attila's Highlight values | Read |
-| Recommended and Reset presets | Recommended in PsychoV35 (Attila, WH3) or PsychoV31 (addons not yet tested with V35); Reset keeps its default where Extended exists, Recommended's mode where it doesn't | Page dump |
+| Recommended and Reset presets | Recommended in PsychoV35 (`twattila/psycho35_settings.hpp`, the game's own `HUE_CLIP_DEFAULT`); Reset keeps its default where Extended exists, Recommended's mode where it doesn't | Page dump |
 | Live counters, temporary timers | One-frame traces only; debug work behind Log Details; remove timers before a zip | Read per-frame paths |
 | Status lines lag 3 s | "Test: x set to" is exact | - |
 | Credits and licence texts for everything shipped (NRD, SHaRC, OMM, FSR, XeSS, SSSR, CMAA2, DLSS, ACES, PsychoV35) | About rows from `twattila/credits.hpp` in every addon that ships the code; the licence text next to vendored code; the repack adds the licence set to every zip; no code from a mod without a licence | Read the zip |

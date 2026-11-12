@@ -5,7 +5,7 @@
 1. The double-work question: is anything now computed twice? Update the table in [ao-gi.md](ao-gi.md).
 2. The source game's code compared, by file and symbol.
 3. Bugs found on the way: shared code (fixed for all, rebuild) or the same pattern in `twattila/` (fix there and in every addon that carries it, a README line each). Check the source game without the game: `build32`, harness, WARP, numeric identity on a refactor, a key diff on the page.
-4. Every consumer built: the 11 x64 targets and the 3 `build32` targets in `SKILL.md`; every `test/tw_*` the change touches on x86 and amd64; `all_modes.sh` by name after a helper change.
+4. Every consumer built: every target in `SKILL.md`'s build lines, x64 and `build32`; every `test/tw_*` the change touches on x86 and amd64; `all_modes.sh` by name after a helper change.
 5. One independent review of the round's diff, then one agent for its fixes. Every close so far found real bugs (5, 6, 5 and 9).
 6. Page dumps before and after: only the intended rows, labels, tooltips and the date differ.
 
