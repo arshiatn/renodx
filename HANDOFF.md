@@ -14,9 +14,15 @@ leave ATN a note to reboot. One writer at a time. Install the newest stamped bui
 - [ ] WH3: the same fixes where they apply (shared helper and rows; WH3's rr_guides; WH3 banner / flag equivalent?); README v47
 - [ ] skill rows: cache key with facing, the mirror path (one ray, no history, no reuse), thin rule by PS not cull, page 2 parity rule
 - [ ] build + stamp + install Attila v151, WH3 v47, helper105 (tools/tw/round_v151/install_v151.py; installed now: v149 / wh3 v45, helper103)
-- [ ] Pharaoh plan: offline census (names.tsv, dump, the addon as it is: page dump, installs, A/B/C per table entry), parity with Attila incl. Graphics 2 of 2, data-run plan
-- [ ] Pharaoh data run (before 21:00 or after 01:00): traces at 100% and lower scales, settled battle, siege, campaign; logs
-- [ ] Pharaoh implementation, in dependency order, each with its offline check; round report
+- [x] Pharaoh census: tools/tw/pharaoh/census.md (fact sheet with levels, every table entry A*/B, parity with both pages, data-run plan R0-R10, risks, order; page dump stub dump_p.cpp / build_dump.py, page_p_base.txt 629 rows)
+  Key facts: frame linear between ACES 976C1C74 and hdr_to_screen but the shared prepare squares it (B); sun PS has its own contact march + SSEO, fog marches the atlas (double work); baked 4096^2 shadow buffer kept across frames; 10-27 trace: no unit triangles captured, terrain only in the prefill, 1ACBD907 also water/decals, far cards 2 M indices, ulm sun draws not hooked, cube at float 24 but InstallSunDraws(0); no test_hooks, no graphics_page, no vendor read; page 2: 23 Attila tests missing, 15 dead rows, 4 dead audio at-start tests hold sliders ~60 s; game folder: addon + DevKit symlinked into build/Release, no helper; start forms: game_startup_mode battle|campaign <xml> (no replay / campaign_load); benchmarks battle / siege / campaign xml.
+- [ ] Pharaoh P1 offline (tools only, beside the implementer): WARP encoding ramp (prepare on a linear frame), WARP sun test for F883F5B2 / E238D4C7 (t49 lands on the sun term, cube offset 24), cut-out census and shadow-reader list from the dump, rt_scene_map.py for the dx11_ names, pharaoh_common.ps1 + check_run for Pharaoh
+- [ ] Pharaoh P2 trace build (after the implementer): test_hooks, shared trace trigger (renodx_trace_now) + 100% path behind a parameter (today's default), value_hashes F883F5B2 / E238D4C7 / 976C1C74, dead at-start tests out, newest bridge; build, page dump, dry-run R0-R10 against it
+- [ ] Pharaoh P3 game folder: DevKit symlink moved aside, addon symlink -> stamped plain copy, helper105 + nvngx_dlss.dll; fresh backups (ini, preset, prefs, Auto-save.replay, the save, army_setups, battle_preferences; no_clean_exit kept then removed)
+- [ ] Pharaoh P4 data run R0-R10 (medium-effort agent; before 21:00 / after 01:00; Committed Bytes check before each start)
+- [ ] Pharaoh P5 offline from traces: pass maps 33/50/67/100, reader census by handle, capture candidates, velocity census, facts answered again
+- [ ] Pharaoh P6 features in order: output fix + graphics_page + RAYS_PRESET + page 2 parity (keys kept); stability; AA at 100% with the encoding parameter; FG / Reflex; render-scale audit; RT scene (16 steps); replace game passes (contact march, SSEO, fog march, shadow maps with the baked buffer kept); RR guides; SSS extras, smoke, water, fog shadows; presets; Reset gives the game's effects back
+- [ ] Pharaoh round report (per item done / not done, ATN's <= 10-line test list)
 
 ## ATN'S 2026-11-12 THIRD LIST (offline; no game runs; Attila first, then the TW addons that share it)
 - [x] WH3's in-game AA names back: TAA or TAA High (ATN confirmed).
