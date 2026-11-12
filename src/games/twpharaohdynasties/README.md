@@ -1,5 +1,9 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Round v46 (2026-11-12, trace build for the data run; built only, not run in game)
+
+- **Scripted runs:** `RENODX_TW_SET` / `RENODX_TW_SHOT` / `RENODX_TW_PROFILE` work here too (`twattila/test_hooks.hpp`, as Attila: the clock starts at the first present).
+
 ### Round v45 (2026-11-12, shared code from Attila / Warhammer III; built, not released, not run in game)
 
 - **Bend Screen-Space Shadows: Auto Thickness removed** (ATN: it broke at some angles).

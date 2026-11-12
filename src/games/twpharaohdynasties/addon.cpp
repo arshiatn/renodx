@@ -34,6 +34,7 @@
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./dead_units.hpp"
@@ -2069,6 +2070,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
+  twattila::test_hooks::Install(&settings, true);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
@@ -2121,6 +2123,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  twattila::test_hooks::Uninstall();
   tw::engine_tweaks::Uninstall(graphics_options);
   twpharaohdynasties::dead_units::Uninstall();
   twpharaohdynasties::shadow_map::Uninstall();
