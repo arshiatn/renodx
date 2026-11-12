@@ -48,11 +48,11 @@ void main(uint3 block : SV_DispatchThreadID) {
     const SharcHitData sharc_hit = {position, hit_normal};
     const uint light_seed = frame * 64u + vertex * 2u + 41000u;
     float3 known;
-    if (HitLight(position, known)) {
+    if (HitLight(position, hit_normal, known)) {
       SharcUpdateHit(sharc, state, sharc_hit, known, Random(uint3(id, light_seed + 1u)));
       break;
     }
-    const float3 albedo = HitAlbedo(position);
+    const float3 albedo = HitAlbedo(position, hit_normal);
     const float offset = SurfaceOffset(distance(position, Camera()));
     const uint record_flags = records[record_index].z >> 16;
     const float transmittance = ((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);

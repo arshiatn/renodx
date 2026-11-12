@@ -4,7 +4,8 @@
  */
 
 // The helper's radiance cache, filled (rt_path.hlsli; before the paths). With the frame's prepared light (PATH_LIGHT):
-// one bounce texel of every 2 x 2 (another each frame) adds it to its world cell; with the G-buffer guides it also writes
+// one bounce texel of every 2 x 2 (another each frame) adds it to its world cell at the face its normal turns to (rt_path.hlsli
+// CacheCell); with the G-buffer guides it also writes
 // its base colour there, and one in eight adds to the learned lighting's sums: y = the light / the base colour, x = the
 // sun's visibility (the ray-traced one when traced) x N.L, and the base colour. A reflections request's light buffer
 // (PATH_LIGHT_FINAL) with no prepared light this frame comes as bounce texels of one render pixel. Without any (reflections
@@ -19,7 +20,13 @@ void main(uint3 id : SV_DispatchThreadID) {
   if ((path_flags & PATH_LIGHT) == 0u) {
     if (cell.x >= width || cell.y >= height || (path_flags & PATH_HISTORY_VALID) == 0u) return;
     const float4 seen = previous_positions[uint3(cell, previous_positions_slice)];
-    if (seen.w > 0.f) CacheAdd(seen.xyz, PreviousLight(cell));
+    if (seen.w <= 0.f) return;
+    // Its cell's face by the normal across last frame's positions there (toward the camera).
+    const uint2 last = uint2(width, height) - 1u;
+    const float3 along_x = previous_positions[uint3(min(cell + uint2(1u, 0u), last), previous_positions_slice)].xyz - seen.xyz;
+    const float3 along_y = previous_positions[uint3(min(cell + uint2(0u, 1u), last), previous_positions_slice)].xyz - seen.xyz;
+    const float3 normal = cross(along_y, along_x);
+    CacheAdd(seen.xyz, (dot(normal, Camera() - seen.xyz) < 0.f) ? -normal : normal, PreviousLight(cell));
     return;
   }
   if (cell.x >= bounce_width || cell.y >= bounce_height) return;
@@ -28,17 +35,18 @@ void main(uint3 id : SV_DispatchThreadID) {
   if (position.w <= 0.f) return;
   const float3 light_there = max(light[cell], 0.f);
   const float3 base = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
+  const float3 normal = PixelNormal(pixel, position);
   // Path-Traced Ambient took the game's ambient away from the screen's light: the base colour x the learned shade in its
   // place (rt_path.hlsli HitLight).
-  CacheAdd(position.xyz, light_there + (((path_flags & PATH_KEEP_LIGHT) != 0u) ? base * KeptShade() : 0.f));
+  CacheAdd(position.xyz, normal, light_there + (((path_flags & PATH_KEEP_LIGHT) != 0u) ? base * KeptShade() : 0.f));
   if ((path_flags & PATH_GUIDES) == 0u) return;
-  CacheSetAlbedo(position.xyz, base);
+  CacheSetAlbedo(position.xyz, normal, base);
 
   if (((id.x ^ id.y ^ (frame >> 2u)) & 1u) != 0u) return;
   if (dot(base, float3(0.2126f, 0.7152f, 0.0722f)) < 0.040005647f) return;
   const float4 toward_sun = sun[uint2(0, 0)];
   const float visibility = ((path_flags & PATH_SUN_TRACED) != 0u) ? traced_visibility[pixel] : 1.f;
-  const float x = (toward_sun.w != 0.f) ? visibility * saturate(dot(PixelNormal(pixel, position), toward_sun.xyz)) : 0.f;
+  const float x = (toward_sun.w != 0.f) ? visibility * saturate(dot(normal, toward_sun.xyz)) : 0.f;
   const float3 y = min(light_there / max(base, 0.04999349f), LIGHT_FIT_MAX_Y);
   const uint3 fixed_y = (uint3)(y * LIGHT_FIT_Y + 0.5f);
   const uint3 fixed_xy = (uint3)(x * y * LIGHT_FIT_Y + 0.5f);

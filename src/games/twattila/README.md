@@ -1,6 +1,6 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## v151 (2026-11-12, ATN's third list; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper104)
+## v151 (2026-11-12, ATN's third list; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper105)
 
 - **Torch and fire shadows: up to 128 lights** (bridge v31, helper104; Experimental rows, defaults as before): **Torch and Fire Shadow Lights** 32 / 64 / 128 (the nearest and brightest first) and **Torch and Fire Shadow Range** (metres from the camera, 0 any). Each 8 x 8 block of the screen traces the 32 lights that reach it most (the helper's `rt_lights` lists them below the light mask's pixels), so a burning city's far fires keep their shadows without each pixel tracing more. The light shaders match the drawn light within its block's list (`rt_local_lights.hlsli`). Harness: default and 125 lights PASS (trace 0.15 -> 0.19 ms, 29 -> 125 lights).
 - **Screen-space torch shadows:** a 32 option and their own range row (WARP test PASS: the pick within the range is the CPU's).
@@ -12,6 +12,7 @@
 
 - **Rays a Pixel: Shadows / Ray-Traced AO / Reflections / Global Illumination** under Anti-Aliasing's More Options (ATN); Rays a Pixel stays under Upscaling Mode.
 - The Frame Generation line "pauses while this menu is open, applies when it closes" in yellow.
+- Fixed: **Path Tracing's light too bright on surfaces the camera doesn't see** (helper105; ATN's report): with SHaRC off the paths' own radiance cache keyed only a world cell (0.5 to 2 m at Total War's distances), so a hidden step face or a wall's back in shade took the light of the sunlit top or front beside it, more or less as the view hid it. Its cells are now one per face a surface turns to, a ray shorter than its cell takes no cached light (as SHaRC's), and last frame's colour (here the tone mapper's output) stands in only where a game passes no light of this frame. Harness, a wall's back in shade (seen from 45 m): the shadowed ground behind it 0.172 with the back hidden, 0.033 with it seen; now 0.116 hidden, the same as with the cache off (0.116).
 
 ## v150 (2026-11-12, PsychoV35 in every game; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper103 as in v149)
 

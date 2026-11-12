@@ -7,8 +7,9 @@
 // and rt_cache.hlsli, in metres): the light a ray brings back from the scene the addon captured.
 // - The light leaving a surface a ray meets: the frame's light where the camera sees that surface now (the prepared
 //   light, the Light Bounce's: one texel per bounce_scale x bounce_scale render pixels), else last frame's scene colour
-//   where last frame saw it (the DLAA input, reprojected), else the world radiance cache's (cells of 25 cm near the
-//   camera, doubling every 10 m further; filled from the prepared light every frame), else, for a surface nobody saw,
+//   where last frame saw it (the DLAA input, reprojected; only without the prepared light), else the world radiance cache's
+//   (cells of 25 cm near the camera, doubling with the distance past 20 m, one per face a surface turns to; filled from the
+//   prepared light every frame), else, for a surface nobody saw,
 //   the sun through a shadow ray and the game's own lighting learned from the screen (light in shade, light the sun adds:
 //   a line fitted each frame through light / base colour against the sun's visibility x N.L) times its base colour
 //   (the cache's, from the G-buffer guides), and the path goes on from it (path_bounces surfaces past the first).
@@ -150,18 +151,30 @@ uint CacheHash(uint4 value) {
   return hash;
 }
 
-void CacheCell(float3 world, out uint slot, out uint key) {
-  const float distance_to_camera = length(world - Camera());
-  const uint level = min((uint)floor(log2(max(distance_to_camera / CACHE_LEVEL_DISTANCE, 1.f))), CACHE_LEVELS - 1u);
-  const int3 cell = int3(floor(world / (CACHE_CELL * exp2((float)level))));
-  const uint4 value = uint4(asuint(cell), level);
+// The radiance cache's cell size at a world position: CACHE_CELL out to twice CACHE_LEVEL_DISTANCE from the camera, doubling
+// with each doubling of the distance past it.
+float CacheCellSize(float3 world) {
+  const float level = min(floor(log2(max(length(world - Camera()) / CACHE_LEVEL_DISTANCE, 1.f))), CACHE_LEVELS - 1.f);
+  return CACHE_CELL * exp2(level);
+}
+
+// A cell's slot and key: its place and size, and the face its surface turns to (the normal's dominant axis and sign). Cells
+// are 0.5 to 2 m where Total War's camera looks: by place alone a step's face in shade, a wall's back, took the light of
+// the sunlit top or front beside it wherever the screen didn't see them (ATN: Path Tracing too bright out of sight).
+void CacheCell(float3 world, float3 normal, out uint slot, out uint key) {
+  const float size = CacheCellSize(world);
+  const float3 magnitude = abs(normal);
+  const uint axis = (magnitude.x >= max(magnitude.y, magnitude.z)) ? 0u : ((magnitude.y >= magnitude.z) ? 1u : 2u);
+  const uint face = axis * 2u + ((normal[axis] < 0.f) ? 1u : 0u);
+  // The size is a power of two: its low mantissa bits are free for the face.
+  const uint4 value = uint4(asuint(int3(floor(world / size))), asuint(size) | face);
   slot = CacheHash(value) & (CACHE_ENTRIES - 1u);
   key = CacheHash(value.yzwx + 0x9E3779B9u) | 1u;
 }
 
-bool CacheFind(float3 world, out uint entry) {
+bool CacheFind(float3 world, float3 normal, out uint entry) {
   uint slot, key;
-  CacheCell(world, slot, key);
+  CacheCell(world, normal, slot, key);
   entry = 0u;
   [loop]
   for (uint probe = 0u; probe < CACHE_PROBES; ++probe) {
@@ -173,9 +186,9 @@ bool CacheFind(float3 world, out uint entry) {
   return false;
 }
 
-bool CacheClaim(float3 world, out uint entry) {
+bool CacheClaim(float3 world, float3 normal, out uint entry) {
   uint slot, key;
-  CacheCell(world, slot, key);
+  CacheCell(world, normal, slot, key);
   entry = 0u;
   [loop]
   for (uint probe = 0u; probe < CACHE_PROBES; ++probe) {
@@ -187,18 +200,18 @@ bool CacheClaim(float3 world, out uint entry) {
   return false;
 }
 
-bool CacheLookup(float3 world, out float3 radiance) {
+bool CacheLookup(float3 world, float3 normal, out float3 radiance) {
   radiance = 0.f;
   uint entry;
-  if (!CacheFind(world, entry)) return false;
+  if (!CacheFind(world, normal, entry)) return false;
   const float4 kept = cache_radiance[entry];
   radiance = kept.rgb;
   return kept.w > 0.f;
 }
 
-bool CacheAdd(float3 world, float3 light_there) {
+bool CacheAdd(float3 world, float3 normal, float3 light_there) {
   uint entry;
-  if (!CacheClaim(world, entry)) return false;
+  if (!CacheClaim(world, normal, entry)) return false;
   const uint3 fixed_point = (uint3)(clamp(light_there, 0.f, CACHE_MAX) * CACHE_SCALE + 0.5f);
   InterlockedAdd(cache_sums[entry * 4u], fixed_point.r);
   InterlockedAdd(cache_sums[entry * 4u + 1u], fixed_point.g);
@@ -207,18 +220,18 @@ bool CacheAdd(float3 world, float3 light_there) {
   return true;
 }
 
-bool CacheAlbedo(float3 world, out float3 albedo) {
+bool CacheAlbedo(float3 world, float3 normal, out float3 albedo) {
   albedo = 0.f;
   uint entry;
-  if (!CacheFind(world, entry)) return false;
+  if (!CacheFind(world, normal, entry)) return false;
   const uint packed = cache_albedo[entry].x;
   albedo = float3(packed & 0xFFu, (packed >> 8) & 0xFFu, (packed >> 16) & 0xFFu) / 255.f;
   return (packed >> 24) != 0u;
 }
 
-void CacheSetAlbedo(float3 world, float3 albedo) {
+void CacheSetAlbedo(float3 world, float3 normal, float3 albedo) {
   uint entry;
-  if (!CacheClaim(world, entry)) return;
+  if (!CacheClaim(world, normal, entry)) return;
   const uint3 bytes = (uint3)(saturate(albedo) * 255.f + 0.5f);
   cache_albedo[entry] = uint2(bytes.r | (bytes.g << 8) | (bytes.b << 16) | (255u << 24), frame + 1u);
 }
@@ -252,9 +265,9 @@ bool SeenLastFrame(float3 world, out uint2 pixel) {
 // A surface's base colour: its cell's, else (never seen; a grey made reflections go pale toward the screen's sides, as
 // screen-space ones do, ATN's debug36) past the screen's edge the edge's on the way there (banks and walls go on past it),
 // else the screen's mean.
-float3 HitAlbedo(float3 hit) {
+float3 HitAlbedo(float3 hit, float3 hit_normal) {
   float3 albedo;
-  if (CacheAlbedo(hit, albedo)) return albedo;
+  if (CacheAlbedo(hit, hit_normal, albedo)) return albedo;
   const float4 clip = ClipOf(hit, view_projection);
   if ((path_flags & PATH_GUIDES) != 0u && clip.w > 0.f) {
     const float2 uv = clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f;
@@ -289,9 +302,10 @@ float3 PreviousLight(uint2 pixel) {
   return (previous_square_root != 0u) ? color * color : color;
 }
 
-// The light leaving a surface a ray met (false: nobody knows it): the screen's now, else last frame's, else the
-// radiance cache's (SHaRC's instead in PathRadiance with SHaRC Radiance Cache), unless `cached` is false.
-bool HitLight(float3 hit, out float3 light_there, bool cached = true) {
+// The light leaving a surface a ray met (false: nobody knows it): the screen's now, else (without this frame's light) last
+// frame's, else the radiance cache's at the face `hit_normal` turns to (SHaRC's instead in PathRadiance with SHaRC Radiance
+// Cache), unless `cached` is false.
+bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached = true) {
   light_there = 0.f;
   uint2 pixel;
   if ((path_flags & PATH_LIGHT) != 0u && SeenNow(hit, pixel)) {
@@ -303,18 +317,20 @@ bool HitLight(float3 hit, out float3 light_there, bool cached = true) {
     // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the learned
     // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
     if ((path_flags & PATH_KEEP_LIGHT) != 0u) {
-      light_there += (((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit)) * KeptShade();
+      light_there += (((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit, hit_normal)) * KeptShade();
     }
     return true;
   }
-  if ((path_flags & PATH_LIGHT_FINAL) == 0u && SeenLastFrame(hit, pixel)) {
+  // Last frame's colour is the DLAA input: in Attila the tone mapper's output, in other units than this frame's light. Only
+  // for games that pass none.
+  if ((path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == 0u && SeenLastFrame(hit, pixel)) {
     light_there = PreviousLight(pixel);
     return true;
   }
 #if defined(SHARC)
   return false;
 #else
-  return cached && (path_flags & PATH_CACHE_VALID) != 0u && CacheLookup(hit, light_there);
+  return cached && (path_flags & PATH_CACHE_VALID) != 0u && CacheLookup(hit, hit_normal, light_there);
 #endif
 }
 
@@ -427,6 +443,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
   const float4 shade = float4(KeptShade(), light_kept[0].w);
   bool unseen = false;
   float3 unseen_position = 0.f;
+  float3 unseen_normal = 0.f;
   float3 unseen_throughput = 1.f;
   float3 radiance_before = 0.f;
   [loop]
@@ -458,17 +475,18 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     }
     const float3 position = origin + direction * query.CommittedRayT();
     if (vertex == 0u) first_distance = query.CommittedRayT();
+    const uint record_index = query.CommittedInstanceID() + query.CommittedGeometryIndex();
+    const float3 normal = HitNormal(record_index, query.CommittedPrimitiveIndex(), direction, query.CommittedObjectToWorld3x4());
     float3 light_there;
     // CACHE_RELEARN of the paths leave the radiance cache out and go on: a cell nobody sees took its first frame's paths and
     // kept them until it was dropped, as only a path that found no light there adds to it. The light from out of sight never
     // followed a change, the count of bounces among them (ATN: Bounces showed nothing).
     const bool relearn = Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 49152u)) < CACHE_RELEARN;
-    if (HitLight(position, light_there, !relearn)) {
+    // No cached answer for a ray shorter than its cell (as SHaRC's): the cell may be the ray's own start's.
+    if (HitLight(position, normal, light_there, !relearn && query.CommittedRayT() >= CacheCellSize(position))) {
       radiance += throughput * light_there;
       break;
     }
-    const uint record_index = query.CommittedInstanceID() + query.CommittedGeometryIndex();
-    const float3 normal = HitNormal(record_index, query.CommittedPrimitiveIndex(), direction, query.CommittedObjectToWorld3x4());
     if (vertex == 0u) first_normal = normal;
 #if defined(SHARC)
     // SHaRC Radiance Cache: what the screen does not know from SHaRC (by the surface's normal; not for a ray shorter than
@@ -479,7 +497,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
       break;
     }
 #endif
-    const float3 albedo = HitAlbedo(position);
+    const float3 albedo = HitAlbedo(position, normal);
     const float offset = SurfaceOffset(distance(position, Camera()));
     const float3 surface = position + normal * offset;
     // Leaves, cloth and sails pass their share of light through (the sun's from behind; the path goes on through them
@@ -491,6 +509,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     if (!unseen) {
       unseen = true;
       unseen_position = position;
+      unseen_normal = normal;
       unseen_throughput = throughput;
       radiance_before = radiance;
     }
@@ -507,7 +526,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
   }
   // The first unseen surface's light feeds the cache once the learned lighting is solved.
   if (unseen && shade.w > 0.f && all(unseen_throughput > 1.0000807e-3f)) {
-    CacheAdd(unseen_position, (radiance - radiance_before) / unseen_throughput);
+    CacheAdd(unseen_position, unseen_normal, (radiance - radiance_before) / unseen_throughput);
   }
   return radiance;
 }
@@ -584,8 +603,11 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
     previous.count = 0.f;
     return 0.f;
   }
+  // The cache's answer at the face of its stored normal, from a cell's size away at least (a sample the screen answered stored
+  // none: no face to look up).
   float3 light_now;
-  if (!HitLight(previous.hit, light_now)) return 0.f;
+  const bool cached = dot(previous.hit_normal, previous.hit_normal) > 0.f && hit_distance >= CacheCellSize(previous.hit);
+  if (!HitLight(previous.hit, previous.hit_normal, light_now, cached)) return 0.f;
   if (contact) {
     light_now *= ContactShade(hit_distance);
   }
