@@ -25,6 +25,7 @@ Answer every row for a new game before planning, with a proof level (A, B, C as 
 | Fog | WH3's fog marches its shadow maps; Attila's has none | Fog PS bytes |
 | Light draws | WH3's light VS: POSITION1 the colour, POSITION2 position and reach; 156 lights in a siege. Light colours differ in scale: `Host::local_light_scale` from the light PS's own diffuse literal | The light VS input layout; the light PS |
 | G-buffer colour for thin replays | Power 2 in Attila and Thrones, 1 in WH3 | The G-buffer PS's output |
+| G-buffer material byte | WH3: channel 3's alpha at `gbuffer_slot + 2`, bit 128 foliage (its sun mask lets light through), 64 water, 16 own motion; Attila: nothing marks foliage | The sun and lighting PS's `and` on that channel; values from a trace's readback |
 | Tone mapper | WH2 and WH3 use a per-map Reinhard: the hand-off must match its value and its log-log slope at mid grey. Attila's bloom high pass caps luminance at 25 (a flat halo in HDR: extend it logarithmically); WH3 has no cap. Hue Clip's default from the OkLab hue error against that game's SDR clip: Attila 40, WH3 100 | The tone mapper's bytes; `test/tw_psychov35` |
 | Test keys | Plant Wind Sway exists in Attila only; WH3 has no such value | The game's preferences file |
 

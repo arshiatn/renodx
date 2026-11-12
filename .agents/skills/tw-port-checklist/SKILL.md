@@ -79,7 +79,7 @@ A hash goes in only with its proof in the commit message: the shader's family na
 
 - **Game runs** only when the maintainer allows them, per batch; the permission ends when the batch closes. Bundle what needs the game into one run. Back up the maintainer's `ReShade.ini`, `ReShadePreset.ini` and the game's preferences right before each install or run, never restore an older copy, compare hashes after.
 - **Unproven work** ships as an Experimental row, off, with a player tooltip and one verdict line on the test list. Defaults change only from measured numbers. A section's More Options may hold as many Experimental rows as needed; the maintainer decides each row: on by default, in which presets, or left under More Options. Give them the numbers for that decision (cost, what it fixes, what it risks).
-- **Look**: keep the developers' look; scale quality, distance and resolution; a look change is an Experimental row, off. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended presets use PsychoV31; ask the maintainer for each game's PsychoV31 hue settings (Hue Clip's default is measured, see [game-facts.md](references/game-facts.md)).
+- **Look**: keep the developers' look; scale quality, distance and resolution; a look change is an Experimental row, off. No temporal dither on coverage (DLSS smears it). No flicker fix that dims or compresses highlights: fix the source. Recommended uses PsychoV35 in Attila and WH3 (since 2026-11-12) and PsychoV31 in the addons not yet tested with it; ask the maintainer for each game's hue settings (Hue Clip's default is measured, see [game-facts.md](references/game-facts.md)).
 - **Cost**: no per-frame counters or log lines, no per-frame CPU on the game's thread without a measured reason, hot callbacks return on one atomic.
 - **Rows**: tooltips short and for players, naming nothing the game lacks; keys stay when rows move or saved values are lost.
 - **Two ways**: a fix in shared code or a pattern goes to every addon that carries it; a new game's row goes back to Attila.
@@ -87,6 +87,10 @@ A hash goes in only with its proof in the commit message: the shader's family na
 - **Git**: one commit per item with cause and numbers, pushed to the fork's `atn-mods` right away, never upstream. No tags (the maintainer tags). No Nexus text.
 - **Builds**: never mix addons built before and after an upstream merge in one game folder. No DevKit left in a TW game folder.
 - **Licences**: licence text for anything shipped; no code from mods without a licence.
+
+## Outside Total War
+
+Tales of Arise, Ryse, Expeditions: Rome and later non-TW games share the method, not the code. Carry over: proof levels, a fact sheet per game (ask [game-facts.md](references/game-facts.md)'s questions, don't copy its answers), the maintainer's rules above, WARP tests against the game's own bytes, page dumps, Experimental rows, the round report. Don't carry over unread: `twattila` code (a TW D3D11 engine), the bridge and helper as they are (Tales takes Ray Reconstruction through NGX D3D12: D3D11 RR with a GPU wait went black), any slot, register or encoding. A rule that holds in a second engine belongs in a shared skill, not in two copies.
 
 ## Checks by kind of change
 

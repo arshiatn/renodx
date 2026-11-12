@@ -4,7 +4,7 @@
 
 **What it does**: Bend's wavefront march over a copy of the scene depth, at the first main-view sun draw: `sss_depth`, `sss_setup` (the dispatch list built on the GPU), 8 indirect `sss_bend` dispatches, optional `sss_blur`. The patched sun shaders multiply their shadow term by 1 - t49, so only direct sunlight changes. Smoke (`smoke_map`, Attila only) and the RT occlusion use the same t49.
 
-**What it includes** (since WH3 v42 and Attila v146, all Experimental, off): Auto Thickness and Softer Away from the Caster (all 7 SSS addons); Light Through Banners, Coloured Shadows (t50, only where the rays bind none) and Torch and Fire Shadows (Attila, Thrones, WH3); Light Through Foliage (Attila only).
+**What it includes** (since WH3 v42 and Attila v146, all Experimental, off): Auto Thickness and Softer Away from the Caster (all 7 SSS addons); Light Through Banners, Coloured Shadows (t50, only where the rays bind none) and Torch and Fire Shadows (Attila, Thrones, WH3; up to 128 lights within a range since Attila v151 and WH3 v47); Light Through Foliage (Attila from depth copies around its prefill, WH3 from its G-buffer foliage bit).
 
 **Cost** (4K, 100%): base 0.81 ms; Banners +0.08, Coloured +0.60, Softer +0.53, Auto +0.73 ms; torches 0.35 to 1.4 ms; smoke map 0.1 to 0.16 ms.
 
@@ -26,6 +26,7 @@
 | Bend's waves write some pixels twice: 92 of 129,600 differ between runs of the same shader | Compare against several runs of the original, not one | - |
 | The soft mask read in frames its pass never ran; t50 bound after a resize; objects kept while rows were off (about 117 MB) | Read a mask only in the frame its writer ran (frame stamp); remember every bound SRV of ours; free objects at the first present a row is off | Test cases 4 (CreateTexture2D failing) and 7 |
 | Rows that show where their install never ran | Coloured Shadows and Light Through Banners need the replay of known banner VS (`InstallThin`: R32F, DepthBias -4, every state put back, off under MSAA; the VS outputs SV_Position at o0, check with `fxc -dumpbin`); Torch and Fire Shadows need the light draws after the sun draw | Rows hidden where `InstallThin` or `InstallPointLights` didn't run |
+| Light Through Foliage took Attila's depth copies around a foliage prefill; WH3 has no such prefill, its foliage draws mixed with others, and its stencil refs (9, 145, 1, 17) mark no foliage | Read the game's own sun and contact-shadow shaders for a material test first: WH3's sun mask lets light through where G-buffer channel 3's alpha has bit 128 (`foliage_material_bit`, read at `gbuffer_slot + 2`, off under MSAA) | `test/tw_screen_space_shadows` material case: 0 pixels apart from the depth-copy result on WARP |
 
 ## 2. Particles and transparency
 
@@ -38,6 +39,8 @@ Order: trace the composite, its layers and readers; count only particles with op
 | A redirected draw unbound the OM UAVs (`OMGetRenderTargets` doesn't report them); WH3's composite carried a writable DSV on the depth being read [ade0799d] | `OMGetRenderTargetsAndUnorderedAccessViews`, restore UAVs with their counts; refuse other blends, scissor or MSAA with one log line; compare the DSV's resource with every SRV read | Read |
 | RR's particle inputs: skipping the denoiser loses DOF's blur; Picture Before Particles makes the rest 2.5% brighter; the particle mask was read by no preset. Below 100% RR's colour comes after the tone mapper, so the composite is redrawn unblended into a cleared texture [ef9be189] | Test each optional NVIDIA input per preset in the harness, and know its colour space at each scale. Particles at output resolution are impossible: they would lose exposure, bloom, DOF and grading, and there is no display-size depth | `HARNESS_RR_EXTRA` |
 | Smoke: Bend never sees particles; RGBA16F height moments failed | `smoke_map` splats last frame's lit particles into a 1024 squared RGBA32F map from the sun | `smoke_map_test` |
+| Smoke shadows flickered at Ultra and the log's 262,144 particles looked like a full stream: that is the whole pool, drawn every frame, dead ones too; the siege used 35,304 of 65,536 smoke slots. Likely cause, unproven: each sun ray stops after 32 smoke particles that dim it or 64 it meets, and which come first changes every frame | Read what a count counts before raising a limit; log how often a ray hits its cap | A siege with Ultra against Extreme in one run |
+| Particles at a half or quarter layer smeared across sharp edges (units, walls against smoke) | Full-Resolution Particle Edges (Cantlay, GPU Gems 3 ch. 23): `particle_edges` marks edge pixels in stencil with the scene depth in an own DSV (D24S8, D32S8 for float depth); each particle draw is drawn again there at full size with the game's depth state and stencil EQUAL 1; the composite takes stencil EQUAL 0. Reset the edge target when the layer is made again | `test/tw_particle_history` case 11: full-screen smoke at Quarter 26 steps off without edges, at most 1 with; a first version over the quads' edges, which the check skips, passed both ways |
 
 ## 3. Reflections and water
 

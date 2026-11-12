@@ -39,7 +39,7 @@ Tone-map and LUT math belongs to `handle-sdr-tonemap-lut`; these are the TW-spec
 | Attila's bloom high pass caps luminance at 25: a flat halo in HDR | Extend it logarithmically; WH3 has no cap | Read the bloom PS |
 | Extended's fire came out flat salmon | Its shoulder rolls off per channel above paper white | Fire in a ramp test |
 | A Hue Clip default copied from another game | Default from the OkLab hue error of PsychoV35 against that game's SDR clip (Attila 40, WH3 100); sky blue bends twice as far | `test/tw_psychov35`: ramps never above peak or NaN, other modes 0 pixels different, other shaders the same bytes |
-| PsychoV35 shipped as the default | Experimental Rendering Mode; Recommended stays PsychoV31; no new per-frame CPU | Page dump |
+| PsychoV35 shipped as the default | First an Experimental Rendering Mode; Recommended took it (Musa's V35) only after the maintainer's test, in Attila and WH3; no new per-frame CPU | Page dump |
 | The SDR preset set PsychoV31 | It sets Rendering Mode SDR | Page dump |
 | SDR output re-encoded the gamma 2.0 frame as 2.2: darks brighter | Decode what that game's pass encoded | WARP ramp |
 | WH3's lens blood reached 9.5 in FP16 | Clamp additive overlays at paper white | Read the overlay PS |
@@ -59,13 +59,14 @@ Tone-map and LUT math belongs to `handle-sdr-tonemap-lut`; these are the TW-spec
 | A preset sets a hidden row: where no hook reads it, it still runs (fog shadows traced for nothing) | Gate the setting on the hook being installed | `SettingsOf` for each key the preset writes |
 | A preset or method assumes a replacing effect: RTAO over GT-VBAO where it multiplies | A binding says which; texts say what's true here | Every button in a page dump |
 | Presets against method rows | Presets show through; method sliders hold nothing; RT and PT turn RR on only on NVIDIA | Read |
+| A new game's RT/PT preset and defaults written by hand drift from Attila's (WH3 kept 2 bounces, no glow, 10 m bounce range) | One list for every game, `graphics_page::RAYS_PRESET` (the maintainer's Attila settings); `UpdateSettings` skips keys a game lacks, so a game's own rows go in it too. A new game takes it as the defaults of the rows the methods leave (WH3's `addon.cpp`); the methods stay off | `games_compare.py` on both games' dumps: after RT/PT only per-game rows (hue, game passes) differ |
 | A row that drives a game's setting (e.g. its render scale) | Gate it on what uses the value being able to run (helper up, the pass there to replace): a failed helper or the game's AA off gave the game's own 50% upscale with Full Detail's cost | Page dump with the helper absent |
 | Rows without effect shown [599604a6] | Hide by what's installed | `AppendSettings(..., false, false, ...)` |
 | Gamma Correction, SDR preset on an SDR monitor at first start [e06a18da, 3dbf1ce6] | Gamma in all presets; a first-start check | Read |
 | Add-on running alone [9a909c13, 6875b28f] | Red notice, GitHub button; a missing helper must not crash | The path taken with the helper absent |
 | Tooltips with dev notes, trace names, other games; DLSS-only wording once FSR and XeSS exist [43141539] | Short, player-facing | Grep tooltip lines, multi-line text too |
 | Per-game hue defaults copied | Ask the maintainer; don't copy Attila's Highlight values | Read |
-| Recommended and Reset presets | Recommended in PsychoV31; Reset keeps its default where Extended exists, PsychoV31 where it doesn't | Page dump |
+| Recommended and Reset presets | Recommended in PsychoV35 (Attila, WH3) or PsychoV31 (addons not yet tested with V35); Reset keeps its default where Extended exists, Recommended's mode where it doesn't | Page dump |
 | Live counters, temporary timers | One-frame traces only; debug work behind Log Details; remove timers before a zip | Read per-frame paths |
 | Status lines lag 3 s | "Test: x set to" is exact | - |
-| Credits and licence texts for everything shipped (NRD, SHaRC, OMM, FSR, XeSS, SSSR, PsychoV35) | About plus `licenses\` | Read the zip |
+| Credits and licence texts for everything shipped (NRD, SHaRC, OMM, FSR, XeSS, SSSR, CMAA2, DLSS, ACES, PsychoV35) | About rows from `twattila/credits.hpp` in every addon that ships the code; the licence text next to vendored code; the repack adds the licence set to every zip; no code from a mod without a licence | Read the zip |

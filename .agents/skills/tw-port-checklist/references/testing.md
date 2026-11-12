@@ -11,7 +11,8 @@
 | `all_modes.sh` and `rt_harness` | The bridge, the helper, part of the D3D11 capture; stress per family (`far_cards_20`, `far_cards_48`, `leaf_storm`, `removal`, `switching_removal`, `release_*`, `bounces_*`) | A game's own passes, real melee, burning houses, cloth; the helper's CPU cost at game scale |
 | `fg_child/fg_bridge_test` | FG per backend at 2x and 6x, colour-space changes, memory phases, the module list with a ReShade `dxgi.dll` beside the helper | The game's pacing |
 | `warp_tests/*` | A game shader's bytes against ours on WARP: patches, replacements, stream output, level chains, scale copies | GPU hangs (WARP never hangs), real scene content |
-| `page_dump` | An addon's settings as data with ImGui and ReShade faked: rows, what shows in every state, what buttons and method sliders write | Whether the hook behind a row runs |
+| `page_dump` | An addon's settings as data with ImGui and ReShade faked: rows, what shows in every state, what buttons and method sliders write; `games_compare.py` puts two games' (or versions') rows, defaults and a button's result side by side | Whether the hook behind a row runs; rows behind install flags the dump doesn't set (`dump_w` sets only the scene table: sprite and far-tree rows and WH3's torch rows don't show) |
+| `fxc //nologo //dumpbin x.cso` (Git Bash doubles the slashes), the decompiler dump with `names.tsv` | What a game's own shader reads and tests: a material byte's bits, slots, `SV_Position` at o0 | The values at run time |
 | `sun_attila/make_sun_patch_test.py`, `warp_tests/sun_wh3` | The sun patch lands on the sun term; the ambient formula | - |
 | `scale_audit.py`, `scale_scan.py`, `wh3_batch5/p9_ndc_trace.py` | Candidates for below-100% bugs | Nothing passes by itself: read each hit |
 | Census scripts (`wh3_batch3/b3_cull.py`, `wh3_batch3/b5_census.py`, cut-out and proxy scans) | Families, cut-outs, culling laws from traces | Draws no trace holds |
