@@ -1,5 +1,9 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Round v52 (2026-11-12, review fixes; built only, not run in game)
+
+- **Fixed: Sprite Soldier Shadows is hidden.** It gated only flat soldiers turned to the sun, and both sun-facing entries here are far tree cards (97C53219, EB2A56A1: Far Tree Shadows' row), so it did nothing. No trace drew sprite soldiers. Shared `twattila/rt_scene.hpp`: the row shows only where a sun-facing entry isn't a far tree (Attila unchanged; Warhammer III hides it too).
+
 ### Round v51 (2026-11-12, one method each: the game's contact shadows and SSEO; built only, not run in game)
 
 - **Fixed: contact shadows drawn once.** The game's sun shader marches its own short contact shadows toward the sun (`g_contact_shadows`, 16 steps at ATN's settings in every data-run trace), and Bend's screen-space shadows and the ray-traced shadows drew theirs on top of it. Now a sun draw where Bend's or the rays' shadow is bound (t49) reads a copy of its lighting constants with the game's march off (byte 4 of lighting_VS_PS), and the game's constants are bound again after the draw. With Game's Shadow Maps, or while the rays aren't ready, the game's own contact shadows stay: its bytes and constants untouched. Contact Shadow Quality (Graphics 2 of 2) acts only then; its tooltip says so. WARP on the game's bytes of all 25 sun shaders with the battle's, the siege's and the SSAO-off run's constants (`tools\tw\pharaoh\sun_test`, 6 scenes each): the flag gates the march alone (read once, by its `if_nz`; with it 0 the march's own inputs change 0 values), ours off 0 values apart from v50 and from the game, ours on 0 apart from the game's constants with the flag 0; controls: the flag reaches 91,113 values, today's stacked march 84,735, a copy at the wrong byte 1,620,708.

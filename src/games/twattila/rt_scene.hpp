@@ -1187,7 +1187,8 @@ inline void InstallShadowsOnly() {
 inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pass::AmbientOcclusionDraw> ambient_draws,
                     const Host& host = TW_HOST) {
   InstallScene(shaders, host);
-  internal::sprite_shadows_installed = std::ranges::any_of(shaders, &SceneShader::sun_facing);
+  // Far trees face the sun too, under their own row (Capture).
+  internal::sprite_shadows_installed = std::ranges::any_of(shaders, [](const SceneShader& shader) { return shader.sun_facing && !shader.far_tree; });
   internal::far_tree_shadows_installed = std::ranges::any_of(shaders, &SceneShader::far_tree);
   light_bounce::SetRayTracedTrace(&internal::TraceLightBounce);
   for (const auto& draw : ambient_draws) {
