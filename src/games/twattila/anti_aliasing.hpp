@@ -287,6 +287,8 @@ struct Runtime {
   uint64_t applied_frame = UINT64_MAX;     // the last frame TAA / SMAA T2x ran
   uint64_t upscaled_frame = UINT64_MAX;    // the last frame DLSS answered
   uint64_t depth_upscaled_frame = UINT64_MAX;  // DLSS below 100%: the last frame UpscaleDepth ran
+  uint64_t copy_upscaled_frame = UINT64_MAX;   // the same for the scene's depth's copy (Install's full_depth_copy)
+  bool full_depth_copy = false;
   Camera camera;
   Camera previous_camera;
   std::vector<Upload> uploads;
@@ -994,13 +996,15 @@ inline void UpscaleDepth(ID3D11DeviceContext* native, ID3D11DepthStencilView* vi
 }
 
 // A draw of the game's 3D sprites (Install's `full_depth_shaders`) against the scene's depth: DLSS below 100%, after the
-// tone mapper, the depth stretched first (once a frame).
+// tone mapper, the depth stretched first (once a frame). With Install's `full_depth_copy`, a depth of the scene's depth's
+// size and format (its copy) the same way, once a frame.
 constexpr auto OnFullDepthDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
   const std::unique_lock lock(runtime.mutex);
-  if (runtime.depth_upscaled_frame == runtime.frame || runtime.tonemapped_frame != runtime.frame || !runtime.scene_depth
+  const bool copy_pending = runtime.full_depth_copy && runtime.copy_upscaled_frame != runtime.frame;
+  if ((runtime.depth_upscaled_frame == runtime.frame && !copy_pending) || runtime.tonemapped_frame != runtime.frame || !runtime.scene_depth
       || runtime.render_width == 0 || runtime.render_width >= runtime.display_width) {
     return {};
   }
@@ -1009,9 +1013,21 @@ constexpr auto OnFullDepthDraw = []<typename Context>(Context& command) -> renod
   if (!view) return {};
   ComPtr<ID3D11Resource> resource;
   view->GetResource(resource.GetAddressOf());
-  if (resource.Get() != runtime.scene_depth.Get()) return {};
-  runtime.depth_upscaled_frame = runtime.frame;
-  UpscaleDepth(native, view.Get(), runtime.scene_depth.Get());
+  ComPtr<ID3D11Texture2D> depth;
+  if (resource.Get() == runtime.scene_depth.Get()) {
+    if (runtime.depth_upscaled_frame == runtime.frame) return {};
+    runtime.depth_upscaled_frame = runtime.frame;
+    depth = runtime.scene_depth;
+  } else {
+    if (!copy_pending || FAILED(resource.As(&depth))) return {};
+    D3D11_TEXTURE2D_DESC scene_desc = {};
+    D3D11_TEXTURE2D_DESC desc = {};
+    runtime.scene_depth->GetDesc(&scene_desc);
+    depth->GetDesc(&desc);
+    if (desc.Width != scene_desc.Width || desc.Height != scene_desc.Height || desc.Format != scene_desc.Format) return {};
+    runtime.copy_upscaled_frame = runtime.frame;
+  }
+  UpscaleDepth(native, view.Get(), depth.Get());
   return {};
 };
 
@@ -1540,14 +1556,18 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
 // render-size textures at the display's size below 100% (`region_reads`, with the half-size passes drawn whole and the
 // names their outputs' readers give them: `whole_textures`), the vertex shaders the addon replaces with ones that read
 // the render share (`vertex_shares`) and the game's 3D sprites drawn against the scene's depth after the tone mapper
-// (`full_depth_shaders`, vertex shaders: the depth stretched for them below 100%). The frame trace's options (`trace`;
-// its 3D view at 100%: the tone mapper anti-aliased this frame).
+// (`full_depth_shaders`, vertex shaders: the depth stretched for them below 100%; `full_depth_copy`: also against one copy
+// of it, Pharaoh's battle). The frame trace's options (`trace`; its 3D view at 100%: the tone mapper anti-aliased this frame).
 inline void Install(std::span<const light_bounce::SunDraw> draws, const ObjectMotion& motion = {},
                     std::span<const view_share::RegionRead> region_reads = {}, std::span<const uint32_t> vertex_shares = {},
                     std::span<const uint32_t> full_depth_shaders = {}, std::span<const char* const> whole_textures = {},
-                    const frame_trace::Options& trace = {}) {
+                    const frame_trace::Options& trace = {}, bool full_depth_copy = false) {
   frame_trace::Install(trace);
   view_share::Install(region_reads, vertex_shares, whole_textures);
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    internal::runtime.full_depth_copy = full_depth_copy;
+  }
   for (const uint32_t hash : full_depth_shaders) {
     renodx::utils::command_action::Register(
         internal::OnFullDepthDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -1595,6 +1615,7 @@ inline void Uninstall() {
   internal::scaling.store(false);
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.scene_depth.Reset();
+  internal::runtime.full_depth_copy = false;
 }
 
 // The main view's camera last uploaded in `buffer` (DLAA, TAA, SMAA T2x: the uploads are watched); false: it holds none.

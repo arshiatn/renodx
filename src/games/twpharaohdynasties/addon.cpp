@@ -14,6 +14,7 @@
 #include <atomic>
 #include <format>
 #include <mutex>
+#include <shared_mutex>
 #include <cmath>
 #include <string>
 
@@ -1457,7 +1458,7 @@ float rays_hills_out_of_view_row = 0.f;
 // the particle lights (5AD46115: their layout unknown). Logged the first frame either draws, again the first frame point
 // lights draw; with Log Details off a draw reads one flag.
 struct LightCount {
-  std::mutex mutex;
+  std::shared_mutex mutex;
   std::array<uint32_t, 2> draws = {};  // point lights, particle lights
   std::array<uint64_t, 2> instances = {};
   std::array<uint64_t, 2> indices = {};
@@ -1631,6 +1632,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
 constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
     {.shader_hash = 0x57E5140E, .slots = 0b110},  // glow bright pass (after DLSS)
 }};
+// The game's 3D sprites (sprite.hlsl vertex_3d_gamma: the unit markers) drawn at the display's size after the tone mapper
+// against the scene's depth (battle f07e0, siege 3aa60) and, in the battle, its copy (ec5e0): both stretched below 100%.
+constexpr std::array<uint32_t, 1> FULL_DEPTH_SHADERS = {0x45A3B2DF};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0xF883F5B2, .standard = true, .gbuffer_slot = 8, .camera_slot = 1, .lighting_slot = 4, .sun_direction = 4, .ao_slot = 12},
@@ -2339,19 +2343,21 @@ bool AttachAddon() {
   // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once
   // each: b0-b5 up to 1 KB (camera b1 with camera_near_far at c25, shadowmap_PS b2's splits and baked map,
   // lighting_VS_PS b4's sun and ambient cube, directional_light_PS b5; the tone mapper's camera b0 and tone_mapping b1).
+  // The 3D sprites' depth stretched below 100%, the scene's depth's copy too (FULL_DEPTH_SHADERS).
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS, {}, {}, {},
+                                   RENDER_SCALE_READS, {}, FULL_DEPTH_SHADERS, {},
                                    {
                                        .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74},
                                        .value_slots = 6,
                                        .value_floats = 256,
                                        .on_demand = true,
                                        .at_100 = true,
-                                   });
+                                   },
+                                   true);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
