@@ -1,5 +1,11 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Round v47 (2026-11-14, shared code from Attila / Pharaoh; built only, not run in game)
+
+- **Fixed: the Ray Tracing Debug View's Screen-Space AO was magenta.** No AO pass hook keeps it here (ssao01 binds no camera), so it is now what each sun draw reads at its `t_ssao` (the game's SSAO or GT-VBAO, blurred), copied before the rays' AO and the AO filter take its place: `rt_scene::InstallSunDebugAmbient` (`twattila/rt_scene.hpp`, Pharaoh's hook moved there). Its mapping from the shaders' bytes: all 24 sun draws with an AO slot read it at `(SV_Position + g_vpos_texel_offset) x g_screen_size.zw`, as their G-buffer, which is the Debug View's own mapping (`tools/tw/debug_ao_v47/ao_mapping.py`; the same bytes in Pharaoh's 24, where a trace proved it; Warhammer III's read it through their overscans and fail the check). Page dump: the same but the Build Date.
+
+Build: `cmake --build build --config Release --target renodx-twtroy.addon64`. Manual check: with DLAA or an upscaler and the helper, Ray Tracing Debug View on Screen-Space AO is no longer magenta: it shows the AO of the Ambient Occlusion row's method (Game's or GT-VBAO; white open, darker in corners and under units) lined up with the picture, also below 100% render scale.
+
 ### Round v46 (2026-11-13, shared code from Attila / Warhammer III; built, not released, not run in game)
 
 - **Fixed: the Ray Tracing Debug View rows never showed.** They wait for `rt_scene::OnTonemapDrawn`, which this add-on's tone mapper hook never called (Pharaoh had the same gap, 041821eb); now right after the anti-aliasing's, as in Attila. Its Screen-Space AO view stays magenta: no AO pass hook here, and Pharaoh's copy at the sun draws is not ported. Found by the skill's `scripts/static_checks.py`; the page dump (which sets the flag itself) is the same but the Build Date.
