@@ -135,7 +135,15 @@ tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One com
     OnSunDebugAmbient copy at the sun draws would be a fourth copy of one lambda (DRY: it belongs in twattila/rt_scene.hpp,
     outside this round's files) with WH1 / WH2's AO mapping unproven. Smallest step: rt_scene::InstallSunDebugAmbient(
     LIGHT_BOUNCE_DRAWS) in rt_scene.hpp (Pharaoh's lambda, mapping 1), Pharaoh moved onto it, then the three.
-- [ ] 5 Release zips carry nvngx_dlss / dlssd / dlssg (310.9.16+) and refuse without them.
+- [x] 5 Release zips carry nvngx_dlss / dlssd / dlssg (310.9.16+) and refuse without them. tools/tw/release_zip.py
+  (--helper) and player_zip.py add the three + NVIDIA_DLSS_LICENSE.txt from ngx_dlls.SOURCE (ATN's Streamline SDK
+  2.14.16 bin\x64, its nvngx_dlss.license.txt = the zips' licence, 26727 bytes), refuse before writing when SOURCE lacks
+  them, and after writing check every helper in the zip (ngx_dlls.zip_problems: missing or < 310.9.16 = renamed
+  .refused.zip, exit 1). hdr_zip.py (no helper) unchanged. Existing zips: twattila_v145 / v146.zip REFUSED (no
+  twattila/nvngx_dlss.dll: the player zip took it from the old player zip), RenoDX_Attila_v2.5.7.zip and
+  twwarhammer3_v42.zip pass. player_zip.py run into the scratchpad (v146 release + v2.5.7 player): 47 files, the same
+  entries as v2.5.7 but the READ ME's name, the check passes; release_zip.py not run (repack_game.py writes into
+  Downloads), compiled only.
 - [ ] 6 SKILL.md and release / testing steps point at the tools.
 
 ## CPU ROUND (2026-11-13 night)
