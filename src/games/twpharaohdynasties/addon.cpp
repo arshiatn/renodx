@@ -1517,27 +1517,6 @@ constexpr auto OnLightCountDraw = []<typename Context>(Context& command) -> reno
   return {};
 };
 
-// The Ray Tracing Debug View's Screen-Space AO: the AO the sun draws read at ao_slot (the game's SSAO or GT-VBAO, blurred),
-// copied before the rays' combine and the AO filter put theirs there (registered before their hooks). No AO pass hook
-// keeps it here (ssao01 binds no camera). Its texture holds the render's share at its top left: rt_debug's own mapping.
-constexpr auto OnSunDebugAmbient = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (rt_sliders.debug_view < 8.f || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE || !twattila::frame_history::MainViewport(native)) return {};
-  const auto& sun_draw = command.template GetCallbackData<T>();
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_ambient;
-  native->PSGetShaderResources(sun_draw.ao_slot, 1, game_ambient.GetAddressOf());
-  if (!game_ambient) return {};
-  twattila::rt_scene::KeepDebugAmbient(native, game_ambient.Get(), 1.f);
-  static std::atomic_bool logged = false;
-  if (!logged.exchange(true)) {
-    renodx::utils::log::i(std::format("[Total War] First run: the Debug View's Screen-Space AO from sun draw {:08X} (t{}).", sun_draw.shader_hash,
-                                      sun_draw.ao_slot));
-  }
-  return {};
-};
-
 // One method for contact shadows: the sun PS's own march toward the sun (lighting_VS_PS's g_contact_shadows, an int at byte 4
 // in all 25 sun draws; 16 steps at ATN's settings, its result min'ed into the shadow) goes in a sun draw that ours shadow:
 // Bend or the rays, whose mask screen_space_shadows' OnSunDraw (registered before this) bound at t49 for that draw. The draw
@@ -3033,13 +3012,9 @@ bool AttachAddon() {
       OnWaterApplyDraw, {.shader_hash = 0xDE4F92CD, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   renodx::utils::log::i("[Total War] Ray-Traced Water Reflections: hooks applied (9A55B7F2, 0B78827B, 55298A11, F49D4738, DE4F92CD).");
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
-  // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads).
-  for (const auto& sun_draw : LIGHT_BOUNCE_DRAWS) {
-    if (sun_draw.ao_slot == UINT_MAX) continue;
-    renodx::utils::command_action::Register(
-        OnSunDebugAmbient, {.shader_hash = sun_draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW},
-        &sun_draw);
-  }
+  // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
+  // keeps it here (ssao01 binds no camera).
+  twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube starts at
   // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z; WARP on all 25 sun shaders, tools\tw\pharaoh\sun_test), the
@@ -3183,7 +3158,6 @@ void DetachAddon() {
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
-  renodx::utils::command_action::Unregister(OnSunDebugAmbient);
   renodx::utils::command_action::Unregister(OnSunContactShadows);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyContactShadowsDevice);
   OnDestroyContactShadowsDevice(nullptr);

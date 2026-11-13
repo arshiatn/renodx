@@ -351,6 +351,44 @@ inline void KeepDebugAmbient(ID3D11DeviceContext* native, ID3D11ShaderResourceVi
   runtime.debug_ambient_frame = runtime.frame;
 }
 
+namespace internal {
+// InstallSunDebugAmbient's: the addon's sliders, whose Debug View each sun draw reads first.
+static const Sliders* debug_ambient_sliders = nullptr;
+}  // namespace internal
+
+// A sun light draw where no AO pass hook keeps the Debug View's Screen-Space AO: the AO it reads at ao_slot (the game's SSAO
+// or GT-VBAO, blurred), copied before the rays' combine and the AO filter put theirs there. Mapping 1 (rt_debug's own): the
+// sun shaders of Pharaoh, Troy, Warhammer and Warhammer II read it at (SV_Position + g_vpos_texel_offset) x g_screen_size.zw,
+// the textures' own uv (their render's share at the top left), as their G-buffer.
+constexpr auto OnSunDebugAmbient = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (internal::debug_ambient_sliders->debug_view < 8.f) return {};
+  auto* native = internal::NativeContext(command.cmd_list);
+  if (native == nullptr || !frame_history::MainViewport(native)) return {};
+  const auto& draw = command.template GetCallbackData<light_bounce::SunDraw>();
+  ComPtr<ID3D11ShaderResourceView> game_ambient;
+  native->PSGetShaderResources(draw.ao_slot, 1, game_ambient.GetAddressOf());
+  if (!game_ambient) return {};
+  KeepDebugAmbient(native, game_ambient.Get(), 1.f);
+  static std::atomic_bool logged = false;
+  if (!logged.exchange(true)) {
+    renodx::utils::log::i(std::format("[Total War] First run: the Debug View's Screen-Space AO from sun draw {:08X} (t{}).", draw.shader_hash,
+                                      draw.ao_slot));
+  }
+  return {};
+};
+
+// The Debug View's Screen-Space AO at the sun draws with an ao_slot (OnSunDebugAmbient), the addon's, kept while installed:
+// before every other sun draw hook (InstallSunDraws', the AO filter's: they bind their AO in its place). `sliders`: the
+// addon's, kept too.
+inline void InstallSunDebugAmbient(std::span<const light_bounce::SunDraw> sun_draws, const Sliders* sliders) {
+  internal::debug_ambient_sliders = sliders;
+  for (const auto& draw : sun_draws) {
+    if (draw.ao_slot == UINT_MAX) continue;
+    renodx::utils::command_action::Register(
+        OnSunDebugAmbient, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
+  }
+}
+
 // The game's ambient occlusion pass (pre callback): this frame's trace; after it (post), its result times the traced
 // ambient visibility.
 constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
@@ -1250,6 +1288,7 @@ inline void Uninstall() {
   light_bounce::SetRayTracedTrace(nullptr);
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
+  renodx::utils::command_action::Unregister(OnSunDebugAmbient);
   if (internal::ambient_cube != 0) renodx::utils::command_action::Unregister(OnPathAmbientDraw);
   if (std::exchange(internal::fog_shadows_installed, false)) renodx::utils::command_action::Unregister(OnFogDraw);
   if (std::exchange(internal::smoke_shadows_installed, false)) {
