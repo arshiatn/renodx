@@ -546,7 +546,9 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
     for (uint32_t lod = 0; lod < count; ++lod) {
       float distance;
       std::memcpy(&distance, entries[lod] + 0x38, sizeof(distance));
-      if (entries[lod][0x44] != 0 && distance > farthest) farthest = distance;
+      if (entries[lod][0x44] != 0 && distance > farthest) {
+        farthest = distance;
+      }
     }
   }
   double reach = 0.0;  // metres (0: no scrub model with an enabled LOD found, the cells left as they are)

@@ -9,6 +9,7 @@
 // 2. A lone rewrite of a later LOD (no game path does this): the new cache scales it at the next call (the closed form);
 //    the old one only at its next miss (printed, not compared).
 // 3. Four threads on shared models (the game's TBB workers), each model scaled once first: both end at the closed form.
+//    3 cold: the same on new models without that first scaling: this version at the closed form (v157 printed).
 //    3b: a model's first scaling from four threads at once: v157 scaled some models twice (its map path's read, write and
 //    insert were three steps; printed), this one never (the map path under the entry's lock: every model = closed form).
 // 4. Cost: ns a call, cells alternating 6 models, runs of one model, and 128 models in turn (more than the cache holds:
@@ -534,6 +535,35 @@ int main() {
     }
     CHECK(Same(old_world, new_world));
     std::printf("3 four threads x 50000 calls on 16 models: both = closed form\n");
+  }
+  // 3 cold: the same without the first scaling on this thread (658223e3's section 3, its check at line 277 failing about
+  // 1 run in 20 on amd64 through the first-touch race): this version = closed form; v157's models off it printed.
+  {
+    World old_world;
+    World new_world;
+    for (size_t model = 0; model < 16; ++model) {
+      const auto distances = Distances(&random, 1 + (model % 5));
+      old_world.Add(distances);
+      new_world.Add(distances);
+    }
+    constexpr float SCALE = 6.25f;
+    std::vector<std::thread> threads;
+    for (uint32_t thread = 0; thread < 4; ++thread) {
+      threads.emplace_back([&, thread] {
+        for (uint32_t round = 0; round < 50000; ++round) {
+          const uint32_t model = (round * 7 + thread * 3) % 16;
+          old::ScaleModelLods(old_world.manager.get(), model, SCALE);
+          hooks::internal::ScaleModelLods(new_world.manager.get(), model, SCALE);
+        }
+      });
+    }
+    for (auto& thread : threads) thread.join();
+    uint32_t old_off = 0;
+    for (size_t model = 0; model < 16; ++model) {
+      CHECK(ClosedForm(new_world, model, SCALE));
+      old_off += ClosedForm(old_world, model, SCALE) ? 0u : 1u;
+    }
+    std::printf("3 cold four threads x 50000 calls on 16 new models: this = closed form; v157 %u models off\n", old_off);
   }
 
   // 3b. Cold starts: 200 times four threads started together on 16 new models (each version on its own copy).
