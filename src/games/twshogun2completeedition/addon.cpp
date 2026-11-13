@@ -941,6 +941,16 @@ void ReadDlssAddonOptions() {
   int sss_stability = 0;
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", sss_stability);
   shader_injection.sss_stability = static_cast<float>(std::clamp(sss_stability, 0, 2));
+  // Bend's parameters (0: the game's).
+  const auto read_bend = [](const char* key, float max, float* setting) {
+    float value = 0.f;
+    reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+    *setting = std::clamp(value, 0.f, max);
+  };
+  read_bend("SSSThickness", 0.05f, &shader_injection.sss_thickness);
+  read_bend("SSSContrast", 8.f, &shader_injection.sss_contrast);
+  read_bend("SSSEdgeThreshold", 0.1f, &shader_injection.sss_edge_threshold);
+  read_bend("SSSPrecisionOffset", 1.f, &shader_injection.sss_precision_offset);
   int shadow_map_stability = 0;
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ShadowMapStability", shadow_map_stability);
   shader_injection.shadow_map_stability = static_cast<float>(std::clamp(shadow_map_stability, 0, 2));

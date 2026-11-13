@@ -197,6 +197,12 @@ int shadow_map_stability = 0;  // overlay
 // ReShade.ini SunShadowSoftness (HDR addon, pcss.hlsli): contact-hardening sun shadows, the sun's size in degrees; 0 the
 // game's filter. In no preset (ATN removed the uniform shadow softness: this one changes the look too).
 float sun_shadow_softness = 0.f;  // overlay
+// ReShade.ini SSSThickness, SSSContrast, SSSEdgeThreshold, SSSPrecisionOffset (HDR addon, sss.hlsli: Bend's parameters;
+// 0 the game's). Advanced settings only, in no preset.
+float sss_thickness = 0.f;       // overlay
+float sss_contrast = 0.f;        // overlay
+float sss_edge_threshold = 0.f;  // overlay
+int sss_precision_offset = 0;    // overlay
 // Ambient Occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce): the HDR addon's
 // (twattila/lighting_settings.hpp's settings; it reads these from ReShade.ini). Defaults: ATN's recommended presets
 // (Global Illumination off).
@@ -683,6 +689,25 @@ void OnOverlay(reshade::api::effect_runtime*) {
                     "Less flickering screen-space shadows. Steadier: softer shadow edges.\n"
                     "Steadiest: also no shadows from thin edges (slightly thinner shadows).")) {
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", sss_stability);
+  }
+  if (advanced) {
+    if (float_slider("SSS thickness (Experimental)", &sss_thickness, 0.f, 0.05f, (sss_thickness == 0.f ? "Game's" : "%.4f"), 0.f,
+                     "How thick each pixel counts as for casting screen-space shadows. Thicker: fuller shadows, more halos.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSThickness", sss_thickness);
+    }
+    if (float_slider("SSS contrast (Experimental)", &sss_contrast, 0.f, 8.f, (sss_contrast == 0.f ? "Game's" : "%.2f"), 0.f,
+                     "How fast screen-space shadows go from lit to shadowed (the game's: 4; halved by Shadow stability).")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSContrast", sss_contrast);
+    }
+    if (float_slider("SSS edge threshold (Experimental)", &sss_edge_threshold, 0.f, 0.1f,
+                     (sss_edge_threshold == 0.f ? "Game's" : "%.4f"), 0.f,
+                     "Depth jumps above this count as edges, not blended between. Lower: crisper, more aliasing.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSEdgeThreshold", sss_edge_threshold);
+    }
+    if (choice_slider("SSS precision offset (Experimental)", &sss_precision_offset, OFF_ON.size(), OFF_ON[sss_precision_offset], 0,
+                      "A small offset for depth imprecision: less shadow acne far away, contact shadows start a bit later.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", sss_precision_offset);
+    }
   }
   if (choice_slider("Shadow map resolution", &shadow_map_resolution, SHADOW_MAP_RESOLUTIONS.size(),
                     SHADOW_MAP_RESOLUTIONS[shadow_map_resolution], GRAPHICS_DEFAULT.shadow_map_resolution,
@@ -1191,6 +1216,12 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SunShadowSoftness", value)) {
     sun_shadow_softness = std::clamp(value, 0.f, 5.f);
   }
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSThickness", value)) sss_thickness = std::clamp(value, 0.f, 0.05f);
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSContrast", value)) sss_contrast = std::clamp(value, 0.f, 8.f);
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSEdgeThreshold", value)) {
+    sss_edge_threshold = std::clamp(value, 0.f, 0.1f);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", value)) sss_precision_offset = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", value) && value >= 0
                       && value < static_cast<int>(SSS_STABILITIES.size())) {
     sss_stability = value;
