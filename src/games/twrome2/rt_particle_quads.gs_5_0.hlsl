@@ -17,8 +17,8 @@
 //   type (TEXCOORD4.x) it lights takes its diffuse (TEXCOORD4.y: t0-t6, s2-s8) at the uv, blended to the next cell's
 //   (TEXCOORD7: xy, z the blend, x 0 none) at the mip level its sample takes at that centre, times COLOR's w; a type it
 //   does not light casts nothing (fire's glow), its soft edge (the scene's depth) depends on the view: left out.
-//   The effects draw at half the screen's size (vp 1920x1080 of a 3840x2160 target in ATN's runs): a pixel two of
-//   g_viewport_dimensions'. A particle around the camera casts none.
+//   The pixels are g_viewport_dimensions' (camera c29): the effects' own viewport, at any of their sizes (all 3,025 smoke
+//   draws of ATN's runs: vp 3840x2160 to 1280x720, c29 the same). A particle around the camera casts none.
 // The input is the vertex shaders' whole output signature (the three alike: fxc /dumpbin of the game's bytes).
 // CMake's shader rule takes no gs_ target: after a change run from the repository's root, for each of 18FE5E2B, 085DDEDD,
 // B5D63E8A (here 18FE5E2B)
@@ -118,7 +118,7 @@ void main(triangle Corner corners[3], uint primitive : SV_PrimitiveID, inout Poi
   float4 clip_y;
   Axes(corners[0].position, corners[1].position, corners[2].position, along_first, along_second, area, clip_x, clip_y);
   const float4 clip = (corners[0].position * first) + (corners[1].position * second) + (corners[2].position * third);
-  const float2x2 per_pixel = PerPixel(clip, clip_x, clip_y, 0.25f * camera[29].xy);
+  const float2x2 per_pixel = PerPixel(clip, clip_x, clip_y, 0.5f * camera[29].xy);
 
   const Corner particle = corners[0];
   const int type = (int)floor(particle.kind.x + 0.1f);
