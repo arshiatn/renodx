@@ -133,7 +133,27 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   apart. Listed, not fixed: the shadowed pair (03B9CEFE / 9D28319F) keeps 57 of 24,576 values apart at 33% with the
   refraction as drawn, the same 57 with a constant AO and the game's bytes: their refraction read (its distortion a uv offset
   of the whole texture), the game's own, not the AO. In no trace (ATN: a settlement with pools, Ultra Performance).
-- [ ] 5 7b (DE4F92CD vb0 at 50%) and 7c (the 24 sun PS at 33% against 100%) offline WARP checks.
+- [x] 5 7b / 7c offline WARP checks; nothing fixed (7b needs the vb0 read; 7c's one fault is the game's own march, below).
+  - 7b tools/tw/warp_tests/pharaoh/apply_scale_v61 (run_v61.txt): A0EA5C9E passes vb0's position and TEXCOORD0 through
+    (fxc); DE4F92CD reads t_mask / the G-buffer at TEXCOORD0 x the mask's size and builds its NDC from TEXCOORD0 x (c31.xy x
+    c29.zw), so it is right only if TEXCOORD0 is the target's uv. WARP at 50% against 100% (W2's ratios, flat normals, misc.y
+    0 and 1): U2 (TEXCOORD0 0..0.5) the game's bytes (view_share leaves them: ndc / projected / region 0) and our built copy
+    0 of 6,144 apart beyond 8 px; U1 (TEXCOORD0 0..1, a quad written for 100%) both 5,892-5,944 apart (largest 25.7). The
+    tone mapper 976C1C74 sharing vb0 doesn't read TEXCOORD0, so it pins nothing. Listed: with normals varied the game's own
+    distortion (0.7 x (n.xy - 0.5) in uv of the whole SSR texture) spans twice the picture's texels at 50% (4,519 apart under
+    U2 too). NOT DONE (needs step 7's vb0 read): if vb0 holds 0..1, the game's apply and ours are wrong below 100%; smallest
+    fix then: ours takes the target uv from SV_Position x c31.zw (and the game's chain the same through a patch).
+  - 7c tools/tw/warp_tests/pharaoh/sun_scale_v61 (run_v61.txt): the 9 single-sampled LIGHT_BOUNCE_DRAWS (the _ms ones never
+    draw scaled: the game's MSAA keeps the render scale off) with F883F5B2's six buffers from A2 trace_100 (by name; trace_33's
+    differ by DLSS jitter and time, so the camera's c27 / c29 / c31 are set per scale as trace_33 shows them), R32 shadow
+    maps: SUN SCALE V61 ALL PASSED with the game's contact shadows off (as OnSunContactShadows leaves them under Bend or the
+    rays): 33% patched against 100% 0 of 6,144 apart in all 9 (FFD99CCD needs view_share's NDC patch: unpatched 4,608 apart;
+    the other 8 build their NDC from c29 and match unpatched too). NOT DONE: with the game's contact shadows on (the traces'
+    flag; only where neither Bend nor the rays shadow the draw) 5 of 9 (40BE26E9, 5FF8081D, FFD99CCD, 46B411BB, 6C317272)
+    stay 573-1,180 apart at 33%: the game's march reads its depth at ndc x (0.5, -0.5) + 0.5 x resinfo (ld t8: the whole
+    texture, not the render share) and steps 6 / max(texture size) (FFD99CCD asm l.221-310). Smallest step: a view_share
+    patch for that projected uv into an ld (x cb12.zw) and the step x the share, WARP as sun_scale_v61 with the flag on; or
+    the game's march off below 100% (a look change: Experimental). ATN's presets (rays) never run the game's march.
 - [ ] 6 Pharaoh PT GI sun colour (sun texel 2, RT_PATH_SUN_LIGHT) as Attila's helper107 fix.
 - [ ] 7 Trace reads for one later siege-benchmark run (frame_trace Options, Pharaoh only, off by default).
 - [ ] 8 Builds, tests, page dumps, README Round v61, skill rows.
