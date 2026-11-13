@@ -189,6 +189,20 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   1920x1080 viewport: the uv isn't the render share (fix: uv from SV_Position x share). Smoke: 90 of 90 sorted particles
   listed; projection to do.
 - [ ] 11 7b fix (SSR apply below 100%) + smoke projection (off-screen particles in the CPU list?) + the lever if so.
+  - [x] 11a 7b fix: DE4F92CD reads every texture at TEXCOORD0 (t_mask / depth / normals / specular / the rays at TEXCOORD0 x
+    the mask's size; the NDC from TEXCOORD0 x c31.xy x c29.zw; the SSR colour at TEXCOORD0 x 0.5 x mask / colour size + a
+    distortion in the colour texture's whole uv), none at SV_Position; B61's vb0 holds 0..1 over the viewport, so below 100% all
+    read the display-size textures whole (and the rays at 2x the pixel). Ours (shaders/ssrapply00): uv = TEXCOORD0 x
+    DrawRenderShare() and the distortion x the share; OnWaterApplyDraw draws it below 100% with or without the rays (the game's
+    own bytes at 100% without them) and binds cb12 itself (the game's pipeline isn't view_share's: nothing in it is patched),
+    the draw's viewport / target. WARP tools/tw/warp_tests/pharaoh/apply_share_v62 (run.sh, run_v62.txt): ALL PASSED: 100%
+    v62 = v61's build bit for bit (rays unbound, bound, cb12 1) and = the game's bytes; 50% U1 0 apart (bit-equal) with and
+    without the rays, normals flat and varied, misc.y 0 / 1; 33% 0 apart except the distortion's bilinear read (listed: 2,112
+    values; its texel coordinates within 7.6e-6 of 100%'s by the probe, WARP's weights differ by texture size at one
+    coordinate; with s1 point 0 apart); CONTROLs: the game's bytes / v61 / v62 without cb12 at 50% 5,424-5,908 apart, the
+    game's at U2 (uv right, distortion not) 2,576-4,667, the probe's unscaled distortion 7.8 / 15.7 texels. Listed, not
+    changed: the SSR colour's mip (16 x roughness) is in texels, so rough water blurs 2x at 50% (a look choice). Later run:
+    log "First run: the water's reflection apply DE4F92CD below 100%".
 
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed

@@ -434,7 +434,7 @@ void BuildRuntimeData() {
   };
   // The fog's in-scattering stays the game's: our copy is bound only for Fog Shadows' draws (OnFogShadowsDraw).
   custom_shaders.erase(FOG_SHADERS[0]);
-  // So does the water's reflection apply: ours only where the rays left from the water (OnWaterApplyDraw).
+  // So does the water's reflection apply: ours only where the rays left from the water or below 100% (OnWaterApplyDraw).
   custom_shaders.erase(0xDE4F92CD);
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
@@ -1762,8 +1762,19 @@ struct WaterReflections {
   Microsoft::WRL::ComPtr<ID3D11PixelShader> game_apply;  // bound again after the draw
   bool msaa_logged = false;
   bool logged = false;
+  bool scaled_logged = false;
 };
 WaterReflections water_reflections;
+// Our apply made on `device` (again on a new one); false: not made. With water_reflections' lock held.
+bool MakeWaterApply(ID3D11Device* device) {
+  auto& state = water_reflections;
+  if (state.device == device) return true;
+  state.apply.Reset();
+  state.device = nullptr;
+  if (FAILED(device->CreatePixelShader(__0xDE4F92CD.data(), __0xDE4F92CD.size(), nullptr, state.apply.GetAddressOf()))) return false;
+  state.device = device;
+  return true;
+}
 // False: left out (the rays left from the water).
 bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
   water_rays.store(false, std::memory_order_relaxed);
@@ -1812,12 +1823,7 @@ bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
   Microsoft::WRL::ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
   const std::unique_lock lock(state.mutex);
-  if (state.device != device.Get()) {
-    state.apply.Reset();
-    state.device = nullptr;
-    if (FAILED(device->CreatePixelShader(__0xDE4F92CD.data(), __0xDE4F92CD.size(), nullptr, state.apply.GetAddressOf()))) return true;
-    state.device = device.Get();
-  }
+  if (!MakeWaterApply(device.Get())) return true;
   water_rays.store(true, std::memory_order_relaxed);
   if (!std::exchange(state.logged, true)) {
     renodx::utils::log::i("[Total War] First run: Ray-Traced Water Reflections: the game's screen-space reflections (9A55B7F2, 0B78827B and "
@@ -1828,18 +1834,48 @@ bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
 
 // The apply DE4F92CD where the rays left from the water this frame: the rays bound (t46, t47, b10: rt_scene's BindReflections)
 // and our copy in the game's place for this draw; the game's shader bound again and the rays unbound after it (finalize).
+// Below 100% ours also without the rays: the quad's TEXCOORD0 spans the viewport (A0EA5C9E's vb0 0..1 at any scale, B61
+// trace_50 l.3173), which the game's code takes for the target's uv, so it read the display-size textures whole; ours takes
+// the draw's share from cb12 (WARP tools\tw\warp_tests\pharaoh\apply_share_v62).
 constexpr auto OnWaterApplyDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (!water_rays.load(std::memory_order_relaxed) || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  const bool rays = water_rays.load(std::memory_order_relaxed);
+  if ((!rays && twattila::frame_history::render_width.load(std::memory_order_relaxed) == 0)
+      || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
+    return {};
+  }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
-  const bool bound = twattila::rt_scene::BindReflections(command.cmd_list, false, true);
+  D3D11_VIEWPORT viewport = {};
+  UINT viewport_count = 1;
+  native->RSGetViewports(&viewport_count, &viewport);
+  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
+  native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+  D3D11_TEXTURE2D_DESC target_desc = {};
+  if (Microsoft::WRL::ComPtr<ID3D11Resource> resource; target) {
+    target->GetResource(resource.GetAddressOf());
+    if (Microsoft::WRL::ComPtr<ID3D11Texture2D> texture; SUCCEEDED(resource.As(&texture))) texture->GetDesc(&target_desc);
+  }
+  if (viewport_count == 0 || target_desc.Width == 0 || target_desc.Height == 0) return {};
+  const float share_x = std::clamp(viewport.Width / static_cast<float>(target_desc.Width), 0.f, 1.f);
+  const float share_y = std::clamp(viewport.Height / static_cast<float>(target_desc.Height), 0.f, 1.f);
+  const bool scaled = share_x < 1.f || share_y < 1.f;
+  if (!rays && !scaled) return {};
+  const bool bound = rays && twattila::rt_scene::BindReflections(command.cmd_list, false, true);
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
   auto& state = water_reflections;
   const std::unique_lock lock(state.mutex);
-  if (!bound || !state.apply) {
+  if ((rays && !bound) || !MakeWaterApply(device.Get())) {
     twattila::rt_scene::BindReflections(command.cmd_list, false, false);
     return {};
   }
+  if (scaled && !std::exchange(state.scaled_logged, true)) {
+    renodx::utils::log::i("[Total War] First run: the water's reflection apply DE4F92CD below 100%: ours with the draw's share (",
+                          share_x, " x ", share_y, ")", (rays ? ", with the rays." : ", the game's reflections."));
+  }
+  // zw (the frame's share) unread by ours: the draw's.
+  twattila::view_share::internal::Bind(native, {share_x, share_y, share_x, share_y}, reshade::api::pipeline_stage::pixel_shader);
   native->PSGetShader(state.game_apply.ReleaseAndGetAddressOf(), nullptr, nullptr);
   native->PSSetShader(state.apply.Get(), nullptr, 0);
   return {.finalize_callback = [](Context& drawn, const void*) {

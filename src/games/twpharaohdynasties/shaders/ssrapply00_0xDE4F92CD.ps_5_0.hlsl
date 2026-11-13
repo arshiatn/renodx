@@ -1,7 +1,8 @@
 // ssr_new ps50_apply (the water's screen-space reflections into the light buffer: its SSR over the cube, the sun's lobe and
 // the fog, by the water's weight): the game's, with the ray-traced reflections in its SSR's place where they left from the
-// water (twpharaohdynasties/addon.cpp OnWaterApplyDraw; twattila/rt_reflection.hlsli). Drawn only then; otherwise the game's
-// own bytes. WARP against them: tools\tw\warp_tests\pharaoh\ssr_v56.
+// water (twpharaohdynasties/addon.cpp OnWaterApplyDraw; twattila/rt_reflection.hlsli), and below 100% with or without them;
+// otherwise the game's own bytes. WARP against them: tools\tw\warp_tests\pharaoh\ssr_v56, apply_share_v62.
+#include "../../twattila/render_scale.hlsli"
 #include "../../twattila/rt_reflection.hlsli"
 
 cbuffer environment_PS : register(b0)
@@ -216,9 +217,13 @@ void main(
   uint4 bitmask, uiDest;
   float4 fDest;
 
+  // The quad's TEXCOORD0 spans the viewport at any scale (A0EA5C9E's vb0 0..1), which the game's code takes for the target's uv:
+  // below 100% that is TEXCOORD0 x the draw's share, and its distortion (a uv offset of the whole SSR texture) x the share too.
+  const float2 share = DrawRenderShare();
+  const float2 uv = v1.xy * share;
   t_mask_src.GetDimensions(0, fDest.x, fDest.y, fDest.z);
   r0.xy = fDest.xy;
-  r0.zw = v1.xy * r0.xy;
+  r0.zw = uv * r0.xy;
   r1.xy = (int2)r0.zw;
   r1.zw = float2(0,0);
   const int2 rt_render_pixel = (int2)r1.xy;
@@ -238,7 +243,7 @@ void main(
       r3.z = t_depth_src.Load(r1.xyw).x;
     }
     r2.zw = g_render_target_dimensions.xy * g_viewport_dimensions.zw;
-    r2.zw = v1.xy * r2.zw;
+    r2.zw = uv * r2.zw;
     r3.xy = r2.zw * float2(2,-2) + float2(-1,1);
     r3.w = 1;
     r4.x = dot(r3.xyzw, inv_view_projection_matrix._m00_m10_m20_m30);
@@ -282,7 +287,7 @@ void main(
     r1.yz = fDest.xy;
     r0.xy = float2(0.5,0.5) * r0.xy;
     r0.xy = r0.xy / r1.yz;
-    r0.xy = v1.xy * r0.xy + r7.xy;
+    r0.xy = uv * r0.xy + r7.xy * share;
     const bool rt_water = RtReflectionsBound() && RtWaterReflections();
     if (rt_water) {
       const float4 rt_traced = t_rt_reflection.Load(int3(rt_render_pixel, 0));
