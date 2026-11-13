@@ -2017,13 +2017,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
 // out as there: the game draws them unlit (material 10) and gives them no shadow.
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{{.hash = 0x2F2A0E7E}, {.hash = 0x8DE94E2F}}};
 
-// The game's passes that read render-size textures at the display's size (texture slots), below 100%; and the AO blurs,
-// which read their input at their uv (TEXCOORD0 of the full-screen vertex shader 31C49ED2: 0-1 over the viewport, the
-// render scale's share of their half-size target).
-constexpr std::array<twattila::view_share::RegionRead, 3> RENDER_SCALE_READS = {{
+// The game's passes that read render-size textures at the display's size (texture slots), below 100%. The AO blurs
+// (7F637259 / BFD285BD) are replaced (shaders/ssao_blur.hlsli): a region read scaled their taps with their uv.
+constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
     {.shader_hash = 0x57E5140E, .slots = 0b110},  // glow bright pass (after DLSS)
-    {.shader_hash = 0x7F637259, .slots = 0b1},    // ssao2 blur_x
-    {.shader_hash = 0xBFD285BD, .slots = 0b1},    // ssao2 blur_y
 }};
 // The game's 3D sprites (sprite.hlsl vertex_3d_gamma: the unit markers) drawn at the display's size after the tone mapper
 // against the scene's depth (battle f07e0, siege 3aa60) and, in the battle, its copy (ec5e0): both stretched below 100%.

@@ -45,7 +45,9 @@ float3 AoSamplePosition(float2 uv, float2 depth_texel, DepthLevels levels, uint 
   if (level == 0u) {
     depth = AoDepth((texel + 0.5f) * depth_texel);
   } else {
-    texel = DepthLevelLoad(levels, level, uv / depth_texel, depth);
+    // Held on the picture's last depth texel, as the levels hold it on theirs when the picture fills the depth (the same
+    // texels then); below 100% Pharaoh's picture is the depth's top-left share (depth_texel the share's).
+    texel = DepthLevelLoad(levels, level, min(uv / depth_texel, round(1.f / depth_texel) - 1.f), depth);
   }
   return AoViewPosition((texel + 0.5f) * depth_texel, depth);
 }

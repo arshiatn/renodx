@@ -1,5 +1,48 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
+Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
+Bytes under 60 GB before WARP. One writer; read-only surveys beside (tools\tw\pharaoh\v58: scale_census.md, caster_census.md).
+Each step committed and pushed to origin atn-mods.
+- [x] 1 (step 1 commit) WARP tools\tw\warp_tests\pharaoh\ao_v58 (run_v58.txt, PASS): Reflect: 70 of 179 built csos render_scale, 0
+  of 3168 game csos; our blurs at 100% 0 of 57,600 values apart (bits) from the game's; at 33% (3x) against 100%: bitmask Full 0
+  of 12,464 px beyond 8 px of the edges (2 of 14,400 overall), Half 0 of 14,400; after the blurs 0 / 0 of 12,464 (Full 24 edge px,
+  largest 0.027); CONTROLs: cb12 unbound 13,936 apart (top-left ninth 0.467 against 0.173), v53's patched blurs 14,087. The depth
+  levels now held on the picture's last texel (twwarhammer2/bitmask_ao.hlsli: the same texels wherever depth_texel is the whole
+  depth's: Troy, WH2, WH3, Shogun 2, line sweep). The GT-VBAO rectangle at Ultra Performance: cause (WARP, scratch v58\scale_survey\ao33): the build strips every addon
+  shader's reflection (CMakeLists.txt /Qstrip_reflect), so twattila/view_share.hpp Reflect never sees `render_scale` at b12 in
+  our replaced shaders (ssao01 D42C3523 + ao_bitmask swapped in, t03 60683951, fire02 E318CE77 ...): they get no cb12 of their
+  own and FrameRenderShare() reads whatever b12 is left bound (null: 1, the whole 1920x1080 depth squeezed into the 640x360
+  AO viewport = the top-left rectangle). Fix: Reflect takes a code with no RDEF that declares cb12 as render_scale (shared: every
+  TW addon's render_scale replacements, the same bug). Second: the AO blurs' REGION read scales the taps too (a third of a texel
+  apart at 33%): blurs replaced, base uv x share, taps in texels.
+- [ ] 2 clouds below 100%: post-DLSS reads of the shroud's cloud alpha (5EB2FDE8's 1920x1080 output) at the display uv: glow
+  bright pass 57E5140E t0 (region slots 0b111, view_share's display-size test over any region slot) and t03 60683951 t2
+  (x FrameRenderShare). Over-patches (Classify followed one source: c27 x (c29 x c31) corrected twice): 99164788, DB53BDDC,
+  5EB2FDE8. Sweep: tools\tw\pharaoh\v58\scale_census.md.
+- [ ] 3 campaign casters (tools\tw\pharaoh\v58\caster_census.md): palms = 1C4B8681 (campaign_trees, not in SCENE_SHADERS;
+  atlas via DC5FE525 + 985F8494), 1ACBD907 + D24616D0 (and 730C5322 / 509F97FB / 85E52BED / A6C653E1) not in BUILDING_MASKS,
+  58733DB8 campaign blend-mask terrain, 026CBC61 global terrain mesh; 6A599241's alpha-tested PS solid.
+  Plan A palms: rt_capture_rigid_standard with RT_CAPTURE_UV (RtWorldUv(world, o2.xy)) + rt_capture_rigid_standard_cut_out;
+  {0x1C4B8681, cut_out, rows 6a59 record, .foliage, .still} (VS = 6A599241's + an x/z sway <= 0.12 m x the wind multiplier; PS
+  B97AD7BC discards t0.w x fade < 0.505 and a fade dither). B: D24616D0 (+4) to BUILDING_MASKS. E: 6A599241 cut-outs (81931C18,
+  BD6C63DE, 4B9BDD76, 7550C192: t0.w < 0.5 at o2). C/D: 58733DB8 (drape, dynamic), 026CBC61 (terrain). Census data:
+  tools\tw\pharaoh\v58\vs_table.txt, coverage.tsv, campaign_groups.txt; scale: census_pharaoh.txt / .tsv (whole dump: 34 BUG A, 27
+  BUG B; over-patch hits 35: the 24 sun shaders' SSEO block NDC, shroud_plane x7, battlefog 99164788 / 0CB1C821, DB53BDDC, 6ECC6281;
+  3F1B86E1 / E8524BB1 replacement lost view_share's NDC patch; phar_building_water_01 t_ssao at view uv (not traced)). Agents'
+  scratch: ...\scratchpad\v58\{scale_survey,casters,water,torch}.
+- [ ] 4 torch shadow flicker (campaign). Survey: the helper's soft torch rays (rt_lights.cs_6_5.hlsl 200-216) take a new random disk
+  point every frame (seed (frame*128+light)*16+ray*2), one ray, a 0/1 bit, no filter (only RR averages); Importance holds old bits
+  per 8x8 block (165, 179-194). No GPU flicker term in E19549A1 / fire02. Options: fixed per-pixel 4x4 disk pattern rotated by a
+  position hash (helper, bridge v32) + a filter; steady light positions in the addon.
+- [ ] 5 Water Clarity / Water Caustics rows for Pharaoh's water. Survey (WARP prototype scratch v58\water): water_effects' material
+  path refuses all 84 Pharaoh water PS (absorption exp2(-depth x opacity) has no log2(e)); opacity operands cb4[3].w (sea),
+  cb5[3].w (campaign sea), v11.w (river COLOR2.w), cb3[45].w (big river). Plan: WaterShader.opacity {type, index, component}
+  (0: WH3's rule), PatchWaterAbsorption(code, opacity), caustics only with water.caustics; table tools\tw\pharaoh\v58\
+  pharaoh_water_table.txt; WARP: WH3 6 of 6 byte-identical, Pharaoh 84 neutral 0 bits apart, controls move.
+- [ ] 6 builds (x64 list + build32), suites, page dumps.
+- [ ] 7 README Round v58, test list, skill rows + census procedures.
+
 ## PHARAOH V57: SMOKE SHADOWS (2026-11-13 night, offline; hard stop 05:30)
 Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes
 under 60 GB before GPU / WARP jobs (18.6 GB at 02:06). One writer. Each step committed and pushed to origin atn-mods.

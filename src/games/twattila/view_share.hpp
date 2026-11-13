@@ -111,6 +111,23 @@ inline Reflection Reflect(std::span<const uint8_t> code, const dxbc::Program& pr
     const size_t length = std::strlen(name) + 1;
     return at + length <= code.size() && std::memcmp(code.data() + at, name, length) == 0;
   };
+  // The addon's shaders are built without reflection (CMakeLists.txt: /Qstrip_reflect), the game's keep theirs: a shader with
+  // no RDEF that declares cb12 is one of the addon's render_scale replacements (render_scale.hlsli). Without this its draws got
+  // no cb12 of their own and read whatever b12 another draw left bound (Pharaoh v58: GT-VBAO squeezed into the top-left ninth).
+  const bool reflected = std::ranges::any_of(program.offsets, [&](uint32_t offset) {
+    return offset + 8 <= code.size() && std::memcmp(code.data() + offset, "RDEF", 4) == 0;
+  });
+  if (!reflected) {
+    const auto& tokens = program.tokens;
+    for (size_t at = 2; at < tokens.size();) {
+      const size_t length = dxbc::Length(tokens, at);
+      if (length == 0) break;
+      const uint32_t opcode = tokens[at] & 0x7FF;
+      if (!IsDeclaration(opcode, tokens[at])) break;
+      if (opcode == OP_DCL_CONSTANT_BUFFER && length >= 3 && tokens[at + 2] == SLOT) reflection.render_scale = true;
+      at += length;
+    }
+  }
   for (const uint32_t offset : program.offsets) {
     if (offset + 8 > code.size() || std::memcmp(code.data() + offset, "RDEF", 4) != 0) continue;
     const size_t data = offset + 8;
