@@ -34,6 +34,7 @@
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/ssr_hiz.hpp"
+#include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
 #include "./engine_tweaks.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -1736,6 +1737,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
+  // Scripted runs (RENODX_TW_SET / SHOT / PROFILE), their seconds counted from the first present as Attila's and Pharaoh's.
+  twattila::test_hooks::Install(&settings, true);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
@@ -1756,12 +1759,28 @@ bool AttachAddon() {
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
+  // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1, lighting
+  // b2, shroud b3, directional_light b4): the sun draws (standard 340CBE9D, skin 1A0532C0), the tone mapper EE1DA45C, the
+  // ultra water 58DC6E12, the SSAO resolve 1ED22F9C, battlefog 259AEC56 and the units' VS A30C5E0B (its
+  // variant_animation_size b1); all drawn in the 10-27 trace. The units' VS (A30C5E0B, 4 bones 0F1FBD46: their bones in
+  // s_animation_map at t0) with their VS inputs at each draw, and instanced draws' counts apart: no unit was captured on
+  // 10-27.
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES);
+                                   RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES,
+                                   {
+                                       .value_hashes = {0x340CBE9D, 0x1A0532C0, 0xEE1DA45C, 0x58DC6E12, 0x1ED22F9C, 0x259AEC56, 0xA30C5E0B},
+                                       .value_slots = 6,
+                                       .value_floats = 256,
+                                       .on_demand = true,
+                                       .at_100 = true,
+                                       .vertex_input_hashes = {0xA30C5E0B, 0x0F1FBD46},
+                                       .instances_apart = true,
+                                   });
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.
@@ -1784,6 +1803,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  twattila::test_hooks::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
