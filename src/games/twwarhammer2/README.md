@@ -1,5 +1,43 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Round v48 (2026-11-14, Attila's package: the part that needs no trace; built only, not run in game)
+
+- **Graphics 1 of 2 as Attila's and Pharaoh's** (`twattila/graphics_page.hpp`): Reset, No RT/PT (Recommended) and RT/PT;
+  one method slider each for Shadows, Ambient Occlusion, Global Illumination and Reflections, the rest under More Options.
+  FSR and XeSS beside DLSS (with their Frame Generation); a saved DLSS becomes FSR on AMD, XeSS on Intel. New: Texture LOD
+  Bias on All Textures (Experimental, off). Every saved setting kept. RT/PT here: the rays' sun shadows on top of the game's
+  shadow maps, RTAO on top of its SSAO, path-traced Global Illumination, ray-traced reflections (no Path-Traced AO yet).
+  Bend's screen-space shadows now stay off while the rays' sun shadows run (before, both could).
+- **Graphics 2 of 2 as Attila's:** 23 more of Attila's tests (Tree LOD Scale, Projected Tree LODs, Object Detail
+  Distances, Buildings Never Vanish, Sort Particles, All Soldiers as Sprites, Campaign Cloud Distance and more); Reset puts
+  the tests back too. Out: 12 rows whose values the game never finds (Far Buildings, Building Collapse Effects /
+  Animations and 9 More Tests). Offline, every engine value of the page is found as the game finds it (231 of 231;
+  `tools/tw/find_emu.py` on Warhammer2.exe reproduced the 2026-10-27 run's 12 misses first). Tooltips give this game's values.
+- **Fixed below 100%: two compute passes no longer squeezed twice** (the MSAA SSR resolve and the particle collision map
+  their uv to the viewport themselves; `view_share::SetViewportChains`, as Pharaoh's).
+- **Hue Clip Emulation's default measured on this game's own tone mapper** (`test/tw_psychov35` part 5, at three burns):
+  100 stays.
+
+Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon64`. Test list (one battle benchmark start,
+DLSS Quality unless named):
+1. Control: Graphics 1 of 2, your saved settings: the picture as v47. Send ReShade.log.
+2. Reset, then No RT/PT (Recommended): Bend's contact shadows, GT-VBAO, GT-VBGI on; nothing else changed.
+3. RT/PT: ray-traced shadows, AO, Light Bounce and reflections on, Bend's contact shadows gone (DXR is in place of them).
+4. Graphics 2 of 2: ReShade.log "Engine values found" shows no misses (it said 208 of 220 before).
+5. Texture LOD Bias on All Textures (Experimental) off / on at DLSS Performance: sharper ground and walls, or shimmer?
+   (decides its default)
+6. DLSS Performance, a fire or flaming arrows: sparks bounce on the ground, not above or under it.
+
+Not done (no trace yet, or ATN's call):
+- Path-Traced AO and the game's sun light for the paths (rt_sun texel 2, the 7.6e-05 literal in all 31 sun shaders): their
+  diffuse ambient ends in two places, after either the spherical harmonics (c11.y) or the cube, and zeroing the cube would
+  also take the specular's sky ratio. Smallest step: the run's sun constants say whether battles use the harmonics; then a
+  WH2 form of the ambient patch at those two places (WARP), then `InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4)`.
+- Attila's two unit-size presets: this game has no Dead Unit, Building or Campaign Detail rows (ATN: which rows they map to).
+- Shadow Slope Bias: its value has a constructor, but the game's lookup never finds it.
+- From the data run: the bloom's share below 100% (12 shaders), the scene and caster census, Rays Replace Shadow Maps,
+  point lights, water, fog, particles and smoke.
+
 ### Trace build (2026-11-14, for the data run; built only, not run in game)
 
 - **Frame traces on demand and at 100%** (`twattila/frame_trace.hpp` Options, as Pharaoh's): `renodx_trace_now` next to the exe
