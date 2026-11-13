@@ -67,7 +67,7 @@ Rules:
 
 ## 4. Reading the maintainer's evidence
 
-- Copy each set of logs, shots and inis into the round's folder in `tools/tw` before reading, named by run.
+- Copy each set of logs, shots and inis into the round's folder in `tools/tw` before reading, named by run. Then `python -I tools/tw/check_logs.py <folder>` (the data-run scripts and `atn_trace_watch.ps1` print it at their end): known-bad lines in `ReShade.log`, the helper's log and the run's notes (RR unavailable, "no main camera" repeating, a `RENODX_TW_SET` key not applied, a trace not taken, exceptions, removed devices, NOT RUN, a game that ended by itself), exit 1 on any. Pharaoh's run B61 held "Ray Reconstruction unavailable" at 16:28; it was read at 19:55.
 - A crash or hang: the game's `crash_report` folder first, then the device-end line, then event 153 ([helper-fg-stability.md](helper-fg-stability.md)).
 - A profile: segment it by its setting-change log lines before reading numbers; a profile's "states" were once the maintainer stepping through Upscaling Mode.
 - A paused pair 30 s apart differed 4 to 5% around the units with nothing changed (banners fade after the pause starts): run the control before blaming a row.

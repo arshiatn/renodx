@@ -110,7 +110,14 @@ tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One com
   20b91319; NVIDIA 310.9.16 x3 in each folder). Negative `--helper 108 attila=157`: exit 1, three refusals (the add-on
   is already v158's source, it changed after v157's stamp, helper108 built 19:54 before 02a05144). A harness helper from
   a build folder (a worktree's GPU job ran) doesn't block; one from a game folder does.
-- [ ] 3 tools/tw/check_logs.py + wired into the data-run scripts' ends.
+- [x] 3 tools/tw/check_logs.py <folder>...: 18 rules over ReShade.log / renodx-tw-dlaa64.log / run.txt, exit 1 on any (or
+  a folder without logs). Wired (printed summary, exit codes unchanged) into the ends and Stop-Run of
+  test_scripts/pharaoh_data_run.ps1, rome2/rome2_data_run.ps1, cpu_runs/cpu_run.ps1 and the end of
+  rome2/atn_trace_watch.ps1 (all four parse). Over every run folder in tools/tw: 527 of 553 clean, 26 flagged, each a
+  real one (RR unavailable in Pharaoh runs incl. B61 16:28, "no main camera" repeating before v61, the test key
+  NoSuchKeyAtAll, a GPU reset, heapfix EXCEPTION lines, Rome II / Pharaoh crash starts, traces not taken). Game
+  folders: Pharaoh's helper log still holds helper107's "unavailable" (18:24); Attila, Rome II, WH3 clean. Dropped as
+  noisy: "the helper started again" (also the 10 s idle release).
 - [ ] 4 Static checks (skill scripts): OnTonemapDrawn per rt_scene host, ComPtr `&member` into pointer parameters; the
   OnTonemapDrawn gap fixed in Troy, Thrones, WH1, WH2 (page dumps before / after, builds).
 - [ ] 5 Release zips carry nvngx_dlss / dlssd / dlssg (310.9.16+) and refuse without them.
