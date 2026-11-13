@@ -48,6 +48,10 @@ under 60 GB before GPU / WARP jobs (18.6 GB at 02:06). One writer. Each step com
   shaders-ui x2 + the saved-hidden-row row's Pharaoh case). Built only: not stamped, not installed, not run in game.
   NOT DONE (README): run in game; smoke just off screen (does the sort's t2 hold it? read its CS, then a raised
   g_draw_flags.y); E8524BB1 / 740B2536; dust apart from smoke (level C: per-emitter t8 masks in a trace).
+- [x] 6 (ATN's agent) rebuilt at HEAD (the 03:03 builds were older than step 4's commits), STAMPED + INSTALLED 03:17
+  (tools/tw/round_v151/install_night.py): Attila v153, WH3 v51, Pharaoh v57; helper105 unchanged in all three; ATN files
+  unchanged by hash; old add-ons renamed aside (.in-use-20261113_031658); no DevKit. ATN's Pharaoh ReShade.ini holds none of
+  the saved-hidden RT keys (RayTracedSmokeShadows, WaterReflections, Reflections, FogShadows, LightGlow), so nothing to clear.
 
 ## PHARAOH V56: RAY-TRACED WATER REFLECTIONS (2026-11-13 night, offline; plan tools/tw/pharaoh/reflections_plan.md)
 Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes

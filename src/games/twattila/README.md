@@ -1,5 +1,11 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v153 (2026-11-13, after v152's install; stamped and installed 03:17, not run in game; renodx-tw-dlaa64.exe helper105 as in v152)
+
+- Shared with Pharaoh, no change here: the reflections' light copy for R16G16B16A16F light (Attila's is R11G11B10F), the frame
+  trace's blend / vertex-input / instance options (off here), the smoke capture's quad form (Attila keeps its point form).
+  Page dumps against v152: the build date only.
+
 ## v152 (2026-11-12, after v151's install; stamped and installed, not run in game; renodx-tw-dlaa64.exe helper105 as in v151)
 
 - Fixed: the Graphics 2 of 2 test tooltips no longer have words in capitals ("GRASS", "SHADOWS", ...).
