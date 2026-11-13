@@ -259,6 +259,11 @@ constexpr uint32_t RT_REFLECTIONS_STEADY = 524288;
 // written since the frame's first paths request took them (the riverbed's): the reflections' history from last frame's at
 // this request.
 constexpr uint32_t RT_REFLECTIONS_WATER_POSITIONS = 1048576;
+// With RT_PATH_AMBIENT (helpers before 107 ignore it): the sun texture's texel 2 holds the game's sun light (its sun colour
+// at its diffuse scale, rt_sun.cs_5_0.hlsl): the light a path's hit on the screen sends back is its base colour lit by that
+// and the paths' own sky, as an unseen one's (not the screen's light, with the game's specular toward the camera), and the
+// light learned from the screen stays as learned.
+constexpr uint32_t RT_PATH_SUN_LIGHT = 2097152;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

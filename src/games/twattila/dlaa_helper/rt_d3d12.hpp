@@ -901,6 +901,7 @@ class RtScene12 {
     specular_meta_history_.Reset();
     reuse_samples_ = {};
     reuse_data_ = {};
+    own_sky_ = {};
     reflect_samples_ = {};
     reflect_data_ = {};
     if (descriptors_) WriteNullPathDescriptors();
@@ -1439,12 +1440,13 @@ class RtScene12 {
           if ((requested & dlaa_bridge::RT_PATH_SKY_APART) != 0) flags |= PATH_SKY_APART;
           path_ambient_frame_ = frame;
           path_kept_cube_ = (requested & dlaa_bridge::RT_PATH_KEPT_CUBE) != 0;
+          path_sun_light_ = (requested & dlaa_bridge::RT_PATH_SUN_LIGHT) != 0;
           if (!light_was_kept) kept_copy_wanted_ = true;
         }
         // The learned lighting stays while the game's ambient is away (also through the reflections' requests: the radiance
         // cache's resolve, once a frame, can be theirs).
         if (path_ambient_frame_ != UINT32_MAX && path_ambient_frame_ + 2 >= frame) {
-          flags |= PATH_KEEP_LIGHT | (path_kept_cube_ ? PATH_KEEP_CUBE : 0u);
+          flags |= PATH_KEEP_LIGHT | (path_kept_cube_ ? PATH_KEEP_CUBE : 0u) | (path_sun_light_ ? PATH_SUN_LIGHT : 0u);
         }
         // What the light kept at a freeze was (Path-Traced AO's frames after it read this): its copy done once a slot's list has come round.
         if (kept_copy_frame_ != UINT32_MAX && frame > kept_copy_frame_ + SLOTS) {
@@ -1469,6 +1471,16 @@ class RtScene12 {
           if (history_valid_ && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 == frame && reuse_size_ == reuse_size) {
             flags |= PATH_REUSE_HISTORY;
           }
+        }
+        // Path-Traced Ambient's own sky at the bounce texels, with the game's sun light (rt_path.hlsli ScreenSky): this frame's
+        // paths write set sky_parity_ (turned after them); the light the screen's surfaces send back reads the other, the
+        // last paths', at these texels (a reflections request's at the render pixels: none).
+        const std::array<uint32_t, 3> sky_size = {render_pixels ? width : shared.rt_bounce_width, render_pixels ? height : shared.rt_bounce_height,
+                                                  render_pixels ? 1u : std::max(shared.rt_bounce_scale, 1u)};
+        const bool sky_written = path_traced && (flags & PATH_AMBIENT) != 0 && (flags & PATH_SUN_LIGHT) != 0 && EnsureHistory(HISTORY_SKY, frame);
+        if (own_sky_[0] && (flags & PATH_SUN_LIGHT) != 0) {
+          if (sky_parity_ != 0) flags |= PATH_SKY_PARITY;
+          if (history_valid_ && sky_frame_ != UINT32_MAX && sky_frame_ + 1 >= frame && sky_size_ == sky_size) flags |= PATH_SKY_HISTORY;
         }
         // The local lights with their colours (v11): what the paths meet unseen by the screen lit by them too.
         const uint32_t light_count = ((shared.rt_flags & dlaa_bridge::RT_LOCAL_LIGHTS) != 0) ? SharedLightCount(shared, version) : 0u;
@@ -1569,6 +1581,11 @@ class RtScene12 {
           Mark(list, L"bounce");
           list->SetPipelineState(bounce_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+        }
+        if (sky_written) {
+          sky_frame_ = frame;
+          sky_parity_ ^= 1u;
+          sky_size_ = sky_size;
         }
         ProfileStamp(list, slot_index, 1);
         if (reuse) {
@@ -1840,7 +1857,7 @@ class RtScene12 {
   static constexpr double SLOW_MS = 100.0;
   static constexpr uint32_t SLOW_REPORTS = 50;
   // The effects' history (EnsureHistory): its kinds, released after this many frames unused (~10 s).
-  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_LIGHTS, HISTORY_REFLECT, HISTORY_WATER, HISTORY_KINDS };
+  enum History : size_t { HISTORY_PATHS, HISTORY_REUSE, HISTORY_SPECULAR, HISTORY_AMBIENT, HISTORY_LIGHTS, HISTORY_REFLECT, HISTORY_WATER, HISTORY_SKY, HISTORY_KINDS };
   static constexpr uint32_t HISTORY_FRAMES = 600;
   // The descriptor table: SRVs t1-t7, UAVs u0-u5.
   enum Descriptor : UINT {
@@ -1905,7 +1922,8 @@ class RtScene12 {
     NRD_AMBIENT_VIEW_Z,
     NRD_AMBIENT_NORMAL_ROUGHNESS,
     NRD_AMBIENT_SIGNAL,
-    DESCRIPTOR_COUNT,
+    OWN_SKY,  // u54-u55 (helpers 107 on): Path-Traced Ambient's own sky at the bounce texels, two sets
+    DESCRIPTOR_COUNT = OWN_SKY + 2,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
   // rt_path.hlsli's path flags and cache size.
@@ -1944,6 +1962,9 @@ class RtScene12 {
   static constexpr uint32_t PATH_AMBIENT = 262144;  // rt_path.hlsli
   static constexpr uint32_t PATH_KEEP_LIGHT = 524288;
   static constexpr uint32_t PATH_KEEP_CUBE = 1073741824;
+  static constexpr uint32_t PATH_SKY_HISTORY = 131072;  // rt_path.hlsli (the trace's PATH_LIGHT_HISTORY: another request's word)
+  static constexpr uint32_t PATH_SKY_PARITY = 1048576;  // rt_path.hlsli (the trace's PATH_TINT)
+  static constexpr uint32_t PATH_SUN_LIGHT = 2097152;   // rt_path.hlsli (the trace's PATH_TINT_GUIDES)
   static constexpr uint32_t PATH_START_PAST = 2147483648;  // rt_camera.hlsli
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
@@ -2527,7 +2548,7 @@ class RtScene12 {
     device_->CreateShaderResourceView(nullptr, &NO_KEPT_POSITIONS, Descriptor(PREVIOUS_POSITIONS));
     const D3D12_UNORDERED_ACCESS_VIEW_DESC texture_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
     for (UINT set = 0; set < 2; ++set) {
-      for (const UINT descriptor : {REUSE_SAMPLES, REUSE_DATA, REFLECT_SAMPLES, REFLECT_DATA}) {
+      for (const UINT descriptor : {REUSE_SAMPLES, REUSE_DATA, REFLECT_SAMPLES, REFLECT_DATA, OWN_SKY}) {
         device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor + set));
       }
     }
@@ -2667,6 +2688,18 @@ class RtScene12 {
         }
         reuse_frame_ = UINT32_MAX;
         return true;
+      case HISTORY_SKY:
+        // Path-Traced Ambient's own sky, two sets (~130 MB at 4K).
+        if (own_sky_[0]) return true;
+        for (UINT set = 0; set < 2; ++set) {
+          if (!Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &own_sky_[set])) {
+            own_sky_ = {};
+            return false;
+          }
+          Written(own_sky_[set].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, OWN_SKY + set);
+        }
+        sky_frame_ = UINT32_MAX;
+        return true;
       case HISTORY_REFLECT:
         // Own ReSTIR's two sets (half the render pixels: ~130 MB at 4K).
         if (reflect_samples_[0]) return true;
@@ -2773,6 +2806,7 @@ class RtScene12 {
       release("ReSTIR GI", {std::addressof(reuse_samples_[0]), std::addressof(reuse_samples_[1]), std::addressof(reuse_data_[0]), std::addressof(reuse_data_[1])},
               {REUSE_SAMPLES, REUSE_SAMPLES + 1, REUSE_DATA, REUSE_DATA + 1});
     }
+    if (own_sky_[0] && unused(HISTORY_SKY)) release("own sky's", {std::addressof(own_sky_[0]), std::addressof(own_sky_[1])}, {OWN_SKY, OWN_SKY + 1});
     if (reflect_samples_[0] && unused(HISTORY_REFLECT)) {
       release("Own ReSTIR", {std::addressof(reflect_samples_[0]), std::addressof(reflect_samples_[1]), std::addressof(reflect_data_[0]), std::addressof(reflect_data_[1])},
               {REFLECT_SAMPLES, REFLECT_SAMPLES + 1, REFLECT_DATA, REFLECT_DATA + 1});
@@ -5868,6 +5902,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> light_kept_;
   uint32_t path_ambient_frame_ = UINT32_MAX;  // the last frame the paths took the sky for the game's ambient
   bool path_kept_cube_ = false;               // RT_PATH_KEPT_CUBE of that frame's request (the reflections' requests don't carry it)
+  bool path_sun_light_ = false;               // RT_PATH_SUN_LIGHT of that frame's request
   ComPtr<ID3D12Resource> kept_readback_;      // light_kept_ at the last freeze, for the log
   bool kept_copy_wanted_ = false;
   uint32_t kept_copy_frame_ = UINT32_MAX;
@@ -5896,6 +5931,10 @@ class RtScene12 {
   uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in
   uint32_t reuse_parity_ = 0;          // this frame's set
   std::array<uint32_t, 3> reuse_size_ = {};  // the bounce's size and scale they are at
+  std::array<ComPtr<ID3D12Resource>, 2> own_sky_;  // Path-Traced Ambient's own sky at the bounce texels (rt_path.hlsli ScreenSky)
+  uint32_t sky_frame_ = UINT32_MAX;          // the frame the paths last wrote it in
+  uint32_t sky_parity_ = 0;                  // the set the next paths write
+  std::array<uint32_t, 3> sky_size_ = {};    // the bounce's size and scale it is at
   ComPtr<ID3D12PipelineState> reflect_reservoir_pipeline_;  // Own ReSTIR's reservoirs
   std::array<ComPtr<ID3D12Resource>, 2> reflect_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reflect_data_;

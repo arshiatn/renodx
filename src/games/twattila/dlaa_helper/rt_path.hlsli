@@ -6,7 +6,8 @@
 // The helper's path tracing and reflections (rt_d3d12.hpp Paths, bridge v8; ported from Tales of Arise's rt_path.hlsli
 // and rt_cache.hlsli, in metres): the light a ray brings back from the scene the addon captured.
 // - The light leaving a surface a ray meets: the frame's light where the camera sees that surface now (the prepared
-//   light, the Light Bounce's: one texel per bounce_scale x bounce_scale render pixels), else last frame's scene colour
+//   light, the Light Bounce's: one texel per bounce_scale x bounce_scale render pixels; with Path-Traced Ambient and the
+//   game's sun light, of no view, its base colour lit by them: SeenDiffuseLight), else last frame's scene colour
 //   where last frame saw it (the DLAA input, reprojected; only without the prepared light), else the world radiance cache's
 //   (cells of 25 cm near the camera, doubling with the distance past 20 m, one per face a surface turns to; filled from the
 //   prepared light every frame), else, for a surface nobody saw,
@@ -63,6 +64,9 @@ RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, 
 // out as ReSTIR GI's; two sets, this frame's at PATH_REFLECT_PARITY.
 RWTexture2D<float4> reflect_samples[2] : register(u36);
 RWTexture2D<uint4> reflect_data[2] : register(u38);
+// Path-Traced Ambient's own sky (helpers 107 on): the sky a bounce texel's paths brought (rgb, w 1; 0: none), two sets, the
+// paths' at PATH_SKY_PARITY, the other's the last paths' (PATH_SKY_HISTORY: valid at these texels).
+RWTexture2D<float4> own_sky[2] : register(u54);
 
 static const uint PATH_TRACING = 1u;          // the bounce texels' light path traced
 static const uint PATH_REFLECTIONS = 2u;
@@ -93,6 +97,10 @@ static const uint PATH_NRD = 268435456u;                // NVIDIA's REBLUR denoi
 static const uint PATH_SKY_APART = 134217728u;          // Own Sky Rays: Path-Traced AO's sky past the reservoirs
 static const uint PATH_REFLECT_FOG = 16384u;            // reflections: the game's fog between a pixel and what its rays met
 static const uint PATH_REFLECT_STEADY = 32768u;         // Steadier Water Reflections (rt_reflect_filter.cs_6_5.hlsl)
+static const uint PATH_SKY_HISTORY = 131072u;  // own_sky's other set the last paths' (the trace's PATH_LIGHT_HISTORY: another request's word)
+static const uint PATH_SKY_PARITY = 1048576u;  // the paths write own_sky's set 1, the other is read (else 0; the trace's PATH_TINT)
+static const uint PATH_SUN_LIGHT = 2097152u;   // with PATH_KEEP_LIGHT: RT_PATH_SUN_LIGHT, SUN_LIGHT_TEXEL holds the game's sun light (the trace's PATH_TINT_GUIDES)
+static const uint SUN_LIGHT_TEXEL = 2u;  // the sun texture's: the game's sun colour at its diffuse scale (rt_sun.cs_5_0.hlsl; w 0: none)
 static const uint REFLECT_NEIGHBOURS = 4u;
 static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughness 1
 static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away
@@ -309,44 +317,18 @@ float3 KeptShade() {
   return light_kept[0].rgb;
 }
 
+// Path-Traced Ambient with the game's sun light (RT_PATH_SUN_LIGHT, its texel written): the light a path's hit on the
+// screen sends back is SeenDiffuseLight's, and the light learned from the screen stays as learned, the sun's the game's
+// (rt_cache_resolve.cs_6_5.hlsl).
+bool SunLightGiven() {
+  return (path_flags & (PATH_KEEP_LIGHT | PATH_SUN_LIGHT)) == (PATH_KEEP_LIGHT | PATH_SUN_LIGHT) && sun[uint2(SUN_LIGHT_TEXEL, 0)].w != 0.f;
+}
+
 // Last frame's scene colour at a render pixel as light: squared back where the upscaler was given its square root.
 float3 PreviousLight(uint2 pixel) {
   const float3 color = max(previous_color[pixel].rgb, 0.f);
   return (previous_square_root != 0u) ? color * color : color;
 }
-
-// The light leaving a surface a ray met (false: nobody knows it): the screen's now where it shows that face, else (without
-// this frame's light) last frame's, else the radiance cache's at the face `hit_normal` turns to (SHaRC's instead in
-// PathRadiance with SHaRC Radiance Cache), unless `cached` is false.
-bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached = true) {
-  light_there = 0.f;
-  uint2 pixel;
-  if ((path_flags & PATH_LIGHT) != 0u && SeenNow(hit, hit_normal, pixel)) {
-    if ((path_flags & PATH_LIGHT_FINAL) != 0u) {
-      light_there = max(light[pixel], 0.f);
-      return true;
-    }
-    light_there = max(light[min(pixel / max(bounce_scale, 1u), uint2(bounce_width, bounce_height) - 1u)], 0.f);
-    // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the learned
-    // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
-    if ((path_flags & PATH_KEEP_LIGHT) != 0u) {
-      light_there += (((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit, hit_normal)) * KeptShade();
-    }
-    return true;
-  }
-  // Last frame's colour is the DLAA input: in Attila the tone mapper's output, in other units than this frame's light. Only
-  // for games that pass none.
-  if ((path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == 0u && SeenLastFrame(hit, pixel)) {
-    light_there = PreviousLight(pixel);
-    return true;
-  }
-#if defined(SHARC)
-  return false;
-#else
-  return cached && (path_flags & PATH_CACHE_VALID) != 0u && CacheLookup(hit, hit_normal, light_there);
-#endif
-}
-
 
 // The local lights' light on a surface the screen never saw: one of them picked by what it would give (its colour, the
 // games' smooth falloff (1 - distance / reach)^2, its angle; reservoir sampling with one number) and weighted back by its
@@ -382,18 +364,23 @@ float3 LocalLight(float3 surface, float3 normal, float u) {
   return picked * (total / picked_weight);
 }
 
-// The light a surface the screen never saw sends back (its base colour lit): the sun's through a shadow ray from its
-// `surface` (or from `behind` it through leaves, cloth and sails at their `transmittance`) once the learned lighting is
-// solved, and with the local lights two of them picked (less noise from fires and torches than one) by `light_seed`.
-float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint2 seed, uint light_seed) {
+// The sun's light a surface sends back (its base colour lit) once the sun's light is known (light_kept[1]: the game's, else
+// learned): by the screen's traced `visibility` there (0 to 1), else (below 0) through a shadow ray from its `surface` (or
+// from `behind` it through leaves, cloth and sails at their `transmittance`).
+float3 SunLit(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, float visibility) {
   const float4 toward_sun = sun[uint2(0, 0)];
   const float n_dot_l = dot(normal, toward_sun.xyz);
   const float sun_share = (n_dot_l > 0.f) ? n_dot_l : (-n_dot_l * transmittance);
-  float3 emitted = 0.f;
-  if (toward_sun.w != 0.f && sun_share > 0.f && light_kept[0].w > 0.f
-      && !Occluded((n_dot_l > 0.f) ? surface : behind, toward_sun.xyz, 1.0e4f, NO_GRASS_SMOKE)) {
-    emitted = albedo * light_kept[1].rgb * sun_share;
-  }
+  if (toward_sun.w == 0.f || sun_share <= 0.f || light_kept[1].w <= 0.f) return 0.f;
+  if (visibility >= 0.f) return albedo * light_kept[1].rgb * (sun_share * visibility);
+  if (Occluded((n_dot_l > 0.f) ? surface : behind, toward_sun.xyz, 1.0e4f, NO_GRASS_SMOKE)) return 0.f;
+  return albedo * light_kept[1].rgb * sun_share;
+}
+
+// The light a surface the screen never saw sends back (its base colour lit): the sun's (SunLit) and with the local lights
+// two of them picked (less noise from fires and torches than one) by `light_seed`.
+float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint2 seed, uint light_seed) {
+  float3 emitted = SunLit(surface, behind, normal, albedo, transmittance, -1.f);
   if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) {
     emitted += albedo * (0.5f * (LocalLight(surface, normal, Random(uint3(seed, light_seed + 16384u)))
                                  + LocalLight(surface, normal, Random(uint3(seed, light_seed + 24576u)))));
@@ -406,6 +393,14 @@ float3 AmbientCube(float3 direction) {
   const float3 squared = direction * direction;
   return squared.x * sun[uint2((direction.x < 0.f) ? 4u : 3u, 0)].rgb + squared.y * sun[uint2((direction.y < 0.f) ? 6u : 5u, 0)].rgb
          + squared.z * sun[uint2((direction.z < 0.f) ? 8u : 7u, 0)].rgb;
+}
+
+// The game's ambient on a surface facing `normal` with all its sky open: the cube as the game's sun light shaders take it
+// at the normal (Attila's: its y four times over, normalized; texel 6's w 0, Warhammer III's: as it is) x their scale
+// (texel 4's w: 1.44 with c11.x, ATN's debug32 desert came out darker and warmer without).
+float3 OpenSky(float3 normal) {
+  const float3 cube_normal = (sun[uint2(6, 0)].w != 0.f) ? normalize(normal * float3(1.f, 4.f, 1.f)) : normal;
+  return AmbientCube(cube_normal) * sun[uint2(4, 0)].w;
 }
 
 // The sky's light along a path that escapes: the game's own ambient cube by the direction, scaled so its mean over
@@ -421,10 +416,8 @@ float3 SkyLight(float3 direction, float3 shade) {
 }
 
 // Path-Traced Ambient: the camera rays' sky scaled so an open surface gets the game's own ambient at its normal, in the
-// game's colour and brightness (ATN's debug29-30: the learned scale's sky came out darker and warmer): the cube at
-// `normal` as the game's sun light shaders take it (Attila's: its y four times over, normalized; texel 6's w 0, Warhammer
-// III's: as it is; x their scale, texel 4's w: 1.44 with c11.x, ATN's debug32 desert came out darker and warmer without)
-// over the sky's light a cosine-weighted ray brings there on average (SKY_DIRECTIONS fixed rays). 1 without.
+// game's colour and brightness (ATN's debug29-30: the learned scale's sky came out darker and warmer): OpenSky over the
+// sky's light a cosine-weighted ray brings there on average (SKY_DIRECTIONS fixed rays). 1 without.
 float3 SkyCalibration(float3 normal) {
   if ((path_flags & PATH_AMBIENT) == 0u || sun[uint2(3, 0)].w == 0.f) return 1.f;
   float3 open = 0.f;
@@ -432,8 +425,69 @@ float3 SkyCalibration(float3 normal) {
   for (uint ray = 0u; ray < SKY_DIRECTIONS; ++ray) {
     open += SkyLight(CosineDirection(normal, (ray + 0.5f) / SKY_DIRECTIONS, frac(ray * 0.618034f)), light_kept[0].rgb);
   }
-  const float3 cube_normal = (sun[uint2(6, 0)].w != 0.f) ? normalize(normal * float3(1.f, 4.f, 1.f)) : normal;
-  return AmbientCube(cube_normal) * sun[uint2(4, 0)].w / max(open / SKY_DIRECTIONS, 1.0001094e-4f);
+  return OpenSky(normal) / max(open / SKY_DIRECTIONS, 1.0001094e-4f);
+}
+
+// Path-Traced Ambient's sky arriving at a surface the screen shows (`world`, facing `normal`): the last paths' own there
+// (own_sky at its bounce texel where last frame saw it), else the open sky as the game's ambient (or the learned shade
+// without the game's cube).
+float3 ScreenSky(float3 world, float3 normal) {
+  uint2 previous_pixel;
+  if ((path_flags & PATH_SKY_HISTORY) != 0u && SeenLastFrame(world, previous_pixel)) {
+    const float4 kept = own_sky[((path_flags & PATH_SKY_PARITY) != 0u) ? 0u : 1u][min(previous_pixel / max(bounce_scale, 1u), uint2(bounce_width, bounce_height) - 1u)];
+    if (kept.w > 0.f) return kept.rgb;
+  }
+  return (sun[uint2(3, 0)].w != 0.f) ? OpenSky(normal) : KeptShade();
+}
+
+// With Path-Traced Ambient and the game's sun light (SunLightGiven) the light a surface the screen shows at `pixel` sends
+// back, of no view, as a surface's nobody saw: its base colour `albedo` lit by the sun (by the traced visibility at
+// `pixel` where this frame's) and Path-Traced Ambient's own sky there (ScreenSky). The screen's light holds the game's
+// sun and sky specular toward the camera (Attila's sun light shaders add them to the diffuse light), not toward a path's
+// start: taken as the light a surface sends everywhere, the faces in shade came out 14 to 22% brighter seen from a view
+// toward the sun than from beside it (harness HARNESS_PEDESTAL; ATN 2026-11-13).
+float3 SeenDiffuseLight(uint2 pixel, float3 world, float3 normal, float3 albedo) {
+  const float visibility = ((path_flags & PATH_SUN_TRACED) != 0u) ? traced_visibility[pixel] : -1.f;
+  return SunLit(world + normal * SurfaceOffset(distance(world, Camera())), world, normal, albedo, 0.f, visibility) + albedo * ScreenSky(world, normal);
+}
+
+// The light leaving a surface a ray met (false: nobody knows it): the screen's now where it shows that face, else (without
+// this frame's light) last frame's, else the radiance cache's at the face `hit_normal` turns to (SHaRC's instead in
+// PathRadiance with SHaRC Radiance Cache), unless `cached` is false.
+bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached = true) {
+  light_there = 0.f;
+  uint2 pixel;
+  if ((path_flags & PATH_LIGHT) != 0u && SeenNow(hit, hit_normal, pixel)) {
+    if ((path_flags & PATH_LIGHT_FINAL) != 0u) {
+      light_there = max(light[pixel], 0.f);
+      return true;
+    }
+    const float3 screen_light = max(light[min(pixel / max(bounce_scale, 1u), uint2(bounce_width, bounce_height) - 1u)], 0.f);
+    if ((path_flags & PATH_KEEP_LIGHT) == 0u) {
+      light_there = screen_light;
+      return true;
+    }
+    const float3 albedo = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit, hit_normal);
+    if (SunLightGiven()) {
+      light_there = SeenDiffuseLight(pixel, hit, hit_normal, albedo);
+    } else {
+      // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the kept
+      // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
+      light_there = screen_light + albedo * KeptShade();
+    }
+    return true;
+  }
+  // Last frame's colour is the DLAA input: in Attila the tone mapper's output, in other units than this frame's light. Only
+  // for games that pass none.
+  if ((path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == 0u && SeenLastFrame(hit, pixel)) {
+    light_there = PreviousLight(pixel);
+    return true;
+  }
+#if defined(SHARC)
+  return false;
+#else
+  return cached && (path_flags & PATH_CACHE_VALID) != 0u && CacheLookup(hit, hit_normal, light_there);
+#endif
 }
 
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal;
@@ -445,7 +499,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
   first_normal = 0.f;
   float3 radiance = 0.f;
   float3 throughput = 1.f;
-  const float4 shade = float4(KeptShade(), light_kept[0].w);
+  const float4 shade = float4(KeptShade(), light_kept[1].w);  // w: the sun's light known
   bool unseen = false;
   float3 unseen_position = 0.f;
   float3 unseen_normal = 0.f;
@@ -530,7 +584,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     direction = CosineDirection(through ? -normal : normal, Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8192u)),
                                 Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8193u)));
   }
-  // The first unseen surface's light feeds the cache once the learned lighting is solved.
+  // The first unseen surface's light feeds the cache once the sun's light is known (the game's, or learned).
   if (unseen && shade.w > 0.f && all(unseen_throughput > 1.0000807e-3f)) {
     CacheAdd(unseen_position, unseen_normal, (radiance - radiance_before) / unseen_throughput);
   }
@@ -656,10 +710,15 @@ void PathTraceTexel(uint2 id) {
   const float4 position = TexelSurface(id, normal, origin);
   const bool reuse = (path_flags & PATH_REUSE) != 0u;
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
+  // With the game's sun light the sky its rays bring is kept for the light this surface sends back as the next frame's
+  // paths meet it (ScreenSky).
+  const bool sky_kept = (path_flags & (PATH_AMBIENT | PATH_SUN_LIGHT)) == (PATH_AMBIENT | PATH_SUN_LIGHT);
+  const uint sky_set = ((path_flags & PATH_SKY_PARITY) != 0u) ? 1u : 0u;
   Reservoir reservoir = (Reservoir)0;
   if (position.w <= 0.f) {
     bounce[id] = 0.f;
     if (reuse) StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, 0.f);
+    if (sky_kept) own_sky[sky_set][id] = 0.f;
     return;
   }
   const uint samples = max(path_samples, 1u);
@@ -700,6 +759,7 @@ void PathTraceTexel(uint2 id) {
     Merge(reservoir, candidate, (first_distance < 1e29f || sky_samples) ? 3.14159265f * Luminance(sample_light) : 0.f,
           Random(uint3(id, frame * 16u + path * 2u + 5120u)));
   }
+  if (sky_kept) own_sky[sky_set][id] = float4(sky / samples, 1.f);
   if (!reuse) {
     bounce[id] = float4(arriving / samples, distance(position.xyz, Camera()));
     if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = hit_sum / samples;

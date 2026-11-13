@@ -1992,8 +1992,9 @@ bool AttachAddon() {
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  // Their lighting buffer's ambient cube at c2 (lighting_VS_PS): the paths' sky.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8);
+  // Their lighting buffer's ambient cube at c2 (lighting_VS_PS): the paths' sky; its sun_colour at c1 (B6DA03C5, C64DB947,
+  // 9ECED7F8: N.L x the G-buffer's albedo^2 x (1 - its reflectivity) x c1 x 0.004 with c11.x, the shadow): their sun.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::InstallFoliage(FOLIAGE_VERTEX_SHADERS, AFTER_FOLIAGE_VERTEX_SHADERS);
   // The G-buffer's colour squared (gamma 2).

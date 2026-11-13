@@ -784,6 +784,9 @@ static std::span<const SceneShader> scene_shaders;
 static std::span<const uint32_t> cut_out_pixel_shaders;  // sorted
 static std::span<const PixelMask> cut_out_masks;  // sorted by pixel shader (SceneShader::clip_cut_outs)
 static Host host;
+// Where the game's lighting buffer holds its sun colour, the paths' sun light with Path-Traced Ambient (rt_scene.hpp
+// InstallSunDraws; 0: none).
+static UINT sun_colour = 0;
 // The code of the scene shaders without a capture version, as the game made them (every vertex shader with
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
@@ -868,7 +871,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
   D3D11_SHADER_RESOURCE_VIEW_DESC captured_uv_view = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
   captured_uv_view.Buffer.NumElements = MAX_VERTICES;
   const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-  const D3D11_BUFFER_DESC sun_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_BUFFER_DESC sun_desc = {.ByteWidth = 32, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC light_constants_desc = {.ByteWidth = ((dlaa_bridge::RT_ALL_LIGHTS * 2) + 1) * 16, .Usage = D3D11_USAGE_DEFAULT,
                                                   .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC water_flags_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
@@ -2829,6 +2832,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u)
                                                      | ((runtime.path_ambient_on && runtime.settings.path_sky_apart) ? dlaa_bridge::RT_PATH_SKY_APART : 0u)
                                                      | ((runtime.path_ambient_on && runtime.settings.path_kept_cube) ? dlaa_bridge::RT_PATH_KEPT_CUBE : 0u)
+                                                     | ((runtime.path_ambient_on && sun_colour != 0) ? dlaa_bridge::RT_PATH_SUN_LIGHT : 0u)
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
                                                      | (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))

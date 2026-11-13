@@ -55,6 +55,13 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
     0.5 the shaded E / N die and risers 14.3-21.6% apart (sunlit faces, treads <= 2.8%); spec 0.2 1.8-3.8%; spec 0 (diffuse
     only) <= 1.3% (so the specular drives it, not the unoccluded KeptShade here). Learned sun at each PT Ambient return: spec
     0.2 10.6 (learned with the ambient; true 20) then 35.9 / 24.4 / 24.4 / 25.6 by camera; spec 0 11.2 then 20.4-20.6.
+  - [x] 2 helper107 fix (bridge v31, new flag RT_PATH_SUN_LIGHT; Attila's rt_sun writes the game's sun colour x 0.004 into
+    texel 2): with it a path's screen hit, the cache's fill and an unseen hit all take base colour x the game's sun x N.L x
+    traced shadow + base colour x the paths' own occluded sky (own_sky u54-u55, last paths' at the texel; OpenSky where
+    none), the learned sun = the game's, no slope fit. HARNESS_PEDESTAL helper107: spec 0.2 / 0.5 / 0 worst 1.6% (W riser 3),
+    order 32103 1.5%, kept sun 20.000 at every return; 4K full-res spec 0.2 h106 4.1% -> h107 0.5%; GI level 0.93-1.04 of
+    h106's diffuse-only. Without the flag (WH3, Pharaoh: no sun colour yet) helper106's paths exactly (21.6% at spec 0.5).
+    Freezing the learned slope without the game's sun rejected: frozen 4.3-11.2 against 20 (too dark).
 - [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.

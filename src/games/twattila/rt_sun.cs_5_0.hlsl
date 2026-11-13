@@ -12,6 +12,10 @@
 // texel 4's w the first (the paths' sky in the game's units), texel 5's w the foliage's share (light_bounce_apply).
 // TW_RT_SUN_SCALE_SWITCH 0 (an includer's define): a game without that choice (Pharaoh: its float there is
 // g_cloud_shadow_position.x, the cube taken x 1): the unscaled weights always.
+// With sun_colour's place (b1's second x; 0: none) the sun's diffuse light into texel 2 (w 1), the paths' sun with
+// Path-Traced Ambient (dlaa_helper/rt_cache_resolve.cs_6_5.hlsl): Attila's standard sun light shaders (B6DA03C5, C64DB947,
+// 9ECED7F8 read) light the G-buffer's diffuse colour (albedo^2 x (1 - its reflectivity), the guide's) by sun_colour (c1) x
+// N.L x the shadow, x 0.004 with c11.x (else x 1).
 #ifndef TW_RT_SUN_SCALE_SWITCH
 #define TW_RT_SUN_SCALE_SWITCH 1
 #endif
@@ -22,7 +26,8 @@ cbuffer lighting_VS_PS : register(b0)
 
 cbuffer rt_sun : register(b1)
 {
-  uint4 rt_sun;  // x the first float of sun_direction, y of the ambient cube (0: none)
+  uint4 rt_sun;        // x the first float of sun_direction, y of the ambient cube (0: none)
+  uint4 rt_sun_light;  // x the first float of sun_colour (0: none)
 }
 
 RWTexture2D<float4> sun : register(u0);
@@ -40,6 +45,9 @@ void main()
   sun[uint2(0, 0)] = (length_squared > 0.f) ? float4(-sun_direction * rsqrt(length_squared), 1.f) : 0.f;
   // c11.x: nine registers past the cube's c2.
   const bool scaled = TW_RT_SUN_SCALE_SWITCH && rt_sun.y != 0u && LightingValue(rt_sun.y + 36u) > 0.f;
+  const uint colour = rt_sun_light.x;
+  const float3 sun_colour = float3(LightingValue(colour), LightingValue(colour + 1u), LightingValue(colour + 2u));
+  sun[uint2(2, 0)] = (colour != 0u) ? float4(sun_colour * (scaled ? 0.004f : 1.f), 1.f) : 0.f;
   [unroll]
   for (uint side = 0u; side < 6u; ++side)
   {

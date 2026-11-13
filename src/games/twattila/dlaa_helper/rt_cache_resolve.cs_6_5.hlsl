@@ -11,6 +11,15 @@
 #include "./rt_path.hlsli"
 
 void SolveLightFit() {
+  // With Path-Traced Ambient the screen's light holds no ambient but the game's sun and sky specular toward the camera:
+  // refit from it, the sun's share followed the view (ATN's log: x1.57 in 6 minutes; the harness's pedestal 24 to 36 by
+  // camera, the sun 20). With the game's sun light the sun's is that and the rest stays as learned with the game's ambient
+  // (the fill adds nothing). Without it the refit goes on: frozen as learned with the game's ambient the sun came out 4 to
+  // 11 there (one shade for all faces, the walls' less than the ground's).
+  if (SunLightGiven()) {
+    light_kept[1] = float4(sun[uint2(SUN_LIGHT_TEXEL, 0)].rgb, 1.f);
+    return;
+  }
   const float count = (float)light_fit[0];
   if (count < 64.f) return;
   const float sum_x = light_fit[1] / LIGHT_FIT_X;

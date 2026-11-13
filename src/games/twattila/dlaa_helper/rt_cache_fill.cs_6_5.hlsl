@@ -4,9 +4,10 @@
  */
 
 // The helper's radiance cache, filled (rt_path.hlsli; before the paths). With the frame's prepared light (PATH_LIGHT):
-// one bounce texel of every 2 x 2 (another each frame) adds it to its world cell at the face its normal turns to (rt_path.hlsli
-// CacheCell); with the G-buffer guides it also writes
-// its base colour there, and one in eight adds to the learned lighting's sums: y = the light / the base colour, x = the
+// one bounce texel of every 2 x 2 (another each frame) adds it (with Path-Traced Ambient and the game's sun light its
+// light of no view: SeenDiffuseLight) to its world cell at the face its normal turns to (rt_path.hlsli CacheCell); with
+// the G-buffer guides it also writes its base colour there, and (without the game's sun light) one in eight adds to the
+// learned lighting's sums: y = the light / the base colour, x = the
 // sun's visibility (the ray-traced one when traced) x N.L, and the base colour. A reflections request's light buffer
 // (PATH_LIGHT_FINAL) with no prepared light this frame comes as bounce texels of one render pixel. Without any (reflections
 // only, a game that passes no light buffer): one render pixel of every 2 x 2 adds last frame's scene colour where last
@@ -36,12 +37,20 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 light_there = max(light[cell], 0.f);
   const float3 base = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
   const float3 normal = PixelNormal(pixel, position);
-  // Path-Traced Ambient took the game's ambient away from the screen's light: the base colour x the learned shade in its
-  // place (rt_path.hlsli HitLight).
-  CacheAdd(position.xyz, normal, light_there + (((path_flags & PATH_KEEP_LIGHT) != 0u) ? base * KeptShade() : 0.f));
+  // Path-Traced Ambient took the game's ambient away from the screen's light: with the game's sun light its light of no
+  // view (rt_path.hlsli SeenDiffuseLight) as the paths' hits take it, else the base colour x the kept shade in the
+  // ambient's place.
+  const bool sun_light_given = SunLightGiven();
+  if (sun_light_given) {
+    CacheAdd(position.xyz, normal, SeenDiffuseLight(pixel, position.xyz, normal, base));
+  } else {
+    CacheAdd(position.xyz, normal, light_there + (((path_flags & PATH_KEEP_LIGHT) != 0u) ? base * KeptShade() : 0.f));
+  }
   if ((path_flags & PATH_GUIDES) == 0u) return;
   CacheSetAlbedo(position.xyz, normal, base);
 
+  // With the game's sun light the learned lighting stays as learned (rt_cache_resolve.cs_6_5.hlsl).
+  if (sun_light_given) return;
   if (((id.x ^ id.y ^ (frame >> 2u)) & 1u) != 0u) return;
   if (dot(base, float3(0.2126f, 0.7152f, 0.0722f)) < 0.040005647f) return;
   const float4 toward_sun = sun[uint2(0, 0)];

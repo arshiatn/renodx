@@ -684,7 +684,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
   ComPtr<ID3D11Buffer> game_second;
   native->CSGetConstantBuffers(1, 1, game_second.GetAddressOf());
   const bool probe_sky = runtime.settings.path_ambient && runtime.settings.path_probe_sky && draw.environment_slot != UINT_MAX;
-  const std::array<uint32_t, 4> offset = {draw.sun_direction, internal::ambient_cube, runtime.settings.path_ambient ? 1u : 0u, probe_sky ? 1u : 0u};
+  const std::array<uint32_t, 8> offset = {draw.sun_direction, internal::ambient_cube, runtime.settings.path_ambient ? 1u : 0u, probe_sky ? 1u : 0u,
+                                          internal::sun_colour, 0u, 0u, 0u};
   native->UpdateSubresource(runtime.objects.sun_constants.Get(), 0, nullptr, offset.data(), 0, 0);
   native->CSSetShader(runtime.objects.sun_shader.Get(), nullptr, 0);
   ID3D11UnorderedAccessView* sun = dlaa_bridge::bridge.rt_sun.uav.Get();
@@ -1217,9 +1218,13 @@ inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pas
 // The sun light draws (the addon's, kept while installed): before the screen-space shadows (their occlusion reads this
 // frame's trace), the AO filter and the Light Bounce.
 // `ambient_cube`: the first float of the lighting buffer's ambient cube (six colours: +x, -x, +y, -y, +z, -z; the paths'
-// sky), 0 none.
-inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws, UINT ambient_cube = 0) {
+// sky), 0 none. `sun_colour`: the first float of its sun colour where the game's sun light shaders light the G-buffer's
+// diffuse colour by it as Attila's (x N.L x the shadow, x 0.004 with the ambient's scale switch: rt_sun.cs_5_0.hlsl), the
+// paths' sun light of no view with Path-Traced Ambient (RT_PATH_SUN_LIGHT), 0 none (they keep the light learned from the
+// screen).
+inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws, UINT ambient_cube = 0, UINT sun_colour = 0) {
   internal::ambient_cube = ambient_cube;
+  internal::sun_colour = sun_colour;
   for (const auto& draw : sun_draws) {
     internal::runtime.sun_draw_shaders.insert(draw.shader_hash);
     renodx::utils::command_action::Register(
