@@ -16,12 +16,14 @@
 // - The centre and the uv at corner (0, 0) (TEXCOORD8, the quad's own coordinates) from the triangle's barycentric
 //   coordinates; the size from the corners' world spans along the quad's two axes.
 // - Opacity as 3F1B86E1 computes its alpha (bytes read, its RDEF slots): the diffuse array's alpha at both cells
-//   (t6, s3; the emitter's m_diffuse_id), sRGB-decoded, times COLOR's w; then the alpha crush (m_behaviour_mask 0x100000).
+//   (t6, s3; the emitter's m_diffuse_id) at the mip level its sample takes at that centre (the uv's change across a
+//   pixel of the camera's g_viewport_dimensions), sRGB-decoded, times COLOR's w; then the alpha crush (m_behaviour_mask
+//   0x100000).
 //   Its soft edge (0x200000: against the scene's depth) depends on the view: left out. Only lit emitters cast (0x80000:
 //   the pixel shader's sun lighting); fire's glow is the texture's colour above its alpha, so it casts nothing. A
-//   particle around the camera (haze kept there) casts none.
-// The input is the vertex shader's whole output signature (fxc /dumpbin of the game's bytes). WARP against the game's bytes:
-// tools\tw\warp_tests\pharaoh\smoke_v57.
+//   particle around the camera (haze kept there) casts none, nor one the vertex shader drew as a mesh (TEXCOORD0's y
+//   without 0x200000, its draw flags' quad bit).
+// The input is the vertex shader's whole output signature (fxc /dumpbin of the game's bytes).
 // CMake's shader rule takes no gs_ target: after a change run from the repository's root
 // bin\fxc.exe src\games\twpharaohdynasties\rt_particle_quads.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /Vn __rt_particle_quads /Fh src\games\twpharaohdynasties\rt_particle_quads_gs.h
 
@@ -63,7 +65,8 @@ struct EmitterConstants {
 };
 
 cbuffer camera : register(b0) {
-  float4 camera[16];  // the vertex shader's: [0] the camera's position, [12] view_projection's w row, [13-15] inv_view
+  // The vertex shader's: [0] the camera's position, [12] view_projection's w row, [13-15] inv_view, [29] g_viewport_dimensions.
+  float4 camera[30];
 }
 
 Texture2DArray<float4> diffuse : register(t6);
@@ -72,6 +75,21 @@ SamplerState diffuse_sampler : register(s3);
 
 float Cross(float2 a, float2 b) {
   return (a.x * b.y) - (a.y * b.x);
+}
+
+// What one unit of the corner's x and y moves a value that is affine in the corner, from its values at the three corners
+// (`along_first`, `along_second`: the corners' offsets from the first, `area` their cross product).
+void Axes(float4 first, float4 second, float4 third, float2 along_first, float2 along_second, float area, out float4 axis_x, out float4 axis_y) {
+  axis_x = (((second - first) * along_second.y) - ((third - first) * along_first.y)) / area;
+  axis_y = (((third - first) * along_first.x) - ((second - first) * along_second.x)) / area;
+}
+
+// The mip level of a sample at the quad's centre, as the pixel shader's own (D3D's isotropic level): the uv's change
+// across one pixel, `uv_x` and `uv_y` its change along the corner's axes, `per_pixel` the inverse of the pixels' change.
+float MipLevel(float2 uv_x, float2 uv_y, float2x2 per_pixel, float2 texels) {
+  const float2 across = ((uv_x * per_pixel[0][0]) + (uv_y * per_pixel[1][0])) * texels;
+  const float2 down = ((uv_x * per_pixel[0][1]) + (uv_y * per_pixel[1][1])) * texels;
+  return log2(max(length(across), length(down)));
 }
 
 [maxvertexcount(1)]
@@ -89,29 +107,45 @@ void main(triangle Corner corners[3], uint primitive : SV_PrimitiveID, inout Poi
   const float2 along_first = corners[1].corner.xy - corners[0].corner.xy;
   const float2 along_second = corners[2].corner.xy - corners[0].corner.xy;
   const float area = Cross(along_first, along_second);
-  const float3 first_span = world[1] - world[0];
-  const float3 second_span = world[2] - world[0];
-  // The quad's axes in the world: what one unit of the corner's x and y moves.
-  const float3 axis_x = ((first_span * along_second.y) - (second_span * along_first.y)) / area;
-  const float3 axis_y = ((second_span * along_first.x) - (first_span * along_second.x)) / area;
+  float4 axis_x;
+  float4 axis_y;
+  Axes(float4(world[0], 0.f), float4(world[1], 0.f), float4(world[2], 0.f), along_first, along_second, area, axis_x, axis_y);
   const float2 corner_min = min(min(corners[0].corner.xy, corners[1].corner.xy), corners[2].corner.xy);
   const float2 corner_max = max(max(corners[0].corner.xy, corners[1].corner.xy), corners[2].corner.xy);
-  const float2 size = float2(length(axis_x), length(axis_y)) * (corner_max - corner_min);
+  const float2 size = float2(length(axis_x.xyz), length(axis_y.xyz)) * (corner_max - corner_min);
   // Barycentric coordinates of the corner (0, 0).
   const float second = Cross(-corners[0].corner.xy, along_second) / area;
   const float third = Cross(along_first, -corners[0].corner.xy) / area;
   const float first = 1.f - second - third;
   const float3 centre = (world[0] * first) + (world[1] * second) + (world[2] * third);
-  const float2 uv = (corners[0].uv.xy * first) + (corners[1].uv.xy * second) + (corners[2].uv.xy * third);
-  const float2 uv_next = (corners[0].uv_next.xy * first) + (corners[1].uv_next.xy * second) + (corners[2].uv_next.xy * third);
+  // Both cells' uv (xy, zw) and their axes; the pixels' change along the axes from SV_POSITION's x, y and w.
+  const float4 uv_corners[3] = {float4(corners[0].uv.xy, corners[0].uv_next.xy), float4(corners[1].uv.xy, corners[1].uv_next.xy),
+                                float4(corners[2].uv.xy, corners[2].uv_next.xy)};
+  const float4 uvs = (uv_corners[0] * first) + (uv_corners[1] * second) + (uv_corners[2] * third);
+  float4 uv_x;
+  float4 uv_y;
+  Axes(uv_corners[0], uv_corners[1], uv_corners[2], along_first, along_second, area, uv_x, uv_y);
+  float4 clip_x;
+  float4 clip_y;
+  Axes(corners[0].position, corners[1].position, corners[2].position, along_first, along_second, area, clip_x, clip_y);
+  const float4 clip = (corners[0].position * first) + (corners[1].position * second) + (corners[2].position * third);
+  const float2 half_viewport = 0.5f * camera[29].xy;
+  const float2 pixels_x = ((clip_x.xy * clip.w) - (clip.xy * clip_x.w)) / (clip.w * clip.w) * half_viewport;
+  const float2 pixels_y = ((clip_y.xy * clip.w) - (clip.xy * clip_y.w)) / (clip.w * clip.w) * half_viewport;
+  const float2x2 per_pixel = float2x2(pixels_y.y, -pixels_y.x, -pixels_x.y, pixels_x.x) / Cross(pixels_x, pixels_y);
 
   const Corner particle = corners[0];
   const EmitterConstants emitter = emitters[particle.emitter.x];
   float alpha = particle.colour.w;
   if ((emitter.behaviour & 0x10000u) != 0u) {
+    uint width = 0u;
+    uint height = 0u;
+    uint slices = 0u;
+    diffuse.GetDimensions(width, height, slices);
+    const float2 texels = float2(width, height);
     const float slice = (float)emitter.diffuse;
-    const float4 cell = diffuse.SampleLevel(diffuse_sampler, float3(uv, slice), 0.f);
-    const float4 next_cell = diffuse.SampleLevel(diffuse_sampler, float3(uv_next, slice), 0.f);
+    const float4 cell = diffuse.SampleLevel(diffuse_sampler, float3(uvs.xy, slice), MipLevel(uv_x.xy, uv_y.xy, per_pixel, texels));
+    const float4 next_cell = diffuse.SampleLevel(diffuse_sampler, float3(uvs.zw, slice), MipLevel(uv_x.zw, uv_y.zw, per_pixel, texels));
     const float texture_alpha = lerp(cell.w, next_cell.w, particle.uv_next.z);
     // The pixel shader's literal for 1 / 1.055 (0x3F72A76F; fxc rounds 0.947867298 one bit lower).
     const float decoded = (texture_alpha <= 0.04045f) ? (texture_alpha * 0.0773993805f) : exp2(log2((texture_alpha + 0.055f) * asfloat(0x3F72A76Fu)) * 2.4f);
@@ -127,7 +161,7 @@ void main(triangle Corner corners[3], uint primitive : SV_PrimitiveID, inout Poi
     const float eroded = saturate(alpha - threshold) / (1.001f - threshold);
     alpha = (emitter.sharp_transition != 0u) ? (eroded * ((eroded - threshold >= 0.f) ? 1.f : 0.f)) : eroded;
   }
-  const bool lit = (emitter.behaviour & 0x80000u) != 0u;
+  const bool lit = (emitter.behaviour & 0x80000u) != 0u && (particle.emitter.y & 0x200000u) != 0u;
   const bool around_camera = distance(centre, camera[0].xyz) < 0.5f * max(size.x, size.y);
   const bool placed = abs(area) > 1e-6f && all(isfinite(centre)) && size.x * size.y > 0.f;
 

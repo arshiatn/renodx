@@ -24,10 +24,23 @@ under 60 GB before GPU / WARP jobs (18.6 GB at 02:06). One writer. Each step com
   smooth texture 0 apart within 2/256 x largest step x 2.275 (1.12e-3; worst 7.5e-4); CONTROLs: no texture alpha 32 / 39 apart,
   unlit included 12 apart. fxc rounds 1/1.055 one bit low: the PS's 0x3F72A76F as asfloat. Dump page_p_v59 vs v58: 611 keys, none
   lost; Smoke Shadows (Experimental) default 1 -> 0, shown with the rays (row 137) and Quality under More Options (156); RT/PT's
-  "ours" list without smoke shadows (as v58).
-- [ ] 3 builds (x64 list + build32), WARP / lifetime suites
-- [ ] 4 README Round v57, HANDOFF Not done, test lines
-- [ ] 5 skill lessons
+  "ours" list without smoke shadows (as v58). (df95f06e; ff5d2e10 strips fxc's trailing spaces from the header)
+- [x] 3 builds at ff5d2e10: the skill's x64 list (15) + build32 Attila / Rome II / Thrones linked, no errors, only the old
+  LoadSetting deprecation warnings; test/tw_* amd64 + x86 PASS (depth_levels, device_loss, fg_initialization, gpu_completion,
+  helper_lifetime, preset_writer, sampler_lifetime, screen_space_shadows, startup_worker, texture_lod_bias, unit_pack_rounds;
+  motion_record x86). Committed 18.6 GB.
+- [x] 4 one independent review (read-only agent) and its fixes: (1) RayTracedSmokeShadows saved hidden at 1 by v56 inis (every
+  keyed setting is saved): Pharaoh's SettingsRevision 1 clears it from the three presets once (WH3's pattern); (2) one texel of
+  the top mip: the record now samples at the PS's own mip level (D3D's isotropic level from the uv's change across a pixel of
+  g_viewport_dimensions, c29); (3) the VS's mesh path: opacity 0 without the quad bit (TEXCOORD0.y 0x200000); (4) the VS's
+  b0-b1 read and the GS's put back with their D3D11.1 ranges (*ConstantBuffers1); (5) braces, names (INDEXED, particle_count),
+  a destructured pair, trace history out of addon.cpp's comment. Kept: the release lambda local (CXX_STYLE: small
+  duplication over a helper). WARP again (run_v57.txt): everything as in 2, plus the mip level (mips with one alpha each, the
+  test's viewport in c29): 23 particles (19 between the first and the last mip), worst 0.0039 of a level apart; CONTROL at the
+  top mip 22 apart. Likely the same for rows v54-v56 showed with a new default 0 after being saved hidden (Fog Shadows, Torch
+  and Fire Light in Fog, Water Reflections at RT/PT's 1; Bend's Light Through Banners 0.35, Coloured Shadows on): not cleared,
+  ATN may have set them since they show; his ini would tell.
+- [ ] 5 builds again, dumps, README Round v57 (Not done + test lines), skill lessons
 
 ## PHARAOH V56: RAY-TRACED WATER REFLECTIONS (2026-11-13 night, offline; plan tools/tw/pharaoh/reflections_plan.md)
 Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes

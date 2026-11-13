@@ -1468,13 +1468,11 @@ twattila::rt_scene::Sliders rt_sliders;
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
 
-// Smoke Shadows' particles (Experimental, off; siege trace W1_015828 line 3156: indexed 6 x 91 instances, blend ONE /
-// INV_SRC_ALPHA): vfx vs50_main_instancing 109B79CE draws each particle as an instance of a quad, and of the five pixel shaders
-// it draws with only vfxextremeultra 3F1B86E1 (ps_main_high_quality) blends quads over the light buffer; the others are
-// distortion (2A315C27), meshes (ACE25F9D, CFB48C60) and the particles' lights (5AD46115). Each draw reads the same frame-wide
-// sorted list (t2, 91 in every draw there) and the vertex shader keeps only emitters whose m_draw_flags meet the draw's
-// g_draw_flags (cb_vfx: `and r3.w, r5.x, cb1[0].x`, `and ..., l(0x000fffff)`), the rest at (-10, -10, -10, 0) with no
-// colour. rt_particle_quads makes a record of each instance's first triangle.
+// Smoke Shadows' particles (Experimental, off): vfx vs50_main_instancing 109B79CE draws each particle as an instance of a
+// quad (6 indices), and of the pixel shaders it draws with only vfxextremeultra 3F1B86E1 (ps_main_high_quality) blends quads
+// over the light buffer (ONE / INV_SRC_ALPHA); the others are distortion (2A315C27), meshes (ACE25F9D, CFB48C60) and the
+// particles' lights (5AD46115). Every draw reads the same frame-wide sorted list; the vertex shader keeps only emitters whose
+// m_draw_flags meet the draw's g_draw_flags (cb_vfx). rt_particle_quads makes a record of each instance's first triangle.
 constexpr std::array<uint32_t, 1> SMOKE_PIXEL_SHADERS = {0x3F1B86E1};
 
 // Log Details' light count, once (a frame trace gives a light draw's indices times its instances, not its lights): one whole
@@ -2790,6 +2788,16 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+
+  // Rows saved at an old default, cleared once: Smoke Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults) until it
+  // showed, Experimental and off.
+  constexpr int SETTINGS_REVISION = 1;
+  if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
+    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
+      reshade::set_config_value(nullptr, preset, "RayTracedSmokeShadows", static_cast<const char*>(nullptr));
+    }
+    reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
