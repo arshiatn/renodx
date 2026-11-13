@@ -20,7 +20,7 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
   misc.w both ways, no MSAA (ours never draws under it). Nothing bound: 0 of 589,824 apart at 100%, 0 of 1,179,648 at 50% / 67%;
   t47 bound b10.x 0: 0 apart; b10.x 1 vs env + (t47.rgb x w - env) x t47.a: 0 misses; CONTROL game's x5-squared decode 207,453;
   t46 0.5 vs game with cubes x 0.5: 0 bits apart (b10.x 0: game's); CONTROL own cubes 277,923; render scale: t47 at the render
-  pixel 0 misses, CONTROL viewport uv 268,723. Raw 3Dmigoto 165,780 apart; faithful (2 traps fixed) 0.
+  pixel 0 misses, CONTROL viewport uv 268,723. Raw 3Dmigoto 165,780 apart; faithful (2 traps fixed) 0. (def89d06)
 - [x] 5 page: has_reflections (Bindings default), AppendSettings(..., reflection_pass true), water_pass; Water Reflections
   (Experimental) default 0 after SetRaysPresetDefaults, Specular Occlusion (Experimental) default 0 and shown only with the rays
   and Water Reflections, Samples / Reuse shown and acting only with Softer (calm water is a mirror); OnPresent gates the same.
@@ -28,16 +28,19 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
   the Reflections and Water section (method Game's SSR / Ray-Traced (DXR, Experimental), note, Samples, Reuse, Water
   Reflections, Steadier, Softer, Specular Occlusion); tooltips now naming reflections: RT/PT (mine), Hills Out of View, SER,
   Denoiser (shared texts on has_reflections). RT/PT now writes RayTracedReflections / WaterReflections / SpecularOcclusion 1
-  (RAYS_PRESET, ATN's list, as fog and torches): ATN to decide. Reset puts them back to 0.
+  (RAYS_PRESET, ATN's list, as fog and torches): ATN to decide. Reset puts them back to 0. (a389c431)
 - [x] 6 shared frame trace (twattila/frame_trace.hpp Options, all empty / off for Attila, WH3 and the rest): blend_hashes (the
-  full blend state at the first draw of each listed PS: "
-  blend: alpha to coverage, factor, sample mask | rtN on/off colour
-  src dest op, alpha src dest op, mask"), vertex_input_hashes (each draw of a listed VS: "
-  vs inputs | tN buffer B bytes,
-  stride S, misc M, view fF E elements from F [raw]"), instances_apart (" | instanced C x I" on instanced draws, direct and
-  indirect; the line's count stays C x I). Pharaoh: blend DE4F92CD + 3F1B86E1, inputs 109B79CE, instances apart, value hash
-  3F1B86E1 added. Not run (needs the game).
-- [ ] 7 builds: the skill's x64 list + build32 Attila / Rome II / Thrones; WARP suites (sun, tw_screen_space_shadows, lifetime)
+  full blend state at the first draw of each listed PS: a "  blend: alpha to coverage, factor, sample mask | rtN on/off colour
+  src dest op, alpha src dest op, mask" line under the draw), vertex_input_hashes (each draw of a listed VS: a "  vs inputs |
+  tN buffer B bytes, stride S, misc M, view fF E elements from F [raw]" line), instances_apart (" | instanced C x I" on
+  instanced draws, direct and indirect; the line's count stays C x I). Pharaoh: blend DE4F92CD + 3F1B86E1, inputs 109B79CE,
+  instances apart, value hash 3F1B86E1 added. Not run (needs the game). (7e945569)
+- [x] 7 builds: the skill's x64 list (15) + build32 renodx-twattila / twrome2 / twthronesofbritannia.addon32 linked, no errors, only
+  the old LoadSetting deprecation warnings (Pharaoh, WH3 addon.cpp); git diff --check 91c6b529..HEAD clean. WARP: Pharaoh sun
+  suite (tools/tw/pharaoh/sun_test/sun_results_v56.txt) SUN PHARAOH ALL PASSED (DRAW 25/25, v51 25/25, v54, v55 as before);
+  test/tw_* default runs exit 0 + PASS, amd64 and x86: depth_levels, device_loss, fg_initialization, gpu_completion,
+  helper_lifetime, preset_writer, sampler_lifetime, screen_space_shadows, startup_worker, texture_lod_bias, unit_pack_rounds;
+  motion_record x86 (v53's list). Committed 18.6 GB.
 - [ ] 8 README Pharaoh v56 (+ WH3 line), HANDOFF, report
 
 ## ATN'S 2026-11-12 FOURTH LIST + PHARAOH (started 15:07; ATN away until ~21:00, plays 21:00-01:00)
