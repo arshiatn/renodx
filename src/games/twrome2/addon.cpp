@@ -1136,6 +1136,8 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
+// Skip the Shadow Maps (Experimental, off): Ray-Traced Shadows Only with the rays' sun shadows (rt_scene InstallShadowsOnly).
+float rays_skip_cascades_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1268,6 +1270,8 @@ constexpr std::array<twattila::water_effects::WaterShader, 3> WATER_SHADERS = {{
     {.hash = 0xB0A1E151, .lighting_slot = 1, .world_input = 3, .refraction_slot = 1},  // battle plane, High
     {.hash = 0x3ECFEAF5, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // battle river
 }};
+// The sun's per-frame atlas's readers besides the sun draws (A1, C1, A2): the battle water Ultra and river, the campaign's sea.
+constexpr std::array<uint32_t, 3> SHADOW_READER_SHADERS = {0x58DC6E12, 0x3ECFEAF5, 0x3DCC4AED};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x0AF04E16, .standard = true, .sun_direction = 0},
@@ -1371,7 +1375,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (game_msaa) {
     rays_aa.method = 0.f;
   }
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, rays_aa, shader_injection.light_bounce_strength);
+  auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, rays_aa, shader_injection.light_bounce_strength);
+  rt_settings.shadows_only = rt_settings.shadows_only && rays_skip_cascades_row != 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
@@ -1778,6 +1783,7 @@ void ConfigureAddon() {
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
+                                             .rays_skip_cascades = &rays_skip_cascades_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
@@ -1876,7 +1882,19 @@ bool AttachAddon() {
                                       sizeof(shader_injection), __fg_hdr10);
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
-  twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);
+  // The sun's per-frame atlas (8192 square R32) is the map Ray-Traced Shadows Only skips the casters of, never the kept baked
+  // map (4096 square R16, also bound at the sun draws: its downsample draws only now and then, A2 trace_09).
+  twattila::rt_scene::Host rt_host = twattila::rt_scene::TW_HOST;
+  rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
+    return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
+  };
+  twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
+  // Ray-Traced Shadows Only (Skip the Shadow Maps): the atlas's casters skipped; its other readers in ATN's runs (the battle
+  // water and river, the campaign's sea) take the rays' shadow (WARP tools/tw/rome2/water_r2: t49 unbound bit-identical,
+  // t49 = 1 every comparison shadowed).
+  twattila::rt_scene::InstallShadowsOnly();
+  twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
+  twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   // Last of the sun draws' hooks: it draws the sun draws itself (no callback after it runs).
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
