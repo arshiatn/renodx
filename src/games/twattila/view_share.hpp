@@ -301,49 +301,6 @@ inline bool ReadAsCoordinate(const std::vector<Instruction>& code, size_t index,
   return false;
 }
 
-// Whether temp `reg`'s `components` written at `index` are first read by a product (mul, mad) whose other factor is made
-// from the viewport (the game's own mapping to it: Pharaoh's battlefog sun_scan, (c29.xy x c31.zw) x the projected uv).
-inline bool ScaledByViewport(const std::vector<Instruction>& code, size_t index, uint32_t reg, uint32_t components,
-                             const Reflection& reflection) {
-  for (size_t at = index + 1; at < code.size(); ++at) {
-    const Instruction& instruction = code[at];
-    if (instruction.operands.empty()) continue;
-    const bool product = instruction.opcode == OP_MUL || instruction.opcode == OP_MAD;
-    // The temp components an operand reads: a product's for the components it writes, any other's all it selects.
-    const auto read_of = [&](const Operand& operand) {
-      uint32_t read = 0;
-      for (uint32_t component = 0; component < 4; ++component) {
-        if (!product || (instruction.operands[0].select & (1u << component)) != 0) read |= 1u << SourceComponent(operand, component);
-      }
-      return read;
-    };
-    const auto ours = [&](const Operand& operand) {
-      return operand.type == TYPE_TEMP && !operand.relative && operand.index[0] == reg && (read_of(operand) & components) != 0;
-    };
-    bool reads = false;
-    for (size_t source = 1; source < instruction.operands.size() && !reads; ++source) reads = ours(instruction.operands[source]);
-    if (reads) {
-      if (!product) return false;
-      // The factors (mul's two, mad's first two).
-      for (size_t source = 1; source < 3; ++source) {
-        const Operand& operand = instruction.operands[source];
-        if (ours(operand) || operand.relative) continue;
-        if (operand.type == TYPE_CONSTANT_BUFFER && operand.index[0] == reflection.camera_slot) {
-          if (CameraRegister(reflection, operand.index[1]) == Source::VIEW) return true;
-        } else if (operand.type == TYPE_TEMP && Classify(code, at, operand.index[0], read_of(operand), reflection, 0, true) == Source::VIEW) {
-          return true;
-        }
-      }
-      return false;
-    }
-    const Operand& destination = instruction.operands[0];
-    if (destination.type == TYPE_TEMP && destination.mode == 0 && destination.index[0] == reg && (destination.select & components) == components) {
-      return false;
-    }
-  }
-  return false;
-}
-
 // The patched code (empty: nothing to patch) and what was patched, for the log.
 struct Patched {
   std::vector<uint8_t> code;
@@ -433,9 +390,49 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
       if (source.type != TYPE_TEMP || source.relative) continue;
       const uint32_t read = (1u << SourceComponent(source, components[0])) | (1u << SourceComponent(source, components[1]));
       const uint32_t written = (1u << components[0]) | (1u << components[1]);
-      if (Classify(instructions, index, source.index[0], read, reflection) == Source::CAMERA_PROJECTION
-          && (compute || ReadAsCoordinate(instructions, index, destination.index[0], written))
-          && !(viewport_chains && ScaledByViewport(instructions, index, destination.index[0], written, reflection))) {
+      if (Classify(instructions, index, source.index[0], read, reflection) != Source::CAMERA_PROJECTION
+          || !(compute || ReadAsCoordinate(instructions, index, destination.index[0], written))) {
+        continue;
+      }
+      // Viewport chains: a projected uv first read by a product (mul, mad) whose other factor is made from the viewport (the
+      // game's own mapping to it: Pharaoh's battlefog sun_scan, (c29.xy x c31.zw) x the projected uv) is the view's already.
+      bool scaled_by_viewport = false;
+      for (size_t at = index + 1; viewport_chains && at < instructions.size(); ++at) {
+        const Instruction& reader = instructions[at];
+        if (reader.operands.empty()) continue;
+        const bool product = reader.opcode == OP_MUL || reader.opcode == OP_MAD;
+        // The temp components an operand reads: a product's for the components it writes, any other's all it selects.
+        const auto read_of = [&](const Operand& operand) {
+          uint32_t components_read = 0;
+          for (uint32_t component = 0; component < 4; ++component) {
+            if (!product || (reader.operands[0].select & (1u << component)) != 0) components_read |= 1u << SourceComponent(operand, component);
+          }
+          return components_read;
+        };
+        const auto ours = [&](const Operand& operand) {
+          return operand.type == TYPE_TEMP && !operand.relative && operand.index[0] == destination.index[0] && (read_of(operand) & written) != 0;
+        };
+        bool reads = false;
+        for (size_t operand_at = 1; operand_at < reader.operands.size() && !reads; ++operand_at) reads = ours(reader.operands[operand_at]);
+        if (reads) {
+          // The factors (mul's two, mad's first two).
+          for (size_t factor = 1; product && factor < 3 && !scaled_by_viewport; ++factor) {
+            const Operand& operand = reader.operands[factor];
+            if (ours(operand) || operand.relative) continue;
+            scaled_by_viewport = (operand.type == TYPE_CONSTANT_BUFFER && operand.index[0] == reflection.camera_slot
+                                  && CameraRegister(reflection, operand.index[1]) == Source::VIEW)
+                                 || (operand.type == TYPE_TEMP
+                                     && Classify(instructions, at, operand.index[0], read_of(operand), reflection, 0, true) == Source::VIEW);
+          }
+          break;
+        }
+        const Operand& overwritten = reader.operands[0];
+        if (overwritten.type == TYPE_TEMP && overwritten.mode == 0 && overwritten.index[0] == destination.index[0]
+            && (overwritten.select & written) == written) {
+          break;
+        }
+      }
+      if (!scaled_by_viewport) {
         sites.push_back({.instruction = index, .kind = Kind::PROJECTED, .components = components});
       }
     } else {
