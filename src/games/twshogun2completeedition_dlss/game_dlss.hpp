@@ -121,8 +121,9 @@ static std::atomic_uint32_t active_preset = 0;
 static std::atomic_uint32_t requested_preset = 0;
 // The game's DLSS ran in the last frame (present): the addon's jitter only then (TAA keeps the game's).
 static std::atomic_bool dlss_running = false;
-// Render thread, before each evaluation (the object motion merges its motion vectors, the frame trace marks it).
-static std::function<void(ID3D11DeviceContext*, NVSDK_NGX_D3D11_DLSS_Eval_Params*)> on_evaluate;
+// Render thread, before each evaluation (the object motion merges its motion vectors, the frame trace marks it); true:
+// it evaluated instead (the HDR addon's helper upscaler), the game's DLSS skipped.
+static std::function<bool(ID3D11DeviceContext*, NVSDK_NGX_D3D11_DLSS_Eval_Params*)> on_evaluate;
 // Debug: the jitter DLSS gets, x (1 - 2 x bit): bit 0 flips X, bit 1 flips Y.
 static std::atomic_int jitter_flip = 0;
 
@@ -231,7 +232,7 @@ inline NVSDK_NGX_Result OnEvaluate(ID3D11DeviceContext* context, NVSDK_NGX_Handl
     state.last = *eval;
     ++state.evaluations;
   }
-  if (on_evaluate) on_evaluate(context, eval);
+  if (on_evaluate && on_evaluate(context, eval)) return NVSDK_NGX_Result_Success;
   return original_evaluate(context, handle, parameters, eval);
 }
 
@@ -334,6 +335,11 @@ inline void RequestPreset(uint32_t preset) {
   internal::requested_preset.store(preset);
 }
 
+// The DLSS preset in effect (0: DLSS's default per mode): the helper's upscaler takes it too.
+inline uint32_t Preset() {
+  return internal::active_preset.load(std::memory_order_relaxed);
+}
+
 // Present: a new scale or preset clears the game's feature handle, so its DLSS pass creates the feature again with the
 // new input size and preset hints (the old feature is left: NGX's release is not hooked). Returns the scale in effect.
 inline float UpdateFeature() {
@@ -379,7 +385,7 @@ inline void Uninstall() {
   }
 }
 
-inline void SetEvaluateCallback(std::function<void(ID3D11DeviceContext*, NVSDK_NGX_D3D11_DLSS_Eval_Params*)> callback) {
+inline void SetEvaluateCallback(std::function<bool(ID3D11DeviceContext*, NVSDK_NGX_D3D11_DLSS_Eval_Params*)> callback) {
   internal::on_evaluate = std::move(callback);
 }
 

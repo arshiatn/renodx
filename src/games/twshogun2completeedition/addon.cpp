@@ -38,6 +38,7 @@
 #include "../twshogun2completeedition_dlss/hdr_link.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "./ray_tracing.hpp"
+#include "./upscaling.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 #include "./vfx_effects.hpp"
@@ -1006,6 +1007,9 @@ void ReadDlssAddonOptions() {
   ray_tracing.debug_view = read_count("RayTracedDebugView", 0, 0, 9);
   ray_tracing.scene_test = (ray_tracing.debug_view != 0) ? read_count("RayTracedSceneTest", 0, 0, 4) : 0u;
   ray_tracing.debug_log = read_on("RayTracedDebugLog", false);
+  // With the helper's upscaler (OnPresent): NRD, the torches' size under Ray Reconstruction.
+  ray_tracing.nrd = read_on("RayTracingDenoiser", false);
+  read_float("RayTracedLightSoftness", 0.25f, 0.f, 1.f, &ray_tracing.light_size);
 }
 
 std::atomic_bool overlay_open = false;
@@ -1024,9 +1028,23 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     ReadDlssAddonOptions();
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  // The helper's bridge: what it serves this frame (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
+  const auto [upscaler, ray_reconstruction] = twshogun2::hdr_link::Choices();
+  auto rays = ray_tracing_settings;
+  const bool any_rays = ray_tracing_installed
+                        && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights);
+  twshogun2::upscaling::SetUse({
+      .ray_tracing = ray_tracing_installed,
+      .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
+      .reflections = ray_tracing_installed && rays.reflections,
+      .upscaler = upscaler,
+      .ray_reconstruction = any_rays ? ray_reconstruction : 0u,
+  });
   if (ray_tracing_installed) {
-    twattila::light_bounce::SetRayTraced(ray_tracing_settings.light_bounce, ray_tracing_settings.light_bounce_resolution);
-    twshogun2::ray_tracing::Update(ray_tracing_settings);
+    // NRD reads the upscaler's motion and depth: only with the helper's.
+    rays.nrd = rays.nrd && upscaler != 0;
+    twattila::light_bounce::SetRayTraced(rays.light_bounce, rays.light_bounce_resolution);
+    twshogun2::ray_tracing::Update(rays);
     if (twshogun2::hdr_link::TakeProfileRequest()) twattila::rt_scene::StartProfile();
   }
   reflection_passes = false;
@@ -1212,6 +1230,10 @@ bool AttachAddon() {
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   twshogun2::dlss_jitter::Use(DLL_PROCESS_ATTACH);
   twshogun2::hdr_link::Use(DLL_PROCESS_ATTACH);
+  // The DLSS addon's evaluations through the helper's upscaler (its Upscaler row; upscaling.hpp).
+  twshogun2::hdr_link::SetUpscale([](const twshogun2::hdr_link::UpscaleRequest& request) {
+    return twshogun2::upscaling::Evaluate(request, ray_tracing_installed && twshogun2::ray_tracing::GuidesWritten());
+  });
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
@@ -1221,6 +1243,8 @@ bool AttachAddon() {
     twshogun2::ray_tracing::Install();
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
   }
+  // After the ray tracing's: the bridge released last.
+  reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::upscaling::OnDestroyDevice);
   // One line for a run's log (2026-11-14 data run): the DLSS addon's options this addon reads.
   renodx::utils::log::i(std::format(
       "[Shogun 2] Options: AO mode {}, Light Bounce strength {}, SSR resolution {}, SSS samples {} stability {}, shadow "
@@ -1261,6 +1285,8 @@ void DetachAddon() {
     twshogun2::ray_tracing::Uninstall();
     reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
   }
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::upscaling::OnDestroyDevice);
+  twshogun2::hdr_link::SetUpscale(nullptr);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

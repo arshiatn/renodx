@@ -25,6 +25,7 @@
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/rt_core.hpp"
+#include "./upscaling.hpp"
 
 // Ray tracing (Experimental): Shogun 2's scene through the Total War helper (twattila/rt_core.hpp; renodx-tw-dlaa64.exe
 // next to the addon, its own D3D12 device with DXR). The scene: every G-buffer draw (rt0-2 RGBA16F, depth written,
@@ -139,18 +140,13 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   D3D11_TEXTURE2D_DESC depth_texture_desc = {};
   if (FAILED(depth_resource.As(&depth_texture))) return false;
   depth_texture->GetDesc(&depth_texture_desc);
-  bool reflections = false;
-  bool guides = false;
   {
     const std::unique_lock lock(state.mutex);
     if (state.depth_size != std::array<UINT, 2>{depth_texture_desc.Width, depth_texture_desc.Height}) return false;
-    reflections = state.settings.reflections;
-    guides = reflections || state.settings.path_tracing;
   }
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (!twattila::dlaa_bridge::Prepare(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height, guides, true,
-                                      DXGI_FORMAT_UNKNOWN, reflections)
+  if (!upscaling::PrepareBridge(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height)
       || !twattila::rt_scene::SceneCoverage(native, shader)) {
     return false;
   }
@@ -258,7 +254,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     state.depth_size = {depth_desc.Width, depth_desc.Height};
   }
   WriteSun(native, draw.lighting_slot);
-  if (settings.reflections || settings.path_tracing) WriteGuides(native, draw.gbuffer_slot);
+  if (settings.reflections || settings.path_tracing || upscaling::Reconstructing()) WriteGuides(native, draw.gbuffer_slot);
   if (twattila::rt_scene::Camera camera; Camera(camera_buffer.Get(), &camera)) twattila::rt_scene::Trace(native, depth.Get(), camera);
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
   const std::array<ID3D11ShaderResourceView*, 2> visibilities = {settings.sun_shadows ? sun : nullptr,
@@ -296,16 +292,19 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
 
 }  // namespace internal
 
+// Whether this frame's G-buffer guides were written (the reflections, paths and Ray Reconstruction read them).
+inline bool GuidesWritten() {
+  const std::unique_lock lock(internal::state.mutex);
+  return internal::state.guides_frame == internal::state.frame;
+}
+
 inline const twattila::rt_scene::Host HOST = {
     .camera = internal::Camera,
     .render_size = [] {
       const std::unique_lock lock(internal::state.mutex);
       return internal::state.render_size;
     },
-    .guides_written = [] {
-      const std::unique_lock lock(internal::state.mutex);
-      return internal::state.guides_frame == internal::state.frame;
-    },
+    .guides_written = GuidesWritten,
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
 };
@@ -321,7 +320,8 @@ inline void Update(const twattila::rt_scene::Settings& settings) {
 }
 
 // After the screen-space reflections' resolve (its t9: this frame's lit scene, with mips): the render pixels of its first
-// level are the helper's colour, last frame's light for the next frame's reflections and paths.
+// level are the helper's colour, last frame's light for the next frame's reflections and paths. Not while the helper
+// upscales: its input colour is that light.
 inline void KeepColor(reshade::api::command_list* cmd_list) {
   std::array<UINT, 2> render_size;
   {
@@ -329,6 +329,7 @@ inline void KeepColor(reshade::api::command_list* cmd_list) {
     if (!(internal::state.settings.reflections || internal::state.settings.path_tracing)) return;
     render_size = internal::state.render_size;
   }
+  if (upscaling::Upscaled()) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   auto& bridge = twattila::dlaa_bridge::bridge;
@@ -347,6 +348,7 @@ inline void KeepColor(reshade::api::command_list* cmd_list) {
   if (desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT || desc.Width < render_size[0] || desc.Height < render_size[1]) return;
   const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = render_size[0], .bottom = render_size[1], .back = 1};
   native->CopySubresourceRegion(bridge.color.texture.Get(), 0, 0, 0, 0, resource.Get(), 0, &region);
+  bridge.color_square_root = false;
 }
 
 // Before the Light Bounce's sun draw hooks (registration order: this frame's trace first).
@@ -385,7 +387,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (ComPtr<ID3D11Texture2D> target; SUCCEEDED(resource.As(&target))) twattila::rt_scene::DrawDebugView(native, target.Get());
 }
 
-// The game's device is going away: the addon's objects on it with it.
+// The game's device is going away: the addon's objects on it with it (the bridge after it: upscaling.hpp).
 inline void OnDestroyDevice(reshade::api::device* device) {
   {
     const std::unique_lock lock(internal::state.mutex);
@@ -397,7 +399,6 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     internal::state.failed = false;
   }
   twattila::rt_scene::OnDestroyDevice(device);
-  twattila::dlaa_bridge::Release();
 }
 
 }  // namespace twshogun2::ray_tracing

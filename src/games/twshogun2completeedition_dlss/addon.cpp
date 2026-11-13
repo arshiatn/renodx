@@ -203,6 +203,12 @@ constexpr std::array<PresetChoice, 4> PRESETS = {{
     {.value = NVSDK_NGX_DLSS_Hint_Render_Preset_L, .label = "L (Transformer 2, Slower but better than M)"},
 }};
 uint32_t preset = NVSDK_NGX_DLSS_Hint_Render_Preset_K;  // overlay
+// The helper's upscaler (Experimental, the HDR addon's: hdr_link.hpp; ReShade.ini HelperUpscaler): 0 the game's DLSS,
+// 1 DLSS, 2 FSR, 3 XeSS; with DLSS its Ray Reconstruction (AntiAliasingRayReconstruction, Attila's: off, NVIDIA's
+// preset, D, E, F).
+std::atomic_int upscaler_choice = 0;
+std::atomic_int ray_reconstruction_choice = 0;
+constexpr std::array<uint32_t, 5> RAY_RECONSTRUCTION_PRESETS = {0, 0, 4, 5, 6};  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset
 // Graphics (ReShade.ini SSRResolution, read by the RenoDX HDR addon, whose shaders it changes): 0 the game's, 1 full.
 constexpr std::array<const char*, 2> SSR_RESOLUTIONS = {"Game (half the render size)", "Full"};
 int ssr_resolution = 1;  // overlay
@@ -398,6 +404,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
     twshogun2::dlss_jitter::Store(0.f, 0.f);
   }
   twshogun2::game_dlss::SetJitter(jitter_enabled.load() && dlss_running);
+  const int ray_reconstruction = ray_reconstruction_choice.load();
+  twshogun2::hdr_link::SetChoices(static_cast<uint32_t>(upscaler_choice.load()),
+                                  (ray_reconstruction != 0) ? RAY_RECONSTRUCTION_PRESETS[ray_reconstruction] + 1 : 0u);
   const float scale = twshogun2::game_dlss::UpdateFeature();
   const auto display = twshogun2::game_dlss::DisplaySize();
   const bool scaling = dlss_running && scale < 0.999f;
@@ -407,7 +416,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
   } else {
     twshogun2::particle_resolution::Apply(1.f);
   }
-  twshogun2::render_scale::BeginFrame(scaling, display, render, talesofarise::frame_generation::Presenting() && dlss_running);
+  twshogun2::render_scale::BeginFrame(scaling, display, render,
+                                      (talesofarise::frame_generation::Presenting() || upscaler_choice.load() != 0) && dlss_running);
   // Until the DLSS evaluation (its callback clears it): log2(render / display width), minus 1 (sharper) or 2.
   float bias = 0.f;
   if (const int choice = texture_lod_bias_choice.load(); scaling && choice != 0 && display[0] != 0) {
@@ -557,6 +567,29 @@ void OnOverlay(reshade::api::effect_runtime*) {
   talesofarise::frame_generation::DrawSettings("Shogun 2 DLSS", &frame_generation);
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("For every render scale. A DLSS preset override in the NVIDIA app wins over this.");
+  }
+  if (int choice = upscaler_choice.load();
+      ImGui::Combo("Upscaler (Experimental)", &choice, "Game's DLSS\0DLSS (RenoDX helper)\0FSR (RenoDX helper)\0XeSS (RenoDX helper)\0")) {
+    upscaler_choice.store(choice);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "HelperUpscaler", choice);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("The game's DLSS, or the RenoDX helper's (renodx-tw-dlaa64.exe next to the addons, with the RenoDX HDR addon):\n"
+                      "newer DLSS with Ray Reconstruction for the ray tracing, AMD FSR or Intel XeSS. The game's Anti-aliasing on DLSS.");
+  }
+  if (upscaler_choice.load() != 0 && !twshogun2::hdr_link::UpscalerAvailable()) {
+    ImGui::TextWrapped("The RenoDX HDR addon isn't loaded: the game's DLSS runs.");
+  }
+  if (upscaler_choice.load() == 1) {
+    if (int choice = ray_reconstruction_choice.load();
+        ImGui::Combo("Ray Reconstruction (Experimental)", &choice, "Off\0NVIDIA's preset\0D\0E\0F\0")) {
+      ray_reconstruction_choice.store(choice);
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingRayReconstruction", choice);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("DLSS Ray Reconstruction cleans the ray-traced effects (Ray Tracing below): sharper, steadier.\n"
+                        "NVIDIA only; with a ray-traced effect on.");
+    }
   }
   if (int choice = texture_lod_bias_choice.load();
       ImGui::Combo("Texture LOD bias", &choice,
@@ -902,6 +935,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                        "Shadows from rays for the nearest, brightest point lights (fires, torches): what stands between them and the\n"
                                        "ground or walls shades them.");
     ImGui::BeginDisabled(!local_lights);
+    if (upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0) {
+      slider("Torch and fire shadow softness", "RayTracedLightSoftness", 0.25f, 0.f, 1.f, "%.2f m",
+             "How big torches and fires are for their soft shadows. 0: sharp. With Ray Reconstruction.");
+    }
     constexpr std::array<const char*, 3> LIGHT_COUNTS = {"32", "64", "128"};
     choice("Torch and fire shadow lights (Experimental)", "RayTracedLightCount", 0, LIGHT_COUNTS,
            "How many torches and fires cast ray-traced shadows, the nearest and brightest first.\n"
@@ -940,6 +977,12 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     if (sun_shadows || ambient || local_lights || reflections || bounce) {
+      if (upscaler_choice.load() != 0 && !(upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0)) {
+        constexpr std::array<const char*, 2> DENOISERS = {"Built-in", "NRD"};
+        choice("Ray tracing denoiser (Experimental)", "RayTracingDenoiser", 0, DENOISERS,
+               "Cleans the ray-traced shadows, AO, Global Illumination and reflections (with the helper's upscaler).\n"
+               "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory.");
+      }
       const bool micromaps = choice("Leaf micromaps (Experimental)", "RayTracedLeafMicromaps", 0, OFF_ON_NAMES,
                                     "Faster ray-traced shadows through leaves: their cut-outs are baked once (NVIDIA Opacity Micro-Map SDK).") != 0;
       ImGui::BeginDisabled(!micromaps);
@@ -1087,6 +1130,13 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     preset = value;
   }
   twshogun2::game_dlss::RequestPreset(preset);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "HelperUpscaler", value) && value >= 0 && value <= 3) {
+    upscaler_choice.store(value);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingRayReconstruction", value) && value >= 0
+                      && value < static_cast<int>(RAY_RECONSTRUCTION_PRESETS.size())) {
+    ray_reconstruction_choice.store(value);
+  }
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ParticleResolution", value) && value >= 0
                       && value < static_cast<int>(PARTICLE_RESOLUTIONS.size())) {
     particle_resolution.store(value);
@@ -1197,6 +1247,29 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     twshogun2::frame_trace::OnEvaluate(context, *eval);
     twshogun2::dlss_jitter::Store(eval->InJitterOffsetX, eval->InJitterOffsetY);
     if (talesofarise::frame_generation::Presenting()) StoreFrameGeneration(*eval);
+    // The helper's upscaler in place of the game's DLSS (the HDR addon's; false: the game's).
+    if (upscaler_choice.load(std::memory_order_relaxed) == 0) return false;
+    twshogun2::hdr_link::UpscaleRequest request = {
+        .context = context,
+        .color = eval->Feature.pInColor,
+        .depth = eval->pInDepth,
+        .motion = eval->pInMotionVectors,
+        .output = eval->Feature.pInOutput,
+        .render_width = eval->InRenderSubrectDimensions.Width,
+        .render_height = eval->InRenderSubrectDimensions.Height,
+        .jitter_x = eval->InJitterOffsetX,
+        .jitter_y = eval->InJitterOffsetY,
+        .motion_scale_x = eval->InMVScaleX,
+        .motion_scale_y = eval->InMVScaleY,
+        .reset = eval->InReset != 0,
+        .preset = twshogun2::game_dlss::Preset(),
+    };
+    if (std::array<float, 44 * 4> c; twshogun2::render_scale::MainCamera(&c)) {
+      request.camera = true;
+      std::copy_n(c.begin() + (2 * 4), 16, request.view.begin());
+      std::copy_n(c.begin() + (6 * 4), 16, request.projection.begin());
+    }
+    return twshogun2::hdr_link::Upscale(request);
   });
   // Frame generation takes over the game's swap chain, which it makes after its device.
   talesofarise::frame_generation::LoadSettings("Shogun 2 DLSS", &frame_generation);
