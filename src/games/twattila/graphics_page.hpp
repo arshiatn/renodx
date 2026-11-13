@@ -741,7 +741,12 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
-    if (!b.smoke_shadows_tested) std::erase_if(rays_values, [](const Values::value_type& value) { return value.first == "RayTracedSmokeShadows"; });
+    if (!b.smoke_shadows_tested) {
+      std::erase_if(rays_values, [](const Values::value_type& preset) {
+        const auto& [key, value] = preset;
+        return key == "RayTracedSmokeShadows";
+      });
+    }
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the

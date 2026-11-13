@@ -2109,20 +2109,22 @@ void Capture(Context& command, const SceneShader& shader) {
 // which reads the pixel shader's views and samplers and the vertex shader's constants at their own slots.
 template <typename Context>
 void CaptureParticles(Context& command) {
-  constexpr bool QUADS = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
-  UINT vertex_count = 0;
+  constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
+  UINT particle_count = 0;
   UINT first_vertex = 0;
   if constexpr (std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawArguments>) {
     if (smoke_quad_shader.empty()) {
-      vertex_count = command.arguments.vertex_count;
+      particle_count = command.arguments.vertex_count;
       first_vertex = command.arguments.first_vertex;
     }
-  } else if constexpr (QUADS) {
-    if (!smoke_quad_shader.empty() && command.arguments.index_count == 6) vertex_count = command.arguments.instance_count;
+  } else if constexpr (INDEXED) {
+    if (!smoke_quad_shader.empty() && command.arguments.index_count == 6) {
+      particle_count = command.arguments.instance_count;
+    }
   }
   auto* native = NativeContext(command.cmd_list);
   const bool wanted = runtime.settings.stream_particles || (runtime.settings.smoke_shadows && dlaa_bridge::bridge.ray_tracing);
-  if (vertex_count == 0 || !wanted || native == nullptr) return;
+  if (particle_count == 0 || !wanted || native == nullptr) return;
   const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
   if (std::ranges::find(smoke_pixel_shaders, pixel_shader) == smoke_pixel_shaders.end()) return;
   ComPtr<ID3D11BlendState> blend;
@@ -2160,7 +2162,9 @@ void CaptureParticles(Context& command) {
     }};
     constexpr UINT STRIDE = 48;
     std::span<const uint8_t> output_code = smoke_quad_shader;
-    if (const auto code = game_code.find(smoke_vertex_shader); output_code.empty() && code != game_code.end()) output_code = code->second;
+    if (const auto code = game_code.find(smoke_vertex_shader); output_code.empty() && code != game_code.end()) {
+      output_code = code->second;
+    }
     if (FAILED(device->CreateBuffer(&particles_desc, nullptr, stream.particles.GetAddressOf()))
         || FAILED(device->CreateShaderResourceView(stream.particles.Get(), &particles_view, stream.srv.GetAddressOf()))
         || FAILED(device->CreateBuffer(&behaviours_desc, &behaviours_data, stream.behaviours.GetAddressOf()))
@@ -2170,13 +2174,16 @@ void CaptureParticles(Context& command) {
                                                                 nullptr, stream.output.GetAddressOf()))) {
       renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for the particles' vertex shader {:08X} (Smoke Shadows).",
                                         smoke_vertex_shader));
-    } else if constexpr (QUADS) {
+    } else if constexpr (INDEXED) {
       renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows: one particle a quad of vertex shader {:08X} ({} instances in this draw, room for {}).",
-                                        smoke_vertex_shader, vertex_count, capacity));
+                                        smoke_vertex_shader, particle_count, capacity));
     }
   }
-  const UINT count = std::min(vertex_count, capacity - runtime.particles);
+  const UINT count = std::min(particle_count, capacity - runtime.particles);
   if (!stream.output || count == 0) return;
+  // The quad shader reads the vertex shader's constants with their ranges (D3D11.1).
+  ComPtr<ID3D11DeviceContext1> native1;
+  if (INDEXED && FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
   if (first_draw && runtime.settings.stream_particles) {
     // cb_vfx_emitter_constants_common (the particle vertex shader's cb3): smoke_map_list tells the weather by it.
     ComPtr<ID3D11Buffer> behaviours;
@@ -2199,41 +2206,47 @@ void CaptureParticles(Context& command) {
   native->GSSetShader(stream.output.Get(), nullptr, 0);
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(1, &target, &offset);
-  if constexpr (QUADS) {
+  if constexpr (INDEXED) {
     // The quad shader's inputs at the slots the draw's own shaders have them (the game's geometry stage's put back).
     constexpr UINT VIEWS = 16;
+    constexpr UINT SAMPLERS = D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT;
     constexpr UINT CONSTANTS = 2;
     std::array<ID3D11ShaderResourceView*, VIEWS> game_views = {};
-    std::array<ID3D11SamplerState*, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> game_samplers = {};
+    std::array<ID3D11SamplerState*, SAMPLERS> game_samplers = {};
     std::array<ID3D11Buffer*, CONSTANTS> game_constants = {};
+    std::array<UINT, CONSTANTS> game_first_constants = {};
+    std::array<UINT, CONSTANTS> game_constant_counts = {};
     std::array<ID3D11ShaderResourceView*, VIEWS> pixel_views = {};
-    std::array<ID3D11SamplerState*, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> pixel_samplers = {};
+    std::array<ID3D11SamplerState*, SAMPLERS> pixel_samplers = {};
     std::array<ID3D11Buffer*, CONSTANTS> vertex_constants = {};
+    std::array<UINT, CONSTANTS> vertex_first_constants = {};
+    std::array<UINT, CONSTANTS> vertex_constant_counts = {};
     native->GSGetShaderResources(0, VIEWS, game_views.data());
-    native->GSGetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, game_samplers.data());
-    native->GSGetConstantBuffers(0, CONSTANTS, game_constants.data());
+    native->GSGetSamplers(0, SAMPLERS, game_samplers.data());
+    native1->GSGetConstantBuffers1(0, CONSTANTS, game_constants.data(), game_first_constants.data(), game_constant_counts.data());
     native->PSGetShaderResources(0, VIEWS, pixel_views.data());
-    native->PSGetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, pixel_samplers.data());
-    native->VSGetConstantBuffers(0, CONSTANTS, vertex_constants.data());
+    native->PSGetSamplers(0, SAMPLERS, pixel_samplers.data());
+    native1->VSGetConstantBuffers1(0, CONSTANTS, vertex_constants.data(), vertex_first_constants.data(), vertex_constant_counts.data());
     native->GSSetShaderResources(0, VIEWS, pixel_views.data());
-    native->GSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, pixel_samplers.data());
-    native->GSSetConstantBuffers(0, CONSTANTS, vertex_constants.data());
+    native->GSSetSamplers(0, SAMPLERS, pixel_samplers.data());
+    native1->GSSetConstantBuffers1(0, CONSTANTS, vertex_constants.data(), vertex_first_constants.data(), vertex_constant_counts.data());
     const auto& arguments = command.arguments;
     native->DrawIndexedInstanced(arguments.index_count, count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
     native->GSSetShaderResources(0, VIEWS, game_views.data());
-    native->GSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, game_samplers.data());
-    native->GSSetConstantBuffers(0, CONSTANTS, game_constants.data());
-    const auto release = [](auto& objects) {
-      for (auto* object : objects) {
-        if (object != nullptr) object->Release();
+    native->GSSetSamplers(0, SAMPLERS, game_samplers.data());
+    native1->GSSetConstantBuffers1(0, CONSTANTS, game_constants.data(), game_first_constants.data(), game_constant_counts.data());
+    // The Get calls added references.
+    const auto release = [](auto* object) {
+      if (object != nullptr) {
+        object->Release();
       }
     };
-    release(game_views);
-    release(game_samplers);
-    release(game_constants);
-    release(pixel_views);
-    release(pixel_samplers);
-    release(vertex_constants);
+    std::ranges::for_each(game_views, release);
+    std::ranges::for_each(game_samplers, release);
+    std::ranges::for_each(game_constants, release);
+    std::ranges::for_each(pixel_views, release);
+    std::ranges::for_each(pixel_samplers, release);
+    std::ranges::for_each(vertex_constants, release);
   } else {
     native->Draw(count, first_vertex);
   }
