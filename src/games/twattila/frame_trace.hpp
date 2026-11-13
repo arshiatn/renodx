@@ -17,7 +17,10 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <mutex>
+#include <shared_mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -25,6 +28,7 @@
 
 #include <include/reshade.hpp>
 
+#include "../../utils/data.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/state.hpp"
@@ -35,7 +39,8 @@
 // inputs and the camera's screen / viewport sizes (the camera at b0, its registers from Install) into tw_frame_trace.txt
 // next to the exe, with the anti-aliasing's marks (tone mapper, DLSS). For the render scale audit
 // (tools\tw\scale_audit.py): which passes read the 3D image's part of a display-size texture as if it filled it. Its
-// events are registered only for the traced frame.
+// events are registered only for the traced frame (with FrameTraceReads=1 also the frame after it, and the input layouts'
+// from the start).
 namespace twattila::frame_trace {
 
 // `count` values of a buffer from `offset` bytes on, read back (it waits for the GPU: for traced frames); empty: past the
@@ -62,6 +67,31 @@ std::vector<T> ReadBuffer(ID3D11DeviceContext* context, ID3D11Buffer* buffer, UI
   return result;
 }
 
+// An input layout's element (its offset resolved where D3D11's was appended).
+struct LayoutElement {
+  std::string semantic;
+  uint32_t index = 0;
+  reshade::api::format format = reshade::api::format::unknown;
+  uint32_t slot = 0;
+  uint32_t offset = 0;
+  bool per_instance = false;
+};
+
+// A traced draw for Options' draw_reads: its arguments as the game gave them (an indirect draw's from its buffer).
+struct Draw {
+  ID3D11DeviceContext* context = nullptr;
+  uint32_t vertex_shader = 0;
+  uint32_t pixel_shader = 0;
+  bool indexed = false;
+  uint32_t count = 0;  // an instance's indices (or vertices)
+  uint32_t instances = 0;
+  uint32_t first = 0;  // the first index (or vertex)
+  int32_t base_vertex = 0;
+  uint32_t first_instance = 0;
+  std::vector<LayoutElement> layout;  // empty: not known
+  bool next_frame = false;            // the frame after the traced one
+};
+
 // Install's.
 struct Options {
   // The camera's g_screen_size and g_viewport_dimensions registers (Attila's camera_VS_PS).
@@ -79,6 +109,10 @@ struct Options {
   // element and count).
   std::vector<uint32_t> vertex_input_hashes;
   bool instances_apart = false;  // an instanced draw's count an instance and its instances (else only their product)
+  // With [renodx] FrameTraceReads=1 (read at start; else none of this runs or hooks): a game's own reads at each traced
+  // draw (its buffers' layouts, ReadBuffer), their text after the draw's, and at each draw of the frame after it (lines of
+  // their own: values the game writes each frame).
+  std::function<std::string(const Draw&)> draw_reads;
 };
 
 namespace internal {
@@ -101,8 +135,38 @@ struct State {
   std::vector<uint32_t> values_written;
   std::vector<uint32_t> blends_written;
   bool indirect_values_written = false;
+  bool reads = false;                   // FrameTraceReads with Options' draw_reads (set at Install only)
+  std::atomic_bool next_frame = false;  // the frame after the traced one, for the draw reads
 };
 static State state;
+static renodx::utils::data::ParallelFlatHashMap<uint64_t, std::vector<LayoutElement>, std::shared_mutex> layouts;
+
+// The game's input layouts (with FrameTraceReads, from the start: it makes them while loading).
+inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
+                           const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  for (const auto& subobject : std::span(subobjects, subobject_count)) {
+    if (subobject.type != reshade::api::pipeline_subobject_type::input_layout) continue;
+    std::vector<LayoutElement> elements;
+    std::array<uint32_t, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> appended = {};
+    for (const auto& element : std::span(static_cast<const reshade::api::input_element*>(subobject.data), subobject.count)) {
+      if (element.buffer_binding >= appended.size()) continue;
+      const uint32_t offset = (element.offset == D3D11_APPEND_ALIGNED_ELEMENT ? appended[element.buffer_binding] : element.offset);
+      appended[element.buffer_binding] = offset + reshade::api::format_row_pitch(element.format, 1);
+      elements.push_back({.semantic = (element.semantic != nullptr ? element.semantic : ""),
+                          .index = element.semantic_index,
+                          .format = element.format,
+                          .slot = element.buffer_binding,
+                          .offset = offset,
+                          .per_instance = element.instance_step_rate != 0});
+    }
+    layouts.insert_or_assign(pipeline.handle, std::move(elements));
+  }
+}
+
+inline void OnDestroyPipeline(reshade::api::device*, reshade::api::pipeline pipeline) {
+  layouts.erase(pipeline.handle);
+}
 
 inline std::string DescribeResource(ID3D11Resource* resource) {
   if (resource == nullptr) return "-";
@@ -239,11 +303,31 @@ inline std::string DescribeConstants(ID3D11DeviceContext* context) {
   return text;
 }
 
-// `instanced`: the count an instance and the instances (Options' instances_apart).
-inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t count, std::array<uint32_t, 2> instanced) {
-  if (!state.tracing.load(std::memory_order_relaxed)) return;
+inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, Draw draw) {
+  const bool next_frame = state.next_frame.load(std::memory_order_relaxed);
+  if (!state.tracing.load(std::memory_order_relaxed) && !next_frame) return;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return;
+  const uint32_t vertex_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
+  const uint32_t pixel_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
+  std::string reads;
+  if (state.reads) {
+    draw.context = context;
+    draw.vertex_shader = vertex_hash;
+    draw.pixel_shader = pixel_hash;
+    draw.next_frame = next_frame;
+    ComPtr<ID3D11InputLayout> input_layout;
+    context->IAGetInputLayout(input_layout.GetAddressOf());
+    layouts.if_contains(reinterpret_cast<uint64_t>(input_layout.Get()), [&](const auto& entry) {
+      const auto& [layout_handle, elements] = entry;
+      draw.layout = elements;
+    });
+    reads = state.options.draw_reads(draw);
+  }
+  if (next_frame) {
+    if (!reads.empty()) Append(std::format("next frame: {} {} vs {:08X} ps {:08X}{}", kind, draw.count * draw.instances, vertex_hash, pixel_hash, reads));
+    return;
+  }
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets = {};
   ID3D11DepthStencilView* depth = nullptr;
   context->OMGetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), &depth);
@@ -270,8 +354,6 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
   ComPtr<ID3D11Buffer> constants;
   context->PSGetConstantBuffers(0, 1, constants.GetAddressOf());
   if (!constants) context->VSGetConstantBuffers(0, 1, constants.GetAddressOf());
-  const uint32_t vertex_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
-  const uint32_t pixel_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
   // The trace's first indirect draw (the game's particles draw so) and Install's shaders, once each: their constants; and
   // Options' blend and vertex input shaders.
   bool values = false;
@@ -298,7 +380,7 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
   }
   // After the line's state, in this order: the instances apart, then lines of their own: the constants, the blend, the inputs.
   std::string details;
-  if (state.options.instances_apart && instanced[1] > 1) details += std::format(" | instanced {} x {}", instanced[0], instanced[1]);
+  if (state.options.instances_apart && draw.instances > 1) details += std::format(" | instanced {} x {}", draw.count, draw.instances);
   if (values) details += DescribeConstants(context);
   if (blend) {
     ComPtr<ID3D11BlendState> blend_state;
@@ -353,19 +435,22 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
       vertex_views[slot]->Release();
     }
   }
-  Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{} |{}{}{}{}", kind, count, vertex_hash, pixel_hash,
-                     outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY, inputs,
-                     DescribeCamera(context, constants.Get()), DescribeDrawState(cmd_list, context), details));
+  Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{} |{}{}{}{}{}", kind, draw.count * draw.instances, vertex_hash,
+                     pixel_hash, outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY, inputs,
+                     DescribeCamera(context, constants.Get()), DescribeDrawState(cmd_list, context), details, reads));
 }
 
-inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t, uint32_t) {
-  TraceDraw(cmd_list, "draw", vertex_count * instance_count, {vertex_count, instance_count});
+inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex,
+                   uint32_t first_instance) {
+  TraceDraw(cmd_list, "draw", {.count = vertex_count, .instances = instance_count, .first = first_vertex, .first_instance = first_instance});
   return false;
 }
 
-inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count, uint32_t,
-                          int32_t, uint32_t) {
-  TraceDraw(cmd_list, "indexed", index_count * instance_count, {index_count, instance_count});
+inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count, uint32_t first_index,
+                          int32_t vertex_offset, uint32_t first_instance) {
+  TraceDraw(cmd_list, "indexed",
+            {.indexed = true, .count = index_count, .instances = instance_count, .first = first_index, .base_vertex = vertex_offset,
+             .first_instance = first_instance});
   return false;
 }
 
@@ -400,14 +485,22 @@ inline bool OnDrawOrDispatchIndirect(reshade::api::command_list* cmd_list, resha
   if (!state.tracing.load(std::memory_order_relaxed)) return false;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return false;
-  auto arguments = ReadBuffer<uint32_t>(context, reinterpret_cast<ID3D11Buffer*>(buffer.handle), static_cast<UINT>(offset), 3);
-  arguments.resize(3);
-  if (type == reshade::api::indirect_command::dispatch) {
-    TraceDispatch(cmd_list, "dispatch indirect", arguments[0], arguments[1], arguments[2]);
-  } else {
-    // Both draws' arguments start with the count per instance and the instances.
-    TraceDraw(cmd_list, (type == reshade::api::indirect_command::draw_indexed ? "indexed indirect" : "draw indirect"), arguments[0] * arguments[1],
-              {arguments[0], arguments[1]});
+  // D3D11's argument structs: a dispatch's 3 counts, a draw's 4 and an indexed draw's 5 (its base vertex signed).
+  const UINT words = (type == reshade::api::indirect_command::dispatch ? 3 : (type == reshade::api::indirect_command::draw_indexed ? 5 : 4));
+  auto arguments = ReadBuffer<uint32_t>(context, reinterpret_cast<ID3D11Buffer*>(buffer.handle), static_cast<UINT>(offset), words);
+  arguments.resize(5);
+  switch (type) {
+    case reshade::api::indirect_command::dispatch:
+      TraceDispatch(cmd_list, "dispatch indirect", arguments[0], arguments[1], arguments[2]);
+      break;
+    case reshade::api::indirect_command::draw_indexed:
+      TraceDraw(cmd_list, "indexed indirect",
+                {.indexed = true, .count = arguments[0], .instances = arguments[1], .first = arguments[2],
+                 .base_vertex = static_cast<int32_t>(arguments[3]), .first_instance = arguments[4]});
+      break;
+    default:
+      TraceDraw(cmd_list, "draw indirect", {.count = arguments[0], .instances = arguments[1], .first = arguments[2], .first_instance = arguments[3]});
+      break;
   }
   return false;
 }
@@ -469,14 +562,24 @@ inline void UseEvents(bool use) {
 
 }  // namespace internal
 
-// At the addon's start: whether this run traces a frame (FrameTrace), and how.
+// At the addon's start: whether this run traces a frame (FrameTrace), and how; whether with the draw reads
+// (FrameTraceReads).
 inline void Install(Options options = {}) {
   bool wanted = false;
   reshade::get_config_value(nullptr, "renodx", "FrameTrace", wanted);
+  bool reads = false;
+  reshade::get_config_value(nullptr, "renodx", "FrameTraceReads", reads);
+  reads = reads && options.draw_reads != nullptr;
+  if (reads) {
+    reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
+    reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
+    renodx::utils::log::i("[Total War] Frame trace: the draw reads on (FrameTraceReads).");
+  }
   std::wstring exe(32768, L'\0');
   exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
   const std::lock_guard lock(internal::state.mutex);
   internal::state.wanted = wanted;
+  internal::state.reads = reads;
   internal::state.options = std::move(options);
   internal::state.folder = std::filesystem::path(exe).parent_path();
 }
@@ -498,8 +601,8 @@ inline void Mark(std::string_view text) {
 }
 
 // Every present (`scaled`: the DLSS render scale ran this frame; `view_3d`: the 3D view drew, at any scale): ends a
-// traced frame (writes the file); starts one after SCALED_PRESENTS scaled presents (at_100: of the 3D view), or at once
-// when the marker is there (on_demand).
+// traced frame (writes the file; with the draw reads after the frame after it); starts one after SCALED_PRESENTS scaled
+// presents (at_100: of the 3D view), or at once when the marker is there (on_demand).
 inline void OnPresent(bool scaled, bool view_3d = false) {
   auto& state = internal::state;
   bool counted = scaled || (state.options.at_100 && view_3d);
@@ -512,13 +615,25 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
       counted = true;
     }
   }
-  if (state.tracing.exchange(false)) {
+  const auto save = [&] {
     internal::UseEvents(false);
     const auto path = state.folder / L"tw_frame_trace.txt";
     const std::lock_guard lock(state.mutex);
     std::ofstream(path, std::ios::binary | std::ios::trunc) << state.text;
     renodx::utils::log::i("[Total War] Frame trace: ", state.lines, " lines saved to ", path.string());
     state.text.clear();
+  };
+  if (state.reads && state.next_frame.exchange(false)) {
+    save();
+    return;
+  }
+  if (state.tracing.exchange(false)) {
+    if (state.reads) {
+      internal::Append("NEXT FRAME: the draw reads (FrameTraceReads)");
+      state.next_frame.store(true);
+      return;
+    }
+    save();
     return;
   }
   bool start = false;

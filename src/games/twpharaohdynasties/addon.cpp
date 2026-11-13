@@ -49,6 +49,7 @@
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./dead_units.hpp"
+#include "./trace_reads.hpp"
 #include "./shadow_map.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -3021,19 +3022,22 @@ bool AttachAddon() {
                                    RENDER_SCALE_READS, {}, FULL_DEPTH_SHADERS, {},
                                    {
                                        // Also the point light's and the AO's (g_viewport_offset_scale, g_Resolution: their
-                                       // 100% values below 100%, assumed until a trace lists them), and the particles' PS
-                                       // vfxextremeultra 3F1B86E1.
-                                       .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74, 0xE318CE77, 0xD42C3523, 0x3F1B86E1},
+                                       // 100% values below 100%, assumed until a trace lists them), the particles' PS
+                                       // vfxextremeultra 3F1B86E1, the shroud decals' 61C823A0 (inv_rt_size c13: render or
+                                       // display size) and the campaign terrain's 1E864815.
+                                       .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74, 0xE318CE77, 0xD42C3523, 0x3F1B86E1, 0x61C823A0,
+                                                        0x1E864815},
                                        .value_slots = 6,
                                        .value_floats = 256,
                                        .on_demand = true,
                                        .at_100 = true,
                                        // The open facts (v56): the water reflection apply's blend (DE4F92CD) and the particles'
-                                       // (3F1B86E1); the particle VS 109B79CE's buffers (t1, t2, t4, t6) and its draws' indices
-                                       // and instances apart (smoke's layout).
-                                       .blend_hashes = {0xDE4F92CD, 0x3F1B86E1},
+                                       // (3F1B86E1, effects quality 0-2's E8524BB1); the particle VS 109B79CE's buffers (t1,
+                                       // t2, t4, t6) and its draws' indices and instances apart (smoke's layout).
+                                       .blend_hashes = {0xDE4F92CD, 0x3F1B86E1, 0xE8524BB1},
                                        .vertex_input_hashes = {0x109B79CE},
                                        .instances_apart = true,
+                                       .draw_reads = twpharaohdynasties::trace_reads::Read,
                                    },
                                    true);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,

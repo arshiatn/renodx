@@ -162,7 +162,18 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   (run_v61.txt): RT SUN V61 ALL PASSED: Attila's file v156's bit for bit (256), Pharaoh texel 2 = c3 x the literal with the
   rest v60's bit for bit (128), without the place v60's (128), CONTROL unscaled c3 apart (128). A2's sun: texel 2 =
   3.046 2.968 2.666 against the sky's +x 0.510 0.688 1.100. Built Pharaoh addon64 + Attila addon32.
-- [ ] 7 Trace reads for one later siege-benchmark run (frame_trace Options, Pharaoh only, off by default).
+- [x] 7 Trace reads for the later runs: ReShade.ini [renodx] FrameTraceReads=1 (read at start; off: no hook, no call, the
+  trace as before) with frame_trace's new Options draw_reads (Pharaoh only: twpharaohdynasties/trace_reads.hpp). Shared
+  frame_trace: each traced draw's arguments (first index / vertex, base vertex, first instance; indirect ones from their
+  buffer) and bound input layout (init_pipeline tracked only with the key) to the game's reads, their text after the line;
+  then the frame after (lines "next frame: ...") and the file saved at its present. Pharaoh's reads: at 109B79CE + 3F1B86E1
+  / E8524BB1 the sorted particles (t2 dist + pid, t6 emitter + position, t1 emc_id) and the t4 rows of their emc_ids; at
+  E318CE77 vb1's instances (traced frame and next); at A0EA5C9E + DE4F92CD vb0's vertices; at 377DE0D5 world x / z bounds
+  (vb0 through POSITION1 / 3, y from the height map not read) and 026CBC61 x / y / z (vb0 x (1, 1, 1.15476)); value_hashes
+  += 61C823A0, 1E864815; blend_hashes += E8524BB1. tools/tw/warp_tests/pharaoh/trace_reads_v61 (run_v61.txt, the
+  repository's headers, x86 + amd64): TRACE READS V61 ALL PASSED (key off: nothing registered or called, file as before;
+  on: arguments, appended layout offsets, next frame, save; the reads against the CPU's; past-stride / unknown format "not
+  read"; CONTROLs: a changed t1 emc_id changes the text, a moved unreferenced vertex not the bounds).
 - [ ] 8 Builds, tests, page dumps, README Round v61, skill rows.
 
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
