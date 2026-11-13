@@ -11,8 +11,11 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
   says ", the water from its own surface" when water_traced. (27cc31a8)
 - [x] 2 Pharaoh: rt_host.rewrite_guides = RewriteSunGuides + light_copy; backward_ssr 9A55B7F2 hook (custom_shaders on_draw
   OnBackwardSsr: Reflections under ComputeState with depth t1, light t3; nothing under the game's MSAA: t2 / t4 multisampled,
-  one log line). Traces only; the game's chain still runs (step 3 leaves it out). Built clean (only the old LoadSetting warning).
-- [ ] 3 Pharaoh: DE4F92CD replaced (our copy only where the rays left from the water), 9A55B7F2 + 0B78827B + 20 mips skipped then
+  one log line). Traces only; the game's chain still runs (step 3 leaves it out). Built clean (only the old LoadSetting warning). (96486b63)
+- [x] 3 Pharaoh: DE4F92CD replaced (shaders/ssrapply00, tools/tw/warp_tests/pharaoh/ssr_v56/make_apply.py: 3Dmigoto + 2 traps
+  fixed, cb0[0].y skydome lerp and cb3[0].zw fog heights), swapped in (OnWaterApplyDraw, finalize) only where the rays left from
+  the water; then 9A55B7F2 + 0B78827B + 20 mips skipped (their target's only other reader in A2 / B / S1 is the apply). OnPresent:
+  reflections only with Water Reflections, Specular Occlusion only with them. cb_audit: lost [], added cb10[0].x only.
 - [ ] 4 WARP parity (tools/tw/warp_tests/pharaoh/ssr_v56): t47 unbound 0 apart, the formula with t47, CONTROL, render scale
 - [ ] 5 page: has_reflections, reflection_pass, Water Reflections Experimental off; dump p_v58 vs p_v57 (only the new rows)
 - [ ] 6 shared frame trace: blend desc, instances apart, VS buffer inputs (Options, off for Attila / WH3); Pharaoh 3F1B86E1 values
