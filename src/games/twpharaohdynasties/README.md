@@ -31,7 +31,7 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 17. DLSS Performance and Ultra Performance, the siege's river and a sea battle, Ray-Traced Water Reflections off and on: the
     water's reflections sit where they do at 100% (not stretched from the picture's top-left part), ripples bend them as much.
 
-### Round v62 (2026-11-13, open items; built only, not stamped, not installed, not run in game; helper107 unchanged)
+### Round v62 (2026-11-13, open items; stamped and installed 17:15, helper107 unchanged, not run in game)
 
 - **Fixed: the water's reflections below 100%** (7b). The game's SSR apply (DE4F92CD) reads every texture at its quad's uv,
   which B61's trace shows is 0..1 over the viewport at any scale, while the code takes it for the whole target's: below 100%

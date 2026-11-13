@@ -231,7 +231,8 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
     cb_audit twpharaohdynasties: ssrapply00 adds cb12[0].xy only. READMEs Pharaoh "### Round v62" (+ test line 17), WH3
     "## v55". Skill rows: render scale (a quad's vb0 uv is the viewport's; a native swap binds its own cb12), testing (WARP's
     bilinear weights by texture size at 33%), game-facts (WH3's sun diffuse scale).
-- [ ] 12 (coordinator) stamp + install Pharaoh v62 and WH3 v55 (helper107 unchanged); a later run: Pharaoh at 50% with the
+- [x] 12 (coordinator) rebuilt at HEAD 17:15, STAMPED + INSTALLED 17:15 (tools/tw/round_v151/install_v62.py; ATN files
+  unchanged by hash; old add-ons .in-use-20261113_171548) Pharaoh v62 and WH3 v55 (helper107 unchanged). Open: a later run: Pharaoh at 50% with the
   water ("First run: the water's reflection apply DE4F92CD below 100%"), WH3 with Path-Traced Ambient ("Sun shader ... sun
   colour").
 

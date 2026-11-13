@@ -1,6 +1,6 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
-## v55 (2026-11-13; built only, not stamped, not installed, not run in game; renodx-tw-dlaa64.exe helper107 unchanged)
+## v55 (2026-11-13; stamped and installed 17:15, renodx-tw-dlaa64.exe helper107 unchanged, not run in game)
 
 - New: **Path-Traced Ambient takes the game's sun light** (Attila's helper107 fix, now Warhammer III's): rt_sun writes the
   sun colour (lighting_VS_PS c1) to its texel 2, scaled as all 7 sun light shaders light the diffuse colour (x 0x389FB405,
