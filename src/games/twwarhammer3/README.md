@@ -1,5 +1,19 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v55 (2026-11-13; built only, not stamped, not installed, not run in game; renodx-tw-dlaa64.exe helper107 unchanged)
+
+- New: **Path-Traced Ambient takes the game's sun light** (Attila's helper107 fix, now Warhammer III's): rt_sun writes the
+  sun colour (lighting_VS_PS c1) to its texel 2, scaled as all 7 sun light shaders light the diffuse colour (x 0x389FB405,
+  7.615e-05), so the helper lights the paths' hits with the game's sun instead of the light learned from the screen, which
+  followed the view. No helper change.
+- Log: the one-shot "Sun shader" line names the sun colour.
+- WARP (`tools\tw\warp_tests\wh3_rt_sun_v55`, `run_v55.txt`): texel 2 = c1 x the literal, the other texels v54's bit for
+  bit with spherical harmonics, the game's GI and the probes' sky on and off; without the colour's place texel 2 zero, the
+  rest v54's; CONTROL the unscaled colour apart.
+- Test (ATN): RT/PT with Path-Traced Ambient, a sunny battle, turn the camera around a building: the bounce light in shade
+  keeps its brightness as the view turns (v54 brightened with the view); the log's "Sun shader" line has a sun colour.
+- Not done: run in game.
+
 ## v54 (2026-11-13; stamped and installed 15:05 with renodx-tw-dlaa64.exe helper107, not run in game)
 
 - Shared, no change here: Attila's Path-Traced GI of no view (helper107) needs the game's sun colour from its sun light

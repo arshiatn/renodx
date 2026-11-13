@@ -28,6 +28,27 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 15. In-game effects quality Low / Medium (0-2) with Smoke Shadows on: the smoke shadows the ground as at Ultra.
 16. A settlement with pools (phar_building_water_01) at DLSS Ultra Performance: the pools' AO in place, not squeezed to the
     top left.
+17. DLSS Performance and Ultra Performance, the siege's river and a sea battle, Ray-Traced Water Reflections off and on: the
+    water's reflections sit where they do at 100% (not stretched from the picture's top-left part), ripples bend them as much.
+
+### Round v62 (2026-11-13, open items; built only, not stamped, not installed, not run in game; helper107 unchanged)
+
+- **Fixed: the water's reflections below 100%** (7b). The game's SSR apply (DE4F92CD) reads every texture at its quad's uv,
+  which B61's trace shows is 0..1 over the viewport at any scale, while the code takes it for the whole target's: below 100%
+  it read the mask, depth, normals and its reflections from the whole display-size textures (the top-left part stretched),
+  and Ray-Traced Water Reflections at twice the pixel. Our copy (shaders/ssrapply00) now takes the uv x the draw's share,
+  and the ripple distortion x the share; it draws below 100% with or without the rays. At 100% nothing changes (the game's
+  own bytes without the rays).
+- **Smoke just off screen: no change.** B61's sorted particles projected with the draw's camera: 78 on screen, none beside the
+  view, 12 behind the camera (their shadows fall behind it too). A wider cull in the capture would add nothing there.
+- **WARP** (`tools\tw\warp_tests\pharaoh\apply_share_v62`, `run_v62.txt`): 100% bit-identical to v61's build and to the
+  game's bytes; 50% bit-identical to 100% with and without the rays; 33% 0 apart (the distortion's bilinear read listed: WARP's
+  filter weights differ with the texture's size at the same coordinate, 0 apart with a point sampler); CONTROLs the game's
+  bytes, v61's copy and ours without the share at 50%: 5,424-5,908 of 6,144 apart.
+- **Not done: run in game.** Built and checked on WARP only.
+- **Not done (listed):** the SSR colour's blur level (its mip, 16 x roughness) counts texels, so rough water blurs twice as
+  much at 50% as at 100% (a look choice for ATN); the game's own contact shadows below 100% (7c, as in v61); smoke beside
+  the view needs a trace with smoke just off the screen's edge.
 
 ### Round v61 (2026-11-13, open items; stamped and installed 16:27 with helper107 (unchanged), not run in game by ATN)
 

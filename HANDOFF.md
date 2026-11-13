@@ -201,7 +201,7 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   frames (the lights don't move: torch flicker is our sampling). 7b: DE4F92CD's quad uv 0..1 over 3840x2160 targets at a
   1920x1080 viewport: the uv isn't the render share (fix: uv from SV_Position x share). Smoke: 90 of 90 sorted particles
   listed; projection to do.
-- [ ] 11 7b fix (SSR apply below 100%) + smoke projection (off-screen particles in the CPU list?) + the lever if so.
+- [x] 11 7b fix (SSR apply below 100%) + smoke projection (off-screen particles in the CPU list?) + the lever if so.
   - [x] 11a 7b fix: DE4F92CD reads every texture at TEXCOORD0 (t_mask / depth / normals / specular / the rays at TEXCOORD0 x
     the mask's size; the NDC from TEXCOORD0 x c31.xy x c29.zw; the SSR colour at TEXCOORD0 x 0.5 x mask / colour size + a
     distortion in the colour texture's whole uv), none at SV_Position; B61's vb0 holds 0..1 over the viewport, so below 100% all
@@ -224,6 +224,16 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
     g_draw_flags.y keeps only particles beside the view: none here, so no lever (no row). The 12 behind it show the CPU
     doesn't cull its list to the view; a trace with smoke just beside the edge (camera panned off a burning building) would
     say whether side particles are listed (then plan.md A1; the behind ones need the VS's z test off, its alternative).
+  - [x] 11c builds + tests at 82fb4cfb (+ docs): the skill's 15 x64 targets 50 s and build32 twattila + twrome2 +
+    twthronesofbritannia 44 s, exit 0 (only the upstream deprecation warnings); test/tw_* 19 suites x86 + amd64 (motion record,
+    shadow map size their own one): 36 runs, all exit 0. Page dumps (Build Date only): Pharaoh page_p_r62 against r61
+    (tools/tw/pharaoh), WH3 page_w_r162 against r161 (tools/tw/page_dump); no shared code changed (Attila not dumped).
+    cb_audit twpharaohdynasties: ssrapply00 adds cb12[0].xy only. READMEs Pharaoh "### Round v62" (+ test line 17), WH3
+    "## v55". Skill rows: render scale (a quad's vb0 uv is the viewport's; a native swap binds its own cb12), testing (WARP's
+    bilinear weights by texture size at 33%), game-facts (WH3's sun diffuse scale).
+- [ ] 12 (coordinator) stamp + install Pharaoh v62 and WH3 v55 (helper107 unchanged); a later run: Pharaoh at 50% with the
+  water ("First run: the water's reflection apply DE4F92CD below 100%"), WH3 with Path-Traced Ambient ("Sun shader ... sun
+  colour").
 
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
