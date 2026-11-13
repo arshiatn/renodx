@@ -188,6 +188,9 @@ struct Settings {
   bool terrain_outside_view = false;
   // The tessellated draws' triangle count read when the GPU has it, a frame or more late, in place of waiting for it at the trace.
   bool terrain_count_later = false;
+  // The indirect draws' numbers (CaptureIndirect: the game's GPU-culled grass) from an earlier frame's copy, read without a
+  // wait, in place of this frame's read with one (Warhammer III: 1.2 ms a frame where its GPU grass is drawn).
+  bool indirect_counts_later = false;
   // Casters out of the view from the shadow maps' draws (SceneShader::cascade_keep).
   bool casters_out_of_view = false;
   bool one_at_a_place = false;  // dlaa_bridge.h RT_ONE_AT_A_PLACE
@@ -2288,7 +2291,8 @@ void CaptureDraw(Context& command, const void*) {
 // An indirect draw of a listed shader (SceneShader::indirect): the GPU has made its numbers, the whole buffer read once a frame (a
 // wait for the GPU, 1.2 ms on the replay at 4K, so not for a draw that was empty lately: it joins a frame or so late), then it is
 // captured as a direct draw with them: compact, by its mesh, in the shares. Streamed without a mesh's cluster sets, a field of grass
-// made clusters over the whole field: a trace of 225 ms against 5.
+// made clusters over the whole field: a trace of 225 ms against 5. Settings::indirect_counts_later: the numbers of the copy an
+// earlier frame made (the probe), never a wait: a draw whose count changed is captured with the earlier one for a frame.
 template <typename Context>
 void CaptureIndirect(Context& command, const void*) {
   const auto& arguments = command.arguments;
@@ -2331,19 +2335,21 @@ void CaptureIndirect(Context& command, const void*) {
         runtime.indirect_probe_pending = true;
       }
     }
-    if (const auto first = static_cast<size_t>(arguments.offset / 4);
-        runtime.indirect_probe_buffer == buffer && first + numbers.size() <= runtime.indirect_probe_values.size()
-        && (runtime.indirect_probe_values[first] == 0 || runtime.indirect_probe_values[first + 1] == 0)) {
-      return;
-    }
-    if (runtime.indirect_arguments_frame != runtime.frame || runtime.indirect_arguments_buffer != buffer) {
-      runtime.indirect_arguments = frame_trace::ReadBuffer<uint32_t>(native, buffer, 0, desc.ByteWidth / 4);
-      runtime.indirect_arguments_buffer = buffer;
-      runtime.indirect_arguments_frame = runtime.frame;
-    }
     const auto first = static_cast<size_t>(arguments.offset / 4);
-    if (first + numbers.size() > runtime.indirect_arguments.size()) return;
-    std::copy_n(runtime.indirect_arguments.begin() + first, numbers.size(), numbers.begin());
+    const bool probed = runtime.indirect_probe_buffer == buffer && first + numbers.size() <= runtime.indirect_probe_values.size();
+    if (probed && (runtime.indirect_probe_values[first] == 0 || runtime.indirect_probe_values[first + 1] == 0)) return;
+    if (runtime.settings.indirect_counts_later) {
+      if (!probed) return;
+      std::copy_n(runtime.indirect_probe_values.begin() + first, numbers.size(), numbers.begin());
+    } else {
+      if (runtime.indirect_arguments_frame != runtime.frame || runtime.indirect_arguments_buffer != buffer) {
+        runtime.indirect_arguments = frame_trace::ReadBuffer<uint32_t>(native, buffer, 0, desc.ByteWidth / 4);
+        runtime.indirect_arguments_buffer = buffer;
+        runtime.indirect_arguments_frame = runtime.frame;
+      }
+      if (first + numbers.size() > runtime.indirect_arguments.size()) return;
+      std::copy_n(runtime.indirect_arguments.begin() + first, numbers.size(), numbers.begin());
+    }
   }
   if (numbers[0] == 0 || numbers[1] == 0) return;
   renodx::utils::command_action::CommandContext<renodx::utils::command_action::DrawIndexedArguments> direct = {

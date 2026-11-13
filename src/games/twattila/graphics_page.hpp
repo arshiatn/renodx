@@ -213,6 +213,7 @@ struct Bindings {
   std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* rays_terrain_count_later = nullptr;  // rt_core.hpp Settings::terrain_count_later; null: no such row
+  float* rays_grass_counts_later = nullptr;  // rt_core.hpp Settings::indirect_counts_later; null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   float* scale_fix_gi_shadow = nullptr;  // Warhammer III: its GI grid and shadow blur below 100%
   const Texts* texts = &ATTILA_TEXTS;
@@ -1035,6 +1036,19 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .section = section,
           .tooltip = "The game no longer waits for the graphics card to count the ground's triangles for the rays.\n"
                      "After a sudden camera cut a few hills can be missing from the rays for a frame or two.",
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_grass_counts_later != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedGrassCountsLater",
+          .binding = b.rays_grass_counts_later,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Grass Without Waiting (Experimental)",
+          .section = section,
+          .tooltip = "The game no longer waits for the graphics card to count the grass it places itself for the rays.\n"
+                     "Faster in grassy battles and sieges; that grass's shadows can follow it a frame or two late.",
           .is_visible = more_rays,
       });
     }

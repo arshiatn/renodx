@@ -2803,6 +2803,7 @@ float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
 float rays_terrain_count_later_row = 0.f;
+float rays_grass_counts_later_row = 0.f;
 float rays_units_out_of_view_row = 1.f;
 float rays_skip_cascade_trees_row = 0.f;
 float rays_skip_cascades_row = 0.f;
@@ -3357,6 +3358,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   rt_settings.terrain_count_later = rays_terrain_count_later_row != 0.f;
+  rt_settings.indirect_counts_later = rays_grass_counts_later_row != 0.f;
   // Under rays and maps together the game's cascades already darken what these would.
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.one_at_a_place = rt_settings.casters_out_of_view && rays_one_at_a_place_row != 0.f;
@@ -4036,6 +4038,7 @@ void ConfigureAddon() {
                                              },
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .rays_terrain_count_later = &rays_terrain_count_later_row,
+                                             .rays_grass_counts_later = &rays_grass_counts_later_row,
                                              .water_motion = &water_motion_row,
                                              .scale_fix_gi_shadow = &reflections::scale_fix_row,
                                              .texts = &PAGE_TEXTS,
