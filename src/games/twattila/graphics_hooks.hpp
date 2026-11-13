@@ -62,6 +62,10 @@ struct Scales {
   // soldiers its rule at +0x441f49 lets go; the others' shadow items stay (the Unit Detail 8x trace: 20 draws into the map).
   float unit_shadows = 1.f;
   bool big_battle_fix = false;   // unit detail and animation in until the frame's first pack holds every item
+  // Small Soldiers as Sprites: a soldier is a sprite once it would be fewer than this many pixels tall on screen (0: the
+  // game's distances), by `focal_pixels`, the main view's vertical focal length in output pixels (0: unknown, no cap).
+  float sprite_pixels = 0.f;
+  float focal_pixels = 0.f;
 };
 
 namespace internal {
@@ -91,7 +95,8 @@ constexpr std::string_view UNIT_DISTANCES_ROME2 =
 // caller is the per-soldier update (+0x4567e0, the call +0x456d20; dead soldiers too): its third argument, the
 // soldier's display state, sits above the frame the call's two arguments were pushed onto; bit 0 of its flags (+0xe4)
 // is set for the living (+0x456b43: the living fade with ENTITY_TRACKER_ALPHA_CHANGE_SPEED, the dead with
-// dead_time_alpha_fade_out_seconds). Dead soldiers get Dead Unit Detail x the distance.
+// dead_time_alpha_fade_out_seconds). Dead soldiers get Dead Unit Detail x the distance. The update compares it with the
+// soldier's distance to the camera in metres (+0x456a50 its square root, +0x456dbf the test: farther is a sprite).
 constexpr std::string_view IMPOSTER_DISTANCE =
     "8B 44 24 04 83 F8 03 77 ?? FF 24 85 ?? ?? ?? ?? F3 0F 10 89 38 02 00 00 F3 0F 10 91 48 02 00 00";
 // The call: mov eax, [esi + 8]; movss xmm0, [esi + 0xb4]; push ecx; mov ecx, [esi + 0xa8]; movss [esp], xmm0;
@@ -113,6 +118,9 @@ constexpr std::string_view IMPOSTER_DISTANCE_CALL_ROME2 =
 constexpr size_t CALLER_SOLDIER_ROME2 = 12 + 0x1d0 + 8 + 4 + 8;
 constexpr size_t SOLDIER_FLAGS_ROME2 = 0xd8;
 constexpr uint8_t SOLDIER_ALIVE = 1;
+// A soldier's height by its size (ImposterDistance's 0-3; past 3 the game takes 0's), metres: estimates for Small
+// Soldiers as Sprites (a foot soldier, a rider, an elephant, a gun with its crew), not measured.
+constexpr std::array<float, 4> SOLDIER_HEIGHTS = {1.8f, 2.6f, 4.f, 3.f};
 
 // The soldiers' bone matrices go to animation textures (pages) of 512 x 672 texels (6 or 10, made by +0x184d800).
 // bool __thiscall PackAnimations(Manager* pages, ... 2, List* items, uint32_t* next, uint32_t end) (+0x1893cc0) packs
@@ -212,6 +220,8 @@ static uint8_t* imposter_distance_return = nullptr;
 static size_t caller_soldier = CALLER_SOLDIER;  // the game's (set at install)
 static size_t soldier_flags = SOLDIER_FLAGS;
 static std::atomic<float> dead_scale = 1.f;
+// Small Soldiers as Sprites: the distance at which a soldier 1 m tall is the limit's pixels tall (0: off).
+static std::atomic<float> sprite_distance_scale = 0.f;
 static std::vector<renodx::utils::detour::Function> hooks;
 static tw::native_hooks::Lifetime hook_lifetime;
 static std::atomic<bool> hooks_active = false;
@@ -319,7 +329,14 @@ static float* __fastcall OnUnitDistances(void* display, void* unused_edx, float*
 
 static float __fastcall OnImposterDistance(void* display, void* unused_edx, uint32_t size, float random) {
   if (!hooks_active.load(std::memory_order_relaxed)) return original_imposter_distance(display, unused_edx, size, random);
-  const float distance = original_imposter_distance(display, unused_edx, size, random);
+  float distance = original_imposter_distance(display, unused_edx, size, random);
+  // Small Soldiers as Sprites: no farther than where a soldier of its size is the limit's pixels tall, with the game's
+  // spread around it (its random switch within the fade width; random 0.5 gives the distance itself).
+  if (const float sprite_scale = sprite_distance_scale.load(std::memory_order_relaxed); sprite_scale > 0.f) {
+    const float spread = distance - original_imposter_distance(display, unused_edx, size, 0.5f);
+    const float height = SOLDIER_HEIGHTS[size < SOLDIER_HEIGHTS.size() ? size : 0];
+    distance = std::min(distance, height * sprite_scale + spread);
+  }
   const float dead = dead_scale.load(std::memory_order_relaxed);
   if (dead == 1.f) return distance;
   // Only from the per-soldier update's call, whose frame layout is known.
@@ -580,6 +597,9 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
     internal::imposter_scales[index].store(scales.unit_detail[index], std::memory_order_relaxed);
   }
   internal::dead_scale.store(scales.dead_units, std::memory_order_relaxed);
+  internal::sprite_distance_scale.store(
+      (scales.sprite_pixels > 0.f && scales.focal_pixels > 0.f) ? scales.focal_pixels / scales.sprite_pixels : 0.f,
+      std::memory_order_relaxed);
   internal::animation_scale.store(scales.unit_animation, std::memory_order_relaxed);
   internal::facial_scale.store(scales.facial_animation, std::memory_order_relaxed);
   internal::hand_scale.store(scales.hand_animation, std::memory_order_relaxed);
