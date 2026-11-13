@@ -2,7 +2,7 @@
 
 ## 1. What to run without the game
 
-**In the repo** (`test/tw_*/run.ps1`, x86 and amd64): `tw_depth_levels`, `tw_device_loss`, `tw_fg_initialization`, `tw_game_gi`, `tw_gpu_completion`, `tw_helper_lifetime`, `tw_indirect_counts`, `tw_motion_record`, `tw_native_hook_lifetime`, `tw_particle_history`, `tw_preset_writer`, `tw_psychov35`, `tw_sampler_lifetime`, `tw_screen_space_shadows`, `tw_scrub_lods`, `tw_shadow_map_size`, `tw_startup_worker`, `tw_texture_lod_bias`, `tw_unit_pack_rounds`, `tw_unit_shadows`. Run each suite a change touches; a new behaviour gets a case.
+**In the repo** (`test/tw_*/run.ps1`, x86 and amd64): `tw_depth_levels`, `tw_device_loss`, `tw_fg_initialization`, `tw_game_gi`, `tw_gpu_completion`, `tw_helper_lifetime`, `tw_indirect_counts`, `tw_motion_record`, `tw_native_context`, `tw_native_hook_lifetime`, `tw_particle_history`, `tw_preset_writer`, `tw_psychov35`, `tw_sampler_lifetime`, `tw_screen_space_shadows`, `tw_scrub_lods`, `tw_shadow_map_size`, `tw_startup_worker`, `tw_texture_lod_bias`, `tw_unit_pack_rounds`, `tw_unit_shadows`. Run each suite a change touches; a new behaviour gets a case.
 
 **In the maintainer's `tools/tw`** (outside the repo):
 

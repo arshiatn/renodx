@@ -141,8 +141,27 @@ change goes in an Experimental row, off. One commit + push to origin atn-mods pe
     4.1 -> 5.8 (4 threads 6.7 -> 5.7); amd64 17.1 -> 5.1 (92.1 -> 5.8), 4.8 -> 5.2 (7.5 -> 5.9). ATN's grass (~120 k
     calls a frame, ~27 ns each): E 3.35 -> ~0.8 ms CPU a frame (workers; render thread 0.49 -> ~0.12), no fps while
     GPU-bound. Not run in game. Builds: build32 twattila + twrome2 + twthronesofbritannia exit 0.
-- [ ] 3 Per-draw ReShade callbacks on the render thread (~0.8-1.1 us a draw): trim where provably equivalent; a
+- [x] 3 Per-draw ReShade callbacks on the render thread (~0.8-1.1 us a draw): trim where provably equivalent; a
   micro-benchmark or the harness before / after.
+  - Done: rt_core's NativeContext (every captured draw, 981 in the 8x trace, and rt_scene's draw callbacks) asked
+    QueryInterface for ReShade's proxy interface on every call, which fails on the game's own context (ReShade's
+    command list hands that out: api_object_impl::_orig); the failed answer is now kept per thread while the pointer
+    stays (object_motion's NativeContext already did this), a proxy still looked up every call. test/tw_native_context
+    (new, WARP + mocked command list): the same answer as v157's for the immediate, a deferred (null), a second
+    device's, a null and another API's context, every call; x86 27.3 -> 3.4 ns a call, amd64 24.7 -> 3.4. Saving E
+    ~1,200 calls a frame x 24 ns = 0.03 ms on the render thread.
+  - Measured prices (same test, WARP's d3d11 runtime, x86): QueryInterface failing 24 ns, QueryInterface for
+    ID3D11DeviceContext1 + Release 28 ns, AddRef + Release 14 ns, a Get of an empty slot + Release 4 ns. So the
+    profile's AddRef / Release 0.2-0.26 ms a frame are ~15-20 k pairs: the reads of the game's bindings in CaptureDraw
+    (IAGetVertexBuffers up to three times, VS / PS / GS / SO Gets, ~20 objects a capture, AddRef'd by the API).
+  - NOT DONE: (a) those Gets: dropping them means tracking the game's bindings from ReShade's bind events instead
+    (a redesign of CaptureDraw's state save / restore; repeated IAGetVertexBuffers at most ~0.08 ms); (b) one Flush a
+    frame: each helper request (TRACE_SCENE, TRACE_BOUNCE, TRACE_REFLECTIONS, EVALUATE, PRESENT_FRAME) signals the
+    shared fence and the game's GPU then waits for the helper's answer within the frame; without the Flush the Signal
+    stays in the game's command buffer and the helper's queue (waiting on it) starts only at the next flush: the
+    ordering doesn't allow it (0.14-0.18 ms a frame); (c) the dispatcher's own per-draw work (utils/command_action:
+    stage lookups, registration maps, the replay of captured draws) is shared upstream code, not ours.
+  - Builds: build32 twattila, x64 twwarhammer3 exit 0.
 - [ ] 4 Helper (coordinator 2026-11-13 night: the 2.3 ms wait at +0x5c238 is GPU back-pressure, dropped): the RT worker
   creates and frees 3 GPU buffers every frame (13 MiB, 2.75 MiB, 320 KiB; create +0x689c1 / +0x688ca / +0x68956, free
   +0x688a8 / +0x68934 / +0x6899c; ~1.3 ms paging a frame + 2.4 ms in CreateAllocation / DestroyAllocation2 on the worker):

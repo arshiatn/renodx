@@ -849,10 +849,17 @@ inline bool GrassMet() {
   return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.path_ambient;
 }
 
+// The immediate context under ReShade's command list (null: another API, a deferred context). ReShade's command list hands
+// out the game's own context, which is no proxy: that answer is kept per thread while the pointer stays (the proxy
+// lookup, a failed QueryInterface, was asked again at every captured draw); a proxy is looked up every call.
 inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return nullptr;
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  thread_local uint64_t not_proxy = 0;
+  const uint64_t current = cmd_list->get_native();
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(current);
+  if (current != not_proxy && !renodx::utils::directx::TryNativeFromReShadeProxy(&native)) {
+    not_proxy = current;
+  }
   return (native != nullptr && native->GetType() == D3D11_DEVICE_CONTEXT_IMMEDIATE) ? native : nullptr;
 }
 
