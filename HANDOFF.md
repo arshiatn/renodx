@@ -95,6 +95,22 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
 
+## LESSONS + CHECKS ROUND (2026-11-13 night, main checkout; offline: no game, no Steam writes, no stamp / install)
+Today's mistakes into the skill once, repeat mistakes as checks that fail loudly. Tools outside the repo live in
+tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One commit + push per step.
+- [x] 1 Lessons into the skill's area files (each checked against what is there). New: Rome II's command-line crashes
+  + the marker watcher, `KeyScreenshot` per ini, wpr profiles (CPU / GPU, admin) and A/B only on the critical path
+  (heapfix), Bitdefender and new test exes (testing.md); Attila has no on_demand / at_100 (bringup.md); the NGX row now
+  names Rome II / WH2 and the misleading "Upscaling: Ray Reconstruction" lines (render-scale-dlss.md). Already there:
+  OnTonemapDrawn (shaders-ui.md), ComPtr `&member` (helper-fg-stability.md), builds older than the last commit, the
+  unchanged helper's stamped copy (release.md), build.ps1's absolute folder (SKILL.md).
+- [ ] 2 tools/tw/install/tw_install.py (one install tool for every round) + dry run against the installed state.
+- [ ] 3 tools/tw/check_logs.py + wired into the data-run scripts' ends.
+- [ ] 4 Static checks (skill scripts): OnTonemapDrawn per rt_scene host, ComPtr `&member` into pointer parameters; the
+  OnTonemapDrawn gap fixed in Troy, Thrones, WH1, WH2 (page dumps before / after, builds).
+- [ ] 5 Release zips carry nvngx_dlss / dlssd / dlssg (310.9.16+) and refuse without them.
+- [ ] 6 SKILL.md and release / testing steps point at the tools.
+
 ## CPU ROUND (2026-11-13 night)
 Our own TW code (twattila shared by Attila / WH3 / Pharaoh / Thrones / Rome II; the helper). Evidence: ATN's CPU profiles
 tools/tw/cpu_profile/report.md, the Unit Detail 8x trace tools/tw/cpu_profile/trace_8x_1933 (v157 + helper108 installed,

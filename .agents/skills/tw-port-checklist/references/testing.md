@@ -41,7 +41,8 @@ Rules:
 - Steam started elevated (the maintainer's SteamAdminStart task) passes that to the game and blocks input: `(Get-Process steam).Path` empty means elevated; `steam.exe -shutdown`, then `-silent`; don't touch the task.
 - Start forms: `game_startup_mode replay "<full path>"` (WH3 crashes on a bare name), `campaign_load "<save>"`, `battle_benchmark "<xml>"` (WH3). Try them before building a plan on one.
 - A guessed start argument can crash the game before any frame: Pharaoh's `game_startup_mode campaign <benchmark>` did (0xC0000005); its help lists `battle|campaign|... <xml>` and no replay or campaign_load. One try per guessed form, and say it was a guess. A plain `game_startup_mode campaign` crashed the same way (both a null read at Pharaoh.exe+0x47C81A, read from the crash_report minidump's exception stream): Pharaoh's campaign is reached only from the menu (Load), so campaign traces need the maintainer's load and the `renodx_trace_now` marker.
-- A desktop capture (`CopyFromScreen`) of an HDR flip-model game window returned one stale frame (Pharaoh's loading screen, three shots alike): take pictures with ReShade's screenshot or `RENODX_TW_SHOT`.
+- Rome II crashes before any frame from the command line, also without the add-on: `game_startup_mode battle <xml>` at Empire.Retail.dll+0x276899, `campaign_load <save>` at +0x103661. Its traces, like Pharaoh's campaign's, come from the maintainer's own menu starts while `rome2/atn_trace_watch.ps1` (`-Game`, `-Process`, `-Runs` for other games) drops the marker every few seconds and moves each trace into a run folder.
+- A desktop capture (`CopyFromScreen`) of an HDR flip-model game window returned one stale frame (Pharaoh's loading screen, three shots alike): take pictures with ReShade's screenshot or `RENODX_TW_SHOT`. ReShade's screenshot key is each ini's `KeyScreenshot`, a virtual-key code (44 Print Screen; Rome II and WH2 112, F1; Attila, Pharaoh and WH3 6, a mouse button, as of 2026-11): read it before asking for shots.
 - After an unclean exit Rome II's mod manager asks about the mod pack (window class `mod_question_dlg`), and SendInput's Enter doesn't answer it: close every start cleanly (CloseMainWindow, kill only after 60 s); a run script detects the class and stops at once (`rome2_data_run.ps1`).
 - Fullscreen Pharaoh draws no frame while another window is in front ("No frame for 20 s"), and the app keeps the foreground: run windowed at full size (`gfx_fullscreen false`, restored from that run's backup).
 - `RENODX_TW_SET` is read at launch; its timed changes fire only while frames are drawn and pile up otherwise. Time them from the battle's first-frames line, and place each trace marker after the log shows the value set.
@@ -79,7 +80,9 @@ Rules:
 - PresentMon CPU busy and GPU wait before any CPU or GPU work (facts in [helper-fg-stability.md](helper-fg-stability.md) section 5).
 - The helper's GPU time from per-process GPU Engine counters.
 - Record Ray Tracing Profile for 30 s with ReShade's menu closed (FG is off under the menu); read `answer_wait_ms`, `present_pacing_ms`, `cpu_record_parts`.
-- Time Each Pass for one frame; xperf for CPU; A/B inside one run (`RENODX_TW_SET`).
+- Time Each Pass for one frame; A/B inside one run (`RENODX_TW_SET`).
+- A CPU question needs a sampled profile, a GPU question one with GPU events: `wpr -start CPU -filemode` (GPU: `-start GPU -start CPU`), then `wpr -stop <file>.etl`, in the maintainer's admin terminal; read it with xperf or WPA (`Windows Kits\10\Windows Performance Toolkit`) by module offsets. PresentMon alone guesses.
+- An A/B measures a change only where its code is on the critical path: heapfix's sort, 6-7x faster, changed nothing in a GPU-bound replay (54.45 against 54.35 fps) and was 3.6% slower with 4 threads in a CPU-bound one, where the render thread never waited on it. Find the waiting thread in a profile before building the A/B.
 
 ## 6. Other traps
 
@@ -95,3 +98,4 @@ Rules:
 | A plan built on one start form or one trace | Two forms or two traces before planning |
 | A WARP sun test's comparison sampler on an RGBA32F shadow map returned 0 everywhere | Shadow maps as R32_FLOAT (the game's D32 view), `sun_scale_v61` |
 | PowerShell `-Filter "*.addon32.*"` matches plain `.addon32` files too | Never delete by it; old files are renamed aside ([release.md](release.md)) |
+| Bitdefender quarantined freshly built unsigned test exes (mingw builds, Gen:Variant.Draftor) | A new test goes into an existing `test/tw_*` suite or the harness, not a new exe; a flagged exe: stop building it, never evade or exclude, tell the maintainer |
