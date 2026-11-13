@@ -29,7 +29,7 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 16. A settlement with pools (phar_building_water_01) at DLSS Ultra Performance: the pools' AO in place, not squeezed to the
     top left.
 
-### Round v61 (2026-11-13, open items; built only, not stamped, not run in game)
+### Round v61 (2026-11-13, open items; stamped and installed 16:27 with helper107 (unchanged), not run in game by ATN)
 
 - **New: Path-Traced ambient gets the sun's light where no view reaches** (Attila's helper107 fix, now Pharaoh's): rt_sun
   writes the game's sun colour (lighting_VS_PS c3) to its texel 2, scaled as Pharaoh's sun shaders light the diffuse

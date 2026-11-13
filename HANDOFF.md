@@ -118,8 +118,8 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   controls fail as before; 3F1B86E1 itself unchanged. Level B (dump, no trace: quality 0-2 is the menu's; which VS draws
   it at 0-2 not seen: only 109B79CE is hooked). 740B2536 (MSAA) stays out: no rays under the game's MSAA (comment).
 - [x] 3 Water reflections capped at 25 a channel as the game's apply: ssrapply00 r1.yzw = min(max(t47.rgb, 0), 25) (the
-  game's t_colour_src t6 is R8G8B8A8_UNORM, W2 trace l.3129 f28, x 5 squared: at most 25). No row (the game's own look, ATN's
-  call 2026-11-13). WARP tools/tw/warp_tests/pharaoh/ssr_v61 (make_v61.py from ssr_v56, run.sh, run_v61.txt; previous
+  game's t_colour_src t6 is R8G8B8A8_UNORM, W2 trace l.3129 f28, x 5 squared: at most 25). No row (the game's own look; the
+  agent's choice, ATN judges it in game). WARP tools/tw/warp_tests/pharaoh/ssr_v61 (make_v61.py from ssr_v56, run.sh, run_v61.txt; previous
   build's cso v60_0xDE4F92CD.cso): ALL PASSED: 1 / 2 / 4 / 5 as v56 (0 misses); 3 the formula with t47 capped 0 misses
   (69,235 channels above 25), CONTROL uncapped 34,537 misses; 6a t47 below 25 vs v60's build 0 of 589,824 bits apart; 6b
   t47 25-1000, a 1 vs the game's march saturated (t6 255) 0 of 589,824 bits apart, CONTROL v60's build 248,840 apart.
@@ -181,6 +181,14 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   the key off, the smoke rows' slots 0 / 0 as before). Skill rows: sun diffuse scale and the AO pass's camera
   (game-facts), E8524BB1's slots (particles), the game's contact march below 100% (render scale), R32 maps on WARP
   (testing), trace Options on_demand / draw_reads (bring-up).
+- [x] 9 (coordinator) rebuilt at HEAD 16:27, STAMPED + INSTALLED Pharaoh v61 16:27 (tools/tw/round_v151/install_v61.py;
+  helper107 unchanged, its stamped v60 copy; ATN files unchanged by hash). Attila v156 / WH3 v54 kept (no behaviour change).
+- [x] 10 run B61 (tools/tw/pharaoh/runs/B61_162810, findings.md; pharaoh_data_run.ps1 -Ini "FrameTraceReads=1", new):
+  clean, files equal. "no main camera" 1 line (loading screen only). Torches: E318CE77 vb1's 15 lights bit-equal on two
+  frames (the lights don't move: torch flicker is our sampling). 7b: DE4F92CD's quad uv 0..1 over 3840x2160 targets at a
+  1920x1080 viewport: the uv isn't the render share (fix: uv from SV_Position x share). Smoke: 90 of 90 sorted particles
+  listed; projection to do.
+- [ ] 11 7b fix (SSR apply below 100%) + smoke projection (off-screen particles in the CPU list?) + the lever if so.
 
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
