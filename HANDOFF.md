@@ -41,7 +41,9 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
   test/tw_* default runs exit 0 + PASS, amd64 and x86: depth_levels, device_loss, fg_initialization, gpu_completion,
   helper_lifetime, preset_writer, sampler_lifetime, screen_space_shadows, startup_worker, texture_lod_bias, unit_pack_rounds;
   motion_record x86 (v53's list). Committed 18.6 GB.
-- [ ] 8 README Pharaoh v56 (+ WH3 line), HANDOFF, report
+- [x] 8 README Pharaoh "Round v56" (New: water reflections, Specular Occlusion, frame trace extras; WARP; page; Not done: game
+  run with the trace's grep list, risks; smoke shadows still open) + WH3 README v51 (the light copy moved, its log line's new
+  text; nothing else). Attila README unchanged (no behaviour change). Built only, not stamped, not installed, not run in game.
 
 ## ATN'S 2026-11-12 FOURTH LIST + PHARAOH (started 15:07; ATN away until ~21:00, plays 21:00-01:00)
 Rules for this batch: game runs (Pharaoh trace-only data runs, medium-effort agent, few runs, fresh backups incl. replays/saves) allowed

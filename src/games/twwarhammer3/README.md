@@ -1,5 +1,11 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v51 (2026-11-13, the reflections' light copy shared with Pharaoh; built only, not stamped, not run in game; renodx-tw-dlaa64.exe helper105 as in v50)
+
+- Moved: **Reflections Lit as This Frame**'s copy (`rt_light_copy`, 3AC630DF's R16G16B16A16F input into the bridge's R11G11B10F) is now the shared `twattila/rt_core.hpp` one (`Host::light_copy`, Pharaoh v56's water reflections use it too). The same picture: WARP against v50's path 0 texels apart in 4 cases (`tools\tw\warp_tests\light_copy_v56`; CONTROL 207 apart). Its log line is now `Ray-traced reflections: the hits read the pass's light (R16G16B16A16F, copied)` (was `First run: the frame's light for the reflections' hits`). Page dump `w v63` against v62: the date only.
+
+Build: `cmake --build build --config Release --target renodx-twwarhammer3.addon64`. Manual check: as v50's; ReShade.log shows the new line once with Reflections Lit as This Frame on.
+
 ## v50 (2026-11-13, RT/PT no longer leaves GT-VBAO under Path-Traced AO; stamped and installed 00:43, not run in game; renodx-tw-dlaa64.exe helper105 as in v49)
 
 - Fixed: **RT/PT** now turns GT-VBAO off. Here the paths' AO multiplies the game's SSAO (`graphics_page::Bindings::rays_replace_ao` false), so with GT-VBAO, the page's default, still on it ran hidden under the paths and its shading added to theirs. The AO method's Path-Traced choice already turned it off (`ChooseAo`); the preset now writes the same (`ssao_mode` 0), in the shared `graphics_page.hpp`. Attila's RT/PT is unchanged (its rays replace the game's AO). Page dump `w v62` vs v61: only RT/PT's writes gain `ssao_mode 1 -> 0`, besides the build date.
