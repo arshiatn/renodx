@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Attila's anti-aliasing shader aa_dlaa_finish (twattila/anti_aliasing.hpp). Rome II's frame is linear between its tone
-// mapper (EE1DA45C) and hdr_to_screen: no square root.
-#define TW_AA_FRAME_LINEAR 1
+// Attila's anti-aliasing shader aa_dlaa_finish (twattila/anti_aliasing.hpp). Rome II's anti-aliasing takes hdr_to_screen's
+// output (gamma 2.2 encoded, aa_dlaa_prepare): the square root back as Attila's.
 #include "../twattila/aa_dlaa_finish.cs_5_0.hlsl"
