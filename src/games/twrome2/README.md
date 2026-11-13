@@ -1,6 +1,6 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
-### Round 2 (2026-11-13, toward Attila's package; built only, not run in game)
+### Round 2 (2026-11-13, toward Attila's package; stamped "rome2 r2" and installed 22:59 with helper110, not run in game)
 
 New:
 - **Water Clarity** and **Water Caustics (Experimental, off)** on the battle water (plane Ultra and High, rivers), as Attila. At 1 / 0: the game's water. RT/PT leaves Caustics off here.

@@ -147,6 +147,10 @@ together at 9c310a07. Docs: Attila v159, WH3 v58, Pharaoh Round v66 (built only,
 - NOT DONE: the animation pack loop (heapfix's author measured no gain from a prefetch); a heapfix-aware variant of the
   rounding block (ATN decides).
 
+- [x] (coordinator) rebuilt at HEAD 22:56-22:57 (2fd3c892), STAMPED + INSTALLED 22:59 (tools/tw/install/tw_install.py
+  --helper 110 attila=159 wh3=58 pharaoh=66 rome2=r2 --install): Attila v159, WH3 v58, Pharaoh v66, Rome II "rome2 r2",
+  helper110 in all four; ATN files unchanged by hash; old files .in-use-20261113_225955. Rome II prefs gfx_aa 2 -> 0
+  (MSAA x2 keeps our AA / DLSS / RT off; ATN allowed dropping MSAA; backup tools/tw/install/backups/rome2_gfx_aa_20261113_230047).
 ## LESSONS + CHECKS ROUND (2026-11-13 night, main checkout; offline: no game, no Steam writes, no stamp / install)
 Today's mistakes into the skill once, repeat mistakes as checks that fail loudly. Tools outside the repo live in
 tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One commit + push per step.

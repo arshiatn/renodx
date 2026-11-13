@@ -41,7 +41,7 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 23. v65 (helper109), the RT/PT preset, a battle: the same picture as v64, the helper's frame time no higher.
 24. v66 (helper110), the RT/PT preset, a battle: the same picture as v65.
 
-### Round v66 (2026-11-13, night merges; built only with helper110, not stamped, not run in game)
+### Round v66 (2026-11-13, night merges; stamped and installed 22:59 with helper110, not run in game)
 
 - Nothing changes in Pharaoh: helper110's faster sway counting and Attila's Grass Ray Tracing Range don't run here (the
   sway and grass range rows stay hidden). Page dump against v65: the hidden Grass Ray Tracing Range row only.

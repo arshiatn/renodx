@@ -1,6 +1,6 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## v159 (2026-11-13, night merges: GPU options, engine CPU code, grass / unit hooks; built only with renodx-tw-dlaa64.exe helper110, not stamped, not run in game)
+## v159 (2026-11-13, night merges: GPU options, engine CPU code, grass / unit hooks; stamped and installed 22:59 with renodx-tw-dlaa64.exe helper110, not run in game)
 
 - New: **Grass Ray Tracing Range (Experimental, off)** under More Options: grass farther than this leaves the ray tracing
   (swaying or still) and pixels past it trace without grass. Harness at 4K in a large field: ~0.45 ms a frame at 30 m,

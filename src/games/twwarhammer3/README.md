@@ -1,6 +1,6 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
-## v58 (2026-11-13, night merges; built only with renodx-tw-dlaa64.exe helper110, not stamped, not run in game)
+## v58 (2026-11-13, night merges; stamped and installed 22:59 with renodx-tw-dlaa64.exe helper110, not run in game)
 
 - Faster (Attila v159's helper110): **Swaying Shadows Range / Off-Screen Sway**: the sway's counting pass runs on 64 GPU
   threads instead of one (harness 4K, 150 k clusters: 0.4-0.5 ms less a frame, same picture).
