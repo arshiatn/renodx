@@ -166,7 +166,8 @@ void ApplyHDRPreset(
             return true; },                                                                           \
           .on_drawn = [](auto* cmd_list) {                                                            \
             twattila::screen_space_shadows::OnTonemapDrawn(cmd_list);                                 \
-            twattila::anti_aliasing::OnTonemapDrawn(cmd_list); },                                     \
+            twattila::anti_aliasing::OnTonemapDrawn(cmd_list);                                        \
+            twattila::rt_scene::OnTonemapDrawn(cmd_list); },                                          \
       },                                                                                              \
   }
 
