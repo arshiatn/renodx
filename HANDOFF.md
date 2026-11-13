@@ -99,8 +99,16 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
 Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, never
 restart. Committed Bytes under 60 GB and no game process before WARP / harness / GPU jobs, one GPU job at a time.
 Unproven look changes: Experimental rows, off. One writer; each step committed and pushed to origin atn-mods.
-- [ ] 1 Debug Views: why Pharaoh's page has no Ray Tracing Debug View rows; the same rows as Attila / WH3, working; page
-  dump before / after (every key kept).
+- [x] 1 Debug Views: the rows (RayTracedDebugView, RayTracedSceneTest) are on Pharaoh's page but shown only once
+  rt_scene::OnTonemapDrawn ran (is_visible = internal::debug_view_drawn): Pharaoh's tone mapper hook (UpgradeRTVReplaceShader:
+  t00-t08, photo) called only screen_space_shadows' and anti_aliasing's OnTonemapDrawn, so they never showed and nothing drew
+  them (the page dump fakes debug_view_drawn = true: it can't show this). Now rt_scene::OnTonemapDrawn after anti_aliasing's,
+  as Attila's macro (the target the same display-size RGBA16F that DLSS / DLAA wrote). Screen-Space AO (view 8): no AO pass
+  hook keeps it here (v61: ssao01 binds no camera), so OnSunDebugAmbient (registered before every other sun draw hook, the 24
+  draws with an ao_slot) copies the sun draw's t_ssao through KeepDebugAmbient with mapping 1: ATN_UP trace_13 at 33% the AO
+  1920x1080 (half the display), its pass at 640x360 at the top left, the sun draw's t12 the same texture: rt_debug's own
+  mapping (render pixel x 1920 / 3840). Pharaoh addon64 built; page dump p r64a against r64pre: Build Date only (615 keys
+  both). Troy, Rome II, Thrones, WH1, WH2 lack the same call (not changed this round). Not run in game.
 - [ ] 2 Steady Torch Shadows' black spots: cause from the code, harness proof (a light beside a small occluder, Steady on
   / off, control), fix at the source (helper108 if needed; all_modes + RR noise test as regressions).
 - [ ] 3 Torch flicker: what changes frame to frame (ATN_UP_181940 campaign + B61 siege two-frame reads, the code); fix
