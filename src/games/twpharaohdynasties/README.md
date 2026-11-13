@@ -31,6 +31,20 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 17. DLSS Performance and Ultra Performance, the siege's river and a sea battle, Ray-Traced Water Reflections off and on: the
     water's reflections sit where they do at 100% (not stretched from the picture's top-left part), ripples bend them as much.
 
+### Round v63 (2026-11-13, built only, not run in game)
+
+- **Fixed: rough water's reflections below 100% as soft as at 100%.** The game picks the reflections' blur level by the
+  water's roughness in the reflection texture's texels, and below 100% that texture holds only the render's share of the
+  texels the screen had at 100%: rough water blurred 2x wider at 50% and 3x at 33%. Our copy of the SSR apply
+  (shaders/ssrapply00, drawn below 100%) now takes a level lower by log2 of the share (1 at 50%, 1.58 at 33%). At 100%
+  nothing changes.
+- **WARP** (`tools\tw\warp_tests\pharaoh\apply_share_v63`, `run_v63.txt`): 100% bit-identical to v62's build and the game's
+  bytes, with and without the rays and a mip chain; v62's cases (one mip) bit-identical to v62 at 50% / 33%; rough water
+  (level 2-5, each reflection level one colour, linear in its screen footprint): 50% bit-identical to the game's 100%, 33%
+  inside the game's 100% at the level +- 1/256 (WARP keeps a few bits of the level's fraction); CONTROLs v62 at 50% / 33%
+  apart in every value (largest 1.9 / 3.1).
+- **Not done: run in game.** Built and checked on WARP only.
+
 ### Round v62 (2026-11-13, open items; stamped and installed 17:15, helper107 unchanged, not run in game)
 
 - **Fixed: the water's reflections below 100%** (7b). The game's SSR apply (DE4F92CD) reads every texture at its quad's uv,

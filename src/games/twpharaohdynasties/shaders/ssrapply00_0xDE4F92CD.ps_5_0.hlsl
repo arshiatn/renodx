@@ -1,7 +1,7 @@
 // ssr_new ps50_apply (the water's screen-space reflections into the light buffer: its SSR over the cube, the sun's lobe and
 // the fog, by the water's weight): the game's, with the ray-traced reflections in its SSR's place where they left from the
 // water (twpharaohdynasties/addon.cpp OnWaterApplyDraw; twattila/rt_reflection.hlsli), and below 100% with or without them;
-// otherwise the game's own bytes. WARP against them: tools\tw\warp_tests\pharaoh\ssr_v56, apply_share_v62.
+// otherwise the game's own bytes. WARP against them: tools\tw\warp_tests\pharaoh\ssr_v56, apply_share_v62, apply_share_v63.
 #include "../../twattila/render_scale.hlsli"
 #include "../../twattila/rt_reflection.hlsli"
 
@@ -295,7 +295,10 @@ void main(
       r1.yzw = min(max(rt_traced.rgb, 0.f), 25.f);
       r7.w = rt_traced.a;
     } else {
-      r7.xyzw = t_colour_src.SampleLevel(s_trilinear_sampler_s, r0.xy, r1.x).xyzw;
+      // The roughness' level is in the SSR colour's texels, and below 100% that colour has the share of the texels the screen
+      // had at 100%: one level lower per halving (log2 of the share), the blur as wide on screen as at 100%.
+      const float ssr_level = (share.x < 1.f) ? max(r1.x + 0.5f * log2(share.x * share.y), 0.f) : r1.x;
+      r7.xyzw = t_colour_src.SampleLevel(s_trilinear_sampler_s, r0.xy, ssr_level).xyzw;
       r7.xyzw = float4(5,5,5,1.04999995) * r7.xyzw;
       r1.yzw = r7.xyz * r7.xyz;
     }

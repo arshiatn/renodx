@@ -289,6 +289,14 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   unchanged by hash; old add-ons .in-use-20261113_171548) Pharaoh v62 and WH3 v55 (helper107 unchanged). Open: a later run: Pharaoh at 50% with the
   water ("First run: the water's reflection apply DE4F92CD below 100%"), WH3 with Path-Traced Ambient ("Sun shader ... sun
   colour").
+- [x] 13 v63 (coordinator's step): the SSR colour's level below 100% at 100%'s blur. ssrapply00 (our copy, drawn below 100% by
+  OnWaterApplyDraw) samples t_colour_src at max(16 x (1 - spec.y) + 0.5 x log2(share.x x share.y), 0) when share.x < 1, else
+  the game's level (the environment cube's level unchanged). WARP tools/tw/warp_tests/pharaoh/apply_share_v63 (make_v63.py
+  from v62's, run.sh, run_v63.txt; v62's build v62_0xDE4F92CD.cso): ALL PASSED: 100% = v62's build and the game's bytes bit
+  for bit (rays unbound / bound / cb12 1, one mip and a mip chain); one mip at 50% / 33% = v62 bit for bit; rough water (level
+  2-5, float mip chains with level k one colour, F(footprint): 100% F(k), 50% F(k + 1), 33% F(k + log2 3)): 50% = the game's
+  100% bit for bit, 33% inside the game's 100% at the level +- 1/256 in all ~4,600 written values per case; CONTROLs v62 at
+  50% / 33% outside in every value. Built x64 only (Pharaoh's own shader, no shared code). README "### Round v63". Not run.
 
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
