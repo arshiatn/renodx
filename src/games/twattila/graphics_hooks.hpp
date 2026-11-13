@@ -57,6 +57,9 @@ struct Scales {
   float campaign_trees = 1.f;    // the tree LOD's distances
   float grass_distance = 1.f;    // grass and plants: their LOD distances, the scrub's cells and thinning
   float grass_density = 1.f;     // grass and plants: less thinning (more of the map's) within the same distance
+  // The soldiers' shadow distance (16 below): 0 while nothing reads their 3D shadows (Attila: the rays' shadows in place of
+  // the sun's shadow map, its casters skipped).
+  float unit_shadows = 1.f;
   bool big_battle_fix = false;   // unit detail and animation in until the shadow pass's soldiers fit
 };
 
@@ -69,7 +72,13 @@ namespace internal {
 //   4-7   imposter fade width (a random switch within it per unit): a quarter of 0-3
 //   8-11  shared pose distance (soldiers copy each other's animation beyond it): 40, 40, 60, 500 m
 //   12    no-variant distance (100), 13 facial animation (10), 14 hand animation (10), 15 footstep effects (25),
-//   16    unit shadows (10000), 17 a cap (unlimited above the lowest Unit Detail).
+//   16    unit shadows (10000 at every Unit Detail, through entity_display_shadow_max_shadow_distance, default 10000;
+//         10000 too with entity_display_enable_imposter_shadows off, that value's only reader, +0x43c70d), 17 a cap
+//         (unlimited above the lowest Unit Detail).
+// Index 16's reader (+0x441eb0, called by the per-soldier update at +0x45a80d): a soldier's shadow record, its shadow
+// stretched along the sun (+0x441a20, entity_display_shadow_extrusion_multiplier) and its shadow LOD. Past index 16
+// (+0x441f49) a small or medium soldier skips the stretch, and its 3D shadow where its state's +0x10 or its model's
+// +0xb0 is set (+0x30 cleared; +0x31 set with the first).
 constexpr std::string_view UNIT_DISTANCES =
     "83 EC 40 80 7C 24 54 00 F3 0F 10 05 ?? ?? ?? ?? 56 57 8B F9 C7 44 24 28 00 00 80 3F F3 0F 11 44 24 30 74";
 // Rome II's (+0x4497e0): the same arguments and 18 distances (its display copies them to +0x214).
@@ -194,6 +203,7 @@ static std::atomic<float> facial_scale = 1.f;
 static std::atomic<float> hand_scale = 1.f;
 static std::atomic<float> variety_scale = 1.f;
 static std::atomic<float> footstep_scale = 1.f;
+static std::atomic<float> unit_shadow_scale = 1.f;
 static std::atomic<float> tree_distance_squared_scale = 1.f;
 static std::atomic<float> grass_scale = 1.f;
 static std::atomic<float> grass_density = 1.f;
@@ -279,6 +289,7 @@ static float* __fastcall OnUnitDistances(void* display, void* unused_edx, float*
     distances[index] *= budget;
   }
   scale(15, 15, footstep_scale);
+  scale(16, 16, unit_shadow_scale);
   return distances;
 }
 
@@ -481,6 +492,7 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
   internal::hand_scale.store(scales.hand_animation, std::memory_order_relaxed);
   internal::variety_scale.store(scales.unit_variety, std::memory_order_relaxed);
   internal::footstep_scale.store(scales.footstep_effects, std::memory_order_relaxed);
+  internal::unit_shadow_scale.store(scales.unit_shadows, std::memory_order_relaxed);
   internal::big_battle_fix.store(scales.big_battle_fix, std::memory_order_relaxed);
   internal::tree_distance_squared_scale.store(scales.campaign_trees * scales.campaign_trees, std::memory_order_relaxed);
   internal::grass_scale.store(scales.grass_distance, std::memory_order_relaxed);

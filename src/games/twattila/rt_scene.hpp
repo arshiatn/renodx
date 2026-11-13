@@ -1126,14 +1126,22 @@ inline void InstallCutOutMasks(std::span<const PixelMask> masks) {
   internal::cut_out_masks = masks;
 }
 
+// Ray-Traced Shadows Only: whether the frame's draws into the sun's shadow map are skipped (OnBindTargets: the sun draws
+// took the rays' shadows the frame before, its map known). Asked after Update (a present), the next frame's: the game's
+// own work for those draws can stop then (Attila's soldier shadows, graphics_hooks Scales::unit_shadows).
+inline bool CastersSkipped() {
+  if (!internal::shadows_only_installed || internal::shadow_map.load(std::memory_order_relaxed) == 0) return false;
+  const std::unique_lock lock(internal::runtime.mutex);
+  return internal::runtime.settings.shadows_only && internal::runtime.occlusion_frame + 1 >= internal::runtime.frame;
+}
+
 // Ray-Traced Shadows Only: draws are skipped while the sun's shadow map is bound alone (depth only) for drawing.
 inline void OnBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view*,
                           reshade::api::resource_view dsv) {
   bool skip = false;
   const uint64_t map = internal::shadow_map.load(std::memory_order_relaxed);
   if (count == 0 && dsv.handle != 0 && map != 0 && cmd_list->get_device()->get_resource_from_view(dsv).handle == map) {
-    const std::unique_lock lock(internal::runtime.mutex);
-    skip = internal::runtime.settings.shadows_only && internal::runtime.occlusion_frame + 1 >= internal::runtime.frame;
+    skip = CastersSkipped();
   }
   internal::skipping_casters.store(skip, std::memory_order_relaxed);
 }
