@@ -104,7 +104,12 @@ tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One com
   names Rome II / WH2 and the misleading "Upscaling: Ray Reconstruction" lines (render-scale-dlss.md). Already there:
   OnTonemapDrawn (shaders-ui.md), ComPtr `&member` (helper-fg-stability.md), builds older than the last commit, the
   unchanged helper's stamped copy (release.md), build.ps1's absolute folder (SKILL.md).
-- [ ] 2 tools/tw/install/tw_install.py (one install tool for every round) + dry run against the installed state.
+- [x] 2 tools/tw/install/tw_install.py (one install tool for every round; round_v151/install_v*.py left as history) +
+  tools/tw/ngx_dlls.py (the three NVIDIA DLLs, versions by VS_FIXEDFILEINFO). Dry run `--helper 109 attila=158 wh3=57
+  pharaoh=65`: exit 0, all six files "ALREADY INSTALLED" (builds 21:02-21:03 after their sources' last commits 02a05144 /
+  20b91319; NVIDIA 310.9.16 x3 in each folder). Negative `--helper 108 attila=157`: exit 1, three refusals (the add-on
+  is already v158's source, it changed after v157's stamp, helper108 built 19:54 before 02a05144). A harness helper from
+  a build folder (a worktree's GPU job ran) doesn't block; one from a game folder does.
 - [ ] 3 tools/tw/check_logs.py + wired into the data-run scripts' ends.
 - [ ] 4 Static checks (skill scripts): OnTonemapDrawn per rt_scene host, ComPtr `&member` into pointer parameters; the
   OnTonemapDrawn gap fixed in Troy, Thrones, WH1, WH2 (page dumps before / after, builds).
