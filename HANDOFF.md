@@ -99,7 +99,14 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
 Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, no Nexus text,
 never restart. Committed Bytes under 60 GB before WARP / harness / GPU jobs, one GPU job at a time. Unproven look changes:
 Experimental rows, off. One writer; each step committed and pushed to origin atn-mods.
-- [ ] 1 "no main camera": rt_scene's AO hook on D42C3523 with Attila's slots (t0 / b0) in Pharaoh.
+- [x] 1 "no main camera": rt_scene::Install(SCENE_SHADERS, {}, rt_host). D42C3523 (dx11_ssao2 ps50_generate, fxc -dumpbin)
+  binds cb0 ssao2_PS (144 bytes: g_Resolution, g_ToViewTransform ...), t0 ssao2_linear_depth_texture, t1 random: no camera,
+  so rt_scene's AO hook (Attila's t0 / b0) failed every frame (W1 24, W2 25, S1 21, campaign 105 log lines). Its other jobs:
+  the multiply after the pass (never ran: no trace there) and the Debug View's Screen-Space AO copy (Pharaoh never draws the
+  Debug View: no rt_scene::OnTonemapDrawn in its tone mapper hook, the row hidden), so nothing lost. The plan's "Debug View
+  shows the sun's t12" is wrong (nothing calls KeepDebugAmbient in Pharaoh). Kept: ao_pass::Install(AO_DRAWS) (GT-VBAO), the
+  sun draws' trace + combine at ao_slot (24 of 25 set it; FFD99CCD reads no AO, as before). Troy carries the same bytes
+  (D42C3523) and call: the same fix (own commit). Later run: 0 "no main camera" lines, status trace ms as before.
 - [ ] 2 E8524BB1 (effects quality 0-2) in Smoke Shadows with its own slots; 740B2536 (MSAA) stays out.
 - [ ] 3 Water reflections capped at 25 a channel as the game's apply.
 - [ ] 4 Building water (phar_building_water_01) t_ssao render-scale rows.

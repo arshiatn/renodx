@@ -3026,7 +3026,7 @@ bool AttachAddon() {
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
-  // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.
+  // The ambient occlusion pass: the Visibility Bitmask in its place (the rays' AO goes in at the sun draws).
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
   // The TW games' view; the shadow pass's casters through world positions (its vertex shaders' view-projection at cb0[9-12], not
   // Warhammer III's cb0[10-13]), from the sun's per-frame atlas only (R32, 2 x 2 cascades; not the kept baked map, R16 4096 x 4096).
@@ -3041,7 +3041,9 @@ bool AttachAddon() {
   // since (TW_HOST's RewriteGuides reads PS slots 0-2, stale at backward_ssr's dispatch), and its R16G16B16A16F light copied.
   rt_host.rewrite_guides = twattila::anti_aliasing::RewriteSunGuides;
   rt_host.light_copy = __rt_light_copy;
-  twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
+  // No ambient occlusion pass: ssao01 D42C3523 binds only its own constants (ssao2_PS at b0, the linear depth at t0), no
+  // camera, so the trace and the rays' AO stay at the sun draws (their t_ssao at ao_slot).
+  twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // The point lights (siege trace: one instanced draw, VS E19549A1 with PS E318CE77, after the sun draw F883F5B2; fire02 reads
   // the rays' bits). Log Details' light count also counts the particle lights (5AD46115).
