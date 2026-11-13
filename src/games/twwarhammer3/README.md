@@ -1,5 +1,12 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v56 (2026-11-13; built only, not stamped or installed, not run in game; needs renodx-tw-dlaa64.exe helper108)
+
+- Fixed (Attila v157's helper108): **Steady Torch Shadows (Experimental)** sharp and steady, no fixed black dots under Ray
+  Reconstruction; **Ray Reconstruction selected but not started** (no nvngx_dlssd.dll): the rays run as without it, not raw,
+  and ReShade.log says "Ray Reconstruction didn't start". Warhammer III's folder has the DLL: nothing changes while it stays.
+- Needs helper108; with helper107 both stay as in v55.
+
 ## v55 (2026-11-13; stamped and installed 17:15, renodx-tw-dlaa64.exe helper107 unchanged, not run in game)
 
 - New: **Path-Traced Ambient takes the game's sun light** (Attila's helper107 fix, now Warhammer III's): rt_sun writes the

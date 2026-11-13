@@ -161,6 +161,18 @@ Unproven look changes: Experimental rows, off. One writer; each step committed a
     tiles' boxes cut out.
 - [ ] 5 Builds (Pharaoh, the skill's x64 list, build32 if shared, helper if changed), test/tw_* x86 + amd64, page dumps,
   READMEs (Pharaoh "### Round v64"; Attila / WH3 if shared behaviour changed), skill rows for real new lessons.
+  - [x] Builds at ce280b22: helper108 (build\tw_dlaa_helper108, bridge v31, 18:55), the skill's 15 x64 targets 66 s and build32
+    twattila + twrome2 + twthronesofbritannia 57 s: exit 0, only the upstream deprecation warnings.
+  - [x] Page dumps (Build Date and the Steady tooltip only, every key kept): Pharaoh page_p_r64 against r64pre (= v63's page;
+    tools/tw/pharaoh), Attila page_a_r164 and WH3 page_w_r164 against r161 (tools/tw/page_dump).
+  - [x] READMEs: Pharaoh "### Round v64" + test lines 18-22, Attila "## v157", WH3 "## v56" (built only, helper108). Skill
+    rows: rt-scene (Steady hard: a bit holds no share), render-scale-dlss (SetTargetSizes; RR asked but not started),
+    shaders-ui (the Debug View's tone mapper call), game-facts (Pharaoh's campaign map units), testing (HARNESS_TORCH,
+    HARNESS_RR_FOLLOW, guard-wrapped scripts).
+  - [ ] Tests: test/tw_* WARP / CPU suites (13 x 2) exit 0 (tw_native_hook_lifetime x86 failed once at stage 0 with no output
+    right after its build, passed alone stages 0-3); all_modes with helper108 49 / 179 ALL PASSED until ATN started Attila at
+    19:16 (the guard stopped it), the rest running; RR noise test and the GPU suites (tw_device_loss, tw_gpu_completion,
+    tw_helper_lifetime, tw_particle_history, tw_screen_space_shadows, tw_unit_pack_rounds) after it, when no game runs.
 
 ## ROME II BRING-UP (offline)
 Plan tools/tw/rome2/plan.md (Phase 0 + the Phase 3 items provable offline); results under tools/tw/rome2/. Data runs

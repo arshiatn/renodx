@@ -30,6 +30,43 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     top left.
 17. DLSS Performance and Ultra Performance, the siege's river and a sea battle, Ray-Traced Water Reflections off and on: the
     water's reflections sit where they do at 100% (not stretched from the picture's top-left part), ripples bend them as much.
+18. v64 (helper108): Ray Tracing Extra Options, More Options: Ray Tracing Debug View is there. Point Light Shadows shows the
+    torch and fire shadows (grey lit, red blocked); Screen-Space AO the game's AO or GT-VBAO's; All the eight tiled.
+19. v64, Ray Reconstruction selected, Pharaoh's folder as now (no nvngx_dlssd.dll): ReShade.log "Ray Reconstruction didn't
+    start"; campaign torches at night, still camera: their shadows sharp and still, no crawling noise.
+20. v64: Steady Torch Shadows on, the same place: no black dots around the torches (replaces line 10).
+21. v64: campaign at Ultra Performance against Quality: the shroud's clouds over unexplored land sit in the same place.
+22. v64: nvngx_dlssd.dll 310.9.16 copied next to nvngx_dlss.dll: renodx-tw-dlaa64.log "Ray Reconstruction ready", the torch
+    shadows soft and calm.
+
+### Round v64 (2026-11-13, torch shadows and Debug Views; built only, not stamped or installed, not run in game; needs helper108)
+
+- **Fixed: torch shadows that crawled like noise with DLSS Ray Reconstruction selected.** Pharaoh's folder has no
+  nvngx_dlssd.dll, so Ray Reconstruction never started (every helper log with the rays: "Ray Reconstruction unavailable")
+  and the helper ran plain DLSS, while the rays were still made raw for it: soft torch shadows from a new random point
+  each frame, NRD off, the AO and reflections unfiltered. Now the helper (helper108) tells the add-on, and the rays run as
+  without Ray Reconstruction: sharp, steady torch shadows and NRD. ReShade.log: "Ray Reconstruction didn't start". The
+  game's torches don't move (two frames of a campaign trace and a siege trace: the same positions). For Ray Reconstruction
+  itself nvngx_dlssd.dll (310.9.16) goes next to nvngx_dlss.dll. Harness (`tools\tw\rt_harness\torch_v64.sh`, a torch on
+  a pole, Ray Reconstruction asked for, no nvngx_dlssd.dll): helper107 102.8 torch bits changed a frame, helper108 0; with
+  the DLL both run Ray Reconstruction as before.
+- **Fixed: Steady Torch Shadows' black dots around torches.** Its soft shadows sent each pixel's ray to the same point of the
+  light every frame: a fixed pattern of lit and dark pixels that nothing averages. Now Steady's torch shadows are sharp
+  and steady. Harness: 30 dots that stay (helper107) against 0 (helper108), the same as sharp shadows. Shared: every TW game.
+- **Fixed: the campaign's shroud below 100%.** Its decals (the clouds over unexplored land) placed themselves from a third of
+  the view at Ultra Performance (their own target size, which the render scale doesn't change). The shared render-scale
+  patch now knows that size too (`view_share::SetTargetSizes`, Pharaoh only). WARP (`tools\tw\warp_tests\pharaoh\decal_v64`,
+  `patch_v64`): the 4 decal shaders at 33% as at 100% (largest 1.2e-7), the game's bytes there apart; every other shader of
+  the 10 TW dumps patched as before.
+- **New: Ray Tracing Debug View** (Ray Tracing Extra Options, More Options) and Ray Tracing Scene (Test) under it: they were
+  on the page but never shown, Pharaoh's tone mapper never drew them. Point Light Shadows shows the torch and fire shadows;
+  Screen-Space AO the AO the sun light reads (the game's or GT-VBAO's).
+- Checked, nothing changed: the campaign's global terrain (026CBC61) isn't in the rays, so nothing is doubled under the
+  terrain tiles (377DE0D5); every tile lies inside its chunks' bounds, so it stays out until a trace shows its mesh has holes
+  there.
+- **Not done:** the torch softness, the rays' 0.5 m clearance and the AO / Light Bounce ranges are in map units on the
+  campaign (Pharaoh has no campaign scale for them); Troy, Rome II, Thrones and WH1-2 still don't draw the Debug View; run
+  in game.
 
 ### Round v63 (2026-11-13, stamped and installed 18:38, helper107 unchanged, not run in game)
 

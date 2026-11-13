@@ -1,5 +1,16 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v157 (2026-11-13; built only, not stamped or installed, not run in game; needs renodx-tw-dlaa64.exe helper108)
+
+- Fixed: **Steady Torch Shadows (Experimental) without black dots**: with Ray Reconstruction its soft shadows sent each
+  pixel's ray to the same point of the light every frame, a fixed pattern of lit and dark pixels nothing averages (Pharaoh's
+  campaign showed it). Now they are sharp and steady (harness: 30 dots that stay against 0, the same as sharp shadows).
+- Fixed: **Ray Reconstruction selected but not started** (no nvngx_dlssd.dll next to nvngx_dlss.dll): the helper ran plain
+  DLSS while the rays stayed raw for Ray Reconstruction (soft torch shadows from a new point each frame, NRD off). Now the
+  helper says so and the rays run as without it; ReShade.log: "Ray Reconstruction didn't start". Attila's folder has the
+  DLL: nothing changes here while it stays.
+- Needs helper108; with helper107 both stay as in v156.
+
 ## v156 (2026-11-13; stamped and installed 15:05 with renodx-tw-dlaa64.exe helper107, not run in game)
 
 - Fixed: **Path-Traced GI no longer changes with the camera** (Path Tracing with Path-Traced Ambient). A path that meets a
