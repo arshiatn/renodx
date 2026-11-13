@@ -22,6 +22,43 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     ripples on battle river beds, none on the campaign.
 12. Below 100% in the campaign and a battle: the sun's lighting, the fog, the shroud and the water's reflections stay in place
     at the screen's edges (35 shaders no longer scaled twice).
+13. Path-Traced (ReSTIR GI) on, a sunny battle: the sun's bounce light under roofs and in shade, against v60 (v60's paths
+    took it only from the screen).
+14. Ray-Traced Water Reflections against the game's: sun glints and bright sky in the water no brighter than the game's own.
+15. In-game effects quality Low / Medium (0-2) with Smoke Shadows on: the smoke shadows the ground as at Ultra.
+16. A settlement with pools (phar_building_water_01) at DLSS Ultra Performance: the pools' AO in place, not squeezed to the
+    top left.
+
+### Round v61 (2026-11-13, open items; built only, not stamped, not run in game)
+
+- **New: Path-Traced ambient gets the sun's light where no view reaches** (Attila's helper107 fix, now Pharaoh's): rt_sun
+  writes the game's sun colour (lighting_VS_PS c3) to its texel 2, scaled as Pharaoh's sun shaders light the diffuse
+  colour (x 0x389FB405, 7.615e-05: F883F5B2's literal in all 25), so the helper's RT_PATH_SUN_LIGHT turns on with
+  Path-Traced. No helper change. The shared rt_sun takes the scale as a define; Attila's bytes are unchanged.
+- **Fixed: Smoke Shadows at effects quality 0-2.** The lit smoke PS there (E8524BB1) keeps its diffuse, constants and
+  sampler three / two slots lower than 3F1B86E1; the shared particle capture now shifts them per shader
+  (`rt_core.hpp` SmokePixelShader). Its MSAA twin 740B2536 stays out (no rays under the game's MSAA).
+- **Changed: Ray-Traced Water Reflections at most 25 a channel**, as the game's own apply (its RGBA8 march colour x 5,
+  squared). No row: the game's look. Bit-identical below 25.
+- **Fixed: the building pools' AO below 100%** (phar_building_water_01 03B9CEFE, 9D28319F, 40154AD7, AC04E623: t_ssao read at
+  the view's uv; now render-scale reads).
+- **Fixed: "no main camera" in the log every 5 s** with ray tracing on: the game's AO pass (D42C3523) binds no camera, so the
+  rays no longer hook it (their AO goes in at the sun draws, as before). Troy the same.
+- **Debug: `[renodx] FrameTraceReads=1`** in ReShade.ini (off by default; off: nothing hooked) adds to a frame trace the
+  smoke's sorted particles and emitter rows, the point lights' instances (and the next frame's), the SSR apply quad's
+  vertices and the campaign terrain's world bounds; the shroud's and the campaign terrain's constants are traced too.
+- **WARP** (`tools\tw\warp_tests\pharaoh`, each `run_v61.txt`): `smoke_v61`, `ssr_v61`, `scale_v61`, `sun_scale_v61` (the
+  sun shaders at 33% with the game's contact shadows off), `rt_sun_v61`, `trace_reads_v61` (x86 and amd64) all pass;
+  `apply_scale_v61` lists the SSR apply's two cases (below).
+- **Not done: run in game.** Built and checked on WARP only.
+- **Not done: the SSR apply below 100% (7b).** DE4F92CD reads at its vb0 TEXCOORD0: right below 100% only if the quad's uv
+  covers the render share (WARP: 0 apart then; 5,892-5,944 of 6,144 apart if it holds 0..1). FrameTraceReads' quad line
+  settles it; the fix then: the target uv from SV_Position.
+- **Not done: the game's own contact shadows below 100% (7c).** With the game's contact march on (only where neither Bend
+  nor the rays shadow), 5 of 9 sun shaders read its depth at the whole texture's uv and step 6 / its size: 573-1,180 of
+  6,144 apart at 33%. The rays' and Bend's presets turn that march off.
+- **Not done:** 9DB92B1E (a smoke PS with baked shadows only) in the dump, not in Smoke Shadows; the shroud decals' c13 and
+  026CBC61's overlap with 377DE0D5 wait for a campaign trace with FrameTraceReads.
 
 ### Round v60 (2026-11-13, stamped and installed 15:05 with helper107, not run in game)
 

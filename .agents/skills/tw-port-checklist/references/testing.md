@@ -90,4 +90,5 @@ Rules:
 | Script corruption; a German decimal comma in `-f` | InvariantCulture; read before running |
 | An own compute pass in a replaced pass's `on_draw` runs before the mod's push: the settings register holds what the last replaced pass pushed | Bind the settings at the register `shared.h` names; write one value of it out to check it arrives |
 | A plan built on one start form or one trace | Two forms or two traces before planning |
+| A WARP sun test's comparison sampler on an RGBA32F shadow map returned 0 everywhere | Shadow maps as R32_FLOAT (the game's D32 view), `sun_scale_v61` |
 | PowerShell `-Filter "*.addon32.*"` matches plain `.addon32` files too | Never delete by it; a dead game process pins the addon: rename aside |

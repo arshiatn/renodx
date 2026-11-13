@@ -174,7 +174,13 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   repository's headers, x86 + amd64): TRACE READS V61 ALL PASSED (key off: nothing registered or called, file as before;
   on: arguments, appended layout offsets, next frame, save; the reads against the CPU's; past-stride / unknown format "not
   read"; CONTROLs: a changed t1 emc_id changes the text, a moved unreferenced vertex not the bounds).
-- [ ] 8 Builds, tests, page dumps, README Round v61, skill rows.
+- [x] 8 Builds: the skill's 15 x64 targets and build32 Attila / Rome II / Thrones, exit 0. test/tw_* x86 + amd64 (motion
+  record and shadow map size their own one): 36 runs, all exit 0. Page dumps (only Build Date differs): Pharaoh page_p_r61
+  against r60 (tools/tw/pharaoh), Attila page_a_r161 and WH3 page_w_r161 against r156 (tools/tw/page_dump). README Pharaoh
+  "### Round v61" + test lines 13-16; Attila / WH3 no entry (rt_sun's cso bit-identical, frame_trace's trace unchanged with
+  the key off, the smoke rows' slots 0 / 0 as before). Skill rows: sun diffuse scale and the AO pass's camera
+  (game-facts), E8524BB1's slots (particles), the game's contact march below 100% (render scale), R32 maps on WARP
+  (testing), trace Options on_demand / draw_reads (bring-up).
 
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
