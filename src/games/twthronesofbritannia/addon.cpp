@@ -1885,8 +1885,10 @@ bool AttachAddon() {
         OnSunDrawClock, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
   // Before the Light Bounce's (its callback draws the sun draw again).
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. lighting_VS_PS as Attila's (1B10DDD8's
+  // RDEF; WARP sun test tools/tw/thrones/sun_test): the ambient cube at float 8 (c2-c7, the paths' sky), the sun colour at
+  // float 4 (c1, x 0.004 with g_hdr_on c11.x: the paths' sun light).
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // Light Through Banners: cloth and sails (as the rays), the G-buffer's colour squared (gamma 2).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
