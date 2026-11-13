@@ -167,9 +167,16 @@ play, runs\A1_175145 (custom battle; 33 / 50 / 67 / 100%) and runs\C1_175625 (Sa
   the AO method, Own Sky Rays / Steady Bounce Light shown with it, RT/PT now path-traced AO (page_r_r3 against r2:
   RayTracedPathAmbient 1, RayTracedAmbientOcclusion 0 after RT/PT; every key and default kept). Skill game-facts rows:
   Rome II's sun diffuse scale, and the Patch's scale reading its destination's component (90a917b1).
-- [ ] README twrome2 round entry; builds of every consumer; test/tw_* x86 + amd64.
-- Left for after the runs: units capture, particles, lights, water, motion census, reader census by handle. ATN decides:
-  Rope Distance threshold, MSAA.
+- [ ] README twrome2 round entry (built only; New / Fixed / Not done) and test/tw_* x86 + amd64: NOT DONE (stopped
+  2026-11-13 ~18:40 for the Pharaoh round, coordinator). Builds: every consumer of the shared graphics_page edit built
+  (c890b773, x86 + x64); the later steps are twrome2-only (build32 twrome2 built at 3e5a7a1a). Not stamped, not run.
+- Left for the next Rome II round: README + tests above; the units' pose in the RT scene (RT Debug View in a run; they
+  enter it now, 2.4); point lights (pointlightsmoothfalloff x40 at 100% battle: InstallPointLights with Rome II's
+  spans); particles / smoke (a siege trace, S2); water effects and RT water reflections; the VFX soft-particle depth
+  (g_viewport_offset_scale: a VFX PS in value_hashes); page_touch's cb2 (0x28C847C0 in value_hashes) to confirm 3.5's
+  reading; 3.7 Shadows Only (skip the per-frame cascades only, the baked R16 map stays); 3.8 RR guides; 3.10 presets;
+  Graphics 2 of 2 ports (Cutscene Point Light Shadows, Campaign Tree Detail); MSAA (S4) and night (S3) traces. ATN
+  decides: Rope Distance threshold, MSAA.
 
 ## WH3 V55: PT GI SUN COLOUR (2026-11-13 evening, offline; helper107 as installed, no helper change)
 - [x] 1 Path-Traced Ambient's sun colour, as Attila v156 (c592149c) and Pharaoh v61 (2e0f71ae): all 7 sun light shaders
