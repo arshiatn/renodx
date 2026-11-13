@@ -203,6 +203,14 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
     game's at U2 (uv right, distortion not) 2,576-4,667, the probe's unscaled distortion 7.8 / 15.7 texels. Listed, not
     changed: the SSR colour's mip (16 x roughness) is in texels, so rough water blurs 2x at 50% (a look choice). Later run:
     log "First run: the water's reflection apply DE4F92CD below 100%".
+  - [x] 11b smoke projection, nothing added: tools/tw/pharaoh/open_items/smoke_projection.py (smoke_projection.txt) projects
+    B61 trace_50's 90 sorted particles (l.3212-3302) with the 3F1B86E1 draw's camera (vs b0 c9-c12) by 109B79CE's own test
+    (v55 asm l.272-302: |clip.xy| > w x (expansion + g_draw_flags.y 0 + 1), clip.z < 0 or > w): 78 on screen (emitters 391 /
+    393, largest |ndc| 0.68), 0 beside the view (none within 393's expansion 1, none beyond it), 12 behind the camera (438,
+    w -144 to -535; their shadows along the sun's (0.239, -0.400, 0.885) meet y 0 behind it too, 0 in view). A raised
+    g_draw_flags.y keeps only particles beside the view: none here, so no lever (no row). The 12 behind it show the CPU
+    doesn't cull its list to the view; a trace with smoke just beside the edge (camera panned off a burning building) would
+    say whether side particles are listed (then plan.md A1; the behind ones need the VS's z test off, its alternative).
 
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
