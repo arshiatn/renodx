@@ -16,15 +16,19 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include <nvsdk_ngx_helpers.h>
 #include <include/reshade.hpp>
 
 #include "../../utils/directx.hpp"
+#include "../../utils/log.hpp"
 #include "../../utils/state.hpp"
 
 // Debug (overlay button): every draw, dispatch, copy and render target clear of one frame with its shaders, targets
@@ -33,14 +37,35 @@
 // registered only for the traced frame.
 // Capture (v16, overlay button): what the next CAPTURE_FRAMES DLSS evaluations get (color, motion vectors, depth: their
 // render subrect, raw texels), for the bushes and tree trunks that flicker with jitter (ATN debug14).
+// Data run (2026-11-14): also the next frame after `renodx_trace_now` appears next to the exe (looked for every
+// MARKER_PRESENTS presents, then deleted), a "Frame trace: N lines saved to" line in ReShade.log, per draw the instance
+// count, the depth view's array slice (the cascade) and RT0's blend, and the constant buffers of VALUE_SHADERS' draws
+// (b0-b4, VALUE_FLOATS floats each, once per buffer content in the frame) for the sun, lights, fog, water, AO, SSS and
+// SSR facts the plan reads offline. A `renodx_set_now` file there is read at the same check (TakeSettingsMarker).
 namespace twshogun2::frame_trace {
 
 namespace internal {
 
 using Microsoft::WRL::ComPtr;
 
-constexpr uint32_t MAX_LINES = 8000;
+constexpr uint32_t MAX_LINES = 60000;
 constexpr int CAPTURE_FRAMES = 4;
+constexpr uint64_t MARKER_PRESENTS = 60;
+constexpr UINT VALUE_SLOTS = 5;
+constexpr UINT VALUE_FLOATS = 64;
+// Pixel and compute shaders whose constants the trace writes (shader_names.txt names).
+constexpr std::array<uint32_t, 26> VALUE_SHADERS = {
+    0xED1BED93, 0x5496DE73, 0xC3E0E939, 0xD5FDDE8F,  // directionallight main / overlay, high / low def
+    0x5CBF4FB6, 0x57139F8D, 0x70CAA144,              // pointlight high / low def, particle_light
+    0xEF060C7C, 0xBEDBEFD8,                          // hdr_to_screen
+    0xA61D2853, 0x4355E897,                          // battlefog extinction / inscattering
+    0x9B9EC116, 0xF7103E54, 0x630BA7A4, 0xA205FC84,  // waterplane battle / campaign ultra / low, waterrefraction
+    0xA00FE3A3, 0x98BB1159,                          // ssao_3k new sweep / collect
+    0x34ECD06E, 0x1B529672, 0x78E88E1D,              // screen_space_shadows cs / without cascades / passthrough
+    0xF87ECE85, 0x5C0AF498,                          // environment_specular_light resolve / raycast
+    0x40744308, 0x3D0BC5F1,                          // particle volumetric additive / alpha
+    0x9B9297EB, 0x3C9BC2F9,                          // motion_vectors, effects_overlay
+};
 
 struct State {
   std::mutex mutex;
@@ -52,6 +77,9 @@ struct State {
   std::string last_camera;   // the last camera constants written
   std::string status;
   std::atomic_int captures_left = 0;  // DLSS evaluations still to capture
+  std::vector<uint32_t> values_written;  // hashes of the constant buffer contents written this frame
+  uint64_t presents = 0;                 // present thread
+  std::string settings_marker;           // present thread: renodx_set_now's text, until taken
 };
 static State state;
 
@@ -129,7 +157,41 @@ inline std::string DescribeCamera(ID3D11DeviceContext* context, ID3D11Buffer* bu
   return text;
 }
 
-inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t count) {
+// A VALUE_SHADERS draw's or dispatch's constant buffers b0-b4 (first VALUE_FLOATS floats), each content once a frame:
+// "values ps ED1BED93 b2 #hash: f0 f1 ...".
+inline void TraceValues(ID3D11DeviceContext* context, std::string_view stage, uint32_t shader_hash,
+                        std::span<ID3D11Buffer* const> buffers) {
+  if (std::ranges::find(VALUE_SHADERS, shader_hash) == VALUE_SHADERS.end()) return;
+  ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  for (UINT slot = 0; slot < buffers.size(); ++slot) {
+    if (buffers[slot] == nullptr) continue;
+    D3D11_BUFFER_DESC desc = {};
+    buffers[slot]->GetDesc(&desc);
+    const UINT bytes = std::min(desc.ByteWidth, VALUE_FLOATS * 4u);
+    const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_STAGING,
+                                            .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    ComPtr<ID3D11Buffer> staging;
+    if (FAILED(device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf()))) continue;
+    context->CopyResource(staging.Get(), buffers[slot]);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) continue;
+    const std::span floats(static_cast<const float*>(mapped.pData), bytes / 4);
+    uint32_t hash = 2166136261u ^ shader_hash ^ slot;  // FNV-1a over the shader, the slot and the floats
+    for (const std::byte byte : std::as_bytes(floats)) hash = (hash ^ static_cast<uint8_t>(byte)) * 16777619u;
+    std::string line = std::format("values {} {:08X} b{} ({} bytes) #{:08X}:", stage, shader_hash, slot, desc.ByteWidth, hash);
+    for (const float value : floats) line += std::format(" {:.7g}", value);
+    context->Unmap(staging.Get(), 0);
+    {
+      const std::lock_guard lock(state.mutex);
+      if (std::ranges::find(state.values_written, hash) != state.values_written.end()) continue;
+      state.values_written.push_back(hash);
+    }
+    Append(std::move(line));
+  }
+}
+
+inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t count, uint32_t instances) {
   if (!state.tracing.load(std::memory_order_relaxed)) return;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return;
@@ -143,9 +205,25 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
     targets[slot]->Release();
   }
   if (depth != nullptr) {
-    outputs += std::format(" ds {}", DescribeView(depth));
+    D3D11_DEPTH_STENCIL_VIEW_DESC depth_desc = {};
+    depth->GetDesc(&depth_desc);
+    const bool array = (depth_desc.ViewDimension == D3D11_DSV_DIMENSION_TEXTURE2DARRAY);
+    outputs += std::format(" ds {}{}", DescribeView(depth),
+                           (array ? std::format(" slice {}", depth_desc.Texture2DArray.FirstArraySlice) : std::string()));
     depth->Release();
   }
+  {
+    ComPtr<ID3D11BlendState> blend;
+    context->OMGetBlendState(blend.GetAddressOf(), nullptr, nullptr);
+    D3D11_BLEND_DESC blend_desc = {};
+    if (blend) blend->GetDesc(&blend_desc);
+    const auto& target = blend_desc.RenderTarget[0];
+    if (target.BlendEnable) {
+      outputs += std::format(" blend {}/{}/{}", static_cast<int>(target.SrcBlend), static_cast<int>(target.DestBlend),
+                             static_cast<int>(target.BlendOp));
+    }
+  }
+  if (instances > 1) outputs += std::format(" inst {}", instances);
   D3D11_VIEWPORT viewport = {};
   UINT viewport_count = 1;
   context->RSGetViewports(&viewport_count, &viewport);
@@ -172,21 +250,29 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
       camera.clear();
     }
   }
+  const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
   Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{} |{}{}", kind, count,
                      renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader),
-                     renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader),
-                     outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY, inputs, camera));
+                     pixel_shader, outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY, inputs,
+                     camera));
+  std::array<ID3D11Buffer*, VALUE_SLOTS> buffers = {};
+  context->PSGetConstantBuffers(0, VALUE_SLOTS, buffers.data());
+  TraceValues(context, "ps", pixel_shader, buffers);
+  for (auto* buffer : buffers) {
+    if (buffer != nullptr) buffer->Release();
+  }
 }
 
+// The count stays index (vertex) count x instances, as the older traces and tools\shogun2 scripts read it.
 inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t,
                    uint32_t) {
-  TraceDraw(cmd_list, "draw", vertex_count * instance_count);
+  TraceDraw(cmd_list, "draw", vertex_count * instance_count, instance_count);
   return false;
 }
 
 inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count,
                           uint32_t, int32_t, uint32_t) {
-  TraceDraw(cmd_list, "indexed", index_count * instance_count);
+  TraceDraw(cmd_list, "indexed", index_count * instance_count, instance_count);
   return false;
 }
 
@@ -210,11 +296,15 @@ inline bool OnDispatch(reshade::api::command_list* cmd_list, uint32_t x, uint32_
     inputs += std::format(" t{} {}", slot, DescribeView(views[slot]));
     views[slot]->Release();
   }
-  ComPtr<ID3D11Buffer> constants;
-  context->CSGetConstantBuffers(0, 1, constants.GetAddressOf());
-  Append(std::format("dispatch {}x{}x{} cs {:08X} |{} |{}{}", x, y, z,
-                               renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::compute_shader),
-                               outputs, inputs, DescribeCamera(context, constants.Get())));
+  std::array<ID3D11Buffer*, VALUE_SLOTS> buffers = {};
+  context->CSGetConstantBuffers(0, VALUE_SLOTS, buffers.data());
+  const uint32_t compute_shader = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::compute_shader);
+  Append(std::format("dispatch {}x{}x{} cs {:08X} |{} |{}{}", x, y, z, compute_shader, outputs, inputs,
+                     DescribeCamera(context, buffers[0])));
+  TraceValues(context, "cs", compute_shader, buffers);
+  for (auto* buffer : buffers) {
+    if (buffer != nullptr) buffer->Release();
+  }
   return false;
 }
 
@@ -280,7 +370,13 @@ inline std::string Status() {
   return internal::state.status;
 }
 
-// Present: ends a traced frame (writes the file), starts a requested one.
+// The text of a `renodx_set_now` file the last present found next to the exe (then deleted), once; empty: none. Present
+// thread.
+inline std::string TakeSettingsMarker() {
+  return std::exchange(internal::state.settings_marker, {});
+}
+
+// Present: ends a traced frame (writes the file), starts a requested one (the overlay's button or the marker file).
 inline void OnPresent() {
   auto& state = internal::state;
   if (state.tracing.exchange(false)) {
@@ -288,14 +384,31 @@ inline void OnPresent() {
     const auto path = internal::ExecutableFolder() / L"shogun2_frame_trace.txt";
     const std::lock_guard lock(state.mutex);
     std::ofstream(path, std::ios::binary | std::ios::trunc) << state.text;
-    state.status = std::format("Trace: {} lines saved to {}", state.lines, path.string());
+    const std::string cut = (state.lines > internal::MAX_LINES ? std::format(" (cut at {})", internal::MAX_LINES) : "");
+    state.status = std::format("Trace: {} lines saved to {}{}", state.lines, path.string(), cut);
+    renodx::utils::log::i(std::format("[Shogun 2 DLSS] Frame trace: {} lines saved to {}{}", state.lines, path.string(), cut));
     state.text.clear();
+    state.values_written.clear();
+  }
+  if (++state.presents % internal::MARKER_PRESENTS == 0) {
+    const auto folder = internal::ExecutableFolder();
+    if (std::error_code error; std::filesystem::exists(folder / L"renodx_trace_now", error)) {
+      std::filesystem::remove(folder / L"renodx_trace_now", error);
+      state.requested.store(true);
+    }
+    if (std::error_code error; std::filesystem::exists(folder / L"renodx_set_now", error)) {
+      std::ifstream file(folder / L"renodx_set_now", std::ios::binary);
+      state.settings_marker.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+      file.close();
+      std::filesystem::remove(folder / L"renodx_set_now", error);
+    }
   }
   if (state.requested.exchange(false)) {
     {
       const std::lock_guard lock(state.mutex);
       state.text = "One frame: draws, dispatches and copies in order (vs / ps / cs hashes, targets, viewport, inputs).\n";
       state.lines = 0;
+      state.values_written.clear();
     }
     internal::UseEvents(true);
     state.tracing.store(true);

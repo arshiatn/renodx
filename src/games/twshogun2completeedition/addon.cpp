@@ -26,6 +26,7 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
@@ -1197,6 +1198,16 @@ bool AttachAddon() {
     twshogun2::ray_tracing::Install();
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
   }
+  // One line for a run's log (2026-11-14 data run): the DLSS addon's options this addon reads.
+  renodx::utils::log::i(std::format(
+      "[Shogun 2] Options: AO mode {}, Light Bounce strength {}, SSR resolution {}, SSS samples {} stability {}, shadow "
+      "map stability {}, sun shadow softness {}; ray tracing {} (sun {}, AO {}, GI {}, reflections {}, point lights {}, "
+      "paths {})",
+      shader_injection.ssao_mode, shader_injection.light_bounce_strength, shader_injection.ssr_resolution,
+      shader_injection.sss_samples, shader_injection.sss_stability, shader_injection.shadow_map_stability,
+      shader_injection.sun_shadow_softness, (ray_tracing_installed ? "installed" : "not installed"),
+      ray_tracing_settings.sun_shadows, ray_tracing_settings.ambient_occlusion, ray_tracing_settings.light_bounce,
+      ray_tracing_settings.reflections, ray_tracing_settings.local_lights, ray_tracing_settings.path_tracing));
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
