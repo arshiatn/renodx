@@ -66,8 +66,9 @@ Texture2D<float4> s_fog_of_war_mask : register(t3);
 // 3Dmigoto declarations
 #define cmp -
 #include "../hdr_to_screen.hlsli"
-// After DLSS: the frame is DLSS's (the display's size); the distortion, god rays and depth the 3D drew below 100% are
-// read at the display uv x the frame's share (twattila/render_scale.hlsli).
+// Drawn before DLSS (anti_aliasing.hpp takes this pass's output: the tone mapper EE1DA45C writes R11G11B10), at the
+// render size's viewport over its display-size target: the display uv reads the 3D's textures where they hold the
+// view; positions and offsets in the view's units take the draw's share (twattila/render_scale.hlsli).
 #include "../../twattila/render_scale.hlsli"
 
 
@@ -82,8 +83,8 @@ void main(
 
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
-  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy * FrameRenderShare(), 0).yzxw;
-  r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
+  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
+  r1.xy = (r0.xy / DrawRenderShare()) * float2(2,-2) + float2(-1,1);
   r1.w = 1;
   r0.z = dot(r1.xyzw, inv_projection._m02_m12_m22_m32);
   r0.w = dot(r1.xyzw, inv_projection._m03_m13_m23_m33);
@@ -105,7 +106,7 @@ void main(
   while (true) {
     r3.x = cmp((int)r1.z >= 25);
     if (r3.x != 0) break;
-    r3.xy = -sample_data_5x5[r1.z].xy * r0.zz + r0.xy;
+    r3.xy = -sample_data_5x5[r1.z].xy * r0.zz * DrawRenderShare() + r0.xy;
     r3.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r3.xy, r3.y).xyzw;
     r3.xyzw = sample_data_5x5[r1.z].zzzz * r3.xyzw;
     r3.xyz = HDR >= 1.f ? max(r3.xyz, 0.f.xxx) : saturate(r3.xyz);
@@ -118,10 +119,10 @@ void main(
   r2.xyzw = r2.xyzw / r0.wwww;
   r2.xyzw = r2.xyzw + -r3.xyzw;
   r2.xyzw = blur_kernel_scale * r2.xyzw + r3.xyzw;
-  r3.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy * FrameRenderShare()).xyzw;
+  r3.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy).xyzw;
   float god_rays_multiplier = SI.godrays;
   r3.xyz = r3.xxx * (float3(0.100000001,0.100000001,0.100000001) * god_rays_multiplier) + r2.xyz;
-  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy * FrameRenderShare(), r0.y).yzxw;
+  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
   r0.xyw = r1.xyw;
   r1.x = dot(r0.xyzw, inv_view_projection._m00_m10_m20_m30);
   r1.w = dot(r0.xyzw, inv_view_projection._m02_m12_m22_m32);
