@@ -1,6 +1,6 @@
 ---
 name: tw-port-checklist
-description: "RenoDX workflow for Total War (TW) addons: bringing up a new or older TW game (Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3, Shogun 2) and porting features between TW addons in both directions, Attila (src/games/twattila) first. Covers the dlaa_helper process and bridge, DLSS, DLAA, FSR, XeSS, Ray Reconstruction, frame generation, Reflex, render scale, jitter, motion vectors, RT shadow coverage (casters, cut-outs, grass, trees, far cards, units out of view, black patches), the game's shadow maps, AO, GI, path-traced AO, double work, screen-space shadows (Bend), smoke, particles, SSR, water, fog, HDR output, PsychoV35, Hue Clip, replaced shaders, frame traces, shader census, engine values, the graphics page, presets, crashes, GPU resets, device loss, game runs, the test list, release. Use when bringing up, porting, reviewing or debugging a TW feature, adding a hash or a row, or editing shared code under twattila or twrome2."
+description: "RenoDX workflow for Total War (TW) addons: bringing up a new or older TW game (Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3, Shogun 2) and porting features between TW addons in both directions, Attila (src/games/twattila) first. Covers the dlaa_helper process and bridge, DLSS, DLAA, FSR, XeSS, Ray Reconstruction, frame generation, Reflex, render scale, jitter, motion vectors, RT shadow coverage (casters, cut-outs, grass, trees, far cards, units out of view, black patches), the game's shadow maps, AO, GI, path-traced AO, double work, screen-space shadows (Bend), smoke, particles, SSR, water, fog, HDR output, PsychoV35, Hue Clip, replaced shaders, frame traces, shader census, engine values, the graphics page, presets, crashes, GPU resets, device loss, game runs, log checks, the test list, install, release zips. Use when bringing up, porting, reviewing or debugging a TW feature, adding a hash or a row, or editing shared code under twattila or twrome2."
 argument-hint: "target game, feature or phase, and the Attila or WH3 code it comes from"
 ---
 
@@ -55,7 +55,7 @@ Read the file for every area the work touches before planning. Each row is a mis
 Details, exit criteria and the WH3 history in [bringup.md](references/bringup.md).
 
 0. Offline census first, no game run: shader names, engine values, the scale census over the whole dump, the caster census over any trace there is, the game-facts sheet, a parity table against Attila's page; a first build from the closest TW addon with only the trace and log rows, every feature off.
-1. One data run, only when the maintainer allows it: frame traces in four scenes, on the maintainer's settings and on defaults, at 100% and at the game's own lower scales.
+1. One data run, only when the maintainer allows it: frame traces in four scenes, on the maintainer's settings and on defaults, at 100% and at the game's own lower scales. Each run folder through `tools/tw/check_logs.py` before reading it.
 2. Offline from the traces: pass map, reader census by handle, capture candidates, pass diffs between scales and settings; the game-facts rows answered again from the traces.
 3. Features in dependency order, each with its offline check green before the next. Never skipped: the game's sun colour into `rt_sun` texel 2 for Path-Traced GI, the AO hook only where the AO pass binds a camera ([game-facts.md](references/game-facts.md)), every full-screen quad's uv read below 100% ([render-scale-dlss.md](references/render-scale-dlss.md)).
 4. The settings matrix offline: GI, paths, RR, 50%, FG, Reset mid-battle; each row's cost alone.
@@ -113,6 +113,8 @@ A behaviour one game needs goes behind a parameter that defaults to today's valu
 
 **New replacement shader**: TW folders name it `shaders/<name>_0x<CRC>.<target>.hlsl` (not `src/games/AGENTS.md`'s CRC-only form; `cb_audit` reads only this form). Build first, then run [scripts/cb_audit.py](scripts/cb_audit.py) with `python -I`, naming the game (`cb_audit.py twwarhammer3`), and read each line of part 2; the new shader must not be in its last line's "not compared" list. Then a WARP test against the game's bytes with a control that must fail. The script reads the decompiler's pack under `bin/`, which isn't in the repo.
 
+**Any C++ change in a TW addon or the helper**: [scripts/static_checks.py](scripts/static_checks.py) prints no new finding: every `rt_scene::Install` host calls `rt_scene::OnTonemapDrawn` from its tone mapper hook (else the Debug View rows stay hidden, and the page dump can't show it), and no `&x` goes into a `ComPtr<T>*` callee that reads it (`std::addressof`). `--rev <fix>^` is its control.
+
 **New `command_action::Register`**: without callback data use `[]<typename Context>`; a `<typename T, typename Context>` lambda is dropped silently. [scripts/scan_register.py](scripts/scan_register.py) must print nothing. Add a one-shot "applied" log line. A `.bypass` nearby needs its state back in `finalize_callback`. Every `Register` and `Install` has its `Unregister` and `Uninstall` in `DetachAddon`.
 
 **New callback on the sun draws**: say where in the run order it lands and why. Registration order is run order.
@@ -140,7 +142,7 @@ Inventory and traps in [testing.md](references/testing.md). In short:
 - In the repo: `test/tw_*/run.ps1`, x86 and amd64, after any change they cover.
 - Outside it, in the maintainer's `tools/tw`: `all_modes.sh` (compare by mode name), `rt_harness`, `fg_child/fg_bridge_test`, `warp_tests`, `page_dump`, the sun patch test, the scale and census scripts.
 - The harness covers the bridge, the helper and part of the D3D11 capture. It doesn't run a game's passes or its CPU cost at game scale: say so in the report.
-- A pass counts only with a "ready" or "applied" line; a run that left no new log is invalid.
+- A pass counts only with a "ready" or "applied" line; a run that left no new log is invalid. `tools/tw/check_logs.py <folder>` flags both and the known-bad lines (the data-run scripts print it at their end).
 - What only the game can prove goes on the test list.
 
 ## Asking the maintainer for a test
@@ -149,4 +151,4 @@ At most 10 lines, never what an offline check can show: format and dry-run in [t
 
 ## Finishing a round
 
-Work through [release.md](references/release.md) in order (rebuild at HEAD right before stamping, never after): the double-work question, every consumer built, one independent review and one agent for its fixes, then the report per game (done, not done, what the maintainer tests, what wasn't run). Every bug the maintainer found in game becomes a row in the right reference file, with the offline check that would have caught it.
+Work through [release.md](references/release.md) in order (rebuild at HEAD right before stamping, never after; stamp and install only through `tools/tw/install/tw_install.py`, dry run first, which refuses an old build or a folder without NVIDIA's three DLLs; zips through `release_zip.py` / `player_zip.py`, which carry them): the double-work question, every consumer built, one independent review and one agent for its fixes, then the report per game (done, not done, what the maintainer tests, what wasn't run). Every bug the maintainer found in game becomes a row in the right reference file, with the offline check that would have caught it.

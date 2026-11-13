@@ -16,7 +16,8 @@
 | `sun_attila/make_sun_patch_test.py`, `warp_tests/sun_wh3` | The sun patch lands on the sun term; the ambient formula | - |
 | `scale_audit.py`, `scale_scan.py`, `wh3_batch5/p9_ndc_trace.py` | Candidates for below-100% bugs | Nothing passes by itself: read each hit |
 | Census scripts (`wh3_batch3/b3_cull.py`, `wh3_batch3/b5_census.py`, cut-out and proxy scans) | Families, cut-outs, culling laws from traces | Draws no trace holds |
-| [cb_audit.py](../scripts/cb_audit.py), [scan_register.py](../scripts/scan_register.py) | Decompiler constants; dropped `Register` lambdas | A wrong member of the right buffer |
+| [cb_audit.py](../scripts/cb_audit.py), [scan_register.py](../scripts/scan_register.py), [static_checks.py](../scripts/static_checks.py) | Decompiler constants; dropped `Register` lambdas; a host whose tone mapper never draws the Debug View; `&x` into a `ComPtr<T>*` callee that reads it | A wrong member of the right buffer; a hook that runs and draws wrong |
+| `check_logs.py`, `install/tw_install.py`, `ngx_dlls.py` | Known-bad lines in a run's logs; an install of an old build, into a folder without NVIDIA's three DLLs, over a file that is no stamped copy of ours; a zip's helper without the three | What no log line says; anything at run time |
 
 Rules:
 

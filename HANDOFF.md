@@ -144,7 +144,10 @@ tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One com
   twwarhammer3_v42.zip pass. player_zip.py run into the scratchpad (v146 release + v2.5.7 player): 47 files, the same
   entries as v2.5.7 but the READ ME's name, the check passes; release_zip.py not run (repack_game.py writes into
   Downloads), compiled only.
-- [ ] 6 SKILL.md and release / testing steps point at the tools.
+- [x] 6 SKILL.md and release / testing steps point at the tools: SKILL.md (data run -> check_logs.py; "Any C++ change in
+  a TW addon or the helper" -> static_checks.py; Testing without the game; Finishing a round -> tw_install.py and the
+  zip scripts; description: log checks, install, release zips), testing.md's tool table (the three tools, the script),
+  release.md (install and zip bullets, steps 2 and 5).
 
 ## CPU ROUND (2026-11-13 night)
 Our own TW code (twattila shared by Attila / WH3 / Pharaoh / Thrones / Rome II; the helper). Evidence: ATN's CPU profiles
