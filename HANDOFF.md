@@ -141,6 +141,15 @@ change goes in an Experimental row, off. One commit + push to origin atn-mods pe
     4.1 -> 5.8 (4 threads 6.7 -> 5.7); amd64 17.1 -> 5.1 (92.1 -> 5.8), 4.8 -> 5.2 (7.5 -> 5.9). ATN's grass (~120 k
     calls a frame, ~27 ns each): E 3.35 -> ~0.8 ms CPU a frame (workers; render thread 0.49 -> ~0.12), no fps while
     GPU-bound. Not run in game. Builds: build32 twattila + twrome2 + twthronesofbritannia exit 0.
+  - Found (step 5's suite run, section 3 failed once on amd64), NOT DONE: a model's first scaling (or its first after a
+    slider change) from two threads at once can scale it twice, v157 as well: the map path reads the model's entry,
+    writes the LODs and inserts the entry as three steps, so a second thread can read the first's written value as the
+    game's (x scale again; a third pass can follow when the first thread's insert lands last). test/tw_scrub_lods 3b
+    (four threads started together on 16 new models, 200 times, printed): v157 20-33 of 3,200 models off the closed
+    form, now 23-36; section 3 now scales each model once first (passes every run). In game: some grass / tree models
+    keep their LODs farther than the slider says until the game sets them up again. Fix (a behaviour change in the race
+    only): the map path under the entry's submap lock (ParallelFlatHashMap's lazy_emplace_l / try_emplace_l, the LOD
+    writes inside), 3b then 0; ATN decides.
 - [x] 3 Per-draw ReShade callbacks on the render thread (~0.8-1.1 us a draw): trim where provably equivalent; a
   micro-benchmark or the harness before / after.
   - Done: rt_core's NativeContext (every captured draw, 981 in the 8x trace, and rt_scene's draw callbacks) asked

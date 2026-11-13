@@ -8,11 +8,14 @@
 //    FLT_MAX kept).
 // 2. A lone rewrite of a later LOD (no game path does this): the new cache scales it at the next call (the closed form);
 //    the old one only at its next miss (printed, not compared).
-// 3. Four threads on shared models (the game's TBB workers): both end at the closed form.
+// 3. Four threads on shared models (the game's TBB workers), each model scaled once first: both end at the closed form.
+//    3b (printed, not compared): a model's first scaling from two threads at once can scale it twice in both versions
+//    (the map path's read, write and insert are not one step): how often, v157's against this one.
 // 4. Cost: ns a call, cells alternating 6 models and runs of one model, one thread and four (printed).
 #include <windows.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <cfloat>
 #include <chrono>
@@ -252,7 +255,8 @@ int main() {
                 ClosedForm(before, model, scale) ? "too" : "still the game's (until its next miss)");
   }
 
-  // 3. Four threads on 16 shared models, cells alternating; then the closed form everywhere for both.
+  // 3. Four threads on 16 shared models, cells alternating, each model scaled once on this thread first; then the closed
+  //    form everywhere for both.
   {
     World old_world;
     World new_world;
@@ -262,6 +266,10 @@ int main() {
       new_world.Add(distances);
     }
     constexpr float SCALE = 6.25f;
+    for (uint32_t model = 0; model < 16; ++model) {
+      old::ScaleModelLods(old_world.manager.get(), model, SCALE);
+      hooks::internal::ScaleModelLods(new_world.manager.get(), model, SCALE);
+    }
     std::vector<std::thread> threads;
     for (uint32_t thread = 0; thread < 4; ++thread) {
       threads.emplace_back([&, thread] {
@@ -278,6 +286,43 @@ int main() {
     }
     CHECK(Same(old_world, new_world));
     std::printf("3 four threads x 50000 calls on 16 models: both = closed form\n");
+  }
+
+  // 3b. Cold starts: 200 times four threads started together on 16 new models (each version on its own copy).
+  {
+    constexpr float SCALE = 6.25f;
+    uint32_t old_twice = 0;
+    uint32_t new_twice = 0;
+    for (uint32_t trial = 0; trial < 200; ++trial) {
+      World old_world;
+      World new_world;
+      for (size_t model = 0; model < 16; ++model) {
+        const auto distances = Distances(&random, 1 + (model % 5));
+        old_world.Add(distances);
+        new_world.Add(distances);
+      }
+      std::atomic<uint32_t> ready = 0;
+      std::vector<std::thread> threads;
+      for (uint32_t thread = 0; thread < 4; ++thread) {
+        threads.emplace_back([&, thread] {
+          ready.fetch_add(1);
+          while (ready.load() < 4) {
+          }
+          for (uint32_t round = 0; round < 64; ++round) {
+            const uint32_t model = (round * 7 + thread * 3) % 16;
+            old::ScaleModelLods(old_world.manager.get(), model, SCALE);
+            hooks::internal::ScaleModelLods(new_world.manager.get(), model, SCALE);
+          }
+        });
+      }
+      for (auto& thread : threads) thread.join();
+      for (size_t model = 0; model < 16; ++model) {
+        old_twice += ClosedForm(old_world, model, SCALE) ? 0u : 1u;
+        new_twice += ClosedForm(new_world, model, SCALE) ? 0u : 1u;
+      }
+    }
+    std::printf("3b cold starts, 200 x 4 threads x 16 models: off the closed form v157 %u, now %u models\n", old_twice,
+                new_twice);
   }
 
   // 4. Cost a call (the game's DrawScrub in between not counted).
