@@ -98,7 +98,11 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
 ## ROME II BRING-UP (offline)
 Plan tools/tw/rome2/plan.md (Phase 0 + the Phase 3 items provable offline); results under tools/tw/rome2/. Data runs
 (Phase 1.4) BLOCKED on the mod pack dialog (ATN answers it); no game start, no stamp / install (ATN does those).
-- [ ] 0.1 Encoding ramp on WARP: EE1DA45C -> aa_dlaa_prepare -> aa_dlaa_finish, with / without TW_AA_FRAME_LINEAR.
+- [x] 0.1 Encoding ramp on WARP (tools/tw/rome2/encoding, phase0_results.md): the game's EE1DA45C (dump bytes, identity
+  S-curve) writes the linear result within 0.087% (its sqrt 89.6% off); hdr_to_screen 2C229891 gamma-encodes the frame as
+  it is (frame^(1/2.2) within 0.094%, no square); the addon's t00 HDR 3 linear (0.104%). Today's wrappers give DLSS
+  frame^2 (0.01 -> 0.0001, darks <= 0.000244 to 0); TW_AA_FRAME_LINEAR 1: 0 of 513 off by > 1% (w 0 / 1), define 0 =
+  today bit for bit; CONTROLs fail as they must.
 - [ ] 0.2 Sun picture test 340CBE9D / 1A0532C0 (t49 / t50 / t51), the ambient cube and formula.
 - [ ] 0.3 Contact-shadow loop in 340CBE9D; battlefog 259AEC56's shadow-atlas binding (fog march).
 - [ ] 0.4 cbuffer_slots.py on Rome II's dump.
