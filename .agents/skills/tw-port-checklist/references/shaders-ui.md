@@ -25,6 +25,8 @@
 | Patches run in order: the render scale's patch changed sun shaders before the shadow patch saw them; SSS patched water first; Water Caustics never patched | `view_share::Repatched` carries the game's hash; log "patched" or "not as expected" per patch | WARP patch test (`make_sun_patch_test.py`) |
 | A replaced shader loses the render scale's correction: torch light slid | Add both patches to each new replacement | `view_share_test.cpp` (WARP: the patch over a dump's shaders, `VIEW_SHARE_SHOW=<hash>`) |
 | An HLSL array in a cbuffer pads each element to 16 bytes | The reflected size equals `sizeof` | Reflection check |
+| fxc rounds a decimal literal its own way: 0.947867298 became 0x3F72A76E, 3F1B86E1's 1 / 1.055 is 0x3F72A76F, a 1-ulp miss on WARP [df95f06e] | Copy a game's literal as `asfloat(bits)` | Search both `.cso` files for the literal's bits |
+| A `gs_` header made by hand with `fxc /Fh` keeps the disassembly's trailing spaces: `git diff --check` failed after the commit [ff5d2e10] | Strip trailing spaces after each fxc run | `git diff --cached --check` before the commit |
 | In-place format upgrades lost clamps (Ryse) | View cloning for new mods (`use_resource_cloning`, `src/mods/swapchain_v1.hpp`); don't retrofit | Grep the addon's swapchain setup |
 | Debug edits put back with `Copy-Item` keep the old file time: the build skips the shader | Set the time after restoring; check the `.cso`'s time; look at the picture before the numbers | - |
 
@@ -50,7 +52,7 @@ Tone-map and LUT math belongs to `handle-sdr-tonemap-lut`; these are the TW-spec
 |---|---|---|
 | Keys renamed or removed lose saved values | Page moves and renames only; every setting keeps its key (`graphics_page.hpp`) | Diff keys against the last zip's |
 | A hidden row's labels still clamp the saved value; an `EmptyLine` has no `shown`, so a hidden section leaves a stray title | Read `utils/settings.hpp`; hidden DLSS on AMD: places differ from values | Key and label diff; `RENODX_TW_FAKE_VENDOR` |
-| A row hidden at a default later changed: its value was already saved | Reset it once on a revision key, not only the default | Old ini through `page_dump` |
+| A row hidden at a default later changed: its value was already saved (every keyed row is, hidden too: Pharaoh's Smoke Shadows sat at RT/PT's 1 from `SetRaysPresetDefaults` until it showed, Experimental and off) [8b58c119] | Reset it once on a revision key, not only the default | Old ini through `page_dump`; grep the defaults the shared preset gives hidden rows |
 | Two ImGui widgets with one id act as one | Unique label; section in the id (`"Method##" + section` in `twattila/graphics_page.hpp`) | Grep new labels for a twin |
 | `Page::Take` (`twattila/graphics_page.hpp`) matches by key or label: a setting without either isn't found; remaining rows go under the last section | Give them a label | Read `Take` |
 | `Page::Defaults` puts everything in preset defaults: Shadow Map Size got reset | Keep such keys out | Read `Defaults` |

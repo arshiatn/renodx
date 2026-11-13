@@ -40,7 +40,14 @@ under 60 GB before GPU / WARP jobs (18.6 GB at 02:06). One writer. Each step com
   top mip 22 apart. Likely the same for rows v54-v56 showed with a new default 0 after being saved hidden (Fog Shadows, Torch
   and Fire Light in Fog, Water Reflections at RT/PT's 1; Bend's Light Through Banners 0.35, Coloured Shadows on): not cleared,
   ATN may have set them since they show; his ini would tell.
-- [ ] 5 builds again, dumps, README Round v57 (Not done + test lines), skill lessons
+  (872a6917 shared, 8b58c119 Pharaoh)
+- [x] 5 at 8b58c119: the x64 list + build32 Attila / Rome II / Thrones linked (only the old LoadSetting warnings); Pharaoh's
+  add-on alone 44 s; test/tw_* amd64 + x86 23 of 23 PASS again; harness smoke_quality_medium / smoke_quality_high /
+  release_smoke ALL PASSED (the helper and bridge unchanged); dumps page_p_v60 / page_a_v169 / page_w_v65 against v59 / v167 /
+  v63: the date only. README Round v57 (New, WARP, page, Not done with ATN's test lines), skill rows (particles x2, testing,
+  shaders-ui x2 + the saved-hidden-row row's Pharaoh case). Built only: not stamped, not installed, not run in game.
+  NOT DONE (README): run in game; smoke just off screen (does the sort's t2 hold it? read its CS, then a raised
+  g_draw_flags.y); E8524BB1 / 740B2536; dust apart from smoke (level C: per-emitter t8 masks in a trace).
 
 ## PHARAOH V56: RAY-TRACED WATER REFLECTIONS (2026-11-13 night, offline; plan tools/tw/pharaoh/reflections_plan.md)
 Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes

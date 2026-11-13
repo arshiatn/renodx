@@ -24,6 +24,7 @@ Rules:
 - A pass counts only with a "ready" or "applied" line: a build that failed PSO creation once "passed". A run without a new log is invalid (an old log was once copied, a second game failed silently).
 - Give WARP tests the game's real ranges, and a control that must fail.
 - Scale a WARP formula check's tolerance with the largest summed term, not a fixed epsilon [f306ff2d].
+- A texture read checked against a game PS's pixel: bilinear weights have 8 bits an axis and the PS's inputs come interpolated (a constant 1-2 ulps off), so a smooth texture may differ by 2/256 of its largest texel step times the decode's slope. For a 4-ulp check give the texture plateaus where it is read [df95f06e].
 - The frame trace logs every draw and dispatch in its own callback, also the ones another callback bypasses: a skipped chain still shows. Prove a skip by the add-on's skip-path line. Its options `blend_hashes`, `vertex_input_hashes`, `instances_apart` (`twattila/frame_trace.hpp`, 7e945569) give a PS's blend desc, a VS's buffer slots with strides and element counts, and index x instance counts apart in one run.
 - Pack searches: `mmap.find` on literal names takes minutes over 75 GB; a regex with a `{0,120}` prefix ran 30 minutes with no output.
 - Say in the report what the harness can't show.
