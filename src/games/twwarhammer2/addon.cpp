@@ -1920,6 +1920,9 @@ bool AttachAddon() {
   // point and spot lights' VS (D2A0FF23, 5E0BC81E), the battle fog (inscattering 492B87C7, extinction 16AB86F4), the battle water
   // and river (31AB3DFB, A5294D06), the lit particles (F32116B4, DDABB799; their blend and 687378DB's) and their VS's buffers
   // (C3300B96, 1FC776EF); the lights' instances with FrameTraceReads (trace_reads.hpp).
+  // The game maps some uvs to its viewport itself (uv x (c29.zw x c31.xy): the MSAA SSR resolve 4CFEBDF1, the particle
+  // collision 537C77D0; tools\tw\wh2\scale_census_wh2_base.txt): view_share leaves them.
+  twattila::view_share::SetViewportChains(true);
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
