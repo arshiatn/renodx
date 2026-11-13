@@ -1,5 +1,11 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Round v46 (2026-11-13, shared code from Attila / Warhammer III; built, not released, not run in game)
+
+- **Fixed: the Ray Tracing Debug View rows never showed.** They wait for `rt_scene::OnTonemapDrawn`, which this add-on's tone mapper hook never called (Pharaoh had the same gap, 041821eb); now right after the anti-aliasing's, as in Attila. Its Screen-Space AO view stays magenta: no AO pass hook here, and Pharaoh's copy at the sun draws is not ported. Found by the skill's `scripts/static_checks.py`; the page dump (which sets the flag itself) is the same but the Build Date.
+
+Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon64`. Manual check: with DLAA or an upscaler and the helper, the Ray Tracing Debug View row shows; its Sun Shadows view shows the rays' raw shadow as the picture.
+
 ### Round v45 (2026-11-12, shared code from Attila / Warhammer III; built, not released, not run in game)
 
 - **Bend Screen-Space Shadows: Auto Thickness removed** (ATN: it broke at some angles).

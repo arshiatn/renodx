@@ -118,8 +118,23 @@ tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One com
   NoSuchKeyAtAll, a GPU reset, heapfix EXCEPTION lines, Rome II / Pharaoh crash starts, traces not taken). Game
   folders: Pharaoh's helper log still holds helper107's "unavailable" (18:24); Attila, Rome II, WH3 clean. Dropped as
   noisy: "the helper started again" (also the 10 s idle release).
-- [ ] 4 Static checks (skill scripts): OnTonemapDrawn per rt_scene host, ComPtr `&member` into pointer parameters; the
+- [x] 4 Static checks (skill scripts): OnTonemapDrawn per rt_scene host, ComPtr `&member` into pointer parameters; the
   OnTonemapDrawn gap fixed in Troy, Thrones, WH1, WH2 (page dumps before / after, builds).
+  - .agents/skills/tw-port-checklist/scripts/static_checks.py [--rev C]: tonemap (every rt_scene::Install host, each
+    anti_aliasing::OnTonemapDrawn followed by rt_scene's in the same on_drawn) and comptr (`&x` into a function / named
+    lambda taking ComPtr<T>* that reads it before writing; comments stripped; SHaRC's and the micromap bake's GrowBuffer
+    listed as known, HANDOFF CPU ROUND). Controls: --rev 041821eb^ tonemap flags Pharaoh too (6); --rev 20b91319^ comptr
+    18 (every KeepCamera / AttilaCamera / Tales grow site that commit fixed + the sway's 3), --rev 02a05144^ the sway's 3.
+    Before the fix at HEAD: tonemap 5 (twrome2, twthronesofbritannia, twtroy, twwarhammer, twwarhammer2), comptr 0.
+  - Fix: rt_scene::OnTonemapDrawn after anti_aliasing's in the tone mapper's on_drawn (Pharaoh's two lines) in Troy,
+    Thrones, WH1, WH2; README Round v46 each. After: tonemap 1 (twrome2: its writer's), comptr 0. Builds x64
+    renodx-twtroy / twwarhammer / twwarhammer2.addon64 54 s, build32 renodx-twthronesofbritannia.addon32 48 s, exit 0.
+    Page dumps (new stubs tools/tw/page_dump/dump_t / dump_th / dump_w1 / dump_w2.cpp, dump_build.py t / th / w1 / w2)
+    lc_before = lc_after but the Build Date (the dump sets debug_view_drawn itself).
+  - NOT DONE: Screen-Space AO (view 8) in Troy / WH1 / WH2 stays magenta: no AO pass hook (AO_DRAWS {}), and Pharaoh's
+    OnSunDebugAmbient copy at the sun draws would be a fourth copy of one lambda (DRY: it belongs in twattila/rt_scene.hpp,
+    outside this round's files) with WH1 / WH2's AO mapping unproven. Smallest step: rt_scene::InstallSunDebugAmbient(
+    LIGHT_BOUNCE_DRAWS) in rt_scene.hpp (Pharaoh's lambda, mapping 1), Pharaoh moved onto it, then the three.
 - [ ] 5 Release zips carry nvngx_dlss / dlssd / dlssg (310.9.16+) and refuse without them.
 - [ ] 6 SKILL.md and release / testing steps point at the tools.
 
