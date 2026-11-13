@@ -286,7 +286,8 @@ void main(
     const bool rt_water = RtReflectionsBound() && RtWaterReflections();
     if (rt_water) {
       const float4 rt_traced = t_rt_reflection.Load(int3(rt_render_pixel, 0));
-      r1.yzw = max(rt_traced.rgb, 0.f);
+      // At most 25 a channel, as the game's march: its RGBA8 colour x 5, squared.
+      r1.yzw = min(max(rt_traced.rgb, 0.f), 25.f);
       r7.w = rt_traced.a;
     } else {
       r7.xyzw = t_colour_src.SampleLevel(s_trilinear_sampler_s, r0.xy, r1.x).xyzw;

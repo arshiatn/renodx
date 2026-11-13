@@ -117,7 +117,12 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   (7.5e-4 of 1.12e-3), mip level 0 of 23 apart (0.0039); CONTROL unshifted (3F1B86E1's slots) 39 / 39 / 22 apart; v57's
   controls fail as before; 3F1B86E1 itself unchanged. Level B (dump, no trace: quality 0-2 is the menu's; which VS draws
   it at 0-2 not seen: only 109B79CE is hooked). 740B2536 (MSAA) stays out: no rays under the game's MSAA (comment).
-- [ ] 3 Water reflections capped at 25 a channel as the game's apply.
+- [x] 3 Water reflections capped at 25 a channel as the game's apply: ssrapply00 r1.yzw = min(max(t47.rgb, 0), 25) (the
+  game's t_colour_src t6 is R8G8B8A8_UNORM, W2 trace l.3129 f28, x 5 squared: at most 25). No row (the game's own look, ATN's
+  call 2026-11-13). WARP tools/tw/warp_tests/pharaoh/ssr_v61 (make_v61.py from ssr_v56, run.sh, run_v61.txt; previous
+  build's cso v60_0xDE4F92CD.cso): ALL PASSED: 1 / 2 / 4 / 5 as v56 (0 misses); 3 the formula with t47 capped 0 misses
+  (69,235 channels above 25), CONTROL uncapped 34,537 misses; 6a t47 below 25 vs v60's build 0 of 589,824 bits apart; 6b
+  t47 25-1000, a 1 vs the game's march saturated (t6 255) 0 of 589,824 bits apart, CONTROL v60's build 248,840 apart.
 - [ ] 4 Building water (phar_building_water_01) t_ssao render-scale rows.
 - [ ] 5 7b (DE4F92CD vb0 at 50%) and 7c (the 24 sun PS at 33% against 100%) offline WARP checks.
 - [ ] 6 Pharaoh PT GI sun colour (sun texel 2, RT_PATH_SUN_LIGHT) as Attila's helper107 fix.
