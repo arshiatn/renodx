@@ -1798,7 +1798,9 @@ bool AttachAddon() {
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1, lighting
   // b2, shroud b3, directional_light b4): the sun draws (standard 340CBE9D, skin 1A0532C0), the tone mapper EE1DA45C, the
   // ultra water 58DC6E12, the SSAO resolve 1ED22F9C, battlefog 259AEC56 and the units' VS A30C5E0B (its
-  // variant_animation_size b1); all drawn in the 10-27 trace. The units' VS (A30C5E0B, 4 bones 0F1FBD46: their bones in
+  // variant_animation_size b1); all drawn in the 10-27 trace. VT page_touch 28C847C0 (g_page_touch_constants b2: the
+  // render-scale fix's reading) and the torches' VFX 97D98192 (cb_vfx b3's g_viewport_offset_scale: the soft particles'
+  // depth read below 100%), drawn in every run of ATN's. The units' VS (A30C5E0B, 4 bones 0F1FBD46: their bones in
   // s_animation_map at t0) with their VS inputs at each draw, and instanced draws' counts apart: no unit was captured on
   // 10-27.
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
@@ -1808,7 +1810,8 @@ bool AttachAddon() {
                                                         .rigid_compute_shader = __motion_rigid},
                                    RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES,
                                    {
-                                       .value_hashes = {0x340CBE9D, 0x1A0532C0, 0xEE1DA45C, 0x58DC6E12, 0x1ED22F9C, 0x259AEC56, 0xA30C5E0B},
+                                       .value_hashes = {0x340CBE9D, 0x1A0532C0, 0xEE1DA45C, 0x58DC6E12, 0x1ED22F9C, 0x259AEC56, 0xA30C5E0B,
+                                                        0x28C847C0, 0x97D98192},
                                        .value_slots = 6,
                                        .value_floats = 256,
                                        .on_demand = true,
