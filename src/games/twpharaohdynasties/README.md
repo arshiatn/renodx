@@ -38,6 +38,18 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 21. v64: campaign at Ultra Performance against Quality: the shroud's clouds over unexplored land sit in the same place.
 22. v64: nvngx_dlssd.dll 310.9.16 copied next to nvngx_dlss.dll: renodx-tw-dlaa64.log "Ray Reconstruction ready", the torch
     shadows soft and calm.
+23. v65 (helper109), the RT/PT preset, a battle: the same picture as v64, the helper's frame time no higher.
+
+### Round v65 (2026-11-13, CPU round; built only: not stamped, installed or run in game; helper109)
+
+- **Faster** (Attila v158's): **the helper keeps the plant sway's GPU buffers** (the RT/PT preset, or Swaying Shadows
+  Range above 0 m or Off-Screen Sway off): helper107-108 made and freed three of them (16 MiB) every frame, in ATN's GPU
+  recording ~1.3 ms of the GPU's memory paging and ~2.4 ms of the helper's ray-tracing thread a frame. helper109 makes
+  them once (harness: 3 new buffers a frame against 0, the same results).
+- **Faster**: **the effects' camera copies** (AO, light bounce, screen-space shadows): each made a new D3D11 buffer at
+  every call; now one is kept (WARP: 9.6 -> 4.1 us a call); **the rays' draw capture**: 27 -> 3 ns a captured draw
+  (~0.03 ms a frame in an 8x battle).
+- Nothing changes on screen. Needs helper109 for the first line; with helper108 the rest stays.
 
 ### Round v64 (2026-11-13, torch shadows and Debug Views; stamped and installed 19:55 with helper108 and nvngx_dlssd.dll 310.9.16 (Attila's copy; the folder had none), not run in game)
 

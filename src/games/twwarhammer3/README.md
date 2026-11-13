@@ -1,5 +1,16 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v57 (2026-11-13, CPU round; built only: not stamped, installed or run in game; renodx-tw-dlaa64.exe helper109)
+
+- Faster (Attila v158's): **the helper keeps the plant sway's GPU buffers** (the RT/PT preset, or Swaying Shadows Range
+  above 0 m or Off-Screen Sway off): helper107-108 made and freed three of them (16 MiB) every frame, in ATN's GPU
+  recording ~1.3 ms of the GPU's memory paging and ~2.4 ms of the helper's ray-tracing thread a frame. helper109 makes
+  them once (harness: 3 new buffers a frame against 0, the same results).
+- Faster: **the effects' camera copies** (AO, light bounce, particle history, screen-space shadows): each made a new
+  D3D11 buffer at every call; now one is kept (WARP: 9.6 -> 4.1 us a call); **the rays' draw capture**: 27 -> 3 ns a
+  captured draw (~0.03 ms a frame in an 8x battle).
+- Nothing changes on screen. Needs helper109 for the first line; with helper108 the rest stays.
+
 ## v56 (2026-11-13; stamped and installed 19:55 with renodx-tw-dlaa64.exe helper108, not run in game)
 
 - Fixed (Attila v157's helper108): **Steady Torch Shadows (Experimental)** sharp and steady, no fixed black dots under Ray

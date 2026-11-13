@@ -1,5 +1,21 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v158 (2026-11-13, CPU round; built only: not stamped, installed or run in game; renodx-tw-dlaa64.exe helper109)
+
+- Faster: **the helper keeps the plant sway's GPU buffers** (the RT/PT preset, or Swaying Shadows Range above 0 m or
+  Off-Screen Sway off): helper107-108 made and freed three of them (16 MiB) every frame, in ATN's GPU recording ~1.3 ms
+  of the GPU's memory paging and ~2.4 ms of the helper's ray-tracing thread a frame. helper109 makes them once (harness:
+  3 new buffers a frame against 0, the same results).
+- Faster: **Grass and tree distance sliders**: the add-on remembers 64 grass and tree models a thread instead of one
+  (ATN's profile, grass maxed: 3.35 ms a frame of the game's threads; estimated ~0.8 ms now; test: 24 -> 6 ns a grass
+  draw, every distance bit-identical to v157's).
+- Faster: **the effects' camera copies** (SSR, AO, light bounce, particles, smoke, screen-space shadows): each made a
+  new D3D11 buffer at every call; now one is kept (WARP: 9.6 -> 4.1 us a call); **the rays' draw capture**: 27 -> 3 ns a
+  captured draw (~0.03 ms a frame in an 8x battle).
+- Nothing changes on screen. The frame trace's soldiers mark now says what it counts: "soldiers' bones packed (the
+  frame's first pack, every pass's items)" (v157 called it the shadow pass's).
+- Needs helper109 for the first line; with helper108 the rest stays.
+
 ## v157 (2026-11-13; stamped and installed 19:55 with renodx-tw-dlaa64.exe helper108, not run in game)
 
 - Fixed: **Steady Torch Shadows (Experimental) without black dots**: with Ray Reconstruction its soft shadows sent each
