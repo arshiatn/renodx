@@ -105,6 +105,14 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   (Skill: LESSONS + CHECKS ROUND; Rome II rounds 1 + 2 (ROME II BRING-UP, NIGHT MERGES); installed 22:59 (NIGHT
   MERGES); round report tools/tw/round_notes/night_1113_report.md.)
 
+## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
+- [ ] Rome II round 3 (worktree agent): point light shadows (b2 constant-buffer lights), smoke shadows (shared VS list
+  in InstallSmokeShadows), RT water reflections if time; Round 3 README; built only.
+- [ ] Screen-Space AO debug view (worktree agent): rt_scene::InstallSunDebugAmbient, Pharaoh onto it, Troy / WH1 / WH2
+  where the mapping is proven; Round v47 READMEs; built only.
+- [ ] Merge both into atn-mods (both touch twattila/rt_scene.hpp), build all TW targets, tests, page dumps, then stamp +
+  install the changed games (fresh backups) and update tools/tw/round_notes/night_1113_report.md.
+
 ## NIGHT MERGES (2026-11-13)
 Main checkout, offline (no game, no Steam writes, no stamp / install: ATN stamps and installs with
 tools/tw/install/tw_install.py). Four worktree rounds merged into atn-mods, each tested on its own branch, then once
