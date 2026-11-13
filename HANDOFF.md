@@ -49,6 +49,12 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   13:00 ($start vs [string]$Start, case-insensitive names; the dialog's class detected: stop at once).
 - [ ] PT GI fix (helper107): one diffuse estimate for screen / cache / unseen hits, KeptShade -> own occluded sky, freeze
   slope + base colour under PT Ambient; HARNESS_PEDESTAL proof; look at the bounce GPU spikes 19-40 ms.
+  - [x] 1 HARNESS_PEDESTAL (tools/tw/rt_harness, outside the repo): pedestal on a lit floor, four corner cameras (order
+    01230: camera 0 cold and warm), ATN's paths (1 ray, Bounces 1, ReSTIR + RR, PT Ambient, Own Sky Rays, Kept Cube), light
+    buffer = B6DA03C5's diffuse sun + its sky-cube and sun-lobe specular (HARNESS_PEDESTAL_SPECULAR). CONTROL helper106: spec
+    0.5 the shaded E / N die and risers 14.3-21.6% apart (sunlit faces, treads <= 2.8%); spec 0.2 1.8-3.8%; spec 0 (diffuse
+    only) <= 1.3% (so the specular drives it, not the unoccluded KeptShade here). Learned sun at each PT Ambient return: spec
+    0.2 10.6 (learned with the ambient; true 20) then 35.9 / 24.4 / 24.4 / 25.6 by camera; spec 0 11.2 then 20.4-20.6.
 - [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
