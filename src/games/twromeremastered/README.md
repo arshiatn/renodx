@@ -2,6 +2,20 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+## v8 (2026-11-14, phase I part 1: trace-free items; built only, not run in game)
+
+- Stability: `twattila/device_loss.hpp` (a removed device's chain let go before the new one, stall lines) and
+  `twattila/output_encoding.hpp` (Output decided for every new swap chain; Auto as before: scRGB with Windows HDR on, else
+  SDR).
+- Graphics (Experimental, Advanced, off; Reset turns them off): **Remove the Game's Sun Shadows (Test)** (the cascades'
+  screen-space shadow mask written to 1 after CSMResolve) and **Remove the Game's Ambient Occlusion (Test)** (ASSAO's
+  output written to 1, the trees' AO left out). They mark where the ray-traced shadows and AO will go.
+- Tools: **Trace One Frame** (`tw_frame_trace.txt` next to the exe about a second later).
+- No helper yet: DLSS and the rays wait for the data run's traces.
+
+Test (ATN, a battle): both Test rows off looks like v7; Sun Shadows on: only the sun's shadows gone (ambient and AO
+stay); AO on: the soft contact darkening gone, shadows stay; ReShade.log has one "Test: ... written to 1" line each.
+
 ## v7 (2026-11-14, trace build for the data run; built only, not run in game)
 
 - Frame Trace (`twattila/frame_trace.hpp`; ReShade.ini `[renodx] FrameTrace=1`, read at start): one frame 600 3D frames in
