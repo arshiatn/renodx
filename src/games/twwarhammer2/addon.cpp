@@ -72,7 +72,8 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 4.f;
 }
 
-// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, WH3's form).
+// Hue Clip Emulation's default (test/tw_psychov35's hue report, part 5 "WH2's t00": this game's tone mapper at burns 0.1,
+// 0.3 and 0.5; fire's hue within 1.3 degrees of the game's SDR picture on average, the row's top).
 constexpr float HUE_CLIP_DEFAULT = 100.f;
 
 // bool IsModdedAutoExposureEnabled() {
