@@ -21,7 +21,14 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
   t47 bound b10.x 0: 0 apart; b10.x 1 vs env + (t47.rgb x w - env) x t47.a: 0 misses; CONTROL game's x5-squared decode 207,453;
   t46 0.5 vs game with cubes x 0.5: 0 bits apart (b10.x 0: game's); CONTROL own cubes 277,923; render scale: t47 at the render
   pixel 0 misses, CONTROL viewport uv 268,723. Raw 3Dmigoto 165,780 apart; faithful (2 traps fixed) 0.
-- [ ] 5 page: has_reflections, reflection_pass, Water Reflections Experimental off; dump p_v58 vs p_v57 (only the new rows)
+- [x] 5 page: has_reflections (Bindings default), AppendSettings(..., reflection_pass true), water_pass; Water Reflections
+  (Experimental) default 0 after SetRaysPresetDefaults, Specular Occlusion (Experimental) default 0 and shown only with the rays
+  and Water Reflections, Samples / Reuse shown and acting only with Softer (calm water is a mirror); OnPresent gates the same.
+  Dump page_p_v58 vs v57 (dump_p.cpp's rays_now as OnPresent): 604 -> 611 keys, lost 0, added the 7 reflection keys; new rows
+  the Reflections and Water section (method Game's SSR / Ray-Traced (DXR, Experimental), note, Samples, Reuse, Water
+  Reflections, Steadier, Softer, Specular Occlusion); tooltips now naming reflections: RT/PT (mine), Hills Out of View, SER,
+  Denoiser (shared texts on has_reflections). RT/PT now writes RayTracedReflections / WaterReflections / SpecularOcclusion 1
+  (RAYS_PRESET, ATN's list, as fog and torches): ATN to decide. Reset puts them back to 0.
 - [ ] 6 shared frame trace: blend desc, instances apart, VS buffer inputs (Options, off for Attila / WH3); Pharaoh 3F1B86E1 values
 - [ ] 7 builds: the skill's x64 list + build32 Attila / Rome II / Thrones; WARP suites (sun, tw_screen_space_shadows, lifetime)
 - [ ] 8 README Pharaoh v56 (+ WH3 line), HANDOFF, report

@@ -2081,6 +2081,12 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   // reflections or their specular occlusion, so neither is traced.
   rt_settings.reflections = rt_settings.reflections && rt_settings.water_reflections;
   rt_settings.specular_occlusion = rt_settings.specular_occlusion && rt_settings.reflections;
+  // Calm water is a mirror to the rays (one ray, no reuse): Samples and Reuse act, and show, only with Softer Water Reflections.
+  if (!rt_settings.water_soft) {
+    rt_settings.reflection_samples = 1;
+    rt_settings.reflection_reuse = false;
+    rt_settings.reflection_own = false;
+  }
   // Ray-traced shadows replace the screen-space ones (the Shadows method, as Attila's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -2128,7 +2134,7 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons) or replace the per-frame ones (Rays Replace Shadow Maps), ray-traced AO multiplies
-// the game's SSAO; point lights and the fog hooked, no smoke or reflections.
+// the game's SSAO; point lights, the fog and the water's reflections hooked, no smoke.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -2136,8 +2142,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
                        "The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced shadows, path-traced ambient occlusion and Global Illumination at my settings. The rest of\n"
-                    "this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+    .rays_tooltip = "Ray-traced shadows and water reflections, path-traced ambient occlusion and Global Illumination at my\n"
+                    "settings. The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
@@ -2151,6 +2157,10 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
                   "turns it on below. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
+    .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .water_reflections_label = "Water Reflections (Experimental)",
+    .water_reflections_tooltip = "Rivers and the sea reflect what the rays find, also off screen. Needs in-game Screen Space\n"
+                                 "Reflections on. Off: the game's reflections.",
     .fog_shadows_label = "Fog Shadows (Experimental)",
     .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog: it loses the sun's glow in the shadow of\n"
                            "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
@@ -2161,6 +2171,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                             "Off: the rays' shadows on top of the game's shadow maps.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, ambient occlusion, Light Bounce and shadow softness keep\n"
                                  "their 100% detail. Looks better, can cost some performance.",
+    .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
+                           "Game's SSR: the original. DXR: from rays, also what is off screen or hidden (turn Water Reflections\n"
+                           "on below). Needs an upscaler.",
 };
 
 void ConfigureAddon() {
@@ -2591,7 +2604,9 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  // The water's reflection apply reads the ray-traced reflections (OnWaterApplyDraw): their rows, the water's too.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  twattila::rt_scene::internal::water_pass = true;
 
   // Appended Settings (HDR10)
   {
@@ -2679,7 +2694,7 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer III's), ATN's RT/PT preset as the defaults of what the methods leave, then
-  // Settings Mode's pages. Only what this game hooks: no smoke map or reflections.
+  // Settings Mode's pages. Only what this game hooks: no smoke map.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off too (Experimental: no game run has shown them here yet); RT/PT turns them
   // on, as ATN's list does. Bend's Light Through Banners and Coloured Shadows (v55: the cloth and flags, InstallThin) also start
@@ -2695,6 +2710,22 @@ void ConfigureAddon() {
       setting->default_value = 0.f;
       setting->label = "Coloured Shadows (Experimental)";
       setting->tooltip = "The sun through cloth and flags takes their colour.";
+    } else if (setting->key == "RayTracedWaterReflections") {
+      // Experimental, off (v56: no game run has shown the apply with the rays yet); RT/PT turns it on, as ATN's list does.
+      setting->default_value = 0.f;
+    } else if (setting->key == "RayTracedSpecularOcclusion") {
+      // Only the water's reflected cube, with the water's own rays (OnPresent): shown with them.
+      setting->default_value = 0.f;
+      setting->tooltip = "The sky's reflection on the water dimmed where something blocks it. Needs Water Reflections.";
+      setting->is_visible = [] { return rt_sliders.reflections != 0.f && rt_sliders.water_reflections != 0.f; };
+    } else if (setting->key == "RayTracedReflectionSamples" || setting->key == "RayTracedReflectionReuse") {
+      // Calm water is a mirror to the rays (one ray, no reuse): these act on it with Softer Water Reflections alone.
+      setting->tooltip = (setting->key == "RayTracedReflectionSamples")
+                             ? "More rays per pixel in the water's softer reflections. Heavier."
+                             : "Less noise in the water's softer reflections.\n"
+                               "From ReSTIR GI: also the path-traced Light Bounce's samples (needs Path Tracing).\n"
+                               "Own ReSTIR: their own samples, reused over frames and between neighbours.";
+      setting->is_visible = [] { return rt_sliders.water_reflections != 0.f && rt_sliders.water_soft != 0.f; };
     }
   }
   // Torch and Fire Shadows from rays (Warhammer III's row): after the preset's defaults, so it starts off (Experimental: no game
@@ -2722,7 +2753,6 @@ void ConfigureAddon() {
                                              .has_foliage_light = true,
                                              .foliage_light_tested = false,
                                              .lights_own_row = true,
-                                             .has_reflections = false,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
