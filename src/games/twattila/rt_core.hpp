@@ -228,6 +228,14 @@ struct SmokePixelShader {
   UINT sampler_shift = 0;
 };
 
+// A particle vertex shader (InstallSmokeShadows) and how its draws stream their particles out: one a vertex, as it writes
+// them (no quad shader: its own code; Attila); or one an instance of a quad (indexed, six indices an instance: the geometry
+// shader `quad_shader` makes one record of an instance's first triangle; Pharaoh, Rome II).
+struct SmokeVertexShader {
+  uint32_t hash = 0;
+  std::span<const uint8_t> quad_shader;
+};
+
 struct SceneShader {
   uint32_t hash = 0;
   std::span<const uint8_t> capture_shader;
@@ -420,7 +428,7 @@ struct ParticleStream {
   UINT capacity = 0;  // particles (MAX_PARTICLES, by Smoke Shadow Quality)
   ComPtr<ID3D11Buffer> particles;
   ComPtr<ID3D11ShaderResourceView> srv;
-  ComPtr<ID3D11GeometryShader> output;
+  std::vector<ComPtr<ID3D11GeometryShader>> outputs;  // as smoke_vertex_shaders (null: none)
   ComPtr<ID3D11Buffer> behaviours;
 };
 
@@ -801,13 +809,10 @@ static UINT sun_colour = 0;
 // The code of the scene shaders without a capture version, as the game made them (every vertex shader with
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
-// Smoke Shadows' particle shaders (InstallSmokeShadows; 0: none): the vertex shader (its code kept) and the lit pixel
-// shaders its smoke is drawn with.
-static uint32_t smoke_vertex_shader = 0;
+// Smoke Shadows' particle shaders (InstallSmokeShadows; empty: none): the vertex shaders (their code kept) and the lit
+// pixel shaders their smoke is drawn with.
+static std::span<const SmokeVertexShader> smoke_vertex_shaders;
 static std::span<const SmokePixelShader> smoke_pixel_shaders;
-// Particles drawn as quads (Pharaoh: indexed instanced, six indices an instance): the geometry shader making one record of
-// an instance's first triangle. Empty: one vertex a particle, streamed out as the vertex shader writes it (Attila).
-static std::span<const uint8_t> smoke_quad_shader;
 static std::unordered_map<uint32_t, bool> skinned_code;
 // A scene draw's pixel shader (host.scene_draw: SceneCoverage): solid (none, or its discards dither only), alpha-tested
 // against its t0 at the input `uv_semantic` (xy: an opacity mask), or left out (t0 read otherwise: a tiled or computed
@@ -2129,23 +2134,25 @@ void Capture(Context& command, const SceneShader& shader) {
   }
 }
 
-// A lit particle draw (Smoke Shadows: InstallSmokeShadows' vertex shader with its lit pixel shader, blended over the
+// A lit particle draw (Smoke Shadows: one of InstallSmokeShadows' vertex shaders with a lit pixel shader, blended over the
 // scene, not added to it: smoke and dust, not fire's glow): its particles streamed out for the next trace: centre, colour
-// and opacity, size. One a vertex, as the vertex shader writes them; or one an instance of a quad (smoke_quad_shader),
+// and opacity, size. One a vertex, as the vertex shader writes them; or one an instance of a quad (its quad shader),
 // which reads the pixel shader's views and samplers (shifted as its SmokePixelShader says) and the vertex shader's
 // constants at their own slots.
 template <typename Context>
 void CaptureParticles(Context& command) {
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
+  const auto vertex_shader = std::ranges::find(smoke_vertex_shaders, command.matched_shader_hash, &SmokeVertexShader::hash);
+  if (vertex_shader == smoke_vertex_shaders.end()) return;
   UINT particle_count = 0;
   UINT first_vertex = 0;
   if constexpr (std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawArguments>) {
-    if (smoke_quad_shader.empty()) {
+    if (vertex_shader->quad_shader.empty()) {
       particle_count = command.arguments.vertex_count;
       first_vertex = command.arguments.first_vertex;
     }
   } else if constexpr (INDEXED) {
-    if (!smoke_quad_shader.empty() && command.arguments.index_count == 6) {
+    if (!vertex_shader->quad_shader.empty() && command.arguments.index_count == 6) {
       particle_count = command.arguments.instance_count;
     }
   }
@@ -2172,7 +2179,7 @@ void CaptureParticles(Context& command) {
   auto& stream = runtime.particle_stream;
   const UINT capacity = MAX_PARTICLES << (std::max(runtime.settings.smoke_quality, 3u) - 3u);
   if (stream.device.Get() != device.Get() || stream.capacity != capacity) {
-    stream = {.device = device, .capacity = capacity};
+    stream = {.device = device, .capacity = capacity, .outputs = std::vector<ComPtr<ID3D11GeometryShader>>(smoke_vertex_shaders.size())};
     runtime.particles = 0;
     const D3D11_BUFFER_DESC particles_desc = {.ByteWidth = capacity * 48, .Usage = D3D11_USAGE_DEFAULT,
                                               .BindFlags = D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE};
@@ -2189,26 +2196,30 @@ void CaptureParticles(Context& command) {
         {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 1},
     }};
     constexpr UINT STRIDE = 48;
-    std::span<const uint8_t> output_code = smoke_quad_shader;
-    if (const auto code = game_code.find(smoke_vertex_shader); output_code.empty() && code != game_code.end()) {
-      output_code = code->second;
-    }
-    if (FAILED(device->CreateBuffer(&particles_desc, nullptr, stream.particles.GetAddressOf()))
-        || FAILED(device->CreateShaderResourceView(stream.particles.Get(), &particles_view, stream.srv.GetAddressOf()))
-        || FAILED(device->CreateBuffer(&behaviours_desc, &behaviours_data, stream.behaviours.GetAddressOf()))
-        || output_code.empty()
-        || FAILED(device->CreateGeometryShaderWithStreamOutput(output_code.data(), output_code.size(), entries.data(),
-                                                                static_cast<UINT>(entries.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM,
-                                                                nullptr, stream.output.GetAddressOf()))) {
-      renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for the particles' vertex shader {:08X} (Smoke Shadows).",
-                                        smoke_vertex_shader));
-    } else if constexpr (INDEXED) {
-      renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows: one particle a quad of vertex shader {:08X} ({} instances in this draw, room for {}).",
-                                        smoke_vertex_shader, particle_count, capacity));
+    const bool buffers = SUCCEEDED(device->CreateBuffer(&particles_desc, nullptr, stream.particles.GetAddressOf()))
+                         && SUCCEEDED(device->CreateShaderResourceView(stream.particles.Get(), &particles_view, stream.srv.GetAddressOf()))
+                         && SUCCEEDED(device->CreateBuffer(&behaviours_desc, &behaviours_data, stream.behaviours.GetAddressOf()));
+    for (size_t index = 0; index < smoke_vertex_shaders.size(); ++index) {
+      const SmokeVertexShader& shader = smoke_vertex_shaders[index];
+      std::span<const uint8_t> output_code = shader.quad_shader;
+      if (const auto code = game_code.find(shader.hash); output_code.empty() && code != game_code.end()) {
+        output_code = code->second;
+      }
+      if (!buffers || output_code.empty()
+          || FAILED(device->CreateGeometryShaderWithStreamOutput(output_code.data(), output_code.size(), entries.data(),
+                                                                  static_cast<UINT>(entries.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM,
+                                                                  nullptr, stream.outputs[index].GetAddressOf()))) {
+        renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for the particles' vertex shader {:08X} (Smoke Shadows).",
+                                          shader.hash));
+      } else if (!shader.quad_shader.empty()) {
+        renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows: one particle a quad of vertex shader {:08X} (room for {}).",
+                                          shader.hash, capacity));
+      }
     }
   }
+  ID3D11GeometryShader* particle_output = stream.outputs[vertex_shader - smoke_vertex_shaders.begin()].Get();
   const UINT count = std::min(particle_count, capacity - runtime.particles);
-  if (!stream.output || count == 0) return;
+  if (particle_output == nullptr || count == 0) return;
   // The quad shader reads the vertex shader's constants with their ranges (D3D11.1).
   ComPtr<ID3D11DeviceContext1> native1;
   if (INDEXED && FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
@@ -2231,7 +2242,7 @@ void CaptureParticles(Context& command) {
   native->SOGetTargets(1, game_output.GetAddressOf());
   ID3D11Buffer* target = stream.particles.Get();
   const UINT offset = runtime.particles * 48;
-  native->GSSetShader(stream.output.Get(), nullptr, 0);
+  native->GSSetShader(particle_output, nullptr, 0);
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(1, &target, &offset);
   if constexpr (INDEXED) {
@@ -2961,7 +2972,7 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
     }
     if (subobjects[index].type != reshade::api::pipeline_subobject_type::vertex_shader) continue;
     const uint32_t hash = renodx::utils::hash::ComputeCRC32(code, desc->code_size);
-    if (host.scene_draw == nullptr && hash != smoke_vertex_shader
+    if (host.scene_draw == nullptr && std::ranges::find(smoke_vertex_shaders, hash, &SmokeVertexShader::hash) == smoke_vertex_shaders.end()
         && std::ranges::none_of(scene_shaders, [hash](const SceneShader& shader) { return shader.hash == hash && (shader.capture_shader.empty() || world_captures); })) {
       continue;
     }
