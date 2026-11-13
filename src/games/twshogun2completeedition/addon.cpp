@@ -1022,6 +1022,8 @@ void ReadDlssAddonOptions() {
   ray_tracing.path_tracing = read_on("PathTracing", false);
   // 3 and 4 measured as 2 in Attila (twattila/rt_scene.hpp SettingsOf): the key's older values taken as 2.
   ray_tracing.path_bounces = read_count("PathTracingBounces", 2, 1, 2);
+  ray_tracing.sharc = ray_tracing.path_tracing && read_on("RayTracedSharc", false);
+  ray_tracing.path_ser = read_on("RayTracedPathSer", false);
   ray_tracing.micromaps = read_on("RayTracedLeafMicromaps", false);
   ray_tracing.gpu_micromaps = read_on("RayTracedGpuMicromaps", true);
   ray_tracing.fast_leaves = read_on("RayTracedFastLeafShadows", false);

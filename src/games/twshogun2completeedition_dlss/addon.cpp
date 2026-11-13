@@ -1003,7 +1003,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                        "The Global Illumination's and the reflections' rays go on bouncing: lit by what the screen never saw. Heavy.");
     ImGui::BeginDisabled(!path_tracing);
     count("Path tracing bounces", "PathTracingBounces", 2, 2, "Bounces past the first where the camera sees nothing. 1: faster, a little darker.");
+    choice("SHaRC radiance cache (Experimental)", "RayTracedSharc", 0, OFF_ON_NAMES,
+           "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).");
     ImGui::EndDisabled();
+    choice("Path tracing SER (Experimental)", "RayTracedPathSer", 0, OFF_ON_NAMES,
+           "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.");
     ImGui::EndDisabled();
     if (sun_shadows || ambient || local_lights || reflections || bounce) {
       if (upscaler_choice.load() != 0 && !(upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0)) {
