@@ -187,8 +187,9 @@ struct Watchdog {
 struct Bridge {
   Watchdog watchdog;
   // The last evaluation ran Ray Reconstruction: the addon's own denoisers (Light Bounce, AO filter, the reflections'
-  // accumulation and filter) leave its noise to it.
+  // accumulation and filter) leave its noise to it. Not where the helper ran DLSS without it (rr_refused).
   bool reconstructing = false;
+  bool rr_refused = false;  // the helper's last word on it (logged when it changes)
   // The colour last written into `color` is the light's square root (the upscaler's input for L, M, Ray Reconstruction): the
   // helper's paths square it back (RT_PATH_COLOR_SQUARE_ROOT).
   bool color_square_root = false;
@@ -1268,7 +1269,17 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     shared->rr_extra_written = (shared->ray_reconstruction != 0) ? (ray_reconstruction->extra_written & bridge.rr_extra) : 0u;
   });
   bridge.hit_distance_written = false;
-  bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides;
+  // Asked for and refused (helpers 108 on: Pharaoh's folder had no nvngx_dlssd.dll, its rays went raw into plain DLSS):
+  // the rays denoise and shadow as without it. A helper's answer comes with the request or, steady, before the next.
+  const bool refused = ray_reconstruction != nullptr && bridge.shared != nullptr && bridge.shared->rr_refused != 0;
+  if (refused != bridge.rr_refused) {
+    bridge.rr_refused = refused;
+    if (refused) {
+      renodx::utils::log::w("[Total War] Ray Reconstruction didn't start (nvngx_dlssd.dll next to nvngx_dlss.dll?): DLSS runs without it, "
+                            "the rays denoised as without it.");
+    }
+  }
+  bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides && !refused;
   if (bridge.shared != nullptr) {
     // Ray tracing's counts change every frame: its line is logged when the part before ": " changes, else with Log Details
     // each minute.
@@ -1377,6 +1388,7 @@ inline void Release(bool tell_helper = false) {
   bridge.fence.Reset();
   bridge.width = 0;
   bridge.reconstructing = false;
+  bridge.rr_refused = false;
   bridge.color_square_root = false;
   bridge.deferred = 0;
   bridge.steady = {};

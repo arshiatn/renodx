@@ -111,8 +111,25 @@ Unproven look changes: Experimental rows, off. One writer; each step committed a
   both). Troy, Rome II, Thrones, WH1, WH2 lack the same call (not changed this round). Not run in game.
 - [ ] 2 Steady Torch Shadows' black spots: cause from the code, harness proof (a light beside a small occluder, Steady on
   / off, control), fix at the source (helper108 if needed; all_modes + RR noise test as regressions).
-- [ ] 3 Torch flicker: what changes frame to frame (ATN_UP_181940 campaign + B61 siege two-frame reads, the code); fix
-  only what is proven; no dimming, no temporal tricks.
+- [x] 3 Torch flicker: Ray Reconstruction never ran in Pharaoh. Its folder has nvngx_dlss.dll only (no nvngx_dlssd.dll,
+  no nvngx_dlssg.dll; Attila's and WH3's have all three): every Pharaoh helper log with the rays (W1, W2, B61, ATN_UP_181940)
+  starts "Ray Reconstruction unavailable (nvngx_dlssd.dll next to nvngx_dlss.dll?)", then "[Tales DLSS] Created DLSS ...
+  preset L" and "DLAA active" / "Custom DLSS active": plain DLSS. ATN's ini asks RR (AntiAliasingRayReconstruction=4), and
+  dlaa_bridge's reconstructing followed the request (evaluated && ray_reconstruction && guides), so every trace had
+  RT_RECONSTRUCTED: torch shadows one random disk point a frame (Softness 0.25) with an IGN threshold, NRD off (nrd &&
+  !reconstructing), AO / reflections / paths raw: noise for RR to average, through DLSS that doesn't. The game's lights are
+  steady: ATN_UP trace_13's 12 campaign lights (E318CE77 vb1, reach 1 = POSITION2.w) bit-equal on two frames, only their
+  order in the buffer changes (the addon sorts by score: no effect); B61's 15 siege lights bit-equal. Fix (helper108,
+  bridge v31 kept): the helper writes rr_refused (v25's padding) = 1 when an evaluation asked RR and it ran DLSS, the addon's
+  reconstructing needs it 0 (a log line when it turns on). Harness (tools/tw/rt_harness/torch_v64.sh / .txt, HARNESS_RR=6
+  + HARNESS_RR_FOLLOW: the trace's RT_RECONSTRUCTED from bridge.reconstructing as rt_core; HARNESS_TORCH: a torch on a pole
+  0.25 m before the wall, light size 0.25, its bit within 2.5 m, last 20 of 40 frames, still camera): no dlssd helper107
+  "DLAA active", reconstructing 1, 39 of 40 frames RECONSTRUCTED, 102.8 torch bits changed a frame (521 px flickering);
+  helper108 rr_refused 1, reconstructing 0, 0 frames, 0 changed (= hard). With dlssd both helpers "DLSS Ray Reconstruction
+  active (D3D12)", reconstructing 1, the same numbers (RR path unchanged). ATN still needs nvngx_dlssd.dll 310.9.16 in
+  Pharaoh's folder for RR itself (coordinator's install). Not fixed (listed): Pharaoh sets no campaign_metre / campaign
+  frames, so the torch softness (0.25), the 0.5 clearance and the AO / bounce ranges are map units on its campaign map
+  (lights' reach 1 there, 25 in a siege).
 - [ ] 4 ATN_UP_181940 (33% campaign): 7a shroud decals' inv_rt_size c13 (61C823A0), 7d 377DE0D5 tiles vs 026CBC61's
   bounds: read, decide, fix only what the evidence shows (WARP proof).
 - [ ] 5 Builds (Pharaoh, the skill's x64 list, build32 if shared, helper if changed), test/tw_* x86 + amd64, page dumps,

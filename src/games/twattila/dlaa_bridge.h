@@ -490,7 +490,10 @@ struct Shared {
   // none), and those written for this evaluation (the rest go to it as null).
   uint64_t rr_extra[RR_EXTRA_INPUTS] = {};
   uint32_t rr_extra_written = 0;
-  uint32_t rr_v25_padding = 0;
+  // The helper's (in v25's padding; a helper before 108 leaves it 0): 1 when its last evaluation was asked for Ray
+  // Reconstruction and ran DLSS without it (RR couldn't start: no nvngx_dlssd.dll next to nvngx_dlss.dll), so nothing
+  // denoises what the rays leave for RR.
+  uint32_t rr_refused = 0;
   // The helper's (v30): the set it has open (`generation` as it opened it) and that set's fence as it last read it (at
   // each request and each second without one; all ones: none to read). The addon's watcher follows the helper's GPU work
   // by these (dlaa_bridge.hpp): it has no device of its own in the game.

@@ -868,9 +868,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (std::exchange(super_resolution_ran, false)) backend.Reset();
       evaluated = reconstruction->Evaluate(reconstruct);
       set_status(reconstruction->Status().c_str());
+      if (version >= 25) shared->rr_refused = 0;
     } else if (fence) {
       reconstruction->ReleaseFeature();
       super_resolution_ran = true;
+      // Asked for Ray Reconstruction that couldn't start: DLSS instead, and the addon told (its rays then denoise without RR).
+      if (version >= 25) shared->rr_refused = (shared->ray_reconstruction != 0) ? 1u : 0u;
       const auto open = [&](uint64_t handle, ComPtr<ID3D11Texture2D>* texture) {
         return SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(handle), IID_PPV_ARGS(texture->GetAddressOf())));
       };
