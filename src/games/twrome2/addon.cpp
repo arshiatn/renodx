@@ -31,6 +31,7 @@
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/ssr_hiz.hpp"
@@ -1375,6 +1376,35 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows and AO multiply the game's
+// shadow maps and SSAO; no ray-traced reflections (FidelityFX SSSR on the water), no point lights, fog or smoke hooked.
+// The game's MSAA keeps the anti-aliasing's DLAA / DLSS and with them every ray-traced effect off (anti_aliasing.hpp).
+constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
+    .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
+    .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
+    .in_game_aa_note = "In-game Anti-Aliasing must be Off for DLSS, FSR, XeSS, Frame Generation and ray tracing (MSAA keeps them off).",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion,\n"
+                     "shadows and reflections. The rest at its default.",
+    .no_rays_tooltip = twattila::graphics_page::ATTILA_TEXTS.no_rays_tooltip,
+    .rays_tooltip = "Ray-traced shadows and ambient occlusion, path-traced Global Illumination at my settings. The rest of\n"
+                    "this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+                    "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
+                      "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "Needs an upscaler.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
+                  "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
+                  "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
+                  "thin ones.\n"
+                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
+    .effects_at_output_tooltip = "While the upscaler renders below 100%, ambient occlusion, Light Bounce and shadow softness keep\n"
+                                 "their 100% detail. Looks better, can cost some performance.",
+    .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
+                           "Game's SSR: the original. FidelityFX SSSR: AMD's hierarchical ray march, exact, no gaps, reaching\n"
+                           "across the screen, usually faster.",
+};
+
 void ConfigureAddon() {
   if (configured) return;
 
@@ -1673,7 +1703,24 @@ void ConfigureAddon() {
     if (std::ranges::find(engine_sections, test.section) == engine_sections.end()) engine_sections.push_back(test.section);
   }
   twattila::feature_settings::SetTints({}, engine_sections);
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
+
+  // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
+  // Mode's pages. Fog and smoke shadows keep their 0: nothing here hooks them yet.
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows") setting->default_value = 0.f;
+  }
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
+                                             .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .ssr_hierarchical = &shader_injection.ssr_hierarchical,
+                                             .texts = &PAGE_TEXTS,
+                                             .has_foliage_light = false,
+                                             .smoke_shadows_tested = false,
+                                             .has_path_ambient = false,
+                                             .has_reflections = false,
+                                             .rays_replace_ao = false,
+                                             .rays_multiply_maps = true});
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }
@@ -1699,6 +1746,19 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+
+  // Rows saved at an old default, cleared once. Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden here until
+  // what they act on is hooked: they show then at ATN's values.
+  constexpr int SETTINGS_REVISION = 1;
+  if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
+    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
+      for (const char* key : {"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
+                              "RayTracedSpriteShadows", "RayTracedSwayRange"}) {
+        reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+      }
+    }
+    reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 

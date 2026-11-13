@@ -229,6 +229,8 @@ struct Bindings {
   bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
+  // Ray-traced reflections (rt_scene::AppendSettings' reflection_pass); false: the Reflections section only with FidelityFX
+  // SSSR (ssr_hierarchical), the game's SSR and it.
   bool has_reflections = true;
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
   // The rays' sun shadows always multiply the game's shadow maps (no rays_replace_maps row): Shadow Map Size stays under them.
@@ -1143,12 +1145,14 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   }
 
   // Reflections, and the water they fall on.
-  if (b.has_reflections) {
+  if (b.has_reflections || b.ssr_hierarchical != nullptr) {
     const std::string& section = REFLECTIONS_SECTION;
     const auto hierarchical = reflections_are(REFLECTION_HIERARCHICAL);
     const auto rays = reflections_are(REFLECTION_RAYS);
     if (b.ssr_hierarchical != nullptr) {
-      page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", b.texts->reflections_middle_label, b.texts->reflections_rays_label}, [b] { return ReflectionMethodOf(b); },
+      std::vector<std::string> labels = {"Game's SSR", b.texts->reflections_middle_label};
+      if (b.has_reflections) labels.emplace_back(b.texts->reflections_rays_label);
+      page.Add(MethodSlider(section, b.texts->reflections_tooltip, std::move(labels), [b] { return ReflectionMethodOf(b); },
                             [](int method) { ChooseReflections(method); }));
     } else {
       page.Add(MethodSlider(section, b.texts->reflections_tooltip, {"Game's SSR", "Ray-Traced (DXR, Experimental)"}, [b] { return (ReflectionMethodOf(b) == REFLECTION_RAYS) ? 1 : 0; },
@@ -1159,15 +1163,17 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "ssr_quality", .section = section, .shown = [b] { return ReflectionMethodOf(b) != REFLECTION_RAYS; }, .label = "Quality", .only_some_games = true});
     page.Take({.match = "ssr_rays", .section = section, .shown = hierarchical, .label = "Rays", .only_some_games = true});
     page.Take({.match = "SSRDenoiser", .section = section, .shown = hierarchical, .label = "Denoiser", .only_some_games = true});
-    page.Take({.match = "RayTracedReflectionSamples", .section = section, .shown = rays, .label = "Samples"});
-    page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = rays, .label = "Reuse"});
-    page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = b.texts->water_reflections_label, .tooltip = b.texts->water_reflections_tooltip});
-    page.Take({.match = "RayTracedWaterSteady", .section = section, .shown = rays});
-    page.Take({.match = "RayTracedWaterSoft", .section = section, .shown = rays});
-    page.Take({.match = "RayTracedReflectionLight", .section = section, .shown = rays, .only_some_games = true});
-    page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = rays, .only_some_games = true});
-    page.Take({.match = "RayTracedReflectionLobe", .section = section, .shown = rays, .only_some_games = true});
-    page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
+    if (b.has_reflections) {
+      page.Take({.match = "RayTracedReflectionSamples", .section = section, .shown = rays, .label = "Samples"});
+      page.Take({.match = "RayTracedReflectionReuse", .section = section, .shown = rays, .label = "Reuse"});
+      page.Take({.match = "RayTracedWaterReflections", .section = section, .shown = rays, .label = b.texts->water_reflections_label, .tooltip = b.texts->water_reflections_tooltip});
+      page.Take({.match = "RayTracedWaterSteady", .section = section, .shown = rays});
+      page.Take({.match = "RayTracedWaterSoft", .section = section, .shown = rays});
+      page.Take({.match = "RayTracedReflectionLight", .section = section, .shown = rays, .only_some_games = true});
+      page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = rays, .only_some_games = true});
+      page.Take({.match = "RayTracedReflectionLobe", .section = section, .shown = rays, .only_some_games = true});
+      page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
+    }
     page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
     page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = b.texts->water_caustics_label, .only_some_games = true});
     page.Add(EmptyLine(section));

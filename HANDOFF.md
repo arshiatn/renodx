@@ -101,6 +101,9 @@ Plan tools/tw/rome2/plan.md (Phase 0 + the Phase 3 items provable offline); resu
 Coordinator's runs 2026-11-13 ~17:30 (S1_173022, S1_173217, N1 in tools/tw/rome2/runs): the command-line battle start
 `game_startup_mode battle script\bm_benchmark\bm_battle.xml` (with or without a mod-list file) crashes the retail game at
 Empire.Retail.dll+0x276899 ~9 s in, before any frame, also with the add-on renamed aside: data runs need the menus.
+Runs ~18:01 (L1_180127, L2_180236): the command-line `campaign_load` of ATN's save crashes too, at
+Empire.Retail.dll+0x103661 ~16 s in, with or without test settings. Agent runs need the menus. Traces to use: ATN's own
+play, runs\A1_175145 (custom battle; 33 / 50 / 67 / 100%) and runs\C1_175625 (Sassanid campaign, water; 50 / 100%).
 - [x] 0.1 Encoding ramp on WARP (tools/tw/rome2/encoding, phase0_results.md): the game's EE1DA45C (dump bytes, identity
   S-curve) writes the linear result within 0.087% (its sqrt 89.6% off); hdr_to_screen 2C229891 gamma-encodes the frame as
   it is (frame^(1/2.2) within 0.094%, no square); the addon's t00 HDR 3 linear (0.104%). Today's wrappers give DLSS
@@ -127,6 +130,11 @@ Empire.Retail.dll+0x276899 ~9 s in, before any frame, also with the add-on renam
   Done: TW_AA_FRAME_LINEAR 1 (4bcaeaa7); dead entries (names.tsv column 4: data_rome2.pack overrides the hash):
   MOTION_SHADERS 57 -> 39, SCENE_SHADERS 51 -> 35, LIGHT_BOUNCE_DRAWS 56 -> 50, AO_DRAWS 2 -> 1, RENDER_SCALE_READS
   9 -> 5 (3.5's dead rows), 43 embedded files + bloom00 / bloom02 / ssao00 gone; page dump identical (page_r_r1dead).
+  Graphics 1 of 2 (graphics_page as Pharaoh's; shared: has_reflections false keeps a Reflections section for SSSR):
+  PAGE_TEXTS with the MSAA note, SetRaysPresetDefaults (fog / smoke stay 0), has_path_ambient false until 3.6,
+  rays multiply the maps and SSAO; SETTINGS_REVISION 1 clears 6 hidden rows the preset raised. page_r_r1page: every key
+  kept, 4 new (TaaMotion, FrameGenerationMethod, RayTracingDenoiser, AoReblur). Every consumer built (x86 + x64).
+  Not done: sky (F946A430), Graphics 2 of 2 ports (Cutscene Point Light Shadows, Campaign Tree Detail).
 - [ ] 3.2 Stability (ReadGpuVendor / OnNvidia, helper-missing note, GitHub button).
 - [ ] 3.5 Render scale (12 hdr_to_screen FrameRenderShare, 37 replaced NDC shaders, dead RENDER_SCALE_READS).
 - [ ] 3.6 Sun draws (InstallSunDraws cube after 0.2; Rome II's sun colour into rt_sun texel 2).
