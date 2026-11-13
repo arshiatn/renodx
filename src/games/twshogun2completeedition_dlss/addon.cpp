@@ -8,16 +8,24 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <format>
+#include <ranges>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
 
 #include "../../utils/command_action.hpp"
 #include "../../utils/icons.hpp"
+#include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/state.hpp"
 #include "./dlss_jitter.hpp"
@@ -118,6 +126,37 @@ constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::c
     talesofarise::frame_generation::DrawHudless(context, target.Get(), presents.load());
   }};
 };
+// Data-run marks in ReShade.log (2026-11-14): each sun light draw's first run (the HDR addon's sunlight00-03: battle,
+// campaign map), each new render size the game's DLSS is evaluated at.
+struct SunShader {
+  uint32_t hash;
+  const char* name;
+};
+constexpr std::array<SunShader, 4> SUN_SHADERS = {{
+    {.hash = 0xED1BED93, .name = "directionallight ps30_main_highdef (battle)"},
+    {.hash = 0x5496DE73, .name = "directionallight ps30_main_lowdef (battle)"},
+    {.hash = 0xC3E0E939, .name = "directionallight ps30_overlay_highdef (campaign map)"},
+    {.hash = 0xD5FDDE8F, .name = "directionallight ps30_overlay_lowdef (campaign map)"},
+}};
+std::array<std::atomic_bool, SUN_SHADERS.size()> sun_seen = {};
+constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const auto& shader = command.template GetCallbackData<SunShader>();
+  const auto index = static_cast<size_t>(&shader - SUN_SHADERS.data());
+  if (sun_seen[index].load(std::memory_order_relaxed) || sun_seen[index].exchange(true)) return {};
+  renodx::utils::log::i(std::format("[Shogun 2 DLSS] First run: sun light draw {:08X} {}", shader.hash, shader.name));
+  return {};
+};
+std::array<uint32_t, 2> evaluated_size = {};  // render thread
+// RENODX_TW_SET="<seconds>:<key>=<value>;..." (read at launch; seconds from the first DLSS evaluation): RenderScale,
+// RenderScaleCustom, Preset, TextureLodBias for this start only (ReShade.ini is not written).
+struct TestSet {
+  double seconds = 0.;
+  std::string key;
+  int value = 0;
+  bool done = false;
+};
+std::vector<TestSet> test_sets;  // present thread
+std::atomic<int64_t> first_evaluation = 0;  // steady_clock ticks; 0: none yet
 // ReShade.ini [Shogun 2 DLSS]: Jitter (on), JitterFlip (debug, 0).
 std::atomic_bool jitter_enabled = true;
 int jitter_flip = 0;           // overlay
@@ -355,6 +394,29 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
   }
   twattila::texture_lod_bias::SetTracking(queue, bias != 0.f);
   twattila::texture_lod_bias::SetBias(bias);
+  if (const int64_t start = first_evaluation.load(std::memory_order_relaxed); start != 0 && !test_sets.empty()) {
+    const auto elapsed = std::chrono::steady_clock::duration(std::chrono::steady_clock::now().time_since_epoch().count() - start);
+    const double seconds = std::chrono::duration<double>(elapsed).count();
+    for (auto& set : test_sets) {
+      if (set.done || seconds < set.seconds) continue;
+      set.done = true;
+      if (set.key == "RenderScale" && set.value >= 0 && set.value <= CUSTOM_RENDER_SCALE) {
+        render_scale_choice = set.value;
+      } else if (set.key == "RenderScaleCustom" && set.value >= 1 && set.value <= 100) {
+        render_scale_percent = set.value;
+      } else if (set.key == "Preset" && std::ranges::find(PRESETS, static_cast<uint32_t>(set.value), &PresetChoice::value) != PRESETS.end()) {
+        preset = static_cast<uint32_t>(set.value);
+        twshogun2::game_dlss::RequestPreset(preset);
+      } else if (set.key == "TextureLodBias" && set.value >= 0 && set.value <= 3) {
+        texture_lod_bias_choice.store(set.value);
+      } else {
+        renodx::utils::log::i(std::format("[Shogun 2 DLSS] Test: no setting {}={}, nothing changed", set.key, set.value));
+        continue;
+      }
+      if (set.key.starts_with("RenderScale")) twshogun2::game_dlss::RequestScale(SelectedRenderScale());
+      renodx::utils::log::i(std::format("[Shogun 2 DLSS] Test: {} set to {} at {:.1f} s", set.key, set.value, seconds));
+    }
+  }
 }
 
 void OnOverlay(reshade::api::effect_runtime*) {
@@ -1000,7 +1062,33 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     render_scale_choice = value;
     twshogun2::game_dlss::RequestScale(SelectedRenderScale());
   }
+  test_sets.clear();
+  if (const char* sets = std::getenv("RENODX_TW_SET"); sets != nullptr) {
+    for (const auto part : std::views::split(std::string_view(sets), ';')) {
+      const std::string_view entry(part.begin(), part.end());
+      const size_t colon = entry.find(':');
+      const size_t equals = entry.find('=');
+      if (colon == std::string_view::npos || equals == std::string_view::npos || equals < colon) continue;
+      TestSet set = {.key = std::string(entry.substr(colon + 1, equals - colon - 1))};
+      const auto seconds = entry.substr(0, colon);
+      const auto value = entry.substr(equals + 1);
+      std::from_chars(seconds.data(), seconds.data() + seconds.size(), set.seconds);
+      std::from_chars(value.data(), value.data() + value.size(), set.value);
+      test_sets.push_back(set);
+    }
+    renodx::utils::log::i(std::format("[Shogun 2 DLSS] Test: {} timed settings from RENODX_TW_SET", test_sets.size()));
+  }
   twshogun2::game_dlss::SetEvaluateCallback([](ID3D11DeviceContext* context, NVSDK_NGX_D3D11_DLSS_Eval_Params* eval) {
+    if (int64_t expected = 0; first_evaluation.load(std::memory_order_relaxed) == 0) {
+      first_evaluation.compare_exchange_strong(expected, std::chrono::steady_clock::now().time_since_epoch().count());
+    }
+    if (const std::array<uint32_t, 2> size = {eval->InRenderSubrectDimensions.Width, eval->InRenderSubrectDimensions.Height};
+        size != evaluated_size) {
+      evaluated_size = size;
+      const auto display = twshogun2::game_dlss::DisplaySize();
+      renodx::utils::log::i(std::format("[Shogun 2 DLSS] Evaluating {}x{} -> {}x{}, jitter ({:.4f}, {:.4f})", size[0],
+                                        size[1], display[0], display[1], eval->InJitterOffsetX, eval->InJitterOffsetY));
+    }
     twshogun2::render_scale::EndScaling();
     twattila::texture_lod_bias::SetBias(0.f);
     twshogun2::object_velocity::OnEvaluate(context, eval);
@@ -1010,6 +1098,18 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   });
   // Frame generation takes over the game's swap chain, which it makes after its device.
   talesofarise::frame_generation::LoadSettings("Shogun 2 DLSS", &frame_generation);
+  renodx::utils::log::i(std::format(
+      "[Shogun 2 DLSS] Options: render scale {} ({}% custom), preset {}, texture LOD bias {}, jitter {}, object motion {}, "
+      "frame generation {}, particle resolution {}, SSR resolution {}, SSS samples {} stability {}, shadow map {} "
+      "stability {}, sun shadow softness {}, grass {} model {} unit {} / {} / {} terrain {}",
+      render_scale_choice, render_scale_percent, preset, texture_lod_bias_choice.load(), jitter_enabled.load(),
+      twshogun2::object_velocity::Enabled(), frame_generation, particle_resolution.load(), ssr_resolution, sss_samples,
+      sss_stability, shadow_map_resolution, shadow_map_stability, sun_shadow_softness, grass_distance, model_detail,
+      unit_detail, unit_animation, unit_variety, terrain_detail.load()));
+  for (const auto& shader : SUN_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnSunDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader);
+  }
   if (frame_generation) {
     std::wstring module_path(32768, L'\0');
     module_path.resize(GetModuleFileNameW(module, module_path.data(), static_cast<DWORD>(module_path.size())));
@@ -1048,6 +1148,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
   if (attached) {
     twshogun2::frame_trace::Stop();
     renodx::utils::command_action::Unregister(OnTonemapper);
+    renodx::utils::command_action::Unregister(OnSunDraw);
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     twshogun2::dlss_jitter::Use(DLL_PROCESS_DETACH);
