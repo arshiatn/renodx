@@ -11,6 +11,7 @@
 
 #include <d3d11.h>
 #include <wrl/client.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <format>
@@ -1724,6 +1725,52 @@ void OnDestroyFogShadowsDevice(reshade::api::device* device) {
   state.device = nullptr;
 }
 
+// Ray-Traced Water Reflections (Experimental, off; tools\tw\pharaoh\reflections_plan.md): the water is the only surface the
+// game's screen-space reflections touch (ssr_new: extract_mask 45A733D3 takes the G-buffer's channel 3 alpha bit 64, which only
+// the sea and the rivers write). The rays are traced once a frame at backward_ssr 9A55B7F2, after the water's G-buffer and
+// light: rt_scene's Reflections with the water's depth (t1: the positions and the guides again from it, rt_host's
+// rewrite_guides) and this frame's light (t3, R16G16B16A16F: rt_host's light_copy). Under the game's MSAA (its multisampled
+// views t2 / t4 bound) the game's reflections stay.
+struct WaterReflections {
+  std::shared_mutex mutex;
+  bool msaa_logged = false;
+};
+WaterReflections water_reflections;
+bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
+  if (rt_sliders.reflections == 0.f || rt_sliders.water_reflections == 0.f || !twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) {
+    return true;
+  }
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return true;
+  // t1 the depth, t2 its multisampled view, t3 the light, t4 its multisampled view (9A55B7F2's RDEF; one sample: t2 / t4 are t1 / t3).
+  std::array<ID3D11ShaderResourceView*, 4> inputs = {};
+  native->CSGetShaderResources(1, static_cast<UINT>(inputs.size()), inputs.data());
+  const bool multisampled = std::ranges::any_of(inputs, [](ID3D11ShaderResourceView* view) {
+    if (view == nullptr) return false;
+    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+    view->GetResource(resource.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    D3D11_TEXTURE2D_DESC desc = {};
+    if (SUCCEEDED(resource.As(&texture))) texture->GetDesc(&desc);
+    return desc.SampleDesc.Count > 1;
+  });
+  if (!multisampled) {
+    const twattila::rt_scene::internal::ComputeState kept(native);
+    twattila::rt_scene::Reflections(native, inputs[0], inputs[2]);
+  }
+  for (auto* view : inputs) {
+    if (view != nullptr) view->Release();
+  }
+  if (multisampled) {
+    const std::unique_lock lock(water_reflections.mutex);
+    if (!std::exchange(water_reflections.msaa_logged, true)) {
+      renodx::utils::log::i("[Total War] Ray-Traced Water Reflections: the game's MSAA is on, the game's reflections stay.");
+    }
+  }
+  return true;
+}
+
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
@@ -2627,6 +2674,8 @@ bool AttachAddon() {
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
+  // Ray-Traced Water Reflections: traced at backward_ssr (OnBackwardSsr).
+  custom_shaders[0x9A55B7F2] = {.crc32 = 0x9A55B7F2, .on_draw = &OnBackwardSsr};
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube starts at
@@ -2694,6 +2743,10 @@ bool AttachAddon() {
   };
   // The point light PS's diffuse scale (E318CE77's literal 0x389FB405, Warhammer III's).
   rt_host.local_light_scale = 7.615242e-05f;
+  // The water's reflections (OnBackwardSsr): its guides again from the sun draw's G-buffer channels, the water drawn into them
+  // since (TW_HOST's RewriteGuides reads PS slots 0-2, stale at backward_ssr's dispatch), and its R16G16B16A16F light copied.
+  rt_host.rewrite_guides = twattila::anti_aliasing::RewriteSunGuides;
+  rt_host.light_copy = __rt_light_copy;
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // The point lights (siege trace: one instanced draw, VS E19549A1 with PS E318CE77, after the sun draw F883F5B2; fire02 reads

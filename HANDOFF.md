@@ -8,8 +8,10 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
   unchanged); WH3's own copy, its texture and its log line gone. WARP tools/tw/warp_tests/light_copy_v56: old WH3 path against
   the new, 0 texels apart in 4 cases (100%, a share, odd sizes, NaN / inf / negatives), outside the traced size kept; CONTROL
   b0 = whole buffer 207 apart. Dumps page_w_v63 / page_a_v167: the build date only. Log: "Ray-traced reflections: tracing" now
-  says ", the water from its own surface" when water_traced.
-- [ ] 2 Pharaoh: rt_host.rewrite_guides = RewriteSunGuides + light_copy; backward_ssr 9A55B7F2 hook (Reflections, depth t1, light t3)
+  says ", the water from its own surface" when water_traced. (27cc31a8)
+- [x] 2 Pharaoh: rt_host.rewrite_guides = RewriteSunGuides + light_copy; backward_ssr 9A55B7F2 hook (custom_shaders on_draw
+  OnBackwardSsr: Reflections under ComputeState with depth t1, light t3; nothing under the game's MSAA: t2 / t4 multisampled,
+  one log line). Traces only; the game's chain still runs (step 3 leaves it out). Built clean (only the old LoadSetting warning).
 - [ ] 3 Pharaoh: DE4F92CD replaced (our copy only where the rays left from the water), 9A55B7F2 + 0B78827B + 20 mips skipped then
 - [ ] 4 WARP parity (tools/tw/warp_tests/pharaoh/ssr_v56): t47 unbound 0 apart, the formula with t47, CONTROL, render scale
 - [ ] 5 page: has_reflections, reflection_pass, Water Reflections Experimental off; dump p_v58 vs p_v57 (only the new rows)
