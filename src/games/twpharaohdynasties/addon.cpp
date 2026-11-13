@@ -44,6 +44,7 @@
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "../twattila/view_share.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./dead_units.hpp"
@@ -2017,10 +2018,13 @@ constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
 // out as there: the game draws them unlit (material 10) and gives them no shadow.
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{{.hash = 0x2F2A0E7E}, {.hash = 0x8DE94E2F}}};
 
-// The game's passes that read render-size textures at the display's size (texture slots), below 100%. The AO blurs
-// (7F637259 / BFD285BD) are replaced (shaders/ssao_blur.hlsli): a region read scaled their taps with their uv.
+// The game's passes that read render-size textures at the display's size (texture slots), below 100%. The glow bright
+// pass (after DLSS, VS 31C49ED2's uv 0-1 over the display) also reads the campaign's clouds at t0 (t_shroud_clouds, the
+// shroud's half-size buffer drawn by 5EB2FDE8; a 1024 x 1024 stand-in in battles, its read gated off there), so its t1
+// says whether the share applies. The AO blurs (7F637259 / BFD285BD) are replaced (shaders/ssao_blur.hlsli): a region
+// read scaled their taps with their uv.
 constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
-    {.shader_hash = 0x57E5140E, .slots = 0b110},  // glow bright pass (after DLSS)
+    {.shader_hash = 0x57E5140E, .slots = 0b111, .size_slot = 1},  // glow bright pass
 }};
 // The game's 3D sprites (sprite.hlsl vertex_3d_gamma: the unit markers) drawn at the display's size after the tone mapper
 // against the scene's depth (battle f07e0, siege 3aa60) and, in the battle, its copy (ec5e0): both stretched below 100%.
@@ -2849,7 +2853,10 @@ bool AttachAddon() {
   // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once
   // each: b0-b5 up to 1 KB (camera b1 with camera_near_far at c25, shadowmap_PS b2's splits and baked map,
   // lighting_VS_PS b4's sun and ambient cube, directional_light_PS b5; the tone mapper's camera b0 and tone_mapping b1).
-  // The 3D sprites' depth stretched below 100%, the scene's depth's copy too (FULL_DEPTH_SHADERS).
+  // The 3D sprites' depth stretched below 100%, the scene's depth's copy too (FULL_DEPTH_SHADERS). The game maps many uvs to
+  // its viewport itself (uv x (c29.zw x c31.xy): the fog's shadow ranges 99164788 and sun scan DB53BDDC, the shroud, the sun
+  // shaders' SSEO, the SSR ray cast; tools\tw\pharaoh\v58\census_pharaoh.txt): view_share leaves them.
+  twattila::view_share::SetViewportChains(true);
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,

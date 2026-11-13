@@ -199,9 +199,11 @@ inline uint32_t SourceComponent(const Operand& operand, uint32_t component) {
 }
 
 // Where temp `reg`'s `components` (mask) were last made before instruction `index`: from the camera's texture size
-// (TEXTURE), its viewport (VIEW) or unknown.
+// (TEXTURE), its viewport (VIEW) or unknown. `viewport_chains`: a product (mul, mad, div) with any factor made from the
+// viewport is VIEW (the game's own mapping to its viewport, which the render scale rewrites: uv x (c29.zw x c31.xy)),
+// whatever its first factor is.
 inline Source Classify(const std::vector<Instruction>& code, size_t index, uint32_t reg, uint32_t components,
-                       const Reflection& reflection, int depth = 0) {
+                       const Reflection& reflection, int depth = 0, bool viewport_chains = false) {
   if (depth > 8) return Source::UNKNOWN;
   for (size_t at = index; at-- > 0;) {
     const Instruction& instruction = code[at];
@@ -210,6 +212,26 @@ inline Source Classify(const std::vector<Instruction>& code, size_t index, uint3
     if (destination.type != TYPE_TEMP || destination.mode != 0 || destination.relative || destination.index[0] != reg
         || (destination.select & components) == 0) {
       continue;
+    }
+    // The components of a temp source this instruction reads for those components.
+    const auto read_of = [&](const Operand& operand) {
+      uint32_t read = 0;
+      for (uint32_t component = 0; component < 4; ++component) {
+        if ((destination.select & components & (1u << component)) != 0) read |= 1u << SourceComponent(operand, component);
+      }
+      return read;
+    };
+    if (viewport_chains && (instruction.opcode == OP_MUL || instruction.opcode == OP_MAD || instruction.opcode == OP_DIV)) {
+      const size_t factors = (instruction.opcode == OP_MAD) ? 3 : instruction.operands.size();
+      for (size_t source = 1; source < factors; ++source) {
+        const Operand& operand = instruction.operands[source];
+        if (operand.relative) continue;
+        const bool view = (operand.type == TYPE_CONSTANT_BUFFER && operand.index[0] == reflection.camera_slot
+                           && CameraRegister(reflection, operand.index[1]) == Source::VIEW)
+                          || (operand.type == TYPE_TEMP
+                              && Classify(code, at, operand.index[0], read_of(operand), reflection, depth + 1, true) == Source::VIEW);
+        if (view) return Source::VIEW;
+      }
     }
     // Its sources read for those components.
     for (size_t source = 1; source < instruction.operands.size(); ++source) {
@@ -222,11 +244,7 @@ inline Source Classify(const std::vector<Instruction>& code, size_t index, uint3
       const Operand& operand = instruction.operands[source];
       if (operand.type == TYPE_INPUT) return Source::UNKNOWN;
       if (operand.type != TYPE_TEMP || operand.relative) continue;
-      uint32_t read = 0;
-      for (uint32_t component = 0; component < 4; ++component) {
-        if ((destination.select & components & (1u << component)) != 0) read |= 1u << SourceComponent(operand, component);
-      }
-      const Source found = Classify(code, at, operand.index[0], read, reflection, depth + 1);
+      const Source found = Classify(code, at, operand.index[0], read_of(operand), reflection, depth + 1, viewport_chains);
       if (found != Source::UNKNOWN) return found;
     }
     return Source::UNKNOWN;
@@ -283,6 +301,49 @@ inline bool ReadAsCoordinate(const std::vector<Instruction>& code, size_t index,
   return false;
 }
 
+// Whether temp `reg`'s `components` written at `index` are first read by a product (mul, mad) whose other factor is made
+// from the viewport (the game's own mapping to it: Pharaoh's battlefog sun_scan, (c29.xy x c31.zw) x the projected uv).
+inline bool ScaledByViewport(const std::vector<Instruction>& code, size_t index, uint32_t reg, uint32_t components,
+                             const Reflection& reflection) {
+  for (size_t at = index + 1; at < code.size(); ++at) {
+    const Instruction& instruction = code[at];
+    if (instruction.operands.empty()) continue;
+    const bool product = instruction.opcode == OP_MUL || instruction.opcode == OP_MAD;
+    // The temp components an operand reads: a product's for the components it writes, any other's all it selects.
+    const auto read_of = [&](const Operand& operand) {
+      uint32_t read = 0;
+      for (uint32_t component = 0; component < 4; ++component) {
+        if (!product || (instruction.operands[0].select & (1u << component)) != 0) read |= 1u << SourceComponent(operand, component);
+      }
+      return read;
+    };
+    const auto ours = [&](const Operand& operand) {
+      return operand.type == TYPE_TEMP && !operand.relative && operand.index[0] == reg && (read_of(operand) & components) != 0;
+    };
+    bool reads = false;
+    for (size_t source = 1; source < instruction.operands.size() && !reads; ++source) reads = ours(instruction.operands[source]);
+    if (reads) {
+      if (!product) return false;
+      // The factors (mul's two, mad's first two).
+      for (size_t source = 1; source < 3; ++source) {
+        const Operand& operand = instruction.operands[source];
+        if (ours(operand) || operand.relative) continue;
+        if (operand.type == TYPE_CONSTANT_BUFFER && operand.index[0] == reflection.camera_slot) {
+          if (CameraRegister(reflection, operand.index[1]) == Source::VIEW) return true;
+        } else if (operand.type == TYPE_TEMP && Classify(code, at, operand.index[0], read_of(operand), reflection, 0, true) == Source::VIEW) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const Operand& destination = instruction.operands[0];
+    if (destination.type == TYPE_TEMP && destination.mode == 0 && destination.index[0] == reg && (destination.select & components) == components) {
+      return false;
+    }
+  }
+  return false;
+}
+
 // The patched code (empty: nothing to patch) and what was patched, for the log.
 struct Patched {
   std::vector<uint8_t> code;
@@ -294,8 +355,9 @@ struct Patched {
 
 // `region_slots`: the texture slots (bit per slot) whose reads take the frame's render share (render-space textures
 // read by a pass at the display's size: after DLSS, or a full-size pass); the reads of `reflection.whole_slots` take
-// the draw's share out.
-inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection, uint64_t region_slots = 0) {
+// the draw's share out. `viewport_chains` (Install's): a uv or a projected uv the game itself scales by its viewport
+// (c29, which the render scale rewrites) is the view's already, not patched.
+inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection, uint64_t region_slots = 0, bool viewport_chains = false) {
   Patched result;
   if (reflection.slot_taken) return result;
   const bool camera = reflection.camera_slot != UINT32_MAX && reflection.screen != UINT32_MAX;
@@ -360,7 +422,7 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
       const Operand& source = instruction.operands[1];
       if (source.type != TYPE_TEMP || source.relative || source.mode != 1) continue;
       const uint32_t read = (1u << SourceComponent(source, components[0])) | (1u << SourceComponent(source, components[1]));
-      if (Classify(instructions, index, source.index[0], read, reflection) == Source::TEXTURE) {
+      if (Classify(instructions, index, source.index[0], read, reflection, 0, viewport_chains) == Source::TEXTURE) {
         sites.push_back({.instruction = index, .kind = Kind::NDC, .components = components});
       }
     } else if (camera && MadWith(instruction, HALF, MINUS_HALF, HALF, HALF, &components, true)) {
@@ -370,8 +432,10 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
       // overlay, decals' own).
       if (source.type != TYPE_TEMP || source.relative) continue;
       const uint32_t read = (1u << SourceComponent(source, components[0])) | (1u << SourceComponent(source, components[1]));
+      const uint32_t written = (1u << components[0]) | (1u << components[1]);
       if (Classify(instructions, index, source.index[0], read, reflection) == Source::CAMERA_PROJECTION
-          && (compute || ReadAsCoordinate(instructions, index, destination.index[0], (1u << components[0]) | (1u << components[1])))) {
+          && (compute || ReadAsCoordinate(instructions, index, destination.index[0], written))
+          && !(viewport_chains && ScaledByViewport(instructions, index, destination.index[0], written, reflection))) {
         sites.push_back({.instruction = index, .kind = Kind::PROJECTED, .components = components});
       }
     } else {
@@ -537,6 +601,7 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
 struct Reads {
   uint64_t region_slots = 0;
   bool whole = false;
+  uint32_t size_slot = UINT32_MAX;  // RegionRead's
 };
 
 struct Runtime {
@@ -551,6 +616,7 @@ struct Runtime {
   // The addon's region reads by the game's shader hash, and the whole textures' names (Install).
   std::unordered_map<uint32_t, Reads> region_reads;
   std::vector<std::string> whole_textures;
+  bool viewport_chains = false;  // SetViewportChains'
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11Buffer> constants;
   std::array<float, 4> uploaded = {};
@@ -586,7 +652,8 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
         continue;
       }
       const auto region = runtime.region_reads.find(hash);
-      Patched patched = Patch(code, reflection, region != runtime.region_reads.end() ? region->second.region_slots : 0);
+      Patched patched = Patch(code, reflection, region != runtime.region_reads.end() ? region->second.region_slots : 0,
+                              runtime.viewport_chains);
       if (patched.region == 0) {
         runtime.region_reads.erase(hash);
       }
@@ -697,7 +764,7 @@ constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::uti
   if (reads->region_slots != 0) {
     // Region reads of a texture the 3D draws at render scale: the display's size (or a halving of it); others (a small
     // view's own) whole.
-    const auto slot = static_cast<UINT>(std::countr_zero(reads->region_slots));
+    const auto slot = static_cast<UINT>((reads->size_slot != UINT32_MAX) ? reads->size_slot : std::countr_zero(reads->region_slots));
     ComPtr<ID3D11ShaderResourceView> view;
     if constexpr (COMPUTE) {
       native->CSGetShaderResources(slot, 1, view.GetAddressOf());
@@ -843,12 +910,24 @@ struct RegionRead {
   // A half-size pass that draws its whole target while scaled (not the render scale's part of it, which would halve
   // its detail again): its output then holds the whole view, which its readers (Install's `whole_textures`) read so.
   bool whole = false;
+  // The slot whose texture's size says whether the frame's share applies (the display's or a halving of it), for every
+  // region read of the shader; UINT32_MAX: the lowest region slot. Pharaoh's glow bright pass: its t0 (the campaign's clouds)
+  // is a 1024 x 1024 stand-in in battles, its t1 the render-size glow.
+  uint32_t size_slot = UINT32_MAX;
 };
 
 // The names Attila's, Thrones of Britannia's and Rome II's shaders give their whole passes' outputs: the AO blur's
 // (ssao.hlsl blur_y, read by the lights) and the water refraction's (waterrefraction.hlsl: s_terrain_refraction in rivers
 // and lakes, refraction_texture_sampler in ocean and the campaign's sea and lakes, s_refraction_sampler in ocean2).
 constexpr std::array<const char*, 4> WHOLE_TEXTURES = {"s_ssao", "s_terrain_refraction", "refraction_texture_sampler", "s_refraction_sampler"};
+
+// A game whose shaders map their uvs to the viewport themselves (Pharaoh: uv x (g_viewport_dimensions.zw x
+// g_render_target_dimensions.xy) in its fog, shroud, sun shaders' SSEO and SSR ray cast, which the render scale's c29 then
+// makes right): those uvs are not patched again (Patch's `viewport_chains`). Before the game creates its shaders.
+inline void SetViewportChains(bool on) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::runtime.viewport_chains = on;
+}
 
 // `vertex_shaders`: the game's vertex shaders (by hash) the addon replaces with render_scale ones (cb12 at b12);
 // `whole_textures`: the names the game's shaders give the whole passes' outputs.
@@ -860,6 +939,7 @@ inline void Install(std::span<const RegionRead> region_reads = {}, std::span<con
       auto& reads = internal::runtime.region_reads[read.shader_hash];
       reads.region_slots |= read.slots;
       reads.whole |= read.whole;
+      if (read.size_slot != UINT32_MAX) reads.size_slot = read.size_slot;
     }
     internal::runtime.whole_textures.assign(whole_textures.begin(), whole_textures.end());
   }

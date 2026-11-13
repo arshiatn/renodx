@@ -26,6 +26,13 @@ float2 CameraRenderShare(float4 screen_size, float4 viewport_dimensions) {
   return all(abs(camera - frame) < 0.0020006893f) ? frame : float2(1.f, 1.f);
 }
 
+// A texture the 3D drew (`size`: its own) sampled after DLSS at a display uv: uv x the frame's share, held on the share's
+// last texel as a clamp sampler holds it on the texture's at 100% (then `uv` itself).
+float2 RenderShareUv(float2 uv, float2 size) {
+  const float2 share = FrameRenderShare();
+  return all(share >= 1.f) ? uv : min(uv * share, share - 0.5f / size);
+}
+
 // A texel of a texture the 3D drew (Load coordinates, mip / sample index kept) read at the display's size.
 int2 RenderShareTexel(float2 texel) {
   return int2(texel * FrameRenderShare());

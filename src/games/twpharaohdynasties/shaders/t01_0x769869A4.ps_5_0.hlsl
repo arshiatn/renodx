@@ -470,7 +470,10 @@ void main(
         r0.z = exp2(r0.z);
         r2.w = cmp(0 != g_campaign_map_size.x);
         if (r2.w != 0) {
-          r0.x = t_shroud_clouds.SampleLevel(s_shroud_clouds_s, r0.xy, 0).w;
+          // The campaign's clouds (the shroud's half-size buffer) at the render share below 100%.
+          float2 cloud_size;
+          t_shroud_clouds.GetDimensions(cloud_size.x, cloud_size.y);
+          r0.x = t_shroud_clouds.SampleLevel(s_shroud_clouds_s, RenderShareUv(r0.xy, cloud_size), 0).w;
           r0.z = r0.z * r0.x;
         }
         r0.x = cmp(r5.z == 1.000000);

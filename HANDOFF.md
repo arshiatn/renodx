@@ -16,10 +16,21 @@ Each step committed and pushed to origin atn-mods.
   AO viewport = the top-left rectangle). Fix: Reflect takes a code with no RDEF that declares cb12 as render_scale (shared: every
   TW addon's render_scale replacements, the same bug). Second: the AO blurs' REGION read scales the taps too (a third of a texel
   apart at 33%): blurs replaced, base uv x share, taps in texels.
-- [ ] 2 clouds below 100%: post-DLSS reads of the shroud's cloud alpha (5EB2FDE8's 1920x1080 output) at the display uv: glow
-  bright pass 57E5140E t0 (region slots 0b111, view_share's display-size test over any region slot) and t03 60683951 t2
-  (x FrameRenderShare). Over-patches (Classify followed one source: c27 x (c29 x c31) corrected twice): 99164788, DB53BDDC,
-  5EB2FDE8. Sweep: tools\tw\pharaoh\v58\scale_census.md.
+- [x] 2 (step 2 commit) clouds below 100%: the campaign's clouds (t_shroud_clouds, the shroud's half-size buffer that
+  5EB2FDE8 draws at the render scale) were read after DLSS at the display uv (the clouds slid toward the top left): the glow
+  bright pass 57E5140E t0 (region slots 0b111, RegionRead::size_slot 1: t1's size says whether the share applies; t0 is a
+  1024 x 1024 stand-in in battles) and the six replaced tone mappers t01-t04 / dof00 / dof01 (render_scale.hlsli RenderShareUv:
+  uv x share, held on the share's last texel). Over-patches: Pharaoh's shaders map uvs to the viewport themselves (c29.xy x c31.zw
+  or c29.zw x c31.xy); view_share SetViewportChains(true) (Pharaoh only) leaves a uv / projected uv any of whose factors is the
+  viewport. Proof tools\tw\warp_tests\pharaoh\patch_v58 (run_v58.txt): chains off = HEAD's Patch byte-identical on every shader of
+  10 TW dumps (Attila 2418, Rome II 2257, Thrones 2372, Troy 2882, WH1 2623, WH2 3595, WH3 2584, Pharaoh 2897, Shogun 2 1074, Rome
+  Remastered 672); chains on, Pharaoh: exactly the census's 35 over-patches change (24 sun SSEO, 7 shroud_plane, 99164788,
+  0CB1C821, 6ECC6281's 1 of 2, DB53BDDC's projected). WARP tools\tw\warp_tests\pharaoh\scale_v58 (run_v58.txt, PASS, 3x vs
+  100%, point samplers, pixel 3x+1): (E) 57E5140E v58 0 of 12,288 apart (1e-5; 10 not bit-equal, 4e-6: v1's interpolation),
+  CONTROL v57 slots 4,950 apart; (F) the clouds line, display-size and half-size clouds: 0 bits apart, CONTROL old line 12,288 /
+  12,284 apart; all six built tone mappers declare cb12; (G) 99164788 the game's bytes (= v58) 0 bits apart, CONTROL v57 692
+  apart; (H) DB53BDDC: visibility 0 apart, sun uv x 3 equal, CONTROL v57 visibility apart. Left (listed, not fixed): 99164788's
+  5x5 taps spaced by the buffer's size (a third at 33%: mean 0.025 against v57's 0.052), DB53BDDC's edge fade from the texture uv.
 - [ ] 3 campaign casters (tools\tw\pharaoh\v58\caster_census.md): palms = 1C4B8681 (campaign_trees, not in SCENE_SHADERS;
   atlas via DC5FE525 + 985F8494), 1ACBD907 + D24616D0 (and 730C5322 / 509F97FB / 85E52BED / A6C653E1) not in BUILDING_MASKS,
   58733DB8 campaign blend-mask terrain, 026CBC61 global terrain mesh; 6A599241's alpha-tested PS solid.
