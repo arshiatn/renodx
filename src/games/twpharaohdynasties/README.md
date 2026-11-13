@@ -40,7 +40,7 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     shadows soft and calm.
 23. v65 (helper109), the RT/PT preset, a battle: the same picture as v64, the helper's frame time no higher.
 
-### Round v65 (2026-11-13, CPU round; built only: not stamped, installed or run in game; helper109)
+### Round v65 (2026-11-13, CPU round; stamped and installed 21:04 with helper109, not run in game)
 
 - **Faster** (Attila v158's): **the helper keeps the plant sway's GPU buffers** (the RT/PT preset, or Swaying Shadows
   Range above 0 m or Off-Screen Sway off): helper107-108 made and freed three of them (16 MiB) every frame, in ATN's GPU

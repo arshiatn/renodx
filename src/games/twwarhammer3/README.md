@@ -1,6 +1,6 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
-## v57 (2026-11-13, CPU round; built only: not stamped, installed or run in game; renodx-tw-dlaa64.exe helper109)
+## v57 (2026-11-13, CPU round; stamped and installed 21:04 with renodx-tw-dlaa64.exe helper109, not run in game)
 
 - Faster (Attila v158's): **the helper keeps the plant sway's GPU buffers** (the RT/PT preset, or Swaying Shadows Range
   above 0 m or Off-Screen Sway off): helper107-108 made and freed three of them (16 MiB) every frame, in ATN's GPU

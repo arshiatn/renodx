@@ -219,6 +219,10 @@ change goes in an Experimental row, off. One commit + push to origin atn-mods pe
   - READMEs: Attila v158, WH3 v57, Pharaoh Round v65 (+ its test line 23), built only (6a571f63). Skill:
     helper-fg-stability.md section 3 (ComPtr's releasing operator&), rt-scene.md section 5, testing.md suites.
 
+- [x] (coordinator) rebuilt at HEAD 21:02-21:03 (64c640dd), STAMPED + INSTALLED 21:04 (tools/tw/round_v151/install_v65.py):
+  Attila v158, WH3 v57, Pharaoh v65, helper109 in all three; ATN files unchanged by hash; old files .in-use-20261113_210411.
+- [ ] The scrub race (two threads scaling one model first): fix it under the lock (a bug: models keep farther LODs
+  than the slider); queued for the next Attila round.
 ## PHARAOH V64: TORCH SHADOWS + DEBUG VIEWS (2026-11-13 evening, offline; Pharaoh v63 / helper107 installed)
 Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, never
 restart. Committed Bytes under 60 GB and no game process before WARP / harness / GPU jobs, one GPU job at a time.
