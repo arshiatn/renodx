@@ -39,6 +39,7 @@
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "./ray_tracing.hpp"
 #include "./upscaling.hpp"
+#include "../twattila/reflex.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 #include "./vfx_effects.hpp"
@@ -375,6 +376,7 @@ void BuildRuntimeData() {
     custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
       render_scale::Set(1.f, 1.f);
       if (ray_tracing_installed) twshogun2::ray_tracing::OnTonemapDrawn(cmd_list);
+      twshogun2::upscaling::KeepFrame(cmd_list);
     };
   }
   // The heat haze's distortion texture was drawn with DLSS's jitter (tonemap01 reads it there).
@@ -1028,8 +1030,19 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     ReadDlssAddonOptions();
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  // The helper's bridge: what it serves this frame (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
-  const auto [upscaler, ray_reconstruction] = twshogun2::hdr_link::Choices();
+  // The helper's frame generation and Reflex (the DLSS addon's rows), the bridge: what it serves this frame
+  // (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
+  const auto choices = twshogun2::hdr_link::ChoicesNow();
+  twattila::frame_generation::Update({
+      .multiplier = choices.frame_generation,
+      .reflex_boost = choices.reflex == 2,
+      .frame_limit = choices.frame_limit,
+      .preset = choices.frame_preset,
+      .hud_recomposition = choices.hud_recomposition,
+      .debug_view = choices.frame_debug_view,
+      .sdr_output = !IsHdrOutput(),
+  });
+  twattila::reflex::Update(swapchain, choices.reflex, choices.frame_limit);
   auto rays = ray_tracing_settings;
   const bool any_rays = ray_tracing_installed
                         && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights);
@@ -1037,12 +1050,14 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
       .ray_tracing = ray_tracing_installed,
       .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
       .reflections = ray_tracing_installed && rays.reflections,
-      .upscaler = upscaler,
-      .ray_reconstruction = any_rays ? ray_reconstruction : 0u,
+      .upscaler = choices.upscaler,
+      .ray_reconstruction = any_rays ? choices.ray_reconstruction : 0u,
+      .frame_format = twattila::frame_generation::Format(),
+      .frame_backend = choices.frame_backend,
   });
   if (ray_tracing_installed) {
     // NRD reads the upscaler's motion and depth: only with the helper's.
-    rays.nrd = rays.nrd && upscaler != 0;
+    rays.nrd = rays.nrd && choices.upscaler != 0;
     twattila::light_bounce::SetRayTraced(rays.light_bounce, rays.light_bounce_resolution);
     twshogun2::ray_tracing::Update(rays);
     if (twshogun2::hdr_link::TakeProfileRequest()) twattila::rt_scene::StartProfile();
@@ -1203,6 +1218,15 @@ void ConfigureAddon() {
 
 }  // namespace
 
+// The game's device is going away: frame generation's and Reflex's objects on it with it.
+void OnDestroyHelperDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
+}
+
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War: SHOGUN 2 Complete Edition by ATN";
 
@@ -1243,6 +1267,12 @@ bool AttachAddon() {
     twshogun2::ray_tracing::Install();
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
   }
+  // Frame generation (the helper presents; HUD-less images through the swap chain shader, its constants at b13) and
+  // Reflex for the game's own presents.
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10);
+  twattila::reflex::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
   // After the ray tracing's: the bridge released last.
   reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::upscaling::OnDestroyDevice);
   // One line for a run's log (2026-11-14 data run): the DLSS addon's options this addon reads.
@@ -1286,6 +1316,9 @@ void DetachAddon() {
     reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
   }
   reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::upscaling::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::reflex::Uninstall();
+  twattila::frame_generation::Uninstall();
   twshogun2::hdr_link::SetUpscale(nullptr);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
