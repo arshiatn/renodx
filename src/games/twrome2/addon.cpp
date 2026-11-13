@@ -1124,6 +1124,8 @@ tw::engine_tweaks::Option dead_units;
 tw::engine_tweaks::Option model_detail;
 tw::engine_tweaks::Option terrain_detail;
 tw::engine_tweaks::Option building_detail;
+// Campaign Tree Detail (Attila's): the engine's rigid_campaign_tree_lod alone (Rome II's tree hook isn't in graphics_hooks).
+tw::engine_tweaks::Option campaign_trees;
 // Shadow Map Size: the game's shadowmap_extreme_quality (8192 at the highest Shadows setting).
 tw::engine_tweaks::Option shadow_map = {.scale = 0.f};
 // Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
@@ -1513,7 +1515,8 @@ void ConfigureAddon() {
     auto more = more_tests::MoreTests();
     engine_tests.insert(engine_tests.end(), more.begin(), more.end());
   }
-  graphics_options = {&model_detail, &terrain_detail, &building_detail, &shadow_map};
+  campaign_trees.tweaks = {{.name = "rigid_campaign_tree_lod"}};
+  graphics_options = {&model_detail, &terrain_detail, &building_detail, &campaign_trees, &shadow_map};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
   graphics_status = tw::engine_tweaks::StatusLine();
   // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all
@@ -1534,6 +1537,7 @@ void ConfigureAddon() {
       {"GraphicsModelDetail", 1.f},
       {"GraphicsTerrainDetail", 1.f},
       {"GraphicsBuildingDetail", 1.f},
+      {"GraphicsCampaignDetail", 1.f},
   };
   const std::vector<std::pair<std::string, float>> graphics_max = {
       {"GraphicsShadowMapSize", 1.f},
@@ -1548,10 +1552,17 @@ void ConfigureAddon() {
       {"GraphicsModelDetail", 8.f},
       {"GraphicsTerrainDetail", 4.f},
       {"GraphicsBuildingDetail", 8.f},
+      {"GraphicsCampaignDetail", 4.f},
   };
-  // ATN's own settings: every graphics setting at its default but these.
-  auto graphics_atn = graphics_defaults;
-  for (const auto& [key, value] : std::vector<std::pair<std::string, float>>{
+  // ATN's own settings: every graphics setting at its default but `changes`.
+  const auto atn_preset = [&graphics_defaults](const std::vector<std::pair<std::string, float>>& changes) {
+    auto values = graphics_defaults;
+    for (const auto& [key, value] : changes) {
+      std::ranges::find(values, key, &std::pair<std::string, float>::first)->second = value;
+    }
+    return values;
+  };
+  const auto graphics_atn = atn_preset({
       {"GraphicsUnitDetailSmall", 2.f},
       {"GraphicsUnitDetailMedium", 2.f},
       {"GraphicsUnitDetailLarge", 2.f},
@@ -1563,9 +1574,21 @@ void ConfigureAddon() {
       {"GraphicsTerrainDetail", 4.f},
       {"GraphicsBuildingDetail", 8.f},
       {"GraphicsShadowMapSize", 1.f},
-       }) {
-    std::ranges::find(graphics_atn, key, &std::pair<std::string, float>::first)->second = value;
-  }
+  });
+  // Attila's "With my 4x / 8x unit sizes" (the Unit Sizes mod): the CPU-heavy unit distances down, sprites nearer.
+  const auto graphics_atn_large_units = atn_preset({
+      {"GraphicsUnitDetailSmall", 0.69f},
+      {"GraphicsUnitDetailMedium", 0.69f},
+      {"GraphicsUnitDetailLarge", 0.69f},
+      {"GraphicsUnitDetailHuge", 0.69f},
+      {"GraphicsDeadUnits", 0.5f},
+      {"GraphicsUnitAnimation", 1.5f},
+      {"GraphicsUnitVariety", 3.f},
+      {"GraphicsFootstepEffects", 3.f},
+      {"GraphicsBuildingDetail", 3.f},
+      {"GraphicsCampaignDetail", 4.f},
+      {"GraphicsShadowMapSize", 1.f},
+  });
   settings.insert(settings.end(), {
       tw::engine_tweaks::Note(),
       new renodx::utils::settings::Setting{
@@ -1593,6 +1616,15 @@ void ConfigureAddon() {
                      "Terrain Detail 4x, Building Detail 8x, Shadow Map Size 8192. The rest at its default.",
           .on_change = [graphics_atn]() { renodx::utils::settings::UpdateSettings(graphics_atn); },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "With my 4x / 8x unit sizes",
+          .section = "Graphics (Experimental)",
+          .group = "graphics-presets",
+          .tooltip = "Unit Detail 0.69x, Dead Unit Detail 0.50x, Unit Animation 1.50x, Unit Variety and Footstep Effects 3x,\n"
+                     "Building Detail 3x, Campaign Tree Detail 4x, Shadow Map Size 8192. The rest at its default.",
+          .on_change = [graphics_atn_large_units]() { renodx::utils::settings::UpdateSettings(graphics_atn_large_units); },
+      },
       unit_distance(0, "GraphicsUnitDetailSmall", "Unit Detail: Foot Soldiers", "foot soldiers"),
       unit_distance(1, "GraphicsUnitDetailMedium", "Unit Detail: Cavalry", "cavalry"),
       unit_distance(2, "GraphicsUnitDetailLarge", "Unit Detail: Elephants", "elephants and other large units"),
@@ -1618,6 +1650,8 @@ void ConfigureAddon() {
       tw::engine_tweaks::Slider(&building_detail, "GraphicsBuildingDetail", "Building Detail Distance",
                                 "Battle: buildings keep their detailed versions farther away. From the next battle.",
                                 8.f),
+      tw::engine_tweaks::Slider(&campaign_trees, "GraphicsCampaignDetail", "Campaign Tree Detail Distance",
+                                "Campaign map: trees keep their detail farther away.", 4.f),
       new renodx::utils::settings::Setting{
           .key = "GraphicsShadowMapSize",
           .binding = &shadow_map.scale,
@@ -1787,6 +1821,7 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
+                                             .water_caustics_tested = false,
                                              .has_reflections = false,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});

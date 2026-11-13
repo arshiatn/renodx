@@ -226,6 +226,7 @@ struct Bindings {
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool foliage_light_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   bool smoke_shadows_tested = true;  // false: the rays' Smoke Shadows Experimental and left out of RT/PT (its default the game's to set)
+  bool water_caustics_tested = true;  // false: Water Caustics left out of RT/PT (its default the game's to set)
   bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
@@ -746,12 +747,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
-    if (!b.smoke_shadows_tested) {
-      std::erase_if(rays_values, [](const Values::value_type& preset) {
-        const auto& [key, value] = preset;
-        return key == "RayTracedSmokeShadows";
-      });
-    }
+    std::erase_if(rays_values, [b](const Values::value_type& preset) {
+      const auto& [key, value] = preset;
+      return (key == "RayTracedSmokeShadows" && !b.smoke_shadows_tested) || (key == "WaterCaustics" && !b.water_caustics_tested);
+    });
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
