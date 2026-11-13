@@ -13,6 +13,12 @@
 // g_water_roughness).
 #include "./rr_specular.hlsli"
 
+// The material flag that marks water (gbuffer_material's alpha x 255); 0u: none (an includer whose water never enters the
+// G-buffer and whose alpha means something else).
+#ifndef TW_RR_WATER_FLAG
+#define TW_RR_WATER_FLAG 4u
+#endif
+
 Texture2D<float4> gbuffer_normal : register(t0);    // world normal x 0.5 + 0.5, gloss
 Texture2D<float4> gbuffer_colour : register(t1);    // albedo (gamma 2), metalness
 Texture2D<float4> gbuffer_material : register(t2);  // alpha: the material's flags (x 255)
@@ -37,7 +43,7 @@ void main(uint3 id : SV_DispatchThreadID)
   const float4 colour = gbuffer_colour[id.xy];
   const float3 albedo = colour.rgb * colour.rgb;
   const bool sky = all(normal.xyz == 0.f);
-  const bool water = !sky && (uint(gbuffer_material[id.xy].a * 255.f + 0.5f) & 4u) != 0u;
+  const bool water = !sky && (uint(gbuffer_material[id.xy].a * 255.f + 0.5f) & TW_RR_WATER_FLAG) != 0u;
   diffuse_albedo[id.xy] = float4(sky ? (float3)0.5f : (water ? (float3)0.f : albedo * (1.f - colour.a)), 1.f);
   const float3 world = normal.xyz * 2.f - 1.f;
   const float3 world_normal = dot(world, world) > 0.f ? normalize(world) : float3(0.f, 1.f, 0.f);
