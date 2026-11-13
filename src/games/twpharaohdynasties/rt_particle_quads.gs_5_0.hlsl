@@ -15,7 +15,8 @@
 //   SV_POSITION's w again.
 // - The centre and the uv at corner (0, 0) (TEXCOORD8, the quad's own coordinates) from the triangle's barycentric
 //   coordinates; the size from the corners' world spans along the quad's two axes.
-// - Opacity as 3F1B86E1 computes its alpha (bytes read, its RDEF slots): the diffuse array's alpha at both cells
+// - Opacity as 3F1B86E1 computes its alpha (bytes read, its RDEF slots; E8524BB1's alpha is the same, its views and
+//   samplers arrive here shifted to these slots): the diffuse array's alpha at both cells
 //   (t6, s3; the emitter's m_diffuse_id) at the mip level its sample takes at that centre (the uv's change across a
 //   pixel of the camera's g_viewport_dimensions), sRGB-decoded, times COLOR's w; then the alpha crush (m_behaviour_mask
 //   0x100000).

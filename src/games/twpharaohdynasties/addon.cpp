@@ -1475,7 +1475,9 @@ float rays_hills_out_of_view_row = 0.f;
 // over the light buffer (ONE / INV_SRC_ALPHA); the others are distortion (2A315C27), meshes (ACE25F9D, CFB48C60) and the
 // particles' lights (5AD46115). Every draw reads the same frame-wide sorted list; the vertex shader keeps only emitters whose
 // m_draw_flags meet the draw's g_draw_flags (cb_vfx). rt_particle_quads makes a record of each instance's first triangle.
-constexpr std::array<uint32_t, 1> SMOKE_PIXEL_SHADERS = {0x3F1B86E1};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{
+    {.hash = 0x3F1B86E1},
+}};
 
 // Log Details' light count, once (a frame trace gives a light draw's indices times its instances, not its lights): one whole
 // frame's draws, instances and indices (or vertices) of the point lights (E318CE77: a light an instance, POSITION1-4) and of

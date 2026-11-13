@@ -217,6 +217,15 @@ struct PixelMask {
   const float* row = nullptr;  // cut_out_masks: only with this row on (null: always)
 };
 
+// A lit particle pixel shader (InstallSmokeShadows). With a quad shader its draw's views and samplers reach the quad shader
+// `view_shift` and `sampler_shift` slots higher than the pixel shader binds them: one quad shader for pixel shaders binding
+// the same resources at other slots (0: the same slots).
+struct SmokePixelShader {
+  uint32_t hash = 0;
+  UINT view_shift = 0;
+  UINT sampler_shift = 0;
+};
+
 struct SceneShader {
   uint32_t hash = 0;
   std::span<const uint8_t> capture_shader;
@@ -793,7 +802,7 @@ static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
 // Smoke Shadows' particle shaders (InstallSmokeShadows; 0: none): the vertex shader (its code kept) and the lit pixel
 // shaders its smoke is drawn with.
 static uint32_t smoke_vertex_shader = 0;
-static std::span<const uint32_t> smoke_pixel_shaders;
+static std::span<const SmokePixelShader> smoke_pixel_shaders;
 // Particles drawn as quads (Pharaoh: indexed instanced, six indices an instance): the geometry shader making one record of
 // an instance's first triangle. Empty: one vertex a particle, streamed out as the vertex shader writes it (Attila).
 static std::span<const uint8_t> smoke_quad_shader;
@@ -2114,7 +2123,8 @@ void Capture(Context& command, const SceneShader& shader) {
 // A lit particle draw (Smoke Shadows: InstallSmokeShadows' vertex shader with its lit pixel shader, blended over the
 // scene, not added to it: smoke and dust, not fire's glow): its particles streamed out for the next trace: centre, colour
 // and opacity, size. One a vertex, as the vertex shader writes them; or one an instance of a quad (smoke_quad_shader),
-// which reads the pixel shader's views and samplers and the vertex shader's constants at their own slots.
+// which reads the pixel shader's views and samplers (shifted as its SmokePixelShader says) and the vertex shader's
+// constants at their own slots.
 template <typename Context>
 void CaptureParticles(Context& command) {
   constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
@@ -2134,7 +2144,8 @@ void CaptureParticles(Context& command) {
   const bool wanted = runtime.settings.stream_particles || (runtime.settings.smoke_shadows && dlaa_bridge::bridge.ray_tracing);
   if (particle_count == 0 || !wanted || native == nullptr) return;
   const uint32_t pixel_shader = renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::pixel_shader, &command.bound_state_cache);
-  if (std::ranges::find(smoke_pixel_shaders, pixel_shader) == smoke_pixel_shaders.end()) return;
+  const auto lit_shader = std::ranges::find(smoke_pixel_shaders, pixel_shader, &SmokePixelShader::hash);
+  if (lit_shader == smoke_pixel_shaders.end()) return;
   ComPtr<ID3D11BlendState> blend;
   std::array<FLOAT, 4> blend_factor = {};
   UINT sample_mask = 0;
@@ -2215,7 +2226,8 @@ void CaptureParticles(Context& command) {
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(1, &target, &offset);
   if constexpr (INDEXED) {
-    // The quad shader's inputs at the slots the draw's own shaders have them (the game's geometry stage's put back).
+    // The quad shader's inputs at the slots the draw's own shaders have them, the pixel shader's shifted as listed (the
+    // game's geometry stage's put back).
     constexpr UINT VIEWS = 16;
     constexpr UINT SAMPLERS = D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT;
     constexpr UINT CONSTANTS = 2;
@@ -2235,8 +2247,8 @@ void CaptureParticles(Context& command) {
     native->PSGetShaderResources(0, VIEWS, pixel_views.data());
     native->PSGetSamplers(0, SAMPLERS, pixel_samplers.data());
     native1->VSGetConstantBuffers1(0, CONSTANTS, vertex_constants.data(), vertex_first_constants.data(), vertex_constant_counts.data());
-    native->GSSetShaderResources(0, VIEWS, pixel_views.data());
-    native->GSSetSamplers(0, SAMPLERS, pixel_samplers.data());
+    native->GSSetShaderResources(lit_shader->view_shift, VIEWS - lit_shader->view_shift, pixel_views.data());
+    native->GSSetSamplers(lit_shader->sampler_shift, SAMPLERS - lit_shader->sampler_shift, pixel_samplers.data());
     native1->GSSetConstantBuffers1(0, CONSTANTS, vertex_constants.data(), vertex_first_constants.data(), vertex_constant_counts.data());
     const auto& arguments = command.arguments;
     native->DrawIndexedInstanced(arguments.index_count, count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
