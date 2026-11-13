@@ -84,6 +84,13 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   - [x] 5 READMEs Attila v156, WH3 v54, Pharaoh Round v60 (built only, helper107); skill rows: ao-gi.md (GI reads no light
     that depends on the view; HARNESS_PEDESTAL the check), testing.md (pedestal_gi; the status line's GPU ms are one
     request's). Not stamped / installed / run.
+- [x] Attila v156 / WH3 v54 / Pharaoh v60 + helper107 rebuilt at HEAD 15:03-15:04 (590d2132; the 14:4x add-on builds
+  predated d809907e's commit, helper107 14:23 its c592149c), STAMPED + INSTALLED 15:05 (tools/tw/round_v151/install_v60.py;
+  ATN files unchanged by hash; old files renamed aside .in-use-20261113_150506; no DevKit). build.ps1 needs an absolute
+  out folder (a relative one fails on fg_ui.h).
+- [ ] Pharaoh open items plan: tools/tw/pharaoh/open_items/plan.md (read-only study 15:00; A offline: "no main camera"
+  = AO_DRAWS passed with Attila's slots, E8524BB1 slot map, clip at 25, building water scale rows, 7b / 7c WARP; B one
+  siege benchmark run with new trace reads; C ATN's campaign trace).
 - [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.

@@ -1,6 +1,6 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
-## v54 (2026-11-13; built only with helper107, not stamped, installed or run in game)
+## v54 (2026-11-13; stamped and installed 15:05 with renodx-tw-dlaa64.exe helper107, not run in game)
 
 - Shared, no change here: Attila's Path-Traced GI of no view (helper107) needs the game's sun colour from its sun light
   shaders; Warhammer III's aren't read for it yet, so its paths stay as in v53 (helper107 gives them the same picture).

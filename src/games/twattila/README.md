@@ -1,6 +1,6 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## v156 (2026-11-13; built only with helper107, not stamped, installed or run in game)
+## v156 (2026-11-13; stamped and installed 15:05 with renodx-tw-dlaa64.exe helper107, not run in game)
 
 - Fixed: **Path-Traced GI no longer changes with the camera** (Path Tracing with Path-Traced Ambient). A path that meets a
   surface the screen shows used to take the light the camera sees there, which holds the game's sun glint and sky shine

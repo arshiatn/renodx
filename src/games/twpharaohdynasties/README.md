@@ -23,7 +23,7 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 12. Below 100% in the campaign and a battle: the sun's lighting, the fog, the shroud and the water's reflections stay in place
     at the screen's edges (35 shaders no longer scaled twice).
 
-### Round v60 (2026-11-13, built only with helper107; not stamped, installed or run in game)
+### Round v60 (2026-11-13, stamped and installed 15:05 with helper107, not run in game)
 
 - Shared, no change here: Attila's Path-Traced GI of no view (helper107) needs the game's sun colour; Pharaoh's sun
   shaders (F883F5B2: wrap lighting, cloud shadows) light it another way and aren't read for it yet, so its paths stay as in
