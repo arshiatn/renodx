@@ -1311,6 +1311,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
 }};
 
+// The screen-space shadows' Light Through Foliage: grass and leaves, and the rigid objects drawn after them (Attila's
+// shaders, the same bytes in this dump: depth copies around the foliage, as Attila's; its draw order not yet seen here).
+constexpr std::array<uint32_t, 5> FOLIAGE_VERTEX_SHADERS = {0x46C616F0, 0x5B880546, 0xCABCB9D1, 0xF3741248, 0x01FA9CDE};
+constexpr std::array<uint32_t, 4> AFTER_FOLIAGE_VERTEX_SHADERS = {0x347F3DD9, 0xD830AD9B, 0xB06CB969, 0x10FE7EBC};
+
 // The screen-space shadows' Light Through Banners: cloth and sails (as the rays).
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{{.hash = 0x772B26FF}, {.hash = 0x902253FD}, {.hash = 0xD11B5EC7}, {.hash = 0x202FA188}}};
 
@@ -1816,7 +1821,8 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
-  // what the methods leave, then Settings Mode's pages. No smoke shadows, water rows or foliage light hooked here yet.
+  // what the methods leave, then Settings Mode's pages. No smoke shadows or water rows hooked here yet; Light Through Foliage
+  // Experimental (no run has shown its draw order here).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSmokeShadows") setting->default_value = 0.f;
@@ -1826,7 +1832,7 @@ void ConfigureAddon() {
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
-                                             .has_foliage_light = false,
+                                             .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_replace_ao = false});
@@ -1890,6 +1896,7 @@ bool AttachAddon() {
   // float 4 (c1, x 0.004 with g_hdr_on c11.x: the paths' sun light).
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  twattila::screen_space_shadows::InstallFoliage(FOLIAGE_VERTEX_SHADERS, AFTER_FOLIAGE_VERTEX_SHADERS);
   // Light Through Banners: cloth and sails (as the rays), the G-buffer's colour squared (gamma 2).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
