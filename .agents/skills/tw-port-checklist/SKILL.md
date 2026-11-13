@@ -117,13 +117,13 @@ A behaviour one game needs goes behind a parameter that defaults to today's valu
 
 **New callback on the sun draws**: say where in the run order it lands and why. Registration order is run order.
 
-**New caster family or capture row**: its line in the census of [rt-scene.md](references/rt-scene.md), with which pass draws it, its budget, its overflow answer, a log line and a harness stress mode.
+**New caster family or capture row**: its line in the census of [rt-scene.md](references/rt-scene.md), with which pass draws it, its budget, its overflow answer, a log line and a harness stress mode. [scripts/caster_census.py](scripts/caster_census.py) on campaign and battle traces lists what the scene still misses.
 
 **Replacing or skipping a game pass** (AO, GI, shadow maps, fog march, SSR): readers by resource handle in traces at 100% and 50%; every term the output multiplies; per-frame or kept across frames; never switch a render stage's engine value back on live ([game-facts.md](references/game-facts.md) traps); exactly one method, enforced at load and at present. See [ao-gi.md](references/ao-gi.md).
 
 **A ray feature or row**: write down what it switches on (RR, NRD, the terrain wait, grass capture) and measure its fixed cost alone. A cheap feature must not pull in the costly ones.
 
-**Anything below 100%**: the scale checklist of [render-scale-dlss.md](references/render-scale-dlss.md) at 100, 67, 50 and 33%, and a cold start at the low scale.
+**Anything below 100%**: the scale checklist of [render-scale-dlss.md](references/render-scale-dlss.md) at 100, 67, 50 and 33%, and a cold start at the low scale. Done means every screen-space pass swept at Ultra Performance in the campaign and in a battle, and [scripts/scale_census.py](scripts/scale_census.py) (replay built by [scripts/scale_census_build.ps1](scripts/scale_census_build.ps1)) run over the whole dump.
 
 **Motion vectors**: a census of what each G-buffer VS writes to velocity; anything the game rewrites within a frame is read before the rewrite or marked stale.
 

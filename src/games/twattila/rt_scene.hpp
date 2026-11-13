@@ -1275,6 +1275,11 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
   const auto leaves_in_scene = [] {
     return internal::host.scene_draw != nullptr || std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.foliage; });
   };
+  // Swaying copies exist only for recorded foliage with wind (`.still`: the campaign's trees, placed as they stand).
+  const auto sway_in_scene = [] {
+    return std::ranges::any_of(internal::scene_shaders,
+                               [](const SceneShader& shader) { return shader.foliage && !shader.rows_shader.empty() && !shader.still; });
+  };
   settings->insert(settings->end(), {
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
@@ -1532,9 +1537,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 300.f,
           .format = "%.0f m",
           .is_enabled = dlaa_on,
-          .is_visible = [] {
-            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.foliage && !shader.rows_shader.empty(); });
-          },
+          .is_visible = sway_in_scene,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedOffScreenSway",
@@ -1546,9 +1549,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Off: trees and grass away from the view stay still in the ray tracing: faster.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
-          .is_visible = [] {
-            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.foliage && !shader.rows_shader.empty(); });
-          },
+          .is_visible = sway_in_scene,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedGrassShadowRange",

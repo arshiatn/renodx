@@ -2,7 +2,7 @@
 
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
-Bytes under 60 GB before WARP. One writer; read-only surveys beside (tools\tw\pharaoh\v58: scale_census.md, caster_census.md).
+Bytes under 60 GB before WARP. One writer; read-only surveys beside (tools\tw\pharaoh\v58: census_pharaoh*.txt / .tsv, caster_census_after.txt).
 Each step committed and pushed to origin atn-mods.
 - [x] 1 (4b554a21) WARP tools\tw\warp_tests\pharaoh\ao_v58 (run_v58.txt, PASS): Reflect: 70 of 179 built csos render_scale, 0
   of 3168 game csos; our blurs at 100% 0 of 57,600 values apart (bits) from the game's; at 33% (3x) against 100%: bitmask Full 0
@@ -31,7 +31,7 @@ Each step committed and pushed to origin atn-mods.
   12,284 apart; all six built tone mappers declare cb12; (G) 99164788 the game's bytes (= v58) 0 bits apart, CONTROL v57 692
   apart; (H) DB53BDDC: visibility 0 apart, sun uv x 3 equal, CONTROL v57 visibility apart. Left (listed, not fixed): 99164788's
   5x5 taps spaced by the buffer's size (a third at 33%: mean 0.025 against v57's 0.052), DB53BDDC's edge fade from the texture uv.
-- [x] 3 (step 3 commit) done: palms 1C4B8681 in SCENE_SHADERS (rt_capture_rigid_standard_cut_out: 6A599241's world + the UV in
+- [x] 3 (e34c6089) done: palms 1C4B8681 in SCENE_SHADERS (rt_capture_rigid_standard_cut_out: 6A599241's world + the UV in
   w; placed by 6A599241's record, .foliage .still, cut out by t0 at slot 0: B97AD7BC's t0.w x fade < 0.505); 6A599241's
   alpha-tested PS (4B9BDD76, 7550C192, 81931C18, BD6C63DE) cut out (clip_cut_outs + CUT_OUT_MASKS); BUILDING_MASKS + D24616D0
   (campaign settlements / cliffs, 0.33 M tris), 509F97FB, 730C5322, 85E52BED, A6C653E1 (all solid: no discard). WARP
@@ -50,7 +50,7 @@ Each step committed and pushed to origin atn-mods.
   BUG B; over-patch hits 35: the 24 sun shaders' SSEO block NDC, shroud_plane x7, battlefog 99164788 / 0CB1C821, DB53BDDC, 6ECC6281;
   3F1B86E1 / E8524BB1 replacement lost view_share's NDC patch; phar_building_water_01 t_ssao at view uv (not traced)). Agents'
   scratch: ...\scratchpad\v58\{scale_survey,casters,water,torch}.
-- [x] 4 (step 4 commit) Steady Torch Shadows (Experimental), off, every TW game's rays page under the torch rows (shared:
+- [x] 4 (654901d2) Steady Torch Shadows (Experimental), off, every TW game's rays page under the torch rows (shared:
   rt_scene.hpp row RayTracedLightSteady, rt_core RT_LIGHT_STEADY = 1 << 28, helpers before 106 ignore it; bridge stays v31). The
   helper (build\tw_dlaa_helper106, not installed): every light a pixel reaches traced every frame (no turns, Importance picks
   or kept bits) and each soft ray to the same disk point (the seed without the frame). Root cause: the helper's torch bits
@@ -64,7 +64,7 @@ Each step committed and pushed to origin atn-mods.
   point every frame (seed (frame*128+light)*16+ray*2), one ray, a 0/1 bit, no filter (only RR averages); Importance holds old bits
   per 8x8 block (165, 179-194). No GPU flicker term in E19549A1 / fire02. Options: fixed per-pixel 4x4 disk pattern rotated by a
   position hash (helper, bridge v32) + a filter; steady light positions in the addon.
-- [x] 5 (step 5 commit) done: twattila/water_effects.hpp WaterOpacity + WaterShader::opacity, PatchWaterAbsorption(code, opacity)
+- [x] 5 (b260dc49) done: twattila/water_effects.hpp WaterOpacity + WaterShader::opacity, PatchWaterAbsorption(code, opacity)
   (type 0: WH3's log2(e) rule), the material path's caustics only where water.caustics; Pharaoh: WATER_SHADERS 84 rows (all
   material water, campaign caustics off), rows Water Clarity (Experimental) 1 and Water Caustics (Experimental) 0 (RT/PT turns
   it on as ATN's list), embeds water_caustics / water_clarity. WARP tools\tw\warp_tests\pharaoh\water_v58 (run_v58.txt): WH3 6 of 6
@@ -74,8 +74,21 @@ Each step committed and pushed to origin atn-mods.
   cb5[3].w (campaign sea), v11.w (river COLOR2.w), cb3[45].w (big river). Plan: WaterShader.opacity {type, index, component}
   (0: WH3's rule), PatchWaterAbsorption(code, opacity), caustics only with water.caustics; table tools\tw\pharaoh\v58\
   pharaoh_water_table.txt; WARP: WH3 6 of 6 byte-identical, Pharaoh 84 neutral 0 bits apart, controls move.
-- [ ] 6 builds (x64 list + build32), suites, page dumps.
-- [ ] 7 README Round v58, test list, skill rows + census procedures.
+- [x] 6 (step 6/7 commit) builds exit 0, no new warnings: Pharaoh addon64 45 s, WH3 44 s, the other x64 63 s, build32 Attila
+  47 s, Rome II + Thrones 50 s (all three sets rebuilt after the sway fix, exit 0); git diff --check clean; test/tw_* 17 x x86 + amd64
+  PASS; WARP on the final build: sun PASS, ssr_v56, smoke_v57, ao_v58, scale_v58 PASS, patch_v58 (on: 35 differ, Reflect on game
+  shaders 0), trees_v58 (only the control fails), water_v58. Page p v62 against v60: +3 rows (Steady, Water Clarity, Water
+  Caustics), none lost; a v171 / w v67: Steady + date. Found by the dump: the palms' still foliage made Swaying Shadows Range
+  and Off-Screen Sway appear in Pharaoh (no sway in its rays): rt_scene.hpp's two rows now skip still foliage (Attila, WH3
+  unchanged: their swaying foliage). Scale census after (the skill's scale_census.py with viewport chains): BUG (A) 34 -> 0,
+  BUG (B) 27 -> 11, unclear 6 -> 31 (the 24 sun shaders' second site, a mixed chain, patched since v53).
+- [x] 7 (step 6/7 commit) README Round v58 + test items 7-12; skill rows (render-scale-dlss.md: sweep at Ultra Performance
+  campaign + battle, stripped RDEF, region taps, viewport chains, size_slot, RenderShareUv; rt-scene.md: caster census, Replace
+  per caster impossible, Steady torches; sss-particles-water-fog.md: water opacity operand; bringup.md Phase 0: both censuses
+  with limits); scripts/scale_census.py + _replay.cpp + _hook.py + _build.ps1 and caster_census.py in the skill.
+  Not done (each needs one trace): shroud decals' inv_rt_size at 33% campaign (c13); DE4F92CD vb0 at 50%; a trace drawing
+  phar_building_water_01 (t_ssao t12 / t9 / t11); the sun draw at 33% against 100% (the mixed site); 026CBC61 against
+  377DE0D5's tiles in one campaign trace; two frames' light draws in a night siege (do torches move).
 
 ## PHARAOH V57: SMOKE SHADOWS (2026-11-13 night, offline; hard stop 05:30)
 Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes
