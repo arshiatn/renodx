@@ -3398,8 +3398,14 @@ inline void Update(const Settings& settings) {
     }
     constexpr std::array<const char*, 5> TESTS = {"", " (scene test: the terrain alone)", " (scene test: objects and trees alone)",
                                                   " (scene test: no leaves)", " (scene test: none kept off-screen)"};
+    // The Light Bounce's rays and bounces too: its GPU time follows them (ATN's 2026-11-13 log: 19-40 ms for a minute
+    // between two settings changes, 5-7 ms around them, the rays not in the log).
     renodx::utils::log::i("[Total War] Ray tracing with ", (effects.empty() ? std::string("nothing") : effects),
-                          TESTS[std::min<size_t>(settings.scene_test, TESTS.size() - 1)], ": ", dlaa_bridge::TraceStatus());
+                          TESTS[std::min<size_t>(settings.scene_test, TESTS.size() - 1)],
+                          settings.light_bounce ? std::format(" (Light Bounce {} rays, {} bounces)", settings.light_bounce_rays,
+                                                              settings.path_tracing ? settings.path_bounces : 0u)
+                                                : std::string(),
+                          ": ", dlaa_bridge::TraceStatus());
   }
   if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
     if (!settings.debug_log) {

@@ -62,6 +62,16 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
     order 32103 1.5%, kept sun 20.000 at every return; 4K full-res spec 0.2 h106 4.1% -> h107 0.5%; GI level 0.93-1.04 of
     h106's diffuse-only. Without the flag (WH3, Pharaoh: no sun colour yet) helper106's paths exactly (21.6% at spec 0.5).
     Freezing the learned slope without the game's sun rejected: frozen 4.3-11.2 against 20 (too dark).
+  - [x] 3 bounce GPU 19-40 ms: not a spike in the code. The status line's bounce is one request's time (the last answered);
+    the four high ones (10:22:21 19.35, 10:22:50 39.42, 10:23:03 39.75, 10:23:09 28.54) all fall between the settings
+    changes of ~10:22:18 and ~10:23:15 (the "Ray tracing with" lines come 3 s after a change), 5.10 right after the next
+    one, and 19 -> 39 with no change between (the view moved): a setting held for a minute whose cost follows the view.
+    The log started at 2 rays and ended at 1; ATN's profile (1 ray) splits the bounce into cache fill + resolve 1.0, paths
+    3.55, reuse 1.95 ms: only the paths scale with Rays (19 / 28 / 40 ms ~ 5 / 7 / 10 rays). Harness at 4K (helper106,
+    107; 1, 4, 8 rays; PT Ambient toggles, four cameras): no bounce frame over 3x the mean. Nothing in the helper
+    relearns or resets at a settings change (SHaRC off, NRD released). Now the "Ray tracing with" line names the Light
+    Bounce's rays and bounces. What a trace must show if it comes back: Record Ray Tracing Profile over the slow time
+    (tw_rt_profile_helper.csv gpu_a / b / c = fill + resolve / paths / reuse per request) and that line's rays.
 - [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
