@@ -107,7 +107,16 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   shows the sun's t12" is wrong (nothing calls KeepDebugAmbient in Pharaoh). Kept: ao_pass::Install(AO_DRAWS) (GT-VBAO), the
   sun draws' trace + combine at ao_slot (24 of 25 set it; FFD99CCD reads no AO, as before). Troy carries the same bytes
   (D42C3523) and call: the same fix (own commit). Later run: 0 "no main camera" lines, status trace ms as before.
-- [ ] 2 E8524BB1 (effects quality 0-2) in Smoke Shadows with its own slots; 740B2536 (MSAA) stays out.
+- [x] 2 E8524BB1 (effects quality 0-2) in Smoke Shadows: 2d3bb6d3 shared SmokePixelShader {hash, view_shift, sampler_shift}
+  (rt_core CaptureParticles copies the PS's views / samplers that many slots higher to the quad shader; Attila's 6 rows and
+  3F1B86E1 at 0 / 0 = the old calls); Pharaoh {E8524BB1, 3, 2}: its t3 diffuse / t5 constants / s1 reach the quad shader's
+  t6 / t8 / s3. Bytes (fxc -dumpbin): same input signature (TEXCOORD2.y unused), EMITTER_CONSTANTS_PS stride 80, the same
+  alpha chain (two cells, sRGB decode with 0x3F72A76F in both csos, x COLOR.w, crush 0x100000; lit 0x80000), no shadow maps.
+  WARP tools/tw/warp_tests/pharaoh/smoke_v61 (make_v61.py from smoke_v57, build.ps1, run_v61.txt): SMOKE V61 ALL PASSED:
+  geometry as v57 (120 placed, 0 apart, 2 orders); E8524BB1 opacity plateau 0 of 69 apart (worst 1.19e-7), smooth 0 apart
+  (7.5e-4 of 1.12e-3), mip level 0 of 23 apart (0.0039); CONTROL unshifted (3F1B86E1's slots) 39 / 39 / 22 apart; v57's
+  controls fail as before; 3F1B86E1 itself unchanged. Level B (dump, no trace: quality 0-2 is the menu's; which VS draws
+  it at 0-2 not seen: only 109B79CE is hooked). 740B2536 (MSAA) stays out: no rays under the game's MSAA (comment).
 - [ ] 3 Water reflections capped at 25 a channel as the game's apply.
 - [ ] 4 Building water (phar_building_water_01) t_ssao render-scale rows.
 - [ ] 5 7b (DE4F92CD vb0 at 50%) and 7c (the 24 sun PS at 33% against 100%) offline WARP checks.

@@ -1475,8 +1475,14 @@ float rays_hills_out_of_view_row = 0.f;
 // over the light buffer (ONE / INV_SRC_ALPHA); the others are distortion (2A315C27), meshes (ACE25F9D, CFB48C60) and the
 // particles' lights (5AD46115). Every draw reads the same frame-wide sorted list; the vertex shader keeps only emitters whose
 // m_draw_flags meet the draw's g_draw_flags (cb_vfx). rt_particle_quads makes a record of each instance's first triangle.
-constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{
+// Effects quality 0-2 draw vfxlowmedhigh00 E8524BB1 (ps_main, no shadow maps) in its place: the same input signature,
+// EMITTER_CONSTANTS_PS (stride 80) and alpha (texture alpha at both cells, the sRGB decode with 0x3F72A76F, x COLOR.w,
+// the alpha crush), its diffuse array t3 / s1 and constants t5 three view and two sampler slots below 3F1B86E1's t6 / s3 / t8
+// (fxc -dumpbin of both; in no trace: ATN plays at 4). 3F1B86E1's MSAA twin ps_main_high_quality_ms 740B2536 stays out:
+// no rays under the game's MSAA.
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADERS = {{
     {.hash = 0x3F1B86E1},
+    {.hash = 0xE8524BB1, .view_shift = 3, .sampler_shift = 2},
 }};
 
 // Log Details' light count, once (a frame trace gives a light draw's indices times its instances, not its lights): one whole
