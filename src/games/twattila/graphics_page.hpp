@@ -209,6 +209,7 @@ struct Bindings {
   float* rays_faded_parts = nullptr;  // Instances the game fades out stay out of the rays (rt_core.hpp Host::faded_row); null: no such row
   float* rays_trunks_as_drawn = nullptr;  // Tree trunks captured every frame as drawn (rt_core.hpp SceneShader::dynamic_row); null: no such row
   float* rays_sheets_unselfed = nullptr;  // Cloth and sails don't shade themselves in the sun's rays; null: no such row
+  float* engine_code = nullptr;  // Faster Game CPU Code (twattila/engine_code.hpp), any anti-aliasing; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
   std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
@@ -1185,8 +1186,21 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = RT_SECTION;
     page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = b.texts->fog_shadows_label, .tooltip = b.texts->fog_shadows_tooltip});
     page.Add(Note("Needs an upscaler (Anti-Aliasing above).", section, MORE_TINT, no_upscaler));
-    page.Add(MoreOptions(section, &more_rt, upscaling));
+    page.Add(MoreOptions(section, &more_rt, [b, upscaling] { return upscaling() || b.engine_code != nullptr; }));
     const auto more_rt_rows = more(&more_rt, upscaling);
+    if (b.engine_code != nullptr) {
+      page.Add(new Setting{
+          .key = "FasterGameCpuCode",
+          .binding = b.engine_code,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Faster Game CPU Code",
+          .section = section,
+          .tooltip = "Faster versions of some of the game's own CPU code (soldiers and their sprites), same results.\n"
+                     "Parts another mod already changed are left as that mod made them.",
+          .is_visible = more(&more_rt, always),
+      });
+    }
     page.Add(new Setting{
         .key = "RayTracingDenoiser",
         .binding = &b.rt->denoiser,
@@ -1246,8 +1260,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
 
   page.Finish({lighting_settings::AO_SECTION, lighting_settings::GI_SECTION, feature_settings::SSS_SECTION, feature_settings::AA_SECTION}, RT_SECTION);
   page_defaults = page.Defaults(AA_SECTION);
-  // The presets leave Shadow Map Size alone (it needs a restart; Graphics 2 of 2's presets set it) and Log Details (not a look).
-  std::erase_if(page_defaults, [](const auto& value) { return value.first == "GraphicsShadowMapSize" || value.first == "RayTracedDebugLog"; });
+  // The presets leave Shadow Map Size alone (it needs a restart; Graphics 2 of 2's presets set it), Log Details and Faster
+  // Game CPU Code (not a look).
+  std::erase_if(page_defaults, [](const auto& value) {
+    return value.first == "GraphicsShadowMapSize" || value.first == "RayTracedDebugLog" || value.first == "FasterGameCpuCode";
+  });
   for (const std::string& section : Sections()) renodx::utils::settings::section_tints.emplace_back(section, TITLE_TINT);
 }
 

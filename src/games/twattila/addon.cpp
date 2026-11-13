@@ -41,6 +41,7 @@
 #include "./anti_aliasing.hpp"
 #include "./ao_pass.hpp"
 #include "./device_loss.hpp"
+#include "./engine_code.hpp"
 #include "./engine_tests.hpp"
 #include "./feature_settings.hpp"
 #include "./credits.hpp"
@@ -1243,6 +1244,9 @@ constexpr std::array<uint32_t, 1> FLAG_PIXEL_SHADERS_MS = {0xCE6F17A1};
 // Texture LOD Bias on All Textures (Experimental, graphics_page.hpp; Warhammer III's row): the game's wrapping trilinear
 // samplers biased too (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
+// Faster Game CPU Code (graphics_page.hpp, twattila/engine_code.hpp): on by default, every routine proven to give the game's
+// results (test/tw_engine_code).
+float engine_code_row = 1.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1423,6 +1427,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  twattila::engine_code::Update(engine_code_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size));
   twattila::graphics_hooks::Update(
@@ -1930,7 +1935,8 @@ void ConfigureAddon() {
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
-                                             .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed});
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
+                                             .engine_code = &engine_code_row});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
@@ -2061,6 +2067,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   tw::engine_tweaks::Uninstall(graphics_options);
+  twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
   renodx::utils::command_action::Unregister(OnCampaignDraw);
