@@ -3079,6 +3079,10 @@ bool AttachAddon() {
   // its viewport itself (uv x (c29.zw x c31.xy): the fog's shadow ranges 99164788 and sun scan DB53BDDC, the shroud, the sun
   // shaders' SSEO, the SSR ray cast; tools\tw\pharaoh\v58\census_pharaoh.txt): view_share leaves them.
   twattila::view_share::SetViewportChains(true);
+  // The campaign's shroud decals (campaignshrouddecals 61C823A0, 8852FBD3, AABB5EBA, 5078A6E0) build their NDC from SV_Position x
+  // inv_rt_size (their buffer's c13): ATN_UP_181940 at 33% 1 / 1920, 1 / 1080 (their half-size target) at a 640 x 360 viewport,
+  // so the NDC spanned a third of the view: patched as the camera's target size (WARP tools\tw\warp_tests\pharaoh\decal_v64).
+  twattila::view_share::SetTargetSizes(std::array<const char*, 1>{"inv_rt_size"});
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,

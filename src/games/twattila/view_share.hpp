@@ -21,6 +21,7 @@
 #include <shared_mutex>
 #include <span>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -43,7 +44,8 @@
 // point lights, decals, fog, water, particles, its AO; and uvs projected back from clip space (x (0.5, -0.5) + 0.5)
 // read their textures as if the view filled them. Every pixel shader the game creates is checked (its bytecode):
 // - an NDC built from a texture uv (the uv's last writer, followed back, reads camera_VS_PS's g_screen_size or
-//   g_render_target_dimensions): the uv first divided by the view's share of the target;
+//   g_render_target_dimensions, or a target size of the shader's own constants: SetTargetSizes): the uv first divided by
+//   the view's share of the target;
 // - a projected uv that a texture read then takes as its coordinate: multiplied by that share (also one made in two
 //   instructions, u = (x + 1) x 0.5 and v = 1 - (y + 1) x 0.5: the grass's terrain distance, at the read);
 // - a read of a whole texture (Install's `whole_textures`, by its name: what a half-size pass draws, the AO blur and the
@@ -97,10 +99,13 @@ struct Reflection {
   bool render_scale = false;
   bool slot_taken = false;
   uint64_t whole_slots = 0;  // bit per texture slot
+  // A render target's size in another of its constant buffers (SetTargetSizes' names): that buffer's slot, its register.
+  uint32_t target_size_slot = UINT32_MAX;
+  uint32_t target_size = UINT32_MAX;
 };
 
 inline Reflection Reflect(std::span<const uint8_t> code, const dxbc::Program& program,
-                          std::span<const std::string> whole_textures = {}) {
+                          std::span<const std::string> whole_textures = {}, std::span<const std::string> target_sizes = {}) {
   Reflection reflection;
   const auto read = [&](size_t at) {
     uint32_t value = 0;
@@ -160,9 +165,28 @@ inline Reflection Reflect(std::span<const uint8_t> code, const dxbc::Program& pr
     }
     for (uint32_t index = 0; index < buffers; ++index) {
       const size_t buffer = buffer_at + 24 * size_t{index};
-      if (!name_is(data + read(buffer), "camera_VS_PS") && !name_is(data + read(buffer), "camera")) continue;
       const uint32_t variables = read(buffer + 4);
       const size_t variable_at = data + read(buffer + 8);
+      // A target size of the shader's own (Pharaoh's shroud decals: campaign_shroud_decal_params.inv_rt_size): by its
+      // buffer's binding.
+      for (uint32_t variable = 0; variable < variables && !target_sizes.empty(); ++variable) {
+        const size_t entry = variable_at + variable_size * variable;
+        const size_t buffer_name_at = data + read(buffer);
+        if (buffer_name_at >= code.size()
+            || !std::ranges::any_of(target_sizes, [&](const std::string& size) { return name_is(data + read(entry), size.c_str()); })) {
+          continue;
+        }
+        const std::string_view rest(reinterpret_cast<const char*>(code.data() + buffer_name_at), code.size() - buffer_name_at);
+        const std::string buffer_name(rest.substr(0, rest.find('\0')));
+        for (uint32_t bound = 0; bound < bindings; ++bound) {
+          const size_t binding = binding_at + 32 * size_t{bound};
+          if (read(binding + 4) == 0 && name_is(data + read(binding), buffer_name.c_str())) {
+            reflection.target_size_slot = read(binding + 20);
+            reflection.target_size = read(entry + 4) / 16;
+          }
+        }
+      }
+      if (!name_is(data + read(buffer), "camera_VS_PS") && !name_is(data + read(buffer), "camera")) continue;
       for (uint32_t variable = 0; variable < variables; ++variable) {
         const size_t entry = variable_at + variable_size * variable;
         const size_t name = data + read(entry);
@@ -238,6 +262,10 @@ inline Source Classify(const std::vector<Instruction>& code, size_t index, uint3
       const Operand& operand = instruction.operands[source];
       if (operand.type == TYPE_CONSTANT_BUFFER && !operand.relative && operand.index[0] == reflection.camera_slot) {
         if (const Source found = CameraRegister(reflection, operand.index[1]); found != Source::UNKNOWN) return found;
+      }
+      if (operand.type == TYPE_CONSTANT_BUFFER && !operand.relative && operand.index[0] == reflection.target_size_slot
+          && operand.index[1] == reflection.target_size) {
+        return Source::TEXTURE;
       }
     }
     for (size_t source = 1; source < instruction.operands.size(); ++source) {
@@ -317,7 +345,7 @@ struct Patched {
 inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection, uint64_t region_slots = 0, bool viewport_chains = false) {
   Patched result;
   if (reflection.slot_taken) return result;
-  const bool camera = reflection.camera_slot != UINT32_MAX && reflection.screen != UINT32_MAX;
+  const bool camera = (reflection.camera_slot != UINT32_MAX && reflection.screen != UINT32_MAX) || reflection.target_size_slot != UINT32_MAX;
   if (!camera && region_slots == 0 && reflection.whole_slots == 0) return result;
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
@@ -613,6 +641,7 @@ struct Runtime {
   // The addon's region reads by the game's shader hash, and the whole textures' names (Install).
   std::unordered_map<uint32_t, Reads> region_reads;
   std::vector<std::string> whole_textures;
+  std::vector<std::string> target_sizes;  // SetTargetSizes'
   bool viewport_chains = false;  // SetViewportChains'
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11Buffer> constants;
@@ -643,7 +672,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     auto found = runtime.patched.find(hash);
     if (found == runtime.patched.end()) {
       const dxbc::Program program = dxbc::Read(code);
-      const Reflection reflection = Reflect(code, program, runtime.whole_textures);
+      const Reflection reflection = Reflect(code, program, runtime.whole_textures, runtime.target_sizes);
       if (reflection.render_scale) {
         runtime.wanted_code.emplace(desc->code, Reads{});
         continue;
@@ -924,6 +953,14 @@ constexpr std::array<const char*, 4> WHOLE_TEXTURES = {"s_ssao", "s_terrain_refr
 inline void SetViewportChains(bool on) {
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.viewport_chains = on;
+}
+
+// A game whose shaders take their target's size from constants of their own, not the camera's (Pharaoh's campaign
+// shroud decals: campaign_shroud_decal_params.inv_rt_size, 1 / the half-size target, their NDC from SV_Position x it):
+// those variables' names, a texture's size as g_render_target_dimensions is. Before the game creates its shaders.
+inline void SetTargetSizes(std::span<const char* const> names) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::runtime.target_sizes.assign(names.begin(), names.end());
 }
 
 // `vertex_shaders`: the game's vertex shaders (by hash) the addon replaces with render_scale ones (cb12 at b12);

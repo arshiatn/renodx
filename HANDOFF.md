@@ -139,8 +139,26 @@ Unproven look changes: Experimental rows, off. One writer; each step committed a
   Pharaoh's folder for RR itself (coordinator's install). Not fixed (listed): Pharaoh sets no campaign_metre / campaign
   frames, so the torch softness (0.25), the 0.5 clearance and the AO / bounce ranges are map units on its campaign map
   (lights' reach 1 there, 25 in a siege).
-- [ ] 4 ATN_UP_181940 (33% campaign): 7a shroud decals' inv_rt_size c13 (61C823A0), 7d 377DE0D5 tiles vs 026CBC61's
-  bounds: read, decide, fix only what the evidence shows (WARP proof).
+- [x] 4 ATN_UP_181940 (33% campaign, 13 traces).
+  - 7a broken, fixed: the shroud decals (campaignshrouddecals 61C823A0 volumetric hq, 5078A6E0 volumetric, 8852FBD3 direct,
+    AABB5EBA projected; 431 + 431 + 12 draws a trace) make uv = SV_Position x inv_rt_size.xy (their own buffer's c13), the NDC
+    uv x (2, -2) + (-1, 1), the depth / shroud ranges at uv x c13.zw. trace_13 l.2566 / 2575: c13 = 1/1920, 1/1080, 1, 1 (the
+    decals' 1920 x 1080 target) at a 640 x 360 viewport: the NDC spanned a third of the view (the reads right). view_share's
+    patch only knew the camera's sizes (census v58: BUG (B)). Now view_share::SetTargetSizes(names) (shared, default none):
+    Reflect finds such a variable in any buffer (its slot and register), Classify takes it as a texture size, Patch's NDC
+    rule applies; Pharaoh passes {"inv_rt_size"}. tools/tw/warp_tests/pharaoh/patch_v64 (run_v64.txt): without names every
+    shader of the 10 TW dumps byte-identical to HEAD's Patch (Pharaoh with and without chains); with them exactly the 4 PS
+    differ, ndc 0 -> 1 (inv_rt_size is in no other game's PS; Troy has it in 2 VS only). WARP decal_v64 (run_v64.txt): all 4
+    at 100% patched = the game's bytes bit for bit (cb12 unbound); 33% patched against 100% 0 apart beyond 8 px and every
+    pixel (largest 1.2e-7); another depth picture moves 305-4,975 values; CONTROL the game's bytes at 33% 770-3,882 apart.
+    Level A (trace + bytes). Later run: log "pixel shader 0x61C823A0 patched (1 positions ...)".
+  - 7d nothing broken, nothing changed: 026CBC61 (geometry_41_global) isn't captured (only 377DE0D5 in SCENE_SHADERS), so no
+    double capture. open_items/terrain_overlap_v64.py (.txt): in all 12 traces with tiles every 377DE0D5 tile lies inside
+    026CBC61's chunks' x / z bounds (trace_13: 128 tiles, 89 inside one chunk, 39 across two, 0 outside; chunks 170 x 197
+    units, tiles about 4-55): capturing 026CBC61 as drawn would double the terrain under the tiles unless its mesh has holes
+    there, which no trace shows (bounds only). NOT DONE: 026CBC61 beyond the tiles (far hills' shadows on the campaign);
+    smallest step: a trace read of 026CBC61's vb0 positions inside one tile's box (holes or not), then its capture with the
+    tiles' boxes cut out.
 - [ ] 5 Builds (Pharaoh, the skill's x64 list, build32 if shared, helper if changed), test/tw_* x86 + amd64, page dumps,
   READMEs (Pharaoh "### Round v64"; Attila / WH3 if shared behaviour changed), skill rows for real new lessons.
 
