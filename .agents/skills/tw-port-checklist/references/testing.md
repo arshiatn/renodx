@@ -8,7 +8,7 @@
 
 | Tool | Proves | Doesn't prove |
 |---|---|---|
-| `all_modes.sh` and `rt_harness` | The bridge, the helper, part of the D3D11 capture; stress per family (`far_cards_20`, `far_cards_48`, `leaf_storm`, `removal`, `switching_removal`, `release_*`, `bounces_*`) | A game's own passes, real melee, burning houses, cloth; the helper's CPU cost at game scale |
+| `all_modes.sh` and `rt_harness` | The bridge, the helper, part of the D3D11 capture; stress per family (`far_cards_20`, `far_cards_48`, `leaf_storm`, `removal`, `switching_removal`, `release_*`, `bounces_*`); GI of no view (`pedestal_gi`; `HARNESS_PEDESTAL_TIMES` prints the bounce's GPU ms, slow frames named) | A game's own passes, real melee, burning houses, cloth; the helper's CPU cost at game scale |
 | `fg_child/fg_bridge_test` | FG per backend at 2x and 6x, colour-space changes, memory phases, the module list with a ReShade `dxgi.dll` beside the helper | The game's pacing |
 | `warp_tests/*` | A game shader's bytes against ours on WARP: patches, replacements, stream output, level chains, scale copies | GPU hangs (WARP never hangs), real scene content |
 | `page_dump` | An addon's settings as data with ImGui and ReShade faked: rows, what shows in every state, what buttons and method sliders write; `games_compare.py` puts two games' (or versions') rows, defaults and a button's result side by side | Whether the hook behind a row runs; rows behind install flags the dump doesn't set (`dump_w` sets only the scene table: sprite and far-tree rows and WH3's torch rows don't show); a new game needs its own `dump_x.cpp` |
@@ -27,6 +27,7 @@ Rules:
 - A texture read checked against a game PS's pixel: bilinear weights have 8 bits an axis and the PS's inputs come interpolated (a constant 1-2 ulps off), so a smooth texture may differ by 2/256 of its largest texel step times the decode's slope. For a 4-ulp check give the texture plateaus where it is read [df95f06e].
 - The frame trace logs every draw and dispatch in its own callback, also the ones another callback bypasses: a skipped chain still shows. Prove a skip by the add-on's skip-path line. Its options `blend_hashes`, `vertex_input_hashes`, `instances_apart` (`twattila/frame_trace.hpp`, 7e945569) give a PS's blend desc, a VS's buffer slots with strides and element counts, and index x instance counts apart in one run.
 - Pack searches: `mmap.find` on literal names takes minutes over 75 GB; a regex with a `{0,120}` prefix ran 30 minutes with no output.
+- The helper's status line's GPU ms are one request's (the last answered), not a mean, and the "Ray tracing with" line comes 3 s after a settings change: read high values against the settings changes around them (ATN's 19-40 ms bounce was a minute between two changes). Means and parts come from Record Ray Tracing Profile (`tw_rt_profile_helper.csv`).
 - Say in the report what the harness can't show.
 
 ## 2. Game runs

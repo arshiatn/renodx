@@ -1,6 +1,22 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## v155 (2026-11-13; stamped and installed 13:35 with helper106, not run in game)
+## v156 (2026-11-13; built only with helper107, not stamped, installed or run in game)
+
+- Fixed: **Path-Traced GI no longer changes with the camera** (Path Tracing with Path-Traced Ambient). A path that meets a
+  surface the screen shows used to take the light the camera sees there, which holds the game's sun glint and sky shine
+  toward the camera, and the sun it lit unseen surfaces with was learned again from the screen every frame. Now every hit
+  (on screen, in the radiance cache, out of view) sends back its own colour lit by the game's sun (its sun colour, read
+  from the sun light draw) and the paths' own sky at that spot, with its shadow. In the harness (a stepped block on a lit
+  floor, four cameras round it, the game's shine in the light): the faces in shade were 14 to 22% apart from camera to
+  camera, now within 1.6%; the same scene at 4K 0.5% (4.1% before). The GI's level stays within -7 to +4% of v155's
+  (open treads a little darker: the paths' own sky there is partly blocked; shaded risers a little brighter). The
+  bounce got slightly cheaper there (4.15 against 4.42 ms at 4K).
+- Log: the "Ray tracing with" line (3 s after a settings change) names the Light Bounce's rays and bounces. The 19 to 40 ms
+  bounce in the 2026-11-13 log came from one minute between two settings changes (each number is one frame's), not from a
+  spike in the helper: only the paths' part of the bounce grows with Rays.
+- Needs helper107 (`renodx-tw-dlaa64.exe`); with an older helper the paths stay as in v155.
+- Not done: Warhammer III's and Pharaoh's sun colour isn't read yet (their GI as before); local lights still don't light a
+  path's hit on the screen (as before); the cache's cells still re-key when the camera moves 20 / 40 / 80 m.
 
 - Changed: **Softer Water Reflections** and **Steadier Water Reflections** are on by default and in RT/PT, no longer
   Experimental (ATN's test: they fix the unstable water). A saved Off stays Off; RT/PT turns them on.

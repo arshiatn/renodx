@@ -1,6 +1,11 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
-## v53 (2026-11-13; stamped and installed 13:35 with helper106, not run in game)
+## v54 (2026-11-13; built only with helper107, not stamped, installed or run in game)
+
+- Shared, no change here: Attila's Path-Traced GI of no view (helper107) needs the game's sun colour from its sun light
+  shaders; Warhammer III's aren't read for it yet, so its paths stay as in v53 (helper107 gives them the same picture).
+- Log: the "Ray tracing with" line names the Light Bounce's rays and bounces.
+- Not done: Warhammer III's sun colour for that fix (its own rt_sun and its sun shaders' diffuse term).
 
 - Changed: **Softer Water Reflections** and **Steadier Water Reflections** are on by default and in RT/PT, no longer
   Experimental (ATN's Attila test: they fix the unstable water). A saved Off stays Off; RT/PT turns them on.

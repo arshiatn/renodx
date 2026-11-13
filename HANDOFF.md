@@ -47,8 +47,9 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
 - [ ] Rome II runs BLOCKED (12:49 / 12:53): ATN's mod pack dialog (class mod_question_dlg) after an unclean exit; SendInput
   Enter doesn't answer it; screen access denied. ATN starts Rome II once, answers it, quits from the menu. Script fixed
   13:00 ($start vs [string]$Start, case-insensitive names; the dialog's class detected: stop at once).
-- [ ] PT GI fix (helper107): one diffuse estimate for screen / cache / unseen hits, KeptShade -> own occluded sky, freeze
-  slope + base colour under PT Ambient; HARNESS_PEDESTAL proof; look at the bounce GPU spikes 19-40 ms.
+- [x] PT GI fix (helper107): one diffuse estimate for screen / cache / unseen hits, KeptShade -> own occluded sky, freeze
+  slope + base colour under PT Ambient; HARNESS_PEDESTAL proof; look at the bounce GPU spikes 19-40 ms. Built only (Attila
+  v156 / WH3 v54 / Pharaoh v60 with helper107); left: ATN's in-game test, WH3's and Pharaoh's sun colour.
   - [x] 1 HARNESS_PEDESTAL (tools/tw/rt_harness, outside the repo): pedestal on a lit floor, four corner cameras (order
     01230: camera 0 cold and warm), ATN's paths (1 ray, Bounces 1, ReSTIR + RR, PT Ambient, Own Sky Rays, Kept Cube), light
     buffer = B6DA03C5's diffuse sun + its sky-cube and sun-lobe specular (HARNESS_PEDESTAL_SPECULAR). CONTROL helper106: spec
@@ -72,6 +73,17 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
     relearns or resets at a settings change (SHaRC off, NRD released). Now the "Ray tracing with" line names the Light
     Bounce's rays and bounces. What a trace must show if it comes back: Record Ray Tracing Profile over the slow time
     (tw_rt_profile_helper.csv gpu_a / b / c = fill + resolve / paths / reuse per request) and that line's rays.
+  - [x] 4 builds + tests at d809907e: helper107 12 s (build\tw_dlaa_helper107, bridge v31), build32 twattila + twrome2 +
+    twthronesofbritannia 44 s, the skill's 15 x64 targets 51 s (11 rebuilt, 4 up to date): no errors, only the upstream
+    deprecation warnings. all_modes 179/179 PASS (tools/tw/all_modes_v31_helper107.txt; against helper105's log by name:
+    release_rr passes now, new pedestal_gi). HARNESS_CACHE_LEAK A 0.0329 / B 0.0195 (helper105 0.033 / 0.020). RR noise
+    (preset 5): RTAO 35% / 22% left as before; PT Ambient bounce 62% / 45% on helper107 and helper106 alike (no sun light
+    flag there: the same paths). test/tw_* 19 suites x86 + amd64 38/38 PASS. WARP tools/tw/attila_ptgi_1113/rt_sun_colour:
+    texel 2 = c1 x 0.004 / x 1, every other texel v155's bit for bit, Pharaoh's includer texel 2 zero, CONTROL apart: PASS.
+    Page dumps a r156 / w r156 / p r60 against r155final / r59final: Build Date only.
+  - [x] 5 READMEs Attila v156, WH3 v54, Pharaoh Round v60 (built only, helper107); skill rows: ao-gi.md (GI reads no light
+    that depends on the view; HARNESS_PEDESTAL the check), testing.md (pedestal_gi; the status line's GPU ms are one
+    request's). Not stamped / installed / run.
 - [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
