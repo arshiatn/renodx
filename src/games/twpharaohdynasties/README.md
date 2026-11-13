@@ -23,6 +23,16 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 12. Below 100% in the campaign and a battle: the sun's lighting, the fog, the shroud and the water's reflections stay in place
     at the screen's edges (35 shaders no longer scaled twice).
 
+### Round v59 (2026-11-13, water rows on; built only, not stamped, not installed, not run in game; helper106 as in v58)
+
+- **Changed: Softer Water Reflections and Steadier Water Reflections on by default and in RT/PT**, no longer Experimental
+  (ATN's Attila test: they fix the unstable water). A saved Off stays Off. With Softer on, Samples and Reuse now show and act
+  on the water by default (Pharaoh's rule).
+- Shared, no change here: Attila's soldier shadow distance under the rays; Warhammer III's Grass Without Waiting (Pharaoh has
+  no GPU-placed grass, so no row).
+- Page dump (`build_dump.py r59final` against `r59pre`): the two water rows' defaults and labels; the preset census lists two fewer
+  writes that change nothing (Samples, Reuse now shown).
+
 ### Round v58 (2026-11-13, campaign fixes; stamped and installed 12:05 with helper106 (Steady Torch Shadows needs it), not run in game)
 
 - **Fixed: GT-VBAO a rectangle in the top left at Ultra Performance** (ATN, campaign). Every addon shader is built with `/Qstrip_reflect`, so the shared `twattila/view_share.hpp` Reflect never saw `render_scale` at b12 in our replaced shaders (ssao01 D42C3523 with ao_bitmask in its place, the tone mappers, fire02 E318CE77, the DOF pair): they got no cb12 of their own and read whatever b12 another draw left. The AO pass is the frame's first such reader: b12 null, share 1, the whole view's AO squeezed into the render corner. Reflect now takes a code without RDEF that declares cb12 as `render_scale` (0 of the 3168 game shaders, 70 of 179 built). Shared: every TW addon with view_share (Attila, Thrones, Rome II, Troy, WH1, WH2) had the same bug at its render-share replacements; WH3 doesn't install view_share. The game's AO blurs 7F637259 / BFD285BD are replaced (`shaders/ssao_blur.hlsli`): the region read scaled their taps too (a third of a texel apart at 33%). `twwarhammer2/bitmask_ao.hlsli` holds the depth levels' reads on the picture's last texel (the same texels wherever the depth is whole: Troy, WH2, WH3, Shogun 2).

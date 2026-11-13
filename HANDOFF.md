@@ -18,11 +18,29 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
     only, not stamped / installed / run; page dump before = after (tools/tw/rome2/page). Run tools in tools/tw/rome2:
     rome2_common.ps1, rome2_data_run.ps1, check_run_rome2.py, prepare_folder_rome2.py (dry by default; none run).
   - [ ] Stamp the trace addon + helper106 for Rome II, prepare_folder_rome2.py dry then --apply, data runs S1 / S2 / S5.
-- [ ] Water rows RayTracedWaterSoft + RayTracedWaterSteady on by default and in RAYS_PRESET (Attila, WH3, Pharaoh).
+- [x] Water rows RayTracedWaterSoft + RayTracedWaterSteady on by default and in RAYS_PRESET (Attila, WH3, Pharaoh): 33f6a5aa
+  (shared rows: Thrones takes them too); page dumps a / w r155pre -> r155final, Pharaoh r59pre -> r59final: those two rows'
+  defaults and labels only (+ WH3's grass row below). Built only (Attila v155, WH3 v53, Pharaoh Round v59), not stamped.
 - [ ] Grass round: WH3 indirect read-back without a wait (d1); Attila scrub cell radius clamp (d2) + LOD scaling per model
   (a2); RT grass capture range (Experimental).
+  - [x] d1 quick form 796033c8: WH3 Grass Without Waiting (Experimental, off; Settings::indirect_counts_later: the probe's
+    earlier-frame numbers, never the waiting read). test/tw_indirect_counts (WARP, x86 + amd64): row off this frame's numbers
+    40 / 40, 3.8 ms a frame; row on 0 this frame's, every capture an earlier frame's, 0.011 ms. Not run in game.
+  - NOT DONE: d1 without the lag (capture as an indirect draw onto emptied room sized from the probe, or a GPU copy of the
+    numbers for the helper): changes the compact capture's room and the helper's cluster counts (bridge / helper107).
+    Smallest step: the terrain_count_later pattern (NaN room, size = probe count x 9/8) for a non-compact indirect capture.
 - [ ] Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace shows a soldier shadow pass), D (WH3
   cross-pass unit capture key), B (trim per-unit capture work), E (TBB grain test rows).
+  - [x] A1 19581888: index 16 = 0 while rt_scene::CastersSkipped() (the next frame's sun-map casters skipped), the game's
+    10000 back the frame it ends; index 16 = entity_display_shadow_max_shadow_distance read by the soldiers' shadow record
+    (+0x441eb0 / +0x441f49, bytes read). test/tw_unit_shadows x86 + amd64 PASS. Later run: the shadow pack mark's count.
+  - NOT DONE: A2 (sprite soldiers' 276 shadow draws into the map): entity_display_enable_imposter_shadows's only reader
+    (+0x43c70d) sets index 16 to 10000, it never stops those draws; their submission code not found offline. Nothing
+    visible would change (every caster of the map is skipped under the rays), only the game's submission cost (~0.1-0.2 ms).
+- [x] Round builds + tests at 796033c8 (docs commit after): build32 twattila 43 s, WH3 43 s, Pharaoh 44 s, the skill's other
+  13 x64 targets 67 s, build32 twrome2 + twthronesofbritannia 42 s: no errors, only the upstream deprecation warnings (and
+  Ryse DLSS's old reorder warning); every test/tw_* x86 + amd64 PASS (19 suites, 37 runs). READMEs: Attila v155, WH3 v53,
+  Pharaoh Round v59 (built only). Not stamped / installed / run; no helper change (helper106 as in v154).
 - [ ] PT GI fix (helper107): one diffuse estimate for screen / cache / unseen hits, KeptShade -> own occluded sky, freeze
   slope + base colour under PT Ambient; HARNESS_PEDESTAL proof; look at the bounce GPU spikes 19-40 ms.
 - [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign

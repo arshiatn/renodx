@@ -1,5 +1,20 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v53 (2026-11-13; built only, not stamped, not installed, not run in game; renodx-tw-dlaa64.exe helper106 as in v52)
+
+- Changed: **Softer Water Reflections** and **Steadier Water Reflections** are on by default and in RT/PT, no longer
+  Experimental (ATN's Attila test: they fix the unstable water). A saved Off stays Off; RT/PT turns them on.
+- New: **Grass Without Waiting (Experimental, off)**, after Terrain Without Waiting in Ray Tracing Extra Options' More Options.
+  The grass the game places on the GPU (its indirect draws) gave the rays its numbers through a read that waited for the
+  graphics card, 1.2 ms a frame where that grass is drawn (sieges, benchmarks); with the row on they come from the copy an
+  earlier frame made, never a wait. That grass's shadows can lag it by a frame or two. On WARP (`test/tw_indirect_counts`):
+  0.011 ms a frame against the wait's 3.8, an earlier frame's numbers in every capture, never this frame's or an empty one's.
+- Not done: the form without any lag (the capture drawn as an indirect draw onto emptied room, or the numbers copied on the
+  GPU for the helper): a bridge and helper change.
+- Shared, no change here: Attila's soldier shadow distance under the rays (Attila's Unit Detail hook only).
+- Page dump (`w r155final` against `w r155pre`): the two water rows' defaults and labels, and the new row (default 0, shown where
+  Terrain Without Waiting is); buttons unchanged.
+
 ## v52 (2026-11-13; stamped and installed 12:05 with renodx-tw-dlaa64.exe helper106, not run in game)
 
 - New: **Steady Torch Shadows** (Experimental, off; shown with the torch rows): every light a pixel reaches is traced every

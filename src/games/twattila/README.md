@@ -1,5 +1,22 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v155 (2026-11-13; built only, not stamped, not installed, not run in game; renodx-tw-dlaa64.exe helper106 as in v154)
+
+- Changed: **Softer Water Reflections** and **Steadier Water Reflections** are on by default and in RT/PT, no longer
+  Experimental (ATN's test: they fix the unstable water). A saved Off stays Off; RT/PT turns them on.
+- Faster: while the rays' shadows replace the sun's shadow map (its casters skipped), the game no longer prepares its soldiers'
+  3D shadows for that map: the unit shadow distance (the Unit Detail hook's index 16) is 0, the game's 10000 again at once when
+  the map draws. Nothing visible reads those shadows then (every caster of the map is skipped; the soldiers' ray shadows come
+  from their own draws). In ATN's Ctesiphon run the game packed 117 soldiers' bones for that pass; the saving is not measured
+  in game yet. Big Battle Shadow Fix sees less overflow there under the rays (those shadows aren't drawn).
+- Not done: the sprite soldiers' shadow draws into that map (276 a frame there, already skipped at the draw):
+  `entity_display_enable_imposter_shadows` only sets the same index 16 (to 10000), it never stops them, and their own code
+  wasn't found offline.
+- Shared, no row here: Warhammer III's Grass Without Waiting (Attila's grass is placed by the CPU, not by the GPU).
+- Checks: `test/tw_unit_shadows` (x86, amd64): index 16 in every state of the rays (0 only while the next frame's casters are
+  skipped; every other distance the game's; CONTROL Unit Detail 2x); `test/tw_indirect_counts`; page dump (`a r155final` against
+  `a r155pre`): the two water rows' defaults and labels only.
+
 ## v154 (2026-11-13; stamped and installed 12:05 with renodx-tw-dlaa64.exe helper106, not run in game)
 
 - New: **Steady Torch Shadows** (Experimental, off; shown with the torch rows): every light a pixel reaches is traced every
