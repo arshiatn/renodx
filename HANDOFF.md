@@ -171,7 +171,7 @@ change goes in an Experimental row, off. One commit + push to origin atn-mods pe
     ordering doesn't allow it (0.14-0.18 ms a frame); (c) the dispatcher's own per-draw work (utils/command_action:
     stage lookups, registration maps, the replay of captured draws) is shared upstream code, not ours.
   - Builds: build32 twattila, x64 twwarhammer3 exit 0.
-- [ ] 4 Helper (coordinator 2026-11-13 night: the 2.3 ms wait at +0x5c238 is GPU back-pressure, dropped): the RT worker
+- [x] 4 Helper (coordinator 2026-11-13 night: the 2.3 ms wait at +0x5c238 is GPU back-pressure, dropped): the RT worker
   creates and frees 3 GPU buffers every frame (13 MiB, 2.75 MiB, 320 KiB; create +0x689c1 / +0x688ca / +0x68956, free
   +0x688a8 / +0x68934 / +0x6899c; ~1.3 ms paging a frame + 2.4 ms in CreateAllocation / DestroyAllocation2 on the worker):
   keep them and only grow; harness proof (no per-frame create / free over N frames, results identical); helper109,
@@ -201,9 +201,23 @@ change goes in an Experimental row, off. One commit + push to origin atn-mods pe
     Ryse's light bounce); now std::addressof. test/tw_kept_buffers (WARP, x86 + amd64): one buffer kept, its bytes = the
     v157 form's each frame (CONTROL 10 of 10 new); KeepCamera 9.6 -> 4.1 us, AttilaCamera 9.1 -> 5.5 us a call on WARP.
     Tales' micromap grow() had it too (std::addressof).
-- [ ] 5 Builds (the skill's x64 list, build32 Attila / Rome II / Thrones, the helper), test/tw_* x86 + amd64, page dumps
+  - Regressions (helper109 in build/tw_rt_harness, tools/tw/all_modes_v65_driver.sh, GPU lock held): all_modes 179 of 179
+    ALL PASSED, the same mode names as helper108's (all_modes_v31_helper109_done.txt); RR noise (build/tw_rt_harness_v65,
+    60 frames) wall foot 61% left, open ground 37%, = helper108's. Commits 02a05144 (helper), 20b91319 (addons' cameras).
+    Saving (ATN's recording, E): ~1.3 ms GPU paging + ~2.4 ms RT worker a frame while the sway runs (the RT/PT preset's
+    Swaying Shadows Range 50 m, or Off-Screen Sway off); the cameras ~5 us a call on WARP.
+- [x] 5 Builds (the skill's x64 list, build32 Attila / Rome II / Thrones, the helper), test/tw_* x86 + amd64, page dumps
   (Attila / WH3 / Pharaoh: Build Date only unless a new row), READMEs Attila v158 / WH3 v57 / Pharaoh Round v65 (built
   only), skill rows.
+  - Builds: the skill's x64 list and build32 twattila / twrome2 / twthronesofbritannia exit 0 after 20b91319 (only the
+    upstream deprecation warnings; later commits change no addon source); build/tw_dlaa_helper109.
+  - test/tw_*: every suite x86 + amd64 PASS (tw_motion_record x86, tw_shadow_map_size amd64 only, as their scripts);
+    GPU suites (lock held): tw_gpu_completion, tw_helper_lifetime, tw_particle_history, tw_screen_space_shadows, tw_unit_pack_rounds x86 + amd64 PASS. tw_scrub_lods section 3 failed once on amd64: the
+    first-touch race (step 2's NOT DONE), section 3 now passes every run (3e508e56).
+  - Page dumps: tools/tw/page_dump page_a_r165 / page_w_r165 against r164, tools/tw/pharaoh page_p_r65 against r64:
+    only Build Date differs.
+  - READMEs: Attila v158, WH3 v57, Pharaoh Round v65 (+ its test line 23), built only (6a571f63). Skill:
+    helper-fg-stability.md section 3 (ComPtr's releasing operator&), rt-scene.md section 5, testing.md suites.
 
 ## PHARAOH V64: TORCH SHADOWS + DEBUG VIEWS (2026-11-13 evening, offline; Pharaoh v63 / helper107 installed)
 Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, never
