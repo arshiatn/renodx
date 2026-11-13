@@ -12,6 +12,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
@@ -214,7 +215,7 @@ inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_a
   pass((msaa ? objects.resolve_msaa : objects.resolve).Get(), objects.history[previous_index].srv.Get(),
        objects.history[objects.history_index].uav.Get());
   pass(objects.denoise.Get(), objects.history[objects.history_index].srv.Get(), objects.output.uav.Get());
-  frame_history::KeepCamera(objects.device.Get(), native, camera, &objects.previous_camera);
+  frame_history::KeepCamera(objects.device.Get(), native, camera, std::addressof(objects.previous_camera));
 
   constexpr UINT KEEP_COUNT = UINT_MAX;
   native->CSSetShader(game_shader.Get(), nullptr, 0);
@@ -275,7 +276,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       native->GetDevice(device.GetAddressOf());
       if (!internal::Prepare(device.Get(), depth_desc.Width, depth_desc.Height)) return {};
       auto* camera = frame_history::AttilaCamera(device.Get(), native, game_camera.Get(), sun_draw.camera_layout,
-                                                 &runtime.objects.camera);
+                                                 std::addressof(runtime.objects.camera));
       ComPtr<ID3D11Buffer> sun_mapping;
       if (sun_draw.ssao_constants_slot != UINT_MAX) native->PSGetConstantBuffers(sun_draw.ssao_constants_slot, 1, sun_mapping.GetAddressOf());
       internal::Filter(native, game_ao.Get(), depth.Get(), depth_desc.SampleDesc.Count > 1, camera, sun_mapping.Get());

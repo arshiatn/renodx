@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <memory>
 #include <shared_mutex>
 #include <span>
 #include <type_traits>
@@ -371,7 +372,7 @@ inline bool Open(ID3D11DeviceContext* native, ID3D11Device* device, ID3D11Render
     native->UpdateSubresource(objects.dimensions.Get(), 0, nullptr, dimensions.data(), 0, 0);
     objects.written_dimensions = dimensions;
   }
-  frame_history::KeepCamera(device, native, camera, &objects.camera);
+  frame_history::KeepCamera(device, native, camera, std::addressof(objects.camera));
   if (!objects.camera) return false;
   const D3D11_BOX target_dimensions = {.left = 0, .top = 0, .front = 0, .right = 16, .bottom = 1, .back = 1};
   native->CopySubresourceRegion(objects.camera.Get(), 0, RENDER_TARGET_DIMENSIONS, 0, 0, objects.dimensions.Get(), 0, &target_dimensions);

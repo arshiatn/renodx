@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
@@ -280,7 +281,7 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
   if (runtime.resolved_frame != runtime.frame) {
     // A new frame: the last one's camera becomes the previous one, the histories swap.
     runtime.reset = !(runtime.history_valid && runtime.resolved_frame + 1 == runtime.frame && objects.last_camera);
-    if (objects.last_camera) frame_history::KeepCamera(device.Get(), native, objects.last_camera.Get(), &objects.previous_camera);
+    if (objects.last_camera) frame_history::KeepCamera(device.Get(), native, objects.last_camera.Get(), std::addressof(objects.previous_camera));
     runtime.history_index ^= 1;
     runtime.resolved_frame = runtime.frame;
   }
@@ -348,7 +349,7 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
 
   native->CopyResource(target, objects.result.Get());
   native->CopyResource(objects.histories[runtime.history_index].Get(), objects.result.Get());
-  frame_history::KeepCamera(device.Get(), native, camera, &objects.last_camera);
+  frame_history::KeepCamera(device.Get(), native, camera, std::addressof(objects.last_camera));
   runtime.history_valid = true;
 }
 

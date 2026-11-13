@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
@@ -532,7 +533,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
 
       // This frame's camera for the next trace.
       if (constants[1] != nullptr) {
-        frame_history::KeepCamera(device.Get(), native, constants[1], &objects.previous_camera);
+        frame_history::KeepCamera(device.Get(), native, constants[1], std::addressof(objects.previous_camera));
       }
 
       native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);

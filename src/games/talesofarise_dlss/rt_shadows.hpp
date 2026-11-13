@@ -1906,7 +1906,7 @@ inline bool Trace(ID3D11DeviceContext* context) {
                                          D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         return static_cast<bool>(*buffer);
       };
-      if (!bakes.empty() && (!grow(&gpu.micromap_data, data_bytes) || !grow(&gpu.micromap_descs, desc_bytes))) bakes.clear();
+      if (!bakes.empty() && (!grow(std::addressof(gpu.micromap_data), data_bytes) || !grow(std::addressof(gpu.micromap_descs), desc_bytes))) bakes.clear();
       if (!bakes.empty()) {
         list->SetPipelineState(gpu.micromap_pipeline.Get());
         std::vector<D3D12_RESOURCE_BARRIER> baked;

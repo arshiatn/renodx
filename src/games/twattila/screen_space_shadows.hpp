@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
@@ -972,7 +973,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
 
   // Torch and Fire Shadows (screen_space_lights.hpp): this camera kept for the light draws.
   if (runtime.settings.lights != 0) {
-    frame_history::KeepCamera(device.Get(), native, camera, &objects.lights.camera);
+    frame_history::KeepCamera(device.Get(), native, camera, std::addressof(objects.lights.camera));
   }
 
   const ComputeState game_state(native);
@@ -1155,7 +1156,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
               }
             }
             internal::Compute(native, scene_depth, msaa,
-                              frame_history::AttilaCamera(device.Get(), native, camera[0], sun_draw.camera_layout, &runtime.objects.camera),
+                              frame_history::AttilaCamera(device.Get(), native, camera[0], sun_draw.camera_layout, std::addressof(runtime.objects.camera)),
                               lighting[0], sun_draw.sun_direction, colour.Get(), (msaa ? nullptr : material.Get()));
             runtime.computed_frame = runtime.frame;
           }

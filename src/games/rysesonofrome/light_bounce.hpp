@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <span>
 
 #include <embed/shaders.h>
@@ -255,7 +256,7 @@ inline void Apply(ID3D11DeviceContext* context, const LightBounceConstants& cons
     objects.uploaded = constants;
   }
   // The first frame: its own camera as the last one.
-  if (!objects.previous_camera) twattila::frame_history::KeepCamera(device.Get(), context, camera.Get(), &objects.previous_camera);
+  if (!objects.previous_camera) twattila::frame_history::KeepCamera(device.Get(), context, camera.Get(), std::addressof(objects.previous_camera));
 
   const talesofarise::dlss::ContextStateScope scope(context1.Get(), objects.private_state.Get());
   context->CopyResource(objects.light_copy.Get(), scene.Get());
@@ -351,7 +352,7 @@ inline void Apply(ID3D11DeviceContext* context, const LightBounceConstants& cons
   context->RSSetViewports(1, &scene_viewport);
   context->Draw(3, 0);
   // This frame's camera for the next trace.
-  twattila::frame_history::KeepCamera(device.Get(), context, camera.Get(), &objects.previous_camera);
+  twattila::frame_history::KeepCamera(device.Get(), context, camera.Get(), std::addressof(objects.previous_camera));
 }
 
 // The game's device is going away: the addon's objects on it with it.

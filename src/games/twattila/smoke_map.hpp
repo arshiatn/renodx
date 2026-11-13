@@ -11,6 +11,7 @@
 #include <array>
 #include <climits>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
@@ -241,7 +242,7 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
   // Six vertices a splat, none yet (smoke_map_list counts them).
   constexpr std::array<UINT, 4> NO_SPLATS = {6, 0, 0, 0};
   native->UpdateSubresource(objects.arguments.Get(), 0, nullptr, NO_SPLATS.data(), 0, 0);
-  ID3D11Buffer* camera = frame_history::AttilaCamera(device.Get(), native, game_camera.Get(), draw.camera_layout, &objects.camera);
+  ID3D11Buffer* camera = frame_history::AttilaCamera(device.Get(), native, game_camera.Get(), draw.camera_layout, std::addressof(objects.camera));
   // Not bound for the pixel shaders while written.
   ID3D11ShaderResourceView* no_view = nullptr;
   native->PSSetShaderResources(screen_space_shadows::internal::MASK_SLOT, 1, &no_view);

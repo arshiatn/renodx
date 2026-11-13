@@ -13,6 +13,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 
 #include <embed/shaders.h>
 
@@ -308,7 +309,7 @@ inline std::array<ID3D11ShaderResourceView*, 2> Resolve(ID3D11DeviceContext* con
                    {history->constants.Get(), nullptr, history->previous_camera.Get(), layer.camera}, nullptr, history->no_depth.Get());
   }
   // This frame's camera for the next resolve.
-  frame_history::KeepCamera(device.Get(), context, layer.camera, &history->previous_camera);
+  frame_history::KeepCamera(device.Get(), context, layer.camera, std::addressof(history->previous_camera));
   history->index = written;
   history->resolved_frame = frame;
   return {history->colours[written].srv.Get(), history->extras[written].srv.Get()};

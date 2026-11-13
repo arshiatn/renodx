@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
@@ -307,7 +308,7 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
             post_native->PSGetConstantBuffers(internal::CAMERA_SLOT, 1, camera.GetAddressOf());
             if (camera) {
               frame_history::KeepCamera(post_objects.device.Get(), post_native, camera.Get(),
-                                        &post_objects.previous_camera);
+                                        std::addressof(post_objects.previous_camera));
             }
           }
           std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> restored = {};
