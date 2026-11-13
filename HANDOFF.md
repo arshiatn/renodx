@@ -142,7 +142,10 @@ play, runs\A1_175145 (custom battle; 33 / 50 / 67 / 100%) and runs\C1_175625 (Sa
   242566C2 (only unused camera constants moved); cb_audit: nothing lost, only cb13's sky rows added. No WARP run (one
   sample; at Sky Debanding / Smoothing 0 SkySample is the game's code). Not in this round: Graphics 2 of 2 ports
   (Cutscene Point Light Shadows, Campaign Tree Detail), Rope Distance (ATN decides).
-- [ ] 3.2 Stability (ReadGpuVendor / OnNvidia, helper-missing note, GitHub button).
+- [x] 3.2 Stability (ReadGpuVendor / OnNvidia, helper-missing note, GitHub button). OnPresent reads the GPU's vendor
+  first (a saved DLSS becomes XeSS on Intel, else FSR; the page lists DLSS on NVIDIA only), FULL_DOWNLOAD_NOTE in General
+  while the helper is missing (and the page's in Anti-Aliasing), GitHub (Downloads) beside Ko-fi / NexusMods. page_r_r2
+  against r1page: the note and the button only, every key and default the same. Lifetime suites: with the tests below.
 - [ ] 3.5 Render scale (12 hdr_to_screen FrameRenderShare, 37 replaced NDC shaders, dead RENDER_SCALE_READS).
 - [ ] 3.6 Sun draws (InstallSunDraws cube after 0.2; Rome II's sun colour into rt_sun texel 2).
 - [ ] README twrome2 round entry; builds of every consumer; test/tw_* x86 + amd64.
