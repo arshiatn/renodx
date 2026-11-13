@@ -106,7 +106,11 @@ Empire.Retail.dll+0x276899 ~9 s in, before any frame, also with the add-on renam
   it is (frame^(1/2.2) within 0.094%, no square); the addon's t00 HDR 3 linear (0.104%). Today's wrappers give DLSS
   frame^2 (0.01 -> 0.0001, darks <= 0.000244 to 0); TW_AA_FRAME_LINEAR 1: 0 of 513 off by > 1% (w 0 / 1), define 0 =
   today bit for bit; CONTROLs fail as they must.
-- [ ] 0.2 Sun picture test 340CBE9D / 1A0532C0 (t49 / t50 / t51), the ambient cube and formula.
+- [x] 0.2 Sun picture test (tools/tw/rome2/sun_test, WARP, dump bytes): all 50 live listed sun PS: unbound = the game,
+  t49 = 1 = fully shadowed (CONTROLs fail), the cube at floats [8, 32) (OnPathAmbientDraw's copy = cube zeroed by name;
+  Pharaoh's [24, 48) differs), slm ambient = AO x albedo^2 x (1 - w) x cube(normalize(n x (1, 4, 1))) x 1.44 (g_hdr_on
+  c11.x) / x 1 within 6e-07; rt_sun texel 2 = c1 x 0.004 / x 1, texels 3-8 c2-c7. Found + fixed (90a917b1): the shared
+  Patch's min route dropped the cascade shadow of 6 SM3 slm sun PS with every feature off.
 - [x] 0.3 No contact march: 0 `loop` in the 50 live sun PS (no step count / flag in their constants); battlefog 259AEC56
   binds only the depth twin and the sky cube (no shadow map, no loop): no fog march. Bend and Fog Shadows add, nothing
   to replace (B; tools/tw/rome2/phase0_results.md).
