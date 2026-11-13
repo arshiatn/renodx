@@ -157,11 +157,23 @@ constexpr std::string_view DRAW_SCRUB =
 // squared, added to its distance squared) that thins the grass out with distance: near the camera half the map's grass
 // is drawn (the grass clumps' last LOD, 100 m, against a bias up to 200 m). The hook writes both x Grass Distance, the
 // bias / Grass Density (2x: all of it near the camera; the game's values kept).
+// +0x80 has two readers (both in ScrubUpdate, without scrub_node_always_render): the quadtree query (+0x1898800) of the
+// box camera +- float(+0x80) (a cell is left out with its subtree when its bounds, which hold its children's, miss the
+// box), and the cell loop (+0x1897a30, per cell) taking a record (18 bytes: position first, +0x10 its slot in the scrub's
+// models) to DrawScrub only while its distance squared <= float(+0x80 squared as an int). DrawScrub then takes the same
+// distance squared (the same floats, the sum in another order) + (manager +0xc34 + the record's bias, which is >= 0) as
+// its key: a record past every enabled LOD (+0x44) of its model draws nothing. The scrub's models: +0x90 the manager,
+// +0x98 their count, +0x9c the manager's model index per slot (filled by +0x1875fc0, a slot a byte).
 constexpr std::string_view SCRUB_UPDATE =
     "83 EC 4C 53 55 8B E9 56 57 89 6C 24 14 80 7D 14 00 0F 84 ?? ?? ?? ?? 83 BD 88 00 00 00 00 0F 84 ?? ?? ?? ?? E8 ?? "
     "?? ?? ?? 80 BD 8C 00 00 00 01";
 constexpr size_t SCRUB_CELLS = 0x80;
 constexpr size_t SCRUB_BIAS = 0x84;
+constexpr size_t SCRUB_MANAGER = 0x90;
+constexpr size_t SCRUB_MODEL_COUNT = 0x98;
+constexpr size_t SCRUB_MODELS = 0x9c;
+constexpr uint32_t MAX_SCRUB_MODELS = 256;
+constexpr size_t MANAGER_LOD_OFFSET = 0xc34;  // a signed square, added to every key (+0x188afc0)
 constexpr size_t MAX_MODEL_LODS = 8;
 
 // __thiscall through __fastcall: `this` in ecx, edx unused, the rest on the stack (callee pops).
@@ -323,8 +335,8 @@ static float __fastcall OnImposterDistance(void* display, void* unused_edx, uint
 }
 
 // The manager's model `index` (its list +0x20, count +0x1c): its LOD distances (squared) x `scale` (squared), the game's
-// values kept per model (DrawTree's and DrawScrub's).
-static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
+// values kept per model (DrawTree's and DrawScrub's). Returns the model (null: none at `index`).
+static uint8_t* ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
   uint32_t model_count;
   std::memcpy(&model_count, manager + 0x1c, sizeof(model_count));
   uint8_t* model = nullptr;
@@ -349,7 +361,7 @@ static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
       }
       return true;
     };
-    if (cached.model == model && cached.scale == scale && cached.count == count && holds_written()) return;
+    if (cached.model == model && cached.scale == scale && cached.count == count && holds_written()) return model;
     models_scaled.store(true, std::memory_order_relaxed);
     const auto scaled = [&](float game) {
       return std::bit_cast<uint32_t>(game < FLT_MAX ? std::min(game * scale, FLT_MAX) : game);
@@ -370,7 +382,7 @@ static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
     });
     if (holds_scaled) {
       cached = {.model = model, .scale = scale, .count = count, .written = written};
-      return;
+      return model;
     }
     // The entry read, the LODs written and the entry updated under the entry's lock: as three steps, two threads scaling
     // one model at once (its first scaling, or its first after a slider change) could take each other's written value for
@@ -405,6 +417,7 @@ static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
         });
     cached = {.model = model, .scale = scale, .count = count, .written = written};
   }
+  return model;
 }
 
 static void* __fastcall OnDrawTree(uint8_t* manager, void* unused_edx, uint32_t model, const float* position,
@@ -497,13 +510,45 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
   known.scrub = scrub;
   known.written_cells = static_cast<int32_t>(std::lround(static_cast<float>(known.game_cells) * scale));
   known.written_bias = known.game_bias * scale / grass_density.load(std::memory_order_relaxed);
+  // The cells no farther than 1 m past the scrub models' farthest enabled LOD (scaled here first, as their draws would):
+  // a record past it has no LOD, so neither it nor a cell wholly past it is visited (SCRUB_UPDATE: the same set drawn).
+  uint8_t* manager;
+  uint32_t slot_count;
+  const uint32_t* slots;
+  std::memcpy(&manager, scrub + SCRUB_MANAGER, sizeof(manager));
+  std::memcpy(&slot_count, scrub + SCRUB_MODEL_COUNT, sizeof(slot_count));
+  std::memcpy(&slots, scrub + SCRUB_MODELS, sizeof(slots));
+  float farthest = 0.f;  // distance squared; a NaN LOD never takes a record, an infinite one leaves the cells as they are
+  for (uint32_t slot = 0; manager != nullptr && slots != nullptr && slot < std::min(slot_count, MAX_SCRUB_MODELS); ++slot) {
+    const uint8_t* model = ScaleModelLods(manager, slots[slot], scale * scale);
+    if (model == nullptr) continue;
+    uint32_t count;
+    uint8_t** entries;
+    std::memcpy(&count, model + 0x28, sizeof(count));
+    std::memcpy(&entries, model + 0x2c, sizeof(entries));
+    for (uint32_t lod = 0; lod < count; ++lod) {
+      float distance;
+      std::memcpy(&distance, entries[lod] + 0x38, sizeof(distance));
+      if (entries[lod][0x44] != 0 && distance > farthest) farthest = distance;
+    }
+  }
+  double reach = 0.0;  // metres (0: no scrub model with an enabled LOD found, the cells left as they are)
+  if (farthest > 0.f) {
+    float lod_offset;
+    std::memcpy(&lod_offset, manager + MANAGER_LOD_OFFSET, sizeof(lod_offset));
+    reach = std::sqrt(static_cast<double>(farthest) - std::min(lod_offset, 0.f));
+    if (const double radius = std::ceil(reach) + 1.0; radius < known.written_cells) {
+      known.written_cells = static_cast<int32_t>(radius);
+    }
+  }
   std::memcpy(scrub + SCRUB_CELLS, &known.written_cells, sizeof(cells));
   std::memcpy(scrub + SCRUB_BIAS, &known.written_bias, sizeof(bias));
   // Grass Trace: the last frame's draws out, or this frame's started.
   if (grass_trace.state.load() == 2) {
     const std::unique_lock lock(grass_trace.mutex);
-    renodx::utils::log::i("[Total War] Grass trace: cells ", known.written_cells, " (game ", known.game_cells, "), bias x ",
-                          known.written_bias, " (game ", known.game_bias, ")");
+    renodx::utils::log::i("[Total War] Grass trace: cells ", known.written_cells, " (game ", known.game_cells,
+                          ", scrub LODs end at ", std::round(reach), " m), bias x ", known.written_bias, " (game ",
+                          known.game_bias, ")");
     for (size_t bin = 0; bin < grass_trace.calls.size(); ++bin) {
       if (grass_trace.calls[bin] == 0) continue;
       renodx::utils::log::i("[Total War]   ", bin * 10, (bin == 40 ? "+ m" : " m"), ": ", grass_trace.calls[bin],
