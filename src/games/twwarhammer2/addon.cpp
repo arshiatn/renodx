@@ -35,10 +35,12 @@
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./ao_trace.hpp"
 #include "./line_sweep_ao.hpp"
+#include "./trace_reads.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
@@ -1884,6 +1886,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
+  // The data run's RENODX_TW_SET / SHOT / PROFILE (nothing without them), timed from the first present.
+  twattila::test_hooks::Install(&settings, true);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
@@ -1910,11 +1914,31 @@ bool AttachAddon() {
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // The data run's frame traces (tools\tw\wh2\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
+  // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF).
+  // Constants once each: the 11 single-sampled sun PS (directionallight slm / skinlm), the tone mapper (reinhard 2333E142), the
+  // point and spot lights' VS (D2A0FF23, 5E0BC81E), the battle fog (inscattering 492B87C7, extinction 16AB86F4), the battle water
+  // and river (31AB3DFB, A5294D06), the lit particles (F32116B4, DDABB799; their blend and 687378DB's) and their VS's buffers
+  // (C3300B96, 1FC776EF); the lights' instances with FrameTraceReads (trace_reads.hpp).
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
-                                                        .rigid_compute_shader = __motion_rigid});
+                                                        .rigid_compute_shader = __motion_rigid},
+                                   {}, {}, {}, {},
+                                   {
+                                       .value_hashes = {0x1AB80044, 0x2DCA8E30, 0xA03688A3, 0xC960A275, 0xE091B8C4, 0xF2484739, 0x1494188B,
+                                                        0x1579598F, 0x3115B6D3, 0x37237EC7, 0xDF7EA1A3, 0x2333E142, 0xD2A0FF23, 0x5E0BC81E,
+                                                        0x492B87C7, 0x16AB86F4, 0x31AB3DFB, 0xA5294D06, 0xF32116B4, 0xDDABB799},
+                                       .value_slots = 6,
+                                       .value_floats = 256,
+                                       .on_demand = true,
+                                       .at_100 = true,
+                                       .blend_hashes = {0xF32116B4, 0xDDABB799, 0x687378DB},
+                                       .vertex_input_hashes = {0xC3300B96, 0x1FC776EF},
+                                       .instances_apart = true,
+                                       .draw_reads = twwarhammer2::trace_reads::Read,
+                                   });
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
@@ -1937,6 +1961,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  twattila::test_hooks::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);

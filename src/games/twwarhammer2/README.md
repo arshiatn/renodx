@@ -1,5 +1,19 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Trace build (2026-11-14, for the data run; built only, not run in game)
+
+- **Frame traces on demand and at 100%** (`twattila/frame_trace.hpp` Options, as Pharaoh's): `renodx_trace_now` next to the exe
+  traces the next frame (looked for every 60 presents); `[renodx] FrameTrace=1` counts the 3D view at any scale. One draw each
+  of the 11 single-sampled sun PS, the tone mapper, the point and spot lights, the battle fog, water, river and lit particles
+  writes its constants (b0-b5, 256 floats); the particles' blend and their VS's buffers; instanced draws' counts apart. With
+  `[renodx] FrameTraceReads=1` the point and spot lights' instance rows, also the frame after (`trace_reads.hpp`).
+- **Run hooks** (`twattila/test_hooks.hpp`): `RENODX_TW_SET`, `RENODX_TW_SHOT`, `RENODX_TW_PROFILE`, timed from the first
+  present; nothing without them. Every feature as before (page dump: the same but the Build Date).
+
+Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon64`. Manual check: in a battle, an empty file
+`renodx_trace_now` next to Warhammer2.exe: within a second `tw_frame_trace.txt` appears and ReShade.log says
+"Frame trace: N lines saved".
+
 ### Round v47 (2026-11-14, shared code from Attila / Pharaoh; built only, not run in game)
 
 - **Fixed: the Ray Tracing Debug View's Screen-Space AO was magenta.** No AO pass hook keeps it here (the game's AO is compute line sweeps), so it is now what each sun draw reads at its `t_ssao` (the game's SSAO or GT-VBAO, blurred), copied before the rays' AO and the AO filter take its place: `rt_scene::InstallSunDebugAmbient` (`twattila/rt_scene.hpp`, Pharaoh's hook moved there). Its mapping from the shaders' bytes: all 30 sun draws with an AO slot read it at `(SV_Position + g_vpos_texel_offset) x g_screen_size.zw`, as their G-buffer, which is the Debug View's own mapping (`tools/tw/debug_ao_v47/ao_mapping.py`; the same bytes in Pharaoh's 24, where a trace proved it; Warhammer III's read it through their overscans and fail the check). Page dump: the same but the Build Date.
