@@ -1,5 +1,44 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v159 (2026-11-13, night merges: GPU options, engine CPU code, grass / unit hooks; built only with renodx-tw-dlaa64.exe helper110, not stamped, not run in game)
+
+- New: **Grass Ray Tracing Range (Experimental, off)** under More Options: grass farther than this leaves the ray tracing
+  (swaying or still) and pixels past it trace without grass. Harness at 4K in a large field: ~0.45 ms a frame at 30 m,
+  ~0.55 ms of the rays at 60 m from above; near grass bit-identical. Needs helper110 (with helper109 it acts only as Grass
+  Shadow Range).
+- Faster: **Swaying Shadows Range / Off-Screen Sway**: the sway's counting pass runs on 64 GPU threads instead of one
+  (harness 4K, 150 k clusters: 0.4-0.5 ms less a frame, same picture).
+- New: **Faster Game CPU Code** (Ray Tracing Extra Options > More Options, on by default): three of the game's own
+  routines replaced by faster code with the same results, register for register (tested against the game's DLL: all 2^32
+  floats for two, 42 M argument pairs for fmod): the sprite soldiers' instance rows (float to half, 2.08 -> 1.81 ns), the
+  sprite soldiers' animation frame (x87 fmod, 145 -> 66 ns a call in the harness), the soldiers' model draw rounding block
+  (SSE, 69.7 -> 41.2 ns; left alone with the Attila CPU Performance Fix, which already rewrites it). Estimated from ATN's
+  8x profile: ~1.2-1.6 ms a frame of the game's threads (~0.3 ms render thread) with the CPU Performance Fix, ~2 ms more
+  without; not measured in game. Code another mod or build changed is left alone; ReShade.log names what is faster and
+  what was left. Off restores the game's code. A one-off ~0.15 s hitch at the first present and at each toggle.
+- Faster: **grass past every LOD no longer goes through the game's grass draw** (always on, bit-exact): a grass or plant
+  record whose distance is past every LOD of its model skips the game's DrawScrub, which draws nothing for it (its code
+  read: it only reads and returns there). ATN's G1 battle: ~106k of 118k calls a frame. Test: the same draws bit for bit
+  in 400 random scenes and 40 with LODs one float step around their records' distances (a control with the sum in another
+  order draws less), 8.9 ns a call left out. Estimated from ATN's grass-maxed profile: up to ~2.5 ms CPU a frame over the
+  game's threads (~0.3 ms render thread); not measured in game. Only with the game's code as read (its bytes at start, its
+  camera getters every frame; else every record goes to the game as before). ReShade.log: "grass records past every LOD
+  skip DrawScrub"; Grass Trace's first line ends "DrawScrub past every LOD skipped". Thrones of Britannia has the same code.
+- Fixed: **Grass and tree distance sliders sometimes scaled a model twice** (two of the game's threads meeting a model
+  first at once, or right after a slider change: some models kept LODs farther than the slider). Test: v158 52-76 of
+  3,200 models off, now 0; everything else bit-identical.
+- Faster (where it applies): **grass cells only as far as the grass reaches** (the cell radius ends 1 m past the farthest
+  grass / plant LOD; the same grass drawn). On G1 nothing changes: three plants reach 3.3 km. Grass Trace prints where the
+  LODs end.
+- New: **Small Soldiers as Sprites (Experimental, off)** with **Sprite Size** (20 px): soldiers become the game's sprites
+  once smaller than Sprite Size on screen, even inside Unit Detail's distance (4K, 20 px: foot ~267 m, cavalry ~386 m,
+  elephants ~593 m, artillery ~445 m; heights estimated). Needs TAA / SMAA T2x / DLSS / FSR / XeSS.
+- Not done: the animation pack loop (heapfix's author measured no gain from a prefetch there); ATN decides on a
+  heapfix-aware variant of the rounding block (heapfix's own patch there would become dead code).
+- Not possible: rays below the picture's resolution under Ray Reconstruction (one input resolution; no checkerboard or
+  dynamic resolution); Light Bounce Resolution Half / Quarter and RTAO Rate cover what can go lower.
+- Needs helper110 for the first two lines; with helper109 the rest stays.
+
 ## v158 (2026-11-13, CPU round; stamped and installed 21:04 with renodx-tw-dlaa64.exe helper109, not run in game)
 
 - Faster: **the helper keeps the plant sway's GPU buffers** (the RT/PT preset, or Swaying Shadows Range above 0 m or

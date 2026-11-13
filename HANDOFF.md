@@ -95,6 +95,58 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
 
+## NIGHT MERGES (2026-11-13)
+Main checkout, offline (no game, no Steam writes, no stamp / install: ATN stamps and installs with
+tools/tw/install/tw_install.py). Four worktree rounds merged into atn-mods, each tested on its own branch, then once
+together at 9c310a07. Docs: Attila v159, WH3 v58, Pharaoh Round v66 (built only, helper110); Rome II's README entry
+(Round 2) came with its branch. Thrones (Attila's grass code: race fix, clamp, early-out) has no README entry.
+- [x] GPU options 6a0d1c6b (worktree-agent-a4c40c7894a9a7dd2): Grass Ray Tracing Range (Experimental, off), the sway's
+  counting pass on 64 GPU threads; helper110.
+- [x] Engine CPU patches 11a0b65c (worktree-agent-aedad579679f7e14f): Faster Game CPU Code (on; twattila/engine_code.hpp,
+  test/tw_engine_code).
+- [x] Grass / unit hooks 8f5f24b7 (worktree-agent-af478607d76c72daa): scrub race fix, cell radius clamp, Small Soldiers as
+  Sprites (Experimental, off) + Sprite Size.
+- [x] Rome II round 2 9c310a07 (worktree-agent-a730d129398278ad7 at b0be274d): one conflict, twattila/anti_aliasing.hpp
+  (MainFocalPixels from the grass / unit hooks round, GameMsaa from Rome II, both after MainCamera): both kept.
+- [x] DrawScrub early-out 11c93ab2 (bit-exact, on; Attila and Thrones, the same code): OnDrawScrub returns without the
+  game's DrawScrub for a record past every enabled LOD. Proof: empire.retail.dll +0x17f9800 read from the entry to the
+  no-LOD return (+0xba) and the common return (+0x376): reads, its own frame, two getters (scene vtable +0x28 = +0xc6760
+  lea eax, [ecx + 0x48]; ret; view vtable +0x3c = +0x20c850, the view's +0x8..+0x13 copied out); key (dy^2 + dx^2) + dz^2
+  + (+0xc34 + bias). Thrones' DrawScrub (+0x186dd80) byte-identical. At run time: DrawScrub's 196 bytes and the return
+  checked at install, the getters' bytes every frame (OnScrubUpdate), their vtable slots on every call. test/tw_scrub_lods
+  section 5 (x86 + amd64): 400 random scenes the same draws, calls 387,936 -> 120,534 (= the draws); 40 scenes with
+  LODs one float step above / at / below each key: the same draws, calls 20,400 -> 6,800, the control (Grass Trace's
+  float order) draws less in 13; a getter with other bytes or DrawScrub not read: every call made; G1 replay 95% of calls
+  left out; 8.9 ns a call left out against 7.5 ns into an empty DrawScrub. Estimate (tools/tw/cpu_profile, grass maxed:
+  DrawScrub's own code 3.26 ms a frame, 2.65 of it before the LOD loop, getters 0.35): up to ~2.5 ms CPU a frame over all
+  threads (~0.3 ms render thread) at G1's ~90% past the LODs; not measured in game.
+- [x] Verification at 9c310a07: build32 Attila / Rome II / Thrones built 22:30; the skill's 15 x64 targets built; helper110
+  from this HEAD in build\tw_dlaa_helper110 (22:32, md5 105cbf5e; bridge v31, helper sources unchanged since 6a0d1c6b).
+  test/tw_* 23 suites, 43 runs (x86 + amd64; tw_engine_code and tw_motion_record x86, tw_shadow_map_size amd64): all PASS.
+  Harness all_modes, 183 modes (the grass round's 640 x 360 harness against HEAD's bridge, build\tw_rt_harness_night,
+  helper110; tools/tw/all_modes_night1113.txt): 182 passed against grass_range/all_modes_helper110.txt, release_rr failed
+  once ("no memory kept by sets: 387 -> 418 MiB", as in all_modes_close / helper105 before) and passed 3 of 3 alone;
+  switching_removal passed (the helper110 log's flake). static_checks.py: tonemap 8 hosts, 0 findings; comptr 0 findings
+  (3 known). Page dumps (tag night1113) against Attila / WH3 r165 (the v158 / v57 tree; page_a_v158.txt is an older
+  numbering), Pharaoh r65, Rome II r2_final: Attila only RayTracedGrassRange, FasterGameCpuCode,
+  GraphicsSmallSoldiersAsSprites, GraphicsSpriteSize; WH3, Pharaoh, Rome II only the hidden RayTracedGrassRange row (in 0
+  states); buttons and sliders renumbered only. No merge breakage found, nothing fixed.
+- Test lines (ATN; Attila v159 + helper110 unless named):
+  1. Control: the new Experimental rows off = v158's picture (campaign and battle); Faster Game CPU Code stays on.
+  2. ReShade.log: the Faster Game CPU Code line (what is faster, what was left) and "grass records past every LOD skip
+     DrawScrub".
+  3. G1 battle, Grass Trace: the first line ends "DrawScrub past every LOD skipped" and prints "scrub LODs end at"; the
+     grass as v158's at Grass Distance 1x and maxed.
+  4. Grass-maxed battle, PresentMon against v158: CPU busy and frame time (the early-out and Faster Game CPU Code).
+  5. 8x battle, Faster Game CPU Code on / off: PresentMon.
+  6. 8x battle, Small Soldiers as Sprites on at 20 px: a screenshot pair at 200-400 m, PresentMon on / off; Sprite Size
+     10 / 20 / 40.
+  7. Grass Ray Tracing Range 30-60 m in a big field: the GPU ms (Record Ray Tracing Profile), the look at its edge.
+  8. Swaying Shadows Range / Off-Screen Sway (Attila and WH3 v58): the same sway, the helper's GPU ms lower.
+  9. Rome II round 2: its README's Test line.
+- NOT DONE: the animation pack loop (heapfix's author measured no gain from a prefetch); a heapfix-aware variant of the
+  rounding block (ATN decides).
+
 ## LESSONS + CHECKS ROUND (2026-11-13 night, main checkout; offline: no game, no Steam writes, no stamp / install)
 Today's mistakes into the skill once, repeat mistakes as checks that fail loudly. Tools outside the repo live in
 tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One commit + push per step.

@@ -39,6 +39,13 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 22. v64: nvngx_dlssd.dll 310.9.16 copied next to nvngx_dlss.dll: renodx-tw-dlaa64.log "Ray Reconstruction ready", the torch
     shadows soft and calm.
 23. v65 (helper109), the RT/PT preset, a battle: the same picture as v64, the helper's frame time no higher.
+24. v66 (helper110), the RT/PT preset, a battle: the same picture as v65.
+
+### Round v66 (2026-11-13, night merges; built only with helper110, not stamped, not run in game)
+
+- Nothing changes in Pharaoh: helper110's faster sway counting and Attila's Grass Ray Tracing Range don't run here (the
+  sway and grass range rows stay hidden). Page dump against v65: the hidden Grass Ray Tracing Range row only.
+- Ships with helper110 (the helper of Attila v159 and WH3 v58); with helper109 it is the same.
 
 ### Round v65 (2026-11-13, CPU round; stamped and installed 21:04 with helper109, not run in game)
 

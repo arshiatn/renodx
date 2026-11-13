@@ -1,5 +1,13 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v58 (2026-11-13, night merges; built only with renodx-tw-dlaa64.exe helper110, not stamped, not run in game)
+
+- Faster (Attila v159's helper110): **Swaying Shadows Range / Off-Screen Sway**: the sway's counting pass runs on 64 GPU
+  threads instead of one (harness 4K, 150 k clusters: 0.4-0.5 ms less a frame, same picture).
+- Attila's Grass Ray Tracing Range stays hidden here: the helper leaves out placed grass's instances, and WH3's grass has
+  no instance rows for it. Page dump against v57: that hidden row only.
+- Needs helper110 for the first line; with helper109 nothing changes.
+
 ## v57 (2026-11-13, CPU round; stamped and installed 21:04 with renodx-tw-dlaa64.exe helper109, not run in game)
 
 - Faster (Attila v158's): **the helper keeps the plant sway's GPU buffers** (the RT/PT preset, or Swaying Shadows Range
