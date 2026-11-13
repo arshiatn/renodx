@@ -890,11 +890,86 @@ struct PointLightReadback {
 };
 static PointLightReadback point_light_readback;
 
-// The game's device is going away: its readback buffers with it.
+// InstallPointLights' light source where a light draw holds its one light in a pixel shader constant buffer (Rome II's
+// point_light_PS: position c0, colour c1.xyz, reach c1.w) instead of instances: the buffers seen bound at that slot at the
+// light draws (the oldest given up for a new one), each with its last upload's first two rows, read on the CPU as the
+// game writes them (Map / Unmap, UpdateSubresource).
+constexpr UINT NO_LIGHT_CONSTANTS = UINT_MAX;
+static UINT light_constants_slot = NO_LIGHT_CONSTANTS;
+struct LightUpload {
+  std::atomic<ID3D11Buffer*> buffer = nullptr;
+  std::array<float, 8> rows = {};  // c0, c1 of its last upload
+  bool valid = false;              // `rows` are its last upload
+};
+static std::mutex light_upload_mutex;  // rows, valid, light_upload_next
+static std::array<LightUpload, 4> light_uploads;
+static size_t light_upload_next = 0;
+// Set while the rays trace the local lights (by the light draws): else every buffer event returns on this alone.
+static std::atomic_bool light_uploads_watched = false;
+// The watched buffer this thread mapped for writing, and where: copied at its unmap.
+static thread_local LightUpload* mapped_light_upload = nullptr;
+static thread_local const std::byte* mapped_light_data = nullptr;
+
+inline LightUpload* FindLightUpload(ID3D11Buffer* buffer) {
+  const auto found = std::ranges::find_if(light_uploads, [buffer](const LightUpload& upload) {
+    return upload.buffer.load(std::memory_order_relaxed) == buffer;
+  });
+  return (found == light_uploads.end()) ? nullptr : &*found;
+}
+
+inline void OnMapLightConstants(reshade::api::device*, reshade::api::resource resource, uint64_t offset, uint64_t,
+                                reshade::api::map_access access, void** data) {
+  if (!light_uploads_watched.load(std::memory_order_relaxed) || access == reshade::api::map_access::read_only) return;
+  auto* upload = FindLightUpload(reinterpret_cast<ID3D11Buffer*>(resource.handle));
+  if (upload == nullptr) return;
+  {
+    const std::unique_lock lock(light_upload_mutex);
+    upload->valid = false;
+  }
+  if (offset == 0 && data != nullptr && *data != nullptr) {
+    mapped_light_upload = upload;
+    mapped_light_data = static_cast<const std::byte*>(*data);
+  }
+}
+
+// Before the native Unmap, while the pointer is still valid.
+inline void OnUnmapLightConstants(reshade::api::device*, reshade::api::resource resource) {
+  if (mapped_light_upload == nullptr || mapped_light_upload->buffer.load(std::memory_order_relaxed) != reinterpret_cast<ID3D11Buffer*>(resource.handle)) {
+    return;
+  }
+  {
+    const std::unique_lock lock(light_upload_mutex);
+    std::memcpy(mapped_light_upload->rows.data(), mapped_light_data, sizeof(mapped_light_upload->rows));
+    mapped_light_upload->valid = true;
+  }
+  mapped_light_upload = nullptr;
+  mapped_light_data = nullptr;
+}
+
+// UpdateSubresource (ReShade reports the immediate context's only): kept where it writes both rows.
+inline bool OnUpdateLightConstants(reshade::api::device*, const void* data, reshade::api::resource resource, uint64_t offset,
+                                   uint64_t size) {
+  if (!light_uploads_watched.load(std::memory_order_relaxed)) return false;
+  auto* upload = FindLightUpload(reinterpret_cast<ID3D11Buffer*>(resource.handle));
+  if (upload == nullptr) return false;
+  const std::unique_lock lock(light_upload_mutex);
+  upload->valid = data != nullptr && offset == 0 && size >= sizeof(upload->rows);
+  if (upload->valid) {
+    std::memcpy(upload->rows.data(), data, sizeof(upload->rows));
+  }
+  return false;
+}
+
+// The game's device is going away: its readback buffers with it, and the light buffers watched.
 inline void OnDestroyPointLightDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   if (point_light_readback.device.Get() == reinterpret_cast<ID3D11Device*>(device->get_native())) {
     point_light_readback = {};
+  }
+  const std::unique_lock lock(light_upload_mutex);
+  for (auto& upload : light_uploads) {
+    upload.buffer.store(nullptr, std::memory_order_relaxed);
+    upload.valid = false;
   }
 }
 
@@ -934,6 +1009,51 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
     const std::unique_lock lock(internal::runtime.mutex);
     traced = internal::runtime.settings.local_lights;
     frame = internal::runtime.frame;
+  }
+  // The draw's one light in a pixel shader constant buffer (InstallPointLights' light_constants): its last upload (this
+  // draw's) for the next trace, the buffer watched from now (its first light missed). Not traced: nothing watched, what
+  // was kept stale.
+  if (internal::light_constants_slot != internal::NO_LIGHT_CONSTANTS) {
+    if (!traced) {
+      if (internal::light_uploads_watched.exchange(false, std::memory_order_relaxed)) {
+        const std::unique_lock lock(internal::light_upload_mutex);
+        for (auto& upload : internal::light_uploads) upload.valid = false;
+      }
+      return {};
+    }
+    auto* native = internal::NativeContext(command.cmd_list);
+    if (native == nullptr) return {};
+    ComPtr<ID3D11Buffer> constants;
+    native->PSGetConstantBuffers(internal::light_constants_slot, 1, constants.GetAddressOf());
+    D3D11_BUFFER_DESC desc = {};
+    if (constants) constants->GetDesc(&desc);
+    std::array<float, 8> rows = {};
+    bool uploaded = false;
+    if (desc.ByteWidth >= sizeof(rows)) {
+      const std::unique_lock lock(internal::light_upload_mutex);
+      if (auto* upload = internal::FindLightUpload(constants.Get()); upload == nullptr) {
+        auto& replaced = internal::light_uploads[internal::light_upload_next];
+        internal::light_upload_next = (internal::light_upload_next + 1) % internal::light_uploads.size();
+        replaced.valid = false;
+        replaced.buffer.store(constants.Get(), std::memory_order_relaxed);
+      } else if (upload->valid) {
+        rows = upload->rows;
+        uploaded = true;
+      }
+    }
+    internal::light_uploads_watched.store(true, std::memory_order_relaxed);
+    if (uploaded) {
+      const float scale = internal::host.local_light_scale;
+      AddLocalLight({.light = {rows[0], rows[1], rows[2], rows[7]}, .colour = {rows[4] * scale, rows[5] * scale, rows[6] * scale, 0.f}});
+      if (!std::exchange(internal::point_lights_read, true)) {
+        renodx::utils::log::i(std::format("[Total War] Local lights: the first read from a light draw's constants (b{}).", internal::light_constants_slot));
+      }
+    }
+    if (!BindLocalLights(native)) return {};
+    return {.post_callback = [](Context& post, const void*) {
+      auto* post_native = internal::NativeContext(post.cmd_list);
+      if (post_native != nullptr) UnbindLocalLights(post_native);
+    }};
   }
   if (!traced && !screen_space_lights::Wanted()) return {};
   auto* native = internal::NativeContext(command.cmd_list);
@@ -1039,11 +1159,21 @@ constexpr std::array<uint32_t, 8> POINT_LIGHT_SHADERS = {0x6426B042, 0x90981DA1,
 
 // The point light draws (the addon's replaced pixel shaders reading rt_local_lights.hlsli), kept while installed: the
 // game's input layouts tracked from now (before the device: install at load), Ray-Traced Point Light Shadows shown.
-inline void InstallPointLights(std::span<const uint32_t> shader_hashes) {
+// `light_constants`: the pixel shader constant buffer slot holding each draw's one light (position c0, colour c1.xyz, reach
+// c1.w; Rome II's point_light_PS b2), its uploads read instead of instances; the screen-space torch shadows, which take a
+// draw's instances, stay hidden there.
+inline void InstallPointLights(std::span<const uint32_t> shader_hashes, UINT light_constants = internal::NO_LIGHT_CONSTANTS) {
   internal::point_lights_installed = true;
-  screen_space_lights::installed = true;
-  reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
-  reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+  internal::light_constants_slot = light_constants;
+  if (light_constants == internal::NO_LIGHT_CONSTANTS) {
+    screen_space_lights::installed = true;
+    reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
+    reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+  } else {
+    reshade::register_event<reshade::addon_event::map_buffer_region>(internal::OnMapLightConstants);
+    reshade::register_event<reshade::addon_event::unmap_buffer_region>(internal::OnUnmapLightConstants);
+    reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateLightConstants);
+  }
   reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
   for (const uint32_t shader_hash : shader_hashes) {
     renodx::utils::command_action::Register(
@@ -1069,6 +1199,7 @@ constexpr auto OnFogDraw = []<typename Context>(Context& command) -> renodx::uti
 // main pass's lit pixel shaders: ps_main_high_quality by the game's shadow mode (gather, fetch4, pcf, software, none: smoke
 // and dust), ps_main (one hash in all: torch and fire smoke). Fire's glow is added, the overlay pass's.
 constexpr uint32_t PARTICLE_VERTEX_SHADER = 0xA7F257B5;
+constexpr std::array<SmokeVertexShader, 1> PARTICLE_VERTEX_SHADERS = {{{.hash = PARTICLE_VERTEX_SHADER}}};
 constexpr std::array<SmokePixelShader, 6> LIT_PARTICLE_PIXEL_SHADERS = {
     {{.hash = 0xACE33D5D}, {.hash = 0xDF0F041A}, {.hash = 0x905429B6}, {.hash = 0x79A71E7B}, {.hash = 0xF9D9D3FB}, {.hash = 0xF5379F78}}};
 
@@ -1078,17 +1209,18 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   return {};
 };
 
-// The particle draws (`vertex_shader`'s with one of `pixel_shaders`), kept while installed (after Install, before the device:
-// the vertex shader's code is kept as it is made, by the scene's code hook, made here when the scene has none):
-// Ray-Traced Smoke Shadows shown. `quad_shader` (rt_core.hpp smoke_quad_shader): particles drawn as instances of a quad.
-inline void InstallSmokeShadows(uint32_t vertex_shader, std::span<const SmokePixelShader> pixel_shaders, std::span<const uint8_t> quad_shader = {}) {
+// The particle draws (one of `vertex_shaders`' with one of `pixel_shaders`), kept while installed (after Install, before
+// the device: the vertex shaders' code is kept as it is made, by the scene's code hook, made here when the scene has none):
+// Ray-Traced Smoke Shadows shown.
+inline void InstallSmokeShadows(std::span<const SmokeVertexShader> vertex_shaders, std::span<const SmokePixelShader> pixel_shaders) {
   internal::smoke_shadows_installed = true;
-  internal::smoke_vertex_shader = vertex_shader;
+  internal::smoke_vertex_shaders = vertex_shaders;
   internal::smoke_pixel_shaders = pixel_shaders;
-  internal::smoke_quad_shader = quad_shader;
   if (!internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
-  renodx::utils::command_action::Register(
-      OnParticleDraw, {.shader_hash = vertex_shader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  for (const SmokeVertexShader& shader : vertex_shaders) {
+    renodx::utils::command_action::Register(
+        OnParticleDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 }
 
 // The fog draws (the addon's replaced pixel shaders reading rt_fog.hlsli), kept while installed: Ray-Traced Fog Shadows
@@ -1304,8 +1436,15 @@ inline void Uninstall() {
   }
   if (std::exchange(internal::point_lights_installed, false)) {
     renodx::utils::command_action::Unregister(OnPointLightDraw);
-    reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
-    reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+    if (internal::light_constants_slot == internal::NO_LIGHT_CONSTANTS) {
+      reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
+      reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+    } else {
+      reshade::unregister_event<reshade::addon_event::map_buffer_region>(internal::OnMapLightConstants);
+      reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(internal::OnUnmapLightConstants);
+      reshade::unregister_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateLightConstants);
+      internal::light_uploads_watched.store(false, std::memory_order_relaxed);
+    }
     reshade::unregister_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
   }
   renodx::utils::command_action::Unregister(OnCutOutShadowDraw);

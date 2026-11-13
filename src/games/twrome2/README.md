@@ -1,5 +1,24 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Round 3 (2026-11-14, torch and smoke shadows from the rays; built only, not run in game)
+
+New:
+- **Torch and Fire Shadows (Experimental, off)**, under the ray-traced shadows' More Options: torches, fires and the other point lights cast ray-traced shadows (each light read from its own draw); with Path-Traced Global Illumination they also light what the screen never saw. RT/PT turns it on, as Pharaoh's.
+- **Smoke Shadows (Experimental, off)** and Smoke Shadow Quality: the smoke of arrow and shot impacts, of battle and campaign fires and of collapsing buildings dims the rays' sunlight on what lies below it, as Attila's. Fire's glow, the units' dust, trails and torches cast none.
+
+Fixed:
+- Nothing this round.
+
+Not done:
+- Ray-traced water reflections: the water is still drawn after its reflections. Next: last frame's water drawn again (depth only) before them, the rays traced from it.
+- Torch shadows from the low-detail and older-GPU light shaders (in no run) and under in-game MSAA (no rays there).
+- Smoke shadows from artillery trails: in no run yet.
+- Cutscene Point Light Shadows: High: the game never reads that value.
+
+Test (ATN): a siege at night and a daytime battle with burning buildings, RT shadows on. Torch and Fire Shadows on: walls, units and trees throw torch shadows, no black or flashing patches; ReShade.log has "Local lights: the first read from a light draw's constants (b2)" and "First run: Torch and Fire Shadows". Smoke Shadows on: the ground under thick smoke is darker in sunlight, the shadow moves with the smoke; the log has "Smoke Shadows: one particle a quad of vertex shader". Both off: the picture of Round 2. FPS in a big siege with each on and off.
+
+Build: `cmake --build build32 --config Release --target renodx-twrome2.addon32`.
+
 ### Round 2 (2026-11-13, toward Attila's package; stamped "rome2 r2" and installed 22:59 with helper110, not run in game)
 
 New:

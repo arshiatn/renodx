@@ -2,6 +2,18 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+## v7 (2026-11-14, trace build for the data run; built only, not run in game)
+
+- Frame Trace (`twattila/frame_trace.hpp`; ReShade.ini `[renodx] FrameTrace=1`, read at start): one frame 600 3D frames in
+  (the post passes count the 3D view, also at 100%), or the next frame when `renodx_trace_now` sits next to the exe;
+  `tw_frame_trace.txt` next to the exe. Constants once each (VS / PS b0-b8: the camera at b5, the frame at b8) of the tone
+  mappers, the shadow mask resolve PS, ASSAO's apply, TreeAOInject, the sky and the exe's upscaler; particle / fire / heat
+  haze blends; the unit VS's inputs.
+- `[renodx] FrameTraceReads=1` (`trace_reads.hpp`): each traced draw's VS b5 and PS b8 buffers (identity, usage, rows once a
+  buffer), a unit draw's instance and bone rows, in the traced frame and the frame after.
+- Log: `[Rome Remastered] Post pass ...` (viewport, target and input sizes) at the first 3D frame and in each traced frame.
+- Nothing else changes: HDR, presets and rows as v6.
+
 ## v6 (2026-11-12, PsychoV35 round; built only, not run in game)
 
 - **HDR (PsychoV35)** (Rendering Mode 4): Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`). Hue Clip Emulation (default 80) before the LUT, toward the stock Hable on the luminance and its per-channel clip. Recommended in PsychoV35; Reset stays HDR (Extended).
