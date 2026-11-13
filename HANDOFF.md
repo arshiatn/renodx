@@ -95,6 +95,24 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
 
+## ROME II BRING-UP (offline)
+Plan tools/tw/rome2/plan.md (Phase 0 + the Phase 3 items provable offline); results under tools/tw/rome2/. Data runs
+(Phase 1.4) BLOCKED on the mod pack dialog (ATN answers it); no game start, no stamp / install (ATN does those).
+- [ ] 0.1 Encoding ramp on WARP: EE1DA45C -> aa_dlaa_prepare -> aa_dlaa_finish, with / without TW_AA_FRAME_LINEAR.
+- [ ] 0.2 Sun picture test 340CBE9D / 1A0532C0 (t49 / t50 / t51), the ambient cube and formula.
+- [ ] 0.3 Contact-shadow loop in 340CBE9D; battlefog 259AEC56's shadow-atlas binding (fog march).
+- [ ] 0.4 cbuffer_slots.py on Rome II's dump.
+- [ ] 0.5 Cut-out census (discard PS by family; unit cut-outs).
+- [ ] 0.6 Shadow-reader list (atlas 8192² + baked 4096² R16).
+- [ ] 0.7 rt_scene_map for Rome II's names.
+- [ ] 3.1 Output + page skeleton (TW_AA_FRAME_LINEAR, graphics_page, SETTINGS_REVISION, MSAA note, dead entries, sky).
+- [ ] 3.2 Stability (ReadGpuVendor / OnNvidia, helper-missing note, GitHub button).
+- [ ] 3.5 Render scale (12 hdr_to_screen FrameRenderShare, 37 replaced NDC shaders, dead RENDER_SCALE_READS).
+- [ ] 3.6 Sun draws (InstallSunDraws cube after 0.2; Rome II's sun colour into rt_sun texel 2).
+- [ ] README twrome2 round entry; builds of every consumer; test/tw_* x86 + amd64.
+- Left for after the runs: units capture, particles, lights, water, motion census, reader census by handle. ATN decides:
+  Rope Distance threshold, MSAA.
+
 ## WH3 V55: PT GI SUN COLOUR (2026-11-13 evening, offline; helper107 as installed, no helper change)
 - [x] 1 Path-Traced Ambient's sun colour, as Attila v156 (c592149c) and Pharaoh v61 (2e0f71ae): all 7 sun light shaders
   (fxc /dumpbin of the pack's csos) hold sun_colour at lighting_VS_PS offset 16 (float 4, c1) and light their diffuse colour
