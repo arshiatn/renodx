@@ -595,6 +595,16 @@ void OnOverlay(reshade::api::effect_runtime*) {
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("Texture sharpness below 100%%. Matched: as at your resolution; Sharper / Sharpest: more.");
   }
+  // Attila's key (twattila/texture_lod_bias.hpp SetWrappingTrilinear: the samplers filtered without anisotropy too).
+  if (render_scale_choice != 0 && texture_lod_bias_choice.load() != 0) {
+    bool all = false;
+    reshade::get_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingTextureLodBiasTrilinear", all);
+    if (ImGui::Checkbox("Texture LOD bias on all textures (Experimental)", &all)) {
+      twattila::texture_lod_bias::SetWrappingTrilinear(all);
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingTextureLodBiasTrilinear", all);
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Texture LOD bias also on the textures the game filters without anisotropy. Can shimmer.");
+  }
   if (const auto display = twshogun2::game_dlss::DisplaySize(); render_scale_choice != 0 && display[0] != 0) {
     const auto render = twattila::frame_history::AspectSize(display[0], display[1], SelectedRenderScale());
     ImGui::Text("Render %ux%u -> %ux%u", render[0], render[1], display[0], display[1]);
@@ -987,6 +997,17 @@ void OnOverlay(reshade::api::effect_runtime*) {
              "Leaves and grass with Leaf micromaps skip their alpha tests:\n"
              "faster shadows under trees and in fields, but coarser and darker.");
       ImGui::EndDisabled();
+      // Attila's Rays a Pixel (twattila/rt_scene.hpp): the HDR addon counts them.
+      constexpr std::array<const char*, 9> RAYS_A_PIXEL = {"1", "Match Output", "2", "3", "4", "5", "6", "7", "8"};
+      if (choice("Rays a pixel (Experimental)", "RayTracingOutputResolution", 0, RAYS_A_PIXEL,
+                 "More rays for every rendered pixel, each from its own spot of it: less noise, finer shadow edges.\n"
+                 "The cost grows with the rays. Match Output: as many rays on screen as at 100% (up to 8 a pixel).") != 0) {
+        choice("Rays a pixel: shadows", "RayTracingRaysShadows", 1, OFF_ON_NAMES, "The sun's and the torches' and fires' shadows take the extra rays.");
+        choice("Rays a pixel: ray-traced AO", "RayTracingRaysAmbient", 1, OFF_ON_NAMES, "Ray-traced AO takes the extra rays.");
+        choice("Rays a pixel: reflections", "RayTracingRaysReflections", 1, OFF_ON_NAMES, "Ray-traced reflections take the extra rays.");
+        choice("Rays a pixel: Global Illumination", "RayTracingRaysPaths", 1, OFF_ON_NAMES,
+               "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a texel). The heaviest.");
+      }
       choice("Log details", "RayTracedDebugLog", 0, OFF_ON_NAMES,
              "Ray tracing's numbers in the logs every 10 s, for bug reports. Off: nothing of this runs.");
       // rt_scene's Debug View values (Off, its effects, All; the others: nothing here makes them).
@@ -1118,6 +1139,9 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "TextureLodBias", value) && value >= 0
                       && value <= 3) {
     texture_lod_bias_choice.store(value);
+  }
+  if (bool all = false; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingTextureLodBiasTrilinear", all)) {
+    twattila::texture_lod_bias::SetWrappingTrilinear(all);
   }
   if (uint32_t value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "Preset", value)
                           && std::ranges::find(PRESETS, value, &PresetChoice::value) != PRESETS.end()) {

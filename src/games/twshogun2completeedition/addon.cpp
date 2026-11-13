@@ -157,6 +157,15 @@ renodx::utils::settings::Settings settings;
 // Ray tracing (Experimental, ray_tracing.hpp): its settings (the DLSS addon's, ReShade.ini RayTraced* / PathTracing*),
 // installed when an effect is on at launch.
 twattila::rt_scene::Settings ray_tracing_settings;
+// Rays a Pixel (the DLSS addon's RayTracingOutputResolution: 1, Match Output, 2-8; RayTracingRays*: what takes them), as
+// twattila/rt_scene.hpp's SettingsOf counts them (each present: Match Output follows the render scale).
+struct RaysAPixel {
+  uint32_t choice = 0;
+  bool shadows = true;
+  bool ambient = true;
+  bool reflections = true;
+  bool paths = true;
+} rays_a_pixel;
 bool ray_tracing_installed = false;
 // Between the reflections' HiZ and their resolve (the generic mip passes there are theirs; render thread).
 bool reflection_passes = false;
@@ -1009,6 +1018,13 @@ void ReadDlssAddonOptions() {
   ray_tracing.debug_view = read_count("RayTracedDebugView", 0, 0, 9);
   ray_tracing.scene_test = (ray_tracing.debug_view != 0) ? read_count("RayTracedSceneTest", 0, 0, 4) : 0u;
   ray_tracing.debug_log = read_on("RayTracedDebugLog", false);
+  rays_a_pixel = {
+      .choice = read_count("RayTracingOutputResolution", 0, 0, 8),
+      .shadows = read_on("RayTracingRaysShadows", true),
+      .ambient = read_on("RayTracingRaysAmbient", true),
+      .reflections = read_on("RayTracingRaysReflections", true),
+      .paths = read_on("RayTracingRaysPaths", true),
+  };
   // With the helper's upscaler (OnPresent): NRD, the torches' size under Ray Reconstruction.
   ray_tracing.nrd = read_on("RayTracingDenoiser", false);
   read_float("RayTracedLightSoftness", 0.25f, 0.f, 1.f, &ray_tracing.light_size);
@@ -1058,6 +1074,17 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (ray_tracing_installed) {
     // NRD reads the upscaler's motion and depth: only with the helper's.
     rays.nrd = rays.nrd && choices.upscaler != 0;
+    // Rays a Pixel: Match Output, those of the output pixels a render pixel stands for (at most 8).
+    const auto render = twshogun2::ray_tracing::HOST.render_size();
+    const uint32_t display = render_scale::back_buffer_width.load();
+    const float scale = (render[0] != 0 && display != 0) ? std::min(static_cast<float>(render[0]) / static_cast<float>(display), 1.f) : 1.f;
+    const auto density = static_cast<uint32_t>((rays_a_pixel.choice == 1) ? std::clamp(std::lround(1.f / (scale * scale)), 1l, 8l)
+                                                                          : std::clamp(rays_a_pixel.choice, 1u, 8u));
+    const auto rays_of = [density](bool on) { return on ? density : 1u; };
+    rays.shadow_rays = rays_of(rays_a_pixel.shadows);
+    rays.ambient_rays *= rays_of(rays_a_pixel.ambient);
+    rays.reflection_samples *= rays_of(rays_a_pixel.reflections);
+    rays.light_bounce_rays = std::min(rays.light_bounce_rays * rays_of(rays_a_pixel.paths), 16u);
     twattila::light_bounce::SetRayTraced(rays.light_bounce, rays.light_bounce_resolution);
     twshogun2::ray_tracing::Update(rays);
     if (twshogun2::hdr_link::TakeProfileRequest()) twattila::rt_scene::StartProfile();
