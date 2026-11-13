@@ -68,6 +68,8 @@ inline const Values RAYS_PRESET = {
     {"RayTracedReflectionSamples", 1.f},
     {"RayTracedReflectionReuse", 2.f},
     {"RayTracedWaterReflections", 1.f},
+    {"RayTracedWaterSteady", 1.f},
+    {"RayTracedWaterSoft", 1.f},
     {"RayTracedSpecularOcclusion", 1.f},
     {"WaterClarity", 1.f},
     {"WaterCaustics", 1.f},

@@ -124,8 +124,8 @@ struct Sliders {
   float water_reflections = 1.f;  // the water's from its own surface (games whose reflection pass OnReflectionDraw hooks)
   float reflection_samples = 1.f;
   float reflection_reuse = 0.f;  // 0 off, 1 from ReSTIR GI, 2 Own ReSTIR
-  float water_steady = 0.f;  // Steadier Water Reflections
-  float water_soft = 0.f;    // Softer Water Reflections
+  float water_steady = 1.f;  // Steadier Water Reflections
+  float water_soft = 1.f;    // Softer Water Reflections
   float debug_view = 0.f;  // games whose tone mapper hook calls OnTonemapDrawn
   float scene_test = 0.f;  // with the Debug View on
 };
@@ -1894,8 +1894,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             .key = "RayTracedWaterSteady",
             .binding = &sliders->water_steady,
             .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-            .default_value = 0.f,
-            .label = "Steadier Water Reflections (Experimental)",
+            .default_value = 1.f,
+            .label = "Steadier Water Reflections",
             .section = section,
             .tooltip = "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.",
             .labels = {"Off", "On"},
@@ -1908,8 +1908,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             .key = "RayTracedWaterSoft",
             .binding = &sliders->water_soft,
             .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-            .default_value = 0.f,
-            .label = "Softer Water Reflections (Experimental)",
+            .default_value = 1.f,
+            .label = "Softer Water Reflections",
             .section = section,
             .tooltip = "Calmer water reflections, a little softer. Samples and the other reflection settings then work on water too.\n"
                        "Heavier.",
