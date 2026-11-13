@@ -74,7 +74,7 @@ Each step committed and pushed to origin atn-mods.
   cb5[3].w (campaign sea), v11.w (river COLOR2.w), cb3[45].w (big river). Plan: WaterShader.opacity {type, index, component}
   (0: WH3's rule), PatchWaterAbsorption(code, opacity), caustics only with water.caustics; table tools\tw\pharaoh\v58\
   pharaoh_water_table.txt; WARP: WH3 6 of 6 byte-identical, Pharaoh 84 neutral 0 bits apart, controls move.
-- [x] 6 (step 6/7 commit) builds exit 0, no new warnings: Pharaoh addon64 45 s, WH3 44 s, the other x64 63 s, build32 Attila
+- [x] 6 (61923316) builds exit 0, no new warnings: Pharaoh addon64 45 s, WH3 44 s, the other x64 63 s, build32 Attila
   47 s, Rome II + Thrones 50 s (all three sets rebuilt after the sway fix, exit 0); git diff --check clean; test/tw_* 17 x x86 + amd64
   PASS; WARP on the final build: sun PASS, ssr_v56, smoke_v57, ao_v58, scale_v58 PASS, patch_v58 (on: 35 differ, Reflect on game
   shaders 0), trees_v58 (only the control fails), water_v58. Page p v62 against v60: +3 rows (Steady, Water Clarity, Water
@@ -82,7 +82,7 @@ Each step committed and pushed to origin atn-mods.
   and Off-Screen Sway appear in Pharaoh (no sway in its rays): rt_scene.hpp's two rows now skip still foliage (Attila, WH3
   unchanged: their swaying foliage). Scale census after (the skill's scale_census.py with viewport chains): BUG (A) 34 -> 0,
   BUG (B) 27 -> 11, unclear 6 -> 31 (the 24 sun shaders' second site, a mixed chain, patched since v53).
-- [x] 7 (step 6/7 commit) README Round v58 + test items 7-12; skill rows (render-scale-dlss.md: sweep at Ultra Performance
+- [x] 7 (61923316) README Round v58 + test items 7-12; skill rows (render-scale-dlss.md: sweep at Ultra Performance
   campaign + battle, stripped RDEF, region taps, viewport chains, size_slot, RenderShareUv; rt-scene.md: caster census, Replace
   per caster impossible, Steady torches; sss-particles-water-fog.md: water opacity operand; bringup.md Phase 0: both censuses
   with limits); scripts/scale_census.py + _replay.cpp + _hook.py + _build.ps1 and caster_census.py in the skill.
