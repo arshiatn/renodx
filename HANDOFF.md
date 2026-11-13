@@ -160,7 +160,13 @@ play, runs\A1_175145 (custom battle; 33 / 50 / 67 / 100%) and runs\C1_175625 (Sa
   camera at 50% and 100%. Dead RENDER_SCALE_READS: 9 -> 5 in e29f4428. Open: the VFX soft-particle depth read at the
   projected uv x g_viewport_offset_scale (the particles' own cbuffer: whether the game sets it to the render share needs
   a VFX PS in value_hashes in the next run).
-- [ ] 3.6 Sun draws (InstallSunDraws cube after 0.2; Rome II's sun colour into rt_sun texel 2).
+- [x] 3.6 Sun draws (InstallSunDraws cube after 0.2; Rome II's sun colour into rt_sun texel 2). InstallSunDraws(
+  LIGHT_BOUNCE_DRAWS, 8, 4): the cube c2-c7 (the paths' sky, Path-Traced AO zeroes it) and the sun colour c1 into texel 2
+  through twrome2/rt_sun (Attila's file: x 0.004 with c11.x g_hdr_on, 1 in ATN's traces; Pharaoh v61's rt_sun WARP A
+  covers places 4 / 8 with c11.x either side; 0.2 proved the layout). Page: Path-Traced AO (ReSTIR GI, Experimental) in
+  the AO method, Own Sky Rays / Steady Bounce Light shown with it, RT/PT now path-traced AO (page_r_r3 against r2:
+  RayTracedPathAmbient 1, RayTracedAmbientOcclusion 0 after RT/PT; every key and default kept). Skill game-facts rows:
+  Rome II's sun diffuse scale, and the Patch's scale reading its destination's component (90a917b1).
 - [ ] README twrome2 round entry; builds of every consumer; test/tw_* x86 + amd64.
 - Left for after the runs: units capture, particles, lights, water, motion census, reader census by handle. ATN decides:
   Rope Distance threshold, MSAA.

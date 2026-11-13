@@ -1394,7 +1394,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion,\n"
                      "shadows and reflections. The rest at its default.",
     .no_rays_tooltip = twattila::graphics_page::ATTILA_TEXTS.no_rays_tooltip,
-    .rays_tooltip = "Ray-traced shadows and ambient occlusion, path-traced Global Illumination at my settings. The rest of\n"
+    .rays_tooltip = "Ray-traced shadows, path-traced ambient occlusion and Global Illumination at my settings. The rest of\n"
                     "this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
@@ -1405,7 +1405,10 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
+                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.\n"
+                  "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                  "turns it on below. Needs an upscaler.",
+    .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, ambient occlusion, Light Bounce and shadow softness keep\n"
                                  "their 100% detail. Looks better, can cost some performance.",
     .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
@@ -1732,7 +1735,6 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
-                                             .has_path_ambient = false,
                                              .has_reflections = false,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
@@ -1786,8 +1788,10 @@ bool AttachAddon() {
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's (its callback draws the sun draw again).
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. lighting_VS_PS as Attila's (WARP sun test,
+  // tools/tw/rome2/sun_test): the ambient cube at float 8 (c2-c7, the paths' sky), the sun colour at float 4 (c1, x 0.004
+  // with g_hdr_on c11.x: the paths' sun light).
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1, lighting
