@@ -52,6 +52,11 @@ under 60 GB before GPU / WARP jobs (18.6 GB at 02:06). One writer. Each step com
   (tools/tw/round_v151/install_night.py): Attila v153, WH3 v51, Pharaoh v57; helper105 unchanged in all three; ATN files
   unchanged by hash; old add-ons renamed aside (.in-use-20261113_031658); no DevKit. ATN's Pharaoh ReShade.ini holds none of
   the saved-hidden RT keys (RayTracedSmokeShadows, WaterReflections, Reflections, FogShadows, LightGlow), so nothing to clear.
+- [x] 7 run W2 (W2_031738, 03:17-03:19, v57 as installed, siege benchmark windowed, DLSS Performance, RT sun / torch / fog
+  shadows, Reflections + Water, Smoke Shadows on, trace_50): "Smoke Shadows: one particle a quad of vertex shader 109B79CE (15
+  instances in this draw, room for 524288)", then every 10 s 67 to 105 particles a frame (most quads 24 to 41, least 0.05);
+  water tracing line as W1; status reflections 1.59 ms, trace 2.18; no crash / hang / error; ATN files same.
+- [x] Night round report given to ATN (per game done / not done, test list), then the PC shut down as ATN asked.
 
 ## PHARAOH V56: RAY-TRACED WATER REFLECTIONS (2026-11-13 night, offline; plan tools/tw/pharaoh/reflections_plan.md)
 Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes
