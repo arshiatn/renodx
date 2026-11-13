@@ -123,7 +123,16 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
   build's cso v60_0xDE4F92CD.cso): ALL PASSED: 1 / 2 / 4 / 5 as v56 (0 misses); 3 the formula with t47 capped 0 misses
   (69,235 channels above 25), CONTROL uncapped 34,537 misses; 6a t47 below 25 vs v60's build 0 of 589,824 bits apart; 6b
   t47 25-1000, a 1 vs the game's march saturated (t6 255) 0 of 589,824 bits apart, CONTROL v60's build 248,840 apart.
-- [ ] 4 Building water (phar_building_water_01) t_ssao render-scale rows.
+- [x] 4 Building water (phar_building_water_01) t_ssao render-scale rows: RENDER_SCALE_READS 03B9CEFE t12 (ps_4_1),
+  9D28319F t12, 40154AD7 t9, AC04E623 t11 (fxc -dumpbin: sample_l t_ssao at (SV_Position - c30 + c28.x) x c29.zw, gated
+  by g_campaign_flat_map 0; their G-buffer loads take the screen uv x resinfo, their NDC the view uv: right at any scale).
+  WARP tools/tw/warp_tests/pharaoh/scale_v61 (scale_v61.cpp, build.ps1, run_v61.txt; a 3D pass: viewport W x H in a 3W x 3H
+  target against W x H, the game's 4 outputs): SCALE V61 ALL PASSED: view_share's patch 1 region read in each (ps_4_1
+  too), ndc / projected 0; 100% with cb12 unbound bit-equal to the game's; another AO picture moves 7,902-9,194 values; 33%
+  with the refraction one colour 0 apart beyond 8 px (0-232 not bit-equal, <= 8.4e-7), CONTROL the game's bytes 2,109-4,521
+  apart. Listed, not fixed: the shadowed pair (03B9CEFE / 9D28319F) keeps 57 of 24,576 values apart at 33% with the
+  refraction as drawn, the same 57 with a constant AO and the game's bytes: their refraction read (its distortion a uv offset
+  of the whole texture), the game's own, not the AO. In no trace (ATN: a settlement with pools, Ultra Performance).
 - [ ] 5 7b (DE4F92CD vb0 at 50%) and 7c (the 24 sun PS at 33% against 100%) offline WARP checks.
 - [ ] 6 Pharaoh PT GI sun colour (sun texel 2, RT_PATH_SUN_LIGHT) as Attila's helper107 fix.
 - [ ] 7 Trace reads for one later siege-benchmark run (frame_trace Options, Pharaoh only, off by default).

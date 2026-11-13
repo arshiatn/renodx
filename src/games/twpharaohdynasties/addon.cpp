@@ -2141,9 +2141,14 @@ constexpr std::array<twattila::water_effects::WaterShader, 84> WATER_SHADERS = {
 // pass (after DLSS, VS 31C49ED2's uv 0-1 over the display) also reads the campaign's clouds at t0 (t_shroud_clouds, the
 // shroud's half-size buffer drawn by 5EB2FDE8; a 1024 x 1024 stand-in in battles, its read gated off there), so its t1
 // says whether the share applies. The AO blurs (7F637259 / BFD285BD) are replaced (shaders/ssao_blur.hlsli): a region
-// read scaled their taps with their uv.
-constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
+// read scaled their taps with their uv. The building pools (phar_building_water_01 ps_main_deferred_opaque_gbuffer, in no trace)
+// read t_ssao at the view's uv (SV_Position x c29.zw): WARP tools\tw\warp_tests\pharaoh\scale_v61.
+constexpr std::array<twattila::view_share::RegionRead, 5> RENDER_SCALE_READS = {{
     {.shader_hash = 0x57E5140E, .slots = 0b111, .size_slot = 1},  // glow bright pass
+    {.shader_hash = 0x03B9CEFE, .slots = uint64_t{1} << 12},     // building water, shadows (ps_4_1)
+    {.shader_hash = 0x9D28319F, .slots = uint64_t{1} << 12},     // building water, shadows
+    {.shader_hash = 0x40154AD7, .slots = uint64_t{1} << 9},      // building water
+    {.shader_hash = 0xAC04E623, .slots = uint64_t{1} << 11},     // building water, baked shadows
 }};
 // The game's 3D sprites (sprite.hlsl vertex_3d_gamma: the unit markers) drawn at the display's size after the tone mapper
 // against the scene's depth (battle f07e0, siege 3aa60) and, in the battle, its copy (ec5e0): both stretched below 100%.
