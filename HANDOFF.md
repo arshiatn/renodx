@@ -167,6 +167,31 @@ change goes in an Experimental row, off. One commit + push to origin atn-mods pe
   +0x688a8 / +0x68934 / +0x6899c; ~1.3 ms paging a frame + 2.4 ms in CreateAllocation / DestroyAllocation2 on the worker):
   keep them and only grow; harness proof (no per-frame create / free over N frames, results identical); helper109,
   all_modes + RR noise.
+  - Cause: helper107's code at those addresses is RtScene12::Record's three GrowBuffer calls for the sway (source_location
+    lines 3167-3169: sway_arguments_ = cluster_args_' width, sway_lists_ = clas_addresses_' width, sway_counts_ =
+    SWAY_COUNTS_BYTES; 13 + 2.75 + 0.31 MiB), each preceded by `member = nullptr; Release()`: GrowBuffer(&member, ...)
+    with a WRL ComPtr goes through ComPtrRef::operator T*(), which releases what the ComPtr holds (client.h: "*ptr_ =
+    nullptr") before handing out the ComPtr*. So GrowBuffer always found nothing, made a new zero-filled buffer and the
+    old one went at once (not through releases_ after the GPU). Fix (helper109, bridge v31 unchanged): std::addressof at
+    the three calls; GrowBuffer's comment names the trap. Safe to keep: rt_sway's passes write every byte they read in
+    the same request (sway_counts_' first 72 bytes copied from the upload, GROUPS stored by MODE_MASKS / MODE_FIRSTS for
+    every group read, RUN_PLACES only read for runs with clusters, the kept arguments and lists written before the builds
+    read them by those counts); the helper waits for the last trace before recording the next.
+  - Harness (tools/tw/rt_harness/buffers_v65.sh, .txt; RENODX_TW_TEST_BUFFERS=1: each request's report counts
+    Buffer()'s new buffers; 60 frames, 3 requests a frame): helper109_control (helper109 with the three calls as in
+    helper108) sway_near / sway_off_screen 3 buffers every frame after warm-up (73 7 0 4, then 3 0 0 per frame);
+    helper109 73 7 0 1, then 0 every request; default (no sway) 0 per frame in both; every mode ALL PASSED and the
+    harness output identical control against fix (times aside).
+  - Left as they are (same trap, not per frame or a look change): SHaRC's three buffers (line 1538: made new every frame
+    while SHaRC Radiance Cache is on, so its cache never outlives a frame; keeping it changes what the Experimental row
+    shows: ATN decides; smallest step std::addressof there + all_modes paths_sharc); GPU micromap baking's UVs and
+    transient pools (5267 / 5269: made new per bake, not per frame; whether the OMM SDK's transient pools may hold an
+    earlier bake's bytes not checked).
+  - The same trap on the game's device (20b91319): every frame_history::KeepCamera / AttilaCamera caller passed
+    &member, so each made a new D3D11 buffer every call (Attila / WH3 / Pharaoh / Thrones / Rome II / Troy / WH1-2 and
+    Ryse's light bounce); now std::addressof. test/tw_kept_buffers (WARP, x86 + amd64): one buffer kept, its bytes = the
+    v157 form's each frame (CONTROL 10 of 10 new); KeepCamera 9.6 -> 4.1 us, AttilaCamera 9.1 -> 5.5 us a call on WARP.
+    Tales' micromap grow() had it too (std::addressof).
 - [ ] 5 Builds (the skill's x64 list, build32 Attila / Rome II / Thrones, the helper), test/tw_* x86 + amd64, page dumps
   (Attila / WH3 / Pharaoh: Build Date only unless a new row), READMEs Attila v158 / WH3 v57 / Pharaoh Round v65 (built
   only), skill rows.

@@ -998,6 +998,10 @@ class RtScene12 {
   [[nodiscard]] std::string TakeReports() {
     std::string reports = std::exchange(slow_report_, {});
     if (!garbage_example_.empty()) reports += (reports.empty() ? "" : "\n") + std::exchange(garbage_example_, {});
+    if (TestBuffers()) {
+      reports += std::format("{}[TW ray tracing] Test: {} buffers made since the last report.", (reports.empty() ? "" : "\n"),
+                             buffers_made_.exchange(0, std::memory_order_relaxed));
+    }
     return reports;
   }
 
@@ -2339,7 +2343,9 @@ class RtScene12 {
   static constexpr uint64_t Align(uint64_t value, uint64_t alignment) { return (value + alignment - 1) / alignment * alignment; }
 
   // `buffer` (default heap, UAV-capable) of `bytes` at least (in 64 KB steps; the old one released once the GPU is past
-  // this request). False: no memory for it.
+  // this request). False: no memory for it. Pass std::addressof(member): WRL's ComPtr operator& hands out a ComPtr* only
+  // after releasing what it holds (ComPtrRef's operator T*), so GrowBuffer(&member, ...) made a new buffer at every call
+  // (helper107-108: the sway's three, 16 MiB, every frame) and released the old one at once instead of after the GPU.
   bool GrowBuffer(ComPtr<ID3D12Resource>* buffer, uint64_t bytes, D3D12_RESOURCE_STATES state,
                   std::source_location where = std::source_location::current()) {
     if (*buffer && (*buffer)->GetDesc().Width >= bytes) return true;
@@ -2365,9 +2371,19 @@ class RtScene12 {
     ComPtr<ID3D12Resource> buffer;
     if (SUCCEEDED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr, IID_PPV_ARGS(buffer.GetAddressOf())))) {
       buffer->SetName(std::format(L"rt_d3d12.hpp:{}", where.line()).c_str());
+      if (TestBuffers()) {
+        buffers_made_.fetch_add(1, std::memory_order_relaxed);
+      }
     }
     return buffer;
   }
+
+  // RENODX_TW_TEST_BUFFERS (GPU harness): each report counts the buffers Buffer made since the last (warm: none a frame).
+  static bool TestBuffers() {
+    static const bool on = GetEnvironmentVariableW(L"RENODX_TW_TEST_BUFFERS", nullptr, 0) != 0;
+    return on;
+  }
+  static inline std::atomic<uint32_t> buffers_made_ = 0;
 
   // RENODX_TW_TEST_ROOM=<count> (GPU harness): no memory for a room over that many placed instances or clusters.
   static uint32_t TestRoomLimit() {
@@ -3164,9 +3180,9 @@ class RtScene12 {
     uint32_t sway_flags = 0;
     std::unordered_set<uint32_t> sway_rows;
     if (sway_pipeline_ && version >= 18 && (shared.rt_sway_range > 0.f || (shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0)
-        && GrowBuffer(&sway_arguments_, cluster_args_->GetDesc().Width, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
-        && GrowBuffer(&sway_lists_, clas_addresses_->GetDesc().Width, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-        && GrowBuffer(&sway_counts_, SWAY_COUNTS_BYTES, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)) {
+        && GrowBuffer(std::addressof(sway_arguments_), cluster_args_->GetDesc().Width, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+        && GrowBuffer(std::addressof(sway_lists_), clas_addresses_->GetDesc().Width, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+        && GrowBuffer(std::addressof(sway_counts_), SWAY_COUNTS_BYTES, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)) {
       sway_flags = SWAY_CUT | (((shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0) ? SWAY_IN_VIEW : 0u);
       for (uint32_t index = 0; index < placement_count; ++index) {
         const dlaa_bridge::RtPlacement& placement = shared.rt_placements[index];
