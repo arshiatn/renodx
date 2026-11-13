@@ -1,5 +1,19 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## PHARAOH V57: SMOKE SHADOWS (2026-11-13 night, offline; hard stop 05:30)
+Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes
+under 60 GB before GPU / WARP jobs (18.6 GB at 02:06). One writer. Each step committed and pushed to origin atn-mods.
+- [x] 1 shared quad form (rt_core.hpp CaptureParticles + smoke_quad_shader, rt_scene.hpp InstallSmokeShadows(vs, ps, quad_shader = {}),
+  graphics_page.hpp Bindings::smoke_shadows_tested): a game whose particles are instances of a quad (indexed, 6 indices) gives a
+  geometry shader making one 48-byte record an instance (rt_smoke's layout) of the game VS's triangles; it sees the draw's PS
+  views / samplers (16 each) and the VS's b0-b1 at their own slots (the game's GS stage put back). Empty: Attila's form, unchanged
+  (its indexed draws returned and still return at once). smoke_shadows_tested false: the row "Smoke Shadows (Experimental)" and
+  RT/PT leaves RayTracedSmokeShadows out (the page's default then). Dumps page_a_v168 / page_w_v64 against v167 / v63: the date only.
+- [ ] 2 Pharaoh: rt_particle_quads GS, InstallSmokeShadows(109B79CE, {3F1B86E1}, quads), Smoke Shadows Experimental off, RT/PT off
+- [ ] 3 builds (x64 list + build32), WARP / lifetime suites
+- [ ] 4 README Round v57, HANDOFF Not done, test lines
+- [ ] 5 skill lessons
+
 ## PHARAOH V56: RAY-TRACED WATER REFLECTIONS (2026-11-13 night, offline; plan tools/tw/pharaoh/reflections_plan.md)
 Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes
 under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step committed and pushed to origin atn-mods.

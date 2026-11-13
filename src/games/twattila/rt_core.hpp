@@ -786,6 +786,9 @@ static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
 // shaders its smoke is drawn with.
 static uint32_t smoke_vertex_shader = 0;
 static std::span<const uint32_t> smoke_pixel_shaders;
+// Particles drawn as quads (Pharaoh: indexed instanced, six indices an instance): the geometry shader making one record of
+// an instance's first triangle. Empty: one vertex a particle, streamed out as the vertex shader writes it (Attila).
+static std::span<const uint8_t> smoke_quad_shader;
 static std::unordered_map<uint32_t, bool> skinned_code;
 // A scene draw's pixel shader (host.scene_draw: SceneCoverage): solid (none, or its discards dither only), alpha-tested
 // against its t0 at the input `uv_semantic` (xy: an opacity mask), or left out (t0 read otherwise: a tiled or computed
@@ -2101,15 +2104,21 @@ void Capture(Context& command, const SceneShader& shader) {
 }
 
 // A lit particle draw (Smoke Shadows: InstallSmokeShadows' vertex shader with its lit pixel shader, blended over the
-// scene, not added to it: smoke and dust, not fire's glow): its particles (one a vertex) streamed out for the next
-// trace: centre, colour and opacity, size.
+// scene, not added to it: smoke and dust, not fire's glow): its particles streamed out for the next trace: centre, colour
+// and opacity, size. One a vertex, as the vertex shader writes them; or one an instance of a quad (smoke_quad_shader),
+// which reads the pixel shader's views and samplers and the vertex shader's constants at their own slots.
 template <typename Context>
 void CaptureParticles(Context& command) {
+  constexpr bool QUADS = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
   UINT vertex_count = 0;
   UINT first_vertex = 0;
   if constexpr (std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawArguments>) {
-    vertex_count = command.arguments.vertex_count;
-    first_vertex = command.arguments.first_vertex;
+    if (smoke_quad_shader.empty()) {
+      vertex_count = command.arguments.vertex_count;
+      first_vertex = command.arguments.first_vertex;
+    }
+  } else if constexpr (QUADS) {
+    if (!smoke_quad_shader.empty() && command.arguments.index_count == 6) vertex_count = command.arguments.instance_count;
   }
   auto* native = NativeContext(command.cmd_list);
   const bool wanted = runtime.settings.stream_particles || (runtime.settings.smoke_shadows && dlaa_bridge::bridge.ray_tracing);
@@ -2150,16 +2159,20 @@ void CaptureParticles(Context& command) {
         {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 1},
     }};
     constexpr UINT STRIDE = 48;
-    const auto code = game_code.find(smoke_vertex_shader);
+    std::span<const uint8_t> output_code = smoke_quad_shader;
+    if (const auto code = game_code.find(smoke_vertex_shader); output_code.empty() && code != game_code.end()) output_code = code->second;
     if (FAILED(device->CreateBuffer(&particles_desc, nullptr, stream.particles.GetAddressOf()))
         || FAILED(device->CreateShaderResourceView(stream.particles.Get(), &particles_view, stream.srv.GetAddressOf()))
         || FAILED(device->CreateBuffer(&behaviours_desc, &behaviours_data, stream.behaviours.GetAddressOf()))
-        || code == game_code.end()
-        || FAILED(device->CreateGeometryShaderWithStreamOutput(code->second.data(), code->second.size(), entries.data(),
+        || output_code.empty()
+        || FAILED(device->CreateGeometryShaderWithStreamOutput(output_code.data(), output_code.size(), entries.data(),
                                                                 static_cast<UINT>(entries.size()), &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM,
                                                                 nullptr, stream.output.GetAddressOf()))) {
       renodx::utils::log::w(std::format("[Total War] Ray tracing: no stream output for the particles' vertex shader {:08X} (Smoke Shadows).",
                                         smoke_vertex_shader));
+    } else if constexpr (QUADS) {
+      renodx::utils::log::i(std::format("[Total War] Ray tracing: Smoke Shadows: one particle a quad of vertex shader {:08X} ({} instances in this draw, room for {}).",
+                                        smoke_vertex_shader, vertex_count, capacity));
     }
   }
   const UINT count = std::min(vertex_count, capacity - runtime.particles);
@@ -2186,7 +2199,44 @@ void CaptureParticles(Context& command) {
   native->GSSetShader(stream.output.Get(), nullptr, 0);
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(1, &target, &offset);
-  native->Draw(count, first_vertex);
+  if constexpr (QUADS) {
+    // The quad shader's inputs at the slots the draw's own shaders have them (the game's geometry stage's put back).
+    constexpr UINT VIEWS = 16;
+    constexpr UINT CONSTANTS = 2;
+    std::array<ID3D11ShaderResourceView*, VIEWS> game_views = {};
+    std::array<ID3D11SamplerState*, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> game_samplers = {};
+    std::array<ID3D11Buffer*, CONSTANTS> game_constants = {};
+    std::array<ID3D11ShaderResourceView*, VIEWS> pixel_views = {};
+    std::array<ID3D11SamplerState*, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> pixel_samplers = {};
+    std::array<ID3D11Buffer*, CONSTANTS> vertex_constants = {};
+    native->GSGetShaderResources(0, VIEWS, game_views.data());
+    native->GSGetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, game_samplers.data());
+    native->GSGetConstantBuffers(0, CONSTANTS, game_constants.data());
+    native->PSGetShaderResources(0, VIEWS, pixel_views.data());
+    native->PSGetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, pixel_samplers.data());
+    native->VSGetConstantBuffers(0, CONSTANTS, vertex_constants.data());
+    native->GSSetShaderResources(0, VIEWS, pixel_views.data());
+    native->GSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, pixel_samplers.data());
+    native->GSSetConstantBuffers(0, CONSTANTS, vertex_constants.data());
+    const auto& arguments = command.arguments;
+    native->DrawIndexedInstanced(arguments.index_count, count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
+    native->GSSetShaderResources(0, VIEWS, game_views.data());
+    native->GSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, game_samplers.data());
+    native->GSSetConstantBuffers(0, CONSTANTS, game_constants.data());
+    const auto release = [](auto& objects) {
+      for (auto* object : objects) {
+        if (object != nullptr) object->Release();
+      }
+    };
+    release(game_views);
+    release(game_samplers);
+    release(game_constants);
+    release(pixel_views);
+    release(pixel_samplers);
+    release(vertex_constants);
+  } else {
+    native->Draw(count, first_vertex);
+  }
   ID3D11Buffer* output = game_output.Get();
   constexpr UINT APPEND = UINT_MAX;
   native->SOSetTargets(1, &output, &APPEND);

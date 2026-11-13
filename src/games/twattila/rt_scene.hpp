@@ -1031,11 +1031,12 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
 
 // The particle draws (`vertex_shader`'s with one of `pixel_shaders`), kept while installed (after Install, before the device:
 // the vertex shader's code is kept as it is made, by the scene's code hook, made here when the scene has none):
-// Ray-Traced Smoke Shadows shown.
-inline void InstallSmokeShadows(uint32_t vertex_shader, std::span<const uint32_t> pixel_shaders) {
+// Ray-Traced Smoke Shadows shown. `quad_shader` (rt_core.hpp smoke_quad_shader): particles drawn as instances of a quad.
+inline void InstallSmokeShadows(uint32_t vertex_shader, std::span<const uint32_t> pixel_shaders, std::span<const uint8_t> quad_shader = {}) {
   internal::smoke_shadows_installed = true;
   internal::smoke_vertex_shader = vertex_shader;
   internal::smoke_pixel_shaders = pixel_shaders;
+  internal::smoke_quad_shader = quad_shader;
   if (!internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   renodx::utils::command_action::Register(
       OnParticleDraw, {.shader_hash = vertex_shader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
