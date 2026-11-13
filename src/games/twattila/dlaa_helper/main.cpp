@@ -787,6 +787,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         shared->rt_flags &= ~PAUSED_TRACE_FLAGS;
         if (version >= 8) shared->rt_path_flags &= ~PAUSED_PATH_FLAGS;
         if (version >= 18) shared->rt_sway_range = 0.f;
+        if (version >= 31) shared->rt_grass_range = 0.f;
       }
       bool queued = false;
       if (scene_open) {

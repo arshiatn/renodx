@@ -87,6 +87,7 @@ struct TraceRequest {
   uint32_t shadow_rays = 1;   // v18: rays a pixel toward the sun and each light
   float sway_range = 0.f;     // v18: swaying copies within these metres of the camera (0: everywhere)
   float grass_shadow_range = 0.f;  // v18: pixels farther (metres) trace without grass (0: every pixel with it)
+  float grass_range = 0.f;  // Shared::rt_grass_range: placed grass farther (metres) out of the scene (0: all of it in)
 };
 
 // A ray-traced Light Bounce request (light_bounce.hpp through rt_scene.hpp): the render size, the bounce's size and its
@@ -1035,6 +1036,7 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
     shared->rt_shadow_rays = request.shadow_rays;
     shared->rt_sway_range = request.sway_range;
     shared->rt_grass_shadow_range = request.grass_shadow_range;
+    shared->rt_grass_range = request.grass_range;
     shared->rt_frame = request.frame;
     shared->rt_width = request.width;
     shared->rt_height = request.height;

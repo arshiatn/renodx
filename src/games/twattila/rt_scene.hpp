@@ -91,6 +91,7 @@ struct Sliders {
   float sway_off_screen = 1.f;
   float fast_leaves = 0.f;
   float grass_shadow_range = 0.f;  // metres (0: everywhere)
+  float grass_range = 0.f;         // metres (0: everywhere; placed grass, Attila)
   float path_ser = 0.f;
   float sharc = 0.f;
   float light_importance = 0.f;
@@ -199,7 +200,13 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .sway_range = sliders.sway_range,
       .sway_off_screen = sliders.sway_off_screen != 0.f,
       .fast_leaves = sliders.fast_leaves != 0.f,
-      .grass_shadow_range = sliders.grass_shadow_range,
+      // Pixels past Grass Ray Tracing Range trace without grass too: past it there is none, and their grass rays met nothing
+      // at full cost (harness at 4K, high camera, 60 m: trace 2.42-2.50 ms without, 2.02-2.14 with the cut alone, 1.89-1.95
+      // with this).
+      .grass_shadow_range = (sliders.grass_range > 0.f && (sliders.grass_shadow_range <= 0.f || sliders.grass_range < sliders.grass_shadow_range))
+                                ? sliders.grass_range
+                                : sliders.grass_shadow_range,
+      .grass_range = sliders.grass_range,
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
       .light_importance = sliders.light_importance != 0.f,
@@ -1295,6 +1302,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
     return std::ranges::any_of(internal::scene_shaders,
                                [](const SceneShader& shader) { return shader.foliage && !shader.rows_shader.empty() && !shader.still; });
   };
+  // Grass placed by its instance rows (Attila).
+  const auto grass_placed = [] {
+    return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass && !shader.rows_shader.empty(); });
+  };
   settings->insert(settings->end(), {
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
@@ -1535,10 +1546,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
                      "Off: still grass in the ray tracing, faster and less VRAM.",
           .labels = {"Off", "On"},
           .is_enabled = dlaa_on,
-          // Shown where grass is placed (Attila).
-          .is_visible = [] {
-            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass && !shader.rows_shader.empty(); });
-          },
+          .is_visible = grass_placed,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedSwayRange",
@@ -1581,6 +1589,21 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_visible = [] {
             return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass; });
           },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedGrassRange",
+          .binding = &sliders->grass_range,
+          .default_value = 0.f,
+          .label = "Grass Ray Tracing Range (Experimental)",
+          .section = section,
+          .tooltip = "Grass farther than this is left out of the ray tracing (its shadows there are tiny):\n"
+                     "faster in large fields. 0 m: all grass.",
+          .min = 0.f,
+          .max = 200.f,
+          .format = "%.0f m",
+          .is_enabled = dlaa_on,
+          // The helper leaves out placed grass's instances past the range (other games' grass has no instance rows).
+          .is_visible = grass_placed,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAmbientOcclusion",
