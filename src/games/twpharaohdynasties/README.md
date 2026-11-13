@@ -1,5 +1,19 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+## To test in game (the maintainer; open items, newest first)
+
+Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
+
+1. Control: Reset, siege benchmark: looks like v55.
+2. Ray-Traced Water Reflections (the game's Screen Space Reflections on, MSAA off) on and off: the river (siege) and the sea
+   (battle): flicker, brightness against the game's, sun glints.
+3. Specular Occlusion on and off on the water.
+4. Smoke Shadows on and off in the burning siege: smoke shadows the ground; fire glow and dust don't.
+5. RT/PT turns Water Reflections and Specular Occlusion on: keep that or leave them off? Smoke Shadows stays off.
+6. Coloured Shadows (Bend) under cloth: tinted, not bent.
+7. Found 2026-11-13 (campaign, being fixed): palms without ray-traced shadows with the shadow maps skipped; torch shadows
+   flicker; GT-VBAO a rectangle in the top left at DLSS Ultra Performance; clouds moving to the top left at low DLSS scales.
+
 ### Round v57 (2026-11-13, smoke shadows; stamped and installed 03:17 with helper105; one agent siege run W2 with the row on: the capture line, 67 to 105 smoke particles a frame, no crash; the shadows' look not seen)
 
 - **New: Smoke Shadows (Experimental, off)** in Shadows with Ray-Traced (DXR), and Smoke Shadow Quality under its More Options: the smoke of burning buildings and of the siege dims the rays' sunlight on what lies below it, as Attila's Smoke Shadows. Pharaoh draws its lit particles as instances of a quad (vfx vs50_main_instancing 109B79CE with vfxextremeultra 3F1B86E1, ps_main_high_quality; siege trace `W1_015828` line 3156: indexed, 6 indices x 91 instances, vb0 the corners, blend ONE / INV_SRC_ALPHA), not as Attila's one vertex a particle, so the shared `twattila/rt_core.hpp` `CaptureParticles` has a second form (`rt_scene::InstallSmokeShadows`' quad shader): at that draw our geometry shader `rt_particle_quads` streams out one record an instance, in the layout rt_smoke already reads (centre, colour and opacity, size); rt_smoke and the helper's smoke rays are unchanged. What the bytes say (B, `fxc /dumpbin` in `tools\tw\pharaoh\v55\asm`):
