@@ -128,8 +128,19 @@ change goes in an Experimental row, off. One commit + push to origin atn-mods pe
     renderable whose pass has no cut-out PS, Experimental off; the cut-out census from the G-buffer's alpha test first.
   - Builds: build32 twattila + twrome2 + twthronesofbritannia exit 0 (only the upstream deprecation warnings). Skill:
     rt-scene.md section 5 (the pack's caller, the 117 / 418,030 counts, A1's reach).
-- [ ] 2 OnDrawScrub (3.35 ms a frame, grass maxed): a per-thread cache of several models or a once-per-frame scale per
+- [x] 2 OnDrawScrub (3.35 ms a frame, grass maxed): a per-thread cache of several models or a once-per-frame scale per
   scrub model; output bit-identical (test).
+  - ScaleModelLods (DrawScrub's and DrawTree's): the one-model thread-local cache is now 64 models a thread
+    (direct-mapped by address); a model needs nothing when its LOD count and every distance still hold what this thread
+    wrote at the same scale (= the map's path finding every distance the addon's: nothing to write or keep). Misses take
+    the map path as before. test/tw_scrub_lods (new; v157's code copied as the reference, two copies of one fake
+    manager): runs, alternating cells, random order, slider changes 1x included, 31 setups, 7 new models, 55,224 calls:
+    every LOD of both copies bit-identical after every call and = the closed form; four threads x 50,000 calls both =
+    the closed form; a lone later-LOD rewrite (no game path) now scaled at the next call (the old cache: at its next
+    miss). Cost a call x86: cells alternating 6 models 24.2 -> 5.7 ns (4 threads 69.6 -> 5.7), runs of 64 of one model
+    4.1 -> 5.8 (4 threads 6.7 -> 5.7); amd64 17.1 -> 5.1 (92.1 -> 5.8), 4.8 -> 5.2 (7.5 -> 5.9). ATN's grass (~120 k
+    calls a frame, ~27 ns each): E 3.35 -> ~0.8 ms CPU a frame (workers; render thread 0.49 -> ~0.12), no fps while
+    GPU-bound. Not run in game. Builds: build32 twattila + twrome2 + twthronesofbritannia exit 0.
 - [ ] 3 Per-draw ReShade callbacks on the render thread (~0.8-1.1 us a draw): trim where provably equivalent; a
   micro-benchmark or the harness before / after.
 - [ ] 4 Helper (coordinator 2026-11-13 night: the 2.3 ms wait at +0x5c238 is GPU back-pressure, dropped): the RT worker

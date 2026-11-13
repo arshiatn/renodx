@@ -215,13 +215,18 @@ static std::atomic<float> grass_scale = 1.f;
 static std::atomic<float> grass_density = 1.f;
 static renodx::utils::data::ParallelFlatHashMap<uintptr_t, ModelLods, std::shared_mutex> scaled_models;
 static std::atomic<bool> models_scaled = false;  // a model's LOD distances were scaled once (until then 1x: no lookups)
-// The model this thread scaled last: a model's instances are drawn one after another, so most need no lookup.
-struct LastModel {
+// The models this thread scaled, by address (direct-mapped): the scrub's cells draw their instances model after model in
+// turn (ATN's grass profile: a one-model cache missed there and the map's lock took 0.53 ms a frame). An entry holds what
+// the addon wrote; a model whose LOD distances all still hold it at the same scale needs nothing, as the map's path
+// finds too (every distance the addon's: nothing to write, nothing new to keep).
+struct CachedModel {
   const uint8_t* model = nullptr;
   float scale = 1.f;
-  uint32_t first_written = 0;  // its first LOD distance as written (anything else: the game set it again)
+  uint32_t count = 0;
+  std::array<uint32_t, MAX_MODEL_LODS> written = {};
 };
-static thread_local LastModel last_model;
+constexpr size_t CACHED_MODELS = 64;
+static thread_local std::array<CachedModel, CACHED_MODELS> cached_models;
 static ScrubValues scrub_values;  // the scrub update's thread
 // Grass Trace (ATN: grass still ends ~100 m with v64's fade patch and every grass slider up): one frame of the scrub
 // (from one ScrubUpdate to the next) into ReShade.log: its cells and bias, every DrawScrub call by its distance (10 m
@@ -334,11 +339,18 @@ static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
     count = std::min<uint32_t>(count, MAX_MODEL_LODS);
     uint8_t** entries;
     std::memcpy(&entries, model + 0x2c, sizeof(entries));
-    uint32_t first_bits = 0;
-    if (count > 0) std::memcpy(&first_bits, entries[0] + 0x38, sizeof(first_bits));
-    if (model == last_model.model && scale == last_model.scale && first_bits == last_model.first_written) return;
-    models_scaled.store(true, std::memory_order_relaxed);
     const auto key = reinterpret_cast<uintptr_t>(model);
+    auto& cached = cached_models[((key >> 4) ^ (key >> 12)) % CACHED_MODELS];
+    const auto holds_written = [&] {
+      for (uint32_t index = 0; index < count; ++index) {
+        uint32_t bits;
+        std::memcpy(&bits, entries[index] + 0x38, sizeof(bits));
+        if (bits != cached.written[index]) return false;
+      }
+      return true;
+    };
+    if (cached.model == model && cached.scale == scale && cached.count == count && holds_written()) return;
+    models_scaled.store(true, std::memory_order_relaxed);
     ModelLods known;
     scaled_models.if_contains(key, [&](const auto& entry) {
       const auto& [model_key, model_lods] = entry;
@@ -362,7 +374,7 @@ static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
       changed |= (next.written[index] != known.written[index]) || (next.game[index] != known.game[index]);
     }
     if (changed) scaled_models.insert_or_assign(key, next);
-    last_model = {.model = model, .scale = scale, .first_written = (count > 0 ? next.written[0] : 0u)};
+    cached = {.model = model, .scale = scale, .count = count, .written = next.written};
   }
 }
 
