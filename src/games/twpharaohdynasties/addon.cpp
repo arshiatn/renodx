@@ -2976,8 +2976,9 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube starts at
-  // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z; WARP on all 25 sun shaders, tools\tw\pharaoh\sun_test).
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24);
+  // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z; WARP on all 25 sun shaders, tools\tw\pharaoh\sun_test), the
+  // sun colour at float 12 (c3; x 0x389FB405 in rt_sun: twpharaohdynasties/rt_sun.cs_5_0.hlsl), the paths' sun light.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24, 12);
   // Coloured Shadows (Bend's and the rays' filter at t50) on the sun's colour: lighting_VS_PS c3 (sun_colour; c1 is
   // sun_direction), in all 25 sun shaders' RDEF.
   twattila::screen_space_shadows::sun_colour_register = 3;

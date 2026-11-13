@@ -1220,7 +1220,8 @@ inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pas
 // frame's trace), the AO filter and the Light Bounce.
 // `ambient_cube`: the first float of the lighting buffer's ambient cube (six colours: +x, -x, +y, -y, +z, -z; the paths'
 // sky), 0 none. `sun_colour`: the first float of its sun colour where the game's sun light shaders light the G-buffer's
-// diffuse colour by it as Attila's (x N.L x the shadow, x 0.004 with the ambient's scale switch: rt_sun.cs_5_0.hlsl), the
+// diffuse colour by it as Attila's (x N.L x the shadow, x 0.004 with the ambient's scale switch, else x the includer's
+// TW_RT_SUN_LIGHT_SCALE: rt_sun.cs_5_0.hlsl), the
 // paths' sun light of no view with Path-Traced Ambient (RT_PATH_SUN_LIGHT), 0 none (they keep the light learned from the
 // screen).
 inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws, UINT ambient_cube = 0, UINT sun_colour = 0) {

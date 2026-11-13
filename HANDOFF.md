@@ -154,7 +154,14 @@ Experimental rows, off. One writer; each step committed and pushed to origin atn
     texture, not the render share) and steps 6 / max(texture size) (FFD99CCD asm l.221-310). Smallest step: a view_share
     patch for that projected uv into an ld (x cb12.zw) and the step x the share, WARP as sun_scale_v61 with the flag on; or
     the game's march off below 100% (a look change: Experimental). ATN's presets (rays) never run the game's march.
-- [ ] 6 Pharaoh PT GI sun colour (sun texel 2, RT_PATH_SUN_LIGHT) as Attila's helper107 fix.
+- [x] 6 Pharaoh PT GI sun colour: InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24, 12) (c3 sun_colour, all 25 sun shaders' RDEF),
+  so rt_core sets RT_PATH_SUN_LIGHT with Path-Traced Ambient; no helper change. The sun shaders' diffuse (F883F5B2 fxc:
+  albedo x (1 - specular) x c3 x N.L x shadow x 0x389FB405 literal (7.615242e-05, in all 25) x g_debug_light_diffuse_coef
+  (cb4[25].y, 1 in A2 / W2 / campaign traces)): shared rt_sun.cs_5_0.hlsl takes TW_RT_SUN_LIGHT_SCALE (default 1.f; Attila's
+  cso bit-identical to v156's), Pharaoh's includer asfloat(0x389FB405u). tools/tw/warp_tests/pharaoh/rt_sun_v61
+  (run_v61.txt): RT SUN V61 ALL PASSED: Attila's file v156's bit for bit (256), Pharaoh texel 2 = c3 x the literal with the
+  rest v60's bit for bit (128), without the place v60's (128), CONTROL unscaled c3 apart (128). A2's sun: texel 2 =
+  3.046 2.968 2.666 against the sky's +x 0.510 0.688 1.100. Built Pharaoh addon64 + Attila addon32.
 - [ ] 7 Trace reads for one later siege-benchmark run (frame_trace Options, Pharaoh only, off by default).
 - [ ] 8 Builds, tests, page dumps, README Round v61, skill rows.
 
