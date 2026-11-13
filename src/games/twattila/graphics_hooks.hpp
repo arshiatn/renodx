@@ -157,9 +157,32 @@ constexpr std::string_view DRAW_TREE =
 // the vtable method before DrawTree): a grass or plant instance of the scrub (ScrubUpdate), its distance squared plus
 // its bias (the 4th argument's +0x10) against the model's LOD entries (as DrawTree's; ATN debug9: the grass clumps' last
 // one ~100 m, the circle the grass ends at), then draws it. The hook scales the model's LOD distances (as DrawTree's).
-constexpr std::string_view DRAW_SCRUB =
-    "83 EC 4C 8B 44 24 50 53 55 8B E9 56 57 89 6C 24 10 3B 05 ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? 3B 45 1C 73 08 8B 4D 20 8B "
-    "1C 81";
+// Its code from the entry to the no-LOD return (+0xba; the global the model index is first compared with wildcarded; the
+// same bytes in Thrones of Britannia): the model, the camera (manager +0x34's view by vtable +0x28, GET_VIEW_CODE, and the
+// view's position by its vtable +0x3c, GET_POSITION_CODE, into DrawScrub's frame), the key ((dy^2 + dx^2) + dz^2 +
+// (+0xc34 + the bias)), then the first enabled LOD (+0x44) farther than the key (+0x38 > key). A record past every enabled
+// LOD returns there, an index equal to that global or a model without LODs at +0x376 (DRAW_SCRUB_RETURN): reads, writes
+// to its own frame and two getters only. OnDrawScrub then leaves the call out (ATN's G1 battle: ~106k of 118k a frame).
+constexpr std::string_view DRAW_SCRUB_NO_LOD =
+    "83 EC 4C 8B 44 24 50 53 55 8B E9 56 57 89 6C 24 10 3B 05 ?? ?? ?? ?? 0F 84 59 03 00 00 3B 45 1C 73 08 8B 4D 20 8B "
+    "1C 81 EB 02 33 DB 8B 4D 34 8B 01 FF 50 28 8B 08 8B 51 3C 8D 4C 24 20 51 8B C8 FF D2 8B 7C 24 64 33 D2 8B 73 28 F3 "
+    "0F 10 4F 0C F3 0F 10 57 1C F3 0F 10 47 2C F3 0F 5C 50 04 F3 0F 5C 08 F3 0F 5C 40 08 8B 44 24 6C F3 0F 59 D2 F3 0F "
+    "59 C9 F3 0F 59 C0 F3 0F 58 D1 F3 0F 58 D0 F3 0F 10 85 34 0C 00 00 F3 0F 58 40 10 F3 0F 58 D0 85 F6 0F 84 DD 02 00 "
+    "00 8B 4B 2C 0F 1F 40 00 8B 19 F3 0F 10 43 38 0F 2F C2 76 06 80 7B 44 00 75 12 42 83 C1 04 3B D6 72 E6 5F 5E 5D 5B "
+    "83 C4 4C C2 14 00";
+constexpr std::string_view DRAW_SCRUB = DRAW_SCRUB_NO_LOD.substr(0, 119);  // its first 40 bytes find it
+constexpr std::string_view DRAW_SCRUB_RETURN = "5F 5E 5D 5B 83 C4 4C C2 14 00";
+constexpr size_t DRAW_SCRUB_RETURN_OFFSET = 0x376;
+constexpr size_t MANAGER_SCENE = 0x34;
+constexpr size_t GET_VIEW_SLOT = 0x28 / 4;  // the scene's vtable
+constexpr std::array<uint8_t, 4> GET_VIEW_CODE = {0x8D, 0x41, 0x48, 0xC3};  // lea eax, [ecx + 0x48]; ret
+constexpr size_t SCENE_VIEW = 0x48;
+constexpr size_t GET_POSITION_SLOT = 0x3c / 4;  // the view's vtable
+// mov eax, [esp + 4]; the view's +0x8, +0xc, +0x10 to [eax], [eax + 4], [eax + 8]; ret 4
+constexpr std::array<uint8_t, 24> GET_POSITION_CODE = {0x8B, 0x44, 0x24, 0x04, 0x8B, 0x51, 0x08, 0x89, 0x10, 0x8B, 0x51, 0x0C,
+                                                       0x8B, 0x49, 0x10, 0x89, 0x50, 0x04, 0x89, 0x48, 0x08, 0xC2, 0x04, 0x00};
+constexpr size_t VIEW_POSITION = 0x8;
+constexpr size_t DRAW_PARAMS_BIAS = 0x10;  // DrawScrub's 4th argument
 // void __thiscall ScrubUpdate(Scrub* scrub) (+0x17fb510): every frame, the grass cells within +0x80 (int: the tweak
 // scrub_lod_distance_default, 200 m) of the camera, each instance with a bias (its random byte / 255 x +0x84, 200.f;
 // squared, added to its distance squared) that thins the grass out with distance: near the camera half the map's grass
@@ -193,7 +216,7 @@ using PackAnimations = bool(__fastcall*)(void* pages, void* unused_edx, uint32_t
 using DrawTree = void*(__fastcall*)(uint8_t* manager, void* unused_edx, uint32_t model, const float* position,
                                     uint32_t third, uint32_t fourth, uint32_t fifth, uint32_t sixth, uint32_t seventh);
 using DrawScrub = void(__fastcall*)(uint8_t* manager, void* unused_edx, uint32_t model, const float* transform,
-                                    uint32_t third, uint32_t fourth, uint32_t fifth);
+                                    uint32_t third, const uint8_t* params, uint32_t fifth);
 using ScrubUpdate = void(__fastcall*)(uint8_t* scrub, void* unused_edx);
 
 struct ModelLods {
@@ -250,6 +273,11 @@ struct CachedModel {
 constexpr size_t CACHED_MODELS = 64;
 static thread_local std::array<CachedModel, CACHED_MODELS> cached_models;
 static ScrubValues scrub_values;  // the scrub update's thread
+static bool draw_scrub_read = false;  // DrawScrub's code is DRAW_SCRUB_NO_LOD and DRAW_SCRUB_RETURN (set at install)
+// The camera getters DrawScrub calls, as OnScrubUpdate found them every frame with the code read (null: not found): each
+// pointer stands alone, so two separate atomics.
+static std::atomic<const void*> verified_get_view = nullptr;
+static std::atomic<const void*> verified_get_position = nullptr;
 // Grass Trace (ATN: grass still ends ~100 m with v64's fade patch and every grass slider up): one frame of the scrub
 // (from one ScrubUpdate to the next) into ReShade.log: its cells and bias, every DrawScrub call by its distance (10 m
 // bins, the last 400 m and more) and whether one of its model's LODs takes it, the first models' LOD distances.
@@ -446,27 +474,27 @@ static void* __fastcall OnDrawTree(uint8_t* manager, void* unused_edx, uint32_t 
 
 // A DrawScrub call while tracing: its distance and LOD as DrawScrub finds them (the camera from +0x34's view, vtable
 // +0x28, and its position, vtable +0x3c; the distance squared plus +0xc34 and the call's bias, its 4th argument's +0x10).
-static void TraceScrub(uint8_t* manager, uint32_t index, const float* transform, uint32_t params) {
+static void TraceScrub(uint8_t* manager, uint32_t index, const float* transform, const uint8_t* params) {
   using GetView = uint8_t*(__fastcall*)(uint8_t* self, void* unused_edx);
   using GetPosition = const float*(__fastcall*)(uint8_t* self, void* unused_edx, float* out);
   uint8_t* provider;
-  std::memcpy(&provider, manager + 0x34, sizeof(provider));
-  if (provider == nullptr || transform == nullptr || params == 0) return;
+  std::memcpy(&provider, manager + MANAGER_SCENE, sizeof(provider));
+  if (provider == nullptr || transform == nullptr || params == nullptr) return;
   void** vtable;
   std::memcpy(&vtable, provider, sizeof(vtable));
-  uint8_t* view = reinterpret_cast<GetView>(vtable[0x28 / 4])(provider, nullptr);
+  uint8_t* view = reinterpret_cast<GetView>(vtable[GET_VIEW_SLOT])(provider, nullptr);
   if (view == nullptr) return;
   std::memcpy(&vtable, view, sizeof(vtable));
   std::array<float, 16> buffer = {};
-  const float* camera = reinterpret_cast<GetPosition>(vtable[0x3c / 4])(view, nullptr, buffer.data());
+  const float* camera = reinterpret_cast<GetPosition>(vtable[GET_POSITION_SLOT])(view, nullptr, buffer.data());
   if (camera == nullptr) return;
   const float x = transform[3] - camera[0];
   const float y = transform[7] - camera[1];
   const float z = transform[11] - camera[2];
   float extra;
   float bias;
-  std::memcpy(&extra, manager + 0xc34, sizeof(extra));
-  std::memcpy(&bias, reinterpret_cast<const uint8_t*>(params) + 0x10, sizeof(bias));
+  std::memcpy(&extra, manager + MANAGER_LOD_OFFSET, sizeof(extra));
+  std::memcpy(&bias, params + DRAW_PARAMS_BIAS, sizeof(bias));
   const float key = x * x + y * y + z * z + extra + bias;
   uint32_t model_count;
   std::memcpy(&model_count, manager + 0x1c, sizeof(model_count));
@@ -504,12 +532,51 @@ static void TraceScrub(uint8_t* manager, uint32_t index, const float* transform,
 }
 
 static void __fastcall OnDrawScrub(uint8_t* manager, void* unused_edx, uint32_t model, const float* transform,
-                                   uint32_t third, uint32_t fourth, uint32_t fifth) {
-  if (!hooks_active.load(std::memory_order_relaxed)) return original_draw_scrub(manager, unused_edx, model, transform, third, fourth, fifth);
+                                   uint32_t third, const uint8_t* params, uint32_t fifth) {
+  if (!hooks_active.load(std::memory_order_relaxed)) return original_draw_scrub(manager, unused_edx, model, transform, third, params, fifth);
   const float scale = grass_scale.load(std::memory_order_relaxed);
-  ScaleModelLods(manager, model, scale * scale);
-  if (grass_trace.state.load(std::memory_order_relaxed) == 2) TraceScrub(manager, model, transform, fourth);
-  original_draw_scrub(manager, unused_edx, model, transform, third, fourth, fifth);
+  const uint8_t* lods = ScaleModelLods(manager, model, scale * scale);
+  if (grass_trace.state.load(std::memory_order_relaxed) == 2) TraceScrub(manager, model, transform, params);
+  // A record past every enabled LOD of its model: DrawScrub would draw nothing and change nothing (DRAW_SCRUB_NO_LOD), so
+  // it isn't called. Its key as DrawScrub's: the camera as the getters it would call return it (the same functions as
+  // OnScrubUpdate's, their code read), the floats in its order.
+  if (const void* get_view = verified_get_view.load(std::memory_order_relaxed);
+      get_view != nullptr && lods != nullptr && params != nullptr) {
+    uint8_t* scene;
+    void** scene_vtable;
+    std::memcpy(&scene, manager + MANAGER_SCENE, sizeof(scene));
+    std::memcpy(&scene_vtable, scene, sizeof(scene_vtable));
+    if (scene_vtable[GET_VIEW_SLOT] == get_view) {
+      void** view_vtable;
+      std::memcpy(&view_vtable, scene + SCENE_VIEW, sizeof(view_vtable));
+      if (view_vtable[GET_POSITION_SLOT] == verified_get_position.load(std::memory_order_relaxed)) {
+        std::array<float, 3> camera;
+        float lod_offset;
+        float bias;
+        std::memcpy(camera.data(), scene + SCENE_VIEW + VIEW_POSITION, sizeof(camera));
+        std::memcpy(&lod_offset, manager + MANAGER_LOD_OFFSET, sizeof(lod_offset));
+        std::memcpy(&bias, params + DRAW_PARAMS_BIAS, sizeof(bias));
+        const float dx = transform[3] - camera[0];
+        const float dy = transform[7] - camera[1];
+        const float dz = transform[11] - camera[2];
+        float distance_squared = dy * dy + dx * dx;
+        distance_squared = distance_squared + dz * dz;
+        const float key = distance_squared + (lod_offset + bias);
+        uint32_t count;
+        uint8_t** entries;
+        std::memcpy(&count, lods + 0x28, sizeof(count));
+        std::memcpy(&entries, lods + 0x2c, sizeof(entries));
+        bool drawn = false;
+        for (uint32_t lod = 0; lod < count && !drawn; ++lod) {
+          float distance;
+          std::memcpy(&distance, entries[lod] + 0x38, sizeof(distance));
+          drawn = (distance > key && entries[lod][0x44] != 0);
+        }
+        if (!drawn) return;
+      }
+    }
+  }
+  original_draw_scrub(manager, unused_edx, model, transform, third, params, fifth);
 }
 
 // The bias x the scale (squared by the game, as the LOD distances), so the grass thins out as the game's, farther away.
@@ -562,12 +629,36 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
   }
   std::memcpy(scrub + SCRUB_CELLS, &known.written_cells, sizeof(cells));
   std::memcpy(scrub + SCRUB_BIAS, &known.written_bias, sizeof(bias));
+  // OnDrawScrub's early-out: the camera getters its manager's DrawScrub calls, their code read again every frame (other
+  // code, such as another mod's: none found, every record goes to DrawScrub).
+  const void* get_view = nullptr;
+  const void* get_position = nullptr;
+  uint8_t* scene = nullptr;
+  if (draw_scrub_read && manager != nullptr) {
+    std::memcpy(&scene, manager + MANAGER_SCENE, sizeof(scene));
+  }
+  void** scene_vtable = nullptr;
+  if (scene != nullptr) {
+    std::memcpy(&scene_vtable, scene, sizeof(scene_vtable));
+  }
+  if (scene_vtable != nullptr
+      && std::memcmp(scene_vtable[GET_VIEW_SLOT], GET_VIEW_CODE.data(), GET_VIEW_CODE.size()) == 0) {
+    void** view_vtable;
+    std::memcpy(&view_vtable, scene + SCENE_VIEW, sizeof(view_vtable));
+    if (view_vtable != nullptr
+        && std::memcmp(view_vtable[GET_POSITION_SLOT], GET_POSITION_CODE.data(), GET_POSITION_CODE.size()) == 0) {
+      get_view = scene_vtable[GET_VIEW_SLOT];
+      get_position = view_vtable[GET_POSITION_SLOT];
+    }
+  }
+  verified_get_view.store(get_view, std::memory_order_relaxed);
+  verified_get_position.store(get_position, std::memory_order_relaxed);
   // Grass Trace: the last frame's draws out, or this frame's started.
   if (grass_trace.state.load() == 2) {
     const std::unique_lock lock(grass_trace.mutex);
     renodx::utils::log::i("[Total War] Grass trace: cells ", known.written_cells, " (game ", known.game_cells,
                           ", scrub LODs end at ", std::round(reach), " m), bias x ", known.written_bias, " (game ",
-                          known.game_bias, ")");
+                          known.game_bias, "), DrawScrub past every LOD ", get_view != nullptr ? "skipped" : "called");
     for (size_t bin = 0; bin < grass_trace.calls.size(); ++bin) {
       if (grass_trace.calls[bin] == 0) continue;
       renodx::utils::log::i("[Total War]   ", bin * 10, (bin == 40 ? "+ m" : " m"), ": ", grass_trace.calls[bin],
@@ -654,6 +745,16 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
           reinterpret_cast<void*>(&internal::OnDrawTree), "trees");
       add(internal::DRAW_SCRUB, reinterpret_cast<void**>(&internal::original_draw_scrub),
           reinterpret_cast<void*>(&internal::OnDrawScrub), "grass");
+      // OnDrawScrub's early-out only with DrawScrub's code as read, before the hook writes its entry.
+      if (const auto* draw_scrub = reinterpret_cast<const char*>(internal::original_draw_scrub); draw_scrub != nullptr) {
+        const auto matches = [](const char* code, std::string_view pattern) {
+          return tw::engine_tweaks::FindPattern({std::string_view(code, (pattern.size() + 1) / 3)}, pattern) != nullptr;
+        };
+        internal::draw_scrub_read = matches(draw_scrub, internal::DRAW_SCRUB_NO_LOD)
+                                    && matches(draw_scrub + internal::DRAW_SCRUB_RETURN_OFFSET, internal::DRAW_SCRUB_RETURN);
+        renodx::utils::log::i("[Total War] Graphics: grass records past every LOD ",
+                              internal::draw_scrub_read ? "skip DrawScrub" : "go to DrawScrub (its code differs)");
+      }
       add(internal::SCRUB_UPDATE, reinterpret_cast<void**>(&internal::original_scrub_update),
           reinterpret_cast<void*>(&internal::OnScrubUpdate), "grass cells");
       if (uint8_t* call = tw::engine_tweaks::FindPattern(sections.code, internal::FIRST_PACK_CALL); call != nullptr) {

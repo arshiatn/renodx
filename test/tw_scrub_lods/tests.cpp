@@ -14,9 +14,12 @@
 //    insert were three steps; printed), this one never (the map path under the entry's lock: every model = closed form).
 // 4. Cost: ns a call, cells alternating 6 models, runs of one model, and 128 models in turn (more than the cache holds:
 //    every call takes the map path), one thread and four (printed).
-// 5. The scrub's cell radius clamp (OnScrubUpdate): a replay of the game's ScrubUpdate, cell loop and DrawScrub (namespace
-//    scrub) through the hooks and at v158's radius: the same draws in 400 random scenes; visits saved printed, also for
-//    G1's grass (the models and radius of ATN's Grass Trace).
+// 5. The scrub's cell radius clamp (OnScrubUpdate) and DrawScrub's early-out (OnDrawScrub): a replay of the game's
+//    ScrubUpdate, cell loop and DrawScrub (namespace scrub) through the hooks and as v158 (its radius, every record to
+//    DrawScrub): the same draws in 400 random scenes and 40 scenes with LODs one float step around their records' keys;
+//    a control (the early-out with the key in Grass Trace's float order) draws less there. Camera getters with other code
+//    (and DrawScrub's code not read): no call skipped. Visits and calls saved printed, also for G1's grass (the models and
+//    radius of ATN's Grass Trace), and the early-out's own cost.
 #include <windows.h>
 #include <algorithm>
 #include <array>
@@ -197,10 +200,19 @@ static std::vector<float> Distances(std::mt19937* random, size_t count) {
 // The game's scrub replayed for section 5 (empire.retail.dll as graphics_hooks.hpp SCRUB_UPDATE reads it): ScrubUpdate's
 // quadtree query of the box camera +- float(+0x80) (+0x1898800, the frustum test left out: it doesn't depend on +0x80),
 // the cell loop (+0x1897a30: the distance squared <= float(+0x80 squared as an int), the byte grid, the bias, the
-// transform) and DrawScrub (+0x17f9800: the key and the first enabled LOD past it), with the float operations in the
-// game's order. The scrub's, the manager's, the models' and the LODs' fields the hooks read are in the game's layout;
-// cells and records in the test's own.
+// transform) and DrawScrub (+0x17f9800: the camera from manager +0x34's view, the key and the first enabled LOD past it),
+// with the float operations in the game's order. The scrub's, the manager's, the scene's, the view's, the models' and the
+// LODs' fields the hooks read are in the game's layout; cells and records in the test's own.
 namespace scrub {
+
+// The camera getters' code in empire.retail.dll (+0xc6760 the scene's vtable +0x28, +0x20c850 the view's +0x3c): the
+// replay does what they do (scene + 0x48; the view's +0x8 to +0x13).
+constexpr std::array<uint8_t, 4> GAME_GET_VIEW = {0x8D, 0x41, 0x48, 0xC3};
+constexpr std::array<uint8_t, 24> GAME_GET_POSITION = {0x8B, 0x44, 0x24, 0x04, 0x8B, 0x51, 0x08, 0x89, 0x10, 0x8B, 0x51, 0x0C,
+                                                       0x8B, 0x49, 0x10, 0x89, 0x50, 0x04, 0x89, 0x48, 0x08, 0xC2, 0x04, 0x00};
+// Another mod's getter (one byte other): the hooks must not take the camera from it.
+constexpr std::array<uint8_t, 24> OTHER_GET_POSITION = {0x8B, 0x44, 0x24, 0x04, 0x8B, 0x51, 0x08, 0x89, 0x10, 0x8B, 0x51, 0x0C,
+                                                        0x8B, 0x49, 0x10, 0x89, 0x50, 0x04, 0x89, 0x48, 0x08, 0xC2, 0x04, 0x01};
 
 struct Record {
   std::array<float, 3> position = {};
@@ -230,6 +242,7 @@ struct Draw {
 struct Visits {
   uint64_t cells = 0;
   uint64_t records = 0;  // records past the distance test (each a DrawScrub call when the grid allows it)
+  uint64_t calls = 0;    // the game's DrawScrub run
   uint64_t draws = 0;
 };
 
@@ -245,18 +258,31 @@ struct Spec {
   int32_t game_cells = 200;
   float game_bias = 200.f;
   std::array<float, 3> camera = {};
+  const uint8_t* get_position = GAME_GET_POSITION.data();  // the code the view's vtable +0x3c points to
 };
 
 // One copy of a scene's game objects (each run scales its own LODs).
 struct Objects {
   std::unique_ptr<uint8_t[]> manager = std::make_unique<uint8_t[]>(0xc40);
   std::unique_ptr<uint8_t[]> scrub = std::make_unique<uint8_t[]>(0x120);
+  std::unique_ptr<uint8_t[]> scene = std::make_unique<uint8_t[]>(0x60);  // its view at +0x48
+  std::array<const void*, 16> scene_vtable = {};
+  std::array<const void*, 16> view_vtable = {};
   std::vector<std::unique_ptr<uint8_t[]>> storage;
   std::vector<uint8_t*> models;
   std::vector<std::vector<uint8_t*>> lods;
   std::vector<uint32_t> slots;
 
   explicit Objects(const Spec& spec) {
+    scene_vtable[0x28 / 4] = GAME_GET_VIEW.data();
+    view_vtable[0x3c / 4] = spec.get_position;
+    const void* const* vtable = scene_vtable.data();
+    std::memcpy(scene.get(), &vtable, sizeof(vtable));
+    vtable = view_vtable.data();
+    std::memcpy(scene.get() + 0x48, &vtable, sizeof(vtable));
+    std::memcpy(scene.get() + 0x50, spec.camera.data(), sizeof(spec.camera));
+    uint8_t* scene_pointer = scene.get();
+    std::memcpy(manager.get() + 0x34, &scene_pointer, sizeof(scene_pointer));
     for (const auto& model_spec : spec.models) {
       uint8_t* model = storage.emplace_back(std::make_unique<uint8_t[]>(0x40)).get();
       auto& entries = lods.emplace_back();
@@ -291,35 +317,58 @@ struct Objects {
 
 // The replay's inputs and outputs (one run at a time, one thread).
 static const Node* root = nullptr;
-static std::array<float, 3> camera = {};
-static const std::array<float, 14>* params = nullptr;  // the cell loop's per-record block: +0x10 the bias
+static std::array<float, 3> camera = {};  // the scrub's (the cell loop's)
 static std::vector<Draw>* draws = nullptr;
 static Visits* visits = nullptr;
 static hooks::internal::DrawScrub draw_scrub = nullptr;  // what the cell loop calls (the manager's vtable +0x80)
 static float reference_scale = 1.f;                      // the reference run's LOD scale (squared)
 
-static void __fastcall GameDrawScrub(uint8_t* manager, void*, uint32_t index, const float* transform, uint32_t, uint32_t,
-                                     uint32_t id) {
+// DrawScrub's camera: manager +0x34's view (+0x48), its +0x8 to +0x13 (the getters' code above).
+static std::array<float, 3> SceneCamera(const uint8_t* manager) {
+  const uint8_t* scene;
+  std::memcpy(&scene, manager + 0x34, sizeof(scene));
+  std::array<float, 3> position;
+  std::memcpy(position.data(), scene + 0x48 + 0x8, sizeof(position));
+  return position;
+}
+
+// DrawScrub's key ((dy^2 + dx^2) + dz^2 + (+0xc34 + bias), +0x17f985a to +0x17f988d).
+static float GameKey(const std::array<float, 3>& eye, const float* transform, float lod_offset, float bias) {
+  const float dx = transform[3] - eye[0];
+  const float dy = transform[7] - eye[1];
+  const float dz = transform[11] - eye[2];
+  float distance_squared = dy * dy + dx * dx;
+  distance_squared = distance_squared + dz * dz;
+  const float offset = lod_offset + bias;
+  return distance_squared + offset;
+}
+
+// The control's key: the same terms in Grass Trace's order (x^2 + y^2 + z^2 + +0xc34 + bias).
+static float ControlKey(const std::array<float, 3>& eye, const float* transform, float lod_offset, float bias) {
+  const float x = transform[3] - eye[0];
+  const float y = transform[7] - eye[1];
+  const float z = transform[11] - eye[2];
+  return x * x + y * y + z * z + lod_offset + bias;
+}
+
+static void __fastcall GameDrawScrub(uint8_t* manager, void*, uint32_t index, const float* transform, uint32_t,
+                                     const uint8_t* params, uint32_t id) {
   if (index == 0xffffffffu) return;
   uint32_t model_count;
   std::memcpy(&model_count, manager + 0x1c, sizeof(model_count));
   if (index >= model_count) return;
+  ++visits->calls;
   uint8_t** models;
   std::memcpy(&models, manager + 0x20, sizeof(models));
   uint32_t count;
   uint8_t** entries;
   std::memcpy(&count, models[index] + 0x28, sizeof(count));
   std::memcpy(&entries, models[index] + 0x2c, sizeof(entries));
-  const float dx = transform[3] - camera[0];
-  const float dy = transform[7] - camera[1];
-  const float dz = transform[11] - camera[2];
-  float distance_squared = dy * dy + dx * dx;
-  distance_squared = distance_squared + dz * dz;
   float lod_offset;
+  float bias;
   std::memcpy(&lod_offset, manager + 0xc34, sizeof(lod_offset));
-  const float bias = (*params)[4];
-  const float offset = lod_offset + bias;
-  const float key = distance_squared + offset;
+  std::memcpy(&bias, params + 0x10, sizeof(bias));
+  const float key = GameKey(SceneCamera(manager), transform, lod_offset, bias);
   for (uint32_t lod = 0; lod < count; ++lod) {
     float distance;
     std::memcpy(&distance, entries[lod] + 0x38, sizeof(distance));
@@ -335,9 +384,46 @@ static void __fastcall GameDrawScrub(uint8_t* manager, void*, uint32_t index, co
 
 // v158's draw: the LODs scaled by v157's code (section 1: the same distances), then the game's.
 static void __fastcall ReferenceDrawScrub(uint8_t* manager, void* edx, uint32_t index, const float* transform,
-                                          uint32_t third, uint32_t fourth, uint32_t id) {
+                                          uint32_t third, const uint8_t* params, uint32_t id) {
   old::ScaleModelLods(manager, index, reference_scale);
-  GameDrawScrub(manager, edx, index, transform, third, fourth, id);
+  GameDrawScrub(manager, edx, index, transform, third, params, id);
+}
+
+// The control: v158's draw with the early-out, its key in the control's order (the game's DrawScrub left out when no
+// enabled LOD is farther than that key).
+static void __fastcall ControlDrawScrub(uint8_t* manager, void* edx, uint32_t index, const float* transform,
+                                        uint32_t third, const uint8_t* params, uint32_t id) {
+  old::ScaleModelLods(manager, index, reference_scale);
+  uint32_t model_count;
+  std::memcpy(&model_count, manager + 0x1c, sizeof(model_count));
+  if (index >= model_count) return GameDrawScrub(manager, edx, index, transform, third, params, id);
+  uint8_t** models;
+  std::memcpy(&models, manager + 0x20, sizeof(models));
+  uint32_t count;
+  uint8_t** entries;
+  std::memcpy(&count, models[index] + 0x28, sizeof(count));
+  std::memcpy(&entries, models[index] + 0x2c, sizeof(entries));
+  float lod_offset;
+  float bias;
+  std::memcpy(&lod_offset, manager + 0xc34, sizeof(lod_offset));
+  std::memcpy(&bias, params + 0x10, sizeof(bias));
+  const float key = ControlKey(SceneCamera(manager), transform, lod_offset, bias);
+  for (uint32_t lod = 0; lod < count; ++lod) {
+    float distance;
+    std::memcpy(&distance, entries[lod] + 0x38, sizeof(distance));
+    if (distance > key && entries[lod][0x44] != 0) {
+      GameDrawScrub(manager, edx, index, transform, third, params, id);
+      return;
+    }
+  }
+}
+
+static void __fastcall EmptyDrawScrub(uint8_t*, void*, uint32_t, const float*, uint32_t, const uint8_t*, uint32_t) {}
+
+// The cell loop's bias for a record (its +0x11 byte, the scrub's +0x84; 1 / 65025 as the game has it).
+static float Bias(uint8_t thinning_byte, float bias_scale) {
+  const float thinning = static_cast<float>(thinning_byte);
+  return (((thinning * std::bit_cast<float>(0x37810101u)) * bias_scale) * thinning) * bias_scale;
 }
 
 static void __fastcall GameScrubUpdate(uint8_t* scrub, void*) {
@@ -366,7 +452,6 @@ static void __fastcall GameScrubUpdate(uint8_t* scrub, void*) {
   };
   query(query, *root);
   const float radius_squared = static_cast<float>(radius * radius);
-  const float thinning_scale = std::bit_cast<float>(0x37810101u);  // 1 / 65025 as the game has it
   for (const Node* cell : cells) {
     ++visits->cells;
     for (const Record& record : cell->records) {
@@ -378,17 +463,16 @@ static void __fastcall GameScrubUpdate(uint8_t* scrub, void*) {
       if (!(distance_squared <= radius_squared)) continue;
       ++visits->records;
       if (!record.grid) continue;
-      const float thinning = static_cast<float>(record.thinning);
       std::array<float, 14> block = {};
-      block[4] = (((thinning * thinning_scale) * bias_scale) * thinning) * bias_scale;
+      block[4] = Bias(record.thinning, bias_scale);
       const float angle = static_cast<float>(record.id % 64) * 0.09817477f;
       const float cosine = std::cos(angle);
       const float sine = std::sin(angle);
       const std::array<float, 12> transform = {cosine, 0.f, -sine, record.position[0],
                                                0.f, 1.f, 0.f, record.position[1],
                                                sine, 0.f, cosine, record.position[2]};
-      params = &block;
-      draw_scrub(manager, nullptr, slots[record.slot], transform.data(), 0, 0, record.id);
+      draw_scrub(manager, nullptr, slots[record.slot], transform.data(), 0, reinterpret_cast<const uint8_t*>(block.data()),
+                 record.id);
     }
   }
 }
@@ -654,9 +738,11 @@ int main() {
   //    LOD, key, bias and transform bits. Scenes: 1 to 10 scrub models among others (far LODs the scrub never draws), 1 to 10
   //    LODs, disabled, FLT_MAX and NaN ones, far plants (3 km), a slot without a model, manager +0xc34 below, at and above
   //    0, game radius 200 / 400 / 1600, the slider 0.5x-4x, Grass Density, records across the map and 1-3 m around the
-  //    clamp and around every LOD's distance.
+  //    clamp and around every LOD's distance. The early-out (OnDrawScrub): the same draws, calls saved counted; the
+  //    control (its key in Grass Trace's order) beside them.
   {
     hooks::internal::hooks_active.store(true);
+    hooks::internal::draw_scrub_read = true;  // as the install finds DrawScrub's code (DRAW_SCRUB_NO_LOD)
     hooks::internal::original_scrub_update = &scrub::GameScrubUpdate;
     hooks::internal::original_draw_scrub = &scrub::GameDrawScrub;
     bool installed = false;
@@ -664,7 +750,14 @@ int main() {
     std::vector<std::unique_ptr<uint8_t[]>> retired;  // every scene's scrub at its own address
     scrub::Visits hooked_visits;
     scrub::Visits reference_visits;
+    scrub::Visits control_visits;
     uint32_t clamped_scenes = 0;
+    struct Run {
+      bool same = true;          // hooked draws = reference draws, both frames
+      bool control_same = true;  // control draws = reference draws, both frames
+      uint64_t hooked_calls = 0;
+      uint64_t reference_calls = 0;
+    };
     const auto run = [&](const scrub::Spec& spec, const std::vector<scrub::Record>& records, float distance,
                          float density) {
       const auto tree = scrub::Build(records, 2000.f, 3);
@@ -673,10 +766,13 @@ int main() {
       hooks::Update({.grass_distance = distance, .grass_density = density}, &installed, &status);
       scrub::Objects hooked(spec);
       scrub::Objects reference(spec);
+      scrub::Objects control(spec);
       const int32_t reference_cells = static_cast<int32_t>(std::lround(static_cast<float>(spec.game_cells) * distance));
       const float reference_bias = spec.game_bias * distance / std::max(density, 0.010001118f);
       scrub::reference_scale = distance * distance;
-      bool same = true;
+      Run result;
+      const uint64_t hooked_calls = hooked_visits.calls;
+      const uint64_t reference_calls = reference_visits.calls;
       for (int frame = 0; frame < 2; ++frame) {
         std::vector<scrub::Draw> hooked_draws;
         scrub::draws = &hooked_draws;
@@ -684,22 +780,34 @@ int main() {
         scrub::draw_scrub = &hooks::internal::OnDrawScrub;
         hooks::internal::OnScrubUpdate(hooked.scrub.get(), nullptr);
         std::vector<scrub::Draw> reference_draws;
-        std::memcpy(reference.scrub.get() + 0x80, &reference_cells, sizeof(reference_cells));
-        std::memcpy(reference.scrub.get() + 0x84, &reference_bias, sizeof(reference_bias));
+        std::vector<scrub::Draw> control_draws;
+        for (scrub::Objects* objects : {&reference, &control}) {
+          std::memcpy(objects->scrub.get() + 0x80, &reference_cells, sizeof(reference_cells));
+          std::memcpy(objects->scrub.get() + 0x84, &reference_bias, sizeof(reference_bias));
+        }
         scrub::draws = &reference_draws;
         scrub::visits = &reference_visits;
         scrub::draw_scrub = &scrub::ReferenceDrawScrub;
         scrub::GameScrubUpdate(reference.scrub.get(), nullptr);
+        scrub::draws = &control_draws;
+        scrub::visits = &control_visits;
+        scrub::draw_scrub = &scrub::ControlDrawScrub;
+        scrub::GameScrubUpdate(control.scrub.get(), nullptr);
         std::ranges::sort(hooked_draws);
         std::ranges::sort(reference_draws);
-        same = same && (hooked_draws == reference_draws);
+        std::ranges::sort(control_draws);
+        result.same = result.same && (hooked_draws == reference_draws);
+        result.control_same = result.control_same && (control_draws == reference_draws);
         int32_t written;
         std::memcpy(&written, hooked.scrub.get() + 0x80, sizeof(written));
         if (frame == 0 && written < reference_cells) ++clamped_scenes;
       }
+      result.hooked_calls = hooked_visits.calls - hooked_calls;
+      result.reference_calls = reference_visits.calls - reference_calls;
       retired.push_back(std::move(hooked.scrub));
-      return same;
+      return result;
     };
+    uint32_t control_differs = 0;  // scenes
     std::mt19937 scene_random(5113);
     const auto uniform = [&](float low, float high) { return std::uniform_real_distribution<float>(low, high)(scene_random); };
     const auto chance = [&](float probability) { return uniform(0.f, 1.f) < probability; };
@@ -772,14 +880,83 @@ int main() {
           add(around(reach + uniform(-3.f, 3.f)), random_slot(), static_cast<uint8_t>(scene_random() % 4));
         }
       }
-      CHECK(run(spec, records, distance, density));
+      const Run result = run(spec, records, distance, density);
+      CHECK(result.same);
+      control_differs += result.control_same ? 0 : 1;
     }
-    std::printf("5 cell radius clamp, %d scenes x 2 frames: the same draws (model, LOD, key, bias, transform bits) as v158's "
-                "radius; clamped in %u scenes; cells visited %llu -> %llu, records past the distance test %llu -> %llu, "
-                "draws %llu\n",
+    std::printf("5 cell radius clamp + early-out, %d scenes x 2 frames: the same draws (model, LOD, key, bias, transform "
+                "bits) as v158; clamped in %u scenes; cells visited %llu -> %llu, records past the distance test %llu -> "
+                "%llu, DrawScrub calls %llu -> %llu, draws %llu; control off in %u scenes\n",
                 SCENES, clamped_scenes, reference_visits.cells, hooked_visits.cells, reference_visits.records,
-                hooked_visits.records, hooked_visits.draws);
+                hooked_visits.records, reference_visits.calls, hooked_visits.calls, hooked_visits.draws, control_differs);
     CHECK(hooked_visits.draws == reference_visits.draws);
+
+    // Keys at the LODs: 40 scenes of 255 records, each record with its own model, one LOD one float step above, at or one
+    // step below the record's key as DrawScrub computes it (the cell loop's bias, +0xc34 not 0): the early-out leaves out
+    // exactly the last two kinds, the control (one rounding off) draws less.
+    {
+      uint32_t boundary_control_differs = 0;
+      const scrub::Visits hooked_before = hooked_visits;
+      const scrub::Visits reference_before = reference_visits;
+      for (int scene = 0; scene < 40; ++scene) {
+        scrub::Spec spec;
+        spec.lod_offset = pick({100.f, -50.f, 1234.5f, 7.25f});
+        spec.game_cells = 400;
+        spec.game_bias = pick({200.f, 50.f, 13.f});
+        spec.camera = {uniform(-500.f, 500.f), uniform(5.f, 100.f), uniform(-500.f, 500.f)};
+        std::vector<scrub::Record> records;
+        for (uint32_t record = 0; record < 255; ++record) {
+          const float heading = uniform(0.f, 6.2831853f);
+          const float metres = uniform(20.f, 200.f);
+          const std::array<float, 3> position = {spec.camera[0] + metres * std::cos(heading), uniform(0.f, 30.f),
+                                                 spec.camera[2] + metres * std::sin(heading)};
+          const auto thinning = static_cast<uint8_t>(1 + scene_random() % 255);
+          const std::array<float, 12> transform = {0.f, 0.f, 0.f, position[0], 0.f, 0.f, 0.f, position[1],
+                                                   0.f, 0.f, 0.f, position[2]};
+          const float key = scrub::GameKey(spec.camera, transform.data(), spec.lod_offset,
+                                           scrub::Bias(thinning, spec.game_bias));
+          float lod = key;
+          if (record % 3 == 0) lod = std::nextafter(key, FLT_MAX);
+          if (record % 3 == 2) lod = std::nextafter(key, 0.f);
+          spec.slots.push_back(static_cast<uint32_t>(spec.models.size()));
+          spec.models.push_back({.distances = {lod}, .enabled = {1}});
+          records.push_back({.position = position, .slot = static_cast<uint8_t>(record), .thinning = thinning,
+                             .id = record});
+        }
+        const Run result = run(spec, records, 1.f, 1.f);
+        CHECK(result.same);
+        CHECK(result.hooked_calls == result.reference_calls / 3 && result.reference_calls == 2u * 255u);
+        boundary_control_differs += result.control_same ? 0 : 1;
+      }
+      std::printf("5 keys at the LODs, 40 scenes x 255 records x 2 frames: the same draws; DrawScrub calls %llu -> %llu "
+                  "(the records one step inside their LOD); the control (Grass Trace's float order) off in %u scenes\n",
+                  reference_visits.calls - reference_before.calls, hooked_visits.calls - hooked_before.calls,
+                  boundary_control_differs);
+      CHECK(boundary_control_differs > 0);
+      control_differs += boundary_control_differs;
+    }
+
+    // Not the code read: a camera getter with other bytes, then DrawScrub's code (the install's check): every call made.
+    for (const bool other_getter : {true, false}) {
+      scrub::Spec spec;
+      spec.slots = {0};
+      spec.models = {{.distances = {75.f * 75.f, 150.f * 150.f}, .enabled = {1, 1}}};
+      spec.camera = {0.f, 60.f, 0.f};
+      spec.game_cells = 100;  // inside the LODs: no clamp, the same records visited
+      if (other_getter) spec.get_position = scrub::OTHER_GET_POSITION.data();
+      hooks::internal::draw_scrub_read = other_getter;
+      std::vector<scrub::Record> records;
+      for (uint32_t record = 0; record < 2000; ++record) {
+        records.push_back({.position = {uniform(-300.f, 300.f), uniform(0.f, 20.f), uniform(-300.f, 300.f)},
+                           .thinning = static_cast<uint8_t>(scene_random() % 256), .id = record});
+      }
+      const Run result = run(spec, records, 1.f, 1.f);
+      CHECK(result.same && result.hooked_calls == result.reference_calls && result.reference_calls > 0);
+      std::printf("5 %s: DrawScrub calls %llu -> %llu, the same draws\n",
+                  other_getter ? "a camera getter with other code" : "DrawScrub's code not read", result.reference_calls,
+                  result.hooked_calls);
+    }
+    hooks::internal::draw_scrub_read = true;
 
     // G1's grass (cpu_runs/G1_121119 Grass Trace at 1x: the game's radius 1600 m, bias 200; 8 grass models with LODs to
     // 75 / 150 / 300 m, 3 plants to 300 / 600 / 900 / 2543-3276 m), records evenly over the map: visits saved with the
@@ -806,13 +983,51 @@ int main() {
       }
       const scrub::Visits hooked_before = hooked_visits;
       const scrub::Visits reference_before = reference_visits;
-      CHECK(run(spec, records, 1.f, 1.f));
+      const Run result = run(spec, records, 1.f, 1.f);
+      CHECK(result.same);
       const uint64_t kept = (hooked_visits.records - hooked_before.records) / 2;
       const uint64_t all = (reference_visits.records - reference_before.records) / 2;
-      std::printf("5 G1's grass %s: a frame's records past the distance test %llu -> %llu (%.0f%% saved), cells %llu -> %llu\n",
+      std::printf("5 G1's grass %s: a frame's records past the distance test %llu -> %llu (%.0f%% saved), cells %llu -> "
+                  "%llu, DrawScrub calls %llu -> %llu (%.0f%% saved), draws %llu\n",
                   plants ? "with its 3 far plants" : "without the far plants", all, kept,
                   100.0 * static_cast<double>(all - kept) / static_cast<double>(std::max<uint64_t>(all, 1)),
-                  (reference_visits.cells - reference_before.cells) / 2, (hooked_visits.cells - hooked_before.cells) / 2);
+                  (reference_visits.cells - reference_before.cells) / 2, (hooked_visits.cells - hooked_before.cells) / 2,
+                  result.reference_calls / 2, result.hooked_calls / 2,
+                  100.0 * static_cast<double>(result.reference_calls - result.hooked_calls)
+                      / static_cast<double>(std::max<uint64_t>(result.reference_calls, 1)),
+                  (hooked_visits.draws - hooked_before.draws) / 2);
+    }
+    std::printf("5 the control off in %u scenes in all\n", control_differs);
+    CHECK(control_differs > 0);
+
+    // The early-out's own cost: OnDrawScrub for a record past its model's LODs (G1's grass model), left out, against the
+    // same call passed to an empty DrawScrub (the getters not found).
+    {
+      scrub::Spec spec;
+      spec.slots = {0};
+      spec.models = {{.distances = {75.f * 75.f, 150.f * 150.f, 300.f * 300.f}, .enabled = {1, 1, 1}}};
+      spec.camera = {0.f, 60.f, 0.f};
+      scrub::Objects objects(spec);
+      hooks::internal::original_draw_scrub = &scrub::EmptyDrawScrub;
+      const std::array<float, 12> transform = {1.f, 0.f, 0.f, 900.f, 0.f, 1.f, 0.f, 2.f, 0.f, 0.f, 1.f, 700.f};
+      std::array<float, 14> block = {};
+      block[4] = 1000.f;
+      constexpr uint32_t CALLS = 4000000;
+      const auto time = [&](const void* get_view, const void* get_position) {
+        hooks::internal::verified_get_view.store(get_view);
+        hooks::internal::verified_get_position.store(get_position);
+        hooks::internal::DrawScrub volatile draw = &hooks::internal::OnDrawScrub;
+        const auto start = std::chrono::steady_clock::now();
+        for (uint32_t call = 0; call < CALLS; ++call) {
+          draw(objects.manager.get(), nullptr, 0, transform.data(), 0, reinterpret_cast<const uint8_t*>(block.data()), call);
+        }
+        return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / CALLS;
+      };
+      const double skipped = time(scrub::GAME_GET_VIEW.data(), scrub::GAME_GET_POSITION.data());
+      const double called = time(nullptr, nullptr);
+      std::printf("5 OnDrawScrub past the LODs: %.1f ns a call left out, %.1f ns calling an empty DrawScrub\n", skipped,
+                  called);
+      hooks::internal::original_draw_scrub = &scrub::GameDrawScrub;
     }
   }
   std::printf("PASS\n");
