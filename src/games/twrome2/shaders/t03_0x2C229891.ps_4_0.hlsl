@@ -70,8 +70,9 @@ Texture2D<float4> grain_sampler : register(t5);
 // 3Dmigoto declarations
 #define cmp -
 #include "../hdr_to_screen.hlsli"
-// After DLSS: the frame is DLSS's (the display's size); the distortion, god rays and depth the 3D drew below 100% are
-// read at the display uv x the frame's share (twattila/render_scale.hlsli).
+// Drawn before DLSS (anti_aliasing.hpp takes this pass's output: the tone mapper EE1DA45C writes R11G11B10), at the
+// render size's viewport over its display-size target: the display uv reads the 3D's textures where they hold the
+// view; positions and offsets in the view's units take the draw's share (twattila/render_scale.hlsli).
 #include "../../twattila/render_scale.hlsli"
 
 
@@ -86,16 +87,16 @@ void main(
 
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
-  r1.xyzw = distortion_sampler.SampleLevel(distortion_sampler_s, r0.xy * FrameRenderShare(), r0.y).xyzw;
+  r1.xyzw = distortion_sampler.SampleLevel(distortion_sampler_s, r0.xy, r0.y).xyzw;
   r0.zw = float2(-0.498039216,-0.498039216) + r1.xy;
   r0.xy = r0.zw * float2(0.0199999996,0.0199999996)
-          * SI.uvdistort + r0.xy;
+          * SI.uvdistort * DrawRenderShare() + r0.xy;
   r1.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r0.xy, r0.y).xyzw;
-  r2.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy * FrameRenderShare()).xyzw;
+  r2.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy).xyzw;
   float god_rays_multiplier = SI.godrays;
   r2.xyz = r2.xxx * (float3(0.100000001,0.100000001,0.100000001) * god_rays_multiplier) + r1.xyz;
-  r3.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy * FrameRenderShare(), r0.y).yzxw;
-  r3.xy = r0.xy * float2(2,-2) + float2(-1,1);
+  r3.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
+  r3.xy = (r0.xy / DrawRenderShare()) * float2(2,-2) + float2(-1,1);
   r3.w = 1;
   r0.x = dot(r3.xyzw, inv_view_projection._m00_m10_m20_m30);
   r0.w = dot(r3.xyzw, inv_view_projection._m02_m12_m22_m32);

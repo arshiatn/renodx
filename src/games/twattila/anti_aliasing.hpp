@@ -283,6 +283,7 @@ struct Runtime {
   UINT render_width = 0;                   // DLSS: the 3D image's size (else the display's)
   UINT render_height = 0;
   uint64_t camera_frame = UINT64_MAX;      // the frame `camera` and `scene_depth` are from (a sun light draw's)
+  uint64_t msaa_frame = UINT64_MAX;        // the last frame a sun light draw's depth was the game's MSAA (GameMsaa)
   uint64_t tonemapped_frame = UINT64_MAX;  // after it: no jitter
   uint64_t view_3d_frame = UINT64_MAX;     // the tone mapper drew, any method or none (FrameTrace's 3D view)
   uint64_t applied_frame = UINT64_MAX;     // the last frame TAA / SMAA T2x ran
@@ -659,10 +660,13 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     texture->GetDesc(&desc);
     const std::unique_lock lock(runtime.mutex);
     const auto upload = std::ranges::find(runtime.uploads, camera.Get(), &Upload::buffer);
-    if (desc.SampleDesc.Count != 1 && !runtime.logged_msaa) {
-      renodx::utils::log::w("[Total War] Anti-aliasing: the game's MSAA is on: turn the in-game anti-aliasing off for "
-                            "TAA / SMAA T2x / DLAA / DLSS.");
-      runtime.logged_msaa = true;
+    if (desc.SampleDesc.Count != 1) {
+      runtime.msaa_frame = runtime.frame;
+      if (!runtime.logged_msaa) {
+        renodx::utils::log::w("[Total War] Anti-aliasing: the game's MSAA is on: turn the in-game anti-aliasing off for "
+                              "TAA / SMAA T2x / DLAA / DLSS.");
+        runtime.logged_msaa = true;
+      }
     }
     if (upload == runtime.uploads.end() || !upload->camera.valid || desc.Width != runtime.display_width
         || desc.Height != runtime.display_height || desc.SampleDesc.Count != 1) {
@@ -1641,6 +1645,14 @@ inline bool MainCamera(ID3D11Buffer* buffer, internal::Camera* camera) {
 inline float MainFocalPixels() {
   const std::shared_lock lock(internal::runtime.mutex);
   return std::max(0.f, static_cast<float>(internal::runtime.display_height) * internal::runtime.camera.projection[5] * 0.5f);
+}
+
+// Whether the game's MSAA drew the main view's sun light this frame or the last (a temporal method selected): TAA, SMAA T2x,
+// DLAA and DLSS don't run there (OnSunDraw keeps no camera), so a host keeps what needs them off too (ray tracing, frame
+// generation). Call before Update (its frame count).
+inline bool GameMsaa() {
+  const std::unique_lock lock(internal::runtime.mutex);
+  return internal::runtime.msaa_frame != UINT64_MAX && internal::runtime.msaa_frame + 1 >= internal::runtime.frame;
 }
 
 // Whether the G-buffer guides (Ray Reconstruction's, also ray tracing's paths') were written this frame.

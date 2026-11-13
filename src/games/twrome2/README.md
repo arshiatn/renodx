@@ -1,5 +1,30 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Round 2 (2026-11-13, toward Attila's package; built only, not run in game)
+
+New:
+- **Water Clarity** and **Water Caustics (Experimental, off)** on the battle water (plane Ultra and High, rivers), as Attila. At 1 / 0: the game's water. RT/PT leaves Caustics off here.
+- **Skip the Shadow Maps (Experimental, off)**, under the ray-traced shadows' More Options: nothing is drawn into the game's near sun shadow map, the rays alone shade there (the water, rivers and campaign sea too); the far baked shadows stay.
+- **Campaign Tree Detail Distance** (Graphics 2 of 2) and Attila's **With my 4x / 8x unit sizes** button. What I would use: unchanged.
+
+Fixed:
+- The Ray Tracing Debug View is drawn.
+- Below 100%: the final pass's distortion and depth of field at the right place again.
+- DLAA / DLSS read the picture's encoding right (gamma 2.2 there, as Attila's).
+- Ray Reconstruction no longer takes the ground for water.
+- With in-game MSAA on, ray tracing and frame generation stay off (DLAA / DLSS can't run there; before: the rays ran on).
+- Frame generation: lens flares are part of the generated picture, not taken for UI (as Attila).
+
+Not done:
+- Ray-traced water reflections: the water is drawn after its reflections, with no surface to trace from yet.
+- Point light shadows: the game's lights come one draw per light from a constant buffer, not Attila's instances.
+- Smoke shadows: many effect shaders, the shared code takes one.
+- Cutscene Point Light Shadows: High: the game never reads that value.
+
+Test (ATN): a battle, RT shadows on, More Options: Skip the Shadow Maps on: shadows still on units, walls and water, faster in sieges; DLSS with Ray Reconstruction on grass and the ground (no smearing); Water Clarity 4 and Caustics 1 on a river; in-game MSAA x2 / x4: HDR right, no rays, no frame generation. Next trace: a menu-started one with this build, below 100%, a siege at night, MSAA off.
+
+Build: `cmake --build build32 --config Release --target renodx-twrome2.addon32`.
+
 ### Trace build (2026-11-13, for the data run; built only, not run in game)
 
 - **Scripted runs and traces for the bring-up data run, nothing else changed** (5cbbff5e): `RENODX_TW_SET` (keys and button labels), `RENODX_TW_SHOT`, `RENODX_TW_PROFILE` as Attila and Pharaoh (`twattila/test_hooks.hpp`); the frame trace also on demand (`renodx_trace_now` next to the exe) and at 100%, with the constants of the sun draws, tone mapper, water, SSAO resolve, battle fog and units once, and the units' vertex inputs and instance counts at each draw. Page dump before / after: the same rows.

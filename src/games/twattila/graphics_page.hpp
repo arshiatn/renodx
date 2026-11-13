@@ -199,7 +199,7 @@ struct Bindings {
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   bool units_out_of_view_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
-  float* rays_skip_cascades = nullptr;  // Under rays_replace_maps: nothing drawn into the shadow maps; null: no such row
+  float* rays_skip_cascades = nullptr;  // Under rays_replace_maps (without one: the rays' sun shadows): nothing drawn into the shadow maps; null: no such row
   float* rays_one_at_a_place = nullptr;  // A kept caster goes where another mesh is placed (dlaa_bridge.h RT_ONE_AT_A_PLACE); null: no such row
   float* rays_cascade_unit_cut_outs = nullptr;  // Units from the shadow maps' draws cut out by their mask; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
@@ -227,6 +227,7 @@ struct Bindings {
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool foliage_light_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   bool smoke_shadows_tested = true;  // false: the rays' Smoke Shadows Experimental and left out of RT/PT (its default the game's to set)
+  bool water_caustics_tested = true;  // false: Water Caustics left out of RT/PT (its default the game's to set)
   bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
@@ -747,12 +748,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
-    if (!b.smoke_shadows_tested) {
-      std::erase_if(rays_values, [](const Values::value_type& preset) {
-        const auto& [key, value] = preset;
-        return key == "RayTracedSmokeShadows";
-      });
-    }
+    std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested](const Values::value_type& preset) {
+      const auto& [key, value] = preset;
+      return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics);
+    });
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
@@ -895,9 +894,12 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Skip the Shadow Maps (Experimental)",
           .section = section,
-          .tooltip = "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
-                     "buildings. Water, smoke and lit effects lose the sun's shadow; the fog too without Fog Shadows.",
-          .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
+          .tooltip = (b.rays_replace_maps != nullptr)
+                         ? "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
+                           "buildings. Water, smoke and lit effects lose the sun's shadow; the fog too without Fog Shadows."
+                         : "Nothing is drawn into the game's near shadow map: there the sun's shadow comes from the rays alone, the\n"
+                           "water's too. Faster with many units and buildings.",
+          .is_enabled = [replace = b.rays_replace_maps] { return replace == nullptr || *replace != 0.f; },
           .is_visible = more_rays,
       });
     }
