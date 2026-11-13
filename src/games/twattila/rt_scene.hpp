@@ -1199,6 +1199,7 @@ constexpr auto OnFogDraw = []<typename Context>(Context& command) -> renodx::uti
 // main pass's lit pixel shaders: ps_main_high_quality by the game's shadow mode (gather, fetch4, pcf, software, none: smoke
 // and dust), ps_main (one hash in all: torch and fire smoke). Fire's glow is added, the overlay pass's.
 constexpr uint32_t PARTICLE_VERTEX_SHADER = 0xA7F257B5;
+constexpr std::array<SmokeVertexShader, 1> PARTICLE_VERTEX_SHADERS = {{{.hash = PARTICLE_VERTEX_SHADER}}};
 constexpr std::array<SmokePixelShader, 6> LIT_PARTICLE_PIXEL_SHADERS = {
     {{.hash = 0xACE33D5D}, {.hash = 0xDF0F041A}, {.hash = 0x905429B6}, {.hash = 0x79A71E7B}, {.hash = 0xF9D9D3FB}, {.hash = 0xF5379F78}}};
 
@@ -1208,17 +1209,18 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   return {};
 };
 
-// The particle draws (`vertex_shader`'s with one of `pixel_shaders`), kept while installed (after Install, before the device:
-// the vertex shader's code is kept as it is made, by the scene's code hook, made here when the scene has none):
-// Ray-Traced Smoke Shadows shown. `quad_shader` (rt_core.hpp smoke_quad_shader): particles drawn as instances of a quad.
-inline void InstallSmokeShadows(uint32_t vertex_shader, std::span<const SmokePixelShader> pixel_shaders, std::span<const uint8_t> quad_shader = {}) {
+// The particle draws (one of `vertex_shaders`' with one of `pixel_shaders`), kept while installed (after Install, before
+// the device: the vertex shaders' code is kept as it is made, by the scene's code hook, made here when the scene has none):
+// Ray-Traced Smoke Shadows shown.
+inline void InstallSmokeShadows(std::span<const SmokeVertexShader> vertex_shaders, std::span<const SmokePixelShader> pixel_shaders) {
   internal::smoke_shadows_installed = true;
-  internal::smoke_vertex_shader = vertex_shader;
+  internal::smoke_vertex_shaders = vertex_shaders;
   internal::smoke_pixel_shaders = pixel_shaders;
-  internal::smoke_quad_shader = quad_shader;
   if (!internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
-  renodx::utils::command_action::Register(
-      OnParticleDraw, {.shader_hash = vertex_shader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  for (const SmokeVertexShader& shader : vertex_shaders) {
+    renodx::utils::command_action::Register(
+        OnParticleDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 }
 
 // The fog draws (the addon's replaced pixel shaders reading rt_fog.hlsli), kept while installed: Ray-Traced Fog Shadows

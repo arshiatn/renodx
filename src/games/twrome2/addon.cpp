@@ -42,6 +42,9 @@
 #include "./more_tests.h"
 #include "./engine_tweaks.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "./rt_particle_quads_085DDEDD_gs.h"
+#include "./rt_particle_quads_18FE5E2B_gs.h"
+#include "./rt_particle_quads_B5D63E8A_gs.h"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -181,6 +184,21 @@ void ApplyHDRPreset(
 // tools/tw/rome2/lights_r3), so without the rays the game's own.
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0xEB8E5349, 0x7CB7BB8A};
 constexpr std::array<std::span<const uint8_t>, 2> RAY_TRACED_LIGHT_SHADERS = {__0xEB8E5349, __0x7CB7BB8A};
+
+// Smoke Shadows' particles (Experimental, off): each smoke effect has its own generated vertex and pixel shader (drawn only
+// together) and draws each particle as an instance of a quad (6 indices). In ATN's runs (proof level A):
+// impact_hit_generic_heavy 7DF7491E / 18FE5E2B (shaders/smokefromarrow00), fire_smoke_loop and campaign_fire_smoke_loop
+// AF6C187A / 085DDEDD, destruction_spawnmesh_heavy B6F63295 / B5D63E8A (explosionsmoke00); one rt_particle_quads build a
+// pair, with its pixel shader's alpha (WARP tools/tw/rome2/smoke_r3). The permutations of other shadow modes, 31C72F52 /
+// 7115DE09 (18FE5E2B's) and 803E1461 / CC3CB1B7 (B5D63E8A's), in no trace: the same slots and alpha (B, and on WARP). Fire
+// (explosion_heavy), the units' dust (terrain_impact, entity_terrain), trails and torches stay out.
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 3> SMOKE_VERTEX_SHADERS = {{
+    {.hash = 0x7DF7491E, .quad_shader = __rt_particle_quads_18FE5E2B},
+    {.hash = 0xAF6C187A, .quad_shader = __rt_particle_quads_085DDEDD},
+    {.hash = 0xB6F63295, .quad_shader = __rt_particle_quads_B5D63E8A},
+}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 7> SMOKE_PIXEL_SHADERS = {
+    {{.hash = 0x18FE5E2B}, {.hash = 0x31C72F52}, {.hash = 0x7115DE09}, {.hash = 0x085DDEDD}, {.hash = 0xB5D63E8A}, {.hash = 0x803E1461}, {.hash = 0xCC3CB1B7}}};
 
 // Torch and Fire Shadows: in a light draw where rt_scene's light hook (InstallPointLights, registered before this) bound this
 // frame's lit bits at t42, ours draws in the game's place and the game's is bound again after it (finalize).
@@ -1888,7 +1906,8 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
-  // Mode's pages. Fog and smoke shadows keep their 0: nothing here hooks them yet; Water Caustics its 0 (untested here).
+  // Mode's pages. Fog Shadows keep their 0 (nothing here hooks the fog yet), Smoke Shadows (Experimental) theirs (no game run
+  // has shown them yet), Water Caustics its 0 (untested here).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows" || setting->key == "WaterCaustics") {
@@ -2031,6 +2050,7 @@ bool AttachAddon() {
     renodx::utils::command_action::Register(
         OnLightShadowsDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
+  twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   // Ray-Traced Shadows Only (Skip the Shadow Maps): the atlas's casters skipped; its other readers in ATN's runs (the battle
   // water and river, the campaign's sea) take the rays' shadow (WARP tools/tw/rome2/water_r2: t49 unbound bit-identical,
   // t49 = 1 every comparison shadowed).

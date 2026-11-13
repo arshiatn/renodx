@@ -1482,6 +1482,7 @@ float rays_hills_out_of_view_row = 0.f;
 // the alpha crush), its diffuse array t3 / s1 and constants t5 three view and two sampler slots below 3F1B86E1's t6 / s3 / t8
 // (fxc -dumpbin of both; in no trace: ATN plays at 4). 3F1B86E1's MSAA twin ps_main_high_quality_ms 740B2536 stays out:
 // no rays under the game's MSAA.
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0x109B79CE, .quad_shader = __rt_particle_quads}}};
 constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADERS = {{
     {.hash = 0x3F1B86E1},
     {.hash = 0xE8524BB1, .view_shift = 3, .sampler_shift = 2},
@@ -3110,7 +3111,7 @@ bool AttachAddon() {
   // The point lights (siege trace: one instanced draw, VS E19549A1 with PS E318CE77, after the sun draw F883F5B2; fire02 reads
   // the rays' bits). Log Details' light count also counts the particle lights (5AD46115).
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0xE318CE77});
-  twattila::rt_scene::InstallSmokeShadows(0x109B79CE, SMOKE_PIXEL_SHADERS, __rt_particle_quads);
+  twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   for (const uint32_t shader_hash : {0xE318CE77u, 0x5AD46115u}) {
     renodx::utils::command_action::Register(
         OnLightCountDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
