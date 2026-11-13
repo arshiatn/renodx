@@ -206,6 +206,11 @@ void BuildRuntimeData() {
   // The water's reflections (waterreflection00): the hierarchical march's pyramid, from its depth (t1).
   custom_shaders[0x7C9C8ECF].on_draw = [](auto* cmd_list) { return twattila::ssr_hiz::OnReflectionDraw(cmd_list, 1); };
   custom_shaders[0x7C9C8ECF].on_drawn = twattila::ssr_hiz::OnReflectionDrawn;
+  // Lens flares 00-03 and the vignette, drawn on the output after hdr_to_screen and its anti-aliasing (A2 trace_06
+  // l.3315-3319): part of frame generation's HUD-less image, as Attila's.
+  for (const uint32_t hash : {0xAFC2E867u, 0x68E9A1CEu, 0x69F4AEFCu, 0xB7758434u, 0x3968DBAEu}) {
+    custom_shaders[hash].on_drawn = twattila::anti_aliasing::OnOutputEffectDrawn;
+  }
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.

@@ -13,6 +13,7 @@ Fixed:
 - DLAA / DLSS read the picture's encoding right (gamma 2.2 there, as Attila's).
 - Ray Reconstruction no longer takes the ground for water.
 - With in-game MSAA on, ray tracing and frame generation stay off (DLAA / DLSS can't run there; before: the rays ran on).
+- Frame generation: lens flares are part of the generated picture, not taken for UI (as Attila).
 
 Not done:
 - Ray-traced water reflections: the water is drawn after its reflections, with no surface to trace from yet.
