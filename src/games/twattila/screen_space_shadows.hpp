@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -353,10 +354,15 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   instruction(&load, OP_MAD, {masked(temp, 0b0001), swizzled(TYPE_TEMP, temp, XXXX), {1u | (TYPE_IMMEDIATE << 12), MINUS_ONE},
                               {1u | (TYPE_IMMEDIATE << 12), ONE}});
   if (saturate_at != 0) {
+    // The shadow is in the destination's component: Rome II's SM3 sun shaders end `min r4.y, r4.z, r4.y`, whose first
+    // source is another component, so the scale reads the destination's (as select-1) where the source selects another.
+    const uint32_t dest = tokens[saturate_at + 1];
+    const uint32_t component = static_cast<uint32_t>(std::countr_zero((dest >> 4) & 0xFu));
+    uint32_t source = tokens[saturate_at + 3];
+    const uint32_t read = ((source & 0xCu) == 0x8u) ? ((source >> 4) & 3u) : ((source >> (4 + 2 * component)) & 3u);
+    if (read != component) source = (source & ~0xFFCu) | (2u << 2) | (component << 4);
     std::vector<uint32_t> scale;
-    instruction(&scale, OP_MUL,
-                {{tokens[saturate_at + 1], tokens[saturate_at + 2]}, {tokens[saturate_at + 3], tokens[saturate_at + 4]},
-                 swizzled(TYPE_TEMP, temp, XXXX)},
+    instruction(&scale, OP_MUL, {{dest, tokens[saturate_at + 2]}, {source, tokens[saturate_at + 4]}, swizzled(TYPE_TEMP, temp, XXXX)},
                 SATURATE);
     tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(saturate_at + ((tokens[saturate_at] >> 24) & 0x7F)), scale.begin(),
                   scale.end());
