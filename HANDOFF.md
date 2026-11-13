@@ -146,7 +146,20 @@ play, runs\A1_175145 (custom battle; 33 / 50 / 67 / 100%) and runs\C1_175625 (Sa
   first (a saved DLSS becomes XeSS on Intel, else FSR; the page lists DLSS on NVIDIA only), FULL_DOWNLOAD_NOTE in General
   while the helper is missing (and the page's in Anti-Aliasing), GitHub (Downloads) beside Ko-fi / NexusMods. page_r_r2
   against r1page: the note and the button only, every key and default the same. Lifetime suites: with the tests below.
-- [ ] 3.5 Render scale (12 hdr_to_screen FrameRenderShare, 37 replaced NDC shaders, dead RENDER_SCALE_READS).
+- [x] 3.5 Render scale (12 hdr_to_screen FrameRenderShare, 37 replaced NDC shaders, dead RENDER_SCALE_READS).
+  hdr_to_screen t01-t08 / t11-t14: the distortion (t0), god rays (t2) and depth (t3) reads at uv x FrameRenderShare (ATN's
+  traces: all three are the 3D's, drawn at the render size; the frame t1 is DLSS's); page_touch 28C847C0 replaced
+  (pagetouch00: its depth at uv x FrameRenderShare; at 100% the game's own viewport is 3840 into a 960 target, so its uv
+  spans the target and below 100% it read the depth whole). WARP tools/tw/rome2/scale_test (scale_r2.cpp, run.sh,
+  run_r2.txt): ALL PASSED: page_touch ours = the game's at 100% bit for bit, ours at 50% / 33% = the game's 100% bit for
+  bit (12 px blocks of depth, the 3D's at its render pixels' centres), CONTROLs the game's / ours unbound at 50% 1,564
+  apart; t03 ours = the previous build at 100% bit for bit, at 50% / 33% every display pixel = its 100% pixel bit for bit,
+  CONTROLs the previous build / unbound 22,464 of 29,952 apart. The other 11 hdr_to_screen: the same three edits (a
+  script asserts no bare read is left), not run on WARP. The "37" (DOF CoC x2, SSAO resolve, highlight, 25 VFX read): no
+  change needed: their NDC only feeds inv_projection's z / w columns (view depth), whose x / y terms are 0 in the traces'
+  camera at 50% and 100%. Dead RENDER_SCALE_READS: 9 -> 5 in e29f4428. Open: the VFX soft-particle depth read at the
+  projected uv x g_viewport_offset_scale (the particles' own cbuffer: whether the game sets it to the render share needs
+  a VFX PS in value_hashes in the next run).
 - [ ] 3.6 Sun draws (InstallSunDraws cube after 0.2; Rome II's sun colour into rt_sun texel 2).
 - [ ] README twrome2 round entry; builds of every consumer; test/tw_* x86 + amd64.
 - Left for after the runs: units capture, particles, lights, water, motion census, reader census by handle. ATN decides:

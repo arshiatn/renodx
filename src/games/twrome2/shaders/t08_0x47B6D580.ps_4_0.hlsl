@@ -68,6 +68,9 @@ Texture2D<float4> grain_sampler : register(t4);
 // 3Dmigoto declarations
 #define cmp -
 #include "../hdr_to_screen.hlsli"
+// After DLSS: the frame is DLSS's (the display's size); the distortion, god rays and depth the 3D drew below 100% are
+// read at the display uv x the frame's share (twattila/render_scale.hlsli).
+#include "../../twattila/render_scale.hlsli"
 
 
 void main(
@@ -81,7 +84,7 @@ void main(
 
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
-  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
+  r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy * FrameRenderShare(), 0).yzxw;
   r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r1.w = 1;
   r0.z = dot(r1.xyzw, inv_projection._m02_m12_m22_m32);
@@ -117,10 +120,10 @@ void main(
   r2.xyzw = r2.xyzw / r0.wwww;
   r2.xyzw = r2.xyzw + -r3.xyzw;
   r2.xyzw = blur_kernel_scale * r2.xyzw + r3.xyzw;
-  r3.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy).xyzw;
+  r3.xyzw = god_rays_sampler.Sample(god_rays_sampler_s, r0.xy * FrameRenderShare()).xyzw;
   float god_rays_multiplier = SI.godrays;
   r3.xyz = r3.xxx * (float3(0.100000001,0.100000001,0.100000001) * god_rays_multiplier) + r2.xyz;
-  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
+  r0.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy * FrameRenderShare(), r0.y).yzxw;
   r0.xyw = r1.xyw;
   r1.x = dot(r0.xyzw, inv_view_projection._m00_m10_m20_m30);
   r1.w = dot(r0.xyzw, inv_view_projection._m02_m12_m22_m32);

@@ -62,6 +62,9 @@ Texture2D<float4> s_fog_of_war_mask : register(t3);
 // 3Dmigoto declarations
 #define cmp -
 #include "../hdr_to_screen.hlsli"
+// After DLSS: the frame is DLSS's (the display's size); the distortion, god rays and depth the 3D drew below 100% are
+// read at the display uv x the frame's share (twattila/render_scale.hlsli).
+#include "../../twattila/render_scale.hlsli"
 
 
 void main(
@@ -75,11 +78,11 @@ void main(
 
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
-  r1.xyzw = distortion_sampler.SampleLevel(distortion_sampler_s, r0.xy, r0.y).xyzw;
+  r1.xyzw = distortion_sampler.SampleLevel(distortion_sampler_s, r0.xy * FrameRenderShare(), r0.y).xyzw;
   r0.zw = float2(-0.498039216,-0.498039216) + r1.xy;
   r0.xy = r0.zw * float2(0.0199999996,0.0199999996) * SI.uvdistort + r0.xy;
   r1.xyzw = frame_sampler.SampleLevel(frame_sampler_s, r0.xy, r0.y).xyzw;
-  r2.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).yzxw;
+  r2.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy * FrameRenderShare(), r0.y).yzxw;
   r2.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r2.w = 1;
   r0.x = dot(r2.xyzw, inv_view_projection._m00_m10_m20_m30);
