@@ -109,8 +109,17 @@ Unproven look changes: Experimental rows, off. One writer; each step committed a
   1920x1080 (half the display), its pass at 640x360 at the top left, the sun draw's t12 the same texture: rt_debug's own
   mapping (render pixel x 1920 / 3840). Pharaoh addon64 built; page dump p r64a against r64pre: Build Date only (615 keys
   both). Troy, Rome II, Thrones, WH1, WH2 lack the same call (not changed this round). Not run in game.
-- [ ] 2 Steady Torch Shadows' black spots: cause from the code, harness proof (a light beside a small occluder, Steady on
-  / off, control), fix at the source (helper108 if needed; all_modes + RR noise test as regressions).
+- [x] 2 Steady Torch Shadows' black spots: under RT_RECONSTRUCTED (always in Pharaoh, step 3) helper106's Steady sent each
+  pixel's one soft ray to a fixed point of the light's disk (seed without the frame): a light's bit can't hold a share, so
+  every penumbra became a fixed dither that nothing averages (RR averages over frames, a fixed pattern stays): black dots,
+  widest where the disk is big against the scene (Pharaoh's campaign: softness 0.25 against a reach of 1). Fix (helper108):
+  Steady traces each ray to the light's centre and a pixel's rays decide by half (threshold 0.5): hard, deterministic.
+  Harness torch_v64 (the pole's penumbra): h107 RR soft 102.8 changed a frame, 36.5 isolated dark, 0 steady spots (the
+  noise); h107 RR soft + Steady 0 changed, 30 steady spots (dark every frame, 4 neighbours lit every frame), 54 px always
+  dark (the black dots); h108 RR soft + Steady 0 changed, 0 spots, 15 px dark = hard h107 / h108 (the pole's foot); h108 RR
+  soft without Steady = h107's (102.8: the non-steady path unchanged); jitter: h107 Steady 27 spots, h108 Steady = hard (0
+  spots, 5.2 edge bits a frame). Every run's harness checks ALL PASSED. Row tooltip: sharp edges, overrides Importance and
+  Softness. Regressions (all_modes, RR noise) after the Rome2 process ATN started at 18:59 ends.
 - [x] 3 Torch flicker: Ray Reconstruction never ran in Pharaoh. Its folder has nvngx_dlss.dll only (no nvngx_dlssd.dll,
   no nvngx_dlssg.dll; Attila's and WH3's have all three): every Pharaoh helper log with the rays (W1, W2, B61, ATN_UP_181940)
   starts "Ray Reconstruction unavailable (nvngx_dlssd.dll next to nvngx_dlss.dll?)", then "[Tales DLSS] Created DLSS ...

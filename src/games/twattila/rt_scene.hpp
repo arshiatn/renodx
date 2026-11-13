@@ -1355,8 +1355,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Steady Torch Shadows (Experimental)",
           .section = section,
-          .tooltip = "Torch and fire shadows that don't flicker: every fire traced every frame, soft edges the same each frame.\n"
-                     "Heavier with many fires; soft edges can look grainy. Replaces Importance-Sampled Torch Shadows.",
+          .tooltip = "Torch and fire shadows that don't flicker: every fire traced every frame, with sharp edges.\n"
+                     "Heavier with many fires. Overrides Importance-Sampled Torch Shadows and Torch and Fire Shadow Softness.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },

@@ -17,8 +17,10 @@
 // round. Importance-Sampled Torch Shadows (LIGHT_IMPORTANCE) instead: LIGHT_IMPORTANCE_RAYS lights a pixel, picked by
 // what they give it (ReSTIR DI's candidates: their colour, falloff and angle), stratified with one number a 8 x 8 block
 // (its pixels refresh the same lights); the others keep their bits (dim lights' shadows follow slower). Steady Torch
-// Shadows (LIGHT_STEADY, helpers 106 on) instead: every light the pixel reaches traced every frame, each soft ray to the same
-// point of the light's disk (no turns, picks or kept bits: a still pixel's bits change only with the scene and the lights).
+// Shadows (LIGHT_STEADY, helpers 106 on) instead: every light the pixel reaches traced every frame (no turns, picks or kept
+// bits: a still pixel's bits change only with the scene and the lights), hard (helpers 108 on): a bit can't hold a share of
+// a light without noise that moves each frame, and helper106's fixed disk point a pixel was a fixed dither, black dots in
+// every penumbra (Pharaoh's campaign, its torches' disk a quarter of their reach).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_lights.h -Vn RT_LIGHTS; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_LIGHTS_OMM.
 #include "./rt_scene.hlsli"
 #include "./rt_camera.hlsli"
@@ -199,10 +201,11 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   // Soft shadows under Ray Reconstruction: each ray to a point of the light's disk (light_size), the bit lit where the
   // share of rays that reached it beats noise moved each frame, which RR averages into the share (hard: half). Several
   // rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel.
+  // Steady: each ray to the light's centre, most of a pixel's rays decide.
   const bool reconstructed = (flags & RECONSTRUCTED) != 0u;
-  const bool soft = reconstructed && light_size > 0.f;
+  const bool soft = reconstructed && light_size > 0.f && !steady;
   const uint rays = clamp(shadow_rays, 1u, 8u);
-  const float threshold = (reconstructed && (soft || rays > 1u)) ? InterleavedGradientNoise(float2(id.xy)) : 0.5f;
+  const float threshold = (reconstructed && !steady && (soft || rays > 1u)) ? InterleavedGradientNoise(float2(id.xy)) : 0.5f;
   const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
   [loop]
   for (uint slot = 0u; slot < size; ++slot) {
@@ -214,7 +217,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
       const float3 from = light_origin + ((rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f);
       float3 to_light = lights[light].xyz - from;
       if (soft) {
-        const uint seed = (((steady ? 0u : frame) * 128u) + light) * 16u + ray * 2u;
+        const uint seed = ((frame * 128u) + light) * 16u + ray * 2u;
         to_light += DiskPoint(normalize(to_light), light_size, float2(Random(uint3(id.xy, seed)), Random(uint3(id.xy, seed + 1u))));
       }
       const float light_distance = length(to_light);

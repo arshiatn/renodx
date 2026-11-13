@@ -50,7 +50,7 @@ static const uint FAST_LEAVES = 8192u;
 // Importance-Sampled Torch Shadows (v18, dlaa_bridge.h RT_LIGHT_IMPORTANCE): rt_lights traces a few lights a pixel, picked
 // by what they give it (ReSTIR's candidates), the others keep their bits.
 static const uint LIGHT_IMPORTANCE = 16384u;
-static const uint LIGHT_STEADY = 268435456u;  // Steady Torch Shadows (dlaa_bridge.h RT_LIGHT_STEADY): rt_lights traces every reached light, the same disk points
+static const uint LIGHT_STEADY = 268435456u;  // Steady Torch Shadows (dlaa_bridge.h RT_LIGHT_STEADY): rt_lights traces every reached light, hard (108 on)
 static const uint NRD_SUN = 2097152u;      // RT_NRD: rt_trace's soft shadows for NRD (rt_nrd_front.hlsl)
 static const uint NRD_BOUNCE = 4194304u;   // rt_bounce: its hit distance for NRD
 static const uint NRD_AMBIENT = 8388608u;  // rt_trace: the ambient as traced for NRD, no history
