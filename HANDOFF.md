@@ -1,5 +1,22 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## PHARAOH V56: RAY-TRACED WATER REFLECTIONS (2026-11-13 night, offline; plan tools/tw/pharaoh/reflections_plan.md)
+Rules: no game starts, no stamp / install (ATN's agent does those), no DevKit near game folders, no Nexus text; Committed Bytes
+under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step committed and pushed to origin atn-mods.
+- [x] 1 shared light copy: WH3's rt_light_copy.cs moved into twattila (+ a clamp at the traced size, b0), rt_core Reflections runs
+  it for an R16G16B16A16F light buffer (Host::light_copy: WH3's RT_HOST, Pharaoh's rt_host; empty elsewhere: Attila / Thrones
+  unchanged); WH3's own copy, its texture and its log line gone. WARP tools/tw/warp_tests/light_copy_v56: old WH3 path against
+  the new, 0 texels apart in 4 cases (100%, a share, odd sizes, NaN / inf / negatives), outside the traced size kept; CONTROL
+  b0 = whole buffer 207 apart. Dumps page_w_v63 / page_a_v167: the build date only. Log: "Ray-traced reflections: tracing" now
+  says ", the water from its own surface" when water_traced.
+- [ ] 2 Pharaoh: rt_host.rewrite_guides = RewriteSunGuides + light_copy; backward_ssr 9A55B7F2 hook (Reflections, depth t1, light t3)
+- [ ] 3 Pharaoh: DE4F92CD replaced (our copy only where the rays left from the water), 9A55B7F2 + 0B78827B + 20 mips skipped then
+- [ ] 4 WARP parity (tools/tw/warp_tests/pharaoh/ssr_v56): t47 unbound 0 apart, the formula with t47, CONTROL, render scale
+- [ ] 5 page: has_reflections, reflection_pass, Water Reflections Experimental off; dump p_v58 vs p_v57 (only the new rows)
+- [ ] 6 shared frame trace: blend desc, instances apart, VS buffer inputs (Options, off for Attila / WH3); Pharaoh 3F1B86E1 values
+- [ ] 7 builds: the skill's x64 list + build32 Attila / Rome II / Thrones; WARP suites (sun, tw_screen_space_shadows, lifetime)
+- [ ] 8 README Pharaoh v56 (+ WH3 line), HANDOFF, report
+
 ## ATN'S 2026-11-12 FOURTH LIST + PHARAOH (started 15:07; ATN away until ~21:00, plays 21:00-01:00)
 Rules for this batch: game runs (Pharaoh trace-only data runs, medium-effort agent, few runs, fresh backups incl. replays/saves) allowed
 before 21:00 and after 01:00 only; NEVER restart the PC (a restart ends this session; nothing resumes it); before any GPU job check

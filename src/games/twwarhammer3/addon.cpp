@@ -923,14 +923,12 @@ bool one_to_one_logged = false;
 bool one_to_one = false;
 // Reflections Lit as This Frame (row): the light buffer the game's own march reads (3AC630DF copies it into the radiance's first
 // level; R16G16B16A16F, the water and our Global Illumination in it, the fog not yet), kept from that dispatch for the rays' hits
-// and written in the helper's format (rt_light_copy). Without it the hits read the Light Bounce's prepared light, and with
-// Global Illumination off last frame's picture after the tone mapper, what the screen never saw black. On by default since the
-// run of 2026-11-10: with Global Illumination off the reflections' view fell from 3.68x of the path-traced reference to 1.03x, at no cost.
+// (rt_core.hpp Reflections writes it in the helper's format: RT_HOST's light_copy). Without it the hits read the Light Bounce's
+// prepared light, and with Global Illumination off last frame's picture after the tone mapper, what the screen never saw black. On
+// by default since the run of 2026-11-10: with Global Illumination off the reflections' view fell from 3.68x of the path-traced
+// reference to 1.03x, at no cost.
 float light_row = 1.f;
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> frame_light;
-twattila::dlaa_bridge::Texture helper_light;
-Copy light_copy;
-bool light_logged = false;
 // Fog in Reflections (row): the game's fog numbers and its fog's light, measured after its light draw (rt_fog_learn), for the
 // helper's reflections one frame on (twattila/rt_leg_fog.hlsli).
 float fog_row = 0.f;
@@ -1147,64 +1145,8 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
     std::array<ID3D11ShaderResourceView*, 2> views = {};
     {
       const twattila::rt_scene::internal::ComputeState kept(native);
-      ID3D11ShaderResourceView* light_view = nullptr;
-      Microsoft::WRL::ComPtr<ID3D11Resource> light_resource;
-      if (frame_light) {
-        frame_light->GetResource(light_resource.GetAddressOf());
-      }
-      Microsoft::WRL::ComPtr<ID3D11Texture2D> light_texture;
-      D3D11_TEXTURE2D_DESC light_desc = {};
-      if (light_resource && SUCCEEDED(light_resource.As(&light_texture))) {
-        light_texture->GetDesc(&light_desc);
-      }
-      if (light_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT && light_desc.SampleDesc.Count == 1) {
-        Microsoft::WRL::ComPtr<ID3D11Device> device;
-        native->GetDevice(device.GetAddressOf());
-        D3D11_TEXTURE2D_DESC helper_desc = {};
-        if (helper_light.texture) {
-          helper_light.texture->GetDesc(&helper_desc);
-        }
-        if (helper_desc.Width != light_desc.Width || helper_desc.Height != light_desc.Height) {
-          helper_light = {};
-          const D3D11_TEXTURE2D_DESC desc = {
-              .Width = light_desc.Width,
-              .Height = light_desc.Height,
-              .MipLevels = 1,
-              .ArraySize = 1,
-              .Format = DXGI_FORMAT_R11G11B10_FLOAT,
-              .SampleDesc = {.Count = 1},
-              .Usage = D3D11_USAGE_DEFAULT,
-              .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS,
-          };
-          if (FAILED(device->CreateTexture2D(&desc, nullptr, helper_light.texture.GetAddressOf()))
-              || FAILED(device->CreateShaderResourceView(helper_light.texture.Get(), nullptr, helper_light.srv.GetAddressOf()))
-              || FAILED(device->CreateUnorderedAccessView(helper_light.texture.Get(), nullptr, helper_light.uav.GetAddressOf()))) {
-            helper_light = {};
-          }
-        }
-        if (helper_light.uav
-            && (light_copy.shader
-                || SUCCEEDED(device->CreateComputeShader(light_copy.code.data(), light_copy.code.size(), nullptr, light_copy.shader.GetAddressOf())))) {
-          // Below 100% the picture is the buffer's top left.
-          const uint32_t render_width = twattila::frame_history::render_width.load(std::memory_order_relaxed);
-          const uint32_t render_height = twattila::frame_history::render_height.load(std::memory_order_relaxed);
-          const UINT width = (render_width != 0) ? std::min<UINT>(render_width, light_desc.Width) : light_desc.Width;
-          const UINT height = (render_height != 0) ? std::min<UINT>(render_height, light_desc.Height) : light_desc.Height;
-          ID3D11UnorderedAccessView* no_target = nullptr;
-          native->CSSetShader(light_copy.shader.Get(), nullptr, 0);
-          native->CSSetShaderResources(0, 1, frame_light.GetAddressOf());
-          native->CSSetUnorderedAccessViews(0, 1, helper_light.uav.GetAddressOf(), nullptr);
-          native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
-          native->CSSetUnorderedAccessViews(0, 1, &no_target, nullptr);
-          light_view = helper_light.srv.Get();
-          if (!light_logged) {
-            light_logged = true;
-            renodx::utils::log::i(std::format("[Warhammer III] First run: the frame's light for the reflections' hits, cs 3AC630DF's input, {} x {}.", width, height));
-          }
-        }
-      }
+      views = twattila::rt_scene::Reflections(native, main_depth.Get(), frame_light.Get());
       frame_light.Reset();
-      views = twattila::rt_scene::Reflections(native, main_depth.Get(), light_view);
     }
     for (auto*& view : march_gbuffer) {
       if (view != nullptr) view->Release();
@@ -1359,8 +1301,6 @@ void OnDestroyDevice(reshade::api::device*) {
   shadow_blur.shader.Reset();
   game_b10.Reset();
   frame_light.Reset();
-  helper_light = {};
-  light_copy.shader.Reset();
   fog_learn.shader.Reset();
   fog_light.Reset();
   fog_light_resource = nullptr;
@@ -1748,7 +1688,6 @@ void BuildRuntimeData() {
   reflections::depth_step.code = __ssr_depth_step;
   reflections::gi_relevance.code = __gi_relevance_scaled;
   reflections::shadow_blur.code = __shadow_blur_scaled;
-  reflections::light_copy.code = __rt_light_copy;
   reflections::fog_learn.code = __rt_fog_learn;
   custom_shaders[0x3AC630DF] = {.crc32 = 0x3AC630DF, .on_inject = not_injected, .on_draw = &reflections::OnRadiance};
   // The game's light probes' rays (fx_global_illumination): the sky's light alone under ours (game_gi.hpp).
@@ -3232,6 +3171,7 @@ const twattila::rt_scene::Host RT_HOST = {
     .guides_written = twwarhammer3::taa_dlss::GuidesWritten,
     .main_view = twattila::frame_history::MainViewport,
     .rewrite_guides = [](ID3D11DeviceContext* native) { twwarhammer3::taa_dlss::RewriteGuides(native, reflections::march_gbuffer, reflections::march_camera.Get()); },
+    .light_copy = __rt_light_copy,
     .placed_row = &placed_objects_row,
     .keep_placed = true,
     // All 8 light PS scale their diffuse by this (and specular not at all); the paths light what they meet by the diffuse's rule.

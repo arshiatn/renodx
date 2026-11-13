@@ -308,6 +308,9 @@ struct Host {
   bool (*main_view)(ID3D11DeviceContext* native) = nullptr;
   // The G-buffer guides again from the reflection pass's G-buffer (null: none; the water's reflections need it).
   void (*rewrite_guides)(ID3D11DeviceContext* native) = nullptr;
+  // rt_light_copy's code: Reflections' `light_buffer` as R16G16B16A16F into the helper's R11G11B10F light (Warhammer III,
+  // Pharaoh). Empty: only an R11G11B10F light buffer is read (copied as it is).
+  std::span<const uint8_t> light_copy;
   // A row (0: off) for placed draws in a clip-space game; off, they are captured every frame. Null: always placed.
   const float* placed_row = nullptr;
   // With placed_row on: what was placed stays until the scene ends, bounded by KEPT_TRIANGLES and KEPT_MESHES, not RECENT_FRAMES.
@@ -481,6 +484,7 @@ struct DeviceObjects {
   ComPtr<ID3D11ShaderResourceView> ambient_off;  // Path-Traced Ambient: a texel of 1 (the patched sun shaders' t51)
   ComPtr<ID3D11ShaderResourceView> surface_depth;  // the reflection pass's depth (the water's in it) as depth
   ID3D11Resource* surface_depth_resource = nullptr;
+  ComPtr<ID3D11ComputeShader> light_copy_shader;  // Host::light_copy's, made at its first R16G16B16A16F light buffer
   ComPtr<ID3D11Texture2D> combined;
   ComPtr<ID3D11ShaderResourceView> combined_srv;
   ComPtr<ID3D11UnorderedAccessView> combined_uav;
@@ -741,6 +745,8 @@ struct Runtime {
   uint64_t reflected_frame = UINT64_MAX;  // the frame the reflections were asked for
   bool reflected = false;                 // and whether they were traced
   bool water_traced = false;              // the water's from its own depth and normal (the guides and positions again)
+  bool water_traced_logged = false;       // water_traced as last logged (with `reflected`)
+  bool light_copy_logged = false;
   // Path-Traced Ambient: on once the paths ran PATH_AMBIENT_FRAMES in a row with the game's ambient (the helper learns
   // the scale from its ambient cube to the screen's light meanwhile), the paths' frames so far.
   bool path_ambient_on = false;
@@ -2933,11 +2939,28 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
       ComPtr<ID3D11Texture2D> light_texture;
       D3D11_TEXTURE2D_DESC light_desc = {};
       if (SUCCEEDED(light_resource.As(&light_texture))) light_texture->GetDesc(&light_desc);
-      if (light_desc.Format == DXGI_FORMAT_R11G11B10_FLOAT && light_desc.SampleDesc.Count == 1
-          && light_desc.Width >= runtime.traced_size[0] && light_desc.Height >= runtime.traced_size[1]) {
+      const bool readable = light_desc.SampleDesc.Count == 1 && light_desc.Width >= runtime.traced_size[0] && light_desc.Height >= runtime.traced_size[1];
+      if (readable && light_desc.Format == DXGI_FORMAT_R11G11B10_FLOAT) {
         const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = runtime.traced_size[0], .bottom = runtime.traced_size[1], .back = 1};
         native->CopySubresourceRegion(bridge.rt_light.texture.Get(), 0, 0, 0, 0, light_texture.Get(), 0, &region);
         light_copied = true;
+      } else if (readable && light_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT && !internal::host.light_copy.empty()) {
+        auto& shader = runtime.objects.light_copy_shader;
+        if (!shader) {
+          ComPtr<ID3D11Device> device;
+          native->GetDevice(device.GetAddressOf());
+          device->CreateComputeShader(internal::host.light_copy.data(), internal::host.light_copy.size(), nullptr, shader.GetAddressOf());
+        }
+        if (shader) {
+          const std::array<uint32_t, 4> traced_size = {runtime.traced_size[0], runtime.traced_size[1], 0, 0};
+          internal::Dispatch(native, shader.Get(), {light_buffer, nullptr}, {bridge.rt_light.uav.Get(), nullptr}, traced_size.data(),
+                             sizeof(traced_size), (traced_size[0] + 7) / 8, (traced_size[1] + 7) / 8);
+          light_copied = true;
+          if (!std::exchange(runtime.light_copy_logged, true)) {
+            renodx::utils::log::i(std::format("[Total War] Ray-traced reflections: the hits read the pass's light (R16G16B16A16F, copied), {} x {}.",
+                                              traced_size[0], traced_size[1]));
+          }
+        }
       }
     }
     const dlaa_bridge::ReflectRequest request = {
@@ -2966,8 +2989,10 @@ inline std::array<ID3D11ShaderResourceView*, 2> Reflections(ID3D11DeviceContext*
         .guides = internal::host.guides_written(),
     };
     const bool reflected = dlaa_bridge::TraceReflections(native, request);
-    if (reflected != runtime.reflected) {
-      renodx::utils::log::i("[Total War] Ray-traced reflections: ", (reflected ? "tracing" : "not traced (the game's)"), ".");
+    if (reflected != runtime.reflected || (reflected && runtime.water_traced != runtime.water_traced_logged)) {
+      renodx::utils::log::i("[Total War] Ray-traced reflections: ", (reflected ? "tracing" : "not traced (the game's)"),
+                            ((reflected && runtime.water_traced) ? ", the water from its own surface" : ""), ".");
+      runtime.water_traced_logged = reflected && runtime.water_traced;
     }
     runtime.reflected = reflected;
   }
