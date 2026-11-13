@@ -9,7 +9,22 @@ under 60 GB before GPU / WARP jobs (18.6 GB at 02:06). One writer. Each step com
   views / samplers (16 each) and the VS's b0-b1 at their own slots (the game's GS stage put back). Empty: Attila's form, unchanged
   (its indexed draws returned and still return at once). smoke_shadows_tested false: the row "Smoke Shadows (Experimental)" and
   RT/PT leaves RayTracedSmokeShadows out (the page's default then). Dumps page_a_v168 / page_w_v64 against v167 / v63: the date only.
-- [ ] 2 Pharaoh: rt_particle_quads GS, InstallSmokeShadows(109B79CE, {3F1B86E1}, quads), Smoke Shadows Experimental off, RT/PT off
+  (556ae024)
+- [x] 2 Pharaoh: shaders rt_particle_quads.gs_5_0.hlsl -> rt_particle_quads_gs.h (fxc by hand, as rt_outside_view); InstallSmokeShadows(
+  109B79CE, {3F1B86E1}, __rt_particle_quads). Bytes: the VS keeps only emitters whose m_draw_flags meet the draw's g_draw_flags
+  (cb_vfx.x 0x40200001 at 3F1B86E1; the same 91 sorted particles in all five draws), writes world corners with the emitter's depth
+  bias in view z (TEXCOORD4), the corner (TEXCOORD8), uv (TEXCOORD1/3), COLOR; the PS's alpha = sRGB-decoded texture alpha x
+  COLOR.w, crush 0x100000, soft edge 0x200000 (left out), lit 0x80000. Record: centre / size by barycentrics of corner (0, 0),
+  the bias put back from SV_POSITION.w, opacity the PS's at the centre (lit only, none around the camera). Row Smoke Shadows
+  (Experimental) default 0, RT/PT leaves it (smoke_shadows_tested false), Quality under More Options (default 3, as before).
+  WARP tools/tw/warp_tests/pharaoh/smoke_v57 (run_v57.txt; the trace's camera and cb_vfx, 144 particles, 12 emitters, 2 index
+  orders): centres and sizes 0 apart of 120 placed (tolerance 2e-6 x (600 m + distance); worst 0.056 of it), 12 culled and 12
+  screen-space with no record; CONTROL without the bias put back 60 apart (bias up to 2.31 m). Opacity against 3F1B86E1's own alpha
+  at the centre pixel, 69 particles: plateau texture 0 apart within 4 ulps (worst 1.19e-7: the PS's COLOR comes interpolated),
+  smooth texture 0 apart within 2/256 x largest step x 2.275 (1.12e-3; worst 7.5e-4); CONTROLs: no texture alpha 32 / 39 apart,
+  unlit included 12 apart. fxc rounds 1/1.055 one bit low: the PS's 0x3F72A76F as asfloat. Dump page_p_v59 vs v58: 611 keys, none
+  lost; Smoke Shadows (Experimental) default 1 -> 0, shown with the rays (row 137) and Quality under More Options (156); RT/PT's
+  "ours" list without smoke shadows (as v58).
 - [ ] 3 builds (x64 list + build32), WARP / lifetime suites
 - [ ] 4 README Round v57, HANDOFF Not done, test lines
 - [ ] 5 skill lessons

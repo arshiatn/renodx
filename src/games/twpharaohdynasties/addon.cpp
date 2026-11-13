@@ -55,6 +55,7 @@
 #include "./rt_outside_view_leaf_gs.h"
 #include "./rt_outside_view_unit_gs.h"
 #include "./rt_outside_view_world_gs.h"
+#include "./rt_particle_quads_gs.h"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -1467,6 +1468,15 @@ twattila::rt_scene::Sliders rt_sliders;
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
 
+// Smoke Shadows' particles (Experimental, off; siege trace W1_015828 line 3156: indexed 6 x 91 instances, blend ONE /
+// INV_SRC_ALPHA): vfx vs50_main_instancing 109B79CE draws each particle as an instance of a quad, and of the five pixel shaders
+// it draws with only vfxextremeultra 3F1B86E1 (ps_main_high_quality) blends quads over the light buffer; the others are
+// distortion (2A315C27), meshes (ACE25F9D, CFB48C60) and the particles' lights (5AD46115). Each draw reads the same frame-wide
+// sorted list (t2, 91 in every draw there) and the vertex shader keeps only emitters whose m_draw_flags meet the draw's
+// g_draw_flags (cb_vfx: `and r3.w, r5.x, cb1[0].x`, `and ..., l(0x000fffff)`), the rest at (-10, -10, -10, 0) with no
+// colour. rt_particle_quads makes a record of each instance's first triangle.
+constexpr std::array<uint32_t, 1> SMOKE_PIXEL_SHADERS = {0x3F1B86E1};
+
 // Log Details' light count, once (a frame trace gives a light draw's indices times its instances, not its lights): one whole
 // frame's draws, instances and indices (or vertices) of the point lights (E318CE77: a light an instance, POSITION1-4) and of
 // the particle lights (5AD46115: their layout unknown). Logged the first frame either draws, again the first frame point
@@ -2713,6 +2723,9 @@ void ConfigureAddon() {
     } else if (setting->key == "RayTracedWaterReflections") {
       // Experimental, off (v56: no game run has shown the apply with the rays yet); RT/PT turns it on, as ATN's list does.
       setting->default_value = 0.f;
+    } else if (setting->key == "RayTracedSmokeShadows") {
+      // Experimental, off (v57: no game run has shown the particles' records yet); RT/PT leaves it off (smoke_shadows_tested).
+      setting->default_value = 0.f;
     } else if (setting->key == "RayTracedSpecularOcclusion") {
       // Only the water's reflected cube, with the water's own rays (OnPresent): shown with them.
       setting->default_value = 0.f;
@@ -2752,6 +2765,7 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = true,
                                              .foliage_light_tested = false,
+                                             .smoke_shadows_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2878,6 +2892,7 @@ bool AttachAddon() {
   // The point lights (siege trace: one instanced draw, VS E19549A1 with PS E318CE77, after the sun draw F883F5B2; fire02 reads
   // the rays' bits). Log Details' light count also counts the particle lights (5AD46115).
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0xE318CE77});
+  twattila::rt_scene::InstallSmokeShadows(0x109B79CE, SMOKE_PIXEL_SHADERS, __rt_particle_quads);
   for (const uint32_t shader_hash : {0xE318CE77u, 0x5AD46115u}) {
     renodx::utils::command_action::Register(
         OnLightCountDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
