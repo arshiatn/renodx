@@ -1,6 +1,7 @@
 // ---- Created with 3Dmigoto v1.3.16 (RenoDX pack dump, 2026-10-26)
 
-// skydome.hlsl ps30_main (sm_3_0): the sky, forward. Sky Debanding in twattila/sky.hlsli.
+// skydome.hlsl ps30_main (sm_3_0, data_rome2.pack's: its code is the data.pack build 242566C2's, only unused camera
+// constants moved): the sky, forward. Sky Debanding in twattila/sky.hlsli.
 
 #include "../shared.h"
 #include "../../twattila/sky.hlsli"

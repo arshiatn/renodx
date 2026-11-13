@@ -126,7 +126,7 @@ play, runs\A1_175145 (custom battle; 33 / 50 / 67 / 100%) and runs\C1_175625 (Sa
 - [x] 0.7 rt_scene_map_rome2 (Pharaoh's fork, Attila's name form): 16 of 51 SCENE_SHADERS rows overridden (dead); live
   uncaptured twins: cloth 997A7119, sail 438E2D53, imposter A5EA617C, tree cards D2EC24BD / 1C47F106, campaign trees
   AAFE8EAB, rope 4F90C2B5 (rt_scene_map_rome2.txt).
-- [ ] 3.1 Output + page skeleton (TW_AA_FRAME_LINEAR, graphics_page, SETTINGS_REVISION, MSAA note, dead entries, sky).
+- [x] 3.1 Output + page skeleton (TW_AA_FRAME_LINEAR, graphics_page, SETTINGS_REVISION, MSAA note, dead entries, sky).
   Done: TW_AA_FRAME_LINEAR 1 (4bcaeaa7); dead entries (names.tsv column 4: data_rome2.pack overrides the hash):
   MOTION_SHADERS 57 -> 39, SCENE_SHADERS 51 -> 35, LIGHT_BOUNCE_DRAWS 56 -> 50, AO_DRAWS 2 -> 1, RENDER_SCALE_READS
   9 -> 5 (3.5's dead rows), 43 embedded files + bloom00 / bloom02 / ssao00 gone; page dump identical (page_r_r1dead).
@@ -134,7 +134,10 @@ play, runs\A1_175145 (custom battle; 33 / 50 / 67 / 100%) and runs\C1_175625 (Sa
   PAGE_TEXTS with the MSAA note, SetRaysPresetDefaults (fog / smoke stay 0), has_path_ambient false until 3.6,
   rays multiply the maps and SSAO; SETTINGS_REVISION 1 clears 6 hidden rows the preset raised. page_r_r1page: every key
   kept, 4 new (TaaMotion, FrameGenerationMethod, RayTracingDenoiser, AoReblur). Every consumer built (x86 + x64).
-  Not done: sky (F946A430), Graphics 2 of 2 ports (Cutscene Point Light Shadows, Campaign Tree Detail).
+  Sky: sky00 now on F946A430 (data_rome2.pack's ps30_main): fxc /dumpbin shows the same instructions as the dead
+  242566C2 (only unused camera constants moved); cb_audit: nothing lost, only cb13's sky rows added. No WARP run (one
+  sample; at Sky Debanding / Smoothing 0 SkySample is the game's code). Not in this round: Graphics 2 of 2 ports
+  (Cutscene Point Light Shadows, Campaign Tree Detail), Rope Distance (ATN decides).
 - [ ] 3.2 Stability (ReadGpuVendor / OnNvidia, helper-missing note, GitHub button).
 - [ ] 3.5 Render scale (12 hdr_to_screen FrameRenderShare, 37 replaced NDC shaders, dead RENDER_SCALE_READS).
 - [ ] 3.6 Sun draws (InstallSunDraws cube after 0.2; Rome II's sun colour into rt_sun texel 2).
