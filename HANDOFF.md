@@ -8,20 +8,25 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   Pharaoh v58, helper106 in all three; ATN files unchanged by hash; old files renamed aside (.in-use-20261113_120458).
 - [x] Grass study tools/tw/grass_cpu/report.md; unit study tools/tw/unit_cpu/report.md; PT GI diagnosis
   tools/tw/attila_ptgi_1113/diagnosis.md; Rome II census + plan tools/tw/rome2/ (census, caster_census, scale_census, plan).
-- [ ] Attila measurement run (one start, no builds beside it): grass sliders live (2vs3) + Unit Detail 1x / 2x / 4x
+- [x] Attila measurement run (one start, no builds beside it): grass sliders live (2vs3) + Unit Detail 1x / 2x / 4x
+  (Replaced 2026-11-13 evening by ATN's own runs: WPR CPU / GPU profiles of his 8x battles and the 2vs3 replay,
+  tools/tw/cpu_profile/report.md; they decided the CPU round, the scrub cache and the grass / unit hooks.)
   (for_claude1) + FrameTrace for the soldiers' shadow-pass pack marks; PresentMon; decides grass d2 and unit A1.
-- [ ] Rome II trace build (twrome2 test_hooks + frame_trace Options + on-demand marker), folder prep (stamped plain copy,
+- [x] Rome II trace build (twrome2 test_hooks + frame_trace Options + on-demand marker), folder prep (stamped plain copy,
   helper, no DevKit), data runs S1 bm_battle benchmark 50/67/33/100, S2 Carthage siege 50%, S5 campaign_load Parthia; no
   MSAA (ATN allowed dropping it; set gfx_aa 0 in ATN's Rome II prefs at the final install, backup first).
   - [x] Trace build 5cbbff5e (twrome2 only): test_hooks + frame_trace Options (on_demand, at_100, the plan's 6 value hashes
     + units' VS A30C5E0B, vertex inputs A30C5E0B / 0F1FBD46, instances apart); build32 renodx-twrome2.addon32 12:36:28, built
     only, not stamped / installed / run; page dump before = after (tools/tw/rome2/page). Run tools in tools/tw/rome2:
     rome2_common.ps1, rome2_data_run.ps1, check_run_rome2.py, prepare_folder_rome2.py (dry by default; none run).
-  - [ ] Stamp the trace addon + helper106 for Rome II, prepare_folder_rome2.py dry then --apply, data runs S1 / S2 / S5.
+  - [x] Stamp the trace addon + helper106 for Rome II, prepare_folder_rome2.py dry then --apply, data runs S1 / S2 / S5.
+    (Done as ATN's menu starts with tools/tw/rome2/atn_trace_watch.ps1: runs A1 / C1 / A2 / N1 / L1 / L2 / S1 in
+    tools/tw/rome2/runs; the CLI starts crash in Rome2.exe itself, also without the add-on.)
 - [x] Water rows RayTracedWaterSoft + RayTracedWaterSteady on by default and in RAYS_PRESET (Attila, WH3, Pharaoh): 33f6a5aa
   (shared rows: Thrones takes them too); page dumps a / w r155pre -> r155final, Pharaoh r59pre -> r59final: those two rows'
   defaults and labels only (+ WH3's grass row below). Built only (Attila v155, WH3 v53, Pharaoh Round v59), not stamped.
-- [ ] Grass round: WH3 indirect read-back without a wait (d1); Attila scrub cell radius clamp (d2) + LOD scaling per model
+- [x] Grass round: WH3 indirect read-back without a wait (d1); Attila scrub cell radius clamp (d2) + LOD scaling per model
+  (d2 clamp, the scrub race and Grass Ray Tracing Range came in the NIGHT MERGES; a2 / d1 without the lag still open.)
   (a2); RT grass capture range (Experimental).
   - [x] d1 quick form 796033c8: WH3 Grass Without Waiting (Experimental, off; Settings::indirect_counts_later: the probe's
     earlier-frame numbers, never the waiting read). test/tw_indirect_counts (WARP, x86 + amd64): row off this frame's numbers
@@ -44,7 +49,8 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
 - [x] v155 / WH3 v53 / Pharaoh v59 (33f6a5aa water rows, 19581888 unit A1, 796033c8 Grass Without Waiting) STAMPED +
   INSTALLED 13:35 (install_v59.py; helper106 unchanged; ATN files unchanged by hash). ATN's Attila and Pharaoh preset1
   already hold both water rows at 1; WH3 had none saved (the new default 1 applies).
-- [ ] Rome II runs BLOCKED (12:49 / 12:53): ATN's mod pack dialog (class mod_question_dlg) after an unclean exit; SendInput
+- [x] Rome II runs BLOCKED (12:49 / 12:53): ATN's mod pack dialog (class mod_question_dlg) after an unclean exit; SendInput
+  (Unblocked: ATN starts Rome II from the menu, see the trace runs above.)
   Enter doesn't answer it; screen access denied. ATN starts Rome II once, answers it, quits from the menu. Script fixed
   13:00 ($start vs [string]$Start, case-insensitive names; the dialog's class detected: stop at once).
 - [x] PT GI fix (helper107): one diffuse estimate for screen / cache / unseen hits, KeptShade -> own occluded sky, freeze
@@ -88,12 +94,16 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   predated d809907e's commit, helper107 14:23 its c592149c), STAMPED + INSTALLED 15:05 (tools/tw/round_v151/install_v60.py;
   ATN files unchanged by hash; old files renamed aside .in-use-20261113_150506; no DevKit). build.ps1 needs an absolute
   out folder (a relative one fails on fg_ui.h).
-- [ ] Pharaoh open items plan: tools/tw/pharaoh/open_items/plan.md (read-only study 15:00; A offline: "no main camera"
+- [x] Pharaoh open items plan: tools/tw/pharaoh/open_items/plan.md (read-only study 15:00; A offline: "no main camera"
+  (Done: PHARAOH V61 below.)
   = AO_DRAWS passed with Attila's slots, E8524BB1 slot map, clip at 25, building water scale rows, 7b / 7c WARP; B one
   siege benchmark run with new trace reads; C ATN's campaign trace).
-- [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign
+- [x] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign
+  (Done in V61 / V63 / V64 below; what is left: the Pharaoh README test list.)
   water, "no main camera" line, v58's census leftovers with their traces).
-- [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
+- [x] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
+  (Skill: LESSONS + CHECKS ROUND; Rome II rounds 1 + 2 (ROME II BRING-UP, NIGHT MERGES); installed 22:59 (NIGHT
+  MERGES); round report tools/tw/round_notes/night_1113_report.md.)
 
 ## NIGHT MERGES (2026-11-13)
 Main checkout, offline (no game, no Steam writes, no stamp / install: ATN stamps and installs with
