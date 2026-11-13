@@ -14,8 +14,8 @@
 // it was drawn in (InstanceContributionToHitGroupIndex: no hit groups here). Degenerate rows: left out. A hidden draw's
 // instances (swaying leaves, their compact copy traced instead) go in with mask 0 (no ray meets them; grass's: only the
 // short ambient rays, GRASS_STILL_INSTANCE), kept ones shown.
-// Grass outside the view (drawn or kept) stays out: GrassInView. A hidden draw's instance SwayTraced turns down (its
-// swaying copy left out: rt_sway.hlsli) is shown.
+// Grass outside the view or past Grass Ray Tracing Range (drawn or kept) stays out: GrassInScene. A hidden draw's instance
+// SwayTraced turns down (its swaying copy left out: rt_sway.hlsli) is shown.
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_place.h -Vn RT_PLACE.
 #include "./rt_sway.hlsli"
 
@@ -46,6 +46,7 @@ cbuffer Camera : register(b2) {
   uint sway_flags;            // rt_sway.hlsli
   float sway_range;
   uint table_entries;  // a power of two: rt_d3d12.hpp placed_capacity_ x 2
+  float grass_range;   // Grass Ray Tracing Range (metres along the view; 0: any): rt_sway.hlsli GrassInRange
 };
 
 static const uint MODE_CLEAR = 0u;
@@ -89,11 +90,12 @@ static const float MAX_SCALE = 1000.f;
 static const float GRASS_VIEW_MARGIN = 16.f;
 
 // False: a grass patch at `position` (its origin in the world) is outside the view's four sides moved out by
-// GRASS_VIEW_MARGIN. Its shadows are short, and Grass Always Drawn draws every cell, also behind the camera (ATN's
-// debug28: trees' and grass's shadows flickering and gone with it).
-bool GrassInView(float3 position) {
-  return !any(view_projection[3] != 0.f)
-         || NearView(float4(position, 1.f), view_projection[0], view_projection[1], view_projection[3], GRASS_VIEW_MARGIN);
+// GRASS_VIEW_MARGIN, or past `grass_range`. Its shadows are short, and Grass Always Drawn draws every cell, also behind
+// the camera (ATN's debug28: trees' and grass's shadows flickering and gone with it).
+bool GrassInScene(float3 position) {
+  return GrassInRange(position, view_projection[3], grass_range)
+         && (!any(view_projection[3] != 0.f)
+             || NearView(float4(position, 1.f), view_projection[0], view_projection[1], view_projection[3], GRASS_VIEW_MARGIN));
 }
 
 // `recent_frames` past the old rules' longest: kept until the scene ends (Host::keep_placed). A solid mesh's instance placed
@@ -201,7 +203,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     const bool undrawn = (blas.x & 4u) == 0u || (blas.x & 8u) != 0u;
     const bool gone = (undrawn || ((frame - tail.y) & FRAME_MASK) > KEPT_IN_VIEW_FRAMES) && any(view_projection[3] != 0.f)
                       && NearView(place, view_projection[0], view_projection[1], view_projection[3], 0.f);
-    if ((grass && !GrassInView(place.xyz)) || gone) return;
+    if ((grass && !GrassInScene(place.xyz)) || gone) return;
     // Another mesh placed where it stood (within 2.5 cm) while it wasn't: the game draws another level of detail of the thing there, or
     // what is left of it. Off-screen nothing else says so, and both stayed until the scene ended.
     if ((sway_flags & PLACE_ONE_AT_A_PLACE) != 0u && !grass && undrawn) {
@@ -265,7 +267,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float scale = max(max(length(rotation[0]), length(rotation[1])), length(rotation[2]));
   if (!(abs(determinant) > 9.997891e-13f) || !all(isfinite(rotation[0])) || !all(isfinite(rotation[1])) || !all(isfinite(rotation[2]))
       || !all(isfinite(translation)) || any(abs(translation) > MAX_TRANSLATION) || !(scale < MAX_SCALE)
-      || ((job.w & PLACE_GRASS) != 0u && !GrassInView(float3(now0.w, now1.w, now2.w)))
+      || ((job.w & PLACE_GRASS) != 0u && !GrassInScene(float3(now0.w, now1.w, now2.w)))
       || !Insert(PlaceKey(record, translation, (job.w & PLACE_GRASS) != 0u))) {
     return;
   }

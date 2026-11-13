@@ -9,9 +9,9 @@
 // triangle its normal and a leaf's UVs (rt_scene_data.hlsli). The first `templated_clusters` clusters (draws' whose set
 // has templates) are instantiated from their template with their vertices in the vertex buffer (32 bytes of
 // arguments each); the others are built from their triangles' 8-bit indices in the set's pool (64 bytes each, after
-// `built_arguments` bytes). A swaying placed draw's instance SwayTraced turns down (rt_sway.hlsli): its clusters'
-// arguments marked in their last word (rt_sway.cs_6_5.hlsl leaves them out), its triangles not written (but its first
-// instance's: the set's micromap bake reads those UVs).
+// `built_arguments` bytes). A swaying placed draw's instance SwayTraced turns down (rt_sway.hlsli), or grass's past
+// GrassInRange: its clusters' arguments marked in their last word (rt_sway.cs_6_5.hlsl leaves them out), its triangles not
+// written (but its first instance's: the set's micromap bake reads those UVs).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_compact.h -Vn RT_COMPACT.
 #include "./rt_scene_data.hlsli"
 #include "./rt_sway.hlsli"
@@ -43,11 +43,12 @@ cbuffer Templates : register(b2) {
   uint built_arguments;     // where the triangles' arguments start (bytes)
   uint sway_flags;          // rt_sway.hlsli
   float sway_range;
-  uint templates_padding;
+  float grass_range;        // Grass Ray Tracing Range (rt_sway.hlsli GrassInRange; 0: any)
   float4 sway_view[3];  // the view-projection's rows 0, 1 and 3
 };
 
 static const uint NO_ROWS = 0xFFFFFFFFu;
+static const uint DRAW_GRASS = 64u;  // dlaa_bridge.h RT_GRASS, in a draw's bridge flags
 static const uint INDEX_FORMAT_8BIT = 1u;  // NVAPI's cluster index format
 static const uint GEOMETRY_NO_DUPLICATE_ANYHIT = 1u << 30;  // and geometry flags
 static const uint GEOMETRY_OPAQUE = 1u << 31;
@@ -84,7 +85,8 @@ void main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID) {
   if ((sway_flags & SWAY_CUT) != 0u && rows != NO_ROWS) {
     const uint row = (rows + (instance * 4u)) * 16u;
     const float3 origin = asfloat(uint3(vertices_written.Load(row + 12u), vertices_written.Load(row + 28u), vertices_written.Load(row + 44u)));
-    left_out = !SwayTraced(origin, sway_view[0], sway_view[1], sway_view[2], sway_range, sway_flags);
+    left_out = !SwayTraced(origin, sway_view[0], sway_view[1], sway_view[2], sway_range, sway_flags)
+               || ((kind.z & DRAW_GRASS) != 0u && !GrassInRange(origin, sway_view[2], grass_range));
   }
   const uint4 desc = sets.Load4(draw.z + (local - instance * draw.w) * 16u);
   const uint first_vertex = draw.y + instance * block.x + desc.x;

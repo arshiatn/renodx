@@ -3176,10 +3176,12 @@ class RtScene12 {
     // cluster's draw by its first cluster.
     // Swaying Shadows Range / Off-Screen Sway (v18, rt_sway.hlsli): the compact pass leaves out the swaying copies of the
     // instances it turns down, the place pass shows their placed copies; only for swaying draws whose placement goes in
-    // (their rows here: hidden, of a placed mesh, its rows copied).
+    // (their rows here: hidden, of a placed mesh, its rows copied). Grass Ray Tracing Range (in v31's padding: older addons
+    // leave it 0, none): grass past it leaves both passes' scene, its swaying copies by the same cut.
+    const float grass_range = (version >= 31) ? std::clamp(shared.rt_grass_range, 0.f, 1.0e4f) : 0.f;
     uint32_t sway_flags = 0;
     std::unordered_set<uint32_t> sway_rows;
-    if (sway_pipeline_ && version >= 18 && (shared.rt_sway_range > 0.f || (shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0)
+    if (sway_pipeline_ && version >= 18 && (shared.rt_sway_range > 0.f || (shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0 || grass_range > 0.f)
         && GrowBuffer(std::addressof(sway_arguments_), cluster_args_->GetDesc().Width, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
         && GrowBuffer(std::addressof(sway_lists_), clas_addresses_->GetDesc().Width, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
         && GrowBuffer(std::addressof(sway_counts_), SWAY_COUNTS_BYTES, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)) {
@@ -3480,7 +3482,7 @@ class RtScene12 {
         const uint64_t templates_address = templates_->GetGPUVirtualAddress();
         const std::array<uint32_t, 8> templates_dispatch = {
             static_cast<uint32_t>(templates_address), static_cast<uint32_t>(templates_address >> 32), template_bytes_, templated_clusters,
-            (cluster_room_ - built_limit_) * 32, sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range), 0u,
+            (cluster_room_ - built_limit_) * 32, sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range), std::bit_cast<uint32_t>(grass_range),
         };
         list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(templates_dispatch.size()), templates_dispatch.data(), 0);
         // The sway's view: the view-projection's rows 0, 1 and 3.
@@ -4357,9 +4359,10 @@ class RtScene12 {
       // The camera (b2: grass outside the view stays out) and the sway's flags and range, then clear, drawn, kept (rt_place's
       // modes). Grass keeps its alpha tests (v108 took its micromaps as 2-state: a micro-triangle part blade, part gap went
       // solid, fields black in ATN's debug31; Fast Leaf Shadows still does that for every ray).
-      // rt_place's PLACE_ONE_AT_A_PLACE beside the sway's.
-      const std::array<uint32_t, 3> place_sway = {sway_flags | (((shared.rt_flags & dlaa_bridge::RT_ONE_AT_A_PLACE) != 0) ? 4u : 0u),
-                                                  std::bit_cast<uint32_t>(shared.rt_sway_range), placed_capacity_ * 2};
+      // rt_place's PLACE_ONE_AT_A_PLACE beside the sway's, then Grass Ray Tracing Range (grass past it stays out too).
+      const std::array<uint32_t, 4> place_sway = {sway_flags | (((shared.rt_flags & dlaa_bridge::RT_ONE_AT_A_PLACE) != 0) ? 4u : 0u),
+                                                  std::bit_cast<uint32_t>(shared.rt_sway_range), placed_capacity_ * 2,
+                                                  std::bit_cast<uint32_t>(grass_range)};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, 16, shared.rt_view_projection, 0);
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(place_sway.size()), place_sway.data(), 16);
       // Drawn twice: the shadow pass's rows after a barrier, so their dedupe finds the main pass's.

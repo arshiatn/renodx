@@ -35,19 +35,54 @@ cbuffer Dispatch : register(b1) {
 static const uint MODE_KEPT = 0u;
 static const uint MODE_LISTS = 1u;
 static const uint MODE_MASKS = 2u;
-static const uint MODE_FIRSTS = 3u;  // a thread of its own
+static const uint MODE_FIRSTS = 3u;  // a group of its own
 static const uint CLAS_COUNTS = 64u;
 static const uint RUN_PLACES = 72u;
 static const uint GROUPS = 96u;
+
+// MODE_FIRSTS: the kept clusters (instantiated, built) of each thread's run of groups.
+groupshared uint2 run_kept[64];
 
 // The lowest `bits` of two uints.
 uint2 BitsBelow(uint bits) {
   return uint2((bits >= 32u) ? ~0u : (1u << bits) - 1u, (bits <= 32u) ? 0u : ((bits >= 64u) ? ~0u : (1u << (bits - 32u)) - 1u));
 }
 
+// MODE_FIRSTS: the kept clusters (instantiated, built) of the group of 64 from cluster `first` (MODE_MASKS' bits).
+uint2 GroupKept(uint first) {
+  const uint2 kept = counts.Load2(GROUPS + (first / 64u) * 16u);
+  const uint2 first_ones = kept & BitsBelow(clamp(templated_clusters, first, first + 64u) - first);
+  const uint instantiated_kept = countbits(first_ones.x) + countbits(first_ones.y);
+  return uint2(instantiated_kept, countbits(kept.x) + countbits(kept.y) - instantiated_kept);
+}
+
 [numthreads(64, 1, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   const uint index = id.x;
+  // Its one group's 64 threads, every one at the barrier: a run of consecutive groups each, counted, then each group given the
+  // kept before it, in the clusters' order (one thread walking them all cost 0.4-0.5 ms a frame more at 150 K clusters, 4K
+  // harness).
+  if (mode == MODE_FIRSTS) {
+    const uint groups = (cluster_count + 63u) / 64u;
+    const uint run = (groups + 63u) / 64u;
+    const uint run_first = min(index * run, groups);
+    const uint run_end = min(run_first + run, groups);
+    uint2 kept = 0u;
+    [loop]
+    for (uint group = run_first; group < run_end; ++group) kept += GroupKept(group * 64u);
+    run_kept[index] = kept;
+    GroupMemoryBarrierWithGroupSync();
+    uint2 before = 0u;
+    [loop]
+    for (uint earlier = 0u; earlier < index; ++earlier) before += run_kept[earlier];
+    [loop]
+    for (uint group = run_first; group < run_end; ++group) {
+      counts.Store2(GROUPS + (group * 16u) + 8u, before);
+      before += GroupKept(group * 64u);
+    }
+    if (index == 63u) counts.Store2(CLAS_COUNTS, before.yx);
+    return;
+  }
   if (index >= cluster_count) return;
   const bool instantiated = index < templated_clusters;
   const uint count_place = CLAS_COUNTS + (instantiated ? 4u : 0u);
@@ -67,21 +102,6 @@ void main(uint3 id : SV_DispatchThreadID) {
       }
     }
     counts.Store2(group_place, kept);
-    return;
-  }
-  if (mode == MODE_FIRSTS) {
-    if (index != 0u) return;
-    uint2 before = 0u;
-    [loop]
-    for (uint first = 0u; first < cluster_count; first += 64u) {
-      const uint place = GROUPS + (first / 64u) * 16u;
-      counts.Store2(place + 8u, before);
-      const uint2 kept = counts.Load2(place);
-      const uint2 first_ones = kept & BitsBelow(clamp(templated_clusters, first, first + 64u) - first);
-      const uint instantiated_kept = countbits(first_ones.x) + countbits(first_ones.y);
-      before += uint2(instantiated_kept, countbits(kept.x) + countbits(kept.y) - instantiated_kept);
-    }
-    counts.Store2(CLAS_COUNTS, before.yx);
     return;
   }
   if (mode == MODE_KEPT) {

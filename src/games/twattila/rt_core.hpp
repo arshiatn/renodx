@@ -137,9 +137,11 @@ struct Settings {
   float sway_range = 0.f;
   bool sway_off_screen = true;
   // Fast Leaf Shadows (Experimental, with Leaf Micromaps): micromapped leaves without alpha tests (2-state); Grass Shadow
-  // Range (Experimental): pixels farther than these metres trace without grass (0: every pixel with it).
+  // Range (Experimental): pixels farther than these metres trace without grass (0: every pixel with it); Grass Ray Tracing
+  // Range (Experimental): placed grass farther than these metres is out of the scene (0: all of it in).
   bool fast_leaves = false;
   float grass_shadow_range = 0.f;
+  float grass_range = 0.f;
   // Path Tracing SER (Experimental): the paths' and reflections' rays with DXR 1.2's shader execution reordering.
   bool path_ser = false;
   // SHaRC Radiance Cache (Experimental, with Path Tracing): NVIDIA's SHaRC for what the screen does not know.
@@ -2762,6 +2764,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .shadow_rays = runtime.settings.shadow_rays,
       .sway_range = runtime.settings.sway_range,
       .grass_shadow_range = runtime.settings.grass_shadow_range,
+      .grass_range = runtime.settings.grass_range,
   };
   if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);
