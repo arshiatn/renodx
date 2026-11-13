@@ -159,7 +159,7 @@ Unproven look changes: Experimental rows, off. One writer; each step committed a
     there, which no trace shows (bounds only). NOT DONE: 026CBC61 beyond the tiles (far hills' shadows on the campaign);
     smallest step: a trace read of 026CBC61's vb0 positions inside one tile's box (holes or not), then its capture with the
     tiles' boxes cut out.
-- [ ] 5 Builds (Pharaoh, the skill's x64 list, build32 if shared, helper if changed), test/tw_* x86 + amd64, page dumps,
+- [x] 5 Builds (Pharaoh, the skill's x64 list, build32 if shared, helper if changed), test/tw_* x86 + amd64, page dumps,
   READMEs (Pharaoh "### Round v64"; Attila / WH3 if shared behaviour changed), skill rows for real new lessons.
   - [x] Builds at ce280b22: helper108 (build\tw_dlaa_helper108, bridge v31, 18:55), the skill's 15 x64 targets 66 s and build32
     twattila + twrome2 + twthronesofbritannia 57 s: exit 0, only the upstream deprecation warnings.
@@ -169,10 +169,14 @@ Unproven look changes: Experimental rows, off. One writer; each step committed a
     rows: rt-scene (Steady hard: a bit holds no share), render-scale-dlss (SetTargetSizes; RR asked but not started),
     shaders-ui (the Debug View's tone mapper call), game-facts (Pharaoh's campaign map units), testing (HARNESS_TORCH,
     HARNESS_RR_FOLLOW, guard-wrapped scripts).
-  - [ ] Tests: test/tw_* WARP / CPU suites (13 x 2) exit 0 (tw_native_hook_lifetime x86 failed once at stage 0 with no output
-    right after its build, passed alone stages 0-3); all_modes with helper108 49 / 179 ALL PASSED until ATN started Attila at
-    19:16 (the guard stopped it), the rest running; RR noise test and the GPU suites (tw_device_loss, tw_gpu_completion,
-    tw_helper_lifetime, tw_particle_history, tw_screen_space_shadows, tw_unit_pack_rounds) after it, when no game runs.
+  - [x] Tests: test/tw_* 19 suites x86 + amd64, 38 runs exit 0 (tw_native_hook_lifetime x86 failed once at stage 0 with no
+    output right after its build, passed alone stages 0-3); the GPU suites (tw_device_loss, tw_gpu_completion,
+    tw_helper_lifetime, tw_particle_history, tw_screen_space_shadows, tw_unit_pack_rounds) only while no game ran.
+    all_modes with helper108 (build\tw_rt_harness: helper108 + the v64 harness; the old ones .before_v64): 179 / 179 ALL
+    PASSED (tools/tw/all_modes_v31_helper108_done.txt; all_modes_v64.sh / _driver.sh guard every mode: ATN's Attila starts at
+    19:16, 19:24, 19:31 paused it). RR noise (RT_EXTRA_TRACE_FLAGS=256 HARNESS_RR=5, 60 frames, all_modes_v64_driver.txt):
+    helper108 = helper107 (wall foot 61% left, open ground 37%, "DLSS Ray Reconstruction active (D3D12)"). build\tw_fg_test
+    holds helper108 (fg_bridge_test not run: its exe is from 11-03; the FG path is unchanged).
 
 ## ROME II BRING-UP (offline)
 Plan tools/tw/rome2/plan.md (Phase 0 + the Phase 3 items provable offline); results under tools/tw/rome2/. Data runs
