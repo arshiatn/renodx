@@ -47,7 +47,9 @@ Rules:
 - After an unclean exit Rome II's mod manager asks about the mod pack (window class `mod_question_dlg`), and SendInput's Enter doesn't answer it: close every start cleanly (CloseMainWindow, kill only after 60 s); a run script detects the class and stops at once (`rome2_data_run.ps1`).
 - Fullscreen Pharaoh draws no frame while another window is in front ("No frame for 20 s"), and the app keeps the foreground: run windowed at full size (`gfx_fullscreen false`, restored from that run's backup).
 - `RENODX_TW_SET` is read at launch; its timed changes fire only while frames are drawn and pile up otherwise. Time them from the battle's first-frames line, and place each trace marker after the log shows the value set.
-- In-game MSAA turns the addon's AA off, and the frame trace hangs off the AA frame: an MSAA start gives no trace until the trace has its own path.
+- In-game MSAA turns the addon's AA off, and the frame trace hangs off the AA frame: an MSAA start gives no trace until the trace has its own path. With it on, DLSS, the rays and FG stay off too (Rome II round 2): an install or a run that needs them sets the game's AA preference off (`gfx_aa 0`) only with the maintainer's OK, from a fresh backup.
+- Crashed starts leave `Get-Process` entries with 0 threads until a reboot (six Rome2.exe after the command-line crashes): count only processes with threads, as `tw_install.py` and `atn_trace_watch.ps1` do.
+- An agent's data run (start, traces, logs, quit) runs at medium effort: it collects; the reading stays offline.
 - The games read the mouse through DirectInput: synthetic clicks never land. Keys by SendInput scan codes after `SetForegroundWindow`; settings through `ReShade.ini` or `RENODX_TW_SET`.
 - Delete `ReShade.log` before waiting on a line (the old log holds it); in WH3 wait for a new "First run: sun light draw", not for the helper.
 - Replays end at their own length, then a still results scene: a 20-minute soak held 6 minutes of live battle.
@@ -61,6 +63,7 @@ Rules:
 - First line a control: rows off looks like the last version.
 - On and off inside one run: pause freezes the picture, and settings changed while paused show no change; each paused run freezes a random wind phase.
 - Every Experimental row gets one A/B line naming the decision it drives.
+- A unit or grass row's cost shows only with the units or the grass on screen: Unit Detail A/Bs in a replay whose camera held few soldiers changed nothing. Name the scene the maintainer measured (their heavy 8x battle), the camera on the units.
 - Prefer what the build reports itself: "applied" lines, Record Ray Tracing Profile (30 s), Frame Trace, Time Each Pass, a pixel trace. Then the maintainer only sends `ReShade.log`, the helper log and the ini.
 - Dry-run each line, and every agent run's plan, against a page dump of the maintainer's current preset: the row shows, the debug view is made (an AO view without the AO row is magenta), the key exists in this game, and every log line the plan relies on exists in the build (a helper once didn't log placed instances).
 - Never ask what an offline check or an allowed agent run can show; never repeat an unchanged item.

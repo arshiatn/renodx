@@ -84,7 +84,7 @@ A hash goes in only with its proof in the commit message: the shader's family na
 - **Cost**: no per-frame counters or log lines, no per-frame CPU on the game's thread without a measured reason, hot callbacks return on one atomic.
 - **Rows**: tooltips short and for players, naming nothing the game lacks; keys stay when rows move or saved values are lost.
 - **Two ways**: a fix in shared code or a pattern goes to every addon that carries it; a new game's row goes back to Attila.
-- **Process**: one implementer at a time on one tree, on a verified plan; read-only surveys may run beside it. The batch checklist lives in `HANDOFF.md`, ticked in the commit of every step, so a stop or a compaction loses nothing.
+- **Process**: one implementer at a time on one tree, on a verified plan; read-only surveys may run beside it. Parallel rounds each get their own worktree and game folder: check its base first (`git merge-base --is-ancestor <atn-mods tip> HEAD`: a worktree was once made on `main`), give each agent its own scratch-file prefix (they share one scratchpad), and merge one branch at a time, then verify the merged tree once (every target, the test suites, the harness by mode name, page dumps) before stamping. The batch checklist lives in `HANDOFF.md`, ticked in the commit of every step, so a stop or a compaction loses nothing.
 - **Git**: one commit per item with cause and numbers, pushed to the fork's `atn-mods` right away, never upstream. No tags (the maintainer tags). No Nexus text.
 - **Builds**: never mix addons built before and after an upstream merge in one game folder. No DevKit left in a TW game folder.
 - **Licences**: licence text for anything shipped; no code from mods without a licence.
