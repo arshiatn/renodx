@@ -95,6 +95,28 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
 
+## CPU ROUND (2026-11-13 night)
+Our own TW code (twattila shared by Attila / WH3 / Pharaoh / Thrones / Rome II; the helper). Evidence: ATN's CPU profiles
+tools/tw/cpu_profile/report.md, the Unit Detail 8x trace tools/tw/cpu_profile/trace_8x_1933 (v157 + helper108 installed,
+HEAD 3325e7c5). Rules: offline only (another agent runs Attila A/B tests tonight: before any harness / GPU job no Attila,
+Pharaoh, Warhammer3, Rome2, renodx-tw-dlaa64 process and Committed Bytes under 60 GB; WARP only while a game runs), no
+Steam folder written, no stamp / install, never restart. Behaviour identical unless a row says otherwise; a possible look
+change goes in an Experimental row, off. One commit + push to origin atn-mods per step.
+- [ ] 1 Shadow casters under the rays at 8x (725 draws into the 2048 sun map, the pack mark "0 to 418030 of 418030"):
+  CastersSkipped() in ATN's setup, A1's effect, the mark's count; stop provably safe caster work; tests; mark corrected.
+- [ ] 2 OnDrawScrub (3.35 ms a frame, grass maxed): a per-thread cache of several models or a once-per-frame scale per
+  scrub model; output bit-identical (test).
+- [ ] 3 Per-draw ReShade callbacks on the render thread (~0.8-1.1 us a draw): trim where provably equivalent; a
+  micro-benchmark or the harness before / after.
+- [ ] 4 Helper (coordinator 2026-11-13 night: the 2.3 ms wait at +0x5c238 is GPU back-pressure, dropped): the RT worker
+  creates and frees 3 GPU buffers every frame (13 MiB, 2.75 MiB, 320 KiB; create +0x689c1 / +0x688ca / +0x68956, free
+  +0x688a8 / +0x68934 / +0x6899c; ~1.3 ms paging a frame + 2.4 ms in CreateAllocation / DestroyAllocation2 on the worker):
+  keep them and only grow; harness proof (no per-frame create / free over N frames, results identical); helper109,
+  all_modes + RR noise.
+- [ ] 5 Builds (the skill's x64 list, build32 Attila / Rome II / Thrones, the helper), test/tw_* x86 + amd64, page dumps
+  (Attila / WH3 / Pharaoh: Build Date only unless a new row), READMEs Attila v158 / WH3 v57 / Pharaoh Round v65 (built
+  only), skill rows.
+
 ## PHARAOH V64: TORCH SHADOWS + DEBUG VIEWS (2026-11-13 evening, offline; Pharaoh v63 / helper107 installed)
 Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, never
 restart. Committed Bytes under 60 GB and no game process before WARP / harness / GPU jobs, one GPU job at a time.
