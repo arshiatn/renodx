@@ -32,7 +32,9 @@
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/frame_trace.hpp"
+#include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 #include "./trace_reads.hpp"
@@ -1547,31 +1549,6 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
-// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
-void SetOutputEncoding(int encoding) {
-  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
-  if (encoding == 2) {
-    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
-    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
-  } else {
-    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
-  }
-}
-
-// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
-// before the swapchain mod's create_swapchain (registered after this).
-bool auto_output_pending = false;
-
-bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!auto_output_pending) return false;
-  auto_output_pending = false;
-  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
-  const auto path = renodx::utils::platform::GetPathInfo(monitor);
-  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  SetOutputEncoding(windows_hdr ? 1 : 2);
-  return false;
-}
-
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War: ROME REMASTERED by ATN";
 
@@ -1744,9 +1721,12 @@ void ConfigureAddon() {
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const int value = static_cast<int>(setting->GetValue());
-    auto_output_pending = (value == 3);
-    SetOutputEncoding(auto_output_pending ? 1 : value);
+    // Decided again for each new swap chain (device_loss's create_swapchain, before the swapchain mod's): Auto follows
+    // Windows HDR as before (scRGB, else SDR).
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = static_cast<int>(setting->GetValue()),
+    });
     settings.push_back(setting);
   }
 
@@ -1814,11 +1794,13 @@ bool AttachAddon() {
       .draw_reads = twromeremastered::trace_reads::Read,
   });
 
-  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+
+  // Before the swapchain mod: a new chain's output is decided first (output_encoding), a removed device's chain goes.
+  twattila::device_loss::Install();
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
@@ -1829,6 +1811,9 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
 
+  // Last: after the swapchain mod's create_swapchain and every other destroy_device.
+  twattila::device_loss::InstallLast();
+
   attached = true;
   return true;
 }
@@ -1836,7 +1821,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
 
