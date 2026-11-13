@@ -30,6 +30,7 @@
 #include "../twattila/graphics_hooks.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_pass.hpp"
+#include "../twattila/engine_code.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
@@ -1227,6 +1228,9 @@ twattila::feature_settings::AaSliders aa_sliders;
 twattila::rt_scene::Sliders rt_sliders;
 float ssr_denoiser = 1.f;  // twattila/ssr_hiz.hpp: the resolve's history
 float lod_bias_trilinear_row = 0.f;  // twattila/texture_lod_bias.hpp SetWrappingTrilinear (graphics_page's row)
+// Faster Game CPU Code (twattila/engine_code.hpp): Attila's float to half only (its 190 bytes the same here; the soldier
+// draw's truncation and fmod's _matherr check differ, left alone). Experimental, off until a game run.
+float engine_code_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1461,6 +1465,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  twattila::engine_code::Update(engine_code_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size));
   twattila::graphics_hooks::Update(
@@ -1912,10 +1917,17 @@ void ConfigureAddon() {
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
+                                             .engine_code = &engine_code_row,
                                              .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_replace_ao = false});
+  // Faster Game CPU Code Experimental, off (engine_code_row).
+  for (auto* setting : settings) {
+    if (setting->key != "FasterGameCpuCode") continue;
+    setting->default_value = 0.f;
+    setting->label += " (Experimental)";
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
@@ -2057,6 +2069,7 @@ void DetachAddon() {
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
   tw::engine_tweaks::Uninstall(graphics_options);
+  twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();
