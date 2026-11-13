@@ -9,6 +9,7 @@
 #define DEBUG_LEVEL_0
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <array>
 #include <string>
@@ -22,6 +23,8 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/command_action.hpp"
+#include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/graphics_hooks.hpp"
@@ -36,6 +39,7 @@
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/ssr_hiz.hpp"
+#include "../twattila/test_hooks.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -1349,6 +1353,16 @@ constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0xF1009ADE, .gbuffer_slot = 2, .camera_slot = 0},  // skinlm_highdef
 }};
 
+// The data run's clock (test_hooks: RENODX_TW_SET's seconds) from the first sun light draw: a command-line battle's first
+// 3D frame, whatever its load took (the battle benchmark's camera runs 90 s). Its line is what the run script waits for.
+std::atomic_bool sun_drawn = false;
+constexpr auto OnSunDrawClock = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (sun_drawn.load(std::memory_order_relaxed) || sun_drawn.exchange(true, std::memory_order_relaxed)) return {};
+  renodx::utils::log::i("[Thrones] First run: sun light draw (the tests' clock starts).");
+  twattila::test_hooks::StartClock();
+  return {};
+};
+
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
@@ -1767,6 +1781,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
+  // The data run's switches (RENODX_TW_SET / SHOT / PROFILE; nothing hooked without them), timed from the first sun draw.
+  twattila::test_hooks::Install(&settings, false);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
@@ -1783,18 +1799,43 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // The tests' clock first: the Light Bounce's callback draws the sun draws itself (none after it runs).
+  for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
+    renodx::utils::command_action::Register(
+        OnSunDrawClock, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // Light Through Banners: cloth and sails (as the rays), the G-buffer's colour squared (gamma 2).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
+  // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
+  // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1,
+  // lighting_VS_PS b2, shroud b3, directional_light b4): the SM5 sun draws (slm 1B10DDD8 / 21B916AF, skinlm 77586F30 /
+  // 5E7DFFF2), the tone mapper 8BF6B657 and hdr_to_screen 55D276C9 (depth of field and distortion on), the SSAO resolve
+  // BD389EF1, battlefog A6A0F887, the point light 6426B042, the water (battle ultra C9FBACCB, ocean F7E011A4, campaign
+  // DE739661), the lit particles ACE33D5D, the units' VS (sm_4_1 25839CC5, sm_3_0 DC9FBA4A) and the campaign's shroud
+  // plane 2860172D (tools/tw/thrones/plan_1114.md; names.tsv of the dump, none seen drawn yet). The units' and particles'
+  // VS inputs at each draw, the particles' blend, instanced draws' counts apart.
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES);
+                                   RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES,
+                                   {
+                                       .value_hashes = {0x1B10DDD8, 0x21B916AF, 0x77586F30, 0x5E7DFFF2, 0x8BF6B657, 0x55D276C9, 0xBD389EF1,
+                                                        0xA6A0F887, 0x6426B042, 0xC9FBACCB, 0xF7E011A4, 0xDE739661, 0xACE33D5D, 0x25839CC5,
+                                                        0xDC9FBA4A, 0x2860172D},
+                                       .value_slots = 6,
+                                       .value_floats = 256,
+                                       .on_demand = true,
+                                       .at_100 = true,
+                                       .blend_hashes = {0xACE33D5D, 0xF5379F78},
+                                       .vertex_input_hashes = {0x25839CC5, 0xFF473BE8, 0xDC9FBA4A, 0x76682C60, 0xA7F257B5},
+                                       .instances_apart = true,
+                                   });
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.
@@ -1823,6 +1864,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  twattila::test_hooks::Uninstall();
+  renodx::utils::command_action::Unregister(OnSunDrawClock);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
