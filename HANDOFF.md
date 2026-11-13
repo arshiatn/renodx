@@ -29,7 +29,14 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
   Reflections, Steadier, Softer, Specular Occlusion); tooltips now naming reflections: RT/PT (mine), Hills Out of View, SER,
   Denoiser (shared texts on has_reflections). RT/PT now writes RayTracedReflections / WaterReflections / SpecularOcclusion 1
   (RAYS_PRESET, ATN's list, as fog and torches): ATN to decide. Reset puts them back to 0.
-- [ ] 6 shared frame trace: blend desc, instances apart, VS buffer inputs (Options, off for Attila / WH3); Pharaoh 3F1B86E1 values
+- [x] 6 shared frame trace (twattila/frame_trace.hpp Options, all empty / off for Attila, WH3 and the rest): blend_hashes (the
+  full blend state at the first draw of each listed PS: "
+  blend: alpha to coverage, factor, sample mask | rtN on/off colour
+  src dest op, alpha src dest op, mask"), vertex_input_hashes (each draw of a listed VS: "
+  vs inputs | tN buffer B bytes,
+  stride S, misc M, view fF E elements from F [raw]"), instances_apart (" | instanced C x I" on instanced draws, direct and
+  indirect; the line's count stays C x I). Pharaoh: blend DE4F92CD + 3F1B86E1, inputs 109B79CE, instances apart, value hash
+  3F1B86E1 added. Not run (needs the game).
 - [ ] 7 builds: the skill's x64 list + build32 Attila / Rome II / Thrones; WARP suites (sun, tw_screen_space_shadows, lifetime)
 - [ ] 8 README Pharaoh v56 (+ WH3 line), HANDOFF, report
 

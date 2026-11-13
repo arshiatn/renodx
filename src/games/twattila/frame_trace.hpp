@@ -72,6 +72,13 @@ struct Options {
   uint32_t value_floats = 64;          // the first floats of each
   bool on_demand = false;             // renodx_trace_now next to the exe (looked for each 60 presents, removed): the next frame
   bool at_100 = false;                 // FrameTrace's 600 presents count the 3D view at any scale (OnPresent's view_3d)
+  // A draw of these pixel shaders, once each in a trace: its blend state in full (each target's blend and write mask, the
+  // blend factor and sample mask; D3D11_BLEND and D3D11_BLEND_OP values).
+  std::vector<uint32_t> blend_hashes;
+  // Each draw of these vertex shaders: its VS shader resources (a buffer's size, stride and flags, its view's format, first
+  // element and count).
+  std::vector<uint32_t> vertex_input_hashes;
+  bool instances_apart = false;  // an instanced draw's count an instance and its instances (else only their product)
 };
 
 namespace internal {
@@ -92,6 +99,7 @@ struct State {
   std::filesystem::path folder;  // the exe's: the trace and the marker
   uint32_t presents = 0;         // on demand: the marker looked for at every 60th
   std::vector<uint32_t> values_written;
+  std::vector<uint32_t> blends_written;
   bool indirect_values_written = false;
 };
 static State state;
@@ -231,7 +239,8 @@ inline std::string DescribeConstants(ID3D11DeviceContext* context) {
   return text;
 }
 
-inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t count) {
+// `instanced`: the count an instance and the instances (Options' instances_apart).
+inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t count, std::array<uint32_t, 2> instanced) {
   if (!state.tracing.load(std::memory_order_relaxed)) return;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return;
@@ -263,8 +272,11 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
   if (!constants) context->VSGetConstantBuffers(0, 1, constants.GetAddressOf());
   const uint32_t vertex_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
   const uint32_t pixel_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
-  // The trace's first indirect draw (the game's particles draw so) and Install's shaders, once each: their constants.
+  // The trace's first indirect draw (the game's particles draw so) and Install's shaders, once each: their constants; and
+  // Options' blend and vertex input shaders.
   bool values = false;
+  bool blend = false;
+  bool vertex_inputs = false;
   {
     const std::lock_guard lock(state.mutex);
     if (kind.ends_with("indirect") && !state.indirect_values_written) {
@@ -277,20 +289,83 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
         values = true;
       }
     }
+    if (std::ranges::find(state.options.blend_hashes, pixel_hash) != state.options.blend_hashes.end()
+        && std::ranges::find(state.blends_written, pixel_hash) == state.blends_written.end()) {
+      state.blends_written.push_back(pixel_hash);
+      blend = true;
+    }
+    vertex_inputs = std::ranges::find(state.options.vertex_input_hashes, vertex_hash) != state.options.vertex_input_hashes.end();
+  }
+  // After the line's state, in this order: the instances apart, then lines of their own: the constants, the blend, the inputs.
+  std::string details;
+  if (state.options.instances_apart && instanced[1] > 1) details += std::format(" | instanced {} x {}", instanced[0], instanced[1]);
+  if (values) details += DescribeConstants(context);
+  if (blend) {
+    ComPtr<ID3D11BlendState> blend_state;
+    std::array<float, 4> factor = {};
+    UINT sample_mask = 0;
+    context->OMGetBlendState(blend_state.GetAddressOf(), factor.data(), &sample_mask);
+    // D3D11's default state without one bound: no blending, every channel written.
+    D3D11_BLEND_DESC blend_desc = {};
+    blend_desc.RenderTarget[0] = {.BlendEnable = FALSE,
+                                  .SrcBlend = D3D11_BLEND_ONE,
+                                  .DestBlend = D3D11_BLEND_ZERO,
+                                  .BlendOp = D3D11_BLEND_OP_ADD,
+                                  .SrcBlendAlpha = D3D11_BLEND_ONE,
+                                  .DestBlendAlpha = D3D11_BLEND_ZERO,
+                                  .BlendOpAlpha = D3D11_BLEND_OP_ADD,
+                                  .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL};
+    if (blend_state) blend_state->GetDesc(&blend_desc);
+    details += std::format("\n  blend{}: alpha to coverage {}, factor {} {} {} {}, sample mask {:x}", (blend_state ? "" : " (default)"),
+                           blend_desc.AlphaToCoverageEnable, factor[0], factor[1], factor[2], factor[3], sample_mask);
+    const UINT blended_targets = (blend_desc.IndependentBlendEnable != FALSE) ? D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT : 1;
+    for (UINT slot = 0; slot < blended_targets; ++slot) {
+      const auto& target = blend_desc.RenderTarget[slot];
+      details += std::format(" | rt{} {} colour src {} dest {} op {}, alpha src {} dest {} op {}, mask {:x}", slot,
+                             (target.BlendEnable != FALSE ? "on" : "off"), static_cast<int>(target.SrcBlend), static_cast<int>(target.DestBlend),
+                             static_cast<int>(target.BlendOp), static_cast<int>(target.SrcBlendAlpha), static_cast<int>(target.DestBlendAlpha),
+                             static_cast<int>(target.BlendOpAlpha), target.RenderTargetWriteMask);
+    }
+  }
+  if (vertex_inputs) {
+    std::array<ID3D11ShaderResourceView*, 16> vertex_views = {};
+    context->VSGetShaderResources(0, static_cast<UINT>(vertex_views.size()), vertex_views.data());
+    details += "\n  vs inputs";
+    for (uint32_t slot = 0; slot < vertex_views.size(); ++slot) {
+      if (vertex_views[slot] == nullptr) continue;
+      D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {};
+      vertex_views[slot]->GetDesc(&view_desc);
+      ComPtr<ID3D11Resource> resource;
+      vertex_views[slot]->GetResource(resource.GetAddressOf());
+      if (ComPtr<ID3D11Buffer> buffer; SUCCEEDED(resource.As(&buffer))) {
+        D3D11_BUFFER_DESC buffer_desc = {};
+        buffer->GetDesc(&buffer_desc);
+        const bool extended = view_desc.ViewDimension == D3D11_SRV_DIMENSION_BUFFEREX;
+        const UINT first = extended ? view_desc.BufferEx.FirstElement : view_desc.Buffer.FirstElement;
+        const UINT elements = extended ? view_desc.BufferEx.NumElements : view_desc.Buffer.NumElements;
+        const bool raw = extended && (view_desc.BufferEx.Flags & D3D11_BUFFEREX_SRV_FLAG_RAW) != 0;
+        details += std::format(" | t{} buffer {} bytes, stride {}, misc {:x}{}, view f{} {} elements from {}{}", slot, buffer_desc.ByteWidth,
+                               buffer_desc.StructureByteStride, buffer_desc.MiscFlags, (buffer_desc.Usage == D3D11_USAGE_DYNAMIC ? " dynamic" : ""),
+                               static_cast<int>(view_desc.Format), elements, first, (raw ? " raw" : ""));
+      } else {
+        details += std::format(" | t{} {}", slot, DescribeResource(resource.Get()));
+      }
+      vertex_views[slot]->Release();
+    }
   }
   Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{} |{}{}{}{}", kind, count, vertex_hash, pixel_hash,
                      outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY, inputs,
-                     DescribeCamera(context, constants.Get()), DescribeDrawState(cmd_list, context), (values ? DescribeConstants(context) : std::string())));
+                     DescribeCamera(context, constants.Get()), DescribeDrawState(cmd_list, context), details));
 }
 
 inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t, uint32_t) {
-  TraceDraw(cmd_list, "draw", vertex_count * instance_count);
+  TraceDraw(cmd_list, "draw", vertex_count * instance_count, {vertex_count, instance_count});
   return false;
 }
 
 inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count, uint32_t,
                           int32_t, uint32_t) {
-  TraceDraw(cmd_list, "indexed", index_count * instance_count);
+  TraceDraw(cmd_list, "indexed", index_count * instance_count, {index_count, instance_count});
   return false;
 }
 
@@ -331,7 +406,8 @@ inline bool OnDrawOrDispatchIndirect(reshade::api::command_list* cmd_list, resha
     TraceDispatch(cmd_list, "dispatch indirect", arguments[0], arguments[1], arguments[2]);
   } else {
     // Both draws' arguments start with the count per instance and the instances.
-    TraceDraw(cmd_list, (type == reshade::api::indirect_command::draw_indexed ? "indexed indirect" : "draw indirect"), arguments[0] * arguments[1]);
+    TraceDraw(cmd_list, (type == reshade::api::indirect_command::draw_indexed ? "indexed indirect" : "draw indirect"), arguments[0] * arguments[1],
+              {arguments[0], arguments[1]});
   }
   return false;
 }
@@ -455,6 +531,7 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
       state.text = "One frame at the DLSS render scale: draws, dispatches, copies (vs / ps / cs, targets, viewport, inputs, camera).\n";
       state.lines = 0;
       state.values_written.clear();
+      state.blends_written.clear();
       state.indirect_values_written = false;
       start = true;
     }

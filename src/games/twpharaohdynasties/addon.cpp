@@ -2839,12 +2839,19 @@ bool AttachAddon() {
                                    RENDER_SCALE_READS, {}, FULL_DEPTH_SHADERS, {},
                                    {
                                        // Also the point light's and the AO's (g_viewport_offset_scale, g_Resolution: their
-                                       // 100% values below 100%, assumed until a trace lists them).
-                                       .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74, 0xE318CE77, 0xD42C3523},
+                                       // 100% values below 100%, assumed until a trace lists them), and the particles' PS
+                                       // vfxextremeultra 3F1B86E1.
+                                       .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74, 0xE318CE77, 0xD42C3523, 0x3F1B86E1},
                                        .value_slots = 6,
                                        .value_floats = 256,
                                        .on_demand = true,
                                        .at_100 = true,
+                                       // The open facts (v56): the water reflection apply's blend (DE4F92CD) and the particles'
+                                       // (3F1B86E1); the particle VS 109B79CE's buffers (t1, t2, t4, t6) and its draws' indices
+                                       // and instances apart (smoke's layout).
+                                       .blend_hashes = {0xDE4F92CD, 0x3F1B86E1},
+                                       .vertex_input_hashes = {0x109B79CE},
+                                       .instances_apart = true,
                                    },
                                    true);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
