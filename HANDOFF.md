@@ -117,6 +117,19 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   optional, --first (symlinks, missing files, helper + NVIDIA DLLs, DevKit aside); backup tw_install.py.bak_1114.
 - [ ] Phase P, four worktree agents: Thrones (tools/tw/thrones), WH2 (tools/tw/wh2), Shogun 2 (tools/shogun2/pkg_1114),
   Rome Remastered (tools/tw/romeremastered): plan_1114.md, trace build on the branch, <game>_data_run.ps1.
+  - [x] Thrones: plan + trace build dd9359ab (merged 85ad67ae); thrones_data_run.ps1 (+ gpu_job.lock, coordinator). Old
+    page layout (no graphics_page), 0 dead hashes, no trace anywhere; won't get: Grass Height Distance (hashes absent),
+    engine code TRUNCATION / FMOD_MATHERR (patterns absent). Campaign needs ATN's menu start (no saves).
+  - [x] WH2: plan + trace build e6b83f99 (merged 52fa2ffd); wh2_data_batch.ps1 A-E (+F -Night). Old layout, 0 dead hashes,
+    12 dead engine values, exe code protected (no engine-code features). Campaign / walled siege need ATN.
+  - [x] Rome Remastered: plan + trace build v7 03323ef0 (merged 9d5fef16); romeremastered_data_run.ps1 A100 / B67 / C50.
+    Feral D3D11 Forward+ (no G-buffer, velocity, TAA, jitter): no RR, no GI / PT, no torch shadows in round 1; DLSS via
+    the helper, RT sun shadows into CSMResolve's mask, RT AO into ASSAO's target planned. Replay start form a guess.
+  - [ ] Shogun 2: running.
+  - [x] Trace builds STAMPED + INSTALLED 00:08-00:09 with tw_install.py --first: Thrones "thrones t1" + helper110 (helper
+    DLLs + NVIDIA 310.9.16 copied, none before), WH2 "wh2 t1" + helper110 (symlink + the 10-27 helper aside, helper DLLs
+    copied), Rome Remastered "romer t1" (no helper). ATN files unchanged by hash. Phase I trace-free items started in all
+    three worktrees; data runs from 01:00 (the scripts' window), Thrones -> WH2 -> Rome Remastered -> Shogun 2.
 - [ ] Data runs, one game at a time (medium-effort agent each; trace builds merged, stamped "<game> t1", installed with
   --first; fresh backups; Shogun 2's DevKit aside; its nvngx_dlss 310.5.2 -> 310.9.16 renamed aside).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
