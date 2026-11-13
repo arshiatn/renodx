@@ -10,10 +10,12 @@
 #define DEBUG_LEVEL_0
 
 #include <d3d11.h>
+#include <wrl/client.h>
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <cmath>
@@ -27,10 +29,13 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/frame_trace.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
+#include "./trace_reads.hpp"
 
 constexpr char BUILD_DATE[] = __DATE__;
 constexpr char BUILD_TIME[] = __TIME__;
@@ -511,6 +516,48 @@ void OnDestroyDevice(reshade::api::device*) {
 
 }  // namespace frame_capture
 
+// The data run's trace build (tools\tw\romeremastered\plan_1114.md): a post pass drew this frame (the tone mapper and the
+// AA passes after it run only with the 3D view: FrameTrace's at_100 counts it), and its sizes to log (the first 3D frame
+// and each traced frame: the game's render scale is its own, viewport against target).
+std::atomic_bool post_drawn = false;
+std::atomic_bool log_post_sizes = true;
+
+void OnPostDraw(reshade::api::command_list* cmd_list, uint32_t hash) {
+  post_drawn.store(true, std::memory_order_relaxed);
+  twattila::frame_trace::Mark(std::format("post pass {:08X}", hash));
+  if (!log_post_sizes.load(std::memory_order_relaxed) || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  // A texture view's size, format and samples ("none" without one).
+  const auto describe = [](ID3D11View* view) {
+    if (view == nullptr) return std::string("none");
+    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+    view->GetResource(resource.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(resource.As(&texture))) return std::string("not a 2D texture");
+    D3D11_TEXTURE2D_DESC desc = {};
+    texture->GetDesc(&desc);
+    return std::format("{}x{} format {} samples {}", desc.Width, desc.Height, static_cast<int>(desc.Format), desc.SampleDesc.Count);
+  };
+  D3D11_VIEWPORT viewport = {};
+  UINT viewport_count = 1;
+  context->RSGetViewports(&viewport_count, &viewport);
+  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
+  context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> input;
+  context->PSGetShaderResources(0, 1, input.GetAddressOf());
+  renodx::utils::log::i(std::format("[Rome Remastered] Post pass {:08X}: viewport {}x{} at {},{}, target {}, t0 {}.", hash, viewport.Width,
+                                    viewport.Height, viewport.TopLeftX, viewport.TopLeftY, describe(target.Get()), describe(input.Get())));
+}
+
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*, uint32_t,
+               const reshade::api::rect*) {
+  const bool drew_3d = post_drawn.exchange(false, std::memory_order_relaxed);
+  twattila::frame_trace::OnPresent(false, drew_3d);
+  if (drew_3d || twattila::frame_trace::Tracing()) {
+    log_post_sizes.store(twattila::frame_trace::Tracing(), std::memory_order_relaxed);
+  }
+}
+
 #define UpgradeRTVReplaceShader(value)                                                                \
   {                                                                                                   \
       value,                                                                                          \
@@ -518,6 +565,7 @@ void OnDestroyDevice(reshade::api::device*) {
           .crc32 = value,                                                                             \
           .code = __##value,                                                                          \
           .on_draw = [](auto* cmd_list) {                                                             \
+            OnPostDraw(cmd_list, value);                                                              \
             auto rtvs = renodx::utils::swapchain::GetRenderTargets(cmd_list);                         \
             bool changed = false;                                                                     \
             for (auto rtv : rtvs) {                                                                   \
@@ -1746,8 +1794,29 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
+  // FrameTrace (ReShade.ini [renodx], read at start): one frame 600 3D frames in, or the next one when renodx_trace_now
+  // sits next to the exe. Constants once each (VS and PS b0-b8: the camera b5, the frame b8) for the tone mappers
+  // (ResolveMainColor), the shadow mask resolve's PS, ASSAO's apply, TreeAOInject, the sky and the exe's upscaler (VS
+  // 9F3C9B3D, PS F27A8C95 / 3C19543E / 4770CC47 / C0AFE726); blends of the particles, fire and heat haze; the unit VS's
+  // inputs (t9-t11).
+  twattila::frame_trace::Install({
+      .value_hashes = {0xB72063D6, 0xEC84B8D1, 0x28D6CB27, 0x0257CFFE, 0xD32CFCB5, 0x4371A094, 0xB1E8D323, 0xFDCB3015, 0xF951F1D4,
+                       0xEBA25E29, 0x93290942, 0x62890EAF, 0x04FFC05E, 0x07775E27, 0x3F59063F, 0x674F2947, 0x72517DFF, 0x7D9E3AB5,
+                       0x9DB159A1, 0xDA14DE2C, 0x6A73BA10, 0x94FFC07C, 0x76A75628, 0x9F3C9B3D, 0xF27A8C95, 0x3C19543E, 0x4770CC47,
+                       0xC0AFE726},
+      .value_slots = 9,
+      .value_floats = 64,
+      .on_demand = true,
+      .at_100 = true,
+      .blend_hashes = {0x115228CC, 0x5E0D5CF0, 0xB6ACC860, 0xE5CC9097, 0xC05F9F57, 0x27305C2A, 0x33841788, 0x671D770C, 0x6923EB5A},
+      .vertex_input_hashes = {twromeremastered::trace_reads::UNIT_VERTEX_SHADERS.begin(), twromeremastered::trace_reads::UNIT_VERTEX_SHADERS.end()},
+      .instances_apart = true,
+      .draw_reads = twromeremastered::trace_reads::Read,
+  });
+
   reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::register_event<reshade::addon_event::present>(OnPresent);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -1769,6 +1838,7 @@ void DetachAddon() {
 
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::unregister_event<reshade::addon_event::present>(OnPresent);
 
   reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
