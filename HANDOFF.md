@@ -15,8 +15,12 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
 - [x] 3 Pharaoh: DE4F92CD replaced (shaders/ssrapply00, tools/tw/warp_tests/pharaoh/ssr_v56/make_apply.py: 3Dmigoto + 2 traps
   fixed, cb0[0].y skydome lerp and cb3[0].zw fog heights), swapped in (OnWaterApplyDraw, finalize) only where the rays left from
   the water; then 9A55B7F2 + 0B78827B + 20 mips skipped (their target's only other reader in A2 / B / S1 is the apply). OnPresent:
-  reflections only with Water Reflections, Specular Occlusion only with them. cb_audit: lost [], added cb10[0].x only.
-- [ ] 4 WARP parity (tools/tw/warp_tests/pharaoh/ssr_v56): t47 unbound 0 apart, the formula with t47, CONTROL, render scale
+  reflections only with Water Reflections, Specular Occlusion only with them. cb_audit: lost [], added cb10[0].x only. (f306ff2d)
+- [x] 4 WARP parity (tools/tw/warp_tests/pharaoh/ssr_v56, run.sh <built cso>; run_built.txt): 24 runs 96x64, real camera, misc.y /
+  misc.w both ways, no MSAA (ours never draws under it). Nothing bound: 0 of 589,824 apart at 100%, 0 of 1,179,648 at 50% / 67%;
+  t47 bound b10.x 0: 0 apart; b10.x 1 vs env + (t47.rgb x w - env) x t47.a: 0 misses; CONTROL game's x5-squared decode 207,453;
+  t46 0.5 vs game with cubes x 0.5: 0 bits apart (b10.x 0: game's); CONTROL own cubes 277,923; render scale: t47 at the render
+  pixel 0 misses, CONTROL viewport uv 268,723. Raw 3Dmigoto 165,780 apart; faithful (2 traps fixed) 0.
 - [ ] 5 page: has_reflections, reflection_pass, Water Reflections Experimental off; dump p_v58 vs p_v57 (only the new rows)
 - [ ] 6 shared frame trace: blend desc, instances apart, VS buffer inputs (Options, off for Attila / WH3); Pharaoh 3F1B86E1 values
 - [ ] 7 builds: the skill's x64 list + build32 Attila / Rome II / Thrones; WARP suites (sun, tw_screen_space_shadows, lifetime)
