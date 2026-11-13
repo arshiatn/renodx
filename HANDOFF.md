@@ -108,8 +108,13 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
 - [ ] Rome II round 3 (worktree agent): point light shadows (b2 constant-buffer lights), smoke shadows (shared VS list
   in InstallSmokeShadows), RT water reflections if time; Round 3 README; built only.
-- [ ] Screen-Space AO debug view (worktree agent): rt_scene::InstallSunDebugAmbient, Pharaoh onto it, Troy / WH1 / WH2
-  where the mapping is proven; Round v47 READMEs; built only.
+- [x] Screen-Space AO debug view MERGED 4e5a662c (worktree-agent-ab80c0b7cc4beb3f4: fbb368f9, d7eb5a55, 64daf016):
+  rt_scene::InstallSunDebugAmbient (Pharaoh's lambda shared; Pharaoh onto it, same hook / place / mapping / log line), Troy /
+  WH1 / WH2 view 8 through it. Mapping 1 proven from the bytes (tools/tw/debug_ao_v47/ao_mapping.py: Troy 24, WH1 30, WH2 30
+  sun shaders read t_ssao at (SV_Position + g_vpos_texel_offset) x g_screen_size.zw as their G-buffer; WH3's 6 fail = control).
+  Agent's checks: 8 targets built, 2954 embedded shader headers byte-identical, page dumps t / th / w1 / w2 / p / a / w Build
+  Date only, 4 test suites x86 + amd64 PASS, static_checks 0. No WARP (no harness for it). READMEs Troy / WH1 / WH2 Round v47.
+  Test (ATN): Troy / WH1 / WH2 Debug View Screen-Space AO not magenta (Game's and GT-VBAO, once at 50%); Pharaoh as v66.
 - [ ] Merge both into atn-mods (both touch twattila/rt_scene.hpp), build all TW targets, tests, page dumps, then stamp +
   install the changed games (fresh backups) and update tools/tw/round_notes/night_1113_report.md.
 
@@ -205,7 +210,7 @@ tools/tw (the maintainer's folder); repo checks in the skill's scripts/. One com
     renodx-twtroy / twwarhammer / twwarhammer2.addon64 54 s, build32 renodx-twthronesofbritannia.addon32 48 s, exit 0.
     Page dumps (new stubs tools/tw/page_dump/dump_t / dump_th / dump_w1 / dump_w2.cpp, dump_build.py t / th / w1 / w2)
     lc_before = lc_after but the Build Date (the dump sets debug_view_drawn itself).
-  - NOT DONE: Screen-Space AO (view 8) in Troy / WH1 / WH2 stays magenta: no AO pass hook (AO_DRAWS {}), and Pharaoh's
+  - (DONE 4e5a662c, LATE NIGHT ROUNDS) Screen-Space AO (view 8) in Troy / WH1 / WH2 stayed magenta: no AO pass hook (AO_DRAWS {}), and Pharaoh's
     OnSunDebugAmbient copy at the sun draws would be a fourth copy of one lambda (DRY: it belongs in twattila/rt_scene.hpp,
     outside this round's files) with WH1 / WH2's AO mapping unproven. Smallest step: rt_scene::InstallSunDebugAmbient(
     LIGHT_BOUNCE_DRAWS) in rt_scene.hpp (Pharaoh's lambda, mapping 1), Pharaoh moved onto it, then the three.
