@@ -1353,10 +1353,20 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // The game's MSAA keeps DLAA / DLSS from running (A2_185833: its 2-sample sun draws 006F587A / FCD6C263 keep no camera):
+  // the rays and frame generation, which need them, off with it (the rays' scene captures nothing multisampled).
+  const bool game_msaa = twattila::anti_aliasing::GameMsaa();
+  auto rays_aa = aa_sliders;
+  if (game_msaa) {
+    rays_aa.method = 0.f;
+  }
+  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, rays_aa, shader_injection.light_bounce_strength);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  if (game_msaa) {
+    aa_settings.frame_generation = 0;
+  }
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   twattila::feature_settings::UpdateSsr(&shader_injection);
