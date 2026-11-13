@@ -1932,41 +1932,53 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 26> MOTION_SHADERS =
 // Ray tracing's scene: 1ACBD907 (shaders__alphablend.xml and 87 other materials) draws the buildings, walls, clutter and the
 // props blended into the terrain, and also the depth prefill again (6FDC1F3D, which binds a colour target: the 5BB18374 meshes, 498
 // draws and 15.9 M indices in the six traces as 5BB18374's), the sea (water_troy 833E7963) and effects (vfx_spline_border 0051B762,
-// ash 1B1F50CA). Only its G-buffer pixel shaders below are in the scene: the 21 the battle and siege traces drew. Cut out:
-// CUT_OUT_MASKS; the others solid (no discard; a dither, t_dither.x; or a blend mask's test that can't fire: the three walls and
-// terrain blends discard where 1 - mask.w x (1 - fade) or fade x mask.y is below 0, never for a texture's 0-1 values).
-constexpr std::array<twattila::rt_scene::PixelMask, 21> BUILDING_MASKS = {{
+// ash 1B1F50CA). Only its G-buffer pixel shaders below are in the scene: the 26 the battle, siege and campaign traces drew
+// (v58: the campaign's settlements and cliffs, D24616D0, 0.33 M triangles a frame, and 4 from the 2026-10-27 trace; tools\tw\pharaoh\v58\
+// coverage.tsv). Cut out: CUT_OUT_MASKS; the others solid (no discard; a dither, t_dither.x; or a blend mask's test that can't
+// fire: the three walls and terrain blends discard where 1 - mask.w x (1 - fade) or fade x mask.y is below 0, never for a
+// texture's 0-1 values).
+constexpr std::array<twattila::rt_scene::PixelMask, 26> BUILDING_MASKS = {{
     {.pixel_shader = 0x0842DFD4},  // phar_rigid_battle_blendmask_3tex_walls_sett (t_mask_texture.w, can't fire)
     {.pixel_shader = 0x1ABDA979},  // phar_rigid_battle_blendmask_4tex_walls_uv2
     {.pixel_shader = 0x23D56657},  // clutter_default
     {.pixel_shader = 0x246D4945},  // rigid_default_alpha_colorise (t_diffuse.w)
     {.pixel_shader = 0x2B2C6C82},  // rigid_default_colorize (t0 dither)
     {.pixel_shader = 0x3907635C},  // phar_rigid_battle_blendmask_3tex_statue
+    {.pixel_shader = 0x509F97FB},  // phar_rigid_battle_blendmask_3tex_terrain
     {.pixel_shader = 0x538067F6},  // phar_rigid_battle_blendmask_3tex_walls (t_mask_texture.w, can't fire)
     {.pixel_shader = 0x5BB18374},  // phar_rigid_battle_blendmask_2tex_terrain (t_mask_texture.y, can't fire)
     {.pixel_shader = 0x5F579E7F},  // rigid_default (t0 dither)
+    {.pixel_shader = 0x730C5322},  // phar_rigid_battle_1tex (terrain blend)
     {.pixel_shader = 0x7758E0D6},  // rigid_building_default
     {.pixel_shader = 0x81DC17E9},  // phar_rigid_battle_blendmask_3tex_floor_sett
+    {.pixel_shader = 0x85E52BED},  // phar_rigid_battle_blendmask_2tex
     {.pixel_shader = 0x8EFA45A0},  // phar_rigid_battle_blendmask_3tex_uv2_noise_sand
     {.pixel_shader = 0x97572547},  // phar_rigid_battle_blendmask_3tex
     {.pixel_shader = 0xA5A850D3},  // phar_rigid_battle_blendmask_3tex_uv2
+    {.pixel_shader = 0xA6C653E1},  // phar_rigid_building_default_colorise
     {.pixel_shader = 0xAC279A1B},  // phar_rigid_default_alpha (t_diffuse.w)
     {.pixel_shader = 0xB50D4F41},  // phar_rigid_default_alpha_colorize (t_diffuse.w)
     {.pixel_shader = 0xB87E0393},  // rigid_default_alpha (t_diffuse.w)
     {.pixel_shader = 0xC4349867},  // phar_rigid_battle_blendmask_2tex_walls
     {.pixel_shader = 0xC835A077},  // phar_rigid_building_default
+    {.pixel_shader = 0xD24616D0},  // phar_rigid_campaign_blendmask_2tex_terrain (the campaign's settlements, cliffs)
     {.pixel_shader = 0xE25FD05C},  // phar_rigid_battle_blendmask_3tex_sand
     {.pixel_shader = 0xEA4AF236},  // phar_rigid_battle_blendmask_4tex_walls
 }};
 
-// 1ACBD907's alpha-tested materials (sorted): each discards where t_diffuse (t0).w is below 0.5 at TEXCOORD1.xy (the vertex's
-// TEXCOORD0.xy, the VS's o2) without the game's MSAA, the helper's cut-out (LEAF_ALPHA_CUTOFF 0.5); captured with that UV
-// (rt_capture_rigid_default_cut_out). WARP on the game's bytes: tools\tw\warp_tests\pharaoh\cut_out_v52.
-constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
+// 1ACBD907's and 6A599241's alpha-tested materials (sorted): each discards where t_diffuse (t0).w is below 0.5 at TEXCOORD1.xy
+// (the vertex's TEXCOORD0.xy, the VS's o2) without the game's MSAA, the helper's cut-out (LEAF_ALPHA_CUTOFF 0.5); captured with
+// that UV (rt_capture_rigid_default_cut_out, rt_capture_rigid_standard_cut_out). WARP on the game's bytes:
+// tools\tw\warp_tests\pharaoh\cut_out_v52, trees_v58.
+constexpr std::array<twattila::rt_scene::PixelMask, 8> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x246D4945},  // rigid_default_alpha_colorise
+    {.pixel_shader = 0x4B9BDD76},  // fx__rigidstandard gbuffer_alpha_test (6A599241)
+    {.pixel_shader = 0x7550C192},  // rigidambientmapmesh gbuffer_alpha_test (6A599241)
+    {.pixel_shader = 0x81931C18},  // rigidstandard gbuffer_alpha_test_shroud_fizzle_oblique_tris (6A599241)
     {.pixel_shader = 0xAC279A1B},  // phar_rigid_default_alpha
     {.pixel_shader = 0xB50D4F41},  // phar_rigid_default_alpha_colorize
     {.pixel_shader = 0xB87E0393},  // rigid_default_alpha
+    {.pixel_shader = 0xBD6C63DE},  // rigidstandard gbuffer_shroud (6A599241)
 }};
 
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl's sun light draws (standard and skin lighting
@@ -1977,12 +1989,17 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
 // blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
 // shadow there the game's kept baked map.
-constexpr std::array<twattila::rt_scene::SceneShader, 26> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
     {.hash = 0x1ACBD907, .capture_shader = __rt_capture_rigid_default, .cut_out_shader = __rt_capture_rigid_default_cut_out, .clip_cut_outs = true, .pixel_masks = BUILDING_MASKS},
-    {.hash = 0x6A599241, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidambientmapground_6a59},
+    {.hash = 0x6A599241, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidambientmapground_6a59,
+     .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
+    // The campaign's palms and trees (rigidstandard vs40_main_campaign_trees): 6A599241's vertex shader and instance rows, then
+    // an x / z sway of at most 0.12 m x g_wind_vegetation_multiplier (left out: still); B97AD7BC cuts out t0.w x the fade below 0.505.
+    {.hash = 0x1C4B8681, .capture_shader = __rt_capture_rigid_standard_cut_out, .rows_shader = __motion_record_rigid_rigidambientmapground_6a59,
+     .foliage = true, .still = true},
     {.hash = 0x6061911B, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_6061},
     {.hash = 0xCB04CFA7, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_cb04},
     {.hash = 0x513D52B1, .capture_shader = __rt_capture_rigid_vertexpush},

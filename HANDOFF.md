@@ -4,7 +4,7 @@
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
 Bytes under 60 GB before WARP. One writer; read-only surveys beside (tools\tw\pharaoh\v58: scale_census.md, caster_census.md).
 Each step committed and pushed to origin atn-mods.
-- [x] 1 (step 1 commit) WARP tools\tw\warp_tests\pharaoh\ao_v58 (run_v58.txt, PASS): Reflect: 70 of 179 built csos render_scale, 0
+- [x] 1 (4b554a21) WARP tools\tw\warp_tests\pharaoh\ao_v58 (run_v58.txt, PASS): Reflect: 70 of 179 built csos render_scale, 0
   of 3168 game csos; our blurs at 100% 0 of 57,600 values apart (bits) from the game's; at 33% (3x) against 100%: bitmask Full 0
   of 12,464 px beyond 8 px of the edges (2 of 14,400 overall), Half 0 of 14,400; after the blurs 0 / 0 of 12,464 (Full 24 edge px,
   largest 0.027); CONTROLs: cb12 unbound 13,936 apart (top-left ninth 0.467 against 0.173), v53's patched blurs 14,087. The depth
@@ -16,7 +16,7 @@ Each step committed and pushed to origin atn-mods.
   AO viewport = the top-left rectangle). Fix: Reflect takes a code with no RDEF that declares cb12 as render_scale (shared: every
   TW addon's render_scale replacements, the same bug). Second: the AO blurs' REGION read scales the taps too (a third of a texel
   apart at 33%): blurs replaced, base uv x share, taps in texels.
-- [x] 2 (step 2 commit) clouds below 100%: the campaign's clouds (t_shroud_clouds, the shroud's half-size buffer that
+- [x] 2 (f62cbfd8) clouds below 100%: the campaign's clouds (t_shroud_clouds, the shroud's half-size buffer that
   5EB2FDE8 draws at the render scale) were read after DLSS at the display uv (the clouds slid toward the top left): the glow
   bright pass 57E5140E t0 (region slots 0b111, RegionRead::size_slot 1: t1's size says whether the share applies; t0 is a
   1024 x 1024 stand-in in battles) and the six replaced tone mappers t01-t04 / dof00 / dof01 (render_scale.hlsli RenderShareUv:
@@ -31,7 +31,15 @@ Each step committed and pushed to origin atn-mods.
   12,284 apart; all six built tone mappers declare cb12; (G) 99164788 the game's bytes (= v58) 0 bits apart, CONTROL v57 692
   apart; (H) DB53BDDC: visibility 0 apart, sun uv x 3 equal, CONTROL v57 visibility apart. Left (listed, not fixed): 99164788's
   5x5 taps spaced by the buffer's size (a third at 33%: mean 0.025 against v57's 0.052), DB53BDDC's edge fade from the texture uv.
-- [ ] 3 campaign casters (tools\tw\pharaoh\v58\caster_census.md): palms = 1C4B8681 (campaign_trees, not in SCENE_SHADERS;
+- [x] 3 (step 3 commit) done: palms 1C4B8681 in SCENE_SHADERS (rt_capture_rigid_standard_cut_out: 6A599241's world + the UV in
+  w; placed by 6A599241's record, .foliage .still, cut out by t0 at slot 0: B97AD7BC's t0.w x fade < 0.505); 6A599241's
+  alpha-tested PS (4B9BDD76, 7550C192, 81931C18, BD6C63DE) cut out (clip_cut_outs + CUT_OUT_MASKS); BUILDING_MASKS + D24616D0
+  (campaign settlements / cliffs, 0.33 M tris), 509F97FB, 730C5322, 85E52BED, A6C653E1 (all solid: no discard). WARP
+  tools\tw\warp_tests\pharaoh\trees_v58 (run_v58.txt, motion_warp + COMPARE_WIND_MULTIPLIER): wind 0, 1C4B8681 and 6A599241
+  against the UV capture 1.36e-8 (relative), the solid capture 5.2e-8; CONTROL wind 1 (the palms' sway, <= 0.12 m) 8.25e-4 WRONG;
+  6A599241 at wind 1 1.36e-8 (no sway). Not done: 026CBC61 (global terrain, 0.83 M tris: overlap with 377DE0D5's tiles unknown
+  offline), 58733DB8 (campaign drapes on the terrain: coplanar), 35D229C0 / BDC503B1 (terrain shadow VS, depth only: no world to
+  keep out of view), CE5AA8D1 (campaign tree billboards, no shadow-pass draw). The survey: palms = 1C4B8681 (campaign_trees, not in SCENE_SHADERS;
   atlas via DC5FE525 + 985F8494), 1ACBD907 + D24616D0 (and 730C5322 / 509F97FB / 85E52BED / A6C653E1) not in BUILDING_MASKS,
   58733DB8 campaign blend-mask terrain, 026CBC61 global terrain mesh; 6A599241's alpha-tested PS solid.
   Plan A palms: rt_capture_rigid_standard with RT_CAPTURE_UV (RtWorldUv(world, o2.xy)) + rt_capture_rigid_standard_cut_out;
