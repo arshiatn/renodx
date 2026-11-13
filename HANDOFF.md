@@ -13,6 +13,11 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
 - [ ] Rome II trace build (twrome2 test_hooks + frame_trace Options + on-demand marker), folder prep (stamped plain copy,
   helper, no DevKit), data runs S1 bm_battle benchmark 50/67/33/100, S2 Carthage siege 50%, S5 campaign_load Parthia; no
   MSAA (ATN allowed dropping it; set gfx_aa 0 in ATN's Rome II prefs at the final install, backup first).
+  - [x] Trace build 5cbbff5e (twrome2 only): test_hooks + frame_trace Options (on_demand, at_100, the plan's 6 value hashes
+    + units' VS A30C5E0B, vertex inputs A30C5E0B / 0F1FBD46, instances apart); build32 renodx-twrome2.addon32 12:36:28, built
+    only, not stamped / installed / run; page dump before = after (tools/tw/rome2/page). Run tools in tools/tw/rome2:
+    rome2_common.ps1, rome2_data_run.ps1, check_run_rome2.py, prepare_folder_rome2.py (dry by default; none run).
+  - [ ] Stamp the trace addon + helper106 for Rome II, prepare_folder_rome2.py dry then --apply, data runs S1 / S2 / S5.
 - [ ] Water rows RayTracedWaterSoft + RayTracedWaterSteady on by default and in RAYS_PRESET (Attila, WH3, Pharaoh).
 - [ ] Grass round: WH3 indirect read-back without a wait (d1); Attila scrub cell radius clamp (d2) + LOD scaling per model
   (a2); RT grass capture range (Experimental).

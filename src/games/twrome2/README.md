@@ -1,5 +1,11 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Trace build (2026-11-13, for the data run; built only, not run in game)
+
+- **Scripted runs and traces for the bring-up data run, nothing else changed** (5cbbff5e): `RENODX_TW_SET` (keys and button labels), `RENODX_TW_SHOT`, `RENODX_TW_PROFILE` as Attila and Pharaoh (`twattila/test_hooks.hpp`); the frame trace also on demand (`renodx_trace_now` next to the exe) and at 100%, with the constants of the sun draws, tone mapper, water, SSAO resolve, battle fog and units once, and the units' vertex inputs and instance counts at each draw. Page dump before / after: the same rows.
+
+Build: `cmake --build build32 --config Release --target renodx-twrome2.addon32`. Manual check: with `renodx_trace_now` put next to `Rome2.exe` in a battle, `ReShade.log` says "Frame trace: N lines saved to" within a few seconds.
+
 ### Round v45 (2026-11-12, shared code from Attila / Warhammer III; built, not released, not run in game)
 
 - **Bend Screen-Space Shadows: Auto Thickness removed** (ATN: it broke at some angles).
