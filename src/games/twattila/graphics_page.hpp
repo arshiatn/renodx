@@ -226,6 +226,7 @@ struct Bindings {
   bool has_object_motion = false;  // Without the scale rows: Object Motion Vectors still has an effect.
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool foliage_light_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
+  bool smoke_map_tested = true;  // false: the smoke's shadows without rays Experimental, off by default (as foliage_light_tested)
   bool smoke_shadows_tested = true;  // false: the rays' Smoke Shadows Experimental and left out of RT/PT (its default the game's to set)
   bool water_caustics_tested = true;  // false: Water Caustics left out of RT/PT (its default the game's to set)
   bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
@@ -811,8 +812,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Add(new Setting{
           .key = "SmokeShadowMapStrength",
           .binding = b.smoke_strength,
-          .default_value = 1.f,
-          .label = "Smoke Shadows",
+          .default_value = b.smoke_map_tested ? 1.f : 0.f,
+          .label = b.smoke_map_tested ? "Smoke Shadows" : "Smoke Shadows (Experimental)",
           .section = section,
           .tooltip = "Smoke and dust dim the sun on what lies below them. No rays, any GPU. Needs in-game shadows on.\n0: off.",
           .min = 0.f,
