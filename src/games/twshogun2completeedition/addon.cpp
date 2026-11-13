@@ -35,6 +35,7 @@
 #include "../twattila/credits.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twshogun2completeedition_dlss/dlss_jitter.hpp"
+#include "../twshogun2completeedition_dlss/hdr_link.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "./ray_tracing.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -368,8 +369,12 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x962CEB71u, 0xA61D2853u, 0x4355E897u}) {
     custom_shaders[hash].on_draw = render_scale::OnDrawCapture;
   }
+  // Ray tracing's Debug View over the tone mapper's output.
   for (const uint32_t hash : {0xEF060C7Cu, 0xBEDBEFD8u}) {
-    custom_shaders[hash].on_drawn = [](reshade::api::command_list*) { render_scale::Set(1.f, 1.f); };
+    custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
+      render_scale::Set(1.f, 1.f);
+      if (ray_tracing_installed) twshogun2::ray_tracing::OnTonemapDrawn(cmd_list);
+    };
   }
   // The heat haze's distortion texture was drawn with DLSS's jitter (tonemap01 reads it there).
   custom_shaders[0xBEDBEFD8].on_draw = [](reshade::api::command_list*) {
@@ -907,15 +912,6 @@ void BuildRuntimeData() {
 }
 
 
-// Light Bounce (twattila/light_bounce.hpp): the sun light draws (sunlight00-03, replaced here), with the camera at b0
-// and the G-buffer (normal, colour, constants, depth) from their first slot.
-constexpr std::array<twattila::light_bounce::SunDraw, 4> LIGHT_BOUNCE_DRAWS = {{
-    {.shader_hash = 0xED1BED93, .standard = true, .gbuffer_slot = 7},
-    {.shader_hash = 0x5496DE73, .standard = true, .gbuffer_slot = 7},
-    {.shader_hash = 0xC3E0E939, .standard = true, .gbuffer_slot = 9},
-    {.shader_hash = 0xD5FDDE8F, .standard = true, .gbuffer_slot = 9},
-}};
-
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
@@ -970,24 +966,46 @@ void ReadDlssAddonOptions() {
   read_choice("LightBounceCheckerboard", 1, 2, &shader_injection.light_bounce_checkerboard);
   read_choice("LightBounceBackFace", 0, 2, &shader_injection.light_bounce_backface);
   read_choice("LightBounceAutoThickness", 1, 2, &shader_injection.light_bounce_auto_thickness);
+  // Ray tracing (the DLSS addon's Ray Tracing section; Attila's keys and ranges where it has the row).
   auto& ray_tracing = ray_tracing_settings;
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedSunShadows", ray_tracing.sun_shadows);
+  const auto read_on = [](const char* key, bool default_value) {
+    int value = default_value ? 1 : 0;
+    reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+    return value != 0;
+  };
+  const auto read_count = [](const char* key, int default_value, int min, int max) {
+    int value = default_value;
+    reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+    return static_cast<uint32_t>(std::clamp(value, min, max));
+  };
+  ray_tracing.sun_shadows = read_on("RayTracedSunShadows", false);
   read_float("RayTracedShadowSoftness", 0.5f, 0.f, 3.f, &ray_tracing.sun_softness);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLeafLight", ray_tracing.leaf_light);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAmbientOcclusion", ray_tracing.ambient_occlusion);
+  ray_tracing.leaf_light = read_on("RayTracedLeafLight", false);
+  ray_tracing.ambient_occlusion = read_on("RayTracedAmbientOcclusion", false);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedAOQuarter", ray_tracing.ambient_quarter);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedReflections", ray_tracing.reflections);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLocalLights", ray_tracing.local_lights);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedReflectionSamples", ray_tracing.reflection_samples);
-  ray_tracing.reflection_samples = std::clamp(ray_tracing.reflection_samples, 1u, 8u);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounce", ray_tracing.light_bounce);
+  ray_tracing.ambient_rays = read_count("RayTracedAORays", 2, 1, 8);
+  ray_tracing.ambient_quarter = read_on("RayTracedAOQuarter", false);
+  ray_tracing.reflections = read_on("RayTracedReflections", false);
+  ray_tracing.reflection_samples = read_count("RayTracedReflectionSamples", 1, 1, 8);
+  ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
+  // Torch and Fire Shadow Lights: 32, 64, 128.
+  ray_tracing.light_count = twattila::dlaa_bridge::RT_MAX_LIGHTS << read_count("RayTracedLightCount", 0, 0, 2);
+  ray_tracing.light_importance = read_on("RayTracedLightImportance", false);
+  ray_tracing.light_steady = read_on("RayTracedLightSteady", false);
+  read_float("RayTracedLightRange", 0.f, 0.f, 500.f, &ray_tracing.light_range);
+  ray_tracing.light_bounce = read_on("RayTracedLightBounce", false);
   read_float("RayTracedLightBounceRange", 10.f, 1.f, 50.f, &ray_tracing.light_bounce_range);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedLightBounceRays", ray_tracing.light_bounce_rays);
-  ray_tracing.light_bounce_rays = std::clamp(ray_tracing.light_bounce_rays, 1u, 16u);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "PathTracing", ray_tracing.path_tracing);
-  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "PathTracingBounces", ray_tracing.path_bounces);
-  ray_tracing.path_bounces = std::clamp(ray_tracing.path_bounces, 1u, 4u);
+  ray_tracing.light_bounce_rays = read_count("RayTracedLightBounceRays", 4, 1, 16);
+  read_choice("RayTracedLightBounceResolution", 1, 3, &ray_tracing.light_bounce_resolution);
+  ray_tracing.path_tracing = read_on("PathTracing", false);
+  // 3 and 4 measured as 2 in Attila (twattila/rt_scene.hpp SettingsOf): the key's older values taken as 2.
+  ray_tracing.path_bounces = read_count("PathTracingBounces", 2, 1, 2);
+  ray_tracing.micromaps = read_on("RayTracedLeafMicromaps", false);
+  ray_tracing.gpu_micromaps = read_on("RayTracedGpuMicromaps", true);
+  ray_tracing.fast_leaves = read_on("RayTracedFastLeafShadows", false);
+  ray_tracing.debug_view = read_count("RayTracedDebugView", 0, 0, 9);
+  ray_tracing.scene_test = (ray_tracing.debug_view != 0) ? read_count("RayTracedSceneTest", 0, 0, 4) : 0u;
+  ray_tracing.debug_log = read_on("RayTracedDebugLog", false);
 }
 
 std::atomic_bool overlay_open = false;
@@ -1006,7 +1024,11 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     ReadDlssAddonOptions();
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  if (ray_tracing_installed) twshogun2::ray_tracing::Update(ray_tracing_settings);
+  if (ray_tracing_installed) {
+    twattila::light_bounce::SetRayTraced(ray_tracing_settings.light_bounce, ray_tracing_settings.light_bounce_resolution);
+    twshogun2::ray_tracing::Update(ray_tracing_settings);
+    if (twshogun2::hdr_link::TakeProfileRequest()) twattila::rt_scene::StartProfile();
+  }
   reflection_passes = false;
   twshogun2::vfx_effects::OnPresent();
   static uint32_t shadow_frame = 0;
@@ -1189,6 +1211,7 @@ bool AttachAddon() {
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   twshogun2::dlss_jitter::Use(DLL_PROCESS_ATTACH);
+  twshogun2::hdr_link::Use(DLL_PROCESS_ATTACH);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
@@ -1208,7 +1231,8 @@ bool AttachAddon() {
       shader_injection.sun_shadow_softness, (ray_tracing_installed ? "installed" : "not installed"),
       ray_tracing_settings.sun_shadows, ray_tracing_settings.ambient_occlusion, ray_tracing_settings.light_bounce,
       ray_tracing_settings.reflections, ray_tracing_settings.local_lights, ray_tracing_settings.path_tracing));
-  twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Bounce (twattila/light_bounce.hpp): the sun light draws (ray_tracing.hpp's, replaced here).
+  twattila::light_bounce::Install(twshogun2::ray_tracing::SUN_DRAWS);
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   twattila::device_loss::InstallLast();
@@ -1242,6 +1266,7 @@ void DetachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
   twshogun2::dlss_jitter::Use(DLL_PROCESS_DETACH);
+  twshogun2::hdr_link::Use(DLL_PROCESS_DETACH);
 
   attached = false;
 }

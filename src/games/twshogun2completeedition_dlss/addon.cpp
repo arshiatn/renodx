@@ -16,6 +16,7 @@
 #include <format>
 #include <ranges>
 #include <shared_mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,6 +30,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/state.hpp"
 #include "./dlss_jitter.hpp"
+#include "./hdr_link.hpp"
 #include "./frame_trace.hpp"
 #include "./game_dlss.hpp"
 #include "./grass_distance.hpp"
@@ -835,31 +837,49 @@ void OnOverlay(reshade::api::effect_runtime*) {
   if (gi_changed) save_gi();
   heading("Ray Tracing (Experimental, restart after turning on)", RT_COLOR);
   {
-    // ReShade.ini [Shogun 2 DLSS] RayTraced* / PathTracing*: the HDR addon's ray tracing (its ray_tracing.hpp).
-    const auto checkbox = [](const char* label, const char* key, const char* tooltip) {
+    // ReShade.ini [Shogun 2 DLSS] RayTraced* / RayTracing* / PathTracing*: the HDR addon's ray tracing (its
+    // ray_tracing.hpp, twattila/rt_scene.hpp's rows; Attila's keys).
+    const auto tooltip_of = [](const char* tooltip) {
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+    };
+    const auto checkbox = [&](const char* label, const char* key, const char* tooltip) {
       bool value = false;
       reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
       if (ImGui::Checkbox(label, &value)) reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+      tooltip_of(tooltip);
       return value;
     };
-    const auto slider = [](const char* label, const char* key, float default_value, float min, float max, const char* format,
-                           const char* tooltip) {
+    const auto slider = [&](const char* label, const char* key, float default_value, float min, float max, const char* format,
+                            const char* tooltip) {
       float value = default_value;
       reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
       if (ImGui::SliderFloat(label, &value, min, max, format, ImGuiSliderFlags_AlwaysClamp)) {
         reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
       }
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+      tooltip_of(tooltip);
     };
-    const auto count = [](const char* label, const char* key, int default_value, int max, const char* tooltip) {
+    const auto count = [&](const char* label, const char* key, int default_value, int max, const char* tooltip) {
       int value = default_value;
       reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
       if (ImGui::SliderInt(label, &value, 1, max, "%d", ImGuiSliderFlags_AlwaysClamp)) {
         reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
       }
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+      tooltip_of(tooltip);
     };
+    // A slider over named choices (0 the first); its value.
+    const auto choice = [&](const char* label, const char* key, int default_value, std::span<const char* const> names,
+                            const char* tooltip) {
+      int value = default_value;
+      reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      value = std::clamp(value, 0, static_cast<int>(names.size()) - 1);
+      if (ImGui::SliderInt(label, &value, 0, static_cast<int>(names.size()) - 1, names[value],
+                           ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+        reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      }
+      tooltip_of(tooltip);
+      return value;
+    };
+    constexpr std::array<const char*, 2> OFF_ON_NAMES = {"Off", "On"};
     ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addons.");
     const bool sun_shadows = checkbox("Ray-traced sun shadows", "RayTracedSunShadows",
                                       "Sun shadows from rays, with the game's: also where its shadow maps miss things or end.\n"
@@ -874,12 +894,27 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                   "Faster: the game's SSAO off, the rays then alone.");
     ImGui::BeginDisabled(!ambient);
     slider("Ray-traced AO range", "RayTracedAmbientRange", 2.f, 0.25f, 5.f, "%.2f m", "How far its rays look for what shades a point.");
+    count("Ray-traced AO rays", "RayTracedAORays", 2, 8, "More rays: less noise. Heavier.");
     checkbox("Ray-traced AO at a quarter rate", "RayTracedAOQuarter",
              "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
     ImGui::EndDisabled();
-    checkbox("Ray-traced point light shadows", "RayTracedLocalLights",
-             "Shadows from rays for the nearest, brightest point lights (fires, torches): what stands between them and the\n"
-             "ground or walls shades them.");
+    const bool local_lights = checkbox("Ray-traced point light shadows", "RayTracedLocalLights",
+                                       "Shadows from rays for the nearest, brightest point lights (fires, torches): what stands between them and the\n"
+                                       "ground or walls shades them.");
+    ImGui::BeginDisabled(!local_lights);
+    constexpr std::array<const char*, 3> LIGHT_COUNTS = {"32", "64", "128"};
+    choice("Torch and fire shadow lights (Experimental)", "RayTracedLightCount", 0, LIGHT_COUNTS,
+           "How many torches and fires cast ray-traced shadows, the nearest and brightest first.\n"
+           "Each spot of the screen traces the 32 that light it most. More: heavier in big fires.");
+    choice("Importance-sampled torch shadows (Experimental)", "RayTracedLightImportance", 0, OFF_ON_NAMES,
+           "Two torch / fire shadow rays a pixel, picked by how much light they give:\n"
+           "faster with many fires; dim fires' shadows follow moving units slower.");
+    choice("Steady torch shadows (Experimental)", "RayTracedLightSteady", 0, OFF_ON_NAMES,
+           "Torch and fire shadows that don't flicker: every fire traced every frame, with sharp edges.\n"
+           "Heavier with many fires. Overrides Importance-sampled torch shadows.");
+    slider("Torch and fire shadow range (Experimental)", "RayTracedLightRange", 0.f, 0.f, 500.f, "%.0f m",
+           "Only torches and fires this close to the camera cast ray-traced shadows. 0 m: any distance.");
+    ImGui::EndDisabled();
     const bool reflections = checkbox("Ray-traced reflections", "RayTracedReflections",
                                       "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
                                       "Needs the game's screen-space reflections on.");
@@ -892,14 +927,68 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::BeginDisabled(!bounce);
     count("Ray-traced GI rays", "RayTracedLightBounceRays", 4, 16, "Rays per texel: less noise, heavier.");
     slider("Ray-traced GI range", "RayTracedLightBounceRange", 10.f, 1.f, 50.f, "%.0f m", "How far its rays look for light.");
+    constexpr std::array<const char*, 3> RESOLUTIONS = {"Full", "Half", "Quarter"};
+    choice("Ray-traced GI resolution", "RayTracedLightBounceResolution", 1, RESOLUTIONS,
+           "Its own resolution (the Global Illumination's Resolution and Checkerboard no longer apply to it).\n"
+           "Full: sharpest, about 4x Half's cost.");
     ImGui::EndDisabled();
     ImGui::BeginDisabled(!bounce && !reflections);
     const bool path_tracing = checkbox("Path tracing", "PathTracing",
                                        "The Global Illumination's and the reflections' rays go on bouncing: lit by what the screen never saw. Heavy.");
     ImGui::BeginDisabled(!path_tracing);
-    count("Path tracing bounces", "PathTracingBounces", 2, 4, "Bounces past the first. More: brighter shade, heavier.");
+    count("Path tracing bounces", "PathTracingBounces", 2, 2, "Bounces past the first where the camera sees nothing. 1: faster, a little darker.");
     ImGui::EndDisabled();
     ImGui::EndDisabled();
+    if (sun_shadows || ambient || local_lights || reflections || bounce) {
+      const bool micromaps = choice("Leaf micromaps (Experimental)", "RayTracedLeafMicromaps", 0, OFF_ON_NAMES,
+                                    "Faster ray-traced shadows through leaves: their cut-outs are baked once (NVIDIA Opacity Micro-Map SDK).") != 0;
+      ImGui::BeginDisabled(!micromaps);
+      choice("GPU micromap baking", "RayTracedGpuMicromaps", 1, OFF_ON_NAMES,
+             "Leaf micromaps baked on the GPU instead of CPU threads:\n"
+             "frees the CPU, and new grass's and leaves' shadows settle sooner.");
+      choice("Fast leaf shadows (Experimental)", "RayTracedFastLeafShadows", 0, OFF_ON_NAMES,
+             "Leaves and grass with Leaf micromaps skip their alpha tests:\n"
+             "faster shadows under trees and in fields, but coarser and darker.");
+      ImGui::EndDisabled();
+      choice("Log details", "RayTracedDebugLog", 0, OFF_ON_NAMES,
+             "Ray tracing's numbers in the logs every 10 s, for bug reports. Off: nothing of this runs.");
+      // rt_scene's Debug View values (Off, its effects, All; the others: nothing here makes them).
+      struct DebugView {
+        int value;
+        const char* label;
+      };
+      constexpr std::array<DebugView, 7> DEBUG_VIEWS = {{
+          {.value = 0, .label = "Off"},
+          {.value = 1, .label = "Sun Shadows"},
+          {.value = 2, .label = "Ambient Occlusion"},
+          {.value = 3, .label = "Global Illumination"},
+          {.value = 4, .label = "Reflections"},
+          {.value = 6, .label = "Point Light Shadows"},
+          {.value = 9, .label = "All"},
+      }};
+      int debug_view = 0;
+      reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedDebugView", debug_view);
+      const auto shown = std::ranges::find(DEBUG_VIEWS, debug_view, &DebugView::value);
+      if (ImGui::BeginCombo("Ray tracing debug view", (shown != DEBUG_VIEWS.end() ? shown->label : DEBUG_VIEWS[0].label))) {
+        for (const auto& view : DEBUG_VIEWS) {
+          if (ImGui::Selectable(view.label, view.value == debug_view)) {
+            reshade::set_config_value(nullptr, "Shogun 2 DLSS", "RayTracedDebugView", view.value);
+          }
+        }
+        ImGui::EndCombo();
+      }
+      tooltip_of("A ray-traced effect's raw result as the picture (All: every one tiled), to check they work.\n"
+                 "Magenta: it made nothing (off or not traced).");
+      if (debug_view != 0) {
+        constexpr std::array<const char*, 5> SCENE_TESTS = {"Everything", "Terrain Only", "Objects and Trees Only", "No Leaves",
+                                                            "Nothing Kept Off-Screen"};
+        choice("Ray tracing scene (test)", "RayTracedSceneTest", 0, SCENE_TESTS,
+               "While the Debug View is on: one part of the scene alone, to find what breaks an effect.");
+      }
+      if (ImGui::Button("Record ray tracing profile (30 s)")) twshogun2::hdr_link::RequestProfile();
+      tooltip_of("30 s of every frame's ray tracing costs into tw_rt_profile.csv and tw_rt_profile_helper.csv\n"
+                 "(next to the game's exe). Turn the effects on, press, then move the camera over the map.");
+    }
   }
   heading("About", OTHER_COLOR);
   auto link_button = [](const char* label, ImU32 color, ImU32 hovered, ImU32 active, const char* url) {
@@ -1153,6 +1242,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
   twshogun2::dlss_jitter::Use(DLL_PROCESS_ATTACH);
+  twshogun2::hdr_link::Use(DLL_PROCESS_ATTACH);
   attached = true;
   return true;
 }
@@ -1165,6 +1255,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     twshogun2::dlss_jitter::Use(DLL_PROCESS_DETACH);
+    twshogun2::hdr_link::Use(DLL_PROCESS_DETACH);
     reshade::unregister_overlay("Shogun 2 DLSS", OnOverlay);
     reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
     reshade::unregister_event<reshade::addon_event::present>(OnPresent);
