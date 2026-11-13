@@ -1140,9 +1140,7 @@ bool graphics_hooks_installed = false;
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
 // pass (whose replacement is the game's code only).
-constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 2> AO_DRAWS = {{
-    {.shader_hash = 0x37F7EDEF, .bitmask = __ao_bitmask00, .upsample = __ao_upsample00, .resolve = __ao_resolve00,
-     .denoise = __ao_denoise00},  // ssao00
+constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
     {.shader_hash = 0x1ED22F9C, .bitmask = __ao_bitmask01, .upsample = __ao_upsample01, .resolve = __ao_resolve01,
      .denoise = __ao_denoise01},  // ssao01
 }};
@@ -1161,7 +1159,7 @@ constexpr std::array<twattila::frame_history::CameraRun, 6> CAMERA_LAYOUT = {{
 // DLAA / DLSS object motion (twattila/anti_aliasing.hpp, as Attila's): the game's shaders whose things move on
 // their own and their motion versions (tools\tw\attila_motion\port_motion.py, GPU-checked by test_motion.py).
 using twattila::anti_aliasing::MotionKind;
-constexpr std::array<twattila::anti_aliasing::MotionShader, 57> MOTION_SHADERS = {{
+constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS = {{
     {.hash = 0xD4D9A7CE, .motion_shader = __motion_grass00},
     {.hash = 0x239E12B0, .motion_shader = __motion_grass01},
     {.hash = 0x69FCD0B3, .motion_shader = __motion_grass_sm41},
@@ -1169,32 +1167,22 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 57> MOTION_SHADERS =
     {.hash = 0x2D15A993, .motion_shader = __motion_grass_plant_sm5},
     {.hash = 0x5AB72F3F, .motion_shader = __motion_grass_lq},
     {.hash = 0x41FE62A8, .motion_shader = __motion_leaf_sm3_a},
-    {.hash = 0x6068EF7C, .motion_shader = __motion_leaf_sm3_b},
     {.hash = 0x0DEC7CAB, .motion_shader = __motion_leaf_sm41_a},
-    {.hash = 0x596E4344, .motion_shader = __motion_leaf_sm41_b},
     {.hash = 0xC36E2C1C, .motion_shader = __motion_leaf_sm5_a},
-    {.hash = 0xEAD07716, .motion_shader = __motion_leaf_sm5_b},
     {.hash = 0x929D693E, .motion_shader = __motion_leaf_lq},
     {.hash = 0x3333EFDC, .motion_shader = __motion_branch_sm3_a},
-    {.hash = 0x3F230BAF, .motion_shader = __motion_branch_sm3_b},
-    {.hash = 0xA3A25A53, .motion_shader = __motion_branch_sm41_a},
     {.hash = 0xEFCA94BC, .motion_shader = __motion_branch_sm41_b},
     {.hash = 0x7932D95F, .motion_shader = __motion_branch_lq},
-    {.hash = 0x80218329, .motion_shader = __motion_unit_sm3_a, .kind = MotionKind::UNIT},
     {.hash = 0xA30C5E0B, .motion_shader = __motion_unit_sm3_b, .kind = MotionKind::UNIT},
     {.hash = 0x0F1FBD46, .motion_shader = __motion_unit_4_bones_sm3_a, .kind = MotionKind::UNIT},
-    {.hash = 0xEBF055A9, .motion_shader = __motion_unit_4_bones_sm3_b, .kind = MotionKind::UNIT},
     {.hash = 0x1675B565, .motion_shader = __motion_unit_dismember_sm3, .kind = MotionKind::UNIT},
     {.hash = 0x9E564D81, .motion_shader = __motion_unit_4_bones_dismember_sm3, .kind = MotionKind::UNIT},
-    {.hash = 0x4AA6E3C2, .motion_shader = __motion_unit_sm41_a, .kind = MotionKind::UNIT},
     {.hash = 0xA3550981, .motion_shader = __motion_unit_sm41_b, .kind = MotionKind::UNIT},
     {.hash = 0x1CD702E3, .motion_shader = __motion_unit_4_bones_sm41_a, .kind = MotionKind::UNIT},
-    {.hash = 0x9AA6B78B, .motion_shader = __motion_unit_4_bones_sm41_b, .kind = MotionKind::UNIT},
     {.hash = 0x63DB20CA, .motion_shader = __motion_unit_dismember_sm41, .kind = MotionKind::UNIT},
     {.hash = 0xF2990459, .motion_shader = __motion_unit_4_bones_dismember_sm41, .kind = MotionKind::UNIT},
     {.hash = 0x59431BB2, .motion_shader = __motion_rigid_sm3_a, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_sm3_a},
     {.hash = 0x658FEA51, .motion_shader = __motion_rigid_sm3_b, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_sm3_b},
-    {.hash = 0x19DE7EC1, .motion_shader = __motion_rigid_sm41_a, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_sm41_a},
     {.hash = 0xF343950E, .motion_shader = __motion_rigid_sm41_b, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_sm41_b},
     {.hash = 0x3E086AFB, .motion_shader = __motion_rigid_lq, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_lq},
     {.hash = 0x54FB9355, .motion_shader = __motion_rigid_blend_sm3_a, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_blend_sm3_a},
@@ -1203,69 +1191,45 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 57> MOTION_SHADERS =
     {.hash = 0xB08CD963, .motion_shader = __motion_rigid_blend_wind_sm3_b, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_blend_wind_sm3_b},
     {.hash = 0x5E27F261, .motion_shader = __motion_oldocean_a},
     {.hash = 0xF5D2B072, .motion_shader = __motion_oldocean_b},
-    {.hash = 0x83529C7D, .motion_shader = __motion_cloth_sm3_a, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm3_a},
     {.hash = 0x997A7119, .motion_shader = __motion_cloth_sm3_b, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm3_b},
     {.hash = 0x438E2D53, .motion_shader = __motion_sail_sm3_a, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sm3_a},
-    {.hash = 0xB55408B1, .motion_shader = __motion_sail_sm3_b, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sm3_b},
     {.hash = 0x2C98F649, .motion_shader = __motion_sail_symbol_sm3_a, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_symbol_sm3_a},
-    {.hash = 0x49AEBBAE, .motion_shader = __motion_sail_symbol_sm3_b, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_symbol_sm3_b},
     {.hash = 0x4F90C2B5, .motion_shader = __motion_rope_sm3_a, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_rope_sm3_a},
-    {.hash = 0xB2E7696A, .motion_shader = __motion_rope_sm3_b, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_rope_sm3_b},
     {.hash = 0x305E3F04, .motion_shader = __motion_ocean_deep_a, .kind = MotionKind::HISTORY, .history_textures = 0b10},
-    {.hash = 0x753C0992, .motion_shader = __motion_ocean_deep_b, .kind = MotionKind::HISTORY, .history_textures = 0b10},
-    {.hash = 0x15C3A7A7, .motion_shader = __motion_ocean_shallow_sm3_a, .kind = MotionKind::HISTORY, .history_textures = 0b1010},
     {.hash = 0xC9C8E179, .motion_shader = __motion_ocean_shallow_sm3_b, .kind = MotionKind::HISTORY, .history_textures = 0b1010},
     {.hash = 0x39FAADBB, .motion_shader = __motion_ocean_shallow_sm4_a, .kind = MotionKind::HISTORY, .history_textures = 0b1010},
-    {.hash = 0x7A965CD2, .motion_shader = __motion_ocean_shallow_sm4_b, .kind = MotionKind::HISTORY, .history_textures = 0b1010},
     {.hash = 0x00C16C03, .motion_shader = __motion_ocean_coast_a, .kind = MotionKind::HISTORY, .history_textures = 0b101010},
-    {.hash = 0x96708823, .motion_shader = __motion_ocean_coast_b, .kind = MotionKind::HISTORY, .history_textures = 0b101010},
 }};
 
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
 // skinlm, every shadow method, with the camera at b0 and the G-buffer at t0-t3.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (old and custom
-// geom, shader models 3 and 4.1), rigid objects, tree branches and leaves and units (Rome II's own; two builds of most),
-// and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 51> SCENE_SHADERS = {{
+// geom, shader models 3 and 4.1), rigid objects, tree branches and leaves and units (Rome II's own:
+// data_rome2.pack's builds), and their capture versions (world positions; leaves also UVs).
+constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
-    {.hash = 0xF943302D, .capture_shader = __rt_capture_terrain_old_sm41_b, .terrain = true},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
-    {.hash = 0x6910DDFA, .capture_shader = __rt_capture_terrain_old_sm3_b, .terrain = true},
-    {.hash = 0x4F05ECDD, .capture_shader = __rt_capture_terrain_custom_material_sm3_a, .terrain = true},
     {.hash = 0xD8475AB1, .capture_shader = __rt_capture_terrain_custom_material_sm3_b, .terrain = true},
-    {.hash = 0x562E1161, .capture_shader = __rt_capture_terrain_custom_material_sm41_a, .terrain = true},
     {.hash = 0x5B7D7DF3, .capture_shader = __rt_capture_terrain_custom_material_sm41_b, .terrain = true},
-    {.hash = 0x393D90BA, .capture_shader = __rt_capture_terrain_custom_sm41_a, .terrain = true},
     {.hash = 0x50FD2645, .capture_shader = __rt_capture_terrain_custom_sm41_b, .terrain = true},
     {.hash = 0x1E4E269B, .capture_shader = __rt_capture_terrain_custom_sm3_a, .terrain = true},
-    {.hash = 0xC57FB4B0, .capture_shader = __rt_capture_terrain_custom_sm3_b, .terrain = true},
     {.hash = 0x41FE62A8, .capture_shader = __rt_capture_leaf_sm3_a, .foliage = true},
-    {.hash = 0x6068EF7C, .capture_shader = __rt_capture_leaf_sm3_b, .foliage = true},
     {.hash = 0x0DEC7CAB, .capture_shader = __rt_capture_leaf_sm41_a, .foliage = true},
-    {.hash = 0x596E4344, .capture_shader = __rt_capture_leaf_sm41_b, .foliage = true},
     {.hash = 0xC36E2C1C, .capture_shader = __rt_capture_leaf_sm5_a, .foliage = true},
-    {.hash = 0xEAD07716, .capture_shader = __rt_capture_leaf_sm5_b, .foliage = true},
     {.hash = 0x929D693E, .capture_shader = __rt_capture_leaf_lq, .foliage = true},
     {.hash = 0x3333EFDC, .capture_shader = __rt_capture_branch_sm3_a},
-    {.hash = 0x3F230BAF, .capture_shader = __rt_capture_branch_sm3_b},
-    {.hash = 0xA3A25A53, .capture_shader = __rt_capture_branch_sm41_a},
     {.hash = 0xEFCA94BC, .capture_shader = __rt_capture_branch_sm41_b},
     {.hash = 0x7932D95F, .capture_shader = __rt_capture_branch_lq},
-    {.hash = 0x80218329, .capture_shader = __rt_capture_unit_sm3_a, .dynamic = true},
     {.hash = 0xA30C5E0B, .capture_shader = __rt_capture_unit_sm3_b, .dynamic = true},
     {.hash = 0x0F1FBD46, .capture_shader = __rt_capture_unit_4_bones_sm3_a, .dynamic = true},
-    {.hash = 0xEBF055A9, .capture_shader = __rt_capture_unit_4_bones_sm3_b, .dynamic = true},
     {.hash = 0x1675B565, .capture_shader = __rt_capture_unit_dismember_sm3, .dynamic = true},
     {.hash = 0x9E564D81, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .dynamic = true},
-    {.hash = 0x4AA6E3C2, .capture_shader = __rt_capture_unit_sm41_a, .dynamic = true},
     {.hash = 0xA3550981, .capture_shader = __rt_capture_unit_sm41_b, .dynamic = true},
     {.hash = 0x1CD702E3, .capture_shader = __rt_capture_unit_4_bones_sm41_a, .dynamic = true},
-    {.hash = 0x9AA6B78B, .capture_shader = __rt_capture_unit_4_bones_sm41_b, .dynamic = true},
     {.hash = 0x63DB20CA, .capture_shader = __rt_capture_unit_dismember_sm41, .dynamic = true},
     {.hash = 0xF2990459, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .dynamic = true},
     {.hash = 0x59431BB2, .capture_shader = __rt_capture_rigid_sm3_a, .rows_shader = __motion_record_rigid_sm3_a},
     {.hash = 0x658FEA51, .capture_shader = __rt_capture_rigid_sm3_b, .rows_shader = __motion_record_rigid_sm3_b},
-    {.hash = 0x19DE7EC1, .capture_shader = __rt_capture_rigid_sm41_a, .rows_shader = __motion_record_rigid_sm41_a},
     {.hash = 0xF343950E, .capture_shader = __rt_capture_rigid_sm41_b, .rows_shader = __motion_record_rigid_sm41_b},
     {.hash = 0x3E086AFB, .capture_shader = __rt_capture_rigid_lq, .rows_shader = __motion_record_rigid_lq},
     {.hash = 0x54FB9355, .capture_shader = __rt_capture_rigid_blend_sm3_a, .rows_shader = __motion_record_rigid_blend_sm3_a},
@@ -1281,28 +1245,21 @@ constexpr std::array<twattila::rt_scene::SceneShader, 51> SCENE_SHADERS = {{
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
-// half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES; two builds of each).
-constexpr std::array<twattila::view_share::RegionRead, 9> RENDER_SCALE_READS = {{
-    {.shader_hash = 0xAD818F92, .slots = 0b1},  // luma / bloom downsample
-    {.shader_hash = 0x9528B919, .slots = 0b11, .whole = true},  // AO blur_x
-    {.shader_hash = 0x41894C1F, .slots = 0b11, .whole = true},
-    {.shader_hash = 0x0DA9C7B2, .slots = 0b10, .whole = true},  // AO blur_y
-    {.shader_hash = 0x7DDD84A3, .slots = 0b10, .whole = true},
-    {.shader_hash = 0xAF849181, .slots = 0b11, .whole = true},  // water refraction (3 channels)
-    {.shader_hash = 0x2A3297C6, .slots = 0b11, .whole = true},
-    {.shader_hash = 0xD9BA49FA, .slots = 0b1, .whole = true},  // water refraction (4 channels)
-    {.shader_hash = 0x024D3FCB, .slots = 0b1, .whole = true},
+// half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
+constexpr std::array<twattila::view_share::RegionRead, 5> RENDER_SCALE_READS = {{
+    {.shader_hash = 0xAD818F92, .slots = 0b1},                  // luma / bloom downsample
+    {.shader_hash = 0x41894C1F, .slots = 0b11, .whole = true},  // AO blur_x
+    {.shader_hash = 0x7DDD84A3, .slots = 0b10, .whole = true},  // AO blur_y
+    {.shader_hash = 0x2A3297C6, .slots = 0b11, .whole = true},  // water refraction (3 channels)
+    {.shader_hash = 0x024D3FCB, .slots = 0b1, .whole = true},   // water refraction (4 channels)
 }};
 
-constexpr std::array<twattila::light_bounce::SunDraw, 56> LIGHT_BOUNCE_DRAWS = {{
+constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x0AF04E16, .standard = true, .sun_direction = 0},
     {.shader_hash = 0x2D77EEF9, .standard = true, .lighting_slot = 1, .sun_direction = 0},
-    {.shader_hash = 0x2E65E200, .standard = true, .lighting_slot = 1, .sun_direction = 0, .camera_layout = CAMERA_LAYOUT},
     {.shader_hash = 0x340CBE9D, .standard = true, .sun_direction = 0},
-    {.shader_hash = 0x4315F62E, .standard = true, .lighting_slot = 1, .sun_direction = 0, .camera_layout = CAMERA_LAYOUT},
     {.shader_hash = 0x4C4B1D0F, .standard = true, .sun_direction = 0},
     {.shader_hash = 0x4CA464D1, .standard = true, .sun_direction = 0},
-    {.shader_hash = 0x517EAB56, .standard = true, .lighting_slot = 1, .sun_direction = 0, .camera_layout = CAMERA_LAYOUT},
     {.shader_hash = 0x57E876C4, .standard = true, .sun_direction = 0},
     {.shader_hash = 0x6B22774C, .standard = true, .sun_direction = 0},
     {.shader_hash = 0x6FC5ECEA, .standard = true, .sun_direction = 0},
@@ -1312,7 +1269,6 @@ constexpr std::array<twattila::light_bounce::SunDraw, 56> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0x820C7A2D, .standard = true, .lighting_slot = 1, .sun_direction = 0},
     {.shader_hash = 0x9DECD766, .standard = true, .lighting_slot = 1, .sun_direction = 0},
     {.shader_hash = 0xBA46D003, .standard = true, .sun_direction = 0},
-    {.shader_hash = 0xDB43997E, .standard = true, .lighting_slot = 1, .sun_direction = 0, .camera_layout = CAMERA_LAYOUT},
     {.shader_hash = 0x091A8FCC, .sun_direction = 0},
     {.shader_hash = 0x1A0532C0, .sun_direction = 0},
     {.shader_hash = 0x1B6DC4CE, .sun_direction = 0},
@@ -1320,11 +1276,9 @@ constexpr std::array<twattila::light_bounce::SunDraw, 56> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0x55568999, .sun_direction = 0},
     {.shader_hash = 0x56DCF011, .sun_direction = 0},
     {.shader_hash = 0x62AC2F63, .sun_direction = 0},
-    {.shader_hash = 0x6705EE73, .lighting_slot = 1, .sun_direction = 0, .camera_layout = CAMERA_LAYOUT},
     {.shader_hash = 0x6DD888D9, .lighting_slot = 1, .sun_direction = 0},
     {.shader_hash = 0x86DAA88A, .sun_direction = 0},
     {.shader_hash = 0xB2616A57, .lighting_slot = 1, .sun_direction = 0},
-    {.shader_hash = 0xE13CD7F1, .lighting_slot = 1, .sun_direction = 0, .camera_layout = CAMERA_LAYOUT},
     {.shader_hash = 0xFB3FC293, .sun_direction = 0},
     {.shader_hash = 0xFC564308, .sun_direction = 0},
     // The game's MSAA (*_ms; its G-buffer multisampled, the camera as the others').
