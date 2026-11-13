@@ -1,5 +1,29 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## ATN'S 2026-11-13 BATCH (day: ATN out ~11:00-19:00; agent runs allowed while ATN isn't playing)
+Order (ATN): Pharaoh v58 -> grass CPU -> open items -> skill -> Rome II plan -> Rome II. Added by ATN: water Soft + Steady
+rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mirror: memory project_rome2_batch.md.
+- [x] Pharaoh v58 (4b554a21 .. 7a4a244c) rebuilt at HEAD 12:02-12:04 (the 11:3x builds predated 61923316's sway fix;
+  helper106 rebuilt after 654901d2), STAMPED + INSTALLED 12:05 (tools/tw/round_v151/install_v58.py): Attila v154, WH3 v52,
+  Pharaoh v58, helper106 in all three; ATN files unchanged by hash; old files renamed aside (.in-use-20261113_120458).
+- [x] Grass study tools/tw/grass_cpu/report.md; unit study tools/tw/unit_cpu/report.md; PT GI diagnosis
+  tools/tw/attila_ptgi_1113/diagnosis.md; Rome II census + plan tools/tw/rome2/ (census, caster_census, scale_census, plan).
+- [ ] Attila measurement run (one start, no builds beside it): grass sliders live (2vs3) + Unit Detail 1x / 2x / 4x
+  (for_claude1) + FrameTrace for the soldiers' shadow-pass pack marks; PresentMon; decides grass d2 and unit A1.
+- [ ] Rome II trace build (twrome2 test_hooks + frame_trace Options + on-demand marker), folder prep (stamped plain copy,
+  helper, no DevKit), data runs S1 bm_battle benchmark 50/67/33/100, S2 Carthage siege 50%, S5 campaign_load Parthia; no
+  MSAA (ATN allowed dropping it; set gfx_aa 0 in ATN's Rome II prefs at the final install, backup first).
+- [ ] Water rows RayTracedWaterSoft + RayTracedWaterSteady on by default and in RAYS_PRESET (Attila, WH3, Pharaoh).
+- [ ] Grass round: WH3 indirect read-back without a wait (d1); Attila scrub cell radius clamp (d2) + LOD scaling per model
+  (a2); RT grass capture range (Experimental).
+- [ ] Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace shows a soldier shadow pass), D (WH3
+  cross-pass unit capture key), B (trim per-unit capture work), E (TBB grain test rows).
+- [ ] PT GI fix (helper107): one diffuse estimate for screen / cache / unseen hits, KeptShade -> own occluded sky, freeze
+  slope + base colour under PT Ambient; HARNESS_PEDESTAL proof; look at the bounce GPU spikes 19-40 ms.
+- [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign
+  water, "no main camera" line, v58's census leftovers with their traces).
+- [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
+
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
 Bytes under 60 GB before WARP. One writer; read-only surveys beside (tools\tw\pharaoh\v58: census_pharaoh*.txt / .tsv, caster_census_after.txt).

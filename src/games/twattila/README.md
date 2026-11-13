@@ -1,5 +1,14 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## v154 (2026-11-13; stamped and installed 12:05 with renodx-tw-dlaa64.exe helper106, not run in game)
+
+- New: **Steady Torch Shadows** (Experimental, off; shown with the torch rows): every light a pixel reaches is traced every
+  frame with the same soft-shadow disk points, so torch shadows stop changing frame to frame under DLSS. Needs helper106.
+- Fixed: replaced shaders that read the render share below 100% got no `render_scale` constants (the build strips their
+  reflection data, so the view share never saw cb12): they now get their own. Shared with Pharaoh v58, where it caused
+  GT-VBAO's rectangle at Ultra Performance; Thrones, Rome II, Troy and Warhammer I / II had the same gap.
+- Shared, no change here: still foliage (Pharaoh's campaign palms) leaves the sway rows out.
+
 ## v153 (2026-11-13, after v152's install; stamped and installed 03:17, not run in game; renodx-tw-dlaa64.exe helper105 as in v152)
 
 - Shared with Pharaoh, no change here: the reflections' light copy for R16G16B16A16F light (Attila's is R11G11B10F), the frame

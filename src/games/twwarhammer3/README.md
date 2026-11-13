@@ -1,5 +1,11 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v52 (2026-11-13; stamped and installed 12:05 with renodx-tw-dlaa64.exe helper106, not run in game)
+
+- New: **Steady Torch Shadows** (Experimental, off; shown with the torch rows): every light a pixel reaches is traced every
+  frame with the same soft-shadow disk points (helper106).
+- Shared, no change here: Pharaoh's water opacity form beside Warhammer III's (its 6 water shaders byte-identical).
+
 ## v51 (2026-11-13, the reflections' light copy shared with Pharaoh, Pharaoh's smoke quad form beside the capture (not used here); stamped and installed 03:17, not run in game; renodx-tw-dlaa64.exe helper105 as in v50)
 
 - Moved: **Reflections Lit as This Frame**'s copy (`rt_light_copy`, 3AC630DF's R16G16B16A16F input into the bridge's R11G11B10F) is now the shared `twattila/rt_core.hpp` one (`Host::light_copy`, Pharaoh v56's water reflections use it too). The same picture: WARP against v50's path 0 texels apart in 4 cases (`tools\tw\warp_tests\light_copy_v56`; CONTROL 207 apart). Its log line is now `Ray-traced reflections: the hits read the pass's light (R16G16B16A16F, copied)` (was `First run: the frame's light for the reflections' hits`). Page dump `w v63` against v62: the date only.
