@@ -58,9 +58,10 @@ struct Scales {
   float grass_distance = 1.f;    // grass and plants: their LOD distances, the scrub's cells and thinning
   float grass_density = 1.f;     // grass and plants: less thinning (more of the map's) within the same distance
   // The soldiers' shadow distance (16 below): 0 while nothing reads their 3D shadows (Attila: the rays' shadows in place of
-  // the sun's shadow map, its casters skipped).
+  // the sun's shadow map, its casters skipped). The game then drops only the stretched or 3D shadow of the small and medium
+  // soldiers its rule at +0x441f49 lets go; the others' shadow items stay (the Unit Detail 8x trace: 20 draws into the map).
   float unit_shadows = 1.f;
-  bool big_battle_fix = false;   // unit detail and animation in until the shadow pass's soldiers fit
+  bool big_battle_fix = false;   // unit detail and animation in until the frame's first pack holds every item
 };
 
 namespace internal {
@@ -114,20 +115,25 @@ constexpr size_t SOLDIER_FLAGS_ROME2 = 0xd8;
 constexpr uint8_t SOLDIER_ALIVE = 1;
 
 // The soldiers' bone matrices go to animation textures (pages) of 512 x 672 texels (6 or 10, made by +0x184d800).
-// bool __thiscall PackAnimations(Manager* pages, ... 2, List* soldiers, uint32_t* next, uint32_t end) (+0x1893cc0)
-// packs soldiers [*next, end) into them, page by page, *next past the last one that fit. The main pass packs, draws
-// and packs again until all are drawn (+0x17fbb80); the shadow pass packs once per frame (+0x186be70, the call
-// SHADOW_PACK_CALL): soldiers left over keep an older frame's offset and their shadows are drawn with other soldiers'
-// bones: huge stretched shadows jumping around in big fights (ATN, 8x unit sizes; v12's taller pages made soldiers
-// vanish: most likely the 32-bit game's address space). Big Battle Fix: while soldiers are left over there, unit
+// bool __thiscall PackAnimations(Manager* pages, ... 2, List* items, uint32_t* next, uint32_t end) (+0x1893cc0) packs
+// the model manager's soldier items [*next, end) into them, page by page, *next past the last one that fit (an item
+// whose pose was packed in this call takes that pose's rows). The items: one list (+0xd8: count +0xdc, items +0xe0) for
+// every pass, sorted by pass (begin +0xe4 and end +0x140 per pass kind, 23 kinds), so a pose drawn by the main pass and
+// the four sun cascades is one item per pass. The soldiers' draw for a pass (+0x17fb8a0, from the manager's render of a
+// pass +0x17fa310) first runs the frame's first pack (+0x186be70, once a frame by +0xb60: the call FIRST_PACK_CALL):
+// every pass's items [0, count), whichever pass draws soldiers first (in ATN's battles the sun's cascades; the 8x trace's
+// "0 to 418030 of 418030" counts those items, not soldiers). Then each pass draws the part of its range the pages hold
+// and packs and draws the rest (+0x17fbb80). Items left over by the first pack keep an older frame's offset in the passes
+// that don't pack again: huge stretched shadows jumping around in big fights (ATN, 8x unit sizes; v12's taller pages made
+// soldiers vanish: most likely the 32-bit game's address space). Big Battle Fix: while items are left over there, unit
 // detail and animation distances come in (fewer 3D, individually animated soldiers), then slowly back out. Before every
 // pack, object motion records the soldiers drawn since the last one (object_motion.hpp FlushUnitRecords: their bones are
 // gone after it).
 constexpr std::string_view PACK_ANIMATIONS =
     "51 53 8B 5C 24 1C 55 8B 6C 24 1C 56 57 8B F1 39 5D 00 0F 84 ?? ?? ?? ?? 8B 46 04 B9";
 // lea ecx, [esi + 0xbd0]; push dword ptr [esp + 0x1c]; call PackAnimations. Its return address: the match + 15.
-constexpr std::string_view SHADOW_PACK_CALL = "8D 8E D0 0B 00 00 FF 74 24 1C E8";
-constexpr size_t SHADOW_PACK_CALL_RETURN = 15;
+constexpr std::string_view FIRST_PACK_CALL = "8D 8E D0 0B 00 00 FF 74 24 1C E8";
+constexpr size_t FIRST_PACK_CALL_RETURN = 15;
 constexpr float MIN_BATTLE_BUDGET = 0.09998233f;
 constexpr float BATTLE_BUDGET_RECOVERY = 1.002f;  // per frame: about 1.13x a second at 60 fps
 constexpr uint32_t BATTLE_BUDGET_HOLD_FRAMES = 180;  // frames without left-over soldiers before it recovers
@@ -229,11 +235,11 @@ struct GrassTrace {
 };
 static GrassTrace grass_trace;
 static PackAnimations original_pack_animations = nullptr;
-static uint8_t* shadow_pack_return = nullptr;
+static uint8_t* first_pack_return = nullptr;
 static std::atomic<bool> big_battle_fix = false;
 // x the unit detail and animation distances (Big Battle Fix), 1 without overflow.
 static std::atomic<float> battle_budget = 1.f;
-static uint32_t frames_without_overflow = 0;  // the shadow pass's thread
+static uint32_t frames_without_overflow = 0;  // the first pack's thread (the render thread)
 
 static bool __fastcall OnPackAnimations(void* pages, void* unused_edx, uint32_t first, uint32_t second, void* soldiers,
                                         uint32_t* next, uint32_t end) {
@@ -246,10 +252,11 @@ static bool __fastcall OnPackAnimations(void* pages, void* unused_edx, uint32_t 
   uint8_t* return_address;
   std::memcpy(&return_address, return_slot, sizeof(return_address));
   if (frame_trace::Tracing()) {
-    frame_trace::Mark(std::format("soldiers' bones packed ({} pass): soldiers {} to {} of {}", (return_address == shadow_pack_return ? "shadow" : "main"),
+    frame_trace::Mark(std::format("soldiers' bones packed ({}): items {} to {} of {}",
+                                  (return_address == first_pack_return ? "the frame's first pack, every pass's items" : "a pass's rest"),
                                   start, (next != nullptr ? *next : end), end));
   }
-  if (return_address != shadow_pack_return || next == nullptr || end <= start) return packed;
+  if (return_address != first_pack_return || next == nullptr || end <= start) return packed;
   const uint32_t fitted = std::min(*next, end) - start;
   const uint32_t total = end - start;
   float budget = battle_budget.load(std::memory_order_relaxed);
@@ -541,8 +548,8 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
           reinterpret_cast<void*>(&internal::OnDrawScrub), "grass");
       add(internal::SCRUB_UPDATE, reinterpret_cast<void**>(&internal::original_scrub_update),
           reinterpret_cast<void*>(&internal::OnScrubUpdate), "grass cells");
-      if (uint8_t* call = tw::engine_tweaks::FindPattern(sections.code, internal::SHADOW_PACK_CALL); call != nullptr) {
-        internal::shadow_pack_return = call + internal::SHADOW_PACK_CALL_RETURN;
+      if (uint8_t* call = tw::engine_tweaks::FindPattern(sections.code, internal::FIRST_PACK_CALL); call != nullptr) {
+        internal::first_pack_return = call + internal::FIRST_PACK_CALL_RETURN;
         add(internal::PACK_ANIMATIONS, reinterpret_cast<void**>(&internal::original_pack_animations),
             reinterpret_cast<void*>(&internal::OnPackAnimations), "big battles");
       } else {

@@ -1437,8 +1437,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           .campaign_trees = campaign_trees.scale,
           .grass_distance = grass_distance.scale,
           .grass_density = grass_density.scale,
-          // Under the rays' shadows the sun's shadow map draws nothing: the game stops its soldiers' 3D shadows (their
-          // shadow-pass bone pack), as long as its casters are skipped (the game's own back at once when they aren't).
+          // Under the rays' shadows the sun's shadow map draws nothing: the game drops the 3D shadows its unit shadow
+          // distance rule lets go, as long as its casters are skipped (the game's own back at once when they aren't).
           .unit_shadows = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f),
           .big_battle_fix = big_battle_fix != 0.f,
       },

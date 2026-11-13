@@ -102,8 +102,32 @@ HEAD 3325e7c5). Rules: offline only (another agent runs Attila A/B tests tonight
 Pharaoh, Warhammer3, Rome2, renodx-tw-dlaa64 process and Committed Bytes under 60 GB; WARP only while a game runs), no
 Steam folder written, no stamp / install, never restart. Behaviour identical unless a row says otherwise; a possible look
 change goes in an Experimental row, off. One commit + push to origin atn-mods per step.
-- [ ] 1 Shadow casters under the rays at 8x (725 draws into the 2048 sun map, the pack mark "0 to 418030 of 418030"):
+- [x] 1 Shadow casters under the rays at 8x (725 draws into the 2048 sun map, the pack mark "0 to 418030 of 418030"):
   CastersSkipped() in ATN's setup, A1's effect, the mark's count; stop provably safe caster work; tests; mark corrected.
+  - CastersSkipped() is true there: the live block is renodx-preset1 (settings.hpp preset_index starts at 1 and is never
+    saved) with RayTracedShadowsOnly=1; the 2048 map is R32_TYPELESS (f39) square >= 1024, so OnSunDraw learns it; the
+    trace's 725 draws (lines 46-771, one DSV 0x1c455264, 4 cascades 1024 at 0,0 / 1024,0 / 0,1024 / 1024,1024) are the
+    game's submissions, which the frame trace logs before OnCasterDraw skips them (no draw callback short-circuits in
+    ReShade: addon_manager.hpp runs every callback). None is captured (no SceneShader with cascade_keep in Attila).
+  - A1 is in effect (index 16 = 0 while CastersSkipped) but the game's rule (+0x441f49, bytes read) drops the stretched /
+    3D shadow only of small and medium soldiers whose state +0x10 or model +0xb0 is set; everyone else's shadow items
+    stay: 20 soldier shadow draws (81DBC4C2) at 8x, against 0 in U1 at ATN's 0.69 Unit Detail (sprites there).
+  - The mark was mislabelled, not miscounted: +0x186be70 is not a shadow-pass pack. The soldiers' draw (+0x17fb8a0, called
+    from the model manager's Render(context, pass) +0x17fa310 for every pass) runs it first, once a frame (+0xb60, reset
+    at +0x1827adf), over the manager's whole item list (+0xd8: count +0xdc, items +0xe0; per-pass begin +0xe4 / end +0x140,
+    23 pass kinds): every pass's items, whichever pass draws soldiers first (here the cascades). 418,030 = items of every
+    pass in ATN's 8x battle, all fitted. Now: "soldiers' bones packed (the frame's first pack, every pass's items): items
+    a to b of n" / "(a pass's rest)"; SHADOW_PACK_CALL renamed FIRST_PACK_CALL; comments and the A1 lines corrected.
+  - NOT DONE: the game's caster work at its source. The sun pass's casters come from several renderables' Render(pass):
+    ModelManager +0x17fa310 draws its rigid lists (+0xa88 / +0xa9c through +0x17ae940, incl. F6D7D16D / F79BFB14, the
+    alpha-tested shadow PS OnCutOutShadowDraw learns cut-out textures from) and then soldiers; sprites (292) and the other
+    families through others. Skipping a renderable's pass loses the cut-out learning (a look change for RT); soldiers
+    alone (+0x17fb8a0 while skipping_casters) are 20 of 725 draws, and whether a later pass relies on the shadow pass's
+    rows or packs isn't provable without a run. Smallest step: one traced run with a mark per Render(pass) (return
+    address + pass id from vtable +0x3c) to map the cascades' pass ids and each family's renderable; then a skip per
+    renderable whose pass has no cut-out PS, Experimental off; the cut-out census from the G-buffer's alpha test first.
+  - Builds: build32 twattila + twrome2 + twthronesofbritannia exit 0 (only the upstream deprecation warnings). Skill:
+    rt-scene.md section 5 (the pack's caller, the 117 / 418,030 counts, A1's reach).
 - [ ] 2 OnDrawScrub (3.35 ms a frame, grass maxed): a per-thread cache of several models or a once-per-frame scale per
   scrub model; output bit-identical (test).
 - [ ] 3 Per-draw ReShade callbacks on the render thread (~0.8-1.1 us a draw): trim where provably equivalent; a
