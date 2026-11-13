@@ -105,6 +105,23 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   (Skill: LESSONS + CHECKS ROUND; Rome II rounds 1 + 2 (ROME II BRING-UP, NIGHT MERGES); installed 22:59 (NIGHT
   MERGES); round report tools/tw/round_notes/night_1113_report.md.)
 
+## FOUR GAMES TO THE ATTILA PACKAGE (2026-11-14 night; ATN asleep, weekly budget: use it)
+ATN (2026-11-13 ~23:40): after the skill update, plan and do the whole Attila package for Thrones, WH2, Shogun 2 Complete
+Edition and Rome Remastered, in parallel; in-game runs only for traces, few, agents at medium effort. Troy / WH1 next
+time. ATN tests Attila / WH3 / Pharaoh / Rome II and the rest after waking: nothing may run in a game then.
+Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + data-run script; phase I: the package).
+- [x] Skill: night lessons a34444d6 (worktree base, scratch prefix, merged verification; bit-exact game CPU code; skipped
+  calls read to every return; first-time race; MSAA keeps DLSS / rays / FG off; 0-thread processes; medium data runs;
+  units on screen).
+- [x] tools/tw/install/tw_install.py: thrones / wh2 / shogun2 (HDR + DLSS add-ons) / romer (no helper) entries, --helper
+  optional, --first (symlinks, missing files, helper + NVIDIA DLLs, DevKit aside); backup tw_install.py.bak_1114.
+- [ ] Phase P, four worktree agents: Thrones (tools/tw/thrones), WH2 (tools/tw/wh2), Shogun 2 (tools/shogun2/pkg_1114),
+  Rome Remastered (tools/tw/romeremastered): plan_1114.md, trace build on the branch, <game>_data_run.ps1.
+- [ ] Data runs, one game at a time (medium-effort agent each; trace builds merged, stamped "<game> t1", installed with
+  --first; fresh backups; Shogun 2's DevKit aside; its nvngx_dlss 310.5.2 -> 310.9.16 renamed aside).
+- [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
+- [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
+
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
 - [ ] Rome II round 3 (worktree agent): point light shadows (b2 constant-buffer lights), smoke shadows (shared VS list
   in InstallSmokeShadows), RT water reflections if time; Round 3 README; built only.
