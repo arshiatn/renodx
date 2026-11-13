@@ -54,7 +54,12 @@ Each step committed and pushed to origin atn-mods.
   point every frame (seed (frame*128+light)*16+ray*2), one ray, a 0/1 bit, no filter (only RR averages); Importance holds old bits
   per 8x8 block (165, 179-194). No GPU flicker term in E19549A1 / fire02. Options: fixed per-pixel 4x4 disk pattern rotated by a
   position hash (helper, bridge v32) + a filter; steady light positions in the addon.
-- [ ] 5 Water Clarity / Water Caustics rows for Pharaoh's water. Survey (WARP prototype scratch v58\water): water_effects' material
+- [x] 5 (step 5 commit) done: twattila/water_effects.hpp WaterOpacity + WaterShader::opacity, PatchWaterAbsorption(code, opacity)
+  (type 0: WH3's log2(e) rule), the material path's caustics only where water.caustics; Pharaoh: WATER_SHADERS 84 rows (all
+  material water, campaign caustics off), rows Water Clarity (Experimental) 1 and Water Caustics (Experimental) 0 (RT/PT turns
+  it on as ATN's list), embeds water_caustics / water_clarity. WARP tools\tw\warp_tests\pharaoh\water_v58 (run_v58.txt): WH3 6 of 6
+  byte-identical to HEAD's; Pharaoh 84 of 84 byte-identical to the survey's prototype; neutral (cb11.x 1, t51 unbound) 0 bits apart
+  of 19,464,192 values in 84 shaders; tile k / clarity f: 0 misses, controls apart (136 runs). The survey: water_effects' material
   path refuses all 84 Pharaoh water PS (absorption exp2(-depth x opacity) has no log2(e)); opacity operands cb4[3].w (sea),
   cb5[3].w (campaign sea), v11.w (river COLOR2.w), cb3[45].w (big river). Plan: WaterShader.opacity {type, index, component}
   (0: WH3's rule), PatchWaterAbsorption(code, opacity), caustics only with water.caustics; table tools\tw\pharaoh\v58\

@@ -45,6 +45,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/view_share.hpp"
+#include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./dead_units.hpp"
@@ -2035,6 +2036,99 @@ constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
 // out as there: the game draws them unlit (material 10) and gives them no shadow.
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{{.hash = 0x2F2A0E7E}, {.hash = 0x8DE94E2F}}};
 
+// Water Clarity and Water Caustics (twattila/water_effects.hpp): every water pixel shader of the dump (battle and campaign sea,
+// lake and river, the water props; ps_5_0 and ps_4_1), each a material water (its colour from its own constants, no
+// g_sea_bed_light_scatter). Their absorption is exp2(-depth x opacity), no log2(e): Clarity scales the mul that reads the
+// opacity, cb4[3].w (sea, lake, props), cb5[3].w (the campaign's sea), cb3[45].w / cb2[45].w (the campaign's big river) or the
+// river's COLOR2.w (v11.w). The caustics after the refraction's colour sample, off in the campaign (its world a twentieth of a
+// battle's). WARP: tools\tw\warp_tests\pharaoh\water_v58 (neutral: the game's bits).
+constexpr std::array<twattila::water_effects::WaterShader, 84> WATER_SHADERS = {{
+    {.hash = 0x4CA0D9CC, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_high (traced), shadows
+    {.hash = 0x833E7963, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_ultra (traced), shadows
+    {.hash = 0x3CD44028, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {3, 45}, .component = 3}},  // campaign_big_river (traced), shadows
+    {.hash = 0x9CDEAD46, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_ultra (traced), shadows
+    {.hash = 0xEA3E9B00, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_high (traced), shadows
+    {.hash = 0xC0BB9ECD, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_high, baked shadows
+    {.hash = 0x90FCD47D, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_high, shadows
+    {.hash = 0xDFCFDDDA, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_high, ps_4_1
+    {.hash = 0xC55527DC, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // battle_lake_high, no shadows
+    {.hash = 0x234461B2, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_low, baked shadows
+    {.hash = 0xD1702CFD, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_low, shadows
+    {.hash = 0x978EAE9D, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_low, ps_4_1
+    {.hash = 0x87C837D8, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // battle_lake_low, no shadows
+    {.hash = 0xFEB833DF, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_medium, baked shadows
+    {.hash = 0xECF83F6B, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_medium, shadows
+    {.hash = 0xE9FFBC55, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_lake_medium, ps_4_1
+    {.hash = 0xEBBDB926, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // battle_lake_medium, no shadows
+    {.hash = 0xD08BF83F, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_high, baked shadows
+    {.hash = 0x751065E4, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_high, ps_4_1
+    {.hash = 0x06AA4824, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_high, no shadows
+    {.hash = 0x28D418E2, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_low, baked shadows
+    {.hash = 0x2AA4BAC8, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_low, shadows
+    {.hash = 0x820579C1, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_low, ps_4_1
+    {.hash = 0x112CDE4F, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_low, no shadows
+    {.hash = 0x59EA33F4, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_medium, baked shadows
+    {.hash = 0xB8D6EB67, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_medium, shadows
+    {.hash = 0x27491210, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_medium, ps_4_1
+    {.hash = 0x8E65BEFE, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {11, 0}, .component = 3}},  // battle_river_medium, no shadows
+    {.hash = 0xA6DFC83D, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_high, baked shadows
+    {.hash = 0xCF54FA00, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_high, shadows
+    {.hash = 0xD17905E5, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_high, ps_4_1
+    {.hash = 0xD21493DF, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // battle_sea_high, no shadows
+    {.hash = 0xD1A66D4F, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_low, baked shadows
+    {.hash = 0x0542C2C1, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_low, shadows
+    {.hash = 0x90DBDB4A, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_low, ps_4_1
+    {.hash = 0x7EE4F042, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // battle_sea_low, no shadows
+    {.hash = 0x18ED5955, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_medium, baked shadows
+    {.hash = 0x4ADA697D, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_medium, shadows
+    {.hash = 0x73F12E9C, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_medium, ps_4_1
+    {.hash = 0x0E377DF0, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // battle_sea_medium, no shadows
+    {.hash = 0x591DC261, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_ultra, baked shadows
+    {.hash = 0x0F82AFC8, .world_input = 1, .refraction_slot = 7, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // battle_sea_ultra, ps_4_1
+    {.hash = 0xB9977DF2, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // battle_sea_ultra, no shadows
+    {.hash = 0x1FA8BC8E, .world_input = 1, .refraction_slot = 5, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {3, 45}, .component = 3}},  // campaign_big_river, baked shadows
+    {.hash = 0xD3909EC5, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {3, 45}, .component = 3}},  // campaign_big_river, ps_4_1
+    {.hash = 0xD5521C8E, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {2, 45}, .component = 3}},  // campaign_big_river, no shadows
+    {.hash = 0x34E357C3, .world_input = 1, .refraction_slot = 5, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_high, baked shadows
+    {.hash = 0xD865AA3E, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_high, shadows
+    {.hash = 0x192B07D0, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_high, ps_4_1
+    {.hash = 0x305EC4CB, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // campaign_lake_high, no shadows
+    {.hash = 0x0E930C0C, .world_input = 1, .refraction_slot = 5, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_low, baked shadows
+    {.hash = 0xC51A1203, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_low, shadows
+    {.hash = 0xB4823E2F, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_low, ps_4_1
+    {.hash = 0xE8D2D529, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // campaign_lake_low, no shadows
+    {.hash = 0x4DCD1A00, .world_input = 1, .refraction_slot = 5, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_medium, baked shadows
+    {.hash = 0x52B3C97F, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_medium, shadows
+    {.hash = 0x07FB971D, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_lake_medium, ps_4_1
+    {.hash = 0x07DBF004, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // campaign_lake_medium, no shadows
+    {.hash = 0xCF051012, .world_input = 1, .refraction_slot = 5, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_high, baked shadows
+    {.hash = 0x6DB6D751, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_high, shadows
+    {.hash = 0x87BEF758, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_high, ps_4_1
+    {.hash = 0xBF868CB7, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_sea_high, no shadows
+    {.hash = 0x68C9F797, .world_input = 1, .refraction_slot = 5, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_low, baked shadows
+    {.hash = 0xD3E14854, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_low, shadows
+    {.hash = 0x762EFE50, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_low, ps_4_1
+    {.hash = 0xF64DBB81, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_sea_low, no shadows
+    {.hash = 0xC0804990, .world_input = 1, .refraction_slot = 5, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_medium, baked shadows
+    {.hash = 0x3CD00F55, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_medium, shadows
+    {.hash = 0x66E7C0C3, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_medium, ps_4_1
+    {.hash = 0x18794243, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_sea_medium, no shadows
+    {.hash = 0x88927D58, .world_input = 1, .refraction_slot = 5, .caustics = false, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_ultra, baked shadows
+    {.hash = 0x9DC3974A, .world_input = 1, .refraction_slot = 6, .caustics = false, .normal_slot = 8, .material_water = true, .opacity = {.type = 8, .index = {5, 3}, .component = 3}},  // campaign_sea_ultra, ps_4_1
+    {.hash = 0x61417411, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // campaign_sea_ultra, no shadows
+    {.hash = 0x24927A16, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_high, baked shadows
+    {.hash = 0x1090D22F, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_high, ps_4_1
+    {.hash = 0xC93FE38F, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // water_prop_high, no shadows
+    {.hash = 0xE6F30447, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_low, baked shadows
+    {.hash = 0x1B7C80C7, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_low, shadows
+    {.hash = 0x33A766A2, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_low, ps_4_1
+    {.hash = 0xC0195CC3, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // water_prop_low, no shadows
+    {.hash = 0x05189050, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_med, baked shadows
+    {.hash = 0x1F097D7C, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_med, shadows
+    {.hash = 0x9476688A, .world_input = 1, .refraction_slot = 6, .normal_slot = 7, .material_water = true, .opacity = {.type = 8, .index = {4, 3}, .component = 3}},  // water_prop_med, ps_4_1
+    {.hash = 0xF45F002E, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 3}, .component = 3}},  // water_prop_med, no shadows
+}};
+
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%. The glow bright
 // pass (after DLSS, VS 31C49ED2's uv 0-1 over the display) also reads the campaign's clouds at t0 (t_shroud_clouds, the
 // shroud's half-size buffer drawn by 5EB2FDE8; a 1024 x 1024 stand-in in battles, its read gated off there), so its t1
@@ -2184,6 +2278,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "turns it on below. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .water_caustics_label = "Water Caustics (Experimental)",
     .water_reflections_label = "Water Reflections (Experimental)",
     .water_reflections_tooltip = "Rivers and the sea reflect what the rays find, also off screen. Needs in-game Screen Space\n"
                                  "Reflections on. Off: the game's reflections.",
@@ -2736,8 +2831,9 @@ void ConfigureAddon() {
       setting->default_value = 0.f;
       setting->label = "Coloured Shadows (Experimental)";
       setting->tooltip = "The sun through cloth and flags takes their colour.";
-    } else if (setting->key == "RayTracedWaterReflections") {
-      // Experimental, off (v56: no game run has shown the apply with the rays yet); RT/PT turns it on, as ATN's list does.
+    } else if (setting->key == "RayTracedWaterReflections" || setting->key == "WaterCaustics") {
+      // Experimental, off (v56, v58: no game run has shown the apply with the rays or the caustics yet); RT/PT turns them on,
+      // as ATN's list does.
       setting->default_value = 0.f;
     } else if (setting->key == "RayTracedSmokeShadows") {
       // Experimental, off (v57: no game run has shown the particles' records yet); RT/PT leaves it off (smoke_shadows_tested).
@@ -2757,6 +2853,27 @@ void ConfigureAddon() {
       setting->is_visible = [] { return rt_sliders.water_reflections != 0.f && rt_sliders.water_soft != 0.f; };
     }
   }
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into water. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on the bed under battle water and rivers. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
   // Torch and Fire Shadows from rays (Warhammer III's row): after the preset's defaults, so it starts off (Experimental: no game
   // run has shown the light draws read yet).
   settings.push_back(new renodx::utils::settings::Setting{
@@ -2806,6 +2923,14 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw).
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 
   // Rows saved at an old default, cleared once: Smoke Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults) until it
   // showed, Experimental and off.
@@ -2962,6 +3087,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Water Clarity and Water Caustics at the game's water draws (Attila; WH3). The addon gives its water_shaders, registers OnWaterDraw for each of them
+// Water Clarity and Water Caustics at the game's water draws (Attila; WH3; Pharaoh). The addon gives its water_shaders, registers OnWaterDraw for each of them
 // and OnCreateWater as a pipeline callback, has the embeds __water_clarity and __water_caustics, and the rows bind water_clarity and water_caustics.
 #ifndef SRC_GAMES_TWATTILA_WATER_EFFECTS_HPP_
 #define SRC_GAMES_TWATTILA_WATER_EFFECTS_HPP_
@@ -45,6 +45,13 @@ using Microsoft::WRL::ComPtr;
 // constants with it raised to 1 / clarity is bound (water_clarity.cs), the game's put back after the draw (later draws, and
 // the game's updates of its own buffer, stay its). Up to 16: murky rivers (ATN's debug28: no change seen at 4) keep little
 // light a metre, 4 times as far still dark. Logged once where it applies.
+// The opacity a material water's absorption multiplies by (PatchWaterAbsorption): an operand, type 8 a constant buffer (index:
+// slot, register) or 1 an input (index: register, 0), and its component. Type 0: every mul by +-log2(e) (WH3's battle water).
+struct WaterOpacity {
+  uint32_t type = 0;
+  std::array<uint32_t, 2> index = {};
+  uint32_t component = 0;
+};
 struct WaterShader {
   uint32_t hash = 0;
   UINT lighting_slot = 0;        // b: lighting_VS_PS
@@ -53,6 +60,7 @@ struct WaterShader {
   bool caustics = true;          // the campaign's world is a twentieth of the battles': a 4 m tile means nothing there
   uint32_t normal_slot = 0;      // t: the normal map, a plain sample of it gives the caustics' sampler
   bool material_water = false;   // Colour per material, no scatter to raise: swapped at the draw for a patched copy (PatchWaterAbsorption)
+  WaterOpacity opacity = {};     // material_water's
 };
 // The game's water shaders, read per game; the addon's table.
 static std::span<const WaterShader> water_shaders;
@@ -193,7 +201,8 @@ inline std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, co
 
 // Beer-Lambert in battle_water and battle_river: every exp(x * log2(e)) of absorption x depth, per channel and for the material's
 // opacity. After each `mul rX, rY, l(+-1.442695)`: mul rX, rX, cb11[0].xxxx, which is what looking through 1 / clarity of the depth does.
-inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code) {
+// An `opacity` operand (Pharaoh's water: exp2(-depth x opacity), no log2(e)): after each mul that reads it.
+inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code, const WaterOpacity& opacity) {
   constexpr uint32_t OP_MUL = 56, OP_DCL_CONSTANT_BUFFER = 89, OP_DCL_TEMPS = 104;
   constexpr uint32_t LOG2_E = 0x3FB8AA3B;
   constexpr uint32_t SIGN = 0x80000000;
@@ -212,9 +221,22 @@ inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code) 
     if (opcode == OP_DCL_CONSTANT_BUFFER && tokens[at + 2] == WATER_CLARITY_SLOT) return {};
     patched.insert(patched.end(), tokens.begin() + static_cast<ptrdiff_t>(at), tokens.begin() + static_cast<ptrdiff_t>(at + length));
     if (opcode == OP_MUL) {
-      const bool absorption = std::any_of(tokens.begin() + static_cast<ptrdiff_t>(at + 1), tokens.begin() + static_cast<ptrdiff_t>(at + length),
-                                          [](uint32_t token) { return (token & ~SIGN) == LOG2_E; });
       const size_t destination = dxbc::internal::FirstOperand(tokens, at);
+      bool absorption = false;
+      if (opacity.type == 0) {
+        absorption = std::any_of(tokens.begin() + static_cast<ptrdiff_t>(at + 1), tokens.begin() + static_cast<ptrdiff_t>(at + length),
+                                 [](uint32_t token) { return (token & ~SIGN) == LOG2_E; });
+      } else {
+        dxbc::Operand operand;
+        for (size_t next = destination + dxbc::ParseOperand(tokens, destination, at + length, &operand); next < at + length;) {
+          const size_t operand_length = dxbc::ParseOperand(tokens, next, at + length, &operand);
+          if (operand_length == 0) return {};
+          absorption = absorption
+                       || (operand.type == opacity.type && operand.mode == 2 && operand.select == opacity.component && !operand.relative
+                           && operand.index == opacity.index);
+          next += operand_length;
+        }
+      }
       if (absorption) {
         if ((tokens[at] & (1u << 13)) != 0 || (tokens[destination] & 0x001FF003) != 0x00100002) return {};
         patched.insert(patched.end(), {OP_MUL | (8u << 24), tokens[destination], tokens[destination + 1], 0x00100E46, tokens[destination + 1],
@@ -461,8 +483,9 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
       }
       if (const auto entry = material_waters.find(water.hash); entry != material_waters.end()) {
         if (!entry->second.patched && !entry->second.refused) {
-          std::vector<uint8_t> code = PatchWaterCaustics(entry->second.code, water);
-          if (!code.empty()) code = PatchWaterAbsorption(code);
+          // Caustics off (Pharaoh's campaign water): the game's code.
+          std::vector<uint8_t> code = (water.caustics ? PatchWaterCaustics(entry->second.code, water) : entry->second.code);
+          if (!code.empty()) code = PatchWaterAbsorption(code, water.opacity);
           int line_sites = 0;
           if (!code.empty()) {
             if (auto lined = PatchWaterScaleLine(code, &line_sites); !lined.empty()) code = std::move(lined);
