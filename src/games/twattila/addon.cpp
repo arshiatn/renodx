@@ -1040,6 +1040,8 @@ void BuildRuntimeData() {
 // (graphics_hooks.hpp) and engine tweaks (filled in ConfigureAddon).
 std::array<tw::engine_tweaks::Option, 4> unit_detail;  // foot soldiers, cavalry, elephants, artillery
 float big_battle_fix = 0.f;
+float small_soldiers_as_sprites = 0.f;
+float sprite_size = 20.f;  // pixels on screen
 float ssr_denoiser = 1.f;  // ssr_hiz.hpp: the resolve's history
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
 twattila::feature_settings::SssSliders sss_sliders;
@@ -1446,6 +1448,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           // distance rule lets go, as long as its casters are skipped (the game's own back at once when they aren't).
           .unit_shadows = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f),
           .big_battle_fix = big_battle_fix != 0.f,
+          .sprite_pixels = (small_soldiers_as_sprites != 0.f ? sprite_size : 0.f),
+          .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status);
 }
@@ -1550,6 +1554,8 @@ void ConfigureAddon() {
       {"GraphicsUnitVariety", 1.f},
       {"GraphicsFootstepEffects", 1.f},
       {"GraphicsBigBattleFix", 0.f},
+      {"GraphicsSmallSoldiersAsSprites", 0.f},
+      {"GraphicsSpriteSize", 20.f},
       {"GraphicsShadowMapSize", 0.f},
       {"GraphicsObjectDetail", 1.f},
       {"GraphicsBuildingDetail", 1.f},
@@ -1752,6 +1758,29 @@ void ConfigureAddon() {
           .tooltip = "In huge fights the game runs out of room to animate every soldier: some shadows stretch and\n"
                      "jump around. On: while that happens, the farthest soldiers turn into sprites a bit sooner.",
           .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "GraphicsSmallSoldiersAsSprites",
+          .binding = &small_soldiers_as_sprites,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Small Soldiers as Sprites (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Soldiers turn into flat sprites once they are smaller on screen than Sprite Size, even within\n"
+                     "Unit Detail's distance. Lighter for the CPU in big battles. Needs TAA, SMAA T2x, DLSS, FSR or XeSS.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "GraphicsSpriteSize",
+          .binding = &sprite_size,
+          .default_value = 20.f,
+          .label = "Sprite Size",
+          .section = "Graphics (Experimental)",
+          .tooltip = "How tall soldiers are on screen when they turn into sprites. Higher: sprites nearer, lighter.",
+          .min = 4.f,
+          .max = 80.f,
+          .format = "%.0f px",
+          .is_visible = [] { return small_soldiers_as_sprites != 0.f; },
       },
       // The pixel trace (talesofarise_dlss/pixel_trace.hpp), one frame on request; its marker only while it is open.
       new renodx::utils::settings::Setting{

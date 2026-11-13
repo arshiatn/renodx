@@ -1636,6 +1636,13 @@ inline bool MainCamera(ID3D11Buffer* buffer, internal::Camera* camera) {
   return true;
 }
 
+// The main view's vertical focal length in display pixels: the display's height / (2 tan(vertical field of view / 2)),
+// from its camera's projection _m11. 0: no main camera yet (the uploads are watched under a temporal method only).
+inline float MainFocalPixels() {
+  const std::shared_lock lock(internal::runtime.mutex);
+  return std::max(0.f, static_cast<float>(internal::runtime.display_height) * internal::runtime.camera.projection[5] * 0.5f);
+}
+
 // Whether the G-buffer guides (Ray Reconstruction's, also ray tracing's paths') were written this frame.
 inline bool GuidesWritten() {
   const std::unique_lock lock(internal::runtime.mutex);

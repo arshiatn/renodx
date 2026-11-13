@@ -62,6 +62,10 @@ struct Scales {
   // soldiers its rule at +0x441f49 lets go; the others' shadow items stay (the Unit Detail 8x trace: 20 draws into the map).
   float unit_shadows = 1.f;
   bool big_battle_fix = false;   // unit detail and animation in until the frame's first pack holds every item
+  // Small Soldiers as Sprites: a soldier is a sprite once it would be fewer than this many pixels tall on screen (0: the
+  // game's distances), by `focal_pixels`, the main view's vertical focal length in output pixels (0: unknown, no cap).
+  float sprite_pixels = 0.f;
+  float focal_pixels = 0.f;
 };
 
 namespace internal {
@@ -91,7 +95,8 @@ constexpr std::string_view UNIT_DISTANCES_ROME2 =
 // caller is the per-soldier update (+0x4567e0, the call +0x456d20; dead soldiers too): its third argument, the
 // soldier's display state, sits above the frame the call's two arguments were pushed onto; bit 0 of its flags (+0xe4)
 // is set for the living (+0x456b43: the living fade with ENTITY_TRACKER_ALPHA_CHANGE_SPEED, the dead with
-// dead_time_alpha_fade_out_seconds). Dead soldiers get Dead Unit Detail x the distance.
+// dead_time_alpha_fade_out_seconds). Dead soldiers get Dead Unit Detail x the distance. The update compares it with the
+// soldier's distance to the camera in metres (+0x456a50 its square root, +0x456dbf the test: farther is a sprite).
 constexpr std::string_view IMPOSTER_DISTANCE =
     "8B 44 24 04 83 F8 03 77 ?? FF 24 85 ?? ?? ?? ?? F3 0F 10 89 38 02 00 00 F3 0F 10 91 48 02 00 00";
 // The call: mov eax, [esi + 8]; movss xmm0, [esi + 0xb4]; push ecx; mov ecx, [esi + 0xa8]; movss [esp], xmm0;
@@ -113,6 +118,9 @@ constexpr std::string_view IMPOSTER_DISTANCE_CALL_ROME2 =
 constexpr size_t CALLER_SOLDIER_ROME2 = 12 + 0x1d0 + 8 + 4 + 8;
 constexpr size_t SOLDIER_FLAGS_ROME2 = 0xd8;
 constexpr uint8_t SOLDIER_ALIVE = 1;
+// A soldier's height by its size (ImposterDistance's 0-3; past 3 the game takes 0's), metres: estimates for Small
+// Soldiers as Sprites (a foot soldier, a rider, an elephant, a gun with its crew), not measured.
+constexpr std::array<float, 4> SOLDIER_HEIGHTS = {1.8f, 2.6f, 4.f, 3.f};
 
 // The soldiers' bone matrices go to animation textures (pages) of 512 x 672 texels (6 or 10, made by +0x184d800).
 // bool __thiscall PackAnimations(Manager* pages, ... 2, List* items, uint32_t* next, uint32_t end) (+0x1893cc0) packs
@@ -157,11 +165,23 @@ constexpr std::string_view DRAW_SCRUB =
 // squared, added to its distance squared) that thins the grass out with distance: near the camera half the map's grass
 // is drawn (the grass clumps' last LOD, 100 m, against a bias up to 200 m). The hook writes both x Grass Distance, the
 // bias / Grass Density (2x: all of it near the camera; the game's values kept).
+// +0x80 has two readers (both in ScrubUpdate, without scrub_node_always_render): the quadtree query (+0x1898800) of the
+// box camera +- float(+0x80) (a cell is left out with its subtree when its bounds, which hold its children's, miss the
+// box), and the cell loop (+0x1897a30, per cell) taking a record (18 bytes: position first, +0x10 its slot in the scrub's
+// models) to DrawScrub only while its distance squared <= float(+0x80 squared as an int). DrawScrub then takes the same
+// distance squared (the same floats, the sum in another order) + (manager +0xc34 + the record's bias, which is >= 0) as
+// its key: a record past every enabled LOD (+0x44) of its model draws nothing. The scrub's models: +0x90 the manager,
+// +0x98 their count, +0x9c the manager's model index per slot (filled by +0x1875fc0, a slot a byte).
 constexpr std::string_view SCRUB_UPDATE =
     "83 EC 4C 53 55 8B E9 56 57 89 6C 24 14 80 7D 14 00 0F 84 ?? ?? ?? ?? 83 BD 88 00 00 00 00 0F 84 ?? ?? ?? ?? E8 ?? "
     "?? ?? ?? 80 BD 8C 00 00 00 01";
 constexpr size_t SCRUB_CELLS = 0x80;
 constexpr size_t SCRUB_BIAS = 0x84;
+constexpr size_t SCRUB_MANAGER = 0x90;
+constexpr size_t SCRUB_MODEL_COUNT = 0x98;
+constexpr size_t SCRUB_MODELS = 0x9c;
+constexpr uint32_t MAX_SCRUB_MODELS = 256;
+constexpr size_t MANAGER_LOD_OFFSET = 0xc34;  // a signed square, added to every key (+0x188afc0)
 constexpr size_t MAX_MODEL_LODS = 8;
 
 // __thiscall through __fastcall: `this` in ecx, edx unused, the rest on the stack (callee pops).
@@ -200,6 +220,8 @@ static uint8_t* imposter_distance_return = nullptr;
 static size_t caller_soldier = CALLER_SOLDIER;  // the game's (set at install)
 static size_t soldier_flags = SOLDIER_FLAGS;
 static std::atomic<float> dead_scale = 1.f;
+// Small Soldiers as Sprites: the distance at which a soldier 1 m tall is the limit's pixels tall (0: off).
+static std::atomic<float> sprite_distance_scale = 0.f;
 static std::vector<renodx::utils::detour::Function> hooks;
 static tw::native_hooks::Lifetime hook_lifetime;
 static std::atomic<bool> hooks_active = false;
@@ -307,7 +329,14 @@ static float* __fastcall OnUnitDistances(void* display, void* unused_edx, float*
 
 static float __fastcall OnImposterDistance(void* display, void* unused_edx, uint32_t size, float random) {
   if (!hooks_active.load(std::memory_order_relaxed)) return original_imposter_distance(display, unused_edx, size, random);
-  const float distance = original_imposter_distance(display, unused_edx, size, random);
+  float distance = original_imposter_distance(display, unused_edx, size, random);
+  // Small Soldiers as Sprites: no farther than where a soldier of its size is the limit's pixels tall, with the game's
+  // spread around it (its random switch within the fade width; random 0.5 gives the distance itself).
+  if (const float sprite_scale = sprite_distance_scale.load(std::memory_order_relaxed); sprite_scale > 0.f) {
+    const float spread = distance - original_imposter_distance(display, unused_edx, size, 0.5f);
+    const float height = SOLDIER_HEIGHTS[size < SOLDIER_HEIGHTS.size() ? size : 0];
+    distance = std::min(distance, height * sprite_scale + spread);
+  }
   const float dead = dead_scale.load(std::memory_order_relaxed);
   if (dead == 1.f) return distance;
   // Only from the per-soldier update's call, whose frame layout is known.
@@ -323,8 +352,8 @@ static float __fastcall OnImposterDistance(void* display, void* unused_edx, uint
 }
 
 // The manager's model `index` (its list +0x20, count +0x1c): its LOD distances (squared) x `scale` (squared), the game's
-// values kept per model (DrawTree's and DrawScrub's).
-static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
+// values kept per model (DrawTree's and DrawScrub's). Returns the model (null: none at `index`).
+static uint8_t* ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
   uint32_t model_count;
   std::memcpy(&model_count, manager + 0x1c, sizeof(model_count));
   uint8_t* model = nullptr;
@@ -349,33 +378,63 @@ static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
       }
       return true;
     };
-    if (cached.model == model && cached.scale == scale && cached.count == count && holds_written()) return;
+    if (cached.model == model && cached.scale == scale && cached.count == count && holds_written()) return model;
     models_scaled.store(true, std::memory_order_relaxed);
-    ModelLods known;
+    const auto scaled = [&](float game) {
+      return std::bit_cast<uint32_t>(game < FLT_MAX ? std::min(game * scale, FLT_MAX) : game);
+    };
+    // Most misses find the model as another thread (or this one before an eviction) left it: nothing to write, under the
+    // entry's shared lock.
+    std::array<uint32_t, MAX_MODEL_LODS> written = {};
+    bool holds_scaled = false;
     scaled_models.if_contains(key, [&](const auto& entry) {
       const auto& [model_key, model_lods] = entry;
-      known = model_lods;
+      holds_scaled = (model_lods.count == count);
+      for (uint32_t index = 0; holds_scaled && index < count; ++index) {
+        uint32_t bits;
+        std::memcpy(&bits, entries[index] + 0x38, sizeof(bits));
+        holds_scaled = (bits == model_lods.written[index] && bits == scaled(model_lods.game[index]));
+      }
+      written = model_lods.written;
     });
-    ModelLods next = known;
-    next.count = count;
-    bool changed = (known.count != count);
-    for (uint32_t index = 0; index < count; ++index) {
-      uint32_t bits;
-      std::memcpy(&bits, entries[index] + 0x38, sizeof(bits));
-      // Anything but the addon's last value is the game's (its setup again, or a new model at the same address).
-      if (known.count != count || bits != known.written[index]) {
-        next.game[index] = std::bit_cast<float>(bits);
-      }
-      const float game = next.game[index];
-      next.written[index] = std::bit_cast<uint32_t>(game < FLT_MAX ? std::min(game * scale, FLT_MAX) : game);
-      if (next.written[index] != bits) {
-        std::memcpy(entries[index] + 0x38, &next.written[index], sizeof(bits));
-      }
-      changed |= (next.written[index] != known.written[index]) || (next.game[index] != known.game[index]);
+    if (holds_scaled) {
+      cached = {.model = model, .scale = scale, .count = count, .written = written};
+      return model;
     }
-    if (changed) scaled_models.insert_or_assign(key, next);
-    cached = {.model = model, .scale = scale, .count = count, .written = next.written};
+    // The entry read, the LODs written and the entry updated under the entry's lock: as three steps, two threads scaling
+    // one model at once (its first scaling, or its first after a slider change) could take each other's written value for
+    // the game's and scale the model twice.
+    const auto scale_lods = [&](ModelLods* lods) {
+      const bool count_changed = (lods->count != count);
+      lods->count = count;
+      for (uint32_t index = 0; index < count; ++index) {
+        uint32_t bits;
+        std::memcpy(&bits, entries[index] + 0x38, sizeof(bits));
+        // Anything but the addon's last value is the game's (its setup again, or a new model at the same address).
+        if (count_changed || bits != lods->written[index]) {
+          lods->game[index] = std::bit_cast<float>(bits);
+        }
+        lods->written[index] = scaled(lods->game[index]);
+        if (lods->written[index] != bits) {
+          std::memcpy(entries[index] + 0x38, &lods->written[index], sizeof(bits));
+        }
+      }
+      written = lods->written;
+    };
+    scaled_models.lazy_emplace_l(
+        key,
+        [&](auto& entry) {
+          auto& [model_key, model_lods] = entry;
+          scale_lods(&model_lods);
+        },
+        [&](const auto& construct) {
+          ModelLods model_lods;
+          scale_lods(&model_lods);
+          construct(key, model_lods);
+        });
+    cached = {.model = model, .scale = scale, .count = count, .written = written};
   }
+  return model;
 }
 
 static void* __fastcall OnDrawTree(uint8_t* manager, void* unused_edx, uint32_t model, const float* position,
@@ -468,13 +527,47 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
   known.scrub = scrub;
   known.written_cells = static_cast<int32_t>(std::lround(static_cast<float>(known.game_cells) * scale));
   known.written_bias = known.game_bias * scale / grass_density.load(std::memory_order_relaxed);
+  // The cells no farther than 1 m past the scrub models' farthest enabled LOD (scaled here first, as their draws would):
+  // a record past it has no LOD, so neither it nor a cell wholly past it is visited (SCRUB_UPDATE: the same set drawn).
+  uint8_t* manager;
+  uint32_t slot_count;
+  const uint32_t* slots;
+  std::memcpy(&manager, scrub + SCRUB_MANAGER, sizeof(manager));
+  std::memcpy(&slot_count, scrub + SCRUB_MODEL_COUNT, sizeof(slot_count));
+  std::memcpy(&slots, scrub + SCRUB_MODELS, sizeof(slots));
+  float farthest = 0.f;  // distance squared; a NaN LOD never takes a record, an infinite one leaves the cells as they are
+  for (uint32_t slot = 0; manager != nullptr && slots != nullptr && slot < std::min(slot_count, MAX_SCRUB_MODELS); ++slot) {
+    const uint8_t* model = ScaleModelLods(manager, slots[slot], scale * scale);
+    if (model == nullptr) continue;
+    uint32_t count;
+    uint8_t** entries;
+    std::memcpy(&count, model + 0x28, sizeof(count));
+    std::memcpy(&entries, model + 0x2c, sizeof(entries));
+    for (uint32_t lod = 0; lod < count; ++lod) {
+      float distance;
+      std::memcpy(&distance, entries[lod] + 0x38, sizeof(distance));
+      if (entries[lod][0x44] != 0 && distance > farthest) {
+        farthest = distance;
+      }
+    }
+  }
+  double reach = 0.0;  // metres (0: no scrub model with an enabled LOD found, the cells left as they are)
+  if (farthest > 0.f) {
+    float lod_offset;
+    std::memcpy(&lod_offset, manager + MANAGER_LOD_OFFSET, sizeof(lod_offset));
+    reach = std::sqrt(static_cast<double>(farthest) - std::min(lod_offset, 0.f));
+    if (const double radius = std::ceil(reach) + 1.0; radius < known.written_cells) {
+      known.written_cells = static_cast<int32_t>(radius);
+    }
+  }
   std::memcpy(scrub + SCRUB_CELLS, &known.written_cells, sizeof(cells));
   std::memcpy(scrub + SCRUB_BIAS, &known.written_bias, sizeof(bias));
   // Grass Trace: the last frame's draws out, or this frame's started.
   if (grass_trace.state.load() == 2) {
     const std::unique_lock lock(grass_trace.mutex);
-    renodx::utils::log::i("[Total War] Grass trace: cells ", known.written_cells, " (game ", known.game_cells, "), bias x ",
-                          known.written_bias, " (game ", known.game_bias, ")");
+    renodx::utils::log::i("[Total War] Grass trace: cells ", known.written_cells, " (game ", known.game_cells,
+                          ", scrub LODs end at ", std::round(reach), " m), bias x ", known.written_bias, " (game ",
+                          known.game_bias, ")");
     for (size_t bin = 0; bin < grass_trace.calls.size(); ++bin) {
       if (grass_trace.calls[bin] == 0) continue;
       renodx::utils::log::i("[Total War]   ", bin * 10, (bin == 40 ? "+ m" : " m"), ": ", grass_trace.calls[bin],
@@ -506,6 +599,9 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
     internal::imposter_scales[index].store(scales.unit_detail[index], std::memory_order_relaxed);
   }
   internal::dead_scale.store(scales.dead_units, std::memory_order_relaxed);
+  internal::sprite_distance_scale.store(
+      (scales.sprite_pixels > 0.f && scales.focal_pixels > 0.f) ? scales.focal_pixels / scales.sprite_pixels : 0.f,
+      std::memory_order_relaxed);
   internal::animation_scale.store(scales.unit_animation, std::memory_order_relaxed);
   internal::facial_scale.store(scales.facial_animation, std::memory_order_relaxed);
   internal::hand_scale.store(scales.hand_animation, std::memory_order_relaxed);

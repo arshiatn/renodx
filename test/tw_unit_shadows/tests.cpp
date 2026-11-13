@@ -9,16 +9,24 @@
 // 3. Back: a frame without the rays' occlusion, or shadows only off, gives 16 the game's value at the next call (the hook
 //    writes over the game's output every call; nothing kept).
 // 4. CONTROL: Unit Detail 2x on foot soldiers doubles index 0 alone (the hook runs, it is no pass-through).
+// 5. Small Soldiers as Sprites (Scales::sprite_pixels, anti_aliasing::MainFocalPixels) through the ImposterDistance hook over
+//    a stand-in for the game's (the size's distance + (random - 0.5) x its fade width, from the 18 the display holds):
+//    off, or no camera yet: the game's bits; on: no farther than where a soldier of its size is N pixels tall (h x focal /
+//    d = N at random 0.5), the game's spread kept, nearer game distances untouched, sizes past 3 as 0; printed: where
+//    each size switches at 4K with a 40 degree vertical field of view.
 #include <windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cfloat>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 #include "src/games/twattila/graphics_hooks.hpp"
 #include "src/games/twattila/rt_scene.hpp"
@@ -40,6 +48,15 @@ constexpr size_t UNIT_SHADOWS = 16;
 static float* __fastcall GameUnitDistances(void*, void*, float* out, uint32_t, uint32_t, uint32_t, uint32_t) {
   std::ranges::copy(GAME, out);
   return out;
+}
+
+// What the display copied from UnitDistances (+0x234), and the game's ImposterDistance over it (+0x48a8f0: past 3 the
+// jump table's default takes size 0's).
+static std::array<float, 18> display_distances = GAME;
+
+static float __fastcall GameImposterDistance(void*, void*, uint32_t size, float random) {
+  const uint32_t index = (size <= 3 ? size : 0);
+  return (random - 0.5f) * display_distances[4 + index] + display_distances[index];
 }
 
 // A device whose views are their resources (the shadow map's depth view is the map).
@@ -139,6 +156,61 @@ int main() {
   CHECK(out[0] == 180.f && out[UNIT_SHADOWS] == 10000.f);
   for (size_t index = 1; index < out.size(); ++index) CHECK(out[index] == GAME[index]);
   std::printf("CONTROL Unit Detail 2x: 0 = %.0f (game 90)\n", out[0]);
+
+  // 5. Small Soldiers as Sprites.
+  hooks::internal::original_imposter_distance = &GameImposterDistance;
+  auto& aa = twattila::anti_aliasing::internal::runtime;
+  CHECK(twattila::anti_aliasing::MainFocalPixels() == 0.f);  // no main camera yet
+  constexpr float TAN_HALF_FOV = 0.36397023f;                // tan(20 degrees): 40 degrees vertical
+  aa.display_height = 2160;
+  aa.camera.projection[5] = 1.f / TAN_HALF_FOV;
+  const float focal = twattila::anti_aliasing::MainFocalPixels();
+  CHECK(std::abs(focal - 2160.f / (2.f * TAN_HALF_FOV)) < 0.01f);
+  const auto settle = [&](const std::array<float, 4>& unit_detail, float pixels, float focal_pixels) {
+    hooks::Update({.unit_detail = unit_detail, .sprite_pixels = pixels, .focal_pixels = focal_pixels}, &installed, &status);
+    hooks::internal::OnUnitDistances(nullptr, nullptr, display_distances.data(), 0, 0, 0, 0);
+  };
+  constexpr std::array<float, 9> RANDOMS = {0.f, 0.01f, 0.25f, 0.4999f, 0.5f, 0.5001f, 0.75f, 0.99f, 1.f};
+  constexpr std::array<uint32_t, 6> SIZES = {0, 1, 2, 3, 4, 7};
+  const auto game = [](uint32_t size, float random) { return GameImposterDistance(nullptr, nullptr, size, random); };
+  const auto hooked = [](uint32_t size, float random) { return hooks::internal::OnImposterDistance(nullptr, nullptr, size, random); };
+  const auto bits = [](float value) { return std::bit_cast<uint32_t>(value); };
+  // Off (0 px), and on without a camera (focal 0): the game's bits, at 1x and 8x.
+  for (const float detail : {1.f, 8.f}) {
+    for (const auto& [pixels, focal_pixels] : {std::pair{0.f, focal}, std::pair{20.f, 0.f}}) {
+      settle({detail, detail, detail, detail}, pixels, focal_pixels);
+      for (const uint32_t size : SIZES) {
+        for (const float random : RANDOMS) CHECK(bits(hooked(size, random)) == bits(game(size, random)));
+      }
+    }
+  }
+  // On at 8x (the game's sprites at 720 / 880 / 1600 / 8000 m): each size's switch where it is 20 px tall, the spread kept.
+  settle({8.f, 8.f, 8.f, 8.f}, 20.f, focal);
+  std::array<float, 4> switch_at = {};
+  for (const uint32_t size : SIZES) {
+    const float height = hooks::internal::SOLDIER_HEIGHTS[size <= 3 ? size : 0];
+    const float centre = hooked(size, 0.5f);
+    CHECK(std::abs(height * focal / centre - 20.f) < 1e-4f * 20.f);  // N pixels tall at the switch
+    CHECK(centre < game(size, 0.5f));                                 // CONTROL: the cap took it
+    for (const float random : RANDOMS) {
+      const float spread = game(size, random) - game(size, 0.5f);
+      CHECK(std::abs((hooked(size, random) - centre) - spread) < 1e-3f);
+      CHECK(hooked(size, random) <= game(size, random));
+    }
+    if (size <= 3) switch_at[size] = centre;
+  }
+  CHECK(bits(hooked(7, 0.3f)) == bits(hooked(0, 0.3f)));  // past 3: size 0's
+  // Nearer than the cap (Unit Detail 0.5x: 45 m foot soldiers): the game's bits.
+  settle({0.5f, 0.5f, 0.5f, 0.5f}, 20.f, focal);
+  for (const float random : RANDOMS) CHECK(bits(hooked(0, random)) == bits(game(0, random)));
+  // More pixels, nearer sprites.
+  settle({8.f, 8.f, 8.f, 8.f}, 40.f, focal);
+  CHECK(std::abs(hooked(0, 0.5f) - switch_at[0] * 0.5f) < 1e-3f * switch_at[0]);
+  std::printf("small soldiers as sprites, 4K at 40 degrees (focal %.1f px), 20 px: foot soldiers %.0f m, cavalry %.0f m, "
+              "elephants %.0f m, artillery %.0f m (8x: 720 / 880 / 1600 / 8000 m); off and without a camera the game's "
+              "bits\n",
+              focal, switch_at[0], switch_at[1], switch_at[2], switch_at[3]);
+  settle({1.f, 1.f, 1.f, 1.f}, 0.f, 0.f);
   std::printf("PASS\n");
   return 0;
 }
