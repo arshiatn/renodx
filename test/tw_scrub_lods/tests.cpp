@@ -9,9 +9,10 @@
 // 2. A lone rewrite of a later LOD (no game path does this): the new cache scales it at the next call (the closed form);
 //    the old one only at its next miss (printed, not compared).
 // 3. Four threads on shared models (the game's TBB workers), each model scaled once first: both end at the closed form.
-//    3b (printed, not compared): a model's first scaling from two threads at once can scale it twice in both versions
-//    (the map path's read, write and insert are not one step): how often, v157's against this one.
-// 4. Cost: ns a call, cells alternating 6 models and runs of one model, one thread and four (printed).
+//    3b: a model's first scaling from four threads at once: v157 scaled some models twice (its map path's read, write and
+//    insert were three steps; printed), this one never (the map path under the entry's lock: every model = closed form).
+// 4. Cost: ns a call, cells alternating 6 models, runs of one model, and 128 models in turn (more than the cache holds:
+//    every call takes the map path), one thread and four (printed).
 #include <windows.h>
 #include <algorithm>
 #include <array>
@@ -323,26 +324,33 @@ int main() {
     }
     std::printf("3b cold starts, 200 x 4 threads x 16 models: off the closed form v157 %u, now %u models\n", old_twice,
                 new_twice);
+    CHECK(new_twice == 0);
   }
 
   // 4. Cost a call (the game's DrawScrub in between not counted).
   {
     World old_world;
     World new_world;
-    for (size_t model = 0; model < 6; ++model) {
+    for (size_t model = 0; model < 128; ++model) {
       const auto distances = Distances(&random, 3);
       old_world.Add(distances);
       new_world.Add(distances);
     }
     constexpr float SCALE = 4.f;
     constexpr uint32_t CALLS = 2000000;
-    const auto time = [&](auto scale_lods, uint8_t* manager, bool alternating, uint32_t thread_count) {
+    enum class Order : uint8_t { ALTERNATING, RUNS, PAST_CACHE };
+    const auto time = [&](auto scale_lods, uint8_t* manager, Order order, uint32_t thread_count) {
       std::vector<std::thread> threads;
       const auto start = std::chrono::steady_clock::now();
       for (uint32_t thread = 0; thread < thread_count; ++thread) {
         threads.emplace_back([&, thread] {
           for (uint32_t round = 0; round < CALLS; ++round) {
-            const uint32_t model = (alternating ? (round + thread) % 6 : ((round / 64) + thread) % 6);
+            uint32_t model = 0;
+            switch (order) {
+              case Order::ALTERNATING: model = (round + thread) % 6; break;
+              case Order::RUNS:        model = ((round / 64) + thread) % 6; break;
+              case Order::PAST_CACHE:  model = (round + thread * 32) % 128; break;
+            }
             scale_lods(manager, model, SCALE);
           }
         });
@@ -351,15 +359,17 @@ int main() {
       return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / CALLS;
     };
     for (const uint32_t threads : {1u, 4u}) {
-      for (const bool alternating : {true, false}) {
-        const double old_ns = time(&old::ScaleModelLods, old_world.manager.get(), alternating, threads);
-        const double new_ns = time(&hooks::internal::ScaleModelLods, new_world.manager.get(), alternating, threads);
-        std::printf("4 %s, %u thread%s: old %.1f ns a call, new %.1f ns a call (wall time / calls a thread)\n",
-                    alternating ? "cells alternating 6 models" : "runs of 64 of one model", threads, threads == 1 ? "" : "s",
-                    old_ns, new_ns);
+      for (const Order order : {Order::ALTERNATING, Order::RUNS, Order::PAST_CACHE}) {
+        const double old_ns = time(&old::ScaleModelLods, old_world.manager.get(), order, threads);
+        const double new_ns = time(&hooks::internal::ScaleModelLods, new_world.manager.get(), order, threads);
+        const char* name = (order == Order::ALTERNATING ? "cells alternating 6 models"
+                            : order == Order::RUNS      ? "runs of 64 of one model"
+                                                        : "128 models in turn (the map path every call)");
+        std::printf("4 %s, %u thread%s: old %.1f ns a call, new %.1f ns a call (wall time / calls a thread)\n", name,
+                    threads, threads == 1 ? "" : "s", old_ns, new_ns);
       }
     }
-    for (size_t model = 0; model < 6; ++model) CHECK(ClosedForm(new_world, model, SCALE) && ClosedForm(old_world, model, SCALE));
+    for (size_t model = 0; model < 128; ++model) CHECK(ClosedForm(new_world, model, SCALE) && ClosedForm(old_world, model, SCALE));
   }
   std::printf("PASS\n");
   return 0;

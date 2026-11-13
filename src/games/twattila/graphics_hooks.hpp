@@ -351,30 +351,59 @@ static void ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
     };
     if (cached.model == model && cached.scale == scale && cached.count == count && holds_written()) return;
     models_scaled.store(true, std::memory_order_relaxed);
-    ModelLods known;
+    const auto scaled = [&](float game) {
+      return std::bit_cast<uint32_t>(game < FLT_MAX ? std::min(game * scale, FLT_MAX) : game);
+    };
+    // Most misses find the model as another thread (or this one before an eviction) left it: nothing to write, under the
+    // entry's shared lock.
+    std::array<uint32_t, MAX_MODEL_LODS> written = {};
+    bool holds_scaled = false;
     scaled_models.if_contains(key, [&](const auto& entry) {
       const auto& [model_key, model_lods] = entry;
-      known = model_lods;
+      holds_scaled = (model_lods.count == count);
+      for (uint32_t index = 0; holds_scaled && index < count; ++index) {
+        uint32_t bits;
+        std::memcpy(&bits, entries[index] + 0x38, sizeof(bits));
+        holds_scaled = (bits == model_lods.written[index] && bits == scaled(model_lods.game[index]));
+      }
+      written = model_lods.written;
     });
-    ModelLods next = known;
-    next.count = count;
-    bool changed = (known.count != count);
-    for (uint32_t index = 0; index < count; ++index) {
-      uint32_t bits;
-      std::memcpy(&bits, entries[index] + 0x38, sizeof(bits));
-      // Anything but the addon's last value is the game's (its setup again, or a new model at the same address).
-      if (known.count != count || bits != known.written[index]) {
-        next.game[index] = std::bit_cast<float>(bits);
-      }
-      const float game = next.game[index];
-      next.written[index] = std::bit_cast<uint32_t>(game < FLT_MAX ? std::min(game * scale, FLT_MAX) : game);
-      if (next.written[index] != bits) {
-        std::memcpy(entries[index] + 0x38, &next.written[index], sizeof(bits));
-      }
-      changed |= (next.written[index] != known.written[index]) || (next.game[index] != known.game[index]);
+    if (holds_scaled) {
+      cached = {.model = model, .scale = scale, .count = count, .written = written};
+      return;
     }
-    if (changed) scaled_models.insert_or_assign(key, next);
-    cached = {.model = model, .scale = scale, .count = count, .written = next.written};
+    // The entry read, the LODs written and the entry updated under the entry's lock: as three steps, two threads scaling
+    // one model at once (its first scaling, or its first after a slider change) could take each other's written value for
+    // the game's and scale the model twice.
+    const auto scale_lods = [&](ModelLods* lods) {
+      const bool count_changed = (lods->count != count);
+      lods->count = count;
+      for (uint32_t index = 0; index < count; ++index) {
+        uint32_t bits;
+        std::memcpy(&bits, entries[index] + 0x38, sizeof(bits));
+        // Anything but the addon's last value is the game's (its setup again, or a new model at the same address).
+        if (count_changed || bits != lods->written[index]) {
+          lods->game[index] = std::bit_cast<float>(bits);
+        }
+        lods->written[index] = scaled(lods->game[index]);
+        if (lods->written[index] != bits) {
+          std::memcpy(entries[index] + 0x38, &lods->written[index], sizeof(bits));
+        }
+      }
+      written = lods->written;
+    };
+    scaled_models.lazy_emplace_l(
+        key,
+        [&](auto& entry) {
+          auto& [model_key, model_lods] = entry;
+          scale_lods(&model_lods);
+        },
+        [&](const auto& construct) {
+          ModelLods model_lods;
+          scale_lods(&model_lods);
+          construct(key, model_lods);
+        });
+    cached = {.model = model, .scale = scale, .count = count, .written = written};
   }
 }
 
