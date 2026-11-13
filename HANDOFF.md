@@ -44,6 +44,21 @@ under 60 GB before GPU / WARP jobs (18.4 GB at 01:10). One writer. Each step com
 - [x] 8 README Pharaoh "Round v56" (New: water reflections, Specular Occlusion, frame trace extras; WARP; page; Not done: game
   run with the trace's grep list, risks; smoke shadows still open) + WH3 README v51 (the light copy moved, its log line's new
   text; nothing else). Attila README unchanged (no behaviour change). Built only, not stamped, not installed, not run in game.
+- [x] 9 (ATN's agent) v56 STAMPED + INSTALLED 01:57 (install_pharaoh_v56.py, ATN files unchanged, no DevKit, helper105 unchanged).
+- [x] 10 run W1 (W1_015828, 01:58-02:00, siege benchmark windowed, DLSS Performance, RT sun / torch / fog shadows, glow, far trees,
+  Reflections + Water Reflections, Log Details, trace_50 at +30 s): no crash / hang, ATN files same. Log: "hooks applied", "the hits
+  read the pass's light (R16G16B16A16F, copied), 3840 x 2160", "tracing, the water from its own surface", "First run: Ray-Traced
+  Water Reflections ... left out, its apply DE4F92CD drawn with the rays"; status line reflections 1.61 ms GPU (trace 2.22).
+  The trace still lists 9A55B7F2 / 0B78827B / 10 + 10 mips: the trace logs commands other callbacks bypass (skill row). DE4F92CD's
+  blend: colour ONE + ONE add (alpha ONE, ZERO): the apply ADDS the reflection into the light buffer, our copy writes the same value
+  (WARP 0 apart), so the blend needs nothing. Particle draws with VS 109B79CE: 3F1B86E1 6 indices x 91 instances, blend ONE /
+  INV_SRC_ALPHA (premultiplied over), vb0 stride 12, vb1 stride 112; also 2A315C27 (6 x 91, into f88), ACE25F9D (36 x 91), CFB48C60
+  (36 x 91, G-buffer f24, vb1 140), 5AD46115 (60 x 91, vb1 64): same VS, same buffers t0 439 x 16, t1 32768 x 128, t2 131072 x 8,
+  t4 439 x 112, t6 131072 x 64. Screenshots by CopyFromScreen: one stale loading frame (skill row); the water's look is ATN's test.
+- [x] 11 run C2 (C2_020223): plain `game_startup_mode campaign` crashed at 6 s, before any frame: 0xC0000005 null read at
+  Pharaoh.exe+0x47C81A, the same address as 2026-11-12's run C (`campaign <benchmark>`), v54 and v56 alike: the game's start form,
+  not the add-on. Campaign packs: a lua-driven benchmark (cindy scene) started from the menu only, no xml. ATN files same.
+  Campaign traces: ATN loads the autosave from the menu, then a `renodx_trace_now` file next to Pharaoh.exe.
 
 ## ATN'S 2026-11-12 FOURTH LIST + PHARAOH (started 15:07; ATN away until ~21:00, plays 21:00-01:00)
 Rules for this batch: game runs (Pharaoh trace-only data runs, medium-effort agent, few runs, fresh backups incl. replays/saves) allowed
@@ -88,7 +103,7 @@ Was P5: pass maps 33/50/67/100, reader census by handle, capture candidates, vel
 - [x] Pharaoh v54 (2329d357 Fog Shadows Exp off, WARP 0 apart + controls; 86544b2f Rays Replace Shadow Maps + Skip the Shadow Maps Exp off via ALWAYS comparison sampler at s2 on 12 atlas sun PS, WARP 0 apart + controls, skip B (atlas clear unproven); f8b9b1fe presets: RT/PT left GT-VBAO under PT AO -> ssao_mode 0 in Pharaoh, Light in Fog default off). INSTALLED 23:50. OPEN for ATN: WH3 has the same RT/PT GT-VBAO-under-PT-AO stacking (shared one-line fix in graphics_page RAYS values).
 - [x] Pharaoh v55 (bd293682 Bend extras: thin replay cloth / flags, foliage bit 128, Coloured Shadows c3 not c1 fix, WARP 0 of 4.1 M + controls; 3b983e69 smoke NOT possible: GPU-simulated instanced quads 109B79CE vs CaptureParticles; cb862dd2 reflections plan feasible ~1 day, tools/tw/pharaoh/reflections_plan.md; cc135b62 shared RT/PT ssao_mode 0 when !rays_replace_ao). WH3 v50 INSTALLED 00:43. Pharaoh v55 INSTALLED 00:56 (install_pharaoh_v55.py, rebuilt at HEAD first; ATN files unchanged, no DevKit).
 - [x] Night data run S1 (S1_002919, 00:29-00:31, v54 + helper105, windowed, siege benchmark, DLSS Performance, RT sun / torch / fog shadows, Log Details): battle at 22.2 s, trace_50 3782 lines; torches E318CE77 1 draw / 15 instances, 5AD46115 1 / 60; 1ACBD907 left out with 4 PS (opacity not known), E710D4E7 topology 5 left out once then placed; no far-card / cloth / flag lines; First run Fog Shadows 598C59F3; "no trace this frame (no main camera)" every 5 s; no crash / hang / new WARN; ATN files same. S2 (campaign): no start form found; the pack scan for a campaign benchmark xml ran on, the agent stopped there.
-- [ ] ATN 2026-11-13 ~00:55: do the RT water reflections (tools/tw/pharaoh/reflections_plan.md) and every other open item tonight, lessons into the skill, install the newest, round report, then shut the PC down.
+- [x] ATN 2026-11-13 ~00:55 (water reflections v56 DONE, W1 run, campaign C2 not possible from the command line): do the RT water reflections (tools/tw/pharaoh/reflections_plan.md) and every other open item tonight, lessons into the skill, install the newest, round report, then shut the PC down.
 - [x] ATN 2026-11-13 ~00:30: approved the shared RT/PT fix (ssao_mode 0 when !rays_replace_ao; WH3 + Pharaoh; Attila unaffected: its ray AO replaces) - queued as v55 item 4; skill lessons 41323c4a. Night: v55 implementer + Pharaoh night data run (siege RT on + Log Details, one campaign try) running.
 - [ ] Pharaoh next: RT water reflections (tonight), smoke layout 109B79CE trace facts, campaign start form (pack scan)
 - ATN 2026-11-12 ~21:00 decisions: Pharaoh cloth / flag RT shadows stay (new to the game, accepted); RT/PT turning Pharaoh's Experimental torch row on (WH3 key in RAYS_PRESET) stays. Explained WH3 Shadow Map Size under multiplying rays; fix queued after v53 (show the row when Rays Replace Shadow Maps is off). No game starts until ATN writes (gaming ~21:00-01:00).

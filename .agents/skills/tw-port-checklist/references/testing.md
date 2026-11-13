@@ -23,6 +23,9 @@ Rules:
 - Compare `all_modes.sh` runs by mode name against the last log, not by count. Run it in the background beside compiling, not beside another GPU job, and don't copy a helper into its folder until it ends.
 - A pass counts only with a "ready" or "applied" line: a build that failed PSO creation once "passed". A run without a new log is invalid (an old log was once copied, a second game failed silently).
 - Give WARP tests the game's real ranges, and a control that must fail.
+- Scale a WARP formula check's tolerance with the largest summed term, not a fixed epsilon [f306ff2d].
+- The frame trace logs every draw and dispatch in its own callback, also the ones another callback bypasses: a skipped chain still shows. Prove a skip by the add-on's skip-path line. Its options `blend_hashes`, `vertex_input_hashes`, `instances_apart` (`twattila/frame_trace.hpp`, 7e945569) give a PS's blend desc, a VS's buffer slots with strides and element counts, and index x instance counts apart in one run.
+- Pack searches: `mmap.find` on literal names takes minutes over 75 GB; a regex with a `{0,120}` prefix ran 30 minutes with no output.
 - Say in the report what the harness can't show.
 
 ## 2. Game runs
@@ -34,7 +37,8 @@ Rules:
 - **Driving a run**: `test_scripts/run_game.ps1` (`-Game`, `-Shot s`, `-Profile s`, `-Set "s:key=value;..."`, `-Env`, `-Keys "W:6.4"`, `-Campaign`) sets `RENODX_TW_SHOT`, `RENODX_TW_PROFILE`, `RENODX_TW_SET` (`twattila/test_hooks.hpp`) and closes the game through its window; `wh3_batch3/check_run.py` proves the run ran.
 - Steam started elevated (the maintainer's SteamAdminStart task) passes that to the game and blocks input: `(Get-Process steam).Path` empty means elevated; `steam.exe -shutdown`, then `-silent`; don't touch the task.
 - Start forms: `game_startup_mode replay "<full path>"` (WH3 crashes on a bare name), `campaign_load "<save>"`, `battle_benchmark "<xml>"` (WH3). Try them before building a plan on one.
-- A guessed start argument can crash the game before any frame: Pharaoh's `game_startup_mode campaign <benchmark>` did (0xC0000005); its help lists `battle|campaign|... <xml>` and no replay or campaign_load. One try per guessed form, and say it was a guess.
+- A guessed start argument can crash the game before any frame: Pharaoh's `game_startup_mode campaign <benchmark>` did (0xC0000005); its help lists `battle|campaign|... <xml>` and no replay or campaign_load. One try per guessed form, and say it was a guess. A plain `game_startup_mode campaign` crashed the same way (both a null read at Pharaoh.exe+0x47C81A, read from the crash_report minidump's exception stream): Pharaoh's campaign is reached only from the menu (Load), so campaign traces need the maintainer's load and the `renodx_trace_now` marker.
+- A desktop capture (`CopyFromScreen`) of an HDR flip-model game window returned one stale frame (Pharaoh's loading screen, three shots alike): take pictures with ReShade's screenshot or `RENODX_TW_SHOT`.
 - Fullscreen Pharaoh draws no frame while another window is in front ("No frame for 20 s"), and the app keeps the foreground: run windowed at full size (`gfx_fullscreen false`, restored from that run's backup).
 - `RENODX_TW_SET` is read at launch; its timed changes fire only while frames are drawn and pile up otherwise. Time them from the battle's first-frames line, and place each trace marker after the log shows the value set.
 - In-game MSAA turns the addon's AA off, and the frame trace hangs off the AA frame: an MSAA start gives no trace until the trace has its own path.

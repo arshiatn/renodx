@@ -6,6 +6,7 @@
 |---|---|---|
 | 3Dmigoto names the wrong constant: campaign's haze gone, UI swapped [e06a18da] | Audit every new replacement, re-read from bytecode | [cb_audit.py](../scripts/cb_audit.py) |
 | 3Dmigoto drops a two-component operand: `add r0.yz, cb0[0].yyyy, -cb2[0].wwzw` came out with one constant for both (WH3 fog height) | Read decompile against disassembly where a line writes two components | `warp_tests/fog_wh3`: the game's shader against the build on random constants, every bit at the neutral setting; the raw decompile fails it |
+| 3Dmigoto read the bool at cb0[0].x as cb0[0].y (Pharaoh's SSR apply DE4F92CD, its sky lerp) and merged the fog's two heights again [f306ff2d] | Read the asm for every constant a branch or a lerp tests | `warp_tests/pharaoh/ssr_v56`: the raw decompile 165,780 values apart, fixed 0 |
 | `rN.xy = scalar * ...` loses a component; `dot(c, c)` on a scalar drops the 2 (DOF in 7 games) | `dot(c.xx, c.xx)`, compare | `cb_audit` plus 24 random interpreter runs |
 | Generated motion or RT VS: regenerating brings fixed lines back | Fix the decompile input | `cb_audit`'s generated VS part |
 | Edits among decompiled lines: `r0.w` written before a line reads `r0.yzw` lost one colour | Keep each register's order; test with the same inputs by another route | WARP: half the rays against half the result |
