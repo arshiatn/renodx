@@ -50,7 +50,17 @@ Each step committed and pushed to origin atn-mods.
   BUG B; over-patch hits 35: the 24 sun shaders' SSEO block NDC, shroud_plane x7, battlefog 99164788 / 0CB1C821, DB53BDDC, 6ECC6281;
   3F1B86E1 / E8524BB1 replacement lost view_share's NDC patch; phar_building_water_01 t_ssao at view uv (not traced)). Agents'
   scratch: ...\scratchpad\v58\{scale_survey,casters,water,torch}.
-- [ ] 4 torch shadow flicker (campaign). Survey: the helper's soft torch rays (rt_lights.cs_6_5.hlsl 200-216) take a new random disk
+- [x] 4 (step 4 commit) Steady Torch Shadows (Experimental), off, every TW game's rays page under the torch rows (shared:
+  rt_scene.hpp row RayTracedLightSteady, rt_core RT_LIGHT_STEADY = 1 << 28, helpers before 106 ignore it; bridge stays v31). The
+  helper (build\tw_dlaa_helper106, not installed): every light a pixel reaches traced every frame (no turns, Importance picks
+  or kept bits) and each soft ray to the same disk point (the seed without the frame). Root cause: the helper's torch bits
+  change every frame by design (the RR soft rays' random disk point, the turns' and Importance's kept bits taken at the last
+  trace's pixel, which the jitter moves); with NRD (ATN's preset) nothing averages them. Harness HARNESS_LIGHT_FLICKER
+  (tools\tw\rt_harness\light_flicker_v58.sh / .txt, GPU, 40 frames, last 20): helper106 without the flag = helper105 to the
+  bit (39,910.6 bits a frame, jitter + 27 lights); jitter + 27 lights: turns 39,911, Importance 66,801, Steady 28,344 (the
+  jitter's own edges); still camera, RR soft 0.25 m: 24,154 -> 0 (27 lights), 5,870 -> 0 (3 lights); Importance 3,107 -> 0;
+  the harness's checks ALL PASSED with Steady. Not proven: the game's own torch positions (a trace of two frames' light
+  draws would show whether they move). The survey: the helper's soft torch rays (rt_lights.cs_6_5.hlsl 200-216) take a new random disk
   point every frame (seed (frame*128+light)*16+ray*2), one ray, a 0/1 bit, no filter (only RR averages); Importance holds old bits
   per 8x8 block (165, 179-194). No GPU flicker term in E19549A1 / fire02. Options: fixed per-pixel 4x4 disk pattern rotated by a
   position hash (helper, bridge v32) + a filter; steady light positions in the addon.

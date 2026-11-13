@@ -146,6 +146,8 @@ struct Settings {
   bool sharc = false;
   // Importance-Sampled Torch Shadows (Experimental): two shadow rays a pixel toward the local lights, picked by their light.
   bool light_importance = false;
+  // Steady Torch Shadows (Experimental): every light a pixel reaches traced every frame, each soft ray to the same disk point.
+  bool light_steady = false;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -2700,6 +2702,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | (runtime.settings.sway_off_screen ? 0u : dlaa_bridge::RT_SWAY_IN_VIEW)
                | ((runtime.settings.micromaps && runtime.settings.fast_leaves) ? dlaa_bridge::RT_FAST_LEAVES : 0u)
                | (runtime.settings.light_importance ? dlaa_bridge::RT_LIGHT_IMPORTANCE : 0u)
+               | (runtime.settings.light_steady ? dlaa_bridge::RT_LIGHT_STEADY : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | ((runtime.settings.nrd && !dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_NRD : 0u)
                | ((runtime.settings.ao_reblur && dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_AO_REBLUR : 0u)

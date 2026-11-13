@@ -94,6 +94,7 @@ struct Sliders {
   float path_ser = 0.f;
   float sharc = 0.f;
   float light_importance = 0.f;
+  float light_steady = 0.f;
   float light_count = 0.f;  // Torch and Fire Shadow Lights: 32, 64, 128
   float light_range = 0.f;  // metres (0: any distance)
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
@@ -202,6 +203,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
       .light_importance = sliders.light_importance != 0.f,
+      .light_steady = sliders.light_steady != 0.f,
       // A page's preset can set it where no fog is hooked: nothing would read the trace.
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa && internal::fog_shadows_installed,
       .micromaps = sliders.micromaps != 0.f,
@@ -1322,6 +1324,19 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "Two torch / fire shadow rays a pixel, picked by how much light they give (as ReSTIR DI picks lights):\n"
                      "faster with many fires; dim fires' shadows follow moving units slower.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::point_lights_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightSteady",
+          .binding = &sliders->light_steady,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Steady Torch Shadows (Experimental)",
+          .section = section,
+          .tooltip = "Torch and fire shadows that don't flicker: every fire traced every frame, soft edges the same each frame.\n"
+                     "Heavier with many fires; soft edges can look grainy. Replaces Importance-Sampled Torch Shadows.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },

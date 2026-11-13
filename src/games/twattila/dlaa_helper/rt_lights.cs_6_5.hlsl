@@ -16,7 +16,9 @@
 // every pixel's reach 3.80 -> 3.13 ms, 32 lights 6.64 -> 5.17 ms, the bits the same as tracing all once the turns came
 // round. Importance-Sampled Torch Shadows (LIGHT_IMPORTANCE) instead: LIGHT_IMPORTANCE_RAYS lights a pixel, picked by
 // what they give it (ReSTIR DI's candidates: their colour, falloff and angle), stratified with one number a 8 x 8 block
-// (its pixels refresh the same lights); the others keep their bits (dim lights' shadows follow slower).
+// (its pixels refresh the same lights); the others keep their bits (dim lights' shadows follow slower). Steady Torch
+// Shadows (LIGHT_STEADY, helpers 106 on) instead: every light the pixel reaches traced every frame, each soft ray to the same
+// point of the light's disk (no turns, picks or kept bits: a still pixel's bits change only with the scene and the lights).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_lights.h -Vn RT_LIGHTS; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_LIGHTS_OMM.
 #include "./rt_scene.hlsli"
 #include "./rt_camera.hlsli"
@@ -124,8 +126,9 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   uint2 seen_pixel;
   const uint reached_count = countbits(reached_slots);
   const bool importance = (flags & LIGHT_IMPORTANCE) != 0u;
-  if (reached_count > (importance ? LIGHT_IMPORTANCE_RAYS : LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS) && (path_flags & PATH_LIGHT_HISTORY) != 0u
-      && SeenByLastTrace(position.xyz, seen_pixel)) {
+  const bool steady = (flags & LIGHT_STEADY) != 0u;
+  if (!steady && reached_count > (importance ? LIGHT_IMPORTANCE_RAYS : LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS)
+      && (path_flags & PATH_LIGHT_HISTORY) != 0u && SeenByLastTrace(position.xyz, seen_pixel)) {
     // The list's first LIGHT_RAYS_ALWAYS every frame, the others in turns by their place, each 8 x 8 block its own phase
     // (a light's shadows change a block at a time); a light new to the list, or not in the last trace's list where it saw
     // the surface, is traced.
@@ -211,7 +214,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
       const float3 from = light_origin + ((rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f);
       float3 to_light = lights[light].xyz - from;
       if (soft) {
-        const uint seed = (frame * 128u + light) * 16u + ray * 2u;
+        const uint seed = (((steady ? 0u : frame) * 128u) + light) * 16u + ray * 2u;
         to_light += DiskPoint(normalize(to_light), light_size, float2(Random(uint3(id.xy, seed)), Random(uint3(id.xy, seed + 1u))));
       }
       const float light_distance = length(to_light);

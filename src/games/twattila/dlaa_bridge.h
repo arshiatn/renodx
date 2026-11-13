@@ -204,6 +204,9 @@ constexpr uint32_t RT_SHEETS_UNSELFED = 1u << 26;
 // One Level of Detail Out of View (helpers before 98 ignore it): a kept placed instance goes when the frame placed another mesh where it
 // stands and not it (rt_place.cs_6_5.hlsl PLACE_ONE_AT_A_PLACE): the game draws another level of detail of the thing, or its ruin.
 constexpr uint32_t RT_ONE_AT_A_PLACE = 1u << 27;
+// Steady Torch Shadows (Experimental; helpers before 106 ignore it): rt_lights traces every light a pixel reaches every frame, each
+// soft ray to the same point of the light's disk (no turns, Importance-Sampled picks or kept bits: nothing changing frame to frame).
+constexpr uint32_t RT_LIGHT_STEADY = 1u << 28;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
