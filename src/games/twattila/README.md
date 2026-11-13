@@ -1,6 +1,6 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## v157 (2026-11-13; built only, not stamped or installed, not run in game; needs renodx-tw-dlaa64.exe helper108)
+## v157 (2026-11-13; stamped and installed 19:55 with renodx-tw-dlaa64.exe helper108, not run in game)
 
 - Fixed: **Steady Torch Shadows (Experimental) without black dots**: with Ray Reconstruction its soft shadows sent each
   pixel's ray to the same point of the light every frame, a fixed pattern of lit and dark pixels nothing averages (Pharaoh's

@@ -39,7 +39,7 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 22. v64: nvngx_dlssd.dll 310.9.16 copied next to nvngx_dlss.dll: renodx-tw-dlaa64.log "Ray Reconstruction ready", the torch
     shadows soft and calm.
 
-### Round v64 (2026-11-13, torch shadows and Debug Views; built only, not stamped or installed, not run in game; needs helper108)
+### Round v64 (2026-11-13, torch shadows and Debug Views; stamped and installed 19:55 with helper108 and nvngx_dlssd.dll 310.9.16 (Attila's copy; the folder had none), not run in game)
 
 - **Fixed: torch shadows that crawled like noise with DLSS Ray Reconstruction selected.** Pharaoh's folder has no
   nvngx_dlssd.dll, so Ray Reconstruction never started (every helper log with the rays: "Ray Reconstruction unavailable")

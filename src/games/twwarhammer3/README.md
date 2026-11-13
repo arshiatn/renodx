@@ -1,6 +1,6 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
-## v56 (2026-11-13; built only, not stamped or installed, not run in game; needs renodx-tw-dlaa64.exe helper108)
+## v56 (2026-11-13; stamped and installed 19:55 with renodx-tw-dlaa64.exe helper108, not run in game)
 
 - Fixed (Attila v157's helper108): **Steady Torch Shadows (Experimental)** sharp and steady, no fixed black dots under Ray
   Reconstruction; **Ray Reconstruction selected but not started** (no nvngx_dlssd.dll): the rays run as without it, not raw,

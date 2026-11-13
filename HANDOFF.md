@@ -177,6 +177,10 @@ Unproven look changes: Experimental rows, off. One writer; each step committed a
     19:16, 19:24, 19:31 paused it). RR noise (RT_EXTRA_TRACE_FLAGS=256 HARNESS_RR=5, 60 frames, all_modes_v64_driver.txt):
     helper108 = helper107 (wall foot 61% left, open ground 37%, "DLSS Ray Reconstruction active (D3D12)"). build\tw_fg_test
     holds helper108 (fg_bridge_test not run: its exe is from 11-03; the FG path is unchanged).
+- [x] (coordinator) rebuilt at HEAD 19:53-19:54 (26ca8942), STAMPED + INSTALLED 19:55 (tools/tw/round_v151/install_v64.py):
+  Attila v157, WH3 v56, Pharaoh v64, helper108 in all three; ATN files unchanged by hash; old files .in-use-20261113_195529.
+  Pharaoh: nvngx_dlssd.dll 310.9.16 copied from Attila (same hash as WH3's); nvngx_dlssg.dll still missing there (FG off in
+  ATN's ini; copy it before FG is used). A release zip for Pharaoh must carry nvngx_dlssd.dll.
 
 ## ROME II BRING-UP (offline)
 Plan tools/tw/rome2/plan.md (Phase 0 + the Phase 3 items provable offline); results under tools/tw/rome2/. Data runs
