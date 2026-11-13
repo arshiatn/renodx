@@ -98,17 +98,27 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
 ## ROME II BRING-UP (offline)
 Plan tools/tw/rome2/plan.md (Phase 0 + the Phase 3 items provable offline); results under tools/tw/rome2/. Data runs
 (Phase 1.4) BLOCKED on the mod pack dialog (ATN answers it); no game start, no stamp / install (ATN does those).
+Coordinator's runs 2026-11-13 ~17:30 (S1_173022, S1_173217, N1 in tools/tw/rome2/runs): the command-line battle start
+`game_startup_mode battle script\bm_benchmark\bm_battle.xml` (with or without a mod-list file) crashes the retail game at
+Empire.Retail.dll+0x276899 ~9 s in, before any frame, also with the add-on renamed aside: data runs need the menus.
 - [x] 0.1 Encoding ramp on WARP (tools/tw/rome2/encoding, phase0_results.md): the game's EE1DA45C (dump bytes, identity
   S-curve) writes the linear result within 0.087% (its sqrt 89.6% off); hdr_to_screen 2C229891 gamma-encodes the frame as
   it is (frame^(1/2.2) within 0.094%, no square); the addon's t00 HDR 3 linear (0.104%). Today's wrappers give DLSS
   frame^2 (0.01 -> 0.0001, darks <= 0.000244 to 0); TW_AA_FRAME_LINEAR 1: 0 of 513 off by > 1% (w 0 / 1), define 0 =
   today bit for bit; CONTROLs fail as they must.
 - [ ] 0.2 Sun picture test 340CBE9D / 1A0532C0 (t49 / t50 / t51), the ambient cube and formula.
-- [ ] 0.3 Contact-shadow loop in 340CBE9D; battlefog 259AEC56's shadow-atlas binding (fog march).
-- [ ] 0.4 cbuffer_slots.py on Rome II's dump.
-- [ ] 0.5 Cut-out census (discard PS by family; unit cut-outs).
-- [ ] 0.6 Shadow-reader list (atlas 8192² + baked 4096² R16).
-- [ ] 0.7 rt_scene_map for Rome II's names.
+- [x] 0.3 No contact march: 0 `loop` in the 50 live sun PS (no step count / flag in their constants); battlefog 259AEC56
+  binds only the depth twin and the sky cube (no shadow map, no loop): no fog march. Bend and Fog Shadows add, nothing
+  to replace (B; tools/tw/rome2/phase0_results.md).
+- [x] 0.4 cbuffer_slots.py: Rome II's 2602 shaders bind b0-b7 (b7 in 8), Attila's b0-b6; the addon's b8-b13 are free (B).
+- [x] 0.5 Cut-out census (census3/census3_rome2.py from Pharaoh's): 630 discarding PS; units = the weighted* family's
+  s_diffuse_map.w alpha test (drawn 4AD298CF, DDDFEBA6, 1B291719, 42990BB4, shadow A6CFBF59; no *burn* PS in Rome II);
+  foliage / billboard / imposter / rope / cloth / sail / rigid alpha tests listed with their 10-27 counts.
+- [x] 0.6 Shadow readers: 147 PS (115 atlas, 92 baked, 32 point maps): sun, waterplane, river, ocean, sm_5_0 grass /
+  leaves, mist / naval VFX; drawn at 10-27: 340CBE9D, 1A0532C0, 58DC6E12, 3ECFEAF5 x6 (census3/shadow_readers.tsv).
+- [x] 0.7 rt_scene_map_rome2 (Pharaoh's fork, Attila's name form): 16 of 51 SCENE_SHADERS rows overridden (dead); live
+  uncaptured twins: cloth 997A7119, sail 438E2D53, imposter A5EA617C, tree cards D2EC24BD / 1C47F106, campaign trees
+  AAFE8EAB, rope 4F90C2B5 (rt_scene_map_rome2.txt).
 - [ ] 3.1 Output + page skeleton (TW_AA_FRAME_LINEAR, graphics_page, SETTINGS_REVISION, MSAA note, dead entries, sky).
 - [ ] 3.2 Stability (ReadGpuVendor / OnNvidia, helper-missing note, GitHub button).
 - [ ] 3.5 Render scale (12 hdr_to_screen FrameRenderShare, 37 replaced NDC shaders, dead RENDER_SCALE_READS).
