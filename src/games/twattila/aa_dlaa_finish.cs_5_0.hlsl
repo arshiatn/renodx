@@ -13,7 +13,7 @@
 #include "./aa.hlsli"
 #include "./motion.hlsli"
 
-// The tone mapper's output: 0 its square root (Attila, Rome II, Thrones, WH3...), 1 linear (Pharaoh). A game folder's
+// The tone mapper's output: 0 its square root (Attila, Thrones, WH3...), 1 linear (Pharaoh, Rome II). A game folder's
 // copy of this shader defines it before its #include.
 #ifndef TW_AA_FRAME_LINEAR
 #define TW_AA_FRAME_LINEAR 0
