@@ -54,10 +54,10 @@ Read the file for every area the work touches before planning. Each row is a mis
 
 Details, exit criteria and the WH3 history in [bringup.md](references/bringup.md).
 
-0. Offline census: shader names, engine values, the game-facts sheet, a parity table against Attila's page; a first build from the closest TW addon with only the trace and log rows, every feature off.
+0. Offline census first, no game run: shader names, engine values, the scale census over the whole dump, the caster census over any trace there is, the game-facts sheet, a parity table against Attila's page; a first build from the closest TW addon with only the trace and log rows, every feature off.
 1. One data run, only when the maintainer allows it: frame traces in four scenes, on the maintainer's settings and on defaults, at 100% and at the game's own lower scales.
 2. Offline from the traces: pass map, reader census by handle, capture candidates, pass diffs between scales and settings; the game-facts rows answered again from the traces.
-3. Features in dependency order, each with its offline check green before the next.
+3. Features in dependency order, each with its offline check green before the next. Never skipped: the game's sun colour into `rt_sun` texel 2 for Path-Traced GI, the AO hook only where the AO pass binds a camera ([game-facts.md](references/game-facts.md)), every full-screen quad's uv read below 100% ([render-scale-dlss.md](references/render-scale-dlss.md)).
 4. The settings matrix offline: GI, paths, RR, 50%, FG, Reset mid-battle; each row's cost alone.
 5. One bundled game run, its plan checked against a page dump of the maintainer's preset.
 6. The maintainer's test list ([testing.md](references/testing.md) section 3).
@@ -109,7 +109,7 @@ cmake --build build32 --config Release --target renodx-twattila.addon32 renodx-t
 
 A behaviour one game needs goes behind a parameter that defaults to today's value.
 
-**Helper or `dlaa_bridge.h`**: build into a new folder passed as the first argument of `src\games\twattila\dlaa_helper\build.ps1` (`build\tw_dlaa_helperN`; without it the script writes over `build\tw_dlaa_helper`), never over an old one. A change to the bridge's layout bumps `VERSION` and keeps `OLDEST_VERSION` readable; `Prepare` publishes only addon-owned fields. Copy the new helper into `build\tw_rt_harness` and `build\tw_fg_test` first (the scripts run whatever helper sits there), rebuild the harness after a bridge change (it includes `dlaa_bridge.hpp`), and check the helper log's version line. Then run the full harness by mode name (`removal`, `switching_removal`, `release_*`, `leaf_storm`), `fg_bridge_test` and the `tw_helper_lifetime`, `tw_gpu_completion` suites. Addon and helper ship together.
+**Helper or `dlaa_bridge.h`**: build into a new folder passed as the first argument of `src\games\twattila\dlaa_helper\build.ps1`, as an absolute path (a relative one fails writing `fg_ui.h`) (`build\tw_dlaa_helperN`; without it the script writes over `build\tw_dlaa_helper`), never over an old one. A change to the bridge's layout bumps `VERSION` and keeps `OLDEST_VERSION` readable; `Prepare` publishes only addon-owned fields. Copy the new helper into `build\tw_rt_harness` and `build\tw_fg_test` first (the scripts run whatever helper sits there), rebuild the harness after a bridge change (it includes `dlaa_bridge.hpp`), and check the helper log's version line. Then run the full harness by mode name (`removal`, `switching_removal`, `release_*`, `leaf_storm`), `fg_bridge_test` and the `tw_helper_lifetime`, `tw_gpu_completion` suites. Addon and helper ship together.
 
 **New replacement shader**: TW folders name it `shaders/<name>_0x<CRC>.<target>.hlsl` (not `src/games/AGENTS.md`'s CRC-only form; `cb_audit` reads only this form). Build first, then run [scripts/cb_audit.py](scripts/cb_audit.py) with `python -I`, naming the game (`cb_audit.py twwarhammer3`), and read each line of part 2; the new shader must not be in its last line's "not compared" list. Then a WARP test against the game's bytes with a control that must fail. The script reads the decompiler's pack under `bin/`, which isn't in the repo.
 
@@ -149,4 +149,4 @@ At most 10 lines, never what an offline check can show: format and dry-run in [t
 
 ## Finishing a round
 
-Work through [release.md](references/release.md) in order: the double-work question, every consumer built, one independent review and one agent for its fixes, then the report per game (done, not done, what the maintainer tests, what wasn't run). Every bug the maintainer found in game becomes a row in the right reference file, with the offline check that would have caught it.
+Work through [release.md](references/release.md) in order (rebuild at HEAD right before stamping, never after): the double-work question, every consumer built, one independent review and one agent for its fixes, then the report per game (done, not done, what the maintainer tests, what wasn't run). Every bug the maintainer found in game becomes a row in the right reference file, with the offline check that would have caught it.

@@ -12,9 +12,11 @@
 ## 2. Release and install
 
 - Version the addon and the README; a README line per change, `New:` and `Fixed:` first words in the players' notes.
+- Rebuild every shipped addon and helper at HEAD right before stamping: an add-on embeds its build date, so any rebuild changes its hash, and builds older than the last code commit shipped four times in one day. Check each build's time against `git log -1`'s.
 - Release builds are stamped by the maintainer's private step. Never rebuild after stamping: install and zip the stamped copies.
+- A helper unchanged this round: copy its stamped copy into the new stamped folder (the install script checks the stamped copy there).
 - `release_zip.py` names the helper folder; Attila players get the slim zip from `player_zip.py`. Compare the new zip's entries with the last one (a licence file once dropped out).
-- Install only when the maintainer asked for it, with the game closed and the backups of the Game runs rule in [SKILL.md](../SKILL.md); after, the installed files' hashes equal the stamped copies'. Its Builds and Git rules hold here too.
+- Install only when the maintainer asked for it, with the game closed and the backups of the Game runs rule in [SKILL.md](../SKILL.md); after, the installed files' hashes equal the stamped copies'. Rename old files aside (`.in-use-<ts>`), never delete them: a dead process may pin them; the script ignores dead processes with 0 threads. Its Builds and Git rules hold here too.
 
 ## 3. Report and hand-off
 

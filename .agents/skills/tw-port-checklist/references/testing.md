@@ -28,20 +28,21 @@ Rules:
 - WARP's bilinear weights at one texel coordinate differ with the texture's size: a picture-in-a-bigger-texture scale test at a share that isn't a power of two (33%) with reads off the texel centres (a distortion) misses by a weight step even with the coordinates 7.6e-6 texels apart (Pharaoh's SSR apply: 2,112 values). Check such a read with a point sampler and its coordinates with a probe (`warp_tests/pharaoh/apply_share_v62`) [7224b347].
 - The frame trace logs every draw and dispatch in its own callback, also the ones another callback bypasses: a skipped chain still shows. Prove a skip by the add-on's skip-path line. Its options `blend_hashes`, `vertex_input_hashes`, `instances_apart` (`twattila/frame_trace.hpp`, 7e945569) give a PS's blend desc, a VS's buffer slots with strides and element counts, and index x instance counts apart in one run.
 - Pack searches: `mmap.find` on literal names takes minutes over 75 GB; a regex with a `{0,120}` prefix ran 30 minutes with no output.
-- The helper's status line's GPU ms are one request's (the last answered), not a mean, and the "Ray tracing with" line comes 3 s after a settings change: read high values against the settings changes around them (ATN's 19-40 ms bounce was a minute between two changes). Means and parts come from Record Ray Tracing Profile (`tw_rt_profile_helper.csv`).
+- The helper's status line's GPU ms are one request's (the last answered), not a mean, and the "Ray tracing with" line comes 3 s after a settings change: read high values against the settings changes around them (a 19-40 ms bounce "spike" was a held Rays setting between two changes). Means and parts come from Record Ray Tracing Profile (`tw_rt_profile_helper.csv`).
 - Say in the report what the harness can't show.
 
 ## 2. Game runs
 
 - Permission and backups: the Game runs rule in [SKILL.md](../SKILL.md). It covers the scripts that start a game too (`run_game`, `soak`, `fg_run`, `fg_mem_test`, `shot_run3`, `install`, `overlay_test`, `profile_run2`).
 - Run on the maintainer's current ini and preset (the proof levels in [SKILL.md](../SKILL.md)); a "0 of 8" once held only for one ini.
-- Never two GPU jobs at once.
+- Never two GPU jobs at once. Before each start, Committed Bytes below about 60 GB (dead processes from resets hold theirs until a reboot, [helper-fg-stability.md](helper-fg-stability.md)).
 - The game folder holds plain stamped copies before a run: Pharaoh's addon and a DevKit were symlinks into `build/Release` (as of 2026-11), so any build would have swapped the addon mid-run and the DevKit broke the no-DevKit rule. `ls -l` the folder first.
 - **Driving a run**: `test_scripts/run_game.ps1` (`-Game`, `-Shot s`, `-Profile s`, `-Set "s:key=value;..."`, `-Env`, `-Keys "W:6.4"`, `-Campaign`) sets `RENODX_TW_SHOT`, `RENODX_TW_PROFILE`, `RENODX_TW_SET` (`twattila/test_hooks.hpp`) and closes the game through its window; `wh3_batch3/check_run.py` proves the run ran.
 - Steam started elevated (the maintainer's SteamAdminStart task) passes that to the game and blocks input: `(Get-Process steam).Path` empty means elevated; `steam.exe -shutdown`, then `-silent`; don't touch the task.
 - Start forms: `game_startup_mode replay "<full path>"` (WH3 crashes on a bare name), `campaign_load "<save>"`, `battle_benchmark "<xml>"` (WH3). Try them before building a plan on one.
 - A guessed start argument can crash the game before any frame: Pharaoh's `game_startup_mode campaign <benchmark>` did (0xC0000005); its help lists `battle|campaign|... <xml>` and no replay or campaign_load. One try per guessed form, and say it was a guess. A plain `game_startup_mode campaign` crashed the same way (both a null read at Pharaoh.exe+0x47C81A, read from the crash_report minidump's exception stream): Pharaoh's campaign is reached only from the menu (Load), so campaign traces need the maintainer's load and the `renodx_trace_now` marker.
 - A desktop capture (`CopyFromScreen`) of an HDR flip-model game window returned one stale frame (Pharaoh's loading screen, three shots alike): take pictures with ReShade's screenshot or `RENODX_TW_SHOT`.
+- After an unclean exit Rome II's mod manager asks about the mod pack (window class `mod_question_dlg`), and SendInput's Enter doesn't answer it: close every start cleanly (CloseMainWindow, kill only after 60 s); a run script detects the class and stops at once (`rome2_data_run.ps1`).
 - Fullscreen Pharaoh draws no frame while another window is in front ("No frame for 20 s"), and the app keeps the foreground: run windowed at full size (`gfx_fullscreen false`, restored from that run's backup).
 - `RENODX_TW_SET` is read at launch; its timed changes fire only while frames are drawn and pile up otherwise. Time them from the battle's first-frames line, and place each trace marker after the log shows the value set.
 - In-game MSAA turns the addon's AA off, and the frame trace hangs off the AA frame: an MSAA start gives no trace until the trace has its own path.
@@ -75,7 +76,7 @@ Rules:
 
 ## 5. Profiling
 
-- PresentMon (GPU busy) first: a CPU-bound scene hides GPU savings.
+- PresentMon CPU busy and GPU wait before any CPU or GPU work (facts in [helper-fg-stability.md](helper-fg-stability.md) section 5).
 - The helper's GPU time from per-process GPU Engine counters.
 - Record Ray Tracing Profile for 30 s with ReShade's menu closed (FG is off under the menu); read `answer_wait_ms`, `present_pacing_ms`, `cpu_record_parts`.
 - Time Each Pass for one frame; xperf for CPU; A/B inside one run (`RENODX_TW_SET`).
@@ -89,7 +90,8 @@ Rules:
 | Debug layer | Needs Graphics Tools; deterministic for lifetime bugs (`RENODX_TW_D3D12_DEBUG`) |
 | A lambda with `CHECK` must return int | Exit 3 with no output otherwise |
 | Script corruption; a German decimal comma in `-f` | InvariantCulture; read before running |
+| PowerShell variable names ignore case: `$start` overwrote a `[string]$Start` parameter | One spelling per name in a script; no local shadowing a parameter |
 | An own compute pass in a replaced pass's `on_draw` runs before the mod's push: the settings register holds what the last replaced pass pushed | Bind the settings at the register `shared.h` names; write one value of it out to check it arrives |
 | A plan built on one start form or one trace | Two forms or two traces before planning |
 | A WARP sun test's comparison sampler on an RGBA32F shadow map returned 0 everywhere | Shadow maps as R32_FLOAT (the game's D32 view), `sun_scale_v61` |
-| PowerShell `-Filter "*.addon32.*"` matches plain `.addon32` files too | Never delete by it; a dead game process pins the addon: rename aside |
+| PowerShell `-Filter "*.addon32.*"` matches plain `.addon32` files too | Never delete by it; old files are renamed aside ([release.md](release.md)) |
