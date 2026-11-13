@@ -31,7 +31,7 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 17. DLSS Performance and Ultra Performance, the siege's river and a sea battle, Ray-Traced Water Reflections off and on: the
     water's reflections sit where they do at 100% (not stretched from the picture's top-left part), ripples bend them as much.
 
-### Round v63 (2026-11-13, built only, not run in game)
+### Round v63 (2026-11-13, stamped and installed 18:38, helper107 unchanged, not run in game)
 
 - **Fixed: rough water's reflections below 100% as soft as at 100%.** The game picks the reflections' blur level by the
   water's roughness in the reflection texture's texels, and below 100% that texture holds only the render's share of the
