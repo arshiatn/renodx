@@ -3288,9 +3288,10 @@ constexpr auto OnSunDrawGuides = []<typename Context>(Context& command) -> renod
         const auto* flags = static_cast<const uint32_t*>(mapped.pData);
         renodx::utils::log::i(std::format(
             "[Warhammer III] Sun shader {:08X}: spherical harmonics {}, Global Illumination {}, SSR {}; ambient cube's scale {:g}, leaf bias {:g}, "
-            "SH terms {:g}, SH fade {:g}; cube +x {:g} {:g} {:g}, -x {:g} {:g} {:g}, +y {:g} {:g} {:g}, -y {:g} {:g} {:g}, +z {:g} {:g} {:g}, -z {:g} {:g} {:g}.",
+            "SH terms {:g}, SH fade {:g}; cube +x {:g} {:g} {:g}, -x {:g} {:g} {:g}, +y {:g} {:g} {:g}, -y {:g} {:g} {:g}, +z {:g} {:g} {:g}, -z {:g} {:g} {:g}; "
+            "sun colour {:g} {:g} {:g}.",
             draw.shader_hash, flags[46], flags[45], flags[44], c[75], c[72], c[73], c[74], c[8], c[9], c[10], c[12], c[13], c[14], c[16], c[17], c[18],
-            c[20], c[21], c[22], c[24], c[25], c[26], c[28], c[29], c[30]));
+            c[20], c[21], c[22], c[24], c[25], c[26], c[28], c[29], c[30], c[4], c[5], c[6]));
         native->Unmap(copy.Get(), 0);
       }
     }
@@ -4144,8 +4145,9 @@ bool AttachAddon() {
   }
   // Ray tracing's next: its trace for the screen-space shadows, the AO filter and the Light Bounce. The ambient cube at float 8
   // of lighting_VS_PS in all 7 (the RDEF of each, c2-c7, with the shader's own reads): the paths' sky; Path-Traced Ambient's
-  // callback right after it (the Light Bounce's bypass skips post callbacks: put back in finalize).
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8);
+  // callback right after it (the Light Bounce's bypass skips post callbacks: put back in finalize). The sun colour at float 4
+  // (c1 in all 7; x 0x389FB405 in rt_sun: twwarhammer3/rt_sun.cs_5_0.hlsl), the paths' sun light.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Before the Light Bounce's (its callback draws the sun draw again).
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);

@@ -95,6 +95,19 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
 
+## WH3 V55: PT GI SUN COLOUR (2026-11-13 evening, offline; helper107 as installed, no helper change)
+- [x] 1 Path-Traced Ambient's sun colour, as Attila v156 (c592149c) and Pharaoh v61 (2e0f71ae): all 7 sun light shaders
+  (fxc /dumpbin of the pack's csos) hold sun_colour at lighting_VS_PS offset 16 (float 4, c1) and light their diffuse colour
+  (albedo x (1 - metal) x (1 - Fresnel at N.L): the guide's albedo x (1 - metal) x (1 - F0) at normal incidence) by c1 x
+  Oren-Nayar N.L x the shadow x 0x389FB405 (7.615242e-05; 6-12 copies in each cso; 9EAD8951 asm l.2138-2149, 76A707E5
+  l.1668-1672, CCEF2C1E l.1742-1746, 18A84893 l.1347-1352), no debug coefficient in WH3's buffer. InstallSunDraws(..., 8, 4)
+  (rt_core: RT_PATH_SUN_LIGHT with Path-Traced Ambient); WH3's own rt_sun.cs_5_0.hlsl takes b1's second uint4 and writes
+  texel 2 = c1 x asfloat(0x389FB405) (w 1; 0 without the place). The sun log line now names the sun colour. WARP
+  tools/tw/warp_tests/wh3_rt_sun_v55 (rt_sun_v55.cpp, run_v55.txt; v54's file in v54/): RT SUN V55 ALL PASSED: with the place
+  texel 2 = c1 x the literal, the other 15 texels v54's bit for bit (128 cases: SH on / off, GI on / off, the probes' sky, the
+  cube); without it texel 2 zero, the rest v54's (128); CONTROL unscaled c1 apart (128). Built WH3 addon64. Later run: Path-
+  Traced Ambient steady while the camera turns (ATN's PT GI angle test), log "Sun shader ...: ... sun colour".
+
 ## PHARAOH V61: OPEN ITEMS (2026-11-13 evening, offline; plan tools/tw/pharaoh/open_items/plan.md, class A + the B trace reads)
 Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, no Nexus text,
 never restart. Committed Bytes under 60 GB before WARP / harness / GPU jobs, one GPU job at a time. Unproven look changes:

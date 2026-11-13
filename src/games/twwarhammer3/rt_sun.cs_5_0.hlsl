@@ -16,6 +16,9 @@
 // the environment maps (t_specular_array by g_environment_weights) x g_ambient_fudge_factor (cs DC860C60). So with rt_sun.w
 // (Path-Traced AO, its row) and the flag on, each side is that: the environment maps' cosine-weighted mean over the side's
 // half of the sky x the fudge factor, the light an open surface facing it gets from the game's probes; texel 4's w then 1.
+// With sun_colour's place (b1's second x; 0: none) the sun's diffuse light into texel 2 (w 1), the paths' sun with Path-Traced
+// Ambient (dlaa_helper/rt_cache_resolve.cs_6_5.hlsl): all 7 sun light shaders light their diffuse colour (albedo x (1 - metal)
+// x (1 - Fresnel), the guide's) by sun_colour (c1) x N.L x the shadow x 0x389FB405 (7.615242e-05), the literal in all 7.
 cbuffer lighting_VS_PS : register(b0)
 {
   float4 lighting[19];
@@ -23,7 +26,8 @@ cbuffer lighting_VS_PS : register(b0)
 
 cbuffer rt_sun : register(b1)
 {
-  uint4 rt_sun;  // x the first float of sun_direction, y of the ambient cube, z 1 with Path-Traced AO on, w 1: the probes' sky
+  uint4 rt_sun;        // x the first float of sun_direction, y of the ambient cube, z 1 with Path-Traced AO on, w 1: the probes' sky
+  uint4 rt_sun_light;  // x the first float of sun_colour (0: none)
 }
 
 cbuffer camera : register(b2)
@@ -90,6 +94,9 @@ void main(uint3 thread : SV_GroupThreadID)
   const float3 sun_direction = float3(LightingValue(rt_sun.x), LightingValue(rt_sun.x + 1u), LightingValue(rt_sun.x + 2u));
   const float length_squared = dot(sun_direction, sun_direction);
   sun[uint2(0, 0)] = (length_squared > 0.f) ? float4(-sun_direction * rsqrt(length_squared), 1.f) : 0.f;
+  const uint colour = rt_sun_light.x;
+  const float3 sun_colour = float3(LightingValue(colour), LightingValue(colour + 1u), LightingValue(colour + 2u));
+  sun[uint2(2, 0)] = (colour != 0u) ? float4(sun_colour * asfloat(0x389FB405u), 1.f) : 0.f;
 
   float3 sides[6];
   [unroll]
