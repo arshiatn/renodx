@@ -1199,14 +1199,22 @@ void BuildRuntimeData() {
 // (twattila/graphics_hooks.hpp) and engine tweaks (filled in ConfigureAddon).
 std::array<tw::engine_tweaks::Option, 4> unit_detail;  // foot soldiers, cavalry, elephants, artillery
 float big_battle_fix = 0.f;
+float small_soldiers_as_sprites = 0.f;
+float sprite_size = 20.f;  // pixels on screen
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
 tw::engine_tweaks::Option dead_units;
-tw::engine_tweaks::Option unit_animation;
+tw::engine_tweaks::Option unit_animation;  // shared pose
+tw::engine_tweaks::Option facial_animation;
+tw::engine_tweaks::Option hand_animation;
 tw::engine_tweaks::Option unit_variety;
 tw::engine_tweaks::Option footstep_effects;
 tw::engine_tweaks::Option object_detail;
 tw::engine_tweaks::Option building_detail;
-tw::engine_tweaks::Option campaign_detail;
+tw::engine_tweaks::Option campaign_trees;
+tw::engine_tweaks::Option campaign_plants;
+tw::engine_tweaks::Option campaign_props;
+tw::engine_tweaks::Option grass_distance;  // graphics_hooks' scrub hooks
+tw::engine_tweaks::Option grass_density;
 // Every engine option above, then the tests' (Graphics 2 of 2: Attila's, twattila/engine_tests.hpp).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
@@ -1460,12 +1468,19 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},
           .dead_units = dead_units.scale,
           .unit_animation = unit_animation.scale,
-          .facial_animation = unit_animation.scale,
-          .hand_animation = unit_animation.scale,
+          .facial_animation = facial_animation.scale,
+          .hand_animation = hand_animation.scale,
           .unit_variety = unit_variety.scale,
           .footstep_effects = footstep_effects.scale,
-          .campaign_trees = campaign_detail.scale,
+          .campaign_trees = campaign_trees.scale,
+          .grass_distance = grass_distance.scale,
+          .grass_density = grass_density.scale,
+          // As Attila's (the shadow record's code the same here): the 3D shadows its rule lets go dropped while the rays'
+          // shadows skip the sun's shadow map casters.
+          .unit_shadows = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f),
           .big_battle_fix = big_battle_fix != 0.f,
+          .sprite_pixels = (small_soldiers_as_sprites != 0.f ? sprite_size : 0.f),
+          .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status, twattila::graphics_hooks::Game::THRONES);
 }
@@ -1528,19 +1543,19 @@ void ConfigureAddon() {
       {.name = "battle_building_lod2_distance"},
       {.name = "battle_building_lod3_distance"},
   };
-  campaign_detail.tweaks = {
-      // As Attila: plants when their models load, the rigid tree LOD and props live (the trees: the tree LOD hook).
+  // As Attila: the rigid tree LOD live (the trees: the tree LOD hook), plants when their models load, props live.
+  campaign_trees.tweaks = {{.name = "rigid_campaign_tree_lod"}};
+  campaign_plants.tweaks = {
       {.name = "campaign_grass_lod0_distance"},
       {.name = "campaign_grass_lod1_distance"},
       {.name = "campaign_grass_lod2_distance"},
       {.name = "campaign_grass_lod3_distance"},
       {.name = "campaign_grass_lod4_distance"},
-      {.name = "rigid_campaign_tree_lod"},
-      {.name = "campaign_props_max_distance"},
   };
+  campaign_props.tweaks = {{.name = "campaign_props_max_distance"}};
   // Graphics 2 of 2's tests: Attila's (the same engine values).
   engine_tests = twattila::engine_tests::Attila();
-  graphics_options = {&object_detail, &building_detail, &campaign_detail};
+  graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
   graphics_status = tw::engine_tweaks::StatusLine();
   // Graphics presets (ATN): Reset (all graphics settings at their defaults), MAX (every
@@ -1557,12 +1572,20 @@ void ConfigureAddon() {
       {"GraphicsUnitDetailHuge", 1.f},
       {"GraphicsDeadUnits", 1.f},
       {"GraphicsUnitAnimation", 1.f},
+      {"GraphicsFacialAnimation", 1.f},
+      {"GraphicsHandAnimation", 1.f},
       {"GraphicsUnitVariety", 1.f},
       {"GraphicsFootstepEffects", 1.f},
       {"GraphicsObjectDetail", 1.f},
       {"GraphicsBuildingDetail", 1.f},
       {"GraphicsCampaignDetail", 1.f},
+      {"GraphicsCampaignPlants", 1.f},
+      {"GraphicsCampaignProps", 1.f},
+      {"GraphicsGrassDistance", 1.f},
+      {"GraphicsGrassDensity", 1.f},
       {"GraphicsBigBattleFix", 0.f},
+      {"GraphicsSmallSoldiersAsSprites", 0.f},
+      {"GraphicsSpriteSize", 20.f},
   };
   const std::vector<std::pair<std::string, float>> graphics_max = {
       {"GraphicsShadowMapSize", 2.f},
@@ -1573,11 +1596,15 @@ void ConfigureAddon() {
       {"GraphicsUnitDetailHuge", 8.f},
       {"GraphicsDeadUnits", 1.f},
       {"GraphicsUnitAnimation", 4.f},
+      {"GraphicsFacialAnimation", 8.f},
+      {"GraphicsHandAnimation", 8.f},
       {"GraphicsUnitVariety", 4.f},
       {"GraphicsFootstepEffects", 4.f},
       {"GraphicsObjectDetail", 8.f},
       {"GraphicsBuildingDetail", 8.f},
       {"GraphicsCampaignDetail", 4.f},
+      {"GraphicsCampaignPlants", 4.f},
+      {"GraphicsCampaignProps", 4.f},
   };
   // ATN's own settings: every graphics setting at its default but these.
   auto graphics_atn = graphics_defaults;
@@ -1588,11 +1615,15 @@ void ConfigureAddon() {
       {"GraphicsUnitDetailHuge", 1.75f},
       {"GraphicsDeadUnits", 0.6f},
       {"GraphicsUnitAnimation", 2.5f},
+      {"GraphicsFacialAnimation", 2.5f},
+      {"GraphicsHandAnimation", 2.5f},
       {"GraphicsUnitVariety", 2.5f},
       {"GraphicsFootstepEffects", 2.5f},
       {"GraphicsObjectDetail", 1.5f},
       {"GraphicsBuildingDetail", 3.f},
       {"GraphicsCampaignDetail", 4.f},
+      {"GraphicsCampaignPlants", 4.f},
+      {"GraphicsCampaignProps", 4.f},
       {"GraphicsShadowMapSize", 2.f},
        }) {
     std::ranges::find(graphics_atn, key, &std::pair<std::string, float>::first)->second = value;
@@ -1627,9 +1658,9 @@ void ConfigureAddon() {
           .label = "What I would use:",
           .section = "Graphics (Experimental)",
           .group = "graphics-presets",
-          .tooltip = "Unit Detail 1.75x, Dead Unit Detail 0.60x, Unit Animation, Unit Variety and Footstep Effects\n"
-                     "2.50x, Model Detail 1.50x, Building Detail 3x, Campaign Detail 4x, Shadow Map Size 8192. The rest\n"
-                     "at its default.",
+          .tooltip = "Unit Detail 1.75x, Dead Unit Detail 0.60x, Unit, Facial and Hand Animation, Unit Variety and\n"
+                     "Footstep Effects 2.50x, Model Detail 1.50x, Building Detail 3x, Campaign Tree, Plant and Prop\n"
+                     "4x, Shadow Map Size 8192. The rest at its default.",
           .on_change = [graphics_atn]() { renodx::utils::settings::UpdateSettings(graphics_atn); },
       },
   });
@@ -1659,9 +1690,14 @@ void ConfigureAddon() {
                                 "Lower: cheaper battles with many dead.",
                                 1.f, 0.05f),
       tw::engine_tweaks::Slider(&unit_animation, "GraphicsUnitAnimation", "Unit Animation Distance",
-                                "How far soldiers move on their own, with faces and hands (beyond it they copy their\n"
-                                "neighbours' moves). Higher: heavier for the CPU.",
+                                "How far soldiers move on their own (beyond it they copy their neighbours' moves).\n"
+                                "Higher: heavier for the CPU.",
                                 4.f, 0.1f),
+      tw::engine_tweaks::Slider(&facial_animation, "GraphicsFacialAnimation", "Facial Animation Distance",
+                                "How far soldiers' faces move. Higher: heavier for the CPU. Game: 10 m.", 8.f, 0.1f),
+      tw::engine_tweaks::Slider(&hand_animation, "GraphicsHandAnimation", "Hand Animation Distance",
+                                "How far soldiers' hands and fingers move. Higher: heavier for the CPU. Game: 10 m.", 8.f,
+                                0.1f),
       tw::engine_tweaks::Slider(&unit_variety, "GraphicsUnitVariety", "Unit Variety Distance",
                                 "How far soldiers keep their own heads and gear (beyond it they look alike).\n"
                                 "Higher: heavier.",
@@ -1673,10 +1709,12 @@ void ConfigureAddon() {
       tw::engine_tweaks::Slider(&building_detail, "GraphicsBuildingDetail", "Building Detail Distance",
                                 "Battle: buildings keep their detailed versions farther away. From the next battle.",
                                 8.f),
-      tw::engine_tweaks::Slider(&campaign_detail, "GraphicsCampaignDetail", "Campaign Detail Distance",
-                                "Campaign map: trees, plants and props keep their detail and are drawn farther away.\n"
-                                "Plants: from the next campaign load.",
-                                4.f),
+      tw::engine_tweaks::Slider(&campaign_trees, "GraphicsCampaignDetail", "Campaign Tree Detail Distance",
+                                "Campaign map: trees keep their detail farther away.", 4.f),
+      tw::engine_tweaks::Slider(&campaign_plants, "GraphicsCampaignPlants", "Campaign Plant Detail Distance",
+                                "Campaign map: plants keep their detail farther away. From the next campaign load.", 4.f),
+      tw::engine_tweaks::Slider(&campaign_props, "GraphicsCampaignProps", "Campaign Prop Distance",
+                                "Campaign map: props are drawn farther away.", 4.f),
       new renodx::utils::settings::Setting{
           .key = "GraphicsBigBattleFix",
           .binding = &big_battle_fix,
@@ -1687,6 +1725,29 @@ void ConfigureAddon() {
           .tooltip = "In huge fights the game runs out of room to animate every soldier: some shadows stretch and\n"
                      "jump around. On: while that happens, the farthest soldiers turn into sprites a bit sooner.",
           .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "GraphicsSmallSoldiersAsSprites",
+          .binding = &small_soldiers_as_sprites,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Small Soldiers as Sprites (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Soldiers turn into flat sprites once they are smaller on screen than Sprite Size, even within\n"
+                     "Unit Detail's distance. Lighter for the CPU in big battles. Needs TAA, SMAA T2x, DLSS, FSR or XeSS.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "GraphicsSpriteSize",
+          .binding = &sprite_size,
+          .default_value = 20.f,
+          .label = "Sprite Size",
+          .section = "Graphics (Experimental)",
+          .tooltip = "How tall soldiers are on screen when they turn into sprites. Higher: sprites nearer, lighter.",
+          .min = 4.f,
+          .max = 80.f,
+          .format = "%.0f px",
+          .is_visible = [] { return small_soldiers_as_sprites != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "GraphicsShadowMapSize",
@@ -1720,6 +1781,25 @@ void ConfigureAddon() {
                "battle or after a restart; some may do nothing or crash.",
       .section = twattila::engine_tests::GRASS,
       .tint = 0xFFD23C,
+  });
+  // Attila's grass hooks (ScrubUpdate, its cell loop and quadtree query, DrawScrub to its no-LOD return: the same code here).
+  for (auto* setting : {tw::engine_tweaks::Slider(&grass_distance, "GraphicsGrassDistance", "Grass Detail Distance",
+                                                  "Battle: grass and plants keep their fuller versions farther away, and their cells reach\n"
+                                                  "farther (the game: 200 m). Heavier for the CPU.",
+                                                  4.f),
+                        tw::engine_tweaks::Slider(&grass_density, "GraphicsGrassDensity", "Grass Density",
+                                                  "Battle: more grass and plants (the game leaves some out, more of them farther away;\n"
+                                                  "2x: all of them near the camera).",
+                                                  8.f)}) {
+    setting->section = twattila::engine_tests::GRASS;
+    settings.push_back(setting);
+  }
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Grass Trace",
+      .section = twattila::engine_tests::GRASS,
+      .tooltip = "One frame of the grass into ReShade.log (in a battle, looking at where the grass ends).",
+      .on_change = &twattila::graphics_hooks::TraceGrass,
   });
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
@@ -1864,13 +1944,24 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
 
   // Rows saved at an old default, cleared once (as Rome II's): Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
-  // until what they act on is hooked: they show then at ATN's values.
-  constexpr int SETTINGS_REVISION = 1;
+  // until what they act on is hooked: they show then at ATN's values. 2: the sliders split from Unit Animation and Campaign
+  // Detail start at the saved value of the one they come from.
+  constexpr int SETTINGS_REVISION = 2;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
-      for (const char* key : {"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
-                              "RayTracedSpriteShadows", "RayTracedSwayRange"}) {
-        reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+      if (revision < 1) {
+        for (const char* key : {"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
+                                "RayTracedSpriteShadows", "RayTracedSwayRange"}) {
+          reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+        }
+      }
+      for (const auto& [from, to] : std::initializer_list<std::pair<const char*, const char*>>{
+               {"GraphicsUnitAnimation", "GraphicsFacialAnimation"}, {"GraphicsUnitAnimation", "GraphicsHandAnimation"},
+               {"GraphicsCampaignDetail", "GraphicsCampaignPlants"}, {"GraphicsCampaignDetail", "GraphicsCampaignProps"}}) {
+        if (float value = 0.f, kept = 0.f; reshade::get_config_value(nullptr, preset, from, value)
+                                           && !reshade::get_config_value(nullptr, preset, to, kept)) {
+          reshade::set_config_value(nullptr, preset, to, value);
+        }
       }
     }
     reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
