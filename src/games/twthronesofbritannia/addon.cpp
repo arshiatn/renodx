@@ -32,6 +32,7 @@
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
@@ -177,6 +178,15 @@ void ApplyRecommendedPreset() {
   });
 }
 
+// SDR monitors (as Attila's): Reset's controls in Rendering Mode SDR, no video AutoHDR (the button also sets Output SDR).
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({
+      {"tonemapper", 0.f},
+      {"video_autohdr", 0.f},
+  });
+}
+
 #define UpgradeRTVReplaceShader(value)                                                                \
   {                                                                                                   \
       value,                                                                                          \
@@ -313,6 +323,8 @@ void BuildRuntimeData() {
         .section = "General",
         .tint = 0xFFD23C,
     },
+    twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
+                                  [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -395,7 +407,7 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV31) and Video AutoHDR 0.20. Peak, Paper White, UI brightness, Settings Mode and output\n"
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20. Peak, Paper White, UI brightness, Settings Mode and output\n"
                    "encoding are kept.",
         .on_change = []() { ApplyRecommendedPreset(); },
     },
@@ -407,6 +419,19 @@ void BuildRuntimeData() {
         .tooltip = "Resets active HDR image controls to defaults. Peak, Paper White, UI brightness, Settings Mode, and output encoding are preserved.",
         .on_change = []() {
           ApplyResetPreset();
+        },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-2",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                   "HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
     //   new renodx::utils::settings::Setting{
@@ -1193,6 +1218,7 @@ twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
 float ssr_denoiser = 1.f;  // twattila/ssr_hiz.hpp: the resolve's history
+float lod_bias_trilinear_row = 0.f;  // twattila/texture_lod_bias.hpp SetWrappingTrilinear (graphics_page's row)
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1397,9 +1423,20 @@ void OnInitDevice(reshade::api::device*) {
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
-  twattila::feature_settings::UpdateSsr(&shader_injection, ssr_denoiser);
+  // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
+  // preset's is XeSS on Intel's, else FSR.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
+  // Ray-traced shadows replace the screen-space ones too.
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
+  // Ray Reconstruction is the only denoiser: the reflections' denoiser (and its history) off under it.
+  twattila::feature_settings::UpdateSsr(&shader_injection, (twattila::dlaa_bridge::bridge.reconstructing || twattila::dlaa_bridge::bridge.nrd_reflections) ? 0.f : ssr_denoiser);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
@@ -1682,10 +1719,12 @@ void ConfigureAddon() {
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
   // Appended Settings (Ambient Occlusion, Global Illumination, Screen-Space Shadows, Anti-Aliasing)
-  twattila::lighting_settings::Append(&settings, &shader_injection);
+  twattila::lighting_settings::Append(&settings, &shader_injection, [] { return rt_sliders.light_bounce != 0.f && twattila::feature_settings::Upscaling(aa_sliders); });
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  // The rays' AO multiplies the game's (no ssao00 replacement here: rays_replace_ao false below), the reflections' pass hooked.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
+                                     &shader_injection.light_bounce_strength);
 
   // Appended Settings (HDR10)
   {
@@ -1703,6 +1742,9 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (as Attila's).
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -1712,6 +1754,7 @@ void ConfigureAddon() {
           const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
@@ -1754,6 +1797,14 @@ void ConfigureAddon() {
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/atotalwarsagathronesofbritannia/mods/1"); },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
   });
 
   // Section titles and Settings Mode's pages as Attila's (twattila/feature_settings.hpp).
@@ -1763,7 +1814,23 @@ void ConfigureAddon() {
     if (std::ranges::find(engine_sections, test.section) == engine_sections.end()) engine_sections.push_back(test.section);
   }
   twattila::feature_settings::SetTints({}, engine_sections);
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
+
+  // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
+  // what the methods leave, then Settings Mode's pages. No smoke shadows, water rows or foliage light hooked here yet.
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedSmokeShadows") setting->default_value = 0.f;
+  }
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
+                                             .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .ssr_hierarchical = &shader_injection.ssr_hierarchical,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
+                                             .has_foliage_light = false,
+                                             .smoke_shadows_tested = false,
+                                             .water_caustics_tested = false,
+                                             .rays_replace_ao = false});
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }
@@ -1789,6 +1856,19 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+
+  // Rows saved at an old default, cleared once (as Rome II's): Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
+  // until what they act on is hooked: they show then at ATN's values.
+  constexpr int SETTINGS_REVISION = 1;
+  if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
+    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
+      for (const char* key : {"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
+                              "RayTracedSpriteShadows", "RayTracedSwayRange"}) {
+        reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+      }
+    }
+    reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
