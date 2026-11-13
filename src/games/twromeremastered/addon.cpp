@@ -12,10 +12,13 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <cmath>
@@ -132,6 +135,8 @@ void ApplyResetPreset() {
       // {"some_indicators", 1.f},
 
       // Active experimental controls
+      {"TestSunShadowsOff", 0.f},
+      {"TestAmbientOcclusionOff", 0.f},
       // {"auto_exposure_highlight_protection", 0.f},
       // {"auto_exposure_highlight_headroom_stops", 2.f},
       // {"vfx_fire_brightness", 1.f},
@@ -560,6 +565,49 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const res
   }
 }
 
+// The forward passes' sun shadow mask and AO (the dump's bytes, level B): PBR, Unit, Terrain, Grass, Water and the
+// campaign map's PS read t12 and t13 at the screen uv (SV_Position x cb8[0].zw); t12 multiplies only the sun's diffuse
+// and specular, t13 the albedo x the 1x1 ambient (t15) and the cube's specular (t14). t12 is the cascades' resolve
+// (CSMResolveCS u0, or CSMResolvePS's target), t13 ASSAO's (PSApply's target), the trees' AO drawn into it after
+// (TreeAOInject). Ray-traced shadows and AO will write there; the Test rows write 1 (the game's shadows / AO gone).
+constexpr std::array<uint32_t, 8> SHADOW_MASK_COMPUTE_SHADERS = {0x04703051, 0x352C82DC, 0x526DD70C, 0x633FE68E,
+                                                                0xA830F64F, 0xAC8C2013, 0xBD9CE680, 0xCAB0BAE6};
+constexpr std::array<uint32_t, 8> SHADOW_MASK_PIXEL_SHADERS = {0x04FFC05E, 0x07775E27, 0x3F59063F, 0x674F2947,
+                                                              0x72517DFF, 0x7D9E3AB5, 0x9DB159A1, 0xDA14DE2C};
+constexpr uint32_t AO_APPLY_PIXEL_SHADER = 0x6A73BA10;
+constexpr uint32_t TREE_AO_PIXEL_SHADER = 0x94FFC07C;
+
+float test_sun_shadows_off = 0.f;
+float test_ao_off = 0.f;
+std::atomic_bool logged_test_shadows = false;
+std::atomic_bool logged_test_ao = false;
+
+// The output of the draw or dispatch just done (render target 0, or the compute shader's u0) cleared to 1.
+void ClearOutputToOne(reshade::api::command_list* cmd_list, bool compute, std::atomic_bool* logged, const char* what) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  constexpr std::array<float, 4> ONES = {1.f, 1.f, 1.f, 1.f};
+  bool cleared = false;
+  if (compute) {
+    Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
+    context->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
+    if (output) {
+      context->ClearUnorderedAccessViewFloat(output.Get(), ONES.data());
+      cleared = true;
+    }
+  } else {
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> output;
+    context->OMGetRenderTargets(1, output.GetAddressOf(), nullptr);
+    if (output) {
+      context->ClearRenderTargetView(output.Get(), ONES.data());
+      cleared = true;
+    }
+  }
+  if (cleared && !logged->exchange(true)) {
+    renodx::utils::log::i(std::format("[Rome Remastered] Test: {} written to 1 ({}).", what, (compute ? "compute u0" : "render target 0")));
+  }
+}
+
 #define UpgradeRTVReplaceShader(value)                                                                \
   {                                                                                                   \
       value,                                                                                          \
@@ -606,6 +654,22 @@ void BuildRuntimeData() {
       // UpgradeRTVReplaceShader(EMPTY),
       __ALL_CUSTOM_SHADERS,
   };
+  // The game's own bytes (no code): the Test rows' hooks after the shadow mask and AO passes.
+  for (const uint32_t hash : SHADOW_MASK_COMPUTE_SHADERS) {
+    custom_shaders[hash] = {.crc32 = hash, .on_drawn = [](reshade::api::command_list* cmd_list) {
+                              if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, true, &logged_test_shadows, "the sun's shadow mask"); }
+                            }};
+  }
+  for (const uint32_t hash : SHADOW_MASK_PIXEL_SHADERS) {
+    custom_shaders[hash] = {.crc32 = hash, .on_drawn = [](reshade::api::command_list* cmd_list) {
+                              if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_shadows, "the sun's shadow mask"); }
+                            }};
+  }
+  custom_shaders[AO_APPLY_PIXEL_SHADER] = {.crc32 = AO_APPLY_PIXEL_SHADER, .on_drawn = [](reshade::api::command_list* cmd_list) {
+                                             if (test_ao_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_ao, "the ambient occlusion"); }
+                                           }};
+  // The trees' AO drawn into ASSAO's target: left out while the Test row is on.
+  custom_shaders[TREE_AO_PIXEL_SHADER] = {.crc32 = TREE_AO_PIXEL_SHADER, .on_draw = [](reshade::api::command_list*) { return test_ao_off == 0.f; }};
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
@@ -1706,6 +1770,44 @@ void ConfigureAddon() {
     //       .aspect_ratio = renodx::mods::swapchain::SwapChainUpgradeTarget::BACK_BUFFER,
     //       .usage_include = reshade::api::resource_usage::shader_resource,
     //   });
+  // Graphics (Experimental): where the ray-traced shadows and AO will go, as tests; Tools.
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .key = "TestSunShadowsOff",
+          .binding = &test_sun_shadows_off,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Remove the Game's Sun Shadows (Test)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Test: removes the game's sun shadows only; the rest of the light stays. Off by default.",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "TestAmbientOcclusionOff",
+          .binding = &test_ao_off,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Remove the Game's Ambient Occlusion (Test)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Test: removes the game's ambient occlusion (SSAO and the trees' own). Off by default.",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Trace One Frame",
+          .section = "Tools",
+          .tooltip = "Writes tw_frame_trace.txt next to the game's exe about a second later, for bug reports.",
+          .on_change = []() {
+            // FrameTrace's on-demand marker (frame_trace.hpp looks for it every 60 presents).
+            std::wstring exe(32768, L'\0');
+            exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+            std::ofstream(std::filesystem::path(exe).parent_path() / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
+            renodx::utils::log::i("[Rome Remastered] Trace One Frame: renodx_trace_now written.");
+          },
+          .is_visible = IsAdvancedSettings,
+      },
+  });
+
   // Appended Settings (HDR10)
   {
     auto* setting = new renodx::utils::settings::Setting{
