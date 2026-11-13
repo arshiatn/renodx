@@ -95,6 +95,19 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
 
+## PHARAOH V61: OPEN ITEMS (2026-11-13 evening, offline; plan tools/tw/pharaoh/open_items/plan.md, class A + the B trace reads)
+Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, no Nexus text,
+never restart. Committed Bytes under 60 GB before WARP / harness / GPU jobs, one GPU job at a time. Unproven look changes:
+Experimental rows, off. One writer; each step committed and pushed to origin atn-mods.
+- [ ] 1 "no main camera": rt_scene's AO hook on D42C3523 with Attila's slots (t0 / b0) in Pharaoh.
+- [ ] 2 E8524BB1 (effects quality 0-2) in Smoke Shadows with its own slots; 740B2536 (MSAA) stays out.
+- [ ] 3 Water reflections capped at 25 a channel as the game's apply.
+- [ ] 4 Building water (phar_building_water_01) t_ssao render-scale rows.
+- [ ] 5 7b (DE4F92CD vb0 at 50%) and 7c (the 24 sun PS at 33% against 100%) offline WARP checks.
+- [ ] 6 Pharaoh PT GI sun colour (sun texel 2, RT_PATH_SUN_LIGHT) as Attila's helper107 fix.
+- [ ] 7 Trace reads for one later siege-benchmark run (frame_trace Options, Pharaoh only, off by default).
+- [ ] 8 Builds, tests, page dumps, README Round v61, skill rows.
+
 ## PHARAOH V58: CAMPAIGN FIXES (2026-11-13 day, offline; ATN's campaign trace ATN_campaign_0857 at 100%)
 Rules: no game starts (ATN plays), no stamp / install, no DevKit near game folders, no Nexus text, never restart. Committed
 Bytes under 60 GB before WARP. One writer; read-only surveys beside (tools\tw\pharaoh\v58: census_pharaoh*.txt / .tsv, caster_census_after.txt).
