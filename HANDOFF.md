@@ -95,6 +95,21 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   water, "no main camera" line, v58's census leftovers with their traces).
 - [ ] Skill lessons from all rounds; Rome II features (the whole Attila package); install newest; round report per game.
 
+## PHARAOH V64: TORCH SHADOWS + DEBUG VIEWS (2026-11-13 evening, offline; Pharaoh v63 / helper107 installed)
+Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, never
+restart. Committed Bytes under 60 GB and no game process before WARP / harness / GPU jobs, one GPU job at a time.
+Unproven look changes: Experimental rows, off. One writer; each step committed and pushed to origin atn-mods.
+- [ ] 1 Debug Views: why Pharaoh's page has no Ray Tracing Debug View rows; the same rows as Attila / WH3, working; page
+  dump before / after (every key kept).
+- [ ] 2 Steady Torch Shadows' black spots: cause from the code, harness proof (a light beside a small occluder, Steady on
+  / off, control), fix at the source (helper108 if needed; all_modes + RR noise test as regressions).
+- [ ] 3 Torch flicker: what changes frame to frame (ATN_UP_181940 campaign + B61 siege two-frame reads, the code); fix
+  only what is proven; no dimming, no temporal tricks.
+- [ ] 4 ATN_UP_181940 (33% campaign): 7a shroud decals' inv_rt_size c13 (61C823A0), 7d 377DE0D5 tiles vs 026CBC61's
+  bounds: read, decide, fix only what the evidence shows (WARP proof).
+- [ ] 5 Builds (Pharaoh, the skill's x64 list, build32 if shared, helper if changed), test/tw_* x86 + amd64, page dumps,
+  READMEs (Pharaoh "### Round v64"; Attila / WH3 if shared behaviour changed), skill rows for real new lessons.
+
 ## ROME II BRING-UP (offline)
 Plan tools/tw/rome2/plan.md (Phase 0 + the Phase 3 items provable offline); results under tools/tw/rome2/. Data runs
 (Phase 1.4) BLOCKED on the mod pack dialog (ATN answers it); no game start, no stamp / install (ATN does those).
