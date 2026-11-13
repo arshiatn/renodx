@@ -16,10 +16,12 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <nvsdk_ngx_helpers.h>
@@ -39,7 +41,7 @@
 // MARKER_PRESENTS presents, then deleted), a "Frame trace: N lines saved to" line in ReShade.log, per draw the instance
 // count, the depth view's array slice (the cascade) and RT0's blend, and the constant buffers of VALUE_SHADERS' draws
 // (b0-b4, VALUE_FLOATS floats each, once per buffer content in the frame) for the sun, lights, fog, water, AO, SSS and
-// SSR facts the plan reads offline.
+// SSR facts the plan reads offline. A `renodx_set_now` file there is read at the same check (TakeSettingsMarker).
 namespace twshogun2::frame_trace {
 
 namespace internal {
@@ -77,6 +79,7 @@ struct State {
   std::atomic_int captures_left = 0;  // DLSS evaluations still to capture
   std::vector<uint32_t> values_written;  // hashes of the constant buffer contents written this frame
   uint64_t presents = 0;                 // present thread
+  std::string settings_marker;           // present thread: renodx_set_now's text, until taken
 };
 static State state;
 
@@ -367,6 +370,12 @@ inline std::string Status() {
   return internal::state.status;
 }
 
+// The text of a `renodx_set_now` file the last present found next to the exe (then deleted), once; empty: none. Present
+// thread.
+inline std::string TakeSettingsMarker() {
+  return std::exchange(internal::state.settings_marker, {});
+}
+
 // Present: ends a traced frame (writes the file), starts a requested one (the overlay's button or the marker file).
 inline void OnPresent() {
   auto& state = internal::state;
@@ -382,10 +391,16 @@ inline void OnPresent() {
     state.values_written.clear();
   }
   if (++state.presents % internal::MARKER_PRESENTS == 0) {
-    const auto marker = internal::ExecutableFolder() / L"renodx_trace_now";
-    if (std::error_code error; std::filesystem::exists(marker, error)) {
-      std::filesystem::remove(marker, error);
+    const auto folder = internal::ExecutableFolder();
+    if (std::error_code error; std::filesystem::exists(folder / L"renodx_trace_now", error)) {
+      std::filesystem::remove(folder / L"renodx_trace_now", error);
       state.requested.store(true);
+    }
+    if (std::error_code error; std::filesystem::exists(folder / L"renodx_set_now", error)) {
+      std::ifstream file(folder / L"renodx_set_now", std::ios::binary);
+      state.settings_marker.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+      file.close();
+      std::filesystem::remove(folder / L"renodx_set_now", error);
     }
   }
   if (state.requested.exchange(false)) {

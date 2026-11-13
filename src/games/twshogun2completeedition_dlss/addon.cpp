@@ -147,16 +147,35 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
   return {};
 };
 std::array<uint32_t, 2> evaluated_size = {};  // render thread
-// RENODX_TW_SET="<seconds>:<key>=<value>;..." (read at launch; seconds from the first DLSS evaluation): RenderScale,
-// RenderScaleCustom, Preset, TextureLodBias for this start only (ReShade.ini is not written).
+// RENODX_TW_SET="<seconds>:<key>=<value>;..." (read at launch; seconds from the first DLSS evaluation) and a
+// `renodx_set_now` file next to the exe ("<key>=<value>;...", at once): RenderScale, RenderScaleCustom, Preset,
+// TextureLodBias for this start only (ReShade.ini is not written).
 struct TestSet {
-  double seconds = 0.;
+  double seconds = -1.;  // below 0: at once
   std::string key;
   int value = 0;
   bool done = false;
 };
-std::vector<TestSet> test_sets;  // present thread
+std::vector<TestSet> test_sets;  // AddonInit, then the present thread
 std::atomic<int64_t> first_evaluation = 0;  // steady_clock ticks; 0: none yet
+
+void AddTestSets(std::string_view text) {
+  for (const auto part : std::views::split(text, ';')) {
+    const std::string_view entry(part.begin(), part.end());
+    const size_t equals = entry.find('=');
+    if (equals == std::string_view::npos) continue;
+    TestSet set;
+    size_t key_start = 0;
+    if (const size_t colon = entry.substr(0, equals).find(':'); colon != std::string_view::npos) {
+      std::from_chars(entry.data(), entry.data() + colon, set.seconds);
+      key_start = colon + 1;
+    }
+    set.key = std::string(entry.substr(key_start, equals - key_start));
+    const auto value = entry.substr(equals + 1);
+    std::from_chars(value.data(), value.data() + value.size(), set.value);
+    test_sets.push_back(set);
+  }
+}
 // ReShade.ini [Shogun 2 DLSS]: Jitter (on), JitterFlip (debug, 0).
 std::atomic_bool jitter_enabled = true;
 int jitter_flip = 0;           // overlay
@@ -394,9 +413,14 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
   }
   twattila::texture_lod_bias::SetTracking(queue, bias != 0.f);
   twattila::texture_lod_bias::SetBias(bias);
-  if (const int64_t start = first_evaluation.load(std::memory_order_relaxed); start != 0 && !test_sets.empty()) {
-    const auto elapsed = std::chrono::steady_clock::duration(std::chrono::steady_clock::now().time_since_epoch().count() - start);
-    const double seconds = std::chrono::duration<double>(elapsed).count();
+  if (const std::string marker = twshogun2::frame_trace::TakeSettingsMarker(); !marker.empty()) AddTestSets(marker);
+  if (!test_sets.empty()) {
+    // Seconds since the first DLSS evaluation; -0.5 before it (only the sets for "at once" then).
+    double seconds = -0.5;
+    if (const int64_t start = first_evaluation.load(std::memory_order_relaxed); start != 0) {
+      const auto elapsed = std::chrono::steady_clock::duration(std::chrono::steady_clock::now().time_since_epoch().count() - start);
+      seconds = std::chrono::duration<double>(elapsed).count();
+    }
     for (auto& set : test_sets) {
       if (set.done || seconds < set.seconds) continue;
       set.done = true;
@@ -1064,18 +1088,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   }
   test_sets.clear();
   if (const char* sets = std::getenv("RENODX_TW_SET"); sets != nullptr) {
-    for (const auto part : std::views::split(std::string_view(sets), ';')) {
-      const std::string_view entry(part.begin(), part.end());
-      const size_t colon = entry.find(':');
-      const size_t equals = entry.find('=');
-      if (colon == std::string_view::npos || equals == std::string_view::npos || equals < colon) continue;
-      TestSet set = {.key = std::string(entry.substr(colon + 1, equals - colon - 1))};
-      const auto seconds = entry.substr(0, colon);
-      const auto value = entry.substr(equals + 1);
-      std::from_chars(seconds.data(), seconds.data() + seconds.size(), set.seconds);
-      std::from_chars(value.data(), value.data() + value.size(), set.value);
-      test_sets.push_back(set);
-    }
+    AddTestSets(sets);
     renodx::utils::log::i(std::format("[Shogun 2 DLSS] Test: {} timed settings from RENODX_TW_SET", test_sets.size()));
   }
   twshogun2::game_dlss::SetEvaluateCallback([](ID3D11DeviceContext* context, NVSDK_NGX_D3D11_DLSS_Eval_Params* eval) {
