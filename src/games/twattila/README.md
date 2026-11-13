@@ -1,6 +1,6 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## v155 (2026-11-13; built only, not stamped, not installed, not run in game; renodx-tw-dlaa64.exe helper106 as in v154)
+## v155 (2026-11-13; stamped and installed 13:35 with helper106, not run in game)
 
 - Changed: **Softer Water Reflections** and **Steadier Water Reflections** are on by default and in RT/PT, no longer
   Experimental (ATN's test: they fix the unstable water). A saved Off stays Off; RT/PT turns them on.

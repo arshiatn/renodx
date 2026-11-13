@@ -41,6 +41,12 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   13 x64 targets 67 s, build32 twrome2 + twthronesofbritannia 42 s: no errors, only the upstream deprecation warnings (and
   Ryse DLSS's old reorder warning); every test/tw_* x86 + amd64 PASS (19 suites, 37 runs). READMEs: Attila v155, WH3 v53,
   Pharaoh Round v59 (built only). Not stamped / installed / run; no helper change (helper106 as in v154).
+- [x] v155 / WH3 v53 / Pharaoh v59 (33f6a5aa water rows, 19581888 unit A1, 796033c8 Grass Without Waiting) STAMPED +
+  INSTALLED 13:35 (install_v59.py; helper106 unchanged; ATN files unchanged by hash). ATN's Attila and Pharaoh preset1
+  already hold both water rows at 1; WH3 had none saved (the new default 1 applies).
+- [ ] Rome II runs BLOCKED (12:49 / 12:53): ATN's mod pack dialog (class mod_question_dlg) after an unclean exit; SendInput
+  Enter doesn't answer it; screen access denied. ATN starts Rome II once, answers it, quits from the menu. Script fixed
+  13:00 ($start vs [string]$Start, case-insensitive names; the dialog's class detected: stop at once).
 - [ ] PT GI fix (helper107): one diffuse estimate for screen / cache / unseen hits, KeptShade -> own occluded sky, freeze
   slope + base colour under PT Ambient; HARNESS_PEDESTAL proof; look at the bounce GPU spikes 19-40 ms.
 - [ ] Pharaoh open items (smoke off screen, dust vs smoke, E8524BB1 / 740B2536, water clip / fog leg, shallow + campaign

@@ -23,7 +23,7 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 12. Below 100% in the campaign and a battle: the sun's lighting, the fog, the shroud and the water's reflections stay in place
     at the screen's edges (35 shaders no longer scaled twice).
 
-### Round v59 (2026-11-13, water rows on; built only, not stamped, not installed, not run in game; helper106 as in v58)
+### Round v59 (2026-11-13, water rows on; stamped and installed 13:35 with helper106, not run in game)
 
 - **Changed: Softer Water Reflections and Steadier Water Reflections on by default and in RT/PT**, no longer Experimental
   (ATN's Attila test: they fix the unstable water). A saved Off stays Off. With Softer on, Samples and Reuse now show and act
