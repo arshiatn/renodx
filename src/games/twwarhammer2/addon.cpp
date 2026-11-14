@@ -1537,39 +1537,43 @@ constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
     {.hash = 0x71EB7463, .capture_shader = __rt_capture_grass_71eb, .dynamic = true, .foliage = true, .grass = true},
 }};
 
+// Path-Traced AO and the paths' sky (rt_sun.cs_5_0.hlsl): each one makes its diffuse ambient in its first if on c11.y
+// (spherical harmonics: t_world_spherical_harmonics one slot below lighting_VS_PS in all 31) and multiplies it by the
+// diffuse colour right after (screen_space_shadows::PatchAmbient's AMBIENT_AFTER_HARMONICS).
+using twattila::light_bounce::AMBIENT_AFTER_HARMONICS;
 constexpr std::array<twattila::light_bounce::SunDraw, 31> LIGHT_BOUNCE_DRAWS = {{
-    {.shader_hash = 0x1AB80044, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},
-    {.shader_hash = 0x2DCA8E30, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},
-    {.shader_hash = 0xA03688A3, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},
-    {.shader_hash = 0xC960A275, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},
-    {.shader_hash = 0xE091B8C4, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1},
-    {.shader_hash = 0xF2484739, .standard = true, .gbuffer_slot = 3, .camera_slot = 1},
-    {.shader_hash = 0x1494188B, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},
-    {.shader_hash = 0x1579598F, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1},
-    {.shader_hash = 0x3115B6D3, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},
-    {.shader_hash = 0x37237EC7, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},
-    {.shader_hash = 0xDF7EA1A3, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},
+    {.shader_hash = 0x1AB80044, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},
+    {.shader_hash = 0x2DCA8E30, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},
+    {.shader_hash = 0xA03688A3, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},
+    {.shader_hash = 0xC960A275, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},
+    {.shader_hash = 0xE091B8C4, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 2},
+    {.shader_hash = 0xF2484739, .standard = true, .gbuffer_slot = 3, .camera_slot = 1, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 1},
+    {.shader_hash = 0x1494188B, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},
+    {.shader_hash = 0x1579598F, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 2},
+    {.shader_hash = 0x3115B6D3, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},
+    {.shader_hash = 0x37237EC7, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},
+    {.shader_hash = 0xDF7EA1A3, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},
     // The game's MSAA (*_ms; its G-buffer multisampled, the camera as the others').
-    {.shader_hash = 0x060623DD, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_interior
-    {.shader_hash = 0x1ECDE63F, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_edges
-    {.shader_hash = 0x488C845F, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_edges
-    {.shader_hash = 0x53224BCB, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_interior
-    {.shader_hash = 0x6257DF22, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_interior
-    {.shader_hash = 0xB699C6F8, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1},  // slm_edges
-    {.shader_hash = 0xD7990748, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_edges
-    {.shader_hash = 0xDE50CFAD, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_edges
-    {.shader_hash = 0xEB90E28A, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2},  // slm_interior
-    {.shader_hash = 0xEDADD458, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1},  // slm_interior
-    {.shader_hash = 0x049A86C2, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_interior
-    {.shader_hash = 0x290BE032, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1},  // skinlm_edges
-    {.shader_hash = 0x8D1F7560, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_interior
-    {.shader_hash = 0xB9663621, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_edges
-    {.shader_hash = 0xB9FC954D, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_edges
-    {.shader_hash = 0xC7D72E8C, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_interior
-    {.shader_hash = 0xCBA032CA, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_edges
-    {.shader_hash = 0xCEEE8017, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_interior
-    {.shader_hash = 0xDEEF87D5, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1},  // skinlm_interior
-    {.shader_hash = 0xDF071F9D, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2},  // skinlm_edges
+    {.shader_hash = 0x060623DD, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // slm_interior
+    {.shader_hash = 0x1ECDE63F, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // slm_edges
+    {.shader_hash = 0x488C845F, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // slm_edges
+    {.shader_hash = 0x53224BCB, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // slm_interior
+    {.shader_hash = 0x6257DF22, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // slm_interior
+    {.shader_hash = 0xB699C6F8, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 2},  // slm_edges
+    {.shader_hash = 0xD7990748, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // slm_edges
+    {.shader_hash = 0xDE50CFAD, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // slm_edges
+    {.shader_hash = 0xEB90E28A, .standard = true, .gbuffer_slot = 5, .camera_slot = 1, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // slm_interior
+    {.shader_hash = 0xEDADD458, .standard = true, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .ao_slot = 1, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 2},  // slm_interior
+    {.shader_hash = 0x049A86C2, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // skinlm_interior
+    {.shader_hash = 0x290BE032, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 2},  // skinlm_edges
+    {.shader_hash = 0x8D1F7560, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // skinlm_interior
+    {.shader_hash = 0xB9663621, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // skinlm_edges
+    {.shader_hash = 0xB9FC954D, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // skinlm_edges
+    {.shader_hash = 0xC7D72E8C, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // skinlm_interior
+    {.shader_hash = 0xCBA032CA, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // skinlm_edges
+    {.shader_hash = 0xCEEE8017, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // skinlm_interior
+    {.shader_hash = 0xDEEF87D5, .gbuffer_slot = 4, .camera_slot = 2, .lighting_slot = 3, .ao_slot = 1, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 2},  // skinlm_interior
+    {.shader_hash = 0xDF071F9D, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS, .sky_harmonics_slot = 3},  // skinlm_edges
 }};
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1616,7 +1620,7 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO; reflections on the game's SSR resolve;
-// no sky from the game's ambient for the paths yet, no point lights, fog, water or smoke hooked.
+// the paths' sky from the game's spherical harmonics (rt_sun); no water or smoke hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1636,6 +1640,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
                   "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
+    .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .fog_shadows_label = "Fog Shadows (Experimental)",
     .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog over the first 400 m: it loses the\n"
@@ -2070,8 +2075,7 @@ void ConfigureAddon() {
 
   // Graphics 1 of 2's layout (as Pharaoh's and Warhammer III's), ATN's RT/PT preset as the defaults of what the methods
   // leave, then Settings Mode's pages. Only what this game hooks: no casters out of view (the shadow pass is not read yet),
-  // no sky from the game's ambient for the paths (InstallSunDraws without its cube: the battles' ambient is the
-  // spherical harmonics), no foliage in the screen-space shadows, no water or smoke (their rows stay hidden).
+  // no foliage in the screen-space shadows, no water or smoke (their rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off (Experimental: no game run has shown them here yet), Smoke Shadows
   // (hidden: not hooked here) and Specular Occlusion too; RT/PT turns all but the smoke on, as ATN's list does.
@@ -2104,7 +2108,6 @@ void ConfigureAddon() {
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
                                              .water_caustics_tested = false,
-                                             .has_path_ambient = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2161,8 +2164,9 @@ bool AttachAddon() {
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (the game's AO is compute line sweeps).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube at c2 (float 8) and
+  // sun_colour at c1 (float 4) for the paths' sky and sun (rt_sun.cs_5_0.hlsl), with Path-Traced AO's hook.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's. Skip the Shadow Maps through
   // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
