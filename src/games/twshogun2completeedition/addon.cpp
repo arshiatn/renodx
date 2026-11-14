@@ -1020,6 +1020,7 @@ void ReadDlssAddonOptions() {
   ray_tracing.ambient_rays = read_count("RayTracedAORays", 2, 1, 8);
   ray_tracing.ambient_quarter = read_on("RayTracedAOQuarter", false);
   ray_tracing.reflections = read_on("RayTracedReflections", false);
+  ray_tracing.specular_occlusion = read_on("RayTracedSpecularOcclusion", false);
   ray_tracing.reflection_samples = read_count("RayTracedReflectionSamples", 1, 1, 8);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
   ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
@@ -1094,7 +1095,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto rays = ray_tracing_settings;
   const bool any_rays = ray_tracing_installed
                         && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights
-                            || rays.fog_shadows);
+                            || rays.fog_shadows || rays.specular_occlusion);
   twshogun2::upscaling::SetUse({
       .ray_tracing = ray_tracing_installed,
       .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
@@ -1323,7 +1324,8 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
   ray_tracing_installed = ray_tracing_settings.sun_shadows || ray_tracing_settings.ambient_occlusion || ray_tracing_settings.light_bounce
-                          || ray_tracing_settings.reflections || ray_tracing_settings.local_lights || ray_tracing_settings.fog_shadows;
+                          || ray_tracing_settings.reflections || ray_tracing_settings.local_lights || ray_tracing_settings.fog_shadows
+                          || ray_tracing_settings.specular_occlusion;
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Install();
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);

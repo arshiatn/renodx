@@ -968,6 +968,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"PathTracing", 0.f},
         {"RayTracedFogShadows", 0.f},
         {"RayTracedPathAmbient", 0.f},
+        {"RayTracedSpecularOcclusion", 0.f},
     };
     constexpr std::pair<const char*, float> RAYS_PRESET[] = {
         {"RayTracedSunShadows", 1.f},
@@ -1095,6 +1096,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::BeginDisabled(!reflections);
     count("Ray-traced reflection samples", "RayTracedReflectionSamples", 1, 8, "Rays per pixel on rough surfaces: less noise, heavier.");
     ImGui::EndDisabled();
+    const bool specular_occlusion = checkbox("Ray-traced specular occlusion (Experimental)", "RayTracedSpecularOcclusion",
+                                             "The sky's reflection taken off shiny surfaces where something stands over them (inside\n"
+                                             "doorways, under hulls and roofs). Needs the game's screen-space reflections on.");
     const bool bounce = checkbox("Ray-traced Global Illumination", "RayTracedLightBounce",
                                  "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"
                                  "Needs the Global Illumination on.");
@@ -1120,7 +1124,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
     choice("Path tracing SER (Experimental)", "RayTracedPathSer", 0, OFF_ON_NAMES,
            "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.");
     ImGui::EndDisabled();
-    if (sun_shadows || ambient || local_lights || fog_shadows || reflections || bounce) {
+    if (sun_shadows || ambient || local_lights || fog_shadows || reflections || specular_occlusion || bounce) {
       if (upscaler_choice.load() != 0 && !(upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0)) {
         constexpr std::array<const char*, 2> DENOISERS = {"Built-in", "NRD"};
         choice("Ray tracing denoiser (Experimental)", "RayTracingDenoiser", 0, DENOISERS,
