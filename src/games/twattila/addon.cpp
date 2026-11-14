@@ -210,8 +210,9 @@ void BuildRuntimeData() {
       UpgradeRTVReplaceShader(0x6E20B0EF),  // t10 constant tone mapper
       __ALL_CUSTOM_SHADERS,
   };
-  // The reflections' draws (ssr00, ssr01): the ray-traced reflections, else the depth pyramid (rt_scene.hpp, ssr_hiz.hpp).
-  for (const uint32_t hash : {0x66006BEAu, 0x47D75349u}) {
+  // The reflections' draws (ssr00, ssr01; ssr02-05 their Shader Model 4 / 4.1 builds): the ray-traced reflections, else the
+  // depth pyramid (rt_scene.hpp, ssr_hiz.hpp). The game's MSAA builds (ssr06, ssr07) have neither.
+  for (const uint32_t hash : {0x66006BEAu, 0x47D75349u, 0x485F33D7u, 0x0AC579F6u, 0x8E734BAAu, 0xC8BD2B2Fu}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionDraw;
     custom_shaders[hash].on_drawn = twattila::rt_scene::OnReflectionDrawn;
   }

@@ -1,17 +1,21 @@
-// The environment_specular_light replacements for Shader Model 4 / 4.1 (src/games/twattila/shaders/ssr02-05: the game's
-// 485F33D7, 0AC579F6, 8E734BAA, C8BD2B2F, the same bytes in Attila and Thrones of Britannia, Thrones' files include
-// Attila's) against the game's own shaders on WARP, each with g_buffers_scale 1 and 0.5, on a synthetic scene (a floor, a
-// wall and a back wall in the G-buffer depth and normals, a light buffer pattern, stencil 1 but every 16th pixel).
-// tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)>
-// A. 100%: the replacement (nothing at b12) and the game's shader: both targets bit for bit.
+// The environment_specular_light replacements of the game's other builds (src/games/twattila/shaders/ssr02-07: the same
+// bytes in Attila and Thrones of Britannia, Thrones' files include Attila's) against the game's own shaders on WARP, each
+// with g_buffers_scale 1 and 0.5, on a synthetic scene (a floor, a wall and a back wall in the G-buffer depth and normals, a
+// light buffer pattern, stencil 1 but every 16th pixel), the add-on's settings at b13 (SSR Quality 1, Effects at Output
+// Resolution's share 1: the game's look).
+// tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)> <ssr_quality's float in b13>
+//           <effects_share's float in b13>
+// Shader Model 4 / 4.1 (485F33D7, 0AC579F6, 8E734BAA, C8BD2B2F: ssr00's / ssr01's code at their shader model):
+// A. 100%: the replacement (nothing at b12) and the game's shader: o0 and o1.y bit for bit, o1.x (the blur's step, x
+//    effects_share in ssr00 / ssr01) within 1e-6.
 // B. 50%: the replacement on display-size (2x) textures holding the view in their top-left part (the rest the view's last
 //    row / column, as a clamp sampler holds it at 100%), its viewport half its target, the camera's screen size the display's,
 //    its viewport the view's, b12 (0.5, 0.5, 0.5, 0.5): its targets in the viewport bit for bit A's.
 // C. CONTROL: the game's shader the same at 50% differs from A.
-// D. CONTROL: the game's code as view_share.hpp patches it today (the replacement's source without its fix: the projected uv
-//    x the draw's share after its mad, the AO read / the draw's share, compiled here) at 50% differs from A: the march's
-//    bounds check and edge fade on the screen's uv (rays past the view's right and bottom; a left wall and a ceiling send
-//    rays there).
+// D. CONTROL: SSR Quality 2 at 100% differs from A (the row reaches the march).
+// The game's MSAA (5724C43A, 1469E169, 42F48C08, 97F6C9FC: the G-buffer, light buffer and stencil multisampled, every sample
+// the scene's), at 100% only (no render scale under the game's MSAA):
+// E. the replacement and the game's shader bit for bit; CONTROL SSR Quality 2 differs.
 // The march's share of the picture: pixels whose result changes at 100% with the light buffer black (it reflects there).
 #include <windows.h>
 #include <d3d11.h>
@@ -150,10 +154,11 @@ struct Targets {
 };
 
 // One draw of `shader` (a full-screen triangle) into two RGBA float targets of `width` x `height`, its viewport the
-// top-left `view_width` x `view_height`; `textures` t0-t9, b0-b2 the camera / lighting / parameters, b12 `render_scale` or none.
+// top-left `view_width` x `view_height`; `textures` t0-t9, b0-b2 the camera / lighting / parameters, b12 `render_scale` or none,
+// b13 the add-on's settings.
 static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT view_width, UINT view_height,
                     const std::array<ID3D11ShaderResourceView*, 10>& textures, const std::array<ID3D11Buffer*, 3>& buffers,
-                    ID3D11Buffer* render_scale) {
+                    ID3D11Buffer* render_scale, ID3D11Buffer* settings) {
   static ComPtr<ID3D11VertexShader> vertex_shader;
   if (!vertex_shader) {
     constexpr char SOURCE[] = "float4 main(uint id : SV_VertexID) : SV_Position { return float4(float2((id << 1) & 2, id & 2) * float2(2, -2) + float2(-1, 1), 0, 1); }";
@@ -182,6 +187,7 @@ static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT vie
   context->PSSetShaderResources(0, 10, textures.data());
   context->PSSetConstantBuffers(0, 3, buffers.data());
   context->PSSetConstantBuffers(12, 1, &render_scale);
+  context->PSSetConstantBuffers(13, 1, &settings);
   static std::array<ComPtr<ID3D11SamplerState>, 8> samplers;
   if (!samplers[0]) {
     for (UINT slot = 0; slot < 8; ++slot) {
@@ -221,15 +227,61 @@ static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT vie
   return out;
 }
 
-// Pixels whose written components (o0 xyz, o1 xy) differ in their bits.
-static UINT Differ(const Targets& a, const Targets& b) {
+// Pixels whose written components (o0 xyz, o1 xy) differ in their bits; o1.x by more than `blur_step` when given.
+static UINT Differ(const Targets& a, const Targets& b, float blur_step = 0.f) {
   UINT count = 0;
   for (size_t pixel = 0; pixel < a.o0.size() / 4; ++pixel) {
     const bool o0 = std::memcmp(&a.o0[pixel * 4], &b.o0[pixel * 4], 12) != 0;
-    const bool o1 = std::memcmp(&a.o1[pixel * 4], &b.o1[pixel * 4], 8) != 0;
-    count += (o0 || o1) ? 1u : 0u;
+    const bool o1x = blur_step > 0.f ? std::fabs(a.o1[pixel * 4] - b.o1[pixel * 4]) > blur_step
+                                     : std::memcmp(&a.o1[pixel * 4], &b.o1[pixel * 4], 4) != 0;
+    const bool o1y = std::memcmp(&a.o1[pixel * 4 + 1], &b.o1[pixel * 4 + 1], 4) != 0;
+    count += (o0 || o1x || o1y) ? 1u : 0u;
   }
   return count;
+}
+
+// A multisampled copy of `view` (`format`: floats or uints), every sample its texel (drawn: a multisampled texture takes no
+// initial data); its samples the most of 4, 2 the format allows.
+static ComPtr<ID3D11ShaderResourceView> Multisampled(ID3D11ShaderResourceView* view, DXGI_FORMAT format) {
+  const bool uints = format == DXGI_FORMAT_R32G32B32A32_UINT;
+  const std::string source = std::string(uints ? "Texture2D<uint4> t : register(t0); uint4" : "Texture2D<float4> t : register(t0); float4")
+                             + " main(float4 p : SV_Position) : SV_Target { return t.Load(int3(p.xy, 0)); }";
+  ComPtr<ID3DBlob> code;
+  ComPtr<ID3D11PixelShader> copy;
+  D3DCompile(source.data(), source.size(), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, code.GetAddressOf(), nullptr);
+  device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, copy.GetAddressOf());
+  UINT samples = 4;
+  UINT levels = 0;
+  while (samples > 1 && (FAILED(device->CheckMultisampleQualityLevels(format, samples, &levels)) || levels == 0)) samples /= 2;
+  const D3D11_TEXTURE2D_DESC desc = {.Width = WIDTH, .Height = HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = format,
+                                     .SampleDesc = {.Count = samples}, .Usage = D3D11_USAGE_DEFAULT,
+                                     .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET};
+  ComPtr<ID3D11Texture2D> texture;
+  ComPtr<ID3D11RenderTargetView> target;
+  ComPtr<ID3D11ShaderResourceView> result;
+  device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf());
+  device->CreateRenderTargetView(texture.Get(), nullptr, target.GetAddressOf());
+  device->CreateShaderResourceView(texture.Get(), nullptr, result.GetAddressOf());
+  static ComPtr<ID3D11VertexShader> triangle;
+  if (!triangle) {
+    constexpr char SOURCE[] = "float4 main(uint id : SV_VertexID) : SV_Position { return float4(float2((id << 1) & 2, id & 2) * float2(2, -2) + float2(-1, 1), 0, 1); }";
+    ComPtr<ID3DBlob> vertex_code;
+    D3DCompile(SOURCE, sizeof(SOURCE) - 1, nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, vertex_code.GetAddressOf(), nullptr);
+    device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, triangle.GetAddressOf());
+  }
+  ID3D11RenderTargetView* bound = target.Get();
+  context->OMSetRenderTargets(1, &bound, nullptr);
+  const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(WIDTH), .Height = static_cast<float>(HEIGHT), .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context->VSSetShader(triangle.Get(), nullptr, 0);
+  context->PSSetShader(copy.Get(), nullptr, 0);
+  context->PSSetShaderResources(0, 1, &view);
+  context->Draw(3, 0);
+  ID3D11ShaderResourceView* none = nullptr;
+  context->PSSetShaderResources(0, 1, &none);
+  context->OMSetRenderTargets(0, nullptr, nullptr);
+  return result;
 }
 
 static ComPtr<ID3D11Buffer> Constants(const void* data, UINT bytes) {
@@ -238,47 +290,6 @@ static ComPtr<ID3D11Buffer> Constants(const void* data, UINT bytes) {
   ComPtr<ID3D11Buffer> buffer;
   device->CreateBuffer(&desc, &initial, buffer.GetAddressOf());
   return buffer;
-}
-
-// The repository's root (this file: test\tw_thrones_ssr\tests.cpp).
-static std::string RepositoryRoot() {
-  std::string path = __FILE__;
-  for (int level = 0; level < 3; ++level) path = path.substr(0, path.find_last_of("\\/"));
-  return path;
-}
-
-// The game's code as view_share.hpp patches it (D): the replacement's source without its fix, the projected uv x the draw's
-// share right after its mad (the PROJECTED site), the AO read / the draw's share (the WHOLE site), compiled.
-static ComPtr<ID3D11PixelShader> PatchedToday(const std::string& source_path, const char* target) {
-  const auto bytes = ReadFile(source_path);
-  std::string source(bytes.begin(), bytes.end());
-  const auto erase_all = [&](const std::string& text) {
-    for (size_t at = source.find(text); at != std::string::npos; at = source.find(text)) source.erase(at, text.size());
-  };
-  const std::string include = "#include \"../../twattila/render_scale.hlsli\"";
-  const size_t include_at = source.find(include);
-  if (include_at == std::string::npos) return nullptr;
-  const auto header = ReadFile(RepositoryRoot() + "\\src\\games\\twattila\\render_scale.hlsli");
-  source.replace(include_at, include.size(), std::string(header.begin(), header.end()));
-  erase_all(" / view_share");
-  erase_all(" * view_share");
-  const size_t projected = source.find("* float2(0.5,-0.5) + float2(0.5,0.5);");
-  if (projected == std::string::npos) return nullptr;
-  const size_t line = source.rfind('\n', projected) + 1;
-  const size_t first = source.find_first_not_of(' ', line);
-  const std::string destination = source.substr(first, source.find(" = ", first) - first);
-  const size_t end = source.find(';', projected) + 1;
-  source.insert(end, "\n  " + destination + " *= DrawRenderShare();");
-  ComPtr<ID3DBlob> code;
-  ComPtr<ID3DBlob> errors;
-  if (FAILED(D3DCompile(source.data(), source.size(), source_path.c_str(), nullptr, nullptr, "main", target, D3DCOMPILE_OPTIMIZATION_LEVEL3,
-                        0, code.GetAddressOf(), errors.GetAddressOf()))) {
-    std::printf("%s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "compile failed");
-    return nullptr;
-  }
-  ComPtr<ID3D11PixelShader> shader;
-  device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, shader.GetAddressOf());
-  return shader;
 }
 
 // A matrix as the game's camera holds it (row vectors: register c of a 4x4 its column c).
@@ -313,12 +324,14 @@ static void Invert(const double (&m)[4][4], double (&out)[4][4]) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 3) {
-    std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos>\n");
+  if (argc < 5) {
+    std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <ssr_quality's float in b13> <effects_share's>\n");
     return 2;
   }
   const std::string game_folder = argv[1];
   const std::string built_folder = argv[2];
+  const int ssr_quality = std::atoi(argv[3]);
+  const int effects_share = std::atoi(argv[4]);
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
                                context.GetAddressOf()))) {
@@ -419,26 +432,52 @@ int main(int argc, char** argv) {
   const auto camera_100 = camera_for(WIDTH, HEIGHT);
   const auto camera_50 = camera_for(WIDTH * 2, HEIGHT * 2);
 
+  // The add-on's settings (b13): SSR Quality 1, Effects at Output Resolution's share 1 (the game's look), or SSR Quality 2.
+  const auto settings_for = [&](float quality) {
+    std::vector<float> values(256 * 4, 0.f);
+    values[ssr_quality] = quality;
+    values[effects_share] = 1.f;
+    return Constants(values.data(), static_cast<UINT>(values.size() * 4));
+  };
+  const auto settings = settings_for(1.f);
+  const auto settings_2 = settings_for(2.f);
+  // ssr00 / ssr01's blur step (o1.x) through effects_share 1: a few ulp off the game's.
+  constexpr float BLUR_STEP = 1e-6f;
+
   struct Pair {
     const char* name;
     const char* game;
     const char* replacement;
-    const char* source;
-    const char* target;
+    bool multisampled;
   };
-  constexpr std::array<Pair, 4> PAIRS = {{
-      {"ssr02 sm_4_1 standard", "0x485F33D7.ps_4_1.cso", "0x485F33D7.cso", "ssr02_0x485F33D7.ps_4_1.hlsl", "ps_4_1"},
-      {"ssr03 sm_4_1 full_res", "0x0AC579F6.ps_4_1.cso", "0x0AC579F6.cso", "ssr03_0x0AC579F6.ps_4_1.hlsl", "ps_4_1"},
-      {"ssr04 sm_4_0 standard", "0x8E734BAA.ps_4_0.cso", "0x8E734BAA.cso", "ssr04_0x8E734BAA.ps_4_0.hlsl", "ps_4_0"},
-      {"ssr05 sm_4_0 full_res", "0xC8BD2B2F.ps_4_0.cso", "0xC8BD2B2F.cso", "ssr05_0xC8BD2B2F.ps_4_0.hlsl", "ps_4_0"},
+  constexpr std::array<Pair, 8> PAIRS = {{
+      {"ssr02 sm_4_1 standard", "0x485F33D7.ps_4_1.cso", "0x485F33D7.cso", false},
+      {"ssr03 sm_4_1 full_res", "0x0AC579F6.ps_4_1.cso", "0x0AC579F6.cso", false},
+      {"ssr04 sm_4_0 standard", "0x8E734BAA.ps_4_0.cso", "0x8E734BAA.cso", false},
+      {"ssr05 sm_4_0 full_res", "0xC8BD2B2F.ps_4_0.cso", "0xC8BD2B2F.cso", false},
+      {"ssr06 sm_5_0 standard MSAA", "0x5724C43A.ps_5_0.cso", "0x5724C43A.cso", true},
+      {"ssr06 sm_4_1 standard MSAA", "0x1469E169.ps_4_1.cso", "0x1469E169.cso", true},
+      {"ssr07 sm_5_0 full_res MSAA", "0x42F48C08.ps_5_0.cso", "0x42F48C08.cso", true},
+      {"ssr07 sm_4_1 full_res MSAA", "0x97F6C9FC.ps_4_1.cso", "0x97F6C9FC.cso", true},
   }};
+  // The game's MSAA: the view's G-buffer, light buffer and stencil multisampled (t3-t8 of its builds).
+  const auto multisampled = [&](const std::array<ComPtr<ID3D11ShaderResourceView>, 6>& view) {
+    std::array<ComPtr<ID3D11ShaderResourceView>, 6> copies;
+    for (size_t index = 0; index < 6; ++index) copies[index] = Multisampled(view[index].Get(), index == 5 ? UINTS : FLOATS);
+    return copies;
+  };
+  const auto ms_100 = multisampled(at_100);
+  const auto ms_100_black = multisampled(at_100_black);
+  const auto ms_bindings = [&](const std::array<ComPtr<ID3D11ShaderResourceView>, 6>& view) {
+    return std::array<ID3D11ShaderResourceView*, 10>{environment.Get(), shared_terrain.Get(), shared_ssao.Get(), view[0].Get(), view[1].Get(),
+                                                     view[2].Get(), view[3].Get(), view[4].Get(), view[5].Get(), shared_jitter.Get()};
+  };
   for (const Pair& pair : PAIRS) {
     const auto game_code = ReadFile(game_folder + "\\" + pair.game);
     const auto replacement_code = ReadFile(built_folder + "\\" + pair.replacement);
     ComPtr<ID3D11PixelShader> game;
     ComPtr<ID3D11PixelShader> replacement;
-    const auto today = PatchedToday(RepositoryRoot() + "\\src\\games\\twattila\\shaders\\" + pair.source, pair.target);
-    if (game_code.empty() || replacement_code.empty() || !today
+    if (game_code.empty() || replacement_code.empty()
         || FAILED(device->CreatePixelShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf()))
         || FAILED(device->CreatePixelShader(replacement_code.data(), replacement_code.size(), nullptr, replacement.GetAddressOf()))) {
       std::printf("FAIL %s: shaders not loaded (%s, %s)\n", pair.name, pair.game, pair.replacement);
@@ -451,28 +490,34 @@ int main(int argc, char** argv) {
       const std::array<ID3D11Buffer*, 3> buffers_50 = {camera_50.Get(), lighting_buffer.Get(), parameters.Get()};
       const auto view_w = static_cast<UINT>(WIDTH * buffers_scale);
       const auto view_h = static_cast<UINT>(HEIGHT * buffers_scale);
-      const Targets game_100 = Draw(game.Get(), view_w, view_h, view_w, view_h, bindings(at_100), buffers_100, nullptr);
-      const Targets ours_100 = Draw(replacement.Get(), view_w, view_h, view_w, view_h, bindings(at_100), buffers_100, nullptr);
-      const Targets ours_50 = Draw(replacement.Get(), view_w * 2, view_h * 2, view_w, view_h, bindings(at_50), buffers_50, render_scale.Get());
-      const Targets game_50 = Draw(game.Get(), view_w * 2, view_h * 2, view_w, view_h, bindings(at_50), buffers_50, render_scale.Get());
-      const Targets today_50 = Draw(today.Get(), view_w * 2, view_h * 2, view_w, view_h, bindings(at_50), buffers_50, render_scale.Get());
-      const Targets today_100 = Draw(today.Get(), view_w, view_h, view_w, view_h, bindings(at_100), buffers_100, nullptr);
-      const Targets game_black = Draw(game.Get(), view_w, view_h, view_w, view_h, bindings(at_100_black), buffers_100, nullptr);
+      const auto scene_100 = pair.multisampled ? ms_bindings(ms_100) : bindings(at_100);
+      const auto scene_black = pair.multisampled ? ms_bindings(ms_100_black) : bindings(at_100_black);
+      const Targets game_100 = Draw(game.Get(), view_w, view_h, view_w, view_h, scene_100, buffers_100, nullptr, settings.Get());
+      const Targets ours_100 = Draw(replacement.Get(), view_w, view_h, view_w, view_h, scene_100, buffers_100, nullptr, settings.Get());
+      const Targets ours_quality_2 = Draw(replacement.Get(), view_w, view_h, view_w, view_h, scene_100, buffers_100, nullptr, settings_2.Get());
+      const Targets game_black = Draw(game.Get(), view_w, view_h, view_w, view_h, scene_black, buffers_100, nullptr, settings.Get());
       UINT written = 0;
       for (size_t pixel = 0; pixel < game_100.o0.size() / 4; ++pixel) written += (game_100.o1[pixel * 4] != SENTINEL) ? 1u : 0u;
       const UINT reflecting = Differ(game_100, game_black);
-      const UINT a = Differ(game_100, ours_100);
-      const UINT b = Differ(game_100, ours_50);
-      const UINT c = Differ(game_100, game_50);
-      const UINT d = Differ(game_100, today_50);
-      std::printf("%s, g_buffers_scale %.1f: %u x %u pixels, %u drawn, %u reflect the light buffer; A 100%%: %u differ; B 50%%: %u "
-                  "differ; CONTROL C the game's at 50%%: %u differ; CONTROL D view_share's patch today at 50%%: %u differ (at 100%%: %u)\n",
-                  pair.name, buffers_scale, view_w, view_h, written, reflecting, a, b, c, d, Differ(game_100, today_100));
+      const UINT a = Differ(game_100, ours_100, pair.multisampled ? 0.f : BLUR_STEP);
+      const UINT d = Differ(ours_100, ours_quality_2);
       CHECK(written > view_w * view_h / 2 && reflecting > written / 20, "%s: the scene exercises too little", pair.name);
-      CHECK(a == 0, "%s: 100%% not the game's bits", pair.name);
+      CHECK(a == 0, "%s: 100%% not the game's", pair.name);
+      CHECK(d > 0, "%s: control D (SSR Quality 2) does not fail", pair.name);
+      if (pair.multisampled) {
+        std::printf("%s, g_buffers_scale %.1f: %u x %u pixels, %u drawn, %u reflect the light buffer; E 100%%: %u differ; CONTROL SSR "
+                    "Quality 2: %u differ\n", pair.name, buffers_scale, view_w, view_h, written, reflecting, a, d);
+        continue;
+      }
+      const Targets ours_50 = Draw(replacement.Get(), view_w * 2, view_h * 2, view_w, view_h, bindings(at_50), buffers_50, render_scale.Get(), settings.Get());
+      const Targets game_50 = Draw(game.Get(), view_w * 2, view_h * 2, view_w, view_h, bindings(at_50), buffers_50, render_scale.Get(), settings.Get());
+      const UINT b = Differ(ours_100, ours_50);
+      const UINT c = Differ(game_100, game_50);
+      std::printf("%s, g_buffers_scale %.1f: %u x %u pixels, %u drawn, %u reflect the light buffer; A 100%%: %u differ; B 50%%: %u "
+                  "differ; CONTROL C the game's at 50%%: %u differ; CONTROL D SSR Quality 2: %u differ\n",
+                  pair.name, buffers_scale, view_w, view_h, written, reflecting, a, b, c, d);
       CHECK(b == 0, "%s: 50%% not 100%%'s", pair.name);
       CHECK(c > 0, "%s: control C does not fail", pair.name);
-      CHECK(d > 0 && Differ(game_100, today_100) == 0, "%s: control D (today's patch) does not fail at 50%% or differs at 100%%", pair.name);
     }
   }
   std::printf("%s\n", failures == 0 ? "PASS" : "FAIL");
