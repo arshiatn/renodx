@@ -97,6 +97,7 @@ struct Camera {
   std::array<float, 16> view_projection = {};           // without the jitter
   std::array<float, 16> jittered_view_projection = {};  // as the depth was drawn
   std::array<float, 16> inverse_view_projection = {};   // of the jittered
+  std::array<double, 16> inverse_rows = {};             // the same in doubles (the rays' precise unprojection)
   std::array<float, 3> position = {};
   std::array<float, 2> jitter = {};  // written into this upload: pixels, x right, y up
   uint64_t frame = 0;
@@ -242,6 +243,7 @@ inline void JitterCamera(float* c) {
   }
   for (size_t row = 0; row < 4; ++row) {
     for (size_t column = 0; column < 4; ++column) {
+      camera.inverse_rows[(row * 4) + column] = rows[row][4 + column];
       camera.inverse_view_projection[(row * 4) + column] = static_cast<float>(rows[row][4 + column]);
     }
   }
@@ -537,7 +539,8 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     const float pass_height_f = static_cast<float>(pass_height);
     const internal::ShaderSettings shader_settings = {
         .metrics = {1.f / pass_width_f, 1.f / pass_height_f, pass_width_f, pass_height_f},
-        .dlaa_debug = {0.f, static_cast<float>(width), static_cast<float>(height), (square_root ? 1.f : 0.f)},
+        // The DLSS Debug View: its Motion Vectors (1) alone here (no object motion).
+        .dlaa_debug = {(sliders.debug_view != 0.f ? 1.f : 0.f), static_cast<float>(width), static_cast<float>(height), (square_root ? 1.f : 0.f)},
     };
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &shader_settings, 0, 0);
   };

@@ -37,10 +37,18 @@ void main(uint3 dispatch_id : SV_DispatchThreadID)
 #else
   if (rt_vertices.z != 0u) {
 #endif
+#if defined(RT_VERTICES_RELATIVE)
+    // rt_core Host::clip_relative: rows 0-2 the offset from the camera (row 3), no division by the w row (it cancels).
+    const float3 offset = float3(dot(inverse_view_projection[0], position), dot(inverse_view_projection[1], position),
+                                 dot(inverse_view_projection[2], position));
+    const float2 uv = captured_uv[id];
+    position = float4(inverse_view_projection[3].xyz + offset, asfloat(f32tof16(uv.x) | (f32tof16(uv.y) << 16)));
+#else
     const float4 world = float4(dot(inverse_view_projection[0], position), dot(inverse_view_projection[1], position),
                                 dot(inverse_view_projection[2], position), dot(inverse_view_projection[3], position));
     const float2 uv = captured_uv[id];
     position = float4(world.xyz / world.w, asfloat(f32tof16(uv.x) | (f32tof16(uv.y) << 16)));
+#endif
   }
   vertices[uint2(id % rt_vertices.y, id / rt_vertices.y)] = float4(all(isfinite(position.xyz)) ? position.xyz : asfloat(0x7FC00000u).xxx, position.w);
 }

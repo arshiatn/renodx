@@ -3,5 +3,5 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Attila's, for the graphics page's modules (twattila/graphics_page.hpp's includes; not drawn in this game).
+// Attila's: Softer Away from the Caster's widening (contact_shadows.hpp).
 #include "../twattila/sss_soft.cs_5_0.hlsl"

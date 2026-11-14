@@ -5,7 +5,8 @@
 // 1. SceneDraw: a prepass draw into the scene's depth (no target, depth written) is in the scene, captured every frame;
 //    out: a unit's, the grass's, a terrain overlay's, a banner's vertex shader, a draw with a target, another depth (the
 //    cascades'), depth not written (the forward pass's EQUAL); the battle's kinds only as Battle Objects lets them in
-//    (Tested: none, Solid: solid ones, All: an alpha-tested one too).
+//    (Tested: none, Solid: solid ones, All: an alpha-tested one too). The battle's terrain 7DD754DA flagged terrain (no
+//    200 m part limit), every draw its own capture (8.); CONTROL: a prop and the PBR kind are parts.
 // 2. The trace's camera: rt_positions (rt_core's bytes) with the jittered battle camera given transposed gives each
 //    pixel's world position on a ground plane (against the CPU), the sky 0, the eye where the view says; CONTROL: the
 //    camera untransposed is far off.
@@ -20,10 +21,17 @@
 // 6. contact_shadows::Draw (Bend's march, twattila's sss_setup / sss_bend, into the mask): a pillar's shadow from a sun at
 //    the camera's left darkens the ground the CPU finds shadowed, the sunlit ground and the mask's green kept; CONTROL: the
 //    sun at the right (the setup's sign the other way) leaves it lit. Softness (sss_blur): more partial pixels, the same
-//    dark share.
+//    dark share. Softer Away from the Caster (sss_bend_extended_find, sss_soft): each shadowed pixel's penumbra is the CPU
+//    caster's distance x tan(half the disk) in pixels at its distance (median within 25%), growing away from the pillar;
+//    CONTROL: without the camera's inverse projection, not. The Debug View (sss_debug): 0.8 x the light the mask kept,
+//    Screen Edge red only with it, once a frame; CONTROL: a frame without the march leaves the tone mapper's output.
 // 7. DLSS below 100% with the rays (rt_core Host::depth_at_render_size): the kept depth's size is the render size; a
 //    prepass draw into the render-size depth is the main view's for Capture; CONTROL: without the field, another size;
 //    today's rule at the bridge's size kept. DrawMultiply reads the traced visibility's top-left corner texel for texel.
+// 8. (Inside 7.) One mesh drawn again with another object matrix (VS b7, outside rt_core's key): captured with every_draw;
+//    CONTROL without: dropped.
+// 9. Unprojection 1-5 km out: positions in doubles and captures as offsets from the eye within 1 cm; CONTROL the float
+//    forms (rt_positions, rt_vertices without RT_VERTICES_RELATIVE) off by more than 10 cm.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -33,6 +41,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -228,6 +237,26 @@ int main(int argc, char** argv) {
     rays::battle_scene = 1.f;
     CHECK(scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);
     CHECK(scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);
+    {
+      // The battle's terrain flagged terrain (the helper's rt_scene_data: a dynamic capture without RT_TERRAIN is a part,
+      // its edges 200 m at most; with it MAX_EDGE), every draw its own capture; CONTROL: a prop and the PBR kind aren't.
+      const auto flagged = [&](uint32_t hash) {
+        context->OMSetRenderTargets(0, nullptr, scene_dsv.Get());
+        context->OMSetDepthStencilState(writes.Get(), 0);
+        twattila::rt_scene::SceneShader shader = {.hash = hash};
+        const bool in = rays::internal::SceneDraw(context.Get(), &shader);
+        const uint32_t flags = (shader.terrain ? twattila::dlaa_bridge::RT_TERRAIN : 0u) | (shader.dynamic ? twattila::dlaa_bridge::RT_DYNAMIC : 0u);
+        const bool part = (flags & (twattila::dlaa_bridge::RT_TERRAIN | twattila::dlaa_bridge::RT_DYNAMIC)) == twattila::dlaa_bridge::RT_DYNAMIC;
+        return std::tuple{in, part, shader.every_draw};
+      };
+      const auto [terrain_in, terrain_part, terrain_every] = flagged(0x7DD754DA);
+      const auto [prop_in, prop_part, prop_every] = flagged(0xC35BD3D6);
+      const auto [pbr_in, pbr_part, pbr_every] = flagged(0x9594545F);
+      std::printf("battle terrain: in %d, a part (200 m) %d, every draw %d; CONTROL prop / PBR: parts %d / %d\n", terrain_in ? 1 : 0,
+                  terrain_part ? 1 : 0, terrain_every ? 1 : 0, prop_part ? 1 : 0, pbr_part ? 1 : 0);
+      CHECK(terrain_in && !terrain_part && terrain_every);
+      CHECK(prop_in && prop_part && prop_every && pbr_in && pbr_part && pbr_every);
+    }
     {
       // An alpha-tested pixel shader (rt_core's classification, as the game's D2F340DB): out at Solid, in at All.
       ComPtr<ID3D11PixelShader> masked;
@@ -634,6 +663,7 @@ Output main(uint id : SV_VertexID) {
     battle.jittered_view_projection = battle.view_projection;
     const Matrix view_projection = Rows(battle.view_projection.data());
     const Matrix inverse = Inverse(view_projection);
+    battle.inverse_rows = inverse;
     const Matrix inverse_view = Inverse(Rows(BATTLE.data()));
     const std::array<double, 3> eye = {inverse_view[12], inverse_view[13], inverse_view[14]};
     const std::array<double, 3> forward = {BATTLE[2], BATTLE[6], BATTLE[10]};
@@ -662,6 +692,8 @@ Output main(uint id : SV_VertexID) {
     };
     std::vector<float> depth(SIZE_X * SIZE_Y, 1.f);
     std::vector<int> kind(SIZE_X * SIZE_Y, 0);  // 0 sky, 1 the pillar, 2 ground in the sun, 3 ground in the shadow
+    std::vector<double> caster(SIZE_X * SIZE_Y, -1.);  // the ground's: metres toward the sun to the pillar, -1 none
+    std::vector<double> view_depth(SIZE_X * SIZE_Y, 0.);
     const auto sun_from = [](double x, double z) { return std::array<double, 3>{x, 1., z}; };
     const auto normalized = [](std::array<double, 3> v) {
       const double length = std::sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]));
@@ -692,7 +724,9 @@ Output main(uint id : SV_VertexID) {
         } else if (plane > 0. && plane < 400.) {
           along = plane;
           const std::array<double, 3> point = {origin[0] + (plane * direction[0]), ground, origin[2] + (plane * direction[2])};
-          kind[at] = (box_hit(point, toward_sun) > 0. ? 3 : 2);
+          caster[at] = box_hit(point, toward_sun);
+          view_depth[at] = (point[0] * BATTLE[2]) + (point[1] * BATTLE[6]) + (point[2] * BATTLE[10]) + BATTLE[14];
+          kind[at] = (caster[at] > 0. ? 3 : 2);
         }
         if (along < 0.) continue;
         const auto drawn = Transform({origin[0] + (along * direction[0]), origin[1] + (along * direction[1]), origin[2] + (along * direction[2]), 1.},
@@ -774,6 +808,93 @@ Output main(uint id : SV_VertexID) {
     CHECK(control_dark < 0.05);
     CHECK(partial(soft) > partial(hard));
     CHECK(std::abs(soft_dark - shadow_dark) < 0.15);
+
+    // Softer Away from the Caster at the row's most (2 degrees): the penumbra (R16F) of the shadow's pixels against the CPU's
+    // caster distance x tan(1 degree) x half the height x the projection's y scale / the view depth (the penumbra's cap
+    // left out), as their median ratio, and its mean within 3 m of the pillar and past 7 m.
+    namespace bend = twromeremastered::contact_shadows;
+    const double soft_cap = 32. * SIZE_Y / 2160.;
+    const auto penumbra = [&](double disk) {
+      ComPtr<ID3D11Resource> resource;
+      bend::internal::state.objects.penumbra_srv->GetResource(resource.GetAddressOf());
+      ComPtr<ID3D11Texture2D> texture;
+      REQUIRE(SUCCEEDED(resource.As(&texture)));
+      const auto radii = ReadBack<uint16_t>(texture.Get());
+      const double scale = std::tan(disk * 3.14159265358979 / 360.) * 0.5 * SIZE_Y * BATTLE[16 + 5];
+      std::vector<double> ratios;
+      std::array<double, 2> sums = {};
+      std::array<int, 2> counts = {};
+      for (size_t at = 0; at < radii.size(); ++at) {
+        const double expected = caster[at] * scale / view_depth[at];
+        const float radius = Half(radii[at]);
+        if (kind[at] != 3 || radius <= 0.f || expected >= soft_cap) continue;
+        ratios.push_back(radius / expected);
+        if (caster[at] < 3. || caster[at] > 7.) {
+          sums[caster[at] < 3. ? 0 : 1] += radius;
+          ++counts[caster[at] < 3. ? 0 : 1];
+        }
+      }
+      std::ranges::nth_element(ratios, ratios.begin() + static_cast<ptrdiff_t>(ratios.size() / 2));
+      return std::tuple{ratios.size(), ratios.empty() ? 0. : ratios[ratios.size() / 2], sums[0] / std::max(counts[0], 1), sums[1] / std::max(counts[1], 1)};
+    };
+    bend::rows = {.enabled = 1.f, .distance_softness = 2.f};
+    const auto softer = shadowed(toward_sun);
+    const auto [softer_count, softer_median, softer_near, softer_far] = penumbra(2.);
+    const auto [softer_pixels, softer_dark, softer_sun_dark, softer_green] = shares(softer);
+    // CONTROL: the camera without its inverse (Camera::inverse_rows zero): the view positions, so the penumbra, wrong.
+    battle.inverse_rows = {};
+    shadowed(toward_sun);
+    const auto [control_count, control_median, control_near, control_far] = penumbra(2.);
+    battle.inverse_rows = inverse;
+    // A 20 degree disk (past the row's 2: wide enough on this 480 x 270 picture): sss_soft widens the shadow.
+    bend::rows.distance_softness = 20.f;
+    const auto wide = shadowed(toward_sun);
+    const auto [wide_pixels, wide_dark, wide_sun_dark, wide_green] = shares(wide);
+    std::printf("Softer Away from the Caster 2 degrees: %zu shadow pixels with a penumbra, median %.3f of the reference, mean %.2f px within 3 m "
+                "of the pillar, %.2f px past 7 m; %.3f dark, %.3f of the sun's ground; CONTROL without the inverse projection: %zu, median "
+                "%.3f, %.2f / %.2f px. 20 degrees: partial pixels %td (hard %td), %.3f dark\n",
+                softer_count, softer_median, softer_near, softer_far, softer_dark, softer_sun_dark, control_count, control_median, control_near,
+                control_far, partial(wide), partial(hard), wide_dark);
+    CHECK(softer_count > 30 && softer_median > 0.75 && softer_median < 1.25);
+    CHECK(softer_far > 1.5 * softer_near);
+    CHECK(std::abs(softer_dark - shadow_dark) < 0.15 && softer_sun_dark < 0.02 && softer_green);
+    CHECK(!(control_median > 0.75 && control_median < 1.25 && control_far > 1.5 * control_near));
+    CHECK(partial(wide) > partial(hard) && std::abs(wide_dark - shadow_dark) < 0.2 && wide_sun_dark < 0.05 && wide_green);
+
+    // The Debug View over a tone mapper output of the mask's size, in the frame the march ran in (battle.frame).
+    const auto output = MakeTexture(SIZE_X, SIZE_Y, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
+    battle.frame = 41;
+    bend::rows = {.enabled = 1.f, .debug_view = 1.f};
+    const auto kept = shadowed(toward_sun);
+    const bool debug_drawn = bend::internal::DrawDebug(context1.Get(), output.Get(), 41);
+    const bool debug_again = bend::internal::DrawDebug(context1.Get(), output.Get(), 41);
+    const auto picture = ReadBack<std::array<uint16_t, 4>>(output.Get());
+    double debug_worst = 0.;
+    const auto red_count = [](const std::vector<std::array<uint16_t, 4>>& texels) {
+      return std::ranges::count_if(texels, [](const std::array<uint16_t, 4>& texel) { return Half(texel[0]) > Half(texel[1]) + 0.05f; });
+    };
+    for (size_t at = 0; at < picture.size(); ++at) {
+      for (int channel = 0; channel < 3; ++channel) {
+        debug_worst = std::max(debug_worst, std::abs(static_cast<double>(Half(picture[at][channel])) - (0.8 * kept[at][0] / 255.)));
+      }
+    }
+    battle.frame = 42;
+    bend::rows.debug_view = 2.f;
+    shadowed(toward_sun);
+    const bool edge_drawn = bend::internal::DrawDebug(context1.Get(), output.Get(), 42);
+    const auto edge_picture = ReadBack<std::array<uint16_t, 4>>(output.Get());
+    // CONTROL: frame 43, the march not run in it.
+    const bool control_drawn = bend::internal::DrawDebug(context1.Get(), output.Get(), 43);
+    const bool control_kept = ReadBack<std::array<uint16_t, 4>>(output.Get()) == edge_picture;
+    bend::rows = {};
+    battle.frame = 0;
+    std::printf("Debug View: drawn %d (again %d), worst %.4f off 0.8 x the mask's light, red pixels %td; Screen Edge: drawn %d, red pixels %td; "
+                "CONTROL a frame without the march: drawn %d, output kept %d\n",
+                debug_drawn ? 1 : 0, debug_again ? 1 : 0, debug_worst, red_count(picture), edge_drawn ? 1 : 0, red_count(edge_picture),
+                control_drawn ? 1 : 0, control_kept ? 1 : 0);
+    CHECK(debug_drawn && !debug_again && debug_worst < 2e-3 && red_count(picture) == 0);
+    CHECK(edge_drawn && red_count(edge_picture) > 1000);
+    CHECK(!control_drawn && control_kept);
   }
 
   // 7. DLSS below 100% with the rays (rt_core's Host::depth_at_render_size): the kept depth's size is the rays' render
@@ -827,6 +948,48 @@ Output main(uint id : SV_VertexID) {
     const bool render_sized = main_view(rays::HOST, scene_dsv.Get());
     const bool today_rule = main_view(today, scene_dsv.Get());
     const bool other_size = main_view(rays::HOST, other_dsv.Get());
+
+    // 8. One mesh drawn twice with other object matrices at VS b7 (outside rt_core's key: its slots 1-4, textures, buffers,
+    //    ranges): the second draw, its key captured this frame, goes on to the main view's mark with every_draw (Rome's
+    //    SceneDraw sets it); CONTROL without: dropped before it. The key as Capture makes it for a draw with nothing bound.
+    const auto empty_draw_key = [](uint32_t hash) {
+      uint64_t key = 14695981039346656037ull;
+      const auto mix = [&key](uint64_t value) { key = (key ^ value) * 1099511628211ull; };
+      for (const uint64_t value : {uint64_t{hash}, uint64_t{3}, uint64_t{1}, uint64_t{0}, uint64_t{0}}) mix(value);
+      // Constant buffers and their first constants, textures, vertex buffers with strides and offsets; the index buffer,
+      // its format and offset, the mask: none bound, all 0.
+      for (int value = 0; value < (4 * 2) + 4 + (4 * 2) + 3; ++value) mix(0);
+      return key;
+    };
+    std::array<float, 16> object_matrix = {1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f};
+    const auto drawn_again = [&](bool every_draw) {
+      object_matrix[12] += 25.f;  // the next object, 25 m on
+      const auto object_constants = ConstantBuffer(object_matrix.data(), 64);
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.captured_keys.insert(empty_draw_key(0x77472F17));
+        runtime.main_view_frame = 0;
+      }
+      twattila::rt_scene::internal::host = rays::HOST;
+      context->OMSetRenderTargets(0, nullptr, scene_dsv.Get());
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetConstantBuffers(7, 1, object_constants.GetAddressOf());
+      const twattila::rt_scene::SceneShader shader = {.hash = 0x77472F17, .dynamic = true, .every_draw = every_draw};
+      renodx::utils::command_action::CommandContext<renodx::utils::command_action::DrawArguments> command = {
+          .cmd_list = &command_list, .arguments = {.vertex_count = 3, .instance_count = 1}};
+      twattila::rt_scene::internal::Capture(command, shader);
+      context->ClearState();
+      const std::unique_lock lock(runtime.mutex);
+      runtime.captured_keys.clear();
+      return runtime.main_view_frame == runtime.frame;
+    };
+    const bool every_draw_on = drawn_again(true);
+    const bool every_draw_off = drawn_again(false);
+    std::printf("one mesh, another object matrix, its key captured this frame: every_draw %d; CONTROL without %d\n", every_draw_on ? 1 : 0,
+                every_draw_off ? 1 : 0);
+    CHECK(every_draw_on);
+    CHECK(!every_draw_off);  // CONTROL: one capture a key a frame (the dropped BasicLit instances)
+
     // The bridge at the render size (100%): today's rule takes it too.
     bridge.width = WIDTH;
     bridge.height = HEIGHT;
@@ -860,6 +1023,147 @@ Output main(uint id : SV_VertexID) {
     CHECK(today_full);    // today's rule unchanged at the bridge's size
     CHECK(corner_read);
     dlaa::rays = false;
+  }
+
+  // 9. Unprojection 1-5 km out with the jittered battle camera (near 1 m, far 25 km), each pixel's surface at 1 + 4 x its
+  //    index / the count km. Positions (rt_positions_double through WritePositions) against the depth as stored,
+  //    unprojected in doubles: within 1 cm; CONTROL rt_core's rt_positions (floats, the inverse's w row): metres. Captures
+  //    (the clip positions a vertex shader's floats give, rt_vertices with RT_VERTICES_RELATIVE and RelativeInverse)
+  //    against their world points: within 1 cm; CONTROL rt_vertices as the other games build it: metres.
+  {
+    const Matrix jittered = Rows(camera.jittered_view_projection.data());
+    const Matrix inverse_jittered = Inverse(jittered);
+    const size_t count = static_cast<size_t>(WIDTH) * HEIGHT;
+    std::vector<float> depth(count);
+    std::vector<std::array<double, 3>> stored(count);   // the stored depth unprojected in doubles
+    std::vector<std::array<float, 4>> points(count);    // the world points as a vertex shader gets them
+    std::vector<std::array<float, 4>> clips(count);     // and its clip positions (float multiply-adds)
+    for (size_t at = 0; at < count; ++at) {
+      const float ndc_x = ((static_cast<float>(at % WIDTH) + 0.5f) / static_cast<float>(WIDTH) * 2.f) - 1.f;
+      const float ndc_y = 1.f - ((static_cast<float>(at / WIDTH) + 0.5f) / static_cast<float>(HEIGHT) * 2.f);
+      auto near_point = Transform({ndc_x, ndc_y, 0., 1.}, inverse_jittered);
+      auto far_point = Transform({ndc_x, ndc_y, 0.5, 1.}, inverse_jittered);
+      std::array<double, 3> direction = {};
+      double length = 0.;
+      for (int k = 0; k < 3; ++k) {
+        near_point[k] /= near_point[3];
+        far_point[k] /= far_point[3];
+        direction[k] = far_point[k] - near_point[k];
+        length += direction[k] * direction[k];
+      }
+      const double distance = 1000. + (4000. * static_cast<double>(at) / static_cast<double>(count - 1));
+      for (int k = 0; k < 3; ++k) points[at][k] = static_cast<float>(camera.position[k] + (direction[k] / std::sqrt(length) * distance));
+      points[at][3] = 1.f;
+      const auto drawn = Transform({points[at][0], points[at][1], points[at][2], 1.}, jittered);
+      depth[at] = static_cast<float>(drawn[2] / drawn[3]);
+      const auto unprojected = Transform({ndc_x, ndc_y, depth[at], 1.}, inverse_jittered);
+      for (int k = 0; k < 3; ++k) stored[at][k] = unprojected[k] / unprojected[3];
+      for (int column = 0; column < 4; ++column) {
+        float sum = 0.f;
+        for (int k = 0; k < 4; ++k) sum += points[at][k] * camera.jittered_view_projection[(k * 4) + column];
+        clips[at][column] = sum;
+      }
+    }
+    const auto worst = [](const std::vector<std::array<float, 4>>& got, auto expected) {
+      double error = 0.;
+      for (size_t at = 0; at < got.size(); ++at) {
+        for (int k = 0; k < 3; ++k) error = std::max(error, std::abs(static_cast<double>(got[at][k]) - expected(at, k)));
+      }
+      return error;
+    };
+    // Positions.
+    const auto depth_texture = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, depth.data(), WIDTH * 4);
+    const auto positions = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_UNORDERED_ACCESS);
+    const auto sun = MakeTexture(2, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_UNORDERED_ACCESS);
+    ComPtr<ID3D11UnorderedAccessView> positions_uav;
+    ComPtr<ID3D11UnorderedAccessView> sun_uav;
+    REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(positions.Get(), nullptr, positions_uav.GetAddressOf())));
+    REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(sun.Get(), nullptr, sun_uav.GetAddressOf())));
+    const auto depth_srv = Srv(depth_texture.Get());
+    REQUIRE(rays::internal::MakeObjects(device.Get()));
+    const bool written = rays::internal::WritePositions(context1.Get(), depth_srv.Get(), camera, positions_uav.Get(), sun_uav.Get(), {WIDTH, HEIGHT});
+    context->ClearState();
+    const auto stored_at = [&](size_t at, int k) { return stored[at][k]; };
+    const double precise_positions = worst(ReadBack<std::array<float, 4>>(positions.Get()), stored_at);
+    const auto sun_texels = ReadBack<std::array<float, 4>>(sun.Get());
+    ComPtr<ID3D11ComputeShader> float_positions;
+    REQUIRE(SUCCEEDED(device->CreateComputeShader(__rt_positions.data(), __rt_positions.size(), nullptr, float_positions.GetAddressOf())));
+    struct FloatPositions {
+      std::array<float, 16> inverse_view_projection;
+      std::array<float, 4> camera;
+      std::array<uint32_t, 4> size;
+    };
+    const FloatPositions float_constants = {.inverse_view_projection = dlaa::internal::Transposed(camera.inverse_view_projection),
+                                            .camera = {camera.position[0], camera.position[1], camera.position[2], 1.f},
+                                            .size = {WIDTH, HEIGHT, 0, 0}};
+    const auto float_buffer = ConstantBuffer(&float_constants, sizeof(float_constants));
+    const std::array<ID3D11UnorderedAccessView*, 2> outputs = {positions_uav.Get(), sun_uav.Get()};
+    context->CSSetShader(float_positions.Get(), nullptr, 0);
+    context->CSSetConstantBuffers(0, 1, float_buffer.GetAddressOf());
+    context->CSSetShaderResources(0, 1, depth_srv.GetAddressOf());
+    context->CSSetUnorderedAccessViews(0, 2, outputs.data(), nullptr);
+    context->Dispatch((WIDTH + 7) / 8, (HEIGHT + 7) / 8, 1);
+    context->ClearState();
+    const double float_positions_error = worst(ReadBack<std::array<float, 4>>(positions.Get()), stored_at);
+    double quantised = 0.;  // the depth's own step: the stored depth's point against the surface's
+    for (size_t at = 0; at < count; ++at) {
+      for (int k = 0; k < 3; ++k) quantised = std::max(quantised, std::abs(stored[at][k] - static_cast<double>(points[at][k])));
+    }
+
+    // Captures.
+    const auto make_buffer = [&](const void* data, UINT bytes, DXGI_FORMAT format, UINT elements) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+      const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data};
+      ComPtr<ID3D11Buffer> buffer;
+      REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, &initial, buffer.GetAddressOf())));
+      D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = format, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+      view_desc.Buffer.NumElements = elements;
+      ComPtr<ID3D11ShaderResourceView> view;
+      REQUIRE(SUCCEEDED(device->CreateShaderResourceView(buffer.Get(), &view_desc, view.GetAddressOf())));
+      return view;
+    };
+    const auto captured = make_buffer(clips.data(), static_cast<UINT>(count * 16), DXGI_FORMAT_R32G32B32A32_FLOAT, static_cast<UINT>(count));
+    const std::vector<std::array<float, 2>> uvs(count, {0.f, 0.f});
+    const auto captured_uv = make_buffer(uvs.data(), static_cast<UINT>(count * 8), DXGI_FORMAT_R32G32_FLOAT, static_cast<UINT>(count));
+    const auto vertices = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_UNORDERED_ACCESS);
+    ComPtr<ID3D11UnorderedAccessView> vertices_uav;
+    REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(vertices.Get(), nullptr, vertices_uav.GetAddressOf())));
+    struct VertexConstants {
+      std::array<uint32_t, 4> counts;
+      std::array<float, 16> inverse;
+    };
+    const auto unproject = [&](ID3D11ComputeShader* shader, const std::array<float, 16>& inverse) {
+      const VertexConstants constants = {.counts = {static_cast<uint32_t>(count), WIDTH, 1u, 0u}, .inverse = inverse};
+      const auto buffer = ConstantBuffer(&constants, sizeof(constants));
+      const std::array<ID3D11ShaderResourceView*, 2> inputs = {captured.Get(), captured_uv.Get()};
+      context->CSSetShader(shader, nullptr, 0);
+      context->CSSetConstantBuffers(0, 1, buffer.GetAddressOf());
+      context->CSSetShaderResources(0, 2, inputs.data());
+      context->CSSetUnorderedAccessViews(0, 1, vertices_uav.GetAddressOf(), nullptr);
+      context->Dispatch(static_cast<UINT>((count + 255) / 256), 1, 1);
+      context->ClearState();
+      return worst(ReadBack<std::array<float, 4>>(vertices.Get()), [&](size_t at, int k) { return static_cast<double>(points[at][k]); });
+    };
+    ComPtr<ID3D11ComputeShader> relative_vertices;
+    REQUIRE(SUCCEEDED(device->CreateComputeShader(__rt_vertices.data(), __rt_vertices.size(), nullptr, relative_vertices.GetAddressOf())));
+    const double relative_error = unproject(relative_vertices.Get(), rays::internal::RelativeInverse(camera));
+    // CONTROL: rt_vertices without RT_VERTICES_RELATIVE (the other games' build), from this tree's source.
+    const std::wstring source = (std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "src/games/twattila/rt_vertices.cs_5_0.hlsl").wstring();
+    ComPtr<ID3DBlob> plain_code;
+    REQUIRE(SUCCEEDED(D3DCompileFromFile(source.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", 0, 0, plain_code.GetAddressOf(), nullptr)));
+    ComPtr<ID3D11ComputeShader> plain_vertices;
+    REQUIRE(SUCCEEDED(device->CreateComputeShader(plain_code->GetBufferPointer(), plain_code->GetBufferSize(), nullptr, plain_vertices.GetAddressOf())));
+    const double plain_error = unproject(plain_vertices.Get(), dlaa::internal::Transposed(camera.inverse_view_projection));
+
+    std::printf("1-5 km: positions in doubles %.4f m off the stored depth's points (CONTROL floats %.3f m; the depth's own step %.3f m); "
+                "captures relative %.4f m off their points (CONTROL the inverse %.3f m); sun texel 1 %.2f %.2f %.2f\n",
+                precise_positions, float_positions_error, quantised, relative_error, plain_error, sun_texels[1][0], sun_texels[1][1], sun_texels[1][2]);
+    CHECK(written);
+    CHECK(precise_positions < 0.01);
+    CHECK(float_positions_error > 0.1);  // CONTROL
+    CHECK(relative_error < 0.01);
+    CHECK(plain_error > 0.1);  // CONTROL
+    CHECK(sun_texels[1][0] == camera.position[0] && sun_texels[1][1] == camera.position[1] && sun_texels[1][2] == camera.position[2]);
   }
 
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);

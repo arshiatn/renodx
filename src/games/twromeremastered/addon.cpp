@@ -726,13 +726,17 @@ void BuildRuntimeData() {
                             }};
   }
   for (const uint32_t hash : TONE_MAPPER_SHADERS) {
-    // The rays' Debug View on the tone mapper's output: after DLAA at 100%; below it before DLSS, which upscales it as the
-    // picture (its result replaces the upscaler's, not this output).
+    // The rays' and Bend's Debug Views on the tone mapper's output: after DLAA at 100%; below it before DLSS, which
+    // upscales them as the picture (its result replaces the upscaler's, not this output).
     custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
+      const auto debug_views = [cmd_list] {
+        twattila::rt_scene::OnTonemapDrawn(cmd_list);
+        twromeremastered::contact_shadows::OnTonemapDrawn(cmd_list);
+      };
       const bool below = twromeremastered::dlaa::RenderScale() < 1.f;
-      if (below) twattila::rt_scene::OnTonemapDrawn(cmd_list);
+      if (below) debug_views();
       twromeremastered::dlaa::OnToneMapped(cmd_list);
-      if (!below) twattila::rt_scene::OnTonemapDrawn(cmd_list);
+      if (!below) debug_views();
     };
   }
   for (const uint32_t hash : SMAA_EDGE_AND_WEIGHT_SHADERS) {
@@ -1856,15 +1860,9 @@ void ConfigureAddon() {
   // DLSS with its preset, frame generation and Reflex; SMAA, CMAA2 and TAA stay hidden), Bend's screen-space shadows, the
   // rays' rows (rt_scene::AppendSettings); this game's own rows go under Ray Tracing Extra Options (graphics_page's
   // Finish). Keys as before: AntiAliasing's DLAA 1 is DLSS 5 since SETTINGS_REVISION 1 (AttachAddon).
-  twattila::feature_settings::AppendAa(&settings, &twromeremastered::dlaa::sliders);
-  // Bend's rows as Attila's; the extended march (Softer Away from the Caster) and the Debug View are not drawn here:
-  // hidden (banners' and torches' rows hide themselves: not installed).
+  twattila::feature_settings::AppendAa(&settings, &twromeremastered::dlaa::sliders, false, false, true);
+  // Bend's rows as Attila's (banners' and torches' rows hide themselves: not installed).
   twattila::feature_settings::AppendSss(&settings, &twromeremastered::contact_shadows::rows);
-  for (auto* setting : settings) {
-    if (setting->key == "ScreenSpaceShadowsDistanceSoftness" || setting->key == "ScreenSpaceShadowsDebugView") {
-      setting->is_visible = [] { return false; };
-    }
-  }
   twattila::rt_scene::AppendSettings(&settings, &twromeremastered::ray_tracing::sliders, &twromeremastered::dlaa::sliders);
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{

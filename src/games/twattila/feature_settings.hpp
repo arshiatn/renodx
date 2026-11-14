@@ -364,9 +364,10 @@ inline void AppendSss(std::vector<renodx::utils::settings::Setting*>* settings, 
 
 // Anti-Aliasing's settings (SMAA, CMAA2, SMAA T2x, TAA).
 // `render_scale`: the game's camera layout is known to work with DLSS's render scale (Attila); `ray_reconstruction`:
-// its G-buffer is the one aa_rr_guides reads (Attila's).
+// its G-buffer is the one aa_rr_guides reads (Attila's); `motion_view`: without render_scale, the DLSS Debug View row
+// alone with its Motion Vectors view (a game owning its scale, without object motion: Rome Remastered).
 inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, AaSliders* sliders, bool render_scale = false,
-                     bool ray_reconstruction = false) {
+                     bool ray_reconstruction = false, bool motion_view = false) {
   settings->insert(settings->end(), {
                                         new renodx::utils::settings::Setting{
                                             .key = "AntiAliasing",
@@ -501,6 +502,8 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .labels = {"Off", "On"},
         .is_enabled = [sliders] { return Upscaling(*sliders); },
     });
+  }
+  if (render_scale || motion_view) {
     settings->push_back(new renodx::utils::settings::Setting{
         .key = "AntiAliasingDebugView",
         .binding = &sliders->debug_view,
@@ -508,10 +511,12 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .default_value = 0.f,
         .label = "DLSS Debug View",
         .section = AA_SECTION,
-        .tooltip = "Motion Vectors: the motion DLSS gets (colour: direction, brighter: faster).\n"
-                   "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
-                   "No Camera Motion: DLSS gets the objects' motion alone.",
-        .labels = {"Off", "Motion Vectors", "Object Motion", "No Camera Motion"},
+        .tooltip = render_scale ? "Motion Vectors: the motion DLSS gets (colour: direction, brighter: faster).\n"
+                                  "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
+                                  "No Camera Motion: DLSS gets the objects' motion alone."
+                                : "Motion Vectors: the motion DLSS gets (colour: direction, brighter: faster).",
+        .labels = render_scale ? std::vector<std::string>{"Off", "Motion Vectors", "Object Motion", "No Camera Motion"}
+                               : std::vector<std::string>{"Off", "Motion Vectors"},
         .is_enabled = [sliders] { return Upscaling(*sliders); },
     });
   }
