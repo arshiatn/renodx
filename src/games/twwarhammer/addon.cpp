@@ -161,7 +161,7 @@ void ApplyResetPreset() {
       1.0f,  // vignette
       1.0f,  // distortion
       1.0f,  // filmgrain
-      0.4f,  // some_indicators
+      1.0f,  // some_indicators
       0.0f,  // auto_exposure_highlight_protection
       1.0f,  // auto_exposure_highlight_headroom_stops
       1.0f,  // vfx_fire_brightness
@@ -1002,6 +1002,20 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
+    },
+    // Attila's row (Experimental): the game's markers are x 30 (units, buildings), x 12 (fire arcs) or x 20 (deployment
+    // zones) in HDR; shaders/markersbattle00-02, test/tw_warhammer_shaders part 17.
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.some_indicators,
+        .default_value = 1.f,
+        .label = "Unit/Building Indicator Brightness (Experimental)",
+        .section = "Extra",
+        .tooltip = "How bright unit and building markers, fire arcs and deployment zones are in HDR. 1 = the game's.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "video_autohdr",

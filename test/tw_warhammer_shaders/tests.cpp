@@ -72,6 +72,11 @@
 //    keeps the colour. CONTROL: Fog Strength 0.5 differs from the game's opacity. Fog Shadows (rt_fog.hlsli): t43 1 the
 //    unbound picture bit for bit; t43 0 the game's bytes with the sun colour x 0.35 (the shade the fog keeps); t44 adds the
 //    torches' light to the colour alone. CONTROL: t43 0 differs from unbound.
+// 17. The battle markers (shaders/markersbattle00-02, the build's embed/*.cso; the game's indicator BE4DA4FD and fire arc
+//    BC6922CE drawn in ATN's traces, deployment E986765E in none) over 8 x 8 pixels, their constants by name (g_hdr_on 1),
+//    a varied indicator texture (some texels below the alpha test), depth and distance: Unit/Building Indicator Brightness
+//    1 equals the game's bytes; 0.5 in HDR halves the colour and keeps the opacity; 0.5 with Rendering Mode SDR equals the
+//    game's. CONTROL: 0.5 in HDR differs from the game's colour.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -2038,6 +2043,141 @@ static void TestFog(const std::string& root, const std::string& dump) {
               lit_same, shade_misses, light_misses, shade_control);
 }
 
+// What a battle marker's draw binds besides the game's constants (part 17).
+struct MarkerScene {
+  float brightness = 1.f;  // SI.some_indicators
+  float hdr = 1.f;         // SI.hdr (Rendering Mode: 0 SDR)
+};
+
+// A battle marker pixel shader's bytes (`code`) drawn over 8 x 8 pixels by `vertex` (its outputs the game's vertex
+// shader's, by register), its constants by name as the game's bytes (`game`) name them: g_hdr_on 1, inv_projection the
+// identity (the view depth the depth texel's), the spline colour (0.9, 0.5, 0.2, 0.8), the camera 300 m / 400 m away;
+// every texture 8 x 8 of varied texels (alpha 0 - 1: the indicator's alpha test discards some), the target cleared to 0.
+static std::vector<Float4> DrawMarker(ID3D11VertexShader* vertex, std::span<const uint8_t> code, std::span<const uint8_t> game, const MarkerScene& scene) {
+  ComPtr<ID3D11PixelShader> shader;
+  if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {};
+  ComPtr<ID3D11ShaderReflection> reflection;
+  if (FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) return {};
+  const std::vector<NamedConstant> constants = {
+      {"camera_position", 0, {300.f, 50.f, 400.f}},
+      {"inv_projection", 0, {1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f}},
+      {"g_screen_size", 0, {8.f, 8.f, 0.125f, 0.125f}},
+      {"g_vpos_texel_offset", 0, {0.f}},
+      {"g_hdr_on", 0, {1.f}},
+      {"g_spline_colour", 0, {0.9f, 0.5f, 0.2f, 0.8f}},
+  };
+  std::vector<ComPtr<ID3D11Buffer>> buffers;
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  for (UINT index = 0; index < desc.ConstantBuffers; ++index) {
+    auto* buffer = reflection->GetConstantBufferByIndex(index);
+    D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+    buffer->GetDesc(&buffer_desc);
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDescByName(buffer_desc.Name, &bind);
+    std::vector<float> data(((buffer_desc.Size + 15) & ~15u) / 4, 0.f);
+    for (UINT variable = 0; variable < buffer_desc.Variables; ++variable) {
+      D3D11_SHADER_VARIABLE_DESC variable_desc = {};
+      buffer->GetVariableByIndex(variable)->GetDesc(&variable_desc);
+      for (const auto& constant : constants) {
+        if (std::strcmp(constant.name, variable_desc.Name) == 0) {
+          std::ranges::copy(constant.values, data.begin() + static_cast<ptrdiff_t>(variable_desc.StartOffset / 4));
+        }
+      }
+    }
+    buffers.push_back(Constants(data.data(), static_cast<UINT>(data.size() * 4)));
+    context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
+  }
+  ShaderInjectData injection = {};
+  injection.hdr = scene.hdr;
+  injection.some_indicators = scene.brightness;
+  std::vector<uint8_t> injection_bytes((sizeof(injection) + 15) & ~size_t{15});
+  std::memcpy(injection_bytes.data(), &injection, sizeof(injection));
+  buffers.push_back(Constants(injection_bytes.data(), static_cast<UINT>(injection_bytes.size())));
+  context->PSSetConstantBuffers(13, 1, buffers.back().GetAddressOf());
+  std::vector<Float4> texels;
+  for (UINT texel = 0; texel < 64; ++texel) {
+    const float step = static_cast<float>((texel * 37) % 64) / 63.f;
+    texels.push_back({0.2f + (0.7f * step), 0.9f - (0.6f * step), 0.3f + (0.4f * step), step});
+  }
+  const auto view = View(8, 8, texels);
+  ComPtr<ID3D11SamplerState> sampler;
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  for (UINT index = 0; index < desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    if (bind.Type == D3D_SIT_SAMPLER) context->PSSetSamplers(bind.BindPoint, 1, sampler.GetAddressOf());
+    if (bind.Type == D3D_SIT_TEXTURE) context->PSSetShaderResources(bind.BindPoint, 1, view.GetAddressOf());
+  }
+  const auto target = Texture(8, 8, nullptr, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> rtv;
+  device->CreateRenderTargetView(target.Get(), nullptr, rtv.GetAddressOf());
+  context->VSSetShader(vertex, nullptr, 0);
+  context->PSSetShader(shader.Get(), nullptr, 0);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  const D3D11_VIEWPORT viewport = {.Width = 8.f, .Height = 8.f, .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+  context->Draw(3, 0);
+  context->ClearState();
+  return Read(target.Get());
+}
+
+static void TestMarkers(const std::string& root, const std::string& dump) {
+  // Full-screen triangles with the game's vertex outputs: the indicator's (TEXCOORD0 uv, TEXCOORD1, COLOR, TEXCOORD2.zw the
+  // marker's depth 0.4 - 0.6) and the splines' (TEXCOORD0 uv, TEXCOORD1 the world, up to 1000 m x 1500 m).
+  const auto indicator_code = CompileText(
+      "struct Out { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 normal : TEXCOORD1; float4 colour : COLOR0; float4 depth : TEXCOORD2; };"
+      " Out main(uint id : SV_VertexID) { const float2 uv = float2((id << 1) & 2, id & 2); Out o;"
+      " o.position = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); o.uv = uv; o.normal = float3(0, 1, 0);"
+      " o.colour = float4(0.8, 0.6, 0.4, 0.9); o.depth = float4(0, 0, 0.4 + (0.2 * uv.x), 1); return o; }",
+      "indicator", "main", "vs_5_0");
+  const auto spline_code = CompileText(
+      "struct Out { float4 position : SV_Position; float2 uv : TEXCOORD0; float4 world : TEXCOORD1; };"
+      " Out main(uint id : SV_VertexID) { const float2 uv = float2((id << 1) & 2, id & 2); Out o;"
+      " o.position = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); o.uv = uv; o.world = float4(uv.x * 1000, 0, uv.y * 1500, 1); return o; }",
+      "spline", "main", "vs_5_0");
+  std::array<ComPtr<ID3D11VertexShader>, 2> vertex;
+  device->CreateVertexShader(indicator_code->GetBufferPointer(), indicator_code->GetBufferSize(), nullptr, vertex[0].GetAddressOf());
+  device->CreateVertexShader(spline_code->GetBufferPointer(), spline_code->GetBufferSize(), nullptr, vertex[1].GetAddressOf());
+  const std::array<std::pair<uint32_t, int>, 3> markers = {{{0xBE4DA4FD, 0}, {0xBC6922CE, 1}, {0xE986765E, 1}}};
+  for (const auto& [hash, kind] : markers) {
+    char name[16];
+    std::snprintf(name, sizeof(name), "%08X", hash);
+    const auto game = GameBytes(dump, hash);
+    const auto ours = Bytes(root + "/build/twwarhammer.include/embed/0x" + name + ".cso");
+    auto* shader = vertex[kind].Get();
+    const auto expected = DrawMarker(shader, game, game, {});
+    const auto got = DrawMarker(shader, ours, game, {});
+    const auto half = DrawMarker(shader, ours, game, {.brightness = 0.5f});
+    const auto sdr = DrawMarker(shader, ours, game, {.brightness = 0.5f, .hdr = 0.f});
+    CHECK(expected.size() == 64 && got.size() == 64 && half.size() == 64 && sdr.size() == 64, "markers %s: the draws", name);
+    if (expected.size() != 64 || got.size() != 64 || half.size() != 64 || sdr.size() != 64) continue;
+    int misses = 0;
+    int drawn = 0;
+    int halved = 0;
+    int sdr_same = 0;
+    int control = 0;
+    for (size_t pixel = 0; pixel < 64; ++pixel) {
+      for (size_t channel = 0; channel < 4; ++channel) misses += Near(expected[pixel][channel], got[pixel][channel], 2e-6f) ? 0 : 1;
+      drawn += (expected[pixel][0] != 0.f || expected[pixel][3] != 0.f) ? 1 : 0;
+      halved += (Near(half[pixel][0], got[pixel][0] * 0.5f, 1e-6f) && Near(half[pixel][1], got[pixel][1] * 0.5f, 1e-6f) &&
+                 Near(half[pixel][2], got[pixel][2] * 0.5f, 1e-6f) && half[pixel][3] == got[pixel][3])
+                    ? 1
+                    : 0;
+      sdr_same += (std::memcmp(sdr[pixel].data(), got[pixel].data(), sizeof(Float4)) == 0) ? 1 : 0;
+      control += Near(half[pixel][0], expected[pixel][0], 1e-3f) ? 0 : 1;
+    }
+    CHECK(misses == 0 && drawn >= 32 && halved == 64 && sdr_same == 64 && control >= 32, "markers %s: %d misses, %d drawn, %d halved, %d SDR, CONTROL %d",
+          name, misses, drawn, halved, sdr_same, control);
+    std::printf("markers: %s against the game's, 256 values, %d misses, %d of 64 pixels drawn; Indicator Brightness 0.5: %d of 64 colours halved, "
+                "opacity kept; SDR %d of 64 the game's; CONTROL %d differ\n",
+                name, misses, drawn, halved, sdr_same, control);
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -2068,6 +2208,7 @@ int main(int argc, char** argv) {
   TestReflectionInputs(games, argv[2]);
   TestAoAlone(games, argv[2]);
   TestFog(argv[1], argv[2]);
+  TestMarkers(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
