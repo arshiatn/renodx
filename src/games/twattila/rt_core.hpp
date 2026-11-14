@@ -144,6 +144,9 @@ struct Settings {
   bool fast_leaves = false;
   float grass_shadow_range = 0.f;
   float grass_range = 0.f;
+  // Smoke BLAS Fast Build (Experimental, with Smoke Shadows; helper113, bridge RT_SCENE_SMOKE_FAST_BUILD): the smoke's BLAS
+  // built faster each frame, its particles met in another order.
+  bool smoke_fast_build = false;
   // Path Tracing SER (Experimental): the paths' and reflections' rays with DXR 1.2's shader execution reordering.
   bool path_ser = false;
   // SHaRC Radiance Cache (Experimental, with Path Tracing): NVIDIA's SHaRC for what the screen does not know.
@@ -1788,7 +1791,9 @@ void Capture(Context& command, const SceneShader& shader) {
   // The capture version (by the shader's place in the list: listed shaders have them, and record versions), else the
   // game's own: its stream output (SV_Position; its foliage's UV into the second buffer) made once from its code (null:
   // it could not be).
-  const bool clip_space = shader.capture_shader.empty() || (clip_captures && !placed);
+  // A SceneShader::cascade_world cascade draw's capture version streams out through its cascade_keep in a world-space game too
+  // (clip-space games take that path already).
+  const bool clip_space = shader.capture_shader.empty() || ((clip_captures || (cascade_draw && shader.cascade_world)) && !placed);
   const bool clip_uv = clip_space && foliage && shader.uv_semantic != nullptr;
   // By its hash where CaptureDraw made a copy (a list of pixel shaders).
   const size_t listed_index = (shader.pixel_masks.empty() ? static_cast<size_t>(&shader - scene_shaders.data())
@@ -2892,6 +2897,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .sway_range = runtime.settings.sway_range,
       .grass_shadow_range = runtime.settings.grass_shadow_range,
       .grass_range = runtime.settings.grass_range,
+      .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u),
   };
   if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);

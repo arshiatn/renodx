@@ -79,9 +79,9 @@ bool IsPsychoV35Mode() {
 // game's SDR picture at 80-90 (test/tw_psychov35 part 5 curve 7).
 constexpr float HUE_CLIP_DEFAULT = 40.f;
 
-// bool IsModdedAutoExposureEnabled() {
-//   return shader_injection.auto_exposure_highlight_protection == 1.f;
-// }
+bool IsModdedAutoExposureEnabled() {
+  return shader_injection.auto_exposure_highlight_protection == 1.f;
+}
 
 void ApplyHDRPreset(
     float exposure,
@@ -165,7 +165,7 @@ void ApplyResetPreset() {
       1.0f,  // filmgrain
       1.0f,  // some_indicators
       0.0f,  // auto_exposure_highlight_protection
-      1.0f,  // auto_exposure_highlight_headroom_stops
+      4.0f,  // auto_exposure_highlight_headroom_stops (its default)
       1.0f,  // vfx_fire_brightness
       1.0f,  // vfx_blood_splash_brightness
       1.0f,  // vfx_fog_brightness
@@ -346,7 +346,10 @@ bool SkipGameSsao() {
   return rays_ao_alone_row != 0.f && runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
          && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
 }
-constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{
+// Light Through Banners: the sails (as the rays, Attila's sails; part 10: SV_Position first) and the banners with their row.
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{
+    {.hash = 0xE4B46D0E},
+    {.hash = 0x52C2D565},
     {.hash = 0xDBCC30FD, .row = &rays_banner_light_row},
     {.hash = 0xE7F0D71A, .row = &rays_banner_light_row},
 }};
@@ -408,6 +411,30 @@ void OnDestroyAtlasLitDevice(reshade::api::device* device) {
   const std::unique_lock lock(state.mutex);
   if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
   state.far_plane.Reset();
+  state.device = nullptr;
+}
+
+// Modded Auto Exposure (Experimental, off): the game meters its exposure on the CPU from compute_luma_stats 96BCFCBB's
+// minimum / maximum / sum (ATN's traces: clear_luma_stats 166E783A, then 96BCFCBB, the buffer copied out after it; one buffer
+// for every frame of a device). With the row on, the sum it still holds at the clear (last frame's) is copied into `sum` first,
+// and our 96BCFCBB (shaders/autoexposure00) reads it at t1 to cap the metered maximum.
+struct LumaLastSum {
+  std::shared_mutex mutex;
+  ID3D11Device* device = nullptr;  // its buffer's (compared only)
+  Microsoft::WRL::ComPtr<ID3D11Buffer> sum;
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
+  bool logged = false;
+};
+LumaLastSum luma_last_sum;
+
+// Its buffer's device (nullptr: the addon's end, DetachAddon).
+void OnDestroyLumaSumDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  auto& state = luma_last_sum;
+  const std::unique_lock lock(state.mutex);
+  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  state.view.Reset();
+  state.sum.Reset();
   state.device = nullptr;
 }
 
@@ -485,6 +512,63 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x7AA39EE9u, 0x4D96DAB5u, 0xF9870DE2u, 0xE7A82FC2u, 0x53E74A97u}) {
     custom_shaders[hash].on_draw = [](auto*) { return !reflection_passes_skipped; };
   }
+  // Modded Auto Exposure: last frame's sum copied out of the luma statistics before the game's clear, then bound at our
+  // 96BCFCBB's t1 (nothing there in ATN's traces) and unbound after it.
+  custom_shaders[0x166E783A].on_draw = [](auto* cmd_list) {
+    if (!IsModdedAutoExposureEnabled()) return true;
+    auto* native = twattila::rt_scene::internal::NativeContext(cmd_list);
+    if (native == nullptr) return true;
+    Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> stats_view;
+    native->CSGetUnorderedAccessViews(0, 1, stats_view.GetAddressOf());
+    if (!stats_view) return true;
+    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+    stats_view->GetResource(resource.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Buffer> stats;
+    if (FAILED(resource.As(&stats))) return true;
+    D3D11_BUFFER_DESC stats_desc = {};
+    stats->GetDesc(&stats_desc);
+    if (stats_desc.ByteWidth < 12) return true;
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    auto& state = luma_last_sum;
+    const std::unique_lock lock(state.mutex);
+    if (state.device != device.Get()) {
+      state.view.Reset();
+      state.sum.Reset();
+      state.device = nullptr;
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                      .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+      const D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX,
+                                                         .BufferEx = {.FirstElement = 0, .NumElements = 4, .Flags = D3D11_BUFFEREX_SRV_FLAG_RAW}};
+      if (FAILED(device->CreateBuffer(&desc, nullptr, state.sum.GetAddressOf()))
+          || FAILED(device->CreateShaderResourceView(state.sum.Get(), &view_desc, state.view.GetAddressOf()))) {
+        state.view.Reset();
+        state.sum.Reset();
+        return true;
+      }
+      state.device = device.Get();
+    }
+    const D3D11_BOX sum_bytes = {.left = 8, .top = 0, .front = 0, .right = 12, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(state.sum.Get(), 0, 0, 0, 0, stats.Get(), 0, &sum_bytes);
+    if (!std::exchange(state.logged, true)) {
+      renodx::utils::log::i("[Total War] First run: Modded Auto Exposure: last frame's luma sum kept for the metered maximum.");
+    }
+    return true;
+  };
+  static constexpr auto bind_luma_sum = [](reshade::api::command_list* cmd_list, bool bind) {
+    if (!IsModdedAutoExposureEnabled()) return;
+    auto* native = twattila::rt_scene::internal::NativeContext(cmd_list);
+    if (native == nullptr) return;
+    auto& state = luma_last_sum;
+    const std::shared_lock lock(state.mutex);
+    ID3D11ShaderResourceView* view = bind ? state.view.Get() : nullptr;
+    native->CSSetShaderResources(1, 1, &view);  // t1: t_luma_last_sum
+  };
+  custom_shaders[0x96BCFCBB].on_draw = [](auto* cmd_list) {
+    bind_luma_sum(cmd_list, true);
+    return true;
+  };
+  custom_shaders[0x96BCFCBB].on_drawn = [](auto* cmd_list) { bind_luma_sum(cmd_list, false); };
   // The point lights' shaders: ours only while the rays are bound (RaysShader above).
   PointLightRays::Take(&custom_shaders);
   LinearPointLightRays::Take(&custom_shaders);
@@ -1148,31 +1232,31 @@ void BuildRuntimeData() {
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_protection",
-    //     .binding = &shader_injection.auto_exposure_highlight_protection,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 0.0f,
-    //     .label = "Modded Auto Exposure",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
-    //     .labels = {"Off (Stock)", "On (Protected)"},
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_headroom_stops",
-    //     .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 1.0f,
-    //     .label = "Modded Auto Exposure: Sensitivity",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-    //     .min = 0.0f,
-    //     .max = 2.0f,
-    //     .format = "%.1f",
-    //     .is_enabled = IsModdedAutoExposureEnabled,
-    //     .is_visible = IsAdvancedSettings,
-    // },
+    // Attila's rows (Experimental, off): the metered maximum capped at last frame's average (shaders/autoexposure00, LumaLastSum;
+    // test/tw_warhammer_shaders part 25).
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_protection",
+        .binding = &shader_injection.auto_exposure_highlight_protection,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.0f,
+        .label = "Modded Auto Exposure",
+        .section = "Extra (Experimental)",
+        .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
+        .labels = {"Off (Stock)", "On (Protected)"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_headroom_stops",
+        .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 4.0f,
+        .label = "Modded Auto Exposure: Sensitivity",
+        .section = "Extra (Experimental)",
+        .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
+        .min = 1.0f,
+        .max = 8.0f,
+        .format = "%.0f",
+        .is_enabled = IsModdedAutoExposureEnabled,
+    },
     // VFX //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "vfx_fire_brightness",
@@ -1554,7 +1638,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // The floating unit banners (rigidtextureblend, 2 bones, E7F0D71A) stay out: the game gives them no shadow (no atlas draw in
 // any of ATN's 2026-11-14 traces). So does the campaign's far terrain (rigidterrain geometry_41_global, CDCF1ADD): no atlas
 // draw either, and no trace shows where it lies against the near terrain.
-constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 48> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1605,6 +1689,16 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0xCA6BCF19, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
     {.hash = 0xB9C6AA36, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
     {.hash = 0xC2A5FA81, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // Cloth (in none of ATN's traces: level B), captured every frame as Attila's and Rome II's (the CPU moves them): sails
+    // (sail vs40_main E4B46D0E; its sm_4_1 twin 52C2D565 the same code and signatures) thin, their world the world_matrix (cb1)
+    // x the vertex; ropes solid as Rome II's 4F90C2B5: rope vs40_main 7BD6E8CB (a ribbon turned to the camera, make_wind_motion_vs.py
+    // :world) and the instanced vs40_main_rigid 1CEFE3BB (turned in the camera's view space: rt_capture_rope_rigid). The sail
+    // symbols (sailsymbol 4CB13100 / A8612F21, depth 186E462C) lie on their sail (its world_matrix and inputs): left out as
+    // Attila, Rome II and Pharaoh leave theirs. Test part 23.
+    {.hash = 0xE4B46D0E, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
+    {.hash = 0x52C2D565, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
+    {.hash = 0x7BD6E8CB, .capture_shader = __rt_capture_rope, .dynamic = true},
+    {.hash = 0x1CEFE3BB, .capture_shader = __rt_capture_rope_rigid, .dynamic = true},
     // The shadow pass's casters into the atlas, what is out of the main view (Shadow Casters Out of View): fx__rigidcommon
     // vs40_shadow, fx__weighted vs40_shadow and its 4 bones, Warhammer II's E2C36310, 2EE37868, 2A54DBEE (the same code and
     // signatures), so Pharaoh's rt_outside_view as there. Every frame as drawn.
@@ -1614,6 +1708,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x3888C71F, .dynamic = true, .cascade_keep = __rt_outside_view_colour_world},
     {.hash = 0x2E5BBBA1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x63BA47F1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    // The cloth's shadow pass (in no trace): sail vs40_depth F91E642E and rope vs40_depth CF629296 write the world at TEXCOORD0
+    // (RT_WORLD); the rigid rope's vs40_depth_rigid 52D806A0 writes its centre line there, so its capture version runs in its
+    // place (the ribbon as the shadow camera sees it, SceneShader::cascade_world). Test part 23.
+    {.hash = 0xF91E642E, .dynamic = true, .thin = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0xCF629296, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0x52D806A0, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .cascade_keep = __rt_outside_view_world, .cascade_world = true},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
@@ -2339,6 +2439,7 @@ bool AttachAddon() {
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's.
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyLumaSumDevice);
   for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {
     renodx::utils::command_action::Register(
         OnSunReplaceMaps, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -2423,6 +2524,8 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnSunReplaceMaps);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
   OnDestroyAtlasLitDevice(nullptr);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyLumaSumDevice);
+  OnDestroyLumaSumDevice(nullptr);
   reshade::unregister_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(LinearPointLightRays::OnDestroyDevice);
   twattila::engine_tests::StopAtStart(&at_start_stop);

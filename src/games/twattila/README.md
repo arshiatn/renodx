@@ -49,9 +49,20 @@ not at ATN's settings now get the same. All level B (WARP against the game's dum
 - Faster: the torch and fire lights read back each frame are sorted by keys, and a frame with the same lights in the
   same places as the frame before reuses that order: the same lights in the same order as before, to the bit
   (`tw_native_context` part 4). With a still camera the sort (0.8 ms a frame of the render thread in the 2026-11-14 run)
-  is skipped; otherwise the same cost in Attila and ~25% less in the 64-bit games. Shared with the other TW games.
-- Not changed, measured (`tools/tw/nsight/attila_frame_results.md`): Smoke Shadows at its cap (the smoke's BLAS 1.7 ms a
-  frame at 262,144 particles; PREFER_FAST_BUILD would take 0.66 ms off it), fewer hand-offs to the helper (a design note).
+  is skipped; otherwise ~10% less in Attila (four 32-bit keys) and ~25% less in the 64-bit games. Shared with the other
+  TW games.
+- New: **Faster Smoke Shadow Build (Experimental, off)**, after Smoke Shadow Quality in Shadows' More Options (helper113,
+  `RT_SCENE_SMOKE_FAST_BUILD` in the bridge's old padding word; shared with Warhammer III). The smoke's BLAS, built anew
+  every frame, is built for a fast build instead of fast rays: 1.69 -> 1.03 ms at the 262,144-particle cap (harness,
+  4K). Not the same picture in thick smoke: a sun ray stops after Smoke Shadow Quality's count of particles and meets
+  them in the new BVH's order. Harness, off: helper112's bytes in every read-back texture (default, smoke medium / high /
+  stress, reflection fog, ATN's rows with the stress). On, 65,536 dense particles: 21.8% of pixels change (Low quality),
+  17.7% at ATN's rows (mean change 2.5 / 255 where they do), frame-to-frame change the same (3.58 -> 3.50); one-particle
+  scenes identical. Needs helper113 (older helpers ignore the row). Page dump: this row only.
+- Measured, no change (`tools/tw/nsight/handoff_design.md`): the ~2.7 ms between the game's waiting passes and the
+  helper's timers is not helper work: ~0.32 ms a request is the hand-off between the game and the helper (the GPU idle,
+  ~1 ms a frame for the three ray requests), the rest the game's waiting passes and the add-on's inputs; none of the
+  cuts (merging requests) keeps the picture.
 
 ## v160 (2026-11-14 night: torch light from the Light Bounce, Lean ReSTIR Reuse; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 

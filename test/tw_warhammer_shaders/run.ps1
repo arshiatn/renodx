@@ -1,7 +1,7 @@
 # Total War: WARHAMMER's sun light shaders (the game's bytes from a shader dump: its cso folder, only read), WH1's rt_sun,
 # the ambient patch and the SSR resolve replacement on WARP (tests.cpp). screen_space_shadows.hpp's Patch and PatchAmbient
 # are copied out of this tree into the build folder's ambient_patch.h (the add-on's header needs ReShade's; water_effects.hpp's
-# WaterShader and PatchWaterCaustics too, as water_patch), and out of
+# WaterShader and PatchWaterCaustics too, as water_patch; view_share.hpp's Reflect and Patch as view_share_patch), and out of
 # -Before (the commit before Warhammer's AMBIENT_AFTER_HARMONICS_Z) for the other games' bytes. Holds tools/tw's GPU job
 # lock while it runs when -Lock names it: created only when it doesn't exist (CreateNew), kept only if it still holds this
 # run's line 3 s later (else waits again, the file left alone), deleted only while it is this run's.
@@ -45,6 +45,12 @@ $grassPatchEnd = $grass.IndexOf('inline bool OnCreatePipeline(', $grassPatchStar
 if ($grassTableStart -lt 0 -or $grassTableEnd -lt 0 -or $grassPatchStart -lt 0 -or $grassPatchEnd -lt 0) { throw 'grass_height.hpp changed: update run.ps1' }
 $header += "namespace grass_patch {`n$($grass.Substring($grassTableStart, $grassTableEnd - $grassTableStart))`n" +
            "$($grass.Substring($grassPatchStart, $grassPatchEnd - $grassPatchStart))`n}  // namespace grass_patch`n"
+# view_share.hpp's Reflect and Patch (the render scale's bytecode patch: the raycast 021D7515 at 50%, part 24), as view_share_patch.
+$share = [IO.File]::ReadAllText((Join-Path $repairRoot 'src\games\twattila\view_share.hpp'))
+$shareStart = $share.IndexOf('constexpr uint32_t SLOT = 12;')
+$shareEnd = $share.IndexOf("// A shader's region read slots", $shareStart)
+if ($shareStart -lt 0 -or $shareEnd -lt 0) { throw 'view_share.hpp changed: update run.ps1' }
+$header += "namespace view_share_patch {`nusing namespace twattila;`n$($share.Substring($shareStart, $shareEnd - $shareStart))`n}  // namespace view_share_patch`n"
 [IO.File]::WriteAllText((Join-Path $testBuild 'ambient_patch.h'), $header)
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation

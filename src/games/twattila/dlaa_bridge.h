@@ -283,6 +283,10 @@ constexpr uint32_t RT_PATH_LIGHT_RATIO = 1u << 23;
 // Lean ReSTIR Reuse (a Light Bounce request's with path tracing and RT_PATH_REUSE; helpers before 112 ignore it): the
 // reuse's neighbours by their positions and reservoirs' normals, not their whole surfaces (not with RT_PATH_LIGHTS_IN_BOUNCE).
 constexpr uint32_t RT_PATH_REUSE_LEAN = 1u << 24;
+// Scene flags (Shared::rt_scene_flags, a trace request's). Smoke BLAS Fast Build (helpers before 113 ignore it): the smoke's
+// BLAS, built anew each request, built for a fast build, not fast rays (which particles a ray meets first, and so counts, can
+// change: Smoke Shadow Quality's count).
+constexpr uint32_t RT_SCENE_SMOKE_FAST_BUILD = 1;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;
@@ -437,7 +441,8 @@ struct Shared {
   // `rt_light_mask` (R32_UINT at the textures' size, opened with the others; bit i: light i reaches the pixel unblocked).
   float rt_lights[RT_MAX_LIGHTS][4] = {};
   uint32_t rt_light_count = 0;
-  uint32_t rt_v9_padding = 0;
+  // The addon's (in v9's padding; an older addon leaves it 0): RT_SCENE_* for a trace request's scene.
+  uint32_t rt_scene_flags = 0;
   uint64_t rt_light_mask = 0;
   // The addon's (v11): the local lights' colours (as rt_lights), which light what the paths meet unseen by the screen.
   float rt_light_colours[RT_MAX_LIGHTS][4] = {};

@@ -1,5 +1,14 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Whole-frame check's code items (2026-11-14, shared with Attila; built only, not run in game)
+
+- New: **Faster Smoke Shadow Build (Experimental, off)**, after Smoke Shadow Quality (helper113): the smoke's BLAS built
+  for a fast build, not fast rays: ~0.6 ms less a frame at the 262,144-particle cap with Warhammer III's smoke rows
+  (harness, 4K: 1.67 -> 1.03 ms). Slightly different smoke shadows in thick smoke (which particles a sun ray counts).
+  Needs helper113. Page dump: this row only.
+- Faster: the torch and fire lights read back each frame are sorted by keys (~25% less here), and a still frame reuses
+  the last order: the same lights in the same order (`tw_native_context` part 4).
+
 ### Parity round (2026-11-14; built only, not run in game)
 
 - New: **Unit/Building Indicator Brightness (Extra, Experimental)**, as Attila's: the selection markers' colour x the slider

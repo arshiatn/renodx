@@ -59,8 +59,6 @@ struct ShaderInjectData {
 
   // Auto-exposure controls are appended so every existing injection offset
   // remains unchanged.
-  // float auto_exposure_highlight_protection;     // 0: stock, 1: protected
-  // float auto_exposure_highlight_headroom_stops; // 1 - 4 seems to work fine
   float hue_shift;  // PsychoV30 highlight hue shift: 0 none, 1 Test30, 2 full
 
   // Appended.
@@ -136,6 +134,9 @@ struct ShaderInjectData {
   float some_indicators;  // the battle markers' colour in HDR (shaders/markersbattle00-02) x this, 1 the game's
   float grass_height_distance;  // the grass' distance (g_inv_lod_distance) / this: grass_height.hpp, the grass motion and captures
   float bloom;                  // the tone mappers' bloom add (t00 D275C403, t09 7759B956; HDR and the game's path) x this, 1 the game's
+  // Modded Auto Exposure (shaders/autoexposure00, 96BCFCBB): 1 the metered maximum capped at last frame's average x 2^stops.
+  float auto_exposure_highlight_protection;
+  float auto_exposure_highlight_headroom_stops;
 };
 
 #define SI shader_injection
@@ -160,9 +161,9 @@ struct ShaderInjectData {
       0.18f, 0.18f, 1.f, 1, 1.f, 0.f, SI.hue_shift)
 
 
-// // For the modded auto exposure
-// #define AutoExposureHighlightProtection     SI.auto_exposure_highlight_protection
-// #define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
+// Modded Auto Exposure
+#define AutoExposureHighlightProtection     SI.auto_exposure_highlight_protection
+#define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
 
 // FOR VFX AND EXTRA STUFF
 #define HDR                       SI.hdr

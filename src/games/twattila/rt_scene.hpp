@@ -109,6 +109,7 @@ struct Sliders {
   float gpu_micromaps = 1.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
   float smoke_quality = 1.f;
+  float smoke_fast_build = 0.f;  // SmokeFastBuildRow's (Attila, Warhammer III)
   float denoiser = 0.f;  // Ray Tracing Denoiser (Attila's page): Built-in, NRD
   float ao_reblur = 1.f;  // AO under Ray Reconstruction: Light History, REBLUR (games without graphics_page's row keep v34's REBLUR)
   float start_past = 0.f;  // Rays Start Past Hidden Shapes (Bindings::rays_start_past)
@@ -208,6 +209,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
                                 ? sliders.grass_range
                                 : sliders.grass_shadow_range,
       .grass_range = sliders.grass_range,
+      .smoke_fast_build = sliders.smoke_fast_build != 0.f,
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
       .reuse_lean = sliders.reuse_lean != 0.f,
@@ -892,11 +894,10 @@ struct PointLightCopy {
 };
 // A streamed light record (LightInstances::stream_shader): the light (position, reach), then its colour.
 constexpr UINT STREAMED_LIGHT_BYTES = 32;
-// A read light's position and reach as two keys (each float's bits ordered as the floats compare, -0 as +0) and its place
+// A read light's position and reach as four keys (each float's bits ordered as the floats compare, -0 as +0) and its place
 // in the frame's read order (OnPointLightDraw's sort).
 struct LightKey {
-  uint64_t high;
-  uint64_t low;
+  std::array<uint32_t, 4> key;
   uint32_t index;
 };
 struct PointLightReadback {
@@ -1143,22 +1144,26 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
         const auto repeated = std::ranges::unique(lights, {}, &LocalLight::light);
         lights.erase(repeated.begin(), repeated.end());
       } else {
-        const auto ordered = [](float value) -> uint64_t {
+        const auto ordered = [](float value) {
           const auto bits = std::bit_cast<uint32_t>(value);
           if ((bits & 0x7FFFFFFFu) == 0u) return 0x80000000u;
           return ((bits & 0x80000000u) != 0u) ? ~bits : (bits | 0x80000000u);
         };
-        const auto same_place = [](const internal::LightKey& a, const internal::LightKey& b) { return a.high == b.high && a.low == b.low; };
+        const auto same_place = [](const internal::LightKey& a, const internal::LightKey& b) { return a.key == b.key; };
         std::vector<internal::LightKey> keys;
         keys.reserve(lights.size());
         for (const LocalLight& light : lights) {
-          keys.push_back({.high = (ordered(light.light[0]) << 32) | ordered(light.light[1]),
-                          .low = (ordered(light.light[2]) << 32) | ordered(light.light[3]),
+          keys.push_back({.key = {ordered(light.light[0]), ordered(light.light[1]), ordered(light.light[2]), ordered(light.light[3])},
                           .index = static_cast<uint32_t>(keys.size())});
         }
         if (!std::ranges::equal(keys, readback.keys, same_place)) {
           readback.keys = keys;
-          std::ranges::sort(keys, [](const internal::LightKey& a, const internal::LightKey& b) { return a.high < b.high || (a.high == b.high && a.low < b.low); });
+          std::ranges::sort(keys, [](const internal::LightKey& a, const internal::LightKey& b) {
+            for (size_t coordinate = 0; coordinate < a.key.size(); ++coordinate) {
+              if (a.key[coordinate] != b.key[coordinate]) return a.key[coordinate] < b.key[coordinate];
+            }
+            return false;
+          });
           const auto repeated = std::ranges::unique(keys, same_place);
           keys.erase(repeated.begin(), repeated.end());
           readback.order.clear();
@@ -1599,6 +1604,24 @@ inline void Uninstall() {
   }
   renodx::utils::command_action::Unregister(OnCutOutShadowDraw);
   UninstallScene();
+}
+
+// Smoke BLAS Fast Build (Experimental, off; helper113, Settings::smoke_fast_build): the row of the games that list it
+// (Attila, Warhammer III), next to Smoke Shadow Quality on the graphics page.
+inline renodx::utils::settings::Setting* SmokeFastBuildRow(Sliders* sliders, const feature_settings::AaSliders* aa) {
+  return new renodx::utils::settings::Setting{
+      .key = "RayTracedSmokeFastBuild",
+      .binding = &sliders->smoke_fast_build,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Faster Smoke Shadow Build (Experimental)",
+      .section = feature_settings::AA_SECTION,
+      .tooltip = "Smoke Shadows' particles are made ready for the rays faster each frame (about 0.6 ms in thick smoke).\n"
+                 "In thick smoke a sun ray may count other particles: slightly different smoke shadows.",
+      .labels = {"Off", "On"},
+      .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f && sliders->smoke_shadows != 0.f; },
+      .is_visible = [] { return internal::smoke_shadows_installed; },
+  };
 }
 
 // The settings after the anti-aliasing's (`ambient_alone`: the ray-traced ambient occlusion in place of the game's and
