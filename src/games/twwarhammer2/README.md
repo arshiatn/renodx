@@ -23,9 +23,12 @@
   past the GPU's count empty (its controls fail).
 - **The campaign's trees and plants in the rays** (rigidcampaignvegetation 41147CD3, 156 draws a frame, in no scene before):
   as drawn (their wind, their lean toward a high camera), cut out by their diffuse map's alpha. GPU check: the capture's world
-  position times the camera is the game's SV_Position (1e-8 relative). Out of the view (Shadow Casters Out of View, Experimental, off): their shadow-pass
-  version 7D979F60 (49 draws), cut out by 5906CF6E's alpha test, through Pharaoh's `rt_outside_view` with a new `RT_WORLD_UV`
-  variant (its other variants' bytes the same); WARP `tools/tw/warp_tests/outside_view_wh2` passes.
+  position times the camera is the game's SV_Position (1e-8 relative).
+- **Shadow Casters Out of View (Experimental, off) takes two more of the shadow pass's draws**: the campaign trees' 7D979F60
+  (49 draws, cut out by 5906CF6E's alpha test) and, with Far Tree Shadows, the far trees' cards 75914932 (cut out by
+  B7ED5B72's, at the nearest of the two views it blends; a card it fades out stays out). Pharaoh's `rt_outside_view` has two
+  new variants for them (`RT_WORLD_UV`, `RT_CARD_SPLIT`; its other variants' bytes the same). WARP
+  `tools/tw/warp_tests/outside_view_wh2` passes (its controls fail).
 - **Rays Replace Shadow Maps through the shared hook** (`twattila/sun_replace_maps.hpp` with its sampler slot, s1 here):
   the same as before.
 - Checked, nothing to change: the siege's walls, buildings, units, trees and terrain are all in the rays (the caster census
@@ -40,11 +43,13 @@ Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon6
 2. A siege at night with Torch and Fire Shadows: the city's spot lights shadow walls and soldiers; their cones as before.
 3. Smoke Shadows on, a burning siege: the smoke shades the ground and walls under it. Send ReShade.log (1FC776EF's line).
 4. The campaign: forests take ray-traced AO and shadows, no dark patches under trees; frame time as v48.
-5. Shadow Casters Out of View on, the campaign at a low camera: trees just off screen shadow into it as leaves, not cards.
+5. Shadow Casters Out of View on, the campaign at a low camera: trees just off screen shadow into it as leaves, not cards;
+   in a battle with Far Tree Shadows on, distant forests behind the camera keep their shadows.
 
 Not done:
 - The campaign's far terrain (above).
 - Smoke Shadows' lower-effects twins DDABB799 / 687378DB drew in no trace (one slot below F32116B4's: a shift away).
+- Out of the rays: the depth-only EF11AD35 (no world to read) and the floating banners 7DF335FF (the game gives them none).
 
 ### Round v48 (2026-11-14, Attila's package with the data run's findings; built only, not run in game)
 

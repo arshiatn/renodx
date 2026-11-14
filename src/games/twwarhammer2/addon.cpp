@@ -45,6 +45,7 @@
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
+#include "./rt_outside_view_card_split_gs.h"
 #include "./rt_outside_view_world_uv_gs.h"
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -1492,7 +1493,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 24> MOTION_SHADERS =
 // branches and leaves and units, and their capture versions (world positions; leaves also UVs).
 // The floating unit banners (rigidtextureblend, 2 bones, 7DF335FF) stay out: the game gives them no shadow (no atlas draw in
 // any trace of the data run).
-constexpr std::array<twattila::rt_scene::SceneShader, 24> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 25> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1520,8 +1521,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 24> SCENE_SHADERS = {{
     // The shadow pass's casters into the atlas (the data run's census: drawn there only), what is out of the main view (Pharaoh's
     // rt_outside_view: each shadow vertex shader keeps its view-projection at cb0[9-12] and writes the world it multiplies):
     // rigidterrain vs41_shadow_new and fx__rigidcommon vs40_shadow (TEXCOORD0 the world), fx__weighted vs40_shadow and its
-    // 4 bones (TEXCOORD1 the UV, TEXCOORD2 the world). Every frame as drawn. Out: the far cards' shadow version 75914932 (its
-    // outputs packed apart from Pharaoh's) and the depth-only EF11AD35.
+    // 4 bones (TEXCOORD1 the UV, TEXCOORD2 the world). Every frame as drawn. Out: the depth-only EF11AD35.
     {.hash = 0x02EFC035, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xE2C36310, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0x2EE37868, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
@@ -1529,6 +1529,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 24> SCENE_SHADERS = {{
     // The campaign's trees and plants (rigidcampaignvegetation vs40_shadow; ATN's 2026-11-14 campaign traces: 49 draws a frame,
     // the shadow pass's only): TEXCOORD0 the world, TEXCOORD1 the UV of 5906CF6E's t0 test (its diffuse map's alpha below 0.5).
     {.hash = 0x7D979F60, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The far trees' cards in the shadow pass (rigidtreebillboard vs40_shadow; ATN's siege traces: 2-16 draws a frame), turned to
+    // the shadow camera: TEXCOORD0 the UV with the view's whole part and blend, TEXCOORD1 the world; cut out by B7ED5B72's t0
+    // test, a card faded below half left out as that shader leaves it.
+    {.hash = 0x75914932, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .cascade_keep = __rt_outside_view_card_split},
 }};
 
 // The SSR's copy (environment_specular_light ps40_copy) samples the resolve's output (7E1CDD0A, its content at the render
