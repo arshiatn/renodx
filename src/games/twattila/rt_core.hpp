@@ -247,6 +247,9 @@ struct SmokeVertexShader {
   uint32_t hash = 0;
   std::span<const uint8_t> quad_shader;
   bool indirect = false;
+  // Its cb3 is cb_vfx_emitter_constants_common (smoke_map_list's weather test reads it); false: it binds no cb3 (Pharaoh's
+  // 109B79CE: cb0 / cb1 only), so the slot holds another draw's buffer and the test sees none.
+  bool behaviours_at_cb3 = true;
 };
 
 struct SceneShader {
@@ -2283,7 +2286,7 @@ void CaptureParticles(Context& command) {
   // The quad shader reads the vertex shader's constants with their ranges (D3D11.1).
   ComPtr<ID3D11DeviceContext1> native1;
   if (INDEXED && FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
-  if (first_draw && runtime.settings.stream_particles) {
+  if (first_draw && runtime.settings.stream_particles && vertex_shader->behaviours_at_cb3) {
     // cb_vfx_emitter_constants_common (the particle vertex shader's cb3): smoke_map_list tells the weather by it.
     ComPtr<ID3D11Buffer> behaviours;
     native->VSGetConstantBuffers(3, 1, behaviours.GetAddressOf());

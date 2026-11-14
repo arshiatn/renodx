@@ -45,6 +45,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/view_share.hpp"
@@ -1516,7 +1517,12 @@ float lod_bias_trilinear_row = 0.f;
 // the alpha crush), its diffuse array t3 / s1 and constants t5 three view and two sampler slots below 3F1B86E1's t6 / s3 / t8
 // (fxc -dumpbin of both; in no trace: ATN plays at 4). 3F1B86E1's MSAA twin ps_main_high_quality_ms 740B2536 stays out:
 // no rays under the game's MSAA.
-constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0x109B79CE, .quad_shader = __rt_particle_quads}}};
+// 109B79CE binds cb0 (camera) and cb1 (cb_vfx) only (fxc -dumpbin): its cb3 slot holds another draw's buffer, no emitter
+// behaviours for smoke_map_list's weather test (the quad shader already drops unlit emitters and what stays around the camera).
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0x109B79CE, .quad_shader = __rt_particle_quads, .behaviours_at_cb3 = false}}};
+// Smoke Shadows without rays (twattila/smoke_map.hpp; Experimental, off): last frame's lit particles from the same stream,
+// splatted into a map seen from the sun, dimming the sun draws' t49 (Bend's, the rays' or none).
+twattila::smoke_map::Sliders smoke_map_sliders;
 constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADERS = {{
     {.hash = 0x3F1B86E1},
     {.hash = 0xE8524BB1, .view_shift = 3, .sampler_shift = 2},
@@ -1952,6 +1958,12 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer III's).
   rt_settings.cheap_fog_alone = true;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
+  // Smoke Shadows without rays (as Attila's): off under the rays' sun shadows (their own Smoke Shadows); the particles
+  // streamed for it without rays too.
+  auto smoke_map_settings = smoke_map_sliders;
+  if (rt_settings.sun_shadows) smoke_map_settings.strength = 0.f;
+  twattila::smoke_map::Update(smoke_map_settings);
+  rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   // The game's reflections fall on the water alone (its apply DE4F92CD): twattila/water_reflections.hpp's gate.
   twattila::water_reflections::GateSettings(&rt_settings);
   // Ray-traced shadows replace the screen-space ones (the Shadows method, as Attila's).
@@ -1986,7 +1998,7 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons) or replace the per-frame ones (Rays Replace Shadow Maps), ray-traced AO multiplies
-// the game's SSAO; point lights, the fog and the water's reflections hooked, no smoke.
+// the game's SSAO; point lights, the fog, the smoke and the water's reflections hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -2551,7 +2563,7 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer III's), ATN's RT/PT preset as the defaults of what the methods leave, then
-  // Settings Mode's pages. Only what this game hooks: no smoke map.
+  // Settings Mode's pages. Only what this game hooks.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off too (Experimental: no game run has shown them here yet); RT/PT turns them
   // on, as ATN's list does. Bend's Light Through Banners and Coloured Shadows (v55: the cloth and flags, InstallThin) also start
@@ -2625,6 +2637,8 @@ void ConfigureAddon() {
   });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .smoke_strength = &smoke_map_sliders.strength,
+                                             .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_replace_maps_tested = false,
@@ -2635,6 +2649,7 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = true,
                                              .foliage_light_tested = false,
+                                             .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
@@ -2795,6 +2810,8 @@ bool AttachAddon() {
       OnFogShadowsDraw, {.shader_hash = FOG_SHADERS[0], .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
+  twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   renodx::utils::command_action::Register(
       OnSkyDomeGuides, {.shader_hash = 0x9CF980D0, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 
@@ -2842,6 +2859,9 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnSkyDomeGuides);
   twattila::water_reflections::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
+  twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  twattila::smoke_map::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
 
