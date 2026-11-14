@@ -795,7 +795,31 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] ATN: R0 / R1 / R2 permission; may the agent switch the game's menu settings in R0 (fresh backups)?
     - [ ] ATN: merge after R1's numbers? Hue settings for Ryse's V35? Stamps / watermarks for Ryse releases as for TW?
     - [x] addon-split.md fixed: Ryse's HDR add-on registers draw / draw_indexed always, its DLSS add-on only while tracing
-  - [ ] PLAN agent (running): tools/nontw/expeditions/plan.md (+
+  - [x] EXPEDITIONS PLAN DONE: tools/nontw/expeditions/plan.md + expeditions.tsv (both add-ons build at HEAD). The engine
+    is UE 4.23 (build string ++UE4+Release-4.23-CL-0), not 4.26: skill engines.md + memory fixed, add-on comments in E1.
+    D3D11 (a -d3d12 path exists), no SteamStub / Denuvo. Gaps: r.SSGI.Enable / HalfRes not in the exe (4.23 has
+    r.SSGI.Quality); no fast-dispatch opt-in (HDR add-on needs draw_dispatch::Use for resource_upgrade); no SDR output /
+    Auto / SDR preset / first start / download notice / buttons; no page-dump driver; shipped helper19-22; 14 of 20 TAA
+    permutations unmapped + other quality levels (every setting); the game's own HDR toggle and -d3d12 unhandled; no RR
+    (helper NGX D3D12 route) and Attila's RT rows; Hue Clip 70 from the generic curve. Install: symlinks, no helper.
+    BUG: two crash folders 2026-10-27 01:57 / 01:59: the DLSS add-on's unload (AddonUninit, a wstring destructor).
+    Shaders: dump_shaders_Expeditions_rome\all_shaders_ (15,735 CSOs, r.CreateShadersOnLoad=1). Nsight GPU Trace looks
+    possible (64-bit, no DRM wrapper, launch through Steam -applaunch 987840). Runs: G1 data run (menu + battle save,
+    traces, PresentMon split numbers), G2 only if permutations stay unmapped, G3 ATN's look list. Steps E1-E11 offline.
+    - [ ] ATN: which save is a battle start (Save Silanus 3m / Autosave Silanus 2m / 1m, 2026-10-27), or will you make
+      one? May an agent load it by script in G1?
+    - [ ] ATN: hue defaults / Recommended look for Expeditions; keep two add-ons + fast dispatch until G1's numbers?
+    - [ ] ATN: FSR / XeSS / FSR FG through the helper or not at all? Bend SSS or UE's contact shadows only?
+    - [ ] ATN: install plain stamped copies instead of symlinks? The game's own HDR toggle: block (page line) or support?
+      Nsight through Steam OK?
+  - [ ] SHARED STEP owners (coordinator 01:2x): UE4 S1 cvars per-exe slot table, S2 the six duplicated headers, S4
+    psycho_test31, S5 snapshot pieces, S6 page-dump drivers, S7 fast dispatch, S8 on-demand trace + test hooks, S12
+    graphics-page table, S13 FG device-loss rules = UE4 IMPLEMENTATION agent ue4_ (owns src/games/talesofarise* +
+    expeditionsrome*); S3 hue measurement + S11 RT route + S9 replay converter + S10 census game parts = ATN's answers /
+    after G1. Ryse's offline steps = RYSE IMPLEMENTATION agent rys_ (owns src/games/rysesonofrome*; Ryse's HDR add-on
+    includes talesofarise_dlss + twattila code: ue4_ rebuilds Ryse when it changes such a header). The x64 engine_memory
+    shared step for TW = ATN DECIDES with the x64 render-list data runs
+  - [ ] PLAN agent (done): tools/nontw/expeditions/plan.md (+
     ledgers): state, gaps vs Attila's package, shader sources (ATN's ~12000-file dumps), Nsight feasibility, game-run
     list (Tales: ATN's two newest saves), 2 add-ons -> 1, HDR-only snapshot, UE4 SHARED STEP candidates. Owner: plan agents,
     then the coordinator assigns shared owners and ATN picks the order
