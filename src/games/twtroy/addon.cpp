@@ -1465,6 +1465,9 @@ float lod_bias_trilinear_row = 0.f;
 // Shadow Map Size (shadow_map.hpp, Experimental): the highest Shadows setting's shadow map, an index into SHADOW_MAP_SIZES.
 float shadow_map_size = 0.f;
 constexpr std::array<uint32_t, 4> SHADOW_MAP_SIZES = {0, 8192, 12288, 16384};  // 0: the game's (6144)
+// Two Shadow Cascades Under Rays (shadow_map.hpp, Experimental): the highest Shadows setting's cascades as the lowest's while
+// the rays' sun shadows skip the shadow map's casters (Ray-Traced Shadows Only).
+float shadow_cascades_row = 0.f;
 // Particle Resolution (twattila/particle_layer.hpp): Troy's lit particles are one instanced draw a frame (VS F5CE48CC with
 // 563BA3E8 in all 26 of ATN's traced frames with particles; its other lit permutations by name, vfx_brightness::HASHES),
 // blended over (one / inverse source alpha) into the display-size light buffer at the render size against the read-only
@@ -1479,6 +1482,8 @@ constexpr std::array<uint32_t, 1> PARTICLE_LAYER_DISPATCH_READERS = {0xF9B80B32}
 // Shadow Casters Out of View and the hills' (Graphics 1 of 2, Experimental): SCENE_SHADERS' cascade_keep casters.
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
+// Rarer Objects in the Rays (Experimental): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
+float rays_untraced_casters_row = 0.f;
 // Rays Replace Shadow Maps and Skip the Shadow Maps under it (Graphics 1 of 2, Experimental): twattila/sun_replace_maps.hpp on the
 // sun draws reading the per-frame atlas through s2: the twins of Pharaoh's 12 (same names; tools\tw\troy\troy_atlas_twins.py).
 constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0x049C3CFB, 0x2599D799, 0xD38FA7E4, 0x66D6229E, 0x5B17424A, 0xEB98DED2,
@@ -1552,7 +1557,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{
 
 // The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x264532AD}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 40> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1578,10 +1583,13 @@ constexpr std::array<twattila::rt_scene::SceneShader, 40> SCENE_SHADERS = {{
     // in no trace): level B, WARP test\tw_troy_shaders.
     {.hash = 0xEE95696C, .capture_shader = __rt_capture_unit_4_bones_fur, .dynamic = true},
     // The sails (sail.hlsl vs40_main 18CE6F5A; in no trace, level B): thin, captured every frame (the CPU moves them), as
-    // Attila's. Their emblems (sailsymbol 592E666F) lie on them: left out (a second capture of the same cloth). The ropes
-    // (rope 5F79A748 / 88D8E9E9) are ribbons turned to the camera: edge-on to the sun, no shadow from the main pass's
-    // (Attila leaves its 8D0D26B9 out too).
+    // Attila's. Their emblems (sailsymbol 592E666F) lie on them: left out (a second capture of the same cloth).
     {.hash = 0x18CE6F5A, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
+    // The ropes (in no trace, level B): ribbons the game turns to the camera, solid, captured every frame as drawn, as Warhammer's
+    // (rope vs40_main 5F79A748 and the placed vs40_main_rigid 88D8E9E9: Warhammer's 7BD6E8CB / 1CEFE3BB instruction for
+    // instruction, so its capture shaders), only with Rarer Objects in the Rays (Experimental, off), as Attila's.
+    {.hash = 0x5F79A748, .capture_shader = __rt_capture_rope, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x88D8E9E9, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .held_row = &rays_untraced_casters_row},
     {.hash = 0x0AF83680, .capture_shader = __rt_capture_grass_0af8, .dynamic = true, .foliage = true, .grass = true},
     // The drawn grass (grass.hlsl vs40_main: 2026-10-27's battle, 7 draws, 9.7 M indices; ATN's 2026-11-14 traces), its UV
     // at o2.xy (TEXCOORD0; Pharaoh's twin E710D4E7 has it at o3).
@@ -1613,6 +1621,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 40> SCENE_SHADERS = {{
     {.hash = 0x42093D29, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
     // The sails in the shadow pass (sail.hlsl vs40_depth F4B04EF3; level B): SV_Position, then TEXCOORD0 the world (o1 = r0).
     {.hash = 0xF4B04EF3, .dynamic = true, .thin = true, .cascade_keep = __rt_outside_view_world},
+    // The ropes in the shadow pass (level B; Warhammer's CF629296 / 52D806A0 instruction for instruction): vs40_depth 3A35E5F1
+    // writes the world at TEXCOORD0 (RT_WORLD); the placed vs40_depth_rigid F8231B7D its centre line, so its capture version
+    // runs in its place (the ribbon as the shadow camera sees it, SceneShader::cascade_world). With Rarer Objects in the Rays.
+    {.hash = 0x3A35E5F1, .dynamic = true, .cascade_keep = __rt_outside_view_world, .held_row = &rays_untraced_casters_row},
+    {.hash = 0xF8231B7D, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .cascade_keep = __rt_outside_view_world, .cascade_world = true,
+     .held_row = &rays_untraced_casters_row},
     // The campaign's trees in the shadow pass (rigidcampaigntrees vs40_shadow 5192C0BA; in no trace, level B): COLOR0 first,
     // then TEXCOORD0 the world (w POSITION0.w), TEXCOORD1 the UV of 07295514's t0 test: RT_WORLD_UV with RT_COLOUR.
     {.hash = 0x5192C0BA, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_colour_world_uv},
@@ -1765,9 +1779,11 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0xE885C018, .gbuffer_slot = 6, .camera_slot = 1, .lighting_slot = 3, .sun_direction = 4, .ao_slot = 4},  // skinlm_interior
 }};
 
-// The shadow map size, before the game builds its shadows (Pharaoh's place).
+// The shadow map size and cascades, before the game builds its shadows (Pharaoh's place); Ray-Traced Shadows Only as OnPresent's.
 void OnInitDevice(reshade::api::device*) {
-  twtroy::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  const bool sun_shadows = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows;
+  twtroy::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)],
+                              shadow_cascades_row != 0.f && sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1816,7 +1832,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
-  twtroy::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  twtroy::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)], shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
@@ -1920,6 +1936,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden (turn Water Reflections\n"
                            "on below). Needs an upscaler.",
+    .untraced_casters_tooltip = "Ropes also cast ray-traced shadows.",
 };
 
 void ConfigureAddon() {
@@ -2013,6 +2030,17 @@ void ConfigureAddon() {
       .tooltip = "Sharper sun shadows that flicker less, at the highest Shadows setting. More video memory\n"
                  "(16384: 1 GB or more). Applies after a restart or after changing the game's Shadows option.",
       .labels = {"6144 (Game's)", "8192", "12288", "16384"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedShadowCascades",
+      .binding = &shadow_cascades_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Two Shadow Cascades Under Rays (Experimental)",
+      .section = "Graphics (Experimental)",
+      .tooltip = "With ray-traced shadows and Skip the Shadow Maps: at the highest Shadows setting the game prepares\n"
+                 "2 shadow cascades, as at the lowest, instead of 4. Faster in forests. Applies after a restart.",
+      .labels = {"Off", "On"},
   });
   graphics_status = tw::engine_tweaks::StatusLine();
   settings.push_back(graphics_status);
@@ -2177,6 +2205,8 @@ void ConfigureAddon() {
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
+                                             .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
@@ -2189,6 +2219,13 @@ void ConfigureAddon() {
                                              .lights_own_row = true,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
+  // Smooth Banner Shadows (Experimental, off; RT/PT turns it on, as Attila's): the sails are this game's thin cloth in the
+  // rays (its unit banners are not in them), so the row names them.
+  for (auto* setting : settings) {
+    if (setting->key != "RayTracedSheetsUnselfed") continue;
+    setting->label = "Smooth Sail Shadows (Experimental)";
+    setting->tooltip = "Sails don't shade themselves: no blocky triangles on them. Shadows of other things stay.";
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

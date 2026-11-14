@@ -3,6 +3,7 @@
 ### Parity round 5 (2026-11-14; built only, not run in game)
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures); Rarer Objects in the Rays (Experimental, off: objects the game tessellates); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+- Round 2 (built only, not run in game): **Two Shadow Cascades Under Rays (Experimental, off; the rays' More Options, applies after a restart)**, as Attila's: with ray-traced shadows and Skip the Shadow Maps, the highest Shadows setting prepares 2 shadow cascades, as the lowest does, instead of 4 (its count, split distances and tile written as the lowest setting's own; twwarhammer2/shadow_cascades.hpp). Offline: `test/tw_shadow_cascades` over the shipped `warhammer.exe`.
 
 The table: tools/tw/wh1/parity_1114.md (HAVE 28, done now 17, left 2 (other agents' shared steps), needs a trace 3, won't
 get 13).

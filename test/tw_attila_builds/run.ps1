@@ -4,8 +4,8 @@
 # the battle fog (battlefog00 and its MSAA build battlefog01: rows at the game's bit for bit, Fog Strength, Fog & Sky
 # Smoothing), the rays' captures of draws no trace has shown, and the particles' Shader Model 4 vertex shader against its 5's,
 # with CONTROLS.
-# -Game: twattila (default: every build and the captures must be there) or twthronesofbritannia (its wrappers of every vfx
-# build; the same game bytes).
+# -Game: twattila (default) or twthronesofbritannia (its wrappers of every vfx build and of the captures; the same game
+# bytes): every build and the captures must be there.
 # -GameShaders: the game's dumped csos (default the game's pack), only read. -Built: the add-on's compiled shaders (default
 # build32\<game>.include\embed after a renodx-<game>.addon32 build). -VfxBrightness / -FogStrength: their floats in b13
 # (default the game's shared.h: Attila 14 / 88, Thrones 89 / none). Holds tools/tw's GPU job lock while it runs when -Lock
@@ -19,8 +19,6 @@ if ($GameShaders -eq '') { $GameShaders = "D:\Dev\renodx\bin\cmd_Decompiler-1.3.
 if ($Built -eq '') { $Built = Join-Path $repairRoot "build32\$Game.include\embed" }
 if ($VfxBrightness -lt 0) { $VfxBrightness = if ($attila) { 14 } else { 89 } }
 if ($FogStrength -eq -2) { $FogStrength = if ($attila) { 88 } else { -1 } }
-# Attila: every build and the captures; Thrones (its wrappers of Attila's builds): every build.
-$all = if ($attila) { 'all' } else { 'builds' }
 $testRoot = Join-Path $repairRoot 'test\tw_attila_builds'
 $testBuild = Join-Path $repairRoot 'build\tw_attila_builds_test_x86'
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
@@ -45,7 +43,7 @@ while ($Lock -ne '') {
 }
 try {
   # Also kept in last_run_<game>.txt (a failing run's lines survive a caller's pipeline).
-  & (Join-Path $testBuild 'attila_builds.exe') $GameShaders $Built $VfxBrightness $FogStrength $all | Tee-Object -FilePath (Join-Path $testBuild "last_run_$Game.txt")
+  & (Join-Path $testBuild 'attila_builds.exe') $GameShaders $Built $VfxBrightness $FogStrength all | Tee-Object -FilePath (Join-Path $testBuild "last_run_$Game.txt")
   if ($LASTEXITCODE -ne 0) { throw 'Attila builds test failed' }
 } finally {
   if ($Lock -ne '' -and (Get-Content -LiteralPath $Lock -Raw -ErrorAction SilentlyContinue) -eq $mine) { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }

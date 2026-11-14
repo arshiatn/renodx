@@ -1,5 +1,6 @@
 # Attila's soldier shadows under the rays (tests.cpp): the UnitDistances hook's index 16 in each state of Ray-Traced
-# Shadows Only; Two Shadow Cascades Under Rays over the shadow setup's code in Attila's empire.retail.dll (Steam folder).
+# Shadows Only; Two Shadow Cascades Under Rays over the shadow setup's code in Attila's empire.retail.dll (Steam folder),
+# then in Thrones of Britannia's where it is installed.
 # Needs the Attila addon built in build32 (rt_scene.hpp includes its embedded shaders: build32\
 # twattila.include). Run as x86 (the game's) and amd64.
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86')
@@ -17,3 +18,9 @@ $detoursArch = if ($Architecture -eq 'x86') { 'X86' } else { 'X64' }
 if ($LASTEXITCODE -ne 0) { throw 'Unit shadows test compile failed' }
 & (Join-Path $testBuild 'unit_shadows.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Unit shadows test failed' }
+# Thrones of Britannia (its shadow setup and Render the same code, its rows the same): parts 6 and 7 over its DLL too.
+$thrones = 'C:\Games\Total War Saga Thrones of Britannia\empire.retail.dll'
+if (Test-Path -LiteralPath $thrones) {
+  & (Join-Path $testBuild 'unit_shadows.exe') $thrones
+  if ($LASTEXITCODE -ne 0) { throw "Unit shadows test failed over Thrones' empire.retail.dll" }
+}

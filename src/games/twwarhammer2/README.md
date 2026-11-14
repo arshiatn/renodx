@@ -3,6 +3,8 @@
 ### Parity round 2 (2026-11-14; built only, not run in game)
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures); objects the game tessellates under Rarer Units and Props in the Rays; Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are); Smoke Shadows without rays (Experimental, off, as Troy's).
+- Round 2 (p2sm; built only, not run in game): **Rarer Units and Props in the Rays** (Experimental, off) now also takes the ropes (ships, siege equipment), and with Shadow Casters Out of View those out of view: Warhammer's captures, its rope shaders being these instruction for instruction (`tools/tw/round_notes/p2sm_ropes_asm.txt`).
+- Round 2 (p2sm; built only, not run in game): **Two Shadow Cascades Under Rays (Experimental, off; the rays' More Options, applies after a restart)**, as Attila's and Warhammer's: with ray-traced shadows and Skip the Shadow Maps, the highest Shadows setting prepares 2 shadow cascades, as the lowest does, instead of 4 (its count, split distances and tile written as the lowest setting's own, the tile following Shadow Map Size; shadow_cascades.hpp). Offline: `test/tw_shadow_cascades` over the shipped `Warhammer2.exe`.
 
 The first round's doable leftovers (table: `tools/tw/wh2/parity_1114.md`).
 - **New: Fog Strength (Extra, 0-2, 1 = the game's)** on the battle fog (battle and campaign: its extinction 16AB86F4 and

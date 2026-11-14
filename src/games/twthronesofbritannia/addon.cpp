@@ -1276,6 +1276,7 @@ float big_battle_fix = 0.f;
 float small_soldiers_as_sprites = 0.f;
 float sprite_size = 20.f;  // pixels on screen
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
+float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays (graphics_hooks.hpp shadow_map)
 float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (twattila/shadow_pass.hpp)
 tw::engine_tweaks::Option dead_units;
 tw::engine_tweaks::Option unit_animation;  // shared pose
@@ -1381,8 +1382,10 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // draw is dynamic and culls back faces, and AAE52888 (the twin of Attila's flag pixel shader) draws 561-820 times a battle
 // frame, so the rule would make every alpha-tested rigid object thin (th_drawn_names.py over the data run's traces).
 float rays_banner_light_row = 0.f;
+// Rarer Objects in the Rays (Experimental): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
+float rays_untraced_casters_row = 0.f;
 
-constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x289AC6F1, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x958620C8, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0xBFD9331A, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1395,6 +1398,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .cut_out_shader = __rt_capture_rigid_cut_out_sm41},
     {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3, .thin_row = &rays_banner_light_row},
     {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3, .thin_row = &rays_banner_light_row},
+    // Rigid objects with the game's Tessellation on (rigidcommon vs30_displacement, HS 0A3E0133, DS 1C0B3B3A; Attila's bytes, all
+    // three; in no trace): D830AD9B's placement and world position, the patches without the domain shader's displacement
+    // (test/tw_attila_builds T).
+    {.hash = 0x9AEE504E, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .patch_triangles = true, .held_row = &rays_untraced_casters_row},
     // Rocks and cliffs blended into the terrain (rigidterrainblend): its depth pass (its material pass has no camera).
     {.hash = 0xE03E161C, .capture_shader = __rt_capture_rigid_terrain_blend_sm3, .rows_shader = __motion_record_rigid_terrain_blend_sm3},
     {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3, .rows_shader = __motion_record_tree},
@@ -1419,6 +1426,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
+    // Ropes (Attila's bytes; in no trace): ribbons the game turns to the camera, solid, captured every frame as drawn; the CPU's
+    // (8D0D26B9) and the placed ones (3926A823, turned in view space: back to the world through inv_view) (test/tw_attila_builds R, Q).
+    {.hash = 0x8D0D26B9, .capture_shader = __rt_capture_rope_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x3926A823, .capture_shader = __rt_capture_rope_rigid_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
     // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
     // Each with its Shader Model 4.1 / 5 builds (E42AE09F; 98AA2F91, A86B4247): the same instructions, only the version
     // token and dcl_globalFlags differ (tools/tw/thrones/par_th_cards; no trace drew them: level B).
@@ -1636,9 +1647,11 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
-// The shadow map size, before the game builds its shadows.
+// The shadow map size and cascades, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
-  twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size), false);
+  twattila::graphics_hooks::shadow_map::Install(
+      std::exp2(shadow_map_size),
+      shadow_cascades_row != 0.f && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).shadows_only);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1683,7 +1696,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES, render_lists_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
-  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), false);
+  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
       {
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},
@@ -1995,6 +2008,17 @@ void ConfigureAddon() {
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowCascades",
+          .binding = &shadow_cascades_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Two Shadow Cascades Under Rays (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4.\n"
+                     "The rays shadow instead; faster in forests. Applies after a restart.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
           .key = "RayTracedSkipShadowPass",
           .binding = &shadow_pass_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -2194,6 +2218,7 @@ void ConfigureAddon() {
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .motion_in_draw = &motion_in_draw_row,
