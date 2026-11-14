@@ -1289,7 +1289,9 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
 // skinlm, every shadow method, with the camera at b0 and the G-buffer at t0-t3.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py), as Attila's (tools/tw/thrones/th_caster_census.txt
-// over the data run's three battle traces: every G-buffer caster held): the main view's terrain (rigidterrain geom / custom
+// over the data run's three battle traces, th_caster_census_campaign.txt over ATN's campaign traces: every G-buffer and
+// shadow-map caster held; the campaign's far terrain BE94F17D, drawn into depth only and never into the shadow map, and its
+// sea bed left out): the main view's terrain (rigidterrain geom / custom
 // geom, shader models 3 and 4.1, old and new; Thrones' own), rigid objects and their alpha-tested cut-outs, rocks blended into
 // the terrain, tree branches and leaves, grass, sprite soldiers and the campaign's plants and trees (Attila's shaders, the
 // same hashes; their rows shaders Attila's), the far trees' cards (Thrones' 79DFD18D: Attila's inputs and view choice) and
@@ -1335,7 +1337,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
     // Far trees' cards: the same, each showing the tree from the sun (their alpha at t1, as Attila's).
     {.hash = 0x79DFD18D, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
-    // The campaign's plants and forests, and its trees: placed like the battle's, no wind (no campaign trace yet).
+    // The campaign's plants and forests, and its trees: placed like the battle's, no wind (924D7813 instanced in ATN's
+    // campaign traces, its alpha-tested G-buffer PS DB830D45: the foliage's texture alpha at the hit).
     {.hash = 0x924D7813, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
     {.hash = 0x819A414C, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
     {.hash = 0x4657DA8A, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
@@ -1359,11 +1362,12 @@ constexpr std::array<uint32_t, 92> UNIT_CUT_OUT_PIXEL_SHADERS = {
 
 // The forward passes that read the sun's shadow map (the data run's traces, by the map's handle): the battle water and
 // rivers, the lit particles and their other path (Attila's, the same bytes; Thrones draws the game's own, patched), the
-// ocean (Thrones' F7E011A4: gather4_c at t9, S2's trace) and the campaign's sea (Thrones' twins by name: no campaign trace).
+// ocean (Thrones' F7E011A4: gather4_c at t9, S2's trace) and the campaign's sea (DE739661 with 960AB011 in ATN's campaign
+// traces, its low twin 08F47D8C by name).
 constexpr std::array<uint32_t, 7> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D, 0xF5379F78, 0xF7E011A4, 0xDE739661, 0x08F47D8C};
 
-// What only the campaign map draws: its borders (Attila's shader), the shroud's plane (Thrones' twin by name), its sea
-// (waterplane ps30_campaign, Thrones' twins by name).
+// What only the campaign map draws (ATN's campaign traces against the battle traces): its borders' VS (Attila's, in every
+// campaign frame), the shroud plane's VS, its sea (waterplane ps30_campaign, the low twin by name).
 constexpr std::array<uint32_t, 4> CAMPAIGN_SHADERS = {0x0CC96E53, 0x2860172D, 0xDE739661, 0x08F47D8C};
 constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
   twattila::frame_history::campaign_frames.store(2, std::memory_order_relaxed);
