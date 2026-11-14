@@ -137,6 +137,7 @@ struct ShaderInjectData {
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
   float dof;                       // Depth of Field: x the DOF spiral's radius (t04, t05, t07, t08), 0 sharp, 1 the game's
+  float fog_strength;              // Fog Strength: the battle fog's optical depth x this (battlefog00 / 01), 1 the game's
 };
 
 #define SI shader_injection
