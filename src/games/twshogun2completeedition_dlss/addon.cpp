@@ -682,6 +682,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
   ImGui::SameLine();
   if (ImGui::Button("Reset")) {
     apply_graphics(GRAPHICS_DEFAULT);
+    water_clarity = 1.f;
+    water_caustics = 0.f;
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "WaterClarity", water_clarity);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "WaterCaustics", water_caustics);
   }
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("Graphics options back to their defaults.");
@@ -1049,6 +1053,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSpecularOcclusion", 1.f},
         {"RayTracedFogShadows", 1.f},
         {"RayTracedLeafMicromaps", 1.f},
+        // Attila's RT/PT values for this addon's own rows (ATN: RT/PT as Attila's; still Experimental, off by default).
+        {"RayTracedLightGlow", 1.f},
+        {"WaterClarity", 1.f},
+        {"WaterCaustics", 1.f},
     };
     constexpr std::pair<const char*, float> RAYS_RESET[] = {
         {"RayTracedShadowSoftness", 0.5f},
@@ -1110,6 +1118,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
                       "(restart the game). Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.")) {
       write_rays(RAYS_RESET);
       write_rays(RAYS_PRESET);
+      // The Graphics rows' copies of RAYS_PRESET's water keys.
+      water_clarity = 1.f;
+      water_caustics = 1.f;
       gi.strength = 1.f;
       save_gi();
       // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
