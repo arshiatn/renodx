@@ -20,6 +20,7 @@
 #include "../../utils/directx.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/rt_core.hpp"
+#include "../twattila/rt_scene.hpp"
 #include "./dlaa.hpp"
 #include "./trace_reads.hpp"
 
@@ -40,14 +41,10 @@ namespace twromeremastered::ray_tracing {
 
 using Microsoft::WRL::ComPtr;
 
-// The rows (restart after turning one on).
-struct Rows {
-  float sun_shadows = 0.f;
-  float ambient_occlusion = 0.f;
-  float debug_view = 0.f;    // rt_core's Debug View: 0 off, 1 the sun's visibility, 2 the ambient's
-  float battle_scene = 0.f;  // the untested draws let in (SceneDraw): 0 none, 1 solid ones, 2 all (v11)
-};
-static Rows rows;
+// The rows (rt_scene::AppendSettings', on the graphics page; restart after turning sun shadows or AO on).
+static twattila::rt_scene::Sliders sliders;
+// Ray Tracing Battle Objects (Test): the untested draws let in (SceneDraw): 0 none, 1 solid ones, 2 all (v11).
+static float battle_scene = 0.f;
 
 namespace internal {
 
@@ -65,7 +62,7 @@ constexpr std::array<uint32_t, 21> LEFT_OUT_VERTEX_SHADERS = {
 // Traced without a GPU reset (ATN's 2026-11-14 run at 67%: 1.5 min of the campaign map, its terrain, trees and
 // buildings). The same run's battle reset the helper's device twice within seconds of its start (its own terrain, trees,
 // props and alpha-tested plants in the scene, none of them in the campaign's); the others stay out unless
-// rows.battle_scene lets them in.
+// battle_scene lets them in.
 constexpr std::array<uint32_t, 4> TESTED_VERTEX_SHADERS = {
     0x8A00B527,  // AerialMap
     0xCDDA64F8,  // AerialMapTrees
@@ -93,7 +90,7 @@ static State state;
 static bool installed = false;
 
 // A prepass draw into the scene's depth (no target, depth written), its vertex shader not left out: its pixel shader's
-// coverage (rt_core's SceneCoverage), captured every frame; an untested one's only as rows.battle_scene lets it in.
+// coverage (rt_core's SceneCoverage), captured every frame; an untested one's only as battle_scene lets it in.
 inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShader* shader) {
   if (std::ranges::find(trace_reads::UNIT_VERTEX_SHADERS, shader->hash) != trace_reads::UNIT_VERTEX_SHADERS.end()
       || std::ranges::find(LEFT_OUT_VERTEX_SHADERS, shader->hash) != LEFT_OUT_VERTEX_SHADERS.end()) {
@@ -117,7 +114,7 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   if (depth_state) depth_state->GetDesc(&depth_desc);
   if (!depth_desc.DepthEnable || depth_desc.DepthWriteMask != D3D11_DEPTH_WRITE_MASK_ALL) return false;
   if (!twattila::rt_scene::SceneCoverage(native, shader)) return false;
-  if (std::ranges::find(TESTED_VERTEX_SHADERS, shader->hash) == TESTED_VERTEX_SHADERS.end() && rows.battle_scene < (shader->foliage ? 2.f : 1.f)) {
+  if (std::ranges::find(TESTED_VERTEX_SHADERS, shader->hash) == TESTED_VERTEX_SHADERS.end() && battle_scene < (shader->foliage ? 2.f : 1.f)) {
     return false;
   }
   shader->dynamic = true;
@@ -126,10 +123,10 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
 
 inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                       uint32_t, const reshade::api::rect*) {
-  const bool sun_shadows = rows.sun_shadows != 0.f;
-  const bool ambient_occlusion = rows.ambient_occlusion != 0.f;
-  dlaa::rays = sun_shadows || ambient_occlusion;
-  twattila::rt_scene::Update({.sun_shadows = sun_shadows, .ambient_occlusion = ambient_occlusion, .debug_view = static_cast<uint32_t>(rows.debug_view)});
+  // The rows as Attila's (they need an upscaler: DLSS), the render's scale the game's.
+  const twattila::rt_scene::Settings settings = twattila::rt_scene::SettingsOf(sliders, dlaa::sliders, 0.f, dlaa::RenderScale());
+  dlaa::rays = settings.sun_shadows || settings.ambient_occlusion;
+  twattila::rt_scene::Update(settings);
 }
 
 // The game's `device` is going away: the objects on it with it (OnDestroyDevice, contact_shadows.hpp).
@@ -258,7 +255,7 @@ inline void Trace(reshade::api::command_list* cmd_list) {
 
 // After ASSAO's apply (`ambient`) or the shadow mask's resolve: this frame's traced visibility multiplies the target's red.
 inline void Multiply(reshade::api::command_list* cmd_list, bool ambient) {
-  if ((ambient ? rows.ambient_occlusion : rows.sun_shadows) == 0.f) return;
+  if ((ambient ? sliders.ambient_occlusion : sliders.sun_shadows) == 0.f) return;
   ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
   if (native == nullptr) return;
   ID3D11ShaderResourceView* visibility = twattila::rt_scene::Visibilities()[ambient ? 1 : 0];
@@ -267,22 +264,6 @@ inline void Multiply(reshade::api::command_list* cmd_list, bool ambient) {
   ComPtr<ID3D11DeviceContext1> native1;
   if (visibility == nullptr || !target || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
   internal::DrawMultiply(native1.Get(), target.Get(), visibility, false);
-}
-
-// After ResolveMainColor (and DLAA): the Debug View over its output (the bridge's size).
-inline void OnToneMapped(reshade::api::command_list* cmd_list) {
-  if (rows.debug_view == 0.f) return;
-  ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
-  if (native == nullptr) return;
-  ComPtr<ID3D11RenderTargetView> target;
-  native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
-  if (!target) return;
-  ComPtr<ID3D11Resource> target_resource;
-  target->GetResource(target_resource.GetAddressOf());
-  ComPtr<ID3D11Texture2D> target_texture;
-  if (SUCCEEDED(target_resource.As(&target_texture))) {
-    twattila::rt_scene::DrawDebugView(native, target_texture.Get());
-  }
 }
 
 // At the addon's start, with a row on (the scene's shaders kept from the game's start).

@@ -33,6 +33,9 @@
 #include "src/games/twromeremastered/swap_chain_format.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
+// utils/settings.hpp's (the graphics page's modules through dlaa.hpp)
+extern "C" __declspec(dllexport) const char* const NAME = "Rome Remastered test";
+
 using Microsoft::WRL::ComPtr;
 namespace dlaa = twromeremastered::dlaa;
 using Camera = std::array<float, 48>;
@@ -195,7 +198,7 @@ int main(int argc, char** argv) {
   constexpr UINT WIDTH = 64;
   constexpr UINT HEIGHT = 36;
   state.display = {WIDTH, HEIGHT};
-  dlaa::setting = 1.f;
+  dlaa::sliders.method = 5.f;
   const std::array<float, 2> jitter = {0.3f, -0.2f};
   state.jitter = jitter;
   const auto camera_buffer = MakeBuffer(192, D3D11_USAGE_DYNAMIC);
@@ -259,10 +262,10 @@ int main(int argc, char** argv) {
       CHECK(upload == BATTLE && state.camera.frame == 0);
       Upload(camera_buffer.Get(), &upload, reshade::api::map_access::read_only);
       CHECK(upload == BATTLE && state.camera.frame == 0);
-      dlaa::setting = 0.f;
+      dlaa::sliders.method = 0.f;
       Upload(camera_buffer.Get(), &upload);
       CHECK(upload == BATTLE && state.camera.frame == 0);
-      dlaa::setting = 1.f;
+      dlaa::sliders.method = 5.f;
     }
     // UpdateSubresource: the jittered camera instead.
     const auto default_buffer = MakeBuffer(192, D3D11_USAGE_DEFAULT);
@@ -294,11 +297,11 @@ int main(int argc, char** argv) {
       CHECK(std::ranges::find(seen, state.jitter) == seen.end());
       seen.push_back(state.jitter);
     }
-    dlaa::setting = 0.f;
+    dlaa::sliders.method = 0.f;
     state.evaluated_frame = state.frame;
     dlaa::internal::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
     CHECK(state.jitter[0] == 0.f && state.jitter[1] == 0.f);
-    dlaa::setting = 1.f;
+    dlaa::sliders.method = 5.f;
   }
 
   // 4. The shaders: a ground plane 30 m below the battle camera, drawn with the jittered camera; the camera 2 m away the
@@ -517,7 +520,7 @@ int main(int argc, char** argv) {
       return skipped;
     };
     const uint16_t grey = ToHalf(0.125f);
-    dlaa::setting = 1.f;
+    dlaa::sliders.method = 5.f;
     state.upscaled_frame = 0;
     const auto [unused_target, unused_view] = make_target(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     CHECK(!upscale(unused_view.Get()));  // CONTROL: no result this frame
@@ -530,7 +533,7 @@ int main(int argc, char** argv) {
     const auto [small_target, small_view] = make_target(WIDTH, HEIGHT);
     CHECK(!upscale(small_view.Get()));  // CONTROL: another size
     CHECK((ReadBack<std::array<uint16_t, 4>>(small_target.Get(), WIDTH, HEIGHT)[5][0] == grey));
-    dlaa::setting = 0.f;
+    dlaa::sliders.method = 0.f;
     const auto [off_target, off_view] = make_target(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     CHECK(!upscale(off_view.Get()));  // CONTROL: DLAA off
     CHECK((ReadBack<std::array<uint16_t, 4>>(off_target.Get(), DISPLAY_WIDTH, DISPLAY_HEIGHT)[5][0] == grey));

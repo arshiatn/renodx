@@ -39,6 +39,9 @@
 #include "src/games/twromeremastered/ray_tracing.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
+// utils/settings.hpp's (the graphics page's modules through dlaa.hpp)
+extern "C" __declspec(dllexport) const char* const NAME = "Rome Remastered test";
+
 using Microsoft::WRL::ComPtr;
 namespace rays = twromeremastered::ray_tracing;
 namespace dlaa = twromeremastered::dlaa;
@@ -218,7 +221,7 @@ int main(int argc, char** argv) {
     CHECK(scene_draw(0x8A00B527, nullptr, scene_dsv.Get(), writes.Get()).first);   // the campaign's terrain
     CHECK(!scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);  // a battle prop, Tested
     CHECK(!scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);  // the battle's terrain, Tested
-    rays::rows.battle_scene = 1.f;
+    rays::battle_scene = 1.f;
     CHECK(scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);
     CHECK(scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);
     {
@@ -241,7 +244,7 @@ int main(int argc, char** argv) {
         return std::pair{in, shader.foliage};
       };
       CHECK(!alpha_tested().first);
-      rays::rows.battle_scene = 2.f;
+      rays::battle_scene = 2.f;
       const auto [in, foliage] = alpha_tested();
       CHECK(in && foliage);
       context->PSSetShader(nullptr, nullptr, 0);

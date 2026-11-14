@@ -26,6 +26,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../twattila/dlaa_bridge.hpp"
+#include "../twattila/feature_settings.hpp"
 #include "../twattila/frame_generation.hpp"
 #include "../twattila/frame_trace.hpp"
 #include "../twattila/reflex.hpp"
@@ -46,8 +47,9 @@ namespace twromeremastered::dlaa {
 
 using Microsoft::WRL::ComPtr;
 
-// The Anti-Aliasing row: 0 the game's, 1 DLAA.
-static float setting = 0.f;
+// The page's anti-aliasing rows (feature_settings::AppendAa, graphics_page.hpp): method 0 the game's, 5 DLSS (DLAA, or
+// DLSS below 100%); its preset, frame generation and Reflex.
+static twattila::feature_settings::AaSliders sliders;
 // Ray tracing (ray_tracing.hpp) is on: the main camera and the scene's depth are kept without DLAA too, the bridge made
 // with its ray tracing textures and kept.
 static bool rays = false;
@@ -58,7 +60,7 @@ namespace internal {
 
 // DLAA, the rays or the screen-space shadows want the main camera and the scene's depth.
 inline bool CameraWanted() {
-  return setting != 0.f || rays || contact;
+  return sliders.method != 0.f || rays || contact;
 }
 
 constexpr UINT CAMERA_BYTES = 192;
@@ -116,6 +118,12 @@ struct State {
   std::vector<std::string> said;  // each status line once
 };
 static State state;
+
+// Below 100% Resolution Scale: Feral's upscaler drew the frame before, its target larger than `width` x `height` (the
+// tone mapper's). state.mutex held.
+inline bool BelowFullScale(UINT width, UINT height) {
+  return state.upscaler_frame + 1 >= state.frame && state.upscaler[0] > width && state.upscaler[1] > height;
+}
 
 // The device's objects: only on the game's render thread (the tone mapper's draw, destroy_device).
 struct Objects {
@@ -287,13 +295,13 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
   {
     const std::unique_lock lock(state.mutex);
     const uint32_t phase = static_cast<uint32_t>(state.frame % JITTER_PHASES) + 1u;
-    state.jitter = ((setting != 0.f && state.evaluated_frame == state.frame)
+    state.jitter = ((sliders.method != 0.f && state.evaluated_frame == state.frame)
                         ? std::array<float, 2>{halton(phase, 2) - 0.5f, halton(phase, 3) - 0.5f}
                         : std::array<float, 2>{});
     ++state.frame;
   }
   // Turned off (and no rays): the helper's DLAA and the shared textures let go (made again when turned on).
-  if (setting == 0.f && !rays && twattila::dlaa_bridge::bridge.width != 0) {
+  if (sliders.method == 0.f && !rays && twattila::dlaa_bridge::bridge.width != 0) {
     twattila::dlaa_bridge::Release(true);
   }
 }
@@ -333,7 +341,8 @@ inline void KeepDepth(reshade::api::command_list* cmd_list, bool compute) {
 // The bridge at `width` x `height` as DLAA, the rays and frame generation want it (one set of arguments for all: any other
 // makes its textures again).
 inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
-  return twattila::dlaa_bridge::Prepare(device, width, height, false, rays, twattila::frame_generation::Format());
+  return twattila::dlaa_bridge::Prepare(device, width, height, false, rays, twattila::frame_generation::Format(), false,
+                                        twattila::dlaa_bridge::UPSCALER_DLSS, twattila::feature_settings::AaSettings(sliders).frame_backend);
 }
 
 // The scene's depth as last kept (one texture through the frames: before this frame's resolve, the last frame's view of
@@ -352,6 +361,13 @@ inline bool MainCamera(internal::Camera* camera) {
 }
 
 // DLAA ran this frame: the game's SMAA passes after it find no edges (its blend then copies the frame).
+// The render's share of the output's width (the tone mapper's over the upscaler's below 100%; 1 at 100%).
+inline float RenderScale() {
+  const std::shared_lock lock(internal::state.mutex);
+  const auto [width, height] = internal::state.display;
+  return internal::BelowFullScale(width, height) ? static_cast<float>(width) / static_cast<float>(internal::state.upscaler[0]) : 1.f;
+}
+
 inline bool Evaluated() {
   const std::shared_lock lock(internal::state.mutex);
   return internal::state.evaluated_frame == internal::state.frame;
@@ -361,7 +377,7 @@ inline bool Evaluated() {
 inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   using internal::objects;
   using internal::state;
-  if (setting == 0.f || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  if (sliders.method == 0.f || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
@@ -397,7 +413,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   {
     const std::unique_lock lock(state.mutex);
     state.display = {width, height};
-    below = state.upscaler_frame + 1 >= state.frame && state.upscaler[0] > width && state.upscaler[1] > height;
+    below = internal::BelowFullScale(width, height);
     if (below && !rays) output = state.upscaler;
     camera = state.camera;
     camera_seen = camera.frame == state.frame;
@@ -489,13 +505,16 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     return;
   }
 
+  // DLSS's presets L and M crush dark tones on a linear frame: its square root for them (Attila's c243f7c4).
+  const uint32_t preset = twattila::feature_settings::AaSettings(sliders).dlaa_preset;
+  const bool square_root = preset == 12u || preset == 13u;
   // aa_dlaa_prepare at the tone mapper's size, aa_dlaa_finish at the output's (the input size its Debug View's).
   const auto update_settings = [&](UINT pass_width, UINT pass_height) {
     const float pass_width_f = static_cast<float>(pass_width);
     const float pass_height_f = static_cast<float>(pass_height);
     const internal::ShaderSettings shader_settings = {
         .metrics = {1.f / pass_width_f, 1.f / pass_height_f, pass_width_f, pass_height_f},
-        .dlaa_debug = {0.f, static_cast<float>(width), static_cast<float>(height), 0.f},
+        .dlaa_debug = {0.f, static_cast<float>(width), static_cast<float>(height), (square_root ? 1.f : 0.f)},
     };
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &shader_settings, 0, 0);
   };
@@ -532,13 +551,13 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   };
   const std::array<ID3D11Buffer*, 2> constants = {objects.settings.Get(), objects.taa.Get()};
   native->CSSetConstantBuffers(0, 2, constants.data());
-  bridge.color_square_root = false;
+  bridge.color_square_root = square_root;
   twattila::dlaa_bridge::BeforeSharedWrites(native);
   bind(objects.prepare.Get(), {objects.frame_srv.Get(), depth.Get()},
        {bridge.color.uav.Get(), bridge.depth.uav.Get(), bridge.motion.uav.Get()});
   native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
   bind(nullptr, {}, {});
-  const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, 0u);
+  const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, preset);
   const bool upscaled = output[0] != width;
   if (resolved) {
     update_settings(output[0], output[1]);
@@ -605,7 +624,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
 inline bool Upscale(reshade::api::command_list* cmd_list) {
   using internal::objects;
   using internal::state;
-  if (setting == 0.f || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return false;
+  if (sliders.method == 0.f || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return false;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   ComPtr<ID3D11RenderTargetView> target_view;

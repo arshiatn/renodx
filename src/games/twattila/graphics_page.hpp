@@ -251,6 +251,9 @@ struct Bindings {
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
   // The rays' sun shadows always multiply the game's shadow maps (no rays_replace_maps row): Shadow Map Size stays under them.
   bool rays_multiply_maps = false;
+  bool has_gtvbao = true;  // GT-VBAO (ssao_mode 1); false: the AO's methods are the game's and the rays' (Rome Remastered)
+  bool has_gi = true;      // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
+  bool every_row = true;   // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
 
 enum AoMethod : int { AO_GAME, AO_GTVBAO, AO_RAYS, AO_PATHS };
@@ -378,7 +381,7 @@ struct Row {
 // Moves settings out of `settings`, into the page's order. Returns the place they took.
 class Page {
  public:
-  explicit Page(std::vector<Setting*>* settings) : settings_(settings) {}
+  explicit Page(std::vector<Setting*>* settings, bool every_row = true) : settings_(settings), every_row_(every_row) {}
 
   void Add(Setting* setting) { page_.push_back(setting); }
 
@@ -402,7 +405,7 @@ class Page {
       setting->is_visible = [shown = row.shown, own = setting->is_visible] { return shown() && (own == nullptr || own()); };
       page_.push_back(setting);
     }
-    if (!found && !row.only_some_games) renodx::utils::log::w("[Total War] Graphics page: no setting ", row.match.c_str());
+    if (!found && !row.only_some_games && every_row_) renodx::utils::log::w("[Total War] Graphics page: no setting ", row.match.c_str());
   }
 
   // A setting the method sliders hold: it stays among the saved ones, not drawn.
@@ -441,6 +444,7 @@ class Page {
 
  private:
   std::vector<Setting*>* settings_;
+  bool every_row_;
   std::vector<Setting*> page_;
   std::set<std::string> kept_;
   size_t place_ = SIZE_MAX;
@@ -484,7 +488,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     return [open, shown = std::move(shown)] { return *open && shown(); };
   };
 
-  Page page(settings);
+  Page page(settings, b.every_row);
   for (const auto& key : {"ssao_mode", "RayTracedAmbientOcclusion", "RayTracedPathAmbient", "ScreenSpaceShadows", "RayTracedSunShadows",
                           "RayTracedLightBounce", "ssr_hierarchical", "RayTracedReflections"}) {
     page.Keep(key);
@@ -762,6 +766,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
+    // Without Global Illumination nothing of it to turn on.
+    if (!b.has_gi) std::erase_if(rays_values, [](const Values::value_type& preset) { return preset.first == "RayTracedLightBounce"; });
     if (b.rays_preset_as_attila) {
       rays_values.insert(rays_values.end(), {{"ScreenSpaceShadowsFoliage", FOLIAGE_LIGHT_DEFAULT},
                                              {"SmokeShadowMapStrength", SMOKE_MAP_DEFAULT},
@@ -1124,10 +1130,17 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = AO_SECTION;
     const auto gtvbao = ao_is(AO_GTVBAO);
     const auto rays = ao_is(AO_RAYS);
-    std::vector<std::string> labels = {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)"};
-    if (b.has_path_ambient) labels.emplace_back(b.texts->ao_paths_label);
-    page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels), [b] { return AoMethodOf(b); },
-                          [b](int method) { ChooseAo(b, method); }));
+    // The slider's places: the methods this game has, in AoMethod's order.
+    std::vector<int> methods = {AO_GAME};
+    if (b.has_gtvbao) methods.push_back(AO_GTVBAO);
+    methods.push_back(AO_RAYS);
+    if (b.has_path_ambient) methods.push_back(AO_PATHS);
+    const std::array<std::string, 4> method_labels = {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)", b.texts->ao_paths_label};
+    std::vector<std::string> labels;
+    for (const int method : methods) labels.push_back(method_labels[method]);
+    page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels),
+                          [b, methods] { return static_cast<int>(std::ranges::find(methods, AoMethodOf(b)) - methods.begin()) % static_cast<int>(methods.size()); },
+                          [b, methods](int place) { ChooseAo(b, methods[place]); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return AoMethodOf(b) >= AO_RAYS && !feature_settings::Upscaling(*b.aa); }));
     page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao,
@@ -1158,8 +1171,13 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(EmptyLine(section));
   }
 
-  // Global Illumination.
-  {
+  // Global Illumination; without it the rays' rows for it kept hidden (their saved values stay).
+  if (!b.has_gi) {
+    for (const auto* key : {"RayTracedLightBounceRays", "RayTracedLightBounceResolution", "RayTracedLightBounceRange", "PathTracingBounces",
+                            "RayTracedPathSer", "RayTracedSharc", "RayTracedReuseLean"}) {
+      page.Keep(key);
+    }
+  } else {
     const std::string& section = GI_SECTION;
     const auto gtvbgi = gi_is(GI_GTVBGI);
     const auto on = [b] { return GiMethodOf(b) != GI_OFF; };

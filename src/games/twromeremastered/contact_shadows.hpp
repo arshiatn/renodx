@@ -19,6 +19,7 @@
 
 #include "../../utils/directx.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
+#include "../twattila/feature_settings.hpp"
 #include "./dlaa.hpp"
 #include "./ray_tracing.hpp"
 
@@ -35,13 +36,8 @@ namespace twromeremastered::contact_shadows {
 
 using Microsoft::WRL::ComPtr;
 
-// The rows.
-struct Rows {
-  float enabled = 0.f;
-  float length = 2.f;  // the shadows' length: 60 << it screen pixels
-  float thickness = 0.005f;
-};
-static Rows rows;
+// The rows (the graphics page's Bend Screen-Space shadows): on, Length (60 << it screen pixels) and Thickness.
+static twattila::feature_settings::SssSliders rows;
 
 namespace internal {
 
