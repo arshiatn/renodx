@@ -472,6 +472,19 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
 - Ray tracing: **Light through leaves** (with ray-traced sun shadows, HDR addon v64): leaves let a quarter of the
   sun through each where the rays are the shadow.
 
+## v58 (2026-11-14): the helper's upscaler and frame generation (built only, not run in game)
+
+- DLSS: **Upscaler (Experimental)**: the game's DLSS, or DLSS / FSR / XeSS in renodx-tw-dlaa64.exe through the HDR
+  addon v66 (hdr_link.hpp: the evaluation handed over; the game's DLSS whenever it can't). **Ray Reconstruction** with
+  the helper's DLSS (Attila's AntiAliasingRayReconstruction).
+- **Frame generation (Experimental)**: off, 2x-6x, Dynamic, its method, HUD recomposition, preset, debug view;
+  **NVIDIA Reflex**; Frame rate limit (FrameGenerationFrameLimit kept). The helper presents (the HDR addon's
+  twattila/frame_generation.hpp) in place of Tales' frame generation (its FrameGeneration, FrameGenerationMultiplier
+  and ReflexBoost keys no longer read).
+- Texture LOD bias on all textures (Experimental, below 100%).
+- Ray Tracing: the rows the HDR addon v66 reads (Attila's keys), extras shown with an effect on; Record Ray Tracing
+  Profile through hdr_link.hpp. Graphics (Advanced): Bend's SSS thickness, contrast, edge threshold, precision offset.
+
 
 ### F4/F8 sampler ownership (2026-11-09, GPT-6 Astra)
 Sampler slots now own original COM references and are scoped to each device. References replaced in slot callbacks are released after unlocking. Duplicate sampler-init notifications preserve existing owned clones; teardown restores originals and clears each device cache. Final-release callbacks no longer acquire slot locks, and nested addon-callback suppression is preserved. WARP tests pass x86/x64 for originals surviving game release, clone identity preservation, two-device isolation, tracking restoration, per-device cleanup and shutdown. All 14 shared consumers built. No game run.
