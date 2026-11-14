@@ -604,9 +604,29 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   "Nothing dropped" rule (every open line of a report = a checkbox with an owner; SHARED STEP; parity gate), Finishing a
   round + release.md 5 / 7 / 8 (Fable at the end, parity, reports read to the end), rows in testing / helper-fg-stability /
   rt-scene / shaders-ui / bringup.
-- [ ] parity_check agent (pck_) started: .agents/skills/tw-port-checklist/scripts/parity_check.py, tools/tw/page_dump/
-  dump_any.py, ledgers tools/tw/parity/<game>.tsv seeded from the 1114 tables, report tools/tw/parity/report_1114.md. Its
-  open lines become checkboxes here; the round closes only with none open.
+- [x] parity_check agent DONE: script merged 8da262d3 (cherry-pick of ab82b04b); tools/tw/page_dump/dump_any.py; ledgers
+  tools/tw/parity/<game>.tsv (seed_1114.py overwrites them: edit the seeder's EXTRAS or the ledgers after the last seed);
+  report tools/tw/parity/report_1114.md, full output check_pc1114.txt. At 3a391fa4 open / waiting / settled: Attila 0/2/16,
+  Thrones 2/10/46, Rome II 19/5/55, Troy 4/10/135, WH3 3/87/112, WH1 2/12/89, WH2 7/8/75, Pharaoh 45/13/54, Rome Remastered
+  87/17/179, Shogun 2 16/12/216. Owner of every open line below: PARITY ROUND 2 (one agent per game, after the shs_ merge
+  and the hfp_ quiet window), then parity_check again until it exits 0:
+  - [ ] RayTracedShadowCascades (Two Shadow Cascades Under Rays): missing in all 9 games (needs each game's cascade value)
+  - [ ] RayTracedUntracedCasters (Rarer Objects in the Rays): missing in all but WH2 (each game's tessellated / rare casters)
+  - [ ] Troy: RayTracedBannerLight, RayTracedSheetsUnselfed (no verdict in its table)
+  - [ ] WH3: VfxFullResolutionEdges (DO NOW, stopped with numbers) + 2 more open lines
+  - [ ] WH2: SmokeShadowMapStrength / Softness and ropes 0334E480 / 9ECDC023 / C2CA1469 / F75E8029 ("LATER (shared step)",
+    no owner: now PARITY ROUND 2 WH2)
+  - [ ] Rome II: GrassHeightDistance, ssr_rays, SSRDenoiser, the 3 Vfx particle rows; casters 2C98F649 / 8C68069B / B1C7E29F /
+    E51A2D2A; feature lines from the pre-round survey re-marked (PsychoV35 hue, SDR preset, RT/PT, DrawScrub, soldier
+    shadow distance)
+  - [ ] Pharaoh: GrassHeightDistance, RayTracedBannerLight, the 3 Vfx particle rows; 34 NOT HELD casters without a verdict;
+    survey feature lines re-marked; scale-census BUG rows re-checked
+  - [ ] Rome Remastered: 85 NOT HELD casters without a verdict (census over traces never done), the 2 new rows
+  - [ ] Shogun 2: its table's DO NOW (Sharpening + Extra Sharpness; SSS softness / Coloured / banner light / distance
+    softness / Debug View; GT-VBAO temporal / edge fix / denoise; Full-Resolution Edges, Smooth Half-Size particles)
+  - [ ] Thrones 2, WH1 2: the open lines in report_1114.md
+  - [ ] Final verification: rebuild the main checkout's build / build32 (stale headers: Attila, WH1, Rome Remastered), then
+    parity_check at the merged HEAD exits 0 before stamping
 - [ ] Ryse / Tales of Arise / Expeditions: Rome: old builds; their own planning round with the whole current method. ATN
   picks the time (tonight / tomorrow, or Monday after the Ultra reset). Not started.
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
