@@ -1122,6 +1122,9 @@ void ReadDlssAddonOptions() {
   ray_tracing.water_soft = ray_tracing.water_reflections && read_on("RayTracedWaterSoft", false);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
   ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
+  // Smoke Shadows (Attila's keys; ray_tracing.hpp SMOKE_VERTEX_SHADERS): Low to Maximum, 1 Medium.
+  ray_tracing.smoke_shadows = ray_tracing.sun_shadows && read_on("RayTracedSmokeShadows", false);
+  ray_tracing.smoke_quality = read_count("RayTracedSmokeQuality", 1, 0, 5);
   // Torch and Fire Light in Fog (Attila's key and range; fog01): 0 the helper traces none, as before.
   read_float("RayTracedLightGlow", 0.f, 0.f, 2.f, &ray_tracing.light_glow);
   // Torch and Fire Shadow Lights: 32, 64, 128.
@@ -1434,7 +1437,7 @@ bool AttachAddon() {
                           || ray_tracing_settings.reflections || ray_tracing_settings.local_lights || ray_tracing_settings.fog_shadows
                           || ray_tracing_settings.specular_occlusion;
   if (ray_tracing_installed) {
-    twshogun2::ray_tracing::Install(ray_tracing_settings.casters_out_of_view);
+    twshogun2::ray_tracing::Install(ray_tracing_settings.casters_out_of_view, ray_tracing_settings.smoke_shadows);
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
   }
   // Frame generation (the helper presents; HUD-less images through the swap chain shader, its constants at b13) and

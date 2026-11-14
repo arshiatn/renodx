@@ -19,6 +19,7 @@
 // 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
 // 15. indicator00-02's Indicator Brightness against the game's 0xD12FA660 / 0xC454C1EA / 0xC57C222D (TestIndicators).
 // 16. campaignoverlay00 at 33% against 100% and the game's 0xD7E27B35 (TestCampaignOverlay).
+// 17. rt_particle_quads (Smoke Shadows' quad shader for 0xBEA3F2D4's outputs) on synthetic quads (TestParticleQuads).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -2312,6 +2313,167 @@ static void TestCampaignOverlay(const std::string& games, const std::string& fol
               control_differs, game_full.size());
 }
 
+// 17. rt_particle_quads (Smoke Shadows' records from particle_vertex_30 0xBEA3F2D4's outputs: TEXCOORD5 world, COLOR0, the two
+//     cells' uv in TEXCOORD0.xy / TEXCOORD1.xy, their blend TEXCOORD3.w, the alpha scale TEXCOORD4.z) on 48 random rectangles in
+//     space, each two triangles (the first's corners in any of three orders, its right angle anywhere), drawn as the game draws a
+//     quad an instance: one record per quad, its centre the rectangle's, its size its two sides, its colour COLOR0's, its
+//     opacity saturate(TEXCOORD4.z x COLOR0.w x lerp(alpha at the two cells' centre uv)) with a texture whose alpha is its u
+//     (one mip). CONTROL: the second triangles write nothing (48 records for 96 triangles).
+static void TestParticleQuads(const std::string& games) {
+  struct QuadCorner {
+    std::array<float, 4> position, colour, uv, uv_next, view, alpha, world;
+  };
+  constexpr char VERTEX_SOURCE[] =
+      "struct Corner { float4 position : SV_POSITION; float4 colour : COLOR0; float4 uv : TEXCOORD0; float4 uv_next : TEXCOORD1;"
+      "  float4 view : TEXCOORD3; float4 alpha : TEXCOORD4; float4 world : TEXCOORD5; };"
+      "Corner main(Corner corner) { return corner; }";
+  const std::array<D3D11_INPUT_ELEMENT_DESC, 7> layout = {{
+      {"SV_POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0}}};
+  ComPtr<ID3DBlob> vertex_code;
+  D3DCompile(VERTEX_SOURCE, sizeof(VERTEX_SOURCE) - 1, nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(), nullptr);
+  const std::wstring path(games.begin(), games.end());
+  FolderInclude include(path + L"/twshogun2completeedition");
+  ComPtr<ID3DBlob> geometry_code;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/rt_particle_quads.gs_5_0.hlsl").c_str(), nullptr, &include, "main",
+                                "gs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, geometry_code.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("rt_particle_quads: %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  const std::array<D3D11_SO_DECLARATION_ENTRY, 4> entries = {{{0, "SV_POSITION", 0, 0, 4, 0}, {0, "COLOR", 0, 0, 4, 0},
+                                                               {0, "TEXCOORD", 3, 0, 3, 0}, {0, "TEXCOORD", 0, 0, 1, 0}}};
+  const UINT stride = 48;
+  ComPtr<ID3D11GeometryShader> geometry;
+  device->CreateGeometryShaderWithStreamOutput(geometry_code->GetBufferPointer(), geometry_code->GetBufferSize(), entries.data(),
+                                               static_cast<UINT>(entries.size()), &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                               geometry.GetAddressOf());
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  ComPtr<ID3D11InputLayout> input;
+  device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(),
+                            input.GetAddressOf());
+  // The texture: alpha = u (16 x 16, one mip), point sampled at its texel centres' grid.
+  std::vector<std::array<float, 4>> texels(256);
+  for (int y = 0; y < 16; ++y) {
+    for (int x = 0; x < 16; ++x) texels[(y * 16) + x] = {1.f, 1.f, 1.f, (static_cast<float>(x) + 0.5f) / 16.f};
+  }
+  const auto texture_view = Srv(Texture(16, 16, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), 16 * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  std::array<float, 39 * 4> camera = {};
+  camera[0] = 1000.f;  // the camera far from every quad
+  camera[(38 * 4) + 0] = camera[(38 * 4) + 1] = 1024.f;
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  std::mt19937 random(17);
+  std::uniform_real_distribution<float> spread(-1.f, 1.f);
+  struct Expected {
+    std::array<float, 3> centre;
+    std::array<float, 2> size;
+    std::array<float, 4> colour;
+  };
+  std::vector<QuadCorner> corners;
+  std::vector<Expected> expected;
+  for (int quad = 0; quad < 48; ++quad) {
+    const std::array<float, 3> centre = {50.f * spread(random), 50.f * spread(random), 50.f * spread(random)};
+    // Two perpendicular axes: a random unit vector and one across it.
+    std::array<float, 3> axis_a = {spread(random), spread(random), spread(random)};
+    const float length_a = std::hypot(axis_a[0], axis_a[1], axis_a[2]);
+    for (auto& value : axis_a) value /= length_a;
+    const std::array<float, 3> helper = (std::fabs(axis_a[1]) < 0.9f) ? std::array<float, 3>{0.f, 1.f, 0.f} : std::array<float, 3>{1.f, 0.f, 0.f};
+    std::array<float, 3> axis_b = {(axis_a[1] * helper[2]) - (axis_a[2] * helper[1]), (axis_a[2] * helper[0]) - (axis_a[0] * helper[2]),
+                                   (axis_a[0] * helper[1]) - (axis_a[1] * helper[0])};
+    const float length_b = std::hypot(axis_b[0], axis_b[1], axis_b[2]);
+    for (auto& value : axis_b) value /= length_b;
+    const std::array<float, 2> size = {1.f + (2.f * (spread(random) + 1.f)), 1.f + (2.f * (spread(random) + 1.f))};
+    const std::array<float, 4> colour = {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)),
+                                         0.5f + (0.5f * spread(random))};
+    const float blend = 0.5f + (0.5f * spread(random));
+    const float scale = 0.75f + (0.5f * spread(random));
+    // Its uv: the first cell over u 0.1-0.4, the second over 0.5-0.9 (both along axis a).
+    const auto corner_at = [&](float a, float b) {
+      QuadCorner corner = {};
+      for (int axis = 0; axis < 3; ++axis) corner.world[axis] = centre[axis] + (axis_a[axis] * a * size[0]) + (axis_b[axis] * b * size[1]);
+      corner.world[3] = 1.f;
+      corner.position = {a, b, 0.5f, 1.f};
+      corner.colour = colour;
+      corner.uv = {0.25f + (0.3f * a), 0.5f + (0.3f * b), 0.f, 0.f};
+      corner.uv_next = {0.7f + (0.4f * a), 0.5f + (0.3f * b), 0.f, 0.f};
+      corner.view = {0.f, 0.f, 0.f, blend};
+      corner.alpha = {0.f, 0.f, scale, 0.f};
+      return corner;
+    };
+    const std::array<QuadCorner, 4> quad_corners = {corner_at(-0.5f, -0.5f), corner_at(0.5f, -0.5f), corner_at(-0.5f, 0.5f), corner_at(0.5f, 0.5f)};
+    // The first triangle 0, 1, 2 (its right angle at corner 0), rotated by the quad's number; the second 2, 1, 3.
+    const std::array<int, 3> first = {0, 1, 2};
+    for (int index = 0; index < 3; ++index) corners.push_back(quad_corners[first[(index + quad) % 3]]);
+    for (const int index : {2, 1, 3}) corners.push_back(quad_corners[index]);
+    const float alpha = std::clamp(scale * (colour[3] * (0.25f + (blend * (0.7f - 0.25f)))), 0.f, 1.f);
+    expected.push_back({.centre = centre, .size = size, .colour = {colour[0], colour[1], colour[2], alpha}});
+  }
+  const auto count = static_cast<UINT>(corners.size());
+  const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = count * static_cast<UINT>(sizeof(QuadCorner)), .Usage = D3D11_USAGE_DEFAULT,
+                                         .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = corners.data()};
+  ComPtr<ID3D11Buffer> vertex_buffer;
+  device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+  const D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, out.GetAddressOf());
+  ComPtr<ID3D11Query> statistics;
+  const D3D11_QUERY_DESC query_desc = {.Query = D3D11_QUERY_SO_STATISTICS};
+  device->CreateQuery(&query_desc, statistics.GetAddressOf());
+  const UINT vertex_stride = sizeof(QuadCorner);
+  const UINT offset = 0;
+  context->IASetInputLayout(input.Get());
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_stride, &offset);
+  context->VSSetShader(vertex.Get(), nullptr, 0);
+  context->GSSetShader(geometry.Get(), nullptr, 0);
+  context->GSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+  context->GSSetShaderResources(0, 1, texture_view.GetAddressOf());
+  context->GSSetSamplers(3, 1, sampler.GetAddressOf());
+  context->SOSetTargets(1, out.GetAddressOf(), &offset);
+  context->Begin(statistics.Get());
+  context->Draw(count, 0);
+  context->End(statistics.Get());
+  context->ClearState();
+  D3D11_QUERY_DATA_SO_STATISTICS written = {};
+  while (context->GetData(statistics.Get(), &written, sizeof(written), 0) != S_OK) {}
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), out.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<std::array<float, 12>> records(count);
+  std::memcpy(records.data(), mapped.pData, static_cast<size_t>(count) * stride);
+  context->Unmap(staging.Get(), 0);
+  size_t bad = 0;
+  for (size_t quad = 0; quad < expected.size(); ++quad) {
+    const auto& record = records[quad];
+    const auto& want = expected[quad];
+    bool same = true;
+    for (int axis = 0; axis < 3; ++axis) same = same && std::fabs(record[axis] - want.centre[axis]) < 1e-3f;
+    const std::array<float, 2> sizes = {std::min(record[8], record[9]), std::max(record[8], record[9])};
+    same = same && std::fabs(sizes[0] - std::min(want.size[0], want.size[1])) < 1e-3f && std::fabs(sizes[1] - std::max(want.size[0], want.size[1])) < 1e-3f;
+    for (int channel = 0; channel < 4; ++channel) same = same && std::fabs(record[4 + channel] - want.colour[channel]) < 2e-3f;
+    bad += same ? 0 : 1;
+  }
+  CHECK(bad == 0 && written.NumPrimitivesWritten == expected.size(), "rt_particle_quads: %zu of %zu records wrong, %llu written", bad,
+        expected.size(), written.NumPrimitivesWritten);
+  std::printf("rt_particle_quads: %zu quads (their first triangles' corners in three orders) one record each, centre, size, colour and "
+              "opacity right; %llu records for %u triangles\n",
+              expected.size(), written.NumPrimitivesWritten, count / 3);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -2346,6 +2508,7 @@ int main(int argc, char** argv) {
     TestCampaignOverlay(games, argv[3]);
   }
   TestSunTint(games);
+  TestParticleQuads(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

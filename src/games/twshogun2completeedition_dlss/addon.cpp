@@ -1055,6 +1055,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLeafMicromaps", 1.f},
         // Attila's RT/PT values for this addon's own rows (ATN: RT/PT as Attila's; still Experimental, off by default).
         {"RayTracedLightGlow", 1.f},
+        {"RayTracedSmokeShadows", 1.f},
+        {"RayTracedSmokeQuality", 3.f},
         {"WaterClarity", 1.f},
         {"WaterCaustics", 1.f},
     };
@@ -1069,6 +1071,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedGrassShadowRange", 0.f},
         {"RayTracedAoReblur", 0.f},
         {"RayTracedLightGlow", 0.f},
+        {"RayTracedSmokeShadows", 0.f},
+        {"RayTracedSmokeQuality", 1.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1158,6 +1162,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
            "far soldiers and far trees with their shadow rows on (restart the game).");
     choice("Smooth banner shadows (Experimental)", "RayTracedSheetsUnselfed", 0, OFF_ON_NAMES,
            "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.");
+    choice("Ray-traced smoke shadows (Experimental)", "RayTracedSmokeShadows", 0, OFF_ON_NAMES,
+           "Smoke and dust dim the ray-traced sunlight they drift through (restart the game).");
+    constexpr std::array<const char*, 6> SMOKE_QUALITIES = {"Low", "Medium", "High", "Ultra", "Extreme", "Maximum"};
+    choice("Smoke shadow quality", "RayTracedSmokeQuality", 1, SMOKE_QUALITIES,
+           "Higher: fewer holes and less flicker in thick smoke, slower there.");
     slider("Grass shadow range (Experimental)", "RayTracedGrassShadowRange", 0.f, 0.f, 200.f, "%.0f m",
            "Past this distance grass casts no ray-traced shadows (on itself or the ground): faster over fields. 0 m: everywhere.");
     ImGui::EndDisabled();

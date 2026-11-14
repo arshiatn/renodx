@@ -31,6 +31,7 @@
 #include "../twattila/rt_core.hpp"
 #include "../twpharaohdynasties/rt_outside_view_leaf_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "./rt_particle_quads_gs.h"
 #include "../twwarhammer3/rt_outside_view_gs.h"
 #include "./upscaling.hpp"
 
@@ -121,6 +122,12 @@ inline const std::array<twattila::rt_scene::SceneShader, 12> SCENE_SHADERS = {{
     {.hash = 0x4E3EE717, .capture_shader = __rt_capture_cascade_rope, .dynamic = true, .cascade_keep = __rt_outside_view_world,
      .cascade_world = true},
 }};
+// Smoke Shadows (Experimental): the particles' vertex shader (particle.hlsl particle_vertex_30, BEA3F2D4: a quad an instance)
+// through rt_particle_quads (one record an instance), the lit draws those with volumetric_particle_alpha 3D0BC5F1 or its splat
+// F3018626 (texture t0, sampler s3 as the quad shader reads them); the fire glow (40744308, F70E8B73) and distortion (E9F802DE)
+// draws with the same vertex shader cast nothing.
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0xBEA3F2D4, .quad_shader = __rt_particle_quads}}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADERS = {{{.hash = 0x3D0BC5F1}, {.hash = 0xF3018626}}};
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
@@ -867,7 +874,9 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
 
 // Before the Light Bounce's sun draw hooks (registration order: this frame's trace first). `casters_out_of_view`: SCENE_SHADERS
 // listed (off: none, the scene as before: no listed draws, the captured buffer's clip-space room whole).
-inline void Install(bool casters_out_of_view) {
+// `smoke_shadows`: rt_scene.hpp's InstallSmokeShadows' steps on rt_core's statics (this host can't include rt_scene.hpp; off:
+// no particle hook, as before).
+inline void Install(bool casters_out_of_view, bool smoke_shadows) {
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   twattila::rt_scene::InstallScene(casters_out_of_view ? std::span<const twattila::rt_scene::SceneShader>(SCENE_SHADERS)
                                                        : std::span<const twattila::rt_scene::SceneShader>(),
@@ -887,6 +896,21 @@ inline void Install(bool casters_out_of_view) {
       internal::OnFogDraw, {.shader_hash = FOG_LIGHT_SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   renodx::utils::command_action::Register(
       OnWaterDraw, {.shader_hash = WATER_PLANE_SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  if (smoke_shadows) {
+    twattila::rt_scene::internal::smoke_vertex_shaders = SMOKE_VERTEX_SHADERS;
+    twattila::rt_scene::internal::smoke_pixel_shaders = SMOKE_PIXEL_SHADERS;
+    if (!twattila::rt_scene::internal::clip_captures) {
+      reshade::register_event<reshade::addon_event::init_pipeline>(twattila::rt_scene::internal::OnInitPipeline);
+    }
+    renodx::utils::command_action::Register(
+        []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+          if (twattila::rt_scene::internal::active.load(std::memory_order_relaxed) || twattila::rt_scene::internal::runtime.settings.stream_particles) {
+            twattila::rt_scene::internal::CaptureParticles(command);
+          }
+          return {};
+        },
+        {.shader_hash = SMOKE_VERTEX_SHADERS[0].hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 }
 
 inline void Uninstall() {
