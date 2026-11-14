@@ -223,6 +223,10 @@ constexpr std::array<const char*, 3> SSS_DEBUG_VIEWS = {"Off", "Shadows", "Shado
 int sss_softness = 0;    // overlay
 int sss_debug_view = 0;  // overlay
 float sss_distance_softness = 0.f;  // overlay: ReShade.ini ScreenSpaceShadowsDistanceSoftness (Attila's), the sun's degrees
+// ReShade.ini ScreenSpaceShadowsBannerLight (the sun's share through the banners' shadows, 0 off) and ScreenSpaceShadowsColoured
+// (Attila's keys; HDR addon screen_space_shadows.hpp). Experimental, in no preset.
+float sss_banner_light = 0.f;  // overlay
+int sss_coloured = 0;          // overlay
 int sss_mirror_edges = 0;  // overlay
 // ReShade.ini WaterClarity, WaterCaustics (HDR addon, waterplane00: Attila's rows, its keys and ranges; rivers and lakes in
 // battles). Experimental, in no preset.
@@ -820,6 +824,14 @@ void OnOverlay(reshade::api::effect_runtime*) {
                      "Shadows sharp where things touch the ground, softer farther from them, as under the sun.\n"
                      "The sun's size in degrees. 0: off.")) {
       reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDistanceSoftness", sss_distance_softness);
+    }
+    if (float_slider("Light through banners (Experimental)", &sss_banner_light, 0.f, 1.f, "%.2f", 0.f,
+                     "How much sun comes through the screen-space shadows banners cast: they are thin cloth. 0: off.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsBannerLight", sss_banner_light);
+    }
+    if (choice_slider("Coloured shadows (Experimental)", &sss_coloured, OFF_ON.size(), OFF_ON[sss_coloured], 0,
+                      "With Light through banners: the sun through them takes their colour.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsColoured", sss_coloured);
     }
     if (choice_slider("SSS debug view (Experimental)", &sss_debug_view, SSS_DEBUG_VIEWS.size(), SSS_DEBUG_VIEWS[sss_debug_view], 0,
                       "Shows only the screen-space shadows (black: shadowed).\n"
@@ -1596,6 +1608,10 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDistanceSoftness", value)) {
     sss_distance_softness = std::clamp(value, 0.f, 2.f);
   }
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsBannerLight", value)) {
+    sss_banner_light = std::clamp(value, 0.f, 1.f);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsColoured", value)) sss_coloured = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDebugView", value)) {
     sss_debug_view = std::clamp(value, 0, static_cast<int>(SSS_DEBUG_VIEWS.size()) - 1);
   }

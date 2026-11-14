@@ -399,6 +399,13 @@ float ReadShadowMap(float2 pixel_xy)
 }
 
 #ifdef BEND_SSS_EXTENDED
+// Light Through Banners and Coloured Shadows (screen_space_shadows.hpp binds them while their rows are on): the banners'
+// depth (their cloth G-buffer draws drawn again), the G-buffer's colour (those draws' target 1, linear as the sun draws read
+// it), and the colour filter the sun draws read at t50 (rt_sun.hlsli RtSunColour). Unbound: no banners, no filter.
+Texture2D<float> t_sss_thin : register(t5);
+Texture2D<float4> t_sss_colour : register(t6);
+RWTexture2D<unorm float4> t_rw_sss_tint : register(u2);
+
 // Softer Away from the Caster (sss_distance / sss_distance_cascades: Bend's extended march with FindHit, swapped in by
 // screen_space_shadows.hpp while its row is on), Attila's sss_bend WriteExtended: the sun's disk widens the shadow by the
 // receiver's distance from its first shadowing sample x tan(half the disk), in render pixels at the receiver's distance,
@@ -413,6 +420,17 @@ float3 SssViewPosition(float2 pixel, float depth, float2 render_size)
 void WriteExtended(DispatchParameters dp, int2 xy, float result, ExtendedResult extended)
 {
   dp.OutputTexture[xy] = result;
+  [branch] if (dp.FindThin)
+  {
+    // Attila's sss_bend: the banner's colour over its brightest channel (the light through it keeps its brightness).
+    float3 filter = 0.f;
+    if (extended.thin)
+    {
+      const float3 albedo = max(t_sss_colour.Load(int3(clamp(int2(extended.thin_xy), 0, int2(dp.RenderSize) - 1), 0)).rgb, 0.f);
+      filter = (1.f - albedo / max(max(albedo.r, max(albedo.g, albedo.b)), 1.0004024e-3f)) * extended.thin_weight;
+    }
+    t_rw_sss_tint[xy] = float4(filter, 0.f);
+  }
   uint2 split_size;
   t_rw_sss_split.GetDimensions(split_size.x, split_size.y);
   if (split_size.x == 0u) return;
@@ -460,7 +478,15 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
 #endif
 #ifdef BEND_SSS_EXTENDED
   dp.FindHit = true;
-  dp.ThinDepth = t_sss_depth;  // no banners (ThinCasters off)
+  // Light Through Banners where their depth is bound, Coloured Shadows where its filter is.
+  uint2 thin_size;
+  uint2 tint_size;
+  t_sss_thin.GetDimensions(thin_size.x, thin_size.y);
+  t_rw_sss_tint.GetDimensions(tint_size.x, tint_size.y);
+  dp.ThinCasters = SI.sss_banner_light > 0.f && thin_size.x != 0u;
+  dp.ThinLight = SI.sss_banner_light;
+  dp.ThinDepth = t_sss_thin;
+  dp.FindThin = dp.ThinCasters && tint_size.x != 0u;
 #endif
   // Shadow stability (v27, DLSS addon): the game's contrast 4 turns a depth difference into shadow within a quarter of
   // Bend's window, so shadows switch fully on / off between frames; halved (Bend's other recommended value, 2) they

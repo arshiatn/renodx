@@ -566,3 +566,8 @@ keys, in no preset), Rarer objects in the rays (Ray Tracing, Attila's RayTracedU
 SSS softness, SSS softer away from the caster and SSS debug view (screen-space shadows, Attila's
 ScreenSpaceShadowsSoftness / DistanceSoftness / DebugView, in no preset).
 Details and test lines: the HDR addon's README, same heading.
+
+### Parity round 5 (2026-11-14; built only, not run in game)
+
+New Experimental rows, off, in no preset: Light through banners and Coloured shadows (screen-space shadows, Attila's
+ScreenSpaceShadowsBannerLight / ScreenSpaceShadowsColoured). Details and test lines: the HDR addon's README, same heading.

@@ -25,8 +25,11 @@
 // 18. rt_capture_displacement / rt_capture_terrain_patches (Rarer Objects in the Rays) against the game's tessellated draws
 //     0x5074655A / 0xC24D8705 with their hull and domain shaders (TestPatches; the csos' folder third).
 // 19. sss_soft_mask (SSS Softness, Softer Away from the Caster, Debug View) on synthetic masks (TestSoftMask).
+// 20. Light Through Banners' replay against the game's cloth G-buffer draw 0xBDFF60D4 + 0x0FBCC65A (TestBannerReplay; the csos'
+//     folder third).
 #include <windows.h>
 #include <d3d11.h>
+#include <d3d11shader.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <algorithm>
@@ -2960,6 +2963,251 @@ static void TestSoftMask(const std::string& games) {
               RENDER_WIDTH, RENDER_HEIGHT, joined[1], rough, smooth, tall_rough, tall_smooth);
 }
 
+// 20. Light Through Banners' replay (screen_space_shadows.hpp OnThinDraw) after the game's cloth G-buffer draw: its vertex
+//     shader 0xBDFF60D4 (the game's cso, then ours: shaders/clothvelocity00, written from the source) with its G-buffer pixel
+//     shader 0x0FBCC65A (cso; its alpha test discards the diffuse map's hole) over a cleared depth (R24G8, the game's f44),
+//     then the replay as the module draws it (sss_thin into an R32F target, less-equal, not written, depth bias -4), then a
+//     nearer cloth over the banner's left: by Bend's match (bend_sss_gpu.hlsli ThinCasters) every banner pixel left in view
+//     is a banner's, none the nearer one covers, none in the hole; both vertex shaders the same depth and banners' depth bit
+//     for bit, SV_Position their output 0 (sss_thin's only input). CONTROL (must fail): the replay without the bias and with
+//     less, no banner pixel drawn (the replay's depth is the game's draw's, bit for bit).
+static void TestBannerReplay(const std::string& games, const std::string& folder) {
+  constexpr UINT SIZE = 64;
+  constexpr float CLEAR_DEPTH = 0.999f;
+  const auto read = [&folder](const char* name) {
+    std::ifstream file(folder + "/" + name, std::ios::binary);
+    return std::vector<char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  };
+  const auto game_vertex = read("0xBDFF60D4.vs_5_0.cso");
+  const auto game_pixel = read("0x0FBCC65A.ps_5_0.cso");
+  if (game_vertex.empty() || game_pixel.empty()) {
+    std::printf("missing 0xBDFF60D4 or 0x0FBCC65A\n");
+    std::exit(2);
+  }
+  const std::wstring games_path(games.begin(), games.end());
+  ComPtr<ID3DBlob> ours_vertex;
+  ComPtr<ID3DBlob> thin_code;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3DCompileFromFile((games_path + L"/twshogun2completeedition/shaders/clothvelocity00_0xBDFF60D4.vs_5_0.hlsl").c_str(), nullptr,
+                                D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_vertex.GetAddressOf(),
+                                errors.ReleaseAndGetAddressOf()))
+      || FAILED(D3DCompileFromFile((games_path + L"/twshogun2completeedition/sss_thin.ps_5_0.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                                   "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, thin_code.GetAddressOf(), errors.ReleaseAndGetAddressOf()))) {
+    std::printf("compile failed: %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+    std::exit(2);
+  }
+  ComPtr<ID3D11PixelShader> game_pixel_shader;
+  ComPtr<ID3D11PixelShader> thin_pixel_shader;
+  device->CreatePixelShader(game_pixel.data(), game_pixel.size(), nullptr, game_pixel_shader.GetAddressOf());
+  device->CreatePixelShader(thin_code->GetBufferPointer(), thin_code->GetBufferSize(), nullptr, thin_pixel_shader.GetAddressOf());
+
+  // camera_VS_PS: the camera at the origin looking down +z, 60 degrees high (view_projection c10-c13 as columns), identity view
+  // (c2-c5), time 1 against 0 before (not paused). cloth_VS: g_world identity. cloth_PS: its two colours.
+  std::array<float, 44 * 4> camera = {};
+  const float focal = 1.f / std::tan(30.f * 3.14159265f / 180.f);
+  const float near_plane = 0.1f;
+  const float far_plane = 1000.f;
+  camera[10 * 4] = focal;
+  camera[(11 * 4) + 1] = focal;
+  camera[(12 * 4) + 2] = far_plane / (far_plane - near_plane);
+  camera[(12 * 4) + 3] = -near_plane * far_plane / (far_plane - near_plane);
+  camera[(13 * 4) + 2] = 1.f;
+  for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = 1.f;
+  camera[35 * 4] = 1.f;
+  for (const UINT at : {37u, 38u, 40u}) {
+    camera[at * 4] = static_cast<float>(SIZE);
+    camera[(at * 4) + 1] = static_cast<float>(SIZE);
+    camera[(at * 4) + 2] = 1.f / static_cast<float>(SIZE);
+    camera[(at * 4) + 3] = 1.f / static_cast<float>(SIZE);
+  }
+  const std::array<float, 16> world = {1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f};
+  const std::array<float, 8> colours = {0.8f, 0.1f, 0.1f, 0.f, 0.1f, 0.1f, 0.8f, 0.f};
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const auto world_buffer = Constants(world.data(), sizeof(world));
+  const auto colour_buffer = Constants(colours.data(), sizeof(colours));
+  // The diffuse map: alpha 0 in its middle 2 x 2 texels (the pixel shader's alpha test discards there).
+  std::vector<uint32_t> diffuse(16, 0xFFFFFFFFu);
+  for (const int texel : {5, 6, 9, 10}) diffuse[texel] = 0x00FFFFFFu;
+  const auto diffuse_texture = Texture(4, 4, DXGI_FORMAT_R8G8B8A8_UNORM, diffuse.data(), 16, D3D11_BIND_SHADER_RESOURCE);
+  const auto diffuse_view = Srv(diffuse_texture.Get());
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  // The G-buffer's three colour targets, the depth, the banners' depth.
+  std::array<ComPtr<ID3D11Texture2D>, 3> gbuffer;
+  std::array<ComPtr<ID3D11RenderTargetView>, 3> gbuffer_views;
+  for (size_t index = 0; index < gbuffer.size(); ++index) {
+    gbuffer[index] = Texture(SIZE, SIZE, DXGI_FORMAT_R16G16B16A16_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
+    device->CreateRenderTargetView(gbuffer[index].Get(), nullptr, gbuffer_views[index].GetAddressOf());
+  }
+  const auto depth = Texture(SIZE, SIZE, DXGI_FORMAT_R24G8_TYPELESS, nullptr, 0, D3D11_BIND_DEPTH_STENCIL);
+  const D3D11_DEPTH_STENCIL_VIEW_DESC depth_view_desc = {.Format = DXGI_FORMAT_D24_UNORM_S8_UINT, .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D};
+  ComPtr<ID3D11DepthStencilView> depth_view;
+  device->CreateDepthStencilView(depth.Get(), &depth_view_desc, depth_view.GetAddressOf());
+  const auto thin = Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
+  ComPtr<ID3D11RenderTargetView> thin_view;
+  device->CreateRenderTargetView(thin.Get(), nullptr, thin_view.GetAddressOf());
+  // The game's states (two-sided cloth, depth less and written) and the replay's (the module's).
+  const D3D11_RASTERIZER_DESC game_rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE, .DepthClipEnable = TRUE};
+  D3D11_RASTERIZER_DESC nearer_desc = game_rasterizer_desc;
+  nearer_desc.DepthBias -= 4;
+  ComPtr<ID3D11RasterizerState> game_rasterizer;
+  ComPtr<ID3D11RasterizerState> nearer;
+  device->CreateRasterizerState(&game_rasterizer_desc, game_rasterizer.GetAddressOf());
+  device->CreateRasterizerState(&nearer_desc, nearer.GetAddressOf());
+  const D3D11_DEPTH_STENCIL_DESC game_depth_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL, .DepthFunc = D3D11_COMPARISON_LESS};
+  const D3D11_DEPTH_STENCIL_DESC replay_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO, .DepthFunc = D3D11_COMPARISON_LESS_EQUAL};
+  const D3D11_DEPTH_STENCIL_DESC strict_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO, .DepthFunc = D3D11_COMPARISON_LESS};
+  ComPtr<ID3D11DepthStencilState> game_depth;
+  ComPtr<ID3D11DepthStencilState> replay_depth;
+  ComPtr<ID3D11DepthStencilState> strict_depth;
+  device->CreateDepthStencilState(&game_depth_desc, game_depth.GetAddressOf());
+  device->CreateDepthStencilState(&replay_desc, replay_depth.GetAddressOf());
+  device->CreateDepthStencilState(&strict_desc, strict_depth.GetAddressOf());
+  // The banner: 8 x 8 m, its right 2 m farther (z 9 to 11), the UV over it; the nearer cloth at z 7 over its left part, its UV
+  // on an opaque texel.
+  struct ClothVertex {
+    std::array<float, 4> position, normal, uv, previous;
+  };
+  const auto quad = [](float left, float right, float bottom, float top, float near_z, float far_z, bool mapped) {
+    std::vector<ClothVertex> vertices;
+    for (const auto& corner : std::array<std::array<float, 2>, 6>{{{0.f, 0.f}, {0.f, 1.f}, {1.f, 0.f}, {1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f}}}) {
+      const std::array<float, 4> position = {left + ((right - left) * corner[0]), bottom + ((top - bottom) * corner[1]),
+                                             near_z + ((far_z - near_z) * corner[0]), 1.f};
+      const std::array<float, 4> uv = mapped ? std::array<float, 4>{corner[0], 1.f - corner[1], 0.f, 0.f} : std::array<float, 4>{0.1f, 0.1f, 0.f, 0.f};
+      vertices.push_back({.position = position, .normal = {0.f, 0.f, -1.f, 0.f}, .uv = uv, .previous = position});
+    }
+    const D3D11_BUFFER_DESC desc = {.ByteWidth = static_cast<UINT>(vertices.size() * sizeof(ClothVertex)), .Usage = D3D11_USAGE_DEFAULT,
+                                    .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = vertices.data()};
+    ComPtr<ID3D11Buffer> buffer;
+    device->CreateBuffer(&desc, &data, buffer.GetAddressOf());
+    return buffer;
+  };
+  const auto banner = quad(-4.f, 4.f, -4.f, 4.f, 9.f, 11.f, true);
+  const auto cover = quad(-5.f, -1.5f, -5.f, 5.f, 7.f, 7.f, false);
+  const D3D11_INPUT_ELEMENT_DESC layout[] = {
+      {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+  };
+  const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(SIZE), .Height = static_cast<float>(SIZE), .MaxDepth = 1.f};
+
+  struct Result {
+    std::vector<uint32_t> after_banner, after_cover;  // the depth (24-bit) after the banner, after the nearer cloth
+    std::vector<float> banners;                       // the banners' depth
+    bool position_first = false;
+  };
+  const auto run = [&](const void* vertex_code, size_t vertex_size, bool strict) {
+    Result result;
+    ComPtr<ID3D11VertexShader> vertex_shader;
+    ComPtr<ID3D11InputLayout> input;
+    device->CreateVertexShader(vertex_code, vertex_size, nullptr, vertex_shader.GetAddressOf());
+    device->CreateInputLayout(layout, static_cast<UINT>(std::size(layout)), vertex_code, vertex_size, input.GetAddressOf());
+    ComPtr<ID3D11ShaderReflection> reflection;
+    D3D11_SIGNATURE_PARAMETER_DESC output = {};
+    result.position_first = SUCCEEDED(D3DReflect(vertex_code, vertex_size, IID_PPV_ARGS(reflection.GetAddressOf())))
+                            && SUCCEEDED(reflection->GetOutputParameterDesc(0, &output)) && output.Register == 0
+                            && _stricmp(output.SemanticName, "SV_Position") == 0;
+    context->ClearDepthStencilView(depth_view.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, CLEAR_DEPTH, 0);
+    constexpr std::array<FLOAT, 4> FAR_PLANE = {1.f, 1.f, 1.f, 1.f};
+    context->ClearRenderTargetView(thin_view.Get(), FAR_PLANE.data());
+    const UINT stride = sizeof(ClothVertex);
+    const UINT offset = 0;
+    const auto draw_cloth = [&](ID3D11Buffer* vertices) {
+      std::array<ID3D11RenderTargetView*, 3> targets = {gbuffer_views[0].Get(), gbuffer_views[1].Get(), gbuffer_views[2].Get()};
+      context->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), depth_view.Get());
+      context->OMSetDepthStencilState(game_depth.Get(), 0);
+      context->RSSetState(game_rasterizer.Get());
+      context->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
+      context->IASetVertexBuffers(0, 1, &vertices, &stride, &offset);
+      context->Draw(6, 0);
+    };
+    context->IASetInputLayout(input.Get());
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+    const std::array<ID3D11Buffer*, 2> vertex_constants = {camera_buffer.Get(), world_buffer.Get()};
+    const std::array<ID3D11Buffer*, 2> pixel_constants = {camera_buffer.Get(), colour_buffer.Get()};
+    context->VSSetConstantBuffers(0, 2, vertex_constants.data());
+    context->PSSetConstantBuffers(0, 2, pixel_constants.data());
+    context->PSSetShaderResources(0, 1, diffuse_view.GetAddressOf());
+    context->PSSetSamplers(0, 1, sampler.GetAddressOf());
+    context->RSSetViewports(1, &viewport);
+    // The depth buffer's 24-bit values.
+    const auto read_depth = [&depth] {
+      const auto bytes = Read(depth.Get(), 4);
+      std::vector<uint32_t> values(bytes.size() / 4);
+      std::memcpy(values.data(), bytes.data(), bytes.size());
+      for (auto& value : values) value &= 0xFFFFFFu;
+      return values;
+    };
+    draw_cloth(banner.Get());
+    result.after_banner = read_depth();
+    // The replay: the banners' depth, the game's depth tested, not written.
+    context->OMSetRenderTargets(1, thin_view.GetAddressOf(), depth_view.Get());
+    context->OMSetDepthStencilState(strict ? strict_depth.Get() : replay_depth.Get(), 0);
+    context->RSSetState(strict ? game_rasterizer.Get() : nearer.Get());
+    context->PSSetShader(thin_pixel_shader.Get(), nullptr, 0);
+    context->Draw(6, 0);
+    draw_cloth(cover.Get());
+    result.after_cover = read_depth();
+    const auto texels = Read(thin.Get(), 4);
+    result.banners.resize(static_cast<size_t>(SIZE) * SIZE);
+    std::memcpy(result.banners.data(), texels.data(), texels.size());
+    context->ClearState();
+    return result;
+  };
+  // Bend's ThinCasters match: the banners' depth is the scene's (within the replay's bias), not at the far plane.
+  const auto matches = [](float banner_depth, float scene) {
+    const float remaining = std::fabs(1.f - scene);
+    return remaining > 1e-7f && std::fabs(banner_depth - scene) <= 4e-7f + (2e-4f * remaining);
+  };
+  constexpr uint32_t CLEARED = static_cast<uint32_t>(CLEAR_DEPTH * 16777215.f + 0.5f);
+  struct Counts {
+    size_t visible = 0, visible_matched = 0, covered = 0, covered_matched = 0, hole = 0, hole_matched = 0;
+  };
+  const auto count = [&](const Result& result) {
+    Counts counts;
+    for (size_t pixel = 0; pixel < result.banners.size(); ++pixel) {
+      const uint32_t banner_depth = result.after_banner[pixel];
+      const uint32_t final_depth = result.after_cover[pixel];
+      const bool matched = matches(result.banners[pixel], static_cast<float>(final_depth) / 16777215.f);
+      if (banner_depth != CLEARED && final_depth == banner_depth) {
+        ++counts.visible;
+        counts.visible_matched += matched ? 1 : 0;
+      } else if (banner_depth != CLEARED) {
+        ++counts.covered;
+        counts.covered_matched += matched ? 1 : 0;
+      } else if (result.banners[pixel] < 1.f) {
+        ++counts.hole;
+        counts.hole_matched += matched ? 1 : 0;
+      }
+    }
+    return counts;
+  };
+  const Result game = run(game_vertex.data(), game_vertex.size(), false);
+  const Result ours = run(ours_vertex->GetBufferPointer(), ours_vertex->GetBufferSize(), false);
+  const Result strict = run(game_vertex.data(), game_vertex.size(), true);
+  const Counts game_counts = count(game);
+  const Counts strict_counts = count(strict);
+  CHECK(game.position_first && ours.position_first, "SV_Position not the vertex shaders' output 0 (game %d, ours %d)", game.position_first,
+        ours.position_first);
+  CHECK(game_counts.visible > 400 && game_counts.visible_matched == game_counts.visible, "banner replay: %zu of %zu banner pixels matched",
+        game_counts.visible_matched, game_counts.visible);
+  CHECK(game_counts.covered > 50 && game_counts.covered_matched == 0, "banner replay: %zu of %zu covered pixels matched", game_counts.covered_matched,
+        game_counts.covered);
+  CHECK(game_counts.hole > 20 && game_counts.hole_matched == 0, "banner replay: %zu of %zu hole pixels matched", game_counts.hole_matched,
+        game_counts.hole);
+  CHECK(ours.after_cover == game.after_cover && ours.banners == game.banners, "banner replay: clothvelocity00 not the game's depth bit for bit");
+  CHECK(strict_counts.visible_matched == 0, "CONTROL: the strict replay matched %zu banner pixels", strict_counts.visible_matched);
+  std::printf("banner replay (0xBDFF60D4 + 0x0FBCC65A): %zu / %zu banner pixels matched, %zu / %zu covered, %zu / %zu in the hole; "
+              "clothvelocity00 the same bit for bit; CONTROL less without the bias: %zu matched\n",
+              game_counts.visible_matched, game_counts.visible, game_counts.covered_matched, game_counts.covered, game_counts.hole_matched,
+              game_counts.hole, strict_counts.visible_matched);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -2997,6 +3245,7 @@ int main(int argc, char** argv) {
     TestIndicators(games, argv[3]);
     TestCampaignOverlay(games, argv[3]);
     TestPatches(games, argv[3]);
+    TestBannerReplay(games, argv[3]);
   }
   TestSunTint(games);
   TestParticleQuads(games);

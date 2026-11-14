@@ -37,6 +37,13 @@ foreach ($shader in $shaders) {
   if ($a -ne $b) { $changed += $name }
 }
 Write-Host "Shader bytes changed since fc24dbce: $($changed -join ', ')"
+# Shogun 2's extended passes (Softer Away from the Caster, Light Through Banners, Coloured Shadows; case 10): this tree's only,
+# they are newer than fc24dbce.
+foreach ($shader in @('sss_distance.cs_5_0', 'sss_distance_cascades.cs_5_0')) {
+  $name = $shader -replace '\.cs_5_0$', ''
+  & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo (Join-Path $afterShaders "$name.cso") (Join-Path $repairRoot "src\games\twshogun2completeedition\$shader.hlsl") | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "fxc failed: $shader" }
+}
 # sss_depth (and its MSAA form): the G-buffer's foliage mark (Warhammer III); its output against fc24dbce's on WARP too.
 # Shogun 2's sss00-02: Bend's parameters as rows and Light Through Foliage (its shader_injection grew): case 8 compares their
 # output at the rows' defaults with fc24dbce's on WARP.

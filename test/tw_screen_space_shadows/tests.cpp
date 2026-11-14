@@ -36,6 +36,9 @@
 // 9. Torch and Fire Shadows at a battle's light count (5120 instances in 128 draws, repeats and mirrored lights): every
 //    output as f6408aa1's sss_lights gives it (run.ps1's sss_lights_f6408aa1.cso), the pick the CPU's. CONTROL: the CPU's
 //    pick without the repeat test must differ.
+// 10. Shogun 2's Light Through Banners and Coloured Shadows through its extended passes (sss_distance / _cascades from this
+//     tree) on case 3's banner: its shadow keeps the row's share of the sun, its filter is its colour, the cascades' version
+//     the same; rows off the game's sss01 to the bit. CONTROLS (must fail): the banners' depth or the filter's target unbound.
 // --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, the CPU
 // time of a later light draw, and a battle's light draws with today's sss_lights and f6408aa1's. --time-only: that alone.
 #include <windows.h>
@@ -1410,10 +1413,28 @@ static void TestRowsTurnedOff() {
         && runtime.soft_frame == runtime.frame);
 }
 
-static void TestShogun2(const std::string& before_folder) {
-  std::printf("8. Shogun 2's sss00-02 at the rows' defaults\n");
-  MakeDevice(D3D_DRIVER_TYPE_WARP);
-  const Frame frame = MakeFrame(480, 270, BOX_SCENE, BOX_SUN);
+// Shogun 2's sun shadow passes' inputs for `frame` (sss.hlsli): camera_VS_PS, shadowmap_PS over 4 cascades (random depths
+// around the ground's and the box's, or all lit), the comparison and border samplers, Bend's sss constants for each dispatch
+// sss_setup lists, shader_injection (all 0: the rows' defaults; or one row at a value).
+struct ShogunInputs {
+  ComPtr<ID3D11Buffer> camera;
+  ComPtr<ID3D11Buffer> shadow_map;
+  ComPtr<ID3D11Texture2D> map;
+  ComPtr<ID3D11ShaderResourceView> map_srv;
+  ComPtr<ID3D11SamplerState> comparison;
+  ComPtr<ID3D11SamplerState> border;
+  std::vector<ComPtr<ID3D11Buffer>> bend_buffers;
+  std::vector<std::array<uint32_t, 3>> bend_groups;
+};
+
+static ComPtr<ID3D11Buffer> ShogunInjection(size_t offset, float value) {
+  std::vector<float> floats((sizeof(shogun2::ShaderInjectData) + 15) / 16 * 4, 0.f);
+  floats[offset / sizeof(float)] = value;
+  return MakeBuffer(static_cast<UINT>(floats.size() * sizeof(float)), D3D11_BIND_CONSTANT_BUFFER, floats.data());
+}
+
+static ShogunInputs MakeShogunInputs(const Frame& frame, bool lit_cascades) {
+  ShogunInputs inputs;
   const UINT width = frame.camera.width;
   const UINT height = frame.camera.height;
   // The sun's dispatches as sss_setup lists them for the frame: the light coordinate, 8 dispatches' offsets (x the wave size)
@@ -1449,52 +1470,97 @@ static void TestShogun2(const std::string& before_folder) {
   std::copy_n(std::array<float, 4>{0.1f, 0.1f, 0.01f, 4.f}.begin(), 4, shadow_map.begin() + (17 * 4));
   std::copy(frame.sun.begin(), frame.sun.end(), shadow_map.begin() + (18 * 4));
   for (UINT split = 0; split < 5; ++split) shadow_map[(19 + split) * 4] = std::array<float, 5>{0.f, 4.f, 8.f, 16.f, 60.f}[split];
-  const auto camera_buffer = MakeBuffer(sizeof(camera), D3D11_BIND_CONSTANT_BUFFER, camera.data());
-  const auto shadow_map_buffer = MakeBuffer(sizeof(shadow_map), D3D11_BIND_CONSTANT_BUFFER, shadow_map.data());
-  // The cascades' depths: random around the ground's and the box's.
+  inputs.camera = MakeBuffer(sizeof(camera), D3D11_BIND_CONSTANT_BUFFER, camera.data());
+  inputs.shadow_map = MakeBuffer(sizeof(shadow_map), D3D11_BIND_CONSTANT_BUFFER, shadow_map.data());
+  // The cascades' depths: random around the ground's and the box's, or the far plane (nothing in them shadowed).
   std::mt19937 random(8);
   std::uniform_real_distribution<float> map_depth(0.47f, 0.53f);
   std::vector<float> map_texels(MAP_SIZE * MAP_SIZE * 4);
-  for (auto& texel : map_texels) texel = map_depth(random);
+  for (auto& texel : map_texels) texel = lit_cascades ? 1.f : map_depth(random);
   const D3D11_TEXTURE2D_DESC map_desc = {MAP_SIZE, MAP_SIZE, 1, 4, DXGI_FORMAT_R32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0};
   std::array<D3D11_SUBRESOURCE_DATA, 4> map_slices = {};
   for (UINT slice = 0; slice < 4; ++slice) map_slices[slice] = {map_texels.data() + (slice * MAP_SIZE * MAP_SIZE), MAP_SIZE * 4, 0};
-  ComPtr<ID3D11Texture2D> map;
-  ComPtr<ID3D11ShaderResourceView> map_srv;
-  REQUIRE(SUCCEEDED(device->CreateTexture2D(&map_desc, map_slices.data(), map.GetAddressOf())));
-  REQUIRE(SUCCEEDED(device->CreateShaderResourceView(map.Get(), nullptr, map_srv.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateTexture2D(&map_desc, map_slices.data(), inputs.map.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateShaderResourceView(inputs.map.Get(), nullptr, inputs.map_srv.GetAddressOf())));
   const D3D11_SAMPLER_DESC comparison_desc = {D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_CLAMP,
                                         D3D11_TEXTURE_ADDRESS_CLAMP, 0.f, 1, D3D11_COMPARISON_LESS_EQUAL, {}, 0.f, D3D11_FLOAT32_MAX};
   const D3D11_SAMPLER_DESC border_desc = {D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_TEXTURE_ADDRESS_BORDER, D3D11_TEXTURE_ADDRESS_BORDER,
                                          D3D11_TEXTURE_ADDRESS_BORDER, 0.f, 1, D3D11_COMPARISON_NEVER, {1.f, 1.f, 1.f, 1.f}, 0.f, D3D11_FLOAT32_MAX};
-  ComPtr<ID3D11SamplerState> comparison;
-  ComPtr<ID3D11SamplerState> border;
-  REQUIRE(SUCCEEDED(device->CreateSamplerState(&comparison_desc, comparison.GetAddressOf())));
-  REQUIRE(SUCCEEDED(device->CreateSamplerState(&border_desc, border.GetAddressOf())));
-  const Texture output = MakeTexture(width, height, DXGI_FORMAT_R8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
-  ComPtr<ID3D11UnorderedAccessView> output_uav;
-  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output.texture.Get(), nullptr, output_uav.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateSamplerState(&comparison_desc, inputs.comparison.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateSamplerState(&border_desc, inputs.border.GetAddressOf())));
   // Bend's sss constants for each listed dispatch: the game's thickness, edge threshold and contrast, the light coordinate and
   // the dispatch's offset.
-  std::vector<ComPtr<ID3D11Buffer>> bend_buffers;
-  std::vector<std::array<uint32_t, 3>> bend_groups;
   for (size_t dispatch = 0; dispatch < 8; ++dispatch) {
     if (arguments[dispatch][0] == 0 || arguments[dispatch][1] == 0 || arguments[dispatch][2] == 0) continue;
     std::array<uint32_t, 12> bend = {std::bit_cast<uint32_t>(0.005f), std::bit_cast<uint32_t>(0.02f), std::bit_cast<uint32_t>(4.f), 0u};
     for (int axis = 0; axis < 4; ++axis) bend[4 + axis] = static_cast<uint32_t>(parameters[0][axis]);
     bend[8] = static_cast<uint32_t>(parameters[1 + dispatch][0]);
     bend[9] = static_cast<uint32_t>(parameters[1 + dispatch][1]);
-    bend_buffers.push_back(MakeBuffer(sizeof(bend), D3D11_BIND_CONSTANT_BUFFER, bend.data()));
-    bend_groups.push_back(arguments[dispatch]);
+    inputs.bend_buffers.push_back(MakeBuffer(sizeof(bend), D3D11_BIND_CONSTANT_BUFFER, bend.data()));
+    inputs.bend_groups.push_back(arguments[dispatch]);
   }
-  REQUIRE(!bend_buffers.empty());
-  // shader_injection: all 0 (the rows' defaults), or one row at a value.
-  const auto injection = [](size_t offset, float value) {
-    std::vector<float> floats((sizeof(shogun2::ShaderInjectData) + 15) / 16 * 4, 0.f);
-    floats[offset / sizeof(float)] = value;
-    return MakeBuffer(static_cast<UINT>(floats.size() * sizeof(float)), D3D11_BIND_CONSTANT_BUFFER, floats.data());
-  };
-  const auto defaults = injection(0, 0.f);
+  REQUIRE(!inputs.bend_buffers.empty());
+  return inputs;
+}
+
+// One of Shogun 2's sun shadow passes (`shader`; with the cascades' layout or without, Bend's dispatches or sss02's) on `frame`
+// into `output` (R8, cleared first), with `settings` at b13; the extended passes' banners' depth at t5, colour at t6 and filter
+// at u2 where given. The mask after it.
+struct ShogunExtras {
+  ID3D11ShaderResourceView* thin = nullptr;
+  ID3D11ShaderResourceView* colour = nullptr;
+  ID3D11UnorderedAccessView* tint = nullptr;
+};
+static std::vector<uint8_t> RunShogunPass(const Frame& frame, const ShogunInputs& inputs, const Texture& output, ID3D11UnorderedAccessView* output_uav,
+                                          ID3D11ComputeShader* shader, bool cascades, bool bend, ID3D11Buffer* settings, const ShogunExtras& extras = {}) {
+  constexpr std::array<UINT, 4> CLEAR = {};
+  context->ClearUnorderedAccessViewUint(output_uav, CLEAR.data());
+  context->CSSetShader(shader, nullptr, 0);
+  context->CSSetConstantBuffers(13, 1, &settings);
+  context->CSSetConstantBuffers(0, 1, inputs.camera.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 1, &output_uav, nullptr);
+  if (cascades) {
+    context->CSSetConstantBuffers(1, 1, inputs.shadow_map.GetAddressOf());
+    const std::array<ID3D11ShaderResourceView*, 4> views = {inputs.map_srv.Get(), frame.colour.srv.Get(), frame.depth.srv.Get(), frame.depth.srv.Get()};
+    context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    const std::array<ID3D11SamplerState*, 2> samplers = {inputs.comparison.Get(), inputs.border.Get()};
+    context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+  } else {
+    context->CSSetShaderResources(0, 1, frame.depth.srv.GetAddressOf());
+    context->CSSetSamplers(0, 1, inputs.border.GetAddressOf());
+  }
+  const std::array<ID3D11ShaderResourceView*, 2> extra_views = {extras.thin, extras.colour};
+  context->CSSetShaderResources(5, static_cast<UINT>(extra_views.size()), extra_views.data());
+  context->CSSetUnorderedAccessViews(2, 1, &extras.tint, nullptr);
+  if (bend) {
+    for (size_t dispatch = 0; dispatch < inputs.bend_buffers.size(); ++dispatch) {
+      context->CSSetConstantBuffers(cascades ? 2 : 1, 1, inputs.bend_buffers[dispatch].GetAddressOf());
+      context->Dispatch(inputs.bend_groups[dispatch][0], inputs.bend_groups[dispatch][1], inputs.bend_groups[dispatch][2]);
+    }
+  } else {
+    context->Dispatch((frame.camera.width + 31) / 32, (frame.camera.height + 31) / 32, 1);
+  }
+  context->ClearState();
+  return ReadTexture<uint8_t>(output.texture.Get());
+}
+
+static ComPtr<ID3D11ComputeShader> LoadCso(const std::string& path) {
+  const auto code = ReadFile(path);
+  REQUIRE(!code.empty());
+  ComPtr<ID3D11ComputeShader> shader;
+  REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
+  return shader;
+}
+
+static void TestShogun2(const std::string& before_folder) {
+  std::printf("8. Shogun 2's sss00-02 at the rows' defaults\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const Frame frame = MakeFrame(480, 270, BOX_SCENE, BOX_SUN);
+  const ShogunInputs inputs = MakeShogunInputs(frame, false);
+  const Texture output = MakeTexture(frame.camera.width, frame.camera.height, DXGI_FORMAT_R8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> output_uav;
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output.texture.Get(), nullptr, output_uav.GetAddressOf())));
+  const auto defaults = ShogunInjection(0, 0.f);
   struct Pass {
     const char* name;
     bool cascades;
@@ -1508,56 +1574,141 @@ static void TestShogun2(const std::string& before_folder) {
   }};
   const std::filesystem::path after_folder = std::filesystem::path(before_folder).parent_path() / "after_cso";
   for (const auto& pass : PASSES) {
-    const auto load = [&pass](const std::string& folder) {
-      const auto code = ReadFile(folder + "\\" + pass.name + ".cso");
-      REQUIRE(!code.empty());
-      ComPtr<ID3D11ComputeShader> shader;
-      REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
-      return shader;
-    };
-    const auto before = load(before_folder);
-    const auto after = load(after_folder.string());
-    const auto control = injection(pass.control_row, 2.f);
-    const auto run = [&](ID3D11ComputeShader* shader, ID3D11Buffer* settings) {
-      constexpr std::array<UINT, 4> CLEAR = {};
-      context->ClearUnorderedAccessViewUint(output_uav.Get(), CLEAR.data());
-      context->CSSetShader(shader, nullptr, 0);
-      context->CSSetConstantBuffers(13, 1, &settings);
-      context->CSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
-      context->CSSetUnorderedAccessViews(0, 1, output_uav.GetAddressOf(), nullptr);
-      if (pass.cascades) {
-        context->CSSetConstantBuffers(1, 1, shadow_map_buffer.GetAddressOf());
-        const std::array<ID3D11ShaderResourceView*, 4> views = {map_srv.Get(), frame.colour.srv.Get(), frame.depth.srv.Get(), frame.depth.srv.Get()};
-        context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
-        const std::array<ID3D11SamplerState*, 2> samplers = {comparison.Get(), border.Get()};
-        context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
-      } else {
-        context->CSSetShaderResources(0, 1, frame.depth.srv.GetAddressOf());
-        context->CSSetSamplers(0, 1, border.GetAddressOf());
-      }
-      if (pass.bend) {
-        for (size_t dispatch = 0; dispatch < bend_buffers.size(); ++dispatch) {
-          context->CSSetConstantBuffers(pass.cascades ? 2 : 1, 1, bend_buffers[dispatch].GetAddressOf());
-          context->Dispatch(bend_groups[dispatch][0], bend_groups[dispatch][1], bend_groups[dispatch][2]);
-        }
-      } else {
-        context->Dispatch((width + 31) / 32, (height + 31) / 32, 1);
-      }
-      context->ClearState();
-      return ReadTexture<uint8_t>(output.texture.Get());
-    };
+    const auto before = LoadCso(before_folder + "\\" + pass.name + ".cso");
+    const auto after = LoadCso((after_folder / (std::string(pass.name) + ".cso")).string());
+    const auto control = ShogunInjection(pass.control_row, 2.f);
     std::vector<std::vector<uint8_t>> ours;
     std::vector<std::vector<uint8_t>> theirs;
     std::vector<std::vector<uint8_t>> controls;
     for (int round = 0; round < RUNS; ++round) {
-      ours.push_back(run(after.Get(), defaults.Get()));
-      theirs.push_back(run(before.Get(), defaults.Get()));
-      controls.push_back(run(after.Get(), control.Get()));
+      ours.push_back(RunShogunPass(frame, inputs, output, output_uav.Get(), after.Get(), pass.cascades, pass.bend, defaults.Get()));
+      theirs.push_back(RunShogunPass(frame, inputs, output, output_uav.Get(), before.Get(), pass.cascades, pass.bend, defaults.Get()));
+      controls.push_back(RunShogunPass(frame, inputs, output, output_uav.Get(), after.Get(), pass.cascades, pass.bend, control.Get()));
     }
     CompareRuns((std::string(pass.name) + " at the rows' defaults against fc24dbce's").c_str(), ours, theirs);
     CompareRuns((std::string("CONTROL ") + pass.name + " with " + (pass.bend ? "Bend's contrast" : "shadow map stability") + " at 2").c_str(),
                 controls, theirs, false);
   }
+}
+
+// 10. Shogun 2's Light Through Banners and Coloured Shadows: its extended passes (sss_distance / sss_distance_cascades, which its
+//    screen_space_shadows.hpp swaps in; from this tree, run.ps1's after_cso) on case 3's red banner with its depth at t5 and the
+//    G-buffer's colour (linear, as Shogun's sun draws read it) at t6, the cascades lit: the banner's shadow keeps Light Through
+//    Banners (0.35) of the sun (Bend's occlusion its solid one's x 0.65, within 0.12), the filter at u2 the banner's colour over
+//    its brightest channel (red kept), none in the sun; the cascades' version the same within 0.01. With the rows off the
+//    extended pass is sss01's (the game's) to the bit. CONTROLS (must fail): the banners' depth unbound, its shadow solid; the
+//    filter's target unbound, no filter written.
+static void TestShogun2Banners(const std::string& before_folder) {
+  std::printf("10. Shogun 2's Light Through Banners, Coloured Shadows\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const Vector sun = {0.2f, -0.6f, -0.77f};
+  const std::array<Box, 1> boxes = {{{.low = {-1.f, -0.6f, 12.f}, .high = {1.f, 1.4f, 12.05f}, .kind = Kind::THIN, .albedo = {0.8f, 0.1f, 0.1f}}}};
+  Frame frame = MakeFrame(480, 270, boxes, sun);
+  const ShogunInputs inputs = MakeShogunInputs(frame, true);
+  const UINT w = frame.camera.width;
+  const UINT h = frame.camera.height;
+  // Shogun's G-buffer colour as the sun draws read it: linear.
+  std::vector<uint32_t> linear(w * h);
+  for (size_t pixel = 0; pixel < linear.size(); ++pixel) {
+    const int hit = frame.picture.hit[pixel];
+    const Vector albedo = (hit >= 0) ? boxes[hit].albedo : Vector{0.5f, 0.5f, 0.5f};
+    uint32_t packed = 0xFF000000u;
+    for (int channel = 0; channel < 3; ++channel) packed |= static_cast<uint32_t>(std::lround(albedo[channel] * 255.f)) << (8 * channel);
+    linear[pixel] = packed;
+  }
+  frame.colour = MakeTexture(w, h, DXGI_FORMAT_R8G8B8A8_UNORM, linear.data(), w * 4);
+  const Texture output = MakeTexture(w, h, DXGI_FORMAT_R8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+  const Texture tint = MakeTexture(w, h, DXGI_FORMAT_R8G8B8A8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> output_uav;
+  ComPtr<ID3D11UnorderedAccessView> tint_uav;
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output.texture.Get(), nullptr, output_uav.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(tint.texture.Get(), nullptr, tint_uav.GetAddressOf())));
+  const std::filesystem::path after_folder = std::filesystem::path(before_folder).parent_path() / "after_cso";
+  const auto plain = LoadCso((after_folder / "sss01_0x1B529672.cso").string());
+  const auto extended = LoadCso((after_folder / "sss_distance.cso").string());
+  const auto extended_cascades = LoadCso((after_folder / "sss_distance_cascades.cso").string());
+  const auto defaults = ShogunInjection(0, 0.f);
+  const auto banners = ShogunInjection(offsetof(shogun2::ShaderInjectData, sss_banner_light), 0.35f);
+  const ShogunExtras coloured = {.thin = frame.thin.srv.Get(), .colour = frame.colour.srv.Get(), .tint = tint_uav.Get()};
+  const auto clear_tint = [&] {
+    constexpr std::array<UINT, 4> CLEAR = {};
+    context->ClearUnorderedAccessViewUint(tint_uav.Get(), CLEAR.data());
+  };
+
+  // The rows off: the extended pass against the game's.
+  std::vector<std::vector<uint8_t>> ours;
+  std::vector<std::vector<uint8_t>> theirs;
+  for (int round = 0; round < RUNS; ++round) {
+    ours.push_back(RunShogunPass(frame, inputs, output, output_uav.Get(), extended.Get(), false, true, defaults.Get()));
+    theirs.push_back(RunShogunPass(frame, inputs, output, output_uav.Get(), plain.Get(), false, true, defaults.Get()));
+  }
+  CompareRuns("sss_distance with the rows off against sss01", ours, theirs);
+
+  // The banner's shadow on the ground, away from its edges (3 pixels in), and the ground in the sun.
+  const Vector to_sun = {-frame.sun[0], -frame.sun[1], -frame.sun[2]};
+  std::vector<uint8_t> shadow(w * h, 0);
+  for (size_t pixel = 0; pixel < shadow.size(); ++pixel) {
+    float distance = 0.f;
+    if (frame.picture.hit[pixel] == -1 && Occluder(boxes, frame.picture.position[pixel], to_sun, 1e30f, &distance) >= 0) shadow[pixel] = 1;
+  }
+  struct Means {
+    double occlusion = 0.0;
+    std::array<double, 3> filter = {};
+    int inner = 0;
+    uint32_t sunlit_tint = 0;
+  };
+  // Shogun's mask is the shadow term (1 lit): the occlusion 1 - it.
+  const auto measure = [&](const std::vector<uint8_t>& mask, const std::vector<uint32_t>& filter) {
+    Means means;
+    for (UINT y = 3; y + 3 < h; ++y) {
+      for (UINT x = 3; x + 3 < w; ++x) {
+        bool all = true;
+        bool none = true;
+        for (int dy = -3; dy <= 3; ++dy) {
+          for (int dx = -3; dx <= 3; ++dx) {
+            const uint8_t value = shadow[((y + dy) * w) + x + dx];
+            all = all && value != 0;
+            none = none && value == 0;
+          }
+        }
+        const size_t pixel = (y * w) + x;
+        if (all) {
+          means.occlusion += 1.0 - (mask[pixel] / 255.0);
+          for (int channel = 0; channel < 3; ++channel) means.filter[channel] += ((filter[pixel] >> (8 * channel)) & 0xFF) / 255.0;
+          ++means.inner;
+        } else if (none && frame.picture.hit[pixel] == -1) {
+          means.sunlit_tint = std::max(means.sunlit_tint, filter[pixel] & 0xFFFFFFu);
+        }
+      }
+    }
+    REQUIRE(means.inner > 50);
+    means.occlusion /= means.inner;
+    for (double& channel : means.filter) channel /= means.inner;
+    return means;
+  };
+  const auto pass = [&](ID3D11ComputeShader* shader, bool cascades, ID3D11Buffer* settings, const ShogunExtras& extras) {
+    clear_tint();
+    const auto mask = RunShogunPass(frame, inputs, output, output_uav.Get(), shader, cascades, true, settings, extras);
+    return measure(mask, ReadTexture<uint32_t>(tint.texture.Get()));
+  };
+  const Means solid = pass(extended.Get(), false, defaults.Get(), {});
+  const Means banner = pass(extended.Get(), false, banners.Get(), coloured);
+  const Means banner_cascades = pass(extended_cascades.Get(), true, banners.Get(), coloured);
+  const Means unbound = pass(extended.Get(), false, banners.Get(), {.colour = coloured.colour, .tint = coloured.tint});
+  const Means no_target = pass(extended.Get(), false, banners.Get(), {.thin = coloured.thin, .colour = coloured.colour});
+  std::printf("   %d shadow pixels: occlusion %.3f (solid %.3f), filter %.3f %.3f %.3f (expected 0 0.875 0.875), in the sun %06X; with the "
+              "cascades %.3f, %.3f %.3f %.3f; CONTROLS the banners' depth unbound %.3f, the filter's target unbound %.3f %.3f %.3f\n",
+              banner.inner, banner.occlusion, solid.occlusion, banner.filter[0], banner.filter[1], banner.filter[2], banner.sunlit_tint,
+              banner_cascades.occlusion, banner_cascades.filter[0], banner_cascades.filter[1], banner_cascades.filter[2], unbound.occlusion,
+              no_target.filter[0], no_target.filter[1], no_target.filter[2]);
+  CHECK(solid.occlusion > 0.3);
+  CHECK(std::fabs((banner.occlusion / solid.occlusion) - 0.65) < 0.12);
+  CHECK(banner.filter[0] < 0.1 && banner.filter[1] > 0.6 && banner.filter[2] > 0.6);
+  CHECK(banner.sunlit_tint == 0);
+  CHECK(std::fabs(banner_cascades.occlusion - banner.occlusion) < 0.01);
+  for (int channel = 0; channel < 3; ++channel) CHECK(std::fabs(banner_cascades.filter[channel] - banner.filter[channel]) < 0.01);
+  CHECK(std::fabs((unbound.occlusion / solid.occlusion) - 1.0) < 0.05);
+  CHECK(no_target.filter[1] == 0.0 && no_target.filter[2] == 0.0);
 }
 
 // ---- --time -----------------------------------------------------------------------------------------------------------
@@ -1706,6 +1857,7 @@ int main(int argc, char** argv) {
     TestReplay();
     TestRowsTurnedOff();
     TestShogun2(argv[1]);
+    TestShogun2Banners(argv[1]);
   }
   if (mode == "--time" || mode == "--time-only") Time(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);

@@ -1019,3 +1019,34 @@ game's VS + HS + DS) and 19 (sss_soft_mask); test/tw_shogun2_tweaks PASS; static
 r2_shogun2_0: only ssao_temporal, ssao_edge_fix, ssao_denoise, RayTracedUntracedCasters, ScreenSpaceShadowsSoftness,
 ScreenSpaceShadowsDistanceSoftness, ScreenSpaceShadowsDebugView. No shared file changed. The SSS split and Softer Away's
 extended pass (sss.hlsli's ReadShadowMap / WriteExtended) are built, not run: only sss_soft_mask is WARP-tested.
+
+### Parity round 5 (2026-11-14; built only, not run in game)
+
+On atn-mods 898cf924, the parity round 3 brief (ledger tools/tw/parity/shogun2.tsv): round 4's two open lines.
+
+- **Light through banners, Coloured shadows** (DLSS addon, screen-space shadows; Attila's ScreenSpaceShadowsBannerLight /
+  ScreenSpaceShadowsColoured, Experimental, off, in no preset): the banners' cloth G-buffer draws (cloth vs30_main BDFF60D4 with
+  ps30_main_gbuffer 0FBCC65A: 7-11 draws in the battle traces, before sss00, into the scene's depth) are drawn again into the
+  banners' own depth (Attila's InstallThin, as screen_space_shadows.hpp's OnBannerDraw: sss_thin, less-equal, not written, depth
+  bias -4), and the pass's extended version (sss_distance*, as Softer away swaps it in) takes those pixels as thin casters that
+  keep the row's share of the sun. With Coloured shadows the pass also writes the banner's colour filter (Attila's sss_bend
+  WriteExtended, from the G-buffer colour: the cloth draws' target 1, which is sss00's t1 and the sun draws' t8 in the traces,
+  linear as the sun draws read it), bound at t50 for the sun light draws that read the pass's mask where the rays bound none
+  (rt_sun.hlsli RtSunColour, as the rays' Coloured Shadows). A Shogun copy of Attila's replay: Shogun 2 doesn't use Attila's SSS
+  module. Both rows off: nothing replayed or bound, the game's pass.
+
+Test lines:
+1. Control, any battle with the in-game SSS on: Light through banners 0, Coloured shadows Off: as the last build.
+2. A battle with banners in the sun, SSS on, rays off, paused: Light through banners 0.35 against 0: the banners'
+   screen-space shadows on the ground lighter, soldiers' and walls' as dark. Decides keeping the row and its default.
+3. Same, Coloured shadows On: the light through a red banner reddish, no coloured patches where no banner's shadow is.
+4. Same at Render Scale 50%, then with RT/PT (the rays' own banner colour wins where they trace the sun): no shift, no seams.
+
+Checks: both addons build (x64); test/tw_shogun2_shaders part 20 PASS x86 and amd64 (the replay after the game's cloth draw,
+its VS and G-buffer PS csos: 880 of 880 banner pixels matched, 0 of 626 a nearer cloth covers, 0 of 514 in the alpha-tested
+hole; clothvelocity00 the game's depth bit for bit; CONTROL less without the bias: 0 matched); test/tw_screen_space_shadows case
+9 PASS x86 and amd64 (sss_distance / _cascades on a red banner: occlusion 0.323 against 0.465 solid, filter 0 0.875 0.875, the
+cascades' version the same; rows off the game's sss01 to the bit; CONTROLS: the banners' depth unbound 0.465, the filter's
+target unbound 0); static_checks, scan_register clean. Page dump against p3_start: only ScreenSpaceShadowsBannerLight and
+ScreenSpaceShadowsColoured. No shared file changed. The C++ replay and the t50 binding are built, not run (the replay's states
+and the passes are WARP-tested, not the module).

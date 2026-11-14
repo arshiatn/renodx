@@ -177,6 +177,8 @@ struct RaysAPixel {
   bool paths = true;
 } rays_a_pixel;
 bool ray_tracing_installed = false;
+// Coloured Shadows (the DLSS addon's ScreenSpaceShadowsColoured, Experimental; 1 on): screen_space_shadows.hpp's banner filter.
+float sss_coloured = 0.f;
 // Between the reflections' HiZ and their resolve (the generic mip passes there are theirs; render thread).
 bool reflection_passes = false;
 // GT-VBAO's Temporal Smoothing, Temporal Edge Fix and Denoiser (Experimental; the DLSS addon's AO rows, Attila's keys
@@ -463,7 +465,8 @@ void BuildRuntimeData() {
     custom_shaders[hash].on_draw = [depth_slot](reshade::api::command_list* cmd_list) {
       twshogun2::foliage_light::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_foliage_light);
       twshogun2::screen_space_shadows::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_softness, shader_injection.sss_debug_view,
-                                                    shader_injection.sss_distance_softness);
+                                                    shader_injection.sss_distance_softness, shader_injection.sss_banner_light,
+                                                    sss_coloured != 0.f);
       return true;
     };
     custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
@@ -1102,6 +1105,9 @@ void ReadDlssAddonOptions() {
   read_bend("ScreenSpaceShadowsSoftness", 3.f, &shader_injection.sss_softness);
   read_bend("ScreenSpaceShadowsDebugView", 2.f, &shader_injection.sss_debug_view);
   read_bend("ScreenSpaceShadowsDistanceSoftness", 2.f, &shader_injection.sss_distance_softness);
+  // Attila's Light Through Banners (the sun's share, 0 off) and Coloured Shadows (Off / On), its keys.
+  read_bend("ScreenSpaceShadowsBannerLight", 1.f, &shader_injection.sss_banner_light);
+  read_bend("ScreenSpaceShadowsColoured", 1.f, &sss_coloured);
   read_bend("SSSIgnoreEdges", 1.f, &shader_injection.sss_ignore_edges);
   read_bend("SSSAlongRay", 1.f, &shader_injection.sss_along_ray);
   read_bend("SSSMirrorEdges", 1.f, &shader_injection.sss_mirror_edges);
@@ -1560,7 +1566,7 @@ bool AttachAddon() {
   // the later callbacks).
   twshogun2::foliage_light::Install(twshogun2::ray_tracing::SUN_DRAWS);
   reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
-  twshogun2::screen_space_shadows::Install(twshogun2::ray_tracing::SUN_DRAWS);
+  twshogun2::screen_space_shadows::Install(twshogun2::ray_tracing::SUN_DRAWS, twshogun2::ray_tracing::CLOTH_VERTEX_SHADER);
   reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::screen_space_shadows::OnDestroyDevice);
   // The AO filter (its 3D size first, then the filter): before the Light Bounce, which draws the sun draws itself.
   for (const auto& draw : AO_FILTER_DRAWS) {
